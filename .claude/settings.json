@@ -16,8 +16,7 @@
     "roxabi-marketplace": {
       "source": {
         "source": "github",
-        "repo": "Roxabi/roxabi-plugins",
-        "path": "/home/mickael/projects/roxabi-plugins"
+        "repo": "Roxabi/roxabi-plugins"
       },
       "autoUpdate": true
     }

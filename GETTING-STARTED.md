@@ -1,4 +1,4 @@
-# Getting Started — Lyra Hub Setup
+# Getting Started — Lyra by Roxabi
 
 Complete guide to set up Machine 1 (Ubuntu Server 24.04 LTS) as the Lyra hub from scratch.
 
@@ -199,4 +199,4 @@ Expected: `uid=1001(lyra) ... git version 2.x`
 | Firewall | UFW, SSH only |
 | SSH keys | `~/.ssh/id_ed25519` (admin), `~/.ssh/lyra_agent` (agent) |
 
-Machine 1 is ready to run Lyra.
+Machine 1 is ready to run Lyra by Roxabi.

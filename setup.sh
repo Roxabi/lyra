@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Machine 1 — Post-install setup script
+# Lyra by Roxabi — Machine 1 post-install setup script
 # Usage: curl -fsSL https://raw.githubusercontent.com/Roxabi/lyra/main/setup.sh | bash
 #        curl -fsSL https://raw.githubusercontent.com/Roxabi/lyra/main/setup.sh | ADMIN_USER=yourname bash
 #        curl -fsSL https://raw.githubusercontent.com/Roxabi/lyra/main/setup.sh | ADMIN_USER=yourname AGENT_USER=myagent bash
@@ -74,7 +74,7 @@ section "Agent account ($AGENT_USER)"
 if id "$AGENT_USER" &>/dev/null; then
   warn "User '$AGENT_USER' already exists, skipping."
 else
-  sudo useradd -m -s /bin/rbash -c "Lyra AI agent" "$AGENT_USER"
+  sudo useradd -m -s /bin/rbash -c "Lyra by Roxabi AI agent" "$AGENT_USER"
   sudo passwd -l "$AGENT_USER"
   sudo mkdir -p /home/"$AGENT_USER"/.ssh
   sudo chmod 700 /home/"$AGENT_USER"/.ssh

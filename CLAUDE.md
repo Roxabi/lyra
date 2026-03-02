@@ -2,7 +2,7 @@
 
 ## Project
 
-**Lyra** — Personal AI agent engine (hub-and-spoke, asyncio, multi-channel).
+**Lyra by Roxabi** — Personal AI agent engine (hub-and-spoke, asyncio, multi-channel).
 See `ARCHITECTURE.md` for full context.
 
 ## Key files

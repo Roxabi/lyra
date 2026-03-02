@@ -19,7 +19,7 @@
 
 ## Context
 
-Machine 1 = Lyra central hub.
+Machine 1 = Lyra by Roxabi central hub.
 
 | Spec | Value |
 |------|-------|

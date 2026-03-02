@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Machine 1 — Post-install setup script
-# Usage: curl -fsSL https://raw.githubusercontent.com/MickaelV0/lyra/main/setup.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/Roxabi/lyra/main/setup.sh | bash
+#        curl -fsSL https://raw.githubusercontent.com/Roxabi/lyra/main/setup.sh | ADMIN_USER=yourname bash
 set -euo pipefail
 
 GREEN='\033[0;32m'
@@ -13,6 +14,10 @@ warn()    { echo -e "${YELLOW}[!]${NC} $1"; }
 error()   { echo -e "${RED}[x]${NC} $1"; exit 1; }
 section() { echo -e "\n${GREEN}=== $1 ===${NC}"; }
 
+# Admin user (defaults to current user, override with ADMIN_USER=yourname)
+ADMIN_USER="${ADMIN_USER:-$(whoami)}"
+info "Running setup for user: $ADMIN_USER"
+
 section "System update"
 sudo apt update && sudo apt upgrade -y
 
@@ -22,7 +27,7 @@ sudo apt install -y \
   fail2ban ufw \
   build-essential
 
-section "NVIDIA drivers (RTX 3080)"
+section "NVIDIA drivers"
 if nvidia-smi &>/dev/null; then
   warn "NVIDIA drivers already installed, skipping."
 else
@@ -62,8 +67,22 @@ sudo sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=5/' /etc/default/grub
 sudo update-grub
 info "GRUB: Linux default, Windows detectable."
 
+section "lyra agent account"
+if id lyra &>/dev/null; then
+  warn "User 'lyra' already exists, skipping."
+else
+  sudo useradd -m -s /bin/rbash -c "Lyra AI agent" lyra
+  sudo passwd -l lyra
+  sudo mkdir -p /home/lyra/.ssh
+  sudo chmod 700 /home/lyra/.ssh
+  sudo chown -R lyra:lyra /home/lyra/.ssh
+  sudo chmod 750 /home/"$ADMIN_USER"
+  info "User 'lyra' created (rbash, no sudo, isolated home)."
+  warn "Add your agent SSH public key to /home/lyra/.ssh/authorized_keys"
+fi
+
 section "Done"
-info "Setup complete."
+info "Setup complete for '$ADMIN_USER'."
 if [ "${NEEDS_REBOOT:-false}" = true ]; then
   warn "NVIDIA drivers installed — reboot now: sudo reboot"
 fi

@@ -1,0 +1,11 @@
+.env
+local/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+*.sqlite
+*.sqlite-journal
+.ruff_cache/

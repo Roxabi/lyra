@@ -2,6 +2,7 @@
 # Machine 1 — Post-install setup script
 # Usage: curl -fsSL https://raw.githubusercontent.com/Roxabi/lyra/main/setup.sh | bash
 #        curl -fsSL https://raw.githubusercontent.com/Roxabi/lyra/main/setup.sh | ADMIN_USER=yourname bash
+#        curl -fsSL https://raw.githubusercontent.com/Roxabi/lyra/main/setup.sh | ADMIN_USER=yourname AGENT_USER=myagent bash
 set -euo pipefail
 
 GREEN='\033[0;32m'
@@ -16,7 +17,9 @@ section() { echo -e "\n${GREEN}=== $1 ===${NC}"; }
 
 # Admin user (defaults to current user, override with ADMIN_USER=yourname)
 ADMIN_USER="${ADMIN_USER:-$(whoami)}"
-info "Running setup for user: $ADMIN_USER"
+# Agent user (defaults to lyra, override with AGENT_USER=anotherame)
+AGENT_USER="${AGENT_USER:-lyra}"
+info "Running setup for admin: $ADMIN_USER, agent: $AGENT_USER"
 
 section "System update"
 sudo apt update && sudo apt upgrade -y
@@ -67,22 +70,22 @@ sudo sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=5/' /etc/default/grub
 sudo update-grub
 info "GRUB: Linux default, Windows detectable."
 
-section "lyra agent account"
-if id lyra &>/dev/null; then
-  warn "User 'lyra' already exists, skipping."
+section "Agent account ($AGENT_USER)"
+if id "$AGENT_USER" &>/dev/null; then
+  warn "User '$AGENT_USER' already exists, skipping."
 else
-  sudo useradd -m -s /bin/rbash -c "Lyra AI agent" lyra
-  sudo passwd -l lyra
-  sudo mkdir -p /home/lyra/.ssh
-  sudo chmod 700 /home/lyra/.ssh
-  sudo chown -R lyra:lyra /home/lyra/.ssh
+  sudo useradd -m -s /bin/rbash -c "Lyra AI agent" "$AGENT_USER"
+  sudo passwd -l "$AGENT_USER"
+  sudo mkdir -p /home/"$AGENT_USER"/.ssh
+  sudo chmod 700 /home/"$AGENT_USER"/.ssh
+  sudo chown -R "$AGENT_USER":"$AGENT_USER" /home/"$AGENT_USER"/.ssh
   sudo chmod 750 /home/"$ADMIN_USER"
-  info "User 'lyra' created (rbash, no sudo, isolated home)."
-  warn "Add your agent SSH public key to /home/lyra/.ssh/authorized_keys"
+  info "User '$AGENT_USER' created (rbash, no sudo, isolated home)."
+  warn "Add your agent SSH public key to /home/$AGENT_USER/.ssh/authorized_keys"
 fi
 
 section "Done"
-info "Setup complete for '$ADMIN_USER'."
+info "Setup complete — admin: $ADMIN_USER, agent: $AGENT_USER"
 if [ "${NEEDS_REBOOT:-false}" = true ]; then
   warn "NVIDIA drivers installed — reboot now: sudo reboot"
 fi

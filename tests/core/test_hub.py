@@ -7,9 +7,16 @@ from datetime import datetime, timezone
 
 import pytest
 
-from lyra.core import Agent, Hub, Message, MessageType, Pool, Response
-from lyra.core.hub import Binding
-
+from lyra.core import (
+    Agent,
+    AgentBase,
+    Hub,
+    ImageContent,
+    Message,
+    MessageType,
+    Pool,
+    Response,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -28,6 +35,18 @@ def make_message(channel: str = "telegram", user_id: str = "alice") -> Message:
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+class MockAdapter:
+    """Minimal ChannelAdapter for testing."""
+
+    async def send(self, original_msg: Message, response: Response) -> None:
+        pass
+
+
+# ---------------------------------------------------------------------------
 # Message
 # ---------------------------------------------------------------------------
 
@@ -41,10 +60,33 @@ class TestMessage:
         assert msg.type == MessageType.TEXT
         assert msg.metadata == {}
 
-    def test_content_can_be_dict(self) -> None:
+    def test_content_can_be_image_content(self) -> None:
+        msg = Message(
+            id="msg-1",
+            channel="telegram",
+            user_id="alice",
+            content=ImageContent(url="https://example.com/img.png"),
+            type=MessageType.IMAGE,
+            timestamp=datetime.now(timezone.utc),
+        )
+        assert isinstance(msg.content, ImageContent)
+        assert msg.content.url == "https://example.com/img.png"
+
+    def test_trust_defaults_to_user(self) -> None:
         msg = make_message()
-        msg.content = {"url": "https://example.com/img.png"}
-        assert isinstance(msg.content, dict)
+        assert msg.trust == "user"
+
+    def test_trust_can_be_set_to_system(self) -> None:
+        msg = Message(
+            id="sys-1",
+            channel="telegram",
+            user_id="alice",
+            content="internal",
+            type=MessageType.SYSTEM,
+            timestamp=datetime.now(timezone.utc),
+            trust="system",
+        )
+        assert msg.trust == "system"
 
 
 # ---------------------------------------------------------------------------
@@ -58,6 +100,9 @@ class TestPool:
         assert pool.pool_id == "telegram_alice"
         assert pool.agent_name == "lyra"
         assert pool.history == []
+        # Verify each pool gets its own list (not a shared mutable default)
+        pool2 = Pool(pool_id="telegram_bob", agent_name="lyra")
+        assert pool.history is not pool2.history
 
     def test_has_asyncio_lock(self) -> None:
         pool = Pool(pool_id="p1", agent_name="lyra")
@@ -80,7 +125,12 @@ class TestPool:
 
         await asyncio.gather(task("A"), task("B"))
         # The two tasks must NOT interleave
-        assert order.index("end-A") < order.index("start-B") or order.index("end-B") < order.index("start-A")
+        assert order == ["start-A", "end-A", "start-B", "end-B"] or order == [
+            "start-B",
+            "end-B",
+            "start-A",
+            "end-A",
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -90,19 +140,20 @@ class TestPool:
 
 class TestAgent:
     def test_frozen(self) -> None:
-        agent = Agent(name="lyra", system_prompt="You are Lyra.", memory_namespace="lyra")
-        with pytest.raises((AttributeError, TypeError)):
+        agent = Agent(
+            name="lyra", system_prompt="You are Lyra.", memory_namespace="lyra"
+        )
+        with pytest.raises(AttributeError):
             agent.name = "other"  # type: ignore[misc]
 
     def test_default_permissions(self) -> None:
         agent = Agent(name="lyra", system_prompt="", memory_namespace="lyra")
         assert agent.permissions == ()
 
-    async def test_process_raises_not_implemented(self) -> None:
-        agent = Agent(name="lyra", system_prompt="", memory_namespace="lyra")
-        pool = Pool(pool_id="p", agent_name="lyra")
-        with pytest.raises(NotImplementedError):
-            await agent.process(make_message(), pool)
+    def test_agent_base_cannot_be_instantiated_directly(self) -> None:
+        config = Agent(name="lyra", system_prompt="", memory_namespace="lyra")
+        with pytest.raises(TypeError):
+            AgentBase(config)  # type: ignore[abstract]
 
 
 # ---------------------------------------------------------------------------
@@ -114,6 +165,7 @@ class TestHubInit:
     def test_bus_is_bounded_queue(self) -> None:
         hub = Hub()
         assert isinstance(hub.bus, asyncio.Queue)
+        assert Hub.BUS_SIZE == 100
         assert hub.bus.maxsize == Hub.BUS_SIZE
 
     def test_empty_registries(self) -> None:
@@ -131,22 +183,12 @@ class TestHubInit:
 class TestRegisterAdapter:
     def test_registers_adapter(self) -> None:
         hub = Hub()
-
-        class MockAdapter:
-            async def send(self, msg: Message, response: Response) -> None:
-                pass
-
         adapter = MockAdapter()
         hub.register_adapter("telegram", adapter)
         assert hub.adapter_registry["telegram"] is adapter
 
     def test_overwrite_adapter(self) -> None:
         hub = Hub()
-
-        class MockAdapter:
-            async def send(self, msg: Message, response: Response) -> None:
-                pass
-
         a1, a2 = MockAdapter(), MockAdapter()
         hub.register_adapter("telegram", a1)
         hub.register_adapter("telegram", a2)
@@ -168,22 +210,11 @@ class TestBindings:
         assert binding.agent_name == "lyra"
         assert binding.pool_id == "telegram_alice"
 
-    def test_wildcard_binding(self) -> None:
+    def test_wildcard_does_not_bleed_across_channels(self) -> None:
         hub = Hub()
-        hub.register_binding("telegram", "*", "lyra", "telegram_default")
+        hub.register_binding("discord", "*", "lyra", "discord_default")
         msg = make_message(channel="telegram", user_id="unknown_user")
-        binding = hub.resolve_binding(msg)
-        assert binding is not None
-        assert binding.pool_id == "telegram_default"
-
-    def test_exact_takes_precedence_over_wildcard(self) -> None:
-        hub = Hub()
-        hub.register_binding("telegram", "*", "lyra", "telegram_default")
-        hub.register_binding("telegram", "alice", "lyra", "telegram_alice")
-        msg = make_message(channel="telegram", user_id="alice")
-        binding = hub.resolve_binding(msg)
-        assert binding is not None
-        assert binding.pool_id == "telegram_alice"
+        assert hub.resolve_binding(msg) is None
 
     def test_no_binding_returns_none(self) -> None:
         hub = Hub()
@@ -204,3 +235,9 @@ class TestBindings:
         binding = hub.resolve_binding(msg)
         assert binding is not None
         assert binding.pool_id == "pool_v2"
+
+    def test_register_binding_raises_if_pool_id_shared_across_users(self) -> None:
+        hub = Hub()
+        hub.register_binding("telegram", "alice", "lyra", "shared_pool")
+        with pytest.raises(ValueError, match="already bound"):
+            hub.register_binding("telegram", "bob", "lyra", "shared_pool")

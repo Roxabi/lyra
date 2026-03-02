@@ -1,32 +1,34 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Protocol
 
-from .message import Message
+from .message import Message, Response
 from .pool import Pool
-
-
-@dataclass
-class Response:
-    content: str
-    metadata: dict = field(default_factory=dict)
-
-
-class ChannelAdapter(Protocol):
-    """Interface every channel adapter must implement."""
-
-    async def send(self, original_msg: Message, response: Response) -> None: ...
 
 
 @dataclass(frozen=True)
 class Agent:
-    """Stateless singleton. All mutable state lives in Pool — no race conditions."""
+    """Immutable configuration record for an agent."""
 
     name: str
     system_prompt: str
     memory_namespace: str
-    permissions: tuple[str, ...] = field(default_factory=tuple)
+    permissions: tuple[str, ...] = field(default=())
 
-    async def process(self, msg: Message, pool: Pool) -> Response:
-        raise NotImplementedError
+
+class AgentBase(ABC):
+    """Abstract base for concrete agent implementations.
+
+    All mutable state lives in Pool.
+    """
+
+    def __init__(self, config: Agent) -> None:
+        self.config = config
+
+    @property
+    def name(self) -> str:
+        return self.config.name
+
+    @abstractmethod
+    async def process(self, msg: Message, pool: Pool) -> Response: ...

@@ -3,12 +3,16 @@ name = "lyra"
 version = "0.1.0"
 description = "Lyra by Roxabi — Personal AI agent engine"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "pydantic>=2.12.5",
+]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
+    "pyright>=1.1",
+    "ruff>=0.3",
 ]
 
 [build-system]
@@ -25,3 +29,10 @@ testpaths = ["tests"]
 [tool.pyright]
 pythonVersion = "3.12"
 include = ["src", "tests"]
+venvPath = "."
+venv = ".venv"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.ruff.format]

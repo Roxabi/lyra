@@ -1,172 +1,165 @@
 # Machine 1 — Ubuntu Server 24.04 LTS Setup (Dual Boot)
 
-> Issue: #6
-> Statut : En cours
-> Dernière mise à jour : 2026-03-02
+> Issue: #6 (closed)
+> Status: Done
+> Last updated: 2026-03-02
 
 ---
 
-## Vue d'ensemble
+## Overview
 
-| Contexte | Étapes |
-|----------|--------|
-| 🖥 Physique (20-30 min) | Clé USB → BIOS → Installeur → 1er reboot |
-| 💻 SSH depuis Machine 2 | GRUB → NVIDIA drivers → reboot → vérifications |
+| Context | Steps |
+|---------|-------|
+| 🖥 Physical (20-30 min) | USB key → BIOS → Installer → 1st reboot |
+| 💻 SSH from Machine 2 | GRUB → NVIDIA drivers → reboot → checks |
 
-**Pivot SSH** : pendant l'installeur, cocher "Install OpenSSH server". Dès le 1er reboot, tout se fait depuis Machine 2.
+**SSH pivot**: during the installer, check "Install OpenSSH server". From the 1st reboot onwards, everything is done from Machine 2.
 
 ---
 
-## Contexte
+## Context
 
-Machine 1 = Hub central du projet Lyra.
+Machine 1 = Lyra central hub.
 
-| Spec | Valeur |
-|------|--------|
+| Spec | Value |
+|------|-------|
 | CPU | AMD Ryzen 7 5800X |
 | RAM | 32GB |
 | GPU | RTX 3080 10GB VRAM |
-| OS cible | Ubuntu Server 24.04 LTS (dual boot Windows, défaut Linux) |
+| Target OS | Ubuntu Server 24.04 LTS (dual boot Windows, default Linux) |
 
 ---
 
-## Prérequis
+## Prerequisites
 
-- Clé USB ≥ 8GB
-- ISO Ubuntu Server 24.04 LTS : https://ubuntu.com/download/server
-- Outil de création de clé bootable : Rufus (Windows) ou `dd` (Linux)
-- Machine 2 disponible pour vérifier SSH
+- USB key ≥ 8GB
+- Ubuntu Server 24.04 LTS ISO: https://ubuntu.com/download/server
+- Bootable USB tool: Rufus (Windows) or `dd` (Linux)
+- Machine 2 available to verify SSH
 
 ---
 
-## 🖥 PHYSIQUE — Étape 1 : Préparer la clé USB bootable
+## 🖥 PHYSICAL — Step 1: Prepare bootable USB
 
-Peut se faire sur Machine 2 avant d'aller sur Machine 1 :
+Can be done on Machine 2 before going to Machine 1:
 
 ```bash
-# Sur Machine 2 (Linux)
+# On Machine 2 (Linux)
 dd if=ubuntu-24.04-live-server-amd64.iso of=/dev/sdX bs=4M status=progress && sync
 ```
 
-Ou via Rufus sur Windows (GPT + UEFI, pas MBR).
+Or via Rufus on Windows (GPT + UEFI, not MBR).
 
 ---
 
-## 🖥 PHYSIQUE — Étape 2 : Installation Ubuntu (dual boot)
+## 🖥 PHYSICAL — Step 2: Install Ubuntu (dual boot)
 
-**Attention** : Windows doit déjà être installé et fonctionnel.
+**Warning**: Windows must already be installed and working.
 
-1. Brancher la clé USB sur Machine 1
-2. Démarrer et appuyer sur F2/Del → boot sur la clé USB
-3. Au partitionnement, choisir **"Utiliser l'espace libre"** ou **custom** :
+1. Plug USB key into Machine 1
+2. Boot and press F2/Del → boot from USB key
+3. At partitioning, choose **"Use free space"** or **custom**:
 
-| Partition | Taille | Type | Point de montage |
-|-----------|--------|------|-----------------|
-| EFI (existante Windows) | — | EFI | `/boot/efi` |
-| Ubuntu root | 200GB+ | ext4 | `/` |
-| Swap | 32GB (= RAM) | swap | — |
-| Données | Reste | ext4 | `/data` |
+| Partition | Size | Type | Mount point |
+|-----------|------|------|-------------|
+| EFI (existing Windows) | — | EFI | `/boot/efi` |
+| Ubuntu root | 400GB | ext4 | `/` |
+| Swap | 29GB | swap | — |
 
-**Ne pas formater** la partition EFI Windows — juste la sélectionner comme `/boot/efi`.
+**Do not format** the Windows EFI partition — just select it as `/boot/efi`.
 
-4. Étape **"SSH Setup"** → ✅ **Install OpenSSH server**
-   - Option : importer clé depuis GitHub (`gh:<username>`) → SSH sans mot de passe dès le 1er boot
+> Note: If Windows fills the entire disk, you need to shrink the NTFS partition first.
+> The Ubuntu Server installer cannot resize NTFS via the UI — use `ntfsresize` from the installer shell:
+> ```bash
+> # In installer shell (Ctrl+Alt+F2)
+> ntfsresize -n -s 530G /dev/nvme0n1p3   # dry run
+> ntfsresize -s 530G /dev/nvme0n1p3      # actual resize
+> parted /dev/nvme0n1 resizepart 3 570GB
+> parted /dev/nvme0n1 mkpart primary ext4 570GB 970GB
+> parted /dev/nvme0n1 mkpart primary linux-swap 970GB 999GB
+> ```
 
-5. Terminer l'installation → reboot → retirer la clé USB
+4. **"SSH Setup"** step → ✅ **Install OpenSSH server**
+   - Option: import key from GitHub (`gh:<username>`) → passwordless SSH from 1st boot
 
-**À partir d'ici, tout se fait depuis Machine 2 via SSH.**
+5. Finish installation → reboot → remove USB key
+
+**From here, everything is done from Machine 2 via SSH.**
 
 ---
 
-## 💻 SSH — Étape 3 : Connexion initiale depuis Machine 2
+## 💻 SSH — Step 3: Initial connection from Machine 2
 
 ```bash
-# Trouver l'IP de Machine 1 (si pas connue : regarder la console au boot, ou box routeur)
+# Find Machine 1 IP (if unknown: check console at boot, or router)
 ssh mickael@<IP_MACHINE_1>
 ```
 
-Si clé SSH non importée pendant l'install :
+If SSH key was not imported during install:
 
 ```bash
-# Sur Machine 2
+# On Machine 2
 ssh-keygen -t ed25519 -C "machine2@lyra"
-ssh-copy-id mickael@<IP_MACHINE_1>   # demande le mot de passe une dernière fois
+ssh-copy-id mickael@<IP_MACHINE_1>   # asks for password one last time
 ```
 
 ---
 
-## 💻 SSH — Étape 4 : Configuration GRUB (défaut Linux)
+## 💻 SSH — Step 4: GRUB config (default Linux)
 
 ```bash
 sudo nano /etc/default/grub
 ```
 
 ```ini
-GRUB_DEFAULT=0          # 0 = premier entry = Ubuntu
-GRUB_TIMEOUT=5          # 5s pour choisir
+GRUB_DEFAULT=0                    # 0 = first entry = Ubuntu
+GRUB_TIMEOUT=5                    # 5s to choose
 GRUB_TIMEOUT_STYLE=menu
-GRUB_DISABLE_OS_PROBER=false   # détecter Windows
+GRUB_DISABLE_OS_PROBER=false      # detect Windows
 ```
 
 ```bash
 sudo update-grub
-# Vérifier que Windows Boot Manager apparaît dans la liste
+# Verify Windows Boot Manager appears in the list
 ```
 
 ---
 
-## 💻 SSH — Étape 5 : NVIDIA Drivers (RTX 3080)
+## 💻 SSH — Step 5: NVIDIA Drivers (RTX 3080)
 
 ```bash
-# Vérifier GPU détecté
+# Check GPU detected
 lspci | grep -i nvidia
 
-# Installer drivers recommandés
+# Install recommended drivers
 sudo apt update
-sudo ubuntu-drivers autoinstall
-
-# OU version spécifique (recommandé pour RTX 3080 + CUDA)
 sudo apt install -y nvidia-driver-550
 
-# Reboot obligatoire
+# Mandatory reboot
 sudo reboot
 ```
 
-Après reboot :
+After reboot:
 
 ```bash
 nvidia-smi
-```
-
-Sortie attendue :
-
-```
-+-----------------------------------------------------------------------------+
-| NVIDIA-SMI 550.x    Driver Version: 550.x    CUDA Version: 12.x            |
-|-------------------------------+----------------------+----------------------+
-| GPU  Name        Persistence-M| Bus-Id        Disp.A | Volatile Uncorr. ECC |
-| Fan  Temp  Perf  Pwr:Usage/Cap|         Memory-Usage | GPU-Util  Compute M. |
-|===============================+======================+======================|
-|   0  NVIDIA GeForce ...  Off  | 00000000:XX:00.0 Off |                  N/A |
-|  0%   30C    P8     5W / 320W |      0MiB / 10240MiB |      0%      Default |
-+-----------------------------------------------------------------------------+
 ```
 
 ---
 
-## 💻 SSH — Étape 6 : Vérifications finales
+## 💻 SSH — Step 6: Final checks
 
 ```bash
-# GPU OK
+# GPU
 nvidia-smi
 
-# SSH accessible depuis Machine 2
+# SSH accessible from Machine 2
 ssh mickael@<IP_MACHINE_1> "echo OK"
 
-# GRUB défaut Linux
+# GRUB default Linux
 grep GRUB_DEFAULT /etc/default/grub
 
-# Services au démarrage
+# Services at startup
 sudo systemctl is-enabled ssh
 ```
 
@@ -174,52 +167,52 @@ sudo systemctl is-enabled ssh
 
 ## Acceptance criteria
 
-- [ ] `ssh mickael@<IP_MACHINE_1>` fonctionne depuis Machine 2
-- [ ] `nvidia-smi` affiche RTX 3080 (10240 MiB VRAM)
-- [ ] Machine démarre sur Linux par défaut (GRUB_DEFAULT=0)
-- [ ] Windows toujours accessible via GRUB (entrée Windows Boot Manager présente)
+- [x] `ssh mickael@192.168.1.16` works from Machine 2
+- [x] `nvidia-smi` shows RTX 3080 (10240 MiB VRAM)
+- [x] Machine boots Linux by default (GRUB_DEFAULT=0)
+- [x] Windows still accessible via GRUB
 
 ---
 
 ## Troubleshooting
 
-### GRUB ne voit pas Windows
+### GRUB does not detect Windows
 
 ```bash
 sudo os-prober
 sudo update-grub
 ```
 
-Si os-prober désactivé :
+If os-prober is disabled:
 
 ```bash
 echo 'GRUB_DISABLE_OS_PROBER=false' | sudo tee -a /etc/default/grub
 sudo update-grub
 ```
 
-### Drivers NVIDIA — module non chargé
+### NVIDIA driver — module not loaded
 
 ```bash
 sudo modprobe nvidia
 dmesg | grep -i nvidia
-# Si Secure Boot activé, désactiver dans BIOS ou signer le module
+# If Secure Boot is enabled: enroll MOK during reboot (choose "Enroll MOK" at blue screen)
 ```
 
-### SSH — connexion refusée
+### SSH — connection refused
 
 ```bash
-# Vérifier le firewall
+# Check firewall
 sudo ufw status
 sudo ufw allow ssh
 
-# Vérifier le service
+# Check service
 sudo systemctl restart ssh
 ```
 
 ---
 
-## Notes post-install
+## Post-install notes
 
-- Après configuration complète, désactiver `PasswordAuthentication yes` → mettre `no`
-- Envisager `fail2ban` pour protéger SSH
-- Fixer l'IP de Machine 1 en DHCP statique sur le routeur (MAC binding) pour URL SSH stable
+- IP fixed via DHCP reservation on router (MAC binding) for stable SSH address
+- Pagefile disabled on Windows before shrinking NTFS — can be re-enabled after
+- MOK enrolled at first reboot after NVIDIA driver install (Secure Boot)

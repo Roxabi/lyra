@@ -5,7 +5,12 @@
     "compress@roxabi-marketplace": true,
     "1b1@roxabi-marketplace": true,
     "web-intel@roxabi-marketplace": true,
-    "voice-me@roxabi-marketplace": true
+    "voice-cli@roxabi-marketplace": true,
+    "cv@roxabi-marketplace": true,
+    "get-invoice-details@roxabi-marketplace": true,
+    "image-prompt-generator@roxabi-marketplace": true,
+    "linkedin-post-generator@roxabi-marketplace": true,
+    "vault@roxabi-marketplace": true
   },
   "extraKnownMarketplaces": {
     "roxabi-marketplace": {
@@ -13,7 +18,8 @@
         "source": "github",
         "repo": "Roxabi/roxabi-plugins",
         "path": "/home/mickael/projects/roxabi-plugins"
-      }
+      },
+      "autoUpdate": true
     }
   }
 }

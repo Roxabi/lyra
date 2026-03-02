@@ -3,6 +3,6 @@
   "description": "Lyra by Roxabi — Personal AI agent engine",
   "private": true,
   "scripts": {
-    "dashboard": "bun /home/mickael/.claude/plugins/cache/roxabi-marketplace/dev-core/0.1.0/skills/issues/dashboard.ts"
+    "dashboard": "bun .claude/run-dashboard.ts"
   }
 }

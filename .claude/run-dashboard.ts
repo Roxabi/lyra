@@ -11,5 +11,7 @@ const dirs = readdirSync(base).filter(
   d => !d.startsWith('.') && !existsSync(join(base, d, '.orphaned_at'))
 )
 if (!dirs.length) throw new Error('dev-core not found in plugin cache. Run: claude plugin install dev-core')
-const latest = dirs.sort((a, b) => statSync(join(base, b)).mtimeMs - statSync(join(base, a)).mtimeMs)[0]
+const latest = dirs
+  .map(d => ({ d, mtime: statSync(join(base, d)).mtimeMs }))
+  .sort((a, b) => b.mtime - a.mtime)[0].d
 await import(join(base, latest, 'skills/issues/dashboard.ts'))

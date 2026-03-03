@@ -248,8 +248,9 @@ Multiple agents run simultaneously on different pools. A single agent (e.g., `ly
 | Runtime | Python 3.12 + asyncio |
 | Dependencies | uv |
 | Validation | pydantic |
-| Telegram | python-telegram-bot |
-| Discord | discord.py |
+| Telegram | aiogram v3 (asyncio-native, tracks Bot API same-day) |
+| Discord | discord.py v2 (gateway WebSocket, on_message) |
+| Webhook server | FastAPI + uvicorn (Telegram webhook endpoint) |
 | HTTP client | httpx[asyncio] |
 | SQLite async | aiosqlite |
 | BM25 | rank-bm25 |

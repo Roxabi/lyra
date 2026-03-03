@@ -348,8 +348,8 @@ class TestDispatchResponse:
         sent: list[tuple[Message, Response]] = []
 
         class CapturingAdapter:
-            async def send(self, msg: Message, resp: Response) -> None:
-                sent.append((msg, resp))
+            async def send(self, original_msg: Message, response: Response) -> None:
+                sent.append((original_msg, response))
 
         hub.register_adapter(Platform.TELEGRAM, "main", CapturingAdapter())
         msg = make_message(platform=Platform.TELEGRAM, bot_id="main")

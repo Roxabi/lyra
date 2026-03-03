@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -53,7 +54,7 @@ class TelegramContext:
 
 @dataclass(frozen=True)
 class DiscordContext:
-    guild_id: int
+    guild_id: int | None
     channel_id: int
     message_id: int
     thread_id: int | None = None
@@ -68,7 +69,6 @@ class Message:
     id: str
     platform: Platform
     bot_id: str
-    channel: str  # deprecated: always equals platform.value — remove after Slice 2+3
     user_id: str = field(repr=False)
     user_name: str = field(repr=False)
     is_mention: bool
@@ -82,12 +82,15 @@ class Message:
     trust: Literal["user", "system"] = "user"
     metadata: dict[str, Any] = field(default_factory=dict)
 
-    def __post_init__(self) -> None:
-        if self.channel != self.platform.value:
-            raise ValueError(
-                f"Message.channel {self.channel!r} must equal platform.value "
-                f"{self.platform.value!r}. Set channel=platform.value or omit it."
-            )
+    @property
+    def channel(self) -> str:
+        """Deprecated: use platform.value directly. Removed after Slice 2+3 (Discord + Telegram tests complete)."""
+        warnings.warn(
+            "Message.channel is deprecated; use Message.platform.value",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.platform.value
 
     @classmethod
     def from_adapter(
@@ -112,7 +115,6 @@ class Message:
             id=f"{platform.value}:{user_id}:{int(timestamp.timestamp())}",
             platform=platform,
             bot_id=bot_id,
-            channel=platform.value,
             user_id=user_id,
             user_name=user_name,
             is_mention=is_mention,

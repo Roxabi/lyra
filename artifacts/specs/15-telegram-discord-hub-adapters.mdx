@@ -1,0 +1,251 @@
+---
+title: "Connect Telegram + Discord adapters to Lyra hub (real traffic)"
+issue: 15
+tier: F-full
+status: approved
+date: 2026-03-03
+promoted-from: artifacts/analyses/15-telegram-discord-hub-adapters.mdx
+---
+
+## Context
+
+Promoted from approved analysis `artifacts/analyses/15-telegram-discord-hub-adapters.mdx`.
+Hub skeleton (D3-D4) is live. This spec covers D5-D7: wire real traffic from two platforms
+through the hub using Shape B (typed routing key + PlatformContext).
+
+Libraries locked: **aiogram v3** (Telegram) + **discord.py v2** (Discord).
+ADR recorded: `docs/architecture/adr/001-routing-key-platform-bot-id-user-id.mdx`.
+
+## Goal
+
+Lyra routes real Telegram and Discord messages through the hub, with full attribution, typed
+platform context, and zero regression on existing Telegram behavior.
+
+## Users
+
+- **Mickael (operator)**: wires bots by registering adapters + bindings; observes message flow
+  in logs; debugs routing issues.
+- **End users**: Telegram users and Discord server members; experience only response latency
+  and correctness — never the internals.
+
+## Prerequisites
+
+Before implementation starts:
+
+- `TELEGRAM_TOKEN` + `TELEGRAM_WEBHOOK_SECRET` set in `.env`
+- `DISCORD_TOKEN` set in `.env`
+- Discord bot has **Message Content Intent** + **Server Members Intent** enabled in Discord
+  Developer Portal (manual step — without these, message text and usernames are empty)
+- Machine 1 has a public URL or ngrok tunnel for Telegram webhook registration
+
+---
+
+## Expected Behavior
+
+### Startup
+
+Operator runs `python -m lyra`. The process:
+1. Loads bot tokens from env vars — if any required token is missing, the process exits immediately
+   with a clear error: `"Missing required env var: TELEGRAM_TOKEN"` (no partial startup)
+2. Registers both adapters with the hub: `hub.register_adapter(Platform.TELEGRAM, "main", telegram_adapter)`
+3. Registers bindings: `hub.register_binding(Platform.TELEGRAM, "main", "*", "lyra", "telegram:main:*")`
+4. Launches three co-routines in one event loop:
+   - `hub.run()` — bus consumer
+   - `dp.start_polling(bot, handle_signals=False)` — aiogram Telegram listener
+   - `discord_client.start(token)` — discord.py Gateway
+
+> **Note:** `handle_signals=False` is mandatory when aiogram runs inside `asyncio.gather()` alongside
+> other coroutines. Without it, aiogram installs its own signal handlers that conflict with the event
+> loop's signal handling, causing double-cancellation or silent hangs on `Ctrl+C`.
+
+### Inbound — Telegram
+
+A user sends a message to the Telegram bot. aiogram receives the update, fires the registered
+`MessageHandler`. The `TelegramAdapter` normalizes it into a `Message`:
+
+```python
+Message(
+    id="tg:12345",
+    platform=Platform.TELEGRAM,
+    bot_id="main",
+    channel="telegram",          # deprecated alias
+    user_id="tg:user:987",
+    user_name="Alice",
+    is_mention=False,            # always False in private chats
+    is_from_bot=False,
+    content=TextContent(text="Hello"),
+    type=MessageType.TEXT,
+    timestamp=...,
+    platform_context=TelegramContext(chat_id=987, topic_id=None, is_group=False),
+    trust="user",
+)
+```
+
+The adapter calls `await hub.bus.put(message)`. If the bus is full (100 messages), the adapter
+sends an immediate acknowledgment to the user ("processing…") then awaits a free slot.
+
+### Inbound — Discord
+
+A user sends `@Lyra hello` in a Discord text channel. `discord_client.on_message` fires.
+`DiscordAdapter` checks `is_mention`, normalizes into a `Message`:
+
+```python
+Message(
+    id="dc:msg:555",
+    platform=Platform.DISCORD,
+    bot_id="main",
+    channel="discord",
+    user_id="dc:user:222",
+    user_name="Bob",
+    is_mention=True,
+    is_from_bot=False,
+    content=TextContent(text="hello"),   # @Lyra mention prefix stripped from content
+    type=MessageType.TEXT,
+    timestamp=...,
+    platform_context=DiscordContext(
+        guild_id=111, channel_id=333, message_id=555,
+        thread_id=None, channel_type="text"
+    ),
+    trust="user",
+)
+```
+
+### Hub routing
+
+`hub.run()` dequeues the message. It calls `resolve_binding(msg)` using
+`RoutingKey(msg.platform, msg.bot_id, msg.user_id)`. Wildcard `"*"` matches if no exact
+user binding exists. Returns `Binding(agent_name, pool_id)`.
+
+If no binding matches → log warning `"unmatched routing key {key} — message dropped"` and
+continue. No crash, no exception propagated to the adapter.
+
+`get_or_create_pool(binding.pool_id)` returns or creates the `Pool`. The pool ID format is
+`f"{platform}:{bot_id}:{user_id}"`. The pool lock serialises processing per user.
+
+### Outbound
+
+`agent.process(msg, pool)` returns a `Response`. The hub calls
+`dispatch_response(msg, response)`:
+- Looks up `adapter_registry[(msg.platform, msg.bot_id)]`
+- Calls `adapter.send(msg, response)`
+
+**Telegram send**: `await bot.send_message(chat_id=ctx.chat_id, text=response.content)`
+
+**Discord send**: if `msg.is_mention` → `message.reply(response.content)` (threaded reply);
+otherwise `channel.send(response.content)`.
+
+### Security
+
+- Telegram webhook: every inbound POST validates `X-Telegram-Bot-Api-Secret-Token`. Mismatched
+  → HTTP 401, message discarded.
+- Discord: gateway connection authenticated by bot token (never exposed in logs or responses).
+- All messages arrive with `trust="user"` — hub never trusts platform-provided user IDs as
+  elevated.
+- Bot tokens loaded from env vars at startup — never hardcoded, never logged.
+
+---
+
+## Breadboard
+
+### Inbound path
+
+| Affordance | ID | Handler | Data |
+|------------|----|---------|------|
+| Telegram Update arrives at webhook | N1 | `POST /webhooks/telegram/{bot_id}` | raw aiogram `Update` |
+| aiogram validates secret token | S1 | `TelegramAdapter._validate_secret(request)` | HTTP 401 on mismatch |
+| aiogram dispatches `MessageHandler` | S2 | `TelegramAdapter._on_message(aiogram_msg)` | `aiogram.types.Message` |
+| Discord Gateway fires `on_message` | N2 | `DiscordAdapter.on_message(discord_msg)` | `discord.Message` |
+| Filter bot's own messages | S3 | `if msg.author == client.user: return` | — |
+| Normalize to hub `Message` | S4 | `TelegramAdapter._normalize()` / `DiscordAdapter._normalize()` | `Message` with typed `PlatformContext` |
+| Backpressure check | S5 | `if bus.full(): await send_ack(msg)` | acknowledgment text |
+| Push to bus | S6 | `await hub.bus.put(message)` | `Message` |
+
+### Routing path
+
+| Affordance | ID | Handler | Data |
+|------------|----|---------|------|
+| Consume from bus | S7 | `hub.run()` loop | `Message` |
+| Build routing key | S8 | `RoutingKey(msg.platform, msg.bot_id, msg.user_id)` | `RoutingKey` |
+| Exact lookup | S9 | `bindings.get(key)` | `Binding \| None` |
+| Wildcard fallback | S10 | `bindings.get(RoutingKey(platform, bot_id, "*"))` | `Binding \| None` |
+| Unmatched → drop | S11 | `log.warning(...); continue` | warning log entry |
+| Get or create pool | S12 | `hub.get_or_create_pool(pool_id)` | `Pool` |
+| Acquire pool lock | S13 | `async with pool.lock:` | serialised per user |
+| Process message | S14 | `await agent.process(msg, pool)` | `Response` |
+
+### Outbound path
+
+| Affordance | ID | Handler | Data |
+|------------|----|---------|------|
+| Dispatch response | S15 | `hub.dispatch_response(msg, response)` | looks up `adapter_registry[(platform, bot_id)]` |
+| Telegram reply | S16 | `TelegramAdapter.send(msg, response)` | `bot.send_message(chat_id, text)` |
+| Discord reply | S17 | `DiscordAdapter.send(msg, response)` | `message.reply(text)` or `channel.send(text)` |
+
+### Startup / registration
+
+| Affordance | ID | Handler | Data |
+|------------|----|---------|------|
+| Load env vars | S18 | `lyra/config.py` | `TELEGRAM_TOKEN`, `DISCORD_TOKEN`, secrets |
+| Register Telegram adapter | S19 | `hub.register_adapter(Platform.TELEGRAM, bot_id, adapter)` | updates `adapter_registry` |
+| Register Discord adapter | S20 | `hub.register_adapter(Platform.DISCORD, bot_id, adapter)` | updates `adapter_registry` |
+| Register binding | S21 | `hub.register_binding(platform, bot_id, user_id, agent, pool_id)` | updates `bindings` |
+| Launch event loop | S22 | `asyncio.gather(hub.run(), dp.start_polling(bot, handle_signals=False), client.start(token))` | single asyncio loop |
+
+---
+
+## Slices
+
+| # | Name | Affordances | Deliverable | Dep |
+|---|------|-------------|-------------|-----|
+| 1 | Routing model (Shape B) | S4, S7–S14, S15, S19–S21 | `message.py` + `hub.py` updated, existing tests green | — |
+| 2 | Telegram adapter | N1, S1–S3, S5–S6, S16, S18, S22 | Real Telegram message traverses bus end-to-end | Slice 1 |
+| 3 | Discord adapter | N2, S3–S6, S17, S22 | Real Discord message traverses bus end-to-end | Slice 1 |
+| 4 | Main entrypoint | S18, S22 | `python -m lyra` starts both adapters cleanly | Slices 2+3 |
+
+---
+
+## Success Criteria
+
+### Slice 1 — Routing model
+
+- [ ] `RoutingKey(platform, bot_id, user_id)` replaces `BindingKey` — all existing hub tests pass (updated to new API where needed; zero tests deleted)
+- [ ] `Message` dataclass carries `platform: Platform`, `bot_id: str`, `user_name: str`, `is_mention: bool`, `is_from_bot: bool`, `platform_context: TelegramContext | DiscordContext`
+- [ ] `Hub.adapter_registry` type is `dict[tuple[Platform, str], ChannelAdapter]` — two bots on the same platform register without collision
+- [ ] Pool ID format is `f"{platform}:{bot_id}:{user_id}"` — registering two bots serving the same `user_id` creates separate pools with no collision
+- [ ] Unmatched `RoutingKey` logs a structured warning and drops the message — no exception raised, hub loop continues
+- [ ] `dispatch_response` looks up adapter via `(msg.platform, msg.bot_id)` — atomic with `RoutingKey` refactor (same commit)
+
+### Slice 2 — Telegram adapter
+
+- [ ] A real Telegram text message from a private chat traverses the bus and the bot replies with the agent's response text to the same chat
+- [ ] Webhook POST missing `X-Telegram-Bot-Api-Secret-Token` returns HTTP 401 — message never reaches the bus
+- [ ] `TelegramContext(chat_id, topic_id, is_group)` correctly populated from aiogram `types.Message`
+- [ ] `is_mention=False` in private chats, `is_mention=True` when bot username is in message entities (group chats)
+- [ ] Bot token is not present in any log output at any log level
+
+### Slice 3 — Discord adapter
+
+- [ ] A real Discord text message that @-mentions the bot traverses the bus and the bot replies using `message.reply()` (Discord threaded reply to the original message)
+- [ ] `DiscordAdapter` uses Gateway mode (`on_message`) — not HTTP Interactions
+- [ ] `DiscordContext(guild_id, channel_id, message_id, thread_id, channel_type)` correctly populated
+- [ ] Bot's own messages are filtered — `if message.author == client.user: return`
+- [ ] `is_mention=True` when bot is @-mentioned, `is_mention=False` otherwise
+
+### Slice 4 — Startup + security
+
+- [ ] `python -m lyra` starts both adapters with no event loop errors or deprecation warnings
+- [ ] Both adapters run as co-routines in a single `asyncio.gather()` — no `ThreadPoolExecutor`, no `loop.run_in_executor`
+- [ ] Graceful shutdown: `Ctrl+C` cancels all tasks cleanly without `CancelledError` traceback
+- [ ] `TELEGRAM_TOKEN`, `DISCORD_TOKEN`, `TELEGRAM_WEBHOOK_SECRET` loaded from `.env` only
+- [ ] Missing required env var at startup causes immediate exit with a descriptive error message — no partial startup, no silent failure
+
+---
+
+## Out of Scope
+
+- Skill migration: existing 2ndBrain Telegram skills stay as-is
+- Discord slash commands, buttons, modals, forum threads, DMs
+- Multi-guild Discord (single server)
+- Auth / permission system (role-based access)
+- Rate limiter implementation (interface placeholder only — token bucket wiring deferred)
+- Memory layer integration (Pool history used but compaction deferred to #9)

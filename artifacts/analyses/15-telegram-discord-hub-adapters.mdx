@@ -136,6 +136,14 @@ async def main():
     )
 ```
 
+**Library decisions (confirmed):**
+- Telegram: **aiogram v3** — asyncio-native, `dp.start_polling(bot)` is a plain coroutine,
+  tracks Bot API same-day, 5.6k stars, actively maintained. Replaces `python-telegram-bot`
+  (which has known event loop friction when composed with other asyncio frameworks).
+- Discord: **discord.py v2** — 15.9k stars, Gateway WebSocket via `client.start(token)`,
+  `on_message` on the stable path. The 3-year-old open bug (#9074) affects `@tasks.loop`
+  only — not relevant to our `on_message` + Gateway use case.
+
 **What we skip**: TypeScript/JSX cards, Redis state layer (Lyra uses Pool objects + aiosqlite),
 serverless deployment model (Lyra is a persistent process on Machine 1).
 

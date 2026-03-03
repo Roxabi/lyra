@@ -66,7 +66,7 @@ def test_normalize_private_chat_context() -> None:
         entities=None,
     )
 
-    msg = adapter._normalize(aiogram_msg, bot_username="lyra_bot")
+    msg = adapter._normalize(aiogram_msg)
 
     assert msg.platform == Platform.TELEGRAM
     expected_ctx = TelegramContext(chat_id=123, topic_id=None, is_group=False)
@@ -94,7 +94,7 @@ def test_is_mention_false_in_private_chat() -> None:
         entities=None,
     )
 
-    msg = adapter._normalize(aiogram_msg, bot_username="lyra_bot")
+    msg = adapter._normalize(aiogram_msg)
 
     assert msg.is_mention is False
 
@@ -116,7 +116,7 @@ def test_is_mention_true_when_entity_at_offset_zero() -> None:
         entities=[entity],
     )
 
-    msg = adapter._normalize(aiogram_msg, bot_username="lyra_bot")
+    msg = adapter._normalize(aiogram_msg)
 
     assert msg.is_mention is True
 
@@ -258,7 +258,7 @@ def test_token_not_in_logs(caplog: pytest.LogCaptureFixture) -> None:
     )
 
     with caplog.at_level(logging.DEBUG, logger="lyra.adapters.telegram"):
-        adapter._normalize(aiogram_msg, bot_username="lyra_bot")
+        adapter._normalize(aiogram_msg)
 
     for record in caplog.records:
         assert "test-token-secret" not in record.getMessage()

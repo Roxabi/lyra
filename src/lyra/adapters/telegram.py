@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import logging
+import os
+from dataclasses import dataclass
 from datetime import timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request
+
+if TYPE_CHECKING:
+    from lyra.core.hub import Hub
 
 from lyra.core.message import (
     Message,
@@ -16,6 +21,29 @@ from lyra.core.message import (
 )
 
 log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class TelegramConfig:
+    token: str
+    webhook_secret: str
+    bot_username: str
+
+
+def load_config() -> TelegramConfig:
+    """Load Telegram configuration from environment variables.
+
+    Raises SystemExit if required variables are absent.
+    Never logs the token value.
+    """
+    token = os.environ.get("TELEGRAM_TOKEN")
+    if not token:
+        raise SystemExit("Missing required env var: TELEGRAM_TOKEN")
+    secret = os.environ.get("TELEGRAM_WEBHOOK_SECRET")
+    if not secret:
+        raise SystemExit("Missing required env var: TELEGRAM_WEBHOOK_SECRET")
+    bot_username = os.environ.get("TELEGRAM_BOT_USERNAME", "lyra_bot")
+    return TelegramConfig(token=token, webhook_secret=secret, bot_username=bot_username)
 
 
 def _make_verifier(secret: str):
@@ -44,20 +72,30 @@ class TelegramAdapter:
         self,
         bot_id: str,
         token: str,
-        hub,
+        hub: Hub,
         bot_username: str = "lyra_bot",
         webhook_secret: str = "",
     ) -> None:
         self._bot_id = bot_id
         self._token = token  # kept private — never logged
         self._webhook_secret = webhook_secret
+        if not self._webhook_secret:
+            log.warning(
+                "webhook_secret is empty — all webhook requests will be rejected"
+            )
         self._bot_username = bot_username
-        self._hub = hub
+        self._hub: Hub = hub
 
         # bot is a public attribute so tests can replace it with AsyncMock.
         # Deferred lazily so tests can assign adapter.bot = AsyncMock() after
         # construction without triggering aiogram token validation at test time.
         self._bot: Any = None
+        self._dp: Any = None
+
+        from aiogram import Dispatcher
+        self._dp = Dispatcher()
+        self._dp.message.register(self._on_message)
+
         self.app = FastAPI()
         self._register_routes()
 
@@ -81,11 +119,16 @@ class TelegramAdapter:
             dependencies=[Depends(verifier)],
         )
         async def handle_update(bot_id: str, request: Request) -> dict:
-            await request.json()
-            log.debug("Received update for bot_id=%s", bot_id)
+            if bot_id != self._bot_id:
+                raise HTTPException(status_code=404, detail="Not Found")
+            from aiogram.types import Update
+            body = await request.json()
+            update = Update.model_validate(body)
+            await self._dp.feed_update(self.bot, update)
+            log.debug("Dispatched update for bot_id=%s", bot_id)
             return {"ok": True}
 
-    def _normalize(self, msg, *, bot_username: str) -> Message:
+    def _normalize(self, msg) -> Message:
         """Convert an aiogram Message (or SimpleNamespace) to a hub Message.
 
         Security: trust is always 'user' via Message.from_adapter().
@@ -100,7 +143,7 @@ class TelegramAdapter:
             for entity in msg.entities:
                 if entity.type == "mention":
                     slice_text = msg.text[entity.offset: entity.offset + entity.length]
-                    if slice_text == f"@{bot_username}":
+                    if slice_text == f"@{self._bot_username}":
                         is_mention = True
                         break
 
@@ -143,7 +186,7 @@ class TelegramAdapter:
         if msg.from_user and getattr(msg.from_user, "is_bot", False):
             return
 
-        hub_msg = self._normalize(msg, bot_username=self._bot_username)
+        hub_msg = self._normalize(msg)
 
         if self._hub.bus.full():
             await self.bot.send_message(
@@ -155,5 +198,6 @@ class TelegramAdapter:
 
     async def send(self, original_msg: Message, response: Response) -> None:
         """Send a response back to Telegram via bot.send_message."""
-        ctx: TelegramContext = original_msg.platform_context  # type: ignore[assignment]
+        assert isinstance(original_msg.platform_context, TelegramContext)
+        ctx = original_msg.platform_context
         await self.bot.send_message(chat_id=ctx.chat_id, text=response.content)

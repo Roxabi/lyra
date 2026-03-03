@@ -7,9 +7,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-# Sentinel for optional platform_context in from_adapter
-_MISSING: Any = object()
-
 
 class Platform(str, Enum):
     TELEGRAM = "telegram"
@@ -105,7 +102,7 @@ class Message:
         timestamp: datetime,
         is_mention: bool = False,
         is_from_bot: bool = False,
-        platform_context: PlatformContext | None = None,
+        platform_context: PlatformContext,
     ) -> "Message":
         """Construct a Message from an adapter.
 
@@ -123,7 +120,7 @@ class Message:
             content=content,
             type=type,
             timestamp=timestamp,
-            platform_context=platform_context,  # type: ignore[arg-type]
+            platform_context=platform_context,
             trust="user",  # SECURITY: never caller-controlled
         )
 

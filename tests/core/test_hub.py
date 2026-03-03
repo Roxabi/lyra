@@ -43,7 +43,6 @@ def make_message(
         id="msg-1",
         platform=platform,
         bot_id=bot_id,
-        channel=platform.value,  # deprecated alias
         user_id=user_id,
         user_name="Alice",
         is_mention=False,
@@ -116,7 +115,6 @@ class TestMessage:
             id="msg-1",
             platform=Platform.TELEGRAM,
             bot_id="main",
-            channel="telegram",
             user_id="alice",
             user_name="Alice",
             is_mention=False,
@@ -138,7 +136,6 @@ class TestMessage:
             id="sys-1",
             platform=Platform.TELEGRAM,
             bot_id="main",
-            channel="telegram",
             user_id="alice",
             user_name="Alice",
             is_mention=False,

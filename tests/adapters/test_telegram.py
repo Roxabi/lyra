@@ -219,7 +219,6 @@ async def test_send_calls_bot_send_message() -> None:
         id="msg-1",
         platform=Platform.TELEGRAM,
         bot_id="main",
-        channel="telegram",
         user_id="tg:user:42",
         user_name="Alice",
         is_mention=False,

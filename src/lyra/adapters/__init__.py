@@ -1,3 +1,4 @@
+from .discord import DiscordAdapter
 from .telegram import TelegramAdapter
 
-__all__ = ["TelegramAdapter"]
+__all__ = ["DiscordAdapter", "TelegramAdapter"]

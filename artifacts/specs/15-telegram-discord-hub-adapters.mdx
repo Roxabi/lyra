@@ -217,6 +217,7 @@ otherwise `channel.send(response.content)`.
 
 ### Slice 2 — Telegram adapter
 
+- [ ] `TelegramAdapter` constructs `Message` exclusively via `Message.from_adapter(...)` classmethod — `trust="user"` is hard-coded, never caller-controlled (security follow-up from Slice 1 review)
 - [ ] A real Telegram text message from a private chat traverses the bus and the bot replies with the agent's response text to the same chat
 - [ ] Webhook POST missing `X-Telegram-Bot-Api-Secret-Token` returns HTTP 401 — message never reaches the bus
 - [ ] `TelegramContext(chat_id, topic_id, is_group)` correctly populated from aiogram `types.Message`

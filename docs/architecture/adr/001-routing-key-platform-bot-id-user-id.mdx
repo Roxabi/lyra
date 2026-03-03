@@ -1,0 +1,120 @@
+---
+title: "ADR-001: RoutingKey(platform, bot_id, user_id) replaces BindingKey(channel, user_id)"
+description: Adopt a three-dimensional typed routing key to support multi-bot, multi-channel dispatch with full attribution.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+The hub skeleton (D3–D4) is live. Moving to real traffic (D5) requires connecting Telegram and
+Discord adapters simultaneously. The existing `BindingKey(channel, user_id)` collapses platform
+identity and bot identity into a single unstructured string, which means:
+
+- Only one bot per platform can be registered at a time
+- No way to route by bot identity (e.g. LegalTech bot vs personal assistant bot)
+- Platform-specific context lives in untyped `metadata`, invisible to the type checker
+- `adapter_registry: dict[str, ChannelAdapter]` cannot distinguish two bots on the same platform
+
+The constraint from the frame (issue #15): the hub must support a `channel × bot_id` matrix.
+Every message must carry full attribution — sender, receiving bot, platform context — to support
+logging, skill dispatch, rate limiting, and future per-bot personas.
+
+This decision is treated as irreversible: migrating routing keys after real traffic flows is
+painful. It must be correct before adapter code is written.
+
+Reference benchmarks: OpenClaw (`agent:<id>:<channel>:<account>:<peer>` session key) and
+Vercel AI SDK (two-tier message model separating hub message from LLM input).
+
+## Options Considered
+
+### Option A: Compound channel string
+
+Keep `Message.channel` as a string, use compound format: `"telegram:bot_legaltech"`,
+`"discord:bot_server1"`. `BindingKey` unchanged. Platform context stays in `metadata`.
+
+- **Pros:** Zero changes to `BindingKey`, `Hub`, `Pool`, existing tests. One-day scope.
+- **Cons:** Platform context untyped. Routing logic must string-split `channel`. Brittle if
+  naming conventions drift. Separator collision possible.
+
+### Option B: Typed RoutingKey + PlatformContext (chosen)
+
+Replace `BindingKey(channel, user_id)` with `RoutingKey(platform, bot_id, user_id)`. Add a
+typed `PlatformContext` union (`TelegramContext | DiscordContext`) to `Message`. Register
+adapters by `(platform, bot_id)` pair.
+
+- **Pros:** Type-safe platform context. Full attribution encoded in routing key. No string parsing.
+  Aligns with OpenClaw `(channel, account, peer)` model. Adding a third platform is additive.
+  `RoutingKey` is the natural key for rate limiting and sender allowlists.
+- **Cons:** `Message` changes break existing tests (2 files, ~60 lines — acceptable). Hub
+  `adapter_registry` type changes from `dict[str, ChannelAdapter]` to
+  `dict[tuple[Platform, str], ChannelAdapter]`. ~200 lines changed. 2–3 day scope.
+
+### Option C: Adapter instance as identity
+
+Each bot instance is a uniquely named adapter. `Message.channel` = adapter instance name
+(e.g. `"telegram_legaltech"`). `BindingKey` unchanged. Add coarse `platform` field.
+
+- **Pros:** Zero changes to `BindingKey` and hub routing logic. Simplest path. One-day scope.
+- **Cons:** Platform context still untyped in `metadata`. `channel` field semantics shift
+  silently (was platform name, now adapter name). Querying all Telegram messages requires
+  filtering `platform` not `channel`.
+
+## Decision
+
+**Option B** is adopted.
+
+The routing key and platform context are the invariant core of the system. The cost is bounded
+(~200 lines, no live traffic yet). Options A and C defer the typing problem into `metadata`;
+both will surface as a silent data-loss bug when the first Discord thread message drops its
+`thread_id` or the first rate limiter attempts to key on `(bot_id, user_id)`.
+
+Key implementation requirements derived from this decision:
+
+1. `RoutingKey(platform: Platform, bot_id: str, user_id: str)` replaces `BindingKey`.
+   `user_id="*"` wildcard is preserved.
+
+2. `Message` gains `platform: Platform`, `bot_id: str`, and
+   `platform_context: TelegramContext | DiscordContext`. The `channel` field is kept as an
+   alias for `platform.value` during migration, then deprecated.
+
+3. `Hub.adapter_registry` type changes to `dict[tuple[Platform, str], ChannelAdapter]`.
+   `dispatch_response` must look up the adapter via `(msg.platform, msg.bot_id)`, not
+   `msg.channel`. This change is atomic with the `RoutingKey` refactor — there is no
+   intermediate state where the registry is still `dict[str, ...]` and `RoutingKey` is live.
+
+4. Pool IDs must incorporate `bot_id` to avoid namespace collision when two bots serve the
+   same `user_id`. Canonical format: `f"{platform}:{bot_id}:{user_id}"`.
+
+5. `DiscordContext.channel_type` must use `Literal["text", "thread", "forum", "voice"]`, not
+   bare `str`. `DiscordContext` must include `message_id: int` for reply targeting.
+
+6. Sender allowlist and rate limiter are naturally keyed on `(bot_id, user_id)` — the
+   `RoutingKey` tuple serves directly as the rate limiter key.
+
+## Consequences
+
+### Positive
+
+- Multi-bot routing is first-class: N Telegram bots and M Discord bots can be registered
+  simultaneously with no naming hacks.
+- Platform context is type-safe: `TelegramContext.topic_id` and `DiscordContext.thread_id`
+  are statically checked and cannot be silently dropped.
+- Attribution is complete: every message carries sender, bot, and platform context.
+- Extensible: adding Signal, Slack, or any third platform is additive — new `PlatformContext`
+  variant, no routing logic changes.
+- Rate limiting and allowlists key naturally on `RoutingKey`.
+
+### Negative
+
+- Existing tests (`test_hub.py`, ~60 lines) must be updated.
+- `Hub.adapter_registry` and `dispatch_response` require changes beyond the routing key itself.
+- Slightly higher upfront implementation cost (~2–3 days vs 1 day for Options A/C).
+
+### Neutral
+
+- `Message.channel` is kept as a deprecated alias (`= platform.value`) during the Telegram
+  migration window. It is removed once Telegram and Discord adapter tests both pass.
+- The `BindingKey` name is retired; `RoutingKey` is the canonical term going forward.

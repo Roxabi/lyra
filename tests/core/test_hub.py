@@ -1,8 +1,14 @@
-"""Tests for D3: Message, Pool, Agent, Hub core structures."""
+"""Tests for D3/D4: Message, Pool, Agent, Hub core structures.
+
+RED phase — tests use the new Platform-based API (RoutingKey, TelegramContext,
+DiscordContext, dispatch_response, get_or_create_pool, run()). All tests that
+exercise the new API are expected to FAIL until the backend-dev GREEN phase.
+"""
 
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import datetime, timezone
 
 import pytest
@@ -17,20 +23,35 @@ from lyra.core import (
     Pool,
     Response,
 )
+from lyra.core.message import (
+    DiscordContext,
+    Platform,
+    TelegramContext,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
 
-def make_message(channel: str = "telegram", user_id: str = "alice") -> Message:
+def make_message(
+    platform: Platform = Platform.TELEGRAM,
+    bot_id: str = "main",
+    user_id: str = "alice",
+) -> Message:
     return Message(
         id="msg-1",
-        channel=channel,
+        platform=platform,
+        bot_id=bot_id,
+        channel=platform.value,  # deprecated alias
         user_id=user_id,
+        user_name="Alice",
+        is_mention=False,
+        is_from_bot=False,
         content="hello",
         type=MessageType.TEXT,
         timestamp=datetime.now(timezone.utc),
+        platform_context=TelegramContext(chat_id=42),
     )
 
 
@@ -47,7 +68,35 @@ class MockAdapter:
 
 
 # ---------------------------------------------------------------------------
-# Message
+# T2 — Platform context dataclasses
+# ---------------------------------------------------------------------------
+
+
+class TestPlatformContext:
+    def test_telegram_context_defaults(self) -> None:
+        ctx = TelegramContext(chat_id=123)
+        assert ctx.chat_id == 123
+        assert ctx.topic_id is None
+        assert ctx.is_group is False
+
+    def test_telegram_context_is_frozen(self) -> None:
+        ctx = TelegramContext(chat_id=1)
+        with pytest.raises((AttributeError, TypeError)):
+            ctx.chat_id = 99  # type: ignore[misc]
+
+    def test_discord_context_defaults(self) -> None:
+        ctx = DiscordContext(guild_id=1, channel_id=2, message_id=3)
+        assert ctx.thread_id is None
+        assert ctx.channel_type == "text"
+
+    def test_discord_context_is_frozen(self) -> None:
+        ctx = DiscordContext(guild_id=1, channel_id=2, message_id=3)
+        with pytest.raises((AttributeError, TypeError)):
+            ctx.guild_id = 99  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# T1 — Message (updated to new API)
 # ---------------------------------------------------------------------------
 
 
@@ -55,6 +104,8 @@ class TestMessage:
     def test_fields(self) -> None:
         msg = make_message()
         assert msg.id == "msg-1"
+        assert msg.platform == Platform.TELEGRAM
+        assert msg.bot_id == "main"
         assert msg.channel == "telegram"
         assert msg.user_id == "alice"
         assert msg.type == MessageType.TEXT
@@ -63,11 +114,17 @@ class TestMessage:
     def test_content_can_be_image_content(self) -> None:
         msg = Message(
             id="msg-1",
+            platform=Platform.TELEGRAM,
+            bot_id="main",
             channel="telegram",
             user_id="alice",
+            user_name="Alice",
+            is_mention=False,
+            is_from_bot=False,
             content=ImageContent(url="https://example.com/img.png"),
             type=MessageType.IMAGE,
             timestamp=datetime.now(timezone.utc),
+            platform_context=TelegramContext(chat_id=42),
         )
         assert isinstance(msg.content, ImageContent)
         assert msg.content.url == "https://example.com/img.png"
@@ -79,29 +136,35 @@ class TestMessage:
     def test_trust_can_be_set_to_system(self) -> None:
         msg = Message(
             id="sys-1",
+            platform=Platform.TELEGRAM,
+            bot_id="main",
             channel="telegram",
             user_id="alice",
+            user_name="Alice",
+            is_mention=False,
+            is_from_bot=False,
             content="internal",
             type=MessageType.SYSTEM,
             timestamp=datetime.now(timezone.utc),
+            platform_context=TelegramContext(chat_id=42),
             trust="system",
         )
         assert msg.trust == "system"
 
 
 # ---------------------------------------------------------------------------
-# Pool
+# Pool (unchanged — no dependency on new API)
 # ---------------------------------------------------------------------------
 
 
 class TestPool:
     def test_initial_state(self) -> None:
-        pool = Pool(pool_id="telegram_alice", agent_name="lyra")
-        assert pool.pool_id == "telegram_alice"
+        pool = Pool(pool_id="telegram:main:alice", agent_name="lyra")
+        assert pool.pool_id == "telegram:main:alice"
         assert pool.agent_name == "lyra"
         assert pool.history == []
         # Verify each pool gets its own list (not a shared mutable default)
-        pool2 = Pool(pool_id="telegram_bob", agent_name="lyra")
+        pool2 = Pool(pool_id="telegram:main:bob", agent_name="lyra")
         assert pool.history is not pool2.history
 
     def test_has_asyncio_lock(self) -> None:
@@ -134,7 +197,7 @@ class TestPool:
 
 
 # ---------------------------------------------------------------------------
-# Agent
+# Agent (unchanged)
 # ---------------------------------------------------------------------------
 
 
@@ -176,68 +239,174 @@ class TestHubInit:
 
 
 # ---------------------------------------------------------------------------
-# Hub — register_adapter
+# T4 — Hub adapter registry (new (Platform, str) key)
 # ---------------------------------------------------------------------------
 
 
 class TestRegisterAdapter:
-    def test_registers_adapter(self) -> None:
+    def test_registers_by_platform_and_bot_id(self) -> None:
         hub = Hub()
-        adapter = MockAdapter()
-        hub.register_adapter("telegram", adapter)
-        assert hub.adapter_registry["telegram"] is adapter
+        a = MockAdapter()
+        hub.register_adapter(Platform.TELEGRAM, "main", a)
+        assert hub.adapter_registry[(Platform.TELEGRAM, "main")] is a
+
+    def test_two_bots_same_platform_no_collision(self) -> None:
+        hub = Hub()
+        a1, a2 = MockAdapter(), MockAdapter()
+        hub.register_adapter(Platform.TELEGRAM, "bot1", a1)
+        hub.register_adapter(Platform.TELEGRAM, "bot2", a2)
+        assert hub.adapter_registry[(Platform.TELEGRAM, "bot1")] is a1
+        assert hub.adapter_registry[(Platform.TELEGRAM, "bot2")] is a2
 
     def test_overwrite_adapter(self) -> None:
         hub = Hub()
         a1, a2 = MockAdapter(), MockAdapter()
-        hub.register_adapter("telegram", a1)
-        hub.register_adapter("telegram", a2)
-        assert hub.adapter_registry["telegram"] is a2
+        hub.register_adapter(Platform.TELEGRAM, "main", a1)
+        hub.register_adapter(Platform.TELEGRAM, "main", a2)
+        assert hub.adapter_registry[(Platform.TELEGRAM, "main")] is a2
 
 
 # ---------------------------------------------------------------------------
-# Hub — register_binding / resolve_binding
+# T3 — Hub routing key (RoutingKey replaces BindingKey)
 # ---------------------------------------------------------------------------
 
 
-class TestBindings:
+class TestRoutingKey:
     def test_exact_binding(self) -> None:
         hub = Hub()
-        hub.register_binding("telegram", "alice", "lyra", "telegram_alice")
-        msg = make_message(channel="telegram", user_id="alice")
+        hub.register_adapter(Platform.TELEGRAM, "main", MockAdapter())
+        hub.register_binding(
+            Platform.TELEGRAM, "main", "alice", "lyra", "telegram:main:alice"
+        )
+        msg = make_message(platform=Platform.TELEGRAM, user_id="alice")
         binding = hub.resolve_binding(msg)
         assert binding is not None
         assert binding.agent_name == "lyra"
-        assert binding.pool_id == "telegram_alice"
+        assert binding.pool_id == "telegram:main:alice"
 
-    def test_wildcard_does_not_bleed_across_channels(self) -> None:
+    def test_wildcard_does_not_bleed_across_platforms(self) -> None:
         hub = Hub()
-        hub.register_binding("discord", "*", "lyra", "discord_default")
-        msg = make_message(channel="telegram", user_id="unknown_user")
+        hub.register_binding(Platform.DISCORD, "main", "*", "lyra", "discord:main:*")
+        msg = make_message(platform=Platform.TELEGRAM, user_id="unknown_user")
         assert hub.resolve_binding(msg) is None
+
+    def test_wildcard_fallback_same_platform(self) -> None:
+        hub = Hub()
+        hub.register_binding(Platform.TELEGRAM, "main", "*", "lyra", "telegram:main:*")
+        msg = make_message(platform=Platform.TELEGRAM, user_id="unknown")
+        binding = hub.resolve_binding(msg)
+        assert binding is not None
+        assert binding.agent_name == "lyra"
 
     def test_no_binding_returns_none(self) -> None:
         hub = Hub()
-        msg = make_message(channel="telegram", user_id="nobody")
+        msg = make_message(platform=Platform.TELEGRAM, user_id="nobody")
         assert hub.resolve_binding(msg) is None
 
-    def test_binding_isolated_per_channel(self) -> None:
+    def test_binding_isolated_per_bot_id(self) -> None:
         hub = Hub()
-        hub.register_binding("telegram", "alice", "lyra", "tg_alice")
-        msg = make_message(channel="discord", user_id="alice")
+        hub.register_binding(
+            Platform.TELEGRAM, "bot1", "alice", "lyra", "telegram:bot1:alice"
+        )
+        msg = make_message(platform=Platform.TELEGRAM, bot_id="bot2", user_id="alice")
+        assert hub.resolve_binding(msg) is None
+
+    def test_binding_isolated_per_platform(self) -> None:
+        hub = Hub()
+        hub.register_binding(
+            Platform.TELEGRAM, "main", "alice", "lyra", "telegram:main:alice"
+        )
+        msg = make_message(platform=Platform.DISCORD, bot_id="main", user_id="alice")
         assert hub.resolve_binding(msg) is None
 
     def test_overwrite_binding(self) -> None:
         hub = Hub()
-        hub.register_binding("telegram", "alice", "lyra", "pool_v1")
-        hub.register_binding("telegram", "alice", "lyra", "pool_v2")
-        msg = make_message(channel="telegram", user_id="alice")
+        hub.register_binding(Platform.TELEGRAM, "main", "alice", "lyra", "pool_v1")
+        hub.register_binding(Platform.TELEGRAM, "main", "alice", "lyra", "pool_v2")
+        msg = make_message(platform=Platform.TELEGRAM, user_id="alice")
         binding = hub.resolve_binding(msg)
         assert binding is not None
         assert binding.pool_id == "pool_v2"
 
     def test_register_binding_raises_if_pool_id_shared_across_users(self) -> None:
         hub = Hub()
-        hub.register_binding("telegram", "alice", "lyra", "shared_pool")
+        hub.register_binding(Platform.TELEGRAM, "main", "alice", "lyra", "shared_pool")
         with pytest.raises(ValueError, match="already bound"):
-            hub.register_binding("telegram", "bob", "lyra", "shared_pool")
+            hub.register_binding(
+                Platform.TELEGRAM, "main", "bob", "lyra", "shared_pool"
+            )
+
+
+# ---------------------------------------------------------------------------
+# T5 — dispatch_response
+# ---------------------------------------------------------------------------
+
+
+class TestDispatchResponse:
+    async def test_dispatches_to_correct_adapter(self) -> None:
+        hub = Hub()
+        sent: list[tuple[Message, Response]] = []
+
+        class CapturingAdapter:
+            async def send(self, original_msg: Message, response: Response) -> None:
+                sent.append((original_msg, response))
+
+        hub.register_adapter(Platform.TELEGRAM, "main", CapturingAdapter())
+        msg = make_message(platform=Platform.TELEGRAM, bot_id="main")
+        response = Response(content="pong")
+        await hub.dispatch_response(msg, response)
+        assert len(sent) == 1
+        assert sent[0][1].content == "pong"
+
+    async def test_missing_adapter_raises(self) -> None:
+        hub = Hub()
+        msg = make_message(platform=Platform.TELEGRAM, bot_id="ghost")
+        with pytest.raises(KeyError):
+            await hub.dispatch_response(msg, Response(content="x"))
+
+
+# ---------------------------------------------------------------------------
+# T6 — Unmatched routing: log warning, message consumed, loop continues
+# ---------------------------------------------------------------------------
+
+
+class TestUnmatchedRouting:
+    async def test_unmatched_key_logs_warning_and_continues(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        hub = Hub()
+        msg = make_message(platform=Platform.TELEGRAM, user_id="nobody")
+        await hub.bus.put(msg)
+        with caplog.at_level(logging.WARNING, logger="lyra.core.hub"):
+            # run() loops forever — use a short timeout to exercise one iteration
+            try:
+                await asyncio.wait_for(hub.run(), timeout=0.1)
+            except asyncio.TimeoutError:
+                pass  # expected — run() never returns on its own
+        assert any("unmatched" in r.message.lower() for r in caplog.records)
+        assert hub.bus.empty()  # message was consumed (dropped, not re-queued)
+
+
+# ---------------------------------------------------------------------------
+# T7 — Pool creation via hub
+# ---------------------------------------------------------------------------
+
+
+class TestPoolCreation:
+    def test_creates_pool_with_given_id(self) -> None:
+        hub = Hub()
+        pool = hub.get_or_create_pool("telegram:main:alice", "lyra")
+        assert pool.pool_id == "telegram:main:alice"
+        assert pool.agent_name == "lyra"
+
+    def test_two_bots_same_user_separate_pools(self) -> None:
+        hub = Hub()
+        p1 = hub.get_or_create_pool("telegram:bot1:alice", "lyra")
+        p2 = hub.get_or_create_pool("telegram:bot2:alice", "lyra")
+        assert p1 is not p2
+
+    def test_same_id_returns_same_pool(self) -> None:
+        hub = Hub()
+        p1 = hub.get_or_create_pool("telegram:main:alice", "lyra")
+        p2 = hub.get_or_create_pool("telegram:main:alice", "lyra")
+        assert p1 is p2

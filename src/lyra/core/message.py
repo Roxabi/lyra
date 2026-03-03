@@ -8,6 +8,11 @@ from typing import Literal
 from pydantic import BaseModel
 
 
+class Platform(str, Enum):
+    TELEGRAM = "telegram"
+    DISCORD = "discord"
+
+
 class MessageType(str, Enum):
     TEXT = "text"
     IMAGE = "image"
@@ -39,17 +44,42 @@ class AudioContent(BaseModel):
 MessageContent = TextContent | ImageContent | AudioContent
 
 
+@dataclass(frozen=True)
+class TelegramContext:
+    chat_id: int
+    topic_id: int | None = None
+    is_group: bool = False
+
+
+@dataclass(frozen=True)
+class DiscordContext:
+    guild_id: int
+    channel_id: int
+    message_id: int
+    thread_id: int | None = None
+    channel_type: Literal["text", "thread", "forum", "voice"] = "text"
+
+
+PlatformContext = TelegramContext | DiscordContext
+
+
 @dataclass
 class Message:
     id: str
-    channel: str  # "telegram" | "discord"
-    user_id: str  # canonical ID (not the raw platform ID)
-    content: MessageContent | str  # str kept for backward compat during transition
+    platform: Platform
+    bot_id: str
+    channel: str  # deprecated alias for platform.value — kept until migration complete
+    user_id: str
+    user_name: str
+    is_mention: bool
+    is_from_bot: bool
+    content: MessageContent | str
     type: MessageType
     timestamp: datetime
+    platform_context: PlatformContext
     # Security: adapters must always set trust="user". Only internal hub code
     # may set trust="system". Never derive trust from inbound channel data.
-    trust: Literal["user", "system"] = "user"  # adapters always set "user"
+    trust: Literal["user", "system"] = "user"
     metadata: dict = field(default_factory=dict)
 
 

@@ -9,13 +9,11 @@ but raise ImportError / AttributeError at runtime (not at collection time).
 
 from __future__ import annotations
 
-import logging
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # T2 — _normalize() builds correct DiscordContext
@@ -193,7 +191,7 @@ async def test_send_reply_on_mention() -> None:
 
 @pytest.mark.asyncio
 async def test_send_channel_on_no_mention() -> None:
-    """adapter.send(hub_msg, Response) calls discord_msg.channel.send(text) when not mention."""
+    """send() calls channel.send(text) when is_mention=False."""
     from lyra.adapters.discord import DiscordAdapter  # ImportError expected in RED
     from lyra.core.message import (
         DiscordContext,
@@ -241,7 +239,7 @@ async def test_send_channel_on_no_mention() -> None:
 def test_missing_discord_token_raises_on_load(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """load_discord_config() raises SystemExit with 'DISCORD_TOKEN' when env var is absent."""
+    """load_discord_config() raises SystemExit when DISCORD_TOKEN env var is absent."""
     monkeypatch.delenv("DISCORD_TOKEN", raising=False)
 
     from lyra.adapters.discord import load_discord_config  # ImportError expected in RED

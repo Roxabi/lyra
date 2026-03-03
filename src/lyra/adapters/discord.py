@@ -75,7 +75,9 @@ class DiscordAdapter(discord.Client):
     async def on_ready(self) -> None:
         """Cache bot user on login. Required for mention detection in _normalize()."""
         self._bot_user = self.user
-        log.info("Discord bot ready: %s (id=%s)", self.user, getattr(self.user, "id", "?"))
+        log.info(
+            "Discord bot ready: %s (id=%s)", self.user, getattr(self.user, "id", "?")
+        )
 
     def _normalize(self, message: Any) -> Message:
         """Convert a discord.py Message (or SimpleNamespace) to a hub Message.
@@ -100,7 +102,9 @@ class DiscordAdapter(discord.Client):
         channel_type: str = "text"
         if isinstance(message.channel, discord.Thread):
             channel_type = "thread"
-        elif hasattr(discord, "ForumChannel") and isinstance(message.channel, discord.ForumChannel):
+        elif hasattr(discord, "ForumChannel") and isinstance(
+            message.channel, discord.ForumChannel
+        ):
             channel_type = "forum"
         elif isinstance(message.channel, discord.VoiceChannel):
             channel_type = "voice"
@@ -109,7 +113,11 @@ class DiscordAdapter(discord.Client):
             guild_id=message.guild.id if message.guild else 0,
             channel_id=message.channel.id,
             message_id=message.id,
-            thread_id=message.channel.id if isinstance(message.channel, discord.Thread) else None,
+            thread_id=(
+                message.channel.id
+                if isinstance(message.channel, discord.Thread)
+                else None
+            ),
             channel_type=channel_type,
         )
 
@@ -123,7 +131,9 @@ class DiscordAdapter(discord.Client):
             platform=Platform.DISCORD,
             bot_id=self._bot_id,
             user_id=f"dc:user:{message.author.id}",
-            user_name=getattr(message.author, "display_name", None) or message.author.name,
+            user_name=(
+                getattr(message.author, "display_name", None) or message.author.name
+            ),
             content=TextContent(text=content),
             type=MessageType.TEXT,
             timestamp=message.created_at,

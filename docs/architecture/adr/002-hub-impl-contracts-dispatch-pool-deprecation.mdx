@@ -1,0 +1,155 @@
+---
+title: "ADR-002: Hub implementation contracts — dispatch error handling, pool atomicity, channel deprecation enforcement"
+description: Codify the implementation-level invariants that ADR-001 left implicit — adapter lookup failure handling, pool creation atomicity, pool ID derivation from RoutingKey, and channel field deprecation mechanics.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+ADR-001 defined the three-dimensional routing model (`RoutingKey(platform, bot_id, user_id)`) and
+its structural requirements. The Shape B PR that implements ADR-001 surfaces four implementation
+decisions that ADR-001 left implicit. Each carries a real consequence if resolved incorrectly:
+
+1. **Adapter lookup failure in `dispatch_response`** — `adapter_registry[(platform, bot_id)]` is
+   a raw dict access inside `Hub.run()`. A missing adapter raises `KeyError`, which propagates
+   unhandled and kills the hub event-loop task. The binding system (which routes to an agent) and
+   the adapter registry (which routes the response back to the platform) are two independent
+   registrations that can desync due to startup ordering or configuration error.
+
+2. **Pool creation atomicity in `get_or_create_pool`** — the pre-PR codebase contained an explicit
+   `TODO` noting that `setdefault()` should replace the `if pool_id not in self.pools` pattern to
+   close a TOCTOU window. The PR re-implements `get_or_create_pool` but silently drops this fix,
+   regressing a documented architectural intent.
+
+3. **Pool ID derivation from `RoutingKey`** — ADR-001 requirement 4 mandates the canonical Pool ID
+   format `f"{platform}:{bot_id}:{user_id}"`. This is identical to the three fields of `RoutingKey`.
+   Nothing in the current implementation enforces that a `Binding.pool_id` was derived from the
+   correct `RoutingKey`. The two representations can drift silently.
+
+4. **`Message.channel` deprecation enforcement** — ADR-001 states `channel` is removed once
+   Telegram and Discord adapter tests both pass. The PR retains `channel` as a plain dataclass
+   field with no runtime warning, no static-analysis marker, and no reference to a removal
+   milestone. Without an active enforcement mechanism, the alias will remain indefinitely.
+
+## Options Considered
+
+### Option A: Address findings at the call site only
+
+Handle `KeyError` with a try/except inside `run()`, keep `setdefault()` as a follow-up ticket,
+derive Pool IDs manually at each registration call site, leave `channel` as a bare field with a
+comment.
+
+- **Pros:** Zero structural change. Each fix is local and independent.
+- **Cons:** Pool ID derivation remains unenforced — every future call site is a new opportunity for
+  drift. The `channel` deprecation will not surface in CI. The TOCTOU fix depends on a ticket being
+  picked up, which may not happen before concurrent coroutines are introduced.
+
+### Option B: Enforce invariants at the structural boundary (chosen)
+
+Apply fixes at the structural level so that incorrect usage is impossible or immediately visible
+rather than silently wrong:
+
+- `run()` catches `KeyError` from `dispatch_response` — hub loop is never killed by a missing adapter.
+- `get_or_create_pool` uses `dict.setdefault()` — TOCTOU window is permanently closed.
+- `RoutingKey` gains a `to_pool_id()` method — pool ID can only be derived from a `RoutingKey`,
+  making drift structurally impossible.
+- `Message.channel` is converted to a `@property` that calls `warnings.warn(DeprecationWarning)` —
+  every access site becomes visible in test output and CI logs.
+
+- **Pros:** Invariants are enforced at definition, not at every call site. Regression is prevented
+  structurally. Deprecation surfaces automatically in CI the moment an old caller remains.
+- **Cons:** `channel` as a property requires removing it from the dataclass `__init__` signature
+  (adapters that pass `channel=` as a kwarg must be updated). Minor migration cost.
+
+### Option C: Convert Pool ID to a typed RoutingKey reference inside Binding
+
+Store `pool_id: RoutingKey` in `Binding` and derive the string representation only at
+persistence/logging boundaries.
+
+- **Pros:** Eliminates the string form entirely from the routing layer. Maximum type safety.
+- **Cons:** Pool is identified by string in the `pools: dict[str, Pool]` index and in all logging.
+  Changing `Binding.pool_id` to a `RoutingKey` propagates changes to Pool, logging, and any
+  future persistence layer. The gain does not justify the refactor scope in Phase 1.
+
+## Decision
+
+**Option B** is adopted.
+
+The four invariants are treated as implementation requirements of ADR-001, not new decisions.
+They are recorded here because each has a non-obvious implementation form that future maintainers
+must not reverse without understanding the rationale.
+
+### Requirement 1 — Adapter lookup failure handling
+
+`Hub.run()` must catch `KeyError` from `dispatch_response` and log it as `log.error(...)` with the
+routing key, then `continue`. The hub event-loop task must never be killed by a missing adapter.
+A guard in `register_binding` should emit `log.warning(...)` if no adapter is registered yet for
+`(platform, bot_id)`, without making it fatal (adapters may register after bindings at startup).
+
+### Requirement 2 — Pool creation atomicity
+
+`get_or_create_pool` must use:
+
+```python
+pool = self.pools.setdefault(
+    pool_id,
+    Pool(pool_id=pool_id, agent_name=agent_name),
+)
+return pool
+```
+
+The `if pool_id not in self.pools` pattern is explicitly prohibited in this method. This rule
+must survive any future refactor of `get_or_create_pool`.
+
+### Requirement 3 — Pool ID derivation from RoutingKey
+
+`RoutingKey` must expose a `to_pool_id() -> str` method:
+
+```python
+def to_pool_id(self) -> str:
+    return f"{self.platform.value}:{self.bot_id}:{self.user_id}"
+```
+
+All registration paths that compute a pool ID must call `RoutingKey(...).to_pool_id()`. Inline
+`f"{platform}:{bot_id}:{user_id}"` strings in hub code are prohibited; they must be replaced by
+this method. This keeps the canonical format defined in one place.
+
+### Requirement 4 — channel deprecation enforcement
+
+`Message.channel` must be implemented as a `@property` that:
+
+1. Calls `warnings.warn("Message.channel is deprecated; use Message.platform.value", DeprecationWarning, stacklevel=2)`.
+2. Returns `self.platform.value`.
+
+The field must be removed from `__init__` and from any `@dataclass` field declaration. Existing
+code that passes `channel=` as a constructor argument must be updated to pass `platform=` instead.
+The property docstring must reference the GitHub issue number for removal once it is created.
+
+## Consequences
+
+### Positive
+
+- Hub resilience: a misconfigured adapter no longer kills the event-loop task.
+- Pool creation is safe against future coroutine interleaving without requiring re-review.
+- Pool ID format is defined once and cannot drift; adding a fourth dimension to `RoutingKey`
+  automatically propagates to pool IDs.
+- Deprecated `channel` accesses surface in CI immediately, making the removal condition from
+  ADR-001 verifiable without manual grep.
+
+### Negative
+
+- `Message.channel` as a property requires updating adapter constructors that pass `channel=` as
+  a kwarg. This is a one-time migration cost, bounded to the Telegram adapter (the only adapter
+  in Phase 1).
+- `setdefault()` constructs a `Pool(...)` object on every call even when the pool already exists.
+  At personal-use scale (tens of pools) this is negligible; the TOCTOU safety justifies it.
+
+### Neutral
+
+- `RoutingKey.to_pool_id()` adds one method to a `NamedTuple`. It is a pure function with no
+  side effects and does not change the routing model.
+- Requiring `dispatch_response` errors to be caught in `run()` does not change the Protocol
+  contract of `ChannelAdapter.send()`.

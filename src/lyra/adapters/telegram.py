@@ -111,6 +111,10 @@ class TelegramAdapter:
     def bot(self, value: Any) -> None:
         self._bot = value
 
+    @property
+    def dp(self) -> Any:
+        return self._dp
+
     def _register_routes(self) -> None:
         verifier = _make_verifier(self._webhook_secret)
 

@@ -9,3 +9,4 @@ build/
 *.sqlite
 *.sqlite-journal
 .ruff_cache/
+.claude/stack.yml

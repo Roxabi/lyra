@@ -1,0 +1,13 @@
+repos:
+  - repo: local
+    hooks:
+      - id: lint
+        name: lint
+        entry: uv run ruff check .
+        language: system
+        pass_filenames: false
+      - id: typecheck
+        name: typecheck
+        entry: uv run pyright
+        language: system
+        pass_filenames: false

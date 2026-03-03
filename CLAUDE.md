@@ -1,3 +1,5 @@
+@.claude/stack.yml
+
 # CLAUDE.md — Instructions for Claude Code
 
 ## Project

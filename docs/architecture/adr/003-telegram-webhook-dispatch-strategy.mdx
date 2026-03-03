@@ -1,0 +1,146 @@
+---
+title: "ADR-003: Telegram webhook dispatch strategy — feed_update() vs SimpleRequestHandler"
+description: Decide how the FastAPI webhook route feeds incoming Telegram updates into the aiogram dispatcher, and document the discovered stub that leaves _on_message unwired in the current PR.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+PR #33 (Slice 2, issue #29) introduces `TelegramAdapter` with a FastAPI route at
+`POST /webhooks/telegram/{bot_id}`. The route validates the `X-Telegram-Bot-Api-Secret-Token`
+header and returns `{"ok": True}`, but currently discards the parsed request body — it never
+calls `self._dp.feed_update()` nor uses `SimpleRequestHandler`. The aiogram dispatcher is
+constructed and `_on_message` is registered on it, but the webhook route never feeds updates
+to the dispatcher. As a result, `_on_message` (and therefore the bus) is only reachable via
+direct Python calls in tests, not from real Telegram traffic.
+
+This is a PR-33 blocking defect. Documenting the decision now because completing the wire-up
+requires choosing between two dispatch strategies that have distinct trade-offs for the
+hub-and-spoke architecture.
+
+Two integration patterns exist in aiogram v3 for feeding webhook updates:
+
+1. **Direct `feed_update()` call** — the route handler manually deserialises the JSON body
+   into an `aiogram.types.Update` and calls `await self._dp.feed_update(self._bot, update)`.
+   Full control over parsing, error handling, and logging within the route handler.
+
+2. **`SimpleRequestHandler` (aiogram built-in)** — aiogram provides
+   `aiogram.webhook.aiohttp_server.SimpleRequestHandler` (and a FastAPI equivalent via
+   `aiogram.webhook.fastapi.AiogramWebhookFastAPIRouter`). It handles Update deserialisation,
+   secret token validation, and response formatting internally. The FastAPI app delegates to
+   it rather than owning the dispatch loop.
+
+The current PR plan (T18 in
+`artifacts/plans/29-slice-2-telegram-adapter-aiogram-v3-webhook.mdx`) specified
+`feed_update()` directly. `SimpleRequestHandler` is the aiohttp-specific helper; the FastAPI
+equivalent exists but requires mounting aiogram's router rather than defining a plain
+`@app.post` handler.
+
+## Options Considered
+
+### Option A: Direct `feed_update()` in the FastAPI route handler (chosen)
+
+```python
+@self.app.post("/webhooks/telegram/{bot_id}", dependencies=[Depends(verifier)])
+async def handle_update(bot_id: str, request: Request) -> dict:
+    body = await request.json()
+    update = Update.model_validate(body)
+    await self._dp.feed_update(self._bot, update)
+    return {"ok": True}
+```
+
+- **Pros:** Explicit and inspectable. The route owns the full lifecycle: parse, validate,
+  dispatch, respond. Errors from `feed_update()` are catchable and loggable in one place.
+  Consistent with the existing `_make_verifier` FastAPI dependency pattern already in PR #33.
+  No dependency on aiogram's aiohttp-specific helpers or FastAPI router mounting.
+- **Cons:** Requires handling aiogram `Update` deserialisation manually. The caller is
+  responsible for keeping the `Update.model_validate()` call in sync with the aiogram schema.
+
+### Option B: Aiogram `SimpleRequestHandler` / native router
+
+Mount aiogram's built-in FastAPI router. The secret token validation, deserialisation, and
+dispatcher feeding are all handled by aiogram's internals.
+
+- **Pros:** Less code. Secret validation handled by aiogram's own middleware. Fewer moving
+  parts to maintain as aiogram updates its schema.
+- **Cons:** Couples the adapter to aiogram's FastAPI integration module, which is distinct
+  from the aiohttp integration documented in aiogram v3 examples. The `_make_verifier` FastAPI
+  dependency already implemented in PR #33 would need to be replaced by aiogram's middleware.
+  Harder to test in isolation — the route is no longer a plain FastAPI `@app.post` endpoint
+  that `httpx.AsyncClient` can drive directly. PR #33 tests rely on direct ASGI invocation
+  with `httpx`; switching to aiogram's router would require rethinking the test harness.
+
+## Decision
+
+**Option A** is adopted: the FastAPI route handler calls `Update.model_validate()` then
+`self._dp.feed_update(self._bot, update)` directly.
+
+Rationale:
+
+- The existing test harness drives the FastAPI app via `httpx.AsyncClient` with
+  `ASGITransport`. This pattern is already established in PR #33 tests and must be preserved.
+  Option B would break all nine existing adapter tests.
+- The `_make_verifier` dependency is already implemented and tested. Option B would require
+  migrating to aiogram middleware, discarding tested code.
+- `Update.model_validate(body)` is a stable pydantic call — aiogram v3 uses pydantic models
+  throughout. This is not fragile.
+- The hub-and-spoke architecture benefits from keeping each adapter's dispatch path
+  transparent. An explicit `feed_update()` call makes the flow readable without needing to
+  trace through aiogram's router internals.
+
+### Implementation requirement
+
+PR #33 must be updated before merge: the `handle_update` route body must be changed from:
+
+```python
+async def handle_update(bot_id: str, request: Request) -> dict:
+    await request.json()
+    log.debug("Received update for bot_id=%s", bot_id)
+    return {"ok": True}
+```
+
+to:
+
+```python
+import aiogram
+
+async def handle_update(bot_id: str, request: Request) -> dict:
+    body = await request.json()
+    update = aiogram.types.Update.model_validate(body)
+    await self._dp.feed_update(self._bot, update)
+    return {"ok": True}
+```
+
+The `self._dp.message.register(self._on_message)` call already present in `_register_routes`
+is correct — it must be kept. The `_on_message` handler itself is correct and requires no
+changes.
+
+A test for end-to-end dispatch (webhook POST with a real Update JSON body causes `_on_message`
+to be called and `hub.bus.put` to be invoked) must be added to `tests/adapters/test_telegram.py`
+before the PR is merged.
+
+## Consequences
+
+### Positive
+
+- Real Telegram messages will reach `_on_message` and therefore the hub bus.
+- The test harness remains unchanged — `httpx.AsyncClient` with `ASGITransport` continues
+  to work without modification.
+- The dispatch path is explicit and traceable in the adapter source without aiogram internals.
+
+### Negative
+
+- `Update.model_validate()` must be called in the route handler. If aiogram changes the
+  `Update` pydantic schema in a future version, this call site must be updated. This is
+  mitigated by aiogram v3's stable pydantic model surface.
+- The PR cannot be merged in its current state — the stub is a blocking functional defect.
+
+### Neutral
+
+- This decision applies only to the Telegram adapter. The Discord adapter (Slice 3) uses
+  discord.py's gateway pattern (`on_message` event), which has no equivalent dispatch decision.
+- `SimpleRequestHandler` remains available as a migration path if aiogram's FastAPI integration
+  matures and the test harness is reworked.

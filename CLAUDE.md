@@ -5,16 +5,16 @@
 ## Project
 
 **Lyra by Roxabi** — Personal AI agent engine (hub-and-spoke, asyncio, multi-channel).
-See `ARCHITECTURE.md` for full context.
+See `docs/ARCHITECTURE.md` for full context.
 
 ## Key files
 
 | File | Role |
 |------|------|
-| `ARCHITECTURE.md` | Architecture + technical decisions |
-| `ROADMAP.md` | Roadmap and priorities |
-| `topics/` | Research notes and design |
-| `artifacts/` | Frames, specs, plans, analyses (dev-core) |
+| `docs/ARCHITECTURE.md` | Architecture + technical decisions |
+| `docs/ROADMAP.md` | Roadmap and priorities |
+| `docs/GETTING-STARTED.md` | Machine 1 setup guide |
+| `artifacts/` | Frames, specs, plans, analyses, explorations (dev-core) |
 | `setup.sh` | Machine 1 post-install script |
 
 ## Local infrastructure

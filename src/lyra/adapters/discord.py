@@ -4,7 +4,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import discord
 
@@ -74,7 +74,8 @@ class DiscordAdapter(discord.Client):
         )
         if not self.intents.message_content:
             log.warning(
-                "message_content intent is disabled — guild message content will be empty. "
+                "message_content intent is disabled — "
+                "guild message content will be empty. "
                 "Enable 'Message Content Intent' in the Discord Developer Portal."
             )
 
@@ -130,7 +131,9 @@ class DiscordAdapter(discord.Client):
             platform=Platform.DISCORD,
             bot_id=self._bot_id,
             user_id=f"dc:user:{message.author.id}",
-            user_name=_display_name if _display_name is not None else message.author.name,
+            user_name=(
+                _display_name if _display_name is not None else message.author.name
+            ),
             content=TextContent(text=content),
             type=MessageType.TEXT,
             timestamp=message.created_at,
@@ -141,7 +144,10 @@ class DiscordAdapter(discord.Client):
         return hub_msg
 
     async def on_message(self, message: Any) -> None:
-        """Handle incoming Gateway message: filter own/bot, apply backpressure, enqueue."""
+        """Handle incoming Gateway message.
+
+        Filters own/bot messages, applies backpressure, and enqueues to hub bus.
+        """
         # S3: discard bot's own messages; fallback to message.author.bot pre-on_ready
         if message.author == self._bot_user or (
             self._bot_user is None and message.author.bot
@@ -186,8 +192,9 @@ class DiscordAdapter(discord.Client):
 
         content = response.content[:DISCORD_MAX_LENGTH]
 
+        messageable = cast(discord.abc.Messageable, channel)
         if original_msg.is_mention:
-            msg = await channel.fetch_message(ctx.message_id)
+            msg = await messageable.fetch_message(ctx.message_id)
             await msg.reply(content)
         else:
-            await channel.send(content)
+            await messageable.send(content)

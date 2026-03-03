@@ -29,23 +29,21 @@ tests/core/
   test_hub.py  — 19 tests
 ```
 
+## Docs
+
+- [Architecture](docs/ARCHITECTURE.md)
+- [Roadmap](docs/ROADMAP.md)
+- [Vision](docs/vision.md)
+- [Getting Started](docs/GETTING-STARTED.md)
+
 ## Setup
 
 ```bash
-uv venv .venv
-uv pip install -e ".[dev]"
+uv sync
 ```
 
 ## Tests
 
 ```bash
-.venv/bin/pytest
+uv run pytest
 ```
-
-## Status
-
-| Day | Scope | Status |
-|-----|-------|--------|
-| D3 | Message, Pool, Agent, Hub init + register_adapter + register_binding | ✓ done |
-| D4 | `get_or_create_pool()`, run loop, `dispatch_response()`, mock end-to-end | pending |
-| D5 | Telegram adapter connected to the hub | pending |

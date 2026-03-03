@@ -84,7 +84,10 @@ class Message:
 
     @property
     def channel(self) -> str:
-        """Deprecated: use platform.value directly. Removed after Slice 2+3 (Discord + Telegram tests complete)."""
+        """Deprecated: use platform.value directly.
+
+        Removed after Slice 2+3 (Discord + Telegram tests complete).
+        """
         warnings.warn(
             "Message.channel is deprecated; use Message.platform.value",
             DeprecationWarning,

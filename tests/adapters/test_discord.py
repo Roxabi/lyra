@@ -339,8 +339,11 @@ def test_mention_prefix_stripped_from_content() -> None:
         mentions=[bot_user],
     )
 
+    from lyra.core.message import TextContent
+
     msg = adapter._normalize(discord_msg)
 
+    assert isinstance(msg.content, TextContent)
     assert msg.content.text == "hello world"
 
 
@@ -363,8 +366,11 @@ def test_mention_prefix_stripped_nickname_variant() -> None:
         mentions=[bot_user],
     )
 
+    from lyra.core.message import TextContent
+
     msg = adapter._normalize(discord_msg)
 
+    assert isinstance(msg.content, TextContent)
     assert msg.content.text == "hello world"
 
 
@@ -394,7 +400,9 @@ def test_normalize_dm_no_guild() -> None:
 
     msg = adapter._normalize(discord_msg)
 
-    assert msg.platform_context == DiscordContext(guild_id=None, channel_id=333, message_id=555)
+    assert msg.platform_context == DiscordContext(
+        guild_id=None, channel_id=333, message_id=555
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -413,7 +421,9 @@ def test_normalize_uses_display_name_when_present() -> None:
     discord_msg = SimpleNamespace(
         guild=SimpleNamespace(id=111),
         channel=SimpleNamespace(id=333, send=AsyncMock()),
-        author=SimpleNamespace(id=42, name="alice_raw", display_name="Alice Display", bot=False),
+        author=SimpleNamespace(
+            id=42, name="alice_raw", display_name="Alice Display", bot=False
+        ),
         content="hello",
         created_at=datetime.now(timezone.utc),
         id=555,
@@ -458,6 +468,7 @@ def test_discord_token_not_in_logs(
 ) -> None:
     """The Discord bot token must never appear in log output at any log level."""
     import logging
+
     from lyra.adapters.discord import DiscordAdapter
 
     secret_token = "super-secret-discord-token-xyz"
@@ -470,7 +481,9 @@ def test_discord_token_not_in_logs(
         discord_msg = SimpleNamespace(
             guild=SimpleNamespace(id=111),
             channel=SimpleNamespace(id=333, send=AsyncMock()),
-            author=SimpleNamespace(id=42, name="Alice", display_name="Alice", bot=False),
+            author=SimpleNamespace(
+                id=42, name="Alice", display_name="Alice", bot=False
+            ),
             content="hello",
             created_at=datetime.now(timezone.utc),
             id=555,

@@ -30,6 +30,14 @@ class RoutingKey(NamedTuple):
     bot_id: str
     user_id: str
 
+    def to_pool_id(self) -> str:
+        """Canonical pool ID: '{platform.value}:{bot_id}:{user_id}'.
+
+        Use this method as the single source of truth for pool ID format (ADR-001 §4).
+        Never construct the pool ID string inline.
+        """
+        return f"{self.platform.value}:{self.bot_id}:{self.user_id}"
+
 
 @dataclass(frozen=True)
 class Binding:
@@ -111,10 +119,15 @@ class Hub:
     # ------------------------------------------------------------------
 
     def get_or_create_pool(self, pool_id: str, agent_name: str) -> Pool:
-        """Return existing pool or create a new one. Atomic via CPython dict."""
-        if pool_id not in self.pools:
-            self.pools[pool_id] = Pool(pool_id=pool_id, agent_name=agent_name)
-        return self.pools[pool_id]
+        """Return existing pool or create a new one.
+
+        Uses dict.setdefault() — single atomic operation, closes the pre-PR TOCTOU
+        TODO. Note: Pool is constructed unconditionally on every call; the allocation
+        is negligible at personal-use scale.
+        """
+        return self.pools.setdefault(
+            pool_id, Pool(pool_id=pool_id, agent_name=agent_name)
+        )
 
     # ------------------------------------------------------------------
     # Dispatch
@@ -122,7 +135,12 @@ class Hub:
 
     async def dispatch_response(self, msg: Message, response: Response) -> None:
         """Send response back via the originating adapter."""
-        adapter = self.adapter_registry[(msg.platform, msg.bot_id)]
+        adapter = self.adapter_registry.get((msg.platform, msg.bot_id))
+        if adapter is None:
+            raise KeyError(
+                f"No adapter registered for ({msg.platform!r}, {msg.bot_id!r}). "
+                "Call register_adapter() before dispatching responses."
+            )
         await adapter.send(msg, response)
 
     # ------------------------------------------------------------------
@@ -143,7 +161,14 @@ class Hub:
                     continue
                 pool = self.get_or_create_pool(binding.pool_id, binding.agent_name)
                 async with pool.lock:
-                    # agent.process() wired in Slice 2 (Telegram adapter)
-                    pass
+                    try:
+                        # TODO(Slice2): replace pass with agent.process(msg, pool)
+                        pass
+                    except Exception as exc:
+                        log.exception(
+                            "agent.process() failed for %s: %s",
+                            RoutingKey(msg.platform, msg.bot_id, msg.user_id),
+                            exc,
+                        )
             finally:
                 self.bus.task_done()

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -68,9 +68,9 @@ class Message:
     id: str
     platform: Platform
     bot_id: str
-    channel: str  # deprecated alias for platform.value — kept until migration complete
-    user_id: str
-    user_name: str
+    channel: str  # deprecated: always equals platform.value — remove after Slice 2+3
+    user_id: str = field(repr=False)
+    user_name: str = field(repr=False)
     is_mention: bool
     is_from_bot: bool
     content: MessageContent | str
@@ -80,10 +80,17 @@ class Message:
     # Security: adapters must always set trust="user". Only internal hub code
     # may set trust="system". Never derive trust from inbound channel data.
     trust: Literal["user", "system"] = "user"
-    metadata: dict = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.channel != self.platform.value:
+            raise ValueError(
+                f"Message.channel {self.channel!r} must equal platform.value "
+                f"{self.platform.value!r}. Set channel=platform.value or omit it."
+            )
 
 
 @dataclass
 class Response:
     content: str
-    metadata: dict = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)

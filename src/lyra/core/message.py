@@ -89,6 +89,41 @@ class Message:
                 f"{self.platform.value!r}. Set channel=platform.value or omit it."
             )
 
+    @classmethod
+    def from_adapter(
+        cls,
+        *,
+        platform: Platform,
+        bot_id: str,
+        user_id: str,
+        user_name: str,
+        content: MessageContent,
+        type: MessageType,
+        timestamp: datetime,
+        is_mention: bool = False,
+        is_from_bot: bool = False,
+        platform_context: PlatformContext,
+    ) -> "Message":
+        """Construct a Message from an adapter.
+
+        trust is always 'user' — never caller-controlled.
+        """
+        return cls(
+            id=f"{platform.value}:{user_id}:{int(timestamp.timestamp())}",
+            platform=platform,
+            bot_id=bot_id,
+            channel=platform.value,
+            user_id=user_id,
+            user_name=user_name,
+            is_mention=is_mention,
+            is_from_bot=is_from_bot,
+            content=content,
+            type=type,
+            timestamp=timestamp,
+            platform_context=platform_context,
+            trust="user",  # SECURITY: never caller-controlled
+        )
+
 
 @dataclass
 class Response:

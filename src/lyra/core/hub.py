@@ -8,13 +8,10 @@ from dataclasses import dataclass
 from typing import NamedTuple, Protocol
 
 from .agent import AgentBase
-from .message import Message, Platform, Response
+from .message import GENERIC_ERROR_REPLY, Message, Platform, Response
 from .pool import Pool
 
 log = logging.getLogger(__name__)
-
-# Shared user-facing fallback for unhandled agent or dispatch errors.
-GENERIC_ERROR_REPLY = "Something went wrong. Please try again."
 
 
 class ChannelAdapter(Protocol):

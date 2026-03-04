@@ -18,6 +18,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from lyra.core.message import DiscordContext
+
 # ---------------------------------------------------------------------------
 # T2 — Missing secret token → HTTP 401
 # ---------------------------------------------------------------------------
@@ -275,3 +277,44 @@ def test_missing_token_raises_on_load(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with pytest.raises(SystemExit, match="TELEGRAM_TOKEN"):
         load_config()
+
+
+# ---------------------------------------------------------------------------
+# T10 — send() with wrong platform_context type is a no-op
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_send_skips_when_platform_context_is_not_telegram(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """adapter.send() with a non-TelegramContext platform_context must not call
+    bot.send_message."""
+    from lyra.adapters.telegram import TelegramAdapter  # ImportError expected in RED
+    from lyra.core.message import Message, MessageType, Platform, Response, TextContent
+
+    hub = MagicMock()
+    bot = AsyncMock()
+
+    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+    adapter.bot = bot
+
+    original_msg = Message(
+        id="msg-discord",
+        platform=Platform.TELEGRAM,
+        bot_id="main",
+        user_id="tg:user:42",
+        user_name="Alice",
+        is_mention=False,
+        is_from_bot=False,
+        content=TextContent(text="hello"),
+        type=MessageType.TEXT,
+        timestamp=datetime.now(timezone.utc),
+        platform_context=DiscordContext(guild_id=None, channel_id=123, message_id=456),
+    )
+
+    with caplog.at_level(logging.WARNING, logger="lyra.adapters.telegram"):
+        await adapter.send(original_msg, Response(content="hi"))
+
+    bot.send_message.assert_not_awaited()
+    assert any("non-TelegramContext" in r.message for r in caplog.records)

@@ -255,6 +255,7 @@ class CliPool:
         try:
             await asyncio.wait_for(proc.stdin.drain(), timeout=10)
         except asyncio.TimeoutError:
+            await self._kill(entry.pool_id)
             return CliResult(error="Timeout writing to subprocess stdin")
 
         return await self._read_until_result(entry)

@@ -7,6 +7,9 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
+# Shared user-facing fallback for unhandled agent or dispatch errors.
+GENERIC_ERROR_REPLY = "Something went wrong. Please try again."
+
 
 class Platform(str, Enum):
     TELEGRAM = "telegram"

@@ -168,6 +168,20 @@ class TestCliPoolSend:
         assert not result.ok
         assert "Failed to spawn" in result.error
 
+    async def test_send_drain_timeout_returns_error_and_kills_entry(self) -> None:
+        """stdin.drain() timeout must kill the corrupted entry and return an error."""
+        proc = make_fake_proc([INIT_LINE, ASSISTANT_LINE, RESULT_LINE])
+        proc.stdin.drain = AsyncMock(side_effect=asyncio.TimeoutError)
+        pool = CliPool()
+
+        with patch(_PATCH_TARGET, new=AsyncMock(return_value=proc)):
+            result = await pool.send("pool-drain", "hello", DEFAULT_MODEL)
+
+        assert not result.ok
+        assert "writing to subprocess stdin" in result.error
+        # Entry must be removed so the corrupted process is not reused
+        assert "pool-drain" not in pool._entries
+
     async def test_send_model_config_mismatch_logs_warning(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:

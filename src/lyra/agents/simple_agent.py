@@ -9,6 +9,7 @@ not hardcoded here.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from lyra.core.agent import Agent, AgentBase
 from lyra.core.cli_pool import CliPool
@@ -63,19 +64,25 @@ class SimpleAgent(AgentBase):
         result = await self._pool.send(pool.pool_id, text, model_cfg)
 
         if "error" in result:
+            error_detail = result["error"]
             log.warning(
                 "[agent:%s][pool:%s] CLI error: %s",
                 self.name,
                 pool.pool_id,
-                result["error"],
+                error_detail,
             )
+            # Timeout gets a specific message; all other errors get a generic one
+            if "Timeout" in error_detail:
+                user_msg = "Response timed out. Please try again."
+            else:
+                user_msg = "Something went wrong. Please try again."
             return Response(
-                content=f"[Lyra error] {result['error']}",
+                content=user_msg,
                 metadata={"error": True},
             )
 
         reply = result.get("result", "")
-        meta: dict = {"session_id": result.get("session_id", "")}
+        meta: dict[str, Any] = {"session_id": result.get("session_id", "")}
         if "warning" in result:
             meta["warning"] = result["warning"]
 

@@ -27,6 +27,11 @@ from .agent import ModelConfig
 
 log = logging.getLogger(__name__)
 
+# Explicit env allowlist — never forward secrets to the claude subprocess
+_SAFE_ENV_KEYS = {
+    "PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "USER", "LOGNAME", "SHELL"
+}
+
 
 def _find_project_root() -> Path:
     """Locate the project root by searching for pyproject.toml."""
@@ -103,6 +108,13 @@ class CliPool:
 
         Spawns a new process if needed.
         Returns dict with 'result' and 'session_id', or 'error' key.
+
+        Locking model:
+          - pool.lock (hub layer): serialises all messages for one user session.
+          - entry._lock (cli_pool layer): serialises stdin/stdout access to one
+            process. Currently redundant for single-agent use (pool.lock is held
+            by the hub when send() is called), but required if multiple agents
+            ever share a CliPool entry keyed by the same pool_id.
         """
         entry = self._entries.get(pool_id)
 
@@ -169,8 +181,7 @@ class CliPool:
         )
         log.debug("[pool:%s] cmd: %s", pool_id, " ".join(cmd))
 
-        # Strip CLAUDECODE env var to allow nested Claude CLI sessions
-        env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+        env = {k: v for k, v in os.environ.items() if k in _SAFE_ENV_KEYS}
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,

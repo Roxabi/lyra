@@ -110,8 +110,21 @@ class TestSimpleAgentProcess:
 
         response = await agent.process(msg, pool)
 
-        assert response.content.startswith("[Lyra error]")
-        assert "boom" in response.content
+        # Internal detail must NOT leak to the user
+        assert "boom" not in response.content
+        assert response.content == "Something went wrong. Please try again."
+        assert response.metadata.get("error") is True
+
+    async def test_timeout_error_response(self) -> None:
+        cli_pool = MagicMock()
+        cli_pool.send = AsyncMock(return_value={"error": "Timeout after 300s"})
+        agent = make_agent(cli_pool)
+        msg = make_message("hi")
+        pool = make_pool()
+
+        response = await agent.process(msg, pool)
+
+        assert response.content == "Response timed out. Please try again."
         assert response.metadata.get("error") is True
 
     async def test_warning_response(self) -> None:

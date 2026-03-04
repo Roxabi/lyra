@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import tomllib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -63,7 +64,15 @@ def load_agent_config(name: str, agents_dir: Path | None = None) -> Agent:
         system = "..."
     """
     directory = agents_dir or _AGENTS_DIR
+
+    # validate name before path construction
+    if not re.match(r'^[a-zA-Z0-9_-]+$', name):
+        raise ValueError(f"Invalid agent name {name!r}: only [a-zA-Z0-9_-] allowed")
+
     path = directory / f"{name}.toml"
+    # Guard against path traversal
+    if not path.resolve().is_relative_to(directory.resolve()):
+        raise ValueError(f"Agent name {name!r} escapes agents directory")
     if not path.exists():
         raise FileNotFoundError(f"Agent config not found: {path}")
 
@@ -71,6 +80,14 @@ def load_agent_config(name: str, agents_dir: Path | None = None) -> Agent:
         data = tomllib.load(f)
 
     agent_section = data.get("agent", {})
+
+    # Validate declared name matches the filename stem (if declared)
+    declared_name = agent_section.get("name")
+    if declared_name is not None and declared_name != name:
+        raise ValueError(
+            f"Agent name mismatch: file {name!r} declares name {declared_name!r}"
+        )
+
     model_section = data.get("model", {})
     prompt_section = data.get("prompt", {})
 

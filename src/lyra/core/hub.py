@@ -173,6 +173,14 @@ class Hub:
                         binding.agent_name,
                     )
                     continue
+                # Fail fast — check adapter exists before spending LLM tokens
+                if (msg.platform, msg.bot_id) not in self.adapter_registry:
+                    log.error(
+                        "no adapter registered for (%s, %s) — response dropped",
+                        msg.platform,
+                        msg.bot_id,
+                    )
+                    continue
                 async with pool.lock:
                     try:
                         response = await agent.process(msg, pool)

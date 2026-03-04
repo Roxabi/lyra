@@ -99,4 +99,6 @@ docs/
 | [vision.md](docs/vision.md) | Why Lyra exists and what it is not |
 | [ROADMAP.md](docs/ROADMAP.md) | Phase 1/2/3 scope, priorities, timeline |
 | [GETTING-STARTED.md](docs/GETTING-STARTED.md) | Machine 1 (Ubuntu Server) hardware setup |
-| [ADRs](docs/architecture/adr/) | 7 architecture decision records with full rationale |
+| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production service management on Machine 1 (systemd, logs, firewall) |
+| [ADRs](docs/architecture/adr/) | 8 architecture decision records with full rationale |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Branching model, commit conventions, adding adapters and agents |

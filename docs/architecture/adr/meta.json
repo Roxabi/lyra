@@ -7,6 +7,7 @@
     "004-cli-pool-cwd-resolution-and-agent-type-annotation",
     "005-wildcard-binding-concurrency-and-per-user-pools",
     "006-hub-run-loop-error-response-gap",
-    "007-model-config-mismatch-silent-ignore"
+    "007-model-config-mismatch-silent-ignore",
+    "008-phase1-memory-scope"
   ]
 }

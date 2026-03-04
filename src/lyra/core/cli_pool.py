@@ -200,7 +200,7 @@ class CliPool:
             "--model",
             model_config.model,
             "--max-turns",
-            str(int(model_config.max_turns)),
+            str(model_config.max_turns),
         ]
         if model_config.tools:
             cmd.extend(["--allowedTools", ",".join(model_config.tools)])

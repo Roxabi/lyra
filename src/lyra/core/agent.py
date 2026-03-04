@@ -12,6 +12,9 @@ from .pool import Pool
 # Default agents config directory: src/lyra/agents/
 _AGENTS_DIR = Path(__file__).resolve().parent.parent / "agents"
 
+_VALID_BACKENDS: frozenset[str] = frozenset({"claude-cli", "ollama"})
+_MAX_PROMPT_BYTES = 64 * 1024  # 64 KB
+
 
 @dataclass(frozen=True)
 class ModelConfig:
@@ -93,7 +96,6 @@ def load_agent_config(name: str, agents_dir: Path | None = None) -> Agent:
     prompt_section = data.get("prompt", {})
 
     backend = model_section.get("backend", "claude-cli")
-    _VALID_BACKENDS = {"claude-cli", "ollama"}
     if backend not in _VALID_BACKENDS:
         raise ValueError(
             f"Invalid backend {backend!r} for agent {name!r}: "
@@ -115,11 +117,11 @@ def load_agent_config(name: str, agents_dir: Path | None = None) -> Agent:
     )
 
     system_prompt = prompt_section.get("system", "")
-    _MAX_PROMPT_BYTES = 64 * 1024  # 64 KB
-    if len(system_prompt.encode()) > _MAX_PROMPT_BYTES:
+    encoded_prompt = system_prompt.encode()
+    if len(encoded_prompt) > _MAX_PROMPT_BYTES:
         raise ValueError(
             f"system_prompt for agent {name!r} exceeds {_MAX_PROMPT_BYTES // 1024}KB "
-            f"limit ({len(system_prompt.encode())} bytes)"
+            f"limit ({len(encoded_prompt)} bytes)"
         )
 
     return Agent(

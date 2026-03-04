@@ -14,7 +14,10 @@ from dotenv import load_dotenv
 from lyra.adapters.discord import DiscordAdapter, load_discord_config
 from lyra.adapters.telegram import TelegramAdapter
 from lyra.adapters.telegram import load_config as load_telegram_config
-from lyra.core.hub import Hub
+from lyra.agents.simple_agent import SimpleAgent
+from lyra.core.agent import load_agent_config
+from lyra.core.cli_pool import CliPool
+from lyra.core.hub import Hub, RoutingKey
 from lyra.core.message import Platform
 
 log = logging.getLogger(__name__)
@@ -34,6 +37,12 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
 
     hub = Hub()
 
+    cli_pool = CliPool()
+    await cli_pool.start()
+    agent_config = load_agent_config("lyra_default")
+    agent = SimpleAgent(agent_config, cli_pool)
+    hub.register_agent(agent)
+
     tg_adapter = TelegramAdapter(
         bot_id="main",
         token=tg_cfg.token,
@@ -45,8 +54,10 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
 
     hub.register_adapter(Platform.TELEGRAM, "main", tg_adapter)
     hub.register_adapter(Platform.DISCORD, "main", dc_adapter)
-    hub.register_binding(Platform.TELEGRAM, "main", "*", "lyra", "telegram:main:*")
-    hub.register_binding(Platform.DISCORD, "main", "*", "lyra", "discord:main:*")
+    tg_key = RoutingKey(Platform.TELEGRAM, "main", "*")
+    dc_key = RoutingKey(Platform.DISCORD, "main", "*")
+    hub.register_binding(Platform.TELEGRAM, "main", "*", "lyra", tg_key.to_pool_id())
+    hub.register_binding(Platform.DISCORD, "main", "*", "lyra", dc_key.to_pool_id())
 
     stop = _stop if _stop is not None else asyncio.Event()
     if _stop is None:
@@ -75,6 +86,7 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
         task.cancel()
     await asyncio.gather(*tasks, return_exceptions=True)
     await dc_adapter.close()
+    await cli_pool.stop()
     log.info("Lyra stopped.")
 
 

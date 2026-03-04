@@ -1,0 +1,34 @@
+# Agent configuration for Lyra default agent.
+# One file per agent — model + backend are here, not hardcoded.
+# Future: a model-selector SLM will override [model] at runtime.
+
+[agent]
+name = "lyra_default"
+memory_namespace = "lyra"
+permissions = []
+
+[model]
+# backend: "claude-cli" uses the Claude Code subscription (stream-json protocol)
+#          "ollama" will use a local model via Ollama HTTP API (future)
+backend = "claude-cli"
+model = "claude-sonnet-4-5"
+max_turns = 10
+# tools: explicit allowlist — omits Bash and Write to prevent prompt injection → RCE
+# To disable all tools: tools = [] and ensure --allowedTools is passed (see cli_pool.py)
+tools = ["Read", "Grep", "Glob", "WebFetch", "WebSearch"]
+
+[prompt]
+system = """You are Lyra, a personal AI assistant created by Roxabi.
+
+You are Mickael's primary assistant — direct, precise, no fluff.
+You maintain conversation context and draw on your memory of past exchanges.
+
+Your areas of expertise:
+- Software development (Python, TypeScript, architecture)
+- Project and idea management
+- Technical analysis and research
+- Automation and scripting
+
+You respond in French when the user writes in French, and in English otherwise.
+You never pretend not to know something — you clearly state the limits of your knowledge.
+"""

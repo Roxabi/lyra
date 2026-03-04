@@ -5,6 +5,7 @@ import logging
 from dataclasses import dataclass
 from typing import NamedTuple, Protocol
 
+from .agent import AgentBase
 from .message import Message, Platform, Response
 from .pool import Pool
 
@@ -53,12 +54,17 @@ class Hub:
     def __init__(self, bus_size: int = BUS_SIZE) -> None:
         self.bus: asyncio.Queue[Message] = asyncio.Queue(maxsize=bus_size)
         self.adapter_registry: dict[tuple[Platform, str], ChannelAdapter] = {}
+        self.agent_registry: dict[str, AgentBase] = {}
         self.bindings: dict[RoutingKey, Binding] = {}
         self.pools: dict[str, Pool] = {}
 
     # ------------------------------------------------------------------
     # Adapter registry
     # ------------------------------------------------------------------
+
+    def register_agent(self, agent: AgentBase) -> None:
+        """Register an agent implementation by name."""
+        self.agent_registry[agent.name] = agent
 
     def register_adapter(
         self, platform: Platform, bot_id: str, adapter: ChannelAdapter
@@ -160,10 +166,25 @@ class Hub:
                     )
                     continue
                 pool = self.get_or_create_pool(binding.pool_id, binding.agent_name)
+                agent = self.agent_registry.get(binding.agent_name)
+                if agent is None:
+                    log.warning(
+                        "no agent registered for %r — message dropped",
+                        binding.agent_name,
+                    )
+                    continue
+                # Fail fast — check adapter exists before spending LLM tokens
+                if (msg.platform, msg.bot_id) not in self.adapter_registry:
+                    log.error(
+                        "no adapter registered for (%s, %s) — response dropped",
+                        msg.platform,
+                        msg.bot_id,
+                    )
+                    continue
                 async with pool.lock:
                     try:
-                        # TODO(Slice2): replace pass with agent.process(msg, pool)
-                        pass
+                        response = await agent.process(msg, pool)
+                        await self.dispatch_response(msg, response)
                     except Exception as exc:
                         log.exception(
                             "agent.process() failed for %s: %s",

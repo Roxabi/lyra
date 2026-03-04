@@ -27,8 +27,17 @@ from .agent import ModelConfig
 
 log = logging.getLogger(__name__)
 
+
+def _find_project_root() -> Path:
+    """Locate the project root by searching for pyproject.toml."""
+    for parent in Path(__file__).resolve().parents:
+        if (parent / "pyproject.toml").exists():
+            return parent
+    raise RuntimeError("Could not locate project root (no pyproject.toml found)")
+
+
 # cwd for the claude subprocess — lyra project root
-_LYRA_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent
+_LYRA_ROOT = _find_project_root()
 
 
 @dataclass
@@ -101,6 +110,12 @@ class CliPool:
             entry = await self._spawn(pool_id, model_config)
             if entry is None:
                 return {"error": "Failed to spawn Claude CLI process"}
+        elif entry.model_config != model_config:
+            log.warning(
+                "[pool:%s] model_config mismatch — ignoring new config"
+                " (restart pool to apply)",
+                pool_id,
+            )
 
         async with entry._lock:
             if not entry.is_alive():
@@ -185,7 +200,7 @@ class CliPool:
         payload = {
             "type": "user",
             "message": {"role": "user", "content": message},
-            "session_id": "",
+            "session_id": entry.session_id or "",
             "parent_tool_use_id": None,
         }
         proc.stdin.write((json.dumps(payload) + "\n").encode())
@@ -203,9 +218,10 @@ class CliPool:
         result_text = ""
 
         try:
-            deadline = asyncio.get_event_loop().time() + timeout
+            loop = asyncio.get_running_loop()
+            deadline = loop.time() + timeout
             while True:
-                remaining = deadline - asyncio.get_event_loop().time()
+                remaining = deadline - loop.time()
                 if remaining <= 0:
                     log.warning(
                         "[pool:%s] deadline exceeded (%ds)", entry.pool_id, timeout
@@ -253,7 +269,7 @@ class CliPool:
                     if session_id and entry.session_id != session_id:
                         entry.session_id = session_id
 
-                    result_text = data.get("result", result_text)
+                    result_text = data.get("result") or result_text
                     log.info(
                         "[pool:%s] response: %d chars, %dms",
                         entry.pool_id,

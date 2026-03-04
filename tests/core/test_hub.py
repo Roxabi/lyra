@@ -407,3 +407,34 @@ class TestPoolCreation:
         p1 = hub.get_or_create_pool("telegram:main:alice", "lyra")
         p2 = hub.get_or_create_pool("telegram:main:alice", "lyra")
         assert p1 is p2
+
+
+# ---------------------------------------------------------------------------
+# TestAgentRegistryMiss
+# ---------------------------------------------------------------------------
+
+
+class TestAgentRegistryMiss:
+    """Hub run loop drops message when agent is in bindings but not registered."""
+
+    async def test_message_dropped_when_agent_not_registered(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        hub = Hub()
+        # Register a binding for "ghost" but do NOT call hub.register_agent()
+        hub.register_binding(
+            Platform.TELEGRAM, "main", "alice", "ghost", "telegram:main:alice"
+        )
+        msg = make_message(platform=Platform.TELEGRAM, bot_id="main", user_id="alice")
+        await hub.bus.put(msg)
+
+        with caplog.at_level(logging.WARNING, logger="lyra.core.hub"):
+            try:
+                await asyncio.wait_for(hub.run(), timeout=0.2)
+            except asyncio.TimeoutError:
+                pass  # expected — run() never returns on its own
+
+        assert any(
+            "no agent registered" in r.message.lower() for r in caplog.records
+        )
+        assert hub.bus.empty()

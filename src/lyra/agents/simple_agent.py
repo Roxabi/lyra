@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 
-from lyra.core.agent import AgentBase
+from lyra.core.agent import Agent, AgentBase
 from lyra.core.cli_pool import CliPool
 from lyra.core.message import Message, MessageContent, Response, TextContent
 from lyra.core.pool import Pool
@@ -45,9 +45,8 @@ class SimpleAgent(AgentBase):
         hub.register_agent(agent)
     """
 
-    def __init__(self, config: AgentBase.__class__, cli_pool: CliPool) -> None:  # type: ignore[override]
-        # config is an Agent dataclass — AgentBase.__init__ expects Agent
-        super().__init__(config)  # type: ignore[arg-type]
+    def __init__(self, config: Agent, cli_pool: CliPool) -> None:
+        super().__init__(config)
         self._pool = cli_pool
 
     async def process(self, msg: Message, pool: Pool) -> Response:

@@ -49,8 +49,7 @@ async def test_missing_secret_returns_401() -> None:
 
 
 def test_normalize_private_chat_context() -> None:
-    """_normalize() on a private-chat aiogram message produces correct TelegramContext.
-    """
+    """_normalize() on a private-chat message produces correct TelegramContext."""
     from lyra.adapters.telegram import TelegramAdapter  # ImportError expected in RED
     from lyra.core.message import Platform, TelegramContext
 

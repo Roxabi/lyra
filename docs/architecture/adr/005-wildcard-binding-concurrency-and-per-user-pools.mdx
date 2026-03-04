@@ -1,0 +1,159 @@
+---
+title: "ADR-005: Wildcard binding concurrency model — shared pool vs per-user pools"
+description: Document the concurrency and isolation consequences of the wildcard binding introduced in Slice 2, and record the accepted resolution for when per-user pools must be introduced.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+PR #36 (Slice 2, issue #35) wires the hub to a real agent. The entrypoint (`__main__.py`)
+registers two wildcard bindings:
+
+```python
+tg_key = RoutingKey(Platform.TELEGRAM, "main", "*")
+dc_key = RoutingKey(Platform.DISCORD, "main", "*")
+hub.register_binding(Platform.TELEGRAM, "main", "*", "lyra", tg_key.to_pool_id())
+hub.register_binding(Platform.DISCORD, "main", "*", "lyra", dc_key.to_pool_id())
+```
+
+`tg_key.to_pool_id()` returns `"telegram:main:*"`. All Telegram users on bot `"main"` resolve
+to the single pool `telegram:main:*`, which holds one `asyncio.Lock`. The result is:
+
+- **All Telegram users share one pool lock.** User A's 300s inference call blocks every other
+  Telegram user for the full duration.
+- **All Telegram users share one Claude CLI subprocess** (one `_ProcessEntry` keyed by
+  `"telegram:main:*"` in `CliPool`). The Claude CLI session history accumulates messages from
+  all users in interleaved order.
+- **Conversation isolation is absent.** User B's messages appear in user A's Claude context
+  window and vice versa.
+- **Memory namespace collision.** When the memory layer is added, all users will share the
+  `"lyra"` namespace unless the pool ID is part of the namespace key.
+
+This behaviour is correct and acceptable for the current personal-use case: Lyra's sole
+operator is Mickael. The wildcard binding is intentional for Phase 1 — it removes the
+need to pre-register a user_id before first use. However, the architectural contract must
+be explicit so that the transition to per-user pools (required before any second user is
+admitted) is a documented decision rather than a fire-drill fix.
+
+ARCHITECTURE.md §"Discussion Pools" specifies: "One pool per (channel, user). Contains:
+conversation history, session state, assigned agent, `asyncio.Lock` — sequential per user,
+**parallel across users**." The wildcard binding as currently used violates the "parallel
+across users" guarantee because it makes all users share one lock.
+
+ADR-001 §4 requires pool IDs to incorporate `bot_id` to avoid namespace collision. The
+wildcard `user_id="*"` in the pool ID is a valid Phase 1 shortcut because there is effectively
+one user, but it will silently break isolation if a second user is ever admitted without
+migrating to per-user pool IDs.
+
+## Options Considered
+
+### Option A: Keep wildcard binding for Phase 1, document the single-user constraint (chosen)
+
+Retain the current `"telegram:main:*"` pool ID. Accept the shared-lock and shared-subprocess
+behaviour as intentional for a personal assistant with one operator. Document a gate condition:
+per-user bindings must be introduced before any second human user is admitted.
+
+- **Pros:** Zero code change. Phase 1 delivery is unblocked. The single-user constraint is
+  real — Lyra is a personal assistant and will not have concurrent human users in Phase 1.
+- **Cons:** The shared pool violates the architectural invariant documented in ARCHITECTURE.md.
+  Any future contributor adding a second user without reading this ADR will unknowingly expose
+  cross-user conversation leakage and a serialised event loop.
+
+### Option B: Resolve wildcard in `resolve_binding`, rewrite pool ID as the actual user_id
+
+When the wildcard binding matches, construct the pool ID using the actual `msg.user_id` instead
+of `"*"`:
+
+```python
+# In Hub.resolve_binding or Hub.run():
+if binding and binding.pool_id.endswith(":*"):
+    # Rewrite pool_id with actual user_id
+    pool_id = binding.pool_id[:-1] + msg.user_id
+    binding = Binding(agent_name=binding.agent_name, pool_id=pool_id)
+```
+
+- **Pros:** Per-user isolation is preserved even under a wildcard binding. All users get their
+  own pool lock and their own `_ProcessEntry` (separate Claude CLI conversation). ARCHITECTURE.md
+  invariant is satisfied immediately. No pre-registration of user IDs required.
+- **Cons:** `Binding` is a frozen dataclass — replacing `pool_id` at resolution time requires
+  constructing a new `Binding` object or storing the rewrite rule separately. The rewrite logic
+  must live in `Hub.run()` or `resolve_binding`, neither of which currently has access to
+  `msg.user_id` at the point where `Binding` is retrieved. The semantics of `Binding.pool_id`
+  change from "the pool to use" to "the pool template", which is a non-obvious contract.
+
+### Option C: Per-user binding registration at first message (dynamic binding)
+
+On first message from an unknown user, `Hub.run()` checks the wildcard fallback and registers
+an exact binding for that user_id before creating the pool.
+
+- **Pros:** Exact bindings are preserved in `self.bindings`. Bindings can be persisted across
+  restarts. No template/rewrite semantics. Fully consistent with the existing routing model.
+- **Cons:** `Hub.run()` mutates `self.bindings` at message dispatch time — side-effectful and
+  harder to test. Dynamic binding registration requires a lock on `self.bindings` once multiple
+  coroutines can call `run()` concurrently. More complex than Option B. Belongs in Phase 2 when
+  a real user management layer exists.
+
+## Decision
+
+**Option A** is adopted for Phase 1 with a documented gate condition.
+
+Rationale:
+
+- Lyra is a personal assistant. The sole operator is Mickael. There is no concurrent second
+  human user in Phase 1. The shared pool is a deliberate simplification, not an oversight.
+- Option B is the correct Phase 2 migration. It is recorded here so that the implementation
+  contract is clear when the migration happens.
+- Option C belongs in Phase 2 alongside a user registry and session persistence.
+
+### Gate condition (mandatory before admitting a second human user)
+
+Before any second human user is granted access to Lyra on any platform:
+
+1. The wildcard binding in `__main__.py` must be replaced with Option B (pool ID rewrite at
+   resolution time) or Option C (dynamic binding registration).
+2. The `CliPool._entries` keying must use per-user `pool_id` values so that each user gets
+   an isolated Claude CLI subprocess and conversation context.
+3. The memory namespace key must incorporate `user_id` to prevent cross-user memory leakage
+   when the memory layer (Level 3 semantic) is added.
+
+### Locking model documentation (Phase 1 invariant)
+
+The current two-level locking model is:
+
+- `pool.lock` (`asyncio.Lock` on `Pool`): serialises all messages for one pool.
+  Under the wildcard binding, this means all users on the same platform share one lock.
+- `entry._lock` (`asyncio.Lock` on `_ProcessEntry`): serialises stdin/stdout access to one
+  Claude CLI subprocess. Currently redundant (pool.lock is always held when `send()` is called)
+  but required for correctness if multiple agents ever share a `CliPool` entry.
+
+This locking model satisfies the Phase 1 single-user constraint. It does not satisfy the
+"parallel across users" invariant from ARCHITECTURE.md for multi-user scenarios.
+
+## Consequences
+
+### Positive
+
+- Phase 1 delivery is unblocked. No code change required.
+- The constraint is explicit: any future contributor will find this ADR before inadvertently
+  admitting a second user under the shared-pool model.
+- Option B is already designed and ready to implement when the gate condition is triggered.
+
+### Negative
+
+- The ARCHITECTURE.md "parallel across users" invariant is violated for the duration of
+  Phase 1. This is acceptable because there is effectively one user.
+- If a second user is admitted without reading this ADR, cross-user conversation leakage
+  and serialised event-loop processing will occur silently.
+
+### Neutral
+
+- `register_binding` currently raises `ValueError` if the same `pool_id` is assigned to two
+  different `user_id` values on the same `(platform, bot_id)`. The wildcard case (`user_id="*"`)
+  bypasses this guard because the wildcard is registered with `user_id="*"`, not with the
+  actual `user_id`. The guard remains correct for exact bindings.
+- The idle reaper (1200s TTL) will correctly reap the single shared `_ProcessEntry` when idle.
+  Under a per-user model, each user's process would be reaped independently, which is the
+  desired behaviour.

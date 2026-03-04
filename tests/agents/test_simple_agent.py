@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from lyra.agents.simple_agent import SimpleAgent, _extract_text
 from lyra.core.agent import Agent, ModelConfig
+from lyra.core.cli_pool import CliResult
 from lyra.core.message import (
     AudioContent,
     ImageContent,
@@ -71,12 +72,12 @@ class TestExtractText:
     def test_image_content_url_fallback(self) -> None:
         url = "https://example.com/img.png"
         msg = make_message(content=ImageContent(url=url))
-        assert _extract_text(msg) == url
+        assert _extract_text(msg) == f"[image: {url}]"
 
     def test_audio_content_url_fallback(self) -> None:
         url = "https://example.com/audio.ogg"
         msg = make_message(content=AudioContent(url=url))
-        assert _extract_text(msg) == url
+        assert _extract_text(msg) == f"[audio: {url}]"
 
 
 # ---------------------------------------------------------------------------
@@ -88,7 +89,7 @@ class TestSimpleAgentProcess:
     async def test_success_response(self) -> None:
         cli_pool = MagicMock()
         cli_pool.send = AsyncMock(
-            return_value={"result": "hello", "session_id": "s1"}
+            return_value=CliResult(result="hello", session_id="s1")
         )
         agent = make_agent(cli_pool)
         msg = make_message("hi")
@@ -103,7 +104,7 @@ class TestSimpleAgentProcess:
 
     async def test_error_response(self) -> None:
         cli_pool = MagicMock()
-        cli_pool.send = AsyncMock(return_value={"error": "boom"})
+        cli_pool.send = AsyncMock(return_value=CliResult(error="boom"))
         agent = make_agent(cli_pool)
         msg = make_message("hi")
         pool = make_pool()
@@ -117,7 +118,7 @@ class TestSimpleAgentProcess:
 
     async def test_timeout_error_response(self) -> None:
         cli_pool = MagicMock()
-        cli_pool.send = AsyncMock(return_value={"error": "Timeout after 300s"})
+        cli_pool.send = AsyncMock(return_value=CliResult(error="Timeout after 300s"))
         agent = make_agent(cli_pool)
         msg = make_message("hi")
         pool = make_pool()
@@ -130,11 +131,7 @@ class TestSimpleAgentProcess:
     async def test_warning_response(self) -> None:
         cli_pool = MagicMock()
         cli_pool.send = AsyncMock(
-            return_value={
-                "result": "ok",
-                "session_id": "s1",
-                "warning": "truncated",
-            }
+            return_value=CliResult(result="ok", session_id="s1", warning="truncated")
         )
         agent = make_agent(cli_pool)
         msg = make_message("hi")
@@ -148,9 +145,7 @@ class TestSimpleAgentProcess:
 
     async def test_send_called_with_pool_id_and_text(self) -> None:
         cli_pool = MagicMock()
-        cli_pool.send = AsyncMock(
-            return_value={"result": "ok", "session_id": "s1"}
-        )
+        cli_pool.send = AsyncMock(return_value=CliResult(result="ok", session_id="s1"))
         agent = make_agent(cli_pool)
         msg = make_message("test text")
         pool = make_pool(pool_id="telegram:main:bob")

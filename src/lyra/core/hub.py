@@ -118,7 +118,17 @@ class Hub:
         if exact is not None:
             return exact
         wildcard = RoutingKey(msg.platform, msg.bot_id, "*")
-        return self.bindings.get(wildcard)
+        wildcard_binding = self.bindings.get(wildcard)
+        if wildcard_binding is not None:
+            # Synthesise a per-user pool_id from the real user_id so each user
+            # gets an isolated Pool (own lock, own subprocess, own conversation).
+            concrete_pool_id = RoutingKey(
+                msg.platform, msg.bot_id, msg.user_id
+            ).to_pool_id()
+            return Binding(
+                agent_name=wildcard_binding.agent_name, pool_id=concrete_pool_id
+            )
+        return None
 
     # ------------------------------------------------------------------
     # Pools
@@ -184,10 +194,20 @@ class Hub:
                 async with pool.lock:
                     try:
                         response = await agent.process(msg, pool)
+                    except Exception as exc:
+                        log.exception(
+                            "agent.process() raised for %s: %s",
+                            RoutingKey(msg.platform, msg.bot_id, msg.user_id),
+                            exc,
+                        )
+                        response = Response(
+                            content="Something went wrong. Please try again."
+                        )
+                    try:
                         await self.dispatch_response(msg, response)
                     except Exception as exc:
                         log.exception(
-                            "agent.process() failed for %s: %s",
+                            "dispatch_response() failed for %s: %s",
                             RoutingKey(msg.platform, msg.bot_id, msg.user_id),
                             exc,
                         )

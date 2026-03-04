@@ -1,0 +1,169 @@
+---
+title: "ADR-006: Hub run loop error handling — silent drop vs user-facing error response"
+description: Document the gap where agent.process() exceptions are logged but no error response is sent to the user, and record the accepted resolution strategy.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+PR #36 introduces the following error handling block in `Hub.run()`:
+
+```python
+async with pool.lock:
+    try:
+        response = await agent.process(msg, pool)
+        await self.dispatch_response(msg, response)
+    except Exception as exc:
+        log.exception(
+            "agent.process() failed for %s: %s",
+            RoutingKey(msg.platform, msg.bot_id, msg.user_id),
+            exc,
+        )
+```
+
+When `agent.process()` raises an unexpected exception (e.g., `asyncio.CancelledError`,
+`RuntimeError`, or any unhandled error from `CliPool`), the hub logs the exception at
+`ERROR` level but sends no response to the user. From the user's perspective, the message
+disappears silently — no confirmation, no error message, no retry instruction.
+
+This is distinct from the `SimpleAgent` error path, which handles `CliPool` errors (timeouts,
+spawn failures) by returning a `Response` with a user-facing error message. That path works
+correctly. The gap is in the hub's outer `except` block, which catches exceptions that escape
+`agent.process()` — including unexpected errors that `SimpleAgent` did not anticipate.
+
+There is a secondary gap: `dispatch_response()` itself can raise `KeyError` (missing adapter)
+or any exception from `adapter.send()`. The current code does not catch exceptions from
+`dispatch_response()` separately — a `KeyError` from `dispatch_response()` will be caught by
+the same `except Exception` block that wraps both `agent.process()` and `dispatch_response()`,
+meaning a response dispatch failure will silently drop the response without logging the correct
+context.
+
+ADR-002 Requirement 1 specified that `dispatch_response` `KeyError` should be caught and
+logged separately. PR #36 partially satisfies this by adding a pre-flight adapter existence
+check before acquiring the lock:
+
+```python
+if (msg.platform, msg.bot_id) not in self.adapter_registry:
+    log.error(...)
+    continue
+```
+
+But this pre-flight check does not cover race conditions where the adapter is deregistered
+between the check and the dispatch, and it does not cover exceptions from `adapter.send()`.
+
+At Phase 1 (personal use, single user), a silent drop is an inconvenience rather than a
+critical failure — Mickael can observe logs. However, the absence of a user-facing error
+response will become a real usability problem as soon as real traffic flows, because the user
+has no signal to retry or report the issue.
+
+## Options Considered
+
+### Option A: Send a generic error response from the hub's except block (chosen)
+
+Catch exceptions from `agent.process()` and `dispatch_response()` separately. When
+`agent.process()` raises, send a generic error `Response` via `dispatch_response()`. When
+`dispatch_response()` raises, log the error (the response was computed but could not be
+delivered — no fallback is possible).
+
+```python
+async with pool.lock:
+    try:
+        response = await agent.process(msg, pool)
+    except Exception as exc:
+        log.exception("agent.process() raised for %s", routing_key)
+        error_response = Response(
+            content="Something went wrong. Please try again.",
+            metadata={"error": True},
+        )
+        try:
+            await self.dispatch_response(msg, error_response)
+        except Exception as dispatch_exc:
+            log.error("dispatch_response() also failed: %s", dispatch_exc)
+        continue
+
+    try:
+        await self.dispatch_response(msg, response)
+    except Exception as exc:
+        log.error("dispatch_response() failed for %s: %s", routing_key, exc)
+```
+
+- **Pros:** The user always receives a response, even when the agent raises unexpectedly.
+  The two failure modes (agent failure vs dispatch failure) are logged with distinct context.
+  Consistent with `SimpleAgent`'s own error-to-Response pattern.
+- **Cons:** The hub now sends a hard-coded English error string. If Lyra is expected to respond
+  in French, this string will be in the wrong language. Requires a small refactor of the `run()`
+  loop structure.
+
+### Option B: Keep the current silent drop; rely on logs and manual retry
+
+Retain the current `except Exception: log.exception(...)` pattern. Accept that the user will
+see no response on unexpected errors. Rely on Mickael observing logs.
+
+- **Pros:** Zero code change.
+- **Cons:** Silent drops are invisible to the user. In a Telegram conversation, the user will
+  wait indefinitely or assume the bot is broken. Even for a personal assistant, this creates
+  unnecessary friction.
+
+### Option C: Re-queue the message for retry
+
+On agent failure, re-put the message onto the bus for another processing attempt (up to N
+retries).
+
+- **Pros:** Transient failures (e.g., Claude CLI spawn race) are automatically recovered.
+- **Cons:** Infinite retry loops if the error is permanent (e.g., malformed message). Requires
+  a retry counter on `Message` or a separate retry queue. The Claude CLI subprocess may be
+  in an inconsistent state after an exception — retrying on the same pool could amplify the
+  problem. This complexity is not justified at Phase 1 scale.
+
+## Decision
+
+**Option A** is adopted.
+
+The hub run loop must send a user-facing error response when `agent.process()` raises
+unexpectedly, and must log `dispatch_response()` failures separately.
+
+### Implementation requirement
+
+`Hub.run()` must restructure the error handling as follows:
+
+1. Wrap `agent.process()` in its own `try/except`. On exception: log at `ERROR` level,
+   construct a `Response(content="Something went wrong. Please try again.", metadata={"error": True})`,
+   and attempt to dispatch it via `dispatch_response()`.
+2. Wrap the `dispatch_response()` call in its own `try/except`. On exception: log at `ERROR`
+   level with the routing key and exception, then `continue`.
+3. Remove the combined `try/except` that currently wraps both calls.
+
+The pre-flight adapter existence check (added in PR #36) may be retained as an early-exit
+optimisation but must not be treated as a substitute for the dispatch error handling.
+
+### Hardcoded error string language note
+
+The error string `"Something went wrong. Please try again."` is in English. `SimpleAgent`
+already uses the same string. For Phase 1 (single French-speaking user), this is a known
+inconsistency. Phase 2 should introduce a localised error response via the agent's system
+prompt or a per-adapter locale setting. This is deferred.
+
+## Consequences
+
+### Positive
+
+- The user always receives feedback when the agent fails unexpectedly.
+- The two failure modes (agent vs dispatch) are distinguishable in logs.
+- Consistent with `SimpleAgent`'s existing error-to-Response contract.
+
+### Negative
+
+- The error string is in English regardless of the user's language. Deferred to Phase 2.
+- The hub now constructs a `Response` directly — previously only agents created `Response`
+  objects. This is a minor coupling but acceptable given the hub already imports `Response`
+  for `dispatch_response`.
+
+### Neutral
+
+- Option C (retry) is deferred. If transient Claude CLI spawn failures become frequent, a
+  bounded retry in `CliPool.send()` (not in the hub) is the correct layer for it.
+- The pre-flight adapter check in `Hub.run()` is retained as an optimisation that prevents
+  spending LLM tokens when the adapter is provably absent at message arrival time.

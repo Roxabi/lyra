@@ -58,9 +58,7 @@ INIT_LINE = _ndjson(
 ASSISTANT_LINE = _ndjson(
     {
         "type": "assistant",
-        "message": {
-            "content": [{"type": "text", "text": "Hello from Claude"}]
-        },
+        "message": {"content": [{"type": "text", "text": "Hello from Claude"}]},
     }
 )
 RESULT_LINE = _ndjson(
@@ -134,9 +132,9 @@ class TestCliPoolSend:
         with patch(_PATCH_TARGET, new=AsyncMock(return_value=proc)):
             result = await pool.send("pool-1", "hello", DEFAULT_MODEL)
 
-        assert result.get("result") == "Hello from Claude"
-        assert result.get("session_id") == "sess-1"
-        assert "error" not in result
+        assert result.result == "Hello from Claude"
+        assert result.session_id == "sess-1"
+        assert result.ok
 
     async def test_send_respawns_dead_process(self) -> None:
         # First proc — dead (returncode set to 1)
@@ -156,7 +154,7 @@ class TestCliPoolSend:
         with patch(_PATCH_TARGET, new=AsyncMock(return_value=fresh_proc)):
             result = await pool.send("pool-1", "hello", DEFAULT_MODEL)
 
-        assert result.get("result") == "Hello from Claude"
+        assert result.result == "Hello from Claude"
 
     async def test_send_spawn_failure_returns_error(self) -> None:
         pool = CliPool()
@@ -167,8 +165,8 @@ class TestCliPoolSend:
         ):
             result = await pool.send("pool-1", "hello", DEFAULT_MODEL)
 
-        assert "error" in result
-        assert "Failed to spawn" in result["error"]
+        assert not result.ok
+        assert "Failed to spawn" in result.error
 
     async def test_send_model_config_mismatch_logs_warning(
         self, caplog: pytest.LogCaptureFixture
@@ -205,9 +203,7 @@ class TestCliPoolSend:
 
 class TestReadUntilResult:
     def _make_entry_with_proc(self, proc: MagicMock) -> _ProcessEntry:
-        return _ProcessEntry(
-            proc=proc, pool_id="pool-test", model_config=DEFAULT_MODEL
-        )
+        return _ProcessEntry(proc=proc, pool_id="pool-test", model_config=DEFAULT_MODEL)
 
     async def test_timeout(self) -> None:
         proc = MagicMock()
@@ -220,8 +216,8 @@ class TestReadUntilResult:
         entry = self._make_entry_with_proc(proc)
         result = await pool._read_until_result(entry)
 
-        assert "error" in result
-        assert "Timeout" in result["error"]
+        assert not result.ok
+        assert "Timeout" in result.error
 
     async def test_eof(self) -> None:
         proc = make_fake_proc([b""])  # immediate EOF
@@ -229,8 +225,8 @@ class TestReadUntilResult:
         entry = self._make_entry_with_proc(proc)
         result = await pool._read_until_result(entry)
 
-        assert "error" in result
-        assert "terminated" in result["error"].lower()
+        assert not result.ok
+        assert "terminated" in result.error.lower()
 
     async def test_error_max_turns(self) -> None:
         result_line = _ndjson(
@@ -248,9 +244,9 @@ class TestReadUntilResult:
         entry = self._make_entry_with_proc(proc)
         result = await pool._read_until_result(entry)
 
-        assert result.get("result") is not None
-        assert "warning" in result
-        warning = result["warning"].lower()
+        assert result.result is not None
+        assert result.warning != ""
+        warning = result.warning.lower()
         assert "truncated" in warning or "max turns" in warning
 
     async def test_error_other(self) -> None:
@@ -269,8 +265,8 @@ class TestReadUntilResult:
         entry = self._make_entry_with_proc(proc)
         result = await pool._read_until_result(entry)
 
-        assert "error" in result
-        assert "result" not in result
+        assert not result.ok
+        assert result.result == ""
 
     async def test_result_text_not_clobbered_by_empty_result(self) -> None:
         """If result event has empty 'result', earlier assistant text is preserved."""
@@ -289,7 +285,7 @@ class TestReadUntilResult:
         result = await pool._read_until_result(entry)
 
         # The assistant block text "Hello from Claude" must be preserved
-        assert result.get("result") == "Hello from Claude"
+        assert result.result == "Hello from Claude"
 
 
 # ---------------------------------------------------------------------------

@@ -56,8 +56,10 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
     hub.register_adapter(Platform.DISCORD, "main", dc_adapter)
     tg_key = RoutingKey(Platform.TELEGRAM, "main", "*")
     dc_key = RoutingKey(Platform.DISCORD, "main", "*")
-    hub.register_binding(Platform.TELEGRAM, "main", "*", "lyra", tg_key.to_pool_id())
-    hub.register_binding(Platform.DISCORD, "main", "*", "lyra", dc_key.to_pool_id())
+    hub.register_binding(
+        Platform.TELEGRAM, "main", "*", agent.name, tg_key.to_pool_id()
+    )
+    hub.register_binding(Platform.DISCORD, "main", "*", agent.name, dc_key.to_pool_id())
 
     stop = _stop if _stop is not None else asyncio.Event()
     if _stop is None:

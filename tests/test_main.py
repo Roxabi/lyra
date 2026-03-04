@@ -147,8 +147,8 @@ class TestHubWiring:
         tg_binding = hub.bindings.get(RoutingKey(Platform.TELEGRAM, "main", "*"))
         dc_binding = hub.bindings.get(RoutingKey(Platform.DISCORD, "main", "*"))
 
-        assert tg_binding is not None and tg_binding.agent_name == "lyra"
-        assert dc_binding is not None and dc_binding.agent_name == "lyra"
+        assert tg_binding is not None and tg_binding.agent_name == "lyra_default"
+        assert dc_binding is not None and dc_binding.agent_name == "lyra_default"
 
 
 # ---------------------------------------------------------------------------

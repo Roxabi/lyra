@@ -65,12 +65,13 @@ def load_agent_config(name: str, agents_dir: Path | None = None) -> Agent:
     """
     directory = agents_dir or _AGENTS_DIR
 
-    # validate name before path construction
-    if not re.match(r'^[a-zA-Z0-9_-]+$', name):
+    # Primary gate: only safe characters allowed in agent names
+    if not re.match(r"^[a-zA-Z0-9_-]+$", name):
         raise ValueError(f"Invalid agent name {name!r}: only [a-zA-Z0-9_-] allowed")
 
     path = directory / f"{name}.toml"
-    # Guard against path traversal
+    # Secondary gate (defence-in-depth): guard against symlinks or edge cases
+    # in path resolution even though the regex above makes traversal impossible.
     if not path.resolve().is_relative_to(directory.resolve()):
         raise ValueError(f"Agent name {name!r} escapes agents directory")
     if not path.exists():

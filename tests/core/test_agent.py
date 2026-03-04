@@ -76,9 +76,7 @@ system = "Hello."
         assert agent.model_config.max_turns == 10
         assert agent.model_config.tools == ()
 
-    def test_missing_agent_section_uses_name_as_namespace(
-        self, tmp_path: Path
-    ) -> None:
+    def test_missing_agent_section_uses_name_as_namespace(self, tmp_path: Path) -> None:
         toml_content = """
 [model]
 backend = "claude-cli"

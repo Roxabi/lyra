@@ -294,6 +294,8 @@ class TestRoutingKey:
         binding = hub.resolve_binding(msg)
         assert binding is not None
         assert binding.agent_name == "lyra"
+        # Per-user pool_id must be synthesised from the real user_id, not the wildcard
+        assert binding.pool_id == f"telegram:main:{msg.user_id}"
 
     def test_no_binding_returns_none(self) -> None:
         hub = Hub()
@@ -434,7 +436,5 @@ class TestAgentRegistryMiss:
             except asyncio.TimeoutError:
                 pass  # expected — run() never returns on its own
 
-        assert any(
-            "no agent registered" in r.message.lower() for r in caplog.records
-        )
+        assert any("no agent registered" in r.message.lower() for r in caplog.records)
         assert hub.bus.empty()

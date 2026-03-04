@@ -21,15 +21,42 @@ import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 from .agent import ModelConfig
 
 log = logging.getLogger(__name__)
 
+
+@dataclass
+class CliResult:
+    """Result from a CliPool.send() call.
+
+    Exactly one of `result` or `error` will be set (not both).
+    `warning` is set when the response was truncated (e.g. max_turns reached).
+    `session_id` is always present on success.
+    """
+
+    result: str = ""
+    session_id: str = ""
+    error: str = ""
+    warning: str = ""
+
+    @property
+    def ok(self) -> bool:
+        return not self.error
+
+
 # Explicit env allowlist — never forward secrets to the claude subprocess
 _SAFE_ENV_KEYS = {
-    "PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "USER", "LOGNAME", "SHELL"
+    "PATH",
+    "HOME",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "TMPDIR",
+    "USER",
+    "LOGNAME",
+    "SHELL",
 }
 
 
@@ -103,11 +130,11 @@ class CliPool:
         pool_id: str,
         message: str,
         model_config: ModelConfig,
-    ) -> dict[str, Any]:
+    ) -> CliResult:
         """Send a message to the persistent process for this pool.
 
         Spawns a new process if needed.
-        Returns dict with 'result' and 'session_id', or 'error' key.
+        Returns a CliResult. Check result.ok to distinguish success from error.
 
         Locking model:
           - pool.lock (hub layer): serialises all messages for one user session.
@@ -121,20 +148,26 @@ class CliPool:
         if entry is None or not entry.is_alive():
             entry = await self._spawn(pool_id, model_config)
             if entry is None:
-                return {"error": "Failed to spawn Claude CLI process"}
+                return CliResult(error="Failed to spawn Claude CLI process")
         elif entry.model_config != model_config:
             log.warning(
                 "[pool:%s] model_config mismatch — ignoring new config"
-                " (restart pool to apply)",
+                " (restart pool to apply). existing=%r requested=%r",
                 pool_id,
+                entry.model_config,
+                model_config,
             )
 
+        # Inner liveness re-check: the outer check above is an optimistic fast-path.
+        # The reaper can pop this entry between the outer check and lock acquisition
+        # (cooperative multitasking — any `await` is a yield point). Re-checking
+        # inside the lock ensures we detect a process killed by the reaper.
         async with entry._lock:
             if not entry.is_alive():
-                return {"error": "Process died before send"}
+                return CliResult(error="Process died before send")
             try:
                 result = await self._send_and_read(entry, message)
-                if "error" in result and "Timeout" in result.get("error", ""):
+                if not result.ok and "Timeout" in result.error:
                     await self._kill(pool_id)
                     return result
                 entry.turn_count += 1
@@ -143,7 +176,7 @@ class CliPool:
             except Exception as exc:
                 log.exception("[pool:%s] send failed: %s", pool_id, exc)
                 await self._kill(pool_id)
-                return {"error": f"Send failed: {type(exc).__name__}"}
+                return CliResult(error=f"Send failed: {type(exc).__name__}")
 
     async def reset(self, pool_id: str) -> None:
         """Kill the process for this pool. Next send() spawns a fresh one."""
@@ -159,11 +192,15 @@ class CliPool:
     ) -> list[str]:
         cmd = [
             "claude",
-            "--input-format", "stream-json",
-            "--output-format", "stream-json",
+            "--input-format",
+            "stream-json",
+            "--output-format",
+            "stream-json",
             "--verbose",
-            "--model", model_config.model,
-            "--max-turns", str(model_config.max_turns),
+            "--model",
+            model_config.model,
+            "--max-turns",
+            str(model_config.max_turns),
         ]
         if model_config.tools:
             cmd.extend(["--allowedTools", ",".join(model_config.tools)])
@@ -177,7 +214,9 @@ class CliPool:
         cmd = self._build_cmd(model_config)
         log.info(
             "[pool:%s] spawning: backend=%s model=%s",
-            pool_id, model_config.backend, model_config.model,
+            pool_id,
+            model_config.backend,
+            model_config.model,
         )
         log.debug("[pool:%s] cmd: %s", pool_id, " ".join(cmd))
 
@@ -201,12 +240,10 @@ class CliPool:
         log.info("[pool:%s] spawned (PID=%d)", pool_id, proc.pid)
         return entry
 
-    async def _send_and_read(
-        self, entry: _ProcessEntry, message: str
-    ) -> dict[str, Any]:
+    async def _send_and_read(self, entry: _ProcessEntry, message: str) -> CliResult:
         proc = entry.proc
         if proc.stdin is None:
-            return {"error": "Process stdin is None"}
+            return CliResult(error="Process stdin is None")
 
         payload = {
             "type": "user",
@@ -219,14 +256,15 @@ class CliPool:
 
         return await self._read_until_result(entry)
 
-    async def _read_until_result(self, entry: _ProcessEntry) -> dict[str, Any]:
+    async def _read_until_result(self, entry: _ProcessEntry) -> CliResult:
         proc = entry.proc
         if proc.stdout is None:
-            return {"error": "Process stdout is None"}
+            return CliResult(error="Process stdout is None")
 
         timeout = self._default_timeout
         session_id: str | None = None
-        result_text = ""
+        # Accumulate text across all assistant events (Finding #16: avoid overwrite)
+        result_parts: list[str] = []
 
         try:
             loop = asyncio.get_running_loop()
@@ -237,18 +275,18 @@ class CliPool:
                     log.warning(
                         "[pool:%s] deadline exceeded (%ds)", entry.pool_id, timeout
                     )
-                    return {"error": f"Timeout after {timeout}s"}
+                    return CliResult(error=f"Timeout after {timeout}s")
 
                 try:
                     raw = await asyncio.wait_for(
                         proc.stdout.readline(), timeout=remaining
                     )
                 except asyncio.TimeoutError:
-                    return {"error": f"Timeout after {timeout}s"}
+                    return CliResult(error=f"Timeout after {timeout}s")
 
                 if not raw:
                     log.warning("[pool:%s] stdout EOF (process died)", entry.pool_id)
-                    return {"error": "Process terminated unexpectedly"}
+                    return CliResult(error="Process terminated unexpectedly")
 
                 line = raw.decode().strip()
                 if not line:
@@ -271,8 +309,7 @@ class CliPool:
                 if msg_type == "assistant":
                     blocks = data.get("message", {}).get("content", [])
                     texts = [b["text"] for b in blocks if b.get("type") == "text"]
-                    if texts:
-                        result_text = "\n\n".join(texts)
+                    result_parts.extend(texts)
 
                 if msg_type == "result":
                     if not session_id:
@@ -280,7 +317,9 @@ class CliPool:
                     if session_id and entry.session_id != session_id:
                         entry.session_id = session_id
 
-                    result_text = data.get("result") or result_text
+                    # Use result event text if present, else fall back to
+                    # accumulated assistant parts (Finding #16)
+                    result_text = data.get("result") or "\n\n".join(result_parts)
                     log.info(
                         "[pool:%s] response: %d chars, %dms",
                         entry.pool_id,
@@ -291,18 +330,20 @@ class CliPool:
                     if data.get("is_error", False):
                         subtype = data.get("subtype", "")
                         if subtype == "error_max_turns" and result_text:
-                            return {
-                                "result": result_text,
-                                "session_id": session_id or "",
-                                "warning": "Response truncated (max turns reached)",
-                            }
-                        return {"error": result_text or "Unknown error from Claude"}
+                            return CliResult(
+                                result=result_text,
+                                session_id=session_id or "",
+                                warning="Response truncated (max turns reached)",
+                            )
+                        return CliResult(
+                            error=result_text or "Unknown error from Claude"
+                        )
 
-                    return {"result": result_text, "session_id": session_id or ""}
+                    return CliResult(result=result_text, session_id=session_id or "")
 
         except Exception as exc:
             log.exception("[pool:%s] read error: %s", entry.pool_id, exc)
-            return {"error": f"Read error: {type(exc).__name__}"}
+            return CliResult(error=f"Read error: {type(exc).__name__}")
 
     async def _kill(self, pool_id: str) -> None:
         entry = self._entries.pop(pool_id, None)

@@ -52,10 +52,12 @@ def _make_verifier(secret: str):
     If the configured secret is empty (default), all requests are rejected — this is
     the secure default when no secret is configured.
     """
+
     async def verify(request: Request) -> None:
         incoming = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
         if not secret or incoming != secret:
             raise HTTPException(status_code=401, detail="Unauthorized")
+
     return verify
 
 
@@ -93,6 +95,7 @@ class TelegramAdapter:
         self._dp: Any = None
 
         from aiogram import Dispatcher
+
         self._dp = Dispatcher()
         self._dp.message.register(self._on_message)
 
@@ -104,6 +107,7 @@ class TelegramAdapter:
         """Lazy aiogram Bot instance. Tests replace this with an AsyncMock."""
         if self._bot is None:
             from aiogram import Bot
+
             self._bot = Bot(token=self._token)
         return self._bot
 
@@ -126,6 +130,7 @@ class TelegramAdapter:
             if bot_id != self._bot_id:
                 raise HTTPException(status_code=404, detail="Not Found")
             from aiogram.types import Update
+
             body = await request.json()
             update = Update.model_validate(body)
             await self._dp.feed_update(self.bot, update)
@@ -146,7 +151,7 @@ class TelegramAdapter:
         if is_group and msg.entities:
             for entity in msg.entities:
                 if entity.type == "mention":
-                    slice_text = msg.text[entity.offset: entity.offset + entity.length]
+                    slice_text = msg.text[entity.offset : entity.offset + entity.length]
                     if slice_text == f"@{self._bot_username}":
                         is_mention = True
                         break

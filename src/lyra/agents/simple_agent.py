@@ -12,7 +12,7 @@ import logging
 from typing import Any
 
 from lyra.core.agent import Agent, AgentBase
-from lyra.core.cli_pool import CliPool
+from lyra.core.cli_pool import CliPool, CliResult
 from lyra.core.message import Message, MessageContent, Response, TextContent
 from lyra.core.pool import Pool
 
@@ -26,8 +26,14 @@ def _extract_text(msg: Message) -> str:
         return content
     if isinstance(content, TextContent):
         return content.text
-    # ImageContent / AudioContent — forward the URL as text for now
-    return getattr(content, "url", str(content))
+    # ImageContent / AudioContent — forward type + URL as text
+    # (Phase 2: multimodal via API)
+    url = getattr(content, "url", str(content))
+    caption = getattr(content, "caption", None)
+    # yields "image" or "audio"
+    content_type = type(content).__name__.replace("Content", "").lower()
+    suffix = f" — {caption}" if caption else ""
+    return f"[{content_type}: {url}]{suffix}"
 
 
 class SimpleAgent(AgentBase):
@@ -61,18 +67,17 @@ class SimpleAgent(AgentBase):
             len(text),
         )
 
-        result = await self._pool.send(pool.pool_id, text, model_cfg)
+        result: CliResult = await self._pool.send(pool.pool_id, text, model_cfg)
 
-        if "error" in result:
-            error_detail = result["error"]
+        if not result.ok:
             log.warning(
                 "[agent:%s][pool:%s] CLI error: %s",
                 self.name,
                 pool.pool_id,
-                error_detail,
+                result.error,
             )
             # Timeout gets a specific message; all other errors get a generic one
-            if "Timeout" in error_detail:
+            if "Timeout" in result.error:
                 user_msg = "Response timed out. Please try again."
             else:
                 user_msg = "Something went wrong. Please try again."
@@ -81,9 +86,16 @@ class SimpleAgent(AgentBase):
                 metadata={"error": True},
             )
 
-        reply = result.get("result", "")
-        meta: dict[str, Any] = {"session_id": result.get("session_id", "")}
-        if "warning" in result:
-            meta["warning"] = result["warning"]
+        reply = result.result
+        meta: dict[str, Any] = {"session_id": result.session_id}
+        if result.warning:
+            meta["warning"] = result.warning
+
+        if not reply:
+            log.warning(
+                "[agent:%s][pool:%s] empty reply from CLI",
+                self.name,
+                pool.pool_id,
+            )
 
         return Response(content=reply, metadata=meta)

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import collections
 import logging
+import time
 from dataclasses import dataclass
 from typing import NamedTuple, Protocol
 
+from .agent import AgentBase
 from .message import Message, Platform, Response
 from .pool import Pool
 
@@ -49,16 +52,35 @@ class Hub:
     """Central hub: bounded async bus + adapter registry + bindings + pools."""
 
     BUS_SIZE = 100
+    # Per-user sliding window: drop messages beyond this rate.
+    RATE_LIMIT = 20   # max messages per user per window
+    RATE_WINDOW = 60  # window size in seconds
 
-    def __init__(self, bus_size: int = BUS_SIZE) -> None:
+    def __init__(
+        self,
+        bus_size: int = BUS_SIZE,
+        rate_limit: int = RATE_LIMIT,
+        rate_window: int = RATE_WINDOW,
+    ) -> None:
         self.bus: asyncio.Queue[Message] = asyncio.Queue(maxsize=bus_size)
         self.adapter_registry: dict[tuple[Platform, str], ChannelAdapter] = {}
+        self.agent_registry: dict[str, AgentBase] = {}
         self.bindings: dict[RoutingKey, Binding] = {}
         self.pools: dict[str, Pool] = {}
+        self._rate_limit = rate_limit
+        self._rate_window = rate_window
+        # Sliding window: maps (platform, bot_id, user_id) → deque of timestamps
+        self._rate_timestamps: dict[
+            tuple[Platform, str, str], collections.deque[float]
+        ] = {}
 
     # ------------------------------------------------------------------
     # Adapter registry
     # ------------------------------------------------------------------
+
+    def register_agent(self, agent: AgentBase) -> None:
+        """Register an agent implementation by name."""
+        self.agent_registry[agent.name] = agent
 
     def register_adapter(
         self, platform: Platform, bot_id: str, adapter: ChannelAdapter
@@ -112,7 +134,17 @@ class Hub:
         if exact is not None:
             return exact
         wildcard = RoutingKey(msg.platform, msg.bot_id, "*")
-        return self.bindings.get(wildcard)
+        wildcard_binding = self.bindings.get(wildcard)
+        if wildcard_binding is not None:
+            # Synthesise a per-user pool_id from the real user_id so each user
+            # gets an isolated Pool (own lock, own subprocess, own conversation).
+            concrete_pool_id = RoutingKey(
+                msg.platform, msg.bot_id, msg.user_id
+            ).to_pool_id()
+            return Binding(
+                agent_name=wildcard_binding.agent_name, pool_id=concrete_pool_id
+            )
+        return None
 
     # ------------------------------------------------------------------
     # Pools
@@ -128,6 +160,28 @@ class Hub:
         return self.pools.setdefault(
             pool_id, Pool(pool_id=pool_id, agent_name=agent_name)
         )
+
+    # ------------------------------------------------------------------
+    # Rate limiting
+    # ------------------------------------------------------------------
+
+    def _is_rate_limited(self, msg: Message) -> bool:
+        """Return True if this user has exceeded the per-window message limit.
+
+        Uses a sliding window: tracks timestamps of recent messages and drops
+        any that arrive after RATE_LIMIT messages within RATE_WINDOW seconds.
+        """
+        key = (msg.platform, msg.bot_id, msg.user_id)
+        now = time.monotonic()
+        window_start = now - self._rate_window
+        timestamps = self._rate_timestamps.setdefault(key, collections.deque())
+        # Evict timestamps outside the current window
+        while timestamps and timestamps[0] < window_start:
+            timestamps.popleft()
+        if len(timestamps) >= self._rate_limit:
+            return True
+        timestamps.append(now)
+        return False
 
     # ------------------------------------------------------------------
     # Dispatch
@@ -152,6 +206,12 @@ class Hub:
         while True:
             msg = await self.bus.get()
             try:
+                if self._is_rate_limited(msg):
+                    log.warning(
+                        "rate limit exceeded for %s — message dropped",
+                        RoutingKey(msg.platform, msg.bot_id, msg.user_id),
+                    )
+                    continue
                 binding = self.resolve_binding(msg)
                 if binding is None:
                     log.warning(
@@ -160,13 +220,39 @@ class Hub:
                     )
                     continue
                 pool = self.get_or_create_pool(binding.pool_id, binding.agent_name)
+                agent = self.agent_registry.get(binding.agent_name)
+                if agent is None:
+                    log.warning(
+                        "no agent registered for %r (routing %s) — message dropped",
+                        binding.agent_name,
+                        RoutingKey(msg.platform, msg.bot_id, msg.user_id),
+                    )
+                    continue
+                # Fail fast — check adapter exists before spending LLM tokens
+                if (msg.platform, msg.bot_id) not in self.adapter_registry:
+                    log.error(
+                        "no adapter registered for (%s, %s) — response dropped",
+                        msg.platform,
+                        msg.bot_id,
+                    )
+                    continue
                 async with pool.lock:
                     try:
-                        # TODO(Slice2): replace pass with agent.process(msg, pool)
-                        pass
+                        response = await agent.process(msg, pool)
                     except Exception as exc:
                         log.exception(
-                            "agent.process() failed for %s: %s",
+                            "agent.process() raised for %s: %s",
+                            RoutingKey(msg.platform, msg.bot_id, msg.user_id),
+                            exc,
+                        )
+                        response = Response(
+                            content="Something went wrong. Please try again."
+                        )
+                    try:
+                        await self.dispatch_response(msg, response)
+                    except Exception as exc:
+                        log.exception(
+                            "dispatch_response() failed for %s: %s",
                             RoutingKey(msg.platform, msg.bot_id, msg.user_id),
                             exc,
                         )

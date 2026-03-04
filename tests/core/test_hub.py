@@ -294,6 +294,8 @@ class TestRoutingKey:
         binding = hub.resolve_binding(msg)
         assert binding is not None
         assert binding.agent_name == "lyra"
+        # Per-user pool_id must be synthesised from the real user_id, not the wildcard
+        assert binding.pool_id == f"telegram:main:{msg.user_id}"
 
     def test_no_binding_returns_none(self) -> None:
         hub = Hub()
@@ -407,3 +409,68 @@ class TestPoolCreation:
         p1 = hub.get_or_create_pool("telegram:main:alice", "lyra")
         p2 = hub.get_or_create_pool("telegram:main:alice", "lyra")
         assert p1 is p2
+
+
+# ---------------------------------------------------------------------------
+# TestAgentRegistryMiss
+# ---------------------------------------------------------------------------
+
+
+class TestAgentRegistryMiss:
+    """Hub run loop drops message when agent is in bindings but not registered."""
+
+    async def test_message_dropped_when_agent_not_registered(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        hub = Hub()
+        # Register a binding for "ghost" but do NOT call hub.register_agent()
+        hub.register_binding(
+            Platform.TELEGRAM, "main", "alice", "ghost", "telegram:main:alice"
+        )
+        msg = make_message(platform=Platform.TELEGRAM, bot_id="main", user_id="alice")
+        await hub.bus.put(msg)
+
+        with caplog.at_level(logging.WARNING, logger="lyra.core.hub"):
+            try:
+                await asyncio.wait_for(hub.run(), timeout=0.2)
+            except asyncio.TimeoutError:
+                pass  # expected — run() never returns on its own
+
+        assert any("no agent registered" in r.message.lower() for r in caplog.records)
+        assert hub.bus.empty()
+
+
+# ---------------------------------------------------------------------------
+# TestMissingAdapterDrop
+# ---------------------------------------------------------------------------
+
+
+class TestMissingAdapterDrop:
+    """Hub run loop drops message (before calling LLM) when adapter is missing."""
+
+    async def test_message_dropped_when_adapter_not_registered(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        hub = Hub()
+
+        class DummyAgent(AgentBase):
+            async def process(self, msg: Message, pool: Pool) -> Response:
+                raise AssertionError("process() must not be called without adapter")
+
+        config = Agent(name="lyra", system_prompt="", memory_namespace="lyra")
+        hub.register_agent(DummyAgent(config))
+        hub.register_binding(
+            Platform.TELEGRAM, "main", "alice", "lyra", "telegram:main:alice"
+        )
+        # Deliberately do NOT register an adapter for (TELEGRAM, "main")
+        msg = make_message(platform=Platform.TELEGRAM, bot_id="main", user_id="alice")
+        await hub.bus.put(msg)
+
+        with caplog.at_level(logging.ERROR, logger="lyra.core.hub"):
+            try:
+                await asyncio.wait_for(hub.run(), timeout=0.2)
+            except asyncio.TimeoutError:
+                pass  # expected — run() never returns on its own
+
+        assert any("no adapter registered" in r.message.lower() for r in caplog.records)
+        assert hub.bus.empty()

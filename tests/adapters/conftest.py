@@ -5,6 +5,7 @@ httpx 0.28 requires absolute URLs for cookie extraction (urllib.request.Request
 raises ValueError on relative URLs). Since ASGI tests don't need cookie jar
 functionality, we skip extraction when the request URL is relative.
 """
+
 from __future__ import annotations
 
 import httpx

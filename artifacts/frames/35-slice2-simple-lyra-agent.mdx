@@ -1,0 +1,86 @@
+---
+title: SimpleLyraAgent — wire hub to Claude CLI via per-agent TOML config
+issue: 35
+status: approved
+tier: S-small
+date: 2026-03-04
+---
+
+## Problem
+
+The Lyra hub's run loop had a `pass` placeholder where `agent.process(msg, pool)` should be
+called. The bus consumed messages, resolved bindings, acquired pool locks — and then did nothing.
+No concrete `AgentBase` implementation existed.
+
+Two sub-problems were entangled:
+
+1. **No concrete agent** — the `AgentBase` ABC had no implementation to call.
+2. **No model config** — if we wired an agent, which model would it use? Hardcoding
+   `"claude-sonnet-4-5"` in Python source would block the future goal of intelligent
+   model routing (SLM-based selection, local vs cloud fallback).
+
+## Why it matters
+
+Without Slice 2, Lyra is a bus that goes nowhere. Every message sent from Telegram or Discord
+enters the hub, gets routed to a pool — and is silently dropped. The hub is a skeleton.
+
+## How we got here
+
+The decision path was not linear. It came out of a 12-hour session that went:
+
+1. **Research phase** — 7 parallel agents scraped best practices on agent harness, task
+   decomposition, ReAct, cognitive loops, multi-agent orchestration, memory levels.
+   Output: 27-chunk TTS vocal + 2500-line scientific `.md`.
+
+2. **Roast phase** — the document was critiqued hard. Verdict: "bon étudiant qui a bien lu
+   la doc" — good synthesis, zero original contribution, no MVP, no benchmarks.
+   The strongest critique: "why not just LangGraph + Mem0 + Prometheus + SQLite?"
+
+3. **Pivot** — the honest answer to the roast is: Lyra is *personal infrastructure*, not
+   a research paper. The real bottleneck is the `pass` in hub.py. Stop writing docs.
+   Write the 60 lines of `SimpleLyraAgent`.
+
+4. **Backend choice** — initial proposal was direct `anthropic.AsyncAnthropic()` API calls.
+   Mickael corrected: use the **Claude Code subscription** via the `claude` CLI
+   (stream-json protocol). Same pattern as 2ndBrain's proven `claude_pool.py`.
+   Rationale: no extra API costs, persistent process pool avoids Node.js startup overhead,
+   battle-tested in production.
+
+5. **Config design** — `model` and `backend` must be in a **per-agent TOML file**, not
+   hardcoded. One file per agent (`src/lyra/agents/<name>.toml`) is the single source of
+   truth. Future: a model-selector SLM can override the TOML at runtime based on task
+   complexity, latency budget, or cost target.
+
+## Constraints
+
+- **No new dependencies** — `tomllib` is stdlib (Python 3.11+). `CliPool` reuses the
+  proven 2ndBrain pattern. No LangGraph, no Ollama client yet.
+- **Per-agent isolation** — one TOML per agent. Changing `lyra_default.toml` doesn't
+  affect future agents (`researcher.toml`, `coder.toml`, etc.).
+- **Hub stays clean** — agent logic never bleeds into hub.py. Hub only calls
+  `agent.process(msg, pool)` and dispatches the response.
+- **Subscription, not API** — `claude` CLI subprocess, `--input-format stream-json`,
+  stdin/stdout NDJSON. CLAUDECODE env var stripped to allow nested sessions.
+
+## What was built
+
+| File | Role |
+|------|------|
+| `core/agent.py` | `ModelConfig` dataclass + `load_agent_config(name)` |
+| `agents/lyra_default.toml` | First agent config — claude-sonnet-4-5, system prompt |
+| `core/cli_pool.py` | Persistent Claude CLI pool keyed by `pool_id: str` |
+| `agents/simple_agent.py` | `SimpleAgent(AgentBase)` — routes via CliPool |
+| `agents/__init__.py` | Exports |
+| `core/hub.py` | `agent_registry`, `register_agent()`, `pass` → real call |
+
+## Future evolution (not in scope)
+
+- **Ollama backend** — add `backend = "ollama"` support in `CliPool` (HTTP call to
+  Ollama FastAPI on Machine 2).
+- **SLM model selector** — small model (~1-3B) classifies task complexity → overrides
+  `ModelConfig.model` at runtime before `CliPool.send()`.
+- **Session persistence** — save `session_id` per pool_id so conversations survive
+  process restarts (same pattern as 2ndBrain's `SessionPersistence`).
+- **System prompt injection** — pass `Agent.system_prompt` to the CLI process
+  (currently relies on default Claude behavior; `--system-prompt` flag or NDJSON
+  system message needed).

@@ -1,0 +1,199 @@
+---
+title: "ADR-004: CliPool cwd resolution strategy and AgentBase constructor type annotation"
+description: Document the path-depth fragility of _LYRA_ROOT in cli_pool.py and the incorrect AgentBase.__class__ annotation in SimpleAgent.__init__, and record the accepted resolution for each.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+PR #36 (Slice 2, issue #35) introduces `CliPool`, `AgentBase`, and `SimpleAgent` — the first
+concrete wiring of the hub to the Claude CLI subprocess. Two implementation-level issues surface
+that are not captured in ADR-001 through ADR-003:
+
+### Issue 1 — `_LYRA_ROOT` path resolution by ancestor count
+
+`cli_pool.py` computes the project root as:
+
+```python
+_LYRA_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent
+```
+
+`__file__` is `src/lyra/core/cli_pool.py`. Counting parents:
+- `.parent` → `src/lyra/core/`
+- `.parent.parent` → `src/lyra/`
+- `.parent.parent.parent` → `src/`
+- `.parent.parent.parent.parent` → project root
+- `.parent.parent.parent.parent.parent` → **parent of the project root** (one level too high
+  if the package is installed as an editable install, or wrong if installed into a venv)
+
+The count is off by one for the current layout (`src/lyra/core/cli_pool.py` is 3 parents from
+`src/`, 4 parents from the project root). It resolves to the wrong directory even in the
+current dev setup. Additionally, the parent-chain count is fragile: any refactor that moves
+`cli_pool.py` by one directory level silently breaks the subprocess cwd without a test failure
+or startup error — the subprocess is spawned in the wrong directory, and the Claude CLI may
+behave incorrectly or fail to find configuration files.
+
+This pattern was identified in the 2ndBrain codebase from which `CliPool` was adapted. It was
+preserved during the adaptation.
+
+### Issue 2 — `AgentBase.__class__` constructor annotation in `SimpleAgent`
+
+`SimpleAgent.__init__` declares:
+
+```python
+def __init__(self, config: AgentBase.__class__, cli_pool: CliPool) -> None:  # type: ignore[override]
+    super().__init__(config)  # type: ignore[arg-type]
+```
+
+`AgentBase.__class__` is `type[AgentBase]` — the metaclass of `AgentBase`, not `Agent`. The
+correct type for `config` is `Agent` (the frozen dataclass defined in `core/agent.py`). The
+two `# type: ignore` suppression comments confirm that pyright rejects this annotation. The
+annotation provides no type safety and misleads the reader into thinking `config` accepts a
+class object rather than a config instance.
+
+## Options Considered
+
+### Option A: Retain parent-chain count; annotate with a comment
+
+Keep `_LYRA_ROOT` as-is, add a comment with the explicit directory path being computed.
+Fix the off-by-one by reducing the chain to `.parent.parent.parent.parent`.
+
+- **Pros:** Minimal change.
+- **Cons:** The count remains fragile across refactors. A comment does not prevent silent
+  breakage when `cli_pool.py` is moved.
+
+### Option B: Resolve root via `importlib.resources` or `pyproject.toml` anchor (chosen)
+
+Replace the parent-chain with an anchor-based resolution. Two sub-options:
+
+**B1 — `pyproject.toml` anchor:**
+
+```python
+def _find_project_root() -> Path:
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "pyproject.toml").exists():
+            return parent
+    raise RuntimeError("Could not locate project root (no pyproject.toml found in ancestors)")
+
+_LYRA_ROOT = _find_project_root()
+```
+
+This is robust to file moves, editable installs, and nested monorepos (stops at the first
+`pyproject.toml` ancestor). It fails loudly at startup rather than silently using the wrong
+directory.
+
+**B2 — `importlib.metadata` package root:**
+
+Use `importlib.resources` to locate the installed package root. More correct for production
+installs; more complex for the dev case where the subprocess cwd is the editable checkout root.
+
+- **Pros (B1):** Self-documenting anchor. Fails loudly. One function, no external imports.
+  Works identically in editable installs and production installs (assuming `pyproject.toml` is
+  at the repo root, which is true for Lyra).
+- **Cons (B1):** Adds a function call at import time. Does not work if `pyproject.toml` is
+  absent (acceptable — Lyra always has one).
+
+### Option C: Pass `cwd` as a constructor argument to `CliPool`
+
+Remove `_LYRA_ROOT` entirely. Let the caller pass `cwd: Path` to `CliPool.__init__`, defaulting
+to `Path.cwd()` or the resolved root from Option B.
+
+- **Pros:** Fully testable without filesystem assumptions. The cwd concern is separated from
+  the module-level constant.
+- **Cons:** Slightly more wiring at startup. `__main__.py` must supply the project root, which
+  it computes the same way Option B does. Pushes the problem up one level without eliminating it.
+
+For the `AgentBase.__class__` annotation:
+
+### Option X: Fix annotation to `Agent`, remove `# type: ignore` (chosen)
+
+```python
+from lyra.core.agent import Agent
+
+def __init__(self, config: Agent, cli_pool: CliPool) -> None:
+    super().__init__(config)
+    self._pool = cli_pool
+```
+
+- **Pros:** Type-correct. No suppressions. `AgentBase.__init__` already expects `Agent`.
+- **Cons:** None. The annotation was incorrect; fixing it is non-breaking.
+
+### Option Y: Widen `AgentBase.__init__` to accept a Protocol
+
+Define a `AgentConfig` Protocol instead of the concrete `Agent` dataclass, making the base
+class independent of the concrete config type.
+
+- **Pros:** More extensible if future agent types need different config shapes.
+- **Cons:** Premature abstraction at Phase 1 scale. `Agent` is the only config type.
+  Protocol-based config polymorphism belongs in Phase 2 when a second config shape exists.
+
+## Decision
+
+**Option B1** is adopted for `_LYRA_ROOT`. **Option X** is adopted for the annotation.
+
+### Requirement 1 — `_LYRA_ROOT` resolution
+
+`_LYRA_ROOT` must be computed via an anchor file search, not by a fixed parent-chain count:
+
+```python
+def _find_project_root() -> Path:
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "pyproject.toml").exists():
+            return parent
+    raise RuntimeError(
+        "Could not locate project root (no pyproject.toml found in ancestors). "
+        "Run Lyra from within the repository checkout."
+    )
+
+_LYRA_ROOT = _find_project_root()
+```
+
+The parent-chain pattern (`.parent.parent...`) is prohibited in any path resolution that must
+survive file moves or installation layout changes. If the result of the anchor search must be
+validated, add an assertion that `_LYRA_ROOT / "src" / "lyra"` exists before using it as cwd.
+
+The current off-by-one (five `.parent` traversals for a path that is four levels deep) must
+also be corrected regardless of which option is adopted.
+
+### Requirement 2 — `SimpleAgent` constructor annotation
+
+`SimpleAgent.__init__` must annotate `config` as `Agent`, not `AgentBase.__class__`. Both
+`# type: ignore` suppressions must be removed. The signature becomes:
+
+```python
+from lyra.core.agent import Agent, AgentBase
+
+class SimpleAgent(AgentBase):
+    def __init__(self, config: Agent, cli_pool: CliPool) -> None:
+        super().__init__(config)
+        self._pool = cli_pool
+```
+
+## Consequences
+
+### Positive
+
+- `_LYRA_ROOT` resolution is robust across editable installs, production installs, and file
+  moves. Failures are immediate and explicit at import time rather than silent at subprocess
+  spawn time.
+- The off-by-one is corrected; the Claude CLI subprocess runs in the correct project root.
+- `SimpleAgent.__init__` is type-correct; pyright accepts it without suppressions; readers
+  understand that `config` is an `Agent` instance.
+
+### Negative
+
+- `_find_project_root()` adds a filesystem walk at import time (bounded: stops at the first
+  `pyproject.toml`, typically 3–5 levels). Negligible at startup.
+- Correcting the annotation is a one-line change with no runtime impact.
+
+### Neutral
+
+- Option C (cwd as constructor argument) is a valid future refactor if `CliPool` needs to
+  support multiple project roots (e.g., multi-tenant installs). It is not needed in Phase 1.
+- The `Agent` dataclass remains the single config type for Phase 1. A Protocol-based approach
+  is deferred to Phase 2 per the architecture roadmap.

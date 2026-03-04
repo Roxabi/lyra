@@ -1,0 +1,95 @@
+---
+title: "ADR-008: Phase 1 memory scope — levels 0 + 3 only"
+description: Reduce Phase 1 memory implementation to working memory and semantic search. Defer session, episodic, and procedural layers until empirically needed.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+The full memory architecture defines 5 levels:
+
+| Level | Name | Nature |
+|-------|------|--------|
+| 0 | Working | Active context window — managed by the LLM |
+| 1 | Session | Multi-turn state per pool (`asyncio.Lock`) |
+| 2 | Episodic | Dated Markdown files — immutable, auditable |
+| 3 | Semantic | SQLite + BM25 + embeddings — hybrid search |
+| 4 | Procedural | Learned patterns, preferences — stored in SQLite |
+
+All 5 levels are documented in `ARCHITECTURE.md` and provide a coherent long-term model. The question is: which levels must be built in Phase 1 (hub + Telegram + cloud LLM MVP) and which can be deferred safely?
+
+Two external data points shaped this decision:
+
+**1. Polymarket agent cost reduction (lunarresearcher, 2026)**
+A production research agent reduced token usage by 67% (8,200 → 2,700 tokens/request, $73 → $24/day) by switching from full context loaded on every request to a 2-level system: a critical bootstrap always in context + semantic search loaded on demand. This closely matches levels 0 + 3.
+
+**2. Claude prompt caching dynamics**
+Effective prompt caching requires static content to precede dynamic content in the prompt. Loading session state (level 1) or episodic files (level 2) into the system prompt on every turn increases cache invalidation and undermines caching efficiency. Levels 0 + 3 compose naturally with caching: level 0 is the live context window, level 3 is injected as a retrieved block that can be cached when stable.
+
+Phase 1 has one user (the operator), low message volume, and no measured baseline. Building 5 memory layers without a traffic baseline risks over-engineering a system that field data does not yet justify.
+
+## Options Considered
+
+### Option A: Implement all 5 levels in Phase 1
+
+Build the full memory stack before production traffic.
+
+- **Pros:** Complete system from day one. No refactoring needed in Phase 2.
+- **Cons:** Level 1 (session state management), level 2 (Markdown log rotation and indexing), and level 4 (consolidation engine, pattern extraction) are each non-trivial subsystems. Estimated cost: 2–4 weeks before any Telegram message is answered. Risk of building complexity that the actual usage pattern does not justify.
+
+### Option B: Levels 0 + 3 only, add others when needed (chosen)
+
+Build working memory (LLM context window) and semantic memory (SQLite + BM25 + embeddings). Defer levels 1, 2, 4 until a specific, measurable problem requires them.
+
+- **Pros:** Matches Polymarket field data. Composes with prompt caching. Unblocks Phase 1 MVP delivery. Each deferred level has a clear trigger condition.
+- **Cons:** If session state proves necessary early (e.g., multi-step commands that persist across messages), level 1 must be retrofitted.
+
+### Option C: Levels 0 + 1 + 3 (add session from the start)
+
+Add level 1 alongside levels 0 and 3 because multi-turn conversation state is immediately useful.
+
+- **Pros:** Session handling is the most immediately practical level.
+- **Cons:** Session state per pool already exists implicitly in the conversation history (level 0). Level 1 adds persistence across reconnects — a real but non-urgent need. Deferring is low risk: adding `session_state: dict` to `Pool` is a one-line change with no refactoring.
+
+## Decision
+
+**Option B** is adopted.
+
+Phase 1 implements levels 0 and 3 only.
+
+**Level 0 (working memory):** Managed entirely by the LLM context window. No Lyra code required — `Pool.history` holds the message list that the agent passes to the LLM.
+
+**Level 3 (semantic memory):** SQLite + `aiosqlite` for async access, `rank-bm25` for keyword search, `sqlite-vec` for vector similarity. Hybrid BM25 + cosine search at query time. Mandatory `normalized_url` and `resolved_url` indexed columns for O(1) URL deduplication (lesson from 2ndBrain #129).
+
+**Trigger conditions for deferred levels:**
+
+| Level | Trigger |
+|-------|---------|
+| 1 — Session | A multi-step command (e.g., a form, a workflow) requires state that persists between messages and cannot be expressed as conversational context. |
+| 2 — Episodic | Audit requirements emerge (e.g., LegalTech use case requires immutable action log) or the operator explicitly wants searchable conversation history by date. |
+| 4 — Procedural | Retrieval quality degrades despite tuned semantic search, suggesting the system needs to learn and cache operator-specific patterns explicitly. |
+
+Prompt caching is treated as a cross-cutting optimization at levels 0 and 3: static content (system prompt, retrieved facts) is placed before dynamic content (conversation history) in every LLM call.
+
+## Consequences
+
+### Positive
+
+- Phase 1 MVP is unblocked. Semantic search covers the primary recall use case.
+- No consolidation engine, no Markdown rotation, no pattern extraction in Phase 1 scope.
+- Prompt caching composability preserved: level 3 retrieval results can be placed in a stable prefix block.
+- Adding level 1 later is a one-line `Pool` change — `session_state: dict = field(default_factory=dict)`. No architectural refactoring.
+
+### Negative
+
+- Multi-turn stateful commands (e.g., a wizard that persists state across messages) are not natively supported until level 1 is added. Workaround: encode transient state in the conversation history.
+- No immutable audit trail in Phase 1. Acceptable — personal use, single operator.
+- Procedural memory (level 4) cannot be added as a "learned preference" — it requires explicit user-driven input via conversational context or manual MEMORY.md entries.
+
+### Neutral
+
+- ARCHITECTURE.md documents all 5 levels as the long-term target. This ADR does not change that target — it gates the implementation schedule.
+- The 5-level taxonomy remains the canonical reference; levels 1, 2, 4 are "planned" not "rejected".

@@ -1,0 +1,142 @@
+---
+title: "ADR-007: ModelConfig mismatch handling in CliPool — silent ignore vs restart enforcement"
+description: Document the behaviour when a send() call supplies a ModelConfig that differs from the one used to spawn the existing process, and record the accepted resolution.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+`CliPool.send()` in PR #36 contains the following branch:
+
+```python
+elif entry.model_config != model_config:
+    log.warning(
+        "[pool:%s] model_config mismatch — ignoring new config"
+        " (restart pool to apply)",
+        pool_id,
+    )
+```
+
+When a `send()` call provides a `ModelConfig` that differs from the `ModelConfig` used to
+spawn the existing `_ProcessEntry`, the new config is silently discarded and the message is
+processed by the existing subprocess (with the original model). The caller receives no
+indication that the requested model was not used.
+
+This behaviour arises from the current single-agent, single-config architecture: `SimpleAgent`
+always passes `self.config.model_config` — a constant loaded from `lyra_default.toml` at
+startup. In Phase 1, a mismatch can only occur if:
+
+1. The TOML file is hot-reloaded (not implemented), or
+2. Two `SimpleAgent` instances with different `ModelConfig` values are registered and both
+   route messages through the same `pool_id`.
+
+Case 2 is theoretically possible because `CliPool` is shared across all `SimpleAgent`
+instances. If agent A spawns a subprocess for `pool_id X` with model `claude-sonnet-4-5`, and
+agent B later sends to `pool_id X` with model `claude-opus-4-5`, the warning is logged and
+agent B's config is discarded. The user receives a response from the wrong model with no
+indication.
+
+The docstring in `CliPool.send()` states: "Currently redundant for single-agent use
+(pool.lock is held by the hub when send() is called), but required if multiple agents ever
+share a `CliPool` entry keyed by the same pool_id." This acknowledges that the scenario is
+currently impossible, but the warning path exists for future safety.
+
+The ARCHITECTURE.md vision (Phase 2) includes a "SLM-based model selector" that overrides
+`ModelConfig` at runtime. When that is implemented, mismatches will become routine — not
+exceptional. The silent-ignore strategy will produce invisible model substitution, which is
+difficult to debug and audit.
+
+## Options Considered
+
+### Option A: Retain silent ignore with warning log (current, Phase 1) (chosen for Phase 1)
+
+Keep the current behaviour: log `WARNING`, continue with the existing config.
+
+- **Pros:** Zero code change. The scenario is currently impossible in Phase 1 (single agent,
+  constant config). The warning is visible in logs.
+- **Cons:** A mismatch in Phase 2 (model selector, hot reload) will be silently swallowed.
+  The caller cannot detect that the wrong model was used. The `Response.metadata` does not
+  include which model actually processed the message.
+
+### Option B: Kill and respawn the subprocess on config mismatch (Phase 2 target)
+
+When `entry.model_config != model_config`, kill the existing subprocess, spawn a fresh one
+with the new config, and send the message. This is equivalent to a `reset()` call followed
+by a `send()` with the new config.
+
+- **Pros:** The requested model is always used. Config changes take effect immediately.
+  No silent substitution.
+- **Cons:** Kills the existing Claude CLI subprocess, losing its session history (`session_id`).
+  A 300s LLM call in progress on the same subprocess would be interrupted (but `entry._lock`
+  prevents this — the mismatch check occurs before `async with entry._lock`, so an in-flight
+  call holds the lock and the respawn must wait). Still, session continuity is lost on every
+  config change. Appropriate for a model selector that changes config per-message, but
+  inappropriate for a persistent conversation where session_id continuity matters.
+
+### Option C: Include actual model in Response metadata and reject mismatches at registration
+
+Prevent the mismatch at registration time: `hub.register_agent()` checks that no two agents
+assign the same `pool_id` with different `ModelConfig` values. Include `actual_model` in
+`Response.metadata` so callers can detect substitution.
+
+- **Pros:** Mismatch is caught at startup, not at message dispatch time. Response metadata
+  enables auditing.
+- **Cons:** Pool IDs are not known at agent registration time — they are created dynamically
+  by `get_or_create_pool()`. The registration-time check cannot enforce the invariant without
+  coupling agent registration to pool creation. Response metadata change is a cross-cutting
+  concern.
+
+## Decision
+
+**Option A** is adopted for Phase 1 with a documented Phase 2 requirement.
+
+Rationale:
+
+- In Phase 1, a `ModelConfig` mismatch is architecturally impossible: there is one agent
+  (`SimpleAgent`), one TOML config, and the config is loaded once at startup.
+- The warning log is sufficient for Phase 1 observability (Mickael reads logs).
+- Option B is the correct Phase 2 strategy when the model selector SLM is introduced, but it
+  requires a decision about session continuity (should a model change reset the conversation?).
+  That decision belongs to Phase 2, not Phase 1.
+
+### Phase 2 requirement (gate: model selector SLM introduction)
+
+Before the SLM-based model selector (ARCHITECTURE.md Phase 2) overrides `ModelConfig` at
+runtime, `CliPool.send()` must be updated to:
+
+1. Treat a `ModelConfig` mismatch as a process respawn trigger (Option B), OR
+2. Return an error to the caller if the session must be preserved, with a user-facing message
+   explaining that the session must be reset to change models.
+
+The choice between these two sub-options depends on whether session continuity is preserved
+across model changes — a Phase 2 architectural decision.
+
+### Observability improvement (Phase 1, non-blocking)
+
+The `Response.metadata` returned by `SimpleAgent.process()` currently includes `session_id`.
+It should also include `model` (the model identifier from `ModelConfig`) so that callers and
+tests can verify which model processed each message. This is a low-effort improvement that
+does not require a mismatch resolution change.
+
+## Consequences
+
+### Positive
+
+- Phase 1 delivery is unblocked. No code change required.
+- The mismatch path is explicitly documented rather than being an obscure implementation detail.
+- The Phase 2 requirement is recorded before the model selector is built.
+
+### Negative
+
+- A mismatch in Phase 2 (without implementing Option B) will produce silent model substitution.
+  This is mitigated by the gate condition above.
+
+### Neutral
+
+- The `entry._lock` prevents a concurrent `send()` from interfering with an in-flight
+  subprocess communication during a hypothetical respawn. The locking model is already
+  correct for Option B when it is implemented.
+- `ModelConfig` is a frozen dataclass — equality comparison via `!=` is correct and structural.

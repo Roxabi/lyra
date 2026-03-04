@@ -3,6 +3,11 @@
   "pages": [
     "001-routing-key-platform-bot-id-user-id",
     "002-hub-impl-contracts-dispatch-pool-deprecation",
-    "003-telegram-webhook-dispatch-strategy"
+    "003-telegram-webhook-dispatch-strategy",
+    "004-cli-pool-cwd-resolution-and-agent-type-annotation",
+    "005-wildcard-binding-concurrency-and-per-user-pools",
+    "006-hub-run-loop-error-response-gap",
+    "007-model-config-mismatch-silent-ignore",
+    "008-phase1-memory-scope"
   ]
 }

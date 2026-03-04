@@ -85,10 +85,7 @@ class DiscordAdapter(discord.Client):
         Security: trust is always 'user' via Message.from_adapter().
         Never logs the bot token.
         """
-        is_mention = (
-            self._bot_user is not None
-            and self._bot_user in message.mentions
-        )
+        is_mention = self._bot_user is not None and self._bot_user in message.mentions
 
         # Strip @mention prefix so content reaches the agent clean
         content = message.content

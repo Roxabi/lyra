@@ -1,0 +1,283 @@
+---
+title: "Plan: Connect Telegram + Discord adapters to Lyra hub (real traffic)"
+issue: 15
+spec: artifacts/specs/15-telegram-discord-hub-adapters.mdx
+complexity: 7/10
+tier: F-full
+generated: 2026-03-04
+status: completed
+---
+
+## Summary
+
+Shape-B routing model (`RoutingKey(platform, bot_id, user_id)` + typed `PlatformContext`) wired
+to Telegram (aiogram v3 webhook) and Discord (discord.py v2 Gateway) adapters, running as
+co-routines in a single asyncio event loop launched via `python -m lyra`. All 4 slices
+implemented and green (103 tests passing).
+
+> **Note:** This plan is retroactive — implementation was completed before the artifact was
+> written. All tasks reflect the actual state of the codebase.
+
+## Bootstrap Context
+
+From `artifacts/analyses/15-telegram-discord-hub-adapters.mdx`:
+- Reference benchmarks: OpenClaw (session key pattern), Vercel AI SDK (two-tier message model),
+  Chat SDK (adapter input/output handler patterns for Telegram + Discord)
+- Shape B selected: typed routing key encodes full attribution; no string parsing; additive for
+  future platforms
+- `dispatch_response` switches to `adapter_registry[(platform, bot_id)]` in the same commit as
+  `RoutingKey` — no valid intermediate state
+- `handle_signals=False` mandatory when aiogram runs inside `asyncio.gather()`
+
+## Agents
+
+| Agent | Task count | Files |
+|-------|-----------|-------|
+| backend-dev | 10 | `message.py`, `hub.py`, `adapters/telegram.py`, `adapters/discord.py`, `__main__.py`, `config.py` |
+| tester | 3 | `tests/core/test_hub.py`, `tests/adapters/test_telegram.py`, `tests/adapters/test_discord.py`, `tests/test_main.py` |
+
+## Consistency Report
+
+- Spec success criteria covered: 17 / 17
+- Uncovered: 0
+- Untraced tasks: 0
+- 103 tests passing
+
+---
+
+## Micro-Tasks
+
+### Slice 1 — Routing model (Shape B) [RED-GATE before Slice 2+3]
+
+**RED-GATE: all Slice 1 tasks must pass before Slice 2 or 3 begins.**
+
+---
+
+**T1.1** — Add `Platform` enum + platform context dataclasses
+- File: `src/lyra/core/message.py`
+- Agent: backend-dev [P]
+- Phase: GREEN
+- Spec trace: SC-1 (routing model)
+- Difficulty: 2
+
+```python
+class Platform(str, Enum):
+    TELEGRAM = "telegram"
+    DISCORD = "discord"
+
+@dataclass(frozen=True)
+class TelegramContext:
+    chat_id: int
+    topic_id: int | None = None
+    is_group: bool = False
+
+@dataclass(frozen=True)
+class DiscordContext:
+    guild_id: int | None
+    channel_id: int
+    message_id: int
+    thread_id: int | None = None
+    channel_type: Literal["text", "thread", "forum", "voice"] = "text"
+
+PlatformContext = TelegramContext | DiscordContext
+```
+
+Verify: `uv run pytest tests/core/test_hub.py::TestPlatformContext -q`
+Expected: 4 passed
+
+---
+
+**T1.2** — Extend `Message` dataclass + add `from_adapter()` classmethod
+- File: `src/lyra/core/message.py`
+- Agent: backend-dev [P]
+- Phase: GREEN
+- Spec trace: SC-1, SC-2-security
+- Difficulty: 3
+
+Fields added: `platform`, `bot_id`, `user_name`, `is_mention`, `is_from_bot`, `platform_context`.
+`channel` property kept as deprecated alias (`DeprecationWarning`).
+`from_adapter()` hardcodes `trust="user"` — never caller-controlled.
+
+Verify: `uv run pytest tests/core/test_hub.py::TestMessage -q`
+Expected: 4 passed
+
+---
+
+**T1.3** — Refactor `Hub` to typed adapter registry + `RoutingKey`
+- File: `src/lyra/core/hub.py`
+- Agent: backend-dev
+- Phase: GREEN
+- Spec trace: SC-1 (adapter registry, dispatch_response, pool ID, wildcard)
+- Difficulty: 4
+
+`adapter_registry: dict[tuple[Platform, str], ChannelAdapter]`.
+`register_binding` collision guard: pool_id must not be reused across users on same (platform, bot_id).
+`resolve_binding`: exact → wildcard → `None`. Wildcard synthesises per-user `pool_id`.
+`dispatch_response` uses `(msg.platform, msg.bot_id)` key — atomic with `RoutingKey`.
+`run()`: rate limiter (sliding window) → resolve_binding → get_or_create_pool → agent.process →
+dispatch_response. Unmatched key → `log.warning` + continue (no exception).
+
+Verify: `uv run pytest tests/core/test_hub.py -q`
+Expected: all hub tests pass
+
+---
+
+**T1.4** — Tests: hub routing model (T2–T7)
+- File: `tests/core/test_hub.py`
+- Agent: tester [P]
+- Phase: GREEN
+- Spec trace: SC-1
+- Difficulty: 2
+
+`TestPlatformContext`, `TestMessage`, `TestRegisterAdapter`, `TestRoutingKey`,
+`TestDispatchResponse`, `TestUnmatchedRouting`, `TestPoolCreation`,
+`TestAgentRegistryMiss`, `TestMissingAdapterDrop`.
+
+Verify: `uv run pytest tests/core/test_hub.py -q`
+Expected: 23+ passed
+
+---
+
+**RED-GATE CHECK**: `uv run pytest tests/core/ -q` — all green before proceeding to Slice 2+3.
+
+---
+
+### Slice 2 — Telegram adapter [P with Slice 3, depends Slice 1]
+
+---
+
+**T2.1** — `TelegramAdapter` — aiogram v3 webhook + normalization
+- File: `src/lyra/adapters/telegram.py`
+- Agent: backend-dev
+- Phase: GREEN
+- Spec trace: SC-2 (N1, S1–S3, S5–S6, S16, S18)
+- Difficulty: 4
+
+FastAPI app with `POST /webhooks/telegram/{bot_id}`. Dependency `_make_verifier(secret)`
+validates `X-Telegram-Bot-Api-Secret-Token` (HTTP 401 on mismatch; empty secret → always 401).
+`_normalize()` → `Message.from_adapter()` → `TelegramContext(chat_id, topic_id, is_group)`.
+`is_mention=False` in private chats; entity-scan for `@{bot_username}` in group chats.
+`_on_message()` backpressure: `if hub.bus.full(): await bot.send_message(ack)`.
+`send()` → `bot.send_message(chat_id=ctx.chat_id, text=response.content)`.
+Bot token never logged.
+
+Verify: `uv run pytest tests/adapters/test_telegram.py -q`
+Expected: 9 passed
+
+---
+
+**T2.2** — `load_config()` — env var validation
+- File: `src/lyra/adapters/telegram.py`
+- Agent: backend-dev [P]
+- Phase: GREEN
+- Spec trace: SC-4 (startup security)
+- Difficulty: 1
+
+`TELEGRAM_TOKEN` missing → `SystemExit("Missing required env var: TELEGRAM_TOKEN")`.
+`TELEGRAM_WEBHOOK_SECRET` missing → `SystemExit("Missing required env var: TELEGRAM_WEBHOOK_SECRET")`.
+
+Verify: `uv run pytest tests/adapters/test_telegram.py::test_missing_token_raises_on_load -q`
+Expected: 1 passed
+
+---
+
+### Slice 3 — Discord adapter [P with Slice 2, depends Slice 1]
+
+---
+
+**T3.1** — `DiscordAdapter` — discord.py v2 Gateway + normalization
+- File: `src/lyra/adapters/discord.py`
+- Agent: backend-dev
+- Phase: GREEN
+- Spec trace: SC-3 (N2, S3–S6, S17)
+- Difficulty: 4
+
+`DiscordAdapter(discord.Client)` with `message_content=True` intent.
+`on_ready()` caches `self._bot_user` (needed for mention detection).
+`_normalize()` → `Message.from_adapter()` → `DiscordContext(guild_id, channel_id, message_id, thread_id, channel_type)`.
+`is_mention`: `self._bot_user in message.mentions`. `@mention` prefix stripped via regex.
+Own-message filter: `if message.author == self._bot_user: return`.
+Third-party bot filter: `if hub_msg.is_from_bot: return`.
+Backpressure: `if hub.bus.full(): await message.reply(ack)`.
+`send()` → `message.reply(content)` if mention; `channel.send(content)` otherwise. Truncated to 2000 chars.
+DM (guild=None) handled: `guild_id=None`.
+Token never logged.
+
+Verify: `uv run pytest tests/adapters/test_discord.py -q`
+Expected: 14 passed
+
+---
+
+**T3.2** — `load_discord_config()` — env var validation
+- File: `src/lyra/adapters/discord.py`
+- Agent: backend-dev [P]
+- Phase: GREEN
+- Spec trace: SC-4
+- Difficulty: 1
+
+`DISCORD_TOKEN` missing → `SystemExit("Missing required env var: DISCORD_TOKEN")`.
+
+Verify: `uv run pytest tests/adapters/test_discord.py::test_missing_discord_token_raises_on_load -q`
+Expected: 1 passed
+
+---
+
+### Slice 4 — Main entrypoint [depends Slices 2+3]
+
+---
+
+**T4.1** — `__main__.py` — asyncio wiring + graceful shutdown
+- File: `src/lyra/lyra/__main__.py`
+- Agent: backend-dev
+- Phase: GREEN
+- Spec trace: SC-4 (S18, S22)
+- Difficulty: 3
+
+Load `.env` → validate tokens (immediate `SystemExit` on missing).
+`Hub()` → `CliPool.start()` → `load_agent_config("lyra_default")` → `SimpleAgent`.
+`hub.register_agent(agent)`.
+`TelegramAdapter(bot_id="main", ...)` + `DiscordAdapter(hub=hub, bot_id="main")`.
+`hub.register_adapter(Platform.TELEGRAM, "main", tg_adapter)` + Discord.
+`hub.register_binding(...)` with wildcard `"*"` for both platforms.
+`asyncio.create_task(hub.run())` + `dp.start_polling(bot, handle_signals=False)` + `dc_adapter.start(token)`.
+Signal handler: `SIGINT` + `SIGTERM` → `stop.set()`.
+Shutdown: `task.cancel()` for all tasks → `asyncio.gather(*tasks, return_exceptions=True)` → `dc_adapter.close()` → `cli_pool.stop()`.
+
+Verify: `uv run pytest tests/test_main.py -q`
+Expected: 5 passed
+
+---
+
+**T4.2** — `config.py` — thin re-export shim
+- File: `src/lyra/config.py`
+- Agent: backend-dev [P]
+- Phase: GREEN
+- Spec trace: SC-4
+- Difficulty: 1
+
+Re-exports `DiscordConfig`, `load_discord_config`, `TelegramConfig`, `load_config`.
+
+---
+
+**T4.3** — Tests: main wiring + shutdown
+- File: `tests/test_main.py`
+- Agent: tester
+- Phase: GREEN
+- Spec trace: SC-4
+- Difficulty: 2
+
+`TestMissingEnvVars`, `TestHubWiring` (both adapters + wildcard bindings),
+`TestGracefulShutdown` (immediate stop + delayed stop).
+Monkeypatching via `_patch_all()` — no real network calls.
+
+Verify: `uv run pytest tests/test_main.py -q`
+Expected: 5 passed
+
+---
+
+## Final Verify
+
+```bash
+uv run pytest tests/ -q
+# Expected: 103 passed
+```

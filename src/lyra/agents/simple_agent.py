@@ -13,6 +13,7 @@ from typing import Any
 
 from lyra.core.agent import Agent, AgentBase
 from lyra.core.cli_pool import CliPool, CliResult
+from lyra.core.hub import GENERIC_ERROR_REPLY
 from lyra.core.message import Message, MessageContent, Response, TextContent
 from lyra.core.pool import Pool
 
@@ -80,7 +81,7 @@ class SimpleAgent(AgentBase):
             if "Timeout" in result.error:
                 user_msg = "Response timed out. Please try again."
             else:
-                user_msg = "Something went wrong. Please try again."
+                user_msg = GENERIC_ERROR_REPLY
             return Response(
                 content=user_msg,
                 metadata={"error": True},

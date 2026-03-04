@@ -207,6 +207,10 @@ class TelegramAdapter:
 
     async def send(self, original_msg: Message, response: Response) -> None:
         """Send a response back to Telegram via bot.send_message."""
-        assert isinstance(original_msg.platform_context, TelegramContext)
+        if not isinstance(original_msg.platform_context, TelegramContext):
+            log.error(
+                "send() called with non-TelegramContext for msg_id=%s", original_msg.id
+            )
+            return
         ctx = original_msg.platform_context
         await self.bot.send_message(chat_id=ctx.chat_id, text=response.content)

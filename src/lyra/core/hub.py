@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-import collections
 import logging
 import time
+from collections import deque
 from dataclasses import dataclass
 from typing import NamedTuple, Protocol
 
@@ -12,6 +12,9 @@ from .message import Message, Platform, Response
 from .pool import Pool
 
 log = logging.getLogger(__name__)
+
+# Shared user-facing fallback for unhandled agent or dispatch errors.
+GENERIC_ERROR_REPLY = "Something went wrong. Please try again."
 
 
 class ChannelAdapter(Protocol):
@@ -72,7 +75,7 @@ class Hub:
         # Sliding window: maps RoutingKey → deque of message timestamps.
         # Entries are removed when the deque empties (user inactive for > RATE_WINDOW)
         # to prevent unbounded dict growth.
-        self._rate_timestamps: dict[RoutingKey, collections.deque[float]] = {}
+        self._rate_timestamps: dict[RoutingKey, deque[float]] = {}
 
     # ------------------------------------------------------------------
     # Adapter registry
@@ -188,7 +191,7 @@ class Hub:
         if timestamps is not None and len(timestamps) >= self._rate_limit:
             return True
         if timestamps is None:
-            timestamps = collections.deque()
+            timestamps = deque()
             self._rate_timestamps[key] = timestamps
         timestamps.append(now)
         return False
@@ -248,9 +251,7 @@ class Hub:
                         log.exception(
                             "agent.process() raised for %s: %s", key, exc
                         )
-                        response = Response(
-                            content="Something went wrong. Please try again."
-                        )
+                        response = Response(content=GENERIC_ERROR_REPLY)
                     try:
                         await self.dispatch_response(msg, response)
                     except Exception as exc:

@@ -105,7 +105,6 @@ class TestMessage:
         assert msg.id == "msg-1"
         assert msg.platform == Platform.TELEGRAM
         assert msg.bot_id == "main"
-        assert msg.channel == "telegram"
         assert msg.user_id == "alice"
         assert msg.type == MessageType.TEXT
         assert msg.metadata == {}

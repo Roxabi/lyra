@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import warnings
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -81,19 +80,6 @@ class Message:
     # may set trust="system". Never derive trust from inbound channel data.
     trust: Literal["user", "system"] = "user"
     metadata: dict[str, Any] = field(default_factory=dict)
-
-    @property
-    def channel(self) -> str:
-        """Deprecated: use platform.value directly.
-
-        Removed after Slice 2+3 (Discord + Telegram tests complete).
-        """
-        warnings.warn(
-            "Message.channel is deprecated; use Message.platform.value",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.platform.value
 
     @classmethod
     def from_adapter(

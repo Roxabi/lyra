@@ -11,3 +11,15 @@ repos:
         entry: uv run pyright
         language: system
         pass_filenames: false
+      - id: gitleaks
+        name: gitleaks secret scan
+        entry: gitleaks detect --source . --no-git
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+      - id: license
+        name: license check
+        entry: uv run tools/license_check.py
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

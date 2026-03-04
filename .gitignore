@@ -10,3 +10,4 @@ build/
 *.sqlite-journal
 .ruff_cache/
 .claude/stack.yml
+.claude/worktrees/

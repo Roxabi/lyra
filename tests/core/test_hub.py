@@ -438,3 +438,39 @@ class TestAgentRegistryMiss:
 
         assert any("no agent registered" in r.message.lower() for r in caplog.records)
         assert hub.bus.empty()
+
+
+# ---------------------------------------------------------------------------
+# TestMissingAdapterDrop
+# ---------------------------------------------------------------------------
+
+
+class TestMissingAdapterDrop:
+    """Hub run loop drops message (before calling LLM) when adapter is missing."""
+
+    async def test_message_dropped_when_adapter_not_registered(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        hub = Hub()
+
+        class DummyAgent(AgentBase):
+            async def process(self, msg: Message, pool: Pool) -> Response:
+                raise AssertionError("process() must not be called without adapter")
+
+        config = Agent(name="lyra", system_prompt="", memory_namespace="lyra")
+        hub.register_agent(DummyAgent(config))
+        hub.register_binding(
+            Platform.TELEGRAM, "main", "alice", "lyra", "telegram:main:alice"
+        )
+        # Deliberately do NOT register an adapter for (TELEGRAM, "main")
+        msg = make_message(platform=Platform.TELEGRAM, bot_id="main", user_id="alice")
+        await hub.bus.put(msg)
+
+        with caplog.at_level(logging.ERROR, logger="lyra.core.hub"):
+            try:
+                await asyncio.wait_for(hub.run(), timeout=0.2)
+            except asyncio.TimeoutError:
+                pass  # expected — run() never returns on its own
+
+        assert any("no adapter registered" in r.message.lower() for r in caplog.records)
+        assert hub.bus.empty()

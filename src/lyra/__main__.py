@@ -40,6 +40,12 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
     cli_pool = CliPool()
     await cli_pool.start()
     agent_config = load_agent_config("lyra_default")
+    log.info(
+        "Agent loaded: name=%s model=%s backend=%s",
+        agent_config.name,
+        agent_config.model_config.model,
+        agent_config.model_config.backend,
+    )
     agent = SimpleAgent(agent_config, cli_pool)
     hub.register_agent(agent)
 
@@ -63,9 +69,9 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
 
     stop = _stop if _stop is not None else asyncio.Event()
     if _stop is None:
-        loop = asyncio.get_running_loop()
-        loop.add_signal_handler(signal.SIGINT, stop.set)
-        loop.add_signal_handler(signal.SIGTERM, stop.set)
+        _loop = asyncio.get_running_loop()
+        _loop.add_signal_handler(signal.SIGINT, stop.set)
+        _loop.add_signal_handler(signal.SIGTERM, stop.set)
 
     tasks = [
         asyncio.create_task(hub.run(), name="hub"),

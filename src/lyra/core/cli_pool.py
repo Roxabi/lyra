@@ -200,7 +200,7 @@ class CliPool:
             "--model",
             model_config.model,
             "--max-turns",
-            str(model_config.max_turns),
+            str(int(model_config.max_turns)),
         ]
         if model_config.tools:
             cmd.extend(["--allowedTools", ",".join(model_config.tools)])
@@ -366,14 +366,16 @@ class CliPool:
             try:
                 await asyncio.sleep(60)
                 now = time.time()
+                # Snapshot entries before awaiting _kill to avoid mutating
+                # _entries while iterating (cooperative-multitasking safety).
+                snapshot = list(self._entries.items())
                 to_kill = [
-                    pid
-                    for pid, e in self._entries.items()
+                    (pid, e)
+                    for pid, e in snapshot
                     if not e.is_alive() or (now - e.last_activity) > self._idle_ttl
                 ]
-                for pool_id in to_kill:
-                    e = self._entries.get(pool_id)
-                    reason = "idle" if e and e.is_alive() else "dead"
+                for pool_id, e in to_kill:
+                    reason = "idle" if e.is_alive() else "dead"
                     log.info("[pool:%s] reaping %s process", pool_id, reason)
                     await self._kill(pool_id)
             except asyncio.CancelledError:

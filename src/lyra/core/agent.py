@@ -92,16 +92,39 @@ def load_agent_config(name: str, agents_dir: Path | None = None) -> Agent:
     model_section = data.get("model", {})
     prompt_section = data.get("prompt", {})
 
+    backend = model_section.get("backend", "claude-cli")
+    _VALID_BACKENDS = {"claude-cli", "ollama"}
+    if backend not in _VALID_BACKENDS:
+        raise ValueError(
+            f"Invalid backend {backend!r} for agent {name!r}: "
+            f"must be one of {sorted(_VALID_BACKENDS)}"
+        )
+
+    model = model_section.get("model", "claude-sonnet-4-5")
+    if not re.match(r"^[a-zA-Z0-9_.:-]+$", model):
+        raise ValueError(
+            f"Invalid model {model!r} for agent {name!r}: "
+            "only [a-zA-Z0-9_.:-] characters allowed"
+        )
+
     model_cfg = ModelConfig(
-        backend=model_section.get("backend", "claude-cli"),
-        model=model_section.get("model", "claude-sonnet-4-5"),
+        backend=backend,
+        model=model,
         max_turns=int(model_section.get("max_turns", 10)),
         tools=tuple(model_section.get("tools", [])),
     )
 
+    system_prompt = prompt_section.get("system", "")
+    _MAX_PROMPT_BYTES = 64 * 1024  # 64 KB
+    if len(system_prompt.encode()) > _MAX_PROMPT_BYTES:
+        raise ValueError(
+            f"system_prompt for agent {name!r} exceeds {_MAX_PROMPT_BYTES // 1024}KB "
+            f"limit ({len(system_prompt.encode())} bytes)"
+        )
+
     return Agent(
         name=name,
-        system_prompt=prompt_section.get("system", ""),
+        system_prompt=system_prompt,
         memory_namespace=agent_section.get("memory_namespace", name),
         model_config=model_cfg,
         permissions=tuple(agent_section.get("permissions", [])),

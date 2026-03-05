@@ -8,6 +8,7 @@
     "005-wildcard-binding-concurrency-and-per-user-pools",
     "006-hub-run-loop-error-response-gap",
     "007-model-config-mismatch-silent-ignore",
-    "008-phase1-memory-scope"
+    "008-phase1-memory-scope",
+    "009-generic-error-reply-placement-and-simple-agent-hub-coupling"
   ]
 }

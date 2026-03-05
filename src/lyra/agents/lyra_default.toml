@@ -11,7 +11,7 @@ permissions = []
 # backend: "claude-cli" uses the Claude Code subscription (stream-json protocol)
 #          "ollama" will use a local model via Ollama HTTP API (future)
 backend = "claude-cli"
-model = "claude-sonnet-4-5"
+model = "claude-haiku-4-5-20251001"
 max_turns = 10
 # tools: explicit allowlist — omits Bash and Write to prevent prompt injection → RCE
 # To disable all tools: tools = [] and ensure --allowedTools is passed (see cli_pool.py)

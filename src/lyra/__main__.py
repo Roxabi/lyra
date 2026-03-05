@@ -8,6 +8,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
+from datetime import datetime, timezone
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -98,11 +101,31 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
     log.info("Lyra stopped.")
 
 
-def main() -> None:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+def _setup_logging() -> None:
+    """Configure logging: console + rotating file in ~/.lyra/logs/."""
+    fmt = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+
+    log_dir = Path.home() / ".lyra" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    log_file = log_dir / f"{stamp}_lyra.log"
+
+    file_handler = RotatingFileHandler(
+        log_file, maxBytes=10 * 1024 * 1024, backupCount=5  # 10 MB per file, 5 backups
     )
+    file_handler.setFormatter(logging.Formatter(fmt))
+
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(logging.Formatter(fmt))
+
+    logging.basicConfig(level=logging.INFO, handlers=[file_handler, console_handler])
+
+    logging.getLogger(__name__).info("Logging to %s", log_file)
+
+
+def main() -> None:
+    _setup_logging()
     asyncio.run(_main())
 
 

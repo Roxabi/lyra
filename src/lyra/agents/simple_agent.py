@@ -63,6 +63,7 @@ class SimpleAgent(AgentBase):
         self._pool = cli_pool
 
     async def process(self, msg: Message, pool: Pool) -> Response:
+        self._maybe_reload()
         text = _extract_text(msg)
         model_cfg = self.config.model_config
 

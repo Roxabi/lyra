@@ -1,0 +1,109 @@
+---
+title: "ADR-009: GENERIC_ERROR_REPLY placement and simple_agent → hub coupling"
+description: Record the decision on where to define the shared user-facing error constant and how to break the simple_agent-to-hub import dependency.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+The simplify-pass refactor introduced `GENERIC_ERROR_REPLY = "Something went wrong. Please try again."` as a module-level constant in `lyra/core/hub.py`. `SimpleAgent` in `lyra/agents/simple_agent.py` imports this constant directly from `hub`:
+
+```python
+from lyra.core.hub import GENERIC_ERROR_REPLY
+```
+
+This creates a downward import: the `agents` package (a spoke) depends on `core.hub` (the central bus coordinator). The dependency direction is:
+
+```
+agents/simple_agent.py  →  core/hub.py  →  core/agent.py
+                                         →  core/message.py
+                                         →  core/pool.py
+```
+
+`hub.py` already imports `AgentBase` from `core/agent.py`. `simple_agent.py` imports `AgentBase` from `core/agent.py` as well. There is no circular import at runtime today because Python resolves the chain without looping. However, the coupling is architecturally wrong:
+
+- `hub.py` is the **coordinator** — it owns the bus, the adapter registry, bindings, rate limiting, and dispatch. It should not be a source of shared UI strings consumed by agent implementations.
+- Any future agent that needs the same fallback string will repeat the `from lyra.core.hub import GENERIC_ERROR_REPLY` pattern, entrenching hub as a dependency of the agent layer.
+- If `hub.py` ever imports from `agents/` (e.g., to reference a registered agent type), a real circular import forms.
+
+The constant itself (`"Something went wrong. Please try again."`) is a UI primitive — a user-facing fallback string — with no inherent relationship to hub coordination logic. It was placed in `hub.py` for convenience (ADR-006 required the hub's `run()` loop to emit it) and then imported from there by `SimpleAgent`.
+
+## Options Considered
+
+### Option A: Keep constant in hub.py, accept the coupling (current state)
+
+Leave `GENERIC_ERROR_REPLY` in `hub.py`. `SimpleAgent` continues to import from `hub`.
+
+- **Pros:** Zero change. Works at Phase 1 scale with no runtime risk.
+- **Cons:** Agents layer has a structural dependency on the hub coordinator. The import direction violates hub-and-spoke topology (spokes should not depend on the hub's internal module; they receive messages from it). Every new agent needing the string must import from `hub`. If hub ever imports from agents, a circular import forms silently.
+
+### Option B: Move constant to core/message.py (chosen)
+
+Define `GENERIC_ERROR_REPLY` in `lyra/core/message.py`, alongside `Response`. Both `hub.py` and `simple_agent.py` import from `message.py`, which is already a shared dependency with no upward coupling.
+
+```python
+# core/message.py
+GENERIC_ERROR_REPLY = "Something went wrong. Please try again."
+```
+
+- **Pros:** `message.py` is the lowest-dependency shared module — imported by hub, agent, and all adapters. The constant travels with the `Response` type it populates. No new import edges are added to any file. Breaks the agents → hub coupling cleanly.
+- **Cons:** `message.py` gains a string constant alongside data classes. Minor conceptual stretch: message.py defines message *shapes*, not error *strings*. Acceptable because the string is the canonical content of a `Response`, which is defined in the same file.
+
+### Option C: Create a dedicated core/constants.py module
+
+Define a new `lyra/core/constants.py` module containing shared UI strings and sentinel values.
+
+- **Pros:** Clear single-responsibility. All future shared constants have an obvious home.
+- **Cons:** Adds a file for one string. At Phase 1 scale, indirection without benefit. Promotes premature organisation. Revisit in Phase 2 if constants accumulate.
+
+### Option D: Inline the string in both hub.py and simple_agent.py (duplicate)
+
+Each site defines its own copy of the string.
+
+- **Pros:** Zero coupling.
+- **Cons:** Risk of the two strings diverging silently. Already rejected in the simplify pass for this reason.
+
+## Decision
+
+**Option B** is adopted.
+
+`GENERIC_ERROR_REPLY` is moved from `lyra/core/hub.py` to `lyra/core/message.py`. Both `hub.py` and `simple_agent.py` import it from `message.py`. The agents layer no longer imports from `hub`.
+
+This is a one-line move with no runtime behaviour change. It eliminates the structural coupling before a real circular import can form.
+
+### Implementation
+
+```python
+# core/message.py — add after Response dataclass
+GENERIC_ERROR_REPLY = "Something went wrong. Please try again."
+
+# core/hub.py — change import
+from .message import Message, Platform, Response, GENERIC_ERROR_REPLY
+
+# agents/simple_agent.py — change import
+from lyra.core.message import Message, MessageContent, Response, TextContent, GENERIC_ERROR_REPLY
+```
+
+Remove the constant definition and its comment block from `hub.py`.
+
+## Consequences
+
+### Positive
+
+- The agents layer has no import dependency on `hub.py`. Hub-and-spoke topology is preserved structurally.
+- No circular import can form when `hub.py` eventually imports from `agents/` (e.g., for registration helpers).
+- The canonical error string is co-located with `Response`, the type it populates.
+- All future agents import the string from `message.py` — a module they already depend on.
+
+### Negative
+
+- `message.py` mixes a string constant with data class definitions. Acceptable at Phase 1 scale; revisit if constants accumulate.
+- One-line move requires updating two import statements and one definition site.
+
+### Neutral
+
+- ADR-006's error handling structure in `hub.run()` is unchanged. Only the source of the constant changes.
+- If Phase 2 introduces localised error strings, the constant moves to a locale/i18n module regardless of where it lives today.

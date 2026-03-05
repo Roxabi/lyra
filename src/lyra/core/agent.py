@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 import tomllib
 from abc import ABC, abstractmethod
@@ -8,6 +9,8 @@ from pathlib import Path
 
 from .message import Message, Response
 from .pool import Pool
+
+log = logging.getLogger(__name__)
 
 # Default agents config directory: src/lyra/agents/
 _AGENTS_DIR = Path(__file__).resolve().parent.parent / "agents"
@@ -35,9 +38,9 @@ class ModelConfig:
     tools: tuple[str, ...] = field(default=())
 
 
-@dataclass(frozen=True)
+@dataclass
 class Agent:
-    """Immutable configuration record for an agent."""
+    """Configuration record for an agent. Mutable for hot-reload."""
 
     name: str
     system_prompt: str
@@ -137,14 +140,42 @@ class AgentBase(ABC):
     """Abstract base for concrete agent implementations.
 
     All mutable state lives in Pool.
+    Supports hot-reload: edit the TOML file and config updates on next message.
     """
 
-    def __init__(self, config: Agent) -> None:
+    def __init__(self, config: Agent, agents_dir: Path | None = None) -> None:
         self.config = config
+        self._agents_dir = agents_dir or _AGENTS_DIR
+        self._config_path = self._agents_dir / f"{config.name}.toml"
+        self._last_mtime: float = (
+            self._config_path.stat().st_mtime if self._config_path.exists() else 0.0
+        )
 
     @property
     def name(self) -> str:
         return self.config.name
+
+    def _maybe_reload(self) -> None:
+        """Reload config from TOML if the file changed since last check."""
+        try:
+            mtime = self._config_path.stat().st_mtime
+        except OSError:
+            return
+        if mtime <= self._last_mtime:
+            return
+        try:
+            new_config = load_agent_config(self.config.name, self._agents_dir)
+            self._last_mtime = mtime
+            if new_config != self.config:
+                log.info(
+                    "Hot-reloaded config for agent %r (model: %s -> %s)",
+                    self.config.name,
+                    self.config.model_config.model,
+                    new_config.model_config.model,
+                )
+                self.config = new_config
+        except Exception as exc:
+            log.warning("Failed to reload config for %r: %s", self.config.name, exc)
 
     @abstractmethod
     async def process(self, msg: Message, pool: Pool) -> Response: ...

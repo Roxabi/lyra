@@ -198,12 +198,12 @@ class TestPool:
 
 
 class TestAgent:
-    def test_frozen(self) -> None:
+    def test_mutable_for_hot_reload(self) -> None:
         agent = Agent(
             name="lyra", system_prompt="You are Lyra.", memory_namespace="lyra"
         )
-        with pytest.raises(AttributeError):
-            agent.name = "other"  # type: ignore[misc]
+        agent.name = "other"
+        assert agent.name == "other"
 
     def test_default_permissions(self) -> None:
         agent = Agent(name="lyra", system_prompt="", memory_namespace="lyra")

@@ -20,6 +20,9 @@ log = logging.getLogger(__name__)
 # Matches a message that starts with "/" followed by at least one word character.
 _COMMAND_RE = re.compile(r"^/\w")
 
+# Maximum bytes of subprocess output returned to the user.
+_MAX_OUTPUT_BYTES = 64 * 1024  # 64 KB
+
 # Skill registry: maps (skill, action) -> CLI argv prefix.
 # Args from the user message are appended positionally.
 SKILL_REGISTRY: dict[tuple[str, str], list[str]] = {
@@ -43,6 +46,7 @@ class CommandConfig:
     cli: str | None = None
     description: str = ""
     builtin: bool = False
+    timeout: float = 30.0
 
 
 class SkillHandler:
@@ -54,12 +58,21 @@ class SkillHandler:
         action: str,
         args: list[str],
         timeout: float = 30.0,
+        cli: str | None = None,
     ) -> str:
         """Run the CLI for (skill, action) with positional args.
 
         Returns stdout as a string on success.
         Returns a user-facing error message on timeout or missing binary.
+
+        cli: optional binary name override used for the existence check when
+             the (skill, action) pair is not in SKILL_REGISTRY.
         """
+        # Check the explicit cli override first so missing-binary errors are
+        # surfaced even for skills not yet in the registry.
+        if cli is not None and shutil.which(cli) is None:
+            return f"'{cli}' is not installed. Please install it first."
+
         argv_prefix = SKILL_REGISTRY.get((skill, action))
         if argv_prefix is None:
             return f"Skill '{skill}/{action}' is not registered."
@@ -69,29 +82,43 @@ class SkillHandler:
             return f"'{cli_binary}' is not installed. Please install it first."
 
         full_argv = argv_prefix + args
-        coro = SkillHandler._run_subprocess(full_argv)
+        proc: asyncio.subprocess.Process | None = None
         try:
-            return await asyncio.wait_for(coro, timeout=timeout)
-        except asyncio.TimeoutError:
-            coro.close()
-            return "Command timed out. Please try again."
-        except Exception as exc:  # noqa: BLE001
-            coro.close()
-            log.exception(
-                "SkillHandler.execute failed for %s/%s: %s", skill, action, exc
+            proc = await asyncio.create_subprocess_exec(
+                *full_argv,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
-            return f"Command failed: {exc}"
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=timeout
+            )
+        except asyncio.TimeoutError:
+            if proc is not None:
+                proc.kill()
+                await proc.wait()
+            return "Command timed out. Please try again."
+        except Exception:  # noqa: BLE001
+            if proc is not None:
+                proc.kill()
+                await proc.wait()
+            log.exception(
+                "SkillHandler.execute failed for %s/%s", skill, action
+            )
+            return "Command failed. Please contact the administrator."
 
-    @staticmethod
-    async def _run_subprocess(argv: list[str]) -> str:
-        """Spawn subprocess and return stdout as a string."""
-        proc = await asyncio.create_subprocess_exec(
-            *argv,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, _ = await proc.communicate()
-        return stdout.decode()
+        if proc.returncode != 0:
+            log.warning(
+                "subprocess %s exited with code %d: %s",
+                full_argv[0],
+                proc.returncode,
+                stderr.decode(errors="replace")[:500],
+            )
+            return f"Command failed (exit code {proc.returncode})."
+
+        output = stdout.decode()
+        if len(output) > _MAX_OUTPUT_BYTES:
+            return output[:_MAX_OUTPUT_BYTES] + "\n[output truncated]"
+        return output
 
 
 class CommandRouter:
@@ -142,18 +169,17 @@ class CommandRouter:
         if cfg is None:
             return Response(content=unknown_reply)
 
-        # Builtin commands other than /help are not yet defined — treat as unknown.
+        # Builtin commands other than /help are not yet defined — tell the user.
         if cfg.builtin:
-            return self._help()
+            return Response(
+                content=f"Built-in command {command_name} is not yet implemented."
+            )
 
         # Skill-based command
         if cfg.skill and cfg.action:
-            cli = cfg.cli or cfg.skill
-            if shutil.which(cli) is None:
-                return Response(
-                    content=f"'{cli}' is not installed. Please install it first."
-                )
-            result = await SkillHandler.execute(cfg.skill, cfg.action, args)
+            result = await SkillHandler.execute(
+                cfg.skill, cfg.action, args, timeout=cfg.timeout, cli=cfg.cli
+            )
             return Response(content=result)
 
         return Response(content=unknown_reply)

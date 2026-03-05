@@ -138,6 +138,7 @@ def load_agent_config(name: str, agents_dir: Path | None = None) -> Agent:
             cli=cmd_data.get("cli"),
             description=cmd_data.get("description", ""),
             builtin=bool(cmd_data.get("builtin", False)),
+            timeout=float(cmd_data.get("timeout", 30.0)),
         )
 
     return Agent(
@@ -180,7 +181,6 @@ class AgentBase(ABC):
             return
         try:
             new_config = load_agent_config(self.config.name, self._agents_dir)
-            self._last_mtime = mtime
             if new_config != self.config:
                 log.info(
                     "Hot-reloaded config for agent %r (model: %s -> %s)",
@@ -190,6 +190,7 @@ class AgentBase(ABC):
                 )
                 self.config = new_config
                 self.command_router = CommandRouter(new_config.commands)
+            self._last_mtime = mtime
         except Exception as exc:
             log.warning("Failed to reload config for %r: %s", self.config.name, exc)
 

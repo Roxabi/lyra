@@ -84,6 +84,21 @@ else
   warn "Add your agent SSH public key to /home/$AGENT_USER/.ssh/authorized_keys"
 fi
 
+section "External tools (ADR-010: Install, Wrap, Declare)"
+# System CLIs used by Lyra agents and roxabi-plugins skills.
+# Each tool is installed on PATH; wrapped by a skill in roxabi-plugins;
+# declared in agent TOML config. See docs/architecture/adr/010-*.mdx.
+
+if command -v pip &>/dev/null; then
+  pip install --user voicecli 2>/dev/null && info "voicecli installed." || warn "voicecli install failed (optional)."
+else
+  warn "pip not found, skipping voicecli install."
+fi
+
+# gws (Google Workspace CLI) — requires Rust toolchain
+# Uncomment when ready: cargo install gws
+warn "gws (Google Workspace CLI) not yet installed. See: cargo install gws"
+
 section "Done"
 info "Setup complete — admin: $ADMIN_USER, agent: $AGENT_USER"
 if [ "${NEEDS_REBOOT:-false}" = true ]; then

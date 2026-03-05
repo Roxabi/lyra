@@ -89,15 +89,22 @@ section "External tools (ADR-010: Install, Wrap, Declare)"
 # Each tool is installed on PATH; wrapped by a skill in roxabi-plugins;
 # declared in agent TOML config. See docs/architecture/adr/010-*.mdx.
 
-if command -v pip &>/dev/null; then
-  pip install --user voicecli 2>/dev/null && info "voicecli installed." || warn "voicecli install failed (optional)."
+if command -v voicecli &>/dev/null; then
+  info "voicecli already installed."
 else
-  warn "pip not found, skipping voicecli install."
+  if command -v uv &>/dev/null; then
+    out=$(uv tool install voicecli 2>&1) && info "voicecli installed." || warn "voicecli install failed: $out"
+  else
+    warn "uv not found, skipping voicecli install. Run: uv tool install voicecli"
+  fi
 fi
 
-# gws (Google Workspace CLI) — requires Rust toolchain
-# Uncomment when ready: cargo install gws
-warn "gws (Google Workspace CLI) not yet installed. See: cargo install gws"
+if command -v gws &>/dev/null; then
+  info "gws already installed."
+else
+  # TODO: confirm correct install method — see github.com/googleworkspace/cli
+  warn "gws (Google Workspace CLI) not yet installed."
+fi
 
 section "Done"
 info "Setup complete — admin: $ADMIN_USER, agent: $AGENT_USER"

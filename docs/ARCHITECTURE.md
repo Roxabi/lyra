@@ -313,7 +313,7 @@ client = AsyncOpenAI(
 
 ### External tool integration
 
-- **Install, Wrap, Declare** (ADR-010) — External CLIs are system tools on PATH, wrapped by thin roxabi-plugins skills, and declared in Lyra agent TOML configs. No fork, no vendor. Applies to: Google Workspace (`gws`), VoiceCLI, scraper, image generation.
+- **Install, Wrap, Declare** (ADR-010) — see [Tools / Skills Layer](#external-tool-integration-adr-010) above.
 
 ### Deferred Gaps (Phase 2)
 

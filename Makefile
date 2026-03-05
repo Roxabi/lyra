@@ -3,6 +3,11 @@ ifeq (lyra,$(firstword $(MAKECMDGOALS)))
   $(eval $(LYRA_CMD):;@:)
 endif
 
+ifeq (remote,$(firstword $(MAKECMDGOALS)))
+  REMOTE_CMD := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
+  $(eval $(REMOTE_CMD):;@:)
+endif
+
 SUPERVISORCTL := ./supervisor/scripts/supervisorctl.sh
 SUPERVISOR_START := ./supervisor/scripts/start.sh
 SUPERVISOR_STOP := ./supervisor/scripts/stop.sh
@@ -16,10 +21,10 @@ define ensure_supervisor
 	fi
 endef
 
-MACHINE1 := mickael@192.168.1.16
-MACHINE1_DIR := ~/projects/lyra
+MACHINE1 := $(or $(shell grep '^MACHINE1_HOST=' .env 2>/dev/null | cut -d= -f2),mickael@192.168.1.16)
+MACHINE1_DIR := $(or $(shell grep '^MACHINE1_DIR=' .env 2>/dev/null | cut -d= -f2),~/projects/lyra)
 
-.PHONY: lyra deploy test lint typecheck format
+.PHONY: lyra deploy remote test lint typecheck format
 
 lyra:
 ifeq ($(LYRA_CMD),stop)
@@ -48,6 +53,9 @@ endif
 deploy:
 	@echo "Deploying to Machine 1 ($(MACHINE1))..."
 	@ssh $(MACHINE1) "cd $(MACHINE1_DIR) && bash scripts/deploy.sh"
+
+remote:
+	@ssh $(MACHINE1) "cd $(MACHINE1_DIR) && make lyra $(REMOTE_CMD)"
 
 test:
 	uv run pytest -v

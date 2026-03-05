@@ -179,6 +179,42 @@ sudo ufw status
 
 Polling mode (the default) requires no inbound ports beyond SSH.
 
+## 8. Remote control from Machine 2 (Makefile)
+
+The Makefile provides shortcuts to manage Lyra on Machine 1 from Machine 2 via SSH.
+
+### Configuration
+
+Machine connection is read from `.env` (with hardcoded fallbacks):
+
+```bash
+# .env (Machine 2)
+MACHINE1_HOST=mickael@192.168.1.16
+MACHINE1_DIR=~/projects/lyra
+```
+
+### Deploy (pull + test + restart)
+
+```bash
+make deploy
+```
+
+Runs `scripts/deploy.sh` on Machine 1: fetches `main`, runs tests (rolls back on failure), restarts Lyra.
+
+### Remote service control
+
+```bash
+make remote stop      # stop Lyra
+make remote status    # check status
+make remote reload    # restart Lyra
+make remote logs      # tail stdout logs
+make remote errors    # tail stderr logs
+```
+
+These execute the same `make lyra <cmd>` commands on Machine 1 over SSH.
+
+---
+
 ## Troubleshooting
 
 **Service fails to start — "Missing required env var"**

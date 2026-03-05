@@ -5,6 +5,9 @@
 #        curl -fsSL https://raw.githubusercontent.com/Roxabi/lyra/main/setup.sh | ADMIN_USER=yourname AGENT_USER=myagent bash
 set -euo pipefail
 
+export PATH="$HOME/.local/bin:$PATH"
+source "$HOME/.local/bin/env" 2>/dev/null || true  # uv
+
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'

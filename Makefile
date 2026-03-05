@@ -16,7 +16,10 @@ define ensure_supervisor
 	fi
 endef
 
-.PHONY: lyra test lint typecheck format
+MACHINE1 := mickael@192.168.1.16
+MACHINE1_DIR := ~/projects/lyra
+
+.PHONY: lyra deploy test lint typecheck format
 
 lyra:
 ifeq ($(LYRA_CMD),stop)
@@ -41,6 +44,10 @@ else
 	$(ensure_supervisor)
 	@$(SUPERVISORCTL) $(LYRA_CMD) lyra
 endif
+
+deploy:
+	@echo "Deploying to Machine 1 ($(MACHINE1))..."
+	@ssh $(MACHINE1) "cd $(MACHINE1_DIR) && bash scripts/deploy.sh"
 
 test:
 	uv run pytest -v

@@ -1,0 +1,143 @@
+---
+title: "ADR-010: External tool integration — Install, Wrap, Declare"
+description: External CLIs (gws, voicecli, scraper) are system tools on PATH, wrapped by thin roxabi-plugins skills, and declared in Lyra agent TOML configs. No forking, no vendoring.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+Lyra needs access to external capabilities: Google Workspace (Calendar, Tasks, Gmail, Drive), voice synthesis (VoiceCLI), content scraping, image generation, and more. These capabilities already exist as standalone CLIs or will be adopted from upstream projects (e.g., `googleworkspace/cli`).
+
+The question: how should Lyra and roxabi-plugins integrate these external tools?
+
+### Options considered
+
+| Option | Description | Rejected because |
+|--------|-------------|-----------------|
+| **A. Fork into roxabi-plugins** | Copy the full CLI source into `plugins/` (like `frontend-slides`) | Bloats repo, maintenance burden, build pipeline conflicts (Rust/Node inside a bun/TS repo) |
+| **B. Fork as separate Roxabi repo** | Own GitHub repo per tool | Another repo to maintain, divergence risk, overkill for wrappers |
+| **C. Install as system tool only** | Just `cargo install gws` and call from Bash | No skill layer — Claude doesn't know *when* or *how* to use the tool |
+| **D. Install + Wrap + Declare** | System tool on PATH, thin skill in roxabi-plugins, agent config in Lyra | **Selected** |
+
+### Why forking doesn't work here
+
+`frontend-slides` was forked because it's a static asset (markdown + CSS + one Python script). It has no build pipeline, no upstream API dependency, and rarely changes.
+
+`googleworkspace/cli` is fundamentally different:
+- Rust + Node build toolchain
+- Auto-generates bindings from Google Discovery Service
+- Actively maintained by Google
+- MCP server built-in
+- Forking means maintaining Google API compatibility yourself
+
+The same reasoning applies to any maintained CLI (`voicecli`, future tools).
+
+## Decision
+
+External tool integration follows a **3-layer pattern: Install, Wrap, Declare**.
+
+### Layer 1 — System tool (Install)
+
+The CLI binary is installed on the machine via package manager or build script. It lives on PATH like any Unix tool.
+
+```bash
+# setup.sh or Makefile
+uv tool install git+https://github.com/roxabi/voiceCLI   # Voice synthesis
+uv tool install git+https://github.com/roxabi/imageCLI   # Image generation
+# gws — install method TBD (see #65)
+```
+
+- No fork, no vendor, no subtree
+- Roxabi CLIs installed from GitHub; third-party CLIs from their official source
+- `setup.sh` declares required tools
+- Version pinning via lockfile or explicit version in setup script
+
+### Layer 2 — Skill wrapper (Wrap)
+
+A thin roxabi-plugins skill teaches Claude Code **how** and **when** to use the CLI. The skill contains:
+
+```
+plugins/google-workspace/
+  SKILL.md          # Prompts, examples, output formatting
+  README.md         # Install prereqs, trigger phrases
+```
+
+No code. Just prompt engineering. The skill declares its CLI dependency:
+
+```markdown
+## Prerequisites
+Requires `gws` CLI on PATH. Install: `cargo install gws`
+```
+
+This is the same pattern as `voice-cli/SKILL.md` wrapping the `voicecli` binary.
+
+**Key property**: the skill works in any project that has roxabi-plugins installed + the CLI on PATH. Not Lyra-specific.
+
+### Layer 3 — Agent config (Declare)
+
+Lyra agents declare which tools they can access in their TOML config:
+
+```toml
+# Phase 1: via Bash tool allowlist
+[model]
+tools = ["Read", "Grep", "Glob", "WebFetch", "Bash"]
+# Agent calls: gws calendar list --json, voicecli generate, etc.
+
+# Phase 2: via MCP (when Lyra supports MCP client)
+[model]
+mcp_servers = ["gws", "voicecli"]
+```
+
+The agent config is the **permission boundary** — an agent can only use tools explicitly declared.
+
+## Architecture
+
+```
+Machine (PATH)              roxabi-plugins              Lyra
+-----------------           -----------------           -----------------
+gws (binary)          <--   google-workspace/SKILL.md   agent TOML: tools
+voicecli (binary)     <--   voice-cli/SKILL.md          agent TOML: tools
+scraper (binary/py)   <--   web-intel/SKILL.md          agent TOML: tools
+```
+
+Two access paths coexist:
+
+1. **Claude Code CLI** (human at terminal) -> triggers roxabi-plugin skill -> skill calls CLI
+2. **Lyra agent** (via Telegram/Discord) -> agent has Bash tool -> calls CLI directly
+
+Both use the same system binary. No duplication.
+
+## Consequences
+
+### Positive
+
+- **Zero maintenance on upstream CLIs** — Google maintains `gws`, we just install
+- **roxabi-plugins stays lean** — only markdown skills, no compiled code
+- **Works across all projects** — any project with the CLI on PATH can use it
+- **Clear dependency graph** — skill declares CLI prereq, agent declares tool access
+- **MCP-ready** — when Lyra adds MCP client support, tools with MCP servers (like `gws`) plug in directly
+
+### Negative
+
+- **System dependency** — CLIs must be installed on each machine (mitigated by `setup.sh`)
+- **No offline bundling** — can't distribute a self-contained plugin (acceptable for personal infra)
+- **Upstream breakage risk** — if `gws` changes its CLI interface, skills break (mitigated by version pinning)
+
+### When to fork instead
+
+Fork into roxabi-plugins **only** when:
+1. The upstream project is a static asset (markdown, CSS, templates) — like `frontend-slides`
+2. The upstream is abandoned and you need to maintain it
+3. You need deep structural changes, not just a wrapper
+
+## Applies to
+
+| Tool | CLI | roxabi-plugin skill | Lyra agent access |
+|------|-----|-------------------|------------------|
+| Google Workspace | `gws` (TBD) | `google-workspace/SKILL.md` (new) | Bash or MCP |
+| Voice synthesis | `voicecli` | `voice-cli/SKILL.md` (exists) | Bash or MCP |
+| Content scraping | TBD | `web-intel/SKILL.md` (exists) | Bash |
+| Image generation | `imagecli` | `image-prompt-generator/SKILL.md` (exists) | Bash |

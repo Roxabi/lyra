@@ -1,7 +1,7 @@
 # Lyra — Architecture & Decisions
 
 > Living document. Updated as decisions are made.
-> Last updated: 2026-03-02 (gaps 1-3 resolved)
+> Last updated: 2026-03-05 (ADR-010 external tool integration)
 
 ---
 
@@ -218,6 +218,20 @@ Multiple agents run simultaneously on different pools. A single agent (e.g., `ly
 - Sandboxing: limited env variables, restricted filesystem, network whitelist
 - Progressive streaming of long responses (chunked pattern)
 
+### External tool integration (ADR-010)
+
+External CLIs (Google Workspace, VoiceCLI, ImageCLI, scraper) follow a **3-layer pattern: Install, Wrap, Declare**.
+
+| Layer | What | Where |
+|-------|------|-------|
+| **Install** | CLI binary on PATH via `setup.sh` / package manager | Host machine |
+| **Wrap** | Thin roxabi-plugins skill (`SKILL.md` only, no code) | `roxabi-plugins/` repo |
+| **Declare** | Agent TOML declares tool access (Bash allowlist now, MCP later) | `lyra/` repo |
+
+No forking, no vendoring. Upstream maintains the CLI; we maintain the skill wrapper and agent config.
+
+See `docs/architecture/adr/010-external-tool-integration-pattern.mdx` for full rationale.
+
 ---
 
 ## Security Layer
@@ -296,6 +310,10 @@ client = AsyncOpenAI(
 - **Pool/agent: stateless singleton** — An agent = immutable config shared across all pools. All mutable state lives in the Pool. No duplication, no race condition.
 - **Backpressure: bounded queue (100)** — `asyncio.Queue(maxsize=100)`. Queue full → immediate acknowledgment + blocking `await put()`.
 - **Reduced Phase 1 memory scope** — Levels 0 (working) + 3 (semantic) only. Levels 1, 2, 4 added when the real need arises.
+
+### External tool integration
+
+- **Install, Wrap, Declare** (ADR-010) — see [Tools / Skills Layer](#external-tool-integration-adr-010) above.
 
 ### Deferred Gaps (Phase 2)
 

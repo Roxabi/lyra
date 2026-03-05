@@ -1,0 +1,10 @@
+{
+  "allowlist": [
+    "lyra",
+    "aiohttp",
+    "packaging",
+    "typing_extensions",
+    "uvloop"
+  ],
+  "overrides": {}
+}

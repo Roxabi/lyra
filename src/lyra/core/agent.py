@@ -1,16 +1,23 @@
 from __future__ import annotations
 
+import logging
 import re
 import tomllib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .command_router import CommandConfig, CommandRouter
 from .message import Message, Response
 from .pool import Pool
 
+log = logging.getLogger(__name__)
+
 # Default agents config directory: src/lyra/agents/
 _AGENTS_DIR = Path(__file__).resolve().parent.parent / "agents"
+
+_VALID_BACKENDS: frozenset[str] = frozenset({"claude-cli", "ollama"})
+_MAX_PROMPT_BYTES = 64 * 1024  # 64 KB
 
 
 @dataclass(frozen=True)
@@ -32,15 +39,16 @@ class ModelConfig:
     tools: tuple[str, ...] = field(default=())
 
 
-@dataclass(frozen=True)
+@dataclass
 class Agent:
-    """Immutable configuration record for an agent."""
+    """Configuration record for an agent. Mutable for hot-reload."""
 
     name: str
     system_prompt: str
     memory_namespace: str
     model_config: ModelConfig = field(default_factory=ModelConfig)
     permissions: tuple[str, ...] = field(default=())
+    commands: dict[str, CommandConfig] = field(default_factory=dict)
 
 
 def load_agent_config(name: str, agents_dir: Path | None = None) -> Agent:
@@ -93,7 +101,6 @@ def load_agent_config(name: str, agents_dir: Path | None = None) -> Agent:
     prompt_section = data.get("prompt", {})
 
     backend = model_section.get("backend", "claude-cli")
-    _VALID_BACKENDS = {"claude-cli", "ollama"}
     if backend not in _VALID_BACKENDS:
         raise ValueError(
             f"Invalid backend {backend!r} for agent {name!r}: "
@@ -115,11 +122,23 @@ def load_agent_config(name: str, agents_dir: Path | None = None) -> Agent:
     )
 
     system_prompt = prompt_section.get("system", "")
-    _MAX_PROMPT_BYTES = 64 * 1024  # 64 KB
-    if len(system_prompt.encode()) > _MAX_PROMPT_BYTES:
+    encoded_prompt = system_prompt.encode()
+    if len(encoded_prompt) > _MAX_PROMPT_BYTES:
         raise ValueError(
             f"system_prompt for agent {name!r} exceeds {_MAX_PROMPT_BYTES // 1024}KB "
-            f"limit ({len(system_prompt.encode())} bytes)"
+            f"limit ({len(encoded_prompt)} bytes)"
+        )
+
+    commands_section = data.get("commands", {})
+    commands: dict[str, CommandConfig] = {}
+    for cmd_name, cmd_data in commands_section.items():
+        commands[cmd_name] = CommandConfig(
+            skill=cmd_data.get("skill"),
+            action=cmd_data.get("action"),
+            cli=cmd_data.get("cli"),
+            description=cmd_data.get("description", ""),
+            builtin=bool(cmd_data.get("builtin", False)),
+            timeout=float(cmd_data.get("timeout", 30.0)),
         )
 
     return Agent(
@@ -128,6 +147,7 @@ def load_agent_config(name: str, agents_dir: Path | None = None) -> Agent:
         memory_namespace=agent_section.get("memory_namespace", name),
         model_config=model_cfg,
         permissions=tuple(agent_section.get("permissions", [])),
+        commands=commands,
     )
 
 
@@ -135,14 +155,44 @@ class AgentBase(ABC):
     """Abstract base for concrete agent implementations.
 
     All mutable state lives in Pool.
+    Supports hot-reload: edit the TOML file and config updates on next message.
     """
 
-    def __init__(self, config: Agent) -> None:
+    def __init__(self, config: Agent, agents_dir: Path | None = None) -> None:
         self.config = config
+        self._agents_dir = agents_dir or _AGENTS_DIR
+        self._config_path = self._agents_dir / f"{config.name}.toml"
+        self._last_mtime: float = (
+            self._config_path.stat().st_mtime if self._config_path.exists() else 0.0
+        )
+        self.command_router: CommandRouter = CommandRouter(config.commands)
 
     @property
     def name(self) -> str:
         return self.config.name
+
+    def _maybe_reload(self) -> None:
+        """Reload config from TOML if the file changed since last check."""
+        try:
+            mtime = self._config_path.stat().st_mtime
+        except OSError:
+            return
+        if mtime <= self._last_mtime:
+            return
+        try:
+            new_config = load_agent_config(self.config.name, self._agents_dir)
+            if new_config != self.config:
+                log.info(
+                    "Hot-reloaded config for agent %r (model: %s -> %s)",
+                    self.config.name,
+                    self.config.model_config.model,
+                    new_config.model_config.model,
+                )
+                self.config = new_config
+                self.command_router = CommandRouter(new_config.commands)
+            self._last_mtime = mtime
+        except Exception as exc:
+            log.warning("Failed to reload config for %r: %s", self.config.name, exc)
 
     @abstractmethod
     async def process(self, msg: Message, pool: Pool) -> Response: ...

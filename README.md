@@ -64,6 +64,29 @@ python -m lyra
 
 > See [QUICKSTART.md](docs/QUICKSTART.md) for the full setup — bot creation, agent TOML, environment variables, and sending your first message.
 
+## Operations (Makefile)
+
+Machine connection is configured in `.env` (see `.env.example`):
+
+```bash
+MACHINE1_HOST=mickael@192.168.1.16
+MACHINE1_DIR=~/projects/lyra
+```
+
+| Command | Description |
+|---------|-------------|
+| `make lyra` | Start Lyra locally (via supervisor) |
+| `make lyra stop` | Stop Lyra locally |
+| `make lyra status` | Check local service status |
+| `make lyra logs` | Tail local stdout logs |
+| `make deploy` | Deploy to Machine 1 (pull main + test + restart) |
+| `make remote stop` | Stop Lyra on Machine 1 |
+| `make remote status` | Check Machine 1 service status |
+| `make remote logs` | Tail Machine 1 stdout logs |
+| `make test` | Run tests |
+| `make lint` | Run ruff linter |
+| `make format` | Auto-format with ruff |
+
 ## Structure
 
 ```

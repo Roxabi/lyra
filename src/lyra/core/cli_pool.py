@@ -200,7 +200,7 @@ class CliPool:
             "--model",
             model_config.model,
             "--max-turns",
-            str(int(model_config.max_turns)),
+            str(model_config.max_turns),
         ]
         if model_config.tools:
             cmd.extend(["--allowedTools", ",".join(model_config.tools)])
@@ -252,7 +252,11 @@ class CliPool:
             "parent_tool_use_id": None,
         }
         proc.stdin.write((json.dumps(payload) + "\n").encode())
-        await proc.stdin.drain()
+        try:
+            await asyncio.wait_for(proc.stdin.drain(), timeout=10)
+        except asyncio.TimeoutError:
+            await self._kill(entry.pool_id)
+            return CliResult(error="Timeout writing to subprocess stdin")
 
         return await self._read_until_result(entry)
 
@@ -370,12 +374,13 @@ class CliPool:
                 # _entries while iterating (cooperative-multitasking safety).
                 snapshot = list(self._entries.items())
                 to_kill = [
-                    (pid, e)
-                    for pid, e in snapshot
-                    if not e.is_alive() or (now - e.last_activity) > self._idle_ttl
+                    (pool_id, entry)
+                    for pool_id, entry in snapshot
+                    if not entry.is_alive()
+                    or (now - entry.last_activity) > self._idle_ttl
                 ]
-                for pool_id, e in to_kill:
-                    reason = "idle" if e.is_alive() else "dead"
+                for pool_id, entry in to_kill:
+                    reason = "idle" if entry.is_alive() else "dead"
                     log.info("[pool:%s] reaping %s process", pool_id, reason)
                     await self._kill(pool_id)
             except asyncio.CancelledError:

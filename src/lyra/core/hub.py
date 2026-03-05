@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import asyncio
-import collections
 import logging
 import time
+from collections import deque
 from dataclasses import dataclass
 from typing import NamedTuple, Protocol
 
 from .agent import AgentBase
-from .message import Message, Platform, Response
+from .message import GENERIC_ERROR_REPLY, Message, Platform, Response
 from .pool import Pool
 
 log = logging.getLogger(__name__)
@@ -69,10 +69,10 @@ class Hub:
         self.pools: dict[str, Pool] = {}
         self._rate_limit = rate_limit
         self._rate_window = rate_window
-        # Sliding window: maps (platform, bot_id, user_id) → deque of timestamps
-        self._rate_timestamps: dict[
-            tuple[Platform, str, str], collections.deque[float]
-        ] = {}
+        # Sliding window: maps RoutingKey → deque of message timestamps.
+        # Entries are removed when the deque empties (user inactive for > RATE_WINDOW)
+        # to prevent unbounded dict growth.
+        self._rate_timestamps: dict[RoutingKey, deque[float]] = {}
 
     # ------------------------------------------------------------------
     # Adapter registry
@@ -170,16 +170,26 @@ class Hub:
 
         Uses a sliding window: tracks timestamps of recent messages and drops
         any that arrive after RATE_LIMIT messages within RATE_WINDOW seconds.
+        Inactive-user entries are cleaned up when their deque empties to prevent
+        unbounded dict growth.
         """
-        key = (msg.platform, msg.bot_id, msg.user_id)
+        key = RoutingKey(msg.platform, msg.bot_id, msg.user_id)
         now = time.monotonic()
         window_start = now - self._rate_window
-        timestamps = self._rate_timestamps.setdefault(key, collections.deque())
-        # Evict timestamps outside the current window
-        while timestamps and timestamps[0] < window_start:
-            timestamps.popleft()
-        if len(timestamps) >= self._rate_limit:
+        timestamps = self._rate_timestamps.get(key)
+        if timestamps is not None:
+            # Evict timestamps outside the current window
+            while timestamps and timestamps[0] < window_start:
+                timestamps.popleft()
+            # Empty deque → user has been inactive; clean up to bound dict size
+            if not timestamps:
+                del self._rate_timestamps[key]
+                timestamps = None
+        if timestamps is not None and len(timestamps) >= self._rate_limit:
             return True
+        if timestamps is None:
+            timestamps = deque()
+            self._rate_timestamps[key] = timestamps
         timestamps.append(now)
         return False
 
@@ -206,18 +216,13 @@ class Hub:
         while True:
             msg = await self.bus.get()
             try:
+                key = RoutingKey(msg.platform, msg.bot_id, msg.user_id)
                 if self._is_rate_limited(msg):
-                    log.warning(
-                        "rate limit exceeded for %s — message dropped",
-                        RoutingKey(msg.platform, msg.bot_id, msg.user_id),
-                    )
+                    log.warning("rate limit exceeded for %s — message dropped", key)
                     continue
                 binding = self.resolve_binding(msg)
                 if binding is None:
-                    log.warning(
-                        "unmatched routing key %s — message dropped",
-                        RoutingKey(msg.platform, msg.bot_id, msg.user_id),
-                    )
+                    log.warning("unmatched routing key %s — message dropped", key)
                     continue
                 pool = self.get_or_create_pool(binding.pool_id, binding.agent_name)
                 agent = self.agent_registry.get(binding.agent_name)
@@ -225,8 +230,20 @@ class Hub:
                     log.warning(
                         "no agent registered for %r (routing %s) — message dropped",
                         binding.agent_name,
-                        RoutingKey(msg.platform, msg.bot_id, msg.user_id),
+                        key,
                     )
+                    continue
+                router = getattr(agent, "command_router", None)
+                if router and router.is_command(msg):
+                    try:
+                        response = await router.dispatch(msg)
+                    except Exception as exc:
+                        log.exception("command dispatch failed for %s: %s", key, exc)
+                        response = Response(content=GENERIC_ERROR_REPLY)
+                    try:
+                        await self.dispatch_response(msg, response)
+                    except Exception as exc:
+                        log.exception("dispatch_response() failed for %s: %s", key, exc)
                     continue
                 # Fail fast — check adapter exists before spending LLM tokens
                 if (msg.platform, msg.bot_id) not in self.adapter_registry:
@@ -241,20 +258,14 @@ class Hub:
                         response = await agent.process(msg, pool)
                     except Exception as exc:
                         log.exception(
-                            "agent.process() raised for %s: %s",
-                            RoutingKey(msg.platform, msg.bot_id, msg.user_id),
-                            exc,
+                            "agent.process() raised for %s: %s", key, exc
                         )
-                        response = Response(
-                            content="Something went wrong. Please try again."
-                        )
+                        response = Response(content=GENERIC_ERROR_REPLY)
                     try:
                         await self.dispatch_response(msg, response)
                     except Exception as exc:
                         log.exception(
-                            "dispatch_response() failed for %s: %s",
-                            RoutingKey(msg.platform, msg.bot_id, msg.user_id),
-                            exc,
+                            "dispatch_response() failed for %s: %s", key, exc
                         )
             finally:
                 self.bus.task_done()

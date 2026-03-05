@@ -65,10 +65,14 @@ class DiscordAdapter(discord.Client):
         self._bot_id = bot_id
         # Set on on_ready; None until login completes. Tests set this directly.
         self._bot_user: Any = None
+        # Compiled once in on_ready (requires bot user ID). None until then.
+        self._mention_re: re.Pattern[str] | None = None
 
     async def on_ready(self) -> None:
-        """Cache bot user on login. Required for mention detection in _normalize()."""
+        """Cache bot user and compile mention regex on login."""
         self._bot_user = self.user
+        if self.user is not None:
+            self._mention_re = re.compile(rf"<@!?{self.user.id}>")
         log.info(
             "Discord bot ready: %s (id=%s)", self.user, getattr(self.user, "id", "?")
         )
@@ -89,12 +93,11 @@ class DiscordAdapter(discord.Client):
 
         # Strip @mention prefix so content reaches the agent clean
         content = message.content
-        if is_mention and self._bot_user:
-            content = re.sub(
-                rf"<@!?{self._bot_user.id}>",
-                "",
-                content,
-            ).strip()
+        if is_mention:
+            if self._mention_re is None and self._bot_user is not None:
+                self._mention_re = re.compile(rf"<@!?{self._bot_user.id}>")
+            if self._mention_re:
+                content = self._mention_re.sub("", content).strip()
 
         # Detect channel type
         channel_type: str = "text"

@@ -84,6 +84,40 @@ else
   warn "Add your agent SSH public key to /home/$AGENT_USER/.ssh/authorized_keys"
 fi
 
+section "External tools (ADR-010: Install, Wrap, Declare)"
+# System CLIs used by Lyra agents and roxabi-plugins skills.
+# Each tool is installed on PATH; wrapped by a skill in roxabi-plugins;
+# declared in agent TOML config. See docs/architecture/adr/010-*.mdx.
+
+if command -v voicecli &>/dev/null; then
+  info "voicecli already installed."
+else
+  if command -v uv &>/dev/null; then
+    out=$(uv tool install git+https://github.com/roxabi/voiceCLI 2>&1) && info "voicecli installed." || warn "voicecli install failed: $out"
+  else
+    warn "uv not found, skipping voicecli install. Run: uv tool install voicecli"
+  fi
+fi
+
+if command -v imagecli &>/dev/null; then
+  info "imagecli already installed."
+else
+  if command -v uv &>/dev/null; then
+    out=$(uv tool install git+https://github.com/roxabi/imageCLI 2>&1) && info "imagecli installed." || warn "imagecli install failed: $out"
+  else
+    warn "uv not found, skipping imagecli install. Run: uv tool install imagecli"
+  fi
+fi
+
+# Google Workspace CLI — not yet packaged for install.
+# See issue #65 (Epic: Google Workspace integration via gws CLI).
+# Install method TBD: github.com/nicholasgasior/gws or npm @anthropic/gws.
+# if command -v gws &>/dev/null; then
+#   info "gws already installed."
+# else
+#   warn "gws not yet installed."
+# fi
+
 section "Done"
 info "Setup complete — admin: $ADMIN_USER, agent: $AGENT_USER"
 if [ "${NEEDS_REBOOT:-false}" = true ]; then

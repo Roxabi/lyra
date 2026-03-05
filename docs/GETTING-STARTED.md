@@ -200,3 +200,215 @@ Expected: `uid=1001(lyra) ... git version 2.x`
 | SSH keys | `~/.ssh/id_ed25519` (admin), `~/.ssh/lyra_agent` (agent) |
 
 Machine 1 is ready to run Lyra by Roxabi.
+
+---
+
+## Step 8 — Clone the repo & install dependencies
+
+```bash
+ssh yourname@<MACHINE_1_IP>
+
+# Clone (use SSH if you imported your GitHub key)
+git clone git@github.com:Roxabi/lyra.git ~/lyra
+cd ~/lyra
+
+# Install uv (Python package manager)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source ~/.bashrc
+
+# Install all dependencies (runtime + dev)
+uv sync --all-extras
+```
+
+Verify:
+```bash
+uv run python -c "from lyra.core.hub import Hub; print('Hub OK')"
+```
+
+---
+
+## Step 9 — Configure environment variables
+
+Copy the example and fill in your tokens:
+
+```bash
+cp .env.example .env
+nano .env
+```
+
+Required variables for running Lyra with real adapters:
+
+```bash
+# Telegram — get from @BotFather on Telegram
+TELEGRAM_TOKEN=123456:ABC-DEF...
+TELEGRAM_BOT_USERNAME=your_bot_username
+TELEGRAM_WEBHOOK_SECRET=a-random-secret-string
+
+# Discord — get from https://discord.com/developers/applications
+DISCORD_TOKEN=your-discord-bot-token
+```
+
+**Telegram setup:**
+1. Message [@BotFather](https://t.me/BotFather) on Telegram
+2. `/newbot` → choose a name and username
+3. Copy the token → `TELEGRAM_TOKEN`
+4. The username (without @) → `TELEGRAM_BOT_USERNAME`
+5. Generate a random webhook secret → `TELEGRAM_WEBHOOK_SECRET`
+
+**Discord setup:**
+1. Go to [Discord Developer Portal](https://discord.com/developers/applications) → New Application
+2. Bot tab → Reset Token → copy → `DISCORD_TOKEN`
+3. Enable **Message Content Intent** under Privileged Gateway Intents
+4. OAuth2 → URL Generator → scopes: `bot` → permissions: `Send Messages`, `Read Message History`
+5. Use the generated URL to invite the bot to your server
+
+---
+
+## Step 10 — Run the tests
+
+```bash
+cd ~/lyra
+uv run pytest -v
+```
+
+All tests should pass. They use mocks — no tokens or network required.
+
+---
+
+## Step 11 — Start Lyra
+
+```bash
+cd ~/lyra
+uv run python -m lyra
+```
+
+You should see:
+```
+INFO lyra: Agent loaded: name=lyra_default model=claude-sonnet-4-5 backend=claude-cli
+INFO lyra: Lyra started — Telegram + Discord adapters running.
+INFO lyra.adapters.discord: Discord bot ready: YourBot#1234 (id=...)
+```
+
+Stop with **Ctrl+C** (graceful shutdown).
+
+> **Note:** The `claude` CLI must be installed and authenticated on the machine.
+> Lyra spawns `claude --input-format stream-json` as a subprocess — it uses your
+> Claude Code subscription, not an API key.
+
+---
+
+## Step 12 — Send your first message
+
+**Telegram:** Open a DM with your bot and type anything. Lyra will respond.
+
+**Discord:** @mention your bot in a channel: `@YourBot hello!`
+
+What happens under the hood:
+1. The adapter normalizes your message into a `Message` object
+2. It goes onto the hub's async bus (`asyncio.Queue`)
+3. The hub resolves the routing (wildcard binding → your user gets an isolated pool)
+4. `SimpleAgent` sends the text to a persistent `claude` subprocess
+5. The response is dispatched back to the originating platform
+
+---
+
+## Step 13 — Local demo without tokens
+
+You can test the hub routing without any platform tokens. Save this as `demo.py` at the project root:
+
+```python
+"""Minimal demo: hub + echo agent + fake adapter — no tokens needed."""
+
+import asyncio
+from datetime import datetime, timezone
+
+from lyra.core.agent import Agent, AgentBase
+from lyra.core.hub import Hub
+from lyra.core.message import (
+    Message,
+    MessageType,
+    Platform,
+    Response,
+    TelegramContext,
+    TextContent,
+)
+from lyra.core.pool import Pool
+
+
+class EchoAgent(AgentBase):
+    """Echoes back whatever the user sends."""
+
+    async def process(self, msg: Message, pool: Pool) -> Response:
+        text = msg.content.text if isinstance(msg.content, TextContent) else str(msg.content)
+        return Response(content=f"Echo: {text}")
+
+
+class FakeAdapter:
+    """Prints responses to stdout instead of sending to a platform."""
+
+    def __init__(self) -> None:
+        self.responses: list[Response] = []
+
+    async def send(self, original_msg: Message, response: Response) -> None:
+        self.responses.append(response)
+        print(f"  <- {response.content}")
+
+
+async def main() -> None:
+    hub = Hub()
+
+    # Wire up
+    agent = EchoAgent(Agent(name="echo", system_prompt="", memory_namespace="test"))
+    hub.register_agent(agent)
+
+    adapter = FakeAdapter()
+    hub.register_adapter(Platform.TELEGRAM, "main", adapter)
+    hub.register_binding(Platform.TELEGRAM, "main", "*", "echo", "telegram:main:*")
+
+    # Start hub consumer
+    hub_task = asyncio.create_task(hub.run())
+
+    # Simulate messages
+    for text in ["Hello Lyra!", "How does routing work?", "Goodbye"]:
+        msg = Message.from_adapter(
+            platform=Platform.TELEGRAM,
+            bot_id="main",
+            user_id="tg:user:42",
+            user_name="Mickael",
+            content=TextContent(text=text),
+            type=MessageType.TEXT,
+            timestamp=datetime.now(timezone.utc),
+            platform_context=TelegramContext(chat_id=123),
+        )
+        print(f"  -> {text}")
+        await hub.bus.put(msg)
+
+    # Let the hub process all messages
+    await hub.bus.join()
+
+    print(f"\nDone — {len(adapter.responses)} messages routed successfully.")
+    hub_task.cancel()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+Run it:
+```bash
+uv run python demo.py
+```
+
+Expected output:
+```
+  -> Hello Lyra!
+  <- Echo: Hello Lyra!
+  -> How does routing work?
+  <- Echo: How does routing work?
+  -> Goodbye
+  <- Echo: Goodbye
+
+Done — 3 messages routed successfully.
+```
+
+This validates the full message path: bus -> rate limiter -> binding resolver -> pool -> agent -> adapter dispatch.

@@ -1,0 +1,109 @@
+---
+title: "ADR-011: Memory layer package structure — roxabi-memory as universal memory library"
+description: Extract a standalone roxabi-memory package with a single shared DB file serving both Claude Code skills and Lyra runtime agents.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+Lyra Phase 1 requires a semantic memory layer (level 3): SQLite + `aiosqlite` + FTS5/BM25 + hybrid search (`sqlite-vec` + `fastembed`) with agent namespace isolation and compaction metadata. See ADR-008 for the decision to implement levels 0 and 3 only in Phase 1.
+
+A proposal was evaluated: instead of building Lyra's memory module from scratch, upgrade the existing `roxabi-vault` plugin (from `roxabi-plugins`) to become a universal memory layer serving both:
+
+1. **Claude Code skills** (current usage) — sync `sqlite3`, single-user, dev-time, keyword search only
+2. **Lyra runtime agents** (new) — async `aiosqlite`, concurrent pools, embeddings, namespace isolation, compaction
+
+Current `roxabi-vault` state:
+- SQLite + FTS5 + BM25 (keyword search), `rank-bm25`
+- Sync `sqlite3` — `VaultDB` class with `connect / create_tables / close`
+- Schema: `entries` table (id, category, type, title, content, metadata JSON, timestamps) + `entries_fts` virtual table with auto-triggers
+- WAL mode enabled; `user_version = 1`; no migration runner
+- Lives at `~/.roxabi-vault/vault.db`
+
+The 2ndBrain migration (issue #68) feeds the same store with developer knowledge. Lyra agents search the same data — it's the same user, same knowledge, same model. There is no reason to split into separate DB files.
+
+## Options Considered
+
+### Option A: Upgrade roxabi-vault in-place
+
+Add async interface, embeddings, namespace, and compaction directly to the vault plugin. Lyra imports the vault plugin as a dependency.
+
+- **Pros:** Single codebase, no new package, immediate reuse.
+- **Cons:** Inverted dependency — Lyra's production runtime depends on a dev-tools plugin lifecycle. Vault ships async/embedding deps it never uses. Dual-interface class creates ambiguity.
+
+### Option B: Lyra owns an independent memory module
+
+Lyra implements `lyra/memory/` as a fully self-contained module. Two schemas evolve independently.
+
+- **Pros:** Zero coupling.
+- **Cons:** Schema logic duplicated. FTS5 triggers, hybrid search, migration runner re-implemented. Two separate data stores for the same user's knowledge — creates a sync problem.
+
+### Option C: Extract roxabi-memory as a standalone package, single shared DB (chosen)
+
+Create a new Python package `roxabi-memory` that owns the shared primitives. Both `roxabi-vault` and `lyra` consume it. **One DB file** at `~/.roxabi-vault/vault.db` — same data, same user, same knowledge base.
+
+- **Pros:** Clean dependency direction. Schema defined once. Single source of truth for all knowledge. 2ndBrain migration, vault skills, and Lyra agents all read/write the same store. One file to back up.
+- **Cons:** One additional package to version. Concurrent sync + async writers need WAL mode discipline (acceptable for single-user scale).
+
+## Decision
+
+**Option C** is adopted — single shared DB.
+
+A standalone `roxabi-memory` Python package is extracted, containing:
+
+```
+roxabi-memory/
+  pyproject.toml
+  roxabi_memory/
+    schema.py       # SCHEMA_SQL, user_version migrations, ALTER TABLE runner
+    db.py           # MemoryDB — sync wrapper (sqlite3), used by vault skills
+    async_db.py     # AsyncMemoryDB — async wrapper (aiosqlite), used by Lyra
+    fts.py          # search_entries, index_entry (FTS5 / BM25)
+    embeddings.py   # embed() via fastembed (ONNX), cosine_sim() via sqlite-vec
+    search.py       # hybrid_search() — BM25 + vector fusion, ranked merge
+    namespace.py    # NamespacedReader/Writer — scopes queries to Agent.memory_namespace
+```
+
+**Single DB file**: `~/.roxabi-vault/vault.db` — shared by vault skills (sync) and Lyra agents (async). WAL mode enables concurrent readers. Single-user scale means write contention is negligible — SQLite WAL serializes writers transparently.
+
+**roxabi-vault** is refactored to a thin sync adapter: `pip install roxabi-memory`. Uses `MemoryDB` only.
+
+**lyra** declares `pip install roxabi-memory[embeddings]`. Uses `AsyncMemoryDB` + `NamespacedReader` + hybrid search. Same DB file.
+
+**Schema additions** (applied via `user_version` migration runner, non-breaking):
+- `namespace TEXT NOT NULL DEFAULT 'vault'` — agent scoping for Lyra; vault/skill entries default to `'vault'`
+- `embedding BLOB` — nullable; stores sqlite-vec float32 vector
+- `source_turns TEXT` — nullable JSON array; compaction metadata (turn refs that were summarized)
+- `event_date TEXT` — nullable; dual timestamps (when the event occurred vs. when stored)
+
+**Embeddings in Phase 1**: `fastembed` (ONNX-based, ~100MB, no PyTorch) generates embeddings. `sqlite-vec` stores and queries them. `hybrid_search()` merges BM25 keyword scores with cosine similarity scores. Embedding calls wrapped in `run_in_executor` to keep asyncio non-blocking. Existing entries without embeddings are backfilled progressively; `hybrid_search()` gracefully handles rows where `embedding IS NULL` (BM25-only fallback for those rows).
+
+**Namespace isolation**: `Agent.memory_namespace` (immutable field on the agent singleton) is passed to `NamespacedReader/Writer`, which appends `WHERE namespace = ?` to all queries. The `IDENTITY_ANCHOR` record is stored with `namespace = agent.memory_namespace` and retrieved on agent boot. Vault skill entries use `namespace = 'vault'` and are readable by all agents (shared knowledge). Cross-namespace writes are not exposed in the public interface.
+
+**Migration strategy**: `schema.py` implements a `user_version` pragma-based runner. Each integer version increment applies one or more `ALTER TABLE` statements. Version 1 is the current vault schema. Version 2 adds the four new columns. The runner is idempotent and runs at `MemoryDB.connect()` / `AsyncMemoryDB.connect()`.
+
+## Consequences
+
+### Positive
+
+- Dependency direction is clean: `roxabi-vault → roxabi-memory`, `lyra → roxabi-memory`. No cross-dependency.
+- Schema and FTS5 trigger logic live once. No duplication.
+- Single DB = single source of truth. 2ndBrain knowledge, vault entries, and Lyra agent memory are all searchable from the same store.
+- Hybrid search (BM25 + embeddings) available from Phase 1.
+- Namespace isolation enforced at the library level, not in agent code.
+- Vault skill entries (`namespace = 'vault'`) are shared knowledge readable by all Lyra agents.
+
+### Negative
+
+- A new package must be created and versioned before Lyra's memory module can be implemented. One setup step on the Phase 1 critical path.
+- The vault plugin requires a refactor (thin adapter over `roxabi-memory`) — well-scoped.
+- `fastembed` + `sqlite-vec` added as P1 dependencies (via `[embeddings]` extras).
+
+### Neutral
+
+- `roxabi-memory` becomes the canonical reference for all future memory store integrations (levels 2, 4 when added per ADR-008).
+- The 2ndBrain migration (#68) feeds `~/.roxabi-vault/vault.db` — the same file Lyra reads from.
+- WAL mode handles concurrent sync (skills) + async (Lyra) access. At single-user scale, no application-level locking needed.

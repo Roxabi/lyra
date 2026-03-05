@@ -1,0 +1,250 @@
+---
+title: "Plan: Telegram command/skill router"
+issue: 66
+spec: artifacts/specs/66-telegram-command-skill-router-spec.mdx
+complexity: 5
+tier: F-lite
+generated: 2026-03-05
+---
+
+## Summary
+
+Add a command router to the hub run loop that intercepts `/command` messages, routes them to CLI tools via subprocess, and returns results — bypassing the LLM agent entirely. Ships with `/help` and `/echo`; real skill commands wired in separate issues.
+
+## Agents
+
+| Agent | Tasks | Files |
+|-------|-------|-------|
+| backend-dev | 8 | command_router.py, agent.py, hub.py, lyra_default.toml |
+| tester | 4 | test_command_router.py |
+
+## Reference Patterns
+
+- `src/lyra/core/agent.py` — TOML parsing with `load_agent_config()`, hot-reload via `_maybe_reload()`
+- `src/lyra/agents/simple_agent.py` — AgentBase subclass pattern
+- `src/lyra/core/hub.py:214-259` — Run loop structure (insertion point for command router)
+- `tests/core/test_hub.py` — Test conventions (pytest, asyncio, Message fixtures)
+
+## Consistency Report
+
+| Metric | Value |
+|--------|-------|
+| Success criteria covered | 13/13 |
+| Uncovered | 0 |
+| Untraced tasks | 0 |
+
+| SC | Criteria | Tasks |
+|----|----------|-------|
+| SC-1 | Messages with `/` intercepted before agent.process() | T4, T6 |
+| SC-2 | Registry loaded from TOML `[commands]` | T2, T5 |
+| SC-3 | Hot-reload via _maybe_reload | T3 |
+| SC-4 | `/help` lists commands | T1, T6 |
+| SC-5 | Unknown `/command` → error with /help hint | T1, T6 |
+| SC-6 | CLI-not-found via shutil.which() | T10, T12 |
+| SC-7 | Subprocess via asyncio.create_subprocess_exec | T7, T9 |
+| SC-8 | Configurable timeout (default 30s) | T7, T9 |
+| SC-9 | Args split on whitespace | T8, T9 |
+| SC-10 | Non-command messages unaffected | T4, T6 |
+| SC-11 | Platform-agnostic | T1, T4 |
+| SC-12 | dispatch_response errors caught | T11, T12 |
+| SC-13 | Ships /help + /echo | T5 |
+
+## Micro-Tasks
+
+### Slice 1 — Command Detection + Registry
+
+#### T1: Create CommandRouter class [backend-dev] — SC-1,4,5,11
+
+**Create** `src/lyra/core/command_router.py`
+
+```python
+@dataclass(frozen=True)
+class CommandConfig:
+    skill: str | None = None
+    action: str | None = None
+    cli: str | None = None
+    description: str = ""
+    builtin: bool = False
+
+class CommandRouter:
+    def __init__(self, commands: dict[str, CommandConfig]) -> None: ...
+    def is_command(self, msg: Message) -> bool: ...
+    async def dispatch(self, msg: Message) -> Response: ...
+    def _help(self) -> Response: ...
+```
+
+Verify: `python -c "from lyra.core.command_router import CommandRouter, CommandConfig"`
+Expected: no import error
+
+#### T2: Parse [commands] in load_agent_config [backend-dev] — SC-2 | deps: T1
+
+**Modify** `src/lyra/core/agent.py`
+
+- Add `commands: dict[str, CommandConfig]` to `Agent` dataclass
+- In `load_agent_config()`: parse `data.get("commands", {})` → dict of CommandConfig
+
+Verify: `python -c "from lyra.core.agent import load_agent_config; a = load_agent_config('lyra_default'); print(a.commands)"`
+Expected: dict with /help and /echo entries
+
+#### T3: Add command_router to AgentBase + hot-reload [backend-dev] — SC-3 | deps: T2
+
+**Modify** `src/lyra/core/agent.py`
+
+- In `AgentBase.__init__`: create `self.command_router = CommandRouter(config.commands)`
+- In `_maybe_reload()`: rebuild command_router when config changes
+
+Verify: manual — TOML edit triggers reload (tested in T6)
+
+#### T4: Insert command interception in Hub.run() [backend-dev] — SC-1,10,11 | deps: T3
+
+**Modify** `src/lyra/core/hub.py`
+
+Insert after agent lookup (line ~228), before pool.lock:
+```python
+if agent.command_router and agent.command_router.is_command(msg):
+    try:
+        response = await agent.command_router.dispatch(msg)
+    except Exception as exc:
+        log.exception("command dispatch failed: %s", exc)
+        response = Response(content=GENERIC_ERROR_REPLY)
+    try:
+        await self.dispatch_response(msg, response)
+    except Exception as exc:
+        log.exception("dispatch_response failed: %s", exc)
+    continue
+```
+
+Verify: `uv run ruff check src/lyra/core/hub.py`
+Expected: All checks passed
+
+#### T5: Add commands to lyra_default.toml [backend-dev] [P] — SC-2,13 | deps: T2
+
+**Modify** `src/lyra/agents/lyra_default.toml`
+
+```toml
+[commands."/help"]
+builtin = true
+description = "List available commands"
+
+[commands."/echo"]
+skill = "echo"
+action = "echo"
+cli = "echo"
+description = "Echo back the message (test command)"
+```
+
+Verify: `python -c "import tomllib; print(tomllib.load(open('src/lyra/agents/lyra_default.toml','rb')).get('commands',{}).keys())"`
+Expected: dict_keys(['/help', '/echo'])
+
+#### T6: Tests — detection, help, unknown, passthrough [tester] — SC-1,4,5,10 | deps: T4
+
+**Create** `tests/core/test_command_router.py`
+
+Tests:
+- `test_is_command_detects_slash_prefix` — "/help" → True
+- `test_is_command_ignores_plain_text` — "hello" → False
+- `test_dispatch_help_lists_commands` — "/help" → response contains command list
+- `test_dispatch_unknown_command` — "/pizza" → "Unknown command"
+- `test_passthrough_non_command` — plain text reaches agent.process()
+- `test_command_config_from_toml` — load_agent_config parses [commands]
+- `test_hot_reload_updates_commands` — TOML change → router updated
+
+Verify: `uv run pytest tests/core/test_command_router.py -v`
+Expected: 7 passed
+
+---
+**RED-GATE Slice 1:** All T1-T6 tests pass. `/help` works end-to-end in test.
+
+---
+
+### Slice 2 — Skill Execution
+
+#### T7: Add SKILL_REGISTRY + SkillHandler.execute() [backend-dev] — SC-7,8 | deps: T1
+
+**Modify** `src/lyra/core/command_router.py`
+
+```python
+SKILL_REGISTRY: dict[tuple[str, str], list[str]] = {
+    ("echo", "echo"): ["echo"],
+}
+
+class SkillHandler:
+    @staticmethod
+    async def execute(skill: str, action: str, args: list[str], timeout: float = 30.0) -> str: ...
+```
+
+Uses `asyncio.create_subprocess_exec` + `asyncio.wait_for(timeout=timeout)`.
+
+Verify: `python -c "import asyncio; from lyra.core.command_router import SkillHandler; print(asyncio.run(SkillHandler.execute('echo','echo',['hello'])))"`
+Expected: hello
+
+#### T8: Add args parsing to dispatch() [backend-dev] — SC-9 | deps: T7
+
+**Modify** `src/lyra/core/command_router.py`
+
+In `dispatch()`: split message text on whitespace → `["/cmd", "arg1", "arg2"]` → command = first, args = rest.
+
+Verify: covered by T9 tests
+
+#### T9: Tests — execution, args, timeout [tester] — SC-7,8,9 | deps: T8
+
+**Modify** `tests/core/test_command_router.py`
+
+Tests:
+- `test_execute_echo_returns_stdout` — /echo hello → "hello"
+- `test_execute_with_args` — /echo foo bar → "foo bar"
+- `test_execute_timeout` — slow command → timeout error message
+- `test_dispatch_routes_to_skill` — /echo hi → SkillHandler called
+
+Verify: `uv run pytest tests/core/test_command_router.py -v -k "execute or args or timeout"`
+Expected: 4 passed
+
+---
+**RED-GATE Slice 2:** All T7-T9 tests pass. `/echo hello` works end-to-end.
+
+---
+
+### Slice 3 — Error Handling
+
+#### T10: Add shutil.which() check + CLI-not-found [backend-dev] — SC-6 | deps: T7
+
+**Modify** `src/lyra/core/command_router.py`
+
+In `SkillHandler.execute()` or `dispatch()`: before subprocess, check `shutil.which(cli)`. If None → return "Command unavailable: `{cli}` is not installed."
+
+Verify: covered by T12 tests
+
+#### T11: Add dispatch_response error wrapping in hub [backend-dev] [P] — SC-12 | deps: T4
+
+**Modify** `src/lyra/core/hub.py`
+
+Already included in T4 pseudocode (try/except around dispatch_response). Verify the pattern matches existing hub error handling at lines 252-257.
+
+Verify: `uv run ruff check src/lyra/core/hub.py`
+
+#### T12: Tests — CLI missing, dispatch error, timeout message [tester] — SC-6,12 | deps: T10,T11
+
+**Modify** `tests/core/test_command_router.py`
+
+Tests:
+- `test_cli_not_found` — command with cli="nonexistent" → "not installed" message
+- `test_dispatch_response_error_caught` — adapter.send raises → logged, no crash
+- `test_timeout_produces_user_message` — timeout → "timed out" in response
+
+Verify: `uv run pytest tests/core/test_command_router.py -v -k "not_found or dispatch_error or timeout_message"`
+Expected: 3 passed
+
+---
+**RED-GATE Slice 3:** All 14 tests pass. Error paths verified. `uv run pytest` → 121+ passed.
+
+---
+
+## Final Verification
+
+```bash
+uv run ruff check .
+uv run pyright
+uv run pytest
+```
+
+All green → ready for PR.

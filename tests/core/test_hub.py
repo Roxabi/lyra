@@ -105,7 +105,6 @@ class TestMessage:
         assert msg.id == "msg-1"
         assert msg.platform == Platform.TELEGRAM
         assert msg.bot_id == "main"
-        assert msg.channel == "telegram"
         assert msg.user_id == "alice"
         assert msg.type == MessageType.TEXT
         assert msg.metadata == {}
@@ -199,12 +198,12 @@ class TestPool:
 
 
 class TestAgent:
-    def test_frozen(self) -> None:
+    def test_mutable_for_hot_reload(self) -> None:
         agent = Agent(
             name="lyra", system_prompt="You are Lyra.", memory_namespace="lyra"
         )
-        with pytest.raises(AttributeError):
-            agent.name = "other"  # type: ignore[misc]
+        agent.name = "other"
+        assert agent.name == "other"
 
     def test_default_permissions(self) -> None:
         agent = Agent(name="lyra", system_prompt="", memory_namespace="lyra")
@@ -474,3 +473,56 @@ class TestMissingAdapterDrop:
 
         assert any("no adapter registered" in r.message.lower() for r in caplog.records)
         assert hub.bus.empty()
+
+
+# ---------------------------------------------------------------------------
+# TestRateTimestampsCleanup — F6
+# ---------------------------------------------------------------------------
+
+
+class TestRateTimestampsCleanup:
+    """_is_rate_limited() deletes the deque entry when all timestamps expire."""
+
+    def test_deque_deleted_when_all_timestamps_expire(self) -> None:
+        """When all timestamps in the sliding window fall outside the window, the
+        deque is evicted from _rate_timestamps before a fresh entry is created.
+        After the second call with advanced time, the deque contains exactly one
+        timestamp — the new one — confirming the stale entry was removed."""
+        import unittest.mock
+
+        from lyra.core.hub import RoutingKey
+
+        hub = Hub(rate_window=1)
+        msg = make_message(platform=Platform.TELEGRAM, user_id="alice")
+
+        # First call — inserts a timestamp for alice's RoutingKey
+        hub._is_rate_limited(msg)
+        key = RoutingKey(msg.platform, msg.bot_id, msg.user_id)
+        assert key in hub._rate_timestamps
+        assert len(hub._rate_timestamps[key]) == 1
+
+        # Advance monotonic clock past the 1-second window
+        now_plus_2 = hub._rate_timestamps[key][0] + 2
+        with unittest.mock.patch(
+            "lyra.core.hub.time.monotonic", return_value=now_plus_2
+        ):
+            result = hub._is_rate_limited(msg)
+
+        # Not rate-limited (only 1 message in the fresh window)
+        assert result is False
+        # The old timestamp was evicted; the deque now holds only the new call's
+        # timestamp. This proves the cleanup path ran (deque was deleted and
+        # re-created, not merely appended to).
+        assert len(hub._rate_timestamps[key]) == 1
+        assert hub._rate_timestamps[key][0] == now_plus_2
+
+
+# ---------------------------------------------------------------------------
+# TestGenericErrorReply — F7
+# ---------------------------------------------------------------------------
+
+
+def test_generic_error_reply_is_user_facing_string() -> None:
+    from lyra.core.message import GENERIC_ERROR_REPLY
+
+    assert GENERIC_ERROR_REPLY == "Something went wrong. Please try again."

@@ -118,13 +118,12 @@ system = ""
         assert isinstance(agent.permissions, tuple)
         assert agent.permissions == ("admin", "read")
 
-    def test_agent_is_immutable(self, tmp_path: Path) -> None:
+    def test_agent_is_mutable_for_hot_reload(self, tmp_path: Path) -> None:
         toml_content = """
 [prompt]
 system = ""
 """
-        (tmp_path / "frozen.toml").write_text(toml_content)
-        agent = load_agent_config("frozen", agents_dir=tmp_path)
-
-        with pytest.raises(AttributeError):
-            agent.name = "other"  # type: ignore[misc]
+        (tmp_path / "mutable.toml").write_text(toml_content)
+        agent = load_agent_config("mutable", agents_dir=tmp_path)
+        agent.name = "other"
+        assert agent.name == "other"

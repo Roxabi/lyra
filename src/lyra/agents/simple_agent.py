@@ -13,7 +13,13 @@ from typing import Any
 
 from lyra.core.agent import Agent, AgentBase
 from lyra.core.cli_pool import CliPool, CliResult
-from lyra.core.message import Message, MessageContent, Response, TextContent
+from lyra.core.message import (
+    GENERIC_ERROR_REPLY,
+    Message,
+    MessageContent,
+    Response,
+    TextContent,
+)
 from lyra.core.pool import Pool
 
 log = logging.getLogger(__name__)
@@ -57,6 +63,7 @@ class SimpleAgent(AgentBase):
         self._pool = cli_pool
 
     async def process(self, msg: Message, pool: Pool) -> Response:
+        self._maybe_reload()
         text = _extract_text(msg)
         model_cfg = self.config.model_config
 
@@ -80,7 +87,7 @@ class SimpleAgent(AgentBase):
             if "Timeout" in result.error:
                 user_msg = "Response timed out. Please try again."
             else:
-                user_msg = "Something went wrong. Please try again."
+                user_msg = GENERIC_ERROR_REPLY
             return Response(
                 content=user_msg,
                 metadata={"error": True},

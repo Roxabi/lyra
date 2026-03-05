@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .command_router import CommandConfig, CommandRouter
 from .message import Message, Response
 from .pool import Pool
 
@@ -47,6 +48,7 @@ class Agent:
     memory_namespace: str
     model_config: ModelConfig = field(default_factory=ModelConfig)
     permissions: tuple[str, ...] = field(default=())
+    commands: dict[str, CommandConfig] = field(default_factory=dict)
 
 
 def load_agent_config(name: str, agents_dir: Path | None = None) -> Agent:
@@ -127,12 +129,24 @@ def load_agent_config(name: str, agents_dir: Path | None = None) -> Agent:
             f"limit ({len(encoded_prompt)} bytes)"
         )
 
+    commands_section = data.get("commands", {})
+    commands: dict[str, CommandConfig] = {}
+    for cmd_name, cmd_data in commands_section.items():
+        commands[cmd_name] = CommandConfig(
+            skill=cmd_data.get("skill"),
+            action=cmd_data.get("action"),
+            cli=cmd_data.get("cli"),
+            description=cmd_data.get("description", ""),
+            builtin=bool(cmd_data.get("builtin", False)),
+        )
+
     return Agent(
         name=name,
         system_prompt=system_prompt,
         memory_namespace=agent_section.get("memory_namespace", name),
         model_config=model_cfg,
         permissions=tuple(agent_section.get("permissions", [])),
+        commands=commands,
     )
 
 
@@ -150,6 +164,7 @@ class AgentBase(ABC):
         self._last_mtime: float = (
             self._config_path.stat().st_mtime if self._config_path.exists() else 0.0
         )
+        self.command_router: CommandRouter = CommandRouter(config.commands)
 
     @property
     def name(self) -> str:
@@ -174,6 +189,7 @@ class AgentBase(ABC):
                     new_config.model_config.model,
                 )
                 self.config = new_config
+                self.command_router = CommandRouter(new_config.commands)
         except Exception as exc:
             log.warning("Failed to reload config for %r: %s", self.config.name, exc)
 

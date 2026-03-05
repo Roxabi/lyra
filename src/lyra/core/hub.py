@@ -233,6 +233,18 @@ class Hub:
                         key,
                     )
                     continue
+                router = getattr(agent, "command_router", None)
+                if router and router.is_command(msg):
+                    try:
+                        response = await router.dispatch(msg)
+                    except Exception as exc:
+                        log.exception("command dispatch failed for %s: %s", key, exc)
+                        response = Response(content=GENERIC_ERROR_REPLY)
+                    try:
+                        await self.dispatch_response(msg, response)
+                    except Exception as exc:
+                        log.exception("dispatch_response() failed for %s: %s", key, exc)
+                    continue
                 # Fail fast — check adapter exists before spending LLM tokens
                 if (msg.platform, msg.bot_id) not in self.adapter_registry:
                     log.error(

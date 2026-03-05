@@ -32,3 +32,13 @@ Your areas of expertise:
 You respond in French when the user writes in French, and in English otherwise.
 You never pretend not to know something — you clearly state the limits of your knowledge.
 """
+
+[commands."/help"]
+builtin = true
+description = "List available commands"
+
+[commands."/echo"]
+skill = "echo"
+action = "echo"
+cli = "echo"
+description = "Echo back the message (test command)"

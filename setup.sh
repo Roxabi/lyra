@@ -93,18 +93,30 @@ if command -v voicecli &>/dev/null; then
   info "voicecli already installed."
 else
   if command -v uv &>/dev/null; then
-    out=$(uv tool install voicecli 2>&1) && info "voicecli installed." || warn "voicecli install failed: $out"
+    out=$(uv tool install git+https://github.com/roxabi/voiceCLI 2>&1) && info "voicecli installed." || warn "voicecli install failed: $out"
   else
     warn "uv not found, skipping voicecli install. Run: uv tool install voicecli"
   fi
 fi
 
-if command -v gws &>/dev/null; then
-  info "gws already installed."
+if command -v imagecli &>/dev/null; then
+  info "imagecli already installed."
 else
-  # TODO: confirm correct install method — see github.com/googleworkspace/cli
-  warn "gws (Google Workspace CLI) not yet installed."
+  if command -v uv &>/dev/null; then
+    out=$(uv tool install git+https://github.com/roxabi/imageCLI 2>&1) && info "imagecli installed." || warn "imagecli install failed: $out"
+  else
+    warn "uv not found, skipping imagecli install. Run: uv tool install imagecli"
+  fi
 fi
+
+# Google Workspace CLI — not yet packaged for install.
+# See issue #65 (Epic: Google Workspace integration via gws CLI).
+# Install method TBD: github.com/nicholasgasior/gws or npm @anthropic/gws.
+# if command -v gws &>/dev/null; then
+#   info "gws already installed."
+# else
+#   warn "gws not yet installed."
+# fi
 
 section "Done"
 info "Setup complete — admin: $ADMIN_USER, agent: $AGENT_USER"

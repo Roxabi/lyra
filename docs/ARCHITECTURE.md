@@ -220,11 +220,11 @@ Multiple agents run simultaneously on different pools. A single agent (e.g., `ly
 
 ### External tool integration (ADR-010)
 
-External CLIs (Google Workspace, VoiceCLI, scraper, image generation) follow a **3-layer pattern: Install, Wrap, Declare**.
+External CLIs (Google Workspace, VoiceCLI, ImageCLI, scraper) follow a **3-layer pattern: Install, Wrap, Declare**.
 
 | Layer | What | Where |
 |-------|------|-------|
-| **Install** | CLI binary on PATH via `setup.sh` / package manager | Machine 1 (or Machine 2) |
+| **Install** | CLI binary on PATH via `setup.sh` / package manager | Host machine |
 | **Wrap** | Thin roxabi-plugins skill (`SKILL.md` only, no code) | `roxabi-plugins/` repo |
 | **Declare** | Agent TOML declares tool access (Bash allowlist now, MCP later) | `lyra/` repo |
 

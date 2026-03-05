@@ -45,14 +45,14 @@ The CLI binary is installed on the machine via package manager or build script. 
 
 ```bash
 # setup.sh or Makefile
-cargo install gws              # Google Workspace CLI
-pip install voicecli           # Voice synthesis
-# etc.
+uv tool install git+https://github.com/roxabi/voiceCLI   # Voice synthesis
+uv tool install git+https://github.com/roxabi/imageCLI   # Image generation
+# gws — install method TBD (see #65)
 ```
 
 - No fork, no vendor, no subtree
-- Upstream handles updates, API changes, security patches
-- Machine 1 `setup.sh` declares required tools
+- Roxabi CLIs installed from GitHub; third-party CLIs from their official source
+- `setup.sh` declares required tools
 - Version pinning via lockfile or explicit version in setup script
 
 ### Layer 2 — Skill wrapper (Wrap)
@@ -137,7 +137,7 @@ Fork into roxabi-plugins **only** when:
 
 | Tool | CLI | roxabi-plugin skill | Lyra agent access |
 |------|-----|-------------------|------------------|
-| Google Workspace | `gws` | `google-workspace/SKILL.md` (new) | Bash or MCP |
+| Google Workspace | `gws` (TBD) | `google-workspace/SKILL.md` (new) | Bash or MCP |
 | Voice synthesis | `voicecli` | `voice-cli/SKILL.md` (exists) | Bash or MCP |
 | Content scraping | TBD | `web-intel/SKILL.md` (exists) | Bash |
-| Image generation | TBD | `image-prompt-generator/SKILL.md` (exists) | Bash |
+| Image generation | `imagecli` | `image-prompt-generator/SKILL.md` (exists) | Bash |

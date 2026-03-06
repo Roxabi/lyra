@@ -1,7 +1,6 @@
 {
   "enabledPlugins": {
     "dev-core@roxabi-marketplace": true,
-    "memory-audit@roxabi-marketplace": true,
     "compress@roxabi-marketplace": true,
     "1b1@roxabi-marketplace": true,
     "web-intel@roxabi-marketplace": true,

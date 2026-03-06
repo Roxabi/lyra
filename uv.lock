@@ -1160,6 +1160,12 @@ requires-dist = [
 ]
 provides-extras = ["embeddings"]
 
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=9.0.2" },
+    { name = "pytest-asyncio", specifier = ">=1.3.0" },
+]
+
 [[package]]
 name = "ruff"
 version = "0.15.4"

@@ -40,47 +40,71 @@ else
 fi
 
 section "SSH hardening"
-sudo tee /etc/ssh/sshd_config.d/lyra.conf > /dev/null << 'EOF'
+SSHD_CONF="/etc/ssh/sshd_config.d/lyra.conf"
+if [ -f "$SSHD_CONF" ]; then
+  info "SSH hardening already configured."
+else
+  sudo tee "$SSHD_CONF" > /dev/null << 'EOF'
 PermitRootLogin no
 PasswordAuthentication no
 PubkeyAuthentication yes
 EOF
-sudo systemctl restart ssh
-info "SSH: password auth disabled, key-only."
+  sudo systemctl restart ssh
+  info "SSH: password auth disabled, key-only."
+fi
 
 section "Firewall (ufw)"
-sudo ufw --force reset
-sudo ufw default deny incoming
-sudo ufw default allow outgoing
-sudo ufw allow ssh
-sudo ufw --force enable
-info "UFW: only SSH allowed inbound."
+if sudo ufw status | grep -q "Status: active"; then
+  info "UFW already active."
+else
+  sudo ufw default deny incoming
+  sudo ufw default allow outgoing
+  sudo ufw allow ssh
+  sudo ufw --force enable
+  info "UFW enabled: only SSH allowed inbound."
+fi
 
 section "fail2ban"
-sudo systemctl enable fail2ban
-sudo systemctl start fail2ban
-info "fail2ban active."
+if systemctl is-active --quiet fail2ban; then
+  info "fail2ban already active."
+else
+  sudo systemctl enable fail2ban
+  sudo systemctl start fail2ban
+  info "fail2ban active."
+fi
 
 section "GRUB — default Linux"
+GRUB_CHANGED=false
 if ! grep -q "GRUB_DISABLE_OS_PROBER=false" /etc/default/grub; then
   echo 'GRUB_DISABLE_OS_PROBER=false' | sudo tee -a /etc/default/grub > /dev/null
+  GRUB_CHANGED=true
 fi
-sudo sed -i 's/^GRUB_DEFAULT=.*/GRUB_DEFAULT=0/' /etc/default/grub
-sudo sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=5/' /etc/default/grub
-sudo update-grub
-info "GRUB: Linux default, Windows detectable."
+if ! grep -q "^GRUB_DEFAULT=0" /etc/default/grub; then
+  sudo sed -i 's/^GRUB_DEFAULT=.*/GRUB_DEFAULT=0/' /etc/default/grub
+  GRUB_CHANGED=true
+fi
+if ! grep -q "^GRUB_TIMEOUT=5" /etc/default/grub; then
+  sudo sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=5/' /etc/default/grub
+  GRUB_CHANGED=true
+fi
+if [ "$GRUB_CHANGED" = true ]; then
+  sudo update-grub
+  info "GRUB updated: Linux default, Windows detectable."
+else
+  info "GRUB already configured."
+fi
 
 section "Agent account ($AGENT_USER)"
 if id "$AGENT_USER" &>/dev/null; then
   warn "User '$AGENT_USER' already exists, skipping."
 else
-  sudo useradd -m -s /bin/rbash -c "Lyra by Roxabi AI agent" "$AGENT_USER"
+  sudo useradd -m -s /bin/bash -c "Lyra by Roxabi AI agent" "$AGENT_USER"
   sudo passwd -l "$AGENT_USER"
   sudo mkdir -p /home/"$AGENT_USER"/.ssh
   sudo chmod 700 /home/"$AGENT_USER"/.ssh
   sudo chown -R "$AGENT_USER":"$AGENT_USER" /home/"$AGENT_USER"/.ssh
   sudo chmod 750 /home/"$ADMIN_USER"
-  info "User '$AGENT_USER' created (rbash, no sudo, isolated home)."
+  info "User '$AGENT_USER' created (bash, no sudo, isolated home)."
   warn "Add your agent SSH public key to /home/$AGENT_USER/.ssh/authorized_keys"
 fi
 
@@ -109,14 +133,13 @@ else
   fi
 fi
 
-# Google Workspace CLI — not yet packaged for install.
-# See issue #65 (Epic: Google Workspace integration via gws CLI).
-# Install method TBD: github.com/nicholasgasior/gws or npm @anthropic/gws.
-# if command -v gws &>/dev/null; then
-#   info "gws already installed."
-# else
-#   warn "gws not yet installed."
-# fi
+# Google Workspace CLI — see issue #65.
+# Install: https://github.com/googleworkspace/cli
+if command -v gws &>/dev/null; then
+  info "gws already installed."
+else
+  warn "gws not installed. See: https://github.com/googleworkspace/cli"
+fi
 
 section "Done"
 info "Setup complete — admin: $ADMIN_USER, agent: $AGENT_USER"

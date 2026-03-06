@@ -1,0 +1,92 @@
+---
+title: "Memory layer Phase 1: levels 0 (working) + 3 (semantic)"
+issue: 9
+status: approved
+tier: F-full
+date: 2026-03-06
+---
+
+## Problem
+
+Lyra agents have no persistent memory. Every conversation starts cold — no knowledge of past interactions, user preferences, or prior decisions. Context accumulated during a long session is silently lost when the context window overflows or when the conversation ends.
+
+Two distinct failure modes exist today:
+
+1. **Overflow amnesia** — when `pool.history` exceeds the token limit, old turns are truncated and discarded. The agent loses everything discussed before the cutoff, mid-session.
+2. **Session amnesia** — when a conversation closes or goes idle, the entire session evaporates. The next conversation starts from zero, regardless of what was established before.
+
+Both failure modes compound over time: the longer a user interacts with Lyra, the more context is lost, and the less useful the agent becomes. The target outcome is ~67% token reduction on long sessions (via selective L3 injection replacing full history replay) with zero knowledge loss across sessions.
+
+## Who
+
+- **Primary:** Lyra agents (`AgentBase` subclasses) — they need memory to be coherent and useful across sessions and channels
+- **Secondary:** Claude Code vault skills — they consume the same shared DB and need schema compatibility after the v2 migration; Mickael (end user) — benefits from an agent that remembers preferences, decisions, and context
+
+## Constraints
+
+- `aiosqlite` mandatory — no synchronous SQLite calls in the async Lyra runtime
+- `fastembed` ONNX only — no PyTorch; ~100MB model, non-blocking via `run_in_executor`
+- `sqlite-vec` for vector storage and cosine similarity queries
+- Dual interface required: sync `sqlite3` (`MemoryDB`) for vault skills, async `aiosqlite` (`AsyncMemoryDB`) for Lyra agents
+- Shared DB at `~/.roxabi-vault/vault.db` — single source of truth (ADR-011)
+- WAL mode for concurrent sync + async access
+- `roxabi-memory` extracted as a standalone Python package (ADR-011, Option C)
+- Schema migration must be non-breaking: `user_version` pragma runner, `ALTER TABLE` only, no data loss
+- Embedding calls must not block the event loop
+
+## Decisions
+
+The following design questions were resolved during framing (2026-03-06):
+
+| # | Question | Decision |
+|---|----------|----------|
+| 1 | Embeddings in P1? | Full hybrid (BM25 + fastembed + sqlite-vec) — ADR-011 stands; exploration doc pre-dated the ADR |
+| 2 | L0 compaction target | Summary → L3 (not truncate-only, not .md files) |
+| 3 | Session save triggers | Overflow (incremental), session end (explicit), idle > 10h (treated as session end) |
+| 4 | Session record design | One record per session (`type='session'` in `entries` table), upserted by `session_id`; fields: `user_id`, `agent_namespace`, `medium`, `session_start`, `session_end`, `message_count`, `summary`, `source_turns`, `title` |
+| 5 | Retrieval entry point | `AgentBase` — `self.memory.search()` namespace-scoped; Hub stays a router |
+| 6 | Data migration | In scope for #9 — update `vault:vault-migrate` skill for v2 schema + fastembed embeddings |
+
+## Session Lifecycle (L0 → L3)
+
+```
+pool.history approaches token limit
+↓
+AgentBase.compact():
+  old_turns = pool.history[:-N]
+  summary = await llm.summarize(old_turns, existing=session_record.summary)
+  await memory.upsert_session(session_id, summary, source_turns=[...], message_count=N)
+  pool.history = [SystemMessage(summary)] + pool.history[-N:]
+
+conversation ends (explicit close) OR idle > 10h
+↓
+AgentBase.flush_session():
+  final_summary = await llm.summarize(pool.history, existing=session_record.summary)
+  await memory.upsert_session(session_id, final_summary, session_end=now())
+```
+
+Session record stored as `type='session'` entry in the existing `entries` table. No new table — metadata JSON carries session-specific fields. Searchable via FTS5 alongside all other entries.
+
+## Out of Scope
+
+- Levels 1 (short-term buffer), 2 (episodic), 4 (procedural) — deferred to Phase 2+
+- Multi-user encryption at rest
+- Real-time or per-turn indexing (nightly batch is sufficient; forced re-indexing causes rate limits)
+- Memory SLM for semantic promotion (episodic → semantic promotion deferred)
+- Cross-channel memory isolation (shared by default; same `user_id` across channels)
+- `[IMMUNE]` procedural seeds (Phase 2, ADR-011 upgrade path)
+
+## Complexity
+
+**Tier: F-full** — new standalone Python package (`roxabi-memory`) with dual sync/async interfaces, schema migration runner, FTS5 + hybrid vector search, session lifecycle state machine, agent identity anchor, vault-migrate skill update, and integration into `AgentBase`. Multiple domains, non-trivial async constraints, and a shared DB across two runtimes.
+
+Signals observed:
+- New package extracted and versioned (`roxabi-memory`)
+- Schema migration with backward compatibility guarantee
+- Embedding pipeline with ONNX runtime + sqlite-vec
+- Session lifecycle (overflow + end + idle) with upsert semantics
+- Agent identity anchor (`IDENTITY_ANCHOR`) replacing static `system_prompt`
+- Dual sync/async interface discipline
+- Vault skill refactor (thin adapter)
+- 2ndBrain data migration with embedding generation
+- Complexity score: 13 (XL)

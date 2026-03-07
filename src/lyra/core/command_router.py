@@ -89,9 +89,7 @@ class SkillHandler:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(), timeout=timeout
-            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         except asyncio.TimeoutError:
             if proc is not None:
                 proc.kill()
@@ -101,9 +99,7 @@ class SkillHandler:
             if proc is not None:
                 proc.kill()
                 await proc.wait()
-            log.exception(
-                "SkillHandler.execute failed for %s/%s", skill, action
-            )
+            log.exception("SkillHandler.execute failed for %s/%s", skill, action)
             return "Command failed. Please contact the administrator."
 
         if proc.returncode != 0:

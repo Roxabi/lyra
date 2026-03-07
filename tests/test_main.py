@@ -180,3 +180,64 @@ class TestGracefulShutdown:
         trigger_task = asyncio.create_task(trigger())
         await main_mod._main(_stop=stop)
         await trigger_task  # ensure no lingering tasks
+
+
+# ---------------------------------------------------------------------------
+# T4 — Agent factory: _create_agent selects by backend
+# ---------------------------------------------------------------------------
+
+
+class TestAgentFactory:
+    def test_cli_backend_creates_simple_agent(self) -> None:
+        from lyra.agents.simple_agent import SimpleAgent
+        from lyra.core.agent import Agent, ModelConfig
+
+        config = Agent(
+            name="test",
+            system_prompt="",
+            memory_namespace="test",
+            model_config=ModelConfig(backend="claude-cli"),
+        )
+        cli_pool = MagicMock()
+        agent = main_mod._create_agent(config, cli_pool)
+        assert isinstance(agent, SimpleAgent)
+
+    def test_sdk_backend_creates_anthropic_agent(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
+        from lyra.agents.anthropic_agent import AnthropicAgent
+        from lyra.core.agent import Agent, ModelConfig
+
+        config = Agent(
+            name="test",
+            system_prompt="",
+            memory_namespace="test",
+            model_config=ModelConfig(backend="anthropic-sdk"),
+        )
+        agent = main_mod._create_agent(config, None)
+        assert isinstance(agent, AnthropicAgent)
+
+    def test_unknown_backend_raises(self) -> None:
+        from lyra.core.agent import Agent, ModelConfig
+
+        config = Agent(
+            name="test",
+            system_prompt="",
+            memory_namespace="test",
+            model_config=ModelConfig(backend="unknown"),
+        )
+        with pytest.raises(ValueError, match="Unknown backend"):
+            main_mod._create_agent(config, None)
+
+    def test_cli_backend_without_pool_raises(self) -> None:
+        from lyra.core.agent import Agent, ModelConfig
+
+        config = Agent(
+            name="test",
+            system_prompt="",
+            memory_namespace="test",
+            model_config=ModelConfig(backend="claude-cli"),
+        )
+        with pytest.raises(RuntimeError, match="CliPool required"):
+            main_mod._create_agent(config, None)

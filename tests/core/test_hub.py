@@ -65,6 +65,13 @@ class MockAdapter:
     async def send(self, original_msg: Message, response: Response) -> None:
         pass
 
+    async def send_streaming(
+        self,
+        original_msg: Message,
+        chunks: object,
+    ) -> None:
+        pass
+
 
 # ---------------------------------------------------------------------------
 # T2 — Platform context dataclasses
@@ -349,6 +356,11 @@ class TestDispatchResponse:
             async def send(self, original_msg: Message, response: Response) -> None:
                 sent.append((original_msg, response))
 
+            async def send_streaming(
+                self, original_msg: Message, chunks: object
+            ) -> None:
+                pass
+
         hub.register_adapter(Platform.TELEGRAM, "main", CapturingAdapter())
         msg = make_message(platform=Platform.TELEGRAM, bot_id="main")
         response = Response(content="pong")
@@ -526,3 +538,98 @@ def test_generic_error_reply_is_user_facing_string() -> None:
     from lyra.core.message import GENERIC_ERROR_REPLY
 
     assert GENERIC_ERROR_REPLY == "Something went wrong. Please try again."
+
+
+# ---------------------------------------------------------------------------
+# Hub dispatch_streaming
+# ---------------------------------------------------------------------------
+
+
+class TestDispatchStreaming:
+    async def test_dispatches_streaming_to_adapter(self) -> None:
+        hub = Hub()
+        received: list[str] = []
+
+        class StreamAdapter:
+            async def send(self, original_msg: Message, response: Response) -> None:
+                pass
+
+            async def send_streaming(
+                self, original_msg: Message, chunks: object
+            ) -> None:
+                async for chunk in chunks:  # type: ignore[union-attr]
+                    received.append(chunk)
+
+        hub.register_adapter(Platform.TELEGRAM, "main", StreamAdapter())
+        msg = make_message(platform=Platform.TELEGRAM, bot_id="main")
+
+        async def gen():
+            yield "Hello"
+            yield " world"
+
+        await hub.dispatch_streaming(msg, gen())
+        assert received == ["Hello", " world"]
+
+    async def test_fallback_to_send_when_no_send_streaming(self) -> None:
+        hub = Hub()
+        sent: list[Response] = []
+
+        class LegacyAdapter:
+            async def send(self, original_msg: Message, response: Response) -> None:
+                sent.append(response)
+
+        # LegacyAdapter intentionally lacks send_streaming to test fallback
+        hub.register_adapter(Platform.TELEGRAM, "main", LegacyAdapter())  # type: ignore[arg-type]
+        msg = make_message(platform=Platform.TELEGRAM, bot_id="main")
+
+        async def gen():
+            yield "Hello"
+            yield " world"
+
+        await hub.dispatch_streaming(msg, gen())
+        assert len(sent) == 1
+        assert sent[0].content == "Hello world"
+
+
+# ---------------------------------------------------------------------------
+# Hub run loop with streaming agent
+# ---------------------------------------------------------------------------
+
+
+class TestHubRunStreaming:
+    async def test_streaming_agent_dispatches_via_streaming(self) -> None:
+        """Hub.run() detects async generator and calls dispatch_streaming."""
+        hub = Hub()
+        received_chunks: list[str] = []
+
+        class StreamingAgent(AgentBase):
+            async def process(self, msg: Message, pool: Pool):  # type: ignore[override]
+                yield "chunk1"
+                yield "chunk2"
+
+        class CapturingStreamAdapter:
+            async def send(self, original_msg: Message, response: Response) -> None:
+                pass
+
+            async def send_streaming(
+                self, original_msg: Message, chunks: object
+            ) -> None:
+                async for chunk in chunks:  # type: ignore[union-attr]
+                    received_chunks.append(chunk)
+
+        config = Agent(name="streamer", system_prompt="", memory_namespace="lyra")
+        hub.register_agent(StreamingAgent(config))
+        hub.register_adapter(Platform.TELEGRAM, "main", CapturingStreamAdapter())
+        hub.register_binding(
+            Platform.TELEGRAM, "main", "alice", "streamer", "telegram:main:alice"
+        )
+
+        msg = make_message(platform=Platform.TELEGRAM, bot_id="main", user_id="alice")
+        await hub.bus.put(msg)
+
+        try:
+            await asyncio.wait_for(hub.run(), timeout=0.5)
+        except asyncio.TimeoutError:
+            pass
+
+        assert received_chunks == ["chunk1", "chunk2"]

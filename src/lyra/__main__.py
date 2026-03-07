@@ -18,12 +18,26 @@ from lyra.adapters.discord import DiscordAdapter, load_discord_config
 from lyra.adapters.telegram import TelegramAdapter
 from lyra.adapters.telegram import load_config as load_telegram_config
 from lyra.agents.simple_agent import SimpleAgent
-from lyra.core.agent import load_agent_config
+from lyra.core.agent import Agent, AgentBase, load_agent_config
 from lyra.core.cli_pool import CliPool
 from lyra.core.hub import Hub, RoutingKey
 from lyra.core.message import Platform
 
 log = logging.getLogger(__name__)
+
+
+def _create_agent(config: Agent, cli_pool: CliPool | None) -> AgentBase:
+    """Select agent implementation based on backend config."""
+    backend = config.model_config.backend
+    if backend == "anthropic-sdk":
+        from lyra.agents.anthropic_agent import AnthropicAgent
+
+        return AnthropicAgent(config)
+    if backend in ("claude-cli", "ollama"):
+        if cli_pool is None:
+            raise RuntimeError(f"CliPool required for {backend} backend")
+        return SimpleAgent(config, cli_pool)
+    raise ValueError(f"Unknown backend: {backend}")
 
 
 async def _main(*, _stop: asyncio.Event | None = None) -> None:
@@ -40,8 +54,6 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
 
     hub = Hub()
 
-    cli_pool = CliPool()
-    await cli_pool.start()
     agent_config = load_agent_config("lyra_default")
     log.info(
         "Agent loaded: name=%s model=%s backend=%s",
@@ -49,7 +61,13 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
         agent_config.model_config.model,
         agent_config.model_config.backend,
     )
-    agent = SimpleAgent(agent_config, cli_pool)
+
+    cli_pool: CliPool | None = None
+    if agent_config.model_config.backend == "claude-cli":
+        cli_pool = CliPool()
+        await cli_pool.start()
+
+    agent = _create_agent(agent_config, cli_pool)
     hub.register_agent(agent)
 
     tg_adapter = TelegramAdapter(
@@ -97,7 +115,8 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
         task.cancel()
     await asyncio.gather(*tasks, return_exceptions=True)
     await dc_adapter.close()
-    await cli_pool.stop()
+    if cli_pool is not None:
+        await cli_pool.stop()
     log.info("Lyra stopped.")
 
 
@@ -112,7 +131,9 @@ def _setup_logging() -> None:
     log_file = log_dir / f"{stamp}_lyra.log"
 
     file_handler = RotatingFileHandler(
-        log_file, maxBytes=10 * 1024 * 1024, backupCount=5  # 10 MB per file, 5 backups
+        log_file,
+        maxBytes=10 * 1024 * 1024,
+        backupCount=5,  # 10 MB per file, 5 backups
     )
     file_handler.setFormatter(logging.Formatter(fmt))
 

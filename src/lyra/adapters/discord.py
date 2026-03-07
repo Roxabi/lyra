@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 import os
 import re
+import time
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
@@ -12,6 +14,7 @@ if TYPE_CHECKING:
     from lyra.core.hub import Hub
 
 from lyra.core.message import (
+    GENERIC_ERROR_REPLY,
     DiscordContext,
     Message,
     MessageType,
@@ -198,3 +201,54 @@ class DiscordAdapter(discord.Client):
             await msg.reply(content)
         else:
             await messageable.send(content)
+
+    async def send_streaming(
+        self, original_msg: Message, chunks: AsyncIterator[str]
+    ) -> None:
+        """Stream response with edit-in-place, debounced at ~1s."""
+        if not isinstance(original_msg.platform_context, DiscordContext):
+            log.error(
+                "send_streaming() called with non-DiscordContext for msg_id=%s",
+                original_msg.id,
+            )
+            return
+
+        ctx = original_msg.platform_context
+        channel = self.get_channel(ctx.channel_id)
+        if channel is None:
+            channel = await self.fetch_channel(ctx.channel_id)
+
+        messageable = cast(discord.abc.Messageable, channel)
+        accumulated = ""
+
+        # Send placeholder
+        try:
+            placeholder = await messageable.send("\u2026")
+        except Exception:
+            log.exception("Failed to send placeholder — falling back to non-streaming")
+            async for chunk in chunks:
+                accumulated += chunk
+            await self.send(original_msg, Response(content=accumulated or "\u2026"))
+            return
+
+        last_edit = time.monotonic()
+        try:
+            async for chunk in chunks:
+                accumulated += chunk
+                now = time.monotonic()
+                if now - last_edit >= 1.0:
+                    await placeholder.edit(content=accumulated[:DISCORD_MAX_LENGTH])
+                    last_edit = now
+        except Exception:
+            log.exception("Stream interrupted")
+            if accumulated:
+                accumulated += " [response interrupted]"
+            else:
+                accumulated = GENERIC_ERROR_REPLY
+
+        # Final edit with complete text
+        if accumulated:
+            try:
+                await placeholder.edit(content=accumulated[:DISCORD_MAX_LENGTH])
+            except Exception:
+                log.exception("Final edit failed")

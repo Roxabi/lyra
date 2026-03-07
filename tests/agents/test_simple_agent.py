@@ -1,11 +1,11 @@
-"""Tests for lyra.agents.simple_agent: _extract_text and SimpleAgent.process."""
+"""Tests for lyra.agents.simple_agent: extract_text and SimpleAgent.process."""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.agents.simple_agent import SimpleAgent, _extract_text
+from lyra.agents.simple_agent import SimpleAgent
 from lyra.core.agent import Agent, ModelConfig
 from lyra.core.cli_pool import CliResult
 from lyra.core.message import (
@@ -17,6 +17,7 @@ from lyra.core.message import (
     Response,
     TelegramContext,
     TextContent,
+    extract_text,
 )
 from lyra.core.pool import Pool
 
@@ -63,21 +64,21 @@ def make_agent(cli_pool: object) -> SimpleAgent:
 class TestExtractText:
     def test_plain_string(self) -> None:
         msg = make_message(content="plain text")
-        assert _extract_text(msg) == "plain text"
+        assert extract_text(msg) == "plain text"
 
     def test_text_content(self) -> None:
         msg = make_message(content=TextContent(text="hello"))
-        assert _extract_text(msg) == "hello"
+        assert extract_text(msg) == "hello"
 
     def test_image_content_url_fallback(self) -> None:
         url = "https://example.com/img.png"
         msg = make_message(content=ImageContent(url=url))
-        assert _extract_text(msg) == f"[image: {url}]"
+        assert extract_text(msg) == f"[image: {url}]"
 
     def test_audio_content_url_fallback(self) -> None:
         url = "https://example.com/audio.ogg"
         msg = make_message(content=AudioContent(url=url))
-        assert _extract_text(msg) == f"[audio: {url}]"
+        assert extract_text(msg) == f"[audio: {url}]"
 
 
 # ---------------------------------------------------------------------------

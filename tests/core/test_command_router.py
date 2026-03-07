@@ -324,9 +324,7 @@ class TestSkillHandlerExecute:
     async def test_execute_echo_returns_stdout(self) -> None:
         # Arrange — "echo" binary is always available on the test system
         # Act
-        result = await SkillHandler.execute(
-            skill="echo", action="echo", args=["hello"]
-        )
+        result = await SkillHandler.execute(skill="echo", action="echo", args=["hello"])
 
         # Assert
         assert result.strip() == "hello"
@@ -485,6 +483,11 @@ class TestPassthroughNonCommandInHub:
             async def send(self, original_msg: Message, response: Response) -> None:
                 pass
 
+            async def send_streaming(
+                self, original_msg: Message, chunks: object
+            ) -> None:
+                pass
+
         hub.register_adapter(Platform.TELEGRAM, "main", CapturingAdapter())
         hub.register_binding(
             Platform.TELEGRAM, "main", "alice", "lyra", "telegram:main:alice"
@@ -521,6 +524,11 @@ class TestPassthroughNonCommandInHub:
 
         class CapturingAdapter:
             async def send(self, original_msg: Message, response: Response) -> None:
+                pass
+
+            async def send_streaming(
+                self, original_msg: Message, chunks: object
+            ) -> None:
                 pass
 
         hub.register_adapter(Platform.TELEGRAM, "main", CapturingAdapter())

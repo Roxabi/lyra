@@ -13,6 +13,8 @@ dependencies = [
     "uvicorn[standard]>=0.34",
     "httpx[asyncio]>=0.28",
     "python-dotenv>=1.0",
+    # Agent backends
+    "anthropic>=0.49",
 ]
 
 [project.optional-dependencies]

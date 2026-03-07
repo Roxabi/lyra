@@ -93,8 +93,10 @@ def load_policy(policy_path: Path) -> dict:
         try:
             return json.loads(policy_path.read_text())
         except json.JSONDecodeError as e:
-            print(f"[license-check] Warning: could not parse {policy_path}: {e}",
-                  file=sys.stderr)
+            print(
+                f"[license-check] Warning: could not parse {policy_path}: {e}",
+                file=sys.stderr,
+            )
     return {"allowlist": [], "overrides": {}}
 
 

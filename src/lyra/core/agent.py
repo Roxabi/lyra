@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 # Default agents config directory: src/lyra/agents/
 _AGENTS_DIR = Path(__file__).resolve().parent.parent / "agents"
 
-_VALID_BACKENDS: frozenset[str] = frozenset({"claude-cli", "ollama"})
+_VALID_BACKENDS: frozenset[str] = frozenset({"claude-cli", "ollama", "anthropic-sdk"})
 _MAX_PROMPT_BYTES = 64 * 1024  # 64 KB
 
 

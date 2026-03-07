@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import collections.abc
 import logging
 import time
 from collections import deque
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import NamedTuple, Protocol
 
@@ -24,6 +26,16 @@ class ChannelAdapter(Protocol):
     """
 
     async def send(self, original_msg: Message, response: Response) -> None: ...
+
+    async def send_streaming(
+        self, original_msg: Message, chunks: AsyncIterator[str]
+    ) -> None:
+        """Stream response to the channel with edit-in-place.
+
+        Default implementation accumulates all chunks and calls send().
+        Adapters override for progressive display.
+        """
+        ...
 
 
 class RoutingKey(NamedTuple):
@@ -53,7 +65,7 @@ class Hub:
 
     BUS_SIZE = 100
     # Per-user sliding window: drop messages beyond this rate.
-    RATE_LIMIT = 20   # max messages per user per window
+    RATE_LIMIT = 20  # max messages per user per window
     RATE_WINDOW = 60  # window size in seconds
 
     def __init__(
@@ -207,6 +219,25 @@ class Hub:
             )
         await adapter.send(msg, response)
 
+    async def dispatch_streaming(
+        self, msg: Message, chunks: AsyncIterator[str]
+    ) -> None:
+        """Stream response back via the originating adapter."""
+        adapter = self.adapter_registry.get((msg.platform, msg.bot_id))
+        if adapter is None:
+            raise KeyError(
+                f"No adapter registered for ({msg.platform!r}, {msg.bot_id!r}). "
+                "Call register_adapter() before dispatching responses."
+            )
+        if hasattr(adapter, "send_streaming"):
+            await adapter.send_streaming(msg, chunks)
+        else:
+            # Fallback: accumulate and send as one message
+            text = ""
+            async for chunk in chunks:
+                text += chunk
+            await adapter.send(msg, Response(content=text))
+
     # ------------------------------------------------------------------
     # Run loop
     # ------------------------------------------------------------------
@@ -254,18 +285,31 @@ class Hub:
                     )
                     continue
                 async with pool.lock:
-                    try:
-                        response = await agent.process(msg, pool)
-                    except Exception as exc:
-                        log.exception(
-                            "agent.process() raised for %s: %s", key, exc
-                        )
-                        response = Response(content=GENERIC_ERROR_REPLY)
-                    try:
-                        await self.dispatch_response(msg, response)
-                    except Exception as exc:
-                        log.exception(
-                            "dispatch_response() failed for %s: %s", key, exc
-                        )
+                    result = agent.process(msg, pool)
+                    if isinstance(result, collections.abc.AsyncIterator):
+                        # Streaming path (AnthropicAgent)
+                        try:
+                            await self.dispatch_streaming(msg, result)
+                        except Exception as exc:
+                            log.exception(
+                                "dispatch_streaming() failed for %s: %s",
+                                key,
+                                exc,
+                            )
+                    else:
+                        # Non-streaming path (SimpleAgent)
+                        try:
+                            response = await result
+                        except Exception as exc:
+                            log.exception("agent.process() raised for %s: %s", key, exc)
+                            response = Response(content=GENERIC_ERROR_REPLY)
+                        try:
+                            await self.dispatch_response(msg, response)
+                        except Exception as exc:
+                            log.exception(
+                                "dispatch_response() failed for %s: %s",
+                                key,
+                                exc,
+                            )
             finally:
                 self.bus.task_done()

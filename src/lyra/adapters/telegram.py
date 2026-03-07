@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 import os
+import time
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import timezone
 from typing import TYPE_CHECKING, Any
@@ -12,6 +14,7 @@ if TYPE_CHECKING:
     from lyra.core.hub import Hub
 
 from lyra.core.message import (
+    GENERIC_ERROR_REPLY,
     Message,
     MessageType,
     Platform,
@@ -21,6 +24,8 @@ from lyra.core.message import (
 )
 
 log = logging.getLogger(__name__)
+
+TELEGRAM_MAX_LENGTH = 4096  # Telegram Bot API text message limit
 
 
 @dataclass(frozen=True)
@@ -214,3 +219,58 @@ class TelegramAdapter:
             return
         ctx = original_msg.platform_context
         await self.bot.send_message(chat_id=ctx.chat_id, text=response.content)
+
+    async def send_streaming(
+        self, original_msg: Message, chunks: AsyncIterator[str]
+    ) -> None:
+        """Stream response with edit-in-place, debounced at ~500ms."""
+        if not isinstance(original_msg.platform_context, TelegramContext):
+            log.error(
+                "send_streaming() called with non-TelegramContext for msg_id=%s",
+                original_msg.id,
+            )
+            return
+        ctx = original_msg.platform_context
+        accumulated = ""
+
+        # Send placeholder
+        try:
+            placeholder = await self.bot.send_message(
+                chat_id=ctx.chat_id, text="\u2026"
+            )
+        except Exception:
+            log.exception("Failed to send placeholder — falling back to non-streaming")
+            async for chunk in chunks:
+                accumulated += chunk
+            await self.send(original_msg, Response(content=accumulated or "\u2026"))
+            return
+
+        last_edit = time.monotonic()
+        try:
+            async for chunk in chunks:
+                accumulated += chunk
+                now = time.monotonic()
+                if now - last_edit >= 0.5:
+                    await self.bot.edit_message_text(
+                        chat_id=ctx.chat_id,
+                        message_id=placeholder.message_id,
+                        text=accumulated[:TELEGRAM_MAX_LENGTH],
+                    )
+                    last_edit = now
+        except Exception:
+            log.exception("Stream interrupted")
+            if accumulated:
+                accumulated += " [response interrupted]"
+            else:
+                accumulated = GENERIC_ERROR_REPLY
+
+        # Final edit with complete text
+        if accumulated:
+            try:
+                await self.bot.edit_message_text(
+                    chat_id=ctx.chat_id,
+                    message_id=placeholder.message_id,
+                    text=accumulated[:TELEGRAM_MAX_LENGTH],
+                )
+            except Exception:
+                log.exception("Final edit failed")

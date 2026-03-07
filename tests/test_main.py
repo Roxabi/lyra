@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 import lyra.__main__ as main_mod
+from lyra.core.agent import Agent, ModelConfig
 from lyra.core.hub import Hub
 from lyra.core.message import Platform
 
@@ -70,6 +71,16 @@ def _patch_all(monkeypatch: pytest.MonkeyPatch) -> list[Hub]:
         main_mod,
         "load_discord_config",
         lambda: MagicMock(token="d"),
+    )
+    monkeypatch.setattr(
+        main_mod,
+        "load_agent_config",
+        lambda name, **kw: Agent(
+            name=name,
+            system_prompt="test",
+            memory_namespace="test",
+            model_config=ModelConfig(backend="claude-cli"),
+        ),
     )
     monkeypatch.setattr(main_mod, "TelegramAdapter", lambda **kwargs: _FakeTgAdapter())
     monkeypatch.setattr(main_mod, "DiscordAdapter", CapturingDcAdapter)

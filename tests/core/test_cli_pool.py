@@ -118,6 +118,18 @@ class TestCliPoolBuildCmd:
         cmd = pool._build_cmd(DEFAULT_MODEL, session_id=None)
         assert "--resume" not in cmd
 
+    def test_system_prompt_included_when_provided(self) -> None:
+        pool = CliPool()
+        cmd = pool._build_cmd(DEFAULT_MODEL, system_prompt="You are helpful.")
+        assert "--system-prompt" in cmd
+        idx = cmd.index("--system-prompt")
+        assert cmd[idx + 1] == "You are helpful."
+
+    def test_system_prompt_omitted_when_empty(self) -> None:
+        pool = CliPool()
+        cmd = pool._build_cmd(DEFAULT_MODEL, system_prompt="")
+        assert "--system-prompt" not in cmd
+
 
 # ---------------------------------------------------------------------------
 # TestCliPoolSend

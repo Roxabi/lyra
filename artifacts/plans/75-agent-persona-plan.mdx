@@ -9,14 +9,17 @@ generated: 2026-03-07
 
 ## Summary
 
-Add structured persona config ("soul file") to Lyra agents, auto-compose natural prose system prompts, and fix the `--system-prompt` CLI injection gap. 3 slices, 18 micro-tasks.
+Add structured persona config ("soul file") stored in roxabi-vault (`~/.roxabi-vault/personas/`) to Lyra agents, auto-compose natural prose system prompts, and fix the `--system-prompt` CLI injection gap. Separates customization from engine code. 3 slices, 18 micro-tasks.
 
 ## Architecture
 
 ```mermaid
 flowchart TD
-    subgraph "Config Files"
-        TOML["lyra_default.toml\n[agent].persona_file"]
+    subgraph "Config Files (src/lyra/agents/)"
+        TOML["lyra_default.toml\n[agent].persona = 'lyra_default'"]
+    end
+
+    subgraph "Vault (~/.roxabi-vault/personas/)"
         PERSONA["lyra_default.persona.toml\n[identity] [personality]\n[expertise] [voice]"]
     end
 
@@ -44,8 +47,8 @@ flowchart TD
         CLI["claude --system-prompt '...'\n--model ... --max-turns ..."]
     end
 
-    TOML -->|"reads persona_file key"| LAC
-    LAC -->|"resolves path"| LP
+    TOML -->|"reads persona name"| LAC
+    LAC -->|"resolves name → vault path"| LP
     PERSONA -->|"parsed"| LP
     LP --> PC
 
@@ -76,14 +79,17 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    subgraph "src/lyra/agents/"
+    subgraph "~/.roxabi-vault/personas/"
         F1["lyra_default.persona.toml\n(NEW)"]
-        F2["lyra_default.toml\n+ persona_file key"]
+    end
+
+    subgraph "src/lyra/agents/"
+        F2["lyra_default.toml\n+ persona key"]
     end
 
     subgraph "src/lyra/core/agent.py"
         FN1["PersonaConfig (dataclass)"]
-        FN2["load_persona(path) → PersonaConfig"]
+        FN2["load_persona(name, personas_dir) → PersonaConfig"]
         FN3["compose_system_prompt(persona) → str"]
         FN4["load_agent_config() — updated"]
         FN5["Agent.persona field"]
@@ -129,7 +135,7 @@ From [analysis](../analyses/75-agent-persona-analysis.mdx):
 
 | Agent | Task count | Files |
 |-------|-----------|-------|
-| backend-dev | 13 | persona.toml, agent.py, cli_pool.py, simple_agent.py, lyra_default.toml |
+| backend-dev | 13 | vault/personas/persona.toml, agent.py, cli_pool.py, simple_agent.py, lyra_default.toml |
 | tester | 5 | test_agent.py, test_cli_pool.py |
 
 ## Consistency Report
@@ -200,33 +206,40 @@ class PersonaConfig:
 **Difficulty:** 3
 
 ```python
-def load_persona(path: Path, agents_dir: Path) -> PersonaConfig:
-    """Load PersonaConfig from a TOML file.
+_VAULT_DIR = Path(os.environ.get("ROXABI_VAULT_DIR", Path.home() / ".roxabi-vault"))
+_PERSONAS_DIR = _VAULT_DIR / "personas"
 
-    Path is resolved relative to agents_dir.
-    Validates: file exists, [identity].name present, no path traversal.
+def load_persona(name: str, personas_dir: Path | None = None) -> PersonaConfig:
+    """Load PersonaConfig from a TOML file in the vault.
+
+    Resolves name to {personas_dir}/{name}.persona.toml.
+    Validates: name safe, file exists, [identity].name present.
+    Creates personas_dir if absent.
     """
 ```
 
-- Resolve path relative to `agents_dir`
-- Guard against path traversal (same `is_relative_to` check as `load_agent_config`)
+- Add `import os` to agent.py
+- Validate name with `[a-zA-Z0-9_-]` regex (same guard as agent names)
+- Default `personas_dir` to `_PERSONAS_DIR` (derived from `ROXABI_VAULT_DIR` env var, fallback `~/.roxabi-vault/personas/`)
+- Ensure `personas_dir` exists (`mkdir(parents=True, exist_ok=True)`)
+- Resolve `{personas_dir}/{name}.persona.toml`
 - Parse TOML, extract sections
 - Convert lists to tuples (same pattern as `ModelConfig.tools`)
 - Raise `FileNotFoundError` if missing, `ValueError` if `[identity].name` absent
 
-**Verify:** `uv run python -c "from lyra.core.agent import load_persona; from pathlib import Path; p = load_persona(Path('lyra_default.persona.toml'), Path('src/lyra/agents')); print(p.identity.name)"`
+**Verify:** `uv run python -c "from lyra.core.agent import load_persona; p = load_persona('lyra_default'); print(p.identity.name)"`
 **Expected:** `Lyra`
 
-#### Task 1.3 — Create persona TOML file [P]
+#### Task 1.3 — Create persona TOML file in vault [P]
 **Agent:** backend-dev
-**File:** `src/lyra/agents/lyra_default.persona.toml` (NEW)
+**File:** `~/.roxabi-vault/personas/lyra_default.persona.toml` (NEW)
 **Spec trace:** SC-1
 **Phase:** GREEN
 **Difficulty:** 1
 
-Create the file with all 4 sections matching the spec breadboard schema. Include `goal` field in `[identity]`.
+Create the vault `personas/` directory and the file with all 4 sections matching the spec breadboard schema. Include `goal` field in `[identity]`.
 
-**Verify:** `uv run python -c "import tomllib; f=open('src/lyra/agents/lyra_default.persona.toml','rb'); d=tomllib.load(f); print(d['identity']['name'], d['identity']['goal'])"`
+**Verify:** `uv run python -c "import tomllib; f=open('$HOME/.roxabi-vault/personas/lyra_default.persona.toml','rb'); d=tomllib.load(f); print(d['identity']['name'], d['identity']['goal'])"`
 **Expected:** `Lyra Be Mickael's primary assistant — direct, precise, no fluff`
 
 #### Task 1.4 — Test: PersonaConfig frozen, all fields accessible [P]
@@ -352,17 +365,16 @@ Add `persona: PersonaConfig | None = None` to `Agent` dataclass.
 #### Task 3.2 — Update `load_agent_config()` — persona loading + composition + override
 **Agent:** backend-dev
 **File:** `src/lyra/core/agent.py`
-**Spec trace:** SC-8, SC-9, SC-10, SC-11, SC-6, Edge: no persona_file, both present, path traversal
+**Spec trace:** SC-8, SC-9, SC-10, SC-11, SC-6, Edge: no persona, both present, name traversal
 **Phase:** RED
 **Difficulty:** 4
 
-- Read `[agent].persona_file` if present
-- Resolve path relative to `agents_dir`
-- Call `load_persona()` → store on `Agent.persona`
+- Read `[agent].persona` if present (name string, not a path)
+- Call `load_persona(name)` → resolves to vault path → store on `Agent.persona`
 - If `[prompt].system` absent → `compose_system_prompt(persona)` → `Agent.system_prompt`
 - If `[prompt].system` present → use raw string, still load persona for programmatic access
 - Move 64KB size guard to AFTER composition (covers both paths)
-- No persona_file → `Agent.persona = None`, `[prompt].system` used unchanged
+- No `persona` key → `Agent.persona = None`, `[prompt].system` used unchanged
 
 #### Task 3.3 — Add `system_prompt` param to `CliPool.send()` and `_build_cmd()`
 **Agent:** backend-dev
@@ -384,19 +396,19 @@ Add `persona: PersonaConfig | None = None` to `Agent` dataclass.
 **Difficulty:** 3
 
 - Pass `self.config.system_prompt` to `self._pool.send()`
-- Extend `_maybe_reload()` in `AgentBase` to track persona file mtime
+- Extend `_maybe_reload()` in `AgentBase` to track persona file mtime (vault path)
 - On persona change detection: call `await self._pool.reset(pool_id)` (need to store pool_id or pass pool ref)
 - Alternatively: detect config change in `process()` after `_maybe_reload()` and reset if system_prompt changed
 
-#### Task 3.5 — Update `lyra_default.toml` — add persona_file, remove raw prompt
+#### Task 3.5 — Update `lyra_default.toml` — add persona name, remove raw prompt
 **Agent:** backend-dev
 **File:** `src/lyra/agents/lyra_default.toml`
 **Spec trace:** SC-8, SC-12
 **Phase:** GREEN
 **Difficulty:** 1
 
-- Add `persona_file = "lyra_default.persona.toml"` to `[agent]` section
-- Remove `[prompt].system` (persona auto-composes now)
+- Add `persona = "lyra_default"` to `[agent]` section
+- Remove `[prompt].system` (persona auto-composes now from vault file)
 - Keep `[prompt]` section empty or remove it (backward-compat: absence triggers composition)
 
 #### Task 3.6 — Test: load_agent_config with persona, override, and no-persona paths
@@ -406,10 +418,10 @@ Add `persona: PersonaConfig | None = None` to `Agent` dataclass.
 **Phase:** GREEN
 **Difficulty:** 3
 
-Three test cases:
-1. Agent TOML with `persona_file` only → composed prompt, persona populated
-2. Agent TOML with `persona_file` + `[prompt].system` → raw prompt wins, persona still loaded
-3. Agent TOML without `persona_file` → `persona is None`, raw prompt used
+Three test cases (use tmp_path for personas_dir in tests):
+1. Agent TOML with `persona` only → composed prompt, persona populated from vault
+2. Agent TOML with `persona` + `[prompt].system` → raw prompt wins, persona still loaded
+3. Agent TOML without `persona` → `persona is None`, raw prompt used
 
 Also: existing tests still pass (SC-13).
 

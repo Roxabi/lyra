@@ -17,7 +17,7 @@ Landscape research (OpenClaw/Soul Spec, CrewAI, OpenFang, etc.) confirms our 4-s
 
 ## Goal
 
-Provide a structured, human-editable persona config file ("soul file") that auto-composes into a system prompt, is actually injected into the CLI subprocess, and is programmatically accessible for external consumers.
+Provide a structured, human-editable persona config file ("soul file") stored in the roxabi-vault (`~/.roxabi-vault/personas/`), separate from engine code. The persona auto-composes into a system prompt, is actually injected into the CLI subprocess, and is programmatically accessible for external consumers. Storing personas in the vault separates customization from process code, enables multi-agent discovery, and ensures machine portability via vault sync.
 
 ## Users
 
@@ -26,13 +26,14 @@ Provide a structured, human-editable persona config file ("soul file") that auto
 
 ## Expected Behavior
 
-1. Mickael creates `src/lyra/agents/lyra_default.persona.toml` with structured fields covering identity, personality, expertise, and voice characteristics.
-2. The agent TOML (`lyra_default.toml`) references the persona file via a `persona_file` key in `[agent]`.
+1. Mickael creates `~/.roxabi-vault/personas/lyra_default.persona.toml` with structured fields covering identity, personality, expertise, and voice characteristics.
+2. The agent TOML (`lyra_default.toml`) references the persona by name via a `persona` key in `[agent]` (e.g., `persona = "lyra_default"`). The engine resolves this to `~/.roxabi-vault/personas/{name}.persona.toml`.
 3. At agent initialization, the persona file is loaded into a `PersonaConfig` dataclass.
 4. A prompt builder auto-composes a **natural prose** system prompt from the persona fields (name, goal, traits, expertise, rules) — not a mechanical field dump.
 5. If `[prompt].system` is present in the agent TOML, it overrides the auto-composed prompt (backwards-compatible escape hatch).
 6. The system prompt (composed or override) is passed to the Claude CLI via `--system-prompt` flag — fixing the current injection gap in `_build_cmd()`.
 7. External consumers (future voice generation, templates) access persona fields programmatically via `agent.config.persona.name`, `agent.config.persona.voice`, etc.
+8. Globbing `~/.roxabi-vault/personas/*.persona.toml` lists all available personas for dynamic multi-agent loading.
 
 ## Persona Data Model & Consumers
 
@@ -167,17 +168,18 @@ warmth = "high"
 | ID | Element | Type | Description |
 |----|---------|------|-------------|
 | D1 | `PersonaConfig` | dataclass | Frozen dataclass with identity, personality, expertise, voice sections |
-| D2 | `load_persona()` | function | Reads persona TOML, returns `PersonaConfig` |
+| D2 | `load_persona()` | function | Reads persona TOML from vault, returns `PersonaConfig` |
 | D3 | `compose_system_prompt()` | function | Builds system prompt string from `PersonaConfig` fields |
 | D4 | `Agent.persona` | attribute | `PersonaConfig` instance on the Agent dataclass |
-| D5 | `[agent].persona_file` | config key | Path to persona TOML (relative to agent TOML dir) |
+| D5 | `[agent].persona` | config key | Persona name — resolved to `~/.roxabi-vault/personas/{name}.persona.toml` |
 | D6 | `CliPool.send()` `system_prompt` param | parameter | System prompt string passed to `_build_cmd()` → `--system-prompt` CLI flag |
+| D7 | `_PERSONAS_DIR` | derived constant | `Path(os.environ.get("ROXABI_VAULT_DIR", ~/.roxabi-vault)) / "personas"` — env-overridable, testable |
 
 ### Wiring
 
 | From | To | Trigger |
 |------|----|---------|
-| D5 (persona_file key) | D2 (load_persona) | Agent config load |
+| D5 (persona name key) | D7 (_PERSONAS_DIR) + D2 (load_persona) | Agent config load — resolve name to vault path |
 | D2 (loaded config) | D1 (PersonaConfig) | Parse result |
 | D1 (PersonaConfig) | D3 (compose_system_prompt) | No `[prompt].system` override |
 | D3 (composed prompt) | Agent.system_prompt | Agent init |
@@ -187,29 +189,30 @@ Override path: `[prompt].system` present → skip D3, use raw string directly.
 
 Injection path: `SimpleAgent.process()` passes `self.config.system_prompt` to `self._pool.send()` via D6. `_build_cmd()` appends `--system-prompt <prompt>` to the CLI command.
 
-Hot-reload path: `_maybe_reload` stats both the agent TOML (`_config_path`) and the persona file (`_persona_path`, stored at init). If either mtime changes, reload both. `Agent.persona` is replaced wholesale (not mutated) — `PersonaConfig` is frozen, `Agent` is mutable. On persona change, `SimpleAgent` must trigger `pool.reset(pool_id)` so the CLI process respawns with the new `--system-prompt`.
+Hot-reload path: `_maybe_reload` stats both the agent TOML (`_config_path`) and the persona file (`_persona_path` in vault, stored at init). If either mtime changes, reload both. `Agent.persona` is replaced wholesale (not mutated) — `PersonaConfig` is frozen, `Agent` is mutable. On persona change, `SimpleAgent` must trigger `pool.reset(pool_id)` so the CLI process respawns with the new `--system-prompt`.
 
 ## Slices
 
 | # | Slice | Delivers | Demo |
 |---|-------|----------|------|
-| 1 | Persona dataclass + loader | `PersonaConfig` dataclass, `load_persona()` function, TOML schema (incl. `goal` field) | `load_persona("lyra_default.persona.toml")` returns populated dataclass with `.identity.goal` |
+| 1 | Persona dataclass + loader | `PersonaConfig` dataclass, `load_persona()` function, vault directory setup, TOML schema (incl. `goal` field) | `load_persona("lyra_default")` resolves to vault, returns populated dataclass with `.identity.goal` |
 | 2 | Prompt composer | `compose_system_prompt()` builds natural prose prompt from `PersonaConfig` | Composed prompt reads as natural text: "You are Lyra, a direct and precise..." |
-| 3 | Agent integration + injection fix | Wire persona into `Agent` + `load_agent_config()`, override logic, `--system-prompt` in `CliPool`, hot-reload pool reset | System prompt actually injected into CLI process; hot-reload triggers respawn |
+| 3 | Agent integration + injection fix | Wire persona into `Agent` + `load_agent_config()`, override logic, `--system-prompt` in `CliPool`, hot-reload pool reset | System prompt actually injected into CLI process; hot-reload triggers respawn; persona editable in vault without touching engine code |
 
 ## Success Criteria
 
-- [ ] Persona TOML file (`lyra_default.persona.toml`) exists with `[identity]`, `[personality]`, `[expertise]`, and `[voice]` sections
+- [ ] Persona TOML file (`~/.roxabi-vault/personas/lyra_default.persona.toml`) exists with `[identity]`, `[personality]`, `[expertise]`, and `[voice]` sections
+- [ ] `~/.roxabi-vault/personas/` directory is created if absent (engine ensures it at startup)
 - [ ] `PersonaConfig` frozen dataclass parses all four sections from TOML, including `voice` fields (speaking_style, pace, warmth accessible via `persona.voice`)
-- [ ] `load_persona(path)` loads and validates the persona file — raises `ValueError` on missing `[identity].name`, raises `FileNotFoundError` on missing file
-- [ ] `persona_file` path is resolved relative to the agent TOML directory (same dir as `lyra_default.toml`)
+- [ ] `load_persona(name)` resolves name to `{personas_dir}/{name}.persona.toml`, loads and validates — raises `ValueError` on missing `[identity].name`, raises `FileNotFoundError` on missing file
+- [ ] `persona` name in agent TOML is validated with `[a-zA-Z0-9_-]` regex (same guard as agent names)
 - [ ] `compose_system_prompt(persona)` produces a **natural prose** system prompt (not a field dump) where: the persona name, goal, each trait, each expertise area, and each instruction all appear as substrings
 - [ ] Composed prompt passes the existing 64 KB size guard (size check runs after composition, not before)
 - [ ] `Agent` dataclass has an optional `persona: PersonaConfig | None` field
-- [ ] `load_agent_config()` loads the persona file when `[agent].persona_file` is set
+- [ ] `load_agent_config()` loads the persona from vault when `[agent].persona` is set
 - [ ] When `[prompt].system` is present, it overrides the auto-composed prompt — persona is still loaded for programmatic access
 - [ ] When `[prompt].system` is absent and persona is loaded, the auto-composed prompt is used as `Agent.system_prompt`
-- [ ] When no `persona_file` key exists, `Agent.persona` is `None` and `[prompt].system` is used unchanged (backward-compatible)
+- [ ] When no `persona` key exists, `Agent.persona` is `None` and `[prompt].system` is used unchanged (backward-compatible)
 - [ ] Lyra introduces itself by name (from `persona.identity.name`)
 - [ ] Existing agent tests pass without modification
 - [ ] Hot-reload: modifying the persona TOML file causes `_maybe_reload` to re-read it on next check — observable via `Agent.system_prompt` reflecting the updated persona fields
@@ -221,10 +224,12 @@ Hot-reload path: `_maybe_reload` stats both the agent TOML (`_config_path`) and 
 
 | Scenario | Handling |
 |----------|----------|
-| No `persona_file` key in agent TOML | `Agent.persona = None`, falls back to `[prompt].system` as today |
-| `persona_file` points to missing file | Raise `FileNotFoundError` with clear message |
-| Both `persona_file` and `[prompt].system` present | `[prompt].system` wins (override), persona still loaded for programmatic access |
+| No `persona` key in agent TOML | `Agent.persona = None`, falls back to `[prompt].system` as today |
+| `persona` name not found in vault | Raise `FileNotFoundError` with clear message including vault path |
+| Both `persona` and `[prompt].system` present | `[prompt].system` wins (override), persona still loaded for programmatic access |
 | Persona TOML missing required `[identity].name` | Raise `ValueError` at load time |
-| Persona file path traversal attempt | Same regex + resolve guard as agent name validation |
+| Persona name traversal attempt | Same `[a-zA-Z0-9_-]` regex guard as agent name validation |
+| Vault `personas/` dir missing | Created automatically at first load (mkdir -p equivalent) |
+| `ROXABI_VAULT_DIR` env var set | Overrides default `~/.roxabi-vault` — personas resolve to `$ROXABI_VAULT_DIR/personas/` |
 | Composed prompt exceeds 64 KB | Raise `ValueError` at init time (same guard as raw `[prompt].system`) |
 | Persona change during active CLI session | `_maybe_reload` detects change → config updated → pool reset triggered on next `process()` call → CLI process respawns with new `--system-prompt` |

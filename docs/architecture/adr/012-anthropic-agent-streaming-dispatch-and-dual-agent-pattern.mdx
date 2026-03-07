@@ -1,0 +1,106 @@
+---
+title: "ADR-012: AnthropicAgent Streaming Dispatch and Dual-Agent Pattern"
+description: Architectural decisions for adding AnthropicAgent with streaming, tool use, and system prompts alongside the existing SimpleAgent (PR #97).
+---
+
+## Status
+
+Accepted
+
+## Context
+
+PR #97 introduces `AnthropicAgent` as a second concrete `AgentBase` implementation that calls the
+Anthropic Messages API directly via the Python SDK. It adds streaming (async generator) responses,
+a tool-use loop, and system prompt injection. The existing `SimpleAgent` returns a plain coroutine
+(`async def process → Response`).
+
+The hub's `run()` loop must now dispatch two different return types from the same `agent.process()`
+call: a coroutine for `SimpleAgent` and an async generator for `AnthropicAgent`. Five architectural
+questions arose during review: isinstance detection correctness, lock-held-during-stream scope,
+circular dependency risk, factory vs registry for agent construction, and tool-loop conversation
+state correctness.
+
+A code-review pass (PR #97) surfaced two concrete bugs and three design risks documented below.
+
+## Options Considered
+
+### Option A: Runtime isinstance detection at dispatch site (current approach)
+
+The hub calls `isinstance(result, collections.abc.AsyncIterator)` after `agent.process()` returns
+to decide the dispatch path.
+
+- **Pros:** Zero changes to `AgentBase` interface; dispatch logic is co-located in the hub.
+- **Cons:** `AgentBase.process` abstract signature lies (`-> Response`) for `AnthropicAgent`;
+  fragile — any future agent returning an inadvertent async iterable silently takes the streaming
+  path; breaks Liskov substitution; misses type-checker enforcement.
+
+### Option B: Explicit `is_streaming` flag on `AgentBase`
+
+Add `is_streaming: bool = False` to `AgentBase`; override to `True` in `AnthropicAgent`. Hub
+branches on `agent.is_streaming` before calling `process()`.
+
+- **Pros:** Intent is explicit; abstract method signature remains consistent; type-checker can verify.
+- **Cons:** Two overrides must stay in sync; still relies on convention rather than typing.
+
+### Option C: Separate abstract methods (`process` / `process_stream`) with hub routing per subtype
+
+`AgentBase` declares both `process()` and `process_stream()` with default no-op implementations.
+`AnthropicAgent` overrides only `process_stream()`.
+
+- **Pros:** No isinstance at dispatch; type-safe; hub logic stays clean.
+- **Cons:** More surface area in base class; partial implementation problem (forgetting one silently).
+
+## Decision
+
+The PR ships with Option A (isinstance detection) because it is the smallest diff at current scale
+(two concrete agents). The pattern is structurally sound at this scale — `AsyncGenerator` is a
+runtime subtype of `AsyncIterator` regardless of PEP 563 deferred annotations, so the check is
+correct. Option B is the recommended migration path before a third agent backend is added.
+
+Two bugs identified in the PR must be fixed before merge:
+
+1. `stream.get_final_message()` on `AsyncMessageStream` is a coroutine and must be awaited
+   (`anthropic_agent.py:90`). The current call without `await` assigns a coroutine object to
+   `final`, causing `final.stop_reason`, `final.usage`, and `final.content` to raise
+   `AttributeError` at runtime.
+
+2. `pool.append_sdk_exchange()` is called with only the final accumulated text, discarding all
+   intermediate tool-call and tool-result message pairs. If `max_turns` is exhausted mid-loop, the
+   pool history is incomplete, causing the model to lose tool context on the next user message.
+
+One design risk that does not block the PR but must be resolved before adding a second streaming
+agent:
+
+3. `anthropic_agent.py` imports `_extract_text` from `simple_agent` (a private sibling). This
+   horizontal coupling should be resolved by moving `_extract_text` to `lyra.core.message` or a
+   shared `lyra.agents._utils` module.
+
+## Consequences
+
+### Positive
+
+- Streaming responses are now a first-class dispatch path in the hub with a clean fallback for
+  adapters that do not implement `send_streaming`.
+- The per-user `pool.lock` correctly serialises streaming turns per user while allowing full
+  parallelism across different users — intentional behaviour preserved.
+- Lazy import of `AnthropicAgent` in `__main__._create_agent()` correctly avoids any module-level
+  circular import.
+- Backend validation in `agent.py` (`_VALID_BACKENDS`) is correctly extended to include
+  `anthropic-sdk` before the factory function can reference it.
+
+### Negative
+
+- `AgentBase.process` abstract method signature (`-> Response`) is now a lie for `AnthropicAgent`.
+  mypy/pyright will not catch misuse until the signature is corrected.
+- The `_create_agent` factory in `__main__.py` requires editing for every new backend. Above two
+  backends, migrate to a registry: `BACKENDS: dict[str, type[AgentBase]] = {...}`.
+- The pool lock is held for the full duration of streaming (including adapter network I/O). This is
+  correct for sequential-per-user semantics but couples streaming latency to lock hold time.
+
+### Neutral
+
+- `sdk_history` trimming in `Pool.append_sdk_exchange()` uses `list.pop(0)` which is O(n). At
+  `max_sdk_history = 50` (100 entries) this is negligible; revisit if the cap grows significantly.
+- Tool definitions are hardcoded as a module-level `TOOLS` constant in `anthropic_agent.py`. This
+  is consistent with the current single-tool prototype and does not need to change until tools
+  become config-driven.

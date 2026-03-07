@@ -16,7 +16,7 @@ import tempfile
 import textwrap
 from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -344,10 +344,20 @@ class TestSkillHandlerExecute:
     async def test_execute_timeout(self) -> None:
         """A slow subprocess that exceeds the timeout returns a 'timed out' message
         instead of raising. The mock replaces asyncio.wait_for to simulate a timeout."""
-        # Arrange — mock wait_for to raise TimeoutError immediately
-        with patch(
-            "lyra.core.command_router.asyncio.wait_for",
-            side_effect=asyncio.TimeoutError,
+        # Arrange — mock both create_subprocess_exec (to avoid spawning a real
+        # process whose communicate() coroutine would never be awaited) and
+        # wait_for (to raise TimeoutError immediately).
+        mock_proc = MagicMock()
+        mock_proc.wait = AsyncMock()
+        with (
+            patch(
+                "lyra.core.command_router.asyncio.create_subprocess_exec",
+                return_value=mock_proc,
+            ),
+            patch(
+                "lyra.core.command_router.asyncio.wait_for",
+                side_effect=asyncio.TimeoutError,
+            ),
         ):
             # Act
             result = await SkillHandler.execute(
@@ -370,17 +380,19 @@ class TestDispatchRoutesToSkill:
         router = make_router()
         msg = make_message(content="/echo hi")
 
-        # Act — patch SkillHandler.execute to capture the call
-        with patch.object(
-            SkillHandler,
-            "execute",
-            new_callable=AsyncMock,
-            return_value="hi",
-        ) as mock_execute:
+        calls: list[tuple[object, ...]] = []
+
+        async def fake_execute(*args: object, **kwargs: object) -> str:
+            calls.append(args)
+            return "hi"
+
+        # Act — replace SkillHandler.execute with a plain coroutine function
+        # to avoid AsyncMock internals that trigger unawaited-coroutine warnings.
+        with patch.object(SkillHandler, "execute", new=fake_execute):
             response = await router.dispatch(msg)
 
         # Assert — SkillHandler.execute was called and result surfaced in Response
-        mock_execute.assert_awaited_once()
+        assert len(calls) == 1
         assert isinstance(response, Response)
         assert "hi" in response.content
 
@@ -446,13 +458,12 @@ class TestTimeoutProducesUserMessage:
         router = make_router()
         msg = make_message(content="/echo slow")
 
-        # Patch SkillHandler.execute to simulate a timeout at the dispatch level
-        with patch.object(
-            SkillHandler,
-            "execute",
-            new_callable=AsyncMock,
-            return_value="Command timed out. Please try again.",
-        ):
+        async def fake_execute(*args: object, **kwargs: object) -> str:
+            return "Command timed out. Please try again."
+
+        # Patch SkillHandler.execute to simulate a timeout.
+        # Plain coroutine avoids AsyncMock unawaited-coroutine warnings.
+        with patch.object(SkillHandler, "execute", new=fake_execute):
             response = await router.dispatch(msg)
 
         # Assert

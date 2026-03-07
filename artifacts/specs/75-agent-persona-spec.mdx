@@ -34,6 +34,102 @@ Provide a structured, human-editable persona config file ("soul file") that auto
 6. The system prompt (composed or override) is passed to the Claude CLI via `--system-prompt` flag — fixing the current injection gap in `_build_cmd()`.
 7. External consumers (future voice generation, templates) access persona fields programmatically via `agent.config.persona.name`, `agent.config.persona.voice`, etc.
 
+## Persona Data Model & Consumers
+
+### Data Structure
+
+```mermaid
+classDiagram
+    class PersonaConfig {
+        <<frozen>>
+        +identity: IdentityConfig
+        +personality: PersonalityConfig
+        +expertise: ExpertiseConfig
+        +voice: VoiceConfig
+    }
+
+    class IdentityConfig {
+        <<frozen>>
+        +name: str
+        +tagline: str
+        +creator: str
+        +role: str
+        +goal: str
+    }
+
+    class PersonalityConfig {
+        <<frozen>>
+        +traits: tuple[str]
+        +communication_style: str
+        +tone: str
+        +humor: str
+    }
+
+    class ExpertiseConfig {
+        <<frozen>>
+        +areas: tuple[str]
+        +instructions: tuple[str]
+    }
+
+    class VoiceConfig {
+        <<frozen>>
+        +speaking_style: str
+        +pace: str
+        +warmth: str
+    }
+
+    PersonaConfig *-- IdentityConfig
+    PersonaConfig *-- PersonalityConfig
+    PersonaConfig *-- ExpertiseConfig
+    PersonaConfig *-- VoiceConfig
+```
+
+### Consumer Map
+
+```mermaid
+flowchart LR
+    PERSONA["PersonaConfig\n(soul file)"]
+
+    subgraph "Current Consumers (this issue)"
+        LLM["LLM System Prompt\ncompose_system_prompt()"]
+        CLI["Claude CLI\n--system-prompt flag"]
+    end
+
+    subgraph "Future Consumers (separate issues)"
+        VOICE["Voice / TTS\nreads voice.speaking_style\nvoice.pace, voice.warmth"]
+        CLAUDE_MD["CLAUDE.md Templating\nreads identity.name\nidentity.goal"]
+        CHANNEL["Channel Adapters\nper-channel tone\n(deferred)"]
+        GREET["Greeting / Intro\nreads identity.name\nidentity.tagline"]
+    end
+
+    PERSONA -->|"identity + personality\n+ expertise"| LLM
+    LLM -->|"at process spawn"| CLI
+
+    PERSONA -.->|"voice.*"| VOICE
+    PERSONA -.->|"identity.*"| CLAUDE_MD
+    PERSONA -.->|"personality.tone\n+ channel overrides"| CHANNEL
+    PERSONA -.->|"identity.name\n+ identity.tagline"| GREET
+
+    style PERSONA fill:#f9f,stroke:#333
+    style LLM fill:#bbf,stroke:#333
+    style CLI fill:#bfb,stroke:#333
+    style VOICE fill:#ffe,stroke:#999,stroke-dasharray: 5 5
+    style CLAUDE_MD fill:#ffe,stroke:#999,stroke-dasharray: 5 5
+    style CHANNEL fill:#ffe,stroke:#999,stroke-dasharray: 5 5
+    style GREET fill:#ffe,stroke:#999,stroke-dasharray: 5 5
+```
+
+**Legend:** Solid lines = this issue. Dashed lines = future consumers (out of scope, but persona fields must be accessible for them).
+
+| Consumer | Fields consumed | When | Status |
+|----------|----------------|------|--------|
+| LLM System Prompt | identity.*, personality.*, expertise.* | Agent init / hot-reload | This issue |
+| Claude CLI injection | composed system_prompt string | Process spawn | This issue |
+| Voice / TTS | voice.speaking_style, voice.pace, voice.warmth | Speech generation | Future |
+| CLAUDE.md templating | identity.name, identity.goal, identity.tagline | Project setup | Future |
+| Channel adapters | personality.tone + channel overrides | Message routing | Future (deferred) |
+| Greeting / Intro | identity.name, identity.tagline | First interaction | Future |
+
 ## Breadboard
 
 ### Data: Persona TOML structure

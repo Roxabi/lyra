@@ -232,6 +232,13 @@ tagline = "no name here"
         with pytest.raises(ValueError, match="missing required \\[identity\\].name"):
             load_persona("noname", personas_dir=tmp_path)
 
+    @pytest.mark.parametrize(
+        "bad_name", ["../etc/passwd", "a b c", "foo/bar", "hello!"]
+    )
+    def test_invalid_name_rejected(self, tmp_path: Path, bad_name: str) -> None:
+        with pytest.raises(ValueError, match="only \\[a-zA-Z0-9_-\\] allowed"):
+            load_persona(bad_name, personas_dir=tmp_path)
+
 
 class TestComposeSystemPrompt:
     def _make_persona(self) -> PersonaConfig:

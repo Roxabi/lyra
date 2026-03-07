@@ -194,6 +194,26 @@ class TestCliPoolSend:
         # Entry must be removed so the corrupted process is not reused
         assert "pool-drain" not in pool._entries
 
+    async def test_send_system_prompt_change_respawns(self) -> None:
+        """Changing system_prompt between sends must kill old + spawn new process."""
+        first_proc = make_fake_proc([INIT_LINE, ASSISTANT_LINE, RESULT_LINE])
+        second_proc = make_fake_proc([INIT_LINE, ASSISTANT_LINE, RESULT_LINE])
+
+        pool = CliPool()
+        spawn_mock = AsyncMock(side_effect=[first_proc, second_proc])
+
+        with patch(_PATCH_TARGET, new=spawn_mock):
+            r1 = await pool.send("pool-1", "hi", DEFAULT_MODEL, system_prompt="A")
+            assert r1.ok
+
+            r2 = await pool.send("pool-1", "hi", DEFAULT_MODEL, system_prompt="B")
+            assert r2.ok
+
+        # Two spawns: original + respawn after prompt change
+        assert spawn_mock.call_count == 2
+        # Old process must have been terminated
+        first_proc.terminate.assert_called_once()
+
     async def test_send_model_config_mismatch_logs_warning(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:

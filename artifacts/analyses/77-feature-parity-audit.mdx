@@ -1,0 +1,121 @@
+# 77 — 2ndBrain Feature Parity Audit
+
+> **Issue**: #77 | **Parent**: #73 (Phase 1b — Agent core)
+> **Date**: 2026-03-07 | **Status**: Complete
+
+---
+
+## Purpose
+
+Complete inventory of all 2ndBrain skills/features with disposition for Lyra: migrate, redesign, drop, or already covered.
+
+---
+
+## Inventory (25 items)
+
+### Claude Code Skills (14)
+
+| # | Feature | Disposition | Covered by | Notes |
+|---|---------|-------------|------------|-------|
+| 1 | Knowledge (`/knowledge`) | Already tracked | #81-84 (roxabi-memory) + vault plugin | vault plugin = CRUD, #82 = hybrid search, web-intel:scrape = URL extraction. No separate knowledge skill needed. |
+| 2 | Save (`/save`) | Dropped | vault plugin | Quick save = `vault add` with `inbox` tag. No separate system needed. |
+| 3 | Course (`/course`) | Dropped | — | Personal lifestyle feature, orthogonal to Lyra core. Use a dedicated app. |
+| 4 | Agenda Recap | Already tracked | #65 (Google Workspace) | Aggregation layer on top of gws CLI + gh CLI. Agent composes naturally. |
+| 5 | Email Summary | Already tracked | #65 | Gmail via gws CLI. Agent handles categorization. |
+| 6 | Google Tasks | Already tracked | #65 | CRUD via gws CLI. |
+| 7 | Google Drive | Already tracked | #65 | File ops via gws CLI. |
+| 8 | Scraper | Already covered | web-intel:scrape plugin | Same code extracted from 2ndBrain into plugin. |
+| 9 | LinkedIn | Already covered | linkedin-post-generator plugin | — |
+| 10 | CV | Already covered | cv plugin | — |
+| 11 | Image Prompts | Already covered | image-prompt-generator plugin | — |
+| 12 | Invoice | Already covered | get-invoice-details plugin | — |
+| 13 | Skill Creator | Dropped | dev-core | dev-core handles the full dev lifecycle. |
+| 14 | Excalidraw | Dropped | — | Niche Claude Code skill. Not agent-essential. |
+
+### Telegram Bot Plugins (7)
+
+| # | Feature | Disposition | Covered by | Notes |
+|---|---------|-------------|------------|-------|
+| 18 | Knowledge plugin | Dropped | Lyra agent model | In Lyra, the agent has vault + web-intel tools. No plugin layer needed. Hub command sessions handle /add, /search. |
+| 19 | Save plugin | Dropped | Lyra agent model | vault add with inbox tag. |
+| 20 | Course plugin | Dropped | — | Course itself dropped. |
+| 21 | Supervisor plugin | Dropped | systemd | Lyra uses systemd + supervisord directly. |
+| 22 | Alice/Issues plugin | Dropped | dev-core:issues + gh CLI | Agent can query `gh issue list`. |
+| 23 | Pairing plugin | Dropped | Lyra bindings | Lyra's binding system + adapter auth supersedes pairing. |
+
+### Infrastructure (4)
+
+| # | Feature | Disposition | Covered by | Notes |
+|---|---------|-------------|------------|-------|
+| 15 | Session persistence | Already tracked | #67 + #83 | #67 = JSONL persistence, #83 = L0 compaction. |
+| 16 | Voice TTS/STT | Already tracked | #74, #79, #80 | Voice pipeline epic. |
+| 17 | Direct SDK agent | Already tracked | #76 | Replace CLI subprocess with Anthropic SDK. |
+| 24 | Shared fetchers | Already covered | web-intel plugin | Same fetchers in plugin. |
+| 25 | Resilience primitives | Deferred to Phase 2 | #23 | Circuit breaker + retry needed when Machine 2 / external APIs in play. Hub already has rate limiter. |
+
+---
+
+## New Issue Discovered
+
+### Hub Command Sessions (created as sub-issue of #73)
+
+During the audit, we identified that Lyra needs a **command session pattern** — the hub should route specific commands to dedicated lightweight agent sessions with appropriate model/tools/prompt, separate from the main conversation.
+
+**Commands identified from 2ndBrain usage patterns**:
+
+| Command | Session type | Model | Behavior |
+|---------|-------------|-------|----------|
+| `/add <url>` | Dedicated | Sonnet | Scrape URL + Claude metadata extraction + vault add |
+| Bare URL | Dedicated | Sonnet | Same as `/add` — hub detects URL and routes |
+| `/explain <text\|url>` | Dedicated | Sonnet | Scrape (if URL) + deep analysis/explanation |
+| `/summarize <url>` | Dedicated | TBD | Scrape + concise TL;DR |
+| `/search <query>` | Direct (no session) | — | Vault FTS query, return results immediately |
+
+**Why this matters**: In 2ndBrain, the Telegram bot had dedicated plugin handlers for each command type. In Lyra, the agent processes all messages, but some commands benefit from isolated sessions with task-specific prompts rather than polluting the main conversation context.
+
+---
+
+## Disposition Summary
+
+| Disposition | Count | Details |
+|---|---|---|
+| Already covered (roxabi-plugins) | 5 | web-intel, linkedin, cv, image-prompt, invoice |
+| Already tracked (existing issues) | 10 | #65 (GWS), #67 (sessions), #74/#79/#80 (voice), #76 (SDK), #81-84 (memory), #23 (resilience) |
+| Dropped | 8 | Save, Course, Skill Creator, Excalidraw, all Telegram plugins (5) |
+| New issue | 1 | Hub command sessions |
+| Deferred | 1 | Resilience → Phase 2 |
+
+---
+
+## Dependency Map
+
+```
+Hub Command Sessions (new)
+  |-- depends on #76 (direct SDK — needed for dedicated sessions with model control)
+  |-- depends on #81 (roxabi-memory — vault storage backend)
+  |-- depends on #82 (hybrid search — for /search command)
+  |-- uses web-intel:scrape (for /add URL extraction)
+  '-- uses vault plugin (for storage CRUD)
+
+#81 roxabi-memory foundation
+  '-- #82 hybrid search (fastembed + sqlite-vec)
+       '-- #83 Lyra agent integration (identity, L0 compaction)
+            '-- #84 vault-migrate (2ndBrain import)
+
+#65 Google Workspace (gws CLI)
+  '-- covers agenda-recap, email-summary, google-tasks, google-drive
+
+#76 direct SDK agent
+  '-- enables model selection per session (Haiku/Sonnet)
+
+#67 session persistence
+  '-- #83 adds L0 compaction on top
+```
+
+---
+
+## Acceptance Criteria Status
+
+- [x] Complete feature inventory with disposition (25 items audited)
+- [x] Individual migration issues created (1 new issue: hub command sessions)
+- [x] Dependencies documented (dependency map above)

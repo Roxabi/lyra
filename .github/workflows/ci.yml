@@ -11,6 +11,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Checkout roxabi-memory (path dependency)
+        uses: actions/checkout@v6
+        with:
+          repository: Roxabi/roxabi-memory
+          path: ../roxabi-memory
+
       - name: Install uv
         uses: astral-sh/setup-uv@v7
 

@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Lyra by Roxabi — Personal AI agent engine"
 requires-python = ">=3.12"
 dependencies = [
+    "roxabi-memory",
     "pydantic>=2.12.5",
     # Adapters
     "aiogram>=3.26",       # Telegram — asyncio-native, tracks Bot API same-day
@@ -28,6 +29,9 @@ dev = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.uv.sources]
+roxabi-memory = { path = "../roxabi-memory" }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/lyra"]

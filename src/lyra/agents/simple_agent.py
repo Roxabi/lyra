@@ -56,7 +56,9 @@ class SimpleAgent(AgentBase):
             len(text),
         )
 
-        result: CliResult = await self._pool.send(pool.pool_id, text, model_cfg)
+        result: CliResult = await self._pool.send(
+            pool.pool_id, text, model_cfg, system_prompt=self.config.system_prompt
+        )
 
         if not result.ok:
             log.warning(

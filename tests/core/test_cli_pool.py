@@ -118,6 +118,18 @@ class TestCliPoolBuildCmd:
         cmd = pool._build_cmd(DEFAULT_MODEL, session_id=None)
         assert "--resume" not in cmd
 
+    def test_system_prompt_included_when_provided(self) -> None:
+        pool = CliPool()
+        cmd = pool._build_cmd(DEFAULT_MODEL, system_prompt="You are helpful.")
+        assert "--system-prompt" in cmd
+        idx = cmd.index("--system-prompt")
+        assert cmd[idx + 1] == "You are helpful."
+
+    def test_system_prompt_omitted_when_empty(self) -> None:
+        pool = CliPool()
+        cmd = pool._build_cmd(DEFAULT_MODEL, system_prompt="")
+        assert "--system-prompt" not in cmd
+
 
 # ---------------------------------------------------------------------------
 # TestCliPoolSend
@@ -181,6 +193,26 @@ class TestCliPoolSend:
         assert "writing to subprocess stdin" in result.error
         # Entry must be removed so the corrupted process is not reused
         assert "pool-drain" not in pool._entries
+
+    async def test_send_system_prompt_change_respawns(self) -> None:
+        """Changing system_prompt between sends must kill old + spawn new process."""
+        first_proc = make_fake_proc([INIT_LINE, ASSISTANT_LINE, RESULT_LINE])
+        second_proc = make_fake_proc([INIT_LINE, ASSISTANT_LINE, RESULT_LINE])
+
+        pool = CliPool()
+        spawn_mock = AsyncMock(side_effect=[first_proc, second_proc])
+
+        with patch(_PATCH_TARGET, new=spawn_mock):
+            r1 = await pool.send("pool-1", "hi", DEFAULT_MODEL, system_prompt="A")
+            assert r1.ok
+
+            r2 = await pool.send("pool-1", "hi", DEFAULT_MODEL, system_prompt="B")
+            assert r2.ok
+
+        # Two spawns: original + respawn after prompt change
+        assert spawn_mock.call_count == 2
+        # Old process must have been terminated
+        first_proc.terminate.assert_called_once()
 
     async def test_send_model_config_mismatch_logs_warning(
         self, caplog: pytest.LogCaptureFixture

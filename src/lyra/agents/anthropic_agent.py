@@ -15,9 +15,8 @@ from typing import Any
 
 import anthropic
 
-from lyra.agents.simple_agent import _extract_text
 from lyra.core.agent import Agent, AgentBase
-from lyra.core.message import Message
+from lyra.core.message import Message, extract_text
 from lyra.core.pool import Pool
 
 log = logging.getLogger(__name__)
@@ -51,7 +50,7 @@ class AnthropicAgent(AgentBase):
         messages.append({"role": "user", "content": text})
         return messages
 
-    def _execute_tool(self, name: str, tool_input: dict) -> str:
+    async def _execute_tool(self, name: str, tool_input: dict) -> str:
         """Execute a tool by name and return result as string."""
         if name == "get_time":
             return datetime.now(timezone.utc).isoformat()
@@ -65,7 +64,7 @@ class AnthropicAgent(AgentBase):
         Yields text deltas for the adapter to display progressively.
         """
         self._maybe_reload()
-        text = _extract_text(msg)
+        text = extract_text(msg)
         messages = self._build_messages(text, pool)
 
         kwargs: dict[str, Any] = {
@@ -76,67 +75,81 @@ class AnthropicAgent(AgentBase):
         if self.config.system_prompt:
             kwargs["system"] = self.config.system_prompt
         if self.config.model_config.tools:
-            kwargs["tools"] = TOOLS
+            kwargs["tools"] = [
+                t for t in TOOLS if t["name"] in self.config.model_config.tools
+            ]
 
         accumulated_text = ""
         max_turns = self.config.model_config.max_turns
         final: Any = None
+        new_messages: list[dict[str, Any]] = [{"role": "user", "content": text}]
 
-        for _turn in range(max_turns):
-            async with self._client.messages.stream(**kwargs) as stream:
-                async for delta in stream.text_stream:
-                    accumulated_text += delta
-                    yield delta
-                final = stream.get_final_message()
+        try:
+            for _turn in range(max_turns):
+                async with self._client.messages.stream(**kwargs) as stream:
+                    async for delta in stream.text_stream:
+                        accumulated_text += delta
+                        yield delta
+                    final = await stream.get_final_message()
 
-            log.info(
-                "SDK stream: in=%d out=%d tokens",
-                final.usage.input_tokens,
-                final.usage.output_tokens,
-            )
+                log.info(
+                    "SDK stream: in=%d out=%d tokens",
+                    final.usage.input_tokens,
+                    final.usage.output_tokens,
+                )
 
-            if final.stop_reason != "tool_use":
-                break
-
-            # Handle tool use blocks
-            tool_results: list[dict[str, Any]] = []
-            for block in final.content:
-                if block.type == "tool_use":
-                    try:
-                        result = self._execute_tool(block.name, block.input)
-                        tool_results.append(
-                            {
-                                "type": "tool_result",
-                                "tool_use_id": block.id,
-                                "content": result,
-                            }
-                        )
-                    except Exception as e:
-                        tool_results.append(
-                            {
-                                "type": "tool_result",
-                                "tool_use_id": block.id,
-                                "content": str(e),
-                                "is_error": True,
-                            }
-                        )
-
-            # Continue conversation with tool results
-            kwargs["messages"] = [
-                *kwargs["messages"],
-                {"role": "assistant", "content": final.content},
-                {"role": "user", "content": tool_results},
-            ]
-
-        # Append exchange to pool history
-        reply_text = accumulated_text
-        if not reply_text and final and final.content:
-            for block in final.content:
-                if hasattr(block, "text"):
-                    reply_text = block.text
+                if final.stop_reason != "tool_use":
                     break
 
-        pool.append_sdk_exchange(
-            {"role": "user", "content": text},
-            {"role": "assistant", "content": reply_text},
-        )
+                # Handle tool use blocks
+                tool_results: list[dict[str, Any]] = []
+                for block in final.content:
+                    if block.type == "tool_use":
+                        try:
+                            result = await self._execute_tool(block.name, block.input)
+                            tool_results.append(
+                                {
+                                    "type": "tool_result",
+                                    "tool_use_id": block.id,
+                                    "content": result,
+                                }
+                            )
+                        except Exception:
+                            log.exception("Tool %s failed", block.name)
+                            tool_results.append(
+                                {
+                                    "type": "tool_result",
+                                    "tool_use_id": block.id,
+                                    "content": "Tool execution failed.",
+                                    "is_error": True,
+                                }
+                            )
+
+                # Track intermediate turns for history
+                assistant_turn = {"role": "assistant", "content": final.content}
+                tool_turn = {"role": "user", "content": tool_results}
+                new_messages.append(assistant_turn)
+                new_messages.append(tool_turn)
+
+                # Continue conversation with tool results
+                kwargs["messages"] = [
+                    *kwargs["messages"],
+                    assistant_turn,
+                    tool_turn,
+                ]
+            else:
+                # max_turns exhausted
+                if final and final.stop_reason == "tool_use":
+                    yield " [max tool turns reached]"
+        except Exception:
+            log.exception("Streaming error in AnthropicAgent")
+        finally:
+            # Always persist history
+            reply_text = accumulated_text
+            if not reply_text and final and final.content:
+                for block in final.content:
+                    if hasattr(block, "text"):
+                        reply_text = block.text
+                        break
+            new_messages.append({"role": "assistant", "content": reply_text})
+            pool.extend_sdk_history(new_messages)

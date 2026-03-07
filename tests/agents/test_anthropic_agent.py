@@ -71,7 +71,7 @@ def _make_mock_stream(text_chunks: list[str], stop_reason: str = "end_turn"):
 
     stream_ctx = MagicMock()
     stream_ctx.text_stream = text_stream_iter()
-    stream_ctx.get_final_message.return_value = mock_final
+    stream_ctx.get_final_message = AsyncMock(return_value=mock_final)
 
     ctx_manager = AsyncMock()
     ctx_manager.__aenter__ = AsyncMock(return_value=stream_ctx)
@@ -106,7 +106,7 @@ def _make_tool_use_stream(
 
     stream_ctx = MagicMock()
     stream_ctx.text_stream = text_stream_iter()
-    stream_ctx.get_final_message.return_value = mock_final
+    stream_ctx.get_final_message = AsyncMock(return_value=mock_final)
 
     ctx_manager = AsyncMock()
     ctx_manager.__aenter__ = AsyncMock(return_value=stream_ctx)
@@ -192,7 +192,7 @@ class TestProcess:
         config = make_config()
         agent = AnthropicAgent(config)
         pool = make_pool()
-        pool.max_sdk_history = 2  # 2 exchanges = 4 messages max
+        pool.max_sdk_history = 4  # 4 messages max (2 simple exchanges)
 
         # Fill with 3 exchanges (6 messages, should trim to 4)
         for i in range(3):
@@ -316,6 +316,7 @@ class TestToolLoop:
             chunks.append(delta)
 
         assert agent._client.messages.stream.call_count == 2
+        assert " [max tool turns reached]" in chunks
 
 
 # ---------------------------------------------------------------------------

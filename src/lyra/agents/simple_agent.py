@@ -16,30 +16,12 @@ from lyra.core.cli_pool import CliPool, CliResult
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
     Message,
-    MessageContent,
     Response,
-    TextContent,
+    extract_text,
 )
 from lyra.core.pool import Pool
 
 log = logging.getLogger(__name__)
-
-
-def _extract_text(msg: Message) -> str:
-    """Extract plain text from a Message, regardless of content type."""
-    content: MessageContent | str = msg.content
-    if isinstance(content, str):
-        return content
-    if isinstance(content, TextContent):
-        return content.text
-    # ImageContent / AudioContent — forward type + URL as text
-    # (Phase 2: multimodal via API)
-    url = getattr(content, "url", str(content))
-    caption = getattr(content, "caption", None)
-    # yields "image" or "audio"
-    content_type = type(content).__name__.replace("Content", "").lower()
-    suffix = f" — {caption}" if caption else ""
-    return f"[{content_type}: {url}]{suffix}"
 
 
 class SimpleAgent(AgentBase):
@@ -64,7 +46,7 @@ class SimpleAgent(AgentBase):
 
     async def process(self, msg: Message, pool: Pool) -> Response:
         self._maybe_reload()
-        text = _extract_text(msg)
+        text = extract_text(msg)
         model_cfg = self.config.model_config
 
         log.debug(

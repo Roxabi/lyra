@@ -25,6 +25,8 @@ from lyra.core.message import (
 
 log = logging.getLogger(__name__)
 
+TELEGRAM_MAX_LENGTH = 4096  # Telegram Bot API text message limit
+
 
 @dataclass(frozen=True)
 class TelegramConfig:
@@ -252,7 +254,7 @@ class TelegramAdapter:
                     await self.bot.edit_message_text(
                         chat_id=ctx.chat_id,
                         message_id=placeholder.message_id,
-                        text=accumulated,
+                        text=accumulated[:TELEGRAM_MAX_LENGTH],
                     )
                     last_edit = now
         except Exception:
@@ -264,8 +266,11 @@ class TelegramAdapter:
 
         # Final edit with complete text
         if accumulated:
-            await self.bot.edit_message_text(
-                chat_id=ctx.chat_id,
-                message_id=placeholder.message_id,
-                text=accumulated,
-            )
+            try:
+                await self.bot.edit_message_text(
+                    chat_id=ctx.chat_id,
+                    message_id=placeholder.message_id,
+                    text=accumulated[:TELEGRAM_MAX_LENGTH],
+                )
+            except Exception:
+                log.exception("Final edit failed")

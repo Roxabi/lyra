@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import deque
 from dataclasses import dataclass, field
 
 from .message import Message
@@ -20,7 +21,7 @@ class Pool:
     #   option A: deque(maxlen=N) for sliding-window compaction
     #   option B: Pool.append(msg) mutator with compaction callback (Level 0→3 cascade)
     history: list[Message] = field(default_factory=list)
-    sdk_history: list[dict] = field(default_factory=list)
+    sdk_history: deque[dict] = field(default_factory=deque)
     max_sdk_history: int = 50
     _lock: asyncio.Lock = field(
         init=False, repr=False, compare=False, default_factory=asyncio.Lock
@@ -30,10 +31,8 @@ class Pool:
     def lock(self) -> asyncio.Lock:
         return self._lock
 
-    def append_sdk_exchange(self, user_msg: dict, assistant_msg: dict) -> None:
-        """Append a user/assistant exchange and trim to cap."""
-        self.sdk_history.append(user_msg)
-        self.sdk_history.append(assistant_msg)
-        while len(self.sdk_history) > self.max_sdk_history * 2:
-            self.sdk_history.pop(0)
-            self.sdk_history.pop(0)
+    def extend_sdk_history(self, new_messages: list[dict]) -> None:
+        """Append messages from an exchange and trim to cap."""
+        self.sdk_history.extend(new_messages)
+        while len(self.sdk_history) > self.max_sdk_history:
+            self.sdk_history.popleft()

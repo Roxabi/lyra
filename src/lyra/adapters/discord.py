@@ -248,4 +248,7 @@ class DiscordAdapter(discord.Client):
 
         # Final edit with complete text
         if accumulated:
-            await placeholder.edit(content=accumulated[:DISCORD_MAX_LENGTH])
+            try:
+                await placeholder.edit(content=accumulated[:DISCORD_MAX_LENGTH])
+            except Exception:
+                log.exception("Final edit failed")

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
@@ -55,15 +54,6 @@ async def quick_chunks():
     """Yield chunks quickly — no debounce threshold crossed."""
     yield "Hello"
     yield " world"
-    yield "!"
-
-
-async def slow_chunks():
-    """Yield chunks with delays — debounce threshold crossed."""
-    yield "Hello"
-    await asyncio.sleep(0.6)  # > 500ms debounce for Telegram
-    yield " world"
-    await asyncio.sleep(0.6)
     yield "!"
 
 

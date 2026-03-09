@@ -226,7 +226,11 @@ class TelegramAdapter:
     async def send_streaming(
         self, original_msg: Message, chunks: AsyncIterator[str]
     ) -> None:
-        """Stream response with edit-in-place, debounced at ~500ms."""
+        """Stream response with edit-in-place, debounced at ~500ms.
+
+        TODO: store placeholder.message_id in response.metadata["reply_message_id"]
+        once send_streaming() receives a Response argument (#67).
+        """
         if not isinstance(original_msg.platform_context, TelegramContext):
             log.error(
                 "send_streaming() called with non-TelegramContext for msg_id=%s",

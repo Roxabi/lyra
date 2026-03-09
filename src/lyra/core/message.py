@@ -63,6 +63,14 @@ def extract_text(msg: "Message") -> str:
 
 @dataclass(frozen=True)
 class TelegramContext:
+    """Platform context for Telegram messages.
+
+    Unlike DiscordContext where message_id is always present, Telegram
+    service messages (e.g. user joined, pinned message) have no message_id,
+    so the field is optional. All ordinary bot-interaction messages will
+    have a non-None message_id.
+    """
+
     chat_id: int
     topic_id: int | None = None
     is_group: bool = False

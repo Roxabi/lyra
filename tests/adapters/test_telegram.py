@@ -333,9 +333,9 @@ def test_normalize_captures_message_id() -> None:
     from lyra.adapters.telegram import TelegramAdapter
     from lyra.core.message import TelegramContext
 
+    # Arrange
     hub = MagicMock()
     adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
-
     aiogram_msg = SimpleNamespace(
         chat=SimpleNamespace(id=123, type="private"),
         from_user=SimpleNamespace(id=42, full_name="Alice", is_bot=False),
@@ -346,34 +346,75 @@ def test_normalize_captures_message_id() -> None:
         entities=None,
     )
 
+    # Act
     msg = adapter._normalize(aiogram_msg)
 
+    # Assert
     assert isinstance(msg.platform_context, TelegramContext)
     assert msg.platform_context.message_id == 777
 
 
 def test_normalize_message_id_none_when_absent() -> None:
-    """_normalize() sets TelegramContext.message_id=None when message_id absent."""
+    """_normalize() sets TelegramContext.message_id=None when message_id absent.
+
+    Note: real aiogram Message objects always have message_id (required Bot API field).
+    This test exercises the getattr defensive fallback used by SimpleNamespace stubs.
+    """
     from lyra.adapters.telegram import TelegramAdapter
     from lyra.core.message import TelegramContext
 
+    # Arrange
     hub = MagicMock()
     adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
-
     aiogram_msg = SimpleNamespace(
         chat=SimpleNamespace(id=123, type="private"),
         from_user=SimpleNamespace(id=42, full_name="Alice", is_bot=False),
         text="hello",
         date=datetime.now(timezone.utc),
         message_thread_id=None,
-        # no message_id attribute
+        # no message_id attribute — exercises getattr(..., None) defensive path
         entities=None,
     )
 
+    # Act
     msg = adapter._normalize(aiogram_msg)
 
+    # Assert
     assert isinstance(msg.platform_context, TelegramContext)
     assert msg.platform_context.message_id is None
+
+
+# ---------------------------------------------------------------------------
+# T11c — _normalize() captures both topic_id and message_id for group/forum
+# ---------------------------------------------------------------------------
+
+
+def test_normalize_captures_topic_and_message_id_for_forum() -> None:
+    """Forum supergroup: both topic_id and message_id captured simultaneously."""
+    from lyra.adapters.telegram import TelegramAdapter
+    from lyra.core.message import TelegramContext
+
+    # Arrange
+    hub = MagicMock()
+    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+    aiogram_msg = SimpleNamespace(
+        chat=SimpleNamespace(id=456, type="supergroup"),
+        from_user=SimpleNamespace(id=42, full_name="Alice", is_bot=False),
+        text="hello forum",
+        date=datetime.now(timezone.utc),
+        message_thread_id=99,
+        message_id=777,
+        entities=None,
+    )
+
+    # Act
+    msg = adapter._normalize(aiogram_msg)
+
+    # Assert
+    assert isinstance(msg.platform_context, TelegramContext)
+    assert msg.platform_context.topic_id == 99
+    assert msg.platform_context.message_id == 777
+    assert msg.platform_context.is_group is True
 
 
 # ---------------------------------------------------------------------------
@@ -394,6 +435,7 @@ async def test_send_stores_reply_message_id_in_metadata() -> None:
         TextContent,
     )
 
+    # Arrange
     hub = MagicMock()
     bot = AsyncMock()
     sent_msg = SimpleNamespace(message_id=888)
@@ -417,6 +459,9 @@ async def test_send_stores_reply_message_id_in_metadata() -> None:
     )
     response = Response(content="reply")
 
+    # Act
     await adapter.send(original_msg, response)
 
+    # Assert
+    bot.send_message.assert_awaited_once_with(chat_id=123, text="reply")
     assert response.metadata["reply_message_id"] == 888

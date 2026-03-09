@@ -613,3 +613,154 @@ async def test_send_skips_when_discord_circuit_open() -> None:
 
     # Assert — discord circuit is OPEN so channel.send must not be called
     mock_channel.send.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# T14 — send() stores bot's reply message_id in response.metadata (channel.send)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_send_stores_reply_message_id_channel_send() -> None:
+    """send() via channel.send() stores sent message id in response.metadata."""
+    from lyra.adapters.discord import DiscordAdapter
+    from lyra.core.message import (
+        DiscordContext,
+        Message,
+        MessageType,
+        Platform,
+        Response,
+        TextContent,
+    )
+
+    # Arrange
+    hub = MagicMock()
+    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+
+    sent_msg = SimpleNamespace(id=888)
+    mock_channel = AsyncMock()
+    mock_channel.send = AsyncMock(return_value=sent_msg)
+    adapter.get_channel = MagicMock(return_value=mock_channel)
+
+    hub_msg = Message(
+        id="msg-1",
+        platform=Platform.DISCORD,
+        bot_id="main",
+        user_id="dc:user:42",
+        user_name="Alice",
+        is_mention=False,
+        is_from_bot=False,
+        content=TextContent(text="hello"),
+        type=MessageType.TEXT,
+        timestamp=datetime.now(timezone.utc),
+        platform_context=DiscordContext(guild_id=111, channel_id=333, message_id=555),
+    )
+    response = Response(content="hi")
+
+    # Act
+    await adapter.send(hub_msg, response)
+
+    # Assert
+    mock_channel.send.assert_awaited_once_with("hi")
+    assert response.metadata["reply_message_id"] == 888
+
+
+# ---------------------------------------------------------------------------
+# T15 — send() stores bot's reply message_id in response.metadata (msg.reply)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_send_stores_reply_message_id_msg_reply() -> None:
+    """send() via msg.reply() stores sent message id in response.metadata."""
+    from lyra.adapters.discord import DiscordAdapter
+    from lyra.core.message import (
+        DiscordContext,
+        Message,
+        MessageType,
+        Platform,
+        Response,
+        TextContent,
+    )
+
+    # Arrange
+    hub = MagicMock()
+    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+
+    sent_msg = SimpleNamespace(id=7777)
+    mock_message = AsyncMock()
+    mock_message.reply = AsyncMock(return_value=sent_msg)
+    mock_channel = AsyncMock()
+    mock_channel.fetch_message = AsyncMock(return_value=mock_message)
+    adapter.get_channel = MagicMock(return_value=mock_channel)
+
+    hub_msg = Message(
+        id="msg-1",
+        platform=Platform.DISCORD,
+        bot_id="main",
+        user_id="dc:user:42",
+        user_name="Alice",
+        is_mention=True,
+        is_from_bot=False,
+        content=TextContent(text="hello"),
+        type=MessageType.TEXT,
+        timestamp=datetime.now(timezone.utc),
+        platform_context=DiscordContext(guild_id=111, channel_id=333, message_id=555),
+    )
+    response = Response(content="hi")
+
+    # Act
+    await adapter.send(hub_msg, response)
+
+    # Assert
+    mock_channel.fetch_message.assert_awaited_once_with(555)
+    mock_message.reply.assert_awaited_once_with("hi")
+    assert response.metadata["reply_message_id"] == 7777
+
+
+# ---------------------------------------------------------------------------
+# T16 — send() does NOT set reply_message_id when send fails
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_send_no_reply_message_id_on_failure() -> None:
+    """send() must NOT set reply_message_id in metadata when the send call throws."""
+    from lyra.adapters.discord import DiscordAdapter
+    from lyra.core.message import (
+        DiscordContext,
+        Message,
+        MessageType,
+        Platform,
+        Response,
+        TextContent,
+    )
+
+    # Arrange
+    hub = MagicMock()
+    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+
+    mock_channel = AsyncMock()
+    mock_channel.send = AsyncMock(side_effect=Exception("network error"))
+    adapter.get_channel = MagicMock(return_value=mock_channel)
+
+    hub_msg = Message(
+        id="msg-1",
+        platform=Platform.DISCORD,
+        bot_id="main",
+        user_id="dc:user:42",
+        user_name="Alice",
+        is_mention=False,
+        is_from_bot=False,
+        content=TextContent(text="hello"),
+        type=MessageType.TEXT,
+        timestamp=datetime.now(timezone.utc),
+        platform_context=DiscordContext(guild_id=111, channel_id=333, message_id=555),
+    )
+    response = Response(content="hi")
+
+    # Act
+    await adapter.send(hub_msg, response)
+
+    # Assert
+    assert "reply_message_id" not in response.metadata

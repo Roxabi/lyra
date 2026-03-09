@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import NamedTuple, Protocol
 
 from .agent import AgentBase
+from .circuit_breaker import CircuitRegistry
 from .message import GENERIC_ERROR_REPLY, Message, Platform, Response
 from .pool import Pool
 
@@ -73,12 +74,14 @@ class Hub:
         bus_size: int = BUS_SIZE,
         rate_limit: int = RATE_LIMIT,
         rate_window: int = RATE_WINDOW,
+        circuit_registry: CircuitRegistry | None = None,
     ) -> None:
         self.bus: asyncio.Queue[Message] = asyncio.Queue(maxsize=bus_size)
         self.adapter_registry: dict[tuple[Platform, str], ChannelAdapter] = {}
         self.agent_registry: dict[str, AgentBase] = {}
         self.bindings: dict[RoutingKey, Binding] = {}
         self.pools: dict[str, Pool] = {}
+        self.circuit_registry = circuit_registry
         self._rate_limit = rate_limit
         self._rate_window = rate_window
         # Sliding window: maps RoutingKey → deque of message timestamps.
@@ -284,25 +287,68 @@ class Hub:
                         msg.bot_id,
                     )
                     continue
+                # Anthropic circuit pre-process check
+                # (Option B: hub-level check before agent.process())
+                if self.circuit_registry is not None:
+                    cb = self.circuit_registry.get("anthropic")
+                    if cb is not None and cb.is_open():
+                        status = cb.get_status()
+                        retry_secs = int(status.retry_after or 0)
+                        reply = Response(
+                            content=(
+                                "Lyra is currently unavailable. "
+                                f"Please try again in {retry_secs}s."
+                            )
+                        )
+                        try:
+                            await self.dispatch_response(msg, reply)
+                        except Exception as exc:
+                            log.exception(
+                                "dispatch_response failed for fast-fail reply: %s",
+                                exc,
+                            )
+                        continue
                 async with pool.lock:
                     result = agent.process(msg, pool)
                     if isinstance(result, collections.abc.AsyncIterator):
                         # Streaming path (AnthropicAgent)
                         try:
                             await self.dispatch_streaming(msg, result)
+                            # Record success for both anthropic and hub circuits
+                            if self.circuit_registry is not None:
+                                for _cb_name in ("anthropic", "hub"):
+                                    _cb = self.circuit_registry.get(_cb_name)
+                                    if _cb is not None:
+                                        _cb.record_success()
                         except Exception as exc:
                             log.exception(
                                 "dispatch_streaming() failed for %s: %s",
                                 key,
                                 exc,
                             )
+                            # Record failure for both anthropic and hub circuits
+                            if self.circuit_registry is not None:
+                                for _cb_name in ("anthropic", "hub"):
+                                    _cb = self.circuit_registry.get(_cb_name)
+                                    if _cb is not None:
+                                        _cb.record_failure()
                     else:
                         # Non-streaming path (SimpleAgent)
                         try:
                             response = await result
+                            # Record hub success for non-streaming path
+                            if self.circuit_registry is not None:
+                                _cb = self.circuit_registry.get("hub")
+                                if _cb is not None:
+                                    _cb.record_success()
                         except Exception as exc:
                             log.exception("agent.process() raised for %s: %s", key, exc)
                             response = Response(content=GENERIC_ERROR_REPLY)
+                            # Record hub failure
+                            if self.circuit_registry is not None:
+                                _cb = self.circuit_registry.get("hub")
+                                if _cb is not None:
+                                    _cb.record_failure()
                         try:
                             await self.dispatch_response(msg, response)
                         except Exception as exc:

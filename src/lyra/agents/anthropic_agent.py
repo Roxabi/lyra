@@ -143,6 +143,7 @@ class AnthropicAgent(AgentBase):
                     yield " [max tool turns reached]"
         except Exception:
             log.exception("Streaming error in AnthropicAgent")
+            raise  # re-raise so Hub.dispatch_streaming() can record circuit failure
         finally:
             # Always persist history
             reply_text = accumulated_text

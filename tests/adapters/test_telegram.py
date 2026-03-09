@@ -64,13 +64,16 @@ def test_normalize_private_chat_context() -> None:
         text="hello",
         date=datetime.now(timezone.utc),
         message_thread_id=None,
+        message_id=99,
         entities=None,
     )
 
     msg = adapter._normalize(aiogram_msg)
 
     assert msg.platform == Platform.TELEGRAM
-    expected_ctx = TelegramContext(chat_id=123, topic_id=None, is_group=False)
+    expected_ctx = TelegramContext(
+        chat_id=123, topic_id=None, is_group=False, message_id=99
+    )
     assert msg.platform_context == expected_ctx
 
 
@@ -318,3 +321,102 @@ async def test_send_skips_when_platform_context_is_not_telegram(
 
     bot.send_message.assert_not_awaited()
     assert any("non-TelegramContext" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# T11 — _normalize() captures message_id from incoming Telegram message
+# ---------------------------------------------------------------------------
+
+
+def test_normalize_captures_message_id() -> None:
+    """_normalize() sets TelegramContext.message_id from incoming aiogram message."""
+    from lyra.adapters.telegram import TelegramAdapter
+    from lyra.core.message import TelegramContext
+
+    hub = MagicMock()
+    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+
+    aiogram_msg = SimpleNamespace(
+        chat=SimpleNamespace(id=123, type="private"),
+        from_user=SimpleNamespace(id=42, full_name="Alice", is_bot=False),
+        text="hello",
+        date=datetime.now(timezone.utc),
+        message_thread_id=None,
+        message_id=777,
+        entities=None,
+    )
+
+    msg = adapter._normalize(aiogram_msg)
+
+    assert isinstance(msg.platform_context, TelegramContext)
+    assert msg.platform_context.message_id == 777
+
+
+def test_normalize_message_id_none_when_absent() -> None:
+    """_normalize() sets TelegramContext.message_id=None when message_id absent."""
+    from lyra.adapters.telegram import TelegramAdapter
+    from lyra.core.message import TelegramContext
+
+    hub = MagicMock()
+    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+
+    aiogram_msg = SimpleNamespace(
+        chat=SimpleNamespace(id=123, type="private"),
+        from_user=SimpleNamespace(id=42, full_name="Alice", is_bot=False),
+        text="hello",
+        date=datetime.now(timezone.utc),
+        message_thread_id=None,
+        # no message_id attribute
+        entities=None,
+    )
+
+    msg = adapter._normalize(aiogram_msg)
+
+    assert isinstance(msg.platform_context, TelegramContext)
+    assert msg.platform_context.message_id is None
+
+
+# ---------------------------------------------------------------------------
+# T12 — send() stores bot's reply message_id in response.metadata
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_send_stores_reply_message_id_in_metadata() -> None:
+    """adapter.send() stores bot reply message_id in response.metadata."""
+    from lyra.adapters.telegram import TelegramAdapter
+    from lyra.core.message import (
+        Message,
+        MessageType,
+        Platform,
+        Response,
+        TelegramContext,
+        TextContent,
+    )
+
+    hub = MagicMock()
+    bot = AsyncMock()
+    sent_msg = SimpleNamespace(message_id=888)
+    bot.send_message.return_value = sent_msg
+
+    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+    adapter.bot = bot
+
+    original_msg = Message(
+        id="msg-1",
+        platform=Platform.TELEGRAM,
+        bot_id="main",
+        user_id="tg:user:42",
+        user_name="Alice",
+        is_mention=False,
+        is_from_bot=False,
+        content=TextContent(text="hello"),
+        type=MessageType.TEXT,
+        timestamp=datetime.now(timezone.utc),
+        platform_context=TelegramContext(chat_id=123, message_id=777),
+    )
+    response = Response(content="reply")
+
+    await adapter.send(original_msg, response)
+
+    assert response.metadata["reply_message_id"] == 888

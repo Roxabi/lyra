@@ -66,6 +66,7 @@ class TelegramContext:
     chat_id: int
     topic_id: int | None = None
     is_group: bool = False
+    message_id: int | None = None
 
 
 @dataclass(frozen=True)

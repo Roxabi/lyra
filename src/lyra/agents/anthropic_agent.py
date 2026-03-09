@@ -18,6 +18,7 @@ import anthropic
 from lyra.core.agent import Agent, AgentBase
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import Message, extract_text
+from lyra.core.messages import MessageManager
 from lyra.core.pool import Pool
 
 log = logging.getLogger(__name__)
@@ -43,11 +44,13 @@ class AnthropicAgent(AgentBase):
         config: Agent,
         circuit_registry: CircuitRegistry | None = None,
         admin_user_ids: set[str] | None = None,
+        msg_manager: MessageManager | None = None,
     ) -> None:
         super().__init__(
             config,
             circuit_registry=circuit_registry,
             admin_user_ids=admin_user_ids,
+            msg_manager=msg_manager,
         )
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:

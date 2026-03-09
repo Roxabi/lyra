@@ -496,7 +496,8 @@ class TestCircuitCommandAdminCheck:
         registry.register(CircuitBreaker("anthropic"))
         # Admin is a different user; msg sender is tg:user:42
         router = make_circuit_router(
-            registry=registry, admin_ids={"tg:user:999"}  # different user from sender
+            registry=registry,
+            admin_ids={"tg:user:999"},  # different user from sender
         )
         msg = make_circuit_msg(user_id="tg:user:42")
 

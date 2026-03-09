@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 from .circuit_breaker import CircuitRegistry
 from .message import Message, Response, TextContent
+from .messages import MessageManager
 from .plugin_loader import AsyncHandler, PluginLoader
 from .pool import Pool
 
@@ -47,6 +48,7 @@ class CommandRouter:
         builtins: dict[str, CommandConfig] | None = None,
         circuit_registry: CircuitRegistry | None = None,
         admin_user_ids: set[str] | None = None,
+        msg_manager: MessageManager | None = None,
     ) -> None:
         self._plugin_loader = plugin_loader
         self._enabled_plugins = enabled_plugins
@@ -55,6 +57,7 @@ class CommandRouter:
         )
         self._circuit_registry = circuit_registry
         self._admin_user_ids = admin_user_ids or set()
+        self._msg_manager = msg_manager
         # Guard: raise early if any loaded plugin command clashes with a builtin.
         plugin_handlers = plugin_loader.get_commands(enabled_plugins)
         conflicts = set(plugin_handlers) & set(self._builtins)
@@ -112,10 +115,15 @@ class CommandRouter:
         )
         handler = plugin_handlers.get(command_name)
         if handler is None:
-            return Response(
-                content=f"Unknown command: {command_name}. "
-                "Type /help for available commands."
+            _fallback = (
+                f"Unknown command: {command_name}. Type /help for available commands."
             )
+            _reply_text = (
+                self._msg_manager.get("unknown_command", command_name=command_name)
+                if self._msg_manager
+                else _fallback
+            )
+            return Response(content=_reply_text)
 
         if pool is None:
             raise TypeError(
@@ -130,7 +138,12 @@ class CommandRouter:
 
     def _help(self) -> Response:
         """Return a listing of all available commands (builtins + plugins)."""
-        lines: list[str] = ["Available commands:"]
+        header = (
+            self._msg_manager.get("help_header")
+            if self._msg_manager
+            else "Available commands:"
+        )
+        lines: list[str] = [header]
         # Builtins
         for cmd_name, cfg in sorted(self._builtins.items()):
             desc = cfg.description or "(no description)"

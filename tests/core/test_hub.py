@@ -651,9 +651,7 @@ def make_circuit_registry(**overrides) -> CircuitRegistry:
         "telegram": CircuitBreaker(
             "telegram", failure_threshold=5, recovery_timeout=30
         ),
-        "discord": CircuitBreaker(
-            "discord", failure_threshold=5, recovery_timeout=30
-        ),
+        "discord": CircuitBreaker("discord", failure_threshold=5, recovery_timeout=30),
         "hub": CircuitBreaker("hub", failure_threshold=10, recovery_timeout=60),
     }
     for name, cb in defaults.items():

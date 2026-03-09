@@ -11,6 +11,7 @@ from pathlib import Path
 from .circuit_breaker import CircuitRegistry
 from .command_router import CommandConfig, CommandRouter
 from .message import Message, Response
+from .messages import MessageManager
 from .plugin_loader import PluginLoader
 from .pool import Pool
 
@@ -98,6 +99,7 @@ class Agent:
     commands: dict[str, CommandConfig] = field(default_factory=dict)
     plugins_enabled: tuple[str, ...] = field(default=())  # empty = default-open
     persona: PersonaConfig | None = None
+    i18n_language: str = "en"
 
 
 def load_persona(name: str, personas_dir: Path | None = None) -> PersonaConfig:
@@ -319,6 +321,9 @@ def load_agent_config(
     plugins_section = data.get("plugins", {})
     plugins_enabled: tuple[str, ...] = tuple(plugins_section.get("enabled", []))
 
+    i18n_section = data.get("i18n", {})
+    i18n_language: str = i18n_section.get("default_language", "en")
+
     return Agent(
         name=name,
         system_prompt=system_prompt,
@@ -328,6 +333,7 @@ def load_agent_config(
         commands=commands,
         plugins_enabled=plugins_enabled,
         persona=persona,
+        i18n_language=i18n_language,
     )
 
 
@@ -346,6 +352,7 @@ class AgentBase(ABC):
         plugins_dir: Path | None = None,
         circuit_registry: CircuitRegistry | None = None,
         admin_user_ids: set[str] | None = None,
+        msg_manager: MessageManager | None = None,
     ) -> None:
         self.config = config
         self._agents_dir = agents_dir or _AGENTS_DIR
@@ -355,6 +362,7 @@ class AgentBase(ABC):
         )
         self._circuit_registry = circuit_registry
         self._admin_user_ids = admin_user_ids
+        self._msg_manager = msg_manager
         self._plugins_dir = plugins_dir or _PLUGINS_DIR
         self._plugin_loader = PluginLoader(self._plugins_dir)
         self._effective_plugins = self._init_plugins()
@@ -364,6 +372,7 @@ class AgentBase(ABC):
             self._effective_plugins,
             circuit_registry=circuit_registry,
             admin_user_ids=admin_user_ids,
+            msg_manager=msg_manager,
         )
         self._persona_path: Path | None = None
         self._persona_mtime: float = 0.0
@@ -461,6 +470,7 @@ class AgentBase(ABC):
                         self._effective_plugins,
                         circuit_registry=self._circuit_registry,
                         admin_user_ids=self._admin_user_ids,
+                        msg_manager=self._msg_manager,
                     )
                 self._last_mtime = mtime
                 self._update_persona_tracking()
@@ -489,6 +499,7 @@ class AgentBase(ABC):
                 self._effective_plugins,
                 circuit_registry=self._circuit_registry,
                 admin_user_ids=self._admin_user_ids,
+                msg_manager=self._msg_manager,
             )
 
     @abstractmethod

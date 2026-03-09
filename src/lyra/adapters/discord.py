@@ -23,6 +23,7 @@ from lyra.core.message import (
     Response,
     TextContent,
 )
+from lyra.core.messages import MessageManager
 
 log = logging.getLogger(__name__)
 
@@ -61,6 +62,7 @@ class DiscordAdapter(discord.Client):
         *,
         intents: discord.Intents | None = None,
         circuit_registry: CircuitRegistry | None = None,
+        msg_manager: MessageManager | None = None,
     ) -> None:
         if intents is None:
             intents = discord.Intents.default()
@@ -69,6 +71,7 @@ class DiscordAdapter(discord.Client):
         self._hub = hub
         self._bot_id = bot_id
         self._circuit_registry = circuit_registry
+        self._msg_manager = msg_manager
         # Set on on_ready; None until login completes. Tests set this directly.
         self._bot_user: Any = None
         # Compiled once in on_ready (requires bot user ID). None until then.
@@ -183,7 +186,12 @@ class DiscordAdapter(discord.Client):
 
         # S5: backpressure — send ack before blocking on full bus
         if self._hub.bus.full():
-            await message.reply("Processing your request\u2026")
+            text = (
+                self._msg_manager.get("backpressure_ack", platform="discord")
+                if self._msg_manager
+                else "Processing your request\u2026"
+            )
+            await message.reply(text)
 
         # S6: push to bus
         await self._hub.bus.put(hub_msg)
@@ -268,13 +276,19 @@ class DiscordAdapter(discord.Client):
         accumulated = ""
 
         # Send placeholder
+        _placeholder_text = (
+            self._msg_manager.get("stream_placeholder", platform="discord")
+            if self._msg_manager
+            else "\u2026"
+        )
         try:
-            placeholder = await messageable.send("\u2026")
+            placeholder = await messageable.send(_placeholder_text)
         except Exception:
             log.exception("Failed to send placeholder — falling back to non-streaming")
             async for chunk in chunks:
                 accumulated += chunk
-            await self.send(original_msg, Response(content=accumulated or "\u2026"))
+            fallback_content = accumulated or _placeholder_text
+            await self.send(original_msg, Response(content=fallback_content))
             return
 
         last_edit = time.monotonic()
@@ -294,7 +308,12 @@ class DiscordAdapter(discord.Client):
                 if cb is not None:
                     cb.record_failure()
             if accumulated:
-                accumulated += " [response interrupted]"
+                suffix = (
+                    self._msg_manager.get("stream_interrupted", platform="discord")
+                    if self._msg_manager
+                    else " [response interrupted]"
+                )
+                accumulated += suffix
             else:
                 accumulated = GENERIC_ERROR_REPLY
 

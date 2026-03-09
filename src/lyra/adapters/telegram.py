@@ -5,7 +5,7 @@ import os
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from datetime import timezone
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -13,6 +13,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 if TYPE_CHECKING:
     from lyra.core.hub import Hub
 
+from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
     Message,
@@ -82,6 +83,7 @@ class TelegramAdapter:
         hub: Hub,
         bot_username: str = "lyra_bot",
         webhook_secret: str = "",
+        circuit_registry: CircuitRegistry | None = None,
     ) -> None:
         self._bot_id = bot_id
         self._token = token  # kept private — never logged
@@ -92,6 +94,7 @@ class TelegramAdapter:
             )
         self._bot_username = bot_username
         self._hub: Hub = hub
+        self._circuit_registry = circuit_registry
 
         # bot is a public attribute so tests can replace it with AsyncMock.
         # Deferred lazily so tests can assign adapter.bot = AsyncMock() after
@@ -141,6 +144,23 @@ class TelegramAdapter:
             await self._dp.feed_update(self.bot, update)
             log.debug("Dispatched update for bot_id=%s", bot_id)
             return {"ok": True}
+
+        @self.app.get("/status")
+        async def get_status() -> dict:
+            ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            if self._circuit_registry is None:
+                return {"services": {}, "timestamp": ts}
+            all_status = self._circuit_registry.get_all_status()
+            return {
+                "services": {
+                    name: {
+                        "state": s.state.value,
+                        "retry_after": s.retry_after,
+                    }
+                    for name, s in all_status.items()
+                },
+                "timestamp": ts,
+            }
 
     def _normalize(self, msg) -> Message:
         """Convert an aiogram Message (or SimpleNamespace) to a hub Message.
@@ -203,6 +223,20 @@ class TelegramAdapter:
 
         hub_msg = self._normalize(msg)
 
+        # Hub circuit guard — drop silently if hub is overloaded.
+        # IMPORTANT: Always return normally to aiogram — webhook must return
+        # {"ok": True} (HTTP 200). Never raise here or Telegram will retry
+        # the update indefinitely.
+        if self._circuit_registry is not None:
+            cb = self._circuit_registry.get("hub")
+            if cb is not None and cb.is_open():
+                log.warning(
+                    '{"event": "hub_circuit_open", "platform": "telegram",'
+                    ' "user_id": "%s", "dropped": true}',
+                    hub_msg.user_id,
+                )
+                return  # silent drop
+
         if self._hub.bus.full():
             await self.bot.send_message(
                 msg.chat.id,
@@ -215,13 +249,37 @@ class TelegramAdapter:
         """Send a response back to Telegram via bot.send_message."""
         if not isinstance(original_msg.platform_context, TelegramContext):
             log.error(
-                "send() called with non-TelegramContext for msg_id=%s", original_msg.id
+                "send() called with non-TelegramContext for msg_id=%s",
+                original_msg.id,
             )
             return
         ctx = original_msg.platform_context
-        sent = await self.bot.send_message(chat_id=ctx.chat_id, text=response.content)
-        # Store for session persistence (#67) and reply-to-resume (#83).
-        response.metadata["reply_message_id"] = sent.message_id
+
+        if self._circuit_registry is not None:
+            cb = self._circuit_registry.get("telegram")
+            if cb is not None and cb.is_open():
+                log.warning(
+                    '{"event": "telegram_circuit_open",'
+                    ' "action": "send", "dropped": true}'
+                )
+                return
+
+        try:
+            sent = await self.bot.send_message(
+                chat_id=ctx.chat_id, text=response.content
+            )
+            # Store for session persistence (#67) and reply-to-resume (#83).
+            response.metadata["reply_message_id"] = sent.message_id
+            if self._circuit_registry is not None:
+                cb = self._circuit_registry.get("telegram")
+                if cb is not None:
+                    cb.record_success()
+        except Exception:
+            log.exception("send() failed")
+            if self._circuit_registry is not None:
+                cb = self._circuit_registry.get("telegram")
+                if cb is not None:
+                    cb.record_failure()
 
     async def send_streaming(
         self, original_msg: Message, chunks: AsyncIterator[str]
@@ -238,6 +296,19 @@ class TelegramAdapter:
             )
             return
         ctx = original_msg.platform_context
+
+        if self._circuit_registry is not None:
+            cb = self._circuit_registry.get("telegram")
+            if cb is not None and cb.is_open():
+                log.warning(
+                    '{"event": "telegram_circuit_open",'
+                    ' "action": "send_streaming", "dropped": true}'
+                )
+                # Drain iterator to avoid generator leaks
+                async for _ in chunks:
+                    pass
+                return
+
         accumulated = ""
 
         # Send placeholder
@@ -253,6 +324,7 @@ class TelegramAdapter:
             return
 
         last_edit = time.monotonic()
+        _stream_ok = False
         try:
             async for chunk in chunks:
                 accumulated += chunk
@@ -264,12 +336,22 @@ class TelegramAdapter:
                         text=accumulated[:TELEGRAM_MAX_LENGTH],
                     )
                     last_edit = now
+            _stream_ok = True
         except Exception:
             log.exception("Stream interrupted")
+            if self._circuit_registry is not None:
+                cb = self._circuit_registry.get("telegram")
+                if cb is not None:
+                    cb.record_failure()
             if accumulated:
                 accumulated += " [response interrupted]"
             else:
                 accumulated = GENERIC_ERROR_REPLY
+
+        if _stream_ok and self._circuit_registry is not None:
+            cb = self._circuit_registry.get("telegram")
+            if cb is not None:
+                cb.record_success()
 
         # Final edit with complete text
         if accumulated:

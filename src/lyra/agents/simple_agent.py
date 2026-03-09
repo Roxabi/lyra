@@ -12,6 +12,7 @@ import logging
 from typing import Any
 
 from lyra.core.agent import Agent, AgentBase
+from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.cli_pool import CliPool, CliResult
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
@@ -40,8 +41,18 @@ class SimpleAgent(AgentBase):
         hub.register_agent(agent)
     """
 
-    def __init__(self, config: Agent, cli_pool: CliPool) -> None:
-        super().__init__(config)
+    def __init__(
+        self,
+        config: Agent,
+        cli_pool: CliPool,
+        circuit_registry: CircuitRegistry | None = None,
+        admin_user_ids: set[str] | None = None,
+    ) -> None:
+        super().__init__(
+            config,
+            circuit_registry=circuit_registry,
+            admin_user_ids=admin_user_ids,
+        )
         self._pool = cli_pool
 
     async def process(self, msg: Message, pool: Pool) -> Response:

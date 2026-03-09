@@ -16,6 +16,8 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
+from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
+
 # ---------------------------------------------------------------------------
 # T2 — _normalize() builds correct DiscordContext
 # ---------------------------------------------------------------------------
@@ -495,3 +497,119 @@ def test_discord_token_not_in_logs(
         assert secret_token not in record.getMessage(), (
             f"Token found in log at {record.levelname}: {record.getMessage()!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Circuit breaker helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_open_registry(service: str) -> CircuitRegistry:
+    """Build a CircuitRegistry with the named circuit tripped OPEN."""
+    registry = CircuitRegistry()
+    for name in ("anthropic", "telegram", "discord", "hub"):
+        cb = CircuitBreaker(name, failure_threshold=1, recovery_timeout=60)
+        if name == service:
+            cb.record_failure()  # trips to OPEN
+        registry.register(cb)
+    return registry
+
+
+# ---------------------------------------------------------------------------
+# SC-11 (Discord) — on_message() drops silently when hub circuit is OPEN
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_on_message_drops_silently_when_hub_circuit_open() -> None:
+    """SC-11: on_message() drops silently (no bus.put) when circuits['hub'] is OPEN."""
+    from lyra.adapters.discord import DiscordAdapter
+
+    # Arrange
+    registry = _make_open_registry("hub")
+
+    hub = MagicMock()
+    hub.bus = MagicMock()
+    hub.bus.full = MagicMock(return_value=False)
+    hub.bus.put = AsyncMock()
+
+    adapter = DiscordAdapter(
+        hub=hub,
+        bot_id="main",
+        intents=discord.Intents.none(),
+        circuit_registry=registry,
+    )
+    bot_user = SimpleNamespace(id=999, bot=True)
+    adapter._bot_user = bot_user
+
+    discord_msg = SimpleNamespace(
+        guild=SimpleNamespace(id=111),
+        channel=SimpleNamespace(id=333, send=AsyncMock()),
+        author=SimpleNamespace(id=42, name="Alice", display_name="Alice", bot=False),
+        content="hello",
+        created_at=datetime.now(timezone.utc),
+        id=555,
+        mentions=[],
+        reply=AsyncMock(),
+    )
+
+    # Act
+    await adapter.on_message(discord_msg)
+
+    # Assert — bus.put must NOT be called; message was silently dropped
+    hub.bus.put.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# SC-13 (Discord) — send() skips channel.send when discord circuit is OPEN
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_send_skips_when_discord_circuit_open() -> None:
+    """SC-13: send() skips channel.send/reply when circuits['discord'] is OPEN."""
+    from lyra.adapters.discord import DiscordAdapter
+    from lyra.core.message import (
+        DiscordContext,
+        Message,
+        MessageType,
+        Platform,
+        Response,
+        TextContent,
+    )
+
+    # Arrange
+    registry = _make_open_registry("discord")
+
+    hub = MagicMock()
+    adapter = DiscordAdapter(
+        hub=hub,
+        bot_id="main",
+        intents=discord.Intents.none(),
+        circuit_registry=registry,
+    )
+
+    mock_channel = AsyncMock()
+    mock_channel.send = AsyncMock()
+    adapter.get_channel = MagicMock(return_value=mock_channel)
+
+    hub_msg = Message(
+        id="msg-1",
+        platform=Platform.DISCORD,
+        bot_id="main",
+        user_id="dc:user:42",
+        user_name="Alice",
+        is_mention=False,
+        is_from_bot=False,
+        content=TextContent(text="hello"),
+        type=MessageType.TEXT,
+        timestamp=datetime.now(timezone.utc),
+        platform_context=DiscordContext(guild_id=111, channel_id=333, message_id=555),
+    )
+    response = Response(content="hi")
+
+    # Act
+    await adapter.send(hub_msg, response)
+
+    # Assert — discord circuit is OPEN so channel.send must not be called
+    mock_channel.send.assert_not_awaited()

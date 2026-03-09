@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
+import tomllib
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -19,24 +20,78 @@ from lyra.adapters.telegram import TelegramAdapter
 from lyra.adapters.telegram import load_config as load_telegram_config
 from lyra.agents.simple_agent import SimpleAgent
 from lyra.core.agent import Agent, AgentBase, load_agent_config
+from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.cli_pool import CliPool
 from lyra.core.hub import Hub, RoutingKey
 from lyra.core.message import Platform
 
 log = logging.getLogger(__name__)
 
+_CB_DEFAULTS: dict[str, int] = {"failure_threshold": 5, "recovery_timeout": 60}
+_CB_SERVICES = ("anthropic", "telegram", "discord", "hub")
 
-def _create_agent(config: Agent, cli_pool: CliPool | None) -> AgentBase:
+
+def _load_circuit_config(
+    config_path: str | None = None,
+) -> tuple[CircuitRegistry, set[str]]:
+    """Load [circuit_breaker.*] and [admin] sections from TOML config.
+
+    Returns (CircuitRegistry with 4 named CBs, set of admin user_ids).
+    Missing sections or missing config file → all defaults.
+    Config path: $LYRA_CONFIG env var → 'lyra.toml' in cwd → all defaults.
+    """
+    import os
+
+    raw: dict = {}
+    path = config_path or os.environ.get("LYRA_CONFIG", "lyra.toml")
+    try:
+        with open(path, "rb") as f:
+            raw = tomllib.load(f)
+        log.info("Loaded circuit config from %s", path)
+    except FileNotFoundError:
+        log.info("No config file at %s — using circuit breaker defaults", path)
+
+    cb_section = raw.get("circuit_breaker", {})
+    registry = CircuitRegistry()
+    for name in _CB_SERVICES:
+        cfg: dict[str, int] = {**_CB_DEFAULTS, **cb_section.get(name, {})}
+        registry.register(
+            CircuitBreaker(
+                name=name,
+                failure_threshold=cfg["failure_threshold"],
+                recovery_timeout=cfg["recovery_timeout"],
+            )
+        )
+
+    admin_ids: set[str] = set(raw.get("admin", {}).get("user_ids", []))
+    return registry, admin_ids
+
+
+def _create_agent(
+    config: Agent,
+    cli_pool: CliPool | None,
+    circuit_registry: CircuitRegistry | None = None,
+    admin_user_ids: set[str] | None = None,
+) -> AgentBase:
     """Select agent implementation based on backend config."""
     backend = config.model_config.backend
     if backend == "anthropic-sdk":
         from lyra.agents.anthropic_agent import AnthropicAgent
 
-        return AnthropicAgent(config)
+        return AnthropicAgent(
+            config,
+            circuit_registry=circuit_registry,
+            admin_user_ids=admin_user_ids,
+        )
     if backend in ("claude-cli", "ollama"):
         if cli_pool is None:
             raise RuntimeError(f"CliPool required for {backend} backend")
-        return SimpleAgent(config, cli_pool)
+        return SimpleAgent(
+            config,
+            cli_pool,
+            circuit_registry=circuit_registry,
+            admin_user_ids=admin_user_ids,
+        )
     raise ValueError(f"Unknown backend: {backend}")
 
 
@@ -48,11 +103,13 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
     """
     load_dotenv()
 
+    circuit_registry, admin_user_ids = _load_circuit_config()
+
     # Config loaders call sys.exit() on missing required env vars — no partial startup.
     tg_cfg = load_telegram_config()
     dc_cfg = load_discord_config()
 
-    hub = Hub()
+    hub = Hub(circuit_registry=circuit_registry)
 
     agent_config = load_agent_config("lyra_default")
     log.info(
@@ -67,7 +124,12 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
         cli_pool = CliPool()
         await cli_pool.start()
 
-    agent = _create_agent(agent_config, cli_pool)
+    agent = _create_agent(
+        agent_config,
+        cli_pool,
+        circuit_registry=circuit_registry,
+        admin_user_ids=admin_user_ids,
+    )
     hub.register_agent(agent)
 
     tg_adapter = TelegramAdapter(
@@ -76,8 +138,11 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
         hub=hub,
         bot_username=tg_cfg.bot_username,
         webhook_secret=tg_cfg.webhook_secret,
+        circuit_registry=circuit_registry,
     )
-    dc_adapter = DiscordAdapter(hub=hub, bot_id="main")
+    dc_adapter = DiscordAdapter(
+        hub=hub, bot_id="main", circuit_registry=circuit_registry
+    )
 
     hub.register_adapter(Platform.TELEGRAM, "main", tg_adapter)
     hub.register_adapter(Platform.DISCORD, "main", dc_adapter)

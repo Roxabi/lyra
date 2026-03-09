@@ -365,7 +365,11 @@ class TelegramAdapter:
                 )
                 accumulated += suffix
             else:
-                accumulated = GENERIC_ERROR_REPLY
+                accumulated = (
+                    self._msg_manager.get("generic", platform="telegram")
+                    if self._msg_manager
+                    else GENERIC_ERROR_REPLY
+                )
 
         if _stream_ok and self._circuit_registry is not None:
             cb = self._circuit_registry.get("telegram")

@@ -428,8 +428,6 @@ class TestHotReloadPreservesMsgManager:
         self, tmp_path: Path
     ) -> None:
         """msg_manager survives CommandRouter rebuild on config hot-reload."""
-        import os
-
         from lyra.core.agent import AgentBase, load_agent_config
         from lyra.core.message import Message, Response
         from lyra.core.pool import Pool
@@ -464,14 +462,25 @@ system = "You are a test assistant."
         # Verify msg_manager is wired into command_router initially
         assert agent.command_router._msg_manager is mm
 
-        # Act — simulate a config file mtime change to trigger hot-reload
-        new_mtime = toml_path.stat().st_mtime + 1
-        os.utime(toml_path, (new_mtime, new_mtime))
-        agent._last_mtime = new_mtime - 2  # make agent think the file changed
+        # Act — write a different system prompt so new_config != self.config,
+        # which triggers CommandRouter rebuild in _maybe_reload()
+        old_cr = agent.command_router
+        toml_path.write_bytes(b"""
+[agent]
+memory_namespace = "test"
+
+[model]
+backend = "claude-cli"
+
+[prompt]
+system = "You are a test assistant (reloaded)."
+""")
+        agent._last_mtime = 0.0  # make agent think the file changed
 
         agent._maybe_reload()
 
-        # Assert — command_router was rebuilt but msg_manager is preserved (not None)
+        # Assert — command_router rebuilt (new object); msg_manager preserved
+        assert agent.command_router is not old_cr
         assert agent.command_router._msg_manager is not None
         assert agent.command_router._msg_manager is mm
 
@@ -546,13 +555,15 @@ system = "test"
         )
 
         # Act — simulate plugin handlers.py mtime change
+        old_cr = agent.command_router
         new_mtime = handlers_path.stat().st_mtime + 1
         os.utime(handlers_path, (new_mtime, new_mtime))
         agent._plugin_mtimes["echo"] = new_mtime - 2
 
         agent._maybe_reload()
 
-        # Assert — command_router was rebuilt; msg_manager is still present
+        # Assert — command_router rebuilt; msg_manager preserved
+        assert agent.command_router is not old_cr
         assert agent.command_router._msg_manager is not None
         assert agent.command_router._msg_manager is mm
 

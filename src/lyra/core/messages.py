@@ -5,15 +5,14 @@ from __future__ import annotations
 import logging
 import tomllib
 from pathlib import Path
+from typing import Any
 
 log = logging.getLogger(__name__)
 
 _FALLBACKS: dict[str, str] = {
     "generic": "Something went wrong. Please try again.",
-    "unavailable": "Lyra is currently unavailable. Please try again in {retry_secs}s.",
-    "unknown_command": (
-        "Unknown command: {command_name}. Type /help for available commands."
-    ),
+    "unavailable": "Lyra is currently unavailable. Please try again later.",
+    "unknown_command": "Unknown command. Type /help for available commands.",
     "help_header": "Available commands:",
     "backpressure_ack": "Processing your request\u2026",
     "stream_placeholder": "\u2026",
@@ -36,16 +35,16 @@ class MessageManager:
         self.language = language
         try:
             with open(path, "rb") as f:
-                self._templates: dict = tomllib.load(f)
+                self._templates: dict[str, Any] = tomllib.load(f)
         except Exception:
             log.warning("Failed to load messages.toml at %s — using fallbacks", path)
-            self._templates = {}
+            self._templates: dict[str, Any] = {}
 
     def get(self, key: str, platform: str | None = None, **kwargs: str) -> str:
         """Return resolved template string. Never raises."""
         try:
             raw = self._resolve(key, platform)
-            return raw.format_map(kwargs) if kwargs else raw
+            return raw.format_map(kwargs)
         except Exception:
             return _FALLBACKS.get(key, "")
 

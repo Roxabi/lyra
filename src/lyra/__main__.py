@@ -80,6 +80,7 @@ def _load_messages(language: str = "en") -> MessageManager:
     path_str = os.environ.get("LYRA_MESSAGES_CONFIG") or (
         "messages.toml" if Path("messages.toml").exists() else str(bundled)
     )
+    log.info("Loaded messages from %s", path_str)
     return MessageManager(path_str, language=language)
 
 

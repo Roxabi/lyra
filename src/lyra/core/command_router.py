@@ -13,6 +13,8 @@ import re
 import shutil
 from dataclasses import dataclass
 
+from lyra.core.circuit_breaker import CircuitRegistry
+
 from .message import Message, Response, TextContent
 
 log = logging.getLogger(__name__)
@@ -120,8 +122,15 @@ class SkillHandler:
 class CommandRouter:
     """Routes slash commands to builtin handlers or CLI skill handlers."""
 
-    def __init__(self, commands: dict[str, CommandConfig]) -> None:
+    def __init__(
+        self,
+        commands: dict[str, CommandConfig],
+        circuit_registry: CircuitRegistry | None = None,
+        admin_user_ids: set[str] | None = None,
+    ) -> None:
         self.commands = commands
+        self._circuit_registry = circuit_registry
+        self._admin_user_ids = admin_user_ids or set()
 
     # ------------------------------------------------------------------
     # Detection
@@ -157,6 +166,9 @@ class CommandRouter:
         if command_name == "/help":
             return self._help()
 
+        if command_name == "/circuit":
+            return self._circuit_status(msg)
+
         unknown_reply = (
             f"Unknown command: {command_name}. Type /help for available commands."
         )
@@ -187,7 +199,28 @@ class CommandRouter:
     def _help(self) -> Response:
         """Return a listing of all registered commands with their descriptions."""
         lines: list[str] = ["Available commands:"]
+        # Add /circuit as a built-in
+        lines.append("  /circuit — Show circuit breaker status (admin-only)")
         for cmd_name, cfg in sorted(self.commands.items()):
             desc = cfg.description or "(no description)"
             lines.append(f"  {cmd_name} — {desc}")
+        return Response(content="\n".join(lines))
+
+    def _circuit_status(self, msg: Message) -> Response:
+        """Return circuit status table (admin-only)."""
+        # Check admin access: format is "{platform.value}:{user_id}"
+        sender_id = f"{msg.platform.value}:{msg.user_id}"
+        if self._admin_user_ids and sender_id not in self._admin_user_ids:
+            return Response(content="This command is admin-only.")
+        if self._circuit_registry is None:
+            return Response(content="Circuit breaker not configured.")
+        all_status = self._circuit_registry.get_all_status()
+        lines = ["Circuit Status", "─" * 38]
+        for name, status in sorted(all_status.items()):
+            if status.retry_after is not None:
+                state_str = f"OPEN       retry in {int(status.retry_after)}s"
+            else:
+                state_str = f"{status.state.value.upper():<10} (ok)"
+            lines.append(f"  {name:<12} {state_str}")
+        lines.append("─" * 38)
         return Response(content="\n".join(lines))

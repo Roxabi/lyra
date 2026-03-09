@@ -7,6 +7,7 @@ Covers:
   Slice 1 — Command detection + registry (tests 1–7)
   Slice 2 — Skill execution + args (tests 8–11)
   Slice 3 — Error handling (tests 12–14)
+  Slice 4 — /circuit command (SC-15, tests 15–19)
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from lyra.core.agent import Agent, AgentBase, load_agent_config
+from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.command_router import CommandConfig, CommandRouter, SkillHandler
 from lyra.core.hub import Hub
 from lyra.core.message import Message, MessageType, Platform, Response, TelegramContext
@@ -558,3 +560,152 @@ class TestPassthroughNonCommandInHub:
 
         # Assert — command router intercepted the message; agent.process() was skipped
         assert len(process_calls) == 0
+
+
+# ---------------------------------------------------------------------------
+# Slice 4 — /circuit command (SC-15)
+# ---------------------------------------------------------------------------
+
+
+def make_registry_with_open(open_service: str) -> CircuitRegistry:
+    """Build a CircuitRegistry where one named circuit has been tripped open."""
+    registry = CircuitRegistry()
+    for name in ("anthropic", "telegram", "discord", "hub"):
+        cb = CircuitBreaker(name, failure_threshold=1, recovery_timeout=60)
+        if name == open_service:
+            cb.record_failure()
+        registry.register(cb)
+    return registry
+
+
+def make_circuit_router(
+    registry: CircuitRegistry | None = None,
+    admin_ids: set[str] | None = None,
+) -> CommandRouter:
+    """Build a CommandRouter with circuit_registry and admin_user_ids set."""
+    return CommandRouter(
+        commands={},
+        circuit_registry=registry,
+        admin_user_ids=admin_ids,
+    )
+
+
+def make_circuit_msg(user_id: str = "tg:user:42") -> Message:
+    """Build a /circuit Message from a Telegram user."""
+    return Message(
+        id="msg-circuit-1",
+        platform=Platform.TELEGRAM,
+        bot_id="main",
+        user_id=user_id,
+        user_name="Admin",
+        is_mention=False,
+        is_from_bot=False,
+        content="/circuit",
+        type=MessageType.TEXT,
+        timestamp=datetime.now(timezone.utc),
+        platform_context=TelegramContext(chat_id=42),
+    )
+
+
+class TestCircuitCommandAdminCheck:
+    """Non-admin sender is denied; admin sender receives the status table (SC-15)."""
+
+    @pytest.mark.asyncio
+    async def test_circuit_command_denied_for_non_admin(self) -> None:
+        """SC-15: Non-admin sender → 'This command is admin-only.'"""
+        # Arrange
+        registry = CircuitRegistry()
+        registry.register(CircuitBreaker("anthropic"))
+        # Admin is a different user; msg sender is tg:user:42
+        router = make_circuit_router(
+            registry=registry, admin_ids={"telegram:tg:user:999"}
+        )
+        msg = make_circuit_msg(user_id="tg:user:42")
+
+        # Act
+        response = await router.dispatch(msg)
+
+        # Assert
+        assert isinstance(response, Response)
+        assert "admin-only" in response.content.lower()
+
+    @pytest.mark.asyncio
+    async def test_circuit_command_returns_table_for_admin(self) -> None:
+        """SC-15: Admin sender → gets formatted status table with all circuits."""
+        # Arrange
+        registry = CircuitRegistry()
+        for name in ("anthropic", "telegram", "discord", "hub"):
+            registry.register(CircuitBreaker(name))
+        admin_id = "telegram:tg:user:42"
+        router = make_circuit_router(registry=registry, admin_ids={admin_id})
+        msg = make_circuit_msg(user_id="tg:user:42")
+
+        # Act
+        response = await router.dispatch(msg)
+
+        # Assert — header and all four service names present
+        assert isinstance(response, Response)
+        assert "Circuit Status" in response.content
+        assert "anthropic" in response.content
+        assert "telegram" in response.content
+        assert "discord" in response.content
+        assert "hub" in response.content
+
+    @pytest.mark.asyncio
+    async def test_circuit_command_no_admin_restriction_when_admin_ids_empty(
+        self,
+    ) -> None:
+        """SC-15: Empty admin_user_ids set → /circuit accessible to all users."""
+        # Arrange
+        registry = CircuitRegistry()
+        registry.register(CircuitBreaker("anthropic"))
+        router = make_circuit_router(registry=registry, admin_ids=set())
+        msg = make_circuit_msg(user_id="tg:user:42")
+
+        # Act
+        response = await router.dispatch(msg)
+
+        # Assert — returns status, not an admin-only error
+        assert isinstance(response, Response)
+        assert "admin-only" not in response.content.lower()
+
+
+class TestCircuitCommandOpenState:
+    """OPEN circuits surface a 'retry in Xs' hint in the status table (SC-15)."""
+
+    @pytest.mark.asyncio
+    async def test_circuit_command_shows_retry_after_for_open_circuit(
+        self,
+    ) -> None:
+        """SC-15: OPEN circuit shows 'retry in Xs' in the table."""
+        # Arrange
+        registry = make_registry_with_open("anthropic")
+        admin_id = "telegram:tg:user:42"
+        router = make_circuit_router(registry=registry, admin_ids={admin_id})
+        msg = make_circuit_msg(user_id="tg:user:42")
+
+        # Act
+        response = await router.dispatch(msg)
+
+        # Assert — anthropic row present; retry hint visible
+        assert isinstance(response, Response)
+        assert "anthropic" in response.content
+        assert "retry in" in response.content.lower()
+
+
+class TestCircuitCommandNoRegistry:
+    """Missing registry → informational 'not configured' message (SC-15)."""
+
+    @pytest.mark.asyncio
+    async def test_circuit_command_no_registry(self) -> None:
+        """No circuit_registry → 'Circuit breaker not configured.'"""
+        # Arrange — admin is set but no registry provided
+        router = make_circuit_router(registry=None, admin_ids={"telegram:tg:user:42"})
+        msg = make_circuit_msg(user_id="tg:user:42")
+
+        # Act
+        response = await router.dispatch(msg)
+
+        # Assert
+        assert isinstance(response, Response)
+        assert "not configured" in response.content.lower()

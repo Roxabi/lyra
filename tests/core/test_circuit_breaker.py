@@ -175,6 +175,38 @@ def test_registry_missing_key_raises():
         _ = registry["nonexistent"]
 
 
+# --- SC-06: HALF_OPEN probe slot is exclusive ---
+
+
+def test_half_open_probe_slot_blocks_concurrent_calls(monkeypatch):
+    """SC-06: Only one probe is allowed concurrently in HALF_OPEN state.
+
+    First call acquires the probe slot (is_open → False).
+    All subsequent calls before record_success/failure are fast-failed (is_open → True).
+    After record_success, the circuit closes and all calls are allowed again.
+    """
+    cb = CircuitBreaker("test", failure_threshold=1, recovery_timeout=1)
+    cb.record_failure()
+    original = time.monotonic()
+    monkeypatch.setattr(time, "monotonic", lambda: original + 2)
+
+    # First caller acquires the probe slot
+    first = cb.is_open()
+    assert first is False
+    assert cb._probe_in_flight is True
+    assert cb._state == CircuitState.HALF_OPEN
+
+    # Concurrent callers are fast-failed while probe is in flight
+    for _ in range(3):
+        assert cb.is_open() is True
+
+    # Probe succeeds → circuit closes → slot released
+    cb.record_success()
+    assert cb._state == CircuitState.CLOSED
+    assert cb._probe_in_flight is False
+    assert cb.is_open() is False  # now CLOSED, open calls pass through
+
+
 # --- Open timer reset on continued failure ---
 
 

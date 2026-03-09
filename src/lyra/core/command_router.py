@@ -208,9 +208,9 @@ class CommandRouter:
 
     def _circuit_status(self, msg: Message) -> Response:
         """Return circuit status table (admin-only)."""
-        # Check admin access: format is "{platform.value}:{user_id}"
-        sender_id = f"{msg.platform.value}:{msg.user_id}"
-        if self._admin_user_ids and sender_id not in self._admin_user_ids:
+        # Check admin access using msg.user_id directly (already platform-prefixed)
+        sender_id = msg.user_id
+        if not self._admin_user_ids or sender_id not in self._admin_user_ids:
             return Response(content="This command is admin-only.")
         if self._circuit_registry is None:
             return Response(content="Circuit breaker not configured.")

@@ -320,18 +320,22 @@ class Hub:
                                     _cb = self.circuit_registry.get(_cb_name)
                                     if _cb is not None:
                                         _cb.record_success()
-                        except Exception as exc:
-                            log.exception(
-                                "dispatch_streaming() failed for %s: %s",
-                                key,
-                                exc,
-                            )
-                            # Record failure for both anthropic and hub circuits
+                        except BaseException as exc:
+                            # Always record failure so _probe_in_flight is cleared
+                            # even when CancelledError propagates (not caught by
+                            # bare `except Exception`).
                             if self.circuit_registry is not None:
                                 for _cb_name in ("anthropic", "hub"):
                                     _cb = self.circuit_registry.get(_cb_name)
                                     if _cb is not None:
                                         _cb.record_failure()
+                            if not isinstance(exc, Exception):
+                                raise  # re-raise CancelledError / KeyboardInterrupt
+                            log.exception(
+                                "dispatch_streaming() failed for %s: %s",
+                                key,
+                                exc,
+                            )
                     else:
                         # Non-streaming path (SimpleAgent)
                         try:

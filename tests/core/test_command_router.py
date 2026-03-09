@@ -618,7 +618,7 @@ class TestCircuitCommandAdminCheck:
         registry.register(CircuitBreaker("anthropic"))
         # Admin is a different user; msg sender is tg:user:42
         router = make_circuit_router(
-            registry=registry, admin_ids={"telegram:tg:user:999"}
+            registry=registry, admin_ids={"tg:user:999"}  # different user from sender
         )
         msg = make_circuit_msg(user_id="tg:user:42")
 
@@ -636,7 +636,7 @@ class TestCircuitCommandAdminCheck:
         registry = CircuitRegistry()
         for name in ("anthropic", "telegram", "discord", "hub"):
             registry.register(CircuitBreaker(name))
-        admin_id = "telegram:tg:user:42"
+        admin_id = "tg:user:42"  # msg.user_id format — no platform prefix
         router = make_circuit_router(registry=registry, admin_ids={admin_id})
         msg = make_circuit_msg(user_id="tg:user:42")
 
@@ -652,10 +652,10 @@ class TestCircuitCommandAdminCheck:
         assert "hub" in response.content
 
     @pytest.mark.asyncio
-    async def test_circuit_command_no_admin_restriction_when_admin_ids_empty(
+    async def test_circuit_command_denied_when_admin_ids_empty(
         self,
     ) -> None:
-        """SC-15: Empty admin_user_ids set → /circuit accessible to all users."""
+        """SC-15: Empty admin_user_ids → /circuit denied for all users."""
         # Arrange
         registry = CircuitRegistry()
         registry.register(CircuitBreaker("anthropic"))
@@ -665,9 +665,9 @@ class TestCircuitCommandAdminCheck:
         # Act
         response = await router.dispatch(msg)
 
-        # Assert — returns status, not an admin-only error
+        # Assert — empty admin set blocks all users (fail-closed)
         assert isinstance(response, Response)
-        assert "admin-only" not in response.content.lower()
+        assert "admin-only" in response.content.lower()
 
 
 class TestCircuitCommandOpenState:
@@ -680,7 +680,7 @@ class TestCircuitCommandOpenState:
         """SC-15: OPEN circuit shows 'retry in Xs' in the table."""
         # Arrange
         registry = make_registry_with_open("anthropic")
-        admin_id = "telegram:tg:user:42"
+        admin_id = "tg:user:42"  # msg.user_id format — no platform prefix
         router = make_circuit_router(registry=registry, admin_ids={admin_id})
         msg = make_circuit_msg(user_id="tg:user:42")
 
@@ -700,7 +700,7 @@ class TestCircuitCommandNoRegistry:
     async def test_circuit_command_no_registry(self) -> None:
         """No circuit_registry → 'Circuit breaker not configured.'"""
         # Arrange — admin is set but no registry provided
-        router = make_circuit_router(registry=None, admin_ids={"telegram:tg:user:42"})
+        router = make_circuit_router(registry=None, admin_ids={"tg:user:42"})
         msg = make_circuit_msg(user_id="tg:user:42")
 
         # Act

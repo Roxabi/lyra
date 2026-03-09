@@ -883,3 +883,58 @@ async def test_mid_stream_failure_records_anthropic_failure() -> None:
     assert ant_status.failure_count >= 1, (
         f"Expected anthropic failure_count >= 1, got {ant_status.failure_count}"
     )
+
+
+# SC-08 — Hub circuit opens after consecutive processing failures
+
+
+@pytest.mark.asyncio
+async def test_hub_circuit_opens_after_threshold() -> None:
+    """SC-08: Hub circuit OPEN after failure_threshold consecutive failures."""
+    # Arrange — hub CB with threshold=2 so test is fast
+    hub_cb = CircuitBreaker("hub", failure_threshold=2, recovery_timeout=60)
+    registry = make_circuit_registry(hub=hub_cb)
+    hub = Hub(circuit_registry=registry)
+
+    class SilentAdapter:
+        async def send(self, original_msg: Message, response: Response) -> None:
+            pass
+
+        async def send_streaming(self, original_msg: Message, chunks) -> None:
+            async for _ in chunks:
+                pass
+
+    class AlwaysFailStreamAgent:
+        name = "test"
+        command_router = None
+
+        def process(self, msg: Message, pool: Pool):
+            async def gen():
+                yield "x"
+                raise RuntimeError("forced failure")
+
+            return gen()
+
+    hub.register_adapter(Platform.TELEGRAM, "main", SilentAdapter())
+    hub.register_agent(AlwaysFailStreamAgent())  # type: ignore[arg-type]
+    hub.register_binding(Platform.TELEGRAM, "main", "*", "test", "telegram:main:*")
+
+    # Act — enqueue 2 messages to trip the threshold
+    for _ in range(2):
+        await hub.bus.put(make_message())
+    hub_task = asyncio.create_task(hub.run())
+    await asyncio.sleep(0.2)
+    hub_task.cancel()
+    try:
+        await hub_task
+    except asyncio.CancelledError:
+        pass
+
+    # Assert — hub circuit must be OPEN
+    from lyra.core.circuit_breaker import CircuitState
+
+    hub_status = registry["hub"].get_status()
+    assert hub_status.state == CircuitState.OPEN, (
+        f"Expected hub circuit OPEN after {hub_cb.failure_threshold} failures, "
+        f"got {hub_status.state} (failure_count={hub_status.failure_count})"
+    )

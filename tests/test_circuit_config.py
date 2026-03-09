@@ -1,8 +1,5 @@
 """Tests for _load_circuit_config() in lyra.__main__ (issue #104, SC-16).
 
-RED phase — _load_circuit_config() does not exist yet in __main__.py.
-All tests are expected to FAIL until the backend-dev GREEN phase completes.
-
 Covers:
   SC-16: TOML-driven circuit config with defaults and per-service overrides.
 """

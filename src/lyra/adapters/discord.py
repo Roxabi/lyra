@@ -13,6 +13,7 @@ import discord
 if TYPE_CHECKING:
     from lyra.core.hub import Hub
 
+from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
     DiscordContext,
@@ -59,6 +60,7 @@ class DiscordAdapter(discord.Client):
         bot_id: str = "main",
         *,
         intents: discord.Intents | None = None,
+        circuit_registry: CircuitRegistry | None = None,
     ) -> None:
         if intents is None:
             intents = discord.Intents.default()
@@ -66,6 +68,7 @@ class DiscordAdapter(discord.Client):
         super().__init__(intents=intents)
         self._hub = hub
         self._bot_id = bot_id
+        self._circuit_registry = circuit_registry
         # Set on on_ready; None until login completes. Tests set this directly.
         self._bot_user: Any = None
         # Compiled once in on_ready (requires bot user ID). None until then.
@@ -167,6 +170,17 @@ class DiscordAdapter(discord.Client):
         if hub_msg.is_from_bot:
             return
 
+        # Hub circuit guard
+        if self._circuit_registry is not None:
+            cb = self._circuit_registry.get("hub")
+            if cb is not None and cb.is_open():
+                log.warning(
+                    '{"event": "hub_circuit_open", "platform": "discord",'
+                    ' "user_id": "%s", "dropped": true}',
+                    hub_msg.user_id,
+                )
+                return  # silent drop
+
         # S5: backpressure — send ack before blocking on full bus
         if self._hub.bus.full():
             await message.reply("Processing your request\u2026")
@@ -188,6 +202,15 @@ class DiscordAdapter(discord.Client):
             )
             return
 
+        if self._circuit_registry is not None:
+            cb = self._circuit_registry.get("discord")
+            if cb is not None and cb.is_open():
+                log.warning(
+                    '{"event": "discord_circuit_open",'
+                    ' "action": "send", "dropped": true}'
+                )
+                return
+
         ctx = original_msg.platform_context
         channel = self.get_channel(ctx.channel_id)
         if channel is None:
@@ -196,11 +219,22 @@ class DiscordAdapter(discord.Client):
         content = response.content[:DISCORD_MAX_LENGTH]
 
         messageable = cast(discord.abc.Messageable, channel)
-        if original_msg.is_mention:
-            msg = await messageable.fetch_message(ctx.message_id)
-            await msg.reply(content)
-        else:
-            await messageable.send(content)
+        try:
+            if original_msg.is_mention:
+                msg = await messageable.fetch_message(ctx.message_id)
+                await msg.reply(content)
+            else:
+                await messageable.send(content)
+            if self._circuit_registry is not None:
+                cb = self._circuit_registry.get("discord")
+                if cb is not None:
+                    cb.record_success()
+        except Exception:
+            log.exception("send() failed")
+            if self._circuit_registry is not None:
+                cb = self._circuit_registry.get("discord")
+                if cb is not None:
+                    cb.record_failure()
 
     async def send_streaming(
         self, original_msg: Message, chunks: AsyncIterator[str]
@@ -212,6 +246,18 @@ class DiscordAdapter(discord.Client):
                 original_msg.id,
             )
             return
+
+        if self._circuit_registry is not None:
+            cb = self._circuit_registry.get("discord")
+            if cb is not None and cb.is_open():
+                log.warning(
+                    '{"event": "discord_circuit_open",'
+                    ' "action": "send_streaming", "dropped": true}'
+                )
+                # Drain iterator to avoid generator leaks
+                async for _ in chunks:
+                    pass
+                return
 
         ctx = original_msg.platform_context
         channel = self.get_channel(ctx.channel_id)
@@ -232,6 +278,7 @@ class DiscordAdapter(discord.Client):
             return
 
         last_edit = time.monotonic()
+        _stream_ok = False
         try:
             async for chunk in chunks:
                 accumulated += chunk
@@ -239,12 +286,22 @@ class DiscordAdapter(discord.Client):
                 if now - last_edit >= 1.0:
                     await placeholder.edit(content=accumulated[:DISCORD_MAX_LENGTH])
                     last_edit = now
+            _stream_ok = True
         except Exception:
             log.exception("Stream interrupted")
+            if self._circuit_registry is not None:
+                cb = self._circuit_registry.get("discord")
+                if cb is not None:
+                    cb.record_failure()
             if accumulated:
                 accumulated += " [response interrupted]"
             else:
                 accumulated = GENERIC_ERROR_REPLY
+
+        if _stream_ok and self._circuit_registry is not None:
+            cb = self._circuit_registry.get("discord")
+            if cb is not None:
+                cb.record_success()
 
         # Final edit with complete text
         if accumulated:

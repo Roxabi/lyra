@@ -58,4 +58,6 @@ select = ["E", "F", "I"]
 dev = [
     "pip-licenses>=5.5.1",
     "pre-commit>=4.5.1",
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
 ]

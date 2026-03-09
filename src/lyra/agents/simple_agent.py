@@ -20,6 +20,7 @@ from lyra.core.message import (
     Response,
     extract_text,
 )
+from lyra.core.messages import MessageManager
 from lyra.core.pool import Pool
 
 log = logging.getLogger(__name__)
@@ -47,11 +48,13 @@ class SimpleAgent(AgentBase):
         cli_pool: CliPool,
         circuit_registry: CircuitRegistry | None = None,
         admin_user_ids: set[str] | None = None,
+        msg_manager: MessageManager | None = None,
     ) -> None:
         super().__init__(
             config,
             circuit_registry=circuit_registry,
             admin_user_ids=admin_user_ids,
+            msg_manager=msg_manager,
         )
         self._pool = cli_pool
 
@@ -82,7 +85,11 @@ class SimpleAgent(AgentBase):
             if "Timeout" in result.error:
                 user_msg = "Response timed out. Please try again."
             else:
-                user_msg = GENERIC_ERROR_REPLY
+                user_msg = (
+                    self._msg_manager.get("generic")
+                    if self._msg_manager
+                    else GENERIC_ERROR_REPLY
+                )
             return Response(
                 content=user_msg,
                 metadata={"error": True},

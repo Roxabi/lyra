@@ -10,6 +10,7 @@ but raise ImportError / AttributeError at runtime (not at collection time).
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -17,6 +18,15 @@ import discord
 import pytest
 
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
+from lyra.core.messages import MessageManager
+
+TOML_PATH = (
+    Path(__file__).resolve().parent.parent.parent
+    / "src"
+    / "lyra"
+    / "config"
+    / "messages.toml"
+)
 
 # ---------------------------------------------------------------------------
 # T2 — _normalize() builds correct DiscordContext
@@ -613,6 +623,51 @@ async def test_send_skips_when_discord_circuit_open() -> None:
 
     # Assert — discord circuit is OPEN so channel.send must not be called
     mock_channel.send.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# msg_manager injection — backpressure_ack uses TOML string
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_discord_msg_manager_injection_backpressure_ack() -> None:
+    """Injecting a real MessageManager causes on_message to reply with the TOML
+    'backpressure_ack' string (not the hardcoded fallback) when bus is full."""
+    from lyra.adapters.discord import DiscordAdapter
+
+    # Arrange
+    mm = MessageManager(TOML_PATH)
+
+    hub = MagicMock()
+    hub.bus = MagicMock()
+    hub.bus.full = MagicMock(return_value=True)
+    hub.bus.put = AsyncMock()
+
+    adapter = DiscordAdapter(
+        hub=hub, bot_id="main", intents=discord.Intents.none(), msg_manager=mm
+    )
+    bot_user = SimpleNamespace(id=999, bot=True)
+    adapter._bot_user = bot_user
+
+    reply_mock = AsyncMock()
+    discord_msg = SimpleNamespace(
+        guild=SimpleNamespace(id=111),
+        channel=SimpleNamespace(id=333, send=AsyncMock()),
+        author=SimpleNamespace(id=42, name="Alice", display_name="Alice", bot=False),
+        content="hello",
+        created_at=datetime.now(timezone.utc),
+        id=555,
+        mentions=[],
+        reply=reply_mock,
+    )
+
+    # Act
+    await adapter.on_message(discord_msg)
+
+    # Assert — reply text matches the TOML value for discord backpressure_ack
+    expected = mm.get("backpressure_ack", platform="discord")
+    reply_mock.assert_awaited_once_with(expected)
 
 
 # ---------------------------------------------------------------------------

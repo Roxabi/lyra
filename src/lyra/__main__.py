@@ -24,6 +24,7 @@ from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.cli_pool import CliPool
 from lyra.core.hub import Hub, RoutingKey
 from lyra.core.message import Platform
+from lyra.core.messages import MessageManager
 
 log = logging.getLogger(__name__)
 
@@ -67,11 +68,34 @@ def _load_circuit_config(
     return registry, admin_ids
 
 
+def _load_messages(language: str = "en") -> MessageManager:
+    """Load MessageManager.
+
+    Resolution order:
+      LYRA_MESSAGES_CONFIG env var → messages.toml in cwd → bundled config.
+    """
+    import os
+
+    bundled = Path(__file__).resolve().parent / "config" / "messages.toml"
+    path_str = os.environ.get("LYRA_MESSAGES_CONFIG") or (
+        "messages.toml" if Path("messages.toml").exists() else str(bundled)
+    )
+    if not path_str.endswith(".toml"):
+        log.warning(
+            "LYRA_MESSAGES_CONFIG %r does not end with .toml — ignoring, using bundled",
+            path_str,
+        )
+        path_str = str(bundled)
+    log.info("Loaded messages from %s", path_str)
+    return MessageManager(path_str, language=language)
+
+
 def _create_agent(
     config: Agent,
     cli_pool: CliPool | None,
     circuit_registry: CircuitRegistry | None = None,
     admin_user_ids: set[str] | None = None,
+    msg_manager: MessageManager | None = None,
 ) -> AgentBase:
     """Select agent implementation based on backend config."""
     backend = config.model_config.backend
@@ -82,6 +106,7 @@ def _create_agent(
             config,
             circuit_registry=circuit_registry,
             admin_user_ids=admin_user_ids,
+            msg_manager=msg_manager,
         )
     if backend in ("claude-cli", "ollama"):
         if cli_pool is None:
@@ -91,6 +116,7 @@ def _create_agent(
             cli_pool,
             circuit_registry=circuit_registry,
             admin_user_ids=admin_user_ids,
+            msg_manager=msg_manager,
         )
     raise ValueError(f"Unknown backend: {backend}")
 
@@ -109,8 +135,6 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
     tg_cfg = load_telegram_config()
     dc_cfg = load_discord_config()
 
-    hub = Hub(circuit_registry=circuit_registry)
-
     agent_config = load_agent_config("lyra_default")
     log.info(
         "Agent loaded: name=%s model=%s backend=%s",
@@ -118,6 +142,10 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
         agent_config.model_config.model,
         agent_config.model_config.backend,
     )
+
+    msg_manager = _load_messages(language=agent_config.i18n_language)
+
+    hub = Hub(circuit_registry=circuit_registry, msg_manager=msg_manager)
 
     cli_pool: CliPool | None = None
     if agent_config.model_config.backend == "claude-cli":
@@ -129,6 +157,7 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
         cli_pool,
         circuit_registry=circuit_registry,
         admin_user_ids=admin_user_ids,
+        msg_manager=msg_manager,
     )
     hub.register_agent(agent)
 
@@ -139,9 +168,13 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
         bot_username=tg_cfg.bot_username,
         webhook_secret=tg_cfg.webhook_secret,
         circuit_registry=circuit_registry,
+        msg_manager=msg_manager,
     )
     dc_adapter = DiscordAdapter(
-        hub=hub, bot_id="main", circuit_registry=circuit_registry
+        hub=hub,
+        bot_id="main",
+        circuit_registry=circuit_registry,
+        msg_manager=msg_manager,
     )
 
     hub.register_adapter(Platform.TELEGRAM, "main", tg_adapter)

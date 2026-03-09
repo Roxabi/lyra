@@ -23,6 +23,7 @@ from lyra.core.message import (
     TelegramContext,
     TextContent,
 )
+from lyra.core.messages import MessageManager
 
 log = logging.getLogger(__name__)
 
@@ -84,6 +85,7 @@ class TelegramAdapter:
         bot_username: str = "lyra_bot",
         webhook_secret: str = "",
         circuit_registry: CircuitRegistry | None = None,
+        msg_manager: MessageManager | None = None,
     ) -> None:
         self._bot_id = bot_id
         self._token = token  # kept private — never logged
@@ -95,6 +97,7 @@ class TelegramAdapter:
         self._bot_username = bot_username
         self._hub: Hub = hub
         self._circuit_registry = circuit_registry
+        self._msg_manager = msg_manager
 
         # bot is a public attribute so tests can replace it with AsyncMock.
         # Deferred lazily so tests can assign adapter.bot = AsyncMock() after
@@ -238,9 +241,14 @@ class TelegramAdapter:
                 return  # silent drop
 
         if self._hub.bus.full():
+            text = (
+                self._msg_manager.get("backpressure_ack", platform="telegram")
+                if self._msg_manager
+                else "Processing your request\u2026"
+            )
             await self.bot.send_message(
                 msg.chat.id,
-                "Processing your request\u2026",
+                text,
             )
 
         await self._hub.bus.put(hub_msg)
@@ -312,15 +320,21 @@ class TelegramAdapter:
         accumulated = ""
 
         # Send placeholder
+        _placeholder_text = (
+            self._msg_manager.get("stream_placeholder", platform="telegram")
+            if self._msg_manager
+            else "\u2026"
+        )
         try:
             placeholder = await self.bot.send_message(
-                chat_id=ctx.chat_id, text="\u2026"
+                chat_id=ctx.chat_id, text=_placeholder_text
             )
         except Exception:
             log.exception("Failed to send placeholder — falling back to non-streaming")
             async for chunk in chunks:
                 accumulated += chunk
-            await self.send(original_msg, Response(content=accumulated or "\u2026"))
+            fallback_content = accumulated or _placeholder_text
+            await self.send(original_msg, Response(content=fallback_content))
             return
 
         last_edit = time.monotonic()
@@ -344,9 +358,18 @@ class TelegramAdapter:
                 if cb is not None:
                     cb.record_failure()
             if accumulated:
-                accumulated += " [response interrupted]"
+                suffix = (
+                    self._msg_manager.get("stream_interrupted", platform="telegram")
+                    if self._msg_manager
+                    else " [response interrupted]"
+                )
+                accumulated += suffix
             else:
-                accumulated = GENERIC_ERROR_REPLY
+                accumulated = (
+                    self._msg_manager.get("generic", platform="telegram")
+                    if self._msg_manager
+                    else GENERIC_ERROR_REPLY
+                )
 
         if _stream_ok and self._circuit_registry is not None:
             cb = self._circuit_registry.get("telegram")

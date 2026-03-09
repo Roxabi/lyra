@@ -103,8 +103,7 @@ class TestLoadCircuitConfigTomlOverrides:
         # Arrange
         config = tmp_path / "lyra.toml"
         config.write_text(
-            "[admin]\n"
-            "user_ids = ['telegram:tg:user:1', 'discord:dc:user:2']\n"
+            "[admin]\nuser_ids = ['telegram:tg:user:1', 'discord:dc:user:2']\n"
         )
         monkeypatch.setenv("LYRA_CONFIG", str(config))
 
@@ -124,10 +123,7 @@ class TestLoadCircuitConfigTomlOverrides:
         """SC-16: Only recovery_timeout overridden → failure_threshold stays default."""
         # Arrange
         config = tmp_path / "lyra.toml"
-        config.write_text(
-            "[circuit_breaker.hub]\n"
-            "recovery_timeout = 120\n"
-        )
+        config.write_text("[circuit_breaker.hub]\nrecovery_timeout = 120\n")
         monkeypatch.setenv("LYRA_CONFIG", str(config))
 
         # Act

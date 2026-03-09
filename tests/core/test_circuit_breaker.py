@@ -1,4 +1,5 @@
 """Tests for CircuitBreaker, CircuitRegistry, CircuitOpenError."""
+
 from __future__ import annotations
 
 import time

@@ -14,6 +14,7 @@ from anthropic import APIError as AnthropicAPIError
 from .agent import AgentBase
 from .circuit_breaker import CircuitRegistry
 from .message import GENERIC_ERROR_REPLY, Message, Platform, Response
+from .messages import MessageManager
 from .pool import Pool
 
 log = logging.getLogger(__name__)
@@ -77,6 +78,7 @@ class Hub:
         rate_limit: int = RATE_LIMIT,
         rate_window: int = RATE_WINDOW,
         circuit_registry: CircuitRegistry | None = None,
+        msg_manager: MessageManager | None = None,
     ) -> None:
         self.bus: asyncio.Queue[Message] = asyncio.Queue(maxsize=bus_size)
         self.adapter_registry: dict[tuple[Platform, str], ChannelAdapter] = {}
@@ -84,6 +86,7 @@ class Hub:
         self.bindings: dict[RoutingKey, Binding] = {}
         self.pools: dict[str, Pool] = {}
         self.circuit_registry = circuit_registry
+        self._msg_manager = msg_manager
         self._rate_limit = rate_limit
         self._rate_window = rate_window
         # Sliding window: maps RoutingKey → deque of message timestamps.
@@ -275,7 +278,12 @@ class Hub:
                         response = await router.dispatch(msg, pool)
                     except Exception as exc:
                         log.exception("command dispatch failed for %s: %s", key, exc)
-                        response = Response(content=GENERIC_ERROR_REPLY)
+                        _content = (
+                            self._msg_manager.get("generic")
+                            if self._msg_manager
+                            else GENERIC_ERROR_REPLY
+                        )
+                        response = Response(content=_content)
                     try:
                         await self.dispatch_response(msg, response)
                     except Exception as exc:
@@ -296,12 +304,16 @@ class Hub:
                     if cb is not None and cb.is_open():
                         status = cb.get_status()
                         retry_secs = int(status.retry_after or 0)
-                        reply = Response(
-                            content=(
+                        _retry_str = str(retry_secs)
+                        _unavail = (
+                            self._msg_manager.get("unavailable", retry_secs=_retry_str)
+                            if self._msg_manager
+                            else (
                                 "Lyra is currently unavailable. "
                                 f"Please try again in {retry_secs}s."
                             )
                         )
+                        reply = Response(content=_unavail)
                         try:
                             await self.dispatch_response(msg, reply)
                         except Exception as exc:
@@ -338,7 +350,12 @@ class Hub:
                                         _ant_cb.record_failure()
                             # Send error reply to user (best-effort)
                             try:
-                                error_reply = Response(content=GENERIC_ERROR_REPLY)
+                                _err_content = (
+                                    self._msg_manager.get("generic")
+                                    if self._msg_manager
+                                    else GENERIC_ERROR_REPLY
+                                )
+                                error_reply = Response(content=_err_content)
                                 await self.dispatch_response(msg, error_reply)
                             except Exception as reply_exc:
                                 log.exception(
@@ -365,7 +382,12 @@ class Hub:
                                     _cb.record_success()
                         except Exception as exc:
                             log.exception("agent.process() raised for %s: %s", key, exc)
-                            response = Response(content=GENERIC_ERROR_REPLY)
+                            _proc_err = (
+                                self._msg_manager.get("generic")
+                                if self._msg_manager
+                                else GENERIC_ERROR_REPLY
+                            )
+                            response = Response(content=_proc_err)
                             # Record hub failure
                             if self.circuit_registry is not None:
                                 _cb = self.circuit_registry.get("hub")

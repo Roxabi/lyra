@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.message import DiscordContext
 
 # ---------------------------------------------------------------------------
@@ -465,3 +466,163 @@ async def test_send_stores_reply_message_id_in_metadata() -> None:
     # Assert
     bot.send_message.assert_awaited_once_with(chat_id=123, text="reply")
     assert response.metadata["reply_message_id"] == 888
+
+
+# ---------------------------------------------------------------------------
+# Circuit breaker helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_open_registry(service: str) -> CircuitRegistry:
+    """Build a CircuitRegistry with the named circuit tripped OPEN."""
+    registry = CircuitRegistry()
+    for name in ("anthropic", "telegram", "discord", "hub"):
+        cb = CircuitBreaker(name, failure_threshold=1, recovery_timeout=60)
+        if name == service:
+            cb.record_failure()  # trips to OPEN
+        registry.register(cb)
+    return registry
+
+
+# ---------------------------------------------------------------------------
+# SC-11 — _on_message() drops silently when hub circuit is OPEN
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_on_message_drops_silently_when_hub_circuit_open() -> None:
+    """SC-11: _on_message() drops silently (no bus.put) when circuits['hub'] is OPEN."""
+    from lyra.adapters.telegram import TelegramAdapter
+
+    # Arrange
+    registry = _make_open_registry("hub")
+
+    hub = MagicMock()
+    hub.bus = MagicMock()
+    hub.bus.full.return_value = False
+    hub.bus.put = AsyncMock()
+
+    bot = AsyncMock()
+    bot.get_me = AsyncMock(return_value=SimpleNamespace(username="lyra_bot"))
+
+    adapter = TelegramAdapter(
+        bot_id="main",
+        token="test-token-secret",
+        hub=hub,
+        circuit_registry=registry,
+    )
+    adapter.bot = bot
+
+    aiogram_msg = SimpleNamespace(
+        chat=SimpleNamespace(id=123, type="private"),
+        from_user=SimpleNamespace(id=42, full_name="Alice", is_bot=False),
+        text="hello",
+        date=datetime.now(timezone.utc),
+        message_thread_id=None,
+        message_id=1,
+        entities=None,
+    )
+
+    # Act
+    await adapter._on_message(aiogram_msg)
+
+    # Assert — bus.put must NOT be called; message was silently dropped
+    hub.bus.put.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# SC-13 — send() skips bot.send_message when telegram circuit is OPEN
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_send_skips_when_telegram_circuit_open() -> None:
+    """SC-13: send() skips bot.send_message when circuits['telegram'] is OPEN."""
+    from lyra.adapters.telegram import TelegramAdapter
+    from lyra.core.message import (
+        Message,
+        MessageType,
+        Platform,
+        Response,
+        TelegramContext,
+        TextContent,
+    )
+
+    # Arrange
+    registry = _make_open_registry("telegram")
+
+    hub = MagicMock()
+    bot = AsyncMock()
+
+    adapter = TelegramAdapter(
+        bot_id="main",
+        token="test-token-secret",
+        hub=hub,
+        circuit_registry=registry,
+    )
+    adapter.bot = bot
+
+    original_msg = Message(
+        id="msg-1",
+        platform=Platform.TELEGRAM,
+        bot_id="main",
+        user_id="tg:user:42",
+        user_name="Alice",
+        is_mention=False,
+        is_from_bot=False,
+        content=TextContent(text="hello"),
+        type=MessageType.TEXT,
+        timestamp=datetime.now(timezone.utc),
+        platform_context=TelegramContext(chat_id=123, message_id=1),
+    )
+    response = Response(content="reply")
+
+    # Act
+    await adapter.send(original_msg, response)
+
+    # Assert — telegram circuit is OPEN so bot.send_message must not be called
+    bot.send_message.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# SC-14 — GET /status returns all 4 circuit states
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_status_endpoint_returns_all_circuits() -> None:
+    """SC-14: GET /status → JSON with all 4 circuit states."""
+    import httpx
+
+    from lyra.adapters.telegram import TelegramAdapter
+
+    # Arrange — registry with all 4 circuits
+    registry = CircuitRegistry()
+    for name in ("anthropic", "telegram", "discord", "hub"):
+        registry.register(
+            CircuitBreaker(name, failure_threshold=3, recovery_timeout=60)
+        )
+
+    hub = MagicMock()
+    adapter = TelegramAdapter(
+        bot_id="main",
+        token="test-token-secret",
+        hub=hub,
+        webhook_secret="secret",
+        circuit_registry=registry,
+    )
+
+    # Act
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=adapter.app)
+    ) as client:
+        response = await client.get("/status")
+
+    # Assert
+    assert response.status_code == 200
+    data = response.json()
+    assert "services" in data
+    services = data["services"]
+    for name in ("anthropic", "telegram", "discord", "hub"):
+        assert name in services, f"Missing circuit '{name}' in /status response"
+        assert "state" in services[name]

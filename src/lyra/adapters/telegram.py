@@ -165,6 +165,7 @@ class TelegramAdapter:
             chat_id=msg.chat.id,
             topic_id=msg.message_thread_id,
             is_group=is_group,
+            message_id=getattr(msg, "message_id", None),  # stubs in tests may omit it
         )
 
         text = msg.text or ""
@@ -218,12 +219,18 @@ class TelegramAdapter:
             )
             return
         ctx = original_msg.platform_context
-        await self.bot.send_message(chat_id=ctx.chat_id, text=response.content)
+        sent = await self.bot.send_message(chat_id=ctx.chat_id, text=response.content)
+        # Store for session persistence (#67) and reply-to-resume (#83).
+        response.metadata["reply_message_id"] = sent.message_id
 
     async def send_streaming(
         self, original_msg: Message, chunks: AsyncIterator[str]
     ) -> None:
-        """Stream response with edit-in-place, debounced at ~500ms."""
+        """Stream response with edit-in-place, debounced at ~500ms.
+
+        TODO: store placeholder.message_id in response.metadata["reply_message_id"]
+        once send_streaming() receives a Response argument (#67).
+        """
         if not isinstance(original_msg.platform_context, TelegramContext):
             log.error(
                 "send_streaming() called with non-TelegramContext for msg_id=%s",

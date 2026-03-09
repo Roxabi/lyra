@@ -165,7 +165,7 @@ class TelegramAdapter:
             chat_id=msg.chat.id,
             topic_id=msg.message_thread_id,
             is_group=is_group,
-            message_id=getattr(msg, "message_id", None),
+            message_id=getattr(msg, "message_id", None),  # stubs in tests may omit it
         )
 
         text = msg.text or ""
@@ -220,6 +220,7 @@ class TelegramAdapter:
             return
         ctx = original_msg.platform_context
         sent = await self.bot.send_message(chat_id=ctx.chat_id, text=response.content)
+        # Store for session persistence (#67) and reply-to-resume (#83).
         response.metadata["reply_message_id"] = sent.message_id
 
     async def send_streaming(

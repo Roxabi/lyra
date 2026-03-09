@@ -108,6 +108,8 @@ class CircuitBreaker:
 
     def record_success(self) -> None:
         """Transition HALF_OPEN → CLOSED and reset all counters."""
+        if self._state != CircuitState.HALF_OPEN:
+            return  # no-op: only HALF_OPEN → CLOSED is a valid success transition
         self._state = CircuitState.CLOSED
         self._failure_count = 0
         self._opened_at = None
@@ -171,7 +173,12 @@ class CircuitRegistry:
         self._circuits[cb.name] = cb
 
     def __getitem__(self, name: str) -> CircuitBreaker:
-        return self._circuits[name]
+        try:
+            return self._circuits[name]
+        except KeyError:
+            raise KeyError(
+                f"No circuit {name!r}. Registered: {sorted(self._circuits)}"
+            ) from None
 
     def get(self, name: str) -> CircuitBreaker | None:
         """Return the named circuit breaker, or None if not registered."""

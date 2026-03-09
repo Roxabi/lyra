@@ -858,9 +858,15 @@ async def test_mid_stream_failure_records_anthropic_failure() -> None:
         command_router = None
 
         def process(self, msg: Message, pool: Pool):
+            from anthropic import APIError as AnthropicAPIError
+
             async def gen():
                 yield "partial"
-                raise RuntimeError("API error mid-stream")
+                raise AnthropicAPIError(
+                    message="API error mid-stream",
+                    request=None,  # type: ignore[arg-type]
+                    body=None,
+                )
 
             return gen()
 

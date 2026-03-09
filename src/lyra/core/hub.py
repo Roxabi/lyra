@@ -9,6 +9,8 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import NamedTuple, Protocol
 
+from anthropic import APIError as AnthropicAPIError
+
 from .agent import AgentBase
 from .circuit_breaker import CircuitRegistry
 from .message import GENERIC_ERROR_REPLY, Message, Platform, Response
@@ -325,10 +327,26 @@ class Hub:
                             # even when CancelledError propagates (not caught by
                             # bare `except Exception`).
                             if self.circuit_registry is not None:
-                                for _cb_name in ("anthropic", "hub"):
-                                    _cb = self.circuit_registry.get(_cb_name)
-                                    if _cb is not None:
-                                        _cb.record_failure()
+                                # Always record hub failure
+                                _hub_cb = self.circuit_registry.get("hub")
+                                if _hub_cb is not None:
+                                    _hub_cb.record_failure()
+                                # Only record anthropic failure for LLM/SDK exceptions
+                                if isinstance(exc, AnthropicAPIError):
+                                    _ant_cb = self.circuit_registry.get("anthropic")
+                                    if _ant_cb is not None:
+                                        _ant_cb.record_failure()
+                            # Send error reply to user (best-effort)
+                            try:
+                                error_reply = Response(content=GENERIC_ERROR_REPLY)
+                                await self.dispatch_response(msg, error_reply)
+                            except Exception as reply_exc:
+                                log.exception(
+                                    "dispatch_response() failed sending error"
+                                    " reply for %s: %s",
+                                    key,
+                                    reply_exc,
+                                )
                             if not isinstance(exc, Exception):
                                 raise  # re-raise CancelledError / KeyboardInterrupt
                             log.exception(

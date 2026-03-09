@@ -147,7 +147,7 @@ class TelegramAdapter:
 
         @self.app.get("/status")
         async def get_status() -> dict:
-            ts = datetime.now(timezone.utc).isoformat()
+            ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             if self._circuit_registry is None:
                 return {"services": {}, "timestamp": ts}
             all_status = self._circuit_registry.get_all_status()

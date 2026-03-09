@@ -16,6 +16,7 @@ from typing import Any
 import anthropic
 
 from lyra.core.agent import Agent, AgentBase
+from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import Message, extract_text
 from lyra.core.pool import Pool
 
@@ -37,8 +38,17 @@ class AnthropicAgent(AgentBase):
     injection from agent TOML config.
     """
 
-    def __init__(self, config: Agent) -> None:
-        super().__init__(config)
+    def __init__(
+        self,
+        config: Agent,
+        circuit_registry: CircuitRegistry | None = None,
+        admin_user_ids: set[str] | None = None,
+    ) -> None:
+        super().__init__(
+            config,
+            circuit_registry=circuit_registry,
+            admin_user_ids=admin_user_ids,
+        )
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
             raise SystemExit("Missing required env var: ANTHROPIC_API_KEY")
@@ -141,11 +151,7 @@ class AnthropicAgent(AgentBase):
                 # max_turns exhausted
                 if final and final.stop_reason == "tool_use":
                     yield " [max tool turns reached]"
-        except Exception:
-            log.exception("Streaming error in AnthropicAgent")
-            raise  # re-raise so Hub.dispatch_streaming() can record circuit failure
-        finally:
-            # Always persist history
+            # Persist history on success only
             reply_text = accumulated_text
             if not reply_text and final and final.content:
                 for block in final.content:
@@ -154,3 +160,6 @@ class AnthropicAgent(AgentBase):
                         break
             new_messages.append({"role": "assistant", "content": reply_text})
             pool.extend_sdk_history(new_messages)
+        except Exception:
+            log.exception("Streaming error in AnthropicAgent")
+            raise  # re-raise so Hub.dispatch_streaming() can record circuit failure

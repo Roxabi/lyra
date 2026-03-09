@@ -97,12 +97,15 @@ def test_open_stays_open_before_timeout():
     assert cb.is_open() is True  # before timeout
 
 
-def test_success_in_closed_resets_count():
+def test_success_in_closed_is_noop():
+    """record_success() from CLOSED state is a no-op; count is not reset."""
     cb = CircuitBreaker("test", failure_threshold=3, recovery_timeout=60)
     cb.record_failure()
     cb.record_failure()
+    assert cb._failure_count == 2
     cb.record_success()
-    assert cb._failure_count == 0
+    # Guard: CLOSED → record_success is a no-op, count stays at 2
+    assert cb._failure_count == 2
     assert cb._state == CircuitState.CLOSED
 
 
@@ -171,7 +174,7 @@ def test_registry_get_all_status():
 
 def test_registry_missing_key_raises():
     registry = CircuitRegistry()
-    with pytest.raises(KeyError):
+    with pytest.raises(KeyError, match="nonexistent"):
         _ = registry["nonexistent"]
 
 

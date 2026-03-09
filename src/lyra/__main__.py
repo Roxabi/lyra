@@ -67,17 +67,31 @@ def _load_circuit_config(
     return registry, admin_ids
 
 
-def _create_agent(config: Agent, cli_pool: CliPool | None) -> AgentBase:
+def _create_agent(
+    config: Agent,
+    cli_pool: CliPool | None,
+    circuit_registry: CircuitRegistry | None = None,
+    admin_user_ids: set[str] | None = None,
+) -> AgentBase:
     """Select agent implementation based on backend config."""
     backend = config.model_config.backend
     if backend == "anthropic-sdk":
         from lyra.agents.anthropic_agent import AnthropicAgent
 
-        return AnthropicAgent(config)
+        return AnthropicAgent(
+            config,
+            circuit_registry=circuit_registry,
+            admin_user_ids=admin_user_ids,
+        )
     if backend in ("claude-cli", "ollama"):
         if cli_pool is None:
             raise RuntimeError(f"CliPool required for {backend} backend")
-        return SimpleAgent(config, cli_pool)
+        return SimpleAgent(
+            config,
+            cli_pool,
+            circuit_registry=circuit_registry,
+            admin_user_ids=admin_user_ids,
+        )
     raise ValueError(f"Unknown backend: {backend}")
 
 
@@ -110,13 +124,13 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
         cli_pool = CliPool()
         await cli_pool.start()
 
-    agent = _create_agent(agent_config, cli_pool)
+    agent = _create_agent(
+        agent_config,
+        cli_pool,
+        circuit_registry=circuit_registry,
+        admin_user_ids=admin_user_ids,
+    )
     hub.register_agent(agent)
-
-    # Inject circuit registry into command router if the agent has one
-    if hasattr(agent, "command_router") and agent.command_router is not None:
-        agent.command_router._circuit_registry = circuit_registry
-        agent.command_router._admin_user_ids = admin_user_ids
 
     tg_adapter = TelegramAdapter(
         bot_id="main",

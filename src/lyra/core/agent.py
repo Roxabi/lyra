@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .circuit_breaker import CircuitRegistry
 from .command_router import CommandConfig, CommandRouter
 from .message import Message, Response
 from .pool import Pool
@@ -334,14 +335,26 @@ class AgentBase(ABC):
     on next message.
     """
 
-    def __init__(self, config: Agent, agents_dir: Path | None = None) -> None:
+    def __init__(
+        self,
+        config: Agent,
+        agents_dir: Path | None = None,
+        circuit_registry: CircuitRegistry | None = None,
+        admin_user_ids: set[str] | None = None,
+    ) -> None:
         self.config = config
         self._agents_dir = agents_dir or _AGENTS_DIR
         self._config_path = self._agents_dir / f"{config.name}.toml"
         self._last_mtime: float = (
             self._config_path.stat().st_mtime if self._config_path.exists() else 0.0
         )
-        self.command_router: CommandRouter = CommandRouter(config.commands)
+        self._circuit_registry = circuit_registry
+        self._admin_user_ids = admin_user_ids
+        self.command_router: CommandRouter = CommandRouter(
+            config.commands,
+            circuit_registry=circuit_registry,
+            admin_user_ids=admin_user_ids,
+        )
         self._persona_path: Path | None = None
         self._persona_mtime: float = 0.0
         self._update_persona_tracking()
@@ -397,7 +410,11 @@ class AgentBase(ABC):
                     new_config.model_config.model,
                 )
                 self.config = new_config
-                self.command_router = CommandRouter(new_config.commands)
+                self.command_router = CommandRouter(
+                    new_config.commands,
+                    circuit_registry=self._circuit_registry,
+                    admin_user_ids=self._admin_user_ids,
+                )
             self._last_mtime = mtime
             self._update_persona_tracking()
         except Exception as exc:

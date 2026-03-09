@@ -29,8 +29,17 @@ from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.command_router import CommandConfig, CommandRouter
 from lyra.core.hub import Hub
 from lyra.core.message import Message, MessageType, Platform, Response, TelegramContext
+from lyra.core.messages import MessageManager
 from lyra.core.plugin_loader import PluginLoader
 from lyra.core.pool import Pool
+
+TOML_PATH = (
+    Path(__file__).resolve().parent.parent.parent
+    / "src"
+    / "lyra"
+    / "config"
+    / "messages.toml"
+)
 
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
@@ -650,3 +659,32 @@ class TestPluginsConfigFromToml:
         assert isinstance(help_cfg, CommandConfig)
         assert help_cfg.builtin is True
         assert help_cfg.description == "List available commands"
+
+
+# ---------------------------------------------------------------------------
+# msg_manager injection — unknown command returns TOML string
+# ---------------------------------------------------------------------------
+
+
+class TestMsgManagerInjectionUnknownCommand:
+    """CommandRouter with a real MessageManager returns the TOML 'unknown_command'
+    string instead of the hardcoded fallback."""
+
+    @pytest.mark.asyncio
+    async def test_unknown_command_returns_toml_string(self, tmp_path: Path) -> None:
+        # Arrange
+        mm = MessageManager(TOML_PATH)
+        plugins_dir = Path(tempfile.mkdtemp())
+        loader = PluginLoader(plugins_dir)
+        router = CommandRouter(
+            plugin_loader=loader, enabled_plugins=[], msg_manager=mm
+        )
+        msg = make_message(content="/unknown_cmd")
+
+        # Act
+        response = await router.dispatch(msg)
+
+        # Assert — response matches the TOML template (with command_name substituted)
+        expected = mm.get("unknown_command", command_name="/unknown_cmd")
+        assert isinstance(response, Response)
+        assert response.content == expected

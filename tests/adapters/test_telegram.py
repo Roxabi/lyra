@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -20,6 +21,15 @@ import pytest
 
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.message import DiscordContext
+from lyra.core.messages import MessageManager
+
+TOML_PATH = (
+    Path(__file__).resolve().parent.parent.parent
+    / "src"
+    / "lyra"
+    / "config"
+    / "messages.toml"
+)
 
 # ---------------------------------------------------------------------------
 # T2 — Missing secret token → HTTP 401
@@ -626,3 +636,52 @@ async def test_get_status_endpoint_returns_all_circuits() -> None:
     for name in ("anthropic", "telegram", "discord", "hub"):
         assert name in services, f"Missing circuit '{name}' in /status response"
         assert "state" in services[name]
+
+
+# ---------------------------------------------------------------------------
+# msg_manager injection — backpressure_ack uses TOML string
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_telegram_msg_manager_injection_backpressure_ack() -> None:
+    """Injecting a real MessageManager causes _on_message to send the TOML
+    'backpressure_ack' string (not the hardcoded fallback) when bus is full."""
+    from lyra.adapters.telegram import TelegramAdapter
+
+    # Arrange
+    mm = MessageManager(TOML_PATH)
+
+    hub = MagicMock()
+    hub.bus = MagicMock()
+    hub.bus.full.return_value = True
+    hub.bus.put = AsyncMock()
+
+    bot = AsyncMock()
+    bot.get_me = AsyncMock(return_value=SimpleNamespace(username="lyra_bot"))
+
+    adapter = TelegramAdapter(
+        bot_id="main", token="test-token-secret", hub=hub, msg_manager=mm
+    )
+    adapter.bot = bot
+
+    aiogram_msg = SimpleNamespace(
+        chat=SimpleNamespace(id=123, type="private"),
+        from_user=SimpleNamespace(id=42, full_name="Alice", is_bot=False),
+        text="hello",
+        date=datetime.now(timezone.utc),
+        message_thread_id=None,
+        message_id=1,
+        entities=None,
+    )
+
+    # Act
+    await adapter._on_message(aiogram_msg)
+
+    # Assert — ack text matches the TOML value for telegram backpressure_ack
+    expected = mm.get("backpressure_ack", platform="telegram")
+    bot.send_message.assert_called_once()
+    call_kwargs = bot.send_message.call_args
+    assert call_kwargs.kwargs.get("text") == expected or (
+        len(call_kwargs.args) > 1 and call_kwargs.args[1] == expected
+    )

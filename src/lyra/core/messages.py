@@ -45,7 +45,10 @@ class MessageManager:
         try:
             raw = self._resolve(key, platform)
             return raw.format_map(kwargs)
-        except Exception:
+        except Exception as exc:
+            log.debug(
+                "MessageManager.get(%r, platform=%r) fell back: %s", key, platform, exc
+            )
             return _FALLBACKS.get(key, "")
 
     def _resolve(self, key: str, platform: str | None) -> str:

@@ -323,6 +323,12 @@ def load_agent_config(
 
     i18n_section = data.get("i18n", {})
     i18n_language: str = i18n_section.get("default_language", "en")
+    if not re.match(r"^[a-z]{2,8}$", i18n_language):
+        log.warning(
+            "Invalid i18n language %r in agent config — falling back to 'en'",
+            i18n_language,
+        )
+        i18n_language = "en"
 
     return Agent(
         name=name,

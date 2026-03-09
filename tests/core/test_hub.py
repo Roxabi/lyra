@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 
@@ -28,6 +29,15 @@ from lyra.core.message import (
     DiscordContext,
     Platform,
     TelegramContext,
+)
+from lyra.core.messages import MessageManager
+
+TOML_PATH = (
+    Path(__file__).resolve().parent.parent.parent
+    / "src"
+    / "lyra"
+    / "config"
+    / "messages.toml"
 )
 
 # ---------------------------------------------------------------------------
@@ -942,3 +952,54 @@ async def test_hub_circuit_opens_after_threshold() -> None:
         f"Expected hub circuit OPEN after {hub_cb.failure_threshold} failures, "
         f"got {hub_status.state} (failure_count={hub_status.failure_count})"
     )
+
+
+# ---------------------------------------------------------------------------
+# msg_manager injection — Hub returns TOML "generic" string on agent failure
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_hub_msg_manager_injection_generic_on_agent_failure() -> None:
+    """Injecting a real MessageManager causes Hub to return the TOML 'generic'
+    string (not the hardcoded fallback) when agent.process() raises."""
+    # Arrange
+    mm = MessageManager(TOML_PATH)
+    hub = Hub(msg_manager=mm)
+
+    sent_responses: list[Response] = []
+
+    class CapturingAdapter:
+        async def send(self, original_msg: Message, response: Response) -> None:
+            sent_responses.append(response)
+
+        async def send_streaming(self, original_msg: Message, chunks: object) -> None:
+            async for _ in chunks:  # type: ignore[union-attr]
+                pass
+
+    class FailingAgent(AgentBase):
+        async def process(self, msg: Message, pool: Pool) -> Response:
+            raise RuntimeError("simulated agent failure")
+
+    config = Agent(name="failing", system_prompt="", memory_namespace="test")
+    hub.register_agent(FailingAgent(config))
+    hub.register_adapter(Platform.TELEGRAM, "main", CapturingAdapter())
+    hub.register_binding(
+        Platform.TELEGRAM, "main", "alice", "failing", "telegram:main:alice"
+    )
+
+    # Act — put one message; hub processes it and sends an error reply
+    msg = make_message(platform=Platform.TELEGRAM, bot_id="main", user_id="alice")
+    await hub.bus.put(msg)
+    hub_task = asyncio.create_task(hub.run())
+    await asyncio.sleep(0.1)
+    hub_task.cancel()
+    try:
+        await hub_task
+    except asyncio.CancelledError:
+        pass
+
+    # Assert — error reply content matches the TOML value, not a hardcoded string
+    assert len(sent_responses) == 1
+    expected = mm.get("generic")
+    assert sent_responses[0].content == expected

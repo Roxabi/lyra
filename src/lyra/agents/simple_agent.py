@@ -85,7 +85,11 @@ class SimpleAgent(AgentBase):
             if "Timeout" in result.error:
                 user_msg = "Response timed out. Please try again."
             else:
-                user_msg = GENERIC_ERROR_REPLY
+                user_msg = (
+                    self._msg_manager.get("generic")
+                    if self._msg_manager
+                    else GENERIC_ERROR_REPLY
+                )
             return Response(
                 content=user_msg,
                 metadata={"error": True},

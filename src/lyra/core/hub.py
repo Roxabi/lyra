@@ -272,7 +272,7 @@ class Hub:
                 router = getattr(agent, "command_router", None)
                 if router and router.is_command(msg):
                     try:
-                        response = await router.dispatch(msg)
+                        response = await router.dispatch(msg, pool)
                     except Exception as exc:
                         log.exception("command dispatch failed for %s: %s", key, exc)
                         response = Response(content=GENERIC_ERROR_REPLY)

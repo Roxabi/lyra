@@ -11,12 +11,14 @@ from pathlib import Path
 from .circuit_breaker import CircuitRegistry
 from .command_router import CommandConfig, CommandRouter
 from .message import Message, Response
+from .plugin_loader import PluginLoader
 from .pool import Pool
 
 log = logging.getLogger(__name__)
 
 # Default agents config directory: src/lyra/agents/
 _AGENTS_DIR = Path(__file__).resolve().parent.parent / "agents"
+_PLUGINS_DIR = Path(__file__).resolve().parent.parent / "plugins"
 
 _VALID_BACKENDS: frozenset[str] = frozenset({"claude-cli", "ollama", "anthropic-sdk"})
 _MAX_PROMPT_BYTES = 64 * 1024  # 64 KB
@@ -94,6 +96,7 @@ class Agent:
     model_config: ModelConfig = field(default_factory=ModelConfig)
     permissions: tuple[str, ...] = field(default=())
     commands: dict[str, CommandConfig] = field(default_factory=dict)
+    plugins_enabled: tuple[str, ...] = field(default=())  # empty = default-open
     persona: PersonaConfig | None = None
 
 
@@ -308,13 +311,13 @@ def load_agent_config(
     commands: dict[str, CommandConfig] = {}
     for cmd_name, cmd_data in commands_section.items():
         commands[cmd_name] = CommandConfig(
-            skill=cmd_data.get("skill"),
-            action=cmd_data.get("action"),
-            cli=cmd_data.get("cli"),
             description=cmd_data.get("description", ""),
             builtin=bool(cmd_data.get("builtin", False)),
             timeout=float(cmd_data.get("timeout", 30.0)),
         )
+
+    plugins_section = data.get("plugins", {})
+    plugins_enabled: tuple[str, ...] = tuple(plugins_section.get("enabled", []))
 
     return Agent(
         name=name,
@@ -323,6 +326,7 @@ def load_agent_config(
         model_config=model_cfg,
         permissions=tuple(agent_section.get("permissions", [])),
         commands=commands,
+        plugins_enabled=plugins_enabled,
         persona=persona,
     )
 
@@ -339,6 +343,7 @@ class AgentBase(ABC):
         self,
         config: Agent,
         agents_dir: Path | None = None,
+        plugins_dir: Path | None = None,
         circuit_registry: CircuitRegistry | None = None,
         admin_user_ids: set[str] | None = None,
     ) -> None:
@@ -350,8 +355,13 @@ class AgentBase(ABC):
         )
         self._circuit_registry = circuit_registry
         self._admin_user_ids = admin_user_ids
+        self._plugins_dir = plugins_dir or _PLUGINS_DIR
+        self._plugin_loader = PluginLoader(self._plugins_dir)
+        self._effective_plugins = self._init_plugins()
+        self._plugin_mtimes: dict[str, float] = self._record_plugin_mtimes()
         self.command_router: CommandRouter = CommandRouter(
-            config.commands,
+            self._plugin_loader,
+            self._effective_plugins,
             circuit_registry=circuit_registry,
             admin_user_ids=admin_user_ids,
         )
@@ -376,6 +386,44 @@ class AgentBase(ABC):
         except Exception:
             pass
 
+    def _init_plugins(self) -> list[str]:
+        """Load plugins and return the effective enabled list.
+
+        Only plugins that load successfully are included in the returned list.
+        If a plugin has enabled=false in its manifest, load() raises ValueError
+        and the plugin is skipped — this enforces SC-9 regardless of agent config.
+        """
+        if self.config.plugins_enabled:
+            names = list(self.config.plugins_enabled)
+        else:
+            # default-open: load all manifest.enabled=True plugins discovered in
+            # plugins_dir. Security assumption: plugins_dir is a trusted directory
+            # controlled by the operator. Do not point plugins_dir at a
+            # world-writable or network-accessible path.
+            manifests = self._plugin_loader.discover()
+            names = [m.name for m in manifests if m.enabled]
+        effective: list[str] = []
+        for name in names:
+            try:
+                self._plugin_loader.load(name)
+                effective.append(name)
+            except ValueError as exc:
+                log.warning("Skipping plugin %r: %s", name, exc)
+            except Exception:  # noqa: BLE001
+                log.warning("Failed to load plugin %r", name)
+        return effective
+
+    def _record_plugin_mtimes(self) -> dict[str, float]:
+        """Record current mtime for each loaded plugin's handlers.py."""
+        mtimes: dict[str, float] = {}
+        for name in self._effective_plugins:
+            handlers_path = self._plugins_dir / name / "handlers.py"
+            try:
+                mtimes[name] = handlers_path.stat().st_mtime
+            except OSError:
+                pass
+        return mtimes
+
     @property
     def name(self) -> str:
         return self.config.name
@@ -397,28 +445,51 @@ class AgentBase(ABC):
             except OSError:
                 pass
 
-        if not config_changed and not persona_changed:
-            return
+        if config_changed or persona_changed:
+            try:
+                new_config = load_agent_config(self.config.name, self._agents_dir)
+                if new_config != self.config:
+                    log.info(
+                        "Hot-reloaded config for agent %r (model: %s -> %s)",
+                        self.config.name,
+                        self.config.model_config.model,
+                        new_config.model_config.model,
+                    )
+                    self.config = new_config
+                    self.command_router = CommandRouter(
+                        self._plugin_loader,
+                        self._effective_plugins,
+                        circuit_registry=self._circuit_registry,
+                        admin_user_ids=self._admin_user_ids,
+                    )
+                self._last_mtime = mtime
+                self._update_persona_tracking()
+            except Exception as exc:
+                log.warning("Failed to reload config for %r: %s", self.config.name, exc)
 
-        try:
-            new_config = load_agent_config(self.config.name, self._agents_dir)
-            if new_config != self.config:
-                log.info(
-                    "Hot-reloaded config for agent %r (model: %s -> %s)",
-                    self.config.name,
-                    self.config.model_config.model,
-                    new_config.model_config.model,
-                )
-                self.config = new_config
-                self.command_router = CommandRouter(
-                    new_config.commands,
-                    circuit_registry=self._circuit_registry,
-                    admin_user_ids=self._admin_user_ids,
-                )
-            self._last_mtime = mtime
-            self._update_persona_tracking()
-        except Exception as exc:
-            log.warning("Failed to reload config for %r: %s", self.config.name, exc)
+        # Plugin hot-reload: runs unconditionally — not gated on agent TOML change
+        plugins_changed = False
+        for name in list(self._plugin_mtimes):
+            handlers_path = self._plugins_dir / name / "handlers.py"
+            try:
+                new_mtime = handlers_path.stat().st_mtime
+            except OSError:
+                continue
+            if new_mtime > self._plugin_mtimes[name]:
+                try:
+                    self._plugin_loader.reload(name)
+                    self._plugin_mtimes[name] = new_mtime
+                    plugins_changed = True
+                    log.info("Hot-reloaded plugin %r", name)
+                except Exception:  # noqa: BLE001
+                    log.warning("Failed to reload plugin %r", name)
+        if plugins_changed:
+            self.command_router = CommandRouter(
+                self._plugin_loader,
+                self._effective_plugins,
+                circuit_registry=self._circuit_registry,
+                admin_user_ids=self._admin_user_ids,
+            )
 
     @abstractmethod
     async def process(self, msg: Message, pool: Pool) -> Response: ...

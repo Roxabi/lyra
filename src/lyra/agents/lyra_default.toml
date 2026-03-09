@@ -21,12 +21,5 @@ tools = ["Read", "Grep", "Glob", "WebFetch", "WebSearch"]
 # [prompt]
 # system = "..."     # Optional: raw string overrides persona composition
 
-[commands."/help"]
-builtin = true
-description = "List available commands"
-
-[commands."/echo"]
-skill = "echo"
-action = "echo"
-cli = "echo"
-description = "Echo back the message (test command)"
+[plugins]
+enabled = ["echo"]

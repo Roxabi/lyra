@@ -138,6 +138,37 @@ system = ""
         agent.name = "other"
         assert agent.name == "other"
 
+    def test_plugins_enabled_from_toml(self, tmp_path: Path) -> None:
+        # Arrange
+        toml_content = """
+[prompt]
+system = "test"
+
+[plugins]
+enabled = ["echo"]
+"""
+        (tmp_path / "testagent.toml").write_text(toml_content)
+
+        # Act
+        agent = load_agent_config("testagent", agents_dir=tmp_path)
+
+        # Assert
+        assert agent.plugins_enabled == ("echo",)
+
+    def test_plugins_enabled_defaults_to_empty(self, tmp_path: Path) -> None:
+        # Arrange — absent [plugins] section → empty list (default-open)
+        toml_content = """
+[prompt]
+system = "test"
+"""
+        (tmp_path / "testagent.toml").write_text(toml_content)
+
+        # Act
+        agent = load_agent_config("testagent", agents_dir=tmp_path)
+
+        # Assert
+        assert agent.plugins_enabled == ()
+
 
 class TestPersonaConfig:
     def test_frozen(self) -> None:

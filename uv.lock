@@ -1156,9 +1156,11 @@ dependencies = [
 requires-dist = [
     { name = "aiosqlite", specifier = ">=0.20" },
     { name = "fastembed", marker = "extra == 'embeddings'", specifier = ">=0.4" },
+    { name = "rich", marker = "extra == 'cli'", specifier = ">=13.0" },
     { name = "sqlite-vec", marker = "extra == 'embeddings'", specifier = ">=0.1" },
+    { name = "typer", marker = "extra == 'cli'", specifier = ">=0.12" },
 ]
-provides-extras = ["embeddings"]
+provides-extras = ["cli", "embeddings"]
 
 [package.metadata.requires-dev]
 dev = [

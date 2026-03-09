@@ -227,6 +227,9 @@ class DiscordAdapter(discord.Client):
                 sent = await messageable.send(content)
             # Store for session persistence (#67) and reply-to-resume (#83).
             response.metadata["reply_message_id"] = sent.id
+            log.debug(
+                "stored reply_message_id=%s for msg_id=%s", sent.id, original_msg.id
+            )
             if self._circuit_registry is not None:
                 cb = self._circuit_registry.get("discord")
                 if cb is not None:

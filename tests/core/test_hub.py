@@ -23,6 +23,7 @@ from lyra.core import (
     Pool,
     Response,
 )
+from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.message import (
     DiscordContext,
     Platform,
@@ -633,3 +634,252 @@ class TestHubRunStreaming:
             pass
 
         assert received_chunks == ["chunk1", "chunk2"]
+
+
+# ---------------------------------------------------------------------------
+# Circuit breaker helpers
+# ---------------------------------------------------------------------------
+
+
+def make_circuit_registry(**overrides) -> CircuitRegistry:
+    """Build a CircuitRegistry with default CBs for all 4 services."""
+    registry = CircuitRegistry()
+    defaults = {
+        "anthropic": CircuitBreaker(
+            "anthropic", failure_threshold=3, recovery_timeout=60
+        ),
+        "telegram": CircuitBreaker(
+            "telegram", failure_threshold=5, recovery_timeout=30
+        ),
+        "discord": CircuitBreaker(
+            "discord", failure_threshold=5, recovery_timeout=30
+        ),
+        "hub": CircuitBreaker("hub", failure_threshold=10, recovery_timeout=60),
+    }
+    for name, cb in defaults.items():
+        if name in overrides:
+            registry.register(overrides[name])
+        else:
+            registry.register(cb)
+    return registry
+
+
+# ---------------------------------------------------------------------------
+# SC-07 — Anthropic circuit OPEN: fast-fail reply, agent.process() skipped
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_anthropic_circuit_open_sends_fast_fail_and_skips_agent() -> None:
+    """SC-07: anthropic OPEN → fast-fail reply sent, agent.process() skipped."""
+    # Arrange — open anthropic circuit
+    open_cb = CircuitBreaker("anthropic", failure_threshold=1, recovery_timeout=60)
+    open_cb.record_failure()  # trips to OPEN
+    registry = make_circuit_registry(anthropic=open_cb)
+
+    hub = Hub(circuit_registry=registry)
+
+    sent_responses: list[Response] = []
+
+    class CapturingAdapter:
+        async def send(self, original_msg: Message, response: Response) -> None:
+            sent_responses.append(response)
+
+        async def send_streaming(self, original_msg: Message, chunks) -> None:
+            async for _ in chunks:
+                pass
+
+    process_called = False
+
+    class MockStreamingAgent:
+        name = "test"
+        command_router = None
+
+        def process(self, msg: Message, pool: Pool):
+            nonlocal process_called
+            process_called = True
+
+            async def gen():
+                yield "should not reach"
+
+            return gen()
+
+    hub.register_adapter(Platform.TELEGRAM, "main", CapturingAdapter())
+    hub.register_agent(MockStreamingAgent())  # type: ignore[arg-type]
+    hub.register_binding(Platform.TELEGRAM, "main", "*", "test", "telegram:main:*")
+
+    # Act — put one message on bus and let hub process it
+    await hub.bus.put(make_message())
+    hub_task = asyncio.create_task(hub.run())
+    await asyncio.sleep(0.05)
+    hub_task.cancel()
+    try:
+        await hub_task
+    except asyncio.CancelledError:
+        pass
+
+    # Assert
+    assert process_called is False, (
+        "Agent.process() must not be called when anthropic circuit is OPEN"
+    )
+    assert len(sent_responses) == 1
+    assert "unavailable" in sent_responses[0].content.lower()
+    assert "try again" in sent_responses[0].content.lower()
+
+
+# ---------------------------------------------------------------------------
+# SC-07 — Fast-fail reply includes retry_after seconds
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_anthropic_circuit_open_includes_retry_after() -> None:
+    """SC-07: Fast-fail reply body includes a numeric retry_after value (e.g. '60s')."""
+    import re
+
+    # Arrange
+    open_cb = CircuitBreaker("anthropic", failure_threshold=1, recovery_timeout=60)
+    open_cb.record_failure()
+    registry = make_circuit_registry(anthropic=open_cb)
+    hub = Hub(circuit_registry=registry)
+
+    sent_responses: list[Response] = []
+
+    class CapturingAdapter:
+        async def send(self, original_msg: Message, response: Response) -> None:
+            sent_responses.append(response)
+
+        async def send_streaming(self, original_msg: Message, chunks) -> None:
+            async for _ in chunks:
+                pass
+
+    class MockStreamingAgent:
+        name = "test"
+        command_router = None
+
+        def process(self, msg: Message, pool: Pool):
+            async def gen():
+                yield "x"
+
+            return gen()
+
+    hub.register_adapter(Platform.TELEGRAM, "main", CapturingAdapter())
+    hub.register_agent(MockStreamingAgent())  # type: ignore[arg-type]
+    hub.register_binding(Platform.TELEGRAM, "main", "*", "test", "telegram:main:*")
+
+    # Act
+    await hub.bus.put(make_message())
+    hub_task = asyncio.create_task(hub.run())
+    await asyncio.sleep(0.05)
+    hub_task.cancel()
+    try:
+        await hub_task
+    except asyncio.CancelledError:
+        pass
+
+    # Assert
+    assert len(sent_responses) == 1
+    assert re.search(r"\d+s", sent_responses[0].content), (
+        f"Expected retry_after seconds in: {sent_responses[0].content!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# SC-10 — Clean streaming records hub circuit success
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_hub_records_success_on_clean_streaming() -> None:
+    """SC-10: Clean streaming → hub circuit success recorded (failure_count stays 0)."""
+    # Arrange
+    registry = make_circuit_registry()
+    hub = Hub(circuit_registry=registry)
+
+    class SilentAdapter:
+        async def send(self, original_msg: Message, response: Response) -> None:
+            pass
+
+        async def send_streaming(self, original_msg: Message, chunks) -> None:
+            async for _ in chunks:
+                pass
+
+    class CleanStreamingAgent:
+        name = "test"
+        command_router = None
+
+        def process(self, msg: Message, pool: Pool):
+            async def gen():
+                yield "hello"
+
+            return gen()
+
+    hub.register_adapter(Platform.TELEGRAM, "main", SilentAdapter())
+    hub.register_agent(CleanStreamingAgent())  # type: ignore[arg-type]
+    hub.register_binding(Platform.TELEGRAM, "main", "*", "test", "telegram:main:*")
+
+    # Act
+    await hub.bus.put(make_message())
+    hub_task = asyncio.create_task(hub.run())
+    await asyncio.sleep(0.1)
+    hub_task.cancel()
+    try:
+        await hub_task
+    except asyncio.CancelledError:
+        pass
+
+    # Assert — hub circuit breaker must not have accumulated any failures
+    hub_status = registry["hub"].get_status()
+    assert hub_status.failure_count == 0
+
+
+# ---------------------------------------------------------------------------
+# SC-09 — Mid-stream exception records anthropic circuit failure
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_mid_stream_failure_records_anthropic_failure() -> None:
+    """SC-09: Streaming exception → circuits['anthropic'].record_failure() called."""
+    # Arrange
+    registry = make_circuit_registry()
+    hub = Hub(circuit_registry=registry)
+
+    class SilentAdapter:
+        async def send(self, original_msg: Message, response: Response) -> None:
+            pass
+
+        async def send_streaming(self, original_msg: Message, chunks) -> None:
+            async for _ in chunks:
+                pass  # exception propagates from the generator
+
+    class FailingStreamAgent:
+        name = "test"
+        command_router = None
+
+        def process(self, msg: Message, pool: Pool):
+            async def gen():
+                yield "partial"
+                raise RuntimeError("API error mid-stream")
+
+            return gen()
+
+    hub.register_adapter(Platform.TELEGRAM, "main", SilentAdapter())
+    hub.register_agent(FailingStreamAgent())  # type: ignore[arg-type]
+    hub.register_binding(Platform.TELEGRAM, "main", "*", "test", "telegram:main:*")
+
+    # Act
+    await hub.bus.put(make_message())
+    hub_task = asyncio.create_task(hub.run())
+    await asyncio.sleep(0.1)
+    hub_task.cancel()
+    try:
+        await hub_task
+    except asyncio.CancelledError:
+        pass
+
+    # Assert
+    ant_status = registry["anthropic"].get_status()
+    assert ant_status.failure_count >= 1, (
+        f"Expected anthropic failure_count >= 1, got {ant_status.failure_count}"
+    )

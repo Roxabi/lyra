@@ -222,9 +222,11 @@ class DiscordAdapter(discord.Client):
         try:
             if original_msg.is_mention:
                 msg = await messageable.fetch_message(ctx.message_id)
-                await msg.reply(content)
+                sent = await msg.reply(content)
             else:
-                await messageable.send(content)
+                sent = await messageable.send(content)
+            # Store for session persistence (#67) and reply-to-resume (#83).
+            response.metadata["reply_message_id"] = sent.id
             if self._circuit_registry is not None:
                 cb = self._circuit_registry.get("discord")
                 if cb is not None:
@@ -239,7 +241,11 @@ class DiscordAdapter(discord.Client):
     async def send_streaming(
         self, original_msg: Message, chunks: AsyncIterator[str]
     ) -> None:
-        """Stream response with edit-in-place, debounced at ~1s."""
+        """Stream response with edit-in-place, debounced at ~1s.
+
+        TODO: store placeholder.id in response.metadata["reply_message_id"]
+        once send_streaming() receives a Response argument (#67).
+        """
         if not isinstance(original_msg.platform_context, DiscordContext):
             log.error(
                 "send_streaming() called with non-DiscordContext for msg_id=%s",

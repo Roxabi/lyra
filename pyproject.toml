@@ -25,7 +25,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.uv.sources]
-roxabi-memory = { path = "../roxabi-memory" }
+roxabi-memory = { git = "https://github.com/Roxabi/roxabi-memory.git", branch = "staging" }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/lyra"]

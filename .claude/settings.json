@@ -9,13 +9,20 @@
     "get-invoice-details@roxabi-marketplace": true,
     "image-prompt-generator@roxabi-marketplace": true,
     "linkedin-post-generator@roxabi-marketplace": true,
-    "vault@roxabi-marketplace": true
+    "roxabi-memory@roxabi-memory-marketplace": true
   },
   "extraKnownMarketplaces": {
     "roxabi-marketplace": {
       "source": {
         "source": "github",
         "repo": "Roxabi/roxabi-plugins"
+      },
+      "autoUpdate": true
+    },
+    "roxabi-memory-marketplace": {
+      "source": {
+        "source": "github",
+        "repo": "Roxabi/roxabi-memory"
       },
       "autoUpdate": true
     }

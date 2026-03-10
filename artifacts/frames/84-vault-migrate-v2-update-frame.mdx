@@ -1,0 +1,80 @@
+---
+title: "vault-migrate skill update — v2 schema + fastembed embeddings"
+issue: 84
+status: approved
+tier: F-lite
+date: 2026-03-10
+---
+
+## Problem
+
+The `vault:vault-migrate` skill was built for the v1 vault schema. The vault has since moved to roxabi-memory v2 with fastembed ONNX embeddings, namespace support, and a unified `entries` table. The skill needs updating to use the v2 sync interface.
+
+Meanwhile, 2ndBrain holds 465 entries in `memory.db` (twitter, github, articles, tools, etc.) plus **59 markdown files** (~511KB) across 6 directories. None of this data is in the Roxabi Vault yet. The vault currently has only 2 LinkedIn post entries.
+
+### Markdown file inventory (actual scan, 2026-03-10)
+
+| Directory | Files | ~Size | Contents |
+|-----------|-------|-------|----------|
+| `analyses/` | 6 | 128KB | Technical analyses (session context, vision handler, memory architectures, etc.) |
+| `content/` | 10 | 44KB | 9 LinkedIn posts + 1 interview transcript |
+| `cv/` (root) | 3 | 49KB | ATS CVs (EN/FR) + salary research |
+| `cv/adapted/` | 20 | 105KB | 9 job applications (CV, cover letter, messages, Q&A per folder) |
+| `ideas/` | 9 | 84KB | Long-form brainstorms (Lyra architecture, DeFi explorations, site concepts) |
+| `learnings/` | 10 | 87KB | Session notes, recaps, histories (2ndBrain, MMORPG, infra, social) |
+| Root | 1 | 14KB | `projects-recap.md` |
+| **Total** | **59** | **~511KB** | |
+
+Note: issue body estimated ~21 files across ideas/learnings/content/cv — actual count is 59 with `analyses/` and root file not originally listed.
+
+### Cross-reference: disk files vs DB `content_file` entries
+
+**DB → disk:** 46 DB entries have `content_file` refs — 43 match files on disk, 3 are broken:
+- `content/20260203_linkedin_post_annonce_nexian_opensource.md` — deleted/moved
+- `content/20260203_linkedin_post_opensource_architecture_agents.md` — deleted/moved
+- `learnings/2ndbrain-rex.md` — renamed to `2ndbrain-rex-20260112-20260126.md`
+
+**Disk → DB:** 16 files on disk have no DB entry (mostly learnings + recent additions):
+- `content/2026-02-02-openclaw-peter-steinberger-interview.md`
+- `content/20260227_linkedin_post_live_aidd_skills_hooks_compression.md`
+- `cv/adapted/20260226_Veolia_ProxyProductManager/...CV_FR.md`
+- `ideas/agents-ia-architecture-lyra.md`, `ideas/lyra-avatar.md`
+- All 10 `learnings/*.md` files
+- `projects-recap.md` (root)
+
+**Scope decision:** Migrate everything — all 465 DB entries + all 59 disk files. Disk-only files get new vault entries created from their content. Broken DB file refs → migrate DB row, skip file copy, log warning.
+
+The migration must be non-destructive (original `memory.db` untouched, existing vault entries preserved), idempotent (running twice produces the same result), and generate fresh fastembed embeddings at import time.
+
+## Who
+
+- **Primary:** Mickael — all 2ndBrain knowledge becomes searchable via vault CLI and future Lyra agents
+- **Secondary:** Lyra agents — richer knowledge base for context retrieval
+
+## Constraints
+
+- Must use roxabi-memory v2 API surface (namespace, embedding, dedup interfaces)
+- Depends on `roxabi/roxabi-memory#7` (fastembed `embed()` must exist)
+- Dedup by source URL/ID — no duplicates on re-run
+- All migrated entries receive `namespace='vault'`
+- No regression on existing vault data (2 entries + files in `content/`, `cv/`, `image-prompts/`, `personas/`, `config/`)
+- Pre-implementation compatibility check required (verify v2 API surface matches migration needs)
+- No deadline — do it right
+
+## Out of Scope
+
+- Migrating old sqlite-vec 384-dim embeddings (fresh fastembed embeddings generated instead)
+- UI for browsing migrated data
+- Cleanup or deletion of 2ndBrain source after migration
+- Embedding search / hybrid search features (handled by #82, already closed)
+
+## Complexity
+
+**Tier: F-lite** — Single domain (vault/memory), clear scope with 3 well-defined parts, no new architectural patterns.
+
+Signals:
+- Single domain: vault-migrate skill + roxabi-memory package
+- Clear scope: SQLite field mapping, file copy + indexing, verification report
+- 3 parts but all within same migration pipeline
+- Dependencies resolved (#82, #83 closed; roxabi-memory#7 needed)
+- Detailed acceptance criteria already in issue body

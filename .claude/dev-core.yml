@@ -1,0 +1,10 @@
+# dev-core plugin configuration
+# 3-tier fallback: this file → process.env → gh CLI (github_repo only)
+github_repo: Roxabi/lyra
+gh_project_id: PVT_kwDOB8J6DM4BQrDj
+status_field_id: PVTSSF_lADOB8J6DM4BQrDjzg-uYII
+size_field_id: PVTSSF_lADOB8J6DM4BQrDjzg-uYKA
+priority_field_id: PVTSSF_lADOB8J6DM4BQrDjzg-uYKE
+status_options_json: '{"Backlog":"5d373a60","Analysis":"7e921e05","Specs":"670d195d","In Progress":"2b63d37e","Review":"c1cc8c42","Done":"aeeddffd"}'
+size_options_json: '{"XS":"c6f081e7","S":"dfc171cd","M":"6c8a0587","L":"cb5a6b16","XL":"359be779"}'
+priority_options_json: '{"P0 - Urgent":"517c9f91","P1 - High":"b7f5b95a","P2 - Medium":"96d96362","P3 - Low":"ea35ca02"}'

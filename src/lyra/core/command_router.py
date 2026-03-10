@@ -82,6 +82,23 @@ class CommandRouter:
             return False
         return bool(_COMMAND_RE.match(text))
 
+    def get_command_name(self, msg: Message) -> str | None:
+        """Extract the slash-command name (e.g. '/join') or None if not a command.
+
+        Single source of truth for command-name parsing, used by the hub pairing
+        gate and by dispatch().
+        """
+        content = msg.content
+        if isinstance(content, TextContent):
+            text = content.text
+        elif isinstance(content, str):
+            text = content
+        else:
+            return None
+        if not _COMMAND_RE.match(text):
+            return None
+        return text.split(maxsplit=1)[0].lower()
+
     # ------------------------------------------------------------------
     # Dispatch
     # ------------------------------------------------------------------

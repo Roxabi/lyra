@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import signal
 import time
 import tomllib
@@ -29,33 +30,39 @@ from lyra.core.cli_pool import CliPool
 from lyra.core.hub import Hub, RoutingKey
 from lyra.core.message import Platform
 from lyra.core.messages import MessageManager
+from lyra.core.pairing import PairingConfig, PairingManager, set_pairing_manager
 
 log = logging.getLogger(__name__)
 
 _CB_DEFAULTS: dict[str, int] = {"failure_threshold": 5, "recovery_timeout": 60}
 _CB_SERVICES = ("anthropic", "telegram", "discord", "hub")
+_ADMIN_ID_PATTERN = re.compile(r"^(tg|dc):user:\d+$")
 
 
-def _load_circuit_config(
-    config_path: str | None = None,
-) -> tuple[CircuitRegistry, set[str]]:
-    """Load [circuit_breaker.*] and [admin] sections from TOML config.
+def _load_raw_config(config_path: str | None = None) -> dict:
+    """Open and parse lyra.toml once; return the raw dict.
 
-    Returns (CircuitRegistry with 4 named CBs, set of admin user_ids).
-    Missing sections or missing config file → all defaults.
-    Config path: $LYRA_CONFIG env var → 'lyra.toml' in cwd → all defaults.
+    Resolution order: $LYRA_CONFIG env var → 'lyra.toml' in cwd → empty dict.
     """
-    import os
-
     raw: dict = {}
     path = config_path or os.environ.get("LYRA_CONFIG", "lyra.toml")
     try:
         with open(path, "rb") as f:
             raw = tomllib.load(f)
-        log.info("Loaded circuit config from %s", path)
+        log.info("Loaded config from %s", path)
     except FileNotFoundError:
-        log.info("No config file at %s — using circuit breaker defaults", path)
+        log.info("No config file at %s — using defaults", path)
+    return raw
 
+
+def _load_circuit_config(
+    raw: dict,
+) -> tuple[CircuitRegistry, set[str]]:
+    """Load [circuit_breaker.*] and [admin] sections from raw config dict.
+
+    Returns (CircuitRegistry with 4 named CBs, set of admin user_ids).
+    Missing sections → all defaults.
+    """
     cb_section = raw.get("circuit_breaker", {})
     registry = CircuitRegistry()
     for name in _CB_SERVICES:
@@ -69,7 +76,20 @@ def _load_circuit_config(
         )
 
     admin_ids: set[str] = set(raw.get("admin", {}).get("user_ids", []))
+    for aid in admin_ids:
+        if not _ADMIN_ID_PATTERN.match(aid):
+            log.warning(
+                "Admin ID %r does not match expected format "
+                "(tg|dc):user:<digits> — verify lyra.toml [admin].user_ids",
+                aid,
+            )
     return registry, admin_ids
+
+
+def _load_pairing_config(raw: dict) -> PairingConfig:
+    """Load [pairing] section from raw config dict. Missing section → all defaults."""
+    pairing_section: dict = raw.get("pairing", {})
+    return PairingConfig.from_dict(pairing_section)
 
 
 def _load_messages(language: str = "en") -> MessageManager:
@@ -78,8 +98,6 @@ def _load_messages(language: str = "en") -> MessageManager:
     Resolution order:
       LYRA_MESSAGES_CONFIG env var → messages.toml in cwd → bundled config.
     """
-    import os
-
     bundled = Path(__file__).resolve().parent / "config" / "messages.toml"
     path_str = os.environ.get("LYRA_MESSAGES_CONFIG") or (
         "messages.toml" if Path("messages.toml").exists() else str(bundled)
@@ -170,7 +188,8 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
     """
     load_dotenv()
 
-    circuit_registry, admin_user_ids = _load_circuit_config()
+    raw_config = _load_raw_config()
+    circuit_registry, admin_user_ids = _load_circuit_config(raw_config)
 
     # Config loaders call sys.exit() on missing required env vars — no partial startup.
     tg_cfg = load_telegram_config()
@@ -186,7 +205,29 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
 
     msg_manager = _load_messages(language=agent_config.i18n_language)
 
-    hub = Hub(circuit_registry=circuit_registry, msg_manager=msg_manager)
+    pairing_config = _load_pairing_config(raw_config)
+    if pairing_config.enabled and not admin_user_ids:
+        log.warning(
+            "Pairing is enabled but no admin user_ids configured in "
+            "[admin].user_ids — no one can run /invite or /unpair"
+        )
+    pm: PairingManager | None = None
+    if pairing_config.enabled:
+        vault_dir = Path.home() / ".lyra"
+        vault_dir.mkdir(parents=True, exist_ok=True)
+        pm = PairingManager(
+            config=pairing_config,
+            db_path=vault_dir / "pairing.db",
+            admin_user_ids=admin_user_ids,
+        )
+        await pm.connect()
+        set_pairing_manager(pm)
+
+    hub = Hub(
+        circuit_registry=circuit_registry,
+        msg_manager=msg_manager,
+        pairing_manager=pm,
+    )
 
     cli_pool: CliPool | None = None
     if agent_config.model_config.backend == "claude-cli":
@@ -266,6 +307,8 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
         task.cancel()
     await asyncio.gather(*tasks, return_exceptions=True)
     await dc_adapter.close()
+    if pm is not None:
+        await pm.close()
     if cli_pool is not None:
         await cli_pool.stop()
     log.info("Lyra stopped.")

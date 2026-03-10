@@ -22,9 +22,13 @@ class TestLoadCircuitConfigDefaults:
         monkeypatch.setenv("LYRA_CONFIG", str(tmp_path / "nonexistent.toml"))
 
         # Act
-        from lyra.__main__ import _load_circuit_config  # noqa: PLC0415
+        from lyra.__main__ import (  # noqa: PLC0415
+            _load_circuit_config,
+            _load_raw_config,
+        )
 
-        registry, admin_ids = _load_circuit_config()
+        raw = _load_raw_config()
+        registry, admin_ids = _load_circuit_config(raw)
 
         # Assert — all four default services present with correct defaults
         for name in ("anthropic", "telegram", "discord", "hub"):
@@ -47,9 +51,13 @@ class TestLoadCircuitConfigDefaults:
         monkeypatch.chdir(tmp_path)
 
         # Act
-        from lyra.__main__ import _load_circuit_config  # noqa: PLC0415
+        from lyra.__main__ import (  # noqa: PLC0415
+            _load_circuit_config,
+            _load_raw_config,
+        )
 
-        registry, admin_ids = _load_circuit_config()
+        raw = _load_raw_config()
+        registry, admin_ids = _load_circuit_config(raw)
 
         # Assert — defaults apply
         for name in ("anthropic", "telegram", "discord", "hub"):
@@ -79,9 +87,13 @@ class TestLoadCircuitConfigTomlOverrides:
         monkeypatch.setenv("LYRA_CONFIG", str(config))
 
         # Act
-        from lyra.__main__ import _load_circuit_config  # noqa: PLC0415
+        from lyra.__main__ import (  # noqa: PLC0415
+            _load_circuit_config,
+            _load_raw_config,
+        )
 
-        registry, admin_ids = _load_circuit_config()
+        raw = _load_raw_config()
+        registry, admin_ids = _load_circuit_config(raw)
 
         # Assert — anthropic overridden
         assert registry["anthropic"].failure_threshold == 2
@@ -108,9 +120,13 @@ class TestLoadCircuitConfigTomlOverrides:
         monkeypatch.setenv("LYRA_CONFIG", str(config))
 
         # Act
-        from lyra.__main__ import _load_circuit_config  # noqa: PLC0415
+        from lyra.__main__ import (  # noqa: PLC0415
+            _load_circuit_config,
+            _load_raw_config,
+        )
 
-        registry, admin_ids = _load_circuit_config()
+        raw = _load_raw_config()
+        registry, admin_ids = _load_circuit_config(raw)
 
         # Assert
         assert "telegram:tg:user:1" in admin_ids
@@ -127,9 +143,13 @@ class TestLoadCircuitConfigTomlOverrides:
         monkeypatch.setenv("LYRA_CONFIG", str(config))
 
         # Act
-        from lyra.__main__ import _load_circuit_config  # noqa: PLC0415
+        from lyra.__main__ import (  # noqa: PLC0415
+            _load_circuit_config,
+            _load_raw_config,
+        )
 
-        registry, admin_ids = _load_circuit_config()
+        raw = _load_raw_config()
+        registry, admin_ids = _load_circuit_config(raw)
 
         # Assert — hub recovery_timeout overridden but failure_threshold stays 5
         assert registry["hub"].recovery_timeout == 120

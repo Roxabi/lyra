@@ -8,12 +8,14 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
+import time
 import tomllib
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from dotenv import load_dotenv
+from fastapi import FastAPI
 
 from lyra.adapters.discord import DiscordAdapter, load_discord_config
 from lyra.adapters.telegram import TelegramAdapter
@@ -119,6 +121,43 @@ def _create_agent(
             msg_manager=msg_manager,
         )
     raise ValueError(f"Unknown backend: {backend}")
+
+
+def create_health_app(hub: Hub) -> FastAPI:
+    """Create a root FastAPI app with /health endpoint for hub monitoring.
+
+    This is the top-level HTTP app — adapter sub-apps can be mounted on it.
+    The /health endpoint exposes hub-level health without requiring adapter auth.
+    """
+    app = FastAPI(title="Lyra Hub")
+
+    @app.get("/health")
+    async def health() -> dict:
+        uptime_s = time.monotonic() - hub._start_time
+
+        last_message_age_s: float | None = None
+        if hub._last_processed_at is not None:
+            last_message_age_s = time.monotonic() - hub._last_processed_at
+
+        circuits: dict = {}
+        if hub.circuit_registry is not None:
+            all_status = hub.circuit_registry.get_all_status()
+            circuits = {
+                name: {
+                    "state": s.state.value,
+                    "retry_after": s.retry_after,
+                }
+                for name, s in all_status.items()
+            }
+
+        return {
+            "queue_size": hub.bus.qsize(),
+            "last_message_age_s": last_message_age_s,
+            "uptime_s": round(uptime_s, 1),
+            "circuits": circuits,
+        }
+
+    return app
 
 
 async def _main(*, _stop: asyncio.Event | None = None) -> None:

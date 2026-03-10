@@ -1,0 +1,12 @@
+[Unit]
+Description=Lyra health monitor (Layer 1 pre-check + Layer 2 LLM escalation)
+After=network-online.target lyra.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=mickael
+WorkingDirectory=/home/mickael/projects/lyra
+EnvironmentFile=/home/mickael/.lyra/.env
+ExecStart=/home/mickael/projects/lyra/.venv/bin/python -m lyra.monitoring
+TimeoutStartSec=60

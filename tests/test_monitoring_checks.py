@@ -110,6 +110,13 @@ class TestCheckQueueDepth:
         result = check_queue_depth({"queue_size": 90}, 80)
         assert result.passed is False
 
+    def test_at_exact_threshold(self) -> None:
+        """Boundary: queue_size == threshold should fail (uses strict <)."""
+        from lyra.monitoring.checks import check_queue_depth
+
+        result = check_queue_depth({"queue_size": 80}, 80)
+        assert result.passed is False
+
 
 # ---------------------------------------------------------------------------
 # check_idle
@@ -147,26 +154,54 @@ class TestCheckIdle:
 
         # Mock current time to 03:00
         mock_now = datetime(2026, 3, 10, 3, 0, 0, tzinfo=timezone.utc)
-        monkeypatch.setattr(
-            "lyra.monitoring.checks.datetime",
-            type(
-                "MockDatetime",
-                (),
-                {
-                    "now": staticmethod(lambda tz=None: mock_now),
-                    "strptime": datetime.strptime,
-                },
-            ),
-        )
-
-        result = checks.check_idle(
-            {"last_message_age_s": 25200.0},  # 7 hours — would fail normally
-            threshold_hours=6,
-            quiet_start="00:00",
-            quiet_end="08:00",
-        )
+        with patch("lyra.monitoring.checks.datetime") as mock_dt:
+            mock_dt.now.return_value = mock_now
+            mock_dt.strptime = datetime.strptime
+            result = checks.check_idle(
+                {"last_message_age_s": 25200.0},  # 7 hours — would fail normally
+                threshold_hours=6,
+                quiet_start="00:00",
+                quiet_end="08:00",
+            )
         assert result.passed is True
         assert "quiet hours" in result.detail.lower()
+
+    def test_skips_during_midnight_wrap_quiet_hours(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Quiet hours wrapping midnight (22:00-06:00) at 23:30."""
+        from lyra.monitoring import checks
+
+        mock_now = datetime(2026, 3, 10, 23, 30, 0, tzinfo=timezone.utc)
+        with patch("lyra.monitoring.checks.datetime") as mock_dt:
+            mock_dt.now.return_value = mock_now
+            mock_dt.strptime = datetime.strptime
+            result = checks.check_idle(
+                {"last_message_age_s": 25200.0},
+                threshold_hours=6,
+                quiet_start="22:00",
+                quiet_end="06:00",
+            )
+        assert result.passed is True
+        assert "quiet hours" in result.detail.lower()
+
+    def test_not_quiet_outside_midnight_wrap(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """12:00 is NOT in quiet hours for wrap 22:00-06:00."""
+        from lyra.monitoring import checks
+
+        mock_now = datetime(2026, 3, 10, 12, 0, 0, tzinfo=timezone.utc)
+        with patch("lyra.monitoring.checks.datetime") as mock_dt:
+            mock_dt.now.return_value = mock_now
+            mock_dt.strptime = datetime.strptime
+            result = checks.check_idle(
+                {"last_message_age_s": 25200.0},  # 7 hours — exceeds threshold
+                threshold_hours=6,
+                quiet_start="22:00",
+                quiet_end="06:00",
+            )
+        assert result.passed is False
 
     def test_null_last_message_passes(self) -> None:
         """SC-6: check_idle passes when last_message_age_s is null (no messages yet)."""

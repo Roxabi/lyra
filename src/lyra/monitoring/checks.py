@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import shutil
 import subprocess
 from datetime import datetime, timezone
@@ -165,8 +166,8 @@ async def run_checks(config: MonitoringConfig) -> HealthReport:
     now = datetime.now(timezone.utc)
     checks: list[CheckResult] = []
 
-    # Check 1: Process liveness
-    checks.append(check_process(config.service_name))
+    # Check 1: Process liveness (blocking → offload to thread)
+    checks.append(await asyncio.to_thread(check_process, config.service_name))
 
     # Check 2: HTTP health (provides data for checks 3-5)
     http_result, health_json = await check_http_health(
@@ -193,8 +194,12 @@ async def run_checks(config: MonitoringConfig) -> HealthReport:
         # Check 5: Circuit states
         checks.append(check_circuits(health_json))
 
-    # Check 6: Disk space
-    checks.append(check_disk(config.disk_check_path, config.min_disk_free_gb))
+    # Check 6: Disk space (blocking → offload to thread)
+    checks.append(
+        await asyncio.to_thread(
+            check_disk, config.disk_check_path, config.min_disk_free_gb
+        )
+    )
 
     failed = [c for c in checks if not c.passed]
     return HealthReport(

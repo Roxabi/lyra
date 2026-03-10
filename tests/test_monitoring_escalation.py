@@ -152,6 +152,30 @@ class TestSendTelegramAlert:
             call_args = mock_client.post.call_args
             assert "12345" in str(call_args)  # chat_id in request
 
+    async def test_no_parse_mode_in_telegram_payload(
+        self, config: MonitoringConfig, diagnosis: DiagnosisReport
+    ) -> None:
+        """Telegram payload must not contain parse_mode (HTML injection)."""
+        from lyra.monitoring.escalation import send_telegram_alert
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"ok": True}
+
+        with patch("lyra.monitoring.escalation.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.post.return_value = mock_response
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            await send_telegram_alert(diagnosis, config)
+
+            mock_client.post.assert_called_once()
+            call_kwargs = mock_client.post.call_args.kwargs
+            posted_json = call_kwargs.get("json", {})
+            assert "parse_mode" not in posted_json
+
 
 # ---------------------------------------------------------------------------
 # send_telegram_raw_alert

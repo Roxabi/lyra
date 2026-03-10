@@ -12,6 +12,8 @@ from .models import DiagnosisReport, HealthReport
 
 log = logging.getLogger(__name__)
 
+TELEGRAM_MAX_LEN = 4000  # Telegram limit is 4096, leave margin
+
 _DIAGNOSTIC_SYSTEM_PROMPT = """\
 You are a system health diagnostic assistant for the Lyra AI agent hub.
 You will receive a health check report with failed checks.
@@ -139,14 +141,17 @@ async def send_telegram_raw_alert(
 
 async def _send_telegram_message(text: str, config: MonitoringConfig) -> None:
     """Send a message via Telegram Bot API (direct httpx, not through hub)."""
+    if len(text) > TELEGRAM_MAX_LEN:
+        text = text[:TELEGRAM_MAX_LEN] + "\n…[truncated]"
+
     url = f"https://api.telegram.org/bot{config.telegram_token}/sendMessage"
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             url,
             json={
+                # No parse_mode — plain text prevents HTML injection from LLM output
                 "chat_id": config.telegram_admin_chat_id,
                 "text": text,
-                "parse_mode": "HTML",
             },
             timeout=10,
         )

@@ -385,6 +385,34 @@ class TestDispatchResponse:
         with pytest.raises(KeyError):
             await hub.dispatch_response(msg, Response(content="x"))
 
+    async def test_updates_last_processed_at_on_success(self) -> None:
+        """dispatch_response sets _last_processed_at on successful send."""
+        hub = Hub()
+
+        class DummyAdapter:
+            async def send(self, original_msg: Message, response: Response) -> None:
+                pass
+
+            async def send_streaming(
+                self, original_msg: Message, chunks: object
+            ) -> None:
+                pass
+
+        hub.register_adapter(Platform.TELEGRAM, "main", DummyAdapter())
+        assert hub._last_processed_at is None
+        msg = make_message(platform=Platform.TELEGRAM, bot_id="main")
+        await hub.dispatch_response(msg, Response(content="ok"))
+        assert hub._last_processed_at is not None
+
+    async def test_no_update_last_processed_at_on_missing_adapter(self) -> None:
+        """dispatch_response does NOT update _last_processed_at on KeyError."""
+        hub = Hub()
+        assert hub._last_processed_at is None
+        msg = make_message(platform=Platform.TELEGRAM, bot_id="ghost")
+        with pytest.raises(KeyError):
+            await hub.dispatch_response(msg, Response(content="x"))
+        assert hub._last_processed_at is None
+
 
 # ---------------------------------------------------------------------------
 # T6 — Unmatched routing: log warning, message consumed, loop continues
@@ -580,6 +608,30 @@ class TestDispatchStreaming:
 
         await hub.dispatch_streaming(msg, gen())
         assert received == ["Hello", " world"]
+
+    async def test_updates_last_processed_at_on_streaming_success(self) -> None:
+        """dispatch_streaming sets _last_processed_at on successful stream."""
+        hub = Hub()
+
+        class StreamAdapter:
+            async def send(self, original_msg: Message, response: Response) -> None:
+                pass
+
+            async def send_streaming(
+                self, original_msg: Message, chunks: object
+            ) -> None:
+                async for _ in chunks:  # type: ignore[union-attr]
+                    pass
+
+        hub.register_adapter(Platform.TELEGRAM, "main", StreamAdapter())
+        assert hub._last_processed_at is None
+        msg = make_message(platform=Platform.TELEGRAM, bot_id="main")
+
+        async def gen():
+            yield "hi"
+
+        await hub.dispatch_streaming(msg, gen())
+        assert hub._last_processed_at is not None
 
     async def test_fallback_to_send_when_no_send_streaming(self) -> None:
         hub = Hub()

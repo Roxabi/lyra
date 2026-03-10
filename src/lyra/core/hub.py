@@ -229,6 +229,7 @@ class Hub:
                 "Call register_adapter() before dispatching responses."
             )
         await adapter.send(msg, response)
+        self._last_processed_at = time.monotonic()
 
     async def dispatch_streaming(
         self, msg: Message, chunks: AsyncIterator[str]
@@ -248,6 +249,7 @@ class Hub:
             async for chunk in chunks:
                 text += chunk
             await adapter.send(msg, Response(content=text))
+        self._last_processed_at = time.monotonic()
 
     # ------------------------------------------------------------------
     # Run loop
@@ -409,4 +411,3 @@ class Hub:
                             )
             finally:
                 self.bus.task_done()
-                self._last_processed_at = time.monotonic()

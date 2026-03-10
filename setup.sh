@@ -31,7 +31,18 @@ section "Base packages"
 sudo apt install -y \
   curl wget git htop nvtop \
   fail2ban ufw \
-  build-essential
+  build-essential \
+  ffmpeg
+
+section "moviepy (dedicated venv)"
+MOVIEPY_VENV="$HOME/.venvs/moviepy"
+if [ -x "$MOVIEPY_VENV/bin/python" ]; then
+  info "moviepy venv already exists."
+else
+  python3 -m venv "$MOVIEPY_VENV"
+  "$MOVIEPY_VENV/bin/pip" install moviepy
+  info "moviepy installed in $MOVIEPY_VENV (use $MOVIEPY_VENV/bin/python to run scripts)."
+fi
 
 section "NVIDIA drivers"
 if nvidia-smi &>/dev/null; then

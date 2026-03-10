@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lyra by Roxabi — Architecture Plan</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --font-body: 'Sora', system-ui, sans-serif;
+      --font-mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+
+      --bg: #fafaf8;
+      --bg-alt: #f0efeb;
+      --bg-hero: linear-gradient(135deg, #1a1a2e 0%, #16213e 40%, #0f3460 100%);
+      --surface: #ffffff;
+      --surface-elevated: #ffffff;
+      --surface-recessed: #f5f4f0;
+      --border: rgba(0, 0, 0, 0.07);
+      --border-bright: rgba(0, 0, 0, 0.14);
+      --text: #1a1a2e;
+      --text-dim: #64748b;
+      --text-muted: #94a3b8;
+
+      --amber: #d97706;
+      --amber-dim: rgba(217, 119, 6, 0.08);
+      --emerald: #059669;
+      --emerald-dim: rgba(5, 150, 105, 0.07);
+      --navy: #1e3a5f;
+      --navy-dim: rgba(30, 58, 95, 0.07);
+      --rose: #be123c;
+      --rose-dim: rgba(190, 18, 60, 0.06);
+      --sky: #0284c7;
+      --sky-dim: rgba(2, 132, 199, 0.07);
+      --purple: #7e22ce;
+      --purple-dim: rgba(126, 34, 206, 0.06);
+
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.04);
+      --shadow-md: 0 4px 14px rgba(0,0,0,0.06);
+      --shadow-lg: 0 8px 30px rgba(0,0,0,0.08);
+      --shadow-hero: 0 16px 56px rgba(0,0,0,0.12);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f0f14;
+        --bg-alt: #16161d;
+        --bg-hero: linear-gradient(135deg, #0a0a14 0%, #0d1525 40%, #0a1a30 100%);
+        --surface: #1a1a24;
+        --surface-elevated: #20202c;
+        --surface-recessed: #141418;
+        --border: rgba(255, 255, 255, 0.06);
+        --border-bright: rgba(255, 255, 255, 0.1);
+        --text: #e2e8f0;
+        --text-dim: #94a3b8;
+        --text-muted: #64748b;
+
+        --amber: #fbbf24;
+        --amber-dim: rgba(251, 191, 36, 0.1);
+        --emerald: #34d399;
+        --emerald-dim: rgba(52, 211, 153, 0.08);
+        --navy: #7db4e0;
+        --navy-dim: rgba(125, 180, 224, 0.08);
+        --rose: #fb7185;
+        --rose-dim: rgba(251, 113, 133, 0.08);
+        --sky: #38bdf8;
+        --sky-dim: rgba(56, 189, 248, 0.08);
+        --purple: #c084fc;
+        --purple-dim: rgba(192, 132, 252, 0.08);
+
+        --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+        --shadow-md: 0 4px 14px rgba(0,0,0,0.4);
+        --shadow-lg: 0 8px 30px rgba(0,0,0,0.5);
+        --shadow-hero: 0 16px 56px rgba(0,0,0,0.6);
+      }
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font-body);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+      overflow-x: hidden;
+    }
+
+    .container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+
+    /* ── NAV ── */
+    .nav {
+      position: sticky; top: 0; z-index: 100;
+      background: var(--bg); border-bottom: 1px solid var(--border);
+      padding: 0 24px; overflow-x: auto; -webkit-overflow-scrolling: touch;
+      backdrop-filter: blur(12px);
+    }
+    .nav__inner { max-width: 1200px; margin: 0 auto; display: flex; gap: 0; }
+    .nav__link {
+      font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.05em;
+      color: var(--text-dim); text-decoration: none; padding: 12px 12px;
+      white-space: nowrap; border-bottom: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .nav__link:hover { color: var(--text); border-bottom-color: var(--amber); }
+
+    /* ── HERO ── */
+    .hero {
+      background: var(--bg-hero);
+      padding: 72px 24px 56px;
+      margin-bottom: 48px;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::after {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      background: radial-gradient(ellipse 600px 400px at 70% 30%, rgba(217, 119, 6, 0.15), transparent);
+      pointer-events: none;
+    }
+    .hero__inner { max-width: 1200px; margin: 0 auto; position: relative; z-index: 1; }
+    .hero__label {
+      font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.15em;
+      text-transform: uppercase; color: var(--amber); margin-bottom: 12px;
+    }
+    .hero__title {
+      font-size: clamp(2.4rem, 5.5vw, 3.8rem); font-weight: 300;
+      line-height: 1.1; color: #f1f5f9; margin-bottom: 16px;
+    }
+    .hero__title strong { font-weight: 600; }
+    .hero__subtitle { font-size: 1.1rem; color: #94a3b8; max-width: 650px; margin-bottom: 28px; }
+    .hero__stats {
+      display: flex; gap: 32px; flex-wrap: wrap;
+    }
+    .hero__stat { text-align: left; }
+    .hero__stat-value {
+      font-family: var(--font-mono); font-size: 1.6rem; font-weight: 600;
+      color: #f1f5f9;
+    }
+    .hero__stat-label {
+      font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em;
+      text-transform: uppercase; color: #64748b;
+    }
+
+    /* ── SECTIONS ── */
+    .section { margin-bottom: 56px; }
+    .section__label {
+      font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.1em;
+      text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .section__label::before {
+      content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--amber);
+    }
+    .section__title { font-size: 1.7rem; font-weight: 500; margin-bottom: 12px; line-height: 1.2; }
+    .section__desc { color: var(--text-dim); font-size: 1rem; max-width: 700px; margin-bottom: 24px; }
+
+    /* ── CARDS ── */
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 24px; box-shadow: var(--shadow-sm); min-width: 0;
+      overflow-wrap: break-word; word-break: break-word;
+    }
+    .card--elevated { box-shadow: var(--shadow-md); border-color: var(--border-bright); }
+    .card--hero { box-shadow: var(--shadow-hero); border-color: var(--border-bright); }
+    .card--amber { border-left: 3px solid var(--amber); }
+    .card--emerald { border-left: 3px solid var(--emerald); }
+    .card--sky { border-left: 3px solid var(--sky); }
+    .card--navy { border-left: 3px solid var(--navy); }
+    .card--rose { border-left: 3px solid var(--rose); }
+    .card--purple { border-left: 3px solid var(--purple); }
+    .card__label {
+      font-family: var(--font-mono); font-size: 10px; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 8px;
+    }
+    .card__title { font-size: 1.15rem; font-weight: 500; margin-bottom: 8px; }
+    .card__text { color: var(--text-dim); font-size: 0.92rem; }
+
+    /* ── GRIDS ── */
+    .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 20px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 20px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 16px; }
+
+    /* ── CODE ── */
+    code {
+      font-family: var(--font-mono); font-size: 0.82em;
+      background: var(--navy-dim); padding: 2px 6px; border-radius: 3px;
+    }
+    pre {
+      font-family: var(--font-mono); font-size: 12.5px; line-height: 1.55;
+      background: var(--surface-recessed); border: 1px solid var(--border);
+      border-radius: 8px; padding: 16px; overflow-x: auto;
+      white-space: pre-wrap; word-break: break-word;
+    }
+    .code-header { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+
+    /* ── TABLES ── */
+    .table-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid var(--border); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+    thead { position: sticky; top: 0; z-index: 2; }
+    th {
+      background: var(--surface-elevated); font-family: var(--font-mono);
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--text-dim); padding: 10px 14px; text-align: left;
+      border-bottom: 1px solid var(--border-bright); white-space: nowrap;
+    }
+    td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    tr:nth-child(even) td { background: var(--bg-alt); }
+    tr:hover td { background: var(--amber-dim); }
+
+    /* ── TAGS ── */
+    .tag {
+      font-family: var(--font-mono); font-size: 10px; padding: 2px 8px;
+      border-radius: 4px; display: inline-block; white-space: nowrap;
+    }
+    .tag--amber { background: var(--amber-dim); color: var(--amber); }
+    .tag--emerald { background: var(--emerald-dim); color: var(--emerald); }
+    .tag--sky { background: var(--sky-dim); color: var(--sky); }
+    .tag--navy { background: var(--navy-dim); color: var(--navy); }
+    .tag--rose { background: var(--rose-dim); color: var(--rose); }
+    .tag--purple { background: var(--purple-dim); color: var(--purple); }
+
+    /* ── FLOW STEPS ── */
+    .flow-steps { list-style: none; padding: 0; counter-reset: step; }
+    .flow-steps li {
+      position: relative; padding: 6px 0 6px 36px; counter-increment: step;
+      color: var(--text-dim); font-size: 0.92rem;
+    }
+    .flow-steps li::before {
+      content: counter(step); position: absolute; left: 0; top: 6px;
+      width: 22px; height: 22px; border-radius: 50%;
+      background: var(--amber-dim); color: var(--amber);
+      font-family: var(--font-mono); font-size: 11px;
+      display: flex; align-items: center; justify-content: center;
+      border: 1px solid var(--border);
+    }
+
+    /* ── CALLOUTS ── */
+    .callout { border-left: 3px solid; padding: 16px 20px; border-radius: 0 8px 8px 0; margin: 16px 0; }
+    .callout--amber { border-color: var(--amber); background: var(--amber-dim); }
+    .callout--emerald { border-color: var(--emerald); background: var(--emerald-dim); }
+    .callout--rose { border-color: var(--rose); background: var(--rose-dim); }
+    .callout--sky { border-color: var(--sky); background: var(--sky-dim); }
+    .callout__title {
+      font-family: var(--font-mono); font-size: 11px; text-transform: uppercase;
+      letter-spacing: 0.08em; margin-bottom: 4px;
+    }
+    .callout--amber .callout__title { color: var(--amber); }
+    .callout--emerald .callout__title { color: var(--emerald); }
+    .callout--rose .callout__title { color: var(--rose); }
+    .callout--sky .callout__title { color: var(--sky); }
+    .callout__text { font-size: 0.92rem; color: var(--text-dim); }
+
+    /* ── MERMAID ── */
+    .mermaid-wrap {
+      position: relative; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 24px; overflow: hidden; cursor: grab;
+    }
+    .mermaid-wrap:active { cursor: grabbing; }
+    .mermaid-inner { overflow: auto; display: flex; justify-content: center; min-height: 200px; }
+    .mermaid-controls {
+      position: absolute; top: 12px; right: 12px; display: flex; gap: 4px; z-index: 5;
+    }
+    .mermaid-controls button {
+      width: 28px; height: 28px; border-radius: 6px;
+      border: 1px solid var(--border-bright); background: var(--surface);
+      color: var(--text-dim); font-family: var(--font-mono); font-size: 14px;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      transition: background 0.15s;
+    }
+    .mermaid-controls button:hover { background: var(--amber-dim); color: var(--text); }
+    .mermaid-caption {
+      font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);
+      text-align: center; margin-top: 12px;
+    }
+    .mermaid .nodeLabel { color: var(--text) !important; }
+    .mermaid .edgeLabel { color: var(--text-dim) !important; background-color: var(--bg) !important; }
+    .mermaid .edgeLabel rect { fill: var(--bg) !important; }
+    .mermaid .node rect, .mermaid .node circle, .mermaid .node polygon { stroke-width: 1.5px; }
+    .mermaid .edge-pattern-solid { stroke-width: 1.5px; }
+    .mermaid .edgeLabel { font-family: var(--font-mono) !important; font-size: 12px !important; }
+    .mermaid .nodeLabel { font-family: var(--font-body) !important; font-size: 14px !important; }
+
+    /* ── PHASE INDICATOR ── */
+    .phase { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 11px; }
+    .phase__dot { width: 8px; height: 8px; border-radius: 50%; }
+    .phase--done .phase__dot { background: var(--emerald); }
+    .phase--wip .phase__dot { background: var(--amber); }
+    .phase--planned .phase__dot { background: var(--text-muted); }
+
+    /* ── DETAILS ── */
+    details { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin: 12px 0; }
+    details summary {
+      padding: 12px 16px; font-family: var(--font-mono); font-size: 13px;
+      cursor: pointer; background: var(--surface); color: var(--text-dim); list-style: none;
+    }
+    details summary::before { content: '+ '; color: var(--amber); }
+    details[open] summary::before { content: '- '; }
+    details > div { padding: 16px; background: var(--surface-recessed); }
+
+    /* ── ANIMATIONS ── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-in { opacity: 0; animation: fadeUp 0.5s ease-out forwards; }
+    .animate-in:nth-child(1) { animation-delay: 0.05s; }
+    .animate-in:nth-child(2) { animation-delay: 0.1s; }
+    .animate-in:nth-child(3) { animation-delay: 0.15s; }
+    .animate-in:nth-child(4) { animation-delay: 0.2s; }
+    .animate-in:nth-child(5) { animation-delay: 0.25s; }
+    .animate-in:nth-child(6) { animation-delay: 0.3s; }
+    @media (prefers-reduced-motion: reduce) { .animate-in { opacity: 1; animation: none; } }
+  </style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav__inner">
+    <a href="#architecture" class="nav__link">Architecture</a>
+    <a href="#bus" class="nav__link">Bus</a>
+    <a href="#channels" class="nav__link">Channels</a>
+    <a href="#agents" class="nav__link">Agents</a>
+    <a href="#memory" class="nav__link">Memory</a>
+    <a href="#plugins" class="nav__link">Plugins</a>
+    <a href="#config" class="nav__link">Config</a>
+    <a href="#resilience" class="nav__link">Resilience</a>
+    <a href="#infra" class="nav__link">Infrastructure</a>
+    <a href="#roadmap" class="nav__link">Roadmap</a>
+  </div>
+</nav>
+
+<!-- ════════════════════ HERO ════════════════════ -->
+<div class="hero">
+  <div class="hero__inner">
+    <div class="hero__label">Architecture Plan</div>
+    <h1 class="hero__title"><strong>Lyra</strong> by Roxabi</h1>
+    <p class="hero__subtitle">Personal AI agent engine. Hub-and-spoke, asyncio, multi-channel. Designed for self-hosted use on your own hardware with privacy-first design.</p>
+    <div class="hero__stats">
+      <div class="hero__stat">
+        <div class="hero__stat-value">~300</div>
+        <div class="hero__stat-label">Lines (Hub Core)</div>
+      </div>
+      <div class="hero__stat">
+        <div class="hero__stat-value">2</div>
+        <div class="hero__stat-label">Channels</div>
+      </div>
+      <div class="hero__stat">
+        <div class="hero__stat-value">3</div>
+        <div class="hero__stat-label">LLM Backends</div>
+      </div>
+      <div class="hero__stat">
+        <div class="hero__stat-value">2</div>
+        <div class="hero__stat-label">Machines</div>
+      </div>
+      <div class="hero__stat">
+        <div class="hero__stat-value">5</div>
+        <div class="hero__stat-label">Memory Levels</div>
+      </div>
+      <div class="hero__stat">
+        <div class="hero__stat-value">P1</div>
+        <div class="hero__stat-label">Current Phase</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- ════════════════════ 1. ARCHITECTURE ════════════════════ -->
+  <section class="section" id="architecture">
+    <div class="section__label">System 01</div>
+    <h2 class="section__title">Hub-and-Spoke Architecture</h2>
+    <p class="section__desc">Lightweight core (~300 lines) with a bounded asyncio.Queue bus. Adapters produce, hub consumes. Stateless agents, stateful pools. Sequential per-user, parallel across users.</p>
+
+    <div class="mermaid-wrap card--hero" style="margin-bottom: 24px;">
+      <div class="mermaid-controls">
+        <button onclick="zoomMermaid(this, 1.2)" title="Zoom in">+</button>
+        <button onclick="zoomMermaid(this, 0.8)" title="Zoom out">-</button>
+        <button onclick="resetZoom(this)" title="Reset">0</button>
+        <button onclick="openMermaidInNewTab(this)" title="Expand">&#x26F6;</button>
+      </div>
+      <div class="mermaid-inner">
+        <pre class="mermaid">
+flowchart TD
+  TG["Telegram<br/>aiogram v3"] --> BUS["asyncio.Queue<br/>maxsize=100"]
+  DC["Discord<br/>discord.py v2"] --> BUS
+  FUT["Signal, WhatsApp..."] -.-> BUS
+  BUS --> HUB["Hub.run<br/>single consumer"]
+  HUB --> BIND["resolve_binding<br/>exact or wildcard"]
+  BIND --> POOL["get_or_create_pool<br/>per-user state + lock"]
+  POOL --> CMD{"/command?"}
+  CMD -->|yes| ROUTER["CommandRouter<br/>builtin + plugins"]
+  CMD -->|no| AGENT["Agent.process<br/>under pool.lock"]
+  AGENT --> RESP["Response"]
+  ROUTER --> RESP
+  RESP --> SEND["adapter.send<br/>back to channel"]
+
+  classDef hub fill:#d9770622,stroke:#d97706,stroke-width:2px
+  classDef channel fill:#05966922,stroke:#059669,stroke-width:1.5px
+  classDef agent fill:#1e3a5f22,stroke:#1e3a5f,stroke-width:1.5px
+  classDef future fill:#64748b11,stroke:#64748b44,stroke-dasharray:5 5
+  class BUS,HUB,BIND,POOL hub
+  class TG,DC channel
+  class CMD,ROUTER,AGENT,RESP,SEND agent
+  class FUT future
+        </pre>
+      </div>
+      <div class="mermaid-caption">Hub-and-spoke: adapters produce messages onto bounded bus, hub consumes and routes to agents via pools</div>
+    </div>
+
+    <div class="grid-3" style="margin-bottom: 24px;">
+      <div class="card card--elevated card--amber animate-in">
+        <div class="card__label">Hub</div>
+        <h3 class="card__title">Central Dispatcher</h3>
+        <p class="card__text">Single consumer loop pops messages from the bounded bus. Resolves bindings (exact key or wildcard fallback), creates/retrieves pools, dispatches to agents or command router.</p>
+      </div>
+      <div class="card card--elevated card--emerald animate-in">
+        <div class="card__label">Adapters (Spokes)</div>
+        <h3 class="card__title">Channel Producers</h3>
+        <p class="card__text">Each adapter runs as independent asyncio task. Normalizes platform-specific messages into unified <code>Message</code> format. Verifies identity before constructing Message (security contract).</p>
+      </div>
+      <div class="card card--elevated card--navy animate-in">
+        <div class="card__label">Pools</div>
+        <h3 class="card__title">Per-User State</h3>
+        <p class="card__text">Mutable state lives in per-user Pool: history, message deque (50 turns), asyncio.Lock. Sequential processing per user, parallel across users. Zero race conditions.</p>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom: 24px;">
+      <div class="card__label">Key Files</div>
+      <div class="code-header">src/lyra/core/</div>
+      <pre>hub.py              # Bus, adapter registry, bindings, pools, rate limiting (~300 lines)
+message.py          # Unified Message, Response, Platform enums
+pool.py             # Per-user state (history, lock)
+agent.py            # AgentBase, config loading, hot-reload
+cli_pool.py         # Persistent Claude CLI subprocess pool
+command_router.py   # Slash command dispatch to plugins
+plugin_loader.py    # TOML manifest + dynamic handler loading
+circuit_breaker.py  # Resilience (CLOSED → OPEN → HALF_OPEN)</pre>
+    </div>
+  </section>
+
+  <!-- ════════════════════ 2. BUS ════════════════════ -->
+  <section class="section" id="bus">
+    <div class="section__label">System 02</div>
+    <h2 class="section__title">The Bus</h2>
+    <p class="section__desc">Bounded asyncio.Queue with backpressure handling. Never drops messages — queues, acknowledges, and waits.</p>
+
+    <div class="grid-2" style="margin-bottom: 24px;">
+      <div class="card card--elevated animate-in">
+        <div class="card__label">Design</div>
+        <h3 class="card__title">Bounded Queue (100 slots)</h3>
+        <ul class="flow-steps">
+          <li><strong>Multiple producers</strong> &mdash; each adapter pushes normalized messages</li>
+          <li><strong>Single consumer</strong> &mdash; Hub.run() loop pops and processes</li>
+          <li><strong>Backpressure</strong> &mdash; queue full → adapter sends "message received, ~Xs wait" ack, then blocks on <code>await bus.put()</code></li>
+          <li><strong>No message drops</strong> &mdash; queues instead of discarding</li>
+        </ul>
+      </div>
+      <div class="card card--elevated animate-in">
+        <div class="card__label">Rate Limiting</div>
+        <h3 class="card__title">Per-User Sliding Window</h3>
+        <ul class="flow-steps">
+          <li><strong>20 messages / 60 seconds</strong> per user</li>
+          <li>Enforced via <code>Hub._is_rate_limited()</code> with deque sliding window</li>
+          <li>Inactive users auto-cleaned when deque empties</li>
+          <li>Prevents abuse without penalizing normal usage</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="callout callout--amber">
+      <div class="callout__title">Design Rationale</div>
+      <div class="callout__text">At personal scale (1&ndash;5 users), a simple <code>asyncio.Queue</code> is sufficient. No external message broker needed. The bounded size (100) provides backpressure. Phase 2 will add NATS for inter-machine coordination when Machine 2 comes online.</div>
+    </div>
+  </section>
+
+  <!-- ════════════════════ 3. CHANNELS ════════════════════ -->
+  <section class="section" id="channels">
+    <div class="section__label">System 03</div>
+    <h2 class="section__title">Channel Adapters</h2>
+    <p class="section__desc">Two adapters implemented (Telegram, Discord). Clean ChannelAdapter protocol for extensibility.</p>
+
+    <div class="grid-2" style="margin-bottom: 24px;">
+      <div class="card card--elevated card--emerald animate-in">
+        <div class="card__label">Telegram</div>
+        <h3 class="card__title">aiogram v3</h3>
+        <p class="card__text" style="margin-bottom: 12px;">Supports both long-polling and webhook modes. Webhook at <code>/webhooks/telegram/{bot_id}</code> with secret token validation.</p>
+        <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+          <span class="tag tag--emerald">Polling</span>
+          <span class="tag tag--emerald">Webhook</span>
+          <span class="tag tag--emerald">4096 char limit</span>
+          <span class="tag tag--emerald">Groups</span>
+          <span class="tag tag--emerald">Topics</span>
+        </div>
+      </div>
+      <div class="card card--elevated card--sky animate-in">
+        <div class="card__label">Discord</div>
+        <h3 class="card__title">discord.py v2</h3>
+        <p class="card__text" style="margin-bottom: 12px;">Gateway WebSocket connection. Message Content Intent required. Multi-channel support (text, thread, forum, voice).</p>
+        <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+          <span class="tag tag--sky">Gateway WS</span>
+          <span class="tag tag--sky">2000 char limit</span>
+          <span class="tag tag--sky">Threads</span>
+          <span class="tag tag--sky">Mentions</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom: 24px;">
+      <div class="card__label">Adapter Protocol</div>
+      <pre>class ChannelAdapter(Protocol):
+    async def send(self, msg: Message, response: Response) -> None: ...
+    async def send_streaming(self, msg: Message, chunks: AsyncIterator) -> None: ...
+    # Optional streaming support for real-time output
+
+# Registration in hub:
+hub.adapter_registry[(Platform.TELEGRAM, bot_id)] = telegram_adapter
+hub.adapter_registry[(Platform.DISCORD, bot_id)] = discord_adapter
+
+# User ID format:
+#   Telegram: "tg:user:{user_id}"
+#   Discord:  "dc:user:{author.id}"</pre>
+    </div>
+
+    <div class="card" style="margin-bottom: 24px;">
+      <div class="card__label">Binding Resolution</div>
+      <pre># RoutingKey = (Platform, bot_id, user_id)
+# Bindings map RoutingKey → agent_name
+
+# Resolution order:
+#   1. Exact match: (Platform.TELEGRAM, "bot123", "tg:user:456")
+#   2. Wildcard fallback: (Platform.TELEGRAM, "bot123", "*")
+#   → Returns agent_name for pool creation</pre>
+    </div>
+  </section>
+
+  <!-- ════════════════════ 4. AGENTS ════════════════════ -->
+  <section class="section" id="agents">
+    <div class="section__label">System 04</div>
+    <h2 class="section__title">Agent Backends</h2>
+    <p class="section__desc">Stateless agent processors with hot-reloadable TOML configuration. Three backend options for different use cases.</p>
+
+    <div class="mermaid-wrap card--elevated" style="margin-bottom: 24px;">
+      <div class="mermaid-controls">
+        <button onclick="zoomMermaid(this, 1.2)" title="Zoom in">+</button>
+        <button onclick="zoomMermaid(this, 0.8)" title="Zoom out">-</button>
+        <button onclick="resetZoom(this)" title="Reset">0</button>
+        <button onclick="openMermaidInNewTab(this)" title="Expand">&#x26F6;</button>
+      </div>
+      <div class="mermaid-inner">
+        <pre class="mermaid">
+flowchart TD
+  MSG["Message from Pool"] --> TOML["Agent TOML Config<br/>hot-reloadable"]
+  TOML --> BE{backend?}
+  BE -->|claude-cli| CLI["CliPool<br/>persistent subprocess"]
+  BE -->|anthropic-sdk| SDK["AsyncAnthropic<br/>streaming + tools"]
+  BE -->|ollama| OLL["Ollama<br/>local LLM on Machine 2"]
+  CLI --> NDJSON["NDJSON stream<br/>stdin/stdout"]
+  SDK --> STREAM["Async generator<br/>text chunks"]
+  OLL -.-> HTTP2["httpx async<br/>OpenAI-compat API"]
+  NDJSON --> RESP["Response"]
+  STREAM --> RESP
+  HTTP2 -.-> RESP
+
+  classDef config fill:#d9770622,stroke:#d97706,stroke-width:2px
+  classDef backend fill:#05966922,stroke:#059669,stroke-width:1.5px
+  classDef future fill:#64748b11,stroke:#64748b44,stroke-dasharray:5 5
+  class MSG,TOML,BE config
+  class CLI,SDK,NDJSON,STREAM,RESP backend
+  class OLL,HTTP2 future
+        </pre>
+      </div>
+      <div class="mermaid-caption">Agent backend selection: TOML config determines which LLM backend processes each message</div>
+    </div>
+
+    <div class="grid-3" style="margin-bottom: 24px;">
+      <div class="card card--elevated card--amber animate-in">
+        <div class="card__label">Default &mdash; Phase 1</div>
+        <h3 class="card__title">Claude CLI</h3>
+        <p class="card__text">Persistent <code>claude</code> subprocess per pool_id. NDJSON protocol over stdin/stdout. Avoids ~12s Node.js startup per message. Idle reaper kills after 20min. Session resume via <code>--resume</code>.</p>
+        <div style="margin-top: 8px;"><span class="phase phase--done"><span class="phase__dot"></span>Implemented</span></div>
+      </div>
+      <div class="card card--elevated card--emerald animate-in">
+        <div class="card__label">Production &mdash; Phase 1b</div>
+        <h3 class="card__title">Anthropic SDK</h3>
+        <p class="card__text">Direct <code>anthropic.AsyncAnthropic</code> client. Streaming support (async generator yields text chunks). Tool use support. Records success/failure for circuit breaker.</p>
+        <div style="margin-top: 8px;"><span class="phase phase--done"><span class="phase__dot"></span>Implemented</span></div>
+      </div>
+      <div class="card card--elevated animate-in" style="border-left: 3px solid var(--text-muted);">
+        <div class="card__label">Local &mdash; Phase 2</div>
+        <h3 class="card__title">Ollama</h3>
+        <p class="card__text">Local LLM on Machine 2 (RTX 5070Ti). Qwen 2.5 14B or Gemma 3 27B. OpenAI-compatible API via httpx. Fallback for cost control and privacy.</p>
+        <div style="margin-top: 8px;"><span class="phase phase--planned"><span class="phase__dot"></span>Phase 2</span></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom: 24px;">
+      <div class="card__label">Tool Security</div>
+      <pre># Explicit allowlist prevents prompt injection → RCE
+[model]
+tools = ["Read", "Grep", "Glob", "WebFetch", "WebSearch"]
+# ↑ No Bash, no Write — safe defaults
+
+# Passed to Claude CLI as:
+#   --allowedTools Read,Grep,Glob,WebFetch,WebSearch
+
+# Anthropic SDK: built-in get_time tool only (hardcoded)</pre>
+    </div>
+  </section>
+
+  <!-- ════════════════════ 5. MEMORY ════════════════════ -->
+  <section class="section" id="memory">
+    <div class="section__label">System 05</div>
+    <h2 class="section__title">Memory System</h2>
+    <p class="section__desc">Five-level memory architecture. Phase 1 implements levels 0 (working) and 3 (semantic via roxabi_memory). Full cascade planned for Phase 2.</p>
+
+    <div class="table-wrap" style="margin-bottom: 24px;">
+      <table>
+        <thead>
+          <tr><th>Level</th><th>Name</th><th>Implementation</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="tag tag--emerald">0</span></td>
+            <td><strong>Working Memory</strong></td>
+            <td>Active context window in LLM</td>
+            <td><span class="phase phase--done"><span class="phase__dot"></span>Done</span></td>
+          </tr>
+          <tr>
+            <td><span class="tag tag--amber">1</span></td>
+            <td><strong>Session Memory</strong></td>
+            <td>Multi-turn state per pool (deque, 50 turns)</td>
+            <td><span class="phase phase--wip"><span class="phase__dot"></span>Phase 2</span></td>
+          </tr>
+          <tr>
+            <td><span class="tag tag--amber">2</span></td>
+            <td><strong>Episodic Memory</strong></td>
+            <td>Dated Markdown files</td>
+            <td><span class="phase phase--wip"><span class="phase__dot"></span>Phase 2</span></td>
+          </tr>
+          <tr>
+            <td><span class="tag tag--emerald">3</span></td>
+            <td><strong>Semantic Memory</strong></td>
+            <td>SQLite + BM25 + embeddings (<code>roxabi_memory</code>)</td>
+            <td><span class="phase phase--done"><span class="phase__dot"></span>Integrating</span></td>
+          </tr>
+          <tr>
+            <td><span class="tag tag--navy">4</span></td>
+            <td><strong>Procedural Memory</strong></td>
+            <td>Learned skills, preferences</td>
+            <td><span class="phase phase--planned"><span class="phase__dot"></span>Phase 3</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="grid-2" style="margin-bottom: 24px;">
+      <div class="card card--elevated animate-in">
+        <div class="card__label">Pool History (L0)</div>
+        <h3 class="card__title">Working Memory</h3>
+        <p class="card__text"><code>list[Message]</code> + <code>deque[dict]</code> (SDK format, capped at 50 turns). Consolidation planned: time-decay on old turns, auto-compaction when context window limit approaches, L0→L3 cascade.</p>
+      </div>
+      <div class="card card--elevated animate-in">
+        <div class="card__label">roxabi_memory (L3)</div>
+        <h3 class="card__title">Semantic Memory</h3>
+        <p class="card__text">Separate package imported via <code>uv.sources</code>. Vault at <code>$ROXABI_VAULT_DIR</code> (default <code>~/.roxabi-vault</code>). Personas loaded from <code>personas/</code> dir. URL dedup via indexed normalized_url columns.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════ 6. PLUGINS ════════════════════ -->
+  <section class="section" id="plugins">
+    <div class="section__label">System 06</div>
+    <h2 class="section__title">Plugin System</h2>
+    <p class="section__desc">Directory-based plugin architecture with TOML manifests, dynamic handler loading, and hot-reload support.</p>
+
+    <div class="grid-2" style="margin-bottom: 24px;">
+      <div class="card card--elevated animate-in">
+        <div class="card__label">Plugin Structure</div>
+        <pre>plugins/
+└── echo/
+    ├── plugin.toml    # Manifest
+    └── handlers.py    # Async handlers
+
+# plugin.toml:
+name = "echo"
+version = "0.1.0"
+priority = 100
+enabled = true
+timeout = 5.0
+
+[[commands]]
+name = "echo"
+handler = "cmd_echo"</pre>
+      </div>
+      <div class="card card--elevated animate-in">
+        <div class="card__label">Handler Signature</div>
+        <pre>async def cmd_echo(
+    msg: Message,
+    pool: Pool,
+    args: list[str]
+) -> Response:
+    return Response(content=" ".join(args))
+
+# PluginLoader methods:
+#   discover()  → scan plugins_dir
+#   load(name)  → import + validate
+#   reload(name) → hot-reload module
+#   get_commands(enabled_list) → handler dict</pre>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom: 24px;">
+      <div class="card__label">Command Router</div>
+      <p class="card__text" style="margin-bottom: 12px;">Detects <code>/command</code> messages via regex. Routes builtins (<code>/help</code>, <code>/circuit</code>) and plugin commands. Admin-only commands gated by <code>_admin_user_ids</code> set.</p>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+        <span class="tag tag--amber">/help — list commands</span>
+        <span class="tag tag--rose">/circuit — admin circuit status</span>
+        <span class="tag tag--emerald">/echo — plugin example</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════ 7. CONFIG ════════════════════ -->
+  <section class="section" id="config">
+    <div class="section__label">System 07</div>
+    <h2 class="section__title">Configuration</h2>
+    <p class="section__desc">Three-tier configuration: env vars for secrets, TOML for agent config, separate TOML for circuit breaker. All hot-reloadable.</p>
+
+    <div class="grid-3" style="margin-bottom: 24px;">
+      <div class="card card--elevated card--rose animate-in">
+        <div class="card__label">Tier 1 &mdash; Secrets</div>
+        <h3 class="card__title">.env File</h3>
+        <p class="card__text"><code>TELEGRAM_TOKEN</code>, <code>DISCORD_TOKEN</code>, <code>ANTHROPIC_API_KEY</code>, <code>ROXABI_VAULT_DIR</code>. Never in TOML.</p>
+      </div>
+      <div class="card card--elevated card--amber animate-in">
+        <div class="card__label">Tier 2 &mdash; Agent</div>
+        <h3 class="card__title">Agent TOML</h3>
+        <p class="card__text"><code>[agent]</code> name, persona. <code>[model]</code> backend, model, tools. <code>[prompt]</code> system. <code>[plugins]</code> enabled list. Hot-reload on mtime change.</p>
+      </div>
+      <div class="card card--elevated card--navy animate-in">
+        <div class="card__label">Tier 3 &mdash; System</div>
+        <h3 class="card__title">lyra.toml</h3>
+        <p class="card__text"><code>[circuit_breaker.*]</code> failure_threshold, recovery_timeout. <code>[admin]</code> user_ids. System-wide settings.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════ 8. RESILIENCE ════════════════════ -->
+  <section class="section" id="resilience">
+    <div class="section__label">System 08</div>
+    <h2 class="section__title">Resilience Patterns</h2>
+    <p class="section__desc">Circuit breaker, hot-reload, rate limiting, backpressure handling. Production-grade reliability without external infrastructure.</p>
+
+    <div class="mermaid-wrap card--elevated" style="margin-bottom: 24px;">
+      <div class="mermaid-controls">
+        <button onclick="zoomMermaid(this, 1.2)" title="Zoom in">+</button>
+        <button onclick="zoomMermaid(this, 0.8)" title="Zoom out">-</button>
+        <button onclick="resetZoom(this)" title="Reset">0</button>
+        <button onclick="openMermaidInNewTab(this)" title="Expand">&#x26F6;</button>
+      </div>
+      <div class="mermaid-inner">
+        <pre class="mermaid">
+stateDiagram-v2
+  [*] --> CLOSED
+  CLOSED --> OPEN : failures >= threshold
+  OPEN --> HALF_OPEN : recovery_timeout elapsed
+  HALF_OPEN --> CLOSED : probe succeeds
+  HALF_OPEN --> OPEN : probe fails
+        </pre>
+      </div>
+      <div class="mermaid-caption">Circuit breaker state machine: fast-fail when providers are down, probe for recovery</div>
+    </div>
+
+    <div class="grid-2" style="margin-bottom: 24px;">
+      <div class="card animate-in">
+        <div class="card__label">Circuit Breaker</div>
+        <ul class="flow-steps">
+          <li><strong>Per-provider</strong> circuits (anthropic, telegram)</li>
+          <li><strong>Configurable thresholds</strong> (default: 5 failures)</li>
+          <li><strong>Recovery timeout</strong> (default: 60 seconds)</li>
+          <li><strong>Half-open probes</strong> allow single request through</li>
+          <li><strong>Admin visibility</strong> via <code>/circuit</code> command</li>
+        </ul>
+      </div>
+      <div class="card animate-in">
+        <div class="card__label">Hot-Reload</div>
+        <ul class="flow-steps">
+          <li><strong>Agent TOML</strong> &mdash; reloaded on file mtime change</li>
+          <li><strong>Persona files</strong> &mdash; reloaded if changed</li>
+          <li><strong>Plugin handlers.py</strong> &mdash; reloaded without restart</li>
+          <li><strong>CliPool respawn</strong> &mdash; on system_prompt change</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════ 9. INFRASTRUCTURE ════════════════════ -->
+  <section class="section" id="infra">
+    <div class="section__label">System 09</div>
+    <h2 class="section__title">Hardware Infrastructure</h2>
+    <p class="section__desc">Two-machine architecture: always-on hub + on-demand AI server. Eliminates VRAM contention, enables per-role optimization.</p>
+
+    <div class="grid-2" style="margin-bottom: 24px;">
+      <div class="card card--hero card--amber animate-in">
+        <div class="card__label">Machine 1 &mdash; Hub (24/7)</div>
+        <h3 class="card__title">roxabituwer &mdash; 192.168.1.16</h3>
+        <p class="card__text" style="margin-bottom: 12px;">Ubuntu Server 24.04 LTS</p>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.88rem;">
+          <div><span style="color: var(--text-muted);">CPU</span><br>Ryzen 7 5800X</div>
+          <div><span style="color: var(--text-muted);">RAM</span><br>32 GB</div>
+          <div><span style="color: var(--text-muted);">GPU</span><br>RTX 3080 (10GB)</div>
+          <div><span style="color: var(--text-muted);">Role</span><br>Channels, hub, DB, TTS, embeddings</div>
+        </div>
+      </div>
+      <div class="card card--hero card--sky animate-in">
+        <div class="card__label">Machine 2 &mdash; AI Server (On-Demand)</div>
+        <h3 class="card__title">ROXABITOWER</h3>
+        <p class="card__text" style="margin-bottom: 12px;">Windows + WSL2</p>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.88rem;">
+          <div><span style="color: var(--text-muted);">CPU</span><br>Ryzen 7 9800X3D</div>
+          <div><span style="color: var(--text-muted);">RAM</span><br>32 GB</div>
+          <div><span style="color: var(--text-muted);">GPU</span><br>RTX 5070Ti (16GB)</div>
+          <div><span style="color: var(--text-muted);">Role</span><br>Heavy LLM (Qwen 14B / Gemma 27B)</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout--amber">
+      <div class="callout__title">Inter-Machine Communication</div>
+      <div class="callout__text"><code>httpx</code> async HTTP/2 over local network. No gRPC (unnecessary at personal scale). Phase 2 adds NATS for coordination. Cloud API (Anthropic) fallback if Machine 2 is down.</div>
+    </div>
+  </section>
+
+  <!-- ════════════════════ 10. ROADMAP ════════════════════ -->
+  <section class="section" id="roadmap">
+    <div class="section__label">Roadmap</div>
+    <h2 class="section__title">Implementation Phases</h2>
+
+    <div class="grid-3" style="margin-bottom: 24px;">
+      <div class="card card--elevated card--emerald animate-in">
+        <div class="card__label">Phase 1 &mdash; Core</div>
+        <h3 class="card__title">Foundation</h3>
+        <ul class="flow-steps">
+          <li><span class="phase phase--done"><span class="phase__dot"></span></span> Hub + asyncio bus</li>
+          <li><span class="phase phase--done"><span class="phase__dot"></span></span> Telegram + Discord adapters</li>
+          <li><span class="phase phase--done"><span class="phase__dot"></span></span> Claude CLI + Anthropic SDK agents</li>
+          <li><span class="phase phase--done"><span class="phase__dot"></span></span> Plugin system + command router</li>
+          <li><span class="phase phase--done"><span class="phase__dot"></span></span> Circuit breaker + hot-reload</li>
+          <li><span class="phase phase--wip"><span class="phase__dot"></span></span> Semantic memory (roxabi_memory)</li>
+          <li><span class="phase phase--wip"><span class="phase__dot"></span></span> Agent persona system</li>
+        </ul>
+      </div>
+      <div class="card card--elevated card--amber animate-in">
+        <div class="card__label">Phase 2 &mdash; Intelligence</div>
+        <h3 class="card__title">Local LLM + Memory</h3>
+        <ul class="flow-steps">
+          <li><span class="phase phase--planned"><span class="phase__dot"></span></span> Ollama on Machine 2</li>
+          <li><span class="phase phase--planned"><span class="phase__dot"></span></span> NATS inter-machine bus</li>
+          <li><span class="phase phase--planned"><span class="phase__dot"></span></span> Atomic SLMs (routing, planning)</li>
+          <li><span class="phase phase--planned"><span class="phase__dot"></span></span> CognitiveFrame exchange</li>
+          <li><span class="phase phase--planned"><span class="phase__dot"></span></span> Voice pipeline (TTS/STT)</li>
+          <li><span class="phase phase--planned"><span class="phase__dot"></span></span> Session + episodic memory</li>
+        </ul>
+      </div>
+      <div class="card card--elevated animate-in" style="border-left: 3px solid var(--text-muted);">
+        <div class="card__label">Phase 3 &mdash; Autonomy</div>
+        <h3 class="card__title">Multi-Agent + Product</h3>
+        <ul class="flow-steps">
+          <li><span class="phase phase--planned"><span class="phase__dot"></span></span> Knowledge graph</li>
+          <li><span class="phase phase--planned"><span class="phase__dot"></span></span> Hash-chained audit trail</li>
+          <li><span class="phase phase--planned"><span class="phase__dot"></span></span> Multi-agent orchestration</li>
+          <li><span class="phase phase--planned"><span class="phase__dot"></span></span> Procedural memory (L4)</li>
+          <li><span class="phase phase--planned"><span class="phase__dot"></span></span> LegalTech SaaS launch</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="callout callout--emerald">
+      <div class="callout__title">Competitive Position</div>
+      <div class="callout__text">Compared to the 5 Claw Family projects analyzed, Lyra's <strong>~300-line hub</strong> is the most minimal core by far (vs OpenFang 137K, IronClaw 99K, OpenClaw 39MB). The design trades scale for <strong>auditability</strong> and <strong>readability</strong> &mdash; all code readable in an afternoon. The two-machine architecture provides a unique advantage: dedicated hub + on-demand GPU without VRAM contention. Key patterns to adopt from peers: <strong>hybrid RRF search</strong> (OpenClaw), <strong>decorator LLM chains</strong> (IronClaw), <strong>credential proxy</strong> (NanoClaw), <strong>three-tier memory</strong> (OpenFang), and <strong>provider registry</strong> (Nanobot).</div>
+    </div>
+  </section>
+
+  <!-- ════════════════════ FILE REFERENCES ════════════════════ -->
+  <details style="margin-bottom: 48px;">
+    <summary>Complete File Reference</summary>
+    <div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>File</th><th>Role</th><th>Lines</th></tr></thead>
+          <tbody>
+            <tr><td><code>src/lyra/core/hub.py</code></td><td>Bus, adapter registry, bindings, pools, rate limiting</td><td>~300</td></tr>
+            <tr><td><code>src/lyra/core/message.py</code></td><td>Unified Message, Response, Platform enums</td><td></td></tr>
+            <tr><td><code>src/lyra/core/pool.py</code></td><td>Per-user state (history, lock)</td><td></td></tr>
+            <tr><td><code>src/lyra/core/agent.py</code></td><td>AgentBase, config loading, hot-reload</td><td></td></tr>
+            <tr><td><code>src/lyra/core/cli_pool.py</code></td><td>Persistent Claude CLI subprocess pool</td><td></td></tr>
+            <tr><td><code>src/lyra/core/command_router.py</code></td><td>Slash command dispatch to plugins</td><td></td></tr>
+            <tr><td><code>src/lyra/core/plugin_loader.py</code></td><td>TOML manifest + dynamic handler loading</td><td></td></tr>
+            <tr><td><code>src/lyra/core/circuit_breaker.py</code></td><td>CLOSED → OPEN → HALF_OPEN state machine</td><td></td></tr>
+            <tr><td><code>src/lyra/adapters/telegram.py</code></td><td>aiogram v3 (polling + webhook)</td><td></td></tr>
+            <tr><td><code>src/lyra/adapters/discord.py</code></td><td>discord.py v2 (gateway WebSocket)</td><td></td></tr>
+            <tr><td><code>src/lyra/agents/simple_agent.py</code></td><td>Claude CLI via CliPool</td><td></td></tr>
+            <tr><td><code>src/lyra/agents/anthropic_agent.py</code></td><td>Direct Anthropic SDK (streaming + tools)</td><td></td></tr>
+            <tr><td><code>docs/ARCHITECTURE.md</code></td><td>Full architecture documentation</td><td></td></tr>
+            <tr><td><code>docs/ROADMAP.md</code></td><td>Roadmap and priorities</td><td></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </details>
+
+</div>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    look: 'classic',
+    themeVariables: {
+      primaryColor: isDark ? '#2a1f0a' : '#fef3c7',
+      primaryBorderColor: isDark ? '#fbbf24' : '#d97706',
+      primaryTextColor: isDark ? '#e2e8f0' : '#1a1a2e',
+      secondaryColor: isDark ? '#0a2a1f' : '#d1fae5',
+      secondaryBorderColor: isDark ? '#34d399' : '#059669',
+      secondaryTextColor: isDark ? '#e2e8f0' : '#1a1a2e',
+      tertiaryColor: isDark ? '#0f172a' : '#e0f2fe',
+      tertiaryBorderColor: isDark ? '#38bdf8' : '#0284c7',
+      tertiaryTextColor: isDark ? '#e2e8f0' : '#1a1a2e',
+      lineColor: isDark ? '#64748b' : '#94a3b8',
+      fontSize: '14px',
+      fontFamily: "'Sora', system-ui, sans-serif",
+      noteBkgColor: isDark ? '#1e1b16' : '#fef9ee',
+      noteTextColor: isDark ? '#e2e8f0' : '#1a1a2e',
+      noteBorderColor: isDark ? '#fbbf24' : '#d97706',
+    }
+  });
+
+  window.zoomMermaid = function(btn, factor) {
+    const svg = btn.closest('.mermaid-wrap').querySelector('svg');
+    if (!svg) return;
+    const current = parseFloat(svg.style.transform?.match(/scale\(([^)]+)\)/)?.[1] || '1');
+    svg.style.transform = `scale(${Math.max(0.3, Math.min(3, current * factor))})`;
+    svg.style.transformOrigin = 'center top';
+  };
+  window.resetZoom = function(btn) {
+    const svg = btn.closest('.mermaid-wrap').querySelector('svg');
+    if (svg) svg.style.transform = 'scale(1)';
+  };
+  window.openMermaidInNewTab = function(btn) {
+    const svg = btn.closest('.mermaid-wrap').querySelector('svg');
+    if (!svg) return;
+    const svgData = new XMLSerializer().serializeToString(svg);
+    const html = `<!DOCTYPE html><html><head><style>body{margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;background:${isDark ? '#0f0f14' : '#fafaf8'}}</style></head><body>${svgData}</body></html>`;
+    window.open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank');
+  };
+
+  document.querySelectorAll('.mermaid-wrap').forEach(wrap => {
+    wrap.addEventListener('wheel', (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const svg = wrap.querySelector('svg');
+        if (!svg) return;
+        const current = parseFloat(svg.style.transform?.match(/scale\(([^)]+)\)/)?.[1] || '1');
+        svg.style.transform = `scale(${Math.max(0.3, Math.min(3, current * (e.deltaY < 0 ? 1.1 : 0.9)))})`;
+        svg.style.transformOrigin = 'center top';
+      }
+    }, { passive: false });
+  });
+</script>
+
+</body>
+</html>

@@ -11,6 +11,7 @@
     "008-phase1-memory-scope",
     "009-generic-error-reply-placement-and-simple-agent-hub-coupling",
     "010-external-tool-integration-pattern",
-    "011-memory-layer-package-structure-vault-vs-standalone"
+    "011-memory-layer-package-structure-vault-vs-standalone",
+    "012-anthropic-agent-streaming-dispatch-and-dual-agent-pattern"
   ]
 }

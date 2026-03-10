@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
+import time
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
@@ -11,7 +14,9 @@ import discord
 if TYPE_CHECKING:
     from lyra.core.hub import Hub
 
+from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
+    GENERIC_ERROR_REPLY,
     DiscordContext,
     Message,
     MessageType,
@@ -19,6 +24,7 @@ from lyra.core.message import (
     Response,
     TextContent,
 )
+from lyra.core.messages import MessageManager
 
 log = logging.getLogger(__name__)
 
@@ -56,6 +62,8 @@ class DiscordAdapter(discord.Client):
         bot_id: str = "main",
         *,
         intents: discord.Intents | None = None,
+        circuit_registry: CircuitRegistry | None = None,
+        msg_manager: MessageManager | None = None,
     ) -> None:
         if intents is None:
             intents = discord.Intents.default()
@@ -63,6 +71,8 @@ class DiscordAdapter(discord.Client):
         super().__init__(intents=intents)
         self._hub = hub
         self._bot_id = bot_id
+        self._circuit_registry = circuit_registry
+        self._msg_manager = msg_manager
         # Set on on_ready; None until login completes. Tests set this directly.
         self._bot_user: Any = None
         # Compiled once in on_ready (requires bot user ID). None until then.
@@ -164,12 +174,27 @@ class DiscordAdapter(discord.Client):
         if hub_msg.is_from_bot:
             return
 
-        # S5: backpressure — send ack before blocking on full bus
-        if self._hub.bus.full():
-            await message.reply("Processing your request\u2026")
+        # Hub circuit guard
+        if self._circuit_registry is not None:
+            cb = self._circuit_registry.get("hub")
+            if cb is not None and cb.is_open():
+                log.warning(
+                    '{"event": "hub_circuit_open", "platform": "discord",'
+                    ' "user_id": "%s", "dropped": true}',
+                    hub_msg.user_id,
+                )
+                return  # silent drop
 
-        # S6: push to bus
-        await self._hub.bus.put(hub_msg)
+        # S5+S6: non-blocking enqueue with backpressure ack on full bus
+        try:
+            self._hub.bus.put_nowait(hub_msg)
+        except asyncio.QueueFull:
+            text = (
+                self._msg_manager.get("backpressure_ack", platform="discord")
+                if self._msg_manager
+                else "Processing your request\u2026"
+            )
+            await message.reply(text)
 
     async def send(self, original_msg: Message, response: Response) -> None:
         """Send response back to Discord.
@@ -185,6 +210,15 @@ class DiscordAdapter(discord.Client):
             )
             return
 
+        if self._circuit_registry is not None:
+            cb = self._circuit_registry.get("discord")
+            if cb is not None and cb.is_open():
+                log.warning(
+                    '{"event": "discord_circuit_open",'
+                    ' "action": "send", "dropped": true}'
+                )
+                return
+
         ctx = original_msg.platform_context
         channel = self.get_channel(ctx.channel_id)
         if channel is None:
@@ -193,8 +227,117 @@ class DiscordAdapter(discord.Client):
         content = response.content[:DISCORD_MAX_LENGTH]
 
         messageable = cast(discord.abc.Messageable, channel)
-        if original_msg.is_mention:
-            msg = await messageable.fetch_message(ctx.message_id)
-            await msg.reply(content)
-        else:
-            await messageable.send(content)
+        try:
+            if original_msg.is_mention:
+                msg = await messageable.fetch_message(ctx.message_id)
+                sent = await msg.reply(content)
+            else:
+                sent = await messageable.send(content)
+            # Store for session persistence (#67) and reply-to-resume (#83).
+            response.metadata["reply_message_id"] = sent.id
+            log.debug(
+                "stored reply_message_id=%s for msg_id=%s", sent.id, original_msg.id
+            )
+            if self._circuit_registry is not None:
+                cb = self._circuit_registry.get("discord")
+                if cb is not None:
+                    cb.record_success()
+        except Exception:
+            log.exception("send() failed")
+            if self._circuit_registry is not None:
+                cb = self._circuit_registry.get("discord")
+                if cb is not None:
+                    cb.record_failure()
+
+    async def send_streaming(
+        self, original_msg: Message, chunks: AsyncIterator[str]
+    ) -> None:
+        """Stream response with edit-in-place, debounced at ~1s.
+
+        TODO: store placeholder.id in response.metadata["reply_message_id"]
+        once send_streaming() receives a Response argument (#67).
+        """
+        if not isinstance(original_msg.platform_context, DiscordContext):
+            log.error(
+                "send_streaming() called with non-DiscordContext for msg_id=%s",
+                original_msg.id,
+            )
+            return
+
+        if self._circuit_registry is not None:
+            cb = self._circuit_registry.get("discord")
+            if cb is not None and cb.is_open():
+                log.warning(
+                    '{"event": "discord_circuit_open",'
+                    ' "action": "send_streaming", "dropped": true}'
+                )
+                # Drain iterator to avoid generator leaks
+                async for _ in chunks:
+                    pass
+                return
+
+        ctx = original_msg.platform_context
+        channel = self.get_channel(ctx.channel_id)
+        if channel is None:
+            channel = await self.fetch_channel(ctx.channel_id)
+
+        messageable = cast(discord.abc.Messageable, channel)
+        accumulated = ""
+
+        # Send placeholder
+        _placeholder_text = (
+            self._msg_manager.get("stream_placeholder", platform="discord")
+            if self._msg_manager
+            else "\u2026"
+        )
+        try:
+            placeholder = await messageable.send(_placeholder_text)
+        except Exception:
+            log.exception("Failed to send placeholder — falling back to non-streaming")
+            async for chunk in chunks:
+                accumulated += chunk
+            fallback_content = accumulated or _placeholder_text
+            await self.send(original_msg, Response(content=fallback_content))
+            return
+
+        last_edit = time.monotonic()
+        _stream_ok = False
+        try:
+            async for chunk in chunks:
+                accumulated += chunk
+                now = time.monotonic()
+                if now - last_edit >= 1.0:
+                    await placeholder.edit(content=accumulated[:DISCORD_MAX_LENGTH])
+                    last_edit = now
+            _stream_ok = True
+        except Exception:
+            log.exception("Stream interrupted")
+            if self._circuit_registry is not None:
+                cb = self._circuit_registry.get("discord")
+                if cb is not None:
+                    cb.record_failure()
+            if accumulated:
+                suffix = (
+                    self._msg_manager.get("stream_interrupted", platform="discord")
+                    if self._msg_manager
+                    else " [response interrupted]"
+                )
+                accumulated += suffix
+            else:
+                accumulated = (
+                    self._msg_manager.get("generic", platform="discord")
+                    if self._msg_manager
+                    else GENERIC_ERROR_REPLY
+                )
+
+        if _stream_ok and self._circuit_registry is not None:
+            cb = self._circuit_registry.get("discord")
+            if cb is not None:
+                cb.record_success()
+
+        # Final edit with complete text
+        if accumulated:
+            try:
+                await placeholder.edit(content=accumulated[:DISCORD_MAX_LENGTH])
+            except Exception:
+                log.exception("Final edit failed")

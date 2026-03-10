@@ -10,11 +10,23 @@ but raise ImportError / AttributeError at runtime (not at collection time).
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
 import pytest
+
+from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
+from lyra.core.messages import MessageManager
+
+TOML_PATH = (
+    Path(__file__).resolve().parent.parent.parent
+    / "src"
+    / "lyra"
+    / "config"
+    / "messages.toml"
+)
 
 # ---------------------------------------------------------------------------
 # T2 — _normalize() builds correct DiscordContext
@@ -258,13 +270,14 @@ def test_missing_discord_token_raises_on_load(
 
 @pytest.mark.asyncio
 async def test_backpressure_sends_ack_when_bus_full() -> None:
-    """When bus is full, send ack before enqueuing — S5 backpressure."""
+    """When bus is full, put_nowait raises QueueFull and adapter sends ack."""
+    import asyncio
+
     from lyra.adapters.discord import DiscordAdapter
 
     hub = MagicMock()
     hub.bus = MagicMock()
-    hub.bus.full = MagicMock(return_value=True)
-    hub.bus.put = AsyncMock()
+    hub.bus.put_nowait = MagicMock(side_effect=asyncio.QueueFull())
 
     adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
     bot_user = SimpleNamespace(id=999, bot=True)
@@ -284,7 +297,6 @@ async def test_backpressure_sends_ack_when_bus_full() -> None:
     await adapter.on_message(discord_msg)
 
     discord_msg.reply.assert_awaited_once()  # ack sent
-    hub.bus.put.assert_awaited_once()  # message still enqueued
 
 
 # ---------------------------------------------------------------------------
@@ -495,3 +507,316 @@ def test_discord_token_not_in_logs(
         assert secret_token not in record.getMessage(), (
             f"Token found in log at {record.levelname}: {record.getMessage()!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Circuit breaker helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_open_registry(service: str) -> CircuitRegistry:
+    """Build a CircuitRegistry with the named circuit tripped OPEN."""
+    registry = CircuitRegistry()
+    for name in ("anthropic", "telegram", "discord", "hub"):
+        cb = CircuitBreaker(name, failure_threshold=1, recovery_timeout=60)
+        if name == service:
+            cb.record_failure()  # trips to OPEN
+        registry.register(cb)
+    return registry
+
+
+# ---------------------------------------------------------------------------
+# SC-11 (Discord) — on_message() drops silently when hub circuit is OPEN
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_on_message_drops_silently_when_hub_circuit_open() -> None:
+    """SC-11: on_message() drops silently (no bus.put) when circuits['hub'] is OPEN."""
+    from lyra.adapters.discord import DiscordAdapter
+
+    # Arrange
+    registry = _make_open_registry("hub")
+
+    hub = MagicMock()
+    hub.bus = MagicMock()
+    hub.bus.full = MagicMock(return_value=False)
+    hub.bus.put = AsyncMock()
+
+    adapter = DiscordAdapter(
+        hub=hub,
+        bot_id="main",
+        intents=discord.Intents.none(),
+        circuit_registry=registry,
+    )
+    bot_user = SimpleNamespace(id=999, bot=True)
+    adapter._bot_user = bot_user
+
+    discord_msg = SimpleNamespace(
+        guild=SimpleNamespace(id=111),
+        channel=SimpleNamespace(id=333, send=AsyncMock()),
+        author=SimpleNamespace(id=42, name="Alice", display_name="Alice", bot=False),
+        content="hello",
+        created_at=datetime.now(timezone.utc),
+        id=555,
+        mentions=[],
+        reply=AsyncMock(),
+    )
+
+    # Act
+    await adapter.on_message(discord_msg)
+
+    # Assert — bus.put must NOT be called; message was silently dropped
+    hub.bus.put.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# SC-13 (Discord) — send() skips channel.send when discord circuit is OPEN
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_send_skips_when_discord_circuit_open() -> None:
+    """SC-13: send() skips channel.send/reply when circuits['discord'] is OPEN."""
+    from lyra.adapters.discord import DiscordAdapter
+    from lyra.core.message import (
+        DiscordContext,
+        Message,
+        MessageType,
+        Platform,
+        Response,
+        TextContent,
+    )
+
+    # Arrange
+    registry = _make_open_registry("discord")
+
+    hub = MagicMock()
+    adapter = DiscordAdapter(
+        hub=hub,
+        bot_id="main",
+        intents=discord.Intents.none(),
+        circuit_registry=registry,
+    )
+
+    mock_channel = AsyncMock()
+    mock_channel.send = AsyncMock()
+    adapter.get_channel = MagicMock(return_value=mock_channel)
+
+    hub_msg = Message(
+        id="msg-1",
+        platform=Platform.DISCORD,
+        bot_id="main",
+        user_id="dc:user:42",
+        user_name="Alice",
+        is_mention=False,
+        is_from_bot=False,
+        content=TextContent(text="hello"),
+        type=MessageType.TEXT,
+        timestamp=datetime.now(timezone.utc),
+        platform_context=DiscordContext(guild_id=111, channel_id=333, message_id=555),
+    )
+    response = Response(content="hi")
+
+    # Act
+    await adapter.send(hub_msg, response)
+
+    # Assert — discord circuit is OPEN so channel.send must not be called
+    mock_channel.send.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# msg_manager injection — backpressure_ack uses TOML string
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_discord_msg_manager_injection_backpressure_ack() -> None:
+    """Injecting a real MessageManager causes on_message to reply with the TOML
+    'backpressure_ack' string (not the hardcoded fallback) when bus is full."""
+    from lyra.adapters.discord import DiscordAdapter
+
+    # Arrange
+    mm = MessageManager(TOML_PATH)
+
+    import asyncio
+
+    hub = MagicMock()
+    hub.bus = MagicMock()
+    hub.bus.put_nowait = MagicMock(side_effect=asyncio.QueueFull())
+
+    adapter = DiscordAdapter(
+        hub=hub, bot_id="main", intents=discord.Intents.none(), msg_manager=mm
+    )
+    bot_user = SimpleNamespace(id=999, bot=True)
+    adapter._bot_user = bot_user
+
+    reply_mock = AsyncMock()
+    discord_msg = SimpleNamespace(
+        guild=SimpleNamespace(id=111),
+        channel=SimpleNamespace(id=333, send=AsyncMock()),
+        author=SimpleNamespace(id=42, name="Alice", display_name="Alice", bot=False),
+        content="hello",
+        created_at=datetime.now(timezone.utc),
+        id=555,
+        mentions=[],
+        reply=reply_mock,
+    )
+
+    # Act
+    await adapter.on_message(discord_msg)
+
+    # Assert — reply text matches the TOML value for discord backpressure_ack
+    expected = mm.get("backpressure_ack", platform="discord")
+    reply_mock.assert_awaited_once_with(expected)
+
+
+# ---------------------------------------------------------------------------
+# T14 — send() stores bot's reply message_id in response.metadata (channel.send)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_send_stores_reply_message_id_channel_send() -> None:
+    """send() via channel.send() stores sent message id in response.metadata."""
+    from lyra.adapters.discord import DiscordAdapter
+    from lyra.core.message import (
+        DiscordContext,
+        Message,
+        MessageType,
+        Platform,
+        Response,
+        TextContent,
+    )
+
+    # Arrange
+    hub = MagicMock()
+    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+
+    sent_msg = SimpleNamespace(id=888)
+    mock_channel = AsyncMock()
+    mock_channel.send = AsyncMock(return_value=sent_msg)
+    adapter.get_channel = MagicMock(return_value=mock_channel)
+
+    hub_msg = Message(
+        id="msg-1",
+        platform=Platform.DISCORD,
+        bot_id="main",
+        user_id="dc:user:42",
+        user_name="Alice",
+        is_mention=False,
+        is_from_bot=False,
+        content=TextContent(text="hello"),
+        type=MessageType.TEXT,
+        timestamp=datetime.now(timezone.utc),
+        platform_context=DiscordContext(guild_id=111, channel_id=333, message_id=555),
+    )
+    response = Response(content="hi")
+
+    # Act
+    await adapter.send(hub_msg, response)
+
+    # Assert
+    mock_channel.send.assert_awaited_once_with("hi")
+    assert response.metadata["reply_message_id"] == 888
+
+
+# ---------------------------------------------------------------------------
+# T15 — send() stores bot's reply message_id in response.metadata (msg.reply)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_send_stores_reply_message_id_msg_reply() -> None:
+    """send() via msg.reply() stores sent message id in response.metadata."""
+    from lyra.adapters.discord import DiscordAdapter
+    from lyra.core.message import (
+        DiscordContext,
+        Message,
+        MessageType,
+        Platform,
+        Response,
+        TextContent,
+    )
+
+    # Arrange
+    hub = MagicMock()
+    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+
+    sent_msg = SimpleNamespace(id=7777)
+    mock_message = AsyncMock()
+    mock_message.reply = AsyncMock(return_value=sent_msg)
+    mock_channel = AsyncMock()
+    mock_channel.fetch_message = AsyncMock(return_value=mock_message)
+    adapter.get_channel = MagicMock(return_value=mock_channel)
+
+    hub_msg = Message(
+        id="msg-1",
+        platform=Platform.DISCORD,
+        bot_id="main",
+        user_id="dc:user:42",
+        user_name="Alice",
+        is_mention=True,
+        is_from_bot=False,
+        content=TextContent(text="hello"),
+        type=MessageType.TEXT,
+        timestamp=datetime.now(timezone.utc),
+        platform_context=DiscordContext(guild_id=111, channel_id=333, message_id=555),
+    )
+    response = Response(content="hi")
+
+    # Act
+    await adapter.send(hub_msg, response)
+
+    # Assert
+    mock_channel.fetch_message.assert_awaited_once_with(555)
+    mock_message.reply.assert_awaited_once_with("hi")
+    assert response.metadata["reply_message_id"] == 7777
+
+
+# ---------------------------------------------------------------------------
+# T16 — send() does NOT set reply_message_id when send fails
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_send_no_reply_message_id_on_failure() -> None:
+    """send() must NOT set reply_message_id in metadata when the send call throws."""
+    from lyra.adapters.discord import DiscordAdapter
+    from lyra.core.message import (
+        DiscordContext,
+        Message,
+        MessageType,
+        Platform,
+        Response,
+        TextContent,
+    )
+
+    # Arrange
+    hub = MagicMock()
+    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+
+    mock_channel = AsyncMock()
+    mock_channel.send = AsyncMock(side_effect=Exception("network error"))
+    adapter.get_channel = MagicMock(return_value=mock_channel)
+
+    hub_msg = Message(
+        id="msg-1",
+        platform=Platform.DISCORD,
+        bot_id="main",
+        user_id="dc:user:42",
+        user_name="Alice",
+        is_mention=False,
+        is_from_bot=False,
+        content=TextContent(text="hello"),
+        type=MessageType.TEXT,
+        timestamp=datetime.now(timezone.utc),
+        platform_context=DiscordContext(guild_id=111, channel_id=333, message_id=555),
+    )
+    response = Response(content="hi")
+
+    # Act
+    await adapter.send(hub_msg, response)
+
+    # Assert
+    assert "reply_message_id" not in response.metadata

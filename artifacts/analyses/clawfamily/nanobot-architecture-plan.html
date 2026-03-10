@@ -1,0 +1,1486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nanobot Architecture &mdash; For Lyra Comparison</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+/* ========== Theme Setup ========== */
+:root {
+  --font-body: 'DM Sans', system-ui, sans-serif;
+  --font-mono: 'Fira Code', 'SF Mono', Consolas, monospace;
+
+  --bg: #f0f2f5;
+  --surface: #ffffff;
+  --surface-elevated: #ffffff;
+  --border: rgba(30, 58, 95, 0.10);
+  --border-bright: rgba(30, 58, 95, 0.20);
+  --text: #1a1a2e;
+  --text-dim: #5a6a7e;
+  --accent: #1e3a5f;
+  --accent-dim: rgba(30, 58, 95, 0.08);
+  --gold: #d4a73a;
+  --gold-dim: rgba(212, 167, 58, 0.12);
+  --gold-bright: #b8912e;
+
+  /* Semantic node colors */
+  --node-a: #1e3a5f;
+  --node-a-dim: rgba(30, 58, 95, 0.10);
+  --node-b: #2a7c6f;
+  --node-b-dim: rgba(42, 124, 111, 0.10);
+  --node-c: #d4a73a;
+  --node-c-dim: rgba(212, 167, 58, 0.12);
+  --node-d: #8b5e3c;
+  --node-d-dim: rgba(139, 94, 60, 0.10);
+
+  /* Status colors */
+  --green: #1a8a5c;
+  --green-dim: rgba(26, 138, 92, 0.10);
+  --orange: #c47a20;
+  --orange-dim: rgba(196, 122, 32, 0.10);
+  --red: #c44040;
+  --red-dim: rgba(196, 64, 64, 0.10);
+
+  --nav-height: 56px;
+}
+
+[data-theme="dark"] {
+  --bg: #0c1524;
+  --surface: #142036;
+  --surface-elevated: #1a2a48;
+  --border: rgba(212, 167, 58, 0.08);
+  --border-bright: rgba(212, 167, 58, 0.16);
+  --text: #e4e8f0;
+  --text-dim: #8a96aa;
+  --accent: #6ba3d6;
+  --accent-dim: rgba(107, 163, 214, 0.12);
+  --gold: #e8be52;
+  --gold-dim: rgba(232, 190, 82, 0.15);
+  --gold-bright: #f0cc66;
+
+  --node-a: #6ba3d6;
+  --node-a-dim: rgba(107, 163, 214, 0.12);
+  --node-b: #3ec9a8;
+  --node-b-dim: rgba(62, 201, 168, 0.12);
+  --node-c: #e8be52;
+  --node-c-dim: rgba(232, 190, 82, 0.15);
+  --node-d: #c4956a;
+  --node-d-dim: rgba(196, 149, 106, 0.12);
+
+  --green: #3ec9a8;
+  --green-dim: rgba(62, 201, 168, 0.12);
+  --orange: #e8a840;
+  --orange-dim: rgba(232, 168, 64, 0.12);
+  --red: #e06060;
+  --red-dim: rgba(224, 96, 96, 0.12);
+}
+
+/* ========== Reset & Base ========== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; scroll-padding-top: calc(var(--nav-height) + 24px); }
+
+body {
+  font-family: var(--font-body);
+  background: var(--bg);
+  background-image:
+    radial-gradient(ellipse at 30% 0%, var(--gold-dim) 0%, transparent 50%),
+    radial-gradient(ellipse at 70% 100%, var(--node-a-dim) 0%, transparent 50%);
+  color: var(--text);
+  line-height: 1.6;
+  overflow-wrap: break-word;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ========== Sticky Nav ========== */
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: color-mix(in srgb, var(--surface) 85%, transparent 15%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+  height: var(--nav-height);
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+  gap: 8px;
+}
+
+.nav__title {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--accent);
+  white-space: nowrap;
+  margin-right: 12px;
+}
+
+.nav__title span { color: var(--gold); }
+
+.nav__links {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  flex: 1;
+  scrollbar-width: none;
+}
+.nav__links::-webkit-scrollbar { display: none; }
+
+.nav__links a {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-dim);
+  text-decoration: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.nav__links a:hover {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.nav__theme-toggle {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.nav__theme-toggle:hover {
+  background: var(--accent-dim);
+  border-color: var(--border-bright);
+}
+
+/* ========== Layout ========== */
+.container {
+  max-width: 1140px;
+  margin: 0 auto;
+  padding: 32px 24px 80px;
+}
+
+.section { margin-bottom: 48px; }
+
+.section__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.section__number {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gold);
+  background: var(--gold-dim);
+  padding: 4px 10px;
+  border-radius: 6px;
+  letter-spacing: 1px;
+}
+
+.section__title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* ========== Hero ========== */
+.hero {
+  text-align: center;
+  padding: 48px 24px 40px;
+}
+
+.hero__badge {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--gold);
+  margin-bottom: 12px;
+}
+
+.hero__title {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.hero__subtitle {
+  font-size: 16px;
+  color: var(--text-dim);
+  max-width: 600px;
+  margin: 0 auto 24px;
+}
+
+.hero__stats {
+  display: flex;
+  justify-content: center;
+  gap: 32px;
+  flex-wrap: wrap;
+}
+
+.hero__stat {
+  text-align: center;
+}
+
+.hero__stat-value {
+  font-family: var(--font-mono);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.hero__stat-label {
+  font-size: 12px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ========== Cards ========== */
+.ve-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px 24px;
+  position: relative;
+  animation: fadeUp 0.4s ease-out both;
+  animation-delay: calc(var(--i, 0) * 0.06s);
+}
+
+.ve-card--accent-a { border-left: 3px solid var(--node-a); }
+.ve-card--accent-b { border-left: 3px solid var(--node-b); }
+.ve-card--accent-c { border-left: 3px solid var(--gold); }
+.ve-card--accent-d { border-left: 3px solid var(--node-d); }
+
+.ve-card--elevated {
+  background: var(--surface-elevated);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.ve-card--hero {
+  background: color-mix(in srgb, var(--surface) 92%, var(--gold) 8%);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  border-color: color-mix(in srgb, var(--border) 50%, var(--gold) 50%);
+}
+
+.ve-card__label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--node-a);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ve-card__label::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.ve-card__label--gold { color: var(--gold); }
+.ve-card__label--green { color: var(--node-b); }
+.ve-card__label--brown { color: var(--node-d); }
+
+.ve-card h3 {
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: var(--text);
+}
+
+.ve-card p, .ve-card li {
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.65;
+}
+
+.ve-card ul, .ve-card ol {
+  list-style: none;
+  padding-left: 0;
+}
+
+.ve-card li {
+  padding-left: 16px;
+  position: relative;
+  margin-bottom: 4px;
+}
+
+.ve-card li::before {
+  content: '\203A';
+  position: absolute;
+  left: 0;
+  color: var(--gold);
+  font-weight: 700;
+}
+
+/* ========== Card Grid ========== */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.card-grid > * { min-width: 0; }
+
+.card-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 768px) {
+  .card-grid-2 { grid-template-columns: 1fr; }
+}
+
+.card-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+@media (max-width: 900px) {
+  .card-grid-3 { grid-template-columns: 1fr; }
+}
+
+/* ========== Callout ========== */
+.callout {
+  background: var(--gold-dim);
+  border: 1px solid color-mix(in srgb, var(--gold) 30%, transparent 70%);
+  border-left: 3px solid var(--gold);
+  border-radius: 8px;
+  padding: 16px 20px;
+  font-size: 14px;
+  color: var(--text);
+  margin: 16px 0;
+}
+
+.callout strong {
+  color: var(--gold-bright);
+  font-weight: 600;
+}
+
+[data-theme="dark"] .callout strong {
+  color: var(--gold);
+}
+
+.callout--info {
+  background: var(--accent-dim);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent 70%);
+  border-left-color: var(--accent);
+}
+
+.callout--info strong { color: var(--accent); }
+
+/* ========== Inline Code ========== */
+code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+[data-theme="dark"] code {
+  background: var(--node-a-dim);
+  color: var(--node-a);
+}
+
+/* ========== Mermaid ========== */
+.mermaid-wrap {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 32px 24px;
+  overflow: auto;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 400px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+  cursor: grab;
+}
+.mermaid-wrap::-webkit-scrollbar { width: 6px; height: 6px; }
+.mermaid-wrap::-webkit-scrollbar-track { background: transparent; }
+.mermaid-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+.mermaid-wrap::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+.mermaid-wrap.is-panning { cursor: grabbing; user-select: none; }
+.mermaid-wrap--compact { min-height: 250px; }
+
+.mermaid-wrap .mermaid {
+  zoom: 1.3;
+}
+
+.zoom-controls {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 2px;
+  z-index: 10;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.zoom-controls button {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.zoom-controls button:hover {
+  background: var(--border);
+  color: var(--text);
+}
+
+/* Mermaid SVG overrides */
+.mermaid .nodeLabel { color: var(--text) !important; }
+.mermaid .edgeLabel { color: var(--text-dim) !important; background-color: var(--bg) !important; }
+.mermaid .edgeLabel rect { fill: var(--bg) !important; }
+.mermaid .node rect, .mermaid .node circle, .mermaid .node polygon { stroke-width: 1.5px; }
+.mermaid .edge-pattern-solid { stroke-width: 1.5px; }
+.mermaid .edgeLabel { font-family: var(--font-mono) !important; font-size: 13px !important; }
+.mermaid .nodeLabel { font-family: var(--font-body) !important; font-size: 16px !important; }
+
+/* ========== Tables ========== */
+.table-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.data-table th {
+  background: var(--surface-elevated);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  text-align: left;
+  padding: 12px 16px;
+  border-bottom: 2px solid var(--border-bright);
+  white-space: nowrap;
+}
+
+.data-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  color: var(--text);
+}
+
+.data-table tbody tr:nth-child(even) {
+  background: var(--accent-dim);
+}
+
+.data-table tbody tr { transition: background 0.15s ease; }
+.data-table tbody tr:hover { background: var(--border); }
+.data-table tbody tr:last-child td { border-bottom: none; }
+
+.data-table code {
+  font-size: 11px;
+}
+
+.data-table small {
+  display: block;
+  color: var(--text-dim);
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+/* ========== Status Badges ========== */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.status--adopt { background: var(--green-dim); color: var(--green); }
+.status--study { background: var(--orange-dim); color: var(--orange); }
+.status--skip { background: var(--red-dim); color: var(--red); }
+
+/* ========== Flow Steps (Pipeline) ========== */
+.pipeline {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  overflow-x: auto;
+  padding: 8px 0 16px;
+  scrollbar-width: thin;
+}
+
+.pipeline__step {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 18px;
+  min-width: 140px;
+  flex-shrink: 0;
+  text-align: center;
+}
+
+.pipeline__step-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
+.pipeline__step-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.pipeline__arrow {
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  color: var(--gold);
+  font-size: 20px;
+  flex-shrink: 0;
+  font-weight: 700;
+}
+
+/* ========== Comparison Panel ========== */
+.comparison {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.comparison > * { min-width: 0; overflow-wrap: break-word; }
+@media (max-width: 768px) { .comparison { grid-template-columns: 1fr; } }
+
+/* ========== Flow Arrow (vertical between sections) ========== */
+.flow-arrow {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 8px 0;
+}
+
+.flow-arrow svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: var(--gold);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ========== Animations ========== */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ve-card { animation: none !important; opacity: 1 !important; }
+}
+
+/* ========== Responsive ========== */
+@media (max-width: 640px) {
+  .hero__title { font-size: 24px; }
+  .section__title { font-size: 18px; }
+  .container { padding: 20px 16px 60px; }
+  .nav__links a { font-size: 10px; padding: 4px 8px; }
+  .card-grid-3 { grid-template-columns: 1fr; }
+}
+</style>
+
+</head>
+<body>
+
+<!-- ==================== STICKY NAV ==================== -->
+<nav class="nav">
+  <div class="nav__title">Nanobot <span>Architecture</span></div>
+  <div class="nav__links">
+    <a href="#overview">Overview</a>
+    <a href="#memory">Memory</a>
+    <a href="#channels">Channels</a>
+    <a href="#bus">Bus</a>
+    <a href="#tools">Tools</a>
+    <a href="#llm">LLM</a>
+    <a href="#skills">Skills</a>
+    <a href="#extras">Extras</a>
+    <a href="#lyra">Lyra</a>
+  </div>
+  <button class="nav__theme-toggle" onclick="toggleTheme()" title="Toggle dark mode" aria-label="Toggle theme">
+    <span id="theme-icon">&#9789;</span>
+  </button>
+</nav>
+
+<!-- ==================== HERO ==================== -->
+<div class="container">
+
+<section class="hero" id="overview">
+  <div class="hero__badge">Architecture Analysis</div>
+  <h1 class="hero__title">Nanobot Architecture &mdash; For Lyra Comparison</h1>
+  <p class="hero__subtitle">Minimal, readable, async-first personal AI agent engine with file-based state. A study in simplicity.</p>
+  <div class="hero__stats">
+    <div class="hero__stat">
+      <div class="hero__stat-value" data-count="4000">~4,000</div>
+      <div class="hero__stat-label">Lines Core Python</div>
+    </div>
+    <div class="hero__stat">
+      <div class="hero__stat-value" data-count="83">83</div>
+      <div class="hero__stat-label">Total Files</div>
+    </div>
+    <div class="hero__stat">
+      <div class="hero__stat-value" data-count="13">13</div>
+      <div class="hero__stat-label">Channel Integrations</div>
+    </div>
+    <div class="hero__stat">
+      <div class="hero__stat-value" data-count="25">25+</div>
+      <div class="hero__stat-label">LLM Providers</div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== HIGH-LEVEL ARCHITECTURE DIAGRAM ==================== -->
+<section class="section" id="arch-diagram">
+  <div class="section__header">
+    <span class="section__number">00</span>
+    <h2 class="section__title">System Overview</h2>
+  </div>
+
+  <div class="mermaid-wrap">
+    <div class="zoom-controls">
+      <button onclick="zoomDiagram(this, 1.2)" title="Zoom in">+</button>
+      <button onclick="zoomDiagram(this, 0.8)" title="Zoom out">&minus;</button>
+      <button onclick="resetZoom(this)" title="Reset zoom">&#8634;</button>
+      <button onclick="openDiagramFullscreen(this)" title="Full size">&#x26F6;</button>
+    </div>
+    <pre class="mermaid">
+graph TD
+  CH["Channels<br/>13 integrations"]
+  BUS["MessageBus<br/>asyncio.Queue x2"]
+  AGENT["Agent Loop<br/>1s timeout consume"]
+  LLM["LLM Providers<br/>25+ via registry"]
+  TOOLS["Tool Registry<br/>Built-in + MCP"]
+  MEM["Memory<br/>MEMORY.md + HISTORY.md"]
+  SKILLS["Skills<br/>Markdown-based"]
+  SUB["Subagent Manager"]
+
+  CH -->|inbound| BUS
+  BUS -->|consume| AGENT
+  AGENT -->|chat| LLM
+  LLM -->|tool calls| TOOLS
+  TOOLS -->|results| AGENT
+  AGENT -->|outbound| BUS
+  BUS -->|dispatch| CH
+  AGENT -.->|read/write| MEM
+  AGENT -.->|inject prompt| SKILLS
+  AGENT -.->|spawn| SUB
+
+  classDef bus fill:#d4a73a22,stroke:#d4a73a,stroke-width:2px
+  classDef channel fill:#1e3a5f22,stroke:#1e3a5f,stroke-width:2px
+  classDef core fill:#2a7c6f22,stroke:#2a7c6f,stroke-width:2px
+  classDef support fill:#8b5e3c22,stroke:#8b5e3c,stroke-width:1.5px
+
+  class CH channel
+  class BUS bus
+  class AGENT,LLM core
+  class TOOLS,MEM,SKILLS,SUB support
+    </pre>
+  </div>
+</section>
+
+<!-- ==================== 1. MEMORY ==================== -->
+<section class="section" id="memory">
+  <div class="section__header">
+    <span class="section__number">01</span>
+    <h2 class="section__title">Memory &mdash; File-Based, No Database</h2>
+  </div>
+
+  <div class="callout">
+    <strong>Philosophy:</strong> Pure filesystem storage at <code>workspace/memory/</code> &mdash; no SQLite, no vector store, no embedding search. Grep-searchable by design.
+  </div>
+
+  <div class="comparison" style="margin-bottom: 20px;">
+    <div class="ve-card ve-card--accent-c ve-card--elevated" style="--i:1">
+      <div class="ve-card__label ve-card__label--gold">Short-Term</div>
+      <h3>Session Messages</h3>
+      <ul>
+        <li>Up to ~500 messages in context window</li>
+        <li>Append-only for LLM cache efficiency</li>
+        <li>Session tracks <code>last_consolidated</code> index</li>
+        <li>In-memory only, no persistence until consolidation</li>
+      </ul>
+    </div>
+    <div class="ve-card ve-card--accent-a ve-card--elevated" style="--i:2">
+      <div class="ve-card__label">Long-Term</div>
+      <h3>MEMORY.md + HISTORY.md</h3>
+      <ul>
+        <li><strong>MEMORY.md</strong> &mdash; Markdown facts extracted by LLM during consolidation</li>
+        <li><strong>HISTORY.md</strong> &mdash; Grep-searchable log with timestamps</li>
+        <li>Consolidation triggers when unconsolidated messages exceed threshold (default 100)</li>
+        <li>LLM-driven via <code>save_memory()</code> tool call</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="mermaid-wrap mermaid-wrap--compact">
+    <div class="zoom-controls">
+      <button onclick="zoomDiagram(this, 1.2)" title="Zoom in">+</button>
+      <button onclick="zoomDiagram(this, 0.8)" title="Zoom out">&minus;</button>
+      <button onclick="resetZoom(this)" title="Reset zoom">&#8634;</button>
+      <button onclick="openDiagramFullscreen(this)" title="Full size">&#x26F6;</button>
+    </div>
+    <pre class="mermaid">
+graph LR
+  MSG["New Messages"] --> CTX["Context Window<br/>~500 msgs"]
+  CTX -->|threshold 100| CONS["LLM Consolidation<br/>save_memory tool"]
+  CONS --> MEM["MEMORY.md<br/>extracted facts"]
+  CONS --> HIST["HISTORY.md<br/>timestamped log"]
+    </pre>
+  </div>
+</section>
+
+<!-- ==================== 2. CHANNELS ==================== -->
+<section class="section" id="channels">
+  <div class="section__header">
+    <span class="section__number">02</span>
+    <h2 class="section__title">Channels &mdash; 13 Integrations</h2>
+  </div>
+
+  <div class="callout--info callout">
+    <strong>BaseChannel</strong> abstract class: <code>start()</code>, <code>stop()</code>, <code>send(OutboundMessage)</code>, <code>is_allowed()</code>. Permission via <code>allow_from</code> whitelist &mdash; empty = deny all, <code>["*"]</code> = allow all.
+  </div>
+
+  <div class="table-wrap" style="margin-bottom: 20px;">
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Channel</th>
+            <th>Lines</th>
+            <th>Notable Features</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Telegram</strong></td>
+            <td class="num">672</td>
+            <td>Voice transcription via Groq</td>
+          </tr>
+          <tr>
+            <td><strong>Discord</strong></td>
+            <td class="num">580</td>
+            <td>Manual heartbeat implementation</td>
+          </tr>
+          <tr>
+            <td><strong>WhatsApp</strong></td>
+            <td>&mdash;</td>
+            <td>Node.js bridge via <code>ws://localhost:3001</code></td>
+          </tr>
+          <tr>
+            <td><strong>Feishu</strong></td>
+            <td>38KB</td>
+            <td>End-to-end encryption (E2EE)</td>
+          </tr>
+          <tr>
+            <td><strong>Slack</strong></td>
+            <td>&mdash;</td>
+            <td>Socket Mode</td>
+          </tr>
+          <tr>
+            <td><strong>Matrix</strong></td>
+            <td>&mdash;</td>
+            <td>E2EE via matrix-nio</td>
+          </tr>
+          <tr>
+            <td><strong>DingTalk</strong></td>
+            <td>&mdash;</td>
+            <td>Stream Mode</td>
+          </tr>
+          <tr>
+            <td><strong>QQ</strong></td>
+            <td>&mdash;</td>
+            <td>botpy integration</td>
+          </tr>
+          <tr>
+            <td><strong>Email</strong></td>
+            <td>&mdash;</td>
+            <td>IMAP/SMTP</td>
+          </tr>
+          <tr>
+            <td><strong>Mochat</strong></td>
+            <td>&mdash;</td>
+            <td>Socket.IO + HTTP</td>
+          </tr>
+          <tr>
+            <td><strong>CLI</strong></td>
+            <td>&mdash;</td>
+            <td>Terminal interface</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Message Routing Pipeline -->
+  <h3 style="font-size: 15px; margin-bottom: 12px; color: var(--text-dim); font-family: var(--font-mono); font-size: 12px; text-transform: uppercase; letter-spacing: 1px;">Message Routing Flow</h3>
+  <div class="pipeline">
+    <div class="pipeline__step">
+      <div class="pipeline__step-label">Input</div>
+      <div class="pipeline__step-name">Channel</div>
+    </div>
+    <div class="pipeline__arrow">&rarr;</div>
+    <div class="pipeline__step">
+      <div class="pipeline__step-label">Handler</div>
+      <div class="pipeline__step-name">_handle_message()</div>
+    </div>
+    <div class="pipeline__arrow">&rarr;</div>
+    <div class="pipeline__step">
+      <div class="pipeline__step-label">Publish</div>
+      <div class="pipeline__step-name">bus.inbound</div>
+    </div>
+    <div class="pipeline__arrow">&rarr;</div>
+    <div class="pipeline__step" style="border-color: var(--gold);">
+      <div class="pipeline__step-label">Process</div>
+      <div class="pipeline__step-name">Agent Loop</div>
+    </div>
+    <div class="pipeline__arrow">&rarr;</div>
+    <div class="pipeline__step">
+      <div class="pipeline__step-label">Dispatch</div>
+      <div class="pipeline__step-name">bus.outbound</div>
+    </div>
+    <div class="pipeline__arrow">&rarr;</div>
+    <div class="pipeline__step">
+      <div class="pipeline__step-label">Format</div>
+      <div class="pipeline__step-name">ChannelManager</div>
+    </div>
+    <div class="pipeline__arrow">&rarr;</div>
+    <div class="pipeline__step">
+      <div class="pipeline__step-label">Output</div>
+      <div class="pipeline__step-name">channel.send()</div>
+    </div>
+  </div>
+
+  <div class="callout" style="margin-top: 16px;">
+    <strong>Per-channel formatting:</strong> Telegram uses HTML, Slack uses mrkdwn, Discord splits long messages. Each channel adapts output to its platform conventions.
+  </div>
+</section>
+
+<!-- ==================== 3. BUS ==================== -->
+<section class="section" id="bus">
+  <div class="section__header">
+    <span class="section__number">03</span>
+    <h2 class="section__title">Bus &mdash; Minimal asyncio.Queue</h2>
+  </div>
+
+  <div class="card-grid-2">
+    <div class="ve-card ve-card--accent-c ve-card--elevated" style="--i:1">
+      <div class="ve-card__label ve-card__label--gold">MessageBus</div>
+      <h3>Two Queue Architecture</h3>
+      <ul>
+        <li>Two <code>asyncio.Queue</code> instances: inbound + outbound</li>
+        <li>Single-process &mdash; no need for complex pub/sub</li>
+        <li>Channels don't wait for responses (non-blocking)</li>
+        <li>Per-session task tracking for cancellation</li>
+      </ul>
+    </div>
+
+    <div class="ve-card ve-card--elevated" style="--i:2">
+      <div class="ve-card__label">Events</div>
+      <h3>Message Types</h3>
+      <div style="margin-bottom: 8px;">
+        <strong style="font-size: 13px; color: var(--node-b);">InboundMessage</strong>
+        <p style="font-size: 12px; color: var(--text-dim);">channel, sender_id, chat_id, content, timestamp, media, metadata</p>
+      </div>
+      <div>
+        <strong style="font-size: 13px; color: var(--node-a);">OutboundMessage</strong>
+        <p style="font-size: 12px; color: var(--text-dim);">channel, chat_id, content, reply_to, media, metadata</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="mermaid-wrap mermaid-wrap--compact" style="margin-top: 16px;">
+    <div class="zoom-controls">
+      <button onclick="zoomDiagram(this, 1.2)" title="Zoom in">+</button>
+      <button onclick="zoomDiagram(this, 0.8)" title="Zoom out">&minus;</button>
+      <button onclick="resetZoom(this)" title="Reset zoom">&#8634;</button>
+      <button onclick="openDiagramFullscreen(this)" title="Full size">&#x26F6;</button>
+    </div>
+    <pre class="mermaid">
+graph LR
+  CH["Channel"] -->|publish| IQ["Inbound Queue"]
+  IQ -->|1s timeout| AL["Agent Loop"]
+  AL -->|tool exec| TR["Tool Registry"]
+  TR -->|result| AL
+  AL -->|publish| OQ["Outbound Queue"]
+  OQ -->|dispatch| CM["ChannelManager"]
+  CM -->|send| CH2["Channel"]
+
+  classDef queue fill:#d4a73a22,stroke:#d4a73a,stroke-width:2px
+  class IQ,OQ queue
+    </pre>
+  </div>
+</section>
+
+<!-- ==================== 4. TOOLS ==================== -->
+<section class="section" id="tools">
+  <div class="section__header">
+    <span class="section__number">04</span>
+    <h2 class="section__title">Tools &mdash; Registry Pattern</h2>
+  </div>
+
+  <div class="card-grid-2" style="margin-bottom: 20px;">
+    <div class="ve-card ve-card--accent-b ve-card--elevated" style="--i:1">
+      <div class="ve-card__label ve-card__label--green">Built-in Tools</div>
+      <h3>Core Capabilities</h3>
+      <ul>
+        <li><code>ReadFile</code>, <code>WriteFile</code>, <code>EditFile</code>, <code>ListDir</code></li>
+        <li><code>Exec</code> &mdash; shell execution</li>
+        <li><code>WebSearch</code> (Brave) + <code>WebFetch</code></li>
+        <li><code>Message</code> &mdash; send messages</li>
+        <li><code>Spawn</code> &mdash; launch subagents</li>
+        <li><code>Cron</code> &mdash; scheduled tasks</li>
+      </ul>
+    </div>
+
+    <div class="ve-card ve-card--accent-d ve-card--elevated" style="--i:2">
+      <div class="ve-card__label ve-card__label--brown">MCP Integration</div>
+      <h3>External Tool Protocol</h3>
+      <ul>
+        <li>Supports stdio or HTTP/SSE transports</li>
+        <li>Auto-discovery of available tools</li>
+        <li>30s timeout per tool call</li>
+        <li>Wraps external tools as <code>MCPToolWrapper</code></li>
+        <li>Schema validation + type casting on all params</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Tool Execution Flow -->
+  <h3 style="font-size: 15px; margin-bottom: 12px; color: var(--text-dim); font-family: var(--font-mono); font-size: 12px; text-transform: uppercase; letter-spacing: 1px;">Tool Execution Flow</h3>
+  <div class="pipeline">
+    <div class="pipeline__step">
+      <div class="pipeline__step-label">Step 1</div>
+      <div class="pipeline__step-name">LLM returns tool calls</div>
+    </div>
+    <div class="pipeline__arrow">&rarr;</div>
+    <div class="pipeline__step">
+      <div class="pipeline__step-label">Step 2</div>
+      <div class="pipeline__step-name">Registry validates params</div>
+    </div>
+    <div class="pipeline__arrow">&rarr;</div>
+    <div class="pipeline__step">
+      <div class="pipeline__step-label">Step 3</div>
+      <div class="pipeline__step-name">Tool executes async</div>
+    </div>
+    <div class="pipeline__arrow">&rarr;</div>
+    <div class="pipeline__step">
+      <div class="pipeline__step-label">Step 4</div>
+      <div class="pipeline__step-name">Result returned</div>
+    </div>
+    <div class="pipeline__arrow">&rarr;</div>
+    <div class="pipeline__step">
+      <div class="pipeline__step-label">Step 5</div>
+      <div class="pipeline__step-name">Loop continues</div>
+    </div>
+  </div>
+
+  <div class="callout" style="margin-top: 12px;">
+    <strong>Error handling:</strong> Results truncated to 500 chars on error. <code>ToolRegistry</code> is a dict of <code>Tool</code> instances with full schema validation and type casting.
+  </div>
+</section>
+
+<!-- ==================== 5. LLM PROVIDERS ==================== -->
+<section class="section" id="llm">
+  <div class="section__header">
+    <span class="section__number">05</span>
+    <h2 class="section__title">LLM Providers &mdash; Registry-Driven</h2>
+  </div>
+
+  <div class="ve-card ve-card--hero" style="--i:0; margin-bottom: 20px;">
+    <div class="ve-card__label ve-card__label--gold">Detection</div>
+    <h3>Metadata-Driven Provider Registry</h3>
+    <p>Base class <code>LLMProvider</code> with abstract <code>chat()</code> method. Registry auto-detects the correct provider from API key prefixes, <code>api_base</code> URL matching, and environment variables. Zero manual configuration needed.</p>
+  </div>
+
+  <div class="card-grid-3">
+    <div class="ve-card ve-card--elevated" style="--i:1">
+      <div class="ve-card__label">Core</div>
+      <h3>LiteLLMProvider</h3>
+      <p>21+ providers via unified interface. Primary adapter for most LLM services.</p>
+    </div>
+    <div class="ve-card ve-card--elevated" style="--i:2">
+      <div class="ve-card__label ve-card__label--green">Custom</div>
+      <h3>CustomProvider</h3>
+      <p>OpenAI-compatible endpoints. For self-hosted or lesser-known APIs.</p>
+    </div>
+    <div class="ve-card ve-card--elevated" style="--i:3">
+      <div class="ve-card__label ve-card__label--brown">Specialized</div>
+      <h3>Azure + Codex</h3>
+      <p>AzureOpenAIProvider and OpenAICodexProvider for enterprise needs.</p>
+    </div>
+  </div>
+
+  <div class="table-wrap" style="margin-top: 20px;">
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Feature</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Extended Thinking</strong></td>
+            <td>Support for models with reasoning traces (e.g., Claude extended thinking)</td>
+          </tr>
+          <tr>
+            <td><strong>Reasoning Content</strong></td>
+            <td><code>reasoning_content</code> extraction for DeepSeek-R1 style models</td>
+          </tr>
+          <tr>
+            <td><strong>Prompt Caching</strong></td>
+            <td>Cache-aware message formatting for cost reduction</td>
+          </tr>
+          <tr>
+            <td><strong>25+ Providers</strong></td>
+            <td>OpenRouter, Anthropic, Azure, OpenAI, DeepSeek, Groq, Gemini, MiniMax, vLLM, and more</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== 6. SKILLS ==================== -->
+<section class="section" id="skills">
+  <div class="section__header">
+    <span class="section__number">06</span>
+    <h2 class="section__title">Skills &mdash; Markdown-Based</h2>
+  </div>
+
+  <div class="card-grid-2">
+    <div class="ve-card ve-card--accent-c ve-card--elevated" style="--i:1">
+      <div class="ve-card__label ve-card__label--gold">Design</div>
+      <h3>SKILL.md Files</h3>
+      <ul>
+        <li>Stored in <code>workspace/skills/&lbrace;name&rbrace;/</code></li>
+        <li>Pure markdown with instructions</li>
+        <li>Injected into system prompt at runtime</li>
+        <li>Agent reads SKILL.md and follows instructions</li>
+        <li>Dynamic loading &mdash; no restart needed</li>
+      </ul>
+    </div>
+
+    <div class="ve-card ve-card--elevated" style="--i:2">
+      <div class="ve-card__label">11 Built-in Skills</div>
+      <h3>Bundled Capabilities</h3>
+      <div class="card-grid" style="grid-template-columns: 1fr 1fr; gap: 4px 12px; margin-top: 8px;">
+        <span style="font-size: 13px; font-family: var(--font-mono); color: var(--text-dim);">github</span>
+        <span style="font-size: 13px; font-family: var(--font-mono); color: var(--text-dim);">weather</span>
+        <span style="font-size: 13px; font-family: var(--font-mono); color: var(--text-dim);">tmux</span>
+        <span style="font-size: 13px; font-family: var(--font-mono); color: var(--text-dim);">memory</span>
+        <span style="font-size: 13px; font-family: var(--font-mono); color: var(--text-dim);">summarize</span>
+        <span style="font-size: 13px; font-family: var(--font-mono); color: var(--text-dim);">cron</span>
+        <span style="font-size: 13px; font-family: var(--font-mono); color: var(--text-dim);">skill-creator</span>
+        <span style="font-size: 13px; font-family: var(--font-mono); color: var(--text-dim);">clawhub</span>
+        <span style="font-size: 13px; font-family: var(--font-mono); color: var(--text-dim);">+ 3 more</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== 7. OTHER NOTABLE ==================== -->
+<section class="section" id="extras">
+  <div class="section__header">
+    <span class="section__number">07</span>
+    <h2 class="section__title">Other Notable Features</h2>
+  </div>
+
+  <div class="card-grid" style="margin-bottom: 20px;">
+    <div class="ve-card ve-card--accent-a ve-card--elevated" style="--i:1">
+      <div class="ve-card__label">Subagent Manager</div>
+      <h3>Isolated Background Tasks</h3>
+      <ul>
+        <li>Spawns background tasks with own event loop</li>
+        <li>Each subagent gets restricted <code>ToolRegistry</code></li>
+        <li>No message/spawn/cron tools to prevent recursion</li>
+        <li>Isolated from parent agent scope</li>
+      </ul>
+    </div>
+
+    <div class="ve-card ve-card--accent-c ve-card--elevated" style="--i:2">
+      <div class="ve-card__label ve-card__label--gold">Heartbeat System</div>
+      <h3>Periodic Health Checks</h3>
+      <ul>
+        <li>30-minute interval execution</li>
+        <li>Reads <code>HEARTBEAT.md</code> checklist</li>
+        <li>LLM decides actions via virtual tool call</li>
+        <li>Notifies user only if findings exist</li>
+      </ul>
+    </div>
+
+    <div class="ve-card ve-card--accent-b ve-card--elevated" style="--i:3">
+      <div class="ve-card__label ve-card__label--green">Session Manager</div>
+      <h3>State Persistence</h3>
+      <ul>
+        <li>Key format: <code>channel:chat_id</code></li>
+        <li>JSONL persistence format</li>
+        <li>History alignment to user turns</li>
+        <li>WeakRef dict for locks &mdash; auto-cleanup when sessions GC'd</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card-grid-2">
+    <div class="ve-card ve-card--elevated" style="--i:4">
+      <div class="ve-card__label ve-card__label--brown">Cron</div>
+      <h3>Scheduled Tasks</h3>
+      <ul>
+        <li><code>croniter</code>-based scheduling</li>
+        <li>Jobs stored in <code>workspace/cron/</code></li>
+        <li>Pickled Job objects for persistence</li>
+      </ul>
+    </div>
+
+    <div class="ve-card ve-card--elevated" style="--i:5">
+      <div class="ve-card__label">Virtual Tool Calls</div>
+      <h3>Structured Decisions</h3>
+      <ul>
+        <li>LLM makes structured decisions via tool call interface</li>
+        <li>Used for heartbeat actions and memory consolidation</li>
+        <li>Not free-text &mdash; enforces schema compliance</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== LYRA COMPARISON ==================== -->
+<section class="section" id="lyra">
+  <div class="section__header">
+    <span class="section__number">08</span>
+    <h2 class="section__title">Lyra Comparison &mdash; Key Takeaways</h2>
+  </div>
+
+  <div class="callout--info callout" style="margin-bottom: 20px;">
+    <strong>Verdict:</strong> Nanobot proves that a personal AI agent can be remarkably effective with minimal infrastructure. These patterns are worth evaluating for Lyra's architecture.
+  </div>
+
+  <div class="comparison" style="margin-bottom: 24px;">
+    <!-- ADOPT Panel -->
+    <div class="ve-card ve-card--elevated" style="--i:1; border-top: 3px solid var(--green);">
+      <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 14px;">
+        <span class="status status--adopt">ADOPT</span>
+        <span style="font-size: 14px; font-weight: 600;">Recommended Patterns</span>
+      </div>
+      <ul>
+        <li><strong>Simple asyncio.Queue bus</strong> &mdash; Appropriate for single-process architectures. Two queues (inbound + outbound) is enough.</li>
+        <li><strong>WeakRef locks for sessions</strong> &mdash; Auto-cleanup when sessions are garbage collected, no manual lifecycle management.</li>
+        <li><strong>Virtual tool calls</strong> &mdash; Structured decisions via tool schema instead of free-text parsing. More reliable and auditable.</li>
+        <li><strong>Provider registry with metadata detection</strong> &mdash; Zero-config LLM provider selection via API key prefix / URL matching.</li>
+      </ul>
+    </div>
+
+    <!-- STUDY Panel -->
+    <div class="ve-card ve-card--elevated" style="--i:2; border-top: 3px solid var(--orange);">
+      <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 14px;">
+        <span class="status status--study">STUDY</span>
+        <span style="font-size: 14px; font-weight: 600;">Worth Investigating</span>
+      </div>
+      <ul>
+        <li><strong>File-based memory</strong> &mdash; Simpler than a database but limited in scale. Grep-searchable is elegant for small datasets.</li>
+        <li><strong>Heartbeat with LLM-driven decisions</strong> &mdash; Novel approach: the LLM reads a checklist and decides what to act on, not hardcoded rules.</li>
+        <li><strong>Subagent isolation</strong> &mdash; Restricted ToolRegistry per subagent prevents recursive spawning. Smart safety boundary.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Comparison Table -->
+  <div class="table-wrap">
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Aspect</th>
+            <th>Nanobot</th>
+            <th>Lyra Implication</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Message Bus</strong></td>
+            <td><code>asyncio.Queue</code> x2</td>
+            <td>Match single-process needs, upgrade later if needed</td>
+            <td><span class="status status--adopt">Adopt</span></td>
+          </tr>
+          <tr>
+            <td><strong>Memory</strong></td>
+            <td>MEMORY.md + HISTORY.md</td>
+            <td>Evaluate file-based for v1, plan DB migration path</td>
+            <td><span class="status status--study">Study</span></td>
+          </tr>
+          <tr>
+            <td><strong>Session Locks</strong></td>
+            <td>WeakRef dict</td>
+            <td>Drop-in pattern, prevents session memory leaks</td>
+            <td><span class="status status--adopt">Adopt</span></td>
+          </tr>
+          <tr>
+            <td><strong>Tool System</strong></td>
+            <td>Registry + MCP</td>
+            <td>Registry pattern good; MCP support is table stakes</td>
+            <td><span class="status status--adopt">Adopt</span></td>
+          </tr>
+          <tr>
+            <td><strong>LLM Detection</strong></td>
+            <td>Key prefix / URL match</td>
+            <td>Eliminates config ceremony for users</td>
+            <td><span class="status status--adopt">Adopt</span></td>
+          </tr>
+          <tr>
+            <td><strong>Skills</strong></td>
+            <td>SKILL.md in system prompt</td>
+            <td>Lyra already has plugin system; compare approaches</td>
+            <td><span class="status status--study">Study</span></td>
+          </tr>
+          <tr>
+            <td><strong>Subagents</strong></td>
+            <td>Restricted ToolRegistry</td>
+            <td>Good isolation model; study recursion prevention</td>
+            <td><span class="status status--study">Study</span></td>
+          </tr>
+          <tr>
+            <td><strong>Heartbeat</strong></td>
+            <td>LLM reads HEARTBEAT.md</td>
+            <td>Novel for proactive agent behavior</td>
+            <td><span class="status status--study">Study</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+</div><!-- /.container -->
+
+<!-- ==================== Mermaid ==================== -->
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+
+  const isDark = document.documentElement.dataset.theme === 'dark' ||
+    (!document.documentElement.dataset.theme && window.matchMedia('(prefers-color-scheme: dark)').matches);
+
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    look: 'classic',
+    themeVariables: {
+      primaryColor: isDark ? '#1a2a48' : '#e8f0f8',
+      primaryBorderColor: isDark ? '#6ba3d6' : '#1e3a5f',
+      primaryTextColor: isDark ? '#e4e8f0' : '#1a1a2e',
+      secondaryColor: isDark ? '#1a2a20' : '#f0f8f4',
+      secondaryBorderColor: isDark ? '#3ec9a8' : '#2a7c6f',
+      secondaryTextColor: isDark ? '#e4e8f0' : '#1a1a2e',
+      tertiaryColor: isDark ? '#2a2418' : '#fdf6e8',
+      tertiaryBorderColor: isDark ? '#e8be52' : '#d4a73a',
+      tertiaryTextColor: isDark ? '#e4e8f0' : '#1a1a2e',
+      lineColor: isDark ? '#4a5a6e' : '#8a9ab0',
+      fontSize: '16px',
+      fontFamily: "'DM Sans', system-ui, sans-serif",
+      noteBkgColor: isDark ? '#1a2a48' : '#fdf6e8',
+      noteTextColor: isDark ? '#e4e8f0' : '#1a1a2e',
+      noteBorderColor: isDark ? '#e8be52' : '#d4a73a',
+    }
+  });
+</script>
+
+<!-- ==================== Theme Toggle + Zoom ==================== -->
+<script>
+// Theme toggle
+function toggleTheme() {
+  var html = document.documentElement;
+  var current = html.dataset.theme;
+  var next = current === 'dark' ? 'light' : 'dark';
+  html.dataset.theme = next;
+  document.getElementById('theme-icon').innerHTML = next === 'dark' ? '&#9788;' : '&#9789;';
+
+  // Mermaid can't re-render reactively, notify user
+  // (theme change affects CSS variables but not Mermaid SVG internals)
+}
+
+// Initialize theme based on system preference
+(function() {
+  if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    document.documentElement.dataset.theme = 'dark';
+    document.getElementById('theme-icon').innerHTML = '&#9788;';
+  }
+})();
+
+// Mermaid zoom controls
+var INITIAL_ZOOM = 1.3;
+
+function zoomDiagram(btn, factor) {
+  var wrap = btn.closest('.mermaid-wrap');
+  var target = wrap.querySelector('.mermaid');
+  var current = parseFloat(target.dataset.zoom || INITIAL_ZOOM);
+  var next = Math.min(Math.max(current * factor, 0.4), 5);
+  target.dataset.zoom = next;
+  target.style.zoom = next;
+}
+
+function resetZoom(btn) {
+  var wrap = btn.closest('.mermaid-wrap');
+  var target = wrap.querySelector('.mermaid');
+  target.dataset.zoom = INITIAL_ZOOM;
+  target.style.zoom = INITIAL_ZOOM;
+}
+
+function openDiagramFullscreen(btn) {
+  var wrap = btn.closest('.mermaid-wrap');
+  openMermaidInNewTab(wrap);
+}
+
+function openMermaidInNewTab(wrap) {
+  var svg = wrap.querySelector('.mermaid svg');
+  if (!svg) return;
+
+  var clone = svg.cloneNode(true);
+  clone.style.zoom = '';
+  clone.style.transform = '';
+
+  var styles = getComputedStyle(document.documentElement);
+  var bg = styles.getPropertyValue('--bg').trim() || '#ffffff';
+
+  var html = '<!DOCTYPE html>' +
+    '<html lang="en"><head><meta charset="UTF-8">' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+    '<title>Diagram</title>' +
+    '<style>' +
+    'body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; background: ' + bg + '; padding: 40px; box-sizing: border-box; }' +
+    'svg { max-width: 100%; max-height: 90vh; height: auto; }' +
+    '</style></head><body>' +
+    clone.outerHTML +
+    '</body></html>';
+
+  var blob = new Blob([html], { type: 'text/html' });
+  var url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+}
+
+// Scroll-to-zoom + pan on all mermaid wraps
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.mermaid-wrap').forEach(function(wrap) {
+    // Ctrl/Cmd + scroll to zoom
+    wrap.addEventListener('wheel', function(e) {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      var target = wrap.querySelector('.mermaid');
+      var current = parseFloat(target.dataset.zoom || INITIAL_ZOOM);
+      var factor = e.deltaY < 0 ? 1.1 : 0.9;
+      var next = Math.min(Math.max(current * factor, 0.4), 5);
+      target.dataset.zoom = next;
+      target.style.zoom = next;
+    }, { passive: false });
+
+    // Click-and-drag to pan
+    var startX, startY, scrollL, scrollT, startTime, didPan;
+    wrap.addEventListener('mousedown', function(e) {
+      if (e.target.closest('.zoom-controls')) return;
+      wrap.classList.add('is-panning');
+      startX = e.clientX;
+      startY = e.clientY;
+      scrollL = wrap.scrollLeft;
+      scrollT = wrap.scrollTop;
+      startTime = Date.now();
+      didPan = false;
+    });
+    window.addEventListener('mousemove', function(e) {
+      if (!wrap.classList.contains('is-panning')) return;
+      var dx = e.clientX - startX;
+      var dy = e.clientY - startY;
+      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) didPan = true;
+      wrap.scrollLeft = scrollL - dx;
+      wrap.scrollTop = scrollT - dy;
+    });
+    window.addEventListener('mouseup', function() {
+      if (!wrap.classList.contains('is-panning')) return;
+      wrap.classList.remove('is-panning');
+      var elapsed = Date.now() - startTime;
+      if (!didPan && elapsed < 300) {
+        openMermaidInNewTab(wrap);
+      }
+    });
+  });
+});
+</script>
+
+</body>
+</html>

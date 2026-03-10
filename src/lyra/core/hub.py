@@ -1,14 +1,20 @@
 from __future__ import annotations
 
 import asyncio
+import collections.abc
 import logging
 import time
 from collections import deque
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import NamedTuple, Protocol
 
+from anthropic import APIError as AnthropicAPIError
+
 from .agent import AgentBase
+from .circuit_breaker import CircuitRegistry
 from .message import GENERIC_ERROR_REPLY, Message, Platform, Response
+from .messages import MessageManager
 from .pool import Pool
 
 log = logging.getLogger(__name__)
@@ -24,6 +30,16 @@ class ChannelAdapter(Protocol):
     """
 
     async def send(self, original_msg: Message, response: Response) -> None: ...
+
+    async def send_streaming(
+        self, original_msg: Message, chunks: AsyncIterator[str]
+    ) -> None:
+        """Stream response to the channel with edit-in-place.
+
+        Default implementation accumulates all chunks and calls send().
+        Adapters override for progressive display.
+        """
+        ...
 
 
 class RoutingKey(NamedTuple):
@@ -53,7 +69,7 @@ class Hub:
 
     BUS_SIZE = 100
     # Per-user sliding window: drop messages beyond this rate.
-    RATE_LIMIT = 20   # max messages per user per window
+    RATE_LIMIT = 20  # max messages per user per window
     RATE_WINDOW = 60  # window size in seconds
 
     def __init__(
@@ -61,12 +77,16 @@ class Hub:
         bus_size: int = BUS_SIZE,
         rate_limit: int = RATE_LIMIT,
         rate_window: int = RATE_WINDOW,
+        circuit_registry: CircuitRegistry | None = None,
+        msg_manager: MessageManager | None = None,
     ) -> None:
         self.bus: asyncio.Queue[Message] = asyncio.Queue(maxsize=bus_size)
         self.adapter_registry: dict[tuple[Platform, str], ChannelAdapter] = {}
         self.agent_registry: dict[str, AgentBase] = {}
         self.bindings: dict[RoutingKey, Binding] = {}
         self.pools: dict[str, Pool] = {}
+        self.circuit_registry = circuit_registry
+        self._msg_manager = msg_manager
         self._rate_limit = rate_limit
         self._rate_window = rate_window
         # Sliding window: maps RoutingKey → deque of message timestamps.
@@ -207,6 +227,25 @@ class Hub:
             )
         await adapter.send(msg, response)
 
+    async def dispatch_streaming(
+        self, msg: Message, chunks: AsyncIterator[str]
+    ) -> None:
+        """Stream response back via the originating adapter."""
+        adapter = self.adapter_registry.get((msg.platform, msg.bot_id))
+        if adapter is None:
+            raise KeyError(
+                f"No adapter registered for ({msg.platform!r}, {msg.bot_id!r}). "
+                "Call register_adapter() before dispatching responses."
+            )
+        if hasattr(adapter, "send_streaming"):
+            await adapter.send_streaming(msg, chunks)
+        else:
+            # Fallback: accumulate and send as one message
+            text = ""
+            async for chunk in chunks:
+                text += chunk
+            await adapter.send(msg, Response(content=text))
+
     # ------------------------------------------------------------------
     # Run loop
     # ------------------------------------------------------------------
@@ -236,10 +275,15 @@ class Hub:
                 router = getattr(agent, "command_router", None)
                 if router and router.is_command(msg):
                     try:
-                        response = await router.dispatch(msg)
+                        response = await router.dispatch(msg, pool)
                     except Exception as exc:
                         log.exception("command dispatch failed for %s: %s", key, exc)
-                        response = Response(content=GENERIC_ERROR_REPLY)
+                        _content = (
+                            self._msg_manager.get("generic")
+                            if self._msg_manager
+                            else GENERIC_ERROR_REPLY
+                        )
+                        response = Response(content=_content)
                     try:
                         await self.dispatch_response(msg, response)
                     except Exception as exc:
@@ -253,19 +297,112 @@ class Hub:
                         msg.bot_id,
                     )
                     continue
+                # Anthropic circuit pre-process check
+                # (Option B: hub-level check before agent.process())
+                if self.circuit_registry is not None:
+                    cb = self.circuit_registry.get("anthropic")
+                    if cb is not None and cb.is_open():
+                        status = cb.get_status()
+                        retry_secs = int(status.retry_after or 0)
+                        _retry_str = str(retry_secs)
+                        _unavail = (
+                            self._msg_manager.get("unavailable", retry_secs=_retry_str)
+                            if self._msg_manager
+                            else (
+                                "Lyra is currently unavailable. "
+                                f"Please try again in {retry_secs}s."
+                            )
+                        )
+                        reply = Response(content=_unavail)
+                        try:
+                            await self.dispatch_response(msg, reply)
+                        except Exception as exc:
+                            log.exception(
+                                "dispatch_response failed for fast-fail reply: %s",
+                                exc,
+                            )
+                        continue
                 async with pool.lock:
-                    try:
-                        response = await agent.process(msg, pool)
-                    except Exception as exc:
-                        log.exception(
-                            "agent.process() raised for %s: %s", key, exc
-                        )
-                        response = Response(content=GENERIC_ERROR_REPLY)
-                    try:
-                        await self.dispatch_response(msg, response)
-                    except Exception as exc:
-                        log.exception(
-                            "dispatch_response() failed for %s: %s", key, exc
-                        )
+                    result = agent.process(msg, pool)
+                    if isinstance(result, collections.abc.AsyncIterator):
+                        # Streaming path (AnthropicAgent)
+                        try:
+                            await self.dispatch_streaming(msg, result)
+                            # Record success for both anthropic and hub circuits
+                            if self.circuit_registry is not None:
+                                for _cb_name in ("anthropic", "hub"):
+                                    _cb = self.circuit_registry.get(_cb_name)
+                                    if _cb is not None:
+                                        _cb.record_success()
+                        except BaseException as exc:
+                            # Always record failure so _probe_in_flight is cleared
+                            # even when CancelledError propagates (not caught by
+                            # bare `except Exception`).
+                            if self.circuit_registry is not None:
+                                # Always record hub failure
+                                _hub_cb = self.circuit_registry.get("hub")
+                                if _hub_cb is not None:
+                                    _hub_cb.record_failure()
+                                # Only record anthropic failure for LLM/SDK exceptions
+                                if isinstance(exc, AnthropicAPIError):
+                                    _ant_cb = self.circuit_registry.get("anthropic")
+                                    if _ant_cb is not None:
+                                        _ant_cb.record_failure()
+                            # Send error reply to user (best-effort, bounded)
+                            try:
+                                _err_content = (
+                                    self._msg_manager.get("generic")
+                                    if self._msg_manager
+                                    else GENERIC_ERROR_REPLY
+                                )
+                                error_reply = Response(content=_err_content)
+                                await asyncio.wait_for(
+                                    self.dispatch_response(msg, error_reply),
+                                    timeout=10,
+                                )
+                            except Exception as reply_exc:
+                                log.exception(
+                                    "dispatch_response() failed sending error"
+                                    " reply for %s: %s",
+                                    key,
+                                    reply_exc,
+                                )
+                            if not isinstance(exc, Exception):
+                                raise  # re-raise CancelledError / KeyboardInterrupt
+                            log.exception(
+                                "dispatch_streaming() failed for %s: %s",
+                                key,
+                                exc,
+                            )
+                    else:
+                        # Non-streaming path (SimpleAgent)
+                        try:
+                            response = await result
+                            # Record hub success for non-streaming path
+                            if self.circuit_registry is not None:
+                                _cb = self.circuit_registry.get("hub")
+                                if _cb is not None:
+                                    _cb.record_success()
+                        except Exception as exc:
+                            log.exception("agent.process() raised for %s: %s", key, exc)
+                            _proc_err = (
+                                self._msg_manager.get("generic")
+                                if self._msg_manager
+                                else GENERIC_ERROR_REPLY
+                            )
+                            response = Response(content=_proc_err)
+                            # Record hub failure
+                            if self.circuit_registry is not None:
+                                _cb = self.circuit_registry.get("hub")
+                                if _cb is not None:
+                                    _cb.record_failure()
+                        try:
+                            await self.dispatch_response(msg, response)
+                        except Exception as exc:
+                            log.exception(
+                                "dispatch_response() failed for %s: %s",
+                                key,
+                                exc,
+                            )
             finally:
                 self.bus.task_done()

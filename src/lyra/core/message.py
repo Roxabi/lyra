@@ -47,11 +47,34 @@ class AudioContent(BaseModel):
 MessageContent = TextContent | ImageContent | AudioContent
 
 
+def extract_text(msg: "Message") -> str:
+    """Extract plain text from a Message, regardless of content type."""
+    content: MessageContent | str = msg.content
+    if isinstance(content, str):
+        return content
+    if isinstance(content, TextContent):
+        return content.text
+    url = getattr(content, "url", str(content))
+    caption = getattr(content, "caption", None)
+    content_type = type(content).__name__.replace("Content", "").lower()
+    suffix = f" — {caption}" if caption else ""
+    return f"[{content_type}: {url}]{suffix}"
+
+
 @dataclass(frozen=True)
 class TelegramContext:
+    """Platform context for Telegram messages.
+
+    Unlike DiscordContext where message_id is always present, Telegram
+    service messages (e.g. user joined, pinned message) have no message_id,
+    so the field is optional. All ordinary bot-interaction messages will
+    have a non-None message_id.
+    """
+
     chat_id: int
     topic_id: int | None = None
     is_group: bool = False
+    message_id: int | None = None
 
 
 @dataclass(frozen=True)

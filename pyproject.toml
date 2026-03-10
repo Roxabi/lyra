@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Lyra by Roxabi — Personal AI agent engine"
 requires-python = ">=3.12"
 dependencies = [
+    "roxabi-memory",
     "pydantic>=2.12.5",
     # Adapters
     "aiogram>=3.26",       # Telegram — asyncio-native, tracks Bot API same-day
@@ -13,19 +14,18 @@ dependencies = [
     "uvicorn[standard]>=0.34",
     "httpx[asyncio]>=0.28",
     "python-dotenv>=1.0",
+    # Agent backends
+    "anthropic>=0.49",
 ]
 
 [project.optional-dependencies]
-dev = [
-    "pytest>=8.0",
-    "pytest-asyncio>=0.24",
-    "pyright>=1.1",
-    "ruff>=0.3",
-]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.uv.sources]
+roxabi-memory = { path = "../roxabi-memory" }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/lyra"]
@@ -52,4 +52,8 @@ select = ["E", "F", "I"]
 dev = [
     "pip-licenses>=5.5.1",
     "pre-commit>=4.5.1",
+    "pyright>=1.1",
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+    "ruff>=0.3",
 ]

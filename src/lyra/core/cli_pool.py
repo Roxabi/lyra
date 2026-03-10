@@ -79,6 +79,7 @@ class _ProcessEntry:
     proc: asyncio.subprocess.Process
     pool_id: str
     model_config: ModelConfig
+    system_prompt: str = ""
     session_id: str | None = None
     turn_count: int = 0
     last_activity: float = field(default_factory=time.time)
@@ -130,6 +131,7 @@ class CliPool:
         pool_id: str,
         message: str,
         model_config: ModelConfig,
+        system_prompt: str = "",
     ) -> CliResult:
         """Send a message to the persistent process for this pool.
 
@@ -146,9 +148,18 @@ class CliPool:
         entry = self._entries.get(pool_id)
 
         if entry is None or not entry.is_alive():
-            entry = await self._spawn(pool_id, model_config)
+            entry = await self._spawn(pool_id, model_config, system_prompt)
             if entry is None:
                 return CliResult(error="Failed to spawn Claude CLI process")
+        elif entry.system_prompt != system_prompt:
+            log.info(
+                "[pool:%s] system_prompt changed — respawning process",
+                pool_id,
+            )
+            await self._kill(pool_id)
+            entry = await self._spawn(pool_id, model_config, system_prompt)
+            if entry is None:
+                return CliResult(error="Failed to respawn Claude CLI process")
         elif entry.model_config != model_config:
             log.warning(
                 "[pool:%s] model_config mismatch — ignoring new config"
@@ -188,7 +199,10 @@ class CliPool:
     # -------------------------------------------------------------------------
 
     def _build_cmd(
-        self, model_config: ModelConfig, session_id: str | None = None
+        self,
+        model_config: ModelConfig,
+        session_id: str | None = None,
+        system_prompt: str = "",
     ) -> list[str]:
         cmd = [
             "claude",
@@ -204,14 +218,16 @@ class CliPool:
         ]
         if model_config.tools:
             cmd.extend(["--allowedTools", ",".join(model_config.tools)])
+        if system_prompt:
+            cmd.extend(["--system-prompt", system_prompt])
         if session_id:
             cmd.extend(["--resume", session_id])
         return cmd
 
     async def _spawn(
-        self, pool_id: str, model_config: ModelConfig
+        self, pool_id: str, model_config: ModelConfig, system_prompt: str = ""
     ) -> _ProcessEntry | None:
-        cmd = self._build_cmd(model_config)
+        cmd = self._build_cmd(model_config, system_prompt=system_prompt)
         log.info(
             "[pool:%s] spawning: backend=%s model=%s",
             pool_id,
@@ -235,7 +251,12 @@ class CliPool:
             log.error("[pool:%s] failed to spawn: %s", pool_id, exc)
             return None
 
-        entry = _ProcessEntry(proc=proc, pool_id=pool_id, model_config=model_config)
+        entry = _ProcessEntry(
+            proc=proc,
+            pool_id=pool_id,
+            model_config=model_config,
+            system_prompt=system_prompt,
+        )
         self._entries[pool_id] = entry
         log.info("[pool:%s] spawned (PID=%d)", pool_id, proc.pid)
         return entry

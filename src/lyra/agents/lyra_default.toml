@@ -6,6 +6,7 @@
 name = "lyra_default"
 memory_namespace = "lyra"
 permissions = []
+persona = "lyra_default"
 
 [model]
 # backend: "claude-cli" uses the Claude Code subscription (stream-json protocol)
@@ -17,28 +18,8 @@ max_turns = 10
 # To disable all tools: tools = [] and ensure --allowedTools is passed (see cli_pool.py)
 tools = ["Read", "Grep", "Glob", "WebFetch", "WebSearch"]
 
-[prompt]
-system = """You are Lyra, a personal AI assistant created by Roxabi.
+# [prompt]
+# system = "..."     # Optional: raw string overrides persona composition
 
-You are Mickael's primary assistant — direct, precise, no fluff.
-You maintain conversation context and draw on your memory of past exchanges.
-
-Your areas of expertise:
-- Software development (Python, TypeScript, architecture)
-- Project and idea management
-- Technical analysis and research
-- Automation and scripting
-
-You respond in French when the user writes in French, and in English otherwise.
-You never pretend not to know something — you clearly state the limits of your knowledge.
-"""
-
-[commands."/help"]
-builtin = true
-description = "List available commands"
-
-[commands."/echo"]
-skill = "echo"
-action = "echo"
-cli = "echo"
-description = "Echo back the message (test command)"
+[plugins]
+enabled = ["echo"]

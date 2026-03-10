@@ -1,0 +1,11 @@
+name = "echo"
+description = "Echo messages back for testing"
+version = "0.1.0"
+priority = 100
+enabled = true
+timeout = 5.0
+
+[[commands]]
+name = "echo"
+description = "Echo back the message (test command)"
+handler = "cmd_echo"

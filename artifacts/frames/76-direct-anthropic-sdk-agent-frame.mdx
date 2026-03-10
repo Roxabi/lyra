@@ -1,0 +1,75 @@
+---
+title: "Direct Anthropic SDK Agent (replace CLI subprocess)"
+issue: 76
+status: approved
+tier: F-full
+date: 2026-03-07
+---
+
+## Problem
+
+Lyra's `SimpleAgent` currently shells out to Claude CLI via subprocess (`cli_pool.py`), adapted from 2ndBrain's `ClaudePool` (`telegram_bot/core/claude_pool.py`). Both systems use the same pattern: one persistent `claude --input-format stream-json` process per session, communicating via NDJSON on stdin/stdout.
+
+This creates several compounding limitations:
+
+1. **No real streaming** — Lyra waits for the full CLI response. 2ndBrain has `on_assistant_message` callbacks (intermediate assistant-event chunks), but neither has true token-by-token SSE streaming.
+2. **No native tool use** — tools are routed through CLI's own tool system rather than using the SDK's structured tool calling.
+3. **Sandboxed environment** — `_SAFE_ENV_KEYS` prevents the subprocess from accessing vault, memory, or other Lyra services directly. (2ndBrain passes full env minus `CLAUDECODE`.)
+4. **Performance overhead** — each pool spawns a Node.js-based Claude CLI process (~12s cold start), adding latency.
+5. **Limited context control** — no fine-grained management of conversation history, system prompts, or token budgets.
+6. **Auth dependency on CLI subscription** — both 2ndBrain and Lyra piggyback on the Claude CLI binary's OAuth subscription auth (Max plan).
+
+Additionally, Lyra's `CliPool` is missing three features that 2ndBrain's `ClaudePool` already has:
+
+7. **No session persistence** — when a process dies or is reaped, the conversation is lost. 2ndBrain persists `session_id` via `SessionPersistence` and resumes with `--resume <session_id>`.
+8. **No model switching** — changing models requires killing the process. 2ndBrain sends `control_request` with `subtype: set_model` to switch live.
+9. **No streaming callbacks** — 2ndBrain's `on_assistant_message` sends intermediate text to Telegram as assistant events arrive, giving users faster feedback.
+
+Replacing the CLI subprocess with direct Anthropic Python SDK calls unlocks true streaming, native tool use, persona injection, and tighter integration with Lyra's service layer — while also addressing all three missing features natively (SDK manages conversation state, model selection per request, and token-level streaming).
+
+## Who
+
+- **Primary:** Lyra end-users on Telegram and Discord — they experience the latency, lack of streaming, and limited tool capabilities directly.
+- **Secondary:** Lyra developers — the current subprocess approach is harder to debug, test, and extend.
+
+## Constraints
+
+- **Dual auth support** — The SDK agent must support both authentication methods, configurable per-agent in TOML:
+  - **OAuth token** (primary): `CLAUDE_CODE_OAUTH_TOKEN` env var, obtained via `claude setup-token`. Uses Max subscription quota (flat cost). Tokens expire after 8h and need refresh. Anthropic confirmed personal/internal use is acceptable; the ban targets multi-tenant SaaS (OpenClaw-style).
+  - **API key** (fallback): `ANTHROPIC_API_KEY` env var, usage-based billing via Console. Fully ToS-compliant, no restrictions. Fallback if OAuth is ever blocked.
+- **CLI remains default** — `SimpleAgent` (CLI subprocess) stays the default backend for stability. The new `AnthropicAgent` (SDK) is opt-in via config. Users test and migrate when ready.
+- **Streaming must work end-to-end** — from SDK response through hub to Telegram/Discord adapters. Adapters must handle chunked output.
+- **Parent epic #73** — this is part of Phase 1b (Agent core). Must align with sibling issues (persona injection #75, memory integration #9).
+- **Tool definitions** — native SDK tools replace CLI tool routing. Tool schema must be compatible with existing skill/command system.
+- **2ndBrain parity** — features to preserve: session persistence, model switching, streaming callbacks, cost tracking per turn. See #77 for full audit.
+
+## Out of Scope
+
+- **Conversation history / memory persistence** — handled by separate memory layer (#9, roxabi-memory).
+- **Multi-model support** — only Anthropic Claude models for now; no OpenAI/Gemini abstraction layer.
+- **Cost optimization / token budgets** — important but separate concern; get it working first.
+- **Voice pipeline integration** — depends on this but is a separate issue.
+- **Complex system prompt design** — a simple persona prompt is sufficient for v1. No need to replicate Claude Code's full system prompt.
+
+## Strategy
+
+**Build both, default to CLI, migrate when ready.**
+
+1. Build `AnthropicAgent` as a new `AgentBase` implementation alongside `SimpleAgent`.
+2. `SimpleAgent` (CLI subprocess, subscription auth) remains the default — stable, proven, free with Max.
+3. `AnthropicAgent` (SDK, OAuth primary / API key fallback) is opt-in via agent TOML config (`backend = "anthropic-sdk"`).
+4. User tests SDK agent, validates streaming + tools + cost, then migrates default when confident.
+
+This de-risks the migration: if SDK auth breaks or costs spike, CLI fallback is one config change away.
+
+## Complexity
+
+**Tier: F-full** — Multiple integration surfaces (SDK client, streaming pipeline, tool system, adapter layer), new architectural pattern (direct API vs subprocess), and unknown territory around streaming chunk propagation through the hub-and-spoke architecture.
+
+Signals observed:
+- New architectural pattern replacing core agent execution path
+- Multiple domains affected: agent core, hub message routing, adapter streaming
+- Tool system redesign (CLI tools → SDK native tools)
+- Streaming propagation is an unknown — needs analysis of adapter capabilities
+- Dual auth with token refresh adds complexity
+- Risk of regression on existing SimpleAgent behavior

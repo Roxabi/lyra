@@ -1,0 +1,45 @@
+---
+title: "feat: directory-based plugin system (MVP)"
+issue: 106
+status: approved
+tier: F-lite
+date: 2026-03-09
+---
+
+## Problem
+
+`SKILL_REGISTRY` in `command_router.py` is a hardcoded Python dict. Adding a skill requires editing source code, rebuilding, and restarting the hub. There is no discovery mechanism, no per-agent customization, no manifest, and no dependency tracking.
+
+This creates friction for every new capability added to Lyra: a code change + restart is required even for trivial command additions. All agents share the same flat registry with no way to enable/disable skills per agent.
+
+The goal is to replace this with a directory-based plugin system where each plugin lives in its own folder with a TOML manifest, enabling dynamic discovery, per-agent configuration, and hot-reload without hub restart.
+
+## Who
+
+- **Primary:** Hub developer (Mickael) — adding new Lyra capabilities without touching core routing code
+- **Secondary:** Future contributors — dropping a plugin folder is sufficient to add a skill
+
+## Constraints
+
+- Python / asyncio stack (`src/lyra/`)
+- TOML for manifest (consistent with existing agent config format)
+- Must preserve existing `echo` and `google-workspace` behavior post-migration
+- No external plugin registries, no marketplace sync (MVP only)
+- Hot-reload must work without hub restart
+
+## Out of Scope
+
+- Marketplace sync / remote plugin distribution
+- Remote plugins (fetched from URL)
+- Sandboxing / isolation
+- NATS plugin workers (#59 — different scope, Phase 5)
+
+## Complexity
+
+**Tier: F-lite** — Clear MVP scope, single backend domain (`src/lyra/plugins/`), no cross-domain changes.
+
+Signals observed:
+- Single domain: backend (`src/lyra/`)
+- New pattern: `PluginLoader` class + TOML manifest + dynamic import — but self-contained
+- Clear MVP checklist with explicit non-goals
+- No unknowns: design is fully specified in issue

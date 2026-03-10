@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 import lyra.__main__ as main_mod
+from lyra.core.agent import Agent, ModelConfig
 from lyra.core.hub import Hub
 from lyra.core.message import Platform
 
@@ -70,6 +71,16 @@ def _patch_all(monkeypatch: pytest.MonkeyPatch) -> list[Hub]:
         main_mod,
         "load_discord_config",
         lambda: MagicMock(token="d"),
+    )
+    monkeypatch.setattr(
+        main_mod,
+        "load_agent_config",
+        lambda name, **kw: Agent(
+            name=name,
+            system_prompt="test",
+            memory_namespace="test",
+            model_config=ModelConfig(backend="claude-cli"),
+        ),
     )
     monkeypatch.setattr(main_mod, "TelegramAdapter", lambda **kwargs: _FakeTgAdapter())
     monkeypatch.setattr(main_mod, "DiscordAdapter", CapturingDcAdapter)
@@ -180,3 +191,64 @@ class TestGracefulShutdown:
         trigger_task = asyncio.create_task(trigger())
         await main_mod._main(_stop=stop)
         await trigger_task  # ensure no lingering tasks
+
+
+# ---------------------------------------------------------------------------
+# T4 — Agent factory: _create_agent selects by backend
+# ---------------------------------------------------------------------------
+
+
+class TestAgentFactory:
+    def test_cli_backend_creates_simple_agent(self) -> None:
+        from lyra.agents.simple_agent import SimpleAgent
+        from lyra.core.agent import Agent, ModelConfig
+
+        config = Agent(
+            name="test",
+            system_prompt="",
+            memory_namespace="test",
+            model_config=ModelConfig(backend="claude-cli"),
+        )
+        cli_pool = MagicMock()
+        agent = main_mod._create_agent(config, cli_pool)
+        assert isinstance(agent, SimpleAgent)
+
+    def test_sdk_backend_creates_anthropic_agent(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
+        from lyra.agents.anthropic_agent import AnthropicAgent
+        from lyra.core.agent import Agent, ModelConfig
+
+        config = Agent(
+            name="test",
+            system_prompt="",
+            memory_namespace="test",
+            model_config=ModelConfig(backend="anthropic-sdk"),
+        )
+        agent = main_mod._create_agent(config, None)
+        assert isinstance(agent, AnthropicAgent)
+
+    def test_unknown_backend_raises(self) -> None:
+        from lyra.core.agent import Agent, ModelConfig
+
+        config = Agent(
+            name="test",
+            system_prompt="",
+            memory_namespace="test",
+            model_config=ModelConfig(backend="unknown"),
+        )
+        with pytest.raises(ValueError, match="Unknown backend"):
+            main_mod._create_agent(config, None)
+
+    def test_cli_backend_without_pool_raises(self) -> None:
+        from lyra.core.agent import Agent, ModelConfig
+
+        config = Agent(
+            name="test",
+            system_prompt="",
+            memory_namespace="test",
+            model_config=ModelConfig(backend="claude-cli"),
+        )
+        with pytest.raises(RuntimeError, match="CliPool required"):
+            main_mod._create_agent(config, None)

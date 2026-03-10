@@ -16,9 +16,6 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - name: Checkout roxabi-memory (path dependency)
-        run: git clone --depth 1 https://github.com/Roxabi/roxabi-memory.git ../roxabi-memory && git -C ../roxabi-memory checkout 7eae0114b1b1bde5ce1247eafdd652afb182fcc1
-
       - name: Install uv
         uses: astral-sh/setup-uv@5a095e7a2014a4212f075830d4f7277575a9d098 # v7
 

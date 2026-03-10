@@ -85,7 +85,14 @@ async def _run() -> int:
         log.info("Telegram alert sent with diagnosis")
     except Exception as tg_exc:
         log.error("Telegram delivery failed: %s", tg_exc)
-        # Log-only fallback — alert could not be delivered
+        # Log-only fallback — full report for investigation
+        for check in report.checks:
+            log.error(
+                "  %s %s: %s",
+                "PASS" if check.passed else "FAIL",
+                check.name,
+                check.detail,
+            )
         log.error(
             "ALERT NOT DELIVERED. Severity=%s, Diagnosis=%s, Remediation=%s",
             diagnosis.severity,

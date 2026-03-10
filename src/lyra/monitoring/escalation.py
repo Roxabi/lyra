@@ -69,8 +69,17 @@ async def escalate_to_llm(
     text = data["content"][0]["text"]
     parsed = json.loads(text)
 
+    _VALID_SEVERITIES = {"info", "warning", "critical"}
+    severity = parsed.get("severity", "warning")
+    if severity not in _VALID_SEVERITIES:
+        log.warning(
+            "LLM returned unexpected severity %r, defaulting to 'warning'",
+            severity,
+        )
+        severity = "warning"
+
     return DiagnosisReport(
-        severity=parsed["severity"],
+        severity=severity,
         diagnosis=parsed["diagnosis"],
         suggested_remediation=parsed["suggested_remediation"],
         source=report,

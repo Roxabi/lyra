@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -196,3 +197,167 @@ class TestSendTelegramRawAlert:
 
             with pytest.raises(Exception):
                 await send_telegram_raw_alert(failed_report, config)
+
+
+# ---------------------------------------------------------------------------
+# _run() fallback chain (monitoring.__main__)
+# ---------------------------------------------------------------------------
+
+
+class TestRunFallbackChain:
+    """Tests for the monitoring pipeline orchestration in _run()."""
+
+    @pytest.fixture()
+    def _mock_config(self, monkeypatch: pytest.MonkeyPatch, tmp_path):
+        """Set env vars so load_monitoring_config() succeeds."""
+        monkeypatch.setenv(
+            "LYRA_CONFIG", str(tmp_path / "nonexistent.toml")
+        )
+        monkeypatch.setenv("TELEGRAM_TOKEN", "fake")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake")
+        monkeypatch.setenv("TELEGRAM_ADMIN_CHAT_ID", "12345")
+        # Mock disk usage for check_disk
+        monkeypatch.setattr(
+            "lyra.monitoring.checks.shutil.disk_usage",
+            lambda path: shutil._ntuple_diskusage(
+                total=100 * 1024**3,
+                used=50 * 1024**3,
+                free=50 * 1024**3,
+            ),
+        )
+
+    async def test_all_pass_returns_zero(
+        self,
+        _mock_config,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """All checks pass → exit 0, no LLM call."""
+        from lyra.monitoring.__main__ import _run
+
+        monkeypatch.setattr(
+            "lyra.monitoring.checks.subprocess.run",
+            lambda *a, **kw: MagicMock(returncode=0, stdout="active\n"),
+        )
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "queue_size": 0,
+            "last_message_age_s": 10.0,
+            "uptime_s": 100.0,
+            "circuits": {"anthropic": {"state": "closed"}},
+        }
+
+        with patch(
+            "lyra.monitoring.checks.httpx.AsyncClient"
+        ) as mock_cls:
+            mc = AsyncMock()
+            mc.get.return_value = mock_resp
+            mc.__aenter__ = AsyncMock(return_value=mc)
+            mc.__aexit__ = AsyncMock(return_value=False)
+            mock_cls.return_value = mc
+
+            code = await _run()
+
+        assert code == 0
+
+    async def test_llm_fail_raw_telegram_sent(
+        self,
+        _mock_config,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Anomaly + LLM fails → raw Telegram sent → exit 1."""
+        from lyra.monitoring.__main__ import _run
+
+        # Process check fails → anomaly
+        monkeypatch.setattr(
+            "lyra.monitoring.checks.subprocess.run",
+            lambda *a, **kw: MagicMock(returncode=3, stdout="inactive\n"),
+        )
+
+        import httpx
+
+        call_log: list[str] = []
+
+        with (
+            patch(
+                "lyra.monitoring.checks.httpx.AsyncClient"
+            ) as checks_cls,
+            patch(
+                "lyra.monitoring.escalation.httpx.AsyncClient"
+            ) as esc_cls,
+        ):
+            # HTTP health check fails (hub down)
+            mc_checks = AsyncMock()
+            mc_checks.get.side_effect = httpx.ConnectError("refused")
+            mc_checks.__aenter__ = AsyncMock(return_value=mc_checks)
+            mc_checks.__aexit__ = AsyncMock(return_value=False)
+            checks_cls.return_value = mc_checks
+
+            # Escalation: LLM fails, then Telegram succeeds
+            call_count = 0
+
+            async def mock_post(*args, **kwargs):
+                nonlocal call_count
+                call_count += 1
+                url = args[0] if args else kwargs.get("url", "")
+                if "anthropic" in str(url):
+                    call_log.append("llm_called")
+                    raise httpx.ConnectError("API down")
+                # Telegram raw alert
+                call_log.append("telegram_raw")
+                resp = MagicMock()
+                resp.status_code = 200
+                return resp
+
+            mc_esc = AsyncMock()
+            mc_esc.post = mock_post
+            mc_esc.__aenter__ = AsyncMock(return_value=mc_esc)
+            mc_esc.__aexit__ = AsyncMock(return_value=False)
+            esc_cls.return_value = mc_esc
+
+            code = await _run()
+
+        assert code == 1
+        assert "llm_called" in call_log
+        assert "telegram_raw" in call_log
+
+    async def test_both_fail_log_only(
+        self,
+        _mock_config,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Anomaly + LLM fails + Telegram fails → log only → exit 1."""
+        from lyra.monitoring.__main__ import _run
+
+        monkeypatch.setattr(
+            "lyra.monitoring.checks.subprocess.run",
+            lambda *a, **kw: MagicMock(returncode=3, stdout="inactive\n"),
+        )
+
+        import httpx
+
+        with (
+            patch(
+                "lyra.monitoring.checks.httpx.AsyncClient"
+            ) as checks_cls,
+            patch(
+                "lyra.monitoring.escalation.httpx.AsyncClient"
+            ) as esc_cls,
+        ):
+            mc_checks = AsyncMock()
+            mc_checks.get.side_effect = httpx.ConnectError("refused")
+            mc_checks.__aenter__ = AsyncMock(return_value=mc_checks)
+            mc_checks.__aexit__ = AsyncMock(return_value=False)
+            checks_cls.return_value = mc_checks
+
+            # Both LLM and Telegram fail
+            mc_esc = AsyncMock()
+            mc_esc.post.side_effect = httpx.ConnectError("all down")
+            mc_esc.__aenter__ = AsyncMock(return_value=mc_esc)
+            mc_esc.__aexit__ = AsyncMock(return_value=False)
+            esc_cls.return_value = mc_esc
+
+            code = await _run()
+
+        assert code == 1

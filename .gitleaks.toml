@@ -5,7 +5,7 @@ title = 'Gitleaks'
 
 [allowlist]
   description = 'Project-level allowlist for known safe values'
-  paths = ['.env.example', '.env', 'artifacts/']
+  paths = ['.env.example', '.env', 'artifacts/specs/', 'artifacts/plans/', 'artifacts/frames/', 'artifacts/analyses/']
   regexes = [
     'change-me-to-a-random-secret',
     'your-.*-token',

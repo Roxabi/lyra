@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 
 from lyra.core.message import Message, Response
-from lyra.core.pairing import get_pairing_manager
+from lyra.core.pairing import PairingError, get_pairing_manager
 from lyra.core.pool import Pool
 
 log = logging.getLogger(__name__)
@@ -29,7 +29,7 @@ async def cmd_invite(msg: Message, pool: Pool, args: list[str]) -> Response:
 
     try:
         code = await pm.generate_code(msg.user_id)
-    except RuntimeError as exc:
+    except PairingError as exc:
         return Response(content=str(exc))
 
     return Response(

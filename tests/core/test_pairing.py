@@ -27,6 +27,7 @@ from lyra.core.message import (
 )
 from lyra.core.pairing import (
     PairingConfig,
+    PairingError,
     PairingManager,
     _sha256,
     set_pairing_manager,
@@ -204,7 +205,7 @@ class TestGenerateCode:
         pm = await make_pm(max_pending=2)
         await pm.generate_code(_ADMIN_ID)
         await pm.generate_code(_ADMIN_ID)
-        with pytest.raises(RuntimeError, match="Max pending"):
+        with pytest.raises(PairingError, match="Max pending"):
             await pm.generate_code(_ADMIN_ID)
 
     async def test_max_pending_counts_only_non_expired(self) -> None:

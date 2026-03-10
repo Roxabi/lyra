@@ -294,13 +294,11 @@ class Hub:
                 # Pairing gate: runs after binding resolution, before command dispatch.
                 if self._pairing_manager and self._pairing_manager.config.enabled:
                     # Allow /join through so unpaired users can pair themselves.
-                    _text = _msg_text(msg).strip().lower()
-                    _first_token = _text.split(maxsplit=1)[0] if _text else ""
-                    is_join_cmd = (
-                        router is not None
-                        and router.is_command(msg)
-                        and _first_token == "/join"
+                    # Use router.get_command_name() as single source of truth (W4).
+                    _cmd_name = (
+                        router.get_command_name(msg) if router is not None else None
                     )
+                    is_join_cmd = _cmd_name == "/join"
                     if not is_join_cmd:
                         paired = await self._pairing_manager.is_paired(msg.user_id)
                         if not paired:
@@ -458,18 +456,6 @@ class Hub:
 # ---------------------------------------------------------------------------
 # Module-level helpers for the pairing gate
 # ---------------------------------------------------------------------------
-
-
-def _msg_text(msg: Message) -> str:
-    """Extract the text of a message (handles str and TextContent)."""
-    from .message import TextContent
-
-    content = msg.content
-    if isinstance(content, str):
-        return content
-    if isinstance(content, TextContent):
-        return content.text
-    return ""
 
 
 def _is_group_message(msg: Message) -> bool:

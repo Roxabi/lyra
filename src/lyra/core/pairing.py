@@ -11,7 +11,7 @@ import logging
 import secrets
 import time
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -19,11 +19,18 @@ import aiosqlite
 
 log = logging.getLogger(__name__)
 
+
+class PairingError(Exception):
+    """Business-rule violation in the pairing system (e.g. max pending reached)."""
+
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
 
 _SAFE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+_MAX_CODE_ATTEMPTS = 10
 
 _CREATE_PAIRING_CODES = """
 CREATE TABLE IF NOT EXISTS pairing_codes (
@@ -31,7 +38,8 @@ CREATE TABLE IF NOT EXISTS pairing_codes (
     code_hash TEXT NOT NULL UNIQUE,
     created_by TEXT NOT NULL,
     expires_at TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    attempt_count INTEGER NOT NULL DEFAULT 0
 )
 """
 
@@ -65,7 +73,7 @@ class PairingConfig:
 
         Missing keys use field defaults.
         """
-        known = {f.name for f in cls.__dataclass_fields__.values()}  # type: ignore[attr-defined]
+        known = {f.name for f in fields(cls)}
         filtered = {k: v for k, v in data.items() if k in known}
         return cls(**filtered)
 
@@ -91,6 +99,12 @@ class PairingManager:
         # In-memory sliding window: identity_key → deque of failure timestamps
         self._rate_timestamps: dict[str, deque[float]] = {}
 
+    def _require_db(self) -> aiosqlite.Connection:
+        """Return the DB connection or raise if not connected."""
+        if self._db is None:
+            raise RuntimeError("call connect() first")
+        return self._db
+
     async def connect(self) -> None:
         """Open aiosqlite connection and create tables."""
         self._db = await aiosqlite.connect(self._db_path)
@@ -114,14 +128,13 @@ class PairingManager:
     async def generate_code(self, admin_identity: str) -> str:
         """Generate a plaintext pairing code and store its SHA-256 hash.
 
-        Raises RuntimeError if max_pending codes already exist for this admin.
+        Raises PairingError if max_pending codes already exist for this admin.
         """
-        if self._db is None:
-            raise RuntimeError("call connect() first")
+        db = self._require_db()
 
         pending = await self._count_pending(admin_identity)
         if pending >= self.config.max_pending:
-            raise RuntimeError(
+            raise PairingError(
                 f"Max pending codes ({self.config.max_pending}) reached for "
                 f"{admin_identity!r}. Revoke an existing code first."
             )
@@ -132,12 +145,12 @@ class PairingManager:
         code_hash = _sha256(code)
         expires_at = _utc_now() + timedelta(seconds=self.config.ttl_seconds)
 
-        await self._db.execute(
+        await db.execute(
             "INSERT INTO pairing_codes (code_hash, created_by, expires_at) "
             "VALUES (?, ?, ?)",
             (code_hash, admin_identity, expires_at.isoformat()),
         )
-        await self._db.commit()
+        await db.commit()
         log.info(
             "Generated pairing code for %s (expires %s)", admin_identity, expires_at
         )
@@ -145,10 +158,9 @@ class PairingManager:
 
     async def _count_pending(self, admin_identity: str) -> int:
         """Count non-expired codes for this admin."""
-        if self._db is None:
-            raise RuntimeError("call connect() first")
+        db = self._require_db()
         now_iso = _utc_now().isoformat()
-        async with self._db.execute(
+        async with db.execute(
             "SELECT COUNT(*) FROM pairing_codes "
             "WHERE created_by = ? AND expires_at > ?",
             (admin_identity, now_iso),
@@ -166,42 +178,60 @@ class PairingManager:
         Returns (success, message). On success, creates/replaces session and
         deletes the used code.
         """
-        if self._db is None:
-            raise RuntimeError("call connect() first")
+        db = self._require_db()
         code_hash = _sha256(code)
         now = _utc_now()
 
         # BEGIN IMMEDIATE to prevent two concurrent /join calls from both
         # consuming the same code (TOCTOU race between SELECT and DELETE).
-        await self._db.execute("BEGIN IMMEDIATE")
+        await db.execute("BEGIN IMMEDIATE")
         try:
-            async with self._db.execute(
-                "SELECT code_hash, expires_at FROM pairing_codes WHERE code_hash = ?",
+            # Increment attempt counter before checking existence so every
+            # probe — hit or miss — is counted toward the per-code limit.
+            await db.execute(
+                "UPDATE pairing_codes SET attempt_count = attempt_count + 1 "
+                "WHERE code_hash = ?",
+                (code_hash,),
+            )
+
+            # Note: SQL WHERE code_hash = ? is not constant-time, but with SHA-256
+            # input hashing and 40-bit code entropy (~1.1T combinations), timing
+            # attacks are impractical at personal-use scale. See PR #124 review W5.
+            async with db.execute(
+                "SELECT code_hash, expires_at, attempt_count "
+                "FROM pairing_codes WHERE code_hash = ?",
                 (code_hash,),
             ) as cursor:
                 row = await cursor.fetchone()
 
             if row is None:
-                await self._db.execute("ROLLBACK")
+                await db.execute("ROLLBACK")
                 return False, "Invalid code."
 
-            _stored_hash, expires_at_iso = row
+            _stored_hash, expires_at_iso, attempt_count = row
+
+            if attempt_count >= _MAX_CODE_ATTEMPTS:
+                await db.execute(
+                    "DELETE FROM pairing_codes WHERE code_hash = ?", (code_hash,)
+                )
+                await db.execute("COMMIT")
+                return False, "Code has been invalidated due to too many attempts."
             expires_at = datetime.fromisoformat(expires_at_iso)
             if expires_at.tzinfo is None:
                 expires_at = expires_at.replace(tzinfo=timezone.utc)
 
             if now > expires_at:
                 # Clean up expired code
-                await self._db.execute(
+                await db.execute(
                     "DELETE FROM pairing_codes WHERE code_hash = ?", (code_hash,)
                 )
-                await self._db.execute("COMMIT")
+                await db.execute("COMMIT")
                 return False, "Code has expired."
 
             session_expires_at = now + timedelta(days=self.config.session_max_age_days)
 
             # Upsert session (replace if already paired — extends expiry)
-            await self._db.execute(
+            await db.execute(
                 "INSERT INTO paired_sessions "
                 "(identity_key, paired_by_code_hash, expires_at) "
                 "VALUES (?, ?, ?) "
@@ -212,12 +242,12 @@ class PairingManager:
                 (identity_key, code_hash, session_expires_at.isoformat()),
             )
             # Delete the used code
-            await self._db.execute(
+            await db.execute(
                 "DELETE FROM pairing_codes WHERE code_hash = ?", (code_hash,)
             )
-            await self._db.execute("COMMIT")
+            await db.execute("COMMIT")
         except BaseException:
-            await self._db.execute("ROLLBACK")
+            await db.execute("ROLLBACK")
             raise
         log.info("Paired %s (session expires %s)", identity_key, session_expires_at)
         return True, "Successfully paired."
@@ -238,10 +268,9 @@ class PairingManager:
         if identity_key in self._admin_user_ids:
             return True
 
-        if self._db is None:
-            raise RuntimeError("call connect() first")
+        db = self._require_db()
 
-        async with self._db.execute(
+        async with db.execute(
             "SELECT expires_at FROM paired_sessions WHERE identity_key = ?",
             (identity_key,),
         ) as cursor:
@@ -257,11 +286,11 @@ class PairingManager:
 
         if _utc_now() > expires_at:
             # Lazy cleanup: delete expired session
-            await self._db.execute(
+            await db.execute(
                 "DELETE FROM paired_sessions WHERE identity_key = ?",
                 (identity_key,),
             )
-            await self._db.commit()
+            await db.commit()
             log.debug("Lazily deleted expired session for %s", identity_key)
             return False
 
@@ -269,10 +298,9 @@ class PairingManager:
 
     async def revoke_session(self, identity_key: str) -> bool:
         """Delete a paired session. Returns True if it existed."""
-        if self._db is None:
-            raise RuntimeError("call connect() first")
+        db = self._require_db()
 
-        async with self._db.execute(
+        async with db.execute(
             "SELECT id FROM paired_sessions WHERE identity_key = ?",
             (identity_key,),
         ) as cursor:
@@ -281,11 +309,11 @@ class PairingManager:
         if row is None:
             return False
 
-        await self._db.execute(
+        await db.execute(
             "DELETE FROM paired_sessions WHERE identity_key = ?",
             (identity_key,),
         )
-        await self._db.commit()
+        await db.commit()
         log.info("Revoked session for %s", identity_key)
         return True
 

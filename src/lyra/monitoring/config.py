@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import tomllib
 from dataclasses import dataclass
 
@@ -33,6 +34,17 @@ class MonitoringConfig:
     telegram_token: str = ""
     anthropic_api_key: str = ""
     telegram_admin_chat_id: str = ""
+
+    def __post_init__(self) -> None:
+        _hhmm = re.compile(r"^\d{2}:\d{2}$")
+        if not _hhmm.match(self.quiet_start):
+            raise ValueError(
+                f"quiet_start must be HH:MM format, got {self.quiet_start!r}"
+            )
+        if not _hhmm.match(self.quiet_end):
+            raise ValueError(
+                f"quiet_end must be HH:MM format, got {self.quiet_end!r}"
+            )
 
 
 def load_monitoring_config(config_path: str | None = None) -> MonitoringConfig:

@@ -118,3 +118,31 @@ class TestMonitoringConfigToml:
 
         with pytest.raises(ValueError, match="TELEGRAM_TOKEN"):
             load_monitoring_config()
+
+
+class TestMonitoringConfigValidation:
+    """Validation of config field formats."""
+
+    def test_invalid_quiet_start_format(self) -> None:
+        """quiet_start must be HH:MM zero-padded."""
+        from lyra.monitoring.config import MonitoringConfig
+
+        with pytest.raises(ValueError, match="quiet_start must be HH:MM"):
+            MonitoringConfig(
+                quiet_start="9:00",
+                telegram_token="fake",
+                anthropic_api_key="fake",
+                telegram_admin_chat_id="12345",
+            )
+
+    def test_invalid_quiet_end_format(self) -> None:
+        """quiet_end must be HH:MM zero-padded."""
+        from lyra.monitoring.config import MonitoringConfig
+
+        with pytest.raises(ValueError, match="quiet_end must be HH:MM"):
+            MonitoringConfig(
+                quiet_end="8:00",
+                telegram_token="fake",
+                anthropic_api_key="fake",
+                telegram_admin_chat_id="12345",
+            )

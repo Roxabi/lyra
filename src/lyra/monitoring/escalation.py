@@ -146,7 +146,6 @@ async def _send_telegram_message(text: str, config: MonitoringConfig) -> None:
             json={
                 "chat_id": config.telegram_admin_chat_id,
                 "text": text,
-                "parse_mode": "HTML",
             },
             timeout=10,
         )

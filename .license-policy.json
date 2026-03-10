@@ -2,7 +2,12 @@
   "allowlist": [
     "lyra",
     "aiohttp",
+    "fastembed",
+    "numpy",
     "packaging",
+    "pillow",
+    "protobuf",
+    "py_rust_stemmers",
     "typing_extensions",
     "uvloop"
   ],

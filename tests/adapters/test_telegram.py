@@ -175,13 +175,14 @@ def test_from_adapter_hardcodes_trust() -> None:
 
 @pytest.mark.asyncio
 async def test_backpressure_sends_ack_when_bus_full() -> None:
-    """When hub.bus.full() is True, _on_message sends an ack before enqueuing."""
-    from lyra.adapters.telegram import TelegramAdapter  # ImportError expected in RED
+    """When put_nowait raises QueueFull, _on_message sends an ack."""
+    import asyncio
+
+    from lyra.adapters.telegram import TelegramAdapter
 
     hub = MagicMock()
     hub.bus = MagicMock()
-    hub.bus.full.return_value = True
-    hub.bus.put = AsyncMock()
+    hub.bus.put_nowait = MagicMock(side_effect=asyncio.QueueFull())
 
     bot = AsyncMock()
     bot.get_me = AsyncMock(return_value=SimpleNamespace(username="lyra_bot"))
@@ -626,7 +627,10 @@ async def test_get_status_endpoint_returns_all_circuits() -> None:
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=adapter.app)
     ) as client:
-        response = await client.get("/status")
+        response = await client.get(
+            "/status",
+            headers={"X-Telegram-Bot-Api-Secret-Token": "secret"},
+        )
 
     # Assert
     assert response.status_code == 200
@@ -652,10 +656,11 @@ async def test_telegram_msg_manager_injection_backpressure_ack() -> None:
     # Arrange
     mm = MessageManager(TOML_PATH)
 
+    import asyncio
+
     hub = MagicMock()
     hub.bus = MagicMock()
-    hub.bus.full.return_value = True
-    hub.bus.put = AsyncMock()
+    hub.bus.put_nowait = MagicMock(side_effect=asyncio.QueueFull())
 
     bot = AsyncMock()
     bot.get_me = AsyncMock(return_value=SimpleNamespace(username="lyra_bot"))

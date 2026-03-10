@@ -676,9 +676,7 @@ class TestMsgManagerInjectionUnknownCommand:
         mm = MessageManager(TOML_PATH)
         plugins_dir = Path(tempfile.mkdtemp())
         loader = PluginLoader(plugins_dir)
-        router = CommandRouter(
-            plugin_loader=loader, enabled_plugins=[], msg_manager=mm
-        )
+        router = CommandRouter(plugin_loader=loader, enabled_plugins=[], msg_manager=mm)
         msg = make_message(content="/unknown_cmd")
 
         # Act

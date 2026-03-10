@@ -154,7 +154,7 @@ class AnthropicAgent(AgentBase):
                 # max_turns exhausted
                 if final and final.stop_reason == "tool_use":
                     yield " [max tool turns reached]"
-            # Persist history on success only
+            # Build final assistant message for history
             reply_text = accumulated_text
             if not reply_text and final and final.content:
                 for block in final.content:
@@ -162,7 +162,10 @@ class AnthropicAgent(AgentBase):
                         reply_text = block.text
                         break
             new_messages.append({"role": "assistant", "content": reply_text})
-            pool.extend_sdk_history(new_messages)
         except Exception:
             log.exception("Streaming error in AnthropicAgent")
             raise  # re-raise so Hub.dispatch_streaming() can record circuit failure
+        finally:
+            # Persist history even on failure so partial turns survive
+            if len(new_messages) > 1:
+                pool.extend_sdk_history(new_messages)

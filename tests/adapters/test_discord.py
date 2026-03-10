@@ -270,13 +270,14 @@ def test_missing_discord_token_raises_on_load(
 
 @pytest.mark.asyncio
 async def test_backpressure_sends_ack_when_bus_full() -> None:
-    """When bus is full, send ack before enqueuing — S5 backpressure."""
+    """When bus is full, put_nowait raises QueueFull and adapter sends ack."""
+    import asyncio
+
     from lyra.adapters.discord import DiscordAdapter
 
     hub = MagicMock()
     hub.bus = MagicMock()
-    hub.bus.full = MagicMock(return_value=True)
-    hub.bus.put = AsyncMock()
+    hub.bus.put_nowait = MagicMock(side_effect=asyncio.QueueFull())
 
     adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
     bot_user = SimpleNamespace(id=999, bot=True)
@@ -296,7 +297,6 @@ async def test_backpressure_sends_ack_when_bus_full() -> None:
     await adapter.on_message(discord_msg)
 
     discord_msg.reply.assert_awaited_once()  # ack sent
-    hub.bus.put.assert_awaited_once()  # message still enqueued
 
 
 # ---------------------------------------------------------------------------
@@ -639,10 +639,11 @@ async def test_discord_msg_manager_injection_backpressure_ack() -> None:
     # Arrange
     mm = MessageManager(TOML_PATH)
 
+    import asyncio
+
     hub = MagicMock()
     hub.bus = MagicMock()
-    hub.bus.full = MagicMock(return_value=True)
-    hub.bus.put = AsyncMock()
+    hub.bus.put_nowait = MagicMock(side_effect=asyncio.QueueFull())
 
     adapter = DiscordAdapter(
         hub=hub, bot_id="main", intents=discord.Intents.none(), msg_manager=mm

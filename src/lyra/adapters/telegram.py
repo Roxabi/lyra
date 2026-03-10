@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import time
@@ -148,7 +149,7 @@ class TelegramAdapter:
             log.debug("Dispatched update for bot_id=%s", bot_id)
             return {"ok": True}
 
-        @self.app.get("/status")
+        @self.app.get("/status", dependencies=[Depends(verifier)])
         async def get_status() -> dict:
             ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             if self._circuit_registry is None:
@@ -240,7 +241,9 @@ class TelegramAdapter:
                 )
                 return  # silent drop
 
-        if self._hub.bus.full():
+        try:
+            self._hub.bus.put_nowait(hub_msg)
+        except asyncio.QueueFull:
             text = (
                 self._msg_manager.get("backpressure_ack", platform="telegram")
                 if self._msg_manager
@@ -250,8 +253,6 @@ class TelegramAdapter:
                 msg.chat.id,
                 text,
             )
-
-        await self._hub.bus.put(hub_msg)
 
     async def send(self, original_msg: Message, response: Response) -> None:
         """Send a response back to Telegram via bot.send_message."""

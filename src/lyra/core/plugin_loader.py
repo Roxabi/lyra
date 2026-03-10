@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib.util
 import logging
+import re
 import sys
 import tomllib
 from collections.abc import Awaitable
@@ -112,8 +113,19 @@ class PluginLoader:
                 continue
         return manifests
 
+    def _validate_name(self, name: str) -> None:
+        """Validate plugin name: safe characters + no path traversal."""
+        if not re.match(r"^[a-zA-Z0-9_-]+$", name):
+            raise ValueError(
+                f"Invalid plugin name {name!r}: only [a-zA-Z0-9_-] allowed"
+            )
+        plugin_dir = self.plugins_dir / name
+        if not plugin_dir.resolve().is_relative_to(self.plugins_dir.resolve()):
+            raise ValueError(f"Plugin name {name!r} escapes plugins directory")
+
     def load(self, name: str) -> LoadedPlugin:
         """Load a plugin by name. Raises ValueError if a handler is missing."""
+        self._validate_name(name)
         plugin_dir = self.plugins_dir / name
         toml_path = plugin_dir / "plugin.toml"
         handlers_path = plugin_dir / "handlers.py"
@@ -125,7 +137,11 @@ class PluginLoader:
         spec = importlib.util.spec_from_file_location(
             f"lyra.plugins.{name}.handlers", handlers_path
         )
-        assert spec is not None and spec.loader is not None
+        if spec is None or spec.loader is None:
+            raise ValueError(
+                f"Cannot load plugin '{name}': "
+                f"importlib spec is None for {handlers_path}"
+            )
         module = importlib.util.module_from_spec(spec)
         sys.modules[f"lyra.plugins.{name}.handlers"] = module
         spec.loader.exec_module(module)  # type: ignore[union-attr]
@@ -148,6 +164,7 @@ class PluginLoader:
 
     def reload(self, name: str) -> LoadedPlugin:
         """Reload a plugin (re-reads manifest + reimports module)."""
+        self._validate_name(name)
         if name not in self._loaded:
             return self.load(name)
         existing = self._loaded[name]
@@ -163,7 +180,11 @@ class PluginLoader:
         spec = importlib.util.spec_from_file_location(
             f"lyra.plugins.{name}.handlers", handlers_path
         )
-        assert spec is not None and spec.loader is not None
+        if spec is None or spec.loader is None:
+            raise ValueError(
+                f"Cannot reload plugin '{name}': "
+                f"importlib spec is None for {handlers_path}"
+            )
         spec.loader.exec_module(existing.module)  # type: ignore[union-attr]
 
         handlers: dict[str, AsyncHandler] = {}

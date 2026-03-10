@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
@@ -184,17 +185,16 @@ class DiscordAdapter(discord.Client):
                 )
                 return  # silent drop
 
-        # S5: backpressure — send ack before blocking on full bus
-        if self._hub.bus.full():
+        # S5+S6: non-blocking enqueue with backpressure ack on full bus
+        try:
+            self._hub.bus.put_nowait(hub_msg)
+        except asyncio.QueueFull:
             text = (
                 self._msg_manager.get("backpressure_ack", platform="discord")
                 if self._msg_manager
                 else "Processing your request\u2026"
             )
             await message.reply(text)
-
-        # S6: push to bus
-        await self._hub.bus.put(hub_msg)
 
     async def send(self, original_msg: Message, response: Response) -> None:
         """Send response back to Discord.

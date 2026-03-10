@@ -348,7 +348,7 @@ class Hub:
                                     _ant_cb = self.circuit_registry.get("anthropic")
                                     if _ant_cb is not None:
                                         _ant_cb.record_failure()
-                            # Send error reply to user (best-effort)
+                            # Send error reply to user (best-effort, bounded)
                             try:
                                 _err_content = (
                                     self._msg_manager.get("generic")
@@ -356,7 +356,10 @@ class Hub:
                                     else GENERIC_ERROR_REPLY
                                 )
                                 error_reply = Response(content=_err_content)
-                                await self.dispatch_response(msg, error_reply)
+                                await asyncio.wait_for(
+                                    self.dispatch_response(msg, error_reply),
+                                    timeout=10,
+                                )
                             except Exception as reply_exc:
                                 log.exception(
                                     "dispatch_response() failed sending error"

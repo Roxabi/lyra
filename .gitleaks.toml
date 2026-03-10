@@ -10,4 +10,5 @@ title = 'Gitleaks'
     'change-me-to-a-random-secret',
     'your-.*-token',
     'your-.*-key',
+    'Telegram/Discord',
   ]

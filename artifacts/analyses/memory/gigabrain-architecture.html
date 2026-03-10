@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gigabrain — Memory Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-body: 'DM Sans', system-ui, sans-serif;
+    --font-mono: 'Fira Code', 'SF Mono', Consolas, monospace;
+
+    /* Blueprint aesthetic — deep slate/blue palette */
+    --bg: #f0f4f8;
+    --surface: #ffffff;
+    --surface2: #e8eef4;
+    --surface-elevated: #f7fafc;
+    --border: rgba(30, 58, 95, 0.1);
+    --border-bright: rgba(30, 58, 95, 0.22);
+    --text: #1a2332;
+    --text-dim: #5a6d82;
+    --blue: #1e3a5f;
+    --blue-dim: rgba(30, 58, 95, 0.08);
+    --gold: #b8860b;
+    --gold-dim: rgba(184, 134, 11, 0.08);
+    --teal: #0e7490;
+    --teal-dim: rgba(14, 116, 144, 0.08);
+    --sage: #3d7a3d;
+    --sage-dim: rgba(61, 122, 61, 0.08);
+    --copper: #a0522d;
+    --copper-dim: rgba(160, 82, 45, 0.08);
+    --slate: #475569;
+    --slate-dim: rgba(71, 85, 105, 0.08);
+    --rose: #9f1239;
+    --rose-dim: rgba(159, 18, 57, 0.06);
+    --grid-line: rgba(30, 58, 95, 0.04);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1923;
+      --surface: #172030;
+      --surface2: #1e293b;
+      --surface-elevated: #1a2742;
+      --border: rgba(148, 183, 220, 0.08);
+      --border-bright: rgba(148, 183, 220, 0.16);
+      --text: #d4dfe9;
+      --text-dim: #7b93ab;
+      --blue: #5b9bd5;
+      --blue-dim: rgba(91, 155, 213, 0.12);
+      --gold: #d4a73a;
+      --gold-dim: rgba(212, 167, 58, 0.1);
+      --teal: #2dd4bf;
+      --teal-dim: rgba(45, 212, 191, 0.1);
+      --sage: #86efac;
+      --sage-dim: rgba(134, 239, 172, 0.08);
+      --copper: #f0a070;
+      --copper-dim: rgba(240, 160, 112, 0.1);
+      --slate: #94a3b8;
+      --slate-dim: rgba(148, 163, 184, 0.1);
+      --rose: #fda4af;
+      --rose-dim: rgba(253, 164, 175, 0.08);
+      --grid-line: rgba(148, 183, 220, 0.03);
+    }
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    background-image:
+      repeating-linear-gradient(0deg, var(--grid-line) 0px, var(--grid-line) 1px, transparent 1px, transparent 40px),
+      repeating-linear-gradient(90deg, var(--grid-line) 0px, var(--grid-line) 1px, transparent 1px, transparent 40px),
+      radial-gradient(ellipse at 15% 10%, var(--blue-dim) 0%, transparent 45%),
+      radial-gradient(ellipse at 85% 90%, var(--teal-dim) 0%, transparent 40%);
+    color: var(--text);
+    font-family: var(--font-body);
+    padding: 40px;
+    min-height: 100vh;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fadeScale {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  .section, .flow-arrow, .col-section { animation: fadeUp 0.45s ease-out both; animation-delay: calc(var(--i, 0) * 0.055s); }
+  .badge { animation: fadeScale 0.35s ease-out both; animation-delay: calc(var(--i, 0) * 0.055s + 0.1s); }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; animation-delay: 0ms !important; transition-duration: 0.01ms !important; }
+  }
+
+  .diagram { display: grid; grid-template-columns: 1fr; gap: 20px; max-width: 1200px; margin: 0 auto; }
+
+  h1 { font-size: 36px; font-weight: 700; letter-spacing: -1.2px; margin-bottom: 4px; color: var(--blue); }
+  .subtitle { color: var(--text-dim); font-size: 13px; margin-bottom: 32px; font-family: var(--font-mono); font-weight: 400; }
+  .subtitle a { color: var(--teal); text-decoration: none; }
+  .subtitle a:hover { text-decoration: underline; }
+
+  /* SECTIONS */
+  .section { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px 22px; }
+  .section--hero { background: var(--surface-elevated); border-color: color-mix(in srgb, var(--border) 40%, var(--blue) 60%); box-shadow: 0 3px 18px rgba(0,0,0,0.05); padding: 24px 28px; }
+  .section--recessed { background: var(--surface2); box-shadow: inset 0 1px 3px rgba(0,0,0,0.03); }
+  .section-label { font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.6px; margin-bottom: 14px; display: flex; align-items: center; gap: 7px; }
+  .section-label .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+
+  .section--blue { border-color: var(--blue-dim); } .section--blue .section-label { color: var(--blue); } .section--blue .section-label .dot { background: var(--blue); }
+  .section--gold { border-color: var(--gold-dim); } .section--gold .section-label { color: var(--gold); } .section--gold .section-label .dot { background: var(--gold); }
+  .section--teal { border-color: var(--teal-dim); } .section--teal .section-label { color: var(--teal); } .section--teal .section-label .dot { background: var(--teal); }
+  .section--sage { border-color: var(--sage-dim); } .section--sage .section-label { color: var(--sage); } .section--sage .section-label .dot { background: var(--sage); }
+  .section--copper { border-color: var(--copper-dim); } .section--copper .section-label { color: var(--copper); } .section--copper .section-label .dot { background: var(--copper); }
+  .section--slate { border-color: var(--slate-dim); } .section--slate .section-label { color: var(--slate); } .section--slate .section-label .dot { background: var(--slate); }
+  .section--rose { border-color: var(--rose-dim); } .section--rose .section-label { color: var(--rose); } .section--rose .section-label .dot { background: var(--rose); }
+
+  /* INNER GRID */
+  .inner-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .inner-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .inner-grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; }
+  .inner-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 11px 14px; min-width: 0; }
+  .inner-card .title { font-weight: 600; font-size: 12.5px; margin-bottom: 3px; overflow-wrap: break-word; }
+  .inner-card .desc { color: var(--text-dim); font-size: 11.5px; line-height: 1.5; overflow-wrap: break-word; }
+  .inner-card code { font-family: var(--font-mono); font-size: 10.5px; background: var(--blue-dim); color: var(--blue); padding: 1px 5px; border-radius: 3px; }
+  .inner-card--gold code { background: var(--gold-dim); color: var(--gold); }
+  .inner-card--teal code { background: var(--teal-dim); color: var(--teal); }
+  .inner-card--sage code { background: var(--sage-dim); color: var(--sage); }
+  .inner-card--copper code { background: var(--copper-dim); color: var(--copper); }
+
+  /* FLOW ARROWS */
+  .flow-arrow { display: flex; justify-content: center; align-items: center; gap: 7px; color: var(--text-dim); font-family: var(--font-mono); font-size: 11px; padding: 2px 0; }
+  .flow-arrow svg { width: 18px; height: 18px; fill: none; stroke: var(--border-bright); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* MULTI-COLUMN */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+
+  /* PIPELINE */
+  .pipeline { display: flex; gap: 0; align-items: stretch; overflow-x: auto; padding-bottom: 4px; flex-wrap: wrap; }
+  .pipeline-step { background: var(--surface); border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px; min-width: 90px; flex: 1 1 90px; text-align: center; }
+  .pipeline-step .step-name { font-size: 10.5px; font-weight: 600; margin-bottom: 2px; overflow-wrap: break-word; }
+  .pipeline-step .step-detail { font-size: 9.5px; color: var(--text-dim); line-height: 1.3; }
+  .pipeline-step--teal { border-color: var(--teal-dim); }
+  .pipeline-step--sage { border-color: var(--sage-dim); }
+  .pipeline-step--gold { border-color: var(--gold-dim); }
+  .pipeline-step--copper { border-color: var(--copper-dim); }
+  .pipeline-step--blue { border-color: var(--blue-dim); }
+  .pipeline-arrow { display: flex; align-items: center; padding: 0 2px; color: var(--border-bright); font-size: 13px; flex-shrink: 0; }
+
+  /* LISTS */
+  .node-list { list-style: none; font-size: 12px; line-height: 1.8; }
+  .node-list li { padding-left: 14px; position: relative; overflow-wrap: break-word; }
+  .node-list li::before { content: '\203A'; color: var(--text-dim); font-weight: 600; position: absolute; left: 0; }
+  .node-list code { font-family: var(--font-mono); font-size: 10.5px; background: var(--blue-dim); color: var(--blue); padding: 1px 5px; border-radius: 3px; }
+
+  /* BADGE */
+  .badge { display: inline-block; font-family: var(--font-mono); font-size: 10px; font-weight: 500; padding: 2px 8px; border-radius: 4px; letter-spacing: 0.5px; }
+  .badge--blue { background: var(--blue-dim); color: var(--blue); }
+  .badge--teal { background: var(--teal-dim); color: var(--teal); }
+  .badge--gold { background: var(--gold-dim); color: var(--gold); }
+  .badge--sage { background: var(--sage-dim); color: var(--sage); }
+  .badge--copper { background: var(--copper-dim); color: var(--copper); }
+  .badge--rose { background: var(--rose-dim); color: var(--rose); }
+
+  /* CALLOUT */
+  .callout { background: var(--surface2); border: 1px solid var(--border); border-left: 3px solid var(--blue); border-radius: 0 8px 8px 0; padding: 12px 16px; font-size: 12.5px; line-height: 1.6; color: var(--text-dim); }
+  .callout strong { color: var(--text); font-weight: 600; }
+  .callout code { font-family: var(--font-mono); font-size: 10.5px; background: var(--blue-dim); color: var(--blue); padding: 1px 5px; border-radius: 3px; }
+
+  /* SOURCES */
+  .sources { display: flex; gap: 10px; flex-wrap: wrap; }
+  .source { background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 9px 16px; font-family: var(--font-mono); font-size: 12px; font-weight: 500; display: flex; align-items: center; gap: 7px; transition: border-color 0.2s; flex: 1 1 0; min-width: 140px; overflow-wrap: break-word; }
+  .source:hover { border-color: var(--border-bright); }
+  .source-icon { font-size: 14px; flex-shrink: 0; }
+
+  /* TABLE SCHEMA */
+  .schema-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+  .schema-table th { text-align: left; font-family: var(--font-mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); padding: 6px 10px; border-bottom: 1px solid var(--border-bright); }
+  .schema-table td { padding: 5px 10px; border-bottom: 1px solid var(--border); vertical-align: top; overflow-wrap: break-word; }
+  .schema-table td:first-child { font-family: var(--font-mono); font-weight: 500; font-size: 11px; white-space: nowrap; }
+
+  /* RANKING SIGNALS */
+  .signal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; }
+  .signal { background: var(--surface2); border: 1px solid var(--border); border-radius: 5px; padding: 6px 10px; font-size: 11px; text-align: center; }
+  .signal .label { font-weight: 600; font-size: 10.5px; margin-bottom: 2px; }
+  .signal .val { font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); }
+  .signal--boost { border-color: var(--sage-dim); }
+  .signal--penalty { border-color: var(--rose-dim); }
+
+  @media (max-width: 900px) {
+    body { padding: 16px; }
+    .two-col, .three-col, .inner-grid, .inner-grid-3, .inner-grid-4 { grid-template-columns: 1fr; }
+    .pipeline { flex-direction: column; gap: 4px; }
+    .pipeline-arrow { display: none; }
+    .sources { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Gigabrain Memory Architecture</h1>
+<p class="subtitle">Long-term memory layer for AI agents &mdash; SQLite + Markdown hybrid &mdash; <a href="https://github.com/legendaryvibecoder/gigabrain">source</a></p>
+
+<div class="diagram">
+
+  <!-- ═══════════════ DATA SOURCES ═══════════════ -->
+  <div class="section section--hero section--blue" style="--i:0">
+    <div class="section-label"><span class="dot"></span> Data Sources</div>
+    <div class="sources">
+      <div class="source"><span class="source-icon">&#9656;</span> Agent hooks <span class="badge badge--blue">before_agent_start</span> <span class="badge badge--blue">agent_end</span></div>
+      <div class="source"><span class="source-icon">&#9998;</span> Native Markdown <span class="badge badge--teal">MEMORY.md</span> <span class="badge badge--teal">daily notes</span></div>
+      <div class="source"><span class="source-icon">&#10003;</span> User intent <span class="badge badge--gold">"remember this"</span></div>
+    </div>
+  </div>
+
+  <div class="flow-arrow" style="--i:1">
+    <svg viewBox="0 0 20 20"><path d="M10 4 L10 16 M6 12 L10 16 L14 12"/></svg>
+    capture + index
+  </div>
+
+  <!-- ═══════════════ CORE PROCESSING ═══════════════ -->
+  <div class="two-col">
+
+    <!-- Capture Service -->
+    <div class="section section--gold col-section" style="--i:2">
+      <div class="section-label"><span class="dot"></span> Capture Service</div>
+      <p style="font-size:12px;color:var(--text-dim);margin-bottom:10px">Extracts memories from agent output via <code style="font-family:var(--font-mono);font-size:10.5px;background:var(--gold-dim);color:var(--gold);padding:1px 5px;border-radius:3px">&lt;memory_note&gt;</code> XML tags. Hybrid capture: durable notes go to both native markdown and registry; ephemeral notes go native-only.</p>
+      <div class="inner-grid" style="grid-template-columns:1fr">
+        <div class="inner-card inner-card--gold">
+          <div class="title">Pipeline</div>
+          <div class="desc">
+            Parse tags &rarr; Junk filter &rarr; Plausibility check &rarr; Exact dedupe (normalized hash) &rarr; Semantic dedupe (Jaccard similarity) &rarr; Quality gate &rarr; Upsert to <code>memory_current</code>
+          </div>
+        </div>
+        <div class="inner-card inner-card--gold">
+          <div class="title">Dedupe Thresholds</div>
+          <div class="desc">
+            Above <code>0.92</code> &rarr; auto-merge. Between <code>0.85</code>&ndash;<code>0.92</code> &rarr; review queue. Type-aware: USER_FACT/PREFERENCE use <code>0.78</code>/<code>0.62</code>.
+          </div>
+        </div>
+        <div class="inner-card inner-card--gold">
+          <div class="title">Remember Intent</div>
+          <div class="desc">
+            Detects phrases like "remember this" / "merk dir". Writes native markdown + registry entry when durable. Queues review if model omits the <code>&lt;memory_note&gt;</code> tag.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Native Sync + Promotion -->
+    <div class="section section--teal col-section" style="--i:3">
+      <div class="section-label"><span class="dot"></span> Native Sync + Promotion</div>
+      <p style="font-size:12px;color:var(--text-dim);margin-bottom:10px">Indexes workspace markdown files into SQLite chunks, then promotes durable chunks to structured registry memories with provenance tracking.</p>
+      <div class="inner-grid" style="grid-template-columns:1fr">
+        <div class="inner-card inner-card--teal">
+          <div class="title">Native Sync</div>
+          <div class="desc">
+            Scans <code>MEMORY.md</code>, daily notes (<code>YYYY-MM-DD.md</code>), curated files. Parses bullets under headings into chunks. Stores in <code>memory_native_chunks</code> with <code>source_kind</code> (memory_md / daily_note / curated).
+          </div>
+        </div>
+        <div class="inner-card inner-card--teal">
+          <div class="title">Native Promotion</div>
+          <div class="desc">
+            Promotes chunks to <code>memory_current</code> with <code>source_layer: promoted_native</code>. Skips CONTEXT/EPISODE types and ephemeral content. Links chunk to registry via <code>linked_memory_id</code>. Min confidence: <code>0.72</code>.
+          </div>
+        </div>
+        <div class="inner-card inner-card--teal">
+          <div class="title">Person Service</div>
+          <div class="desc">
+            Extracts proper names from all memories. Builds <code>memory_entity_mentions</code> table. Classifies roles: relationship, public_profile, ops_noise. Enables entity-aware recall with priority boosts.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="flow-arrow" style="--i:4">
+    <svg viewBox="0 0 20 20"><path d="M10 4 L10 16 M6 12 L10 16 L14 12"/></svg>
+    persist
+  </div>
+
+  <!-- ═══════════════ STORAGE LAYER ═══════════════ -->
+  <div class="section section--blue" style="--i:5">
+    <div class="section-label"><span class="dot"></span> Storage Layer &mdash; SQLite + JSONL</div>
+    <div class="inner-grid-4">
+      <div class="inner-card">
+        <div class="title" style="color:var(--gold)">memory_events</div>
+        <div class="desc">Append-only event log. Every capture, dedupe, archive, restore action creates an immutable event row with <code>reason_codes</code>, <code>run_id</code>, <code>similarity</code>.</div>
+      </div>
+      <div class="inner-card">
+        <div class="title" style="color:var(--blue)">memory_current</div>
+        <div class="desc">Materialized projection. Current state of every memory: content, type, confidence, scope, status, <code>value_score</code>, <code>source_layer</code>, provenance.</div>
+      </div>
+      <div class="inner-card">
+        <div class="title" style="color:var(--teal)">memory_native_chunks</div>
+        <div class="desc">Indexed markdown chunks. Each chunk has <code>source_path</code>, <code>source_kind</code>, <code>source_date</code>, section heading, line numbers, content hash.</div>
+      </div>
+      <div class="inner-card">
+        <div class="title" style="color:var(--sage)">memory_entity_mentions</div>
+        <div class="desc">Entity graph. Links memory IDs to entity keys with role classification and confidence. Rebuilt on each maintenance run.</div>
+      </div>
+    </div>
+    <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">
+      <span class="badge badge--copper" style="--i:5">memory_quality_reviews</span>
+      <span class="badge badge--copper" style="--i:5">memory_native_sync_state</span>
+      <span class="badge badge--rose" style="--i:5">review-queue.jsonl</span>
+      <span class="badge badge--blue" style="--i:5">memory-events.jsonl</span>
+    </div>
+  </div>
+
+  <div class="flow-arrow" style="--i:6">
+    <svg viewBox="0 0 20 20"><path d="M10 4 L10 16 M6 12 L10 16 L14 12"/></svg>
+    query + rank + inject
+  </div>
+
+  <!-- ═══════════════ RECALL PIPELINE ═══════════════ -->
+  <div class="section section--hero section--sage" style="--i:7">
+    <div class="section-label"><span class="dot"></span> Recall Pipeline <span class="badge badge--sage">before_agent_start hook</span></div>
+    <div class="inner-grid">
+      <div class="inner-card inner-card--sage" style="grid-column:1/3">
+        <div class="title">Query Processing</div>
+        <div class="desc">
+          1. Sanitize query: strip prior <code>&lt;gigabrain-context&gt;</code> blocks, metadata lines, bootstrap injections.
+          2. Entity coreference: detect pronoun follow-ups ("was weisst du noch uber sie?") and enrich with entity from prior messages.
+          3. Temporal window detection: month names, year references, relative time words.
+          4. Entity key resolution from <code>memory_entity_mentions</code> table.
+        </div>
+      </div>
+      <div class="inner-card inner-card--sage">
+        <div class="title">Dual-Source Search</div>
+        <div class="desc">
+          <strong>Registry:</strong> Lexical LIKE queries on <code>memory_current</code> (active rows, scope-filtered).<br>
+          <strong>Native:</strong> Chunk search on <code>memory_native_chunks</code> with entity + temporal filters.<br>
+          Results merged by memory_id, best score wins.
+        </div>
+      </div>
+      <div class="inner-card inner-card--sage">
+        <div class="title">Budget Allocation</div>
+        <div class="desc">
+          <strong>Recall class budgets</strong> (token-based):<br>
+          Core: 45% | Situational: 30% | Decisions: 25%<br>
+          Max <code>topK=8</code> memories, <code>maxTokens=1200</code>.<br>
+          Archive fallback if zero active results.
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:12px">
+      <div style="font-family:var(--font-mono);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1.2px;color:var(--sage);margin-bottom:8px">Ranking Signals</div>
+      <div class="signal-grid">
+        <div class="signal signal--boost"><div class="label">Semantic Overlap</div><div class="val">focusTokens match</div></div>
+        <div class="signal signal--boost"><div class="label">Value Score</div><div class="val">from quality sweep</div></div>
+        <div class="signal signal--boost"><div class="label">Recency Decay</div><div class="val">0.25 &rarr; 0.01 over time</div></div>
+        <div class="signal signal--boost"><div class="label">Scope Weight</div><div class="val">profile:0.15, shared:0.08</div></div>
+        <div class="signal signal--boost"><div class="label">Durable Boost</div><div class="val">+0.18 for durable patterns</div></div>
+        <div class="signal signal--boost"><div class="label">Entity Boost</div><div class="val">+0.55 on entity intent</div></div>
+        <div class="signal signal--boost"><div class="label">Person Boost</div><div class="val">relationship: +0.35</div></div>
+        <div class="signal signal--penalty"><div class="label">Noise Penalty</div><div class="val">-0.12 for ops noise</div></div>
+        <div class="signal signal--penalty"><div class="label">Archive Penalty</div><div class="val">-0.20 for archived rows</div></div>
+        <div class="signal signal--penalty"><div class="label">Stale Time</div><div class="val">-0.32 for stale "today"</div></div>
+      </div>
+    </div>
+
+    <div class="callout" style="margin-top:12px;border-left-color:var(--sage)">
+      <strong>Injection:</strong> Results rendered as <code>&lt;gigabrain-context&gt;</code> XML block with query, fallback status, entity hints, and typed memory lines. Injected as a system message placed before the last user message. No internal provenance (file paths, memory IDs) exposed to the agent.
+    </div>
+  </div>
+
+  <div class="flow-arrow" style="--i:8">
+    <svg viewBox="0 0 20 20"><path d="M10 4 L10 16 M6 12 L10 16 L14 12"/></svg>
+    nightly batch
+  </div>
+
+  <!-- ═══════════════ MAINTENANCE PIPELINE ═══════════════ -->
+  <div class="section section--copper" style="--i:9">
+    <div class="section-label"><span class="dot"></span> Nightly Maintenance Pipeline</div>
+    <div class="pipeline">
+      <div class="pipeline-step pipeline-step--blue"><div class="step-name">Snapshot</div><div class="step-detail">Emergency + compact SQLite backup</div></div>
+      <div class="pipeline-arrow">&rarr;</div>
+      <div class="pipeline-step pipeline-step--teal"><div class="step-name">Native Sync</div><div class="step-detail">Re-index markdown</div></div>
+      <div class="pipeline-arrow">&rarr;</div>
+      <div class="pipeline-step pipeline-step--teal"><div class="step-name">Promote</div><div class="step-detail">Native &rarr; registry</div></div>
+      <div class="pipeline-arrow">&rarr;</div>
+      <div class="pipeline-step pipeline-step--gold"><div class="step-name">Quality Sweep</div><div class="step-detail">classifyValue() per row</div></div>
+      <div class="pipeline-arrow">&rarr;</div>
+      <div class="pipeline-step pipeline-step--gold"><div class="step-name">Exact Dedupe</div><div class="step-detail">Normalized hash match</div></div>
+      <div class="pipeline-arrow">&rarr;</div>
+      <div class="pipeline-step pipeline-step--gold"><div class="step-name">Semantic Dedupe</div><div class="step-detail">Jaccard &ge; threshold</div></div>
+      <div class="pipeline-arrow">&rarr;</div>
+      <div class="pipeline-step pipeline-step--copper"><div class="step-name">Audit &Delta;</div><div class="step-detail">Review ledger + events</div></div>
+      <div class="pipeline-arrow">&rarr;</div>
+      <div class="pipeline-step pipeline-step--copper"><div class="step-name">Archive</div><div class="step-detail">Compress + artifacts</div></div>
+      <div class="pipeline-arrow">&rarr;</div>
+      <div class="pipeline-step pipeline-step--blue"><div class="step-name">Vacuum</div><div class="step-detail">SQLite VACUUM</div></div>
+      <div class="pipeline-arrow">&rarr;</div>
+      <div class="pipeline-step pipeline-step--sage"><div class="step-name">Metrics</div><div class="step-detail">Usage log + report</div></div>
+      <div class="pipeline-arrow">&rarr;</div>
+      <div class="pipeline-step pipeline-step--sage"><div class="step-name">Vault Build</div><div class="step-detail">Obsidian surface</div></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ BOTTOM ROW ═══════════════ -->
+  <div class="three-col">
+    <!-- Audit Service -->
+    <div class="section section--rose col-section" style="--i:10">
+      <div class="section-label"><span class="dot"></span> Audit Service</div>
+      <ul class="node-list">
+        <li>Quality scoring with <code>classifyValue()</code></li>
+        <li>9-feature vector: personal, relationship, identity, durable, recency, utility, specificity, noise, confidence</li>
+        <li>LLM second opinion (Ollama/OpenAI) for borderline scores</li>
+        <li>Review ledger in <code>memory_quality_reviews</code></li>
+        <li>Shadow / Apply / Restore modes</li>
+        <li>Idempotent: skips unchanged scores</li>
+      </ul>
+    </div>
+
+    <!-- Vault Mirror -->
+    <div class="section section--slate col-section" style="--i:11">
+      <div class="section-label"><span class="dot"></span> Vault Mirror (Obsidian)</div>
+      <ul class="node-list">
+        <li><code>00 Home/</code> Landing + health summary</li>
+        <li><code>10 Native/</code> Mirrored MEMORY.md + daily notes</li>
+        <li><code>20 Nodes/active/</code> One note per registry memory</li>
+        <li><code>30 Views/</code> Dashboards: active, relationships, review, archives</li>
+        <li><code>40 Reports/</code> Manifests, freshness, nightly summaries</li>
+        <li>Read-only surface. Supports remote pull via rsync.</li>
+      </ul>
+    </div>
+
+    <!-- Web Console -->
+    <div class="section section--copper col-section" style="--i:12">
+      <div class="section-label"><span class="dot"></span> Web Console (FastAPI)</div>
+      <ul class="node-list">
+        <li>Dual-surface landing with vault freshness</li>
+        <li>Memory browser with search/filter</li>
+        <li>Concept deduplication view</li>
+        <li>Audit review queue</li>
+        <li>Document store + PDF/URL ingest</li>
+        <li>Knowledge graph visualization</li>
+        <li>HTTP endpoints: <code>/gb/recall</code>, <code>/gb/suggestions</code>, <code>/gb/health</code></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ═══════════════ QUALITY POLICY ═══════════════ -->
+  <div class="section section--recessed" style="--i:13">
+    <div class="section-label"><span class="dot" style="background:var(--text-dim)"></span> Quality Policy Engine</div>
+    <div class="inner-grid-3">
+      <div class="inner-card">
+        <div class="title">Junk Filter</div>
+        <div class="desc">32 base patterns block system prompts, API keys, benchmark artifacts, XML wrappers. Configurable append/replace.</div>
+      </div>
+      <div class="inner-card">
+        <div class="title">Durable Patterns</div>
+        <div class="desc">Personal preferences, relationships, agent identity, continuity facts get boosted retention. Always kept regardless of score.</div>
+      </div>
+      <div class="inner-card">
+        <div class="title">Plausibility Heuristics</div>
+        <div class="desc">Broken phrase detection, entityless numeric facts, low-confidence generic extractions, token anomaly patterns.</div>
+      </div>
+      <div class="inner-card">
+        <div class="title">Value Classification</div>
+        <div class="desc">9-feature weighted score &rarr; keep (&ge;0.78), archive (0.30&ndash;0.78), reject (&le;0.18). Durable/relationship overrides bypass thresholds.</div>
+      </div>
+      <div class="inner-card">
+        <div class="title">Semantic Similarity</div>
+        <div class="desc">Composite Jaccard: word overlap (35%) + char trigrams (25%) + numeric tokens (20%) + semantic anchors (20%). Type-aware thresholds.</div>
+      </div>
+      <div class="inner-card">
+        <div class="title">Memory Types</div>
+        <div class="desc">USER_FACT, PREFERENCE, DECISION, ENTITY, EPISODE, AGENT_IDENTITY, CONTEXT. Each type has distinct base utility and dedupe thresholds.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ TECH SUMMARY ═══════════════ -->
+  <div class="callout section section--recessed" style="--i:14">
+    <strong>Stack:</strong> Node.js &ge;22 (<code>node:sqlite</code> experimental API), TypeScript entry point, JavaScript core services.
+    <strong>No embedding model</strong> &mdash; all similarity is token-level Jaccard, no vectors. Recall uses LIKE queries, not vector search.
+    <strong>LLM optional</strong> &mdash; Ollama/OpenAI for audit second opinion only. Core capture/recall is fully deterministic.
+    <strong>Event sourcing:</strong> append-only event log + materialized projection (CQRS pattern).
+  </div>
+
+</div>
+
+</body>
+</html>

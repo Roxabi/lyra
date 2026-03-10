@@ -93,6 +93,9 @@ class Hub:
         # Entries are removed when the deque empties (user inactive for > RATE_WINDOW)
         # to prevent unbounded dict growth.
         self._rate_timestamps: dict[RoutingKey, deque[float]] = {}
+        # Health monitoring timestamps (SC-3, issue #111)
+        self._start_time: float = time.monotonic()
+        self._last_processed_at: float | None = None
 
     # ------------------------------------------------------------------
     # Adapter registry
@@ -406,3 +409,4 @@ class Hub:
                             )
             finally:
                 self.bus.task_done()
+                self._last_processed_at = time.monotonic()

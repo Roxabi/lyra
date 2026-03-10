@@ -29,6 +29,7 @@ from lyra.core.cli_pool import CliPool
 from lyra.core.hub import Hub, RoutingKey
 from lyra.core.message import Platform
 from lyra.core.messages import MessageManager
+from lyra.core.pairing import PairingConfig, PairingManager, set_pairing_manager
 
 log = logging.getLogger(__name__)
 
@@ -70,6 +71,25 @@ def _load_circuit_config(
 
     admin_ids: set[str] = set(raw.get("admin", {}).get("user_ids", []))
     return registry, admin_ids
+
+
+def _load_pairing_config(config_path: str | None = None) -> PairingConfig:
+    """Load [pairing] section from lyra.toml. Missing section → all defaults.
+
+    Config path: $LYRA_CONFIG env var → 'lyra.toml' in cwd → all defaults.
+    """
+    import os
+
+    raw: dict = {}
+    path = config_path or os.environ.get("LYRA_CONFIG", "lyra.toml")
+    try:
+        with open(path, "rb") as f:
+            raw = tomllib.load(f)
+    except FileNotFoundError:
+        log.info("No config file at %s — using pairing defaults", path)
+
+    pairing_section: dict = raw.get("pairing", {})
+    return PairingConfig.from_dict(pairing_section)
 
 
 def _load_messages(language: str = "en") -> MessageManager:
@@ -186,7 +206,22 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
 
     msg_manager = _load_messages(language=agent_config.i18n_language)
 
-    hub = Hub(circuit_registry=circuit_registry, msg_manager=msg_manager)
+    pairing_config = _load_pairing_config()
+    vault_dir = Path.home() / ".lyra"
+    vault_dir.mkdir(parents=True, exist_ok=True)
+    pm = PairingManager(
+        config=pairing_config,
+        db_path=vault_dir / "pairing.db",
+        admin_user_ids=admin_user_ids,
+    )
+    await pm.connect()
+    set_pairing_manager(pm)
+
+    hub = Hub(
+        circuit_registry=circuit_registry,
+        msg_manager=msg_manager,
+        pairing_manager=pm,
+    )
 
     cli_pool: CliPool | None = None
     if agent_config.model_config.backend == "claude-cli":
@@ -266,6 +301,7 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
         task.cancel()
     await asyncio.gather(*tasks, return_exceptions=True)
     await dc_adapter.close()
+    await pm.close()
     if cli_pool is not None:
         await cli_pool.stop()
     log.info("Lyra stopped.")

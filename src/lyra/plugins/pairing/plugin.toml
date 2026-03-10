@@ -1,0 +1,21 @@
+name = "pairing"
+description = "Invite-code pairing system for access control"
+version = "0.1.0"
+priority = 50
+enabled = true
+timeout = 10.0
+
+[[commands]]
+name = "invite"
+description = "Generate a pairing code (admin-only)"
+handler = "cmd_invite"
+
+[[commands]]
+name = "join"
+description = "Redeem a pairing code"
+handler = "cmd_join"
+
+[[commands]]
+name = "unpair"
+description = "Revoke a user's paired session (admin-only)"
+handler = "cmd_unpair"

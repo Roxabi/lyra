@@ -7,15 +7,25 @@ import time
 from collections import deque
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import NamedTuple, Protocol
+from typing import TYPE_CHECKING, NamedTuple, Protocol
 
 from anthropic import APIError as AnthropicAPIError
 
 from .agent import AgentBase
 from .circuit_breaker import CircuitRegistry
-from .message import GENERIC_ERROR_REPLY, Message, Platform, Response
+from .message import (
+    GENERIC_ERROR_REPLY,
+    DiscordContext,
+    Message,
+    Platform,
+    Response,
+    TelegramContext,
+)
 from .messages import MessageManager
 from .pool import Pool
+
+if TYPE_CHECKING:
+    from .pairing import PairingManager
 
 log = logging.getLogger(__name__)
 
@@ -79,6 +89,7 @@ class Hub:
         rate_window: int = RATE_WINDOW,
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
+        pairing_manager: PairingManager | None = None,
     ) -> None:
         self.bus: asyncio.Queue[Message] = asyncio.Queue(maxsize=bus_size)
         self.adapter_registry: dict[tuple[Platform, str], ChannelAdapter] = {}
@@ -87,6 +98,7 @@ class Hub:
         self.pools: dict[str, Pool] = {}
         self.circuit_registry = circuit_registry
         self._msg_manager = msg_manager
+        self._pairing_manager = pairing_manager
         self._rate_limit = rate_limit
         self._rate_window = rate_window
         # Sliding window: maps RoutingKey → deque of message timestamps.
@@ -278,6 +290,34 @@ class Hub:
                     )
                     continue
                 router = getattr(agent, "command_router", None)
+
+                # Pairing gate: runs after binding resolution, before command dispatch.
+                if self._pairing_manager and self._pairing_manager.config.enabled:
+                    # Allow /join through so unpaired users can pair themselves.
+                    is_join_cmd = (
+                        router is not None
+                        and router.is_command(msg)
+                        and _msg_text(msg).lower().startswith("/join")
+                    )
+                    if not is_join_cmd:
+                        paired = await self._pairing_manager.is_paired(msg.user_id)
+                        if not paired:
+                            if _is_group_message(msg):
+                                # Groups: silently drop to avoid spamming channels.
+                                log.debug(
+                                    "unpaired user %s in group — message dropped", key
+                                )
+                                continue
+                            # DMs: send a rejection message.
+                            rejection = Response(
+                                content="You are not paired. Use /join <CODE> to pair."
+                            )
+                            try:
+                                await self.dispatch_response(msg, rejection)
+                            except Exception:
+                                pass
+                            continue
+
                 if router and router.is_command(msg):
                     try:
                         response = await router.dispatch(msg, pool)
@@ -411,3 +451,30 @@ class Hub:
                             )
             finally:
                 self.bus.task_done()
+
+
+# ---------------------------------------------------------------------------
+# Module-level helpers for the pairing gate
+# ---------------------------------------------------------------------------
+
+
+def _msg_text(msg: Message) -> str:
+    """Extract the text of a message (handles str and TextContent)."""
+    from .message import TextContent
+
+    content = msg.content
+    if isinstance(content, str):
+        return content
+    if isinstance(content, TextContent):
+        return content.text
+    return ""
+
+
+def _is_group_message(msg: Message) -> bool:
+    """Return True if the message originated from a group/guild channel."""
+    ctx = msg.platform_context
+    if isinstance(ctx, TelegramContext):
+        return ctx.is_group
+    if isinstance(ctx, DiscordContext):
+        return ctx.guild_id is not None
+    return False

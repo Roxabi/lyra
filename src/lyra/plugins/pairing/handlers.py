@@ -1,0 +1,86 @@
+"""Pairing plugin handlers (issue #103).
+
+Provides /invite, /join, /unpair commands for the unified pairing system.
+PairingManager is accessed via the module-level getter in lyra.core.pairing.
+"""
+
+from __future__ import annotations
+
+import logging
+
+from lyra.core.message import Message, Response
+from lyra.core.pairing import get_pairing_manager
+from lyra.core.pool import Pool
+
+log = logging.getLogger(__name__)
+
+_NOT_ENABLED = "Pairing is not enabled."
+_ADMIN_ONLY = "This command is admin-only."
+
+
+def _is_admin(msg: Message, admin_user_ids: set[str]) -> bool:
+    return msg.user_id in admin_user_ids
+
+
+async def cmd_invite(msg: Message, pool: Pool, args: list[str]) -> Response:
+    """Generate a pairing code. Admin-only."""
+    pm = get_pairing_manager()
+    if pm is None or not pm.config.enabled:
+        return Response(content=_NOT_ENABLED)
+
+    if msg.user_id not in pm._admin_user_ids:
+        return Response(content=_ADMIN_ONLY)
+
+    try:
+        code = await pm.generate_code(msg.user_id)
+    except RuntimeError as exc:
+        return Response(content=str(exc))
+
+    return Response(
+        content=f"Pairing code: {code}\n"
+        f"Valid for {pm.config.ttl_seconds // 60} minutes. "
+        f"Share this with the user who should join."
+    )
+
+
+async def cmd_join(msg: Message, pool: Pool, args: list[str]) -> Response:
+    """Redeem a pairing code. Rate-limited."""
+    pm = get_pairing_manager()
+    if pm is None or not pm.config.enabled:
+        return Response(content=_NOT_ENABLED)
+
+    if not args:
+        return Response(content="Usage: /join <CODE>")
+
+    code = args[0].strip().upper()
+    identity_key = msg.user_id
+
+    if not pm.check_rate_limit(identity_key):
+        return Response(
+            content="Too many failed attempts. Please wait before trying again."
+        )
+
+    success, message = await pm.validate_code(code, identity_key)
+    if not success:
+        pm.record_failed_attempt(identity_key)
+    return Response(content=message)
+
+
+async def cmd_unpair(msg: Message, pool: Pool, args: list[str]) -> Response:
+    """Revoke a user's paired session. Admin-only."""
+    pm = get_pairing_manager()
+    if pm is None or not pm.config.enabled:
+        return Response(content=_NOT_ENABLED)
+
+    if msg.user_id not in pm._admin_user_ids:
+        return Response(content=_ADMIN_ONLY)
+
+    if not args:
+        return Response(content="Usage: /unpair <USER_ID>")
+
+    target_identity = args[0].strip()
+    found = await pm.revoke_session(target_identity)
+
+    if found:
+        return Response(content=f"Session for {target_identity!r} has been revoked.")
+    return Response(content=f"No paired session found for {target_identity!r}.")

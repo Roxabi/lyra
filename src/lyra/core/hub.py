@@ -294,10 +294,12 @@ class Hub:
                 # Pairing gate: runs after binding resolution, before command dispatch.
                 if self._pairing_manager and self._pairing_manager.config.enabled:
                     # Allow /join through so unpaired users can pair themselves.
+                    _text = _msg_text(msg).strip().lower()
+                    _first_token = _text.split(maxsplit=1)[0] if _text else ""
                     is_join_cmd = (
                         router is not None
                         and router.is_command(msg)
-                        and _msg_text(msg).lower().startswith("/join")
+                        and _first_token == "/join"
                     )
                     if not is_join_cmd:
                         paired = await self._pairing_manager.is_paired(msg.user_id)

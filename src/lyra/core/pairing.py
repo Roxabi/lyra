@@ -116,7 +116,8 @@ class PairingManager:
 
         Raises RuntimeError if max_pending codes already exist for this admin.
         """
-        assert self._db is not None, "call connect() first"
+        if self._db is None:
+            raise RuntimeError("call connect() first")
 
         pending = await self._count_pending(admin_identity)
         if pending >= self.config.max_pending:
@@ -126,8 +127,7 @@ class PairingManager:
             )
 
         code = "".join(
-            secrets.choice(self.config.alphabet)
-            for _ in range(self.config.code_length)
+            secrets.choice(self.config.alphabet) for _ in range(self.config.code_length)
         )
         code_hash = _sha256(code)
         expires_at = _utc_now() + timedelta(seconds=self.config.ttl_seconds)
@@ -145,7 +145,8 @@ class PairingManager:
 
     async def _count_pending(self, admin_identity: str) -> int:
         """Count non-expired codes for this admin."""
-        assert self._db is not None
+        if self._db is None:
+            raise RuntimeError("call connect() first")
         now_iso = _utc_now().isoformat()
         async with self._db.execute(
             "SELECT COUNT(*) FROM pairing_codes "
@@ -159,58 +160,65 @@ class PairingManager:
     # Code validation
     # ------------------------------------------------------------------
 
-    async def validate_code(
-        self, code: str, identity_key: str
-    ) -> tuple[bool, str]:
+    async def validate_code(self, code: str, identity_key: str) -> tuple[bool, str]:
         """Validate a pairing code and create a session if valid.
 
         Returns (success, message). On success, creates/replaces session and
         deletes the used code.
         """
-        assert self._db is not None
+        if self._db is None:
+            raise RuntimeError("call connect() first")
         code_hash = _sha256(code)
         now = _utc_now()
 
-        async with self._db.execute(
-            "SELECT code_hash, expires_at FROM pairing_codes WHERE code_hash = ?",
-            (code_hash,),
-        ) as cursor:
-            row = await cursor.fetchone()
+        # BEGIN IMMEDIATE to prevent two concurrent /join calls from both
+        # consuming the same code (TOCTOU race between SELECT and DELETE).
+        await self._db.execute("BEGIN IMMEDIATE")
+        try:
+            async with self._db.execute(
+                "SELECT code_hash, expires_at FROM pairing_codes WHERE code_hash = ?",
+                (code_hash,),
+            ) as cursor:
+                row = await cursor.fetchone()
 
-        if row is None:
-            return False, "Invalid code."
+            if row is None:
+                await self._db.execute("ROLLBACK")
+                return False, "Invalid code."
 
-        _stored_hash, expires_at_iso = row
-        expires_at = datetime.fromisoformat(expires_at_iso)
-        if expires_at.tzinfo is None:
-            expires_at = expires_at.replace(tzinfo=timezone.utc)
+            _stored_hash, expires_at_iso = row
+            expires_at = datetime.fromisoformat(expires_at_iso)
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
 
-        if now > expires_at:
-            # Clean up expired code
+            if now > expires_at:
+                # Clean up expired code
+                await self._db.execute(
+                    "DELETE FROM pairing_codes WHERE code_hash = ?", (code_hash,)
+                )
+                await self._db.execute("COMMIT")
+                return False, "Code has expired."
+
+            session_expires_at = now + timedelta(days=self.config.session_max_age_days)
+
+            # Upsert session (replace if already paired — extends expiry)
+            await self._db.execute(
+                "INSERT INTO paired_sessions "
+                "(identity_key, paired_by_code_hash, expires_at) "
+                "VALUES (?, ?, ?) "
+                "ON CONFLICT(identity_key) DO UPDATE SET "
+                "paired_by_code_hash = excluded.paired_by_code_hash, "
+                "paired_at = datetime('now'), "
+                "expires_at = excluded.expires_at",
+                (identity_key, code_hash, session_expires_at.isoformat()),
+            )
+            # Delete the used code
             await self._db.execute(
                 "DELETE FROM pairing_codes WHERE code_hash = ?", (code_hash,)
             )
-            await self._db.commit()
-            return False, "Code has expired."
-
-        session_expires_at = now + timedelta(days=self.config.session_max_age_days)
-
-        # Upsert session (replace if already paired — extends expiry)
-        await self._db.execute(
-            "INSERT INTO paired_sessions "
-            "(identity_key, paired_by_code_hash, expires_at) "
-            "VALUES (?, ?, ?) "
-            "ON CONFLICT(identity_key) DO UPDATE SET "
-            "paired_by_code_hash = excluded.paired_by_code_hash, "
-            "paired_at = datetime('now'), "
-            "expires_at = excluded.expires_at",
-            (identity_key, code_hash, session_expires_at.isoformat()),
-        )
-        # Delete the used code
-        await self._db.execute(
-            "DELETE FROM pairing_codes WHERE code_hash = ?", (code_hash,)
-        )
-        await self._db.commit()
+            await self._db.execute("COMMIT")
+        except BaseException:
+            await self._db.execute("ROLLBACK")
+            raise
         log.info("Paired %s (session expires %s)", identity_key, session_expires_at)
         return True, "Successfully paired."
 
@@ -226,7 +234,8 @@ class PairingManager:
         if identity_key in self._admin_user_ids:
             return True
 
-        assert self._db is not None
+        if self._db is None:
+            raise RuntimeError("call connect() first")
 
         async with self._db.execute(
             "SELECT expires_at FROM paired_sessions WHERE identity_key = ?",
@@ -256,7 +265,8 @@ class PairingManager:
 
     async def revoke_session(self, identity_key: str) -> bool:
         """Delete a paired session. Returns True if it existed."""
-        assert self._db is not None
+        if self._db is None:
+            raise RuntimeError("call connect() first")
 
         async with self._db.execute(
             "SELECT id FROM paired_sessions WHERE identity_key = ?",

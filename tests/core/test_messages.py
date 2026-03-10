@@ -334,11 +334,15 @@ default_language = "en"
         assert cfg.i18n_language == "en"
 
     def test_lyra_default_agent_has_i18n_language(self) -> None:
-        # Arrange — load the real default agent config
+        # Arrange — load the real default agent config with fixture persona
+        from pathlib import Path
+
         from lyra.core.agent import load_agent_config
 
+        fixtures_dir = Path(__file__).resolve().parent.parent / "fixtures" / "personas"
+
         # Act
-        cfg = load_agent_config("lyra_default")
+        cfg = load_agent_config("lyra_default", personas_dir=fixtures_dir)
 
         # Assert — field must exist with a valid value
         assert hasattr(cfg, "i18n_language")

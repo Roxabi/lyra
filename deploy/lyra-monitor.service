@@ -5,8 +5,14 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-User=mickael
-WorkingDirectory=/home/mickael/projects/lyra
-EnvironmentFile=/home/mickael/.lyra/.env
-ExecStart=/home/mickael/projects/lyra/.venv/bin/python -m lyra.monitoring
+User={{LYRA_USER:-mickael}}
+WorkingDirectory={{LYRA_PROJECT_DIR}}
+EnvironmentFile=%h/.lyra/.env
+ExecStart={{LYRA_PROJECT_DIR}}/.venv/bin/python -m lyra.monitoring
 TimeoutStartSec=60
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+PrivateTmp=yes
+ReadWritePaths=%h/.lyra

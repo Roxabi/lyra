@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import signal
 import time
 import tomllib
@@ -14,6 +15,7 @@ from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI
 
@@ -225,6 +227,14 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
     )
     hub.register_binding(Platform.DISCORD, "main", "*", agent.name, dc_key.to_pool_id())
 
+    # Health endpoint (SC-1): root FastAPI app on configurable port
+    health_port = int(os.environ.get("LYRA_HEALTH_PORT", "8443"))
+    health_app = create_health_app(hub)
+    health_config = uvicorn.Config(
+        health_app, host="127.0.0.1", port=health_port, log_level="warning"
+    )
+    health_server = uvicorn.Server(health_config)
+
     stop = _stop if _stop is not None else asyncio.Event()
     if _stop is None:
         _loop = asyncio.get_running_loop()
@@ -241,9 +251,13 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
             name="telegram",
         ),
         asyncio.create_task(dc_adapter.start(dc_cfg.token), name="discord"),
+        asyncio.create_task(health_server.serve(), name="health"),
     ]
 
-    log.info("Lyra started — Telegram + Discord adapters running.")
+    log.info(
+        "Lyra started — Telegram + Discord adapters running, health on :%d.",
+        health_port,
+    )
 
     await stop.wait()
 

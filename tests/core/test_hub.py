@@ -45,28 +45,7 @@ TOML_PATH = (
 # ---------------------------------------------------------------------------
 
 
-def make_message(
-    platform: Platform = Platform.TELEGRAM,
-    bot_id: str = "main",
-    user_id: str = "alice",
-    platform_context: TelegramContext | DiscordContext | None = None,
-) -> Message:
-    if platform_context is None:
-        platform_context = TelegramContext(chat_id=42)
-    return Message(
-        id="msg-1",
-        platform=platform,
-        bot_id=bot_id,
-        user_id=user_id,
-        user_name="Alice",
-        is_mention=False,
-        is_from_bot=False,
-        content="hello",
-        type=MessageType.TEXT,
-        timestamp=datetime.now(timezone.utc),
-        platform_context=platform_context,
-    )
-
+from tests.core.conftest import make_message  # noqa: E402 (shared helper)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -1199,11 +1178,9 @@ class TestScopeIsolatedPools:
         pool_a = hub.get_or_create_pool(binding_a.pool_id, binding_a.agent_name)
         pool_b = hub.get_or_create_pool(binding_b.pool_id, binding_b.agent_name)
 
-        # Assert — different scopes produce different pools with different pool_ids
+        # Assert — different scopes produce different pools with exact pool_ids
         assert pool_a is not pool_b, (
             "Expected different Pool objects for different scopes"
         )
-        assert pool_a.pool_id != pool_b.pool_id, (
-            f"Expected different pool_ids, got {pool_a.pool_id!r} and "
-            f"{pool_b.pool_id!r}"
-        )
+        assert pool_a.pool_id == "telegram:main:chat:100"
+        assert pool_b.pool_id == "telegram:main:chat:200"

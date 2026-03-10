@@ -226,6 +226,10 @@ class PairingManager:
     # Session checks
     # ------------------------------------------------------------------
 
+    def is_admin(self, identity_key: str) -> bool:
+        """Return True if the identity_key belongs to an admin user."""
+        return identity_key in self._admin_user_ids
+
     async def is_paired(self, identity_key: str) -> bool:
         """Return True if user has a valid (non-expired) session.
 

@@ -41,6 +41,19 @@ from lyra.plugins.pairing.handlers import cmd_invite, cmd_join, cmd_unpair
 _ADMIN_ID = "admin-user-1"
 _USER_ID = "regular-user-1"
 
+# Track PairingManagers created in tests for cleanup
+_open_managers: list[PairingManager] = []
+
+
+@pytest.fixture(autouse=True)
+async def _cleanup_pairing_state():
+    """Reset module-level global and close all PairingManagers after each test."""
+    yield
+    set_pairing_manager(None)
+    for pm in _open_managers:
+        await pm.close()
+    _open_managers.clear()
+
 
 def make_message(
     content: str = "hello",
@@ -99,6 +112,7 @@ async def make_pm(
         admin_user_ids=admin_user_ids or {_ADMIN_ID},
     )
     await pm.connect()
+    _open_managers.append(pm)
     return pm
 
 
@@ -659,6 +673,7 @@ class TestHubGate:
 
         # The /join command was routed (possibly via agent since no router on NullAgent)
         # The key assertion: no "not paired" rejection was sent
+        assert len(captured) >= 1, "expected a response, not a silent drop"
         for resp in captured:
             assert "not paired" not in resp.content.lower()
 
@@ -674,6 +689,7 @@ class TestHubGate:
         await self._run_hub_once(hub, msg)
 
         # Should have a response (agent processed it) — not a rejection
+        assert len(captured) >= 1, "admin should not be blocked"
         for resp in captured:
             assert "not paired" not in resp.content.lower()
 
@@ -689,6 +705,7 @@ class TestHubGate:
         await self._run_hub_once(hub, msg)
 
         # No rejection since gate is disabled
+        assert len(captured) >= 1, "gate should be inactive"
         for resp in captured:
             assert "not paired" not in resp.content.lower()
 

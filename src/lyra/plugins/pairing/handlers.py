@@ -18,17 +18,13 @@ _NOT_ENABLED = "Pairing is not enabled."
 _ADMIN_ONLY = "This command is admin-only."
 
 
-def _is_admin(msg: Message, admin_user_ids: set[str]) -> bool:
-    return msg.user_id in admin_user_ids
-
-
 async def cmd_invite(msg: Message, pool: Pool, args: list[str]) -> Response:
     """Generate a pairing code. Admin-only."""
     pm = get_pairing_manager()
     if pm is None or not pm.config.enabled:
         return Response(content=_NOT_ENABLED)
 
-    if msg.user_id not in pm._admin_user_ids:
+    if not pm.is_admin(msg.user_id):
         return Response(content=_ADMIN_ONLY)
 
     try:
@@ -72,7 +68,7 @@ async def cmd_unpair(msg: Message, pool: Pool, args: list[str]) -> Response:
     if pm is None or not pm.config.enabled:
         return Response(content=_NOT_ENABLED)
 
-    if msg.user_id not in pm._admin_user_ids:
+    if not pm.is_admin(msg.user_id):
         return Response(content=_ADMIN_ONLY)
 
     if not args:

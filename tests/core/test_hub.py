@@ -292,6 +292,8 @@ class TestRoutingKey:
     def test_exact_binding(self) -> None:
         hub = Hub()
         hub.register_adapter(Platform.TELEGRAM, "main", MockAdapter())
+        # scope_id="chat:42" must match make_message()'s default
+        # TelegramContext(chat_id=42) → extract_scope_id() returns "chat:42"
         hub.register_binding(
             Platform.TELEGRAM, "main", "chat:42", "lyra", "telegram:main:chat:42"
         )
@@ -352,12 +354,14 @@ class TestRoutingKey:
         assert binding is not None
         assert binding.pool_id == "pool_v2"
 
-    def test_register_binding_raises_if_pool_id_shared_across_users(self) -> None:
+    def test_register_binding_raises_if_pool_id_shared_across_scopes(self) -> None:
         hub = Hub()
-        hub.register_binding(Platform.TELEGRAM, "main", "alice", "lyra", "shared_pool")
+        hub.register_binding(
+            Platform.TELEGRAM, "main", "chat:100", "lyra", "shared_pool"
+        )
         with pytest.raises(ValueError, match="already bound"):
             hub.register_binding(
-                Platform.TELEGRAM, "main", "bob", "lyra", "shared_pool"
+                Platform.TELEGRAM, "main", "chat:200", "lyra", "shared_pool"
             )
 
 
@@ -1139,6 +1143,9 @@ class TestCrossScopeRateLimit:
         assert last_result is True, (
             "Expected 6th message to be rate-limited (rate limit spans scopes)"
         )
+        # Key type must be a plain tuple (platform.value, bot_id, user_id),
+        # NOT a RoutingKey — prevents scope-switching bypass.
+        assert ("telegram", "main", "alice") in hub._rate_timestamps
 
 
 # ---------------------------------------------------------------------------

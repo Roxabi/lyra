@@ -35,8 +35,10 @@ class ChannelAdapter(Protocol):
 
     Security contract: adapters are responsible for verifying the identity
     of the sender (e.g. via platform token, signed webhook, or session)
-    before constructing a Message. The hub trusts the user_id in the Message
-    as authentic. Never set user_id from unverified inbound data.
+    before constructing a Message. The hub trusts ``Message.user_id`` as the
+    authenticated sender identity (used for rate limiting and pairing) and
+    ``Message.extract_scope_id()`` as the conversation scope (used for pool
+    routing). Never derive either from unverified inbound data.
     """
 
     async def send(self, original_msg: Message, response: Response) -> None: ...
@@ -274,7 +276,15 @@ class Hub:
         while True:
             msg = await self.bus.get()
             try:
-                scope = msg.extract_scope_id()
+                try:
+                    scope = msg.extract_scope_id()
+                except ValueError:
+                    log.warning(
+                        "unknown platform context %s for msg %s — message dropped",
+                        type(msg.platform_context).__name__,
+                        msg.id,
+                    )
+                    continue
                 key = RoutingKey(msg.platform, msg.bot_id, scope)
                 if self._is_rate_limited(msg):
                     log.warning("rate limit exceeded for %s — message dropped", key)

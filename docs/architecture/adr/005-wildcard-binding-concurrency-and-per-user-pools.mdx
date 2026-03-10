@@ -181,5 +181,6 @@ This means:
 - Rate limiting remains per-user (keyed on `msg.user_id` directly, not `RoutingKey`)
   to prevent bypass by switching chats.
 
-The **gate condition** from this ADR is now satisfied for pool isolation. The remaining
-items (memory namespace, CLI subprocess isolation) will be addressed in subsequent slices.
+Pool ID isolation is now correct at the Hub layer (item 1 from the gate condition).
+`CliPool` subprocess isolation (item 2) and memory namespace (item 3) remain open and
+will be addressed in subsequent slices of #112.

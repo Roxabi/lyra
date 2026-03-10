@@ -1,12 +1,11 @@
-"""Tests for Message.extract_scope_id() across all platform contexts.
-
-RED phase — these tests exercise the new extract_scope_id() method which does
-not exist yet. All tests are expected to FAIL until the GREEN phase implementation.
-"""
+"""Tests for Message.extract_scope_id() across all platform contexts."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
+
+import pytest
 
 from lyra.core.message import (
     DiscordContext,
@@ -96,3 +95,23 @@ class TestExtractScopeId:
         scope_id = msg.extract_scope_id()
         # Assert
         assert scope_id == "channel:222"
+
+    def test_unknown_context_raises_value_error(self) -> None:
+        @dataclass(frozen=True)
+        class UnknownContext:
+            pass
+
+        msg = make_message(platform_context=UnknownContext())  # type: ignore[arg-type]
+        with pytest.raises(ValueError, match="Unknown platform context type"):
+            msg.extract_scope_id()
+
+    def test_telegram_topic_id_zero_is_not_none(self) -> None:
+        """topic_id=0 must produce 'chat:N:topic:0', not 'chat:N'."""
+        ctx = TelegramContext(chat_id=1, topic_id=0)
+        msg = make_message(platform=Platform.TELEGRAM, platform_context=ctx)
+        assert msg.extract_scope_id() == "chat:1:topic:0"
+
+    def test_telegram_chat_id_zero(self) -> None:
+        ctx = TelegramContext(chat_id=0)
+        msg = make_message(platform=Platform.TELEGRAM, platform_context=ctx)
+        assert msg.extract_scope_id() == "chat:0"

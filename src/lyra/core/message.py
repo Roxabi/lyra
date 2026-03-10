@@ -107,6 +107,23 @@ class Message:
     trust: Literal["user", "system"] = "user"
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    def extract_scope_id(self) -> str:
+        """Extract conversation scope ID from platform context.
+
+        Maps platform-specific context to a canonical scope string used
+        for pool routing. See spec §Scope extraction rules.
+        """
+        ctx = self.platform_context
+        if isinstance(ctx, TelegramContext):
+            if ctx.topic_id is not None:
+                return f"chat:{ctx.chat_id}:topic:{ctx.topic_id}"
+            return f"chat:{ctx.chat_id}"
+        if isinstance(ctx, DiscordContext):
+            if ctx.thread_id is not None:
+                return f"thread:{ctx.thread_id}"
+            return f"channel:{ctx.channel_id}"
+        raise ValueError(f"Unknown platform context type: {type(ctx)}")
+
     @classmethod
     def from_adapter(
         cls,

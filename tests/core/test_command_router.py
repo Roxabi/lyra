@@ -387,7 +387,7 @@ class TestPassthroughNonCommandInHub:
 
         hub.register_adapter(Platform.TELEGRAM, "main", CapturingAdapter())
         hub.register_binding(
-            Platform.TELEGRAM, "main", "alice", "lyra", "telegram:main:alice"
+            Platform.TELEGRAM, "main", "chat:42", "lyra", "telegram:main:chat:42"
         )
 
         plain_msg = make_message(content="hello, how are you?")
@@ -430,7 +430,7 @@ class TestPassthroughNonCommandInHub:
 
         hub.register_adapter(Platform.TELEGRAM, "main", CapturingAdapter())
         hub.register_binding(
-            Platform.TELEGRAM, "main", "alice", "lyra", "telegram:main:alice"
+            Platform.TELEGRAM, "main", "chat:42", "lyra", "telegram:main:chat:42"
         )
 
         command_msg = make_message(content="/help")

@@ -45,25 +45,7 @@ TOML_PATH = (
 # ---------------------------------------------------------------------------
 
 
-def make_message(
-    platform: Platform = Platform.TELEGRAM,
-    bot_id: str = "main",
-    user_id: str = "alice",
-) -> Message:
-    return Message(
-        id="msg-1",
-        platform=platform,
-        bot_id=bot_id,
-        user_id=user_id,
-        user_name="Alice",
-        is_mention=False,
-        is_from_bot=False,
-        content="hello",
-        type=MessageType.TEXT,
-        timestamp=datetime.now(timezone.utc),
-        platform_context=TelegramContext(chat_id=42),
-    )
-
+from tests.core.conftest import make_message  # noqa: E402 (shared helper)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -289,14 +271,16 @@ class TestRoutingKey:
     def test_exact_binding(self) -> None:
         hub = Hub()
         hub.register_adapter(Platform.TELEGRAM, "main", MockAdapter())
+        # scope_id="chat:42" must match make_message()'s default
+        # TelegramContext(chat_id=42) → extract_scope_id() returns "chat:42"
         hub.register_binding(
-            Platform.TELEGRAM, "main", "alice", "lyra", "telegram:main:alice"
+            Platform.TELEGRAM, "main", "chat:42", "lyra", "telegram:main:chat:42"
         )
         msg = make_message(platform=Platform.TELEGRAM, user_id="alice")
         binding = hub.resolve_binding(msg)
         assert binding is not None
         assert binding.agent_name == "lyra"
-        assert binding.pool_id == "telegram:main:alice"
+        assert binding.pool_id == "telegram:main:chat:42"
 
     def test_wildcard_does_not_bleed_across_platforms(self) -> None:
         hub = Hub()
@@ -311,8 +295,8 @@ class TestRoutingKey:
         binding = hub.resolve_binding(msg)
         assert binding is not None
         assert binding.agent_name == "lyra"
-        # Per-user pool_id must be synthesised from the real user_id, not the wildcard
-        assert binding.pool_id == f"telegram:main:{msg.user_id}"
+        # Per-scope pool_id must be synthesised from the message scope, not the wildcard
+        assert binding.pool_id == f"telegram:main:{msg.extract_scope_id()}"
 
     def test_no_binding_returns_none(self) -> None:
         hub = Hub()
@@ -322,7 +306,7 @@ class TestRoutingKey:
     def test_binding_isolated_per_bot_id(self) -> None:
         hub = Hub()
         hub.register_binding(
-            Platform.TELEGRAM, "bot1", "alice", "lyra", "telegram:bot1:alice"
+            Platform.TELEGRAM, "bot1", "chat:42", "lyra", "telegram:bot1:chat:42"
         )
         msg = make_message(platform=Platform.TELEGRAM, bot_id="bot2", user_id="alice")
         assert hub.resolve_binding(msg) is None
@@ -330,26 +314,33 @@ class TestRoutingKey:
     def test_binding_isolated_per_platform(self) -> None:
         hub = Hub()
         hub.register_binding(
-            Platform.TELEGRAM, "main", "alice", "lyra", "telegram:main:alice"
+            Platform.TELEGRAM, "main", "chat:42", "lyra", "telegram:main:chat:42"
         )
-        msg = make_message(platform=Platform.DISCORD, bot_id="main", user_id="alice")
+        msg = make_message(
+            platform=Platform.DISCORD,
+            bot_id="main",
+            user_id="alice",
+            platform_context=DiscordContext(guild_id=1, channel_id=99, message_id=1),
+        )
         assert hub.resolve_binding(msg) is None
 
     def test_overwrite_binding(self) -> None:
         hub = Hub()
-        hub.register_binding(Platform.TELEGRAM, "main", "alice", "lyra", "pool_v1")
-        hub.register_binding(Platform.TELEGRAM, "main", "alice", "lyra", "pool_v2")
+        hub.register_binding(Platform.TELEGRAM, "main", "chat:42", "lyra", "pool_v1")
+        hub.register_binding(Platform.TELEGRAM, "main", "chat:42", "lyra", "pool_v2")
         msg = make_message(platform=Platform.TELEGRAM, user_id="alice")
         binding = hub.resolve_binding(msg)
         assert binding is not None
         assert binding.pool_id == "pool_v2"
 
-    def test_register_binding_raises_if_pool_id_shared_across_users(self) -> None:
+    def test_register_binding_raises_if_pool_id_shared_across_scopes(self) -> None:
         hub = Hub()
-        hub.register_binding(Platform.TELEGRAM, "main", "alice", "lyra", "shared_pool")
+        hub.register_binding(
+            Platform.TELEGRAM, "main", "chat:100", "lyra", "shared_pool"
+        )
         with pytest.raises(ValueError, match="already bound"):
             hub.register_binding(
-                Platform.TELEGRAM, "main", "bob", "lyra", "shared_pool"
+                Platform.TELEGRAM, "main", "chat:200", "lyra", "shared_pool"
             )
 
 
@@ -475,7 +466,7 @@ class TestAgentRegistryMiss:
         hub = Hub()
         # Register a binding for "ghost" but do NOT call hub.register_agent()
         hub.register_binding(
-            Platform.TELEGRAM, "main", "alice", "ghost", "telegram:main:alice"
+            Platform.TELEGRAM, "main", "chat:42", "ghost", "telegram:main:chat:42"
         )
         msg = make_message(platform=Platform.TELEGRAM, bot_id="main", user_id="alice")
         await hub.bus.put(msg)
@@ -510,7 +501,7 @@ class TestMissingAdapterDrop:
         config = Agent(name="lyra", system_prompt="", memory_namespace="lyra")
         hub.register_agent(DummyAgent(config))
         hub.register_binding(
-            Platform.TELEGRAM, "main", "alice", "lyra", "telegram:main:alice"
+            Platform.TELEGRAM, "main", "chat:42", "lyra", "telegram:main:chat:42"
         )
         # Deliberately do NOT register an adapter for (TELEGRAM, "main")
         msg = make_message(platform=Platform.TELEGRAM, bot_id="main", user_id="alice")
@@ -541,14 +532,12 @@ class TestRateTimestampsCleanup:
         timestamp — the new one — confirming the stale entry was removed."""
         import unittest.mock
 
-        from lyra.core.hub import RoutingKey
-
         hub = Hub(rate_window=1)
         msg = make_message(platform=Platform.TELEGRAM, user_id="alice")
 
-        # First call — inserts a timestamp for alice's RoutingKey
+        # First call — inserts a timestamp for alice's user key
         hub._is_rate_limited(msg)
-        key = RoutingKey(msg.platform, msg.bot_id, msg.user_id)
+        key = (msg.platform.value, msg.bot_id, msg.user_id)
         assert key in hub._rate_timestamps
         assert len(hub._rate_timestamps[key]) == 1
 
@@ -684,7 +673,7 @@ class TestHubRunStreaming:
         hub.register_agent(StreamingAgent(config))
         hub.register_adapter(Platform.TELEGRAM, "main", CapturingStreamAdapter())
         hub.register_binding(
-            Platform.TELEGRAM, "main", "alice", "streamer", "telegram:main:alice"
+            Platform.TELEGRAM, "main", "chat:42", "streamer", "telegram:main:chat:42"
         )
 
         msg = make_message(platform=Platform.TELEGRAM, bot_id="main", user_id="alice")
@@ -1037,7 +1026,7 @@ async def test_hub_msg_manager_injection_generic_on_agent_failure() -> None:
     hub.register_agent(FailingAgent(config))
     hub.register_adapter(Platform.TELEGRAM, "main", CapturingAdapter())
     hub.register_binding(
-        Platform.TELEGRAM, "main", "alice", "failing", "telegram:main:alice"
+        Platform.TELEGRAM, "main", "chat:42", "failing", "telegram:main:chat:42"
     )
 
     # Act — put one message; hub processes it and sends an error reply
@@ -1055,3 +1044,143 @@ async def test_hub_msg_manager_injection_generic_on_agent_failure() -> None:
     assert len(sent_responses) == 1
     expected = mm.get("generic")
     assert sent_responses[0].content == expected
+
+
+# ---------------------------------------------------------------------------
+# T2 — Scope-based RoutingKey fields
+# ---------------------------------------------------------------------------
+
+
+class TestScopeIdRouting:
+    """RoutingKey uses scope_id (not user_id) as the 3rd field."""
+
+    def test_routing_key_has_scope_id_field(self) -> None:
+        from lyra.core.hub import RoutingKey
+
+        key = RoutingKey(
+            platform=Platform.TELEGRAM,
+            bot_id="main",
+            scope_id="chat:555",
+        )
+        assert key.scope_id == "chat:555"
+        assert not hasattr(key, "user_id")
+
+    def test_to_pool_id_uses_scope_id(self) -> None:
+        from lyra.core.hub import RoutingKey
+
+        key = RoutingKey(
+            platform=Platform.TELEGRAM,
+            bot_id="main",
+            scope_id="chat:555",
+        )
+        pool_id = key.to_pool_id()
+        assert pool_id == "telegram:main:chat:555"
+
+
+# ---------------------------------------------------------------------------
+# T3 — Cross-scope rate limiting is per-user
+# ---------------------------------------------------------------------------
+
+
+class TestCrossScopeRateLimit:
+    """Rate limiting is per-user regardless of scope."""
+
+    def test_rate_limit_spans_scopes(self) -> None:
+        # Arrange — two different scopes for the same user_id
+        hub = Hub(rate_limit=5, rate_window=60)
+        ctx_a = TelegramContext(chat_id=100)
+        ctx_b = TelegramContext(chat_id=200)
+
+        def make_scoped_message(ctx: TelegramContext) -> Message:
+            return Message(
+                id="msg-1",
+                platform=Platform.TELEGRAM,
+                bot_id="main",
+                user_id="alice",
+                user_name="Alice",
+                is_mention=False,
+                is_from_bot=False,
+                content="hello",
+                type=MessageType.TEXT,
+                timestamp=datetime.now(timezone.utc),
+                platform_context=ctx,
+            )
+
+        # Act — send RATE_LIMIT (5) messages, 3 from scope A and 2 from scope B
+        results = []
+        for _ in range(3):
+            results.append(hub._is_rate_limited(make_scoped_message(ctx_a)))
+        for _ in range(2):
+            results.append(hub._is_rate_limited(make_scoped_message(ctx_b)))
+        # The 6th message (RATE_LIMIT+1) must be rate-limited regardless of scope
+        last_result = hub._is_rate_limited(make_scoped_message(ctx_a))
+
+        # Assert — first 5 messages pass, 6th is rate-limited
+        assert all(r is False for r in results), (
+            f"Expected all first {hub._rate_limit} messages to pass, got {results}"
+        )
+        assert last_result is True, (
+            "Expected 6th message to be rate-limited (rate limit spans scopes)"
+        )
+        # Key type must be a plain tuple (platform.value, bot_id, user_id),
+        # NOT a RoutingKey — prevents scope-switching bypass.
+        assert ("telegram", "main", "alice") in hub._rate_timestamps
+
+
+# ---------------------------------------------------------------------------
+# T4 — Scope-isolated pools
+# ---------------------------------------------------------------------------
+
+
+class TestScopeIsolatedPools:
+    """Different scopes for the same user_id produce different Pool objects."""
+
+    def test_scope_isolated_pools(self) -> None:
+        # Arrange — wildcard binding; same user, two different chat_ids (scopes)
+        hub = Hub()
+        hub.register_binding(
+            Platform.TELEGRAM, "main", "*", "lyra", "telegram:main:*"
+        )
+
+        msg_a = Message(
+            id="msg-a",
+            platform=Platform.TELEGRAM,
+            bot_id="main",
+            user_id="alice",
+            user_name="Alice",
+            is_mention=False,
+            is_from_bot=False,
+            content="hello",
+            type=MessageType.TEXT,
+            timestamp=datetime.now(timezone.utc),
+            platform_context=TelegramContext(chat_id=100),
+        )
+        msg_b = Message(
+            id="msg-b",
+            platform=Platform.TELEGRAM,
+            bot_id="main",
+            user_id="alice",
+            user_name="Alice",
+            is_mention=False,
+            is_from_bot=False,
+            content="hello",
+            type=MessageType.TEXT,
+            timestamp=datetime.now(timezone.utc),
+            platform_context=TelegramContext(chat_id=200),
+        )
+
+        # Act — resolve binding and create pools for each scoped message
+        binding_a = hub.resolve_binding(msg_a)
+        binding_b = hub.resolve_binding(msg_b)
+        assert binding_a is not None
+        assert binding_b is not None
+
+        pool_a = hub.get_or_create_pool(binding_a.pool_id, binding_a.agent_name)
+        pool_b = hub.get_or_create_pool(binding_b.pool_id, binding_b.agent_name)
+
+        # Assert — different scopes produce different pools with exact pool_ids
+        assert pool_a is not pool_b, (
+            "Expected different Pool objects for different scopes"
+        )
+        assert pool_a.pool_id == "telegram:main:chat:100"
+        assert pool_b.pool_id == "telegram:main:chat:200"

@@ -1,0 +1,53 @@
+---
+title: "refactor(hub): conversation-scoped sessions + per-channel inbound/outbound queues + per-session Task"
+issue: 112
+status: approved
+tier: F-full
+date: 2026-03-10
+---
+
+## Problem
+
+The Hub has four architectural limitations that block parallel conversations and multi-channel resilience:
+
+1. **Session = user, not conversation** — Pool key is `{platform}:{bot_id}:{user_id}`. A user talking in a Telegram DM and a Telegram group shares the same pool, same lock, same history. They cannot run in parallel.
+
+2. **Single inbound bus** — Both Telegram and Discord push into the same `asyncio.Queue(100)`. If one channel floods, it fills the shared queue and starves the other channel. No per-channel admission control or backpressure isolation.
+
+3. **Single outbound path** — `dispatch_response()` runs inline in the hub loop. If one platform API is slow/down, it blocks responses for the other platform. No per-channel backpressure or circuit breaking on delivery.
+
+4. **Lock per user** — `pool.lock` blocks the entire user across all conversations. No per-session cancellation, no per-turn timeout, and streaming responses hold the lock for the full duration.
+
+These limitations prevent the bot from handling real-world usage patterns: a user in multiple group chats, simultaneous DM + group conversations, or one platform degrading without affecting the other.
+
+## Who
+
+- **Primary:** End users interacting with the bot across multiple Telegram chats/groups and Discord channels/threads — they experience serialized responses and cross-channel blocking today.
+- **Secondary:** The system itself (reliability) — a Telegram API outage currently cascades to Discord, and queue flooding from one channel starves the other.
+
+## Constraints
+
+- **Dependency:** #103 (unified pairing) must be merged first — `user_id` auth must be independent from session scope before `scope_id` can replace `user_id` in pool keys.
+- **Blocking:** #123 (LlmProvider Protocol) and #83 (agent integration) depend on the stabilized Pool/session model from this issue.
+- **Backward compat:** `user_id` must remain on Message for auth, rate limiting, and pairing. Only pool routing changes to `scope_id`.
+- **Existing circuit breakers:** Already registered in `__main__.py` (`_CB_SERVICES`). Must wire them to outbound dispatchers, not re-implement.
+- **Test coverage:** No regression on existing tests. RoutingKey changes ripple through test fixtures.
+
+## Out of Scope
+
+- **Bus abstraction (#48)** — `InboundBus` is a concrete per-channel queue class here, not an abstract `Bus` ABC with `publish()`/`subscribe()`. The protocol extraction and NATS swappability is Phase 2.
+- **Raw turn logging (#67)** — conversation-scoped sessions enable it, but the logging implementation itself is separate.
+- **Monitoring/metrics (#111)** — per-channel queue depth becomes observable, but metric emission and dashboards are not part of this issue.
+- **LlmProvider Protocol (#123)** — blocked by this issue but implemented separately.
+- **Memory fields on Pool (#83)** — blocked by this issue but implemented separately.
+- **Rate limit refactor** — rate limiting stays keyed by `user_id` as-is.
+
+## Complexity
+
+**Tier: F-full** — Multi-domain refactor touching 5 sub-systems across hub core, both platform adapters, routing, and pool management.
+
+- 5 sub-systems: scope_id routing, InboundBus, OutboundDispatcher, per-session Task, Discord thread auto-creation
+- Touches hub core (`hub.py`), both adapters (Telegram, Discord), routing (`routing.py`), pool model, and `__main__.py` wiring
+- RoutingKey changes ripple through all code that constructs or matches pool IDs
+- Complexity 6 per issue metadata
+- Significant test fixture updates required

@@ -1,0 +1,1227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenClaw Architecture — For Lyra Comparison</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --font-body: 'Instrument Serif', Georgia, serif;
+      --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+
+      --bg: #faf8f5;
+      --bg-alt: #f3efe9;
+      --surface: #ffffff;
+      --surface-elevated: #ffffff;
+      --surface-recessed: #f5f2ed;
+      --border: rgba(0, 0, 0, 0.08);
+      --border-bright: rgba(0, 0, 0, 0.15);
+      --text: #1c1917;
+      --text-dim: #78716c;
+      --text-muted: #a8a29e;
+
+      --accent: #1e3a5f;
+      --accent-dim: rgba(30, 58, 95, 0.08);
+      --gold: #b57614;
+      --gold-dim: rgba(181, 118, 20, 0.1);
+      --sage: #4d7c0f;
+      --sage-dim: rgba(77, 124, 15, 0.08);
+      --rose: #9f1239;
+      --rose-dim: rgba(159, 18, 57, 0.07);
+      --teal: #0e7490;
+      --teal-dim: rgba(14, 116, 144, 0.08);
+      --amber: #b45309;
+      --amber-dim: rgba(180, 83, 9, 0.08);
+
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.06);
+      --shadow-lg: 0 8px 32px rgba(0,0,0,0.08);
+      --shadow-hero: 0 12px 48px rgba(0,0,0,0.1);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #131210;
+        --bg-alt: #1a1816;
+        --surface: #1e1c19;
+        --surface-elevated: #252320;
+        --surface-recessed: #161412;
+        --border: rgba(255, 255, 255, 0.06);
+        --border-bright: rgba(255, 255, 255, 0.12);
+        --text: #e7e5e4;
+        --text-dim: #a8a29e;
+        --text-muted: #78716c;
+
+        --accent: #7db4e0;
+        --accent-dim: rgba(125, 180, 224, 0.1);
+        --gold: #d4a73a;
+        --gold-dim: rgba(212, 167, 58, 0.12);
+        --sage: #84cc16;
+        --sage-dim: rgba(132, 204, 22, 0.1);
+        --rose: #fb7185;
+        --rose-dim: rgba(251, 113, 133, 0.1);
+        --teal: #22d3ee;
+        --teal-dim: rgba(34, 211, 238, 0.1);
+        --amber: #fbbf24;
+        --amber-dim: rgba(251, 191, 36, 0.1);
+
+        --shadow-sm: 0 1px 2px rgba(0,0,0,0.2);
+        --shadow-md: 0 4px 12px rgba(0,0,0,0.3);
+        --shadow-lg: 0 8px 32px rgba(0,0,0,0.4);
+        --shadow-hero: 0 12px 48px rgba(0,0,0,0.5);
+      }
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font-body);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      overflow-x: hidden;
+      background-image:
+        radial-gradient(ellipse 800px 600px at 50% 0%, var(--accent-dim), transparent);
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* ── HEADER ── */
+    .header {
+      padding: 64px 0 48px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 48px;
+    }
+    .header__label {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 12px;
+    }
+    .header__title {
+      font-family: var(--font-body);
+      font-size: clamp(2.2rem, 5vw, 3.4rem);
+      font-weight: 400;
+      font-style: italic;
+      line-height: 1.15;
+      color: var(--text);
+      margin-bottom: 12px;
+    }
+    .header__subtitle {
+      font-size: 1.15rem;
+      color: var(--text-dim);
+      max-width: 700px;
+    }
+    .header__meta {
+      display: flex;
+      gap: 24px;
+      margin-top: 20px;
+      flex-wrap: wrap;
+    }
+    .header__badge {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      padding: 4px 12px;
+      border-radius: 4px;
+      background: var(--accent-dim);
+      color: var(--accent);
+      border: 1px solid var(--border);
+    }
+
+    /* ── SECTIONS ── */
+    .section {
+      margin-bottom: 56px;
+    }
+    .section__label {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .section__label::before {
+      content: '';
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--gold);
+    }
+    .section__title {
+      font-size: 1.8rem;
+      font-weight: 400;
+      margin-bottom: 16px;
+      line-height: 1.2;
+    }
+    .section__desc {
+      color: var(--text-dim);
+      font-size: 1.05rem;
+      max-width: 700px;
+      margin-bottom: 24px;
+    }
+
+    /* ── CARDS ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 24px;
+      box-shadow: var(--shadow-sm);
+      min-width: 0;
+    }
+    .card--elevated {
+      box-shadow: var(--shadow-md);
+      border-color: var(--border-bright);
+    }
+    .card--hero {
+      box-shadow: var(--shadow-hero);
+      border-color: var(--border-bright);
+    }
+    .card--recessed {
+      background: var(--surface-recessed);
+      border: 1px solid var(--border);
+      box-shadow: none;
+    }
+    .card__label {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+    .card__title {
+      font-size: 1.2rem;
+      margin-bottom: 8px;
+    }
+    .card__text {
+      color: var(--text-dim);
+      font-size: 0.95rem;
+    }
+
+    /* ── GRID LAYOUTS ── */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+      gap: 20px;
+    }
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+      gap: 20px;
+    }
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+      gap: 16px;
+    }
+
+    /* ── CODE ── */
+    code {
+      font-family: var(--font-mono);
+      font-size: 0.85em;
+      background: var(--accent-dim);
+      padding: 2px 6px;
+      border-radius: 3px;
+      overflow-wrap: break-word;
+      word-break: break-word;
+    }
+    pre {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.5;
+      background: var(--surface-recessed);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .code-header {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    /* ── TABLES ── */
+    .table-wrap {
+      overflow-x: auto;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+    }
+    thead {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+    th {
+      background: var(--surface-elevated);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      padding: 12px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-bright);
+      white-space: nowrap;
+    }
+    td {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+      overflow-wrap: break-word;
+      word-break: break-word;
+    }
+    tr:nth-child(even) td {
+      background: var(--bg-alt);
+    }
+    tr:hover td {
+      background: var(--accent-dim);
+    }
+
+    /* ── CALLOUTS ── */
+    .callout {
+      border-left: 3px solid;
+      padding: 16px 20px;
+      border-radius: 0 8px 8px 0;
+      margin: 16px 0;
+    }
+    .callout--gold { border-color: var(--gold); background: var(--gold-dim); }
+    .callout--rose { border-color: var(--rose); background: var(--rose-dim); }
+    .callout--sage { border-color: var(--sage); background: var(--sage-dim); }
+    .callout--teal { border-color: var(--teal); background: var(--teal-dim); }
+    .callout__title {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 4px;
+    }
+    .callout--gold .callout__title { color: var(--gold); }
+    .callout--rose .callout__title { color: var(--rose); }
+    .callout--sage .callout__title { color: var(--sage); }
+    .callout--teal .callout__title { color: var(--teal); }
+    .callout__text {
+      font-size: 0.95rem;
+      color: var(--text-dim);
+    }
+
+    /* ── MERMAID ── */
+    .mermaid-wrap {
+      position: relative;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      overflow: hidden;
+      cursor: grab;
+    }
+    .mermaid-wrap:active { cursor: grabbing; }
+    .mermaid-inner {
+      overflow: auto;
+      display: flex;
+      justify-content: center;
+      min-height: 200px;
+    }
+    .mermaid-controls {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      display: flex;
+      gap: 4px;
+      z-index: 5;
+    }
+    .mermaid-controls button {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      border: 1px solid var(--border-bright);
+      background: var(--surface);
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s;
+    }
+    .mermaid-controls button:hover {
+      background: var(--accent-dim);
+      color: var(--text);
+    }
+    .mermaid-caption {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      text-align: center;
+      margin-top: 12px;
+    }
+    .mermaid .nodeLabel { color: var(--text) !important; }
+    .mermaid .edgeLabel { color: var(--text-dim) !important; background-color: var(--bg) !important; }
+    .mermaid .edgeLabel rect { fill: var(--bg) !important; }
+    .mermaid .node rect, .mermaid .node circle, .mermaid .node polygon { stroke-width: 1.5px; }
+    .mermaid .edge-pattern-solid { stroke-width: 1.5px; }
+    .mermaid .edgeLabel { font-family: var(--font-mono) !important; font-size: 12px !important; }
+    .mermaid .nodeLabel { font-family: var(--font-body) !important; font-size: 15px !important; }
+
+    /* ── COMPARISON PANELS ── */
+    .compare-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    @media (max-width: 700px) {
+      .compare-grid { grid-template-columns: 1fr; }
+    }
+    .compare-panel { padding: 20px; border-radius: 10px; }
+    .compare-panel--before { background: var(--rose-dim); border: 1px solid var(--rose); }
+    .compare-panel--after { background: var(--sage-dim); border: 1px solid var(--sage); }
+    .compare-panel__header {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 12px;
+    }
+    .compare-panel--before .compare-panel__header { color: var(--rose); }
+    .compare-panel--after .compare-panel__header { color: var(--sage); }
+    .compare-panel ol {
+      padding-left: 20px;
+      color: var(--text-dim);
+      font-size: 0.95rem;
+    }
+    .compare-panel li { margin-bottom: 6px; }
+
+    /* ── BADGE / TAG ── */
+    .tag {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      display: inline-block;
+    }
+    .tag--gold { background: var(--gold-dim); color: var(--gold); }
+    .tag--sage { background: var(--sage-dim); color: var(--sage); }
+    .tag--teal { background: var(--teal-dim); color: var(--teal); }
+    .tag--rose { background: var(--rose-dim); color: var(--rose); }
+    .tag--accent { background: var(--accent-dim); color: var(--accent); }
+
+    /* ── FLOW STEPS ── */
+    .flow-steps {
+      list-style: none;
+      padding: 0;
+      counter-reset: step;
+    }
+    .flow-steps li {
+      position: relative;
+      padding: 8px 0 8px 36px;
+      counter-increment: step;
+      color: var(--text-dim);
+      font-size: 0.95rem;
+    }
+    .flow-steps li::before {
+      content: counter(step);
+      position: absolute;
+      left: 0;
+      top: 8px;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--accent-dim);
+      color: var(--accent);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--border);
+    }
+
+    /* ── ANIMATIONS ── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-in {
+      opacity: 0;
+      animation: fadeUp 0.5s ease-out forwards;
+    }
+    .animate-in:nth-child(1) { animation-delay: 0.05s; }
+    .animate-in:nth-child(2) { animation-delay: 0.1s; }
+    .animate-in:nth-child(3) { animation-delay: 0.15s; }
+    .animate-in:nth-child(4) { animation-delay: 0.2s; }
+    .animate-in:nth-child(5) { animation-delay: 0.25s; }
+    .animate-in:nth-child(6) { animation-delay: 0.3s; }
+    @media (prefers-reduced-motion: reduce) {
+      .animate-in { opacity: 1; animation: none; }
+    }
+
+    /* ── DETAILS ── */
+    details {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      margin: 12px 0;
+    }
+    details summary {
+      padding: 12px 16px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      cursor: pointer;
+      background: var(--surface);
+      color: var(--text-dim);
+      list-style: none;
+    }
+    details summary::before {
+      content: '+ ';
+      color: var(--gold);
+    }
+    details[open] summary::before {
+      content: '- ';
+    }
+    details > div {
+      padding: 16px;
+      background: var(--surface-recessed);
+    }
+
+    /* ── NAV ── */
+    .nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .nav__inner {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      gap: 0;
+    }
+    .nav__link {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+      text-decoration: none;
+      padding: 12px 14px;
+      white-space: nowrap;
+      border-bottom: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .nav__link:hover {
+      color: var(--text);
+      border-bottom-color: var(--gold);
+    }
+
+    /* ── LYRA RELEVANCE SIDEBAR ── */
+    .lyra-note {
+      border-left: 3px solid var(--accent);
+      background: var(--accent-dim);
+      padding: 12px 16px;
+      border-radius: 0 8px 8px 0;
+      margin: 16px 0;
+    }
+    .lyra-note__title {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+      margin-bottom: 4px;
+    }
+    .lyra-note__text {
+      font-size: 0.92rem;
+      color: var(--text-dim);
+    }
+  </style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav__inner">
+    <a href="#memory" class="nav__link">Memory</a>
+    <a href="#channels" class="nav__link">Channels</a>
+    <a href="#events" class="nav__link">Events</a>
+    <a href="#plugins" class="nav__link">Plugins</a>
+    <a href="#llm" class="nav__link">LLM</a>
+    <a href="#config" class="nav__link">Config</a>
+    <a href="#comparison" class="nav__link">Lyra Comparison</a>
+  </div>
+</nav>
+
+<div class="container">
+
+  <!-- ════════════════════ HEADER ════════════════════ -->
+  <header class="header">
+    <div class="header__label">Architecture Plan</div>
+    <h1 class="header__title">OpenClaw Architecture</h1>
+    <p class="header__subtitle">Comprehensive analysis of a TypeScript personal AI agent engine (~2,850 source files, 39MB) for comparison with Lyra's hub-and-spoke design.</p>
+    <div class="header__meta">
+      <span class="header__badge">TypeScript</span>
+      <span class="header__badge">SQLite + Vector</span>
+      <span class="header__badge">9+ Channels</span>
+      <span class="header__badge">Plugin Ecosystem</span>
+      <span class="header__badge">TOML Config</span>
+    </div>
+  </header>
+
+  <!-- ════════════════════ 1. MEMORY ════════════════════ -->
+  <section class="section" id="memory">
+    <div class="section__label">System 01</div>
+    <h2 class="section__title">Memory Architecture</h2>
+    <p class="section__desc">Dual-backend hybrid search with pluggable embedding providers, full-text search fallback, and a context engine plugin interface for token-aware assembly.</p>
+
+    <div class="mermaid-wrap card--hero" style="margin-bottom: 24px;">
+      <div class="mermaid-controls">
+        <button onclick="zoomMermaid(this, 1.2)" title="Zoom in">+</button>
+        <button onclick="zoomMermaid(this, 0.8)" title="Zoom out">-</button>
+        <button onclick="resetZoom(this)" title="Reset">0</button>
+        <button onclick="openMermaidInNewTab(this)" title="Expand">&#x26F6;</button>
+      </div>
+      <div class="mermaid-inner">
+        <pre class="mermaid">
+flowchart TD
+  Q["User Query"] --> SM["SearchManager"]
+  SM --> |"has embeddings"| HYB["Hybrid Search"]
+  SM --> |"no embeddings"| FTS["FTS-Only Fallback"]
+  HYB --> VEC["Vector Search<br/>cosine similarity"]
+  HYB --> BM25["BM25 Ranking<br/>FTS table"]
+  VEC --> RRF["Reciprocal Rank Fusion"]
+  BM25 --> RRF
+  FTS --> |"keyword expansion"| FRES["FTS Results"]
+  RRF --> MERGE["Merged + Scored Results"]
+  FRES --> MERGE
+  MERGE --> CTX["Context Engine"]
+  CTX --> |"assemble within<br/>token budget"| LLM["LLM Context Window"]
+
+  classDef primary fill:#1e3a5f22,stroke:#1e3a5f,stroke-width:2px
+  classDef secondary fill:#b5761422,stroke:#b57614,stroke-width:1.5px
+  classDef muted fill:#78716c11,stroke:#78716c44
+  class Q,SM primary
+  class HYB,VEC,BM25,RRF secondary
+  class FTS,FRES,MERGE,CTX,LLM muted
+        </pre>
+      </div>
+      <div class="mermaid-caption">Memory query flow: hybrid search with RRF merging, FTS fallback, context-aware assembly</div>
+    </div>
+
+    <div class="grid-2" style="margin-bottom: 24px;">
+      <div class="card card--elevated animate-in">
+        <div class="card__label">Storage Backend</div>
+        <h3 class="card__title">SQLite with Vector + FTS</h3>
+        <ul class="flow-steps">
+          <li><strong>FTS table</strong> &mdash; full-text search for keyword matching (always available)</li>
+          <li><strong>Vector table</strong> (<code>chunks_vec</code>) &mdash; semantic search via embeddings</li>
+          <li><strong>Embedding cache</strong> &mdash; prevents redundant API calls across providers</li>
+          <li><strong>File-based</strong> per agent at <code>~/.openclaw/agents/&lt;agentId&gt;/</code></li>
+        </ul>
+      </div>
+      <div class="card card--elevated animate-in">
+        <div class="card__label">Embedding Providers</div>
+        <h3 class="card__title">6 Pluggable Providers</h3>
+        <ul class="flow-steps">
+          <li><strong>OpenAI</strong> &mdash; batch API support for async processing</li>
+          <li><strong>Gemini</strong> &mdash; Google's embedding models</li>
+          <li><strong>Voyage AI</strong> &mdash; specialized embeddings</li>
+          <li><strong>Mistral</strong> &mdash; LLM-based embeddings</li>
+          <li><strong>Ollama</strong> &mdash; local model support</li>
+          <li><strong>Local QMD</strong> &mdash; built-in fallback (no API required)</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card card--elevated" style="margin-bottom: 24px;">
+      <div class="card__label">Core Interface</div>
+      <div class="code-header">src/memory/types.ts</div>
+      <pre>interface MemorySearchManager {
+  search(query, opts?): Promise&lt;MemorySearchResult[]&gt;
+  readFile(params): Promise&lt;{ text, path }&gt;
+  status(): MemoryProviderStatus
+  sync?(params?): Promise&lt;void&gt;
+  probeEmbeddingAvailability(): Promise&lt;MemoryEmbeddingProbeResult&gt;
+  probeVectorAvailability(): Promise&lt;boolean&gt;
+  close?(): Promise&lt;void&gt;
+}
+
+type MemorySearchResult = {
+  path: string;  startLine: number;  endLine: number
+  score: number; snippet: string;    source: "memory" | "sessions"
+  citation?: string
+}</pre>
+    </div>
+
+    <div class="card" style="margin-bottom: 24px;">
+      <div class="card__label">Context Engine Plugin</div>
+      <div class="code-header">src/context-engine/types.ts</div>
+      <pre>interface ContextEngine {
+  readonly info: ContextEngineInfo
+  bootstrap?(params): Promise&lt;BootstrapResult&gt;
+  ingest(params): Promise&lt;IngestResult&gt;
+  assemble(params): Promise&lt;AssembleResult&gt;  // build within token budget
+  compact(params): Promise&lt;CompactResult&gt;    // reduce token usage
+  afterTurn?(params): Promise&lt;void&gt;
+  prepareSubagentSpawn?(params): Promise&lt;SubagentSpawnPreparation&gt;
+}</pre>
+    </div>
+
+    <div class="lyra-note">
+      <div class="lyra-note__title">Lyra Relevance</div>
+      <div class="lyra-note__text">The <strong>ContextEngine interface</strong> is a powerful pattern: pluggable strategies for assembling context within token budgets, with lifecycle hooks for compaction and subagent spawning. The <strong>hybrid RRF search</strong> (FTS + vector) with graceful degradation when no embeddings are available is worth adopting. The per-agent workspace isolation prevents cross-agent memory leakage.</div>
+    </div>
+  </section>
+
+  <!-- ════════════════════ 2. CHANNELS ════════════════════ -->
+  <section class="section" id="channels">
+    <div class="section__label">System 02</div>
+    <h2 class="section__title">Channel Integrations</h2>
+    <p class="section__desc">Unified message routing across 9+ core channels with a multi-tier binding resolution system and plugin-based extensibility.</p>
+
+    <div class="mermaid-wrap card--elevated" style="margin-bottom: 24px;">
+      <div class="mermaid-controls">
+        <button onclick="zoomMermaid(this, 1.2)" title="Zoom in">+</button>
+        <button onclick="zoomMermaid(this, 0.8)" title="Zoom out">-</button>
+        <button onclick="resetZoom(this)" title="Reset">0</button>
+        <button onclick="openMermaidInNewTab(this)" title="Expand">&#x26F6;</button>
+      </div>
+      <div class="mermaid-inner">
+        <pre class="mermaid">
+flowchart TD
+  TG["Telegram"] --> MON["Channel Monitor"]
+  DC["Discord"] --> MON
+  WA["WhatsApp"] --> MON
+  SL["Slack"] --> MON
+  SG["Signal"] --> MON
+  IM["iMessage"] --> MON
+  EXT["Extensions<br/>Teams, Matrix..."] -.-> MON
+  MON --> NORM["Normalize Message"]
+  NORM --> ROUTE["Route Resolution"]
+  ROUTE --> |"peer binding"| AG["Agent Dispatcher"]
+  ROUTE --> |"guild binding"| AG
+  ROUTE --> |"account default"| AG
+  AG --> FMT["Channel Formatter"]
+  FMT --> |"per-channel output"| SEND["Send Response"]
+
+  classDef channel fill:#0e749022,stroke:#0e7490,stroke-width:1.5px
+  classDef core fill:#1e3a5f22,stroke:#1e3a5f,stroke-width:2px
+  classDef ext fill:#78716c11,stroke:#78716c44,stroke-dasharray:5 5
+  class TG,DC,WA,SL,SG,IM channel
+  class MON,NORM,ROUTE,AG,FMT,SEND core
+  class EXT ext
+        </pre>
+      </div>
+      <div class="mermaid-caption">Inbound message flow: channels &rarr; normalize &rarr; route &rarr; agent &rarr; format &rarr; send</div>
+    </div>
+
+    <div class="grid-3" style="margin-bottom: 24px;">
+      <div class="card animate-in">
+        <div class="card__label">Core Channels</div>
+        <div style="display:flex; flex-wrap:wrap; gap:6px;">
+          <span class="tag tag--teal">Telegram</span>
+          <span class="tag tag--teal">Discord</span>
+          <span class="tag tag--teal">WhatsApp</span>
+          <span class="tag tag--teal">Slack</span>
+          <span class="tag tag--teal">Signal</span>
+          <span class="tag tag--teal">iMessage</span>
+          <span class="tag tag--teal">IRC</span>
+          <span class="tag tag--teal">LINE</span>
+          <span class="tag tag--teal">Google Chat</span>
+        </div>
+      </div>
+      <div class="card animate-in">
+        <div class="card__label">Extension Channels</div>
+        <div style="display:flex; flex-wrap:wrap; gap:6px;">
+          <span class="tag tag--accent">MS Teams</span>
+          <span class="tag tag--accent">Matrix</span>
+          <span class="tag tag--accent">Mattermost</span>
+          <span class="tag tag--accent">Feishu</span>
+          <span class="tag tag--accent">Nextcloud Talk</span>
+          <span class="tag tag--accent">Nostr</span>
+        </div>
+      </div>
+      <div class="card animate-in">
+        <div class="card__label">Adapter Pattern</div>
+        <p class="card__text">Each channel implements: <strong>Monitor</strong> (listen), <strong>Context</strong> (metadata), <strong>Handler</strong> (routing), <strong>Sender</strong> (format + deliver)</p>
+      </div>
+    </div>
+
+    <div class="card card--elevated" style="margin-bottom: 24px;">
+      <div class="card__label">Route Resolution</div>
+      <h3 class="card__title">7-Tier Binding Hierarchy</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Priority</th><th>Binding Type</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><span class="tag tag--rose">1</span></td><td><code>binding.peer</code></td><td>Direct DM / specific channel match</td></tr>
+            <tr><td><span class="tag tag--rose">2</span></td><td><code>binding.peer.parent</code></td><td>Thread parent inheritance</td></tr>
+            <tr><td><span class="tag tag--gold">3</span></td><td><code>binding.guild+roles</code></td><td>Discord guild + member roles</td></tr>
+            <tr><td><span class="tag tag--gold">4</span></td><td><code>binding.guild</code></td><td>Discord server constraint</td></tr>
+            <tr><td><span class="tag tag--accent">5</span></td><td><code>binding.team</code></td><td>Slack / Google Chat team</td></tr>
+            <tr><td><span class="tag tag--accent">6</span></td><td><code>binding.account</code></td><td>Account-scoped default</td></tr>
+            <tr><td><span class="tag tag--teal">7</span></td><td><code>binding.channel</code></td><td>Fallback to channel default</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="lyra-note">
+      <div class="lyra-note__title">Lyra Relevance</div>
+      <div class="lyra-note__text">The <strong>binding hierarchy</strong> is critical for multi-channel agents: messages resolve to agents via specific-to-general tiers. The 4-part <strong>adapter pattern</strong> (Monitor/Context/Handler/Sender) provides clean separation. The <strong>~4000-entry route cache</strong> avoids repeated resolution. Extension channels via plugins prevent core bloat.</div>
+    </div>
+  </section>
+
+  <!-- ════════════════════ 3. EVENTS ════════════════════ -->
+  <section class="section" id="events">
+    <div class="section__label">System 03</div>
+    <h2 class="section__title">Event System &amp; Concurrency</h2>
+    <p class="section__desc">Multiple decoupled event streams with lane-based command queuing for concurrency control. No single bus bottleneck.</p>
+
+    <div class="grid-2" style="margin-bottom: 24px;">
+      <div class="card card--hero animate-in">
+        <div class="card__label">Design Decision</div>
+        <h3 class="card__title" style="font-style: italic;">Why multiple streams?</h3>
+        <p class="card__text" style="margin-bottom: 12px;">Instead of a single event bus, OpenClaw separates concerns into 4+ independent streams. Each has its own sequence counter and listener set.</p>
+        <div class="compare-grid">
+          <div class="compare-panel compare-panel--before">
+            <div class="compare-panel__header">Single Bus (traditional)</div>
+            <ol>
+              <li>All events through one channel</li>
+              <li>Single bottleneck under load</li>
+              <li>Listeners filter irrelevant events</li>
+              <li>Coupled consumers</li>
+            </ol>
+          </div>
+          <div class="compare-panel compare-panel--after">
+            <div class="compare-panel__header">Multi-Stream (OpenClaw)</div>
+            <ol>
+              <li>Typed streams per concern</li>
+              <li>No cross-stream contention</li>
+              <li>Listeners opt into relevant streams</li>
+              <li>Independent scaling</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+
+      <div class="card card--elevated animate-in">
+        <div class="card__label">Event Streams</div>
+        <h3 class="card__title">4 Independent Streams</h3>
+        <div style="margin-top: 12px;">
+          <div style="margin-bottom: 16px;">
+            <span class="tag tag--gold">Agent Events</span>
+            <p class="card__text" style="margin-top: 4px; font-size: 0.9rem;">Lifecycle, tool, assistant, error. Per-run monotonic <code>seq</code> counters. Fed to WebSocket gateway.</p>
+          </div>
+          <div style="margin-bottom: 16px;">
+            <span class="tag tag--teal">Diagnostic Events</span>
+            <p class="card__text" style="margin-top: 4px; font-size: 0.9rem;">14 event types: token usage, webhook lifecycle, session state, stuck detection, tool loops. OTEL-ready.</p>
+          </div>
+          <div style="margin-bottom: 16px;">
+            <span class="tag tag--sage">Heartbeat Events</span>
+            <p class="card__text" style="margin-top: 4px; font-size: 0.9rem;">Periodic status: sent/ok-empty/ok-token/skipped/failed. Simple polling endpoint.</p>
+          </div>
+          <div>
+            <span class="tag tag--accent">System Events</span>
+            <p class="card__text" style="margin-top: 4px; font-size: 0.9rem;">Infrastructure: config reload, gateway events, presence, update availability.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card card--elevated" style="margin-bottom: 24px;">
+      <div class="card__label">Lane-Based Command Queue</div>
+      <div class="code-header">src/process/command-queue.ts</div>
+      <pre>// Named lanes with independent concurrency control
+enqueueCommandInLane&lt;T&gt;(lane: string, task: () => Promise&lt;T&gt;, opts?)
+  → Promise&lt;T&gt;
+
+// Built-in lanes:
+//   "main"           — default, general commands
+//   "cron"           — scheduled tasks
+//   "auth-probe:*"   — per-provider auth checks
+
+// Per-lane features:
+//   - Configurable concurrency (setCommandLaneConcurrency)
+//   - Generation tracking (stale tasks rejected after lane reset)
+//   - Graceful drain mode (markGatewayDraining)
+//   - Custom error types: CommandLaneClearedError, GatewayDrainingError</pre>
+    </div>
+
+    <div class="lyra-note">
+      <div class="lyra-note__title">Lyra Relevance</div>
+      <div class="lyra-note__text">The <strong>lane-based queue</strong> prevents head-of-line blocking &mdash; cron tasks don't block user messages. <strong>Generation tracking</strong> invalidates stale tasks after resets. The <strong>diagnostic event stream</strong> with stuck-session detection and tool-loop detection provides production observability. These are patterns Lyra should adopt for its asyncio-based architecture.</div>
+    </div>
+  </section>
+
+  <!-- ════════════════════ 4. PLUGINS ════════════════════ -->
+  <section class="section" id="plugins">
+    <div class="section__label">System 04</div>
+    <h2 class="section__title">Plugin System</h2>
+    <p class="section__desc">npm-based plugin registry with manifest system, hook lifecycle, and a typed Plugin SDK for extensibility.</p>
+
+    <div class="mermaid-wrap card--elevated" style="margin-bottom: 24px;">
+      <div class="mermaid-controls">
+        <button onclick="zoomMermaid(this, 1.2)" title="Zoom in">+</button>
+        <button onclick="zoomMermaid(this, 0.8)" title="Zoom out">-</button>
+        <button onclick="resetZoom(this)" title="Reset">0</button>
+        <button onclick="openMermaidInNewTab(this)" title="Expand">&#x26F6;</button>
+      </div>
+      <div class="mermaid-inner">
+        <pre class="mermaid">
+flowchart TD
+  PM["Plugin Manifest<br/>id, name, version, entrypoints"] --> REG["Plugin Registry"]
+  REG --> TOOLS["Tool Registration"]
+  REG --> HOOKS["Hook Registration"]
+  REG --> CHAN["Channel Registration"]
+  REG --> PROV["Provider Registration"]
+  REG --> HTTP["HTTP Route Registration"]
+  REG --> SVC["Service Registration"]
+  HOOKS --> IN["inbound.received"]
+  HOOKS --> OUT["outbound.send"]
+  HOOKS --> LC["gateway.startup / stop"]
+  HOOKS --> CFG["config.reload"]
+
+  classDef reg fill:#b5761422,stroke:#b57614,stroke-width:2px
+  classDef ext fill:#0e749022,stroke:#0e7490,stroke-width:1.5px
+  classDef hook fill:#4d7c0f22,stroke:#4d7c0f,stroke-width:1.5px
+  class PM,REG reg
+  class TOOLS,CHAN,PROV,HTTP,SVC ext
+  class HOOKS,IN,OUT,LC,CFG hook
+        </pre>
+      </div>
+      <div class="mermaid-caption">Plugin registration: manifest &rarr; registry &rarr; typed extension points</div>
+    </div>
+
+    <div class="grid-2" style="margin-bottom: 24px;">
+      <div class="card animate-in">
+        <div class="card__label">Registry Capabilities</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Extension Point</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr><td><code>tools</code></td><td>Custom tool registration</td></tr>
+              <tr><td><code>hooks</code></td><td>Lifecycle interception with priority ordering</td></tr>
+              <tr><td><code>channels</code></td><td>New messaging platform adapters</td></tr>
+              <tr><td><code>providers</code></td><td>LLM provider backends</td></tr>
+              <tr><td><code>httpRoutes</code></td><td>Custom API endpoints (overlap detection)</td></tr>
+              <tr><td><code>services</code></td><td>Background services</td></tr>
+              <tr><td><code>commands</code></td><td>CLI command extensions</td></tr>
+              <tr><td><code>diagnostics</code></td><td>Custom diagnostic providers</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card animate-in">
+        <div class="card__label">Security</div>
+        <h3 class="card__title">Plugin Guardrails</h3>
+        <ul class="flow-steps">
+          <li>HTTP route <strong>overlap detection</strong> prevents conflicting endpoints</li>
+          <li><strong>Auth validation</strong> on all registered routes</li>
+          <li><strong>Prompt injection constraints</strong> on hook payloads</li>
+          <li>Per-plugin <strong>API factory</strong> with scoped access control</li>
+          <li>Versioned registry with <strong>cache-key tracking</strong> for identity</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="lyra-note">
+      <div class="lyra-note__title">Lyra Relevance</div>
+      <div class="lyra-note__text">OpenClaw's plugin system is more mature than Lyra's directory-based MVP. Key patterns to adopt: <strong>typed extension points</strong> (tools, hooks, channels, providers as separate registration paths), <strong>per-plugin API factory</strong> with access control, and <strong>hook priority ordering</strong> for lifecycle interception. The HTTP route overlap detection prevents plugin conflicts.</div>
+    </div>
+  </section>
+
+  <!-- ════════════════════ 5. LLM ════════════════════ -->
+  <section class="section" id="llm">
+    <div class="section__label">System 05</div>
+    <h2 class="section__title">LLM Provider Abstraction</h2>
+    <p class="section__desc">Auth profiles for multiple providers with live model discovery, token rotation, and fallback chains.</p>
+
+    <div class="grid-3" style="margin-bottom: 24px;">
+      <div class="card card--elevated animate-in">
+        <div class="card__label">Auth Profiles</div>
+        <h3 class="card__title">Multi-Provider</h3>
+        <p class="card__text">Each provider has its own auth profile: API keys, OAuth tokens, session management. Profiles are independently rotated and validated.</p>
+        <div style="margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px;">
+          <span class="tag tag--gold">Anthropic</span>
+          <span class="tag tag--gold">OpenAI</span>
+          <span class="tag tag--gold">Gemini</span>
+          <span class="tag tag--gold">Ollama</span>
+          <span class="tag tag--gold">Custom</span>
+        </div>
+      </div>
+      <div class="card card--elevated animate-in">
+        <div class="card__label">Model Discovery</div>
+        <h3 class="card__title">Live + Auto-Update</h3>
+        <p class="card__text">Models are discovered at runtime from provider APIs. Catalog auto-updates ensure new models are available without code changes. Health probing validates availability.</p>
+      </div>
+      <div class="card card--elevated animate-in">
+        <div class="card__label">Reliability</div>
+        <h3 class="card__title">Fallback Chains</h3>
+        <p class="card__text">Multi-provider setups define fallback order. Token rotation handles rate limits. Cooldown tracking prevents hammering failed providers.</p>
+      </div>
+    </div>
+
+    <div class="callout callout--gold">
+      <div class="callout__title">Tool Schema Guardrails</div>
+      <div class="callout__text">OpenClaw enforces strict rules: no <code>Type.Union</code> in input schemas, no <code>anyOf</code>/<code>oneOf</code>, use <code>stringEnum</code> for string lists. This prevents LLM confusion from ambiguous schemas.</div>
+    </div>
+  </section>
+
+  <!-- ════════════════════ 6. CONFIG ════════════════════ -->
+  <section class="section" id="config">
+    <div class="section__label">System 06</div>
+    <h2 class="section__title">Configuration Management</h2>
+    <p class="section__desc">TOML-based config with hot-reload, validation, and runtime override support.</p>
+
+    <div class="grid-2" style="margin-bottom: 24px;">
+      <div class="card animate-in">
+        <div class="card__label">Config Stack</div>
+        <ul class="flow-steps">
+          <li><strong>TOML file</strong> &mdash; primary configuration source with JSON5 parsing</li>
+          <li><strong>Runtime overrides</strong> &mdash; in-memory snapshot for temporary changes</li>
+          <li><strong>Validation</strong> &mdash; strict schema validation (with plugin-aware extension)</li>
+          <li><strong>Hot-reload</strong> &mdash; file watcher triggers <code>config.reload</code> hook cascade</li>
+          <li><strong>Legacy migration</strong> &mdash; automatic upgrade from older formats</li>
+        </ul>
+      </div>
+      <div class="card animate-in">
+        <div class="card__label">Key Sections</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Section</th><th>Controls</th></tr></thead>
+            <tbody>
+              <tr><td><code>agents</code></td><td>System prompts, tools, models per agent</td></tr>
+              <tr><td><code>channels</code></td><td>Accounts, routing rules per channel</td></tr>
+              <tr><td><code>memory</code></td><td>Embedding provider, FTS, vector store config</td></tr>
+              <tr><td><code>providers</code></td><td>Auth and secrets per LLM provider</td></tr>
+              <tr><td><code>plugins</code></td><td>Plugin paths, enable/disable, settings</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════ COMPARISON ════════════════════ -->
+  <section class="section" id="comparison">
+    <div class="section__label">Analysis</div>
+    <h2 class="section__title">OpenClaw vs Lyra Comparison</h2>
+    <p class="section__desc">Key architectural differences and patterns worth adopting.</p>
+
+    <div class="table-wrap" style="margin-bottom: 24px;">
+      <table>
+        <thead>
+          <tr><th>Aspect</th><th>OpenClaw</th><th>Lyra</th><th>Verdict</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Language</strong></td>
+            <td>TypeScript (~2,850 files)</td>
+            <td>Python (asyncio)</td>
+            <td><span class="tag tag--accent">Different tradeoffs</span></td>
+          </tr>
+          <tr>
+            <td><strong>Memory</strong></td>
+            <td>SQLite + vector + FTS, hybrid RRF search, 6 embedding providers</td>
+            <td>TBD</td>
+            <td><span class="tag tag--sage">Adopt hybrid search</span></td>
+          </tr>
+          <tr>
+            <td><strong>Context</strong></td>
+            <td>Pluggable ContextEngine with token-budget assembly + compaction</td>
+            <td>TBD</td>
+            <td><span class="tag tag--sage">Adopt plugin interface</span></td>
+          </tr>
+          <tr>
+            <td><strong>Channels</strong></td>
+            <td>9 core + extensions, 7-tier binding resolution, ~4K route cache</td>
+            <td>Hub-and-spoke multi-channel</td>
+            <td><span class="tag tag--sage">Adopt binding tiers</span></td>
+          </tr>
+          <tr>
+            <td><strong>Events</strong></td>
+            <td>4 decoupled streams (agent, diagnostic, heartbeat, system)</td>
+            <td>TBD</td>
+            <td><span class="tag tag--gold">Study multi-stream</span></td>
+          </tr>
+          <tr>
+            <td><strong>Concurrency</strong></td>
+            <td>Lane-based command queue with generation tracking</td>
+            <td>TBD</td>
+            <td><span class="tag tag--sage">Adopt lane pattern</span></td>
+          </tr>
+          <tr>
+            <td><strong>Plugins</strong></td>
+            <td>npm-based, 8 extension points, typed SDK, hook priority</td>
+            <td>Directory-based MVP</td>
+            <td><span class="tag tag--gold">Study typed SDK</span></td>
+          </tr>
+          <tr>
+            <td><strong>LLM</strong></td>
+            <td>Auth profiles, live discovery, token rotation, fallback chains</td>
+            <td>TBD</td>
+            <td><span class="tag tag--sage">Adopt fallback chains</span></td>
+          </tr>
+          <tr>
+            <td><strong>Config</strong></td>
+            <td>TOML, hot-reload, strict validation, legacy migration</td>
+            <td>TBD</td>
+            <td><span class="tag tag--gold">Study hot-reload</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="grid-2" style="margin-bottom: 24px;">
+      <div class="callout callout--sage">
+        <div class="callout__title">Adopt for Lyra</div>
+        <div class="callout__text">
+          <strong>Hybrid RRF search</strong> &mdash; FTS always available, vector when embeddings exist.<br>
+          <strong>ContextEngine plugin</strong> &mdash; token-budget-aware assembly with compaction hooks.<br>
+          <strong>Lane-based queues</strong> &mdash; prevent cron from blocking user messages.<br>
+          <strong>Binding resolution</strong> &mdash; specific-to-general routing tiers.<br>
+          <strong>Fallback provider chains</strong> &mdash; resilient LLM access.
+        </div>
+      </div>
+      <div class="callout callout--gold">
+        <div class="callout__title">Study Further</div>
+        <div class="callout__text">
+          <strong>Multi-stream events</strong> &mdash; evaluate if Lyra's scale needs decoupled streams vs a single bus.<br>
+          <strong>Typed plugin SDK</strong> &mdash; 8 extension points may be overengineered for Lyra's current stage.<br>
+          <strong>Hot-reload config</strong> &mdash; useful but complex; evaluate priority vs simpler restart.<br>
+          <strong>Diagnostic events</strong> &mdash; OTEL integration is valuable for production observability.
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout--rose">
+      <div class="callout__title">Key Architectural Warning</div>
+      <div class="callout__text">OpenClaw's TypeScript codebase is <strong>39MB / 2,850 files</strong>. This scale is a product of the npm ecosystem's module fragmentation. Lyra should aim for the same capability with Python's more concise idioms &mdash; target 10-20% of the file count for equivalent functionality. Prioritize the <em>interfaces</em> and <em>patterns</em>, not the implementation scale.</div>
+    </div>
+  </section>
+
+  <!-- ════════════════════ FILE REFERENCES ════════════════════ -->
+  <details style="margin-bottom: 48px;">
+    <summary>File References (key source files)</summary>
+    <div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>File</th><th>Role</th></tr></thead>
+          <tbody>
+            <tr><td><code>src/memory/manager.ts</code></td><td>Memory index manager with hybrid search</td></tr>
+            <tr><td><code>src/memory/types.ts</code></td><td>MemorySearchManager interface + result types</td></tr>
+            <tr><td><code>src/memory/search-manager.ts</code></td><td>Search orchestration and RRF</td></tr>
+            <tr><td><code>src/context-engine/types.ts</code></td><td>ContextEngine plugin interface</td></tr>
+            <tr><td><code>src/channels/registry.ts</code></td><td>Channel metadata + normalization</td></tr>
+            <tr><td><code>src/routing/resolve-route.ts</code></td><td>7-tier binding resolution</td></tr>
+            <tr><td><code>src/infra/agent-events.ts</code></td><td>Agent event stream with seq counters</td></tr>
+            <tr><td><code>src/infra/diagnostic-events.ts</code></td><td>14 diagnostic event types</td></tr>
+            <tr><td><code>src/process/command-queue.ts</code></td><td>Lane-based concurrency control</td></tr>
+            <tr><td><code>src/plugins/registry.ts</code></td><td>Plugin registry with 8 extension points</td></tr>
+            <tr><td><code>src/config/config.ts</code></td><td>TOML config loading + validation</td></tr>
+            <tr><td><code>src/gateway/server.impl.ts</code></td><td>HTTP + WebSocket gateway</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </details>
+
+</div>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    look: 'classic',
+    themeVariables: {
+      primaryColor: isDark ? '#1e3a5f' : '#e8f0f8',
+      primaryBorderColor: isDark ? '#7db4e0' : '#1e3a5f',
+      primaryTextColor: isDark ? '#e7e5e4' : '#1c1917',
+      secondaryColor: isDark ? '#2a2318' : '#fef8ee',
+      secondaryBorderColor: isDark ? '#d4a73a' : '#b57614',
+      secondaryTextColor: isDark ? '#e7e5e4' : '#1c1917',
+      tertiaryColor: isDark ? '#1a2a1a' : '#f0f8e8',
+      tertiaryBorderColor: isDark ? '#84cc16' : '#4d7c0f',
+      tertiaryTextColor: isDark ? '#e7e5e4' : '#1c1917',
+      lineColor: isDark ? '#78716c' : '#a8a29e',
+      fontSize: '15px',
+      fontFamily: "'Instrument Serif', Georgia, serif",
+      noteBkgColor: isDark ? '#252320' : '#fef8ee',
+      noteTextColor: isDark ? '#e7e5e4' : '#1c1917',
+      noteBorderColor: isDark ? '#d4a73a' : '#b57614',
+    }
+  });
+
+  // Zoom controls
+  window.zoomMermaid = function(btn, factor) {
+    const wrap = btn.closest('.mermaid-wrap');
+    const svg = wrap.querySelector('svg');
+    if (!svg) return;
+    const current = parseFloat(svg.style.transform?.match(/scale\(([^)]+)\)/)?.[1] || '1');
+    const newScale = Math.max(0.3, Math.min(3, current * factor));
+    svg.style.transform = `scale(${newScale})`;
+    svg.style.transformOrigin = 'center top';
+  };
+
+  window.resetZoom = function(btn) {
+    const svg = btn.closest('.mermaid-wrap').querySelector('svg');
+    if (svg) svg.style.transform = 'scale(1)';
+  };
+
+  window.openMermaidInNewTab = function(btn) {
+    const svg = btn.closest('.mermaid-wrap').querySelector('svg');
+    if (!svg) return;
+    const svgData = new XMLSerializer().serializeToString(svg);
+    const html = `<!DOCTYPE html><html><head><style>body{margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;background:${isDark ? '#131210' : '#faf8f5'}}</style></head><body>${svgData}</body></html>`;
+    const blob = new Blob([html], { type: 'text/html' });
+    window.open(URL.createObjectURL(blob), '_blank');
+  };
+
+  // Ctrl/Cmd + scroll zoom
+  document.querySelectorAll('.mermaid-wrap').forEach(wrap => {
+    wrap.addEventListener('wheel', (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const svg = wrap.querySelector('svg');
+        if (!svg) return;
+        const current = parseFloat(svg.style.transform?.match(/scale\(([^)]+)\)/)?.[1] || '1');
+        const factor = e.deltaY < 0 ? 1.1 : 0.9;
+        const newScale = Math.max(0.3, Math.min(3, current * factor));
+        svg.style.transform = `scale(${newScale})`;
+        svg.style.transformOrigin = 'center top';
+      }
+    }, { passive: false });
+  });
+</script>
+
+</body>
+</html>

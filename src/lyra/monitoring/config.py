@@ -6,9 +6,10 @@ import os
 import re
 import tomllib
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 
-@dataclass
+@dataclass(frozen=True)
 class MonitoringConfig:
     """Configuration for the monitoring system.
 
@@ -36,7 +37,7 @@ class MonitoringConfig:
     telegram_admin_chat_id: str = ""
 
     def __post_init__(self) -> None:
-        _hhmm = re.compile(r"^\d{2}:\d{2}$")
+        _hhmm = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
         if not _hhmm.match(self.quiet_start):
             raise ValueError(
                 f"quiet_start must be HH:MM format, got {self.quiet_start!r}"
@@ -44,6 +45,17 @@ class MonitoringConfig:
         if not _hhmm.match(self.quiet_end):
             raise ValueError(
                 f"quiet_end must be HH:MM format, got {self.quiet_end!r}"
+            )
+        _service_name_re = re.compile(r"^[a-zA-Z0-9_@.\-]+$")
+        if not _service_name_re.match(self.service_name):
+            raise ValueError(
+                f"service_name must match [a-zA-Z0-9_@.-]+, got {self.service_name!r}"
+            )
+        parsed = urlparse(self.health_endpoint_url)
+        if parsed.scheme not in ("http", "https"):
+            raise ValueError(
+                f"health_endpoint_url must use http or https scheme, "
+                f"got {parsed.scheme!r}"
             )
 
 

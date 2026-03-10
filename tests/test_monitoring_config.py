@@ -130,6 +130,7 @@ class TestMonitoringConfigValidation:
         with pytest.raises(ValueError, match="quiet_start must be HH:MM"):
             MonitoringConfig(
                 quiet_start="9:00",
+                quiet_end="08:00",
                 telegram_token="fake",
                 anthropic_api_key="fake",
                 telegram_admin_chat_id="12345",
@@ -141,6 +142,7 @@ class TestMonitoringConfigValidation:
 
         with pytest.raises(ValueError, match="quiet_end must be HH:MM"):
             MonitoringConfig(
+                quiet_start="00:00",
                 quiet_end="8:00",
                 telegram_token="fake",
                 anthropic_api_key="fake",

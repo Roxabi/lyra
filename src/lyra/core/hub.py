@@ -53,19 +53,19 @@ class ChannelAdapter(Protocol):
 
 
 class RoutingKey(NamedTuple):
-    """Routing key: (platform, bot_id, user_id). Use user_id='*' for wildcard."""
+    """Routing key: (platform, bot_id, scope_id). Use scope_id='*' for wildcard."""
 
     platform: Platform
     bot_id: str
-    user_id: str
+    scope_id: str
 
     def to_pool_id(self) -> str:
-        """Canonical pool ID: '{platform.value}:{bot_id}:{user_id}'.
+        """Canonical pool ID: '{platform.value}:{bot_id}:{scope_id}'.
 
         Use this method as the single source of truth for pool ID format (ADR-001 §4).
         Never construct the pool ID string inline.
         """
-        return f"{self.platform.value}:{self.bot_id}:{self.user_id}"
+        return f"{self.platform.value}:{self.bot_id}:{self.scope_id}"
 
 
 @dataclass(frozen=True)
@@ -101,10 +101,10 @@ class Hub:
         self._pairing_manager = pairing_manager
         self._rate_limit = rate_limit
         self._rate_window = rate_window
-        # Sliding window: maps RoutingKey → deque of message timestamps.
-        # Entries are removed when the deque empties (user inactive for > RATE_WINDOW)
-        # to prevent unbounded dict growth.
-        self._rate_timestamps: dict[RoutingKey, deque[float]] = {}
+        # Sliding window: maps (platform.value, bot_id, user_id) → deque of timestamps.
+        # Rate limiting is per-user (not per-scope) to prevent rate-limit bypass
+        # by switching chats. Entries are removed when the deque empties.
+        self._rate_timestamps: dict[tuple[str, str, str], deque[float]] = {}
         # Health monitoring timestamps (SC-3, issue #111)
         self._start_time: float = time.monotonic()
         self._last_processed_at: float | None = None
@@ -135,46 +135,48 @@ class Hub:
         self,
         platform: Platform,
         bot_id: str,
-        user_id: str,
+        scope_id: str,
         agent_name: str,
         pool_id: str,
     ) -> None:
-        """Map (platform, bot_id, user_id) -> (agent_name, pool_id).
+        """Map (platform, bot_id, scope_id) -> (agent_name, pool_id).
 
-        Raises ValueError if pool_id is already assigned to a different user_id
-        on the same (platform, bot_id) — each pool must serve at most one user
+        Raises ValueError if pool_id is already assigned to a different scope_id
+        on the same (platform, bot_id) — each pool must serve at most one scope
         per (platform, bot_id) pair.
         """
         for existing_key, existing_binding in self.bindings.items():
             if (
                 existing_key.platform == platform
                 and existing_key.bot_id == bot_id
-                and existing_key.user_id != user_id
+                and existing_key.scope_id != scope_id
                 and existing_binding.pool_id == pool_id
             ):
                 raise ValueError(
-                    f"pool_id {pool_id!r} is already bound to user_id "
-                    f"{existing_key.user_id!r} on {platform}:{bot_id}. "
-                    "Each pool must serve at most one user per (platform, bot_id)."
+                    f"pool_id {pool_id!r} is already bound to scope_id "
+                    f"{existing_key.scope_id!r} on {platform}:{bot_id}. "
+                    "Each pool must serve at most one scope per (platform, bot_id)."
                 )
-        self.bindings[RoutingKey(platform, bot_id, user_id)] = Binding(
+        self.bindings[RoutingKey(platform, bot_id, scope_id)] = Binding(
             agent_name=agent_name,
             pool_id=pool_id,
         )
 
     def resolve_binding(self, msg: Message) -> Binding | None:
         """Resolve binding: exact key, then wildcard fallback, else None."""
-        key = RoutingKey(msg.platform, msg.bot_id, msg.user_id)
+        key = RoutingKey(msg.platform, msg.bot_id, msg.extract_scope_id())
         exact = self.bindings.get(key)
         if exact is not None:
             return exact
         wildcard = RoutingKey(msg.platform, msg.bot_id, "*")
         wildcard_binding = self.bindings.get(wildcard)
         if wildcard_binding is not None:
-            # Synthesise a per-user pool_id from the real user_id so each user
-            # gets an isolated Pool (own lock, own subprocess, own conversation).
+            # Synthesise a per-scope pool_id from the message scope so each
+            # conversation scope gets an isolated Pool (own lock, own subprocess,
+            # own conversation).
+            scope = msg.extract_scope_id()
             concrete_pool_id = RoutingKey(
-                msg.platform, msg.bot_id, msg.user_id
+                msg.platform, msg.bot_id, scope
             ).to_pool_id()
             return Binding(
                 agent_name=wildcard_binding.agent_name, pool_id=concrete_pool_id
@@ -208,7 +210,7 @@ class Hub:
         Inactive-user entries are cleaned up when their deque empties to prevent
         unbounded dict growth.
         """
-        key = RoutingKey(msg.platform, msg.bot_id, msg.user_id)
+        key = (msg.platform.value, msg.bot_id, msg.user_id)
         now = time.monotonic()
         window_start = now - self._rate_window
         timestamps = self._rate_timestamps.get(key)
@@ -272,7 +274,8 @@ class Hub:
         while True:
             msg = await self.bus.get()
             try:
-                key = RoutingKey(msg.platform, msg.bot_id, msg.user_id)
+                scope = msg.extract_scope_id()
+                key = RoutingKey(msg.platform, msg.bot_id, scope)
                 if self._is_rate_limited(msg):
                     log.warning("rate limit exceeded for %s — message dropped", key)
                     continue

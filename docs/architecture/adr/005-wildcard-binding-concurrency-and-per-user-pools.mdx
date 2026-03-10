@@ -5,7 +5,7 @@ description: Document the concurrency and isolation consequences of the wildcard
 
 ## Status
 
-Accepted
+Accepted — partially superseded by #125 (scope_id routing, see Amendment below)
 
 ## Context
 
@@ -157,3 +157,29 @@ This locking model satisfies the Phase 1 single-user constraint. It does not sat
 - The idle reaper (1200s TTL) will correctly reap the single shared `_ProcessEntry` when idle.
   Under a per-user model, each user's process would be reaped independently, which is the
   desired behaviour.
+
+## Amendment: scope_id routing resolves the wildcard pool isolation problem (#125)
+
+Issue #125 (Slice 1 of #112) implemented **Option B** from this ADR with an important
+refinement: pool isolation is now per-conversation-scope, not per-user.
+
+`RoutingKey.user_id` was renamed to `RoutingKey.scope_id`. When a wildcard binding
+matches, `resolve_binding()` now synthesizes a per-scope pool ID from
+`Message.extract_scope_id()`:
+
+```python
+# In Hub.resolve_binding(), wildcard path:
+scope = msg.extract_scope_id()
+concrete_pool_id = RoutingKey(msg.platform, msg.bot_id, scope).to_pool_id()
+# e.g. "telegram:main:chat:555" instead of "telegram:main:*"
+```
+
+This means:
+- Each conversation scope (chat, thread, channel) gets its own Pool with independent
+  history and lock — resolving the "shared pool lock" problem from this ADR.
+- The same user in two different chats gets two separate pools.
+- Rate limiting remains per-user (keyed on `msg.user_id` directly, not `RoutingKey`)
+  to prevent bypass by switching chats.
+
+The **gate condition** from this ADR is now satisfied for pool isolation. The remaining
+items (memory namespace, CLI subprocess isolation) will be addressed in subsequent slices.

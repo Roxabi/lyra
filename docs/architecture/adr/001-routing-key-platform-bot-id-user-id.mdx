@@ -5,7 +5,7 @@ description: Adopt a three-dimensional typed routing key to support multi-bot, m
 
 ## Status
 
-Accepted
+Accepted — amended by #125 (scope_id routing, see Amendment below)
 
 ## Context
 
@@ -118,3 +118,22 @@ Key implementation requirements derived from this decision:
 - `Message.channel` is kept as a deprecated alias (`= platform.value`) during the Telegram
   migration window. It is removed once Telegram and Discord adapter tests both pass.
 - The `BindingKey` name is retired; `RoutingKey` is the canonical term going forward.
+
+## Amendment: scope_id replaces user_id in RoutingKey (#125)
+
+Issue #125 (Slice 1 of #112) renamed `RoutingKey.user_id` to `RoutingKey.scope_id`.
+The routing key is now `RoutingKey(platform, bot_id, scope_id)` — a 3-field NamedTuple
+where `scope_id` represents the conversation scope (e.g. `chat:555`, `thread:111`,
+`channel:222`), not the user identity.
+
+Key changes from the original decision:
+
+- **§1** updated: `RoutingKey(platform: Platform, bot_id: str, scope_id: str)`. The
+  `scope_id` is derived from `Message.extract_scope_id()` which maps platform context
+  to a canonical scope string (see spec #112 §Scope extraction rules).
+- **§4** updated: Pool ID format is `f"{platform}:{bot_id}:{scope_id}"`. Same user in
+  two different chats gets two separate pools with independent histories.
+- **§6** updated: Rate limiting is now keyed on `(platform.value, bot_id, user_id)` tuple
+  directly — not on `RoutingKey`. This prevents users from bypassing rate limits by
+  switching chats. `Message.user_id` remains the authoritative user identity for
+  authentication, rate limiting, and pairing.

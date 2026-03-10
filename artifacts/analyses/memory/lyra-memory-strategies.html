@@ -1,0 +1,1695 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Architecture Memoire Lyra</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* =========================================================
+   CSS CUSTOM PROPERTIES
+   ========================================================= */
+:root {
+  /* Dark palette (default) */
+  --bg: #0c1222;
+  --surface: #131b2e;
+  --surface2: #1a2440;
+  --surface-elevated: #1e2d4a;
+  --surface-hero: #223158;
+  --border: rgba(255,255,255,0.06);
+  --border-strong: rgba(255,255,255,0.12);
+  --text: #e2e8f0;
+  --text-dim: #64748b;
+  --text-heading: #f1f5f9;
+  --accent: #3b82f6;
+
+  /* Memory level colors */
+  --l0: #3b82f6;
+  --l1: #06b6d4;
+  --l2: #22c55e;
+  --l3: #f59e0b;
+  --l4: #a855f7;
+  --l-fail: #ef4444;
+
+  /* Grid pattern */
+  --grid-color: rgba(59,130,246,0.04);
+  --grid-color-strong: rgba(59,130,246,0.07);
+
+  /* Layout */
+  --sidebar-w: 170px;
+  --content-max: 1060px;
+  --gap: 24px;
+  --radius: 8px;
+  --radius-lg: 12px;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f0f4f8;
+    --surface: #ffffff;
+    --surface2: #e8edf3;
+    --surface-elevated: #f5f7fa;
+    --surface-hero: #e0e7f1;
+    --border: rgba(0,0,0,0.08);
+    --border-strong: rgba(0,0,0,0.14);
+    --text: #1e293b;
+    --text-dim: #64748b;
+    --text-heading: #0f172a;
+    --accent: #2563eb;
+    --grid-color: rgba(37,99,235,0.04);
+    --grid-color-strong: rgba(37,99,235,0.06);
+  }
+}
+
+/* =========================================================
+   RESET & BASE
+   ========================================================= */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.65;
+  font-size: 15px;
+  min-height: 100vh;
+}
+
+/* Blueprint grid background */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--grid-color) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-color) 1px, transparent 1px),
+    linear-gradient(var(--grid-color-strong) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-color-strong) 1px, transparent 1px);
+  background-size:
+    20px 20px,
+    20px 20px,
+    100px 100px,
+    100px 100px;
+}
+
+code, .mono {
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 0.88em;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover { text-decoration: underline; }
+
+/* =========================================================
+   LAYOUT
+   ========================================================= */
+.page-wrapper {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: var(--sidebar-w) 1fr;
+  max-width: calc(var(--sidebar-w) + var(--content-max) + 48px);
+  margin: 0 auto;
+  padding: 0 24px;
+  gap: 32px;
+}
+
+/* =========================================================
+   SIDEBAR / TOC
+   ========================================================= */
+.sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  padding-top: 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sidebar-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 12px;
+  padding-left: 12px;
+}
+
+.toc-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-dim);
+  transition: all 0.2s ease;
+  text-decoration: none;
+  border-left: 2px solid transparent;
+}
+
+.toc-link:hover {
+  color: var(--text);
+  background: var(--surface);
+  text-decoration: none;
+}
+
+.toc-link.active {
+  color: var(--accent);
+  background: var(--surface);
+  border-left-color: var(--accent);
+}
+
+.toc-num {
+  font-family: 'Fira Code', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  opacity: 0.6;
+  min-width: 16px;
+}
+
+.toc-link.active .toc-num { opacity: 1; }
+
+/* =========================================================
+   MAIN CONTENT
+   ========================================================= */
+main {
+  padding: 40px 0 80px;
+  min-width: 0;
+}
+
+/* =========================================================
+   HERO
+   ========================================================= */
+.hero {
+  margin-bottom: 56px;
+  position: relative;
+}
+
+.hero::before {
+  content: '';
+  position: absolute;
+  top: -80px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 600px;
+  height: 400px;
+  background: radial-gradient(ellipse, rgba(59,130,246,0.08) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+.hero-title {
+  font-size: clamp(28px, 4vw, 42px);
+  font-weight: 700;
+  color: var(--text-heading);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  margin-bottom: 8px;
+}
+
+.hero-sub {
+  font-size: 16px;
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+.hero-sub strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* =========================================================
+   SECTION TITLES
+   ========================================================= */
+.section {
+  margin-bottom: 56px;
+  scroll-margin-top: 24px;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.section-num {
+  font-family: 'Fira Code', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  background: rgba(59,130,246,0.1);
+  padding: 4px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.05em;
+}
+
+.section-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-heading);
+  letter-spacing: -0.01em;
+}
+
+/* =========================================================
+   CARDS
+   ========================================================= */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  position: relative;
+}
+
+.card-elevated {
+  background: var(--surface-elevated);
+  border-color: var(--border-strong);
+}
+
+.card-hero {
+  background: var(--surface-hero);
+  border-color: var(--border-strong);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.15);
+}
+
+.card-recessed {
+  background: var(--bg);
+  border-color: var(--border);
+}
+
+.card-border-top {
+  border-top: 3px solid var(--card-accent, var(--accent));
+}
+
+.card-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-heading);
+  margin-bottom: 4px;
+}
+
+.card-subtitle {
+  font-family: 'Fira Code', monospace;
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 16px;
+}
+
+.card-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.card-list li {
+  font-size: 14px;
+  line-height: 1.55;
+  padding-left: 16px;
+  position: relative;
+}
+
+.card-list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--card-accent, var(--accent));
+  opacity: 0.6;
+}
+
+.file-ref {
+  font-family: 'Fira Code', monospace;
+  font-size: 12px;
+  color: var(--accent);
+  background: rgba(59,130,246,0.08);
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+/* =========================================================
+   BADGE
+   ========================================================= */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 20px;
+  background: rgba(59,130,246,0.1);
+  color: var(--accent);
+  margin-top: 12px;
+}
+
+.badge-amber { background: rgba(245,158,11,0.12); color: var(--l3); }
+.badge-cyan { background: rgba(6,182,212,0.12); color: var(--l1); }
+.badge-green { background: rgba(34,197,94,0.12); color: var(--l2); }
+.badge-purple { background: rgba(168,85,247,0.12); color: var(--l4); }
+
+.badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* =========================================================
+   GRID LAYOUTS
+   ========================================================= */
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--gap);
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.grid-2x2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--gap);
+}
+
+/* =========================================================
+   ARCHITECTURE DIAGRAM (Section 2)
+   ========================================================= */
+.levels-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-bottom: 28px;
+}
+
+.level-bar {
+  display: grid;
+  grid-template-columns: 80px 1fr 140px 120px 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  position: relative;
+  font-size: 13px;
+}
+
+.level-bar:first-child { border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+.level-bar:last-child { border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
+.level-bar + .level-bar { border-top: none; }
+
+.level-tag {
+  font-family: 'Fira Code', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  text-align: center;
+  color: #fff;
+}
+
+.level-name { font-weight: 600; color: var(--text-heading); }
+.level-storage { color: var(--text-dim); font-size: 12px; }
+.level-lifetime { color: var(--text-dim); font-size: 12px; font-family: 'Fira Code', monospace; }
+.level-example { color: var(--text-dim); font-size: 12px; font-style: italic; }
+
+.arrow-col {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 0;
+  color: var(--text-dim);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+}
+
+.arrow-col svg {
+  width: 20px;
+  height: 16px;
+  fill: none;
+  stroke: var(--text-dim);
+  stroke-width: 1.5;
+}
+
+/* =========================================================
+   COLLAPSIBLE DETAILS (Section 3)
+   ========================================================= */
+.ref-group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.ref-group summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-heading);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  transition: background 0.15s;
+}
+
+.ref-group summary::-webkit-details-marker { display: none; }
+
+.ref-group summary:hover { background: var(--surface2); }
+
+.ref-group summary::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.ref-group[data-color="blue"] summary::before { background: var(--l0); }
+.ref-group[data-color="green"] summary::before { background: var(--l2); }
+.ref-group[data-color="red"] summary::before { background: var(--l-fail); }
+.ref-group[data-color="amber"] summary::before { background: var(--l3); }
+.ref-group[data-color="purple"] summary::before { background: var(--l4); }
+.ref-group[data-color="cyan"] summary::before { background: var(--l1); }
+
+.ref-group summary .chevron {
+  margin-left: auto;
+  width: 16px;
+  height: 16px;
+  transition: transform 0.2s;
+  fill: none;
+  stroke: var(--text-dim);
+  stroke-width: 2;
+}
+
+.ref-group[open] summary .chevron { transform: rotate(180deg); }
+
+.ref-group .ref-list {
+  padding: 4px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ref-item {
+  display: flex;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  padding-left: 18px;
+  position: relative;
+}
+
+.ref-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 7px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--text-dim);
+}
+
+.ref-item-title {
+  font-weight: 600;
+  color: var(--text);
+  flex-shrink: 0;
+}
+
+.ref-item-desc {
+  color: var(--text-dim);
+}
+
+.ref-count {
+  font-size: 11px;
+  font-family: 'Fira Code', monospace;
+  color: var(--text-dim);
+  background: var(--surface2);
+  padding: 2px 7px;
+  border-radius: 10px;
+}
+
+/* =========================================================
+   STRATEGY CARDS (Section 4 — Hero depth)
+   ========================================================= */
+.strategy-card {
+  background: var(--surface-hero);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: 28px 24px 24px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.12);
+}
+
+.strategy-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--card-accent, var(--accent));
+}
+
+.strategy-num {
+  font-family: 'Fira Code', monospace;
+  font-size: 32px;
+  font-weight: 700;
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  opacity: 0.08;
+  line-height: 1;
+  color: var(--text-heading);
+}
+
+.strategy-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-heading);
+  margin-bottom: 4px;
+}
+
+.strategy-timeline {
+  font-family: 'Fira Code', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 4px;
+  margin-bottom: 14px;
+}
+
+.strategy-levels {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 16px;
+}
+
+.strategy-level-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid;
+  opacity: 0.3;
+}
+
+.strategy-level-dot.active {
+  opacity: 1;
+  background: currentColor;
+}
+
+.strategy-details {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.strategy-detail {
+  display: flex;
+  gap: 8px;
+}
+
+.strategy-detail-label {
+  font-family: 'Fira Code', monospace;
+  font-size: 11px;
+  color: var(--text-dim);
+  min-width: 100px;
+  flex-shrink: 0;
+}
+
+.strategy-detail-value {
+  color: var(--text);
+}
+
+.strategy-result {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.strategy-result-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
+.strategy-result-text {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.strategy-missing {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-style: italic;
+  margin-top: 6px;
+}
+
+/* =========================================================
+   COMPARISON TABLE (Section 5)
+   ========================================================= */
+.table-wrap {
+  overflow-x: auto;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+}
+
+.comp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  min-width: 700px;
+}
+
+.comp-table thead th {
+  padding: 14px 14px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-heading);
+  background: var(--surface);
+  border-bottom: 2px solid var(--border-strong);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.comp-table thead th:not(:first-child) {
+  border-top: 3px solid var(--accent);
+}
+
+.comp-table thead th:nth-child(2) { border-top-color: var(--l3); }
+.comp-table thead th:nth-child(3) { border-top-color: var(--l1); }
+.comp-table thead th:nth-child(4) { border-top-color: var(--l2); }
+.comp-table thead th:nth-child(5) { border-top-color: var(--l4); }
+
+.comp-table tbody td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.comp-table tbody tr:nth-child(even) td {
+  background: var(--surface);
+}
+
+.comp-table tbody tr:nth-child(odd) td {
+  background: var(--bg);
+}
+
+.comp-table tbody td:first-child {
+  font-weight: 600;
+  color: var(--text-heading);
+  white-space: nowrap;
+}
+
+.comp-table .cell-mono {
+  font-family: 'Fira Code', monospace;
+  font-size: 12px;
+}
+
+/* =========================================================
+   TIMELINE (Section 6)
+   ========================================================= */
+.timeline {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  position: relative;
+  padding: 20px 0;
+  margin-bottom: 32px;
+}
+
+.timeline::before {
+  content: '';
+  position: absolute;
+  top: 38px;
+  left: 24px;
+  right: 24px;
+  height: 2px;
+  background: var(--border-strong);
+}
+
+.timeline-milestone {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  position: relative;
+  z-index: 1;
+}
+
+.timeline-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 3px solid;
+  background: var(--bg);
+  margin-bottom: 12px;
+}
+
+.timeline-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-heading);
+  margin-bottom: 6px;
+}
+
+.timeline-badge {
+  font-family: 'Fira Code', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.timeline-desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  max-width: 160px;
+  line-height: 1.4;
+}
+
+/* =========================================================
+   CALLOUT
+   ========================================================= */
+.callout {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-strong);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 18px 22px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-heading);
+  text-align: center;
+}
+
+/* =========================================================
+   FOOTER
+   ========================================================= */
+.page-footer {
+  border-top: 1px solid var(--border);
+  padding: 24px 0;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* =========================================================
+   SPEC BADGES
+   ========================================================= */
+.spec-badges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.spec-badge {
+  font-family: 'Fira Code', monospace;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 4px;
+  background: var(--surface2);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+}
+
+/* =========================================================
+   ANIMATIONS
+   ========================================================= */
+.fade-up {
+  opacity: 0;
+  transform: translateY(18px);
+  animation: fadeUp 0.5s ease forwards;
+  animation-delay: calc(var(--i, 0) * 60ms);
+}
+
+@keyframes fadeUp {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-up {
+    opacity: 1;
+    transform: none;
+    animation: none;
+  }
+}
+
+/* =========================================================
+   RESPONSIVE
+   ========================================================= */
+@media (max-width: 1000px) {
+  .page-wrapper {
+    grid-template-columns: 1fr;
+    padding: 0 16px;
+  }
+
+  .sidebar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    height: auto;
+    padding-top: 0;
+    flex-direction: row;
+    overflow-x: auto;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 0;
+    gap: 2px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .sidebar::-webkit-scrollbar { display: none; }
+
+  .sidebar-label { display: none; }
+
+  .toc-link {
+    white-space: nowrap;
+    border-left: none;
+    border-bottom: 2px solid transparent;
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+
+  .toc-link.active {
+    border-left-color: transparent;
+    border-bottom-color: var(--accent);
+  }
+
+  .grid-2, .grid-2x2 {
+    grid-template-columns: 1fr;
+  }
+
+  .grid-3 {
+    grid-template-columns: 1fr;
+  }
+
+  .level-bar {
+    grid-template-columns: 60px 1fr;
+    gap: 4px 10px;
+    padding: 12px 14px;
+  }
+
+  .level-storage, .level-lifetime, .level-example {
+    grid-column: 2;
+  }
+
+  .timeline {
+    flex-direction: column;
+    gap: 20px;
+    padding-left: 28px;
+  }
+
+  .timeline::before {
+    top: 0;
+    bottom: 0;
+    left: 14px;
+    right: auto;
+    width: 2px;
+    height: auto;
+  }
+
+  .timeline-milestone {
+    flex-direction: row;
+    align-items: flex-start;
+    text-align: left;
+    gap: 14px;
+  }
+
+  .timeline-dot {
+    margin-bottom: 0;
+    flex-shrink: 0;
+    margin-left: -22px;
+  }
+
+  .timeline-desc { max-width: none; }
+}
+
+@media (max-width: 600px) {
+  .hero-title { font-size: 24px; }
+  .strategy-card { padding: 20px 16px 18px; }
+  .section { margin-bottom: 40px; }
+}
+</style>
+</head>
+<body>
+
+<div class="page-wrapper">
+
+  <!-- =====================================================
+       SIDEBAR / TOC
+       ===================================================== -->
+  <nav class="sidebar" id="toc">
+    <div class="sidebar-label">Navigation</div>
+    <a href="#s1" class="toc-link active" data-section="s1">
+      <span class="toc-num">01</span> Existant
+    </a>
+    <a href="#s2" class="toc-link" data-section="s2">
+      <span class="toc-num">02</span> 5 Niveaux
+    </a>
+    <a href="#s3" class="toc-link" data-section="s3">
+      <span class="toc-num">03</span> Intel Externe
+    </a>
+    <a href="#s4" class="toc-link" data-section="s4">
+      <span class="toc-num">04</span> Strategies
+    </a>
+    <a href="#s5" class="toc-link" data-section="s5">
+      <span class="toc-num">05</span> Comparaison
+    </a>
+    <a href="#s6" class="toc-link" data-section="s6">
+      <span class="toc-num">06</span> Roadmap
+    </a>
+  </nav>
+
+  <!-- =====================================================
+       MAIN CONTENT
+       ===================================================== -->
+  <main>
+
+    <!-- HERO -->
+    <header class="hero fade-up" style="--i:0">
+      <h1 class="hero-title">Architecture Memoire Lyra</h1>
+      <p class="hero-sub">Du Quick Win au Long-Terme &mdash; <strong>4 strategies progressives, 22 references, 0 code jetable</strong></p>
+    </header>
+
+    <!-- ==========================================================
+         SECTION 1 : CE QU'ON A DEJA
+         ========================================================== -->
+    <section class="section" id="s1">
+      <div class="section-header fade-up" style="--i:1">
+        <span class="section-num">01</span>
+        <h2 class="section-title">Ce Qu'on a Deja</h2>
+      </div>
+
+      <div class="grid-2 fade-up" style="--i:2">
+        <!-- Card 1: Hybrid Search Engine -->
+        <div class="card card-elevated card-border-top" style="--card-accent: var(--l3)">
+          <h3 class="card-title">Hybrid Search Engine</h3>
+          <p class="card-subtitle">_shared/memory/</p>
+          <ul class="card-list" style="--card-accent: var(--l3)">
+            <li><span class="file-ref">vector_store.py</span> &mdash; SQLite + FTS5 + sqlite-vec, CRUD, ranking</li>
+            <li><span class="file-ref">hybrid_search.py</span> &mdash; BM25 (0.3) + embeddings (0.7), RRF fusion</li>
+            <li><span class="file-ref">embedding_provider.py</span> &mdash; all-MiniLM-L6-v2, 384 dims</li>
+            <li><span class="file-ref">schema.py</span> &mdash; documents, tags, embeddings, FTS5 tables</li>
+            <li><span class="file-ref">migrations.py</span> &mdash; JSON &rarr; SQLite, schema evolutions</li>
+          </ul>
+          <div class="badge badge-amber"><span class="badge-dot"></span> 471 entries &middot; hybrid search working</div>
+        </div>
+
+        <!-- Card 2: Session Management -->
+        <div class="card card-elevated card-border-top" style="--card-accent: var(--l1)">
+          <h3 class="card-title">Session Management</h3>
+          <p class="card-subtitle">telegram_bot/core/</p>
+          <ul class="card-list" style="--card-accent: var(--l1)">
+            <li><span class="file-ref">session_store.py</span> &mdash; JSONL append-only, metadata, file locking</li>
+            <li><span class="file-ref">compaction/</span> &mdash; importance scoring (5 weights), multi-stage summarization</li>
+            <li><span class="file-ref">context_resolver.py</span> &mdash; reply-to-resume, O(1) lookup</li>
+            <li><span class="file-ref">transcript_rotator.py</span> &mdash; auto-gzip at 5MB, max 10 archives</li>
+          </ul>
+          <div class="badge badge-cyan"><span class="badge-dot"></span> 2-layer architecture &middot; battle-tested</div>
+        </div>
+      </div>
+
+      <!-- Specs existantes -->
+      <div class="card card-recessed fade-up" style="--i:3; margin-top: 16px;">
+        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+          <span style="font-size:13px; font-weight:600; color:var(--text-dim);">Specs existantes</span>
+          <div class="spec-badges">
+            <span class="spec-badge">ROX-200 Memory System</span>
+            <span class="spec-badge" style="border-color: var(--l2); color: var(--l2);">ROX-167 Compaction &#10003;</span>
+            <span class="spec-badge" style="border-color: var(--l2); color: var(--l2);">ROX-207 Storage Refactor &#10003;</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================================
+         SECTION 2 : ARCHITECTURE 5 NIVEAUX
+         ========================================================== -->
+    <section class="section" id="s2">
+      <div class="section-header fade-up" style="--i:4">
+        <span class="section-num">02</span>
+        <h2 class="section-title">Architecture 5 Niveaux</h2>
+      </div>
+
+      <div class="levels-stack fade-up" style="--i:5">
+        <!-- L0 -->
+        <div class="level-bar">
+          <span class="level-tag" style="background: var(--l0);">L0</span>
+          <span class="level-name">Working Memory</span>
+          <span class="level-storage">Context window</span>
+          <span class="level-lifetime">&lt; 1 turn</span>
+          <span class="level-example">"Current message"</span>
+        </div>
+        <!-- L1 -->
+        <div class="level-bar">
+          <span class="level-tag" style="background: var(--l1);">L1</span>
+          <span class="level-name">Session Memory</span>
+          <span class="level-storage">Pool state (asyncio.Lock)</span>
+          <span class="level-lifetime">Session</span>
+          <span class="level-example">"Multi-turn conversation"</span>
+        </div>
+        <!-- L2 -->
+        <div class="level-bar">
+          <span class="level-tag" style="background: var(--l2);">L2</span>
+          <span class="level-name">Episodic</span>
+          <span class="level-storage">Dated Markdown</span>
+          <span class="level-lifetime">Weeks/months</span>
+          <span class="level-example">"March 2 conversation"</span>
+        </div>
+        <!-- L3 -->
+        <div class="level-bar">
+          <span class="level-tag" style="background: var(--l3);">L3</span>
+          <span class="level-name">Semantic</span>
+          <span class="level-storage">SQLite + BM25 + sqlite-vec</span>
+          <span class="level-lifetime">Permanent</span>
+          <span class="level-example">"Mickael prefers Python"</span>
+        </div>
+        <!-- L4 -->
+        <div class="level-bar">
+          <span class="level-tag" style="background: var(--l4);">L4</span>
+          <span class="level-name">Procedural</span>
+          <span class="level-storage">SQLite + Markdown</span>
+          <span class="level-lifetime">Permanent</span>
+          <span class="level-example">"How to generate voice notes"</span>
+        </div>
+      </div>
+
+      <!-- Consolidation flow arrows -->
+      <div class="fade-up" style="--i:6; display:flex; justify-content:center; gap:8px; margin: -16px 0 20px; flex-wrap:wrap;">
+        <span style="font-size:11px; font-family:'Fira Code',monospace; color:var(--text-dim); background:var(--surface); padding:3px 10px; border-radius:4px; border:1px solid var(--border);">
+          L0 &rarr; L1 in-memory
+        </span>
+        <span style="font-size:11px; font-family:'Fira Code',monospace; color:var(--text-dim); background:var(--surface); padding:3px 10px; border-radius:4px; border:1px solid var(--border);">
+          L1 &rarr; L2 session-end flush
+        </span>
+        <span style="font-size:11px; font-family:'Fira Code',monospace; color:var(--text-dim); background:var(--surface); padding:3px 10px; border-radius:4px; border:1px solid var(--border);">
+          L2 &rarr; L3 nightly batch
+        </span>
+        <span style="font-size:11px; font-family:'Fira Code',monospace; color:var(--text-dim); background:var(--surface); padding:3px 10px; border-radius:4px; border:1px solid var(--border);">
+          L3 &rarr; L4 pattern extraction
+        </span>
+      </div>
+
+      <!-- Regles Non-Negociables -->
+      <div class="card card-recessed fade-up" style="--i:7">
+        <h3 style="font-size:14px; font-weight:700; color:var(--text-heading); margin-bottom:12px; font-family:'Fira Code',monospace; letter-spacing:0.03em;">Regles Non-Negociables</h3>
+        <ul class="card-list" style="--card-accent: var(--l-fail)">
+          <li><span class="mono" style="color:var(--l-fail);">aiosqlite</span> mandatory from day 1</li>
+          <li>Flush to episodic BEFORE any compaction</li>
+          <li>Mandatory retrieval at session/pool start</li>
+          <li>Memory injection before each skill call</li>
+          <li>Nightly batch consolidation only (NEVER real-time)</li>
+          <li>3 concordant mentions &rarr; promotion episodic &rarr; semantic</li>
+          <li>Cross-channel memory shared by default</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ==========================================================
+         SECTION 3 : INTELLIGENCE EXTERNE
+         ========================================================== -->
+    <section class="section" id="s3">
+      <div class="section-header fade-up" style="--i:8">
+        <span class="section-num">03</span>
+        <h2 class="section-title">Intelligence Externe</h2>
+      </div>
+
+      <div class="fade-up" style="--i:9">
+        <!-- Architecture Foundations -->
+        <details class="ref-group" data-color="blue">
+          <summary>
+            Architecture Foundations
+            <span class="ref-count">4</span>
+            <svg class="chevron" viewBox="0 0 16 16"><polyline points="4 6 8 10 12 6"/></svg>
+          </summary>
+          <div class="ref-list">
+            <div class="ref-item">
+              <span><span class="ref-item-title">Living Memory / Tulving</span> &mdash; <span class="ref-item-desc">3 memory systems (episodic, semantic, procedural), metabolic rates, dual coding theory</span></span>
+            </div>
+            <div class="ref-item">
+              <span><span class="ref-item-title">Memory as Reasoning</span> &mdash; <span class="ref-item-desc">Reasoning over stored knowledge beats pure retrieval; chain-of-memory patterns</span></span>
+            </div>
+            <div class="ref-item">
+              <span><span class="ref-item-title">TrigMem</span> &mdash; <span class="ref-item-desc">Impossible triangle: capacity vs speed vs quality &mdash; pick two, manage trade-offs</span></span>
+            </div>
+            <div class="ref-item">
+              <span><span class="ref-item-title">5 Levels of Agentic Software</span> &mdash; <span class="ref-item-desc">Progressive validation framework from chatbot to fully autonomous agent</span></span>
+            </div>
+          </div>
+        </details>
+
+        <!-- Consolidation Patterns -->
+        <details class="ref-group" data-color="green">
+          <summary>
+            Consolidation Patterns
+            <span class="ref-count">5</span>
+            <svg class="chevron" viewBox="0 0 16 16"><polyline points="4 6 8 10 12 6"/></svg>
+          </summary>
+          <div class="ref-list">
+            <div class="ref-item">
+              <span><span class="ref-item-title">Three-Layer Knowledge Graph</span> &mdash; <span class="ref-item-desc">Fact extraction + weekly synthesis, progressive abstraction</span></span>
+            </div>
+            <div class="ref-item">
+              <span><span class="ref-item-title">gigabrain</span> &mdash; <span class="ref-item-desc">Dual-write SQLite + markdown, dedup, quality scoring with configurable thresholds</span></span>
+            </div>
+            <div class="ref-item">
+              <span><span class="ref-item-title">claude-qmd-sessions</span> &mdash; <span class="ref-item-desc">Hooks pipeline JSONL &rarr; markdown &rarr; index, session-end automation</span></span>
+            </div>
+            <div class="ref-item">
+              <span><span class="ref-item-title">vibeship-spark</span> &mdash; <span class="ref-item-desc">capture &rarr; distill &rarr; transform &rarr; store &rarr; advise &rarr; feedback loop</span></span>
+            </div>
+            <div class="ref-item">
+              <span><span class="ref-item-title">4-file QMD maintenance</span> &mdash; <span class="ref-item-desc">long-term / daily / active / lessons &mdash; rotating file strategy</span></span>
+            </div>
+          </div>
+        </details>
+
+        <!-- Failure Prevention -->
+        <details class="ref-group" data-color="red">
+          <summary>
+            Failure Prevention
+            <span class="ref-count">3</span>
+            <svg class="chevron" viewBox="0 0 16 16"><polyline points="4 6 8 10 12 6"/></svg>
+          </summary>
+          <div class="ref-list">
+            <div class="ref-item">
+              <span><span class="ref-item-title">3 Failure Modes</span> &mdash; <span class="ref-item-desc">Never saved, never retrieved, or destroyed &mdash; guard against all three</span></span>
+            </div>
+            <div class="ref-item">
+              <span><span class="ref-item-title">Reindexing Crash</span> &mdash; <span class="ref-item-desc">30 min reindex = cascade failure, batch-only processing mandatory</span></span>
+            </div>
+            <div class="ref-item">
+              <span><span class="ref-item-title">System Prompt Bloat</span> &mdash; <span class="ref-item-desc">11K &rarr; 8.5K tokens, lazy loading strategy for context management</span></span>
+            </div>
+          </div>
+        </details>
+
+        <!-- Retrieval Optimization -->
+        <details class="ref-group" data-color="amber">
+          <summary>
+            Retrieval Optimization
+            <span class="ref-count">3</span>
+            <svg class="chevron" viewBox="0 0 16 16"><polyline points="4 6 8 10 12 6"/></svg>
+          </summary>
+          <div class="ref-list">
+            <div class="ref-item">
+              <span><span class="ref-item-title">PreToolUse Memory Injection</span> &mdash; <span class="ref-item-desc">Inject relevant memory before each tool call, not just at session start</span></span>
+            </div>
+            <div class="ref-item">
+              <span><span class="ref-item-title">2-Level Token Reduction</span> &mdash; <span class="ref-item-desc">-67% tokens via progressive summarization + selective expansion</span></span>
+            </div>
+            <div class="ref-item">
+              <span><span class="ref-item-title">QMD vs grep vs BM25</span> &mdash; <span class="ref-item-desc">Comparative benchmark validating hybrid BM25 + embedding approach</span></span>
+            </div>
+          </div>
+        </details>
+
+        <!-- Procedural Memory -->
+        <details class="ref-group" data-color="purple">
+          <summary>
+            Procedural Memory
+            <span class="ref-count">3</span>
+            <svg class="chevron" viewBox="0 0 16 16"><polyline points="4 6 8 10 12 6"/></svg>
+          </summary>
+          <div class="ref-list">
+            <div class="ref-item">
+              <span><span class="ref-item-title">ClawVault Malleable Primitives</span> &mdash; <span class="ref-item-desc">Self-evolving schemas that adapt to usage patterns over time</span></span>
+            </div>
+            <div class="ref-item">
+              <span><span class="ref-item-title">ClawVault Markdown-Native</span> &mdash; <span class="ref-item-desc">Checkpoints + git-friendly storage, human-readable by default</span></span>
+            </div>
+            <div class="ref-item">
+              <span><span class="ref-item-title">OpenClaw-RL</span> &mdash; <span class="ref-item-desc">Reinforcement learning from conversations, PRM scoring for quality</span></span>
+            </div>
+          </div>
+        </details>
+
+        <!-- Multi-Agent Patterns -->
+        <details class="ref-group" data-color="cyan">
+          <summary>
+            Multi-Agent Patterns
+            <span class="ref-count">4</span>
+            <svg class="chevron" viewBox="0 0 16 16"><polyline points="4 6 8 10 12 6"/></svg>
+          </summary>
+          <div class="ref-list">
+            <div class="ref-item">
+              <span><span class="ref-item-title">13 Agents Shared Brain</span> &mdash; <span class="ref-item-desc">Spawn script with shared brain store, cross-agent knowledge propagation</span></span>
+            </div>
+            <div class="ref-item">
+              <span><span class="ref-item-title">Obsidian + Voyage AI</span> &mdash; <span class="ref-item-desc">Daily reports, cross-agent propagation via shared embedding space</span></span>
+            </div>
+            <div class="ref-item">
+              <span><span class="ref-item-title">Memory Tools Comparison</span> &mdash; <span class="ref-item-desc">Mem0, Honcho, Chroma &mdash; strengths, weaknesses, fit analysis</span></span>
+            </div>
+            <div class="ref-item">
+              <span><span class="ref-item-title">Agentic Patterns Catalog</span> &mdash; <span class="ref-item-desc">Context &amp; Memory category from comprehensive agent architecture survey</span></span>
+            </div>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <!-- ==========================================================
+         SECTION 4 : 4 STRATEGIES
+         ========================================================== -->
+    <section class="section" id="s4">
+      <div class="section-header fade-up" style="--i:10">
+        <span class="section-num">04</span>
+        <h2 class="section-title">4 Strategies</h2>
+      </div>
+
+      <div class="grid-2x2">
+
+        <!-- Strategy 1: Port & Go -->
+        <div class="strategy-card fade-up" style="--i:11; --card-accent: var(--l3);">
+          <span class="strategy-num">S1</span>
+          <h3 class="strategy-title">Port &amp; Go</h3>
+          <span class="strategy-timeline" style="background: rgba(245,158,11,0.12); color: var(--l3);">1-2 jours</span>
+
+          <div class="strategy-levels">
+            <span class="strategy-level-dot active" style="color: var(--l0); border-color: var(--l0);" title="L0"></span>
+            <span class="strategy-level-dot" style="color: var(--l1); border-color: var(--l1);" title="L1"></span>
+            <span class="strategy-level-dot" style="color: var(--l2); border-color: var(--l2);" title="L2"></span>
+            <span class="strategy-level-dot active" style="color: var(--l3); border-color: var(--l3);" title="L3"></span>
+            <span class="strategy-level-dot" style="color: var(--l4); border-color: var(--l4);" title="L4"></span>
+          </div>
+
+          <div class="strategy-details">
+            <div class="strategy-detail">
+              <span class="strategy-detail-label">Scope</span>
+              <span class="strategy-detail-value">L0 + L3</span>
+            </div>
+            <div class="strategy-detail">
+              <span class="strategy-detail-label">Action</span>
+              <span class="strategy-detail-value">Port 2ndBrain hybrid search, wrap with aiosqlite</span>
+            </div>
+            <div class="strategy-detail">
+              <span class="strategy-detail-label">Reuse</span>
+              <span class="strategy-detail-value">~90% from existing code</span>
+            </div>
+            <div class="strategy-detail">
+              <span class="strategy-detail-label">New code</span>
+              <span class="strategy-detail-value cell-mono">~100 lines</span>
+            </div>
+            <div class="strategy-detail">
+              <span class="strategy-detail-label">Injection</span>
+              <span class="strategy-detail-value">At pool init only</span>
+            </div>
+          </div>
+
+          <div class="strategy-result">
+            <div class="strategy-result-label">Resultat</div>
+            <div class="strategy-result-text">Working semantic memory, async-native</div>
+            <div class="strategy-missing">Missing: No session, no consolidation, no episodic</div>
+          </div>
+          <div class="badge badge-amber"><span class="badge-dot"></span> Phase P1 MVP</div>
+        </div>
+
+        <!-- Strategy 2: Session-Aware -->
+        <div class="strategy-card fade-up" style="--i:12; --card-accent: var(--l1);">
+          <span class="strategy-num">S2</span>
+          <h3 class="strategy-title">Session-Aware</h3>
+          <span class="strategy-timeline" style="background: rgba(6,182,212,0.12); color: var(--l1);">1-2 semaines</span>
+
+          <div class="strategy-levels">
+            <span class="strategy-level-dot active" style="color: var(--l0); border-color: var(--l0);" title="L0"></span>
+            <span class="strategy-level-dot active" style="color: var(--l1); border-color: var(--l1);" title="L1"></span>
+            <span class="strategy-level-dot" style="color: var(--l2); border-color: var(--l2);" title="L2"></span>
+            <span class="strategy-level-dot active" style="color: var(--l3); border-color: var(--l3);" title="L3"></span>
+            <span class="strategy-level-dot" style="color: var(--l4); border-color: var(--l4);" title="L4"></span>
+          </div>
+
+          <div class="strategy-details">
+            <div class="strategy-detail">
+              <span class="strategy-detail-label">Scope</span>
+              <span class="strategy-detail-value">L0 + L1 + L3</span>
+            </div>
+            <div class="strategy-detail">
+              <span class="strategy-detail-label">Action</span>
+              <span class="strategy-detail-value">S1 + port session management</span>
+            </div>
+            <div class="strategy-detail">
+              <span class="strategy-detail-label">Reuse</span>
+              <span class="strategy-detail-value">~70% from existing</span>
+            </div>
+            <div class="strategy-detail">
+              <span class="strategy-detail-label">New code</span>
+              <span class="strategy-detail-value cell-mono">~300 lines</span>
+            </div>
+            <div class="strategy-detail">
+              <span class="strategy-detail-label">Injection</span>
+              <span class="strategy-detail-value">Pool init + before each skill call</span>
+            </div>
+            <div class="strategy-detail">
+              <span class="strategy-detail-label">Consolidation</span>
+              <span class="strategy-detail-value">End-of-session flush to L3</span>
+            </div>
+          </div>
+
+          <div class="strategy-result">
+            <div class="strategy-result-label">Resultat</div>
+            <div class="strategy-result-text">Session-aware memory with cross-session persistence</div>
+            <div class="strategy-missing">Missing: No episodic, no procedural</div>
+          </div>
+          <div class="badge badge-cyan"><span class="badge-dot"></span> After hub stable</div>
+        </div>
+
+        <!-- Strategy 3: Full Memory -->
+        <div class="strategy-card fade-up" style="--i:13; --card-accent: var(--l2);">
+          <span class="strategy-num">S3</span>
+          <h3 class="strategy-title">Full Memory</h3>
+          <span class="strategy-timeline" style="background: rgba(34,197,94,0.12); color: var(--l2);">1-2 mois</span>
+
+          <div class="strategy-levels">
+            <span class="strategy-level-dot active" style="color: var(--l0); border-color: var(--l0);" title="L0"></span>
+            <span class="strategy-level-dot active" style="color: var(--l1); border-color: var(--l1);" title="L1"></span>
+            <span class="strategy-level-dot active" style="color: var(--l2); border-color: var(--l2);" title="L2"></span>
+            <span class="strategy-level-dot active" style="color: var(--l3); border-color: var(--l3);" title="L3"></span>
+            <span class="strategy-level-dot" style="color: var(--l4); border-color: var(--l4);" title="L4"></span>
+          </div>
+
+          <div class="strategy-details">
+            <div class="strategy-detail">
+              <span class="strategy-detail-label">Scope</span>
+              <span class="strategy-detail-value">L0 + L1 + L2 + L3</span>
+            </div>
+            <div class="strategy-detail">
+              <span class="strategy-detail-label">Action</span>
+              <span class="strategy-detail-value">S2 + episodic + nightly consolidation</span>
+            </div>
+            <div class="strategy-detail">
+              <span class="strategy-detail-label">Reuse</span>
+              <span class="strategy-detail-value">~50%</span>
+            </div>
+            <div class="strategy-detail">
+              <span class="strategy-detail-label">New code</span>
+              <span class="strategy-detail-value cell-mono">~800 lines</span>
+            </div>
+            <div class="strategy-detail">
+              <span class="strategy-detail-label">New tables</span>
+              <span class="strategy-detail-value cell-mono">episodes, semantic_facts</span>
+            </div>
+            <div class="strategy-detail">
+              <span class="strategy-detail-label">Consolidation</span>
+              <span class="strategy-detail-value">Session-end &rarr; episodic + Nightly &rarr; semantic promotion</span>
+            </div>
+            <div class="strategy-detail">
+              <span class="strategy-detail-label">Quality gates</span>
+              <span class="strategy-detail-value cell-mono">&ge;0.78 keep / 0.30-0.78 archive / &le;0.18 reject</span>
+            </div>
+          </div>
+
+          <div class="strategy-result">
+            <div class="strategy-result-label">Resultat</div>
+            <div class="strategy-result-text">Complete memory pipeline with automatic consolidation</div>
+          </div>
+          <div class="badge badge-green"><span class="badge-dot"></span> Phase P2</div>
+        </div>
+
+        <!-- Strategy 4: Cognitive Memory -->
+        <div class="strategy-card fade-up" style="--i:14; --card-accent: var(--l4);">
+          <span class="strategy-num">S4</span>
+          <h3 class="strategy-title">Cognitive Memory</h3>
+          <span class="strategy-timeline" style="background: rgba(168,85,247,0.12); color: var(--l4);">3-6 mois</span>
+
+          <div class="strategy-levels">
+            <span class="strategy-level-dot active" style="color: var(--l0); border-color: var(--l0);" title="L0"></span>
+            <span class="strategy-level-dot active" style="color: var(--l1); border-color: var(--l1);" title="L1"></span>
+            <span class="strategy-level-dot active" style="color: var(--l2); border-color: var(--l2);" title="L2"></span>
+            <span class="strategy-level-dot active" style="color: var(--l3); border-color: var(--l3);" title="L3"></span>
+            <span class="strategy-level-dot active" style="color: var(--l4); border-color: var(--l4);" title="L4"></span>
+          </div>
+
+          <div class="strategy-details">
+            <div class="strategy-detail">
+              <span class="strategy-detail-label">Scope</span>
+              <span class="strategy-detail-value">L0 &ndash; L4 (all levels)</span>
+            </div>
+            <div class="strategy-detail">
+              <span class="strategy-detail-label">Action</span>
+              <span class="strategy-detail-value">S3 + Memory SLM + self-evolution</span>
+            </div>
+            <div class="strategy-detail">
+              <span class="strategy-detail-label">New code</span>
+              <span class="strategy-detail-value cell-mono">~1500 lines</span>
+            </div>
+            <div class="strategy-detail">
+              <span class="strategy-detail-label">New capabilities</span>
+              <span class="strategy-detail-value">Memory SLM (~1B), procedural memory, PRM scoring, reliability scoring, knowledge graph, Memory API</span>
+            </div>
+            <div class="strategy-detail">
+              <span class="strategy-detail-label">Hardware</span>
+              <span class="strategy-detail-value">Requires Machine 2 (RTX 5070Ti 16GB)</span>
+            </div>
+          </div>
+
+          <div class="strategy-result">
+            <div class="strategy-result-label">Resultat</div>
+            <div class="strategy-result-text">Self-improving memory with SLM-driven consolidation and learning</div>
+          </div>
+          <div class="badge badge-purple"><span class="badge-dot"></span> Phase P3</div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ==========================================================
+         SECTION 5 : MATRICE DE COMPARAISON
+         ========================================================== -->
+    <section class="section" id="s5">
+      <div class="section-header fade-up" style="--i:15">
+        <span class="section-num">05</span>
+        <h2 class="section-title">Matrice de Comparaison</h2>
+      </div>
+
+      <div class="table-wrap fade-up" style="--i:16">
+        <table class="comp-table">
+          <thead>
+            <tr>
+              <th>Critere</th>
+              <th>S1: Port &amp; Go</th>
+              <th>S2: Session-Aware</th>
+              <th>S3: Full Memory</th>
+              <th>S4: Cognitive</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Effort</td>
+              <td class="cell-mono">1-2 jours</td>
+              <td class="cell-mono">1-2 semaines</td>
+              <td class="cell-mono">1-2 mois</td>
+              <td class="cell-mono">3-6 mois</td>
+            </tr>
+            <tr>
+              <td>Nouveau code</td>
+              <td class="cell-mono">~100 lignes</td>
+              <td class="cell-mono">~300 lignes</td>
+              <td class="cell-mono">~800 lignes</td>
+              <td class="cell-mono">~1500 lignes</td>
+            </tr>
+            <tr>
+              <td>Niveaux</td>
+              <td>L0 + L3</td>
+              <td>L0 + L1 + L3</td>
+              <td>L0 &ndash; L3</td>
+              <td>L0 &ndash; L4</td>
+            </tr>
+            <tr>
+              <td>Reutilisation 2ndBrain</td>
+              <td class="cell-mono">90%</td>
+              <td class="cell-mono">70%</td>
+              <td class="cell-mono">50%</td>
+              <td class="cell-mono">30%</td>
+            </tr>
+            <tr>
+              <td>Efficacite tokens</td>
+              <td>Bonne (-67%)</td>
+              <td>Meilleure (PreToolUse)</td>
+              <td>Optimale (consolidation)</td>
+              <td>Maximale (SLM)</td>
+            </tr>
+            <tr>
+              <td>Memoire cross-session</td>
+              <td>Oui</td>
+              <td>Oui</td>
+              <td>Oui + historique</td>
+              <td>Oui + apprentissage</td>
+            </tr>
+            <tr>
+              <td>Auto-amelioration</td>
+              <td>Non</td>
+              <td>Non</td>
+              <td>Non</td>
+              <td>Oui</td>
+            </tr>
+            <tr>
+              <td>Hardware requis</td>
+              <td>M1 seul</td>
+              <td>M1 seul</td>
+              <td>M1 seul</td>
+              <td>M1 + M2</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ==========================================================
+         SECTION 6 : CHEMIN RECOMMANDE
+         ========================================================== -->
+    <section class="section" id="s6">
+      <div class="section-header fade-up" style="--i:17">
+        <span class="section-num">06</span>
+        <h2 class="section-title">Chemin Recommande</h2>
+      </div>
+
+      <div class="timeline fade-up" style="--i:18">
+        <div class="timeline-milestone">
+          <div class="timeline-dot" style="border-color: var(--l3); background: var(--l3);"></div>
+          <div>
+            <div class="timeline-label">Maintenant</div>
+            <span class="timeline-badge" style="background: rgba(245,158,11,0.12); color: var(--l3);">Strategy 1</span>
+            <div class="timeline-desc">Get the hub working with memory</div>
+          </div>
+        </div>
+        <div class="timeline-milestone">
+          <div class="timeline-dot" style="border-color: var(--l1); background: var(--l1);"></div>
+          <div>
+            <div class="timeline-label">1er canal stable</div>
+            <span class="timeline-badge" style="background: rgba(6,182,212,0.12); color: var(--l1);">Strategy 2</span>
+            <div class="timeline-desc">Add session awareness</div>
+          </div>
+        </div>
+        <div class="timeline-milestone">
+          <div class="timeline-dot" style="border-color: var(--l2); background: var(--l2);"></div>
+          <div>
+            <div class="timeline-label">Traffic reel valide</div>
+            <span class="timeline-badge" style="background: rgba(34,197,94,0.12); color: var(--l2);">Strategy 3</span>
+            <div class="timeline-desc">Episodic + consolidation</div>
+          </div>
+        </div>
+        <div class="timeline-milestone">
+          <div class="timeline-dot" style="border-color: var(--l4); background: var(--l4);"></div>
+          <div>
+            <div class="timeline-label">Machine 2 operationnelle</div>
+            <span class="timeline-badge" style="background: rgba(168,85,247,0.12); color: var(--l4);">Strategy 4</span>
+            <div class="timeline-desc">Cognitive memory + SLM</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout fade-up" style="--i:19">
+        Chaque strategie est un sur-ensemble de la precedente. Zero code jetable.
+      </div>
+    </section>
+
+    <!-- ==========================================================
+         FOOTER
+         ========================================================== -->
+    <footer class="page-footer fade-up" style="--i:20">
+      Generated from 22 external references &middot; 5 specs &middot; 15+ modules &middot; 471 knowledge entries<br>
+      2026-03-10
+    </footer>
+
+  </main>
+
+</div>
+
+<!-- ================================================================
+     SCROLL SPY JAVASCRIPT
+     ================================================================ -->
+<script>
+(function() {
+  'use strict';
+
+  const tocLinks = document.querySelectorAll('.toc-link');
+  const sections = [];
+
+  tocLinks.forEach(function(link) {
+    const id = link.getAttribute('data-section');
+    const el = document.getElementById(id);
+    if (el) sections.push({ id: id, el: el, link: link });
+  });
+
+  if (!sections.length) return;
+
+  function onScroll() {
+    const scrollY = window.scrollY + 80;
+    let current = sections[0];
+
+    for (let i = 0; i < sections.length; i++) {
+      if (sections[i].el.offsetTop <= scrollY) {
+        current = sections[i];
+      }
+    }
+
+    tocLinks.forEach(function(l) { l.classList.remove('active'); });
+    current.link.classList.add('active');
+  }
+
+  let ticking = false;
+  window.addEventListener('scroll', function() {
+    if (!ticking) {
+      requestAnimationFrame(function() {
+        onScroll();
+        ticking = false;
+      });
+      ticking = true;
+    }
+  }, { passive: true });
+
+  onScroll();
+})();
+</script>
+
+</body>
+</html>

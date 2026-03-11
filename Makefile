@@ -8,15 +8,18 @@ ifeq (remote,$(firstword $(MAKECMDGOALS)))
   $(eval $(REMOTE_CMD):;@:)
 endif
 
-SUPERVISORCTL := ./supervisor/scripts/supervisorctl.sh
-SUPERVISOR_START := ./supervisor/scripts/start.sh
-SUPERVISOR_STOP := ./supervisor/scripts/stop.sh
-SUPERVISOR_DIR := ./supervisor
-SUPERVISOR_PID := $(SUPERVISOR_DIR)/supervisord.pid
+SUPERVISORCTL := $(HOME)/supervisor/scripts/supervisorctl.sh
+SUPERVISOR_START := $(HOME)/supervisor/scripts/start.sh
+HUB_DIR := $(HOME)/supervisor
+HUB_PID := $(HUB_DIR)/supervisord.pid
 
-define ensure_supervisor
-	@if [ ! -f "$(SUPERVISOR_PID)" ] || ! kill -0 $$(cat "$(SUPERVISOR_PID)" 2>/dev/null) 2>/dev/null; then \
-		echo "supervisord not running, starting..."; \
+define ensure_hub
+	@if [ ! -d "$(HUB_DIR)" ]; then \
+		echo "Error: ~/supervisor not found. Set up the global supervisor first."; \
+		exit 1; \
+	fi
+	@if [ ! -f "$(HUB_PID)" ] || ! kill -0 $$(cat "$(HUB_PID)" 2>/dev/null) 2>/dev/null; then \
+		echo "Hub supervisord not running, starting..."; \
 		$(SUPERVISOR_START); \
 	fi
 endef
@@ -24,31 +27,45 @@ endef
 MACHINE1 := $(or $(shell grep '^MACHINE1_HOST=' .env 2>/dev/null | cut -d= -f2),mickael@192.168.1.16)
 MACHINE1_DIR := $(or $(shell grep '^MACHINE1_DIR=' .env 2>/dev/null | cut -d= -f2),~/projects/lyra)
 
-.PHONY: lyra deploy remote test lint typecheck format
+.PHONY: lyra register deploy remote test lint typecheck format
 
 lyra:
 ifeq ($(LYRA_CMD),stop)
-	@$(SUPERVISOR_STOP)
+	$(ensure_hub)
+	@$(SUPERVISORCTL) stop lyra
 else ifeq ($(LYRA_CMD),reload)
-	$(ensure_supervisor)
+	$(ensure_hub)
 	@$(SUPERVISORCTL) stop lyra
 	@sleep 1
 	@$(SUPERVISORCTL) start lyra
 else ifeq ($(LYRA_CMD),logs)
-	$(ensure_supervisor)
+	$(ensure_hub)
 	@$(SUPERVISORCTL) tail -f lyra
 else ifeq ($(LYRA_CMD),errors)
-	$(ensure_supervisor)
+	$(ensure_hub)
 	@$(SUPERVISORCTL) tail -f lyra stderr
 else ifeq ($(LYRA_CMD),status)
-	$(ensure_supervisor)
+	$(ensure_hub)
 	@$(SUPERVISORCTL) status
 else ifeq ($(LYRA_CMD),)
 	@$(SUPERVISOR_START)
+	@$(SUPERVISORCTL) start lyra
 else
-	$(ensure_supervisor)
+	$(ensure_hub)
 	@$(SUPERVISORCTL) $(LYRA_CMD) lyra
 endif
+
+register:
+	@echo "Registering lyra with global supervisor..."
+	@if [ ! -d "$(HUB_DIR)" ]; then \
+		echo "Error: ~/supervisor not found."; exit 1; \
+	fi
+	@ln -sf "$(abspath supervisor/conf.d/lyra.conf)" "$(HUB_DIR)/conf.d/lyra.conf"
+	@mkdir -p supervisor/logs
+	@if [ -S "$(HUB_DIR)/supervisor.sock" ]; then \
+		$(SUPERVISORCTL) reread && $(SUPERVISORCTL) update; \
+	fi
+	@echo "Done. Run 'make lyra' to start."
 
 deploy:
 	@echo "Deploying to Machine 1 ($(MACHINE1))..."

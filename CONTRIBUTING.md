@@ -132,6 +132,20 @@ hub.register_binding(Platform.TELEGRAM, "main", "tg:user:123456", "my_agent", po
 
 For a custom agent class (beyond `SimpleAgent`), subclass `AgentBase` from `src/lyra/core/agent.py` and implement `process()`.
 
+## Code review expectations
+
+Reviews focus on correctness, clarity, and architectural consistency — not style (ruff handles that).
+
+**For authors:**
+- Keep PRs focused; one logical change per PR makes review fast
+- Add context in the PR description for non-obvious decisions
+- Respond to review comments within 2 business days
+
+**For reviewers:**
+- Use [Conventional Comments](https://conventionalcomments.org/) to signal intent (`suggestion:`, `nit:`, `issue:`)
+- Distinguish blocking from non-blocking feedback — prefix optional suggestions with `nit:`
+- Approve once all `issue:` comments are resolved; `nit:` items can merge at author's discretion
+
 ## Architecture decisions (ADRs)
 
 Significant architectural choices — especially irreversible ones — are recorded as ADRs in `docs/architecture/adr/`.

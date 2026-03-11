@@ -2,12 +2,21 @@
 
 **Personal AI agent engine** — hub-and-spoke, asyncio, multi-channel.
 
+[![CI](https://github.com/Roxabi/lyra/actions/workflows/ci.yml/badge.svg)](https://github.com/Roxabi/lyra/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)
 ![uv](https://img.shields.io/badge/uv-package%20manager-DE5FE9)
 ![version](https://img.shields.io/badge/version-0.1.0-22c55e)
 ![asyncio](https://img.shields.io/badge/concurrency-asyncio-0ea5e9)
 
 Lyra runs 24/7 on your own hardware, connects Telegram and Discord to specialized AI agents, and routes every conversation through isolated per-scope pools. No cloud lock-in. No subscription. Your data stays on your machines.
+
+## Why
+
+Most personal AI assistants are cloud-hosted: your data leaves your machine, your conversations are stored on someone else's servers, and the service disappears the moment a company pivots.
+
+Lyra exists to run on your own hardware — a Raspberry Pi, a home server, anything always-on — and connect your preferred chat platforms (Telegram, Discord) to AI agents you control. No API keys sold to third parties. No subscription. No lock-in. When you want a different model, you swap it in TOML.
+
+It's for developers who want a persistent personal AI without giving up ownership of their data or infrastructure.
 
 ## How it works
 
@@ -128,3 +137,7 @@ docs/
 | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production service management on Machine 1 (systemd, logs, firewall) |
 | [ADRs](docs/architecture/adr/) | 8 architecture decision records with full rationale |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Branching model, commit conventions, adding adapters and agents |
+
+## License
+
+MIT

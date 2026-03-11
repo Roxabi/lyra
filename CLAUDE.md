@@ -34,7 +34,7 @@ Never push without request. Never force/hard/amend. Hook fail → fix + NEW comm
 | `docs/ROADMAP.md` | Roadmap and priorities |
 | `docs/GETTING-STARTED.md` | Machine 1 setup guide |
 | `artifacts/` | Frames, specs, plans, analyses, explorations (dev-core) |
-| `setup.sh` | Machine 1 post-install script |
+| `lyra-stack/scripts/provision.sh` | Machine 1 post-install provisioning script |
 
 ## Local infrastructure
 

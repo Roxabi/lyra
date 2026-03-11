@@ -42,6 +42,7 @@ class AudioContent(BaseModel):
 
     url: str
     duration_seconds: float | None = None
+    file_id: str | None = None  # Platform file ID (e.g. Telegram file_id) for debugging
 
 
 MessageContent = TextContent | ImageContent | AudioContent

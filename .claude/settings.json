@@ -9,7 +9,9 @@
     "get-invoice-details@roxabi-marketplace": true,
     "image-prompt-generator@roxabi-marketplace": true,
     "linkedin-post-generator@roxabi-marketplace": true,
-    "roxabi-memory@roxabi-memory-marketplace": true
+    "roxabi-memory@roxabi-memory-marketplace": true,
+    "typescript-lsp@claude-plugins-official": true,
+    "pyright-lsp@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {
     "roxabi-marketplace": {

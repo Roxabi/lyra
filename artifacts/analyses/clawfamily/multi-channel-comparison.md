@@ -62,16 +62,17 @@
 
 ### 3. LLM Resilience
 
-| Framework | Retry | Circuit Breaker | Cache | Failover | Routing |
-|-----------|-------|----------------|-------|---------|---------|
-| Nanobot | None | None | None | None | None |
-| OpenClaw | Basic | None | None | None | None |
-| NanoClaw | Exponential backoff | None | None | None | None |
-| OpenFang | Yes | Yes | None | None | None |
-| **IronClaw** | ✅ Exp+jitter | ✅ 3-state | ✅ SHA-256 LRU | ✅ Cooldown | ✅ cheap/complex |
-| **Lyra (current)** | None | None | None | None | None |
+| Framework | Retry | Circuit Breaker | Cache | Failover | Routing | Budget |
+|-----------|-------|----------------|-------|---------|---------|--------|
+| Nanobot | None | None | None | None | None | None |
+| OpenClaw | Basic | None | None | None | None | None |
+| NanoClaw | Exponential backoff | None | None | None | None | None |
+| OpenFang | Yes | Yes | None | None | None | None |
+| **IronClaw** | ✅ Exp+jitter | ✅ 3-state | ✅ SHA-256 LRU | ✅ Cooldown | ✅ cheap/complex | None |
+| **ScalyClaw** | BullMQ retries | None | None | Priority+weight | Priority+weight | ✅ per-model daily/monthly |
+| **Lyra (current)** | None | None | None | None | None | None |
 
-**IronClaw wins decisively**. The composable decorator chain is the model for #104 (circuit breaker).
+**IronClaw wins on resilience**. ScalyClaw adds the missing piece: per-model budget tracking with daily/monthly limits and alert thresholds. Combined: IronClaw's decorator chain + ScalyClaw's budget control = #104 + #134.
 
 ### 4. Session Persistence / Crash Recovery
 
@@ -138,10 +139,10 @@
 
 ## The "Chimera" Strategy — Best of Each for Lyra
 
-> ~1,160 lines of new Python gives Lyra capabilities that took 4K–137K lines elsewhere.
+> ~2,170 lines of new Python gives Lyra capabilities that took 4K–137K lines elsewhere.
 > Adopt the interfaces and patterns, not the implementations.
 
-### Phase 1b (~550 LOC)
+### Phase 1b (~710 LOC)
 
 | # | Pattern | Source | Issue | Description |
 |---|---------|--------|-------|-------------|
@@ -149,17 +150,21 @@
 | 2 | LLM Decorator Chain | **IronClaw** | #104 | Retry + SmartRouting + Failover + CircuitBreaker + Cache as composable wrappers |
 | 3 | Hybrid RRF Search | OpenClaw + **IronClaw** | #83 | FTS always works, vector boosts when available, RRF fusion (not naive averaging) |
 | 4 | ContextEngine Protocol | OpenClaw | #83 | Pluggable token-budget assembly — fetch only what fits in context window |
+| 5 | Smart Routing Decorator | **IronClaw** | #134 | Complexity classifier → route trivial/simple to cheap model, complex to powerful model |
+| 6 | Runtime Agent Config | **ScalyClaw** | #135 | `!config` admin command — live-tune temperature/model/style without restart |
 
-### Phase 2 (~610 LOC)
+### Phase 2 (~760 LOC)
 
 | # | Pattern | Source | Issue | Description |
 |---|---------|--------|-------|-------------|
-| 5 | Lane-Based Queue | OpenClaw | #112 | Cron/background tasks in separate lane — don't block user message processing |
-| 6 | Binding Resolution Tiers | OpenClaw | #112 | Graduated routing: exact match → wildcard → default agent |
-| 7 | Tool Approval Levels | **IronClaw** | #106 | `Never/UnlessAutoApproved/Always` — mandatory for plugin safety |
-| 8 | Credential Proxy | **IronClaw** + NanoClaw | #106 | Plugins declare secret names, hub injects values at boundary |
-| 9 | Diagnostic Events | OpenClaw | #44 | Stuck detection, token tracking, per-session observability |
-| 10 | Prompt Injection Scanner | OpenFang | Future | Pattern-based with severity levels (Block/Warn/Review/Sanitize) |
+| 7 | Lane-Based Queue | OpenClaw | #112 | Cron/background tasks in separate lane — don't block user message processing |
+| 8 | Binding Resolution Tiers | OpenClaw | #112 | Graduated routing: exact match → wildcard → default agent |
+| 9 | Tool Approval Levels | **IronClaw** | #106 | `Never/UnlessAutoApproved/Always` — mandatory for plugin safety |
+| 10 | Credential Proxy | **IronClaw** + NanoClaw | #106 | Plugins declare secret names, hub injects values at boundary |
+| 11 | Diagnostic Events | OpenClaw | #44 | Stuck detection, token tracking, per-session observability |
+| 12 | Prompt Injection Scanner | OpenFang | Future | Pattern-based with severity levels (Block/Warn/Review/Sanitize) |
+| 13 | Proactive Engagement Engine | **ScalyClaw** | Future | 2-phase: cron signal scan (no LLM) → BullMQ-style eval job (LLM only when warranted) |
+| 14 | Command Shield | **ScalyClaw** | Future | Deterministic blocklist/allowlist — no LLM, fail-closed, zero latency |
 
 ## Patterns Worth Adopting (Prioritized)
 

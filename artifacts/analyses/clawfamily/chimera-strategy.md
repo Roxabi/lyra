@@ -11,6 +11,7 @@
 | [OpenFang](https://github.com/RightNow-AI/openfang) | Rust | 137K LOC, 14 crates | Channels (40), orchestration, security (16 layers) |
 | [Nanobot](https://github.com/HKUDS/nanobot) | Python | 4K LOC, 83 files | Readability, provider registry, simplicity |
 | [NanoClaw](https://github.com/qwibitai/nanoclaw) | TypeScript | 7K LOC | Container isolation, credential proxy, security |
+| [ScalyClaw](https://github.com/scalyclaw/scalyclaw) | TypeScript/Bun | ~37K LOC, 173 files | Complete product, proactive engine, 4-layer security, runtime config, budget control |
 
 Visual plans for each: `~/.agent/diagrams/{name}-architecture-plan.html`
 Comparison matrix: `~/.agent/diagrams/clawfamily-comparison-matrix.html`
@@ -22,24 +23,24 @@ Cloned repos: `~/projects/clawfamily/`
 
 Scale: 0 (absent) → 5 (production-grade). **Bold** = best in class.
 
-| Capability | OpenClaw | IronClaw | OpenFang | Nanobot | NanoClaw | Lyra |
-|------------|----------|----------|----------|---------|----------|------|
-| Memory — Storage | **5** | **5** | 4 | 1 | 2 | 2 |
-| Memory — Search | **5** | **5** | 4 | 0 | 0 | 1 |
-| Memory — Context Mgmt | **5** | 4 | 4 | 3 | 1 | 2 |
-| Channel Count | 4 | 3 | **5** | 4 | 2 | 2 |
-| Channel Abstraction | **5** | 4 | 4 | 3 | 3 | 3 |
-| Bus / Event System | **5** | 3 | **5** | 2 | 1 | 2 |
-| LLM Providers | 4 | **5** | **5** | 4 | 1 | 3 |
-| Tool System | 3 | **5** | **5** | 3 | 2 | 2 |
-| Plugin System | **5** | 4 | 3 | 2 | 1 | 2 |
-| Security | 3 | **5** | **5** | 2 | 4 | 3 |
-| Multi-Agent / Orchestration | 3 | 4 | **5** | 2 | 2 | 0 |
-| Observability | **5** | 4 | 3 | 2 | 1 | 2 |
-| Config / Hot-Reload | **5** | 4 | 4 | 3 | 2 | 4 |
-| Codebase Readability | 2 | 3 | 2 | **5** | 4 | **5** |
+| Capability | OpenClaw | IronClaw | OpenFang | Nanobot | NanoClaw | ScalyClaw | Lyra |
+|------------|----------|----------|----------|---------|----------|-----------|------|
+| Memory — Storage | **5** | **5** | 4 | 1 | 2 | 4 | 2 |
+| Memory — Search | **5** | **5** | 4 | 0 | 0 | 4 | 1 |
+| Memory — Context Mgmt | **5** | 4 | 4 | 3 | 1 | 4 | 2 |
+| Channel Count | 4 | 3 | **5** | 4 | 2 | **5** | 2 |
+| Channel Abstraction | **5** | 4 | 4 | 3 | 3 | **5** | 3 |
+| Bus / Event System | **5** | 3 | **5** | 2 | 1 | **5** | 2 |
+| LLM Providers | 4 | **5** | **5** | 4 | 1 | 4 | 3 |
+| Tool System | 3 | **5** | **5** | 3 | 2 | 4 | 2 |
+| Plugin System | **5** | 4 | 3 | 2 | 1 | 4 | 2 |
+| Security | 3 | **5** | **5** | 2 | 4 | 4 | 3 |
+| Multi-Agent / Orchestration | 3 | 4 | **5** | 2 | 2 | 4 | 0 |
+| Observability | **5** | 4 | 3 | 2 | 1 | 4 | 2 |
+| Config / Hot-Reload | **5** | 4 | 4 | 3 | 2 | **5** | 4 |
+| Codebase Readability | 2 | 3 | 2 | **5** | 4 | 4 | **5** |
 
-**Key insight**: No single project dominates all categories. The sweet spot for Lyra: maintain readability (5/5) while cherry-picking patterns from the leaders.
+**Key insight**: No single project dominates all categories. The sweet spot for Lyra: maintain readability (5/5) while cherry-picking patterns from the leaders. ScalyClaw ties OpenClaw on Config/Hot-Reload and Channel/Bus dimensions while adding unique features (proactive engine, runtime config, budget control).
 
 ---
 
@@ -48,18 +49,22 @@ Scale: 0 (absent) → 5 (production-grade). **Bold** = best in class.
 | Capability | Winner | What to Adopt |
 |------------|--------|---------------|
 | Memory Storage | OpenClaw + IronClaw | SQLite + FTS5 + optional vectors. Hybrid RRF search. 800-word chunks with 15% overlap. |
+| Memory Consolidation | **ScalyClaw** | LLM-driven clustering + merging of similar memories. Composite scoring: semantic (0.6) + recency (0.2) + importance (0.2). |
 | Context Engine | OpenClaw | Pluggable `ContextEngine` protocol: `assemble()` (token-budget), `compact()` (summarize/truncate), `after_turn()` lifecycle. |
 | Channel Abstraction | OpenClaw | 7-tier binding resolution (peer → parent → guild → team → account → channel). 4-part adapter pattern (Monitor/Context/Handler/Sender). |
 | Channel Scale | OpenFang | `ChannelBridgeHandle` trait pattern preventing circular deps between kernel and channels. |
 | Event System | OpenClaw + OpenFang | Multi-stream events (agent/diagnostic/heartbeat). EventBus with 1000-entry history ring buffer. Per-agent channels for scale. |
 | LLM Providers | IronClaw | Decorator chain: Base → Retry → CircuitBreaker → Failover → Cached → SmartRouting. Each wraps the next. |
+| Smart Routing | IronClaw (pattern) + **ScalyClaw** (budget) | IronClaw: complexity-based model selection. ScalyClaw: per-model token budget + daily/monthly limits + alert thresholds. |
 | Provider Detection | Nanobot | Metadata-driven `ProviderSpec` with api_key prefix matching, env var detection. No if-elif chains. |
 | Tool System | IronClaw + OpenFang | Tool trait with `approval_requirement` (Never/UnlessAutoApproved/Always). Capability-based enforcement. |
 | Plugin System | OpenClaw | Typed extension points (tools, hooks, channels, providers). Per-plugin API factory with access control. |
-| Security | OpenFang + NanoClaw | OpenFang: taint tracking, prompt injection scanner, SSRF protection. NanoClaw: credential proxy (agents never see real API keys). |
+| Security | OpenFang + NanoClaw + **ScalyClaw** | OpenFang: taint tracking, prompt injection scanner. NanoClaw: credential proxy. ScalyClaw: deterministic command shield (no LLM), 4-layer fail-closed guards, vault encryption. |
 | Concurrency | OpenClaw | Lane-based command queue: named lanes (main, cron, heartbeat) with per-lane concurrency + generation tracking. |
 | Orchestration | OpenFang | Workflow engine: Sequential/FanOut/Collect/Conditional/Loop steps. Trigger engine (event pattern, cron, approval gates). |
 | Observability | OpenClaw | Diagnostic events: stuck-session detection, tool-loop detection, token usage tracking. OTEL-ready. |
+| Config / Hot-Reload | OpenClaw + **ScalyClaw** | ScalyClaw: full runtime config via pub/sub, zero-downtime reload of models/skills/agents/guards/MCP. Secret preservation during reload. Admin `!config` command pattern. |
+| Proactive Engagement | **ScalyClaw** | Unique in family. 2-phase: cheap deterministic signal scan (cron, no LLM) → expensive LLM eval only when warranted. 7 signal types, adaptive threshold, per-channel cooldowns. |
 
 ---
 
@@ -76,7 +81,7 @@ Lyra's advantage is its **~300-line hub** readable in an afternoon. Every patter
 
 ## Prioritized Adoption Roadmap
 
-### Phase 1b — Foundation (~550 LOC)
+### Phase 1b — Foundation (~710 LOC)
 
 High impact, self-contained modules that don't require touching `hub.py`.
 
@@ -177,9 +182,55 @@ class CompactResult:
 
 Default implementation: truncate oldest messages. Phase 2: LLM-summarized compaction.
 
+#### 5. Smart Routing Decorator (~100 LOC)
+**Source**: IronClaw `src/providers/decorators/smart_routing.rs`
+**Issue**: #134
+
+Classifies query complexity and routes to cheap vs. expensive model. Wraps any `LlmProvider` in the decorator chain (position: after `CircuitBreakerDecorator`).
+
+```python
+class Complexity(Enum):
+    TRIVIAL  = "trivial"   # Greetings, yes/no → haiku or local 3B
+    SIMPLE   = "simple"    # Short factual → claude-haiku-4-5
+    MODERATE = "moderate"  # Multi-step reasoning → claude-sonnet-4-6
+    COMPLEX  = "complex"   # Deep analysis, code → claude-opus-4-6
+
+class SmartRoutingDecorator(LlmProvider):
+    def __init__(self, inner: LlmProvider, routing_table: dict[Complexity, str]): ...
+
+    async def complete(self, request: CompletionRequest) -> CompletionResponse:
+        complexity = self._classify(request.messages)  # heuristic-first, zero cost
+        target = self.routing_table.get(complexity, request.model)
+        return await self.inner.complete(request.replace(model=target))
+```
+
+Config in `[agent.smart_routing.models]` TOML section. `!routing` admin command shows last N decisions.
+
+#### 6. Runtime Agent Config (~80 LOC)
+**Source**: ScalyClaw dashboard pattern + knowledge-agent-template `/admin/agent`
+**Issue**: #135
+
+Mutable overlay on static TOML config. Persisted to `agents/lyra_runtime.toml` (gitignored). Exposes `!config` admin command.
+
+```python
+@dataclass
+class RuntimeConfig:
+    style: str = "concise"          # concise | detailed | technical | friendly
+    language: str = "auto"          # reply language override
+    temperature: float = 0.7
+    model: str | None = None        # None = use persona TOML default
+    max_steps: int | None = None    # None = use model config default
+    extra_instructions: str = ""    # appended to system prompt
+
+    def overlay(self, base: AgentConfig) -> AgentConfig: ...
+    def save(self, path: Path) -> None: ...  # → lyra_runtime.toml
+```
+
+`!config style=concise temperature=0.3` takes effect on next message without restart.
+
 ---
 
-### Phase 2 — Production Readiness (~610 LOC)
+### Phase 2 — Production Readiness (~760 LOC)
 
 #### 5. Lane-Based Queue (~100 LOC)
 **Source**: OpenClaw `src/process/command-queue.ts`
@@ -286,6 +337,49 @@ PATTERNS = [
 def scan(content: str) -> list[Finding]: ...
 ```
 
+#### 11. Proactive Engagement Engine (~200 LOC)
+**Source**: ScalyClaw `scalyclaw/src/proactive/` — unique in the ClawFamily.
+
+2-phase pattern: cheap cron scan → expensive LLM eval only when warranted.
+
+```python
+async def proactive_scan_loop():
+    """No LLM. 7 deterministic signal types."""
+    # signals: idle, time_sensitive, pending_deliverable,
+    #          unfinished_topic, entity_trigger, user_pattern, return_from_absence
+    while True:
+        signals = detect_signals()
+        if aggregate(signals) and above_adaptive_threshold():
+            await queue.put(ProactiveEvalTask(signals))
+        await asyncio.sleep(scan_interval)
+
+async def proactive_eval_worker():
+    """LLM only runs here, after rate-limit + cooldown checks."""
+    task = await queue.get()
+    if not rate_limit_ok(task.trigger_type):
+        return
+    if await llm_should_engage(context):
+        await deliver(best_channel(), await llm_generate(context))
+```
+
+Adaptive threshold learns from user response rate + sentiment.
+
+#### 12. Command Shield (~60 LOC)
+**Source**: ScalyClaw `scalyclaw/src/guards/command-shield.ts` — deterministic, no LLM.
+
+Blocklist/allowlist pattern matching for shell commands. Fail-closed, zero latency, no LLM required.
+
+```python
+BLOCKED = [r"\brm\s+-rf\b", r"\bdd\b", r"\bcurl\s+.*\|\s*sh\b"]
+
+def shield(command: str) -> ShieldResult:
+    normalized = re.sub(r'\s+', ' ', command).strip()
+    for pattern in BLOCKED:
+        if re.search(pattern, normalized, re.IGNORECASE):
+            return ShieldResult(blocked=True, reason=f"blocked pattern")
+    return ShieldResult(blocked=False)
+```
+
 ---
 
 ### Phase 3 — Autonomy (~700 LOC)
@@ -301,19 +395,20 @@ def scan(content: str) -> list[Finding]: ...
 
 | Phase | LOC | Capabilities Added |
 |-------|-----|--------------------|
-| **1b** | ~550 | Provider registry, decorator chain, hybrid search, context engine |
-| **2** | ~610 | Lane queue, binding tiers, tool approval, credential proxy, diagnostics, injection scanner |
+| **1b** | ~710 | Provider registry, decorator chain, hybrid search, context engine, smart routing (#134), runtime config (#135) |
+| **2** | ~760 | Lane queue, binding tiers, tool approval, credential proxy, diagnostics, injection scanner, proactive engine, command shield |
 | **3** | ~700 | Typed plugin SDK, workflow engine |
-| **Total** | **~1,860** | 12 major capabilities from 5 projects |
+| **Total** | **~2,170** | 14 major capabilities from 6 projects |
 
 For reference, the projects these patterns come from have:
 - OpenFang: 137,000 LOC
 - IronClaw: 99,000 LOC
 - OpenClaw: ~150,000 LOC (estimated from 39MB)
+- ScalyClaw: ~37,000 LOC
 - Nanobot: 4,000 LOC
 - NanoClaw: 7,000 LOC
 
-**Lyra's target: ~2,200 total LOC (current ~300 hub + ~1,860 new) for equivalent capability.** That's 1.5% of OpenFang's codebase.
+**Lyra's target: ~2,470 total LOC (current ~300 hub + ~2,170 new) for equivalent capability.** That's 1.6% of OpenFang's codebase.
 
 ---
 

@@ -1,0 +1,1363 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ScalyClaw — Visual Explainer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300;12..96,400;12..96,500;12..96,600;12..96,700&family=Fragment+Mono:ital@0;1&display=swap" rel="stylesheet">
+<style>
+  /* ============ THEME — Deep space: near-black + cyan ============ */
+  :root {
+    --font-body: 'Bricolage Grotesque', system-ui, sans-serif;
+    --font-mono: 'Fragment Mono', 'SF Mono', Consolas, monospace;
+
+    --bg: #050e14;
+    --surface: #091520;
+    --surface2: #0d1e2c;
+    --surface-elevated: #122535;
+    --border: rgba(255, 255, 255, 0.06);
+    --border-bright: rgba(34, 211, 238, 0.25);
+
+    --text: #e2edf5;
+    --text-dim: #6a8fa8;
+    --text-dimmer: #3a5570;
+
+    --cyan: #22d3ee;
+    --cyan-dim: rgba(34, 211, 238, 0.1);
+    --cyan-bright: #67e8f9;
+
+    --teal: #2dd4bf;
+    --teal-dim: rgba(45, 212, 191, 0.1);
+    --gold: #f59e0b;
+    --gold-dim: rgba(245, 158, 11, 0.1);
+    --sky: #7dd3fc;
+    --sky-dim: rgba(125, 211, 252, 0.1);
+    --green: #4ade80;
+    --green-dim: rgba(74, 222, 128, 0.1);
+    --red: #f87171;
+    --red-dim: rgba(248, 113, 113, 0.1);
+    --amber: #fbbf24;
+    --amber-dim: rgba(251, 191, 36, 0.1);
+    --violet: #a78bfa;
+    --violet-dim: rgba(167, 139, 250, 0.1);
+
+    --grid-color: rgba(34, 211, 238, 0.03);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: var(--font-body);
+    background-color: var(--bg);
+    background-image:
+      linear-gradient(var(--grid-color) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-color) 1px, transparent 1px),
+      radial-gradient(ellipse at 50% 0%, rgba(34, 211, 238, 0.05) 0%, transparent 55%);
+    background-size: 40px 40px, 40px 40px, 100% 100%;
+    color: var(--text);
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* ============ LAYOUT ============ */
+  .page { max-width: 1080px; margin: 0 auto; padding: 64px 24px 120px; }
+  section { margin-bottom: 72px; }
+
+  /* ============ TYPOGRAPHY ============ */
+  .section-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--cyan);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+  .section-label::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--cyan);
+    flex-shrink: 0;
+  }
+
+  h1 {
+    font-size: clamp(36px, 6vw, 62px);
+    font-weight: 700;
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+    color: var(--text);
+  }
+  h1 em { font-style: normal; color: var(--cyan); }
+
+  h2 { font-size: 22px; font-weight: 600; color: var(--text); margin-bottom: 24px; letter-spacing: -0.01em; }
+  h3 {
+    font-size: 14px; font-weight: 600; letter-spacing: 0.04em;
+    text-transform: uppercase; color: var(--text-dim); margin-bottom: 12px;
+  }
+  p { color: var(--text-dim); font-size: 15px; line-height: 1.7; }
+
+  code {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border);
+    padding: 1px 6px;
+    border-radius: 3px;
+    color: var(--cyan);
+  }
+
+  /* ============ HERO ============ */
+  .hero {
+    padding: 64px 0 80px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 72px;
+  }
+  .hero-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--cyan);
+    background: var(--cyan-dim);
+    border: 1px solid rgba(34, 211, 238, 0.3);
+    padding: 5px 12px;
+    border-radius: 20px;
+    margin-bottom: 28px;
+  }
+  .hero-subtitle {
+    font-size: clamp(16px, 2vw, 20px);
+    color: var(--text-dim);
+    margin-top: 20px;
+    max-width: 680px;
+    font-weight: 400;
+    line-height: 1.55;
+  }
+  .hero-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 24px;
+    margin-top: 40px;
+    padding-top: 32px;
+    border-top: 1px solid var(--border);
+  }
+  .meta-item { display: flex; flex-direction: column; gap: 4px; }
+  .meta-item .label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dimmer);
+  }
+  .meta-item .value { font-size: 20px; font-weight: 700; color: var(--cyan); }
+  .meta-item .value.small { font-size: 14px; color: var(--text); font-weight: 500; }
+
+  /* ============ CARDS ============ */
+  .ve-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    transition: border-color 0.2s;
+  }
+  .ve-card:hover { border-color: var(--border-bright); }
+  .ve-card--hero { background: var(--surface2); border-color: rgba(34,211,238,0.2); box-shadow: 0 4px 24px rgba(0,0,0,0.4); }
+  .ve-card--accent { border-left: 3px solid var(--cyan); }
+  .ve-card--teal  { border-left: 3px solid var(--teal); }
+  .ve-card--gold  { border-left: 3px solid var(--gold); }
+  .ve-card--green { border-left: 3px solid var(--green); }
+  .ve-card--red   { border-left: 3px solid var(--red); }
+  .ve-card--violet { border-left: 3px solid var(--violet); }
+
+  /* ============ PROCESS BLOCKS ============ */
+  .process-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin-top: 24px;
+  }
+  .process-block {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px 28px;
+    animation: fadeUp 0.5s ease both;
+  }
+  .process-block--node {
+    background: linear-gradient(135deg, rgba(34,211,238,0.07) 0%, var(--surface) 100%);
+    border-color: rgba(34,211,238,0.25);
+  }
+  .process-block--redis {
+    background: linear-gradient(135deg, rgba(245,158,11,0.07) 0%, var(--surface) 100%);
+    border-color: rgba(245,158,11,0.3);
+    margin: 0 32px;
+  }
+  .process-block--worker {
+    background: linear-gradient(135deg, rgba(74,222,128,0.06) 0%, var(--surface) 100%);
+    border-color: rgba(74,222,128,0.2);
+    margin: 0 16px;
+  }
+  .process-block--dashboard {
+    background: linear-gradient(135deg, rgba(167,139,250,0.06) 0%, var(--surface) 100%);
+    border-color: rgba(167,139,250,0.2);
+    margin: 0 48px;
+  }
+
+  .process-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .process-block--node .process-label    { color: var(--cyan); }
+  .process-block--redis .process-label   { color: var(--gold); }
+  .process-block--worker .process-label  { color: var(--green); }
+  .process-block--dashboard .process-label { color: var(--violet); }
+
+  .process-name { font-size: 18px; font-weight: 700; color: var(--text); }
+  .process-desc { font-size: 13px; color: var(--text-dim); margin-top: 6px; line-height: 1.6; }
+  .process-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+
+  .tag {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    background: var(--surface2);
+  }
+  .tag--cyan   { border-color: rgba(34,211,238,0.25); color: var(--cyan); background: var(--cyan-dim); }
+  .tag--gold   { border-color: rgba(245,158,11,0.25); color: var(--gold); background: var(--gold-dim); }
+  .tag--green  { border-color: rgba(74,222,128,0.25); color: var(--green); background: var(--green-dim); }
+  .tag--violet { border-color: rgba(167,139,250,0.25); color: var(--violet); background: var(--violet-dim); }
+
+  /* ============ PIPELINE ============ */
+  .pipeline {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin-top: 24px;
+    position: relative;
+  }
+  .pipeline::before {
+    content: '';
+    position: absolute;
+    left: 20px;
+    top: 20px;
+    bottom: 20px;
+    width: 2px;
+    background: linear-gradient(to bottom, var(--cyan), transparent);
+    border-radius: 1px;
+  }
+  .pipeline-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 14px 0 14px 8px;
+  }
+  .pipeline-num {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--surface2);
+    border: 1px solid var(--border-bright);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--cyan);
+    position: relative;
+    z-index: 1;
+  }
+  .pipeline-content {}
+  .pipeline-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
+  .pipeline-desc  { font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+
+  /* ============ GUARD LAYERS ============ */
+  .guard-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 24px;
+    max-width: 600px;
+  }
+  .guard-layer {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 18px;
+    animation: fadeUp 0.4s ease both;
+  }
+  .guard-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+  .guard-icon--red    { background: var(--red-dim); }
+  .guard-icon--amber  { background: var(--amber-dim); }
+  .guard-icon--cyan   { background: var(--cyan-dim); }
+  .guard-icon--green  { background: var(--green-dim); }
+  .guard-title { font-size: 14px; font-weight: 600; color: var(--text); }
+  .guard-desc  { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+  .guard-badge {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 10px;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .guard-badge--llm  { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(251,191,36,0.2); }
+  .guard-badge--det  { background: var(--green-dim); color: var(--green); border: 1px solid rgba(74,222,128,0.2); }
+  .guard-arrow {
+    text-align: center;
+    color: var(--text-dimmer);
+    font-size: 16px;
+    padding: 4px 0;
+  }
+  .guard-verdict {
+    background: var(--red-dim);
+    border: 1px solid rgba(248,113,113,0.2);
+    border-radius: 8px;
+    padding: 12px 18px;
+    font-size: 13px;
+    color: var(--red);
+    font-family: var(--font-mono);
+    text-align: center;
+    margin-top: 8px;
+  }
+
+  /* ============ PROACTIVE PHASES ============ */
+  .phases-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-top: 24px;
+  }
+  .phase-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    animation: fadeUp 0.4s ease both;
+  }
+  .phase-box--1 { border-top: 2px solid var(--green); }
+  .phase-box--2 { border-top: 2px solid var(--gold); }
+  .phase-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .phase-num {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-weight: 700;
+  }
+  .phase-num--1 { background: var(--green-dim); color: var(--green); }
+  .phase-num--2 { background: var(--gold-dim); color: var(--gold); }
+  .phase-title { font-size: 15px; font-weight: 700; color: var(--text); }
+  .phase-cost {
+    margin-left: auto;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--text-dimmer);
+  }
+  .phase-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .phase-step {
+    font-size: 12px;
+    color: var(--text-dim);
+    padding: 6px 10px;
+    background: var(--surface2);
+    border-radius: 5px;
+    border-left: 2px solid var(--border-bright);
+  }
+
+  /* ============ MEMORY LAYERS ============ */
+  .memory-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+    margin-top: 24px;
+  }
+  .memory-layer {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    text-align: center;
+    animation: fadeUp 0.4s ease both;
+  }
+  .memory-icon { font-size: 20px; margin-bottom: 8px; }
+  .memory-name { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+  .memory-tech { font-family: var(--font-mono); font-size: 10px; color: var(--cyan); margin-bottom: 6px; }
+  .memory-desc { font-size: 11px; color: var(--text-dim); line-height: 1.5; }
+
+  /* ============ MODEL ROUTING ============ */
+  .routing-groups {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-top: 24px;
+  }
+  .routing-group {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 20px;
+  }
+  .routing-group-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .routing-priority {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-weight: 700;
+  }
+  .priority-0 { background: var(--cyan-dim); color: var(--cyan); border: 1px solid rgba(34,211,238,0.2); }
+  .priority-1 { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(251,191,36,0.2); }
+  .routing-group-title { font-size: 13px; font-weight: 600; color: var(--text); }
+  .routing-models { display: flex; gap: 8px; flex-wrap: wrap; }
+  .routing-model {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 12px;
+    color: var(--text);
+  }
+  .routing-weight {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dimmer);
+    margin-top: 2px;
+  }
+
+  /* ============ SKILL CARDS ============ */
+  .skill-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+    margin-top: 24px;
+  }
+  .skill-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    animation: fadeUp 0.4s ease both;
+  }
+  .skill-card-name { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+  .skill-card-desc { font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+  .skill-badge {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .badge-yes    { background: var(--green-dim); color: var(--green); border: 1px solid rgba(74,222,128,0.2); }
+  .badge-unique { background: var(--cyan-dim);  color: var(--cyan);  border: 1px solid rgba(34,211,238,0.3); }
+  .badge-new    { background: var(--gold-dim);  color: var(--gold);  border: 1px solid rgba(245,158,11,0.3); }
+
+  /* ============ TABLES ============ */
+  .table-wrap { overflow-x: auto; margin-top: 24px; border-radius: 10px; border: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th {
+    background: var(--surface2);
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 12px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-bright);
+    white-space: nowrap;
+  }
+  tbody tr { border-bottom: 1px solid var(--border); transition: background 0.15s; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:nth-child(even) { background: rgba(255,255,255,0.015); }
+  tbody tr:hover { background: var(--cyan-dim); }
+  td { padding: 11px 16px; color: var(--text); vertical-align: top; line-height: 1.5; }
+  td:first-child { font-weight: 500; color: var(--text); }
+  td.dim { color: var(--text-dim); font-size: 12px; }
+  td .small { display: block; font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+
+  .check-yes  { color: var(--green); }
+  .check-no   { color: var(--red); }
+  .check-q    { color: var(--text-dimmer); }
+
+  /* ============ LYRA ============ */
+  .lyra-flow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 20px;
+  }
+  .lyra-step {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 12px;
+    font-family: var(--font-mono);
+    color: var(--text);
+    flex-shrink: 0;
+  }
+  .lyra-step--cyan { border-color: rgba(34,211,238,0.4); color: var(--cyan); background: var(--cyan-dim); }
+  .lyra-arrow { color: var(--text-dimmer); font-size: 14px; }
+  .lyra-note {
+    background: var(--surface2);
+    border: 1px solid rgba(34,211,238,0.2);
+    border-left: 3px solid var(--cyan);
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-top: 20px;
+  }
+  .lyra-note p { font-size: 14px; color: var(--text-dim); margin-top: 8px; }
+  .lyra-note strong { color: var(--text); }
+
+  /* ============ RISK GRID ============ */
+  .risk-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 14px;
+    margin-top: 24px;
+  }
+  .risk-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px 18px; }
+  .risk-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .risk-name { font-size: 13px; font-weight: 600; color: var(--text); }
+  .risk-level {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 10px;
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+  .risk-high   { background: var(--red-dim);   color: var(--red);   border: 1px solid rgba(248,113,113,0.2); }
+  .risk-medium { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(251,191,36,0.2); }
+  .risk-low    { background: var(--green-dim); color: var(--green); border: 1px solid rgba(74,222,128,0.2); }
+  .risk-desc { font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+
+  /* ============ PROCESS ARROW ============ */
+  .proc-arrow {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 32px;
+    color: var(--text-dimmer);
+    position: relative;
+  }
+  .proc-arrow::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 0; bottom: 0;
+    width: 1px;
+    background: linear-gradient(to bottom, var(--border), var(--border-bright), var(--border));
+    transform: translateX(-50%);
+  }
+  .proc-arrow-icon {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dimmer);
+    position: relative;
+  }
+
+  /* ============ TWO-COL ============ */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+
+  /* ============ NAV ============ */
+  .top-nav {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 48px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-link {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    text-decoration: none;
+    padding: 5px 12px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    letter-spacing: 0.04em;
+    transition: color 0.15s, border-color 0.15s, background 0.15s;
+  }
+  .nav-link:hover {
+    color: var(--cyan);
+    border-color: rgba(34,211,238,0.4);
+    background: var(--cyan-dim);
+  }
+
+  /* ============ DIVIDER ============ */
+  .divider { border: none; border-top: 1px solid var(--border); margin: 0 0 72px; }
+
+  /* ============ ANIMATIONS ============ */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fadeScale {
+    from { opacity: 0; transform: scale(0.92); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+  .animate-fadeup    { animation: fadeUp   0.5s ease both; }
+  .animate-fadescale { animation: fadeScale 0.4s ease both; }
+  [style*="--i:"] { animation-delay: calc(var(--i) * 80ms); }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+  @media (max-width: 680px) {
+    .two-col  { grid-template-columns: 1fr; }
+    .phases-grid { grid-template-columns: 1fr; }
+    .process-block--redis    { margin: 0 16px; }
+    .process-block--worker   { margin: 0 8px; }
+    .process-block--dashboard { margin: 0 24px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- NAV -->
+  <nav class="top-nav">
+    <a href="#tldr"       class="nav-link">TL;DR</a>
+    <a href="#processes"  class="nav-link">3 Processus</a>
+    <a href="#pipeline"   class="nav-link">Pipeline</a>
+    <a href="#security"   class="nav-link">Sécurité</a>
+    <a href="#memory"     class="nav-link">Mémoire</a>
+    <a href="#proactive"  class="nav-link">Proactif</a>
+    <a href="#models"     class="nav-link">Routing</a>
+    <a href="#comparison" class="nav-link">vs ClawFamily</a>
+    <a href="#lyra"       class="nav-link">Lyra</a>
+    <a href="#risks"      class="nav-link">Risques</a>
+  </nav>
+
+  <!-- HERO -->
+  <section class="hero animate-fadescale" id="tldr">
+    <div class="hero-tag">scalyclaw / scalyclaw</div>
+    <h1>sudo for AI.<br><em>One mind, all channels.</em></h1>
+    <p class="hero-subtitle">
+      ScalyClaw est le <strong style="color: var(--cyan)">produit le plus complet du ClawFamily</strong>.
+      Là où OpenClaw est un framework et MetaClaw une learning-plane, ScalyClaw est un produit fini :
+      assistant IA self-hosted, multi-canal, horizontalement scalable, avec moteur proactif,
+      dashboard React et sécurité à 4 couches.
+    </p>
+
+    <div class="hero-meta">
+      <div class="meta-item" style="--i:0">
+        <span class="label">Stars</span>
+        <span class="value">10</span>
+      </div>
+      <div class="meta-item" style="--i:1">
+        <span class="label">Âge</span>
+        <span class="value">14 jours</span>
+      </div>
+      <div class="meta-item" style="--i:2">
+        <span class="label">Version</span>
+        <span class="value small">0.1.0</span>
+      </div>
+      <div class="meta-item" style="--i:3">
+        <span class="label">Language</span>
+        <span class="value small">TypeScript (Bun)</span>
+      </div>
+      <div class="meta-item" style="--i:4">
+        <span class="label">Canaux</span>
+        <span class="value">7</span>
+      </div>
+      <div class="meta-item" style="--i:5">
+        <span class="label">License</span>
+        <span class="value small">MIT</span>
+      </div>
+      <div class="meta-item" style="--i:6">
+        <span class="label">Queue</span>
+        <span class="value small">BullMQ + Redis</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 PROCESSUS -->
+  <section id="processes">
+    <div class="section-label">Architecture</div>
+    <h2>3 processus — seul Redis est partagé</h2>
+    <p style="margin-bottom: 32px;">
+      Le secret de la scalabilité de ScalyClaw : les workers n'ont besoin que de Redis.
+      Même config, machines différentes. Horizontal scaling par design.
+    </p>
+
+    <div class="process-grid">
+      <div class="process-block process-block--node animate-fadeup" style="--i:0">
+        <div class="process-label">Singleton ↑</div>
+        <div class="process-name">NODE</div>
+        <div class="process-desc">
+          Le cerveau unique. Normalise tous les canaux entrants, applique les guards, fait tourner l'orchestrateur LLM,
+          gère la mémoire SQLite, planifie les messages proactifs, expose l'API Fastify.
+        </div>
+        <div class="process-tags">
+          <span class="tag tag--cyan">7 channels</span>
+          <span class="tag tag--cyan">4 guards</span>
+          <span class="tag tag--cyan">Orchestrator</span>
+          <span class="tag tag--cyan">Memory SQLite</span>
+          <span class="tag tag--cyan">Proactive Engine</span>
+          <span class="tag tag--cyan">MCP registry</span>
+          <span class="tag tag--cyan">Models registry</span>
+          <span class="tag tag--cyan">Scheduler</span>
+        </div>
+      </div>
+
+      <div class="proc-arrow"><span class="proc-arrow-icon">BullMQ jobs → Redis</span></div>
+
+      <div class="process-block process-block--worker animate-fadeup" style="--i:1">
+        <div class="process-label">Horizontalement scalable (1…N)</div>
+        <div class="process-name" style="color: var(--green);">WORKERS</div>
+        <div class="process-desc">
+          Exécutent les skills et agents. Langages : JS (bun), Python (uv), Rust (cargo), Bash.
+          Auto-install des dépendances au premier run. Hot-reload via pub/sub.
+          Seule dépendance partagée avec le Node : <strong style="color: var(--gold)">Redis</strong>.
+        </div>
+        <div class="process-tags">
+          <span class="tag tag--green">Skills execution</span>
+          <span class="tag tag--green">Agent runners</span>
+          <span class="tag tag--green">4 langages</span>
+          <span class="tag tag--green">Vault secrets → env vars</span>
+          <span class="tag tag--green">Deploy remote ✓</span>
+        </div>
+      </div>
+
+      <div class="proc-arrow"><span class="proc-arrow-icon">Fastify HTTP</span></div>
+
+      <div class="process-block process-block--dashboard animate-fadeup" style="--i:2">
+        <div class="process-label">React SPA</div>
+        <div class="process-name" style="color: var(--violet);">DASHBOARD</div>
+        <div class="process-desc">
+          15 vues de monitoring temps réel. Éditeur de personnalité (IDENTITY.md, SOUL.md, USER.md).
+          Zero-downtime config via Redis pub/sub. Chat overlay pour tester sans quitter le dashboard.
+          Job inspector (queues BullMQ live).
+        </div>
+        <div class="process-tags">
+          <span class="tag tag--violet">React 19 + Vite 6</span>
+          <span class="tag tag--violet">Tailwind CSS 4</span>
+          <span class="tag tag--violet">shadcn/ui</span>
+          <span class="tag tag--violet">15 vues</span>
+        </div>
+      </div>
+
+      <!-- Redis au centre -->
+      <div class="proc-arrow" style="height: 12px;"></div>
+      <div class="process-block process-block--redis animate-fadeup" style="--i:3">
+        <div class="process-label">Seul état partagé</div>
+        <div class="process-name" style="color: var(--gold);">REDIS</div>
+        <div class="process-desc">
+          Queue BullMQ · Pub/Sub (hot-reload) · Vault secrets · Activity tracking · Proactive signals buffer.
+          Si Redis tombe, tout s'arrête — single point of failure assumé.
+        </div>
+        <div class="process-tags">
+          <span class="tag tag--gold">BullMQ queues</span>
+          <span class="tag tag--gold">Pub/Sub reload</span>
+          <span class="tag tag--gold">Vault</span>
+          <span class="tag tag--gold">Debounce buffer</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- PIPELINE MESSAGE -->
+  <section id="pipeline">
+    <div class="section-label">Message Journey</div>
+    <h2>De l'utilisateur à la réponse</h2>
+    <p style="margin-bottom: 8px;">Exemple : <em style="color: var(--text)">"Generate a PDF report of AAPL stock"</em></p>
+
+    <div class="pipeline">
+      <div class="pipeline-step animate-fadeup" style="--i:0">
+        <div class="pipeline-num">1</div>
+        <div class="pipeline-content">
+          <div class="pipeline-title">Channel Adapter</div>
+          <div class="pipeline-desc">Telegram, Discord, Slack… → normalize → <code>InboundMessage { sender, text, channel, session }</code></div>
+        </div>
+      </div>
+      <div class="pipeline-step animate-fadeup" style="--i:1">
+        <div class="pipeline-num">2</div>
+        <div class="pipeline-content">
+          <div class="pipeline-title">Guard Pipeline (4 couches)</div>
+          <div class="pipeline-desc">Echo Guard + Content Guard en parallèle → Command Shield déterministe → Skill/Agent Guard. Un seul échec = message droppé.</div>
+        </div>
+      </div>
+      <div class="pipeline-step animate-fadeup" style="--i:2">
+        <div class="pipeline-num">3</div>
+        <div class="pipeline-content">
+          <div class="pipeline-title">Orchestrateur LLM</div>
+          <div class="pipeline-desc">Decide : use <code>stock-price-skill</code> + <code>html-to-pdf-skill</code>. Enqueue 2 BullMQ jobs dans le skills queue.</div>
+        </div>
+      </div>
+      <div class="pipeline-step animate-fadeup" style="--i:3">
+        <div class="pipeline-num">4</div>
+        <div class="pipeline-content">
+          <div class="pipeline-title">Worker execution</div>
+          <div class="pipeline-desc">Worker consomme les jobs → <code>uv run main.py AAPL</code> → résultat via Redis → orchestrateur formate la réponse.</div>
+        </div>
+      </div>
+      <div class="pipeline-step animate-fadeup" style="--i:4">
+        <div class="pipeline-num">5</div>
+        <div class="pipeline-content">
+          <div class="pipeline-title">Memory Extraction (debounced)</div>
+          <div class="pipeline-desc">Buffer Redis → BullMQ delay → LLM extrait facts, preferences, events → SQLite + sqlite-vec + FTS5.</div>
+        </div>
+      </div>
+      <div class="pipeline-step animate-fadeup" style="--i:5">
+        <div class="pipeline-num">6</div>
+        <div class="pipeline-content">
+          <div class="pipeline-title">Delivery</div>
+          <div class="pipeline-desc">PDF envoyé sur Telegram. Response Echo Guard vérifie l'output avant envoi.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- SECURITY -->
+  <section id="security">
+    <div class="section-label">Sécurité</div>
+    <h2>4 couches — toutes fail-closed par défaut</h2>
+    <p style="margin-bottom: 8px;">Les guards Echo + Content tournent <strong style="color: var(--text)">en parallèle</strong>. Un crash isolé ne fait pas tomber les autres.</p>
+
+    <div class="guard-stack">
+      <div class="guard-layer animate-fadeup" style="--i:0">
+        <div class="guard-icon guard-icon--amber">🔊</div>
+        <div>
+          <div class="guard-title">Echo Guard</div>
+          <div class="guard-desc">LLM répercute le texte → cosine similarity. Score bas = tentative d'injection.</div>
+        </div>
+        <span class="guard-badge guard-badge--llm">LLM</span>
+      </div>
+      <div class="guard-arrow">↓</div>
+      <div class="guard-layer animate-fadeup" style="--i:1">
+        <div class="guard-icon guard-icon--red">🛡</div>
+        <div>
+          <div class="guard-title">Content Guard</div>
+          <div class="guard-desc">LLM judge → <code>{ safe, reason, threats }</code>. Prompt injection, social engineering, contenu nuisible.</div>
+        </div>
+        <span class="guard-badge guard-badge--llm">LLM</span>
+      </div>
+      <div class="guard-arrow">↓</div>
+      <div class="guard-layer animate-fadeup" style="--i:2">
+        <div class="guard-icon guard-icon--cyan">🔍</div>
+        <div>
+          <div class="guard-title">Skill / Agent Guard</div>
+          <div class="guard-desc">Audit LLM du code SKILL.md + script à la registration. Patterns malicieux → rejet immédiat.</div>
+        </div>
+        <span class="guard-badge guard-badge--llm">LLM (reg.)</span>
+      </div>
+      <div class="guard-arrow">↓</div>
+      <div class="guard-layer animate-fadeup" style="--i:3">
+        <div class="guard-icon guard-icon--green">⚡</div>
+        <div>
+          <div class="guard-title">Command Shield</div>
+          <div class="guard-desc">Pattern matching déterministe. <code>rm -rf</code>, <code>curl | sh</code>… bloqué instantanément. <strong style="color: var(--green)">Zéro LLM, zéro latence.</strong></div>
+        </div>
+        <span class="guard-badge guard-badge--det">Déterministe</span>
+      </div>
+      <div class="guard-verdict">ANY FAIL → message dropped · user notified · guards indépendants</div>
+    </div>
+
+    <div class="ve-card ve-card--accent" style="margin-top: 24px;">
+      <h3>Modèle configurable par guard</h3>
+      <p style="font-size: 13px;">
+        Chaque guard peut utiliser un modèle différent — un modèle rapide/pas cher pour Echo + Content,
+        un modèle plus lourd pour Skill Guard. <code>failOpen</code> disponible par guard pour les contextes non-critiques.
+      </p>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- MEMORY -->
+  <section id="memory">
+    <div class="section-label">Mémoire</div>
+    <h2>SQLite triple-index — la plus sophistiquée du ClawFamily</h2>
+
+    <div class="memory-grid">
+      <div class="memory-layer animate-fadeup" style="--i:0">
+        <div class="memory-icon">🗄</div>
+        <div class="memory-name">Main Store</div>
+        <div class="memory-tech">memories table</div>
+        <div class="memory-desc">subject, content, type, tags, importance, TTL, access_count</div>
+      </div>
+      <div class="memory-layer animate-fadeup" style="--i:1">
+        <div class="memory-icon">🔮</div>
+        <div class="memory-name">Vector Search</div>
+        <div class="memory-tech">sqlite-vec</div>
+        <div class="memory-desc">Similarité sémantique. Premier choix de retrieval.</div>
+      </div>
+      <div class="memory-layer animate-fadeup" style="--i:2">
+        <div class="memory-icon">🔍</div>
+        <div class="memory-name">Full-Text Search</div>
+        <div class="memory-tech">FTS5</div>
+        <div class="memory-desc">Fallback si pas d'embeddings ou zéro résultat vectoriel.</div>
+      </div>
+      <div class="memory-layer animate-fadeup" style="--i:3">
+        <div class="memory-icon">🏷</div>
+        <div class="memory-name">Tag Index</div>
+        <div class="memory-tech">memory_tags</div>
+        <div class="memory-desc">Index normalisé. Requêtes par tag instantanées.</div>
+      </div>
+    </div>
+
+    <div class="two-col" style="margin-top: 24px;">
+      <div class="ve-card ve-card--accent">
+        <h3>Composite Scoring</h3>
+        <p style="font-size: 13px;">
+          Pas juste la similarité sémantique. Score = <code>0.6 × semantic + 0.2 × recency_decay + 0.2 × importance</code>.
+          Poids configurables. Résultats bien plus pertinents.
+        </p>
+      </div>
+      <div class="ve-card ve-card--teal">
+        <h3>Debounced Extraction</h3>
+        <p style="font-size: 13px;">
+          Buffer Redis des messages → BullMQ delay → LLM extrait <code>fact</code>, <code>preference</code>,
+          <code>event</code>, <code>relationship</code> avec confidence score.
+          Aucune latence par message. Cross-channel : les mémoires Telegram fonctionnent sur Discord.
+        </p>
+      </div>
+    </div>
+
+    <div class="ve-card" style="margin-top: 16px;">
+      <h3>Types de mémoire + métadonnées</h3>
+      <div class="table-wrap" style="border: none; margin-top: 12px;">
+        <table>
+          <thead>
+            <tr><th>Type</th><th>Exemple</th><th>Confidence</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>fact</code></td><td class="dim">user is a developer</td><td><code>0.95</code></td></tr>
+            <tr><td><code>preference</code></td><td class="dim">prefers Python over JS</td><td><code>0.88</code></td></tr>
+            <tr><td><code>event</code></td><td class="dim">deployed prod on 2026-03-10</td><td><code>0.72</code></td></tr>
+            <tr><td><code>relationship</code></td><td class="dim">works with team of 3</td><td><code>0.65</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- PROACTIVE ENGINE -->
+  <section id="proactive">
+    <div class="section-label">Feature unique dans le ClawFamily</div>
+    <h2>Moteur proactif — 2 phases découplées</h2>
+    <p style="margin-bottom: 32px;">
+      L'IA initie la conversation quand elle détecte le bon moment. Phase 1 gratuite (pas de LLM),
+      Phase 2 coûteuse seulement si les signaux le justifient.
+    </p>
+
+    <div class="phases-grid">
+      <div class="phase-box phase-box--1 animate-fadeup" style="--i:0">
+        <div class="phase-header">
+          <span class="phase-num phase-num--1">Phase 1</span>
+          <div class="phase-title">Signal Scan</div>
+          <span class="phase-cost">cron · 0 LLM</span>
+        </div>
+        <div class="phase-steps">
+          <div class="phase-step">Detect 7 signal types (déterministe)</div>
+          <div class="phase-step">Aggregate → trigger type</div>
+          <div class="phase-step">Adaptive threshold check</div>
+          <div class="phase-step">Timing check (quiet hours, patterns)</div>
+          <div class="phase-step" style="border-left-color: var(--green); color: var(--green);">→ Enqueue proactive-eval job</div>
+        </div>
+      </div>
+
+      <div class="phase-box phase-box--2 animate-fadeup" style="--i:1">
+        <div class="phase-header">
+          <span class="phase-num phase-num--2">Phase 2</span>
+          <div class="phase-title">Deep Evaluation</div>
+          <span class="phase-cost">BullMQ · LLM</span>
+        </div>
+        <div class="phase-steps">
+          <div class="phase-step">Re-detect signals (may have changed)</div>
+          <div class="phase-step">Rate limit + cooldown checks</div>
+          <div class="phase-step">Assemble context (memory + history)</div>
+          <div class="phase-step">LLM: should engage? type? confidence?</div>
+          <div class="phase-step">LLM: generate message</div>
+          <div class="phase-step" style="border-left-color: var(--gold); color: var(--gold);">→ Deliver on best channel</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ve-card" style="margin-top: 20px;">
+      <h3>7 types de signaux (Phase 1)</h3>
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; margin-top: 12px;">
+        <div style="padding: 8px 12px; background: var(--surface2); border-radius: 6px; border: 1px solid var(--border); font-size: 12px; color: var(--text-dim);">
+          <strong style="color: var(--text);">idle</strong> — inactif au-delà du seuil
+        </div>
+        <div style="padding: 8px 12px; background: var(--surface2); border-radius: 6px; border: 1px solid var(--border); font-size: 12px; color: var(--text-dim);">
+          <strong style="color: var(--text);">time_sensitive</strong> — deadline en mémoire
+        </div>
+        <div style="padding: 8px 12px; background: var(--surface2); border-radius: 6px; border: 1px solid var(--border); font-size: 12px; color: var(--text-dim);">
+          <strong style="color: var(--text);">pending_deliverable</strong> — engagement non résolu
+        </div>
+        <div style="padding: 8px 12px; background: var(--surface2); border-radius: 6px; border: 1px solid var(--border); font-size: 12px; color: var(--text-dim);">
+          <strong style="color: var(--text);">unfinished_topic</strong> — thread non conclu
+        </div>
+        <div style="padding: 8px 12px; background: var(--surface2); border-radius: 6px; border: 1px solid var(--border); font-size: 12px; color: var(--text-dim);">
+          <strong style="color: var(--text);">entity_trigger</strong> — entité récurrente
+        </div>
+        <div style="padding: 8px 12px; background: var(--surface2); border-radius: 6px; border: 1px solid var(--border); font-size: 12px; color: var(--text-dim);">
+          <strong style="color: var(--text);">user_pattern</strong> — correspond aux horaires habituels
+        </div>
+        <div style="padding: 8px 12px; background: var(--surface2); border-radius: 6px; border: 1px solid var(--border); font-size: 12px; color: var(--text-dim);">
+          <strong style="color: var(--text);">return_from_absence</strong> — retour après silence multi-jours
+        </div>
+      </div>
+    </div>
+
+    <div class="ve-card ve-card--gold" style="margin-top: 16px;">
+      <h3>Adaptive Threshold</h3>
+      <p style="font-size: 13px;">
+        Le seuil de déclenchement s'ajuste automatiquement en fonction du taux de réponse de l'utilisateur
+        et du sentiment des réponses (heuristique sans LLM : keyword matching + longueur > 20 chars = positif).
+        Plus l'utilisateur répond, plus le seuil est bas. Moins il répond, plus l'IA attend.
+      </p>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- MODEL ROUTING -->
+  <section id="models">
+    <div class="section-label">LLM Routing</div>
+    <h2>Priority + Weight — failover automatique</h2>
+
+    <div class="routing-groups">
+      <div class="routing-group animate-fadeup" style="--i:0">
+        <div class="routing-group-header">
+          <span class="routing-priority priority-0">Priority 0</span>
+          <span class="routing-group-title">Groupe primaire — essayé en premier</span>
+        </div>
+        <div class="routing-models">
+          <div class="routing-model">
+            claude-opus
+            <div class="routing-weight">weight: 3 → ~30%</div>
+          </div>
+          <div class="routing-model">
+            claude-sonnet
+            <div class="routing-weight">weight: 7 → ~70%</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="routing-group animate-fadeup" style="--i:1">
+        <div class="routing-group-header">
+          <span class="routing-priority priority-1">Priority 1</span>
+          <span class="routing-group-title">Fallback — si tout le groupe P0 échoue</span>
+        </div>
+        <div class="routing-models">
+          <div class="routing-model">
+            gpt-4o
+            <div class="routing-weight">weight: 5</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="routing-group animate-fadeup" style="--i:2">
+        <div class="routing-group-header">
+          <span class="routing-priority" style="background: var(--green-dim); color: var(--green); border: 1px solid rgba(74,222,128,0.2);">Priority 2</span>
+          <span class="routing-group-title">Last resort — local/offline</span>
+        </div>
+        <div class="routing-models">
+          <div class="routing-model">
+            local-ollama
+            <div class="routing-weight">weight: 1</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ve-card ve-card--accent" style="margin-top: 20px;">
+      <h3>Budget control</h3>
+      <p style="font-size: 13px;">
+        Tracking token par modèle. Limites mensuelle et journalière en mode soft (warn) ou hard (refuse au-dessus du cap).
+        Endpoint OpenAI-compatible = tout provider : Anthropic, OpenAI, Ollama, LM Studio, MiniMax…
+      </p>
+      <p style="font-size: 13px; margin-top: 8px; color: var(--cyan);">
+        <strong>Pour Lyra :</strong> <code>Anthropic API (P0) → Ollama Machine 2 (P1)</code> — mapping direct.
+      </p>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- COMPARISON -->
+  <section id="comparison">
+    <div class="section-label">Position dans l'écosystème</div>
+    <h2>ScalyClaw vs ClawFamily — head-to-head</h2>
+    <p style="margin-bottom: 24px;">
+      ScalyClaw n'est pas construit sur OpenClaw — c'est une implémentation parallèle complète.
+      Même problème de base (assistant IA), résolu comme un produit fini plutôt qu'un framework.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Dimension</th>
+            <th>OpenClaw</th>
+            <th>IronClaw</th>
+            <th>NanoClaw</th>
+            <th style="color: var(--cyan);">ScalyClaw ★</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Type</td>
+            <td class="dim">Framework</td>
+            <td class="dim">Prod-hardened</td>
+            <td class="dim">Lightweight</td>
+            <td style="color: var(--cyan); font-weight: 600;">Produit complet</td>
+          </tr>
+          <tr>
+            <td>Canaux</td>
+            <td class="dim">Multi (framework)</td>
+            <td class="dim">Multi</td>
+            <td class="dim">1-2</td>
+            <td style="color: var(--cyan); font-weight: 600;">7</td>
+          </tr>
+          <tr>
+            <td>Proactif</td>
+            <td><span class="check-no">✗</span></td>
+            <td><span class="check-q">?</span></td>
+            <td><span class="check-no">✗</span></td>
+            <td><span class="check-yes">✓</span> 2-phase engine</td>
+          </tr>
+          <tr>
+            <td>Dashboard</td>
+            <td><span class="check-no">✗</span></td>
+            <td><span class="check-q">?</span></td>
+            <td><span class="check-no">✗</span></td>
+            <td><span class="check-yes">✓</span> React 19 · 15 vues</td>
+          </tr>
+          <tr>
+            <td>Worker scaling</td>
+            <td><span class="check-no">✗</span></td>
+            <td><span class="check-q">?</span></td>
+            <td><span class="check-no">✗</span></td>
+            <td><span class="check-yes">✓</span> horizontal (Redis only)</td>
+          </tr>
+          <tr>
+            <td>Security guards</td>
+            <td class="dim">Basic</td>
+            <td><span class="check-q">?</span></td>
+            <td><span class="check-no">✗</span></td>
+            <td><span class="check-yes">✓</span> 4-layer fail-closed</td>
+          </tr>
+          <tr>
+            <td>Mémoire</td>
+            <td class="dim">RAG-based</td>
+            <td><span class="check-q">?</span></td>
+            <td class="dim">SQLite</td>
+            <td><span class="check-yes">✓</span> SQLite + vec + FTS5</td>
+          </tr>
+          <tr>
+            <td>Install</td>
+            <td class="dim">npm setup</td>
+            <td><span class="check-q">?</span></td>
+            <td class="dim">npm</td>
+            <td><span class="check-yes">✓</span> one-line curl</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- LYRA -->
+  <section id="lyra">
+    <div class="section-label">Pertinence pour Lyra</div>
+    <h2>3 patterns à emprunter maintenant</h2>
+
+    <div class="two-col" style="margin-bottom: 28px;">
+      <div>
+        <h3 style="color: var(--cyan); margin-bottom: 12px;">Emprunts immédiats (sans Redis)</h3>
+        <div class="ve-card ve-card--accent" style="margin-bottom: 12px;">
+          <div style="font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 6px;">Command Shield</div>
+          <div style="font-size: 12px; color: var(--text-dim);">Pattern matching déterministe. 0 LLM, 0 latence, 0 coût. Implémentable en un fichier Python.</div>
+        </div>
+        <div class="ve-card ve-card--accent" style="margin-bottom: 12px;">
+          <div style="font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 6px;">Priority + Weight Model Routing</div>
+          <div style="font-size: 12px; color: var(--text-dim);">Anthropic P0 → Ollama Machine 2 P1. Failover automatique, budget control. Mapping parfait avec hardware Lyra.</div>
+        </div>
+        <div class="ve-card ve-card--accent">
+          <div style="font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 6px;">Proactive Engine (2-phase)</div>
+          <div style="font-size: 12px; color: var(--text-dim);">Cron scan (0 LLM) → asyncio.Queue job (LLM uniquement si signaux). Architecture budget-aware par design.</div>
+        </div>
+      </div>
+      <div>
+        <h3 style="color: var(--green); margin-bottom: 12px;">Emprunts Phase 2+ (avec Redis/workers)</h3>
+        <div class="ve-card ve-card--teal" style="margin-bottom: 12px;">
+          <div style="font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 6px;">BullMQ job model</div>
+          <div style="font-size: 12px; color: var(--text-dim);">Pour les tâches longues — port en Python : arq ou celery.</div>
+        </div>
+        <div class="ve-card ve-card--teal" style="margin-bottom: 12px;">
+          <div style="font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 6px;">Worker isolation</div>
+          <div style="font-size: 12px; color: var(--text-dim);">Machine 1 (Hub, Node) → Machine 2 (AI Server, workers LLM lourds). Même pattern Redis-only.</div>
+        </div>
+        <div class="ve-card ve-card--teal">
+          <div style="font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 6px;">Composite memory scoring</div>
+          <div style="font-size: 12px; color: var(--text-dim);">Ajouter recency decay + importance aux poids BM25+vec existants dans 2ndBrain.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="lyra-note">
+      <div class="section-label" style="margin-bottom: 8px;">Adaptation — Proactive Engine en Python asyncio</div>
+      <h3 style="font-size: 16px; color: var(--cyan); margin-bottom: 16px;">Le pattern 2-phase mappe parfaitement sur l'architecture Lyra</h3>
+
+      <div style="margin-bottom: 16px;">
+        <div style="font-family: var(--font-mono); font-size: 11px; color: var(--text-dimmer); margin-bottom: 6px; letter-spacing: 0.08em; text-transform: uppercase;">Phase 1 — Cron loop (0 LLM)</div>
+        <div class="lyra-flow">
+          <div class="lyra-step lyra-step--cyan">detect_signals()</div>
+          <div class="lyra-arrow">→</div>
+          <div class="lyra-step">aggregate(signals, weights)</div>
+          <div class="lyra-arrow">→</div>
+          <div class="lyra-step">adaptive_threshold?</div>
+          <div class="lyra-arrow">→</div>
+          <div class="lyra-step lyra-step--cyan">queue.put(ProactiveEvalTask)</div>
+        </div>
+      </div>
+
+      <div>
+        <div style="font-family: var(--font-mono); font-size: 11px; color: var(--text-dimmer); margin-bottom: 6px; letter-spacing: 0.08em; text-transform: uppercase;">Phase 2 — Queue consumer (LLM)</div>
+        <div class="lyra-flow">
+          <div class="lyra-step">queue.get()</div>
+          <div class="lyra-arrow">→</div>
+          <div class="lyra-step">rate_limit_ok?</div>
+          <div class="lyra-arrow">→</div>
+          <div class="lyra-step">assemble_context()</div>
+          <div class="lyra-arrow">→</div>
+          <div class="lyra-step">llm_should_engage?</div>
+          <div class="lyra-arrow">→</div>
+          <div class="lyra-step lyra-step--cyan">deliver(best_channel)</div>
+        </div>
+      </div>
+
+      <p style="margin-top: 20px;">
+        <strong>Pas de BullMQ. Pas de Redis.</strong> <code>asyncio.Queue</code> suffit pour Lyra phase P0.
+        Le pattern est identique, juste avec les primitives asyncio Python.
+      </p>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- RISKS -->
+  <section id="risks">
+    <div class="section-label">Risques</div>
+    <h2>Ce qui peut coincer</h2>
+
+    <div class="risk-grid">
+      <div class="risk-card animate-fadeup" style="--i:0">
+        <div class="risk-header">
+          <div class="risk-name">Très tôt (0.1.0, 2 semaines)</div>
+          <span class="risk-level risk-high">Haut</span>
+        </div>
+        <div class="risk-desc">Aucun track record en production. Les APIs vont changer. À surveiller, pas à intégrer maintenant.</div>
+      </div>
+      <div class="risk-card animate-fadeup" style="--i:1">
+        <div class="risk-header">
+          <div class="risk-name">Communauté faible (10 stars)</div>
+          <span class="risk-level risk-high">Haut</span>
+        </div>
+        <div class="risk-desc">Peu de bug reports, peu de battle-testing. Mais le README est poli et la feature set complète — proche d'une annonce publique.</div>
+      </div>
+      <div class="risk-card animate-fadeup" style="--i:2">
+        <div class="risk-header">
+          <div class="risk-name">Redis hard dependency</div>
+          <span class="risk-level risk-medium">Moyen</span>
+        </div>
+        <div class="risk-desc">Tous les processus nécessitent Redis. Single point of failure assumé par design. Si Redis tombe, tout s'arrête.</div>
+      </div>
+      <div class="risk-card animate-fadeup" style="--i:3">
+        <div class="risk-header">
+          <div class="risk-name">Guards = latence + coût LLM</div>
+          <span class="risk-level risk-medium">Moyen</span>
+        </div>
+        <div class="risk-desc">Echo + Content guards sur chaque message. À l'échelle, latence et coût token significatifs. Command Shield (déterministe) compense partiellement.</div>
+      </div>
+      <div class="risk-card animate-fadeup" style="--i:4">
+        <div class="risk-header">
+          <div class="risk-name">Pas de RBAC multi-user</div>
+          <span class="risk-level risk-medium">Moyen</span>
+        </div>
+        <div class="risk-desc">Single-user ou groupe de confiance uniquement. Pas de séparation utilisateurs au niveau node. Non-enterprise par design.</div>
+      </div>
+      <div class="risk-card animate-fadeup" style="--i:5">
+        <div class="risk-header">
+          <div class="risk-name">Bun runtime</div>
+          <span class="risk-level risk-low">Bas</span>
+        </div>
+        <div class="risk-desc">Stable mais moins battle-tested que Node. Quelques packages npm ont des incompatibilités Bun sporadiques.</div>
+      </div>
+    </div>
+
+    <!-- Verdict final -->
+    <div class="ve-card ve-card--hero" style="margin-top: 32px; text-align: center; padding: 36px;">
+      <div class="section-label" style="justify-content: center; margin-bottom: 16px;">Verdict</div>
+      <p style="font-size: 17px; color: var(--text); max-width: 640px; margin: 0 auto; line-height: 1.75;">
+        ScalyClaw est le produit le plus complet du ClawFamily. Trop jeune pour une intégration directe,
+        mais ses <strong style="color: var(--cyan)">patterns architecturaux sont empruntables maintenant</strong> :
+        Command Shield · Priority+Weight routing · Proactive 2-phase engine.
+      </p>
+      <p style="font-size: 14px; color: var(--text-dim); max-width: 560px; margin: 20px auto 0; line-height: 1.7;">
+        Si il atteint 1k stars, il devient le <strong style="color: var(--text)">Home Assistant des plateformes IA personnelles</strong>.
+        À surveiller : si il décolle, les patterns deviennent du gold standard à suivre.
+      </p>
+    </div>
+  </section>
+
+</div><!-- /page -->
+</body>
+</html>

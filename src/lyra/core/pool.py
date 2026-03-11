@@ -17,6 +17,7 @@ from .message import GENERIC_ERROR_REPLY, Message, Response
 log = logging.getLogger(__name__)
 
 TURN_TIMEOUT_DEFAULT = 60.0
+SAFE_DISPATCH_TIMEOUT = 10.0
 
 
 class Pool:
@@ -55,6 +56,10 @@ class Pool:
         if self._current_task is not None and not self._current_task.done():
             self._current_task.cancel()
 
+    def _msg(self, key: str, fallback: str) -> str:
+        """Fetch a localised message, falling back to the given string."""
+        return self._hub._msg_manager.get(key) if self._hub._msg_manager else fallback
+
     async def _process_loop(self) -> None:
         """Consume inbox sequentially until empty."""
         try:
@@ -76,29 +81,19 @@ class Pool:
                         self._process_one(msg, agent), timeout=self._turn_timeout
                     )
                 except asyncio.TimeoutError:
-                    _reply = (
-                        self._hub._msg_manager.get("timeout")
-                        if self._hub._msg_manager
-                        else "Your request timed out. Please try again."
+                    _reply = self._msg(
+                        "timeout", "Your request timed out. Please try again."
                     )
                     await self._safe_dispatch(msg, Response(content=_reply))
                 except asyncio.CancelledError:
-                    _reply = (
-                        self._hub._msg_manager.get("cancelled")
-                        if self._hub._msg_manager
-                        else "Request cancelled."
-                    )
+                    _reply = self._msg("cancelled", "Request cancelled.")
                     await asyncio.shield(
                         self._safe_dispatch(msg, Response(content=_reply))
                     )
                     raise
                 except Exception as exc:
                     log.exception("unhandled error in pool %s: %s", self.pool_id, exc)
-                    _reply = (
-                        self._hub._msg_manager.get("generic")
-                        if self._hub._msg_manager
-                        else GENERIC_ERROR_REPLY
-                    )
+                    _reply = self._msg("generic", GENERIC_ERROR_REPLY)
                     await self._safe_dispatch(msg, Response(content=_reply))
                     if self._hub.circuit_registry is not None:
                         _cb = self._hub.circuit_registry.get("hub")
@@ -110,27 +105,18 @@ class Pool:
     async def _process_one(self, msg: Message, agent: "AgentBase") -> None:
         """Run agent.process and dispatch result. Records CB success.
 
-        Supports two streaming patterns:
-        - Pattern A: async generator function (process itself yields)
-        - Pattern B: regular async def returning AsyncIterator
+        Accepts both streaming patterns:
+        - async generator function (yields directly)
+        - regular async def returning AsyncIterator or Response
         """
-        coro_or_gen = agent.process(msg, self)
-        if isinstance(coro_or_gen, collections.abc.AsyncIterator):
-            # Pattern A: async generator function
+        result = agent.process(msg, self)
+        if not isinstance(result, collections.abc.AsyncIterator):
+            # Regular coroutine — await to get the actual result
             try:
-                await self._hub.dispatch_streaming(msg, coro_or_gen)
-                self._record_cb_success()
-            except BaseException as exc:
+                result = await result  # type: ignore[assignment]
+            except Exception as exc:
                 self._record_cb_failure(exc)
                 raise
-            return
-
-        # Pattern B: regular coroutine — await to get result (may be AsyncIterator)
-        try:
-            result = await coro_or_gen
-        except Exception as exc:
-            self._record_cb_failure(exc)
-            raise
 
         if isinstance(result, collections.abc.AsyncIterator):
             try:
@@ -163,7 +149,8 @@ class Pool:
     async def _safe_dispatch(self, msg: Message, response: Response) -> None:
         try:
             await asyncio.wait_for(
-                self._hub.dispatch_response(msg, response), timeout=10
+                self._hub.dispatch_response(msg, response),
+                timeout=SAFE_DISPATCH_TIMEOUT,
             )
         except Exception as exc:
             log.exception("_safe_dispatch failed for pool %s: %s", self.pool_id, exc)

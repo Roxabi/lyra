@@ -193,7 +193,8 @@ class Hub:
 
     def resolve_binding(self, msg: Message) -> Binding | None:
         """Resolve binding: exact key, then wildcard fallback, else None."""
-        key = RoutingKey(msg.platform, msg.bot_id, msg.extract_scope_id())
+        scope = msg.extract_scope_id()
+        key = RoutingKey(msg.platform, msg.bot_id, scope)
         exact = self.bindings.get(key)
         if exact is not None:
             return exact
@@ -203,10 +204,7 @@ class Hub:
             # Synthesise a per-scope pool_id from the message scope so each
             # conversation scope gets an isolated Pool (own lock, own subprocess,
             # own conversation).
-            scope = msg.extract_scope_id()
-            concrete_pool_id = RoutingKey(
-                msg.platform, msg.bot_id, scope
-            ).to_pool_id()
+            concrete_pool_id = RoutingKey(msg.platform, msg.bot_id, scope).to_pool_id()
             return Binding(
                 agent_name=wildcard_binding.agent_name, pool_id=concrete_pool_id
             )
@@ -336,7 +334,6 @@ class Hub:
                 if binding is None:
                     log.warning("unmatched routing key %s — message dropped", key)
                     continue
-                pool = self.get_or_create_pool(binding.pool_id, binding.agent_name)
                 agent = self.agent_registry.get(binding.agent_name)
                 if agent is None:
                     log.warning(
@@ -345,6 +342,7 @@ class Hub:
                         key,
                     )
                     continue
+                pool = self.get_or_create_pool(binding.pool_id, binding.agent_name)
                 router = getattr(agent, "command_router", None)
 
                 # Pairing gate: runs after binding resolution, before command dispatch.

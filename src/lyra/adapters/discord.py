@@ -29,6 +29,7 @@ from lyra.core.messages import MessageManager
 log = logging.getLogger(__name__)
 
 DISCORD_MAX_LENGTH = 2000  # Discord API message length limit
+_AUTO_THREAD_TRUE = frozenset({"1", "true", "yes", "on"})
 
 
 @dataclass(frozen=True)
@@ -45,7 +46,6 @@ def load_discord_config() -> DiscordConfig:
     token = os.environ.get("DISCORD_TOKEN")
     if not token:
         raise SystemExit("Missing required env var: DISCORD_TOKEN")
-    _AUTO_THREAD_TRUE = frozenset({"1", "true", "yes", "on"})
     auto_thread_str = os.environ.get("DISCORD_AUTO_THREAD", "").strip().lower()
     auto_thread = auto_thread_str in _AUTO_THREAD_TRUE if auto_thread_str else True
     return DiscordConfig(token=token, auto_thread=auto_thread)
@@ -164,20 +164,17 @@ class DiscordAdapter(discord.Client):
 
         Filters own/bot messages, applies backpressure, and enqueues to hub bus.
         """
-        # S3: discard bot's own messages; fallback to message.author.bot pre-on_ready
-        if message.author == self._bot_user or (
-            self._bot_user is None and message.author.bot
-        ):
+        # S3: discard bot messages early — before normalization to avoid wasted work.
+        # Own-message check uses cached _bot_user; falls back to author.bot pre-ready.
+        if message.author.bot:
+            return
+        if message.author == self._bot_user:
             return
 
         try:
             hub_msg = self._normalize(message)
         except Exception:
             log.exception("Failed to normalize discord message id=%s", message.id)
-            return
-
-        # Discard messages from other bots (third-party bot filter)
-        if hub_msg.is_from_bot:
             return
 
         # Hub circuit guard

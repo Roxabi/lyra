@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass
 
 from .circuit_breaker import CircuitRegistry
-from .message import Message, Response, TextContent
+from .message import Message, Response, TextContent, extract_text
 from .messages import MessageManager
 from .plugin_loader import AsyncHandler, PluginLoader
 from .pool import Pool
@@ -76,14 +76,9 @@ class CommandRouter:
 
     def is_command(self, msg: Message) -> bool:
         """Return True if the message starts with '/' followed by a word char."""
-        content = msg.content
-        if isinstance(content, TextContent):
-            text = content.text
-        elif isinstance(content, str):
-            text = content
-        else:
+        if not isinstance(msg.content, (TextContent, str)):
             return False
-        return bool(_COMMAND_RE.match(text))
+        return bool(_COMMAND_RE.match(extract_text(msg)))
 
     def get_command_name(self, msg: Message) -> str | None:
         """Extract the slash-command name (e.g. '/join') or None if not a command.
@@ -91,13 +86,9 @@ class CommandRouter:
         Single source of truth for command-name parsing, used by the hub pairing
         gate and by dispatch().
         """
-        content = msg.content
-        if isinstance(content, TextContent):
-            text = content.text
-        elif isinstance(content, str):
-            text = content
-        else:
+        if not isinstance(msg.content, (TextContent, str)):
             return None
+        text = extract_text(msg)
         if not _COMMAND_RE.match(text):
             return None
         return text.split(maxsplit=1)[0].lower()
@@ -108,13 +99,7 @@ class CommandRouter:
 
     async def dispatch(self, msg: Message, pool: Pool | None = None) -> Response:
         """Parse the command name + args and route to the appropriate handler."""
-        content = msg.content
-        if isinstance(content, TextContent):
-            text = content.text
-        else:
-            text = str(content)
-
-        parts = text.split()
+        parts = extract_text(msg).split()
         command_name = parts[0].lower()
         args = parts[1:]
 

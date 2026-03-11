@@ -242,7 +242,7 @@ class TelegramAdapter:
                 return  # silent drop
 
         try:
-            self._hub.bus.put_nowait(hub_msg)
+            self._hub.inbound_bus.put(Platform.TELEGRAM, hub_msg)
         except asyncio.QueueFull:
             text = (
                 self._msg_manager.get("backpressure_ack", platform="telegram")
@@ -255,7 +255,11 @@ class TelegramAdapter:
             )
 
     async def send(self, original_msg: Message, response: Response) -> None:
-        """Send a response back to Telegram via bot.send_message."""
+        """Send a response back to Telegram via bot.send_message.
+
+        Circuit breaker checks and recording are handled by OutboundDispatcher,
+        not here. This method performs the bare send and raises on failure.
+        """
         if not isinstance(original_msg.platform_context, TelegramContext):
             log.error(
                 "send() called with non-TelegramContext for msg_id=%s",
@@ -264,36 +268,19 @@ class TelegramAdapter:
             return
         ctx = original_msg.platform_context
 
-        if self._circuit_registry is not None:
-            cb = self._circuit_registry.get("telegram")
-            if cb is not None and cb.is_open():
-                log.warning(
-                    '{"event": "telegram_circuit_open",'
-                    ' "action": "send", "dropped": true}'
-                )
-                return
-
-        try:
-            sent = await self.bot.send_message(
-                chat_id=ctx.chat_id, text=response.content
-            )
-            # Store for session persistence (#67) and reply-to-resume (#83).
-            response.metadata["reply_message_id"] = sent.message_id
-            if self._circuit_registry is not None:
-                cb = self._circuit_registry.get("telegram")
-                if cb is not None:
-                    cb.record_success()
-        except Exception:
-            log.exception("send() failed")
-            if self._circuit_registry is not None:
-                cb = self._circuit_registry.get("telegram")
-                if cb is not None:
-                    cb.record_failure()
+        sent = await self.bot.send_message(
+            chat_id=ctx.chat_id, text=response.content
+        )
+        # Store for session persistence (#67) and reply-to-resume (#83).
+        response.metadata["reply_message_id"] = sent.message_id
 
     async def send_streaming(
         self, original_msg: Message, chunks: AsyncIterator[str]
     ) -> None:
         """Stream response with edit-in-place, debounced at ~500ms.
+
+        Circuit breaker checks and recording are handled by OutboundDispatcher,
+        not here. This method performs the bare streaming send and raises on failure.
 
         TODO: store placeholder.message_id in response.metadata["reply_message_id"]
         once send_streaming() receives a Response argument (#67).
@@ -305,18 +292,6 @@ class TelegramAdapter:
             )
             return
         ctx = original_msg.platform_context
-
-        if self._circuit_registry is not None:
-            cb = self._circuit_registry.get("telegram")
-            if cb is not None and cb.is_open():
-                log.warning(
-                    '{"event": "telegram_circuit_open",'
-                    ' "action": "send_streaming", "dropped": true}'
-                )
-                # Drain iterator to avoid generator leaks
-                async for _ in chunks:
-                    pass
-                return
 
         accumulated = ""
 
@@ -339,7 +314,7 @@ class TelegramAdapter:
             return
 
         last_edit = time.monotonic()
-        _stream_ok = False
+        stream_error: Exception | None = None
         try:
             async for chunk in chunks:
                 accumulated += chunk
@@ -351,13 +326,9 @@ class TelegramAdapter:
                         text=accumulated[:TELEGRAM_MAX_LENGTH],
                     )
                     last_edit = now
-            _stream_ok = True
-        except Exception:
+        except Exception as exc:
+            stream_error = exc
             log.exception("Stream interrupted")
-            if self._circuit_registry is not None:
-                cb = self._circuit_registry.get("telegram")
-                if cb is not None:
-                    cb.record_failure()
             if accumulated:
                 suffix = (
                     self._msg_manager.get("stream_interrupted", platform="telegram")
@@ -372,12 +343,7 @@ class TelegramAdapter:
                     else GENERIC_ERROR_REPLY
                 )
 
-        if _stream_ok and self._circuit_registry is not None:
-            cb = self._circuit_registry.get("telegram")
-            if cb is not None:
-                cb.record_success()
-
-        # Final edit with complete text
+        # Final edit with complete text (always runs, even after stream error)
         if accumulated:
             try:
                 await self.bot.edit_message_text(
@@ -387,3 +353,7 @@ class TelegramAdapter:
                 )
             except Exception:
                 log.exception("Final edit failed")
+
+        # Re-raise stream error so OutboundDispatcher can record CB failure
+        if stream_error is not None:
+            raise stream_error

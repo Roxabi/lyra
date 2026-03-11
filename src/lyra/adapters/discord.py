@@ -187,7 +187,7 @@ class DiscordAdapter(discord.Client):
 
         # S5+S6: non-blocking enqueue with backpressure ack on full bus
         try:
-            self._hub.bus.put_nowait(hub_msg)
+            self._hub.inbound_bus.put(Platform.DISCORD, hub_msg)
         except asyncio.QueueFull:
             text = (
                 self._msg_manager.get("backpressure_ack", platform="discord")
@@ -198,6 +198,9 @@ class DiscordAdapter(discord.Client):
 
     async def send(self, original_msg: Message, response: Response) -> None:
         """Send response back to Discord.
+
+        Circuit breaker checks and recording are handled by OutboundDispatcher,
+        not here. This method performs the bare send and raises on failure.
 
         Fetches channel from cache (or network fallback) to avoid storing raw
         discord.py objects in hub domain metadata.
@@ -210,15 +213,6 @@ class DiscordAdapter(discord.Client):
             )
             return
 
-        if self._circuit_registry is not None:
-            cb = self._circuit_registry.get("discord")
-            if cb is not None and cb.is_open():
-                log.warning(
-                    '{"event": "discord_circuit_open",'
-                    ' "action": "send", "dropped": true}'
-                )
-                return
-
         ctx = original_msg.platform_context
         channel = self.get_channel(ctx.channel_id)
         if channel is None:
@@ -227,32 +221,24 @@ class DiscordAdapter(discord.Client):
         content = response.content[:DISCORD_MAX_LENGTH]
 
         messageable = cast(discord.abc.Messageable, channel)
-        try:
-            if original_msg.is_mention:
-                msg = await messageable.fetch_message(ctx.message_id)
-                sent = await msg.reply(content)
-            else:
-                sent = await messageable.send(content)
-            # Store for session persistence (#67) and reply-to-resume (#83).
-            response.metadata["reply_message_id"] = sent.id
-            log.debug(
-                "stored reply_message_id=%s for msg_id=%s", sent.id, original_msg.id
-            )
-            if self._circuit_registry is not None:
-                cb = self._circuit_registry.get("discord")
-                if cb is not None:
-                    cb.record_success()
-        except Exception:
-            log.exception("send() failed")
-            if self._circuit_registry is not None:
-                cb = self._circuit_registry.get("discord")
-                if cb is not None:
-                    cb.record_failure()
+        if original_msg.is_mention:
+            msg = await messageable.fetch_message(ctx.message_id)
+            sent = await msg.reply(content)
+        else:
+            sent = await messageable.send(content)
+        # Store for session persistence (#67) and reply-to-resume (#83).
+        response.metadata["reply_message_id"] = sent.id
+        log.debug(
+            "stored reply_message_id=%s for msg_id=%s", sent.id, original_msg.id
+        )
 
     async def send_streaming(
         self, original_msg: Message, chunks: AsyncIterator[str]
     ) -> None:
         """Stream response with edit-in-place, debounced at ~1s.
+
+        Circuit breaker checks and recording are handled by OutboundDispatcher,
+        not here. This method performs the bare streaming send and raises on failure.
 
         TODO: store placeholder.id in response.metadata["reply_message_id"]
         once send_streaming() receives a Response argument (#67).
@@ -263,18 +249,6 @@ class DiscordAdapter(discord.Client):
                 original_msg.id,
             )
             return
-
-        if self._circuit_registry is not None:
-            cb = self._circuit_registry.get("discord")
-            if cb is not None and cb.is_open():
-                log.warning(
-                    '{"event": "discord_circuit_open",'
-                    ' "action": "send_streaming", "dropped": true}'
-                )
-                # Drain iterator to avoid generator leaks
-                async for _ in chunks:
-                    pass
-                return
 
         ctx = original_msg.platform_context
         channel = self.get_channel(ctx.channel_id)
@@ -301,7 +275,7 @@ class DiscordAdapter(discord.Client):
             return
 
         last_edit = time.monotonic()
-        _stream_ok = False
+        stream_error: Exception | None = None
         try:
             async for chunk in chunks:
                 accumulated += chunk
@@ -309,13 +283,9 @@ class DiscordAdapter(discord.Client):
                 if now - last_edit >= 1.0:
                     await placeholder.edit(content=accumulated[:DISCORD_MAX_LENGTH])
                     last_edit = now
-            _stream_ok = True
-        except Exception:
+        except Exception as exc:
+            stream_error = exc
             log.exception("Stream interrupted")
-            if self._circuit_registry is not None:
-                cb = self._circuit_registry.get("discord")
-                if cb is not None:
-                    cb.record_failure()
             if accumulated:
                 suffix = (
                     self._msg_manager.get("stream_interrupted", platform="discord")
@@ -330,14 +300,13 @@ class DiscordAdapter(discord.Client):
                     else GENERIC_ERROR_REPLY
                 )
 
-        if _stream_ok and self._circuit_registry is not None:
-            cb = self._circuit_registry.get("discord")
-            if cb is not None:
-                cb.record_success()
-
-        # Final edit with complete text
+        # Final edit with complete text (always runs, even after stream error)
         if accumulated:
             try:
                 await placeholder.edit(content=accumulated[:DISCORD_MAX_LENGTH])
             except Exception:
                 log.exception("Final edit failed")
+
+        # Re-raise stream error so OutboundDispatcher can record CB failure
+        if stream_error is not None:
+            raise stream_error

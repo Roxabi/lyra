@@ -221,11 +221,21 @@ class TestAgent:
 
 
 class TestHubInit:
-    def test_bus_is_bounded_queue(self) -> None:
+    def test_inbound_bus_exists(self) -> None:
+        from lyra.core.inbound_bus import InboundBus
+
         hub = Hub()
-        assert isinstance(hub.bus, asyncio.Queue)
         assert Hub.BUS_SIZE == 100
-        assert hub.bus.maxsize == Hub.BUS_SIZE
+        assert isinstance(hub.inbound_bus, InboundBus)
+        # hub.bus is a backward-compat alias for the staging queue (unbounded)
+        assert isinstance(hub.bus, asyncio.Queue)
+
+    def test_per_platform_queue_is_bounded_after_register_adapter(self) -> None:
+        hub = Hub()
+        hub.register_adapter(Platform.TELEGRAM, "main", MockAdapter())
+        assert hub.inbound_bus.qsize(Platform.TELEGRAM) == 0
+        # Per-platform queue has BUS_SIZE maxsize
+        assert hub.inbound_bus._queues[Platform.TELEGRAM].maxsize == Hub.BUS_SIZE
 
     def test_empty_registries(self) -> None:
         hub = Hub()

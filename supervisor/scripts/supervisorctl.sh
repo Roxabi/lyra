@@ -1,2 +1,2 @@
 #!/bin/bash
-exec supervisorctl -c "$HOME/supervisor/supervisord.conf" "$@"
+exec supervisorctl -c "$HOME/lyra-stack/supervisord.conf" "$@"

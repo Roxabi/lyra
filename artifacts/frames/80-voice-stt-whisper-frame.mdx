@@ -1,0 +1,45 @@
+---
+title: "feat: voice STT — audio transcription (Whisper)"
+issue: 80
+status: approved
+tier: F-lite
+date: 2026-03-11
+---
+
+## Problem
+
+Lyra users frequently send voice messages on Telegram, but the agent cannot process them — the audio is silently ignored. This breaks the conversational flow for users who prefer voice input, especially on mobile. As the voice pipeline matures (TTS in #79, language detection in #42), the absence of STT leaves a critical gap: Lyra can speak but cannot listen.
+
+The fix is to intercept incoming audio messages, transcribe them via faster-whisper running on Machine 1 (GPU/CPU), and inject the transcript into the normal text processing pipeline as if the user had typed the message.
+
+## Who
+
+- **Primary:** Lyra users on Telegram who send voice messages (OGG/Opus format)
+- **Secondary:** The Lyra pipeline itself — downstream handlers that process text intent will benefit from all voice input being normalised to text
+
+## Constraints
+
+- **VRAM budget:** faster-whisper `small` model ~1 GB — must not exceed available VRAM headroom on Machine 1 (RTX 3080)
+- **Chunking:** Long audio is in scope — a chunking system already exists and will handle audio longer than a single Whisper inference window
+- **Language detection:** Auto-detect language at transcription time; deeper multilingual handling deferred to #42
+- **Blocked by #79:** TTS must land first (shared voice pipeline infra); implementation gate accordingly
+- **GPU + CPU fallback:** Prefer GPU inference on Machine 1; fall back to CPU if VRAM is constrained at runtime
+- **Platform:** Telegram only (Discord voice channels not targeted in this slice)
+
+## Out of Scope
+
+- Real-time / streaming transcription (message-level only — transcribe after upload completes)
+- Discord voice channel integration
+- Speaker diarization (single-speaker voice messages only)
+- Fine-tuning or custom model training
+
+## Complexity
+
+**Tier: F-lite** — Clear single-domain feature (backend audio pipeline) with a well-understood library (faster-whisper), bounded scope, and a small number of integration points (Telegram handler → transcriber → text pipeline).
+
+Signals observed:
+- M-sized issue, ~6-8 files touched
+- New library integration (faster-whisper) but established pattern
+- No new architectural abstractions — slots into existing message pipeline
+- 1-2 known unknowns (VRAM headroom at runtime, chunk boundary handling)
+- Single domain: backend/ML

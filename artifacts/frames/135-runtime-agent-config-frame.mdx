@@ -1,0 +1,48 @@
+---
+title: "feat(agent): runtime agent config — live tuning via !config command"
+issue: 135
+status: approved
+tier: F-lite
+date: 2026-03-11
+---
+
+## Problem
+
+Lyra's agent behavior (response style, temperature, model, step budget) is frozen at startup. Any change requires editing a TOML file and running `make lyra reload` — a context-breaking interrupt for a personal assistant that should adapt on the fly.
+
+The missing piece is a `RuntimeConfig` layer: a mutable config overlay applied on top of static TOML at each agent call, editable live via a `!config` command in Telegram or Discord, and persisted to `lyra_runtime.toml` across restarts.
+
+This is Phase 1b of the agent core (#73), building directly on the persona system (#75) and requiring the `AnthropicAgent` class introduced in #76.
+
+## Who
+
+- **Primary:** Mickael — adjusts Lyra's style/temperature mid-conversation without leaving the chat interface
+- **Secondary:** Scripts and monitoring tools reading `GET /config` to inspect effective config
+
+## Constraints
+
+- Blocked by **#76** — `AnthropicAgent.process()` must exist to apply the overlay
+- The `overlay()` method must compose cleanly with the persona system (#75) — both touch `system_prompt` and model selection
+- `lyra_runtime.toml` must be gitignored and loaded at startup if present
+- `!config` is admin-only — no user-facing exposure
+- Phase 1 only: 6 tunable parameters (`style`, `language`, `temperature`, `model`, `max_steps`, `extra_instructions`)
+- GET /config is read-only; no external write API
+
+## Out of Scope
+
+- Redis pub/sub hot-reload (ScalyClaw pattern) — file-based persistence is sufficient for Phase 1
+- Web UI or dashboard for config management
+- Per-channel or per-user config overrides (global runtime config only)
+- Phase 2 parameters (tool_choice, persona switching, budget caps)
+- Auth/permissions beyond the existing admin check
+
+## Complexity
+
+**Tier: F-lite** — well-defined dataclass + overlay pattern in a single domain (agent config), clear integration point in `AnthropicAgent.process()`, no new architecture required.
+
+Signals observed:
+- ~7 files touched: `RuntimeConfig` class, `AnthropicAgent`, Telegram command handler, Discord command handler, `GET /config` endpoint, TOML loader, tests
+- Known patterns: Python dataclass, TOML I/O, command parsing — no novel libraries
+- Single domain: agent config layer
+- 1 unknown: exact composition order with persona overlay (resolvable at spec time)
+- Design fully specified in issue body

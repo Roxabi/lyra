@@ -7,29 +7,32 @@
 ![version](https://img.shields.io/badge/version-0.1.0-22c55e)
 ![asyncio](https://img.shields.io/badge/concurrency-asyncio-0ea5e9)
 
-Lyra runs 24/7 on your own hardware, connects Telegram and Discord to specialized AI agents, and routes every conversation through isolated per-user pools. No cloud lock-in. No subscription. Your data stays on your machines.
+Lyra runs 24/7 on your own hardware, connects Telegram and Discord to specialized AI agents, and routes every conversation through isolated per-scope pools. No cloud lock-in. No subscription. Your data stays on your machines.
 
 ## How it works
 
-1. **Channel adapters** (Telegram, Discord) normalize incoming messages and push them into a bounded asyncio queue.
-2. **The Hub** routes each message to the right agent via typed `(platform, bot_id, user_id)` bindings, and runs it inside an isolated per-user pool with an `asyncio.Lock`.
-3. **The Agent** processes the message, calls the LLM, and sends the response back through the adapter registry to the originating channel.
+1. **Channel adapters** (Telegram, Discord) normalize incoming messages and push them into per-platform bounded asyncio queues.
+2. **The Hub** routes each message to the right agent via typed `(platform, bot_id, scope_id)` bindings — one pool per conversation scope (chat, thread, channel).
+3. **The Agent** processes the message, calls the LLM, and sends the response back through the outbound dispatcher to the originating channel.
 
 ## Architecture
 
 ```mermaid
 flowchart TD
-    TG["Telegram\naiogram v3 · polling"] --> BUS
-    DC["Discord\ndiscord.py v2 · gateway"] --> BUS
-    BUS["asyncio.Queue\nbounded · 100"] --> HUB["Hub\nresolve_binding()"]
-    HUB -->|"telegram · main · user_a"| P1["Pool\nasyncio.Lock"]
-    HUB -->|"discord · main · user_b"| P2["Pool\nasyncio.Lock"]
+    TG["Telegram\naiogram v3 · polling"] --> TQ["tg_inbound\nQueue"]
+    DC["Discord\ndiscord.py v2 · gateway"] --> DQ["dc_inbound\nQueue"]
+    TQ --> STG["InboundBus\nstaging Queue"]
+    DQ --> STG
+    STG --> HUB["Hub\nresolve_binding()"]
+    HUB -->|"telegram · main · chat:555"| P1["Pool\nasyncio.Task"]
+    HUB -->|"discord · main · thread:888"| P2["Pool\nasyncio.Task"]
     P1 --> AGENT["Agent\nstateless singleton"]
     P2 --> AGENT
     AGENT --> LLM["LLM\nClaude CLI (Phase 1)\nOllama (Phase 2)"]
-    AGENT --> AR["adapter_registry"]
-    AR --> TG
-    AR --> DC
+    P1 --> TGO["tg_outbound\nOutboundDispatcher"]
+    P2 --> DCO["dc_outbound\nOutboundDispatcher"]
+    TGO --> TG
+    DCO --> DC
 ```
 
 ## Features
@@ -37,11 +40,11 @@ flowchart TD
 | Feature | Detail |
 |---------|--------|
 | **Channels** | Telegram (aiogram v3 · polling + webhook) · Discord (discord.py v2 · gateway) |
-| **Routing** | Typed `RoutingKey(platform, bot_id, user_id)` · wildcard `*` per channel |
-| **Concurrency** | Sequential per user (`asyncio.Lock`) · parallel across users — zero config |
+| **Routing** | Typed `RoutingKey(platform, bot_id, scope_id)` · wildcard `*` per channel · scope = chat / thread / channel |
+| **Concurrency** | Sequential per scope (`asyncio.Task`) · parallel across scopes and platforms — zero config |
 | **Backpressure** | Bounded queue (100) → immediate ack + blocking `await put()` |
 | **LLM** | Claude Code CLI (Phase 1) · Ollama OpenAI-compatible API (Phase 2) |
-| **Agents** | Stateless singleton · isolated per-user pools · TOML config per agent |
+| **Agents** | Stateless singleton · isolated per-scope pools · TOML config per agent |
 | **Memory** | 5 levels: working → session → episodic → semantic (SQLite + BM25) → procedural |
 | **Security** | Prompt injection guard · sandboxed skills · least-privilege tool permissions |
 
@@ -94,7 +97,7 @@ src/lyra/
   core/
     message.py      — Message, RoutingKey, Platform, Response
     hub.py          — Hub (bus + adapter registry + bindings)
-    pool.py         — Pool (history + asyncio.Lock per user)
+    pool.py         — Pool (history + asyncio.Task per scope)
     agent.py        — AgentBase, Agent config, ModelConfig
     cli_pool.py     — Claude CLI subprocess pool
   adapters/

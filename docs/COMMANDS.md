@@ -20,6 +20,8 @@ User → hello   → Telegram → Hub → (not a command) → Agent (LLM) → Re
 | Command | Description | CLI dependency |
 |---------|------------|----------------|
 | `/help` | List available commands | — (builtin) |
+| `/stop` | Cancel the current processing turn | — (builtin) |
+| `/circuit` | Show circuit breaker status (admin-only) | — (builtin) |
 | `/echo <text>` | Echo back the message (test) | `echo` (system) |
 | `/agenda` | Show today's calendar | `gws` |
 | `/tasks` | List pending tasks | `gws` |
@@ -125,7 +127,7 @@ Lyra: ⚠ Command timed out after 30s.
 2. TELEGRAM ADAPTER
    ├── Parses update → text="/agenda", chat_id, user_id
    ├── Creates Message(content=TextContent(text="/agenda"))
-   └── Pushes to hub.bus (asyncio.Queue)
+   └── Pushes to hub.inbound_bus (per-platform Queue)
 
 3. HUB RUN LOOP
    ├── Pulls message from bus

@@ -115,30 +115,41 @@ class Hub:
 @dataclass
 class Message:
     id: str
-    channel: str        # "telegram" | "discord"
-    user_id: str        # canonical ID (not the raw platform ID)
-    content: str | dict # text, image, audio...
+    platform: Platform          # Platform.TELEGRAM | Platform.DISCORD
+    bot_id: str                 # "main" (one bot per platform)
+    user_id: str                # canonical sender ID (rate-limiting, pairing)
+    platform_context: ...       # TelegramContext | DiscordContext (scope routing)
+    content: MessageContent     # TextContent | ImageContent | AudioContent
     type: MessageType
     timestamp: datetime
     metadata: dict
+
+    def extract_scope_id(self) -> str:
+        """Return conversation scope: chat:NNN, thread:NNN, channel:NNN, …"""
 ```
 
 ### Bindings (routing table)
 
-Rule: `(channel, user_id)` → `(agent, pool_id)`
+Rule: `(platform, bot_id, scope_id)` → `(agent, pool_id)`
+
+Scope extraction:
+- Telegram DM / group → `chat:{chat_id}`
+- Telegram forum topic → `chat:{chat_id}:topic:{topic_id}`
+- Discord thread → `thread:{thread_id}`
+- Discord channel → `channel:{channel_id}`
 
 Examples:
-- Telegram + @Roxabi → agent `lyra`, pool `telegram_roxabi`
-- Discord + #general → agent `assistant`, pool `discord_general`
-- Wildcard `*` possible for an entire channel
+- Telegram chat 555 → agent `lyra`, pool `telegram:main:chat:555`
+- Discord thread 888 → agent `lyra`, pool `discord:main:thread:888`
+- Wildcard `*` possible for an entire platform/bot
 
 ### Discussion Pools
 
-One pool per `(channel, user)`. Contains:
+One pool per conversation scope. Contains:
 - Conversation history (automatically compacted)
 - Session state (multi-turn commands)
 - Assigned agent
-- `asyncio.Lock` — sequential per user, parallel across users
+- `asyncio.Task` (`_process_loop`) — sequential within scope, parallel across scopes
 
 ### Agents
 
@@ -183,7 +194,7 @@ Multiple agents run simultaneously on different pools. A single agent (e.g., `ly
 - Automatically compacted when the window approaches its limit
 
 ### Level 1 — Session memory
-- Multi-turn session state per pool (`asyncio.Lock`)
+- Multi-turn session state per pool (`asyncio.Task` per scope)
 - Ongoing commands, conversation context
 - Configurable timeout, cleaned up on disconnect
 

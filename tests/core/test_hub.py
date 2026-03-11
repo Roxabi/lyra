@@ -11,6 +11,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -154,42 +155,38 @@ class TestMessage:
 
 
 class TestPool:
+    def _make_hub(self) -> MagicMock:
+        hub = MagicMock()
+        hub.agent_registry = {}
+        hub.circuit_registry = None
+        hub._msg_manager = None
+        return hub
+
     def test_initial_state(self) -> None:
-        pool = Pool(pool_id="telegram:main:alice", agent_name="lyra")
+        hub = self._make_hub()
+        pool = Pool(pool_id="telegram:main:alice", agent_name="lyra", hub=hub)
         assert pool.pool_id == "telegram:main:alice"
         assert pool.agent_name == "lyra"
         assert pool.history == []
         # Verify each pool gets its own list (not a shared mutable default)
-        pool2 = Pool(pool_id="telegram:main:bob", agent_name="lyra")
+        pool2 = Pool(pool_id="telegram:main:bob", agent_name="lyra", hub=hub)
         assert pool.history is not pool2.history
 
-    def test_has_asyncio_lock(self) -> None:
-        pool = Pool(pool_id="p1", agent_name="lyra")
-        assert isinstance(pool.lock, asyncio.Lock)
+    def test_has_inbox_queue(self) -> None:
+        hub = self._make_hub()
+        pool = Pool(pool_id="p1", agent_name="lyra", hub=hub)
+        assert isinstance(pool._inbox, asyncio.Queue)
 
-    async def test_lock_is_per_pool(self) -> None:
-        p1 = Pool(pool_id="p1", agent_name="lyra")
-        p2 = Pool(pool_id="p2", agent_name="lyra")
-        assert p1.lock is not p2.lock
+    def test_inbox_is_per_pool(self) -> None:
+        hub = self._make_hub()
+        p1 = Pool(pool_id="p1", agent_name="lyra", hub=hub)
+        p2 = Pool(pool_id="p2", agent_name="lyra", hub=hub)
+        assert p1._inbox is not p2._inbox
 
-    async def test_lock_serialises_access(self) -> None:
-        pool = Pool(pool_id="p1", agent_name="lyra")
-        order: list[str] = []
-
-        async def task(label: str) -> None:
-            async with pool.lock:
-                order.append(f"start-{label}")
-                await asyncio.sleep(0)
-                order.append(f"end-{label}")
-
-        await asyncio.gather(task("A"), task("B"))
-        # The two tasks must NOT interleave
-        assert order == ["start-A", "end-A", "start-B", "end-B"] or order == [
-            "start-B",
-            "end-B",
-            "start-A",
-            "end-A",
-        ]
+    def test_current_task_starts_none(self) -> None:
+        hub = self._make_hub()
+        pool = Pool(pool_id="p1", agent_name="lyra", hub=hub)
+        assert pool._current_task is None
 
 
 # ---------------------------------------------------------------------------

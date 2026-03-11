@@ -43,7 +43,7 @@ def make_message(content: object = "hello") -> Message:
 
 
 def make_pool(pool_id: str = "telegram:main:alice") -> Pool:
-    return Pool(pool_id=pool_id, agent_name="lyra")
+    return Pool(pool_id=pool_id, agent_name="lyra", hub=MagicMock())
 
 
 def make_agent(cli_pool: object) -> SimpleAgent:

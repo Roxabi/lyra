@@ -17,6 +17,8 @@ _FALLBACKS: dict[str, str] = {
     "backpressure_ack": "Processing your request\u2026",
     "stream_placeholder": "\u2026",
     "stream_interrupted": " [response interrupted]",
+    "timeout": "Your request timed out. Please try again.",
+    "cancelled": "Request cancelled.",
 }
 
 

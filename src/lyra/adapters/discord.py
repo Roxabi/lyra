@@ -34,6 +34,7 @@ DISCORD_MAX_LENGTH = 2000  # Discord API message length limit
 @dataclass(frozen=True)
 class DiscordConfig:
     token: str = field(repr=False)
+    auto_thread: bool = True
 
 
 def load_discord_config() -> DiscordConfig:
@@ -44,7 +45,9 @@ def load_discord_config() -> DiscordConfig:
     token = os.environ.get("DISCORD_TOKEN")
     if not token:
         raise SystemExit("Missing required env var: DISCORD_TOKEN")
-    return DiscordConfig(token=token)
+    auto_thread_str = os.environ.get("DISCORD_AUTO_THREAD", "true").lower()
+    auto_thread = auto_thread_str not in ("false", "0", "no")
+    return DiscordConfig(token=token, auto_thread=auto_thread)
 
 
 class DiscordAdapter(discord.Client):
@@ -64,6 +67,7 @@ class DiscordAdapter(discord.Client):
         intents: discord.Intents | None = None,
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
+        auto_thread: bool = True,
     ) -> None:
         if intents is None:
             intents = discord.Intents.default()
@@ -73,6 +77,7 @@ class DiscordAdapter(discord.Client):
         self._bot_id = bot_id
         self._circuit_registry = circuit_registry
         self._msg_manager = msg_manager
+        self._auto_thread = auto_thread
         # Set on on_ready; None until login completes. Tests set this directly.
         self._bot_user: Any = None
         # Compiled once in on_ready (requires bot user ID). None until then.
@@ -173,6 +178,31 @@ class DiscordAdapter(discord.Client):
         # Discard messages from other bots (third-party bot filter)
         if hub_msg.is_from_bot:
             return
+
+        # S5: Auto-thread creation on @mention in text channel
+        if (
+            self._auto_thread
+            and hub_msg.is_mention
+            and isinstance(hub_msg.platform_context, DiscordContext)
+            and hub_msg.platform_context.channel_type == "text"
+        ):
+            try:
+                thread = await message.create_thread(
+                    name=f"Chat with {message.author.display_name}"
+                )
+                new_ctx = DiscordContext(
+                    guild_id=hub_msg.platform_context.guild_id,
+                    channel_id=thread.id,
+                    message_id=hub_msg.platform_context.message_id,
+                    thread_id=thread.id,
+                    channel_type="thread",
+                )
+                hub_msg.platform_context = new_ctx
+            except Exception:
+                log.exception(
+                    "Failed to create Discord thread for message id=%s", message.id
+                )
+                # Fall through — process in original channel scope
 
         # Hub circuit guard
         if self._circuit_registry is not None:

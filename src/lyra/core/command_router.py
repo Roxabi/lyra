@@ -39,6 +39,9 @@ class CommandRouter:
         "/circuit": CommandConfig(
             builtin=True, description="Show circuit breaker status (admin-only)"
         ),
+        "/stop": CommandConfig(
+            builtin=True, description="Cancel the current processing turn"
+        ),
     }
 
     def __init__(
@@ -120,6 +123,12 @@ class CommandRouter:
 
         if command_name == "/circuit":
             return self._circuit_status(msg)
+
+        if command_name == "/stop":
+            if pool is not None:
+                pool.cancel()
+            # reply sent by Pool._process_loop on CancelledError
+            return Response(content="")
 
         builtin = self._builtins.get(command_name)
         if builtin and builtin.builtin:

@@ -201,6 +201,8 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
 
     raw_config = _load_raw_config()
     circuit_registry, admin_user_ids = _load_circuit_config(raw_config)
+    discord_raw = raw_config.get("discord", {})
+    dc_auto_thread: bool = discord_raw.get("auto_thread", True)
 
     # Config loaders call sys.exit() on missing required env vars — no partial startup.
     tg_cfg = load_telegram_config()
@@ -268,6 +270,7 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
         bot_id="main",
         circuit_registry=circuit_registry,
         msg_manager=msg_manager,
+        auto_thread=dc_auto_thread,
     )
 
     hub.register_adapter(Platform.TELEGRAM, "main", tg_adapter)

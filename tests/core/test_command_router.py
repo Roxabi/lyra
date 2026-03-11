@@ -21,6 +21,7 @@ import tempfile
 import textwrap
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -250,7 +251,7 @@ class TestDispatchRoutesToPlugin:
         # Arrange
         router = make_router(tmp_path)
         msg = make_message(content="/echo hi")
-        pool = Pool(pool_id="test", agent_name="test_agent")
+        pool = Pool(pool_id="test", agent_name="test_agent", hub=MagicMock())
 
         # Act — call the real echo plugin handler
         response = await router.dispatch(msg, pool=pool)
@@ -264,7 +265,7 @@ class TestDispatchRoutesToPlugin:
         # Arrange
         router = make_router(tmp_path)
         msg = make_message(content="/echo foo bar baz")
-        pool = Pool(pool_id="test", agent_name="test_agent")
+        pool = Pool(pool_id="test", agent_name="test_agent", hub=MagicMock())
 
         # Act
         response = await router.dispatch(msg, pool=pool)
@@ -686,3 +687,57 @@ class TestMsgManagerInjectionUnknownCommand:
         expected = mm.get("unknown_command", command_name="/unknown_cmd")
         assert isinstance(response, Response)
         assert response.content == expected
+
+
+# ---------------------------------------------------------------------------
+# Tests for /stop command (issue #127)
+# ---------------------------------------------------------------------------
+
+
+class TestStopCommand:
+    """/stop builtin calls pool.cancel() and returns an empty Response (S4-5)."""
+
+    @pytest.mark.asyncio
+    async def test_stop_command_calls_pool_cancel(self, tmp_path: Path) -> None:
+        """/stop dispatched with a pool calls pool.cancel()."""
+        # Arrange
+        router = make_router(tmp_path)
+        msg = make_message(content="/stop")
+
+        pool_mock = MagicMock(spec=Pool)
+        pool_mock.cancel = MagicMock()
+
+        # Act
+        response = await router.dispatch(msg, pool=pool_mock)
+
+        # Assert
+        pool_mock.cancel.assert_called_once()
+        assert isinstance(response, Response)
+
+    @pytest.mark.asyncio
+    async def test_stop_command_returns_empty_response(self, tmp_path: Path) -> None:
+        """/stop returns Response(content='') — hub skips the duplicate reply."""
+        # Arrange
+        router = make_router(tmp_path)
+        msg = make_message(content="/stop")
+
+        pool_mock = MagicMock(spec=Pool)
+        pool_mock.cancel = MagicMock()
+
+        # Act
+        response = await router.dispatch(msg, pool=pool_mock)
+
+        # Assert
+        assert isinstance(response, Response)
+        assert response.content == ""
+
+    @pytest.mark.asyncio
+    async def test_stop_command_with_none_pool_safe(self, tmp_path: Path) -> None:
+        """Dispatching /stop with pool=None does not raise."""
+        # Arrange
+        router = make_router(tmp_path)
+        msg = make_message(content="/stop")
+
+        # Act / Assert — must not raise even when pool is absent
+        response = await router.dispatch(msg, pool=None)
+        assert isinstance(response, Response)

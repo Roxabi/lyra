@@ -1,0 +1,776 @@
+---
+title: "Plan: feat(agent): runtime agent config — live tuning via /config command"
+issue: 135
+spec: artifacts/specs/135-runtime-agent-config-spec.mdx
+complexity: 4/10
+tier: F-lite
+generated: 2026-03-11
+---
+
+## Summary
+
+Adds a `RuntimeConfig` layer allowing live tuning of `AnthropicAgent` behavior
+via `/config` command in Telegram/Discord and `GET /config` HTTP endpoint.
+4 slices, linear dependency, ~22 micro-tasks.
+
+## Architecture
+
+```mermaid
+flowchart TD
+    subgraph "src/lyra/core/runtime_config.py"
+        RC[RuntimeConfig dataclass]
+        EC[EffectiveConfig frozen dataclass]
+        RC -->|overlay| EC
+    end
+
+    subgraph "src/lyra/core/agent.py — AgentBase"
+        BRK[_build_router_kwargs hook → {}]
+        MR[_maybe_reload — uses BRK]
+    end
+
+    subgraph "src/lyra/agents/anthropic_agent.py"
+        AA_INIT[__init__ loads lyra_runtime.toml]
+        AA_BRK[_build_router_kwargs → runtime_config]
+        AA_PROC[process — overlay per call]
+    end
+
+    subgraph "src/lyra/core/command_router.py"
+        CR_INIT[__init__ + runtime_config param]
+        CR_SHOW[_cmd_config_show]
+        CR_SET[_cmd_config_set]
+        CR_RESET[_cmd_config_reset]
+    end
+
+    subgraph "src/lyra/__main__.py"
+        HEALTH[create_health_app]
+        CFG_EP[GET /config endpoint]
+    end
+
+    RC --> AA_INIT
+    AA_BRK --> CR_INIT
+    BRK --> MR
+    MR --> CR_INIT
+    CR_SET --> RC
+    CR_RESET --> RC
+    EC --> AA_PROC
+    AA_PROC -->|model/temp/system/turns| API[Anthropic API]
+    HEALTH --> CFG_EP
+    CFG_EP --> RC
+```
+
+```mermaid
+flowchart LR
+    subgraph "runtime_config.py"
+        RC[RuntimeConfig]
+        EC[EffectiveConfig]
+    end
+
+    subgraph "agent.py"
+        AB[AgentBase]
+        BRK_M[_build_router_kwargs]
+        MR_M[_maybe_reload]
+    end
+
+    subgraph "anthropic_agent.py"
+        AA[AnthropicAgent]
+        BRK_A[_build_router_kwargs override]
+        PROC[process]
+    end
+
+    subgraph "command_router.py"
+        CR[CommandRouter]
+        SHOW[_cmd_config_show]
+        SET[_cmd_config_set]
+        RST[_cmd_config_reset]
+    end
+
+    subgraph "__main__.py"
+        CAPP[create_health_app]
+        EP[/config endpoint]
+    end
+
+    subgraph "tests/"
+        T1[test_runtime_config.py]
+        T2[test_anthropic_agent.py]
+        T3[test_command_router.py]
+        T4[test_health_endpoint.py]
+    end
+
+    RC --> EC
+    AB --> BRK_M --> MR_M
+    AA --> BRK_A
+    AA --> PROC
+    BRK_A -.->|injects| CR
+    PROC --> RC
+    CR --> SHOW
+    CR --> SET
+    CR --> RST
+    SET --> RC
+    RST --> RC
+    CAPP --> EP
+    EP --> AA
+
+    T1 -.-> RC
+    T2 -.-> AA
+    T3 -.-> CR
+    T4 -.-> EP
+```
+
+## Agents
+
+| Agent | Tasks | Files |
+|-------|-------|-------|
+| backend-dev | 17 impl tasks | `runtime_config.py`, `anthropic_agent.py`, `agent.py`, `command_router.py`, `__main__.py`, `.gitignore` |
+| tester | 5 test tasks | `test_runtime_config.py`, `test_anthropic_agent.py`, `test_command_router.py`, `test_health_endpoint.py` |
+
+## Reference Patterns
+
+- `_circuit_status()` in `command_router.py` → admin-only builtin handler pattern
+- `circuit_registry` param in `CommandRouter.__init__` → extra param injection pattern
+- `test_health_endpoint.py` with `ASGITransport` → `GET /config` test pattern
+- `src/lyra/core/agent.py` `load_agent_config()` + `tomllib` → TOML I/O pattern
+
+## Consistency Report
+
+| Spec section | Tasks covering | Status |
+|---|---|---|
+| SC-1 `RuntimeConfig` dataclass | T-01 | ✓ |
+| SC-2 `overlay()` all 6 params | T-02, T-03 | ✓ |
+| SC-3 `save()` / `load()` / corrupt | T-04, T-05 | ✓ |
+| SC-4 `reset()` / `reset(key)` | T-06 | ✓ |
+| SC-5 `EffectiveConfig` frozen | T-01 | ✓ |
+| SC-6 `AnthropicAgent.__init__` loads config | T-07, T-08 | ✓ |
+| SC-7 `process()` applies overlay | T-09, T-10 | ✓ |
+| SC-8 `_build_router_kwargs` override | T-11 | ✓ |
+| SC-9 hot-reload contract | T-12 | ✓ |
+| SC-10 concurrent mutation (replace not mutate) | T-06, T-15 | ✓ |
+| SC-11 `/config` show | T-14 | ✓ |
+| SC-12 `/config set` | T-15 | ✓ |
+| SC-13 `/config reset` | T-16 | ✓ |
+| SC-14 `/config reset key` | T-16 | ✓ |
+| SC-15 admin check | T-17 | ✓ |
+| SC-16 `GET /config` + 404 guard | T-18, T-19 | ✓ |
+| SC-17 `.gitignore` | T-20 | ✓ |
+| SC-18 tests | T-21, T-22 | ✓ |
+
+Coverage: 18/18 criteria covered.
+
+## Micro-Tasks
+
+---
+
+### Slice S1 — RuntimeConfig dataclass
+
+---
+
+**T-01** [RED] Create `RuntimeConfig` and `EffectiveConfig` skeleton
+- **File:** `src/lyra/core/runtime_config.py` (NEW)
+- **Snippet:**
+  ```python
+  from __future__ import annotations
+  from dataclasses import dataclass, field, fields, replace
+  from pathlib import Path
+  import logging, tomllib, tomli_w
+  from lyra.core.agent import Agent
+
+  _STYLES = {"concise", "detailed", "technical", "friendly"}
+  _STYLE_INSTRUCTIONS: dict[str, str] = {
+      "detailed": "Provide thorough, detailed explanations. Elaborate on context and reasoning.",
+      "technical": "Use precise technical language. Prefer exact terms over approximations.",
+      "friendly": "Be warm and conversational. Use an approachable, casual tone.",
+  }
+  _DEFAULTS = dict(style="concise", language="auto", temperature=0.7,
+                   model=None, max_steps=None, extra_instructions="")
+
+  @dataclass(frozen=True)
+  class EffectiveConfig:
+      model: str
+      temperature: float
+      system_prompt: str
+      max_turns: int
+
+  @dataclass
+  class RuntimeConfig:
+      style: str = "concise"
+      language: str = "auto"
+      temperature: float = 0.7
+      model: str | None = None
+      max_steps: int | None = None
+      extra_instructions: str = ""
+  ```
+- **Verify:** `python -c "from lyra.core.runtime_config import RuntimeConfig, EffectiveConfig; print('ok')"`
+- **Expected:** `ok`
+- **Time:** 5 min
+- **Agent:** backend-dev
+- **Spec trace:** SC-1, SC-5
+- **Slice:** S1 | **Phase:** RED | **Difficulty:** 2
+
+---
+
+**T-02** [GREEN] Implement `RuntimeConfig.overlay(base: Agent) -> EffectiveConfig`
+- **File:** `src/lyra/core/runtime_config.py`
+- **Snippet:**
+  ```python
+  def overlay(self, base: Agent) -> EffectiveConfig:
+      parts = [base.system_prompt]
+      if self.style != "concise" and self.style in _STYLE_INSTRUCTIONS:
+          parts.append(_STYLE_INSTRUCTIONS[self.style])
+      if self.language != "auto":
+          parts.append(f"Reply in {self.language}.")
+      if self.extra_instructions:
+          parts.append(self.extra_instructions)
+      return EffectiveConfig(
+          model=self.model or base.model_config.model,
+          temperature=self.temperature,
+          system_prompt="\n\n".join(parts),
+          max_turns=self.max_steps or base.model_config.max_turns,
+      )
+  ```
+- **Verify:** `uv run pytest tests/core/test_runtime_config.py -k overlay -x`
+- **Expected:** All overlay tests pass
+- **Time:** 5 min
+- **Agent:** backend-dev
+- **Spec trace:** SC-2
+- **Slice:** S1 | **Phase:** GREEN | **Difficulty:** 2
+
+---
+
+**T-03** [GREEN] `_VALID_PARAMS` dict + validation helper
+- **File:** `src/lyra/core/runtime_config.py`
+- **Snippet:**
+  ```python
+  _VALID_PARAMS: dict[str, type] = {
+      "style": str,
+      "language": str,
+      "temperature": float,
+      "model": str,   # None sentinel: value "none" or "" resets to None
+      "max_steps": int,
+      "extra_instructions": str,
+  }
+
+  def set_param(rc: RuntimeConfig, key: str, value: str) -> RuntimeConfig:
+      """Parse + validate a key=value pair, return new RuntimeConfig instance."""
+      if key not in _VALID_PARAMS:
+          raise ValueError(f"Unknown param: {key}. Valid: {', '.join(_VALID_PARAMS)}")
+      if key == "style" and value not in _STYLES:
+          raise ValueError(f"Invalid value for style: must be one of {sorted(_STYLES)}")
+      if key == "temperature":
+          try:
+              fv = float(value)
+          except ValueError:
+              raise ValueError("Invalid value for temperature: must be float 0–1")
+          if not 0.0 <= fv <= 1.0:
+              raise ValueError("Invalid value for temperature: must be float 0–1")
+          return replace(rc, temperature=fv)
+      if key == "max_steps":
+          try:
+              iv = int(value)
+          except ValueError:
+              raise ValueError("Invalid value for max_steps: must be integer")
+          return replace(rc, max_steps=iv)
+      if key in ("model",) and value.lower() in ("none", ""):
+          return replace(rc, model=None)
+      return replace(rc, **{key: value})
+  ```
+- **Verify:** `python -c "from lyra.core.runtime_config import set_param, RuntimeConfig; rc=set_param(RuntimeConfig(), 'temperature', '0.3'); assert rc.temperature == 0.3"`
+- **Expected:** no error
+- **Time:** 5 min
+- **Agent:** backend-dev
+- **Spec trace:** SC-12
+- **Slice:** S1 | **Phase:** GREEN | **Difficulty:** 2
+
+---
+
+**T-04** [GREEN] Implement `RuntimeConfig.save(path)` — non-defaults only
+- **File:** `src/lyra/core/runtime_config.py`
+- **Snippet:**
+  ```python
+  def save(self, path: Path) -> None:
+      data: dict = {}
+      if self.style != _DEFAULTS["style"]:
+          data["style"] = self.style
+      if self.language != _DEFAULTS["language"]:
+          data["language"] = self.language
+      if self.temperature != _DEFAULTS["temperature"]:
+          data["temperature"] = self.temperature
+      if self.model is not None:
+          data["model"] = self.model
+      if self.max_steps is not None:
+          data["max_steps"] = self.max_steps
+      if self.extra_instructions != _DEFAULTS["extra_instructions"]:
+          data["extra_instructions"] = self.extra_instructions
+      path.parent.mkdir(parents=True, exist_ok=True)
+      with path.open("wb") as f:
+          tomli_w.dump(data, f)
+  ```
+- **Verify:** `python -c "from lyra.core.runtime_config import RuntimeConfig; import tempfile, pathlib; p=pathlib.Path(tempfile.mktemp(suffix='.toml')); rc=RuntimeConfig(style='detailed'); rc.save(p); print(p.read_text())"`
+- **Expected:** `style = "detailed"` printed, no other fields
+- **Time:** 5 min
+- **Agent:** backend-dev
+- **Spec trace:** SC-3
+- **Slice:** S1 | **Phase:** GREEN | **Difficulty:** 2
+
+---
+
+**T-05** [GREEN] Implement `RuntimeConfig.load(path)` classmethod — silent/warn patterns
+- **File:** `src/lyra/core/runtime_config.py`
+- **Snippet:**
+  ```python
+  log = logging.getLogger(__name__)
+
+  @classmethod
+  def load(cls, path: Path) -> RuntimeConfig:
+      if not path.exists():
+          return cls()
+      try:
+          with path.open("rb") as f:
+              data = tomllib.load(f)
+      except Exception as exc:
+          log.warning("Failed to load runtime config from %s: %s — using defaults", path, exc)
+          return cls()
+      rc = cls()
+      for key, raw_value in data.items():
+          try:
+              rc = set_param(rc, key, str(raw_value))
+          except ValueError as exc:
+              log.warning("Ignoring invalid runtime config entry %r=%r: %s", key, raw_value, exc)
+      return rc
+  ```
+- **Verify:** `uv run pytest tests/core/test_runtime_config.py -k load -x`
+- **Expected:** load tests pass (roundtrip, absent, corrupt)
+- **Time:** 5 min
+- **Agent:** backend-dev
+- **Spec trace:** SC-3, SC-6
+- **Slice:** S1 | **Phase:** GREEN | **Difficulty:** 2
+
+---
+
+**T-06** [GREEN] Implement `RuntimeConfig.reset(key=None)` classmethod
+- **File:** `src/lyra/core/runtime_config.py`
+- **Snippet:**
+  ```python
+  @classmethod
+  def reset(cls, instance: RuntimeConfig | None = None, key: str | None = None) -> RuntimeConfig:
+      if key is None:
+          return cls()
+      if key not in _VALID_PARAMS:
+          raise ValueError(f"Unknown param: {key}. Valid: {', '.join(_VALID_PARAMS)}")
+      if instance is None:
+          return cls()
+      return replace(instance, **{key: _DEFAULTS[key]})
+  ```
+- **Verify:** `uv run pytest tests/core/test_runtime_config.py -k reset -x`
+- **Expected:** reset tests pass
+- **Time:** 3 min
+- **Agent:** backend-dev
+- **Spec trace:** SC-4, SC-10
+- **Slice:** S1 | **Phase:** GREEN | **Difficulty:** 1
+
+---
+
+**[RED-GATE S1]** All S1 tests pass:
+```bash
+uv run pytest tests/core/test_runtime_config.py -v
+```
+Expected: all green, 0 failures.
+
+---
+
+### Slice S2 — AnthropicAgent integration
+
+---
+
+**T-07** [RED] Add `_runtime_config` attribute to `AnthropicAgent.__init__`
+- **File:** `src/lyra/agents/anthropic_agent.py`
+- **Snippet:**
+  ```python
+  from lyra.core.runtime_config import RuntimeConfig
+
+  class AnthropicAgent(AgentBase):
+      def __init__(self, config, circuit_registry=None, admin_user_ids=None,
+                   msg_manager=None, runtime_config: RuntimeConfig | None = None) -> None:
+          # Load from disk if not injected (testability: allow injection)
+          if runtime_config is not None:
+              self._runtime_config = runtime_config
+          else:
+              runtime_file = _AGENTS_DIR / "lyra_runtime.toml"
+              self._runtime_config = RuntimeConfig.load(runtime_file)
+          super().__init__(config, ...)  # existing super().__init__ call
+  ```
+- **Verify:** `python -c "from lyra.agents.anthropic_agent import AnthropicAgent; print('ok')"`
+- **Expected:** `ok`
+- **Time:** 5 min
+- **Agent:** backend-dev
+- **Spec trace:** SC-6
+- **Slice:** S2 | **Phase:** RED | **Difficulty:** 2
+
+---
+
+**T-08** [RED] `_AGENTS_DIR` import in `anthropic_agent.py`
+- **File:** `src/lyra/agents/anthropic_agent.py`
+- **Snippet:**
+  ```python
+  from lyra.core.agent import Agent, AgentBase, _AGENTS_DIR
+  ```
+- **Verify:** `python -c "from lyra.agents.anthropic_agent import AnthropicAgent; print('ok')"` (no ImportError)
+- **Expected:** `ok`
+- **Time:** 2 min
+- **Agent:** backend-dev
+- **Spec trace:** SC-6
+- **Slice:** S2 | **Phase:** RED | **Difficulty:** 1
+
+---
+
+**T-09** [GREEN] Override `_build_router_kwargs()` in `AnthropicAgent`
+- **File:** `src/lyra/agents/anthropic_agent.py`
+- **Snippet:**
+  ```python
+  def _build_router_kwargs(self) -> dict:
+      return {"runtime_config": self._runtime_config}
+  ```
+- **Verify:** `python -c "from lyra.agents.anthropic_agent import AnthropicAgent; print('ok')"` (no error)
+- **Expected:** `ok`
+- **Time:** 2 min
+- **Agent:** backend-dev
+- **Spec trace:** SC-8
+- **Slice:** S2 | **Phase:** GREEN | **Difficulty:** 1
+
+---
+
+**T-10** [GREEN] Apply overlay in `AnthropicAgent.process()`
+- **File:** `src/lyra/agents/anthropic_agent.py`
+- **Snippet:**
+  ```python
+  async def process(self, msg, pool):
+      self._maybe_reload()
+      text = extract_text(msg)
+      messages = self._build_messages(text, pool)
+
+      effective = self._runtime_config.overlay(self.config)   # NEW
+      kwargs: dict[str, Any] = {
+          "model": effective.model,                            # was: self.config.model_config.model
+          "max_tokens": 4096,
+          "temperature": effective.temperature,                # NEW
+          "messages": messages,
+      }
+      if effective.system_prompt:                              # was: self.config.system_prompt
+          kwargs["system"] = effective.system_prompt
+      # ... rest unchanged, but use effective.max_turns for loop limit
+      max_turns = effective.max_turns                         # was: self.config.model_config.max_turns
+  ```
+- **Verify:** `uv run pytest tests/agents/test_anthropic_agent.py -k overlay -x`
+- **Expected:** overlay integration tests pass
+- **Time:** 8 min
+- **Agent:** backend-dev
+- **Spec trace:** SC-7
+- **Slice:** S2 | **Phase:** GREEN | **Difficulty:** 3
+
+---
+
+**[RED-GATE S2]** Overlay integration tests pass:
+```bash
+uv run pytest tests/agents/test_anthropic_agent.py -v
+```
+Expected: all green.
+
+---
+
+### Slice S3 — /config command + router/agent wiring
+
+---
+
+**T-11** [RED] Add `_build_router_kwargs()` hook to `AgentBase`
+- **File:** `src/lyra/core/agent.py`
+- **Snippet:**
+  ```python
+  class AgentBase(ABC):
+      ...
+      def _build_router_kwargs(self) -> dict:
+          """Hook: return extra kwargs for CommandRouter construction.
+          Override in subclasses to inject runtime_config etc."""
+          return {}
+  ```
+  Update both inline `CommandRouter(...)` calls in `_maybe_reload()` and `__init__` to:
+  ```python
+  self.command_router = CommandRouter(
+      self._plugin_loader,
+      self._effective_plugins,
+      circuit_registry=circuit_registry,
+      admin_user_ids=admin_user_ids,
+      msg_manager=msg_manager,
+      **self._build_router_kwargs(),
+  )
+  ```
+- **Verify:** `python -c "from lyra.core.agent import AgentBase; print('ok')"` (no error)
+- **Expected:** `ok`
+- **Time:** 5 min
+- **Agent:** backend-dev
+- **Spec trace:** SC-8, SC-9
+- **Slice:** S3 | **Phase:** RED | **Difficulty:** 2
+
+---
+
+**T-12** [GREEN] Add `runtime_config` param to `CommandRouter.__init__`
+- **File:** `src/lyra/core/command_router.py`
+- **Snippet:**
+  ```python
+  from lyra.core.runtime_config import RuntimeConfig  # TYPE_CHECKING guard ok
+
+  class CommandRouter:
+      def __init__(
+          self,
+          plugin_loader,
+          enabled_plugins,
+          builtins=None,
+          circuit_registry=None,
+          admin_user_ids=None,
+          msg_manager=None,
+          runtime_config: RuntimeConfig | None = None,   # NEW
+      ) -> None:
+          ...
+          self._runtime_config = runtime_config
+  ```
+- **Verify:** `python -c "from lyra.core.command_router import CommandRouter; print('ok')"`
+- **Expected:** `ok`
+- **Time:** 3 min
+- **Agent:** backend-dev
+- **Spec trace:** SC-8
+- **Slice:** S3 | **Phase:** GREEN | **Difficulty:** 1
+
+---
+
+**T-13** [GREEN] Add `/config` to `_DEFAULT_BUILTINS`
+- **File:** `src/lyra/core/command_router.py`
+- **Snippet:**
+  ```python
+  _DEFAULT_BUILTINS: dict[str, CommandConfig] = {
+      ...
+      "/config": CommandConfig(builtin=True, description="Show/set runtime config (admin-only)"),
+  }
+  ```
+  Add dispatch branch in `dispatch()`:
+  ```python
+  if command_name == "/config":
+      return self._cmd_config(msg, args)
+  ```
+- **Verify:** `python -c "from lyra.core.command_router import CommandRouter; print('/config' in CommandRouter._DEFAULT_BUILTINS)"`
+- **Expected:** `True`
+- **Time:** 3 min
+- **Agent:** backend-dev
+- **Spec trace:** SC-11
+- **Slice:** S3 | **Phase:** GREEN | **Difficulty:** 1
+
+---
+
+**T-14** [GREEN] Implement `_cmd_config_show()` — formatted table
+- **File:** `src/lyra/core/command_router.py`
+- **Snippet:**
+  ```python
+  def _cmd_config_show(self) -> Response:
+      rc = self._runtime_config
+      lines = ["Runtime Config", "─" * 35]
+      lines.append(f"  {'style':<20} {rc.style}")
+      lines.append(f"  {'language':<20} {rc.language}")
+      lines.append(f"  {'temperature':<20} {rc.temperature}")
+      lines.append(f"  {'model':<20} {rc.model or '(persona default)'}")
+      lines.append(f"  {'max_steps':<20} {rc.max_steps or '(model default)'}")
+      lines.append(f"  {'extra_instructions':<20} {rc.extra_instructions or '(none)'}")
+      lines.append("─" * 35)
+      return Response(content="\n".join(lines))
+  ```
+- **Verify:** `uv run pytest tests/core/test_command_router.py -k "config_show" -x`
+- **Expected:** passes
+- **Time:** 5 min
+- **Agent:** backend-dev
+- **Spec trace:** SC-11
+- **Slice:** S3 | **Phase:** GREEN | **Difficulty:** 1
+
+---
+
+**T-15** [GREEN] Implement `_cmd_config_set()` — parse key=value, validate, save, replace attr
+- **File:** `src/lyra/core/command_router.py`
+- **Snippet:**
+  ```python
+  def _cmd_config_set(self, args: list[str]) -> Response:
+      from lyra.core.runtime_config import set_param, _AGENTS_DIR
+      updates: list[str] = []
+      rc = self._runtime_config
+      for token in args:
+          if "=" not in token:
+              return Response(content=f"Invalid format: {token!r}. Use key=value.")
+          key, _, value = token.partition("=")
+          try:
+              rc = set_param(rc, key.strip(), value.strip())
+              updates.append(f"{key} = {value}")
+          except ValueError as exc:
+              return Response(content=str(exc))
+      runtime_file = _AGENTS_DIR / "lyra_runtime.toml"
+      rc.save(runtime_file)
+      self._runtime_config = rc      # replace, not mutate
+      updated = ", ".join(updates)
+      return Response(content=f"Updated: {updated}\nSaved to {runtime_file.name}")
+  ```
+- **Verify:** `uv run pytest tests/core/test_command_router.py -k "config_set" -x`
+- **Expected:** passes
+- **Time:** 8 min
+- **Agent:** backend-dev
+- **Spec trace:** SC-12
+- **Slice:** S3 | **Phase:** GREEN | **Difficulty:** 3
+
+---
+
+**T-16** [GREEN] Implement `_cmd_config_reset()` — full reset or single-key
+- **File:** `src/lyra/core/command_router.py`
+- **Snippet:**
+  ```python
+  def _cmd_config_reset(self, args: list[str]) -> Response:
+      from lyra.core.runtime_config import RuntimeConfig, _AGENTS_DIR
+      runtime_file = _AGENTS_DIR / "lyra_runtime.toml"
+      if not args:
+          self._runtime_config = RuntimeConfig()
+          try:
+              runtime_file.unlink(missing_ok=True)
+          except OSError:
+              pass
+          return Response(content="Runtime config reset to defaults.")
+      key = args[0]
+      try:
+          self._runtime_config = RuntimeConfig.reset(self._runtime_config, key)
+      except ValueError as exc:
+          return Response(content=str(exc))
+      self._runtime_config.save(runtime_file)
+      return Response(content=f"Reset: {key} = (default). Saved.")
+  ```
+- **Verify:** `uv run pytest tests/core/test_command_router.py -k "config_reset" -x`
+- **Expected:** passes
+- **Time:** 5 min
+- **Agent:** backend-dev
+- **Spec trace:** SC-13, SC-14
+- **Slice:** S3 | **Phase:** GREEN | **Difficulty:** 2
+
+---
+
+**T-17** [GREEN] Unified `_cmd_config()` dispatch + admin check
+- **File:** `src/lyra/core/command_router.py`
+- **Snippet:**
+  ```python
+  def _cmd_config(self, msg: Message, args: list[str]) -> Response:
+      if not self._admin_user_ids or msg.user_id not in self._admin_user_ids:
+          return Response(content="This command is admin-only.")
+      if self._runtime_config is None:
+          return Response(content="Runtime config not available for this backend.")
+      if not args:
+          return self._cmd_config_show()
+      if args[0] == "reset":
+          return self._cmd_config_reset(args[1:])
+      return self._cmd_config_set(args)
+  ```
+- **Verify:** `uv run pytest tests/core/test_command_router.py -k config -x`
+- **Expected:** all /config tests pass
+- **Time:** 3 min
+- **Agent:** backend-dev
+- **Spec trace:** SC-11, SC-15
+- **Slice:** S3 | **Phase:** GREEN | **Difficulty:** 1
+
+---
+
+**T-20** [GREEN] Add `.gitignore` entry
+- **File:** `.gitignore`
+- **Snippet:** add line: `src/lyra/agents/lyra_runtime.toml`
+- **Verify:** `grep "lyra_runtime.toml" .gitignore`
+- **Expected:** line found
+- **Time:** 1 min
+- **Agent:** backend-dev
+- **Spec trace:** SC-17
+- **Slice:** S3 | **Phase:** GREEN | **Difficulty:** 1
+
+---
+
+**[RED-GATE S3]** All command router tests pass:
+```bash
+uv run pytest tests/core/test_command_router.py -v
+```
+Expected: all green.
+
+---
+
+### Slice S4 — GET /config endpoint
+
+---
+
+**T-18** [RED] Add `GET /config` route to `create_health_app`
+- **File:** `src/lyra/__main__.py`
+- **Snippet:**
+  ```python
+  from fastapi import HTTPException
+  from lyra.agents.anthropic_agent import AnthropicAgent
+
+  def create_health_app(hub: Hub) -> FastAPI:
+      app = FastAPI(title="Lyra Hub")
+
+      @app.get("/health")
+      async def health() -> dict: ...  # existing
+
+      @app.get("/config")
+      async def config_endpoint() -> dict:
+          agent = hub.agent_registry.get("lyra_default")
+          if not isinstance(agent, AnthropicAgent):
+              raise HTTPException(
+                  status_code=404,
+                  detail="runtime config not available for this agent backend",
+              )
+          rc = agent._runtime_config
+          return {
+              "style": rc.style,
+              "language": rc.language,
+              "temperature": rc.temperature,
+              "model": rc.model,
+              "max_steps": rc.max_steps,
+              "extra_instructions": rc.extra_instructions,
+              "effective_model": rc.model or agent.config.model_config.model,
+              "effective_max_steps": rc.max_steps or agent.config.model_config.max_turns,
+          }
+
+      return app
+  ```
+- **Verify:** `python -c "from lyra.__main__ import create_health_app; print('ok')"`
+- **Expected:** `ok`
+- **Time:** 5 min
+- **Agent:** backend-dev
+- **Spec trace:** SC-16
+- **Slice:** S4 | **Phase:** RED | **Difficulty:** 2
+
+---
+
+**T-19** [GREEN] Handle non-AnthropicAgent (404 guard is already in T-18; add test)
+- **File:** `tests/test_health_endpoint.py`
+- **Snippet:** test that calls `GET /config` with a hub having a `SimpleAgent` returns 404
+- **Verify:** `uv run pytest tests/test_health_endpoint.py -k config -x`
+- **Expected:** passes
+- **Time:** 5 min
+- **Agent:** tester
+- **Spec trace:** SC-16
+- **Slice:** S4 | **Phase:** GREEN | **Difficulty:** 2
+
+---
+
+**[RED-GATE S4]** Full test suite passes:
+```bash
+uv run pytest -x
+```
+Expected: all green, no regressions.
+
+---
+
+### Test Tasks (tester agent, parallel to backend-dev within each slice)
+
+**T-21** Write `tests/core/test_runtime_config.py`
+- Covers: overlay (all 6 params), `concise` no-injection, persistence roundtrip, corrupt-file fallback, `reset()` / `reset(key)`, `set_param` validation
+- **Verify:** `uv run pytest tests/core/test_runtime_config.py -v`
+- **Spec trace:** SC-18 | **Slice:** S1 | **Phase:** GREEN | **[P]** parallel with T-01..T-06 | **Difficulty:** 3
+
+**T-22** Extend `tests/agents/test_anthropic_agent.py` + `tests/core/test_command_router.py`
+- `test_anthropic_agent.py`: overlay applied (mock `messages.create`, assert model/temp/system)
+- `test_command_router.py`: `/config show`, `/config key=value`, `/config reset`, admin check
+- **Verify:** `uv run pytest tests/agents/test_anthropic_agent.py tests/core/test_command_router.py -v`
+- **Spec trace:** SC-18 | **Slice:** S2-S3 | **Phase:** GREEN | **[P]** parallel with S2/S3 backend tasks | **Difficulty:** 3

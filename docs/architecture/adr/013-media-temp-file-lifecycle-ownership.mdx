@@ -1,0 +1,115 @@
+---
+title: "ADR-013: Media Temp File Lifecycle Ownership"
+description: Establishes which layer creates, owns, and destroys temp files for binary media (audio, images) passing through the Lyra pipeline.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+Issue #80 (Voice STT) introduces the first binary media path in Lyra: a Telegram voice
+message is downloaded to a temp file by `TelegramAdapter`, then transcribed by
+`STTService`, and the file is deleted after transcription. The same pattern will recur
+for image handling and any future video input.
+
+The spec for #80 assigns temp file cleanup to `STTService` via a `finally` block. This
+means the adapter creates a resource whose lifetime is controlled by an application-layer
+service. There are multiple failure points between creation (adapter) and destruction
+(service) where the file can be orphaned:
+
+- The pool processes the message but the agent does not recognise `MessageType.AUDIO`
+- `agent.process()` raises before `STTService.transcribe()` is called
+- The pool task is cancelled before the agent runs
+
+Without a clear ownership rule, every future media handler will resolve this differently,
+leading to inconsistent cleanup guarantees.
+
+## Options Considered
+
+### Option A: Service owns cleanup (spec as written)
+
+`STTService.transcribe()` deletes the temp file in its own `finally` block. The adapter
+creates the file; the service destroys it.
+
+- **Pros:** Simple. STTService always runs cleanup when called.
+- **Cons:** File leaks if the service is never called. Ownership is split across two
+  layers. Violates the principle that the creator should control the lifetime of a
+  resource. Does not scale to future media types handled by different services.
+
+### Option B: Caller owns cleanup via try/finally at call site
+
+The temp file path is created by the adapter and cleaned up by the agent's `process()`
+method via `try/finally` wrapping the `STTService.transcribe()` call. `STTService` does
+not delete the file.
+
+- **Pros:** Cleanup is guaranteed at the call site regardless of whether the service
+  is reached. Ownership is explicit: whoever calls the service is responsible for the
+  resource it passes in.
+- **Cons:** Requires discipline at each call site. If a future caller forgets the
+  `try/finally`, the file leaks silently.
+
+### Option C: Context manager on the adapter side
+
+The adapter exposes a context manager (`async with adapter.download_audio(file_id) as path`)
+that yields the temp path and deletes the file on exit. The message's `AudioContent.url`
+is valid only within the context manager scope.
+
+- **Pros:** Strongest guarantee — cleanup is structural, not discipline-dependent.
+  Impossible to leak if the context manager is used correctly.
+- **Cons:** Requires the context manager to remain open across the async boundary
+  between the adapter and the pool (from download to transcription). This spans multiple
+  asyncio tasks and is awkward to model. The `Message` object passed to the pool would
+  hold a path to a file whose lifetime is tied to a context manager held in the adapter —
+  a non-obvious coupling.
+
+## Decision
+
+**Option B** — the agent's `process()` method owns temp file cleanup via `try/finally`
+at the `STTService.transcribe()` call site.
+
+Rationale:
+
+1. Option C's cross-task context manager lifetime is architecturally unsound in the
+   hub-and-spoke asyncio model: the adapter task and the pool task run independently,
+   so the context manager cannot span both cleanly.
+
+2. Option A's split ownership (creator ≠ destroyer) is the weakest guarantee and will
+   cause leaks whenever the pipeline short-circuits before `STTService` is reached.
+
+3. Option B is consistent with how the rest of the codebase handles resource cleanup:
+   the call site that receives a resource is responsible for releasing it. `STTService`
+   should not delete a file it did not create — doing so violates the single
+   responsibility of a transcription service.
+
+**Additional constraint:** A startup-time temp file audit (e.g., delete stale files in
+the Lyra audio temp directory on restart) is recommended as a safety net for files
+orphaned by process crashes. This is deferred but noted here for future implementors.
+
+**Temp directory:** Use `tempfile.mkstemp(suffix=".ogg", dir=<LYRA_AUDIO_TMP or system
+temp>)` in the adapter. A dedicated `LYRA_AUDIO_TMP` env var is recommended so the
+cleanup sweep on restart targets a known directory, not the entire system temp dir.
+
+## Consequences
+
+### Positive
+
+- Temp file cleanup is guaranteed at the call site regardless of whether `STTService`
+  is reached, covering all pipeline short-circuit paths.
+- `STTService` has a single responsibility: transcribe audio at a given path, return
+  a result, raise on failure. It does not manage file lifecycle.
+- The pattern is reusable for image and video handling: any agent method that receives
+  a binary media path is responsible for cleanup via `try/finally`.
+
+### Negative
+
+- Every future media handler must remember to wrap the service call in `try/finally`.
+  There is no structural enforcement. This must be documented in `ARCHITECTURE.md`.
+
+### Neutral
+
+- `AudioContent.url` remains a plain `str` (temp file path). No change to the data
+  model is required.
+- The `STTService.transcribe()` signature does not need to change — it still receives
+  a path. The cleanup responsibility shifts to the caller, not the interface.

@@ -181,8 +181,8 @@ async def test_backpressure_sends_ack_when_bus_full() -> None:
     from lyra.adapters.telegram import TelegramAdapter
 
     hub = MagicMock()
-    hub.bus = MagicMock()
-    hub.bus.put_nowait = MagicMock(side_effect=asyncio.QueueFull())
+    hub.inbound_bus = MagicMock()
+    hub.inbound_bus.put = MagicMock(side_effect=asyncio.QueueFull())
 
     bot = AsyncMock()
     bot.get_me = AsyncMock(return_value=SimpleNamespace(username="lyra_bot"))
@@ -509,9 +509,8 @@ async def test_on_message_drops_silently_when_hub_circuit_open() -> None:
     registry = _make_open_registry("hub")
 
     hub = MagicMock()
-    hub.bus = MagicMock()
-    hub.bus.full.return_value = False
-    hub.bus.put = AsyncMock()
+    hub.inbound_bus = MagicMock()
+    hub.inbound_bus.put = MagicMock()
 
     bot = AsyncMock()
     bot.get_me = AsyncMock(return_value=SimpleNamespace(username="lyra_bot"))
@@ -537,8 +536,8 @@ async def test_on_message_drops_silently_when_hub_circuit_open() -> None:
     # Act
     await adapter._on_message(aiogram_msg)
 
-    # Assert — bus.put must NOT be called; message was silently dropped
-    hub.bus.put.assert_not_awaited()
+    # Assert — inbound_bus.put must NOT be called; message was silently dropped
+    hub.inbound_bus.put.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -547,8 +546,10 @@ async def test_on_message_drops_silently_when_hub_circuit_open() -> None:
 
 
 @pytest.mark.asyncio
-async def test_send_skips_when_telegram_circuit_open() -> None:
-    """SC-13: send() skips bot.send_message when circuits['telegram'] is OPEN."""
+async def test_send_always_delivers_regardless_of_circuit_state() -> None:
+    """SC-13 (updated): adapter.send() no longer checks the circuit breaker.
+    CB check is owned by OutboundDispatcher. Adapter always delivers.
+    """
     from lyra.adapters.telegram import TelegramAdapter
     from lyra.core.message import (
         Message,
@@ -559,11 +560,12 @@ async def test_send_skips_when_telegram_circuit_open() -> None:
         TextContent,
     )
 
-    # Arrange
+    # Arrange — circuit is OPEN but adapter should still send (CB check in dispatcher)
     registry = _make_open_registry("telegram")
 
     hub = MagicMock()
     bot = AsyncMock()
+    bot.send_message = AsyncMock(return_value=SimpleNamespace(message_id=99))
 
     adapter = TelegramAdapter(
         bot_id="main",
@@ -591,8 +593,8 @@ async def test_send_skips_when_telegram_circuit_open() -> None:
     # Act
     await adapter.send(original_msg, response)
 
-    # Assert — telegram circuit is OPEN so bot.send_message must not be called
-    bot.send_message.assert_not_awaited()
+    # Assert — CB is open but adapter still sends (CB check owned by dispatcher)
+    bot.send_message.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
@@ -659,8 +661,8 @@ async def test_telegram_msg_manager_injection_backpressure_ack() -> None:
     import asyncio
 
     hub = MagicMock()
-    hub.bus = MagicMock()
-    hub.bus.put_nowait = MagicMock(side_effect=asyncio.QueueFull())
+    hub.inbound_bus = MagicMock()
+    hub.inbound_bus.put = MagicMock(side_effect=asyncio.QueueFull())
 
     bot = AsyncMock()
     bot.get_me = AsyncMock(return_value=SimpleNamespace(username="lyra_bot"))

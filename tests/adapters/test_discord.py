@@ -125,13 +125,12 @@ def test_is_mention_false_when_bot_not_in_mentions() -> None:
 
 @pytest.mark.asyncio
 async def test_own_message_is_filtered() -> None:
-    """When message.author == adapter._bot_user, hub.bus.put is never awaited."""
+    """When message.author == adapter._bot_user, inbound_bus.put is never called."""
     from lyra.adapters.discord import DiscordAdapter  # ImportError expected in RED
 
     hub = MagicMock()
-    hub.bus = MagicMock()
-    hub.bus.put = AsyncMock()
-    hub.bus.full = MagicMock(return_value=False)
+    hub.inbound_bus = MagicMock()
+    hub.inbound_bus.put = MagicMock()
 
     adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
     bot_user = SimpleNamespace(id=999, bot=True)
@@ -149,8 +148,7 @@ async def test_own_message_is_filtered() -> None:
 
     await adapter.on_message(discord_msg)
 
-    hub.bus.put.assert_not_awaited()
-    hub.bus.full.assert_not_called()
+    hub.inbound_bus.put.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -270,14 +268,14 @@ def test_missing_discord_token_raises_on_load(
 
 @pytest.mark.asyncio
 async def test_backpressure_sends_ack_when_bus_full() -> None:
-    """When bus is full, put_nowait raises QueueFull and adapter sends ack."""
+    """When inbound queue is full, put raises QueueFull and adapter sends ack."""
     import asyncio
 
     from lyra.adapters.discord import DiscordAdapter
 
     hub = MagicMock()
-    hub.bus = MagicMock()
-    hub.bus.put_nowait = MagicMock(side_effect=asyncio.QueueFull())
+    hub.inbound_bus = MagicMock()
+    hub.inbound_bus.put = MagicMock(side_effect=asyncio.QueueFull())
 
     adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
     bot_user = SimpleNamespace(id=999, bot=True)
@@ -539,9 +537,8 @@ async def test_on_message_drops_silently_when_hub_circuit_open() -> None:
     registry = _make_open_registry("hub")
 
     hub = MagicMock()
-    hub.bus = MagicMock()
-    hub.bus.full = MagicMock(return_value=False)
-    hub.bus.put = AsyncMock()
+    hub.inbound_bus = MagicMock()
+    hub.inbound_bus.put = MagicMock()
 
     adapter = DiscordAdapter(
         hub=hub,
@@ -566,8 +563,8 @@ async def test_on_message_drops_silently_when_hub_circuit_open() -> None:
     # Act
     await adapter.on_message(discord_msg)
 
-    # Assert — bus.put must NOT be called; message was silently dropped
-    hub.bus.put.assert_not_awaited()
+    # Assert — inbound_bus.put must NOT be called; message was silently dropped
+    hub.inbound_bus.put.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -577,7 +574,9 @@ async def test_on_message_drops_silently_when_hub_circuit_open() -> None:
 
 @pytest.mark.asyncio
 async def test_send_skips_when_discord_circuit_open() -> None:
-    """SC-13: send() skips channel.send/reply when circuits['discord'] is OPEN."""
+    """SC-13 (updated): adapter.send() no longer checks the CB.
+    CB check is owned by OutboundDispatcher. Adapter always delivers.
+    """
     from lyra.adapters.discord import DiscordAdapter
     from lyra.core.message import (
         DiscordContext,
@@ -621,8 +620,8 @@ async def test_send_skips_when_discord_circuit_open() -> None:
     # Act
     await adapter.send(hub_msg, response)
 
-    # Assert — discord circuit is OPEN so channel.send must not be called
-    mock_channel.send.assert_not_awaited()
+    # Assert — CB is open but adapter still calls channel.send (CB check in dispatcher)
+    mock_channel.send.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
@@ -642,8 +641,8 @@ async def test_discord_msg_manager_injection_backpressure_ack() -> None:
     import asyncio
 
     hub = MagicMock()
-    hub.bus = MagicMock()
-    hub.bus.put_nowait = MagicMock(side_effect=asyncio.QueueFull())
+    hub.inbound_bus = MagicMock()
+    hub.inbound_bus.put = MagicMock(side_effect=asyncio.QueueFull())
 
     adapter = DiscordAdapter(
         hub=hub, bot_id="main", intents=discord.Intents.none(), msg_manager=mm
@@ -815,8 +814,9 @@ async def test_send_no_reply_message_id_on_failure() -> None:
     )
     response = Response(content="hi")
 
-    # Act
-    await adapter.send(hub_msg, response)
+    # Act — send() now raises on failure (CB recording handled by OutboundDispatcher)
+    with pytest.raises(Exception, match="network error"):
+        await adapter.send(hub_msg, response)
 
     # Assert
     assert "reply_message_id" not in response.metadata

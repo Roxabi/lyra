@@ -30,6 +30,7 @@ from lyra.core.cli_pool import CliPool
 from lyra.core.hub import Hub, RoutingKey
 from lyra.core.message import Platform
 from lyra.core.messages import MessageManager
+from lyra.core.outbound_dispatcher import OutboundDispatcher
 from lyra.core.pairing import PairingConfig, PairingManager, set_pairing_manager
 
 log = logging.getLogger(__name__)
@@ -170,8 +171,18 @@ def create_health_app(hub: Hub) -> FastAPI:
                 for name, s in all_status.items()
             }
 
+        inbound: dict[str, int] = {
+            p.value: hub.inbound_bus.qsize(p)
+            for p in hub.inbound_bus.registered_platforms()
+        }
+        outbound: dict[str, int] = {
+            platform.value: dispatcher.qsize()
+            for (platform, _bot_id), dispatcher in hub.outbound_dispatchers.items()
+        }
+
         return {
-            "queue_size": hub.bus.qsize(),
+            "queue_size": hub.inbound_bus.staging_qsize(),
+            "queues": {"inbound": inbound, "outbound": outbound},
             "last_message_age_s": last_message_age_s,
             "uptime_s": round(uptime_s, 1),
             "circuits": circuits,
@@ -268,6 +279,27 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
     )
     hub.register_binding(Platform.DISCORD, "main", "*", agent.name, dc_key.to_pool_id())
 
+    # Create and register per-platform outbound dispatchers
+    tg_dispatcher = OutboundDispatcher(
+        platform_name="telegram",
+        adapter=tg_adapter,
+        circuit=circuit_registry.get("telegram"),
+        circuit_registry=circuit_registry,
+    )
+    dc_dispatcher = OutboundDispatcher(
+        platform_name="discord",
+        adapter=dc_adapter,
+        circuit=circuit_registry.get("discord"),
+        circuit_registry=circuit_registry,
+    )
+    hub.register_outbound_dispatcher(Platform.TELEGRAM, "main", tg_dispatcher)
+    hub.register_outbound_dispatcher(Platform.DISCORD, "main", dc_dispatcher)
+
+    # Start InboundBus feeder tasks and OutboundDispatcher workers
+    await hub.inbound_bus.start()
+    await tg_dispatcher.start()
+    await dc_dispatcher.start()
+
     # Health endpoint (SC-1): root FastAPI app on configurable port
     health_port = int(os.environ.get("LYRA_HEALTH_PORT", "8443"))
     health_app = create_health_app(hub)
@@ -306,6 +338,9 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
     for task in tasks:
         task.cancel()
     await asyncio.gather(*tasks, return_exceptions=True)
+    await hub.inbound_bus.stop()
+    await tg_dispatcher.stop()
+    await dc_dispatcher.stop()
     await dc_adapter.close()
     if pm is not None:
         await pm.close()

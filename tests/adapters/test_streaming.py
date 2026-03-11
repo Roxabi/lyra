@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from lyra.core.message import (
     DiscordContext,
     Message,
@@ -73,7 +75,7 @@ class TestTelegramStreaming:
         from lyra.adapters.telegram import TelegramAdapter
 
         hub = MagicMock()
-        hub.bus = MagicMock()
+        hub.inbound_bus = MagicMock()
         adapter = TelegramAdapter(
             bot_id="main",
             token="fake-token",
@@ -129,7 +131,10 @@ class TestTelegramStreaming:
         adapter, bot = self._make_adapter()
         msg = make_tg_message()
 
-        await adapter.send_streaming(msg, error_chunks())
+        # send_streaming now re-raises after the final edit so OutboundDispatcher
+        # can record CB failure
+        with pytest.raises(RuntimeError, match="stream died"):
+            await adapter.send_streaming(msg, error_chunks())
 
         last_edit = bot.edit_message_text.call_args
         assert "[response interrupted]" in last_edit.kwargs["text"]
@@ -146,7 +151,7 @@ class TestDiscordStreaming:
         from lyra.adapters.discord import DiscordAdapter
 
         hub = MagicMock()
-        hub.bus = MagicMock()
+        hub.inbound_bus = MagicMock()
         adapter = DiscordAdapter(hub=hub, bot_id="main")
 
         mock_placeholder = AsyncMock()
@@ -172,7 +177,10 @@ class TestDiscordStreaming:
         adapter, channel, placeholder = self._make_adapter()
         msg = make_dc_message()
 
-        await adapter.send_streaming(msg, error_chunks())
+        # send_streaming now re-raises after the final edit so OutboundDispatcher
+        # can record CB failure
+        with pytest.raises(RuntimeError, match="stream died"):
+            await adapter.send_streaming(msg, error_chunks())
 
         last_edit = placeholder.edit.call_args
         assert "[response interrupted]" in last_edit.kwargs["content"]

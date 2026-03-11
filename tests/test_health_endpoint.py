@@ -54,15 +54,18 @@ class TestHealthEndpoint:
         assert resp.status_code == 200
         data = resp.json()
         assert "queue_size" in data
+        assert "queues" in data
+        assert "inbound" in data["queues"]
+        assert "outbound" in data["queues"]
         assert "last_message_age_s" in data
         assert "uptime_s" in data
         assert "circuits" in data
 
-    async def test_health_queue_size_reflects_bus(self, hub: Hub) -> None:
-        """SC-2: queue_size reflects actual bus queue size."""
+    async def test_health_queue_size_reflects_staging(self, hub: Hub) -> None:
+        """SC-2: queue_size reflects the staging queue depth."""
         from lyra.__main__ import create_health_app
 
-        # Put a message on the bus to increase queue size
+        # Put a message directly on the staging queue
         msg = Message.from_adapter(
             platform=Platform.TELEGRAM,
             bot_id="main",
@@ -73,7 +76,7 @@ class TestHealthEndpoint:
             timestamp=datetime.now(timezone.utc),
             platform_context=TelegramContext(chat_id=123),
         )
-        await hub.bus.put(msg)
+        await hub.bus.put(msg)  # hub.bus is the staging queue alias
 
         app = create_health_app(hub)
         transport = ASGITransport(app=app)
@@ -82,6 +85,42 @@ class TestHealthEndpoint:
 
         data = resp.json()
         assert data["queue_size"] == 1
+
+    async def test_health_per_platform_queue_depths(self, hub: Hub) -> None:
+        """S2-6: /health reports per-platform queue depths."""
+        from unittest.mock import MagicMock
+
+        from lyra.__main__ import create_health_app
+        from lyra.core.outbound_dispatcher import OutboundDispatcher
+
+        hub.register_adapter(Platform.TELEGRAM, "main", MagicMock())
+        tg_dispatcher = OutboundDispatcher(
+            platform_name="telegram",
+            adapter=MagicMock(),
+        )
+        hub.register_outbound_dispatcher(Platform.TELEGRAM, "main", tg_dispatcher)
+
+        # Enqueue one message to the per-platform inbound queue
+        msg = Message.from_adapter(
+            platform=Platform.TELEGRAM,
+            bot_id="main",
+            user_id="test",
+            user_name="test",
+            content=TextContent(text="hello"),
+            type=MessageType.TEXT,
+            timestamp=datetime.now(timezone.utc),
+            platform_context=TelegramContext(chat_id=123),
+        )
+        hub.inbound_bus.put(Platform.TELEGRAM, msg)
+
+        app = create_health_app(hub)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/health")
+
+        data = resp.json()
+        assert data["queues"]["inbound"]["telegram"] == 1
+        assert data["queues"]["outbound"]["telegram"] == 0
 
     async def test_health_uptime_positive(self, hub: Hub) -> None:
         """SC-2: uptime_s is a positive number."""

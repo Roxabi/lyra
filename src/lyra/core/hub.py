@@ -13,6 +13,7 @@ from anthropic import APIError as AnthropicAPIError
 
 from .agent import AgentBase
 from .circuit_breaker import CircuitRegistry
+from .inbound_bus import InboundBus
 from .message import (
     GENERIC_ERROR_REPLY,
     DiscordContext,
@@ -22,6 +23,7 @@ from .message import (
     TelegramContext,
 )
 from .messages import MessageManager
+from .outbound_dispatcher import OutboundDispatcher
 from .pool import Pool
 
 if TYPE_CHECKING:
@@ -77,7 +79,7 @@ class Binding:
 
 
 class Hub:
-    """Central hub: bounded async bus + adapter registry + bindings + pools."""
+    """Central hub: InboundBus + OutboundDispatchers + adapter registry + pools."""
 
     BUS_SIZE = 100
     # Per-user sliding window: drop messages beyond this rate.
@@ -93,7 +95,9 @@ class Hub:
         msg_manager: MessageManager | None = None,
         pairing_manager: PairingManager | None = None,
     ) -> None:
-        self.bus: asyncio.Queue[Message] = asyncio.Queue(maxsize=bus_size)
+        self._bus_size = bus_size
+        self.inbound_bus: InboundBus = InboundBus()
+        self.outbound_dispatchers: dict[tuple[Platform, str], OutboundDispatcher] = {}
         self.adapter_registry: dict[tuple[Platform, str], ChannelAdapter] = {}
         self.agent_registry: dict[str, AgentBase] = {}
         self.bindings: dict[RoutingKey, Binding] = {}
@@ -111,6 +115,16 @@ class Hub:
         self._start_time: float = time.monotonic()
         self._last_processed_at: float | None = None
 
+    @property
+    def bus(self) -> asyncio.Queue[Message]:
+        """Backward-compat alias for the inbound staging queue.
+
+        New code should use ``inbound_bus.put(platform, msg)`` for per-platform
+        isolation. This property gives direct access to the staging queue and is
+        retained for tests that inject messages without going through a platform queue.
+        """
+        return self.inbound_bus._staging
+
     # ------------------------------------------------------------------
     # Adapter registry
     # ------------------------------------------------------------------
@@ -124,10 +138,26 @@ class Hub:
     ) -> None:
         """Register a channel adapter keyed by (platform, bot_id).
 
-        The adapter is responsible for authenticating inbound messages before
-        placing them on the bus. See ChannelAdapter for the security contract.
+        Auto-registers the platform with the InboundBus if this is the first
+        adapter for that platform. The adapter is responsible for authenticating
+        inbound messages before placing them on the bus. See ChannelAdapter for
+        the security contract.
         """
         self.adapter_registry[(platform, bot_id)] = adapter
+        # Register per-platform inbound queue on first adapter for this platform
+        if platform not in self.inbound_bus.registered_platforms():
+            self.inbound_bus.register(platform, maxsize=self._bus_size)
+
+    def register_outbound_dispatcher(
+        self, platform: Platform, bot_id: str, dispatcher: OutboundDispatcher
+    ) -> None:
+        """Register an OutboundDispatcher for the given (platform, bot_id).
+
+        When registered, dispatch_response() and dispatch_streaming() route through
+        the dispatcher queue instead of calling the adapter directly. The dispatcher
+        owns the platform circuit breaker check.
+        """
+        self.outbound_dispatchers[(platform, bot_id)] = dispatcher
 
     # ------------------------------------------------------------------
     # Bindings
@@ -237,7 +267,18 @@ class Hub:
     # ------------------------------------------------------------------
 
     async def dispatch_response(self, msg: Message, response: Response) -> None:
-        """Send response back via the originating adapter."""
+        """Send response back via the originating adapter.
+
+        Routes through the OutboundDispatcher when one is registered for the
+        platform (fire-and-forget queue). Falls back to a direct adapter call
+        when no dispatcher is registered (used in tests and command responses).
+        """
+        dispatcher = self.outbound_dispatchers.get((msg.platform, msg.bot_id))
+        if dispatcher is not None:
+            dispatcher.enqueue(msg, response)
+            self._last_processed_at = time.monotonic()
+            return
+        # Fallback: direct adapter call (backward compat / no dispatcher registered)
         adapter = self.adapter_registry.get((msg.platform, msg.bot_id))
         if adapter is None:
             raise KeyError(
@@ -250,7 +291,17 @@ class Hub:
     async def dispatch_streaming(
         self, msg: Message, chunks: AsyncIterator[str]
     ) -> None:
-        """Stream response back via the originating adapter."""
+        """Stream response back via the originating adapter.
+
+        Routes through the OutboundDispatcher when one is registered (fire-and-forget).
+        Falls back to a direct adapter call when no dispatcher is registered.
+        """
+        dispatcher = self.outbound_dispatchers.get((msg.platform, msg.bot_id))
+        if dispatcher is not None:
+            dispatcher.enqueue_streaming(msg, chunks)
+            self._last_processed_at = time.monotonic()
+            return
+        # Fallback: direct adapter call (backward compat / no dispatcher registered)
         adapter = self.adapter_registry.get((msg.platform, msg.bot_id))
         if adapter is None:
             raise KeyError(
@@ -274,7 +325,7 @@ class Hub:
     async def run(self) -> None:
         """Hub bus consumer loop. Runs until cancelled."""
         while True:
-            msg = await self.bus.get()
+            msg = await self.inbound_bus.get()
             try:
                 try:
                     scope = msg.extract_scope_id()
@@ -384,54 +435,69 @@ class Hub:
                     result = agent.process(msg, pool)
                     if isinstance(result, collections.abc.AsyncIterator):
                         # Streaming path (AnthropicAgent)
-                        try:
-                            await self.dispatch_streaming(msg, result)
-                            # Record success for both anthropic and hub circuits
+                        dispatcher = self.outbound_dispatchers.get(
+                            (msg.platform, msg.bot_id)
+                        )
+                        if dispatcher is not None:
+                            # Fire-and-forget: dispatcher owns CB and delivery.
+                            # NOTE: pool.lock is released before streaming completes.
+                            # History serialization fixed in Slice 3 (per-session Task).
+                            dispatcher.enqueue_streaming(msg, result)
+                            self._last_processed_at = time.monotonic()
                             if self.circuit_registry is not None:
-                                for _cb_name in ("anthropic", "hub"):
-                                    _cb = self.circuit_registry.get(_cb_name)
-                                    if _cb is not None:
-                                        _cb.record_success()
-                        except BaseException as exc:
-                            # Always record failure so _probe_in_flight is cleared
-                            # even when CancelledError propagates (not caught by
-                            # bare `except Exception`).
-                            if self.circuit_registry is not None:
-                                # Always record hub failure
-                                _hub_cb = self.circuit_registry.get("hub")
-                                if _hub_cb is not None:
-                                    _hub_cb.record_failure()
-                                # Only record anthropic failure for LLM/SDK exceptions
-                                if isinstance(exc, AnthropicAPIError):
-                                    _ant_cb = self.circuit_registry.get("anthropic")
-                                    if _ant_cb is not None:
-                                        _ant_cb.record_failure()
-                            # Send error reply to user (best-effort, bounded)
+                                _cb = self.circuit_registry.get("hub")
+                                if _cb is not None:
+                                    _cb.record_success()
+                        else:
+                            # Synchronous fallback (no dispatcher registered).
                             try:
-                                _err_content = (
-                                    self._msg_manager.get("generic")
-                                    if self._msg_manager
-                                    else GENERIC_ERROR_REPLY
-                                )
-                                error_reply = Response(content=_err_content)
-                                await asyncio.wait_for(
-                                    self.dispatch_response(msg, error_reply),
-                                    timeout=10,
-                                )
-                            except Exception as reply_exc:
+                                await self.dispatch_streaming(msg, result)
+                                # Record success for both anthropic and hub circuits
+                                if self.circuit_registry is not None:
+                                    for _cb_name in ("anthropic", "hub"):
+                                        _cb = self.circuit_registry.get(_cb_name)
+                                        if _cb is not None:
+                                            _cb.record_success()
+                            except BaseException as exc:
+                                # Always record failure so _probe_in_flight is cleared
+                                # even when CancelledError propagates (not caught by
+                                # bare `except Exception`).
+                                if self.circuit_registry is not None:
+                                    # Always record hub failure
+                                    _hub_cb = self.circuit_registry.get("hub")
+                                    if _hub_cb is not None:
+                                        _hub_cb.record_failure()
+                                    # Only record anthropic failure for LLM exceptions
+                                    if isinstance(exc, AnthropicAPIError):
+                                        _ant_cb = self.circuit_registry.get("anthropic")
+                                        if _ant_cb is not None:
+                                            _ant_cb.record_failure()
+                                # Send error reply to user (best-effort, bounded)
+                                try:
+                                    _err_content = (
+                                        self._msg_manager.get("generic")
+                                        if self._msg_manager
+                                        else GENERIC_ERROR_REPLY
+                                    )
+                                    error_reply = Response(content=_err_content)
+                                    await asyncio.wait_for(
+                                        self.dispatch_response(msg, error_reply),
+                                        timeout=10,
+                                    )
+                                except Exception as reply_exc:
+                                    log.exception(
+                                        "dispatch_response() failed sending error"
+                                        " reply for %s: %s",
+                                        key,
+                                        reply_exc,
+                                    )
+                                if not isinstance(exc, Exception):
+                                    raise  # re-raise CancelledError / KeyboardInterrupt
                                 log.exception(
-                                    "dispatch_response() failed sending error"
-                                    " reply for %s: %s",
+                                    "dispatch_streaming() failed for %s: %s",
                                     key,
-                                    reply_exc,
+                                    exc,
                                 )
-                            if not isinstance(exc, Exception):
-                                raise  # re-raise CancelledError / KeyboardInterrupt
-                            log.exception(
-                                "dispatch_streaming() failed for %s: %s",
-                                key,
-                                exc,
-                            )
                     else:
                         # Non-streaming path (SimpleAgent)
                         try:
@@ -463,7 +529,7 @@ class Hub:
                                 exc,
                             )
             finally:
-                self.bus.task_done()
+                self.inbound_bus.task_done()
 
 
 # ---------------------------------------------------------------------------

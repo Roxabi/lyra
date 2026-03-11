@@ -364,3 +364,47 @@ class TestSystemPrompt:
 
         call_kwargs = agent._client.messages.stream.call_args
         assert "system" not in call_kwargs.kwargs
+
+
+# ---------------------------------------------------------------------------
+# TestOverlayAppliedInProcess — runtime_config overlay (issue #135)
+# ---------------------------------------------------------------------------
+
+
+class TestOverlayAppliedInProcess:
+    """RuntimeConfig overlay is applied to the Anthropic SDK call in process()."""
+
+    async def test_overlay_temperature_and_system_applied(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """process() uses temperature=0.3 and system includes style + language."""
+        # Arrange
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
+        from lyra.agents.anthropic_agent import AnthropicAgent
+        from lyra.core.runtime_config import RuntimeConfig
+
+        config = make_config(system_prompt="Base prompt.")
+        runtime_config = RuntimeConfig(style="detailed", language="fr", temperature=0.3)
+        agent = AnthropicAgent(config, runtime_config=runtime_config)
+
+        stream_ctx, _ = _make_mock_stream(["Bonjour!"])
+        agent._client.messages.stream = MagicMock(return_value=stream_ctx)
+
+        msg = make_message("hello")
+        pool = make_pool()
+
+        # Act — drain the async generator
+        chunks = []
+        async for delta in agent.process(msg, pool):
+            chunks.append(delta)
+
+        # Assert — SDK called with the overlaid temperature
+        call_kwargs = agent._client.messages.stream.call_args.kwargs
+        assert call_kwargs["temperature"] == 0.3
+
+        # Assert — system prompt includes the detailed style instruction
+        system = call_kwargs.get("system", "")
+        assert "detailed" in system.lower() or "thorough" in system.lower()
+
+        # Assert — system prompt includes the language instruction
+        assert "Reply in fr." in system

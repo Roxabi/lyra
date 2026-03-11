@@ -474,16 +474,14 @@ class TestSetParam:
         assert updated.model is None
 
     def test_model_none_uppercase(self) -> None:
-        # Arrange — the implementation treats only "" and lowercase "none" as None;
-        # title-case "None" is stored as-is (implementation detail).
+        # Arrange — case-insensitive: "None", "NONE", "none" all clear the model.
         rc = RuntimeConfig(model="claude-haiku-4-5-20251001")
 
         # Act
         updated = set_param(rc, "model", "None")
 
-        # Assert — "None" (title-case) is NOT normalised;
-        # model is set to the string "None"
-        assert updated.model == "None"
+        # Assert — title-case "None" is normalised to Python None.
+        assert updated.model is None
 
     def test_unknown_key_raises_value_error(self) -> None:
         # Arrange

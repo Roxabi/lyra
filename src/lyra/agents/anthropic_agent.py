@@ -20,7 +20,7 @@ from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import Message, extract_text
 from lyra.core.messages import MessageManager
 from lyra.core.pool import Pool
-from lyra.core.runtime_config import RuntimeConfig
+from lyra.core.runtime_config import RuntimeConfig, RuntimeConfigHolder
 
 log = logging.getLogger(__name__)
 
@@ -48,11 +48,10 @@ class AnthropicAgent(AgentBase):
         msg_manager: MessageManager | None = None,
         runtime_config: RuntimeConfig | None = None,
     ) -> None:
-        if runtime_config is not None:
-            self._runtime_config = runtime_config
-        else:
-            runtime_file = _AGENTS_DIR / "lyra_runtime.toml"
-            self._runtime_config = RuntimeConfig.load(runtime_file)
+        rc = runtime_config if runtime_config is not None else RuntimeConfig.load(
+            _AGENTS_DIR / "lyra_runtime.toml"
+        )
+        self._runtime_config_holder = RuntimeConfigHolder(rc)
         super().__init__(
             config,
             circuit_registry=circuit_registry,
@@ -64,8 +63,12 @@ class AnthropicAgent(AgentBase):
             raise SystemExit("Missing required env var: ANTHROPIC_API_KEY")
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
 
+    @property
+    def _runtime_config(self) -> RuntimeConfig:
+        return self._runtime_config_holder.value
+
     def _build_router_kwargs(self) -> dict:
-        return {"runtime_config": self._runtime_config}
+        return {"runtime_config_holder": self._runtime_config_holder}
 
     def _build_messages(self, text: str, pool: Pool) -> list[dict[str, Any]]:
         """Build SDK messages array from pool history + new user message."""

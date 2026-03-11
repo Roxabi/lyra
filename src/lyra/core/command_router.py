@@ -18,7 +18,7 @@ from .plugin_loader import AsyncHandler, PluginLoader
 from .pool import Pool
 
 if TYPE_CHECKING:
-    from lyra.core.runtime_config import RuntimeConfig
+    from lyra.core.runtime_config import RuntimeConfigHolder
 
 log = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ class CommandRouter:
         circuit_registry: CircuitRegistry | None = None,
         admin_user_ids: set[str] | None = None,
         msg_manager: MessageManager | None = None,
-        runtime_config: RuntimeConfig | None = None,
+        runtime_config_holder: RuntimeConfigHolder | None = None,
     ) -> None:
         self._plugin_loader = plugin_loader
         self._enabled_plugins = enabled_plugins
@@ -69,7 +69,7 @@ class CommandRouter:
         self._circuit_registry = circuit_registry
         self._admin_user_ids = admin_user_ids or set()
         self._msg_manager = msg_manager
-        self._runtime_config = runtime_config
+        self._runtime_config_holder = runtime_config_holder
         # Guard: raise early if any loaded plugin command clashes with a builtin.
         plugin_handlers = plugin_loader.get_commands(enabled_plugins)
         conflicts = set(plugin_handlers) & set(self._builtins)
@@ -199,7 +199,7 @@ class CommandRouter:
     def _cmd_config(self, msg: Message, args: list[str]) -> Response:
         if not self._admin_user_ids or msg.user_id not in self._admin_user_ids:
             return Response(content="This command is admin-only.")
-        if self._runtime_config is None:
+        if self._runtime_config_holder is None:
             return Response(content="Runtime config not available for this backend.")
         if not args:
             return self._cmd_config_show()
@@ -208,8 +208,9 @@ class CommandRouter:
         return self._cmd_config_set(args)
 
     def _cmd_config_show(self) -> Response:
-        assert self._runtime_config is not None
-        rc = self._runtime_config
+        holder = self._runtime_config_holder
+        assert holder is not None
+        rc = holder.value
         lines = ["Runtime Config", "─" * 35]
         lines.append(f"  {'style':<20} {rc.style}")
         lines.append(f"  {'language':<20} {rc.language}")
@@ -225,8 +226,9 @@ class CommandRouter:
         from lyra.core.agent import _AGENTS_DIR
         from lyra.core.runtime_config import set_param
 
-        assert self._runtime_config is not None
-        rc = self._runtime_config
+        holder = self._runtime_config_holder
+        assert holder is not None
+        rc = holder.value
         updates: list[str] = []
         for token in args:
             if "=" not in token:
@@ -239,7 +241,7 @@ class CommandRouter:
                 return Response(content=str(exc))
         runtime_file = _AGENTS_DIR / "lyra_runtime.toml"
         rc.save(runtime_file)
-        self._runtime_config = rc
+        holder.value = rc
         summary = f"Updated: {', '.join(updates)}\nSaved to {runtime_file.name}"
         return Response(content=summary)
 
@@ -247,9 +249,11 @@ class CommandRouter:
         from lyra.core.agent import _AGENTS_DIR
         from lyra.core.runtime_config import RuntimeConfig
 
+        holder = self._runtime_config_holder
+        assert holder is not None
         runtime_file = _AGENTS_DIR / "lyra_runtime.toml"
         if not args:
-            self._runtime_config = RuntimeConfig()
+            holder.value = RuntimeConfig()
             try:
                 runtime_file.unlink(missing_ok=True)
             except OSError:
@@ -257,9 +261,8 @@ class CommandRouter:
             return Response(content="Runtime config reset to defaults.")
         key = args[0]
         try:
-            self._runtime_config = RuntimeConfig.reset(self._runtime_config, key)
+            holder.value = RuntimeConfig.reset(holder.value, key)
         except ValueError as exc:
             return Response(content=str(exc))
-        assert self._runtime_config is not None
-        self._runtime_config.save(runtime_file)
+        holder.value.save(runtime_file)
         return Response(content=f"Reset: {key} = (default). Saved.")

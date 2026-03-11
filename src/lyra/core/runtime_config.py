@@ -190,13 +190,35 @@ def set_param(rc: RuntimeConfig, key: str, value: str) -> RuntimeConfig:
             raise ValueError(f"max_steps must be an integer, got {value!r}")
 
     elif key == "model":
-        if value in ("", "none"):
+        if value.lower() in ("", "none"):
             parsed = None
         else:
             parsed = value
 
+    elif key == "language":
+        import re as _re
+        if value != "auto" and not _re.match(r"^[a-z]{2,8}$", value):
+            raise ValueError(
+                f"Invalid language {value!r}. "
+                "Use 'auto' or a 2-8 char lowercase code (e.g. 'fr', 'en')."
+            )
+        parsed = value
+
     else:
-        # language, extra_instructions — accept as-is
+        # extra_instructions — accept as-is
         parsed = value
 
     return replace(rc, **{key: parsed})
+
+
+class RuntimeConfigHolder:
+    """Mutable single-cell container shared by AnthropicAgent and CommandRouter.
+
+    Both hold the *same* holder instance. Mutations replace `holder.value`
+    (a new RuntimeConfig), so all readers see the updated config immediately.
+    """
+
+    __slots__ = ("value",)
+
+    def __init__(self, value: RuntimeConfig) -> None:
+        self.value = value

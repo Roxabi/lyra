@@ -7,7 +7,7 @@
 
 ## Current focus
 
-**Phase 1b tail — closing out the agent core**: memory integration (#83), hub command sessions (#99), runtime config (#135), smart routing (#134). Voice pipeline (#74) is now unblocked.
+**Phase 1b tail — closing out the agent core**: message normalization (#139), LlmProvider protocol (#123), memory integration (#83), hub command sessions (#99), runtime config (#135), smart routing (#134). Voice pipeline (#74) is now unblocked.
 
 ---
 
@@ -32,18 +32,20 @@
 
 | # | Issue | Size | Status |
 |---|-------|------|--------|
-| #123 | Claude CLI wrapper library — extract 2ndBrain pool design into `lyra.llm.cli` | L | Analysis — **next** |
+| #139 | Message & Media Normalization — typed bus envelope for all adapters | L | Ready — **next** |
+| #123 | LlmProvider protocol — AnthropicSdkDriver + ClaudeCliDriver + OllamaDriver | L | Analysis |
 | #83 | Lyra agent integration — identity anchor, session lifecycle, L0 compaction | L | Blocked by #123 |
-| #99 | Hub command sessions — /add, /explain, /summarize, /search | L | Blocked by #83 |
+| #99 | Hub command sessions — /add, /explain, /summarize, /search | L | Blocked by #83 + #139 |
 | #135 | Runtime agent config — `!config` live tuning without restart | S | Ready |
 | #134 | LLM smart routing — complexity-based model selection | M | Ready |
 | #136 | Multi-bot registry upgrade — per-bot-id routing + multi-token config | M | Blocked by #83 + #79 — do last |
 
-**Critical path**: #123 → #83 → #99
+**Critical path**: #139 ∥ #123 → #83 → #99
 
 **Independent (do anytime)**: #135 (S), #134 (M), #128 (M), #80 STT (M)
 
 **Dependencies**:
+- #139 unblocks: #99, #80 (STT), #79 (TTS)
 - #123 unblocks: #83
 - #83 unblocks: #99, #67, #128
 - #83 + #79 both needed before: #136 (multi-bot registry — not a blocker for voice)

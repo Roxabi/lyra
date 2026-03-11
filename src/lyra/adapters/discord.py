@@ -179,6 +179,17 @@ class DiscordAdapter(discord.Client):
         if hub_msg.is_from_bot:
             return
 
+        # Hub circuit guard
+        if self._circuit_registry is not None:
+            cb = self._circuit_registry.get("hub")
+            if cb is not None and cb.is_open():
+                log.warning(
+                    '{"event": "hub_circuit_open", "platform": "discord",'
+                    ' "user_id": "%s", "dropped": true}',
+                    hub_msg.user_id,
+                )
+                return  # silent drop
+
         # S5: Auto-thread creation on @mention in text channel
         if (
             self._auto_thread
@@ -203,17 +214,6 @@ class DiscordAdapter(discord.Client):
                     "Failed to create Discord thread for message id=%s", message.id
                 )
                 # Fall through — process in original channel scope
-
-        # Hub circuit guard
-        if self._circuit_registry is not None:
-            cb = self._circuit_registry.get("hub")
-            if cb is not None and cb.is_open():
-                log.warning(
-                    '{"event": "hub_circuit_open", "platform": "discord",'
-                    ' "user_id": "%s", "dropped": true}',
-                    hub_msg.user_id,
-                )
-                return  # silent drop
 
         # S5+S6: non-blocking enqueue with backpressure ack on full bus
         try:

@@ -217,15 +217,10 @@ class Hub:
     # ------------------------------------------------------------------
 
     def get_or_create_pool(self, pool_id: str, agent_name: str) -> Pool:
-        """Return existing pool or create a new one.
-
-        Uses dict.setdefault() — single atomic operation, closes the pre-PR TOCTOU
-        TODO. Note: Pool is constructed unconditionally on every call; the allocation
-        is negligible at personal-use scale.
-        """
-        return self.pools.setdefault(
-            pool_id, Pool(pool_id=pool_id, agent_name=agent_name, hub=self)
-        )
+        """Return existing pool or create a new one."""
+        if pool_id not in self.pools:
+            self.pools[pool_id] = Pool(pool_id=pool_id, agent_name=agent_name, hub=self)
+        return self.pools[pool_id]
 
     # ------------------------------------------------------------------
     # Rate limiting
@@ -431,7 +426,7 @@ class Hub:
                         continue
                 # Submit to pool — non-blocking; processing + dispatch happen
                 # in Pool._process_loop task
-                pool.submit(msg, agent)
+                pool.submit(msg)
             finally:
                 self.inbound_bus.task_done()
 

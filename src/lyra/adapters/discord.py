@@ -45,8 +45,9 @@ def load_discord_config() -> DiscordConfig:
     token = os.environ.get("DISCORD_TOKEN")
     if not token:
         raise SystemExit("Missing required env var: DISCORD_TOKEN")
-    auto_thread_str = os.environ.get("DISCORD_AUTO_THREAD", "true").lower()
-    auto_thread = auto_thread_str not in ("false", "0", "no")
+    _AUTO_THREAD_TRUE = frozenset({"1", "true", "yes", "on"})
+    auto_thread_str = os.environ.get("DISCORD_AUTO_THREAD", "").strip().lower()
+    auto_thread = auto_thread_str in _AUTO_THREAD_TRUE if auto_thread_str else True
     return DiscordConfig(token=token, auto_thread=auto_thread)
 
 
@@ -199,7 +200,7 @@ class DiscordAdapter(discord.Client):
         ):
             try:
                 thread = await message.create_thread(
-                    name=f"Chat with {message.author.display_name}"
+                    name=f"Chat with {message.author.display_name}"[:100].strip()
                 )
                 new_ctx = DiscordContext(
                     guild_id=hub_msg.platform_context.guild_id,

@@ -820,3 +820,306 @@ async def test_send_no_reply_message_id_on_failure() -> None:
 
     # Assert
     assert "reply_message_id" not in response.metadata
+
+
+# ---------------------------------------------------------------------------
+# Tests for Discord auto_thread (issue #127)
+# ---------------------------------------------------------------------------
+# RED-phase tests — describe behaviour implemented by backend-dev in T5/T7.
+# These run after the implementation is complete.
+
+
+class TestDiscordAutoThread:
+    """DiscordAdapter creates a thread on @mention in text channels (S5-1..S5-5)."""
+
+    @pytest.mark.asyncio
+    async def test_auto_thread_created_on_mention_in_text_channel(self) -> None:
+        """@mention in a text channel with auto_thread=True → create_thread() called."""
+        from unittest.mock import patch
+
+        from lyra.adapters.discord import DiscordAdapter
+        from lyra.core.message import (
+            DiscordContext,
+            Message,
+            MessageType,
+            Platform,
+            TextContent,
+        )
+
+        # Arrange
+        hub = MagicMock()
+        hub.inbound_bus = MagicMock()
+        hub.inbound_bus.put = MagicMock()
+
+        adapter = DiscordAdapter(
+            hub=hub,
+            bot_id="main",
+            intents=discord.Intents.none(),
+            auto_thread=True,
+        )
+        bot_user = SimpleNamespace(id=999, bot=True)
+        adapter._bot_user = bot_user
+
+        thread_mock = MagicMock()
+        thread_mock.id = 9999
+        create_thread_mock = AsyncMock(return_value=thread_mock)
+
+        discord_msg = SimpleNamespace(
+            guild=SimpleNamespace(id=111),
+            channel=SimpleNamespace(
+                id=333,
+                send=AsyncMock(),
+                type=SimpleNamespace(name="text"),
+            ),
+            author=SimpleNamespace(
+                id=42, name="Alice", display_name="Alice", bot=False
+            ),
+            content="<@999> help me",
+            created_at=datetime.now(timezone.utc),
+            id=555,
+            mentions=[bot_user],
+            create_thread=create_thread_mock,
+        )
+
+        # hub_msg with channel_type="text" and is_mention=True for the normalize patch
+        hub_msg = Message.from_adapter(
+            platform=Platform.DISCORD,
+            bot_id="main",
+            user_id="dc:user:42",
+            user_name="Alice",
+            content=TextContent(text="help me"),
+            type=MessageType.TEXT,
+            timestamp=datetime.now(timezone.utc),
+            is_mention=True,
+            platform_context=DiscordContext(
+                guild_id=111,
+                channel_id=333,
+                message_id=555,
+                thread_id=None,
+                channel_type="text",
+            ),
+        )
+
+        with patch.object(adapter, "_normalize", return_value=hub_msg):
+            await adapter.on_message(discord_msg)
+
+        # Assert — create_thread was called once
+        create_thread_mock.assert_awaited_once()
+
+        # Assert — hub_msg.platform_context now has thread_id = 9999
+        assert isinstance(hub_msg.platform_context, DiscordContext)
+        assert hub_msg.platform_context.thread_id == 9999
+
+    @pytest.mark.asyncio
+    async def test_auto_thread_not_created_in_existing_thread(self) -> None:
+        """@mention in an existing thread channel does NOT call create_thread()."""
+        from unittest.mock import patch
+
+        from lyra.adapters.discord import DiscordAdapter
+        from lyra.core.message import (
+            DiscordContext,
+            Message,
+            MessageType,
+            Platform,
+            TextContent,
+        )
+
+        # Arrange
+        hub = MagicMock()
+        hub.inbound_bus = MagicMock()
+        hub.inbound_bus.put = MagicMock()
+
+        adapter = DiscordAdapter(
+            hub=hub,
+            bot_id="main",
+            intents=discord.Intents.none(),
+            auto_thread=True,
+        )
+        bot_user = SimpleNamespace(id=999, bot=True)
+        adapter._bot_user = bot_user
+
+        create_thread_mock = AsyncMock()
+
+        discord_msg = SimpleNamespace(
+            guild=SimpleNamespace(id=111),
+            channel=SimpleNamespace(id=333, send=AsyncMock()),
+            author=SimpleNamespace(
+                id=42, name="Alice", display_name="Alice", bot=False
+            ),
+            content="<@999> help me",
+            created_at=datetime.now(timezone.utc),
+            id=555,
+            mentions=[bot_user],
+            create_thread=create_thread_mock,
+        )
+
+        # channel_type="thread" — already in a thread, must NOT create another
+        hub_msg = Message.from_adapter(
+            platform=Platform.DISCORD,
+            bot_id="main",
+            user_id="dc:user:42",
+            user_name="Alice",
+            content=TextContent(text="help me"),
+            type=MessageType.TEXT,
+            timestamp=datetime.now(timezone.utc),
+            is_mention=True,
+            platform_context=DiscordContext(
+                guild_id=111,
+                channel_id=333,
+                message_id=555,
+                thread_id=777,
+                channel_type="thread",
+            ),
+        )
+
+        with patch.object(adapter, "_normalize", return_value=hub_msg):
+            await adapter.on_message(discord_msg)
+
+        # Assert — create_thread NOT called when already in a thread
+        create_thread_mock.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_auto_thread_disabled(self) -> None:
+        """auto_thread=False → create_thread() is never called even on @mention."""
+        from unittest.mock import patch
+
+        from lyra.adapters.discord import DiscordAdapter
+        from lyra.core.message import (
+            DiscordContext,
+            Message,
+            MessageType,
+            Platform,
+            TextContent,
+        )
+
+        # Arrange
+        hub = MagicMock()
+        hub.inbound_bus = MagicMock()
+        hub.inbound_bus.put = MagicMock()
+
+        adapter = DiscordAdapter(
+            hub=hub,
+            bot_id="main",
+            intents=discord.Intents.none(),
+            auto_thread=False,
+        )
+        bot_user = SimpleNamespace(id=999, bot=True)
+        adapter._bot_user = bot_user
+
+        create_thread_mock = AsyncMock()
+
+        discord_msg = SimpleNamespace(
+            guild=SimpleNamespace(id=111),
+            channel=SimpleNamespace(id=333, send=AsyncMock()),
+            author=SimpleNamespace(
+                id=42, name="Alice", display_name="Alice", bot=False
+            ),
+            content="<@999> help me",
+            created_at=datetime.now(timezone.utc),
+            id=555,
+            mentions=[bot_user],
+            create_thread=create_thread_mock,
+        )
+
+        hub_msg = Message.from_adapter(
+            platform=Platform.DISCORD,
+            bot_id="main",
+            user_id="dc:user:42",
+            user_name="Alice",
+            content=TextContent(text="help me"),
+            type=MessageType.TEXT,
+            timestamp=datetime.now(timezone.utc),
+            is_mention=True,
+            platform_context=DiscordContext(
+                guild_id=111,
+                channel_id=333,
+                message_id=555,
+                thread_id=None,
+                channel_type="text",
+            ),
+        )
+
+        with patch.object(adapter, "_normalize", return_value=hub_msg):
+            await adapter.on_message(discord_msg)
+
+        # Assert — auto_thread=False → no thread created
+        create_thread_mock.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_auto_thread_exception_fallback(self) -> None:
+        """create_thread() raising Exception: message still processed in original ch."""
+        from unittest.mock import patch
+
+        from lyra.adapters.discord import DiscordAdapter
+        from lyra.core.message import (
+            DiscordContext,
+            Message,
+            MessageType,
+            Platform,
+            TextContent,
+        )
+
+        # Arrange
+        hub = MagicMock()
+        hub.inbound_bus = MagicMock()
+        hub.inbound_bus.put = MagicMock()
+
+        adapter = DiscordAdapter(
+            hub=hub,
+            bot_id="main",
+            intents=discord.Intents.none(),
+            auto_thread=True,
+        )
+        bot_user = SimpleNamespace(id=999, bot=True)
+        adapter._bot_user = bot_user
+
+        # create_thread raises — adapter must fall through and put msg on bus
+        create_thread_mock = AsyncMock(side_effect=Exception("discord unavailable"))
+
+        discord_msg = SimpleNamespace(
+            guild=SimpleNamespace(id=111),
+            channel=SimpleNamespace(id=333, send=AsyncMock()),
+            author=SimpleNamespace(
+                id=42, name="Alice", display_name="Alice", bot=False
+            ),
+            content="<@999> help me",
+            created_at=datetime.now(timezone.utc),
+            id=555,
+            mentions=[bot_user],
+            create_thread=create_thread_mock,
+        )
+
+        hub_msg = Message.from_adapter(
+            platform=Platform.DISCORD,
+            bot_id="main",
+            user_id="dc:user:42",
+            user_name="Alice",
+            content=TextContent(text="help me"),
+            type=MessageType.TEXT,
+            timestamp=datetime.now(timezone.utc),
+            is_mention=True,
+            platform_context=DiscordContext(
+                guild_id=111,
+                channel_id=333,
+                message_id=555,
+                thread_id=None,
+                channel_type="text",
+            ),
+        )
+
+        with patch.object(adapter, "_normalize", return_value=hub_msg):
+            # Act — must not raise
+            await adapter.on_message(discord_msg)
+
+        # Assert — message still processed (bus.put called)
+        hub.inbound_bus.put.assert_called_once()
+
+    def test_discord_config_auto_thread_default_true(self) -> None:
+        """DiscordConfig() has auto_thread=True by default (S5-5)."""
+        from lyra.adapters.discord import DiscordConfig
+
+        # Arrange / Act
+        config = DiscordConfig(token="dummy-token")  # type: ignore[call-arg]
+
+        # Assert
+        assert config.auto_thread is True

@@ -1,15 +1,12 @@
 from __future__ import annotations
 
 import asyncio
-import collections.abc
 import logging
 import time
 from collections import deque
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, NamedTuple, Protocol
-
-from anthropic import APIError as AnthropicAPIError
 
 from .agent import AgentBase
 from .circuit_breaker import CircuitRegistry
@@ -220,15 +217,10 @@ class Hub:
     # ------------------------------------------------------------------
 
     def get_or_create_pool(self, pool_id: str, agent_name: str) -> Pool:
-        """Return existing pool or create a new one.
-
-        Uses dict.setdefault() — single atomic operation, closes the pre-PR TOCTOU
-        TODO. Note: Pool is constructed unconditionally on every call; the allocation
-        is negligible at personal-use scale.
-        """
-        return self.pools.setdefault(
-            pool_id, Pool(pool_id=pool_id, agent_name=agent_name)
-        )
+        """Return existing pool or create a new one."""
+        if pool_id not in self.pools:
+            self.pools[pool_id] = Pool(pool_id=pool_id, agent_name=agent_name, hub=self)
+        return self.pools[pool_id]
 
     # ------------------------------------------------------------------
     # Rate limiting
@@ -394,7 +386,8 @@ class Hub:
                         )
                         response = Response(content=_content)
                     try:
-                        await self.dispatch_response(msg, response)
+                        if response.content:
+                            await self.dispatch_response(msg, response)
                     except Exception as exc:
                         log.exception("dispatch_response() failed for %s: %s", key, exc)
                     continue
@@ -431,103 +424,9 @@ class Hub:
                                 exc,
                             )
                         continue
-                async with pool.lock:
-                    result = agent.process(msg, pool)
-                    if isinstance(result, collections.abc.AsyncIterator):
-                        # Streaming path (AnthropicAgent)
-                        dispatcher = self.outbound_dispatchers.get(
-                            (msg.platform, msg.bot_id)
-                        )
-                        if dispatcher is not None:
-                            # Fire-and-forget: dispatcher owns CB and delivery.
-                            # NOTE: pool.lock is released before streaming completes.
-                            # History serialization fixed in Slice 3 (per-session Task).
-                            dispatcher.enqueue_streaming(msg, result)
-                            self._last_processed_at = time.monotonic()
-                            if self.circuit_registry is not None:
-                                _cb = self.circuit_registry.get("hub")
-                                if _cb is not None:
-                                    _cb.record_success()
-                        else:
-                            # Synchronous fallback (no dispatcher registered).
-                            try:
-                                await self.dispatch_streaming(msg, result)
-                                # Record success for both anthropic and hub circuits
-                                if self.circuit_registry is not None:
-                                    for _cb_name in ("anthropic", "hub"):
-                                        _cb = self.circuit_registry.get(_cb_name)
-                                        if _cb is not None:
-                                            _cb.record_success()
-                            except BaseException as exc:
-                                # Always record failure so _probe_in_flight is cleared
-                                # even when CancelledError propagates (not caught by
-                                # bare `except Exception`).
-                                if self.circuit_registry is not None:
-                                    # Always record hub failure
-                                    _hub_cb = self.circuit_registry.get("hub")
-                                    if _hub_cb is not None:
-                                        _hub_cb.record_failure()
-                                    # Only record anthropic failure for LLM exceptions
-                                    if isinstance(exc, AnthropicAPIError):
-                                        _ant_cb = self.circuit_registry.get("anthropic")
-                                        if _ant_cb is not None:
-                                            _ant_cb.record_failure()
-                                # Send error reply to user (best-effort, bounded)
-                                try:
-                                    _err_content = (
-                                        self._msg_manager.get("generic")
-                                        if self._msg_manager
-                                        else GENERIC_ERROR_REPLY
-                                    )
-                                    error_reply = Response(content=_err_content)
-                                    await asyncio.wait_for(
-                                        self.dispatch_response(msg, error_reply),
-                                        timeout=10,
-                                    )
-                                except Exception as reply_exc:
-                                    log.exception(
-                                        "dispatch_response() failed sending error"
-                                        " reply for %s: %s",
-                                        key,
-                                        reply_exc,
-                                    )
-                                if not isinstance(exc, Exception):
-                                    raise  # re-raise CancelledError / KeyboardInterrupt
-                                log.exception(
-                                    "dispatch_streaming() failed for %s: %s",
-                                    key,
-                                    exc,
-                                )
-                    else:
-                        # Non-streaming path (SimpleAgent)
-                        try:
-                            response = await result
-                            # Record hub success for non-streaming path
-                            if self.circuit_registry is not None:
-                                _cb = self.circuit_registry.get("hub")
-                                if _cb is not None:
-                                    _cb.record_success()
-                        except Exception as exc:
-                            log.exception("agent.process() raised for %s: %s", key, exc)
-                            _proc_err = (
-                                self._msg_manager.get("generic")
-                                if self._msg_manager
-                                else GENERIC_ERROR_REPLY
-                            )
-                            response = Response(content=_proc_err)
-                            # Record hub failure
-                            if self.circuit_registry is not None:
-                                _cb = self.circuit_registry.get("hub")
-                                if _cb is not None:
-                                    _cb.record_failure()
-                        try:
-                            await self.dispatch_response(msg, response)
-                        except Exception as exc:
-                            log.exception(
-                                "dispatch_response() failed for %s: %s",
-                                key,
-                                exc,
-                            )
+                # Submit to pool — non-blocking; processing + dispatch happen
+                # in Pool._process_loop task
+                pool.submit(msg)
             finally:
                 self.inbound_bus.task_done()
 

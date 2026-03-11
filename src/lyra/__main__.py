@@ -268,6 +268,7 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
         bot_id="main",
         circuit_registry=circuit_registry,
         msg_manager=msg_manager,
+        auto_thread=dc_cfg.auto_thread,
     )
 
     hub.register_adapter(Platform.TELEGRAM, "main", tg_adapter)

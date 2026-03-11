@@ -3,6 +3,8 @@ generic           = "Something went wrong. Please try again."
 unavailable       = "Lyra is currently unavailable. Please try again in {retry_secs}s."
 unknown_command   = "Unknown command: {command_name}. Type /help for available commands."
 help_header       = "Available commands:"
+timeout           = "Your request timed out. Please try again."
+cancelled         = "Request cancelled."
 
 [adapters.telegram.en]
 backpressure_ack    = "Processing your request\u2026"
@@ -19,6 +21,8 @@ generic           = "Une erreur s'est produite. Réessaie."
 unavailable       = "Lyra est indisponible. Réessaie dans {retry_secs}s."
 unknown_command   = "Commande inconnue : {command_name}. Tape /help."
 help_header       = "Commandes disponibles :"
+timeout           = "Ta requête a expiré. Réessaie."
+cancelled         = "Requête annulée."
 
 [adapters.telegram.fr]
 backpressure_ack    = "Traitement de ta requête\u2026"

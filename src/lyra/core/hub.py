@@ -145,7 +145,7 @@ class Hub:
         """
         self.adapter_registry[(platform, bot_id)] = adapter
         # Register per-platform inbound queue on first adapter for this platform
-        if platform not in self.inbound_bus._queues:
+        if platform not in self.inbound_bus.registered_platforms():
             self.inbound_bus.register(platform, maxsize=self._bus_size)
 
     def register_outbound_dispatcher(

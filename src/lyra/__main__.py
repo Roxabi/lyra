@@ -173,7 +173,7 @@ def create_health_app(hub: Hub) -> FastAPI:
 
         inbound: dict[str, int] = {
             p.value: hub.inbound_bus.qsize(p)
-            for p in hub.inbound_bus._queues
+            for p in hub.inbound_bus.registered_platforms()
         }
         outbound: dict[str, int] = {
             platform.value: dispatcher.qsize()

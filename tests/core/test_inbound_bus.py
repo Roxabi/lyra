@@ -99,9 +99,8 @@ class TestInboundBusFeeder:
             with pytest.raises(asyncio.QueueFull):
                 bus.put(Platform.TELEGRAM, tg_msg)
 
-            # Discord queue unaffected
+            # Discord queue unaffected — put succeeds (not raises QueueFull)
             bus.put(Platform.DISCORD, dc_msg)
-            assert bus.qsize(Platform.DISCORD) >= 0  # may have drained already
         finally:
             await bus.stop()
 

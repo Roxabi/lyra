@@ -36,9 +36,15 @@ class InboundBus:
     def register(self, platform: Platform, maxsize: int = 100) -> None:
         """Register a bounded queue for the given platform.
 
-        Must be called before start(). Re-registering the same platform
-        replaces the existing queue (only safe before start()).
+        Must be called before start(). Raises RuntimeError if called after
+        start() — the new queue would have no feeder task and messages would
+        silently never reach staging.
         """
+        if self._feeders:
+            raise RuntimeError(
+                f"Cannot register platform {platform!r} after start() — "
+                "feeders are already running."
+            )
         self._queues[platform] = asyncio.Queue(maxsize=maxsize)
 
     def put(self, platform: Platform, msg: Message) -> None:
@@ -95,3 +101,7 @@ class InboundBus:
     def staging_qsize(self) -> int:
         """Return the current number of items in the staging queue."""
         return self._staging.qsize()
+
+    def registered_platforms(self) -> frozenset[Platform]:
+        """Return the set of platforms with a registered queue."""
+        return frozenset(self._queues)

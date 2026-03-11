@@ -82,7 +82,7 @@ class TestOutboundDispatcherEnqueue:
             dispatcher.enqueue(msg, Response(content="1"))
             dispatcher.enqueue(msg, Response(content="2"))
             dispatcher.enqueue(msg, Response(content="3"))
-            assert dispatcher.qsize() >= 0  # at least some pending
+            assert dispatcher.qsize() >= 2  # 3 enqueued, worker blocked on 1st
         finally:
             await dispatcher.stop()
 

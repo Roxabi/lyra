@@ -26,7 +26,8 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-_ITEM = tuple  # (kind, msg, payload)
+# Queue item: (kind: "send"|"streaming", msg: Message, payload)
+_ITEM = tuple
 
 
 class OutboundDispatcher:

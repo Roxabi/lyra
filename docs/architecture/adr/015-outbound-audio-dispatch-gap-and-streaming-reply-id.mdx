@@ -1,0 +1,211 @@
+---
+title: "ADR-015: Outbound Audio Dispatch Gap, Streaming Reply-ID Gap, and Adapter Consistency Findings"
+description: Documents four structural gaps in the outbound layer identified during the Phase 1b adapter architecture review — render_audio() bypass of OutboundDispatcher, send_streaming() missing reply_message_id, OutboundAudio mutability asymmetry, and divergent backpressure helpers across adapters.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+A deep architecture review of the adapter layer was conducted against
+`src/lyra/adapters/telegram.py`, `src/lyra/adapters/discord.py`,
+`src/lyra/core/message.py`, `src/lyra/core/inbound_bus.py`, and
+`src/lyra/core/outbound_dispatcher.py`.
+
+ADR-014 captured the inbound audio dead-end, the incomplete `ChannelAdapter`
+protocol, and the `platform_meta` migration path. The same review identified
+four additional structural gaps in the outbound layer and adapter consistency
+that are not covered by any existing ADR:
+
+1. **render_audio() bypasses OutboundDispatcher entirely.** `OutboundDispatcher`
+   owns circuit-breaker check, queue depth, and success/failure recording for
+   `send()` and `send_streaming()`. `render_audio()` is absent from the
+   dispatcher — callers invoke it directly on the adapter, bypassing all three
+   concerns. There is no platform circuit-breaker record for audio sends, no
+   queue, and no observability.
+
+2. **send_streaming() cannot store reply_message_id.** `send()` on both
+   adapters writes `outbound.metadata["reply_message_id"]` after the send
+   completes. `send_streaming()` receives only an `AsyncIterator[str]` — it
+   has no mutable metadata container to write into. The placeholder message ID
+   (which is the correct reply-threading target for streamed responses) is
+   created but discarded. Both adapters carry TODO comments referencing
+   issue #67.
+
+3. **OutboundAudio is mutable while InboundAudio is frozen.** The inbound
+   envelope types (`InboundMessage`, `InboundAudio`) are `@dataclass(frozen=True)`.
+   `OutboundAudio` is `@dataclass` (mutable). There are no write sites for
+   `OutboundAudio` fields after construction. The mutability is incidental, not
+   required, and creates an asymmetric contract within the same message type family.
+
+4. **Discord inlines the backpressure + circuit-guard pattern; Telegram extracts
+   it into `_push_to_hub()`.** When the hub circuit opens, Telegram calls an
+   `on_drop` callback and returns. Discord does a silent `return` with only a
+   log line. The two adapters have divergent drop semantics. Any change to the
+   backpressure contract (log format, callback, ack message) must be made in two
+   places on Discord and one on Telegram.
+
+## Options Considered
+
+### Finding A — render_audio() dispatch gap
+
+#### Option A1: Add enqueue_audio() to OutboundDispatcher (recommended)
+
+Add `enqueue_audio(msg: InboundMessage, audio: OutboundAudio) -> None` to
+`OutboundDispatcher`. The worker loop gains a third `kind == "audio"` branch
+that calls `adapter.render_audio(audio, ctx)`. The circuit breaker check and
+record path is identical to the `kind == "send"` branch.
+
+- **Pros:** Single ownership of CB check and observability for all outbound
+  kinds. Consistent with the existing dispatcher pattern. Required anyway once
+  `render_audio()` is added to the `ChannelAdapter` protocol (ADR-014 Option D).
+- **Cons:** Requires threading `RenderContext` (currently `Message`) through
+  the dispatcher queue item, which depends on the `RenderContext` migration
+  (Finding 4 of this review, tracked in ADR-014).
+
+#### Option A2: Inline CB check at each render_audio() call site
+
+Wrap every `render_audio()` call in a helper that checks the circuit breaker
+before delegating to the adapter.
+
+- **Pros:** No dispatcher changes required. Unblocked from the `RenderContext`
+  migration.
+- **Cons:** Duplicates CB logic at every call site. Provides no queue, no
+  observability hook, no failure recording without additional boilerplate.
+
+### Finding B — send_streaming() reply_message_id gap
+
+#### Option B1: Thread OutboundMessage through send_streaming() (recommended)
+
+Change signature:
+`send_streaming(original_msg, chunks, outbound: OutboundMessage | None = None)`
+
+Both adapters write `outbound.metadata["reply_message_id"]` when `outbound`
+is not None. `OutboundDispatcher.enqueue_streaming()` passes the associated
+outbound object. Tracked in issue #67.
+
+- **Pros:** Minimal protocol change. Optional parameter keeps backward
+  compatibility. Enables reply-threading for streamed responses.
+- **Cons:** Callers that use `send_streaming()` without an `OutboundMessage`
+  still cannot recover the reply ID. Requires updating both adapters and
+  `OutboundDispatcher`.
+
+#### Option B2: Return placeholder message ID from send_streaming()
+
+Change return type from `None` to `str | None` (platform message ID of the
+placeholder). Dispatcher stores the returned ID.
+
+- **Pros:** No change to the input signature.
+- **Cons:** Changes the return type on the `ChannelAdapter` protocol. Return
+  value is platform-specific (Telegram `int`, Discord `int`) — callers must
+  cast. Diverges from `send()` which writes into `outbound.metadata` rather
+  than returning.
+
+### Finding C — OutboundAudio mutability
+
+#### Option C1: Freeze OutboundAudio (recommended)
+
+`@dataclass(frozen=True)`. No call sites write to its fields after construction.
+Add a docstring policy comment: "inbound envelopes are frozen; outbound envelopes
+with a mutable `metadata` dict (OutboundMessage) are mutable by necessity."
+
+- **Pros:** Consistent with all other envelope types that lack a mutable metadata
+  dict. Intent is explicit.
+- **Cons:** If a future field requires post-construction mutation, this must be
+  revisited.
+
+#### Option C2: Leave mutable, document the asymmetry
+
+Add a docstring note. No code change.
+
+- **Pros:** Zero cost.
+- **Cons:** The asymmetry remains and will confuse new contributors.
+
+### Finding D — Adapter backpressure inconsistency
+
+#### Option D1: Extract _push_to_hub() into DiscordAdapter (recommended)
+
+Mirror the Telegram `_push_to_hub(msg, on_drop=None)` pattern in
+`DiscordAdapter`. Include the `on_drop` callback parameter so the audio path
+(#80 follow-on) can pass a cleanup function. Inline hub enqueue logic in
+`on_message()` becomes a single delegating call.
+
+- **Pros:** Consistent drop semantics. Single place to update the backpressure
+  contract per adapter. Prepares the Discord adapter for the `InboundAudioBus`
+  path.
+- **Cons:** Small refactor. No external behaviour change.
+
+#### Option D2: Lift to a shared module-level helper
+
+Define a free function `push_to_bus(hub, circuit_registry, msg, on_drop, ack_fn)`
+shared by both adapters.
+
+- **Pros:** Single implementation for both adapters.
+- **Cons:** The helper must be parameterised over platform-specific ack behaviour
+  (Telegram sends via `bot.send_message`; Discord uses `message.reply`), which
+  makes the signature complex. The adapter-level helper is simpler and sufficient
+  for two adapters.
+
+## Decision
+
+**Finding A:** Option A1 (add `enqueue_audio()` to `OutboundDispatcher`) is the
+target. This is **blocked on the `RenderContext` migration** (ADR-014: port
+`platform_context` onto `InboundMessage`). Until that migration ships, callers
+may invoke `render_audio()` directly with a TODO comment referencing this ADR.
+Option A2 is not adopted — it avoids the migration cost by duplicating CB logic.
+
+**Finding B:** Option B1 (thread `OutboundMessage` through `send_streaming()`)
+is adopted. Both adapters and `OutboundDispatcher.enqueue_streaming()` are updated
+in issue #67. Until #67 ships, reply-threading for streamed responses is not
+available — this is an accepted known gap documented in ADR-012 (streaming
+dispatch pattern).
+
+**Finding C:** Option C1 (freeze `OutboundAudio`) is adopted and **implemented** — `OutboundAudio` is now `@dataclass(frozen=True)` in `message.py`. There are no write
+sites and the asymmetry provides no benefit. The policy comment is added to
+`message.py`.
+
+**Finding D:** Option D1 (extract `_push_to_hub()` into `DiscordAdapter`) is
+adopted. This is a pure refactor with no external behaviour change. The `on_drop`
+callback parameter is added at the same time to align with the Telegram signature
+and prepare for the `InboundAudioBus` path.
+
+## Consequences
+
+### Positive
+
+- Audio sends gain circuit-breaker protection and observability once A1 ships.
+- Streaming responses gain reply-threading once B1 ships (#67).
+- `OutboundAudio` freeze makes the envelope mutability contract explicit and
+  consistent.
+- Both adapters share the same backpressure + circuit-guard helper shape, reducing
+  the surface for backpressure contract drift.
+
+### Negative
+
+- A1 is blocked on the `platform_meta` → `PlatformContext` migration. Until
+  that migration ships, audio sends operate without circuit-breaker recording.
+  This is an accepted interim risk because audio output volume is low and render
+  failures are logged.
+- B1 requires updating the `ChannelAdapter` protocol and both adapters. Any
+  third-party adapter implementation must be updated to accept the new optional
+  parameter.
+
+### Neutral
+
+- The `OutboundDispatcher._queue` being unbounded (flagged in ADR-014
+  Consequences/Neutral) is not resolved by this ADR. It remains a separate
+  resilience concern: add `queue_maxsize` constructor parameter to
+  `OutboundDispatcher` and set a sensible default in hub configuration.
+- The migration sequencing across ADR-014 and this ADR has ordering constraints.
+  The recommended implementation sequence is:
+  1. Port `platform_context` onto `InboundMessage` (unblocks A1 and the
+     `RenderContext` migration).
+  2. Freeze `OutboundAudio` (C1 — independent, can be done anytime).
+  3. Extract `_push_to_hub()` into `DiscordAdapter` (D1 — independent).
+  4. Add `enqueue_audio()` to `OutboundDispatcher` and `render_audio()` to
+     `ChannelAdapter` protocol (A1 + ADR-014 Option D).
+  5. Thread `OutboundMessage` through `send_streaming()` (B1 / #67).
+  Steps 2 and 3 are independent of each other and of step 1. Steps 4 and 5 both
+  require step 1.

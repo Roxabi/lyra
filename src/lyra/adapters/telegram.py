@@ -564,6 +564,8 @@ class TelegramAdapter:
                 chat_id=chat_id, text=_placeholder_text
             )
             if outbound is not None:
+                # telegram-bot-api: Message.message_id (placeholder ID
+                # during streaming; not updated to a final ID on completion)
                 outbound.metadata["reply_message_id"] = placeholder.message_id
         except Exception:
             log.exception("Failed to send placeholder — falling back to non-streaming")

@@ -525,6 +525,8 @@ class DiscordAdapter(discord.Client):
         try:
             placeholder = await messageable.send(_placeholder_text)
             if outbound is not None:
+                # discord.py: Message.id (placeholder ID during streaming;
+                # not updated to a final ID on completion)
                 outbound.metadata["reply_message_id"] = placeholder.id
         except Exception:
             log.exception("Failed to send placeholder — falling back to non-streaming")

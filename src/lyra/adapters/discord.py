@@ -268,7 +268,9 @@ class DiscordAdapter(discord.Client):
             view.add_item(discord.ui.Button(label=b.text, custom_id=b.callback_data))
         return view
 
-    async def send(self, original_msg: InboundMessage, outbound: OutboundMessage) -> None:
+    async def send(
+        self, original_msg: InboundMessage, outbound: OutboundMessage
+    ) -> None:
         """Send response back to Discord.
 
         Circuit breaker checks and recording are handled by OutboundDispatcher,
@@ -308,7 +310,8 @@ class DiscordAdapter(discord.Client):
                 msg_id: int | None = original_msg.platform_meta.get("message_id")
                 if msg_id is None:
                     raise ValueError(
-                        "platform_meta missing required key 'message_id' for mention reply"
+                        "platform_meta missing required key"
+                        " 'message_id' for mention reply"
                     )
                 msg_obj = messageable.get_partial_message(msg_id)  # type: ignore[attr-defined]
                 if chunk_view is not None:

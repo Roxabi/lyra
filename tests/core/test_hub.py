@@ -64,7 +64,9 @@ class MockAdapter:
     def normalize(self, raw: object) -> InboundMessage:
         raise NotImplementedError
 
-    async def send(self, original_msg: InboundMessage, outbound: OutboundMessage) -> None:
+    async def send(
+        self, original_msg: InboundMessage, outbound: OutboundMessage
+    ) -> None:
         pass
 
     async def send_streaming(
@@ -415,11 +417,6 @@ class TestDispatchResponse:
             ) -> None:
                 pass
 
-            async def send_streaming(
-                self, original_msg: InboundMessage, chunks: object
-            ) -> None:
-                pass
-
         hub.register_adapter(Platform.TELEGRAM, "main", DummyAdapter())  # type: ignore[arg-type]
         assert hub._last_processed_at is None
         msg = make_inbound_message(platform="telegram", bot_id="main")
@@ -662,7 +659,9 @@ class TestDispatchStreaming:
         sent: list[object] = []
 
         class LegacyAdapter:
-            async def send(self, original_msg: InboundMessage, outbound: OutboundMessage) -> None:
+            async def send(
+                self, original_msg: InboundMessage, outbound: OutboundMessage
+            ) -> None:
                 sent.append(outbound)
 
         # LegacyAdapter intentionally lacks send_streaming to test fallback
@@ -1268,17 +1267,17 @@ async def test_dispatch_response_accepts_outbound_message() -> None:
 
     class MockAdapterV2:
         async def send(
-            self, original_msg: Message, outbound: OutboundMessage
+            self, original_msg: InboundMessage, outbound: OutboundMessage
         ) -> None:
             received.append(outbound)
 
         async def send_streaming(
-            self, original_msg: Message, chunks: object
+            self, original_msg: InboundMessage, chunks: object
         ) -> None:
             pass
 
-    hub.register_adapter(Platform.TELEGRAM, "main", MockAdapterV2())
-    msg = make_message(platform=Platform.TELEGRAM, bot_id="main")
+    hub.register_adapter(Platform.TELEGRAM, "main", MockAdapterV2())  # type: ignore[arg-type]
+    msg = make_inbound_message(platform="telegram", bot_id="main")
     outbound = OutboundMessage.from_text("hi")
 
     # Act
@@ -1299,17 +1298,17 @@ async def test_dispatch_response_accepts_legacy_response() -> None:
 
     class LegacyCapturingAdapter:
         async def send(
-            self, original_msg: Message, outbound: OutboundMessage
+            self, original_msg: InboundMessage, outbound: OutboundMessage
         ) -> None:
             received.append(outbound)  # type: ignore[arg-type]
 
         async def send_streaming(
-            self, original_msg: Message, chunks: object
+            self, original_msg: InboundMessage, chunks: object
         ) -> None:
             pass
 
-    hub.register_adapter(Platform.TELEGRAM, "main", LegacyCapturingAdapter())
-    msg = make_message(platform=Platform.TELEGRAM, bot_id="main")
+    hub.register_adapter(Platform.TELEGRAM, "main", LegacyCapturingAdapter())  # type: ignore[arg-type]
+    msg = make_inbound_message(platform="telegram", bot_id="main")
 
     # Act
     await hub.dispatch_response(msg, Response(content="hi"))

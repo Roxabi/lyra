@@ -19,8 +19,7 @@ import pytest
 from lyra.core.agent import Agent
 from lyra.core.hub import Hub, _is_group_message
 from lyra.core.message import (
-    DiscordContext,
-    InboundInboundMessage,
+    InboundMessage,
     OutboundMessage,
     Platform,
     Response,

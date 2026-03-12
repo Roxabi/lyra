@@ -74,13 +74,13 @@ def test_to_text_renders_code_block() -> None:
 
 
 def test_to_text_renders_attachment() -> None:
-    """OutboundMessage.to_text() renders Attachment as 'url — caption'."""
-    from lyra.core.message import Attachment, OutboundMessage
+    """OutboundMessage.to_text() renders MediaPart as 'url — caption'."""
+    from lyra.core.message import MediaPart, OutboundMessage
 
     # Arrange
     outbound = OutboundMessage(
         content=[
-            Attachment(url="http://example/img", media_type="image/png", caption="pic")
+            MediaPart(url="http://example/img", media_type="image/png", caption="pic")
         ]
     )
 

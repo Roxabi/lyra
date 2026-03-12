@@ -30,11 +30,10 @@ from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.command_router import CommandConfig, CommandRouter
 from lyra.core.hub import Hub
 from lyra.core.message import (
-    InboundInboundMessage,
+    InboundMessage,
     OutboundMessage,
     Platform,
     Response,
-    TelegramContext,
 )
 from lyra.core.messages import MessageManager
 from lyra.core.plugin_loader import PluginLoader
@@ -398,11 +397,6 @@ class TestPassthroughNonCommandInHub:
             ) -> None:
                 pass
 
-            async def send_streaming(
-                self, original_msg: InboundMessage, chunks: object
-            ) -> None:
-                pass
-
         hub.register_adapter(Platform.TELEGRAM, "main", CapturingAdapter())  # type: ignore[arg-type]
         hub.register_binding(
             Platform.TELEGRAM, "main", "chat:42", "lyra", "telegram:main:chat:42"
@@ -440,11 +434,6 @@ class TestPassthroughNonCommandInHub:
         class CapturingAdapter:
             async def send(
                 self, original_msg: InboundMessage, outbound: OutboundMessage
-            ) -> None:
-                pass
-
-            async def send_streaming(
-                self, original_msg: InboundMessage, chunks: object
             ) -> None:
                 pass
 

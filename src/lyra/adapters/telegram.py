@@ -420,7 +420,9 @@ class TelegramAdapter:
                for b in buttons]]
         return InlineKeyboardMarkup(inline_keyboard=kb)
 
-    async def send(self, original_msg: InboundMessage, outbound: OutboundMessage) -> None:
+    async def send(
+        self, original_msg: InboundMessage, outbound: OutboundMessage
+    ) -> None:
         """Send a response back to Telegram via bot.send_message.
 
         Circuit breaker checks and recording are handled by OutboundDispatcher,

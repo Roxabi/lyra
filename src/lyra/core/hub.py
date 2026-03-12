@@ -41,7 +41,9 @@ class ChannelAdapter(Protocol):
 
     def normalize(self, raw: Any) -> InboundMessage: ...
 
-    async def send(self, original_msg: InboundMessage, outbound: OutboundMessage) -> None: ...
+    async def send(
+        self, original_msg: InboundMessage, outbound: OutboundMessage
+    ) -> None: ...
 
     async def send_streaming(
         self, original_msg: InboundMessage, chunks: AsyncIterator[str]
@@ -260,14 +262,21 @@ class Hub:
     # Dispatch
     # ------------------------------------------------------------------
 
-    async def dispatch_response(self, msg: InboundMessage, response: Response) -> None:
+    async def dispatch_response(
+        self, msg: InboundMessage, response: Response | OutboundMessage
+    ) -> None:
         """Send response back via the originating adapter.
 
         Routes through the OutboundDispatcher when one is registered for the
         platform (fire-and-forget queue). Falls back to a direct adapter call
         when no dispatcher is registered (used in tests and command responses).
+
+        Accepts either a Response (backward compat) or OutboundMessage directly.
         """
-        outbound = response.to_outbound()
+        if isinstance(response, OutboundMessage):
+            outbound = response
+        else:
+            outbound = response.to_outbound()
         platform = Platform(msg.platform)
         dispatcher = self.outbound_dispatchers.get((platform, msg.bot_id))
         if dispatcher is not None:

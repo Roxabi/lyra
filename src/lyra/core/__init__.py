@@ -9,8 +9,8 @@ from .message import (
     DiscordContext,  # deprecated: use InboundMessage
     ImageContent,
     InboundMessage,
-    Message,  # deprecated: use InboundMessage
     MediaPart,
+    Message,  # deprecated: use InboundMessage
     MessageContent,
     MessageType,
     OutboundMessage,

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import tempfile
 import time
 from collections.abc import AsyncIterator, Callable
@@ -36,6 +37,7 @@ from lyra.core.messages import MessageManager
 log = logging.getLogger(__name__)
 
 TELEGRAM_MAX_LENGTH = 4096  # Telegram Bot API text message limit
+_MARKDOWNV2_SPECIAL = re.compile(r'([_*\[\]()~`>#\+\-=|{}.!\\])')
 
 
 def _outbound_to_text(outbound: OutboundMessage) -> str:
@@ -421,6 +423,23 @@ class TelegramAdapter:
         # the update indefinitely.
         await self._push_to_hub(hub_msg)
 
+    def _render_text(self, text: str) -> list[str]:
+        """Escape MarkdownV2 special characters and split into ≤4096-char chunks."""
+        escaped = _MARKDOWNV2_SPECIAL.sub(r'\\\1', text)
+        if not escaped:
+            return [""]
+        return [escaped[i:i + TELEGRAM_MAX_LENGTH]
+                for i in range(0, len(escaped), TELEGRAM_MAX_LENGTH)]
+
+    def _render_buttons(self, buttons: list) -> object | None:
+        """Convert list[Button] to InlineKeyboardMarkup, or None if empty."""
+        if not buttons:
+            return None
+        from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+        kb = [[InlineKeyboardButton(text=b.text, callback_data=b.callback_data)
+               for b in buttons]]
+        return InlineKeyboardMarkup(inline_keyboard=kb)
+
     async def send(self, original_msg: InboundMessage, outbound: OutboundMessage) -> None:
         """Send a response back to Telegram via bot.send_message.
 
@@ -439,10 +458,23 @@ class TelegramAdapter:
                 "platform_meta missing required key 'chat_id' for send()"
             )
 
+        # Flatten content parts to plain text, escape and chunk
         text = _outbound_to_text(outbound)
-        sent = await self.bot.send_message(chat_id=chat_id, text=text)
-        # Store for session persistence (#67) and reply-to-resume (#83).
-        outbound.metadata["reply_message_id"] = sent.message_id
+        chunks = self._render_text(text)
+        keyboard = self._render_buttons(outbound.buttons)
+        last_idx = len(chunks) - 1
+
+        for i, chunk in enumerate(chunks):
+            kwargs: dict = {
+                "chat_id": chat_id,
+                "text": chunk,
+                "parse_mode": "MarkdownV2",
+            }
+            if i == last_idx and keyboard is not None:
+                kwargs["reply_markup"] = keyboard
+            sent = await self.bot.send_message(**kwargs)
+            if i == last_idx:
+                outbound.metadata["reply_message_id"] = sent.message_id
 
     async def send_streaming(
         self, original_msg: InboundMessage, chunks: AsyncIterator[str]

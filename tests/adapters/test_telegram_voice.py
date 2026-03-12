@@ -18,7 +18,6 @@ import pytest
 
 from lyra.adapters.telegram import TelegramAdapter
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
-from lyra.core.message import Attachment
 
 
 def _make_voice_msg(
@@ -57,8 +56,8 @@ def _make_adapter() -> tuple[TelegramAdapter, MagicMock]:
 
 
 @pytest.mark.asyncio
-async def test_voice_message_produces_audio_type(tmp_path) -> None:
-    """Voice message → hub receives MessageType.AUDIO."""
+async def test_voice_message_sends_unsupported_reply(tmp_path) -> None:
+    """Voice message → sends unsupported reply; hub is NOT called."""
     adapter, hub = _make_adapter()
     tmp_file = tmp_path / "audio.ogg"
     tmp_file.touch()
@@ -66,11 +65,10 @@ async def test_voice_message_produces_audio_type(tmp_path) -> None:
     with patch.object(adapter, "_download_audio", return_value=(tmp_file, 3.0)):
         await adapter._on_voice_message(_make_voice_msg())
 
-    call_args = hub.inbound_bus.put.call_args
-    hub_msg = call_args[0][1]
-    assert len(hub_msg.attachments) == 1
-    assert hub_msg.attachments[0].type == "audio"
-    assert hub_msg.platform == "telegram"
+    hub.inbound_bus.put.assert_not_called()
+    adapter.bot.send_message.assert_called_once()
+    call_kwargs = adapter.bot.send_message.call_args
+    assert call_kwargs.kwargs["chat_id"] == 42
 
 
 # ---------------------------------------------------------------------------
@@ -79,22 +77,24 @@ async def test_voice_message_produces_audio_type(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_voice_audio_content_fields(tmp_path) -> None:
-    """AudioContent on the hub message has correct url, duration, file_id."""
+async def test_voice_audio_normalize_audio_called(tmp_path) -> None:
+    """normalize_audio is called during voice message handling; hub is NOT called."""
     adapter, hub = _make_adapter()
     tmp_file = tmp_path / "audio.ogg"
     tmp_file.touch()
 
     with patch.object(adapter, "_download_audio", return_value=(tmp_file, 3.0)):
-        await adapter._on_voice_message(_make_voice_msg(file_id="FILEXYZ", duration=3))
+        with patch.object(
+            adapter, "normalize_audio", wraps=adapter.normalize_audio
+        ) as mock_norm:
+            await adapter._on_voice_message(
+                _make_voice_msg(file_id="FILEXYZ", duration=3)
+            )
 
-    hub_msg = hub.inbound_bus.put.call_args[0][1]
-    assert len(hub_msg.attachments) == 1
-    attachment: Attachment = hub_msg.attachments[0]
-    assert isinstance(attachment, Attachment)
-    assert attachment.type == "audio"
-    assert isinstance(attachment.url_or_bytes, bytes)
-    assert attachment.mime_type == "audio/ogg"
+    hub.inbound_bus.put.assert_not_called()
+    mock_norm.assert_called_once()
+    _, _, mime = mock_norm.call_args.args
+    assert mime == "audio/ogg"
 
 
 # ---------------------------------------------------------------------------
@@ -204,8 +204,8 @@ async def test_queue_full_cleans_temp_file(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_audio_field_message_produces_audio_type(tmp_path) -> None:
-    """msg.audio path (F.audio filter) normalises to MessageType.AUDIO."""
+async def test_audio_field_message_sends_unsupported_reply(tmp_path) -> None:
+    """msg.audio path sends unsupported reply; hub is NOT called."""
     adapter, hub = _make_adapter()
     msg = _make_voice_msg()
     msg.voice = None
@@ -217,9 +217,8 @@ async def test_audio_field_message_produces_audio_type(tmp_path) -> None:
     with patch.object(adapter, "_download_audio", return_value=(tmp_file, 5.0)):
         await adapter._on_voice_message(msg)
 
-    hub_msg = hub.inbound_bus.put.call_args[0][1]
-    assert len(hub_msg.attachments) == 1
-    assert hub_msg.attachments[0].type == "audio"
+    hub.inbound_bus.put.assert_not_called()
+    adapter.bot.send_message.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -304,8 +303,8 @@ def test_normalize_audio_topic_chat_scope_id() -> None:
 
 
 @pytest.mark.asyncio
-async def test_video_note_produces_video_mp4_mime_type(tmp_path) -> None:
-    """video_note messages must use mime_type='video/mp4', not 'audio/ogg'."""
+async def test_video_note_normalize_audio_uses_video_mp4(tmp_path) -> None:
+    """video_note messages must call normalize_audio with mime_type='video/mp4'."""
     adapter, hub = _make_adapter()
     tmp_file = tmp_path / "note.mp4"
     tmp_file.touch()
@@ -316,7 +315,12 @@ async def test_video_note_produces_video_mp4_mime_type(tmp_path) -> None:
     msg.video_note = SimpleNamespace(file_id="VN123", duration=5)
 
     with patch.object(adapter, "_download_audio", return_value=(tmp_file, 5.0)):
-        await adapter._on_voice_message(msg)
+        with patch.object(
+            adapter, "normalize_audio", wraps=adapter.normalize_audio
+        ) as mock_norm:
+            await adapter._on_voice_message(msg)
 
-    hub_msg = hub.inbound_bus.put.call_args[0][1]
-    assert hub_msg.attachments[0].mime_type == "video/mp4"
+    hub.inbound_bus.put.assert_not_called()
+    mock_norm.assert_called_once()
+    _, _, mime = mock_norm.call_args.args
+    assert mime == "video/mp4"

@@ -5,7 +5,7 @@ import logging
 import os
 import re
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from io import BytesIO
 from typing import TYPE_CHECKING, Any, cast
@@ -351,34 +351,55 @@ class DiscordAdapter(discord.Client):
             return
 
         log.info(
-            '{"event": "message_received", "platform": "discord",'
-            ' "user_id": "%s", "scope_id": "%s", "msg_id": "%s"}',
-            hub_msg.user_id,
-            hub_msg.scope_id,
-            hub_msg.id,
+            "message_received",
+            extra={
+                "platform": "discord",
+                "user_id": hub_msg.user_id,
+                "scope_id": hub_msg.scope_id,
+                "msg_id": hub_msg.id,
+            },
         )
 
-        # Hub circuit guard
+        await self._push_to_hub(hub_msg, source_message=message)
+
+    async def _push_to_hub(
+        self,
+        hub_msg: InboundMessage,
+        source_message: Any = None,
+        on_drop: Callable[[], None] | None = None,
+    ) -> None:
+        """Put hub_msg on the inbound bus with circuit-open and backpressure guards.
+
+        on_drop is called before early return in both circuit-open and QueueFull
+        cases. Always returns normally.
+        """
         if self._circuit_registry is not None:
             cb = self._circuit_registry.get("hub")
             if cb is not None and cb.is_open():
                 log.warning(
-                    '{"event": "hub_circuit_open", "platform": "discord",'
-                    ' "user_id": "%s", "dropped": true}',
-                    hub_msg.user_id,
+                    "hub_circuit_open",
+                    extra={
+                        "platform": "discord",
+                        "user_id": hub_msg.user_id,
+                        "dropped": True,
+                    },
                 )
-                return  # silent drop
+                if on_drop is not None:
+                    on_drop()
+                return
 
-        # S5+S6: non-blocking enqueue with backpressure ack on full bus
         try:
             self._hub.inbound_bus.put(Platform.DISCORD, hub_msg)
         except asyncio.QueueFull:
+            if on_drop is not None:
+                on_drop()
             text = (
                 self._msg_manager.get("backpressure_ack", platform="discord")
                 if self._msg_manager
                 else "Processing your request\u2026"
             )
-            await message.reply(text)
+            if source_message is not None:
+                await source_message.reply(text)
 
     def _render_text(self, text: str) -> list[str]:
         """Split text into ≤2000-char chunks (Discord limit). No escaping needed."""

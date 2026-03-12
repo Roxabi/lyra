@@ -23,7 +23,6 @@ from aiogram.enums import ChatAction
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
-    Attachment,
     InboundAudio,
     InboundMessage,
     OutboundAudio,
@@ -363,10 +362,11 @@ class TelegramAdapter:
             log.exception("Failed to download audio file_id=%s", file_id)
             return
 
+        loop = asyncio.get_event_loop()
         try:
-            audio_bytes = tmp_path.read_bytes()
+            audio_bytes = await loop.run_in_executor(None, tmp_path.read_bytes)
         finally:
-            tmp_path.unlink(missing_ok=True)
+            await loop.run_in_executor(None, lambda: tmp_path.unlink(missing_ok=True))
 
         if msg.voice:
             mime_type = "audio/ogg"
@@ -378,53 +378,28 @@ class TelegramAdapter:
         _inbound_audio = self.normalize_audio(msg, audio_bytes, mime_type)
         # TODO(#140-follow-on): enqueue _inbound_audio onto InboundAudioBus
 
-        timestamp = msg.date
-        if timestamp.tzinfo is None:
-            timestamp = timestamp.replace(tzinfo=timezone.utc)
-
-        _chat_id: int = msg.chat.id
-        _topic_id: int | None = msg.message_thread_id
-        _scope_id = self._make_scope_id(_chat_id, _topic_id)
-        _user_id = f"tg:user:{msg.from_user.id}"
-
-        hub_msg = InboundMessage(
-            id=(
-                f"telegram:{_user_id}:{int(timestamp.timestamp())}"
-                f":{getattr(msg, 'message_id', '')}"
-            ),
-            platform="telegram",
-            bot_id=self._bot_id,
-            scope_id=_scope_id,
-            user_id=_user_id,
-            user_name=msg.from_user.full_name,
-            is_mention=False,
-            text="",
-            text_raw="",
-            attachments=[
-                Attachment(
-                    type="audio",
-                    url_or_bytes=audio_bytes,
-                    mime_type=mime_type,
-                    filename=None,
-                )
-            ],
-            timestamp=timestamp,
-            trust="user",
-            platform_meta={
-                "chat_id": _chat_id,
-                "topic_id": _topic_id,
-                "message_id": getattr(msg, "message_id", None),
-                "is_group": msg.chat.type != "private",
+        log.info(
+            "audio_received",
+            extra={
+                "platform": "telegram",
+                "user_id": f"tg:user:{msg.from_user.id}",
+                "scope_id": self._make_scope_id(msg.chat.id, msg.message_thread_id),
             },
         )
-
-        log.info(
-            '{"event": "audio_received", "platform": "telegram",'
-            ' "user_id": "%s", "scope_id": "%s"}',
-            hub_msg.user_id,
-            hub_msg.scope_id,
-        )
-        await self._push_to_hub(hub_msg)
+        try:
+            await self.bot.send_message(
+                chat_id=msg.chat.id,
+                text=(
+                    self._msg_manager.get("stt_unsupported", platform="telegram")
+                    if self._msg_manager
+                    else "Voice messages are not yet supported here."
+                ),
+            )
+        except Exception:
+            log.warning(
+                "Failed to send audio-unsupported reply for user_id=%s",
+                f"tg:user:{msg.from_user.id}",
+            )
 
     async def _push_to_hub(
         self,
@@ -441,9 +416,12 @@ class TelegramAdapter:
             cb = self._circuit_registry.get("hub")
             if cb is not None and cb.is_open():
                 log.warning(
-                    '{"event": "hub_circuit_open", "platform": "telegram",'
-                    ' "user_id": "%s", "dropped": true}',
-                    hub_msg.user_id,
+                    "hub_circuit_open",
+                    extra={
+                        "platform": "telegram",
+                        "user_id": hub_msg.user_id,
+                        "dropped": True,
+                    },
                 )
                 if on_drop is not None:
                     on_drop()
@@ -476,11 +454,13 @@ class TelegramAdapter:
 
         hub_msg = self.normalize(msg)
         log.info(
-            '{"event": "message_received", "platform": "telegram",'
-            ' "user_id": "%s", "scope_id": "%s", "msg_id": "%s"}',
-            hub_msg.user_id,
-            hub_msg.scope_id,
-            hub_msg.id,
+            "message_received",
+            extra={
+                "platform": "telegram",
+                "user_id": hub_msg.user_id,
+                "scope_id": hub_msg.scope_id,
+                "msg_id": hub_msg.id,
+            },
         )
         # IMPORTANT: Always return normally to aiogram — webhook must return
         # {"ok": True} (HTTP 200). Never raise here or Telegram will retry

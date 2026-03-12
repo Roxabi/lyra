@@ -130,16 +130,18 @@ class TestAudioLoopNoSTT:
         hub.inbound_audio_bus.put(Platform.TELEGRAM, audio)
 
         dispatched: list[tuple[InboundMessage, Response]] = []
+        done = asyncio.Event()
 
         async def capture_dispatch(msg, response):
             dispatched.append((msg, response))
+            done.set()
 
         hub.dispatch_response = capture_dispatch  # type: ignore[assignment]
 
         await hub.inbound_audio_bus.start()
         task = asyncio.create_task(hub._audio_loop())
         try:
-            await asyncio.sleep(0.2)
+            await asyncio.wait_for(done.wait(), timeout=2.0)
             assert len(dispatched) == 1
             _, resp = dispatched[0]
             content = resp.content.lower()
@@ -163,16 +165,18 @@ class TestAudioLoopSTTFailure:
         hub.inbound_audio_bus.put(Platform.TELEGRAM, audio)
 
         dispatched: list[tuple[InboundMessage, Response]] = []
+        done = asyncio.Event()
 
         async def capture_dispatch(msg, response):
             dispatched.append((msg, response))
+            done.set()
 
         hub.dispatch_response = capture_dispatch  # type: ignore[assignment]
 
         await hub.inbound_audio_bus.start()
         task = asyncio.create_task(hub._audio_loop())
         try:
-            await asyncio.sleep(0.3)
+            await asyncio.wait_for(done.wait(), timeout=2.0)
             assert len(dispatched) == 1
             _, resp = dispatched[0]
             assert "couldn't transcribe" in resp.content.lower()
@@ -195,16 +199,18 @@ class TestAudioLoopNoise:
         hub.inbound_audio_bus.put(Platform.TELEGRAM, audio)
 
         dispatched: list[tuple[InboundMessage, Response]] = []
+        done = asyncio.Event()
 
         async def capture_dispatch(msg, response):
             dispatched.append((msg, response))
+            done.set()
 
         hub.dispatch_response = capture_dispatch  # type: ignore[assignment]
 
         await hub.inbound_audio_bus.start()
         task = asyncio.create_task(hub._audio_loop())
         try:
-            await asyncio.sleep(0.2)
+            await asyncio.wait_for(done.wait(), timeout=2.0)
             assert len(dispatched) == 1
             _, resp = dispatched[0]
             assert "couldn't make out" in resp.content.lower()

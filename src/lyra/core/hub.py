@@ -426,7 +426,14 @@ class Hub:
                     platform_meta=audio.platform_meta,
                 )
                 # Re-enqueue on InboundBus for normal Hub.run() processing
-                self.inbound_bus.put(platform_enum, msg)
+                try:
+                    self.inbound_bus.put(platform_enum, msg)
+                except asyncio.QueueFull:
+                    log.warning(
+                        "inbound bus full — transcribed audio %s dropped",
+                        audio.id,
+                    )
+                    continue
                 log.info(
                     "Audio %s transcribed (%s, %.1fs) → re-enqueued as text on %s",
                     audio.id,

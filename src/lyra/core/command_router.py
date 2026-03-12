@@ -21,6 +21,7 @@ from .pool import Pool
 
 if TYPE_CHECKING:
     from lyra.core.runtime_config import RuntimeConfigHolder
+    from lyra.llm.smart_routing import SmartRoutingDecorator
 
 log = logging.getLogger(__name__)
 
@@ -45,6 +46,9 @@ class CommandRouter:
         "/circuit": CommandConfig(
             builtin=True, description="Show circuit breaker status (admin-only)"
         ),
+        "/routing": CommandConfig(
+            builtin=True, description="Show smart routing decisions (admin-only)"
+        ),
         "/stop": CommandConfig(
             builtin=True, description="Cancel the current processing turn"
         ),
@@ -63,6 +67,7 @@ class CommandRouter:
         msg_manager: MessageManager | None = None,
         runtime_config_holder: RuntimeConfigHolder | None = None,
         runtime_config_path: Path | None = None,
+        smart_routing_decorator: SmartRoutingDecorator | None = None,
     ) -> None:
         self._plugin_loader = plugin_loader
         self._enabled_plugins = enabled_plugins
@@ -74,6 +79,7 @@ class CommandRouter:
         self._msg_manager = msg_manager
         self._runtime_config_holder = runtime_config_holder
         self._runtime_config_path = runtime_config_path
+        self._smart_routing = smart_routing_decorator
         # Guard: raise early if any loaded plugin command clashes with a builtin.
         plugin_handlers = plugin_loader.get_commands(enabled_plugins)
         conflicts = set(plugin_handlers) & set(self._builtins)
@@ -116,6 +122,9 @@ class CommandRouter:
 
         if command_name == "/circuit":
             return self._circuit_status(msg)
+
+        if command_name == "/routing":
+            return self._routing_status(msg)
 
         if command_name == "/stop":
             if pool is not None:
@@ -202,6 +211,29 @@ class CommandRouter:
                 state_str = f"{status.state.value.upper():<10} (ok)"
             lines.append(f"  {name:<12} {state_str}")
         lines.append("─" * 38)
+        return Response(content="\n".join(lines))
+
+    def _routing_status(self, msg: InboundMessage) -> Response:
+        """Return smart routing decisions table (admin-only)."""
+        if not self._admin_user_ids or msg.user_id not in self._admin_user_ids:
+            return Response(content="This command is admin-only.")
+        if self._smart_routing is None:
+            return Response(content="Smart routing not configured.")
+        history = self._smart_routing.history
+        if not history:
+            return Response(content="No routing decisions yet.")
+        lines = ["Smart Routing — Recent Decisions", "─" * 60]
+        for decision in reversed(history):
+            from datetime import datetime, timezone
+
+            ts = datetime.fromtimestamp(decision.timestamp, tz=timezone.utc)
+            ts_str = ts.strftime("%H:%M:%S")
+            lines.append(
+                f"  {ts_str}  {decision.complexity.value:<8}  "
+                f"{decision.routed_model:<30}  {decision.message_preview}"
+            )
+        lines.append("─" * 60)
+        lines.append(f"  Showing {len(history)} decisions")
         return Response(content="\n".join(lines))
 
     def _cmd_config(self, msg: InboundMessage, args: list[str]) -> Response:

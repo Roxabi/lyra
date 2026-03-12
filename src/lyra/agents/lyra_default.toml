@@ -21,5 +21,14 @@ tools = ["Read", "Grep", "Glob", "WebFetch", "WebSearch"]
 # [prompt]
 # system = "..."     # Optional: raw string overrides persona composition
 
+[agent.smart_routing]
+enabled = false
+
+[agent.smart_routing.models]
+trivial  = "claude-haiku-4-5-20251001"
+simple   = "claude-haiku-4-5-20251001"
+moderate = "claude-sonnet-4-6"
+complex  = "claude-sonnet-4-6"
+
 [plugins]
 enabled = ["echo"]

@@ -6,8 +6,9 @@ import re
 import tomllib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from lyra.stt import STTService
@@ -51,6 +52,24 @@ class ModelConfig:
     model: str = "claude-sonnet-4-5"
     max_turns: int = 10
     tools: tuple[str, ...] = field(default=())
+
+
+class Complexity(Enum):
+    """Message complexity levels for routing decisions (#134)."""
+
+    TRIVIAL = "trivial"
+    SIMPLE = "simple"
+    MODERATE = "moderate"
+    COMPLEX = "complex"
+
+
+@dataclass(frozen=True)
+class SmartRoutingConfig:
+    """Configuration for the smart routing decorator (#134)."""
+
+    enabled: bool = False
+    routing_table: dict[Complexity, str] = field(default_factory=dict)
+    history_size: int = 50
 
 
 @dataclass(frozen=True)
@@ -104,6 +123,7 @@ class Agent:
     plugins_enabled: tuple[str, ...] = field(default=())  # empty = default-open
     persona: PersonaConfig | None = None
     i18n_language: str = "en"
+    smart_routing: SmartRoutingConfig | None = None
 
 
 def load_persona(name: str, personas_dir: Path | None = None) -> PersonaConfig:
@@ -334,6 +354,22 @@ def load_agent_config(
         )
         i18n_language = "en"
 
+    # Smart routing config (#134)
+    smart_routing: SmartRoutingConfig | None = None
+    sr_section = agent_section.get("smart_routing")
+    if sr_section is not None:
+        sr_models = sr_section.get("models", {})
+        routing_table: dict[Complexity, str] = {}
+        for level in Complexity:
+            model_id = sr_models.get(level.value)
+            if model_id:
+                routing_table[level] = model_id
+        smart_routing = SmartRoutingConfig(
+            enabled=bool(sr_section.get("enabled", False)),
+            routing_table=routing_table,
+            history_size=int(sr_section.get("history_size", 50)),
+        )
+
     return Agent(
         name=name,
         system_prompt=system_prompt,
@@ -344,6 +380,7 @@ def load_agent_config(
         plugins_enabled=plugins_enabled,
         persona=persona,
         i18n_language=i18n_language,
+        smart_routing=smart_routing,
     )
 
 
@@ -364,6 +401,7 @@ class AgentBase(ABC):
         admin_user_ids: set[str] | None = None,
         msg_manager: MessageManager | None = None,
         stt: STTService | None = None,
+        smart_routing_decorator: Any | None = None,
     ) -> None:
         self.config = config
         self._agents_dir = agents_dir or _AGENTS_DIR
@@ -378,6 +416,7 @@ class AgentBase(ABC):
         # Temp file cleanup (AudioContent.url) must live in a finally block in
         # process() — the agent owns it, not STTService. See ADR-013.
         self._stt = stt
+        self._smart_routing_decorator = smart_routing_decorator
         self._plugins_dir = plugins_dir or _PLUGINS_DIR
         self._plugin_loader = PluginLoader(self._plugins_dir)
         self._effective_plugins = self._init_plugins()
@@ -388,6 +427,7 @@ class AgentBase(ABC):
             circuit_registry=circuit_registry,
             admin_user_ids=admin_user_ids,
             msg_manager=msg_manager,
+            smart_routing_decorator=smart_routing_decorator,
             **self._build_router_kwargs(),
         )
         self._persona_path: Path | None = None
@@ -487,6 +527,7 @@ class AgentBase(ABC):
                         circuit_registry=self._circuit_registry,
                         admin_user_ids=self._admin_user_ids,
                         msg_manager=self._msg_manager,
+                        smart_routing_decorator=self._smart_routing_decorator,
                         **self._build_router_kwargs(),
                     )
                 self._last_mtime = mtime

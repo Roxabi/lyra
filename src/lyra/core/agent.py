@@ -7,6 +7,10 @@ import tomllib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from lyra.stt import STTService
 
 from .circuit_breaker import CircuitRegistry
 from .command_router import CommandConfig, CommandRouter
@@ -359,6 +363,7 @@ class AgentBase(ABC):
         circuit_registry: CircuitRegistry | None = None,
         admin_user_ids: set[str] | None = None,
         msg_manager: MessageManager | None = None,
+        stt: STTService | None = None,
     ) -> None:
         self.config = config
         self._agents_dir = agents_dir or _AGENTS_DIR
@@ -369,6 +374,7 @@ class AgentBase(ABC):
         self._circuit_registry = circuit_registry
         self._admin_user_ids = admin_user_ids
         self._msg_manager = msg_manager
+        self._stt = stt
         self._plugins_dir = plugins_dir or _PLUGINS_DIR
         self._plugin_loader = PluginLoader(self._plugins_dir)
         self._effective_plugins = self._init_plugins()

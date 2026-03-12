@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
+from lyra.core.auth import TrustLevel
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.messages import MessageManager
 
@@ -192,6 +193,7 @@ async def test_send_reply_on_mention() -> None:
             "thread_id": None,
             "channel_type": "text",
         },
+        trust_level=TrustLevel.TRUSTED,
     )
 
     await adapter.send(hub_msg, OutboundMessage.from_text("hi"))
@@ -236,6 +238,7 @@ async def test_send_channel_on_no_mention() -> None:
             "thread_id": None,
             "channel_type": "text",
         },
+        trust_level=TrustLevel.TRUSTED,
     )
 
     await adapter.send(hub_msg, OutboundMessage.from_text("hi"))

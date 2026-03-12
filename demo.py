@@ -4,6 +4,7 @@ import asyncio
 from datetime import datetime, timezone
 
 from lyra.core.agent import Agent, AgentBase
+from lyra.core.auth import TrustLevel
 from lyra.core.hub import Hub
 from lyra.core.message import InboundMessage, Platform, Response
 from lyra.core.pool import Pool
@@ -55,6 +56,7 @@ async def main() -> None:
             text_raw=text,
             timestamp=datetime.now(timezone.utc),
             platform_meta={"chat_id": 123},
+            trust_level=TrustLevel.TRUSTED,
         )
         print(f"  -> {text}")
         await hub.bus.put(msg)

@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from lyra.core.auth import TrustLevel
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.message import InboundMessage
 from lyra.core.messages import MessageManager
@@ -215,6 +216,7 @@ async def test_send_calls_bot_send_message() -> None:
             "message_id": 99,
             "is_group": False,
         },
+        trust_level=TrustLevel.TRUSTED,
     )
     outbound = OutboundMessage.from_text("reply")
 
@@ -306,6 +308,7 @@ async def test_send_skips_when_platform_context_is_not_telegram(
             "thread_id": None,
             "channel_type": "text",
         },
+        trust_level=TrustLevel.TRUSTED,
     )
 
     with caplog.at_level(logging.WARNING, logger="lyra.adapters.telegram"):
@@ -444,6 +447,7 @@ async def test_send_stores_reply_message_id_in_metadata() -> None:
             "message_id": 777,
             "is_group": False,
         },
+        trust_level=TrustLevel.TRUSTED,
     )
     outbound = OutboundMessage.from_text("reply")
 
@@ -563,6 +567,7 @@ async def test_send_always_delivers_regardless_of_circuit_state() -> None:
             "message_id": 1,
             "is_group": False,
         },
+        trust_level=TrustLevel.TRUSTED,
     )
 
     # Act
@@ -748,6 +753,7 @@ def _make_telegram_message():
         text_raw="hello",
         timestamp=datetime.now(timezone.utc),
         platform_meta={"chat_id": 123, "message_id": 1},
+        trust_level=TrustLevel.TRUSTED,
     )
 
 

@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Literal
 
+from lyra.core.auth import TrustLevel
+
 # Shared user-facing fallback for unhandled agent or dispatch errors.
 GENERIC_ERROR_REPLY = "Something went wrong. Please try again."
 
@@ -54,8 +56,11 @@ class InboundMessage:
     thread_id: str | None = None
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     locale: str | None = None
+    # Deprecated: use trust_level (TrustLevel) for authorization.
+    # Removal tracked separately.
     trust: Literal["user", "system"] = "user"
     platform_meta: dict = field(default_factory=dict)
+    trust_level: TrustLevel = TrustLevel.TRUSTED
 
 
 @dataclass(frozen=True)
@@ -77,10 +82,13 @@ class InboundAudio:
     duration_ms: int | None
     file_id: str | None
     timestamp: datetime
+    # Deprecated: use trust_level (TrustLevel) for authorization.
+    # Removal tracked separately.
     trust: Literal["user", "system"] = "user"
     user_name: str = ""
     is_mention: bool = False
     platform_meta: dict = field(default_factory=dict)
+    trust_level: TrustLevel = TrustLevel.TRUSTED
 
 
 @dataclass

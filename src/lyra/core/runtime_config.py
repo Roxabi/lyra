@@ -147,6 +147,7 @@ class RuntimeConfig:
 
 
 def _write_flat_toml(data: dict) -> str:
+    """Serialize a flat dict to TOML string. Caller must filter out None values."""
     lines = []
     for key, value in data.items():
         if isinstance(value, str):
@@ -193,6 +194,12 @@ def set_param(rc: RuntimeConfig, key: str, value: str) -> RuntimeConfig:
         if value.lower() in ("", "none"):
             parsed = None
         else:
+            import re as _re
+            if not _re.match(r"^[a-zA-Z0-9_.:-]+$", value):
+                raise ValueError(
+                    f"Invalid model ID {value!r}. "
+                    "Only alphanumerics, '.', '_', ':', '-' are allowed."
+                )
             parsed = value
 
     elif key == "language":

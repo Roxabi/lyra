@@ -168,6 +168,16 @@ class TestOverlayLanguage:
 class TestOverlayExtraInstructions:
     """overlay() appends extra_instructions last."""
 
+    def test_empty_extra_instructions_no_injection(self, base_agent: Agent) -> None:
+        # Arrange — default empty string
+        rc = RuntimeConfig(extra_instructions="")
+
+        # Act
+        effective = rc.overlay(base_agent)
+
+        # Assert — system prompt unchanged from base
+        assert effective.system_prompt == base_agent.system_prompt
+
     def test_extra_instructions_appended_last(self, base_agent: Agent) -> None:
         # Arrange
         rc = RuntimeConfig(extra_instructions="Always be brief.")

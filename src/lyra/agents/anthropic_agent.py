@@ -64,10 +64,15 @@ class AnthropicAgent(AgentBase):
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
 
     @property
-    def _runtime_config(self) -> RuntimeConfig:
+    def runtime_config(self) -> RuntimeConfig:
+        """Current runtime config. Always reflects the latest /config set."""
         return self._runtime_config_holder.value
 
-    def _build_router_kwargs(self) -> dict:
+    @property
+    def _runtime_config(self) -> RuntimeConfig:
+        return self.runtime_config
+
+    def _build_router_kwargs(self) -> dict[str, object]:
         return {"runtime_config_holder": self._runtime_config_holder}
 
     def _build_messages(self, text: str, pool: Pool) -> list[dict[str, Any]]:

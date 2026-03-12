@@ -198,7 +198,7 @@ def create_health_app(hub: Hub) -> FastAPI:
                 status_code=404,
                 detail="runtime config not available for this agent backend",
             )
-        rc = agent._runtime_config
+        rc = agent.runtime_config
         return {
             "style": rc.style,
             "language": rc.language,

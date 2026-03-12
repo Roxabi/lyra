@@ -13,6 +13,8 @@
     "010-external-tool-integration-pattern",
     "011-memory-layer-package-structure-vault-vs-standalone",
     "012-anthropic-agent-streaming-dispatch-and-dual-agent-pattern",
-    "013-media-temp-file-lifecycle-ownership"
+    "013-media-temp-file-lifecycle-ownership",
+    "014-adapter-protocol-gaps-and-inbound-audio-routing",
+    "015-outbound-audio-dispatch-gap-and-streaming-reply-id"
   ]
 }

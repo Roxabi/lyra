@@ -18,13 +18,11 @@ if TYPE_CHECKING:
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
-    DiscordContext,
     InboundAudio,
     InboundMessage,
     OutboundAudio,
     OutboundMessage,
     Platform,
-    RenderContext,
 )
 from lyra.core.messages import MessageManager
 
@@ -568,25 +566,31 @@ class DiscordAdapter(discord.Client):
         if stream_error is not None:
             raise stream_error
 
-    async def render_audio(self, msg: OutboundAudio, ctx: RenderContext) -> None:
+    async def render_audio(self, msg: OutboundAudio, inbound: InboundMessage) -> None:
         """Send an OutboundAudio envelope as a Discord audio file attachment.
 
         Sends audio_bytes as a discord.File attachment. caption (if set)
         is passed as the message content alongside the attachment.
         reply_to_id overrides the default reply target
-        (ctx.platform_context.message_id).
+        (inbound.platform_meta["message_id"]).
         """
-        if not isinstance(ctx.platform_context, DiscordContext):
+        if inbound.platform != "discord":
             log.error(
-                "render_audio() called with non-DiscordContext for msg id=%s", ctx.id
+                "render_audio() called with non-discord message id=%s", inbound.id
             )
             return
 
-        dc_ctx = ctx.platform_context
+        channel_id: int | None = inbound.platform_meta.get("channel_id")
+        if channel_id is None:
+            log.error(
+                "render_audio: platform_meta missing 'channel_id' for msg id=%s",
+                inbound.id,
+            )
+            return
 
-        channel = self.get_channel(dc_ctx.channel_id)
+        channel = self.get_channel(channel_id)
         if channel is None:
-            channel = await self.fetch_channel(dc_ctx.channel_id)
+            channel = await self.fetch_channel(channel_id)
 
         messageable = cast(discord.abc.Messageable, channel)
 
@@ -600,6 +604,7 @@ class DiscordAdapter(discord.Client):
         attachment = discord.File(fp=audio_buf, filename=filename)
 
         # Determine message to reply to
+        message_id: int | None = inbound.platform_meta.get("message_id")
         reply_to_id: int | None = None
         if msg.reply_to_id is not None:
             try:
@@ -609,7 +614,7 @@ class DiscordAdapter(discord.Client):
                     "render_audio: invalid reply_to_id=%r, ignoring", msg.reply_to_id
                 )
         else:
-            reply_to_id = dc_ctx.message_id
+            reply_to_id = message_id
 
         content = (msg.caption or "")[:DISCORD_MAX_LENGTH]
 

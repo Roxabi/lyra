@@ -528,10 +528,10 @@ system = "test"
         )
         handlers_path = plugin_dir / "handlers.py"
         handlers_path.write_text(
-            "from lyra.core.message import Response, Message\n"
+            "from lyra.core.message import Response, InboundMessage\n"
             "from lyra.core.pool import Pool\n"
             "async def cmd_echo("
-            "msg: Message, pool: Pool, args: list[str]) -> Response:\n"
+            "msg: InboundMessage, pool: Pool, args: list[str]) -> Response:\n"
             '    return Response(content=" ".join(args))\n'
         )
 

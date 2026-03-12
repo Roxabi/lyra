@@ -9,38 +9,14 @@ from lyra.agents.simple_agent import SimpleAgent
 from lyra.core.agent import Agent, ModelConfig
 from lyra.core.cli_pool import CliResult
 from lyra.core.message import (
-    AudioContent,
-    ImageContent,
     InboundMessage,
-    Message,
-    MessageType,
-    Platform,
     Response,
-    TelegramContext,
-    TextContent,
-    extract_text,
 )
 from lyra.core.pool import Pool
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def make_message(content: object = "hello") -> Message:
-    return Message(
-        id="msg-1",
-        platform=Platform.TELEGRAM,
-        bot_id="main",
-        user_id="alice",
-        user_name="Alice",
-        is_mention=False,
-        is_from_bot=False,
-        content=content,  # type: ignore[arg-type]
-        type=MessageType.TEXT,
-        timestamp=datetime.now(timezone.utc),
-        platform_context=TelegramContext(chat_id=42),
-    )
 
 
 def make_inbound_message(text: str = "hello") -> InboundMessage:
@@ -76,31 +52,6 @@ def make_agent(cli_pool: object) -> SimpleAgent:
         model_config=ModelConfig(),
     )
     return SimpleAgent(config, cli_pool)  # type: ignore[arg-type]
-
-
-# ---------------------------------------------------------------------------
-# TestExtractText
-# ---------------------------------------------------------------------------
-
-
-class TestExtractText:
-    def test_plain_string(self) -> None:
-        msg = make_message(content="plain text")
-        assert extract_text(msg) == "plain text"
-
-    def test_text_content(self) -> None:
-        msg = make_message(content=TextContent(text="hello"))
-        assert extract_text(msg) == "hello"
-
-    def test_image_content_url_fallback(self) -> None:
-        url = "https://example.com/img.png"
-        msg = make_message(content=ImageContent(url=url))
-        assert extract_text(msg) == f"[image: {url}]"
-
-    def test_audio_content_url_fallback(self) -> None:
-        url = "https://example.com/audio.ogg"
-        msg = make_message(content=AudioContent(url=url))
-        assert extract_text(msg) == f"[audio: {url}]"
 
 
 # ---------------------------------------------------------------------------

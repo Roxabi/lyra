@@ -92,10 +92,11 @@ def make_echo_plugin_dir(tmpdir: Path) -> Path:
         'handler = "cmd_echo"\n'
     )
     (plugin_dir / "handlers.py").write_text(
-        "from lyra.core.message import Response\n"
+        "from lyra.core.message import Response, InboundMessage\n"
         "from lyra.core.pool import Pool\n"
-        "from lyra.core.message import Message\n"
-        "async def cmd_echo(msg: Message, pool: Pool, args: list[str]) -> Response:\n"
+        "async def cmd_echo(\n"
+        "    msg: InboundMessage, pool: Pool, args: list[str]\n"
+        ") -> Response:\n"
         '    return Response(content=" ".join(args))\n'
     )
     return tmpdir

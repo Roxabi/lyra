@@ -104,25 +104,38 @@ MACHINE1_DIR=~/projects/lyra
 ```
 src/lyra/
   core/
-    message.py      — Message, RoutingKey, Platform, Response
-    hub.py          — Hub (bus + adapter registry + bindings)
-    pool.py         — Pool (history + asyncio.Task per scope)
-    agent.py        — AgentBase, Agent config, ModelConfig
-    cli_pool.py     — Claude CLI subprocess pool
+    message.py             — Message, InboundMessage, RoutingKey, Platform, Response
+    hub.py                 — Hub (bus + adapter registry + bindings)
+    pool.py                — Pool (history + asyncio.Task per scope)
+    agent.py               — AgentBase, Agent config, ModelConfig
+    cli_pool.py            — Claude CLI subprocess pool
+    inbound_bus.py         — InboundBus (per-platform queues + staging)
+    outbound_dispatcher.py — OutboundDispatcher (per-platform outbound + CB)
+    command_router.py      — CommandRouter (builtins + plugin commands)
+    circuit_breaker.py     — CircuitBreaker + CircuitRegistry
+    pairing.py             — PairingManager (cross-platform identity linking)
+    plugin_loader.py       — PluginLoader (TOML manifest + dynamic import)
+    runtime_config.py      — RuntimeConfig (mutable agent overlay)
+    messages.py            — MessageManager (i18n-ready message templates)
   adapters/
     telegram.py     — aiogram v3 adapter (polling + webhook)
     discord.py      — discord.py v2 gateway adapter
   agents/
     simple_agent.py       — Claude CLI agent implementation
+    anthropic_agent.py    — Anthropic SDK agent implementation
     lyra_default.toml     — default agent config (model, tools, system prompt)
+  stt/                    — STT service (Whisper transcription)
+  plugins/                — Plugin handlers (echo, pairing)
+  monitoring/             — Health checks + escalation
 tests/
   core/             — unit + integration tests (pytest-asyncio)
+  adapters/         — adapter tests (streaming, voice, normalization)
 docs/
   ARCHITECTURE.md   — full technical spec and decisions
   ROADMAP.md        — priorities and scope
   QUICKSTART.md     — developer setup guide
   vision.md         — design principles and constraints
-  architecture/adr/ — architecture decision records
+  architecture/adr/ — architecture decision records (15 ADRs)
 ```
 
 ## Documentation
@@ -136,7 +149,7 @@ docs/
 | [COMMANDS.md](docs/COMMANDS.md) | Command router — slash commands, external tool integration pattern |
 | [GETTING-STARTED.md](docs/GETTING-STARTED.md) | Machine 1 (Ubuntu Server) hardware setup |
 | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production service management on Machine 1 (systemd, logs, firewall) |
-| [ADRs](docs/architecture/adr/) | 8 architecture decision records with full rationale |
+| [ADRs](docs/architecture/adr/) | 15 architecture decision records with full rationale |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Branching model, commit conventions, adding adapters and agents |
 
 ## License

@@ -28,8 +28,6 @@ from lyra.core.message import (
     OutboundAudio,
     OutboundMessage,
     Platform,
-    RenderContext,
-    TelegramContext,
 )
 from lyra.core.messages import MessageManager
 
@@ -629,21 +627,30 @@ class TelegramAdapter:
         if stream_error is not None:
             raise stream_error
 
-    async def render_audio(self, msg: OutboundAudio, ctx: RenderContext) -> None:
+    async def render_audio(self, msg: OutboundAudio, inbound: InboundMessage) -> None:
         """Send an OutboundAudio envelope as a Telegram voice note (ogg/opus).
 
         Uses bot.send_voice() with a BytesIO buffer — no temp file required.
         caption (if set) is attached to the voice message.
-        reply_to_message_id is derived from ctx.platform_context.message_id
+        reply_to_message_id is derived from inbound.platform_meta["message_id"]
         unless msg.reply_to_id overrides it explicitly.
         """
-        if not isinstance(ctx.platform_context, TelegramContext):
+        if inbound.platform != "telegram":
             log.error(
-                "render_audio() called with non-TelegramContext for msg id=%s", ctx.id
+                "render_audio() called with non-telegram message id=%s", inbound.id
             )
             return
 
-        tg_ctx = ctx.platform_context
+        chat_id: int | None = inbound.platform_meta.get("chat_id")
+        if chat_id is None:
+            log.error(
+                "render_audio: platform_meta missing 'chat_id' for msg id=%s",
+                inbound.id,
+            )
+            return
+
+        topic_id: int | None = inbound.platform_meta.get("topic_id")
+        message_id: int | None = inbound.platform_meta.get("message_id")
 
         # Determine reply target: explicit override first, else original message id
         reply_to: int | None = None
@@ -654,8 +661,8 @@ class TelegramAdapter:
                 log.warning(
                     "render_audio: invalid reply_to_id=%r, ignoring", msg.reply_to_id
                 )
-        elif tg_ctx.message_id is not None:
-            reply_to = tg_ctx.message_id
+        elif message_id is not None:
+            reply_to = message_id
 
         duration_sec: int | None = (
             msg.duration_ms // 1000 if msg.duration_ms is not None else None
@@ -665,11 +672,11 @@ class TelegramAdapter:
         audio_buf.name = "voice.ogg"
 
         kwargs: dict = {
-            "chat_id": tg_ctx.chat_id,
+            "chat_id": chat_id,
             "voice": audio_buf,
         }
-        if tg_ctx.topic_id is not None:
-            kwargs["message_thread_id"] = tg_ctx.topic_id
+        if topic_id is not None:
+            kwargs["message_thread_id"] = topic_id
         if reply_to is not None:
             kwargs["reply_to_message_id"] = reply_to
         if msg.caption:

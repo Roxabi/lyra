@@ -315,7 +315,7 @@ client = AsyncOpenAI(
 - **scope_id replaces user_id in RoutingKey** (#125) — `RoutingKey(platform, bot_id, scope_id)`. Scope extracted from platform context: `chat:NNN`, `thread:NNN`, `channel:NNN`, etc.
 - **fastembed ONNX replaces sentence-transformers** (#82) — Non-blocking ONNX runtime, no `run_in_executor` needed. Hybrid BM25 (FTS5) + cosine (sqlite-vec).
 - **LLM circuit breaker** (#104) — Timeout + retry logic for Anthropic SDK calls. Graceful degradation on failure.
-- **LlmProvider protocol** (#123, in analysis) — Multi-driver abstraction: `AnthropicSdkDriver`, `ClaudeCliDriver`, `OllamaDriver`. Unblocks #83.
+- **LlmProvider protocol** (#123, spec approved) — Multi-driver abstraction: `AnthropicSdkDriver`, `ClaudeCliDriver`, `OllamaDriver`. Unblocks #83.
 - **Reduced Phase 1 memory scope** — Level 0 (working, L0 compaction in #83) + Level 3 (semantic, shipped #78/#81/#82). Levels 1, 2, 4 added when the real need arises.
 
 ### External tool integration
@@ -342,7 +342,7 @@ What is built in Phase 1 / 1b:
 - Hub: per-channel queues + bindings + pools + adapter registry (#112 epic ✅)
 - Memory level 0 (working, L0 compaction in #83) + level 3 (semantic ✅: #78/#81/#82)
 - Telegram + Discord adapters (✅)
-- LLM: Claude CLI subprocess (✅), Anthropic SDK driver (#76 ✅), multi-driver abstraction (#123 in analysis)
+- LLM: Claude CLI subprocess (✅), Anthropic SDK driver (#76 ✅), multi-driver abstraction (#123 spec approved)
 - Agent identity + persona (#75 ✅), session lifecycle (#83 in progress)
 
 **Phase 1b tail** (in progress):

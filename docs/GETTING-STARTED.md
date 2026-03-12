@@ -284,7 +284,7 @@ uv run python -m lyra
 
 You should see:
 ```
-INFO lyra: Agent loaded: name=lyra_default model=claude-sonnet-4-5 backend=claude-cli
+INFO lyra: Agent loaded: name=lyra_default model=claude-haiku-4-5-20251001 backend=claude-cli
 INFO lyra: Lyra started — Telegram + Discord adapters running.
 INFO lyra.adapters.discord: Discord bot ready: YourBot#1234 (id=...)
 ```

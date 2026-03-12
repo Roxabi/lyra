@@ -140,38 +140,6 @@ def test_is_mention_true_when_entity_at_offset_zero() -> None:
 
 
 # ---------------------------------------------------------------------------
-# T5 — Message.from_adapter() hardcodes trust="user"
-# ---------------------------------------------------------------------------
-
-
-def test_from_adapter_hardcodes_trust() -> None:
-    """Message.from_adapter always produces trust='user'."""
-    # AttributeError expected in RED — from_adapter does not exist yet
-    from lyra.core.message import (
-        Message,
-        MessageType,
-        Platform,
-        TelegramContext,
-        TextContent,
-    )
-
-    msg = Message.from_adapter(
-        platform=Platform.TELEGRAM,
-        bot_id="main",
-        user_id="tg:user:42",
-        user_name="Alice",
-        content=TextContent(text="hi"),
-        type=MessageType.TEXT,
-        timestamp=datetime.now(timezone.utc),
-        is_mention=False,
-        is_from_bot=False,
-        platform_context=TelegramContext(chat_id=123),
-    )
-
-    assert msg.trust == "user"
-
-
-# ---------------------------------------------------------------------------
 # T6 — Backpressure: bus full → send ack before putting to bus
 # ---------------------------------------------------------------------------
 

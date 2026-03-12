@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import tomllib
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -98,8 +99,9 @@ class RuntimeConfig:
             if value != default:
                 data[key] = value
 
-        path.parent.mkdir(parents=True, exist_ok=True)
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         path.write_text(_write_flat_toml(data))
+        path.chmod(0o600)
 
     @classmethod
     def load(cls, path: Path) -> RuntimeConfig:
@@ -205,9 +207,7 @@ def set_param(rc: RuntimeConfig, key: str, value: str) -> RuntimeConfig:
         if value.lower() in ("", "none"):
             parsed = None
         else:
-            import re as _re
-
-            if not _re.match(r"^[a-zA-Z0-9_.:-]+$", value):
+            if not re.match(r"^[a-zA-Z0-9_.:-]+$", value):
                 raise ValueError(
                     f"Invalid model ID {value!r}. "
                     "Only alphanumerics, '.', '_', ':', '-' are allowed."
@@ -215,9 +215,7 @@ def set_param(rc: RuntimeConfig, key: str, value: str) -> RuntimeConfig:
             parsed = value
 
     elif key == "language":
-        import re as _re
-
-        if value != "auto" and not _re.match(r"^[a-z]{2,8}$", value):
+        if value != "auto" and not re.match(r"^[a-z]{2,8}$", value):
             raise ValueError(
                 f"Invalid language {value!r}. "
                 "Use 'auto' or a 2-8 char lowercase code (e.g. 'fr', 'en')."

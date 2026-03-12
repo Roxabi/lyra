@@ -19,20 +19,15 @@ from lyra.core import (
     Agent,
     AgentBase,
     Hub,
-    ImageContent,
-    Message,
-    MessageType,
     Pool,
     Response,
 )
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.message import (
-    DiscordContext,
     InboundAudio,
     InboundMessage,
     OutboundMessage,
     Platform,
-    TelegramContext,
 )
 from lyra.core.messages import MessageManager
 
@@ -51,7 +46,6 @@ TOML_PATH = (
 
 from tests.core.conftest import (  # noqa: E402 (shared helper)
     make_inbound_message,
-    make_message,
 )
 
 # ---------------------------------------------------------------------------
@@ -81,88 +75,6 @@ class MockAdapter:
         chunks: object,
     ) -> None:
         pass
-
-
-# ---------------------------------------------------------------------------
-# T2 — Platform context dataclasses
-# ---------------------------------------------------------------------------
-
-
-class TestPlatformContext:
-    def test_telegram_context_defaults(self) -> None:
-        ctx = TelegramContext(chat_id=123)
-        assert ctx.chat_id == 123
-        assert ctx.topic_id is None
-        assert ctx.is_group is False
-
-    def test_telegram_context_is_frozen(self) -> None:
-        ctx = TelegramContext(chat_id=1)
-        with pytest.raises((AttributeError, TypeError)):
-            ctx.chat_id = 99  # type: ignore[misc]
-
-    def test_discord_context_defaults(self) -> None:
-        ctx = DiscordContext(guild_id=1, channel_id=2, message_id=3)
-        assert ctx.thread_id is None
-        assert ctx.channel_type == "text"
-
-    def test_discord_context_is_frozen(self) -> None:
-        ctx = DiscordContext(guild_id=1, channel_id=2, message_id=3)
-        with pytest.raises((AttributeError, TypeError)):
-            ctx.guild_id = 99  # type: ignore[misc]
-
-
-# ---------------------------------------------------------------------------
-# T1 — Message (updated to new API)
-# ---------------------------------------------------------------------------
-
-
-class TestMessage:
-    def test_fields(self) -> None:
-        msg = make_message()
-        assert msg.id == "msg-1"
-        assert msg.platform == Platform.TELEGRAM
-        assert msg.bot_id == "main"
-        assert msg.user_id == "alice"
-        assert msg.type == MessageType.TEXT
-        assert msg.metadata == {}
-
-    def test_content_can_be_image_content(self) -> None:
-        msg = Message(
-            id="msg-1",
-            platform=Platform.TELEGRAM,
-            bot_id="main",
-            user_id="alice",
-            user_name="Alice",
-            is_mention=False,
-            is_from_bot=False,
-            content=ImageContent(url="https://example.com/img.png"),
-            type=MessageType.IMAGE,
-            timestamp=datetime.now(timezone.utc),
-            platform_context=TelegramContext(chat_id=42),
-        )
-        assert isinstance(msg.content, ImageContent)
-        assert msg.content.url == "https://example.com/img.png"
-
-    def test_trust_defaults_to_user(self) -> None:
-        msg = make_message()
-        assert msg.trust == "user"
-
-    def test_trust_can_be_set_to_system(self) -> None:
-        msg = Message(
-            id="sys-1",
-            platform=Platform.TELEGRAM,
-            bot_id="main",
-            user_id="alice",
-            user_name="Alice",
-            is_mention=False,
-            is_from_bot=False,
-            content="internal",
-            type=MessageType.SYSTEM,
-            timestamp=datetime.now(timezone.utc),
-            platform_context=TelegramContext(chat_id=42),
-            trust="system",
-        )
-        assert msg.trust == "system"
 
 
 # ---------------------------------------------------------------------------

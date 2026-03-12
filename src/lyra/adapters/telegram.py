@@ -21,6 +21,7 @@ from lyra.adapters._shared import (
     parse_reply_to_id,
     push_to_hub_guarded,
     sanitize_filename,
+    truncate_caption,
 )
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
@@ -704,8 +705,9 @@ class TelegramAdapter:
             kwargs["message_thread_id"] = topic_id
         if reply_to is not None:
             kwargs["reply_to_message_id"] = reply_to
-        if msg.caption:
-            kwargs["caption"] = msg.caption[:1024]
+        truncated = truncate_caption(msg.caption, 1024)
+        if truncated:
+            kwargs["caption"] = truncated
 
         if msg.type == "image":
             kwargs["photo"] = buf

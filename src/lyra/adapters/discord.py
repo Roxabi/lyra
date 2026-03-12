@@ -18,6 +18,7 @@ from lyra.adapters._shared import (
     parse_reply_to_id,
     push_to_hub_guarded,
     sanitize_filename,
+    truncate_caption,
 )
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
@@ -648,7 +649,7 @@ class DiscordAdapter(discord.Client):
         if reply_to_id is None:
             reply_to_id = message_id
 
-        content = (msg.caption or "")[:DISCORD_MAX_LENGTH]
+        content = truncate_caption(msg.caption, DISCORD_MAX_LENGTH) or ""
 
         if reply_to_id is not None:
             try:

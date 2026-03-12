@@ -56,6 +56,13 @@ async def push_to_hub_guarded(
         await send_backpressure(text)
 
 
+def truncate_caption(caption: str | None, limit: int) -> str | None:
+    """Truncate caption to *limit* characters, returning None if empty."""
+    if not caption:
+        return None
+    return caption[:limit]
+
+
 def sanitize_filename(
     filename: str,
     allowed_exts: frozenset[str],

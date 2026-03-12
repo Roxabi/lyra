@@ -277,20 +277,22 @@ class TestTelegramRenderAttachment:
 class TestDiscordRenderAttachment:
     @pytest.mark.asyncio
     async def test_send_file(self) -> None:
+        # Arrange
         adapter = _make_dc_adapter()
         channel = _mock_channel()
         ref_msg = AsyncMock()
         ref_msg.reply = AsyncMock()
         channel.fetch_message = AsyncMock(return_value=ref_msg)
-
         att = OutboundAttachment(
             data=b"PNG", type="image", mime_type="image/png", filename="shot.png"
         )
         inbound = _dc_msg(channel_id=99, message_id=55)
 
+        # Act
         with patch.object(adapter, "get_channel", return_value=channel):
             await adapter.render_attachment(att, inbound)
 
+        # Assert
         ref_msg.reply.assert_awaited_once()
         import discord as _discord
 
@@ -300,21 +302,23 @@ class TestDiscordRenderAttachment:
 
     @pytest.mark.asyncio
     async def test_filename_from_mime_type(self) -> None:
+        # Arrange
         adapter = _make_dc_adapter()
         channel = _mock_channel()
         ref_msg = AsyncMock()
         ref_msg.reply = AsyncMock()
         channel.fetch_message = AsyncMock(return_value=ref_msg)
-
         att = OutboundAttachment(
             data=b"x", type="document",
             mime_type="application/pdf",
         )
         inbound = _dc_msg()
 
+        # Act
         with patch.object(adapter, "get_channel", return_value=channel):
             await adapter.render_attachment(att, inbound)
 
+        # Assert
         call_kwargs = ref_msg.reply.call_args.kwargs
         assert call_kwargs["file"].filename == "attachment.pdf"
 
@@ -346,20 +350,22 @@ class TestDiscordRenderAttachment:
 
     @pytest.mark.asyncio
     async def test_caption(self) -> None:
+        # Arrange
         adapter = _make_dc_adapter()
         channel = _mock_channel()
         ref_msg = AsyncMock()
         ref_msg.reply = AsyncMock()
         channel.fetch_message = AsyncMock(return_value=ref_msg)
-
         att = OutboundAttachment(
             data=b"x", type="image", mime_type="image/png", caption="Check this"
         )
         inbound = _dc_msg()
 
+        # Act
         with patch.object(adapter, "get_channel", return_value=channel):
             await adapter.render_attachment(att, inbound)
 
+        # Assert
         call_kwargs = ref_msg.reply.call_args.kwargs
         assert call_kwargs["content"] == "Check this"
 
@@ -431,18 +437,19 @@ class TestDiscordRenderAttachment:
 
     @pytest.mark.asyncio
     async def test_thread_routing(self) -> None:
+        # Arrange
         adapter = _make_dc_adapter()
         channel = _mock_channel()
         ref_msg = AsyncMock()
         ref_msg.reply = AsyncMock()
         channel.fetch_message = AsyncMock(return_value=ref_msg)
-
         att = OutboundAttachment(data=b"x", type="image", mime_type="image/png")
         inbound = _dc_msg(thread_id=777)
-
         resolve = AsyncMock(return_value=channel)
+
+        # Act
         with patch.object(adapter, "_resolve_channel", resolve):
             await adapter.render_attachment(att, inbound)
 
-        # _resolve_channel should be called with thread_id, not channel_id
+        # Assert — _resolve_channel called with thread_id, not channel_id
         resolve.assert_called_with(777)

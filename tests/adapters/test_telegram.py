@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.auth import TrustLevel
+from lyra.core.auth import AuthMiddleware, TrustLevel
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.message import DiscordContext
 from lyra.core.messages import MessageManager
@@ -45,7 +45,12 @@ async def test_missing_secret_returns_401() -> None:
     from lyra.adapters.telegram import TelegramAdapter  # ImportError expected in RED
 
     hub = MagicMock()
-    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+    adapter = TelegramAdapter(
+        bot_id="main",
+        token="test-token-secret",
+        hub=hub,
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
+    )
 
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=adapter.app)
@@ -68,7 +73,12 @@ def test_normalize_private_chat_context() -> None:
     from lyra.core.message import Platform, TelegramContext
 
     hub = MagicMock()
-    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+    adapter = TelegramAdapter(
+        bot_id="main",
+        token="test-token-secret",
+        hub=hub,
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
+    )
 
     aiogram_msg = SimpleNamespace(
         chat=SimpleNamespace(id=123, type="private"),
@@ -80,7 +90,7 @@ def test_normalize_private_chat_context() -> None:
         entities=None,
     )
 
-    msg = adapter._normalize(aiogram_msg)
+    msg = adapter._normalize(aiogram_msg, trust_level=TrustLevel.TRUSTED)
 
     assert msg.platform == Platform.TELEGRAM
     expected_ctx = TelegramContext(
@@ -99,7 +109,12 @@ def test_is_mention_false_in_private_chat() -> None:
     from lyra.adapters.telegram import TelegramAdapter  # ImportError expected in RED
 
     hub = MagicMock()
-    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+    adapter = TelegramAdapter(
+        bot_id="main",
+        token="test-token-secret",
+        hub=hub,
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
+    )
 
     aiogram_msg = SimpleNamespace(
         chat=SimpleNamespace(id=123, type="private"),
@@ -110,7 +125,7 @@ def test_is_mention_false_in_private_chat() -> None:
         entities=None,
     )
 
-    msg = adapter._normalize(aiogram_msg)
+    msg = adapter._normalize(aiogram_msg, trust_level=TrustLevel.TRUSTED)
 
     assert msg.is_mention is False
 
@@ -120,7 +135,12 @@ def test_is_mention_true_when_entity_at_offset_zero() -> None:
     from lyra.adapters.telegram import TelegramAdapter  # ImportError expected in RED
 
     hub = MagicMock()
-    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+    adapter = TelegramAdapter(
+        bot_id="main",
+        token="test-token-secret",
+        hub=hub,
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
+    )
 
     entity = SimpleNamespace(type="mention", offset=0, length=9)  # "@lyra_bot"
     aiogram_msg = SimpleNamespace(
@@ -132,7 +152,7 @@ def test_is_mention_true_when_entity_at_offset_zero() -> None:
         entities=[entity],
     )
 
-    msg = adapter._normalize(aiogram_msg)
+    msg = adapter._normalize(aiogram_msg, trust_level=TrustLevel.TRUSTED)
 
     assert msg.is_mention is True
 
@@ -189,7 +209,12 @@ async def test_backpressure_sends_ack_when_bus_full() -> None:
     bot = AsyncMock()
     bot.get_me = AsyncMock(return_value=SimpleNamespace(username="lyra_bot"))
 
-    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+    adapter = TelegramAdapter(
+        bot_id="main",
+        token="test-token-secret",
+        hub=hub,
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
+    )
     adapter.bot = bot
 
     aiogram_msg = SimpleNamespace(
@@ -230,7 +255,12 @@ async def test_send_calls_bot_send_message() -> None:
     hub = MagicMock()
     bot = AsyncMock()
 
-    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+    adapter = TelegramAdapter(
+        bot_id="main",
+        token="test-token-secret",
+        hub=hub,
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
+    )
     adapter.bot = bot
 
     original_msg = Message(
@@ -264,7 +294,12 @@ def test_token_not_in_logs(caplog: pytest.LogCaptureFixture) -> None:
     from lyra.adapters.telegram import TelegramAdapter  # ImportError expected in RED
 
     hub = MagicMock()
-    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+    adapter = TelegramAdapter(
+        bot_id="main",
+        token="test-token-secret",
+        hub=hub,
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
+    )
 
     aiogram_msg = SimpleNamespace(
         chat=SimpleNamespace(id=123, type="private"),
@@ -276,7 +311,7 @@ def test_token_not_in_logs(caplog: pytest.LogCaptureFixture) -> None:
     )
 
     with caplog.at_level(logging.DEBUG, logger="lyra.adapters.telegram"):
-        adapter._normalize(aiogram_msg)
+        adapter._normalize(aiogram_msg, trust_level=TrustLevel.TRUSTED)
 
     for record in caplog.records:
         assert "test-token-secret" not in record.getMessage()
@@ -314,7 +349,12 @@ async def test_send_skips_when_platform_context_is_not_telegram(
     hub = MagicMock()
     bot = AsyncMock()
 
-    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+    adapter = TelegramAdapter(
+        bot_id="main",
+        token="test-token-secret",
+        hub=hub,
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
+    )
     adapter.bot = bot
 
     original_msg = Message(
@@ -351,7 +391,12 @@ def test_normalize_captures_message_id() -> None:
 
     # Arrange
     hub = MagicMock()
-    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+    adapter = TelegramAdapter(
+        bot_id="main",
+        token="test-token-secret",
+        hub=hub,
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
+    )
     aiogram_msg = SimpleNamespace(
         chat=SimpleNamespace(id=123, type="private"),
         from_user=SimpleNamespace(id=42, full_name="Alice", is_bot=False),
@@ -363,7 +408,7 @@ def test_normalize_captures_message_id() -> None:
     )
 
     # Act
-    msg = adapter._normalize(aiogram_msg)
+    msg = adapter._normalize(aiogram_msg, trust_level=TrustLevel.TRUSTED)
 
     # Assert
     assert isinstance(msg.platform_context, TelegramContext)
@@ -381,7 +426,12 @@ def test_normalize_message_id_none_when_absent() -> None:
 
     # Arrange
     hub = MagicMock()
-    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+    adapter = TelegramAdapter(
+        bot_id="main",
+        token="test-token-secret",
+        hub=hub,
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
+    )
     aiogram_msg = SimpleNamespace(
         chat=SimpleNamespace(id=123, type="private"),
         from_user=SimpleNamespace(id=42, full_name="Alice", is_bot=False),
@@ -393,7 +443,7 @@ def test_normalize_message_id_none_when_absent() -> None:
     )
 
     # Act
-    msg = adapter._normalize(aiogram_msg)
+    msg = adapter._normalize(aiogram_msg, trust_level=TrustLevel.TRUSTED)
 
     # Assert
     assert isinstance(msg.platform_context, TelegramContext)
@@ -412,7 +462,12 @@ def test_normalize_captures_topic_and_message_id_for_forum() -> None:
 
     # Arrange
     hub = MagicMock()
-    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+    adapter = TelegramAdapter(
+        bot_id="main",
+        token="test-token-secret",
+        hub=hub,
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
+    )
     aiogram_msg = SimpleNamespace(
         chat=SimpleNamespace(id=456, type="supergroup"),
         from_user=SimpleNamespace(id=42, full_name="Alice", is_bot=False),
@@ -424,7 +479,7 @@ def test_normalize_captures_topic_and_message_id_for_forum() -> None:
     )
 
     # Act
-    msg = adapter._normalize(aiogram_msg)
+    msg = adapter._normalize(aiogram_msg, trust_level=TrustLevel.TRUSTED)
 
     # Assert
     assert isinstance(msg.platform_context, TelegramContext)
@@ -457,7 +512,12 @@ async def test_send_stores_reply_message_id_in_metadata() -> None:
     sent_msg = SimpleNamespace(message_id=888)
     bot.send_message.return_value = sent_msg
 
-    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+    adapter = TelegramAdapter(
+        bot_id="main",
+        token="test-token-secret",
+        hub=hub,
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
+    )
     adapter.bot = bot
 
     original_msg = Message(
@@ -524,6 +584,7 @@ async def test_on_message_drops_silently_when_hub_circuit_open() -> None:
         bot_id="main",
         token="test-token-secret",
         hub=hub,
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
         circuit_registry=registry,
     )
     adapter.bot = bot
@@ -576,6 +637,7 @@ async def test_send_always_delivers_regardless_of_circuit_state() -> None:
         bot_id="main",
         token="test-token-secret",
         hub=hub,
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
         circuit_registry=registry,
     )
     adapter.bot = bot
@@ -627,6 +689,7 @@ async def test_get_status_endpoint_returns_all_circuits() -> None:
         bot_id="main",
         token="test-token-secret",
         hub=hub,
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
         webhook_secret="secret",
         circuit_registry=registry,
     )
@@ -674,7 +737,11 @@ async def test_telegram_msg_manager_injection_backpressure_ack() -> None:
     bot.get_me = AsyncMock(return_value=SimpleNamespace(username="lyra_bot"))
 
     adapter = TelegramAdapter(
-        bot_id="main", token="test-token-secret", hub=hub, msg_manager=mm
+        bot_id="main",
+        token="test-token-secret",
+        hub=hub,
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
+        msg_manager=mm,
     )
     adapter.bot = bot
 

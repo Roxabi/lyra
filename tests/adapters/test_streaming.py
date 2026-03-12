@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.auth import TrustLevel
+from lyra.core.auth import AuthMiddleware, TrustLevel
 from lyra.core.message import (
     DiscordContext,
     Message,
@@ -83,6 +83,7 @@ class TestTelegramStreaming:
             bot_id="main",
             token="fake-token",
             hub=hub,
+            auth=AuthMiddleware({}, TrustLevel.TRUSTED),
             bot_username="lyra_bot",
             webhook_secret="secret",
         )
@@ -155,7 +156,11 @@ class TestDiscordStreaming:
 
         hub = MagicMock()
         hub.inbound_bus = MagicMock()
-        adapter = DiscordAdapter(hub=hub, bot_id="main")
+        adapter = DiscordAdapter(
+            hub=hub,
+            bot_id="main",
+            auth=AuthMiddleware({}, TrustLevel.TRUSTED),
+        )
 
         mock_placeholder = AsyncMock()
         mock_placeholder.edit = AsyncMock()

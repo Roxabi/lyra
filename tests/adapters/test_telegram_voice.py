@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from lyra.adapters.telegram import TelegramAdapter
+from lyra.core.auth import AuthMiddleware, TrustLevel
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.message import AudioContent, MessageType, Platform
 
@@ -43,7 +44,12 @@ def _make_voice_msg(
 def _make_adapter() -> tuple[TelegramAdapter, MagicMock]:
     hub = MagicMock()
     hub.inbound_bus = MagicMock()
-    adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub)
+    adapter = TelegramAdapter(
+        bot_id="main",
+        token="tok",
+        hub=hub,
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
+    )
     bot_mock = AsyncMock()
     bot_mock.send_chat_action = AsyncMock()
     bot_mock.send_message = AsyncMock()
@@ -158,7 +164,11 @@ async def test_circuit_open_drops_message_and_cleans_temp_file(tmp_path) -> None
     hub = MagicMock()
     hub.inbound_bus = MagicMock()
     adapter = TelegramAdapter(
-        bot_id="main", token="tok", hub=hub, circuit_registry=registry
+        bot_id="main",
+        token="tok",
+        hub=hub,
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
+        circuit_registry=registry,
     )
     bot_mock = AsyncMock()
     adapter.bot = bot_mock

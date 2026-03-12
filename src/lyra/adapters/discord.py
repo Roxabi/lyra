@@ -7,6 +7,7 @@ import re
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, cast
 
 import discord
@@ -14,7 +15,7 @@ import discord
 if TYPE_CHECKING:
     from lyra.core.hub import Hub
 
-from lyra.core.auth import TrustLevel
+from lyra.core.auth import AuthMiddleware, TrustLevel
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
@@ -66,6 +67,7 @@ class DiscordAdapter(discord.Client):
         hub: "Hub",
         bot_id: str = "main",
         *,
+        auth: AuthMiddleware,
         intents: discord.Intents | None = None,
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
@@ -77,6 +79,7 @@ class DiscordAdapter(discord.Client):
         super().__init__(intents=intents)
         self._hub = hub
         self._bot_id = bot_id
+        self._auth = auth
         self._circuit_registry = circuit_registry
         self._msg_manager = msg_manager
         self._auto_thread = auto_thread
@@ -100,7 +103,7 @@ class DiscordAdapter(discord.Client):
                 "Enable 'Message Content Intent' in the Discord Developer Portal."
             )
 
-    def _normalize(self, message: Any) -> Message:
+    def _normalize(self, message: Any, *, trust_level: TrustLevel) -> Message:
         """Convert a discord.py Message (or SimpleNamespace) to a hub Message.
 
         Security: trust is always 'user' via Message.from_adapter().
@@ -154,7 +157,7 @@ class DiscordAdapter(discord.Client):
             content=TextContent(text=content),
             type=MessageType.TEXT,
             timestamp=message.created_at,
-            trust_level=TrustLevel.TRUSTED,  # placeholder — S5 replaces
+            trust_level=trust_level,
             is_mention=is_mention,
             is_from_bot=message.author.bot,
             platform_context=ctx,
@@ -173,8 +176,19 @@ class DiscordAdapter(discord.Client):
         if message.author == self._bot_user:
             return
 
+        user_id = f"dc:user:{message.author.id}"
+        trust = self._auth.check(user_id)
+        if trust == TrustLevel.BLOCKED:
+            log.info(
+                '{"event": "auth_reject", "user": "%s",'
+                ' "channel": "discord", "ts": "%s"}',
+                user_id,
+                datetime.now(timezone.utc).isoformat(),
+            )
+            return
+
         try:
-            hub_msg = self._normalize(message)
+            hub_msg = self._normalize(message, trust_level=trust)
         except Exception:
             log.exception("Failed to normalize discord message id=%s", message.id)
             return

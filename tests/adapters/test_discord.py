@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from lyra.core.auth import TrustLevel
+from lyra.core.auth import AuthMiddleware, TrustLevel
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.messages import MessageManager
 
@@ -40,7 +40,12 @@ def test_normalize_builds_correct_discord_context() -> None:
     from lyra.core.message import DiscordContext, Platform
 
     hub = MagicMock()
-    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+    adapter = DiscordAdapter(
+        hub=hub,
+        bot_id="main",
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
+        intents=discord.Intents.none(),
+    )
     adapter._bot_user = SimpleNamespace(id=999, bot=True)
 
     discord_msg = SimpleNamespace(
@@ -53,7 +58,7 @@ def test_normalize_builds_correct_discord_context() -> None:
         mentions=[],
     )
 
-    msg = adapter._normalize(discord_msg)
+    msg = adapter._normalize(discord_msg, trust_level=TrustLevel.TRUSTED)
 
     assert msg.platform == Platform.DISCORD
     assert msg.platform_context == DiscordContext(
@@ -71,7 +76,12 @@ def test_is_mention_true_when_bot_in_mentions() -> None:
     from lyra.adapters.discord import DiscordAdapter  # ImportError expected in RED
 
     hub = MagicMock()
-    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+    adapter = DiscordAdapter(
+        hub=hub,
+        bot_id="main",
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
+        intents=discord.Intents.none(),
+    )
     bot_user = SimpleNamespace(id=999, bot=True)
     adapter._bot_user = bot_user
 
@@ -85,7 +95,7 @@ def test_is_mention_true_when_bot_in_mentions() -> None:
         mentions=[bot_user],
     )
 
-    msg = adapter._normalize(discord_msg)
+    msg = adapter._normalize(discord_msg, trust_level=TrustLevel.TRUSTED)
 
     assert msg.is_mention is True
 
@@ -100,7 +110,12 @@ def test_is_mention_false_when_bot_not_in_mentions() -> None:
     from lyra.adapters.discord import DiscordAdapter  # ImportError expected in RED
 
     hub = MagicMock()
-    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+    adapter = DiscordAdapter(
+        hub=hub,
+        bot_id="main",
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
+        intents=discord.Intents.none(),
+    )
     bot_user = SimpleNamespace(id=999, bot=True)
     adapter._bot_user = bot_user
 
@@ -114,7 +129,7 @@ def test_is_mention_false_when_bot_not_in_mentions() -> None:
         mentions=[],
     )
 
-    msg = adapter._normalize(discord_msg)
+    msg = adapter._normalize(discord_msg, trust_level=TrustLevel.TRUSTED)
 
     assert msg.is_mention is False
 
@@ -133,7 +148,12 @@ async def test_own_message_is_filtered() -> None:
     hub.inbound_bus = MagicMock()
     hub.inbound_bus.put = MagicMock()
 
-    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+    adapter = DiscordAdapter(
+        hub=hub,
+        bot_id="main",
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
+        intents=discord.Intents.none(),
+    )
     bot_user = SimpleNamespace(id=999, bot=True)
     adapter._bot_user = bot_user
 
@@ -171,7 +191,12 @@ async def test_send_reply_on_mention() -> None:
     )
 
     hub = MagicMock()
-    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+    adapter = DiscordAdapter(
+        hub=hub,
+        bot_id="main",
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
+        intents=discord.Intents.none(),
+    )
 
     mock_message = AsyncMock()
     mock_message.reply = AsyncMock()
@@ -220,7 +245,12 @@ async def test_send_channel_on_no_mention() -> None:
     )
 
     hub = MagicMock()
-    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+    adapter = DiscordAdapter(
+        hub=hub,
+        bot_id="main",
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
+        intents=discord.Intents.none(),
+    )
 
     mock_channel = AsyncMock()
     mock_channel.send = AsyncMock()
@@ -280,7 +310,12 @@ async def test_backpressure_sends_ack_when_bus_full() -> None:
     hub.inbound_bus = MagicMock()
     hub.inbound_bus.put = MagicMock(side_effect=asyncio.QueueFull())
 
-    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+    adapter = DiscordAdapter(
+        hub=hub,
+        bot_id="main",
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
+        intents=discord.Intents.none(),
+    )
     bot_user = SimpleNamespace(id=999, bot=True)
     adapter._bot_user = bot_user
 
@@ -310,7 +345,12 @@ def test_normalize_bot_user_none_is_mention_false() -> None:
     from lyra.adapters.discord import DiscordAdapter
 
     hub = MagicMock()
-    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+    adapter = DiscordAdapter(
+        hub=hub,
+        bot_id="main",
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
+        intents=discord.Intents.none(),
+    )
     # _bot_user stays None (default, before on_ready fires)
 
     discord_msg = SimpleNamespace(
@@ -323,7 +363,7 @@ def test_normalize_bot_user_none_is_mention_false() -> None:
         mentions=[SimpleNamespace(id=999)],  # would match if _bot_user were set
     )
 
-    msg = adapter._normalize(discord_msg)
+    msg = adapter._normalize(discord_msg, trust_level=TrustLevel.TRUSTED)
 
     assert msg.is_mention is False  # no crash, returns False
 
@@ -338,7 +378,12 @@ def test_mention_prefix_stripped_from_content() -> None:
     from lyra.adapters.discord import DiscordAdapter
 
     hub = MagicMock()
-    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+    adapter = DiscordAdapter(
+        hub=hub,
+        bot_id="main",
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
+        intents=discord.Intents.none(),
+    )
     bot_user = SimpleNamespace(id=999, bot=True)
     adapter._bot_user = bot_user
 
@@ -354,7 +399,7 @@ def test_mention_prefix_stripped_from_content() -> None:
 
     from lyra.core.message import TextContent
 
-    msg = adapter._normalize(discord_msg)
+    msg = adapter._normalize(discord_msg, trust_level=TrustLevel.TRUSTED)
 
     assert isinstance(msg.content, TextContent)
     assert msg.content.text == "hello world"
@@ -365,7 +410,12 @@ def test_mention_prefix_stripped_nickname_variant() -> None:
     from lyra.adapters.discord import DiscordAdapter
 
     hub = MagicMock()
-    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+    adapter = DiscordAdapter(
+        hub=hub,
+        bot_id="main",
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
+        intents=discord.Intents.none(),
+    )
     bot_user = SimpleNamespace(id=999, bot=True)
     adapter._bot_user = bot_user
 
@@ -381,7 +431,7 @@ def test_mention_prefix_stripped_nickname_variant() -> None:
 
     from lyra.core.message import TextContent
 
-    msg = adapter._normalize(discord_msg)
+    msg = adapter._normalize(discord_msg, trust_level=TrustLevel.TRUSTED)
 
     assert isinstance(msg.content, TextContent)
     assert msg.content.text == "hello world"
@@ -398,7 +448,12 @@ def test_normalize_dm_no_guild() -> None:
     from lyra.core.message import DiscordContext
 
     hub = MagicMock()
-    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+    adapter = DiscordAdapter(
+        hub=hub,
+        bot_id="main",
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
+        intents=discord.Intents.none(),
+    )
     adapter._bot_user = SimpleNamespace(id=999, bot=True)
 
     discord_msg = SimpleNamespace(
@@ -411,7 +466,7 @@ def test_normalize_dm_no_guild() -> None:
         mentions=[],
     )
 
-    msg = adapter._normalize(discord_msg)
+    msg = adapter._normalize(discord_msg, trust_level=TrustLevel.TRUSTED)
 
     assert msg.platform_context == DiscordContext(
         guild_id=None, channel_id=333, message_id=555
@@ -428,7 +483,12 @@ def test_normalize_uses_display_name_when_present() -> None:
     from lyra.adapters.discord import DiscordAdapter
 
     hub = MagicMock()
-    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+    adapter = DiscordAdapter(
+        hub=hub,
+        bot_id="main",
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
+        intents=discord.Intents.none(),
+    )
     adapter._bot_user = SimpleNamespace(id=999, bot=True)
 
     discord_msg = SimpleNamespace(
@@ -443,7 +503,7 @@ def test_normalize_uses_display_name_when_present() -> None:
         mentions=[],
     )
 
-    msg = adapter._normalize(discord_msg)
+    msg = adapter._normalize(discord_msg, trust_level=TrustLevel.TRUSTED)
 
     assert msg.user_name == "Alice Display"
 
@@ -453,7 +513,12 @@ def test_normalize_falls_back_to_name_when_display_name_none() -> None:
     from lyra.adapters.discord import DiscordAdapter
 
     hub = MagicMock()
-    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+    adapter = DiscordAdapter(
+        hub=hub,
+        bot_id="main",
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
+        intents=discord.Intents.none(),
+    )
     adapter._bot_user = SimpleNamespace(id=999, bot=True)
 
     discord_msg = SimpleNamespace(
@@ -466,7 +531,7 @@ def test_normalize_falls_back_to_name_when_display_name_none() -> None:
         mentions=[],
     )
 
-    msg = adapter._normalize(discord_msg)
+    msg = adapter._normalize(discord_msg, trust_level=TrustLevel.TRUSTED)
 
     assert msg.user_name == "alice_raw"
 
@@ -488,7 +553,12 @@ def test_discord_token_not_in_logs(
     monkeypatch.setenv("DISCORD_TOKEN", secret_token)
 
     hub = MagicMock()
-    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+    adapter = DiscordAdapter(
+        hub=hub,
+        bot_id="main",
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
+        intents=discord.Intents.none(),
+    )
 
     with caplog.at_level(logging.DEBUG):
         discord_msg = SimpleNamespace(
@@ -502,7 +572,7 @@ def test_discord_token_not_in_logs(
             id=555,
             mentions=[],
         )
-        adapter._normalize(discord_msg)
+        adapter._normalize(discord_msg, trust_level=TrustLevel.TRUSTED)
 
     for record in caplog.records:
         assert secret_token not in record.getMessage(), (
@@ -546,6 +616,7 @@ async def test_on_message_drops_silently_when_hub_circuit_open() -> None:
     adapter = DiscordAdapter(
         hub=hub,
         bot_id="main",
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
         intents=discord.Intents.none(),
         circuit_registry=registry,
     )
@@ -597,6 +668,7 @@ async def test_send_skips_when_discord_circuit_open() -> None:
     adapter = DiscordAdapter(
         hub=hub,
         bot_id="main",
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
         intents=discord.Intents.none(),
         circuit_registry=registry,
     )
@@ -649,7 +721,11 @@ async def test_discord_msg_manager_injection_backpressure_ack() -> None:
     hub.inbound_bus.put = MagicMock(side_effect=asyncio.QueueFull())
 
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), msg_manager=mm
+        hub=hub,
+        bot_id="main",
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
+        intents=discord.Intents.none(),
+        msg_manager=mm,
     )
     bot_user = SimpleNamespace(id=999, bot=True)
     adapter._bot_user = bot_user
@@ -694,7 +770,12 @@ async def test_send_stores_reply_message_id_channel_send() -> None:
 
     # Arrange
     hub = MagicMock()
-    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+    adapter = DiscordAdapter(
+        hub=hub,
+        bot_id="main",
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
+        intents=discord.Intents.none(),
+    )
 
     sent_msg = SimpleNamespace(id=888)
     mock_channel = AsyncMock()
@@ -745,7 +826,12 @@ async def test_send_stores_reply_message_id_msg_reply() -> None:
 
     # Arrange
     hub = MagicMock()
-    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+    adapter = DiscordAdapter(
+        hub=hub,
+        bot_id="main",
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
+        intents=discord.Intents.none(),
+    )
 
     sent_msg = SimpleNamespace(id=7777)
     mock_message = AsyncMock()
@@ -799,7 +885,12 @@ async def test_send_no_reply_message_id_on_failure() -> None:
 
     # Arrange
     hub = MagicMock()
-    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+    adapter = DiscordAdapter(
+        hub=hub,
+        bot_id="main",
+        auth=AuthMiddleware({}, TrustLevel.TRUSTED),
+        intents=discord.Intents.none(),
+    )
 
     mock_channel = AsyncMock()
     mock_channel.send = AsyncMock(side_effect=Exception("network error"))
@@ -861,6 +952,7 @@ class TestDiscordAutoThread:
         adapter = DiscordAdapter(
             hub=hub,
             bot_id="main",
+            auth=AuthMiddleware({}, TrustLevel.TRUSTED),
             intents=discord.Intents.none(),
             auto_thread=True,
         )
@@ -940,6 +1032,7 @@ class TestDiscordAutoThread:
         adapter = DiscordAdapter(
             hub=hub,
             bot_id="main",
+            auth=AuthMiddleware({}, TrustLevel.TRUSTED),
             intents=discord.Intents.none(),
             auto_thread=True,
         )
@@ -1009,6 +1102,7 @@ class TestDiscordAutoThread:
         adapter = DiscordAdapter(
             hub=hub,
             bot_id="main",
+            auth=AuthMiddleware({}, TrustLevel.TRUSTED),
             intents=discord.Intents.none(),
             auto_thread=False,
         )
@@ -1077,6 +1171,7 @@ class TestDiscordAutoThread:
         adapter = DiscordAdapter(
             hub=hub,
             bot_id="main",
+            auth=AuthMiddleware({}, TrustLevel.TRUSTED),
             intents=discord.Intents.none(),
             auto_thread=True,
         )

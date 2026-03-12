@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 from aiogram.enums import ChatAction
 
-from lyra.core.auth import TrustLevel
+from lyra.core.auth import AuthMiddleware, TrustLevel
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
@@ -89,6 +89,7 @@ class TelegramAdapter:
         bot_id: str,
         token: str,
         hub: Hub,
+        auth: AuthMiddleware,
         bot_username: str = "lyra_bot",
         webhook_secret: str = "",
         circuit_registry: CircuitRegistry | None = None,
@@ -103,6 +104,7 @@ class TelegramAdapter:
             )
         self._bot_username = bot_username
         self._hub: Hub = hub
+        self._auth = auth
         self._circuit_registry = circuit_registry
         self._msg_manager = msg_manager
         self._audio_tmp_dir: str | None = os.environ.get("LYRA_AUDIO_TMP") or None
@@ -181,7 +183,7 @@ class TelegramAdapter:
                 "timestamp": ts,
             }
 
-    def _normalize(self, msg) -> Message:
+    def _normalize(self, msg, *, trust_level: TrustLevel) -> Message:
         """Convert an aiogram Message (or SimpleNamespace) to a hub Message.
 
         Security: trust is always 'user' via Message.from_adapter().
@@ -230,7 +232,7 @@ class TelegramAdapter:
             content=content,
             type=MessageType.TEXT,
             timestamp=timestamp,
-            trust_level=TrustLevel.TRUSTED,  # placeholder — S4 replaces
+            trust_level=trust_level,
             is_mention=is_mention,
             is_from_bot=getattr(msg.from_user, "is_bot", False),
             platform_context=platform_context,
@@ -282,6 +284,17 @@ class TelegramAdapter:
         if not msg.from_user or getattr(msg.from_user, "is_bot", False):
             return
 
+        user_id = f"tg:user:{msg.from_user.id}" if msg.from_user else None
+        trust = self._auth.check(user_id)
+        if trust == TrustLevel.BLOCKED:
+            log.info(
+                '{"event": "auth_reject", "user": "%s",'
+                ' "channel": "telegram", "ts": "%s"}',
+                user_id,
+                datetime.now(timezone.utc).isoformat(),
+            )
+            return
+
         await self.bot.send_chat_action(chat_id=msg.chat.id, action=ChatAction.TYPING)
 
         voice = msg.voice or msg.audio or msg.video_note
@@ -316,7 +329,7 @@ class TelegramAdapter:
             ),
             type=MessageType.AUDIO,
             timestamp=timestamp,
-            trust_level=TrustLevel.TRUSTED,  # placeholder — S4 replaces
+            trust_level=trust,
             is_mention=False,
             is_from_bot=False,
             platform_context=platform_context,
@@ -368,7 +381,18 @@ class TelegramAdapter:
         if msg.from_user and getattr(msg.from_user, "is_bot", False):
             return
 
-        hub_msg = self._normalize(msg)
+        user_id = f"tg:user:{msg.from_user.id}" if msg.from_user else None
+        trust = self._auth.check(user_id)
+        if trust == TrustLevel.BLOCKED:
+            log.info(
+                '{"event": "auth_reject", "user": "%s",'
+                ' "channel": "telegram", "ts": "%s"}',
+                user_id,
+                datetime.now(timezone.utc).isoformat(),
+            )
+            return
+
+        hub_msg = self._normalize(msg, trust_level=trust)
         # IMPORTANT: Always return normally to aiogram — webhook must return
         # {"ok": True} (HTTP 200). Never raise here or Telegram will retry
         # the update indefinitely.

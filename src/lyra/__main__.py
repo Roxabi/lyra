@@ -25,6 +25,7 @@ from lyra.adapters.telegram import TelegramAdapter
 from lyra.adapters.telegram import load_config as load_telegram_config
 from lyra.agents.simple_agent import SimpleAgent
 from lyra.core.agent import Agent, AgentBase, load_agent_config
+from lyra.core.auth import AuthMiddleware
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.cli_pool import CliPool
 from lyra.core.hub import Hub, RoutingKey
@@ -92,6 +93,19 @@ def _load_pairing_config(raw: dict) -> PairingConfig:
     """Load [pairing] section from raw config dict. Missing section → all defaults."""
     pairing_section: dict = raw.get("pairing", {})
     return PairingConfig.from_dict(pairing_section)
+
+
+def _load_auth_config(
+    raw: dict,
+) -> tuple[AuthMiddleware, AuthMiddleware]:
+    """Load [auth.telegram] and [auth.discord] from raw config dict.
+
+    Fails closed (SystemExit) if either section is absent.
+    Returns (telegram_auth, discord_auth).
+    """
+    tg_auth = AuthMiddleware.from_config(raw, "telegram")
+    dc_auth = AuthMiddleware.from_config(raw, "discord")
+    return tg_auth, dc_auth
 
 
 def _load_messages(language: str = "en") -> MessageManager:
@@ -229,6 +243,7 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
 
     raw_config = _load_raw_config()
     circuit_registry, admin_user_ids = _load_circuit_config(raw_config)
+    tg_auth, dc_auth = _load_auth_config(raw_config)
 
     # Config loaders call sys.exit() on missing required env vars — no partial startup.
     tg_cfg = load_telegram_config()
@@ -301,6 +316,7 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
         bot_id="main",
         token=tg_cfg.token,
         hub=hub,
+        auth=tg_auth,
         bot_username=tg_cfg.bot_username,
         webhook_secret=tg_cfg.webhook_secret,
         circuit_registry=circuit_registry,
@@ -309,6 +325,7 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
     dc_adapter = DiscordAdapter(
         hub=hub,
         bot_id="main",
+        auth=dc_auth,
         circuit_registry=circuit_registry,
         msg_manager=msg_manager,
         auto_thread=dc_cfg.auto_thread,

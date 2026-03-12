@@ -520,7 +520,7 @@ class TelegramAdapter:
         if reply_to is not None:
             kwargs["reply_to_message_id"] = reply_to
         if msg.caption:
-            kwargs["caption"] = msg.caption
+            kwargs["caption"] = msg.caption[:1024]
         if duration_sec is not None:
             kwargs["duration"] = duration_sec
 

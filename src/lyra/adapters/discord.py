@@ -362,8 +362,10 @@ class DiscordAdapter(discord.Client):
 
         messageable = cast(discord.abc.Messageable, channel)
 
-        # Derive filename from mime_type (e.g. "audio/ogg" → "audio.ogg")
-        ext = msg.mime_type.split("/")[-1] if "/" in msg.mime_type else "bin"
+        # Derive filename from mime_type — whitelist to prevent crafted filenames.
+        _AUDIO_EXTS = {"ogg", "mp3", "mp4", "mpeg", "opus", "wav", "flac", "aac"}
+        raw_ext = msg.mime_type.split("/")[-1] if "/" in msg.mime_type else ""
+        ext = raw_ext if raw_ext in _AUDIO_EXTS else "bin"
         filename = f"audio.{ext}"
 
         audio_buf = BytesIO(msg.audio_bytes)
@@ -381,7 +383,7 @@ class DiscordAdapter(discord.Client):
         else:
             reply_to_id = dc_ctx.message_id
 
-        content = msg.caption or ""
+        content = (msg.caption or "")[:DISCORD_MAX_LENGTH]
 
         if reply_to_id is not None:
             try:

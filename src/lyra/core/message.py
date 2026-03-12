@@ -179,7 +179,6 @@ class OutboundAudio:
     duration_ms: int | None = None
     caption: str | None = None
     reply_to_id: str | None = None  # platform message ID to reply to
-    thread_id: str | None = None  # Discord thread / Telegram topic
 
 
 # RenderContext is the original inbound Message — passed to render_audio()

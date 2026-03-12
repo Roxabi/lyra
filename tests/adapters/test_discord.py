@@ -34,9 +34,9 @@ TOML_PATH = (
 
 
 def test_normalize_builds_correct_discord_context() -> None:
-    """_normalize() on a discord message produces correct DiscordContext."""
+    """normalize() on a discord message produces correct platform_meta."""
     from lyra.adapters.discord import DiscordAdapter  # ImportError expected in RED
-    from lyra.core.message import DiscordContext, Platform
+    from lyra.core.message import InboundMessage
 
     hub = MagicMock()
     adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
@@ -52,12 +52,15 @@ def test_normalize_builds_correct_discord_context() -> None:
         mentions=[],
     )
 
-    msg = adapter._normalize(discord_msg)
+    msg = adapter.normalize(discord_msg)
 
-    assert msg.platform == Platform.DISCORD
-    assert msg.platform_context == DiscordContext(
-        guild_id=111, channel_id=333, message_id=555
-    )
+    assert isinstance(msg, InboundMessage)
+    assert msg.platform == "discord"
+    assert msg.scope_id == "channel:333"
+    assert msg.platform_meta["guild_id"] == 111
+    assert msg.platform_meta["channel_id"] == 333
+    assert msg.platform_meta["message_id"] == 555
+    assert msg.platform_meta["channel_type"] == "text"
 
 
 # ---------------------------------------------------------------------------
@@ -84,7 +87,7 @@ def test_is_mention_true_when_bot_in_mentions() -> None:
         mentions=[bot_user],
     )
 
-    msg = adapter._normalize(discord_msg)
+    msg = adapter.normalize(discord_msg)
 
     assert msg.is_mention is True
 
@@ -113,7 +116,7 @@ def test_is_mention_false_when_bot_not_in_mentions() -> None:
         mentions=[],
     )
 
-    msg = adapter._normalize(discord_msg)
+    msg = adapter.normalize(discord_msg)
 
     assert msg.is_mention is False
 
@@ -160,14 +163,7 @@ async def test_own_message_is_filtered() -> None:
 async def test_send_reply_on_mention() -> None:
     """adapter.send() calls msg.reply(text) when is_mention=True."""
     from lyra.adapters.discord import DiscordAdapter
-    from lyra.core.message import (
-        DiscordContext,
-        Message,
-        MessageType,
-        Platform,
-        Response,
-        TextContent,
-    )
+    from lyra.core.message import InboundMessage, Response
 
     hub = MagicMock()
     adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
@@ -178,18 +174,24 @@ async def test_send_reply_on_mention() -> None:
     mock_channel.fetch_message = AsyncMock(return_value=mock_message)
     adapter.get_channel = MagicMock(return_value=mock_channel)
 
-    hub_msg = Message(
+    hub_msg = InboundMessage(
         id="msg-1",
-        platform=Platform.DISCORD,
+        platform="discord",
         bot_id="main",
+        scope_id="channel:333",
         user_id="dc:user:42",
         user_name="Alice",
         is_mention=True,
-        is_from_bot=False,
-        content=TextContent(text="hello"),
-        type=MessageType.TEXT,
+        text="hello",
+        text_raw="hello",
         timestamp=datetime.now(timezone.utc),
-        platform_context=DiscordContext(guild_id=111, channel_id=333, message_id=555),
+        platform_meta={
+            "guild_id": 111,
+            "channel_id": 333,
+            "message_id": 555,
+            "thread_id": None,
+            "channel_type": "text",
+        },
     )
     response = Response(content="hi")
 
@@ -208,14 +210,7 @@ async def test_send_reply_on_mention() -> None:
 async def test_send_channel_on_no_mention() -> None:
     """send() calls channel.send(text) when is_mention=False."""
     from lyra.adapters.discord import DiscordAdapter
-    from lyra.core.message import (
-        DiscordContext,
-        Message,
-        MessageType,
-        Platform,
-        Response,
-        TextContent,
-    )
+    from lyra.core.message import InboundMessage, Response
 
     hub = MagicMock()
     adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
@@ -224,18 +219,24 @@ async def test_send_channel_on_no_mention() -> None:
     mock_channel.send = AsyncMock()
     adapter.get_channel = MagicMock(return_value=mock_channel)
 
-    hub_msg = Message(
+    hub_msg = InboundMessage(
         id="msg-1",
-        platform=Platform.DISCORD,
+        platform="discord",
         bot_id="main",
+        scope_id="channel:333",
         user_id="dc:user:42",
         user_name="Alice",
         is_mention=False,
-        is_from_bot=False,
-        content=TextContent(text="hello"),
-        type=MessageType.TEXT,
+        text="hello",
+        text_raw="hello",
         timestamp=datetime.now(timezone.utc),
-        platform_context=DiscordContext(guild_id=111, channel_id=333, message_id=555),
+        platform_meta={
+            "guild_id": 111,
+            "channel_id": 333,
+            "message_id": 555,
+            "thread_id": None,
+            "channel_type": "text",
+        },
     )
     response = Response(content="hi")
 
@@ -320,7 +321,7 @@ def test_normalize_bot_user_none_is_mention_false() -> None:
         mentions=[SimpleNamespace(id=999)],  # would match if _bot_user were set
     )
 
-    msg = adapter._normalize(discord_msg)
+    msg = adapter.normalize(discord_msg)
 
     assert msg.is_mention is False  # no crash, returns False
 
@@ -331,7 +332,7 @@ def test_normalize_bot_user_none_is_mention_false() -> None:
 
 
 def test_mention_prefix_stripped_from_content() -> None:
-    """@mention prefix (<@id>) is stripped from content before delivery."""
+    """@mention prefix (<@id>) is stripped from text before delivery."""
     from lyra.adapters.discord import DiscordAdapter
 
     hub = MagicMock()
@@ -349,12 +350,10 @@ def test_mention_prefix_stripped_from_content() -> None:
         mentions=[bot_user],
     )
 
-    from lyra.core.message import TextContent
+    msg = adapter.normalize(discord_msg)
 
-    msg = adapter._normalize(discord_msg)
-
-    assert isinstance(msg.content, TextContent)
-    assert msg.content.text == "hello world"
+    assert msg.text == "hello world"
+    assert msg.text_raw == "<@999> hello world"
 
 
 def test_mention_prefix_stripped_nickname_variant() -> None:
@@ -376,12 +375,9 @@ def test_mention_prefix_stripped_nickname_variant() -> None:
         mentions=[bot_user],
     )
 
-    from lyra.core.message import TextContent
+    msg = adapter.normalize(discord_msg)
 
-    msg = adapter._normalize(discord_msg)
-
-    assert isinstance(msg.content, TextContent)
-    assert msg.content.text == "hello world"
+    assert msg.text == "hello world"
 
 
 # ---------------------------------------------------------------------------
@@ -392,7 +388,7 @@ def test_mention_prefix_stripped_nickname_variant() -> None:
 def test_normalize_dm_no_guild() -> None:
     """DM messages (guild=None) normalize with guild_id=None — no AttributeError."""
     from lyra.adapters.discord import DiscordAdapter
-    from lyra.core.message import DiscordContext
+    from lyra.core.message import InboundMessage
 
     hub = MagicMock()
     adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
@@ -401,18 +397,19 @@ def test_normalize_dm_no_guild() -> None:
     discord_msg = SimpleNamespace(
         guild=None,  # DM — no guild
         channel=SimpleNamespace(id=333, send=AsyncMock()),
-        author=SimpleNamespace(id=42, name="Alice", bot=False),
+        author=SimpleNamespace(id=42, name="Alice", display_name="Alice", bot=False),
         content="hello",
         created_at=datetime.now(timezone.utc),
         id=555,
         mentions=[],
     )
 
-    msg = adapter._normalize(discord_msg)
+    msg = adapter.normalize(discord_msg)
 
-    assert msg.platform_context == DiscordContext(
-        guild_id=None, channel_id=333, message_id=555
-    )
+    assert isinstance(msg, InboundMessage)
+    assert msg.platform_meta["guild_id"] is None
+    assert msg.platform_meta["channel_id"] == 333
+    assert msg.platform_meta["message_id"] == 555
 
 
 # ---------------------------------------------------------------------------
@@ -440,7 +437,7 @@ def test_normalize_uses_display_name_when_present() -> None:
         mentions=[],
     )
 
-    msg = adapter._normalize(discord_msg)
+    msg = adapter.normalize(discord_msg)
 
     assert msg.user_name == "Alice Display"
 
@@ -463,7 +460,7 @@ def test_normalize_falls_back_to_name_when_display_name_none() -> None:
         mentions=[],
     )
 
-    msg = adapter._normalize(discord_msg)
+    msg = adapter.normalize(discord_msg)
 
     assert msg.user_name == "alice_raw"
 
@@ -499,7 +496,7 @@ def test_discord_token_not_in_logs(
             id=555,
             mentions=[],
         )
-        adapter._normalize(discord_msg)
+        adapter.normalize(discord_msg)
 
     for record in caplog.records:
         assert secret_token not in record.getMessage(), (
@@ -578,14 +575,7 @@ async def test_send_skips_when_discord_circuit_open() -> None:
     CB check is owned by OutboundDispatcher. Adapter always delivers.
     """
     from lyra.adapters.discord import DiscordAdapter
-    from lyra.core.message import (
-        DiscordContext,
-        Message,
-        MessageType,
-        Platform,
-        Response,
-        TextContent,
-    )
+    from lyra.core.message import InboundMessage, Response
 
     # Arrange
     registry = _make_open_registry("discord")
@@ -602,18 +592,24 @@ async def test_send_skips_when_discord_circuit_open() -> None:
     mock_channel.send = AsyncMock()
     adapter.get_channel = MagicMock(return_value=mock_channel)
 
-    hub_msg = Message(
+    hub_msg = InboundMessage(
         id="msg-1",
-        platform=Platform.DISCORD,
+        platform="discord",
         bot_id="main",
+        scope_id="channel:333",
         user_id="dc:user:42",
         user_name="Alice",
         is_mention=False,
-        is_from_bot=False,
-        content=TextContent(text="hello"),
-        type=MessageType.TEXT,
+        text="hello",
+        text_raw="hello",
         timestamp=datetime.now(timezone.utc),
-        platform_context=DiscordContext(guild_id=111, channel_id=333, message_id=555),
+        platform_meta={
+            "guild_id": 111,
+            "channel_id": 333,
+            "message_id": 555,
+            "thread_id": None,
+            "channel_type": "text",
+        },
     )
     response = Response(content="hi")
 
@@ -679,14 +675,7 @@ async def test_discord_msg_manager_injection_backpressure_ack() -> None:
 async def test_send_stores_reply_message_id_channel_send() -> None:
     """send() via channel.send() stores sent message id in response.metadata."""
     from lyra.adapters.discord import DiscordAdapter
-    from lyra.core.message import (
-        DiscordContext,
-        Message,
-        MessageType,
-        Platform,
-        Response,
-        TextContent,
-    )
+    from lyra.core.message import InboundMessage, Response
 
     # Arrange
     hub = MagicMock()
@@ -697,18 +686,24 @@ async def test_send_stores_reply_message_id_channel_send() -> None:
     mock_channel.send = AsyncMock(return_value=sent_msg)
     adapter.get_channel = MagicMock(return_value=mock_channel)
 
-    hub_msg = Message(
+    hub_msg = InboundMessage(
         id="msg-1",
-        platform=Platform.DISCORD,
+        platform="discord",
         bot_id="main",
+        scope_id="channel:333",
         user_id="dc:user:42",
         user_name="Alice",
         is_mention=False,
-        is_from_bot=False,
-        content=TextContent(text="hello"),
-        type=MessageType.TEXT,
+        text="hello",
+        text_raw="hello",
         timestamp=datetime.now(timezone.utc),
-        platform_context=DiscordContext(guild_id=111, channel_id=333, message_id=555),
+        platform_meta={
+            "guild_id": 111,
+            "channel_id": 333,
+            "message_id": 555,
+            "thread_id": None,
+            "channel_type": "text",
+        },
     )
     response = Response(content="hi")
 
@@ -729,14 +724,7 @@ async def test_send_stores_reply_message_id_channel_send() -> None:
 async def test_send_stores_reply_message_id_msg_reply() -> None:
     """send() via msg.reply() stores sent message id in response.metadata."""
     from lyra.adapters.discord import DiscordAdapter
-    from lyra.core.message import (
-        DiscordContext,
-        Message,
-        MessageType,
-        Platform,
-        Response,
-        TextContent,
-    )
+    from lyra.core.message import InboundMessage, Response
 
     # Arrange
     hub = MagicMock()
@@ -749,18 +737,24 @@ async def test_send_stores_reply_message_id_msg_reply() -> None:
     mock_channel.fetch_message = AsyncMock(return_value=mock_message)
     adapter.get_channel = MagicMock(return_value=mock_channel)
 
-    hub_msg = Message(
+    hub_msg = InboundMessage(
         id="msg-1",
-        platform=Platform.DISCORD,
+        platform="discord",
         bot_id="main",
+        scope_id="channel:333",
         user_id="dc:user:42",
         user_name="Alice",
         is_mention=True,
-        is_from_bot=False,
-        content=TextContent(text="hello"),
-        type=MessageType.TEXT,
+        text="hello",
+        text_raw="hello",
         timestamp=datetime.now(timezone.utc),
-        platform_context=DiscordContext(guild_id=111, channel_id=333, message_id=555),
+        platform_meta={
+            "guild_id": 111,
+            "channel_id": 333,
+            "message_id": 555,
+            "thread_id": None,
+            "channel_type": "text",
+        },
     )
     response = Response(content="hi")
 
@@ -782,14 +776,7 @@ async def test_send_stores_reply_message_id_msg_reply() -> None:
 async def test_send_no_reply_message_id_on_failure() -> None:
     """send() must NOT set reply_message_id in metadata when the send call throws."""
     from lyra.adapters.discord import DiscordAdapter
-    from lyra.core.message import (
-        DiscordContext,
-        Message,
-        MessageType,
-        Platform,
-        Response,
-        TextContent,
-    )
+    from lyra.core.message import InboundMessage, Response
 
     # Arrange
     hub = MagicMock()
@@ -799,18 +786,24 @@ async def test_send_no_reply_message_id_on_failure() -> None:
     mock_channel.send = AsyncMock(side_effect=Exception("network error"))
     adapter.get_channel = MagicMock(return_value=mock_channel)
 
-    hub_msg = Message(
+    hub_msg = InboundMessage(
         id="msg-1",
-        platform=Platform.DISCORD,
+        platform="discord",
         bot_id="main",
+        scope_id="channel:333",
         user_id="dc:user:42",
         user_name="Alice",
         is_mention=False,
-        is_from_bot=False,
-        content=TextContent(text="hello"),
-        type=MessageType.TEXT,
+        text="hello",
+        text_raw="hello",
         timestamp=datetime.now(timezone.utc),
-        platform_context=DiscordContext(guild_id=111, channel_id=333, message_id=555),
+        platform_meta={
+            "guild_id": 111,
+            "channel_id": 333,
+            "message_id": 555,
+            "thread_id": None,
+            "channel_type": "text",
+        },
     )
     response = Response(content="hi")
 
@@ -835,16 +828,7 @@ class TestDiscordAutoThread:
     @pytest.mark.asyncio
     async def test_auto_thread_created_on_mention_in_text_channel(self) -> None:
         """@mention in a text channel with auto_thread=True → create_thread() called."""
-        from unittest.mock import patch
-
         from lyra.adapters.discord import DiscordAdapter
-        from lyra.core.message import (
-            DiscordContext,
-            Message,
-            MessageType,
-            Platform,
-            TextContent,
-        )
 
         # Arrange
         hub = MagicMock()
@@ -870,6 +854,7 @@ class TestDiscordAutoThread:
                 id=333,
                 send=AsyncMock(),
                 type=SimpleNamespace(name="text"),
+                create_thread=AsyncMock(),  # needed for hasattr check in on_message
             ),
             author=SimpleNamespace(
                 id=42, name="Alice", display_name="Alice", bot=False
@@ -881,48 +866,21 @@ class TestDiscordAutoThread:
             create_thread=create_thread_mock,
         )
 
-        # hub_msg with channel_type="text" and is_mention=True for the normalize patch
-        hub_msg = Message.from_adapter(
-            platform=Platform.DISCORD,
-            bot_id="main",
-            user_id="dc:user:42",
-            user_name="Alice",
-            content=TextContent(text="help me"),
-            type=MessageType.TEXT,
-            timestamp=datetime.now(timezone.utc),
-            is_mention=True,
-            platform_context=DiscordContext(
-                guild_id=111,
-                channel_id=333,
-                message_id=555,
-                thread_id=None,
-                channel_type="text",
-            ),
-        )
-
-        with patch.object(adapter, "_normalize", return_value=hub_msg):
-            await adapter.on_message(discord_msg)
+        await adapter.on_message(discord_msg)
 
         # Assert — create_thread was called once
         create_thread_mock.assert_awaited_once()
 
-        # Assert — hub_msg.platform_context now has thread_id = 9999
-        assert isinstance(hub_msg.platform_context, DiscordContext)
-        assert hub_msg.platform_context.thread_id == 9999
+        # Assert — hub.inbound_bus.put was called and the InboundMessage has thread_id
+        hub.inbound_bus.put.assert_called_once()
+        _platform_arg, hub_msg = hub.inbound_bus.put.call_args[0]
+        assert hub_msg.platform_meta["thread_id"] == 9999
+        assert hub_msg.scope_id == "thread:9999"
 
     @pytest.mark.asyncio
     async def test_auto_thread_not_created_in_existing_thread(self) -> None:
         """@mention in an existing thread channel does NOT call create_thread()."""
-        from unittest.mock import patch
-
         from lyra.adapters.discord import DiscordAdapter
-        from lyra.core.message import (
-            DiscordContext,
-            Message,
-            MessageType,
-            Platform,
-            TextContent,
-        )
 
         # Arrange
         hub = MagicMock()
@@ -940,9 +898,13 @@ class TestDiscordAutoThread:
 
         create_thread_mock = AsyncMock()
 
+        # Message already in an existing discord.Thread (isinstance check)
+        existing_thread = MagicMock(spec=discord.Thread)
+        existing_thread.id = 777
+
         discord_msg = SimpleNamespace(
             guild=SimpleNamespace(id=111),
-            channel=SimpleNamespace(id=333, send=AsyncMock()),
+            channel=existing_thread,
             author=SimpleNamespace(
                 id=42, name="Alice", display_name="Alice", bot=False
             ),
@@ -953,27 +915,7 @@ class TestDiscordAutoThread:
             create_thread=create_thread_mock,
         )
 
-        # channel_type="thread" — already in a thread, must NOT create another
-        hub_msg = Message.from_adapter(
-            platform=Platform.DISCORD,
-            bot_id="main",
-            user_id="dc:user:42",
-            user_name="Alice",
-            content=TextContent(text="help me"),
-            type=MessageType.TEXT,
-            timestamp=datetime.now(timezone.utc),
-            is_mention=True,
-            platform_context=DiscordContext(
-                guild_id=111,
-                channel_id=333,
-                message_id=555,
-                thread_id=777,
-                channel_type="thread",
-            ),
-        )
-
-        with patch.object(adapter, "_normalize", return_value=hub_msg):
-            await adapter.on_message(discord_msg)
+        await adapter.on_message(discord_msg)
 
         # Assert — create_thread NOT called when already in a thread
         create_thread_mock.assert_not_awaited()
@@ -981,16 +923,7 @@ class TestDiscordAutoThread:
     @pytest.mark.asyncio
     async def test_auto_thread_disabled(self) -> None:
         """auto_thread=False → create_thread() is never called even on @mention."""
-        from unittest.mock import patch
-
         from lyra.adapters.discord import DiscordAdapter
-        from lyra.core.message import (
-            DiscordContext,
-            Message,
-            MessageType,
-            Platform,
-            TextContent,
-        )
 
         # Arrange
         hub = MagicMock()
@@ -1021,26 +954,7 @@ class TestDiscordAutoThread:
             create_thread=create_thread_mock,
         )
 
-        hub_msg = Message.from_adapter(
-            platform=Platform.DISCORD,
-            bot_id="main",
-            user_id="dc:user:42",
-            user_name="Alice",
-            content=TextContent(text="help me"),
-            type=MessageType.TEXT,
-            timestamp=datetime.now(timezone.utc),
-            is_mention=True,
-            platform_context=DiscordContext(
-                guild_id=111,
-                channel_id=333,
-                message_id=555,
-                thread_id=None,
-                channel_type="text",
-            ),
-        )
-
-        with patch.object(adapter, "_normalize", return_value=hub_msg):
-            await adapter.on_message(discord_msg)
+        await adapter.on_message(discord_msg)
 
         # Assert — auto_thread=False → no thread created
         create_thread_mock.assert_not_awaited()
@@ -1048,16 +962,7 @@ class TestDiscordAutoThread:
     @pytest.mark.asyncio
     async def test_auto_thread_exception_fallback(self) -> None:
         """create_thread() raising Exception: message still processed in original ch."""
-        from unittest.mock import patch
-
         from lyra.adapters.discord import DiscordAdapter
-        from lyra.core.message import (
-            DiscordContext,
-            Message,
-            MessageType,
-            Platform,
-            TextContent,
-        )
 
         # Arrange
         hub = MagicMock()
@@ -1089,27 +994,8 @@ class TestDiscordAutoThread:
             create_thread=create_thread_mock,
         )
 
-        hub_msg = Message.from_adapter(
-            platform=Platform.DISCORD,
-            bot_id="main",
-            user_id="dc:user:42",
-            user_name="Alice",
-            content=TextContent(text="help me"),
-            type=MessageType.TEXT,
-            timestamp=datetime.now(timezone.utc),
-            is_mention=True,
-            platform_context=DiscordContext(
-                guild_id=111,
-                channel_id=333,
-                message_id=555,
-                thread_id=None,
-                channel_type="text",
-            ),
-        )
-
-        with patch.object(adapter, "_normalize", return_value=hub_msg):
-            # Act — must not raise
-            await adapter.on_message(discord_msg)
+        # Act — must not raise
+        await adapter.on_message(discord_msg)
 
         # Assert — message still processed (bus.put called)
         hub.inbound_bus.put.assert_called_once()
@@ -1123,3 +1009,25 @@ class TestDiscordAutoThread:
 
         # Assert
         assert config.auto_thread is True
+
+
+def test_normalize_empty_text() -> None:
+    """normalize() with content=\"\" produces msg.text == \"\"."""
+    from lyra.adapters.discord import DiscordAdapter
+    from lyra.core.message import InboundMessage
+
+    hub = MagicMock()
+    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+    adapter._bot_user = SimpleNamespace(id=999, bot=True)
+    discord_msg = SimpleNamespace(
+        guild=SimpleNamespace(id=111),
+        channel=SimpleNamespace(id=333, send=AsyncMock()),
+        author=SimpleNamespace(id=42, name="Alice", display_name="Alice", bot=False),
+        content="",
+        created_at=datetime.now(timezone.utc),
+        id=555,
+        mentions=[],
+    )
+    msg = adapter.normalize(discord_msg)
+    assert isinstance(msg, InboundMessage)
+    assert msg.text == ""

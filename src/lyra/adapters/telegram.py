@@ -22,15 +22,13 @@ from aiogram.enums import ChatAction
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
-    AudioContent,
-    Message,
-    MessageType,
+    Attachment,
+    InboundMessage,
     OutboundAudio,
     Platform,
     RenderContext,
     Response,
     TelegramContext,
-    TextContent,
 )
 from lyra.core.messages import MessageManager
 
@@ -183,58 +181,72 @@ class TelegramAdapter:
                 "timestamp": ts,
             }
 
-    def _normalize(self, msg) -> Message:
-        """Convert an aiogram Message (or SimpleNamespace) to a hub Message.
+    @staticmethod
+    def _make_scope_id(chat_id: int, topic_id: int | None) -> str:
+        """Build the canonical scope_id for a Telegram chat/topic."""
+        if topic_id is not None:
+            return f"chat:{chat_id}:topic:{topic_id}"
+        return f"chat:{chat_id}"
 
-        Security: trust is always 'user' via Message.from_adapter().
+    def normalize(self, raw: Any) -> InboundMessage:
+        """Convert an aiogram Message (or SimpleNamespace) to an InboundMessage.
+
+        Security: trust is always 'user'. normalize() is never called for bot messages.
         Never logs the bot token.
         """
-        chat_type = msg.chat.type
+        if raw.from_user is None:
+            raise ValueError(
+                "normalize() called with no from_user — "
+                "service messages must be filtered before normalization"
+            )
+        chat_type = raw.chat.type
         is_group = chat_type != "private"
 
         # is_mention is always False in private chats
         is_mention = False
-        if is_group and msg.entities:
-            for entity in msg.entities:
+        if is_group and raw.entities:
+            for entity in raw.entities:
                 if entity.type == "mention":
-                    slice_text = msg.text[entity.offset : entity.offset + entity.length]
+                    slice_text = raw.text[entity.offset : entity.offset + entity.length]
                     if slice_text == f"@{self._bot_username}":
                         is_mention = True
                         break
 
-        platform_context = TelegramContext(
-            chat_id=msg.chat.id,
-            topic_id=msg.message_thread_id,
-            is_group=is_group,
-            message_id=getattr(msg, "message_id", None),  # stubs in tests may omit it
-        )
+        chat_id: int = raw.chat.id
+        topic_id: int | None = raw.message_thread_id
+        scope_id = self._make_scope_id(chat_id, topic_id)
 
-        text = msg.text or ""
-        content = TextContent(text=text)
-
-        timestamp = msg.date
+        text = raw.text or ""
+        timestamp = raw.date
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=timezone.utc)
 
-        user_id = f"tg:user:{msg.from_user.id}"
+        user_id = f"tg:user:{raw.from_user.id}"
 
         log.debug(
             "Normalizing message from user_id=%s in chat_id=%s",
             user_id,
-            msg.chat.id,
+            chat_id,
         )
 
-        return Message.from_adapter(
-            platform=Platform.TELEGRAM,
+        return InboundMessage(
+            id=f"telegram:{user_id}:{int(timestamp.timestamp())}",
+            platform="telegram",
             bot_id=self._bot_id,
+            scope_id=scope_id,
             user_id=user_id,
-            user_name=msg.from_user.full_name,
-            content=content,
-            type=MessageType.TEXT,
-            timestamp=timestamp,
+            user_name=raw.from_user.full_name,
             is_mention=is_mention,
-            is_from_bot=getattr(msg.from_user, "is_bot", False),
-            platform_context=platform_context,
+            text=text,
+            text_raw=text,
+            timestamp=timestamp,
+            trust="user",
+            platform_meta={
+                "chat_id": chat_id,
+                "topic_id": topic_id,
+                "message_id": getattr(raw, "message_id", None),
+                "is_group": is_group,
+            },
         )
 
     async def _download_audio(
@@ -295,31 +307,41 @@ class TelegramAdapter:
             log.exception("Failed to download audio file_id=%s", file_id)
             return
 
-        platform_context = TelegramContext(
-            chat_id=msg.chat.id,
-            topic_id=msg.message_thread_id,
-            is_group=msg.chat.type != "private",
-            message_id=getattr(msg, "message_id", None),
-        )
         timestamp = msg.date
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=timezone.utc)
 
-        hub_msg = Message.from_adapter(
-            platform=Platform.TELEGRAM,
+        _chat_id: int = msg.chat.id
+        _topic_id: int | None = msg.message_thread_id
+        _scope_id = self._make_scope_id(_chat_id, _topic_id)
+        _user_id = f"tg:user:{msg.from_user.id}"
+
+        hub_msg = InboundMessage(
+            id=f"telegram:{_user_id}:{int(timestamp.timestamp())}",
+            platform="telegram",
             bot_id=self._bot_id,
-            user_id=f"tg:user:{msg.from_user.id}",
+            scope_id=_scope_id,
+            user_id=_user_id,
             user_name=msg.from_user.full_name,
-            content=AudioContent(
-                url=str(tmp_path),
-                duration_seconds=duration_seconds,
-                file_id=file_id,
-            ),
-            type=MessageType.AUDIO,
-            timestamp=timestamp,
             is_mention=False,
-            is_from_bot=False,
-            platform_context=platform_context,
+            text="",
+            text_raw="",
+            attachments=[
+                Attachment(
+                    type="audio",
+                    url_or_bytes=str(tmp_path),
+                    mime_type="audio/ogg",
+                    filename=None,
+                )
+            ],
+            timestamp=timestamp,
+            trust="user",
+            platform_meta={
+                "chat_id": _chat_id,
+                "topic_id": _topic_id,
+                "message_id": getattr(msg, "message_id", None),
+                "is_group": msg.chat.type != "private",
+            },
         )
 
         await self._push_to_hub(
@@ -328,7 +350,7 @@ class TelegramAdapter:
 
     async def _push_to_hub(
         self,
-        hub_msg: Message,
+        hub_msg: InboundMessage,
         on_drop: Callable[[], None] | None = None,
     ) -> None:
         """Put hub_msg on the inbound bus with circuit-open and backpressure guards.
@@ -342,9 +364,8 @@ class TelegramAdapter:
             if cb is not None and cb.is_open():
                 log.warning(
                     '{"event": "hub_circuit_open", "platform": "telegram",'
-                    ' "user_id": "%s", "dropped": true, "type": "%s"}',
+                    ' "user_id": "%s", "dropped": true}',
                     hub_msg.user_id,
-                    hub_msg.type.value,
                 )
                 if on_drop is not None:
                     on_drop()
@@ -360,40 +381,48 @@ class TelegramAdapter:
                 if self._msg_manager
                 else "Processing your request\u2026"
             )
-            chat_id = getattr(hub_msg.platform_context, "chat_id")
+            chat_id = hub_msg.platform_meta.get("chat_id")
+            if chat_id is None:
+                raise ValueError(
+                    "platform_meta missing required key 'chat_id' for backpressure ack"
+                )
             await self.bot.send_message(chat_id, text)
 
     async def _on_message(self, msg) -> None:
         """Handle an incoming aiogram message: apply backpressure and put on bus."""
-        if msg.from_user and getattr(msg.from_user, "is_bot", False):
+        if not msg.from_user or getattr(msg.from_user, "is_bot", False):
             return
 
-        hub_msg = self._normalize(msg)
+        hub_msg = self.normalize(msg)
         # IMPORTANT: Always return normally to aiogram — webhook must return
         # {"ok": True} (HTTP 200). Never raise here or Telegram will retry
         # the update indefinitely.
         await self._push_to_hub(hub_msg)
 
-    async def send(self, original_msg: Message, response: Response) -> None:
+    async def send(self, original_msg: InboundMessage, response: Response) -> None:
         """Send a response back to Telegram via bot.send_message.
 
         Circuit breaker checks and recording are handled by OutboundDispatcher,
         not here. This method performs the bare send and raises on failure.
         """
-        if not isinstance(original_msg.platform_context, TelegramContext):
+        if original_msg.platform != "telegram":
             log.error(
-                "send() called with non-TelegramContext for msg_id=%s",
+                "send() called with non-telegram message id=%s",
                 original_msg.id,
             )
             return
-        ctx = original_msg.platform_context
+        chat_id: int | None = original_msg.platform_meta.get("chat_id")
+        if chat_id is None:
+            raise ValueError(
+                "platform_meta missing required key 'chat_id' for send()"
+            )
 
-        sent = await self.bot.send_message(chat_id=ctx.chat_id, text=response.content)
+        sent = await self.bot.send_message(chat_id=chat_id, text=response.content)
         # Store for session persistence (#67) and reply-to-resume (#83).
         response.metadata["reply_message_id"] = sent.message_id
 
     async def send_streaming(
-        self, original_msg: Message, chunks: AsyncIterator[str]
+        self, original_msg: InboundMessage, chunks: AsyncIterator[str]
     ) -> None:
         """Stream response with edit-in-place, debounced at ~500ms.
 
@@ -403,13 +432,17 @@ class TelegramAdapter:
         TODO: store placeholder.message_id in response.metadata["reply_message_id"]
         once send_streaming() receives a Response argument (#67).
         """
-        if not isinstance(original_msg.platform_context, TelegramContext):
+        if original_msg.platform != "telegram":
             log.error(
-                "send_streaming() called with non-TelegramContext for msg_id=%s",
+                "send_streaming() called with non-telegram message id=%s",
                 original_msg.id,
             )
             return
-        ctx = original_msg.platform_context
+        chat_id: int | None = original_msg.platform_meta.get("chat_id")
+        if chat_id is None:
+            raise ValueError(
+                "platform_meta missing required key 'chat_id' for send_streaming()"
+            )
 
         accumulated = ""
 
@@ -421,7 +454,7 @@ class TelegramAdapter:
         )
         try:
             placeholder = await self.bot.send_message(
-                chat_id=ctx.chat_id, text=_placeholder_text
+                chat_id=chat_id, text=_placeholder_text
             )
         except Exception:
             log.exception("Failed to send placeholder — falling back to non-streaming")
@@ -439,7 +472,7 @@ class TelegramAdapter:
                 now = time.monotonic()
                 if now - last_edit >= 0.5:
                     await self.bot.edit_message_text(
-                        chat_id=ctx.chat_id,
+                        chat_id=chat_id,
                         message_id=placeholder.message_id,
                         text=accumulated[:TELEGRAM_MAX_LENGTH],
                     )
@@ -465,7 +498,7 @@ class TelegramAdapter:
         if accumulated:
             try:
                 await self.bot.edit_message_text(
-                    chat_id=ctx.chat_id,
+                    chat_id=chat_id,
                     message_id=placeholder.message_id,
                     text=accumulated[:TELEGRAM_MAX_LENGTH],
                 )

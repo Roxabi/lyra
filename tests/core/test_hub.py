@@ -28,6 +28,7 @@ from lyra.core import (
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.message import (
     DiscordContext,
+    InboundMessage,
     Platform,
     TelegramContext,
 )
@@ -46,7 +47,10 @@ TOML_PATH = (
 # ---------------------------------------------------------------------------
 
 
-from tests.core.conftest import make_message  # noqa: E402 (shared helper)
+from tests.core.conftest import (  # noqa: E402 (shared helper)
+    make_inbound_message,
+    make_message,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -56,12 +60,15 @@ from tests.core.conftest import make_message  # noqa: E402 (shared helper)
 class MockAdapter:
     """Minimal ChannelAdapter for testing."""
 
-    async def send(self, original_msg: Message, response: Response) -> None:
+    def normalize(self, raw: object) -> InboundMessage:
+        raise NotImplementedError
+
+    async def send(self, original_msg: InboundMessage, response: Response) -> None:
         pass
 
     async def send_streaming(
         self,
-        original_msg: Message,
+        original_msg: InboundMessage,
         chunks: object,
     ) -> None:
         pass
@@ -278,12 +285,11 @@ class TestRoutingKey:
     def test_exact_binding(self) -> None:
         hub = Hub()
         hub.register_adapter(Platform.TELEGRAM, "main", MockAdapter())
-        # scope_id="chat:42" must match make_message()'s default
-        # TelegramContext(chat_id=42) → extract_scope_id() returns "chat:42"
+        # scope_id="chat:42" must match make_inbound_message()'s default
         hub.register_binding(
             Platform.TELEGRAM, "main", "chat:42", "lyra", "telegram:main:chat:42"
         )
-        msg = make_message(platform=Platform.TELEGRAM, user_id="alice")
+        msg = make_inbound_message(platform="telegram", user_id="alice")
         binding = hub.resolve_binding(msg)
         assert binding is not None
         assert binding.agent_name == "lyra"
@@ -292,22 +298,22 @@ class TestRoutingKey:
     def test_wildcard_does_not_bleed_across_platforms(self) -> None:
         hub = Hub()
         hub.register_binding(Platform.DISCORD, "main", "*", "lyra", "discord:main:*")
-        msg = make_message(platform=Platform.TELEGRAM, user_id="unknown_user")
+        msg = make_inbound_message(platform="telegram", user_id="unknown_user")
         assert hub.resolve_binding(msg) is None
 
     def test_wildcard_fallback_same_platform(self) -> None:
         hub = Hub()
         hub.register_binding(Platform.TELEGRAM, "main", "*", "lyra", "telegram:main:*")
-        msg = make_message(platform=Platform.TELEGRAM, user_id="unknown")
+        msg = make_inbound_message(platform="telegram", user_id="unknown")
         binding = hub.resolve_binding(msg)
         assert binding is not None
         assert binding.agent_name == "lyra"
         # Per-scope pool_id must be synthesised from the message scope, not the wildcard
-        assert binding.pool_id == f"telegram:main:{msg.extract_scope_id()}"
+        assert binding.pool_id == f"telegram:main:{msg.scope_id}"
 
     def test_no_binding_returns_none(self) -> None:
         hub = Hub()
-        msg = make_message(platform=Platform.TELEGRAM, user_id="nobody")
+        msg = make_inbound_message(platform="telegram", user_id="nobody")
         assert hub.resolve_binding(msg) is None
 
     def test_binding_isolated_per_bot_id(self) -> None:
@@ -315,7 +321,7 @@ class TestRoutingKey:
         hub.register_binding(
             Platform.TELEGRAM, "bot1", "chat:42", "lyra", "telegram:bot1:chat:42"
         )
-        msg = make_message(platform=Platform.TELEGRAM, bot_id="bot2", user_id="alice")
+        msg = make_inbound_message(platform="telegram", bot_id="bot2", user_id="alice")
         assert hub.resolve_binding(msg) is None
 
     def test_binding_isolated_per_platform(self) -> None:
@@ -323,11 +329,18 @@ class TestRoutingKey:
         hub.register_binding(
             Platform.TELEGRAM, "main", "chat:42", "lyra", "telegram:main:chat:42"
         )
-        msg = make_message(
-            platform=Platform.DISCORD,
+        msg = make_inbound_message(
+            platform="discord",
             bot_id="main",
             user_id="alice",
-            platform_context=DiscordContext(guild_id=1, channel_id=99, message_id=1),
+            scope_id="channel:99",
+            platform_meta={
+                "guild_id": 1,
+                "channel_id": 99,
+                "message_id": 1,
+                "thread_id": None,
+                "channel_type": "text",
+            },
         )
         assert hub.resolve_binding(msg) is None
 
@@ -335,7 +348,7 @@ class TestRoutingKey:
         hub = Hub()
         hub.register_binding(Platform.TELEGRAM, "main", "chat:42", "lyra", "pool_v1")
         hub.register_binding(Platform.TELEGRAM, "main", "chat:42", "lyra", "pool_v2")
-        msg = make_message(platform=Platform.TELEGRAM, user_id="alice")
+        msg = make_inbound_message(platform="telegram", user_id="alice")
         binding = hub.resolve_binding(msg)
         assert binding is not None
         assert binding.pool_id == "pool_v2"
@@ -359,19 +372,21 @@ class TestRoutingKey:
 class TestDispatchResponse:
     async def test_dispatches_to_correct_adapter(self) -> None:
         hub = Hub()
-        sent: list[tuple[Message, Response]] = []
+        sent: list[tuple[InboundMessage, Response]] = []
 
         class CapturingAdapter:
-            async def send(self, original_msg: Message, response: Response) -> None:
+            async def send(
+                self, original_msg: InboundMessage, response: Response
+            ) -> None:
                 sent.append((original_msg, response))
 
             async def send_streaming(
-                self, original_msg: Message, chunks: object
+                self, original_msg: InboundMessage, chunks: object
             ) -> None:
                 pass
 
-        hub.register_adapter(Platform.TELEGRAM, "main", CapturingAdapter())
-        msg = make_message(platform=Platform.TELEGRAM, bot_id="main")
+        hub.register_adapter(Platform.TELEGRAM, "main", CapturingAdapter())  # type: ignore[arg-type]
+        msg = make_inbound_message(platform="telegram", bot_id="main")
         response = Response(content="pong")
         await hub.dispatch_response(msg, response)
         assert len(sent) == 1
@@ -379,7 +394,7 @@ class TestDispatchResponse:
 
     async def test_missing_adapter_raises(self) -> None:
         hub = Hub()
-        msg = make_message(platform=Platform.TELEGRAM, bot_id="ghost")
+        msg = make_inbound_message(platform="telegram", bot_id="ghost")
         with pytest.raises(KeyError):
             await hub.dispatch_response(msg, Response(content="x"))
 
@@ -388,17 +403,19 @@ class TestDispatchResponse:
         hub = Hub()
 
         class DummyAdapter:
-            async def send(self, original_msg: Message, response: Response) -> None:
-                pass
-
-            async def send_streaming(
-                self, original_msg: Message, chunks: object
+            async def send(
+                self, original_msg: InboundMessage, response: Response
             ) -> None:
                 pass
 
-        hub.register_adapter(Platform.TELEGRAM, "main", DummyAdapter())
+            async def send_streaming(
+                self, original_msg: InboundMessage, chunks: object
+            ) -> None:
+                pass
+
+        hub.register_adapter(Platform.TELEGRAM, "main", DummyAdapter())  # type: ignore[arg-type]
         assert hub._last_processed_at is None
-        msg = make_message(platform=Platform.TELEGRAM, bot_id="main")
+        msg = make_inbound_message(platform="telegram", bot_id="main")
         await hub.dispatch_response(msg, Response(content="ok"))
         assert hub._last_processed_at is not None
 
@@ -406,7 +423,7 @@ class TestDispatchResponse:
         """dispatch_response does NOT update _last_processed_at on KeyError."""
         hub = Hub()
         assert hub._last_processed_at is None
-        msg = make_message(platform=Platform.TELEGRAM, bot_id="ghost")
+        msg = make_inbound_message(platform="telegram", bot_id="ghost")
         with pytest.raises(KeyError):
             await hub.dispatch_response(msg, Response(content="x"))
         assert hub._last_processed_at is None
@@ -422,7 +439,7 @@ class TestUnmatchedRouting:
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
         hub = Hub()
-        msg = make_message(platform=Platform.TELEGRAM, user_id="nobody")
+        msg = make_inbound_message(platform="telegram", user_id="nobody")
         await hub.bus.put(msg)
         with caplog.at_level(logging.WARNING, logger="lyra.core.hub"):
             # run() loops forever — use a short timeout to exercise one iteration
@@ -475,7 +492,7 @@ class TestAgentRegistryMiss:
         hub.register_binding(
             Platform.TELEGRAM, "main", "chat:42", "ghost", "telegram:main:chat:42"
         )
-        msg = make_message(platform=Platform.TELEGRAM, bot_id="main", user_id="alice")
+        msg = make_inbound_message(platform="telegram", bot_id="main", user_id="alice")
         await hub.bus.put(msg)
 
         with caplog.at_level(logging.WARNING, logger="lyra.core.hub"):
@@ -502,7 +519,7 @@ class TestMissingAdapterDrop:
         hub = Hub()
 
         class DummyAgent(AgentBase):
-            async def process(self, msg: Message, pool: Pool) -> Response:
+            async def process(self, msg: InboundMessage, pool: Pool) -> Response:
                 raise AssertionError("process() must not be called without adapter")
 
         config = Agent(name="lyra", system_prompt="", memory_namespace="lyra")
@@ -511,7 +528,7 @@ class TestMissingAdapterDrop:
             Platform.TELEGRAM, "main", "chat:42", "lyra", "telegram:main:chat:42"
         )
         # Deliberately do NOT register an adapter for (TELEGRAM, "main")
-        msg = make_message(platform=Platform.TELEGRAM, bot_id="main", user_id="alice")
+        msg = make_inbound_message(platform="telegram", bot_id="main", user_id="alice")
         await hub.bus.put(msg)
 
         with caplog.at_level(logging.ERROR, logger="lyra.core.hub"):
@@ -540,11 +557,11 @@ class TestRateTimestampsCleanup:
         import unittest.mock
 
         hub = Hub(rate_window=1)
-        msg = make_message(platform=Platform.TELEGRAM, user_id="alice")
+        msg = make_inbound_message(platform="telegram", user_id="alice")
 
         # First call — inserts a timestamp for alice's user key
         hub._is_rate_limited(msg)
-        key = (msg.platform.value, msg.bot_id, msg.user_id)
+        key = (msg.platform, msg.bot_id, msg.user_id)
         assert key in hub._rate_timestamps
         assert len(hub._rate_timestamps[key]) == 1
 
@@ -586,17 +603,19 @@ class TestDispatchStreaming:
         received: list[str] = []
 
         class StreamAdapter:
-            async def send(self, original_msg: Message, response: Response) -> None:
+            async def send(
+                self, original_msg: InboundMessage, response: Response
+            ) -> None:
                 pass
 
             async def send_streaming(
-                self, original_msg: Message, chunks: object
+                self, original_msg: InboundMessage, chunks: object
             ) -> None:
                 async for chunk in chunks:  # type: ignore[union-attr]
                     received.append(chunk)
 
-        hub.register_adapter(Platform.TELEGRAM, "main", StreamAdapter())
-        msg = make_message(platform=Platform.TELEGRAM, bot_id="main")
+        hub.register_adapter(Platform.TELEGRAM, "main", StreamAdapter())  # type: ignore[arg-type]
+        msg = make_inbound_message(platform="telegram", bot_id="main")
 
         async def gen():
             yield "Hello"
@@ -610,18 +629,20 @@ class TestDispatchStreaming:
         hub = Hub()
 
         class StreamAdapter:
-            async def send(self, original_msg: Message, response: Response) -> None:
+            async def send(
+                self, original_msg: InboundMessage, response: Response
+            ) -> None:
                 pass
 
             async def send_streaming(
-                self, original_msg: Message, chunks: object
+                self, original_msg: InboundMessage, chunks: object
             ) -> None:
                 async for _ in chunks:  # type: ignore[union-attr]
                     pass
 
-        hub.register_adapter(Platform.TELEGRAM, "main", StreamAdapter())
+        hub.register_adapter(Platform.TELEGRAM, "main", StreamAdapter())  # type: ignore[arg-type]
         assert hub._last_processed_at is None
-        msg = make_message(platform=Platform.TELEGRAM, bot_id="main")
+        msg = make_inbound_message(platform="telegram", bot_id="main")
 
         async def gen():
             yield "hi"
@@ -634,12 +655,14 @@ class TestDispatchStreaming:
         sent: list[Response] = []
 
         class LegacyAdapter:
-            async def send(self, original_msg: Message, response: Response) -> None:
+            async def send(
+                self, original_msg: InboundMessage, response: Response
+            ) -> None:
                 sent.append(response)
 
         # LegacyAdapter intentionally lacks send_streaming to test fallback
         hub.register_adapter(Platform.TELEGRAM, "main", LegacyAdapter())  # type: ignore[arg-type]
-        msg = make_message(platform=Platform.TELEGRAM, bot_id="main")
+        msg = make_inbound_message(platform="telegram", bot_id="main")
 
         async def gen():
             yield "Hello"
@@ -662,28 +685,30 @@ class TestHubRunStreaming:
         received_chunks: list[str] = []
 
         class StreamingAgent(AgentBase):
-            async def process(self, msg: Message, pool: Pool):  # type: ignore[override]
+            async def process(self, msg: InboundMessage, pool: Pool):  # type: ignore[override]
                 yield "chunk1"
                 yield "chunk2"
 
         class CapturingStreamAdapter:
-            async def send(self, original_msg: Message, response: Response) -> None:
+            async def send(
+                self, original_msg: InboundMessage, response: Response
+            ) -> None:
                 pass
 
             async def send_streaming(
-                self, original_msg: Message, chunks: object
+                self, original_msg: InboundMessage, chunks: object
             ) -> None:
                 async for chunk in chunks:  # type: ignore[union-attr]
                     received_chunks.append(chunk)
 
         config = Agent(name="streamer", system_prompt="", memory_namespace="lyra")
         hub.register_agent(StreamingAgent(config))
-        hub.register_adapter(Platform.TELEGRAM, "main", CapturingStreamAdapter())
+        hub.register_adapter(Platform.TELEGRAM, "main", CapturingStreamAdapter())  # type: ignore[arg-type]
         hub.register_binding(
             Platform.TELEGRAM, "main", "chat:42", "streamer", "telegram:main:chat:42"
         )
 
-        msg = make_message(platform=Platform.TELEGRAM, bot_id="main", user_id="alice")
+        msg = make_inbound_message(platform="telegram", bot_id="main", user_id="alice")
         await hub.bus.put(msg)
 
         try:
@@ -738,10 +763,10 @@ async def test_anthropic_circuit_open_sends_fast_fail_and_skips_agent() -> None:
     sent_responses: list[Response] = []
 
     class CapturingAdapter:
-        async def send(self, original_msg: Message, response: Response) -> None:
+        async def send(self, original_msg: InboundMessage, response: Response) -> None:
             sent_responses.append(response)
 
-        async def send_streaming(self, original_msg: Message, chunks) -> None:
+        async def send_streaming(self, original_msg: InboundMessage, chunks) -> None:
             async for _ in chunks:
                 pass
 
@@ -751,7 +776,7 @@ async def test_anthropic_circuit_open_sends_fast_fail_and_skips_agent() -> None:
         name = "test"
         command_router = None
 
-        def process(self, msg: Message, pool: Pool):
+        def process(self, msg: InboundMessage, pool: Pool):
             nonlocal process_called
             process_called = True
 
@@ -760,12 +785,12 @@ async def test_anthropic_circuit_open_sends_fast_fail_and_skips_agent() -> None:
 
             return gen()
 
-    hub.register_adapter(Platform.TELEGRAM, "main", CapturingAdapter())
+    hub.register_adapter(Platform.TELEGRAM, "main", CapturingAdapter())  # type: ignore[arg-type]
     hub.register_agent(MockStreamingAgent())  # type: ignore[arg-type]
     hub.register_binding(Platform.TELEGRAM, "main", "*", "test", "telegram:main:*")
 
     # Act — put one message on bus and let hub process it
-    await hub.bus.put(make_message())
+    await hub.bus.put(make_inbound_message())
     hub_task = asyncio.create_task(hub.run())
     await asyncio.sleep(0.05)
     hub_task.cancel()
@@ -802,10 +827,10 @@ async def test_anthropic_circuit_open_includes_retry_after() -> None:
     sent_responses: list[Response] = []
 
     class CapturingAdapter:
-        async def send(self, original_msg: Message, response: Response) -> None:
+        async def send(self, original_msg: InboundMessage, response: Response) -> None:
             sent_responses.append(response)
 
-        async def send_streaming(self, original_msg: Message, chunks) -> None:
+        async def send_streaming(self, original_msg: InboundMessage, chunks) -> None:
             async for _ in chunks:
                 pass
 
@@ -813,18 +838,18 @@ async def test_anthropic_circuit_open_includes_retry_after() -> None:
         name = "test"
         command_router = None
 
-        def process(self, msg: Message, pool: Pool):
+        def process(self, msg: InboundMessage, pool: Pool):
             async def gen():
                 yield "x"
 
             return gen()
 
-    hub.register_adapter(Platform.TELEGRAM, "main", CapturingAdapter())
+    hub.register_adapter(Platform.TELEGRAM, "main", CapturingAdapter())  # type: ignore[arg-type]
     hub.register_agent(MockStreamingAgent())  # type: ignore[arg-type]
     hub.register_binding(Platform.TELEGRAM, "main", "*", "test", "telegram:main:*")
 
     # Act
-    await hub.bus.put(make_message())
+    await hub.bus.put(make_inbound_message())
     hub_task = asyncio.create_task(hub.run())
     await asyncio.sleep(0.05)
     hub_task.cancel()
@@ -853,10 +878,10 @@ async def test_hub_records_success_on_clean_streaming() -> None:
     hub = Hub(circuit_registry=registry)
 
     class SilentAdapter:
-        async def send(self, original_msg: Message, response: Response) -> None:
+        async def send(self, original_msg: InboundMessage, response: Response) -> None:
             pass
 
-        async def send_streaming(self, original_msg: Message, chunks) -> None:
+        async def send_streaming(self, original_msg: InboundMessage, chunks) -> None:
             async for _ in chunks:
                 pass
 
@@ -864,18 +889,18 @@ async def test_hub_records_success_on_clean_streaming() -> None:
         name = "test"
         command_router = None
 
-        def process(self, msg: Message, pool: Pool):
+        def process(self, msg: InboundMessage, pool: Pool):
             async def gen():
                 yield "hello"
 
             return gen()
 
-    hub.register_adapter(Platform.TELEGRAM, "main", SilentAdapter())
+    hub.register_adapter(Platform.TELEGRAM, "main", SilentAdapter())  # type: ignore[arg-type]
     hub.register_agent(CleanStreamingAgent())  # type: ignore[arg-type]
     hub.register_binding(Platform.TELEGRAM, "main", "*", "test", "telegram:main:*")
 
     # Act
-    await hub.bus.put(make_message())
+    await hub.bus.put(make_inbound_message())
     hub_task = asyncio.create_task(hub.run())
     await asyncio.sleep(0.1)
     hub_task.cancel()
@@ -902,10 +927,10 @@ async def test_mid_stream_failure_records_anthropic_failure() -> None:
     hub = Hub(circuit_registry=registry)
 
     class SilentAdapter:
-        async def send(self, original_msg: Message, response: Response) -> None:
+        async def send(self, original_msg: InboundMessage, response: Response) -> None:
             pass
 
-        async def send_streaming(self, original_msg: Message, chunks) -> None:
+        async def send_streaming(self, original_msg: InboundMessage, chunks) -> None:
             async for _ in chunks:
                 pass  # exception propagates from the generator
 
@@ -913,7 +938,7 @@ async def test_mid_stream_failure_records_anthropic_failure() -> None:
         name = "test"
         command_router = None
 
-        def process(self, msg: Message, pool: Pool):
+        def process(self, msg: InboundMessage, pool: Pool):
             from anthropic import APIError as AnthropicAPIError
 
             async def gen():
@@ -926,12 +951,12 @@ async def test_mid_stream_failure_records_anthropic_failure() -> None:
 
             return gen()
 
-    hub.register_adapter(Platform.TELEGRAM, "main", SilentAdapter())
+    hub.register_adapter(Platform.TELEGRAM, "main", SilentAdapter())  # type: ignore[arg-type]
     hub.register_agent(FailingStreamAgent())  # type: ignore[arg-type]
     hub.register_binding(Platform.TELEGRAM, "main", "*", "test", "telegram:main:*")
 
     # Act
-    await hub.bus.put(make_message())
+    await hub.bus.put(make_inbound_message())
     hub_task = asyncio.create_task(hub.run())
     await asyncio.sleep(0.1)
     hub_task.cancel()
@@ -959,10 +984,10 @@ async def test_hub_circuit_opens_after_threshold() -> None:
     hub = Hub(circuit_registry=registry)
 
     class SilentAdapter:
-        async def send(self, original_msg: Message, response: Response) -> None:
+        async def send(self, original_msg: InboundMessage, response: Response) -> None:
             pass
 
-        async def send_streaming(self, original_msg: Message, chunks) -> None:
+        async def send_streaming(self, original_msg: InboundMessage, chunks) -> None:
             async for _ in chunks:
                 pass
 
@@ -970,20 +995,20 @@ async def test_hub_circuit_opens_after_threshold() -> None:
         name = "test"
         command_router = None
 
-        def process(self, msg: Message, pool: Pool):
+        def process(self, msg: InboundMessage, pool: Pool):
             async def gen():
                 yield "x"
                 raise RuntimeError("forced failure")
 
             return gen()
 
-    hub.register_adapter(Platform.TELEGRAM, "main", SilentAdapter())
+    hub.register_adapter(Platform.TELEGRAM, "main", SilentAdapter())  # type: ignore[arg-type]
     hub.register_agent(AlwaysFailStreamAgent())  # type: ignore[arg-type]
     hub.register_binding(Platform.TELEGRAM, "main", "*", "test", "telegram:main:*")
 
     # Act — enqueue 2 messages to trip the threshold
     for _ in range(2):
-        await hub.bus.put(make_message())
+        await hub.bus.put(make_inbound_message())
     hub_task = asyncio.create_task(hub.run())
     await asyncio.sleep(0.2)
     hub_task.cancel()
@@ -1018,26 +1043,28 @@ async def test_hub_msg_manager_injection_generic_on_agent_failure() -> None:
     sent_responses: list[Response] = []
 
     class CapturingAdapter:
-        async def send(self, original_msg: Message, response: Response) -> None:
+        async def send(self, original_msg: InboundMessage, response: Response) -> None:
             sent_responses.append(response)
 
-        async def send_streaming(self, original_msg: Message, chunks: object) -> None:
+        async def send_streaming(
+            self, original_msg: InboundMessage, chunks: object
+        ) -> None:
             async for _ in chunks:  # type: ignore[union-attr]
                 pass
 
     class FailingAgent(AgentBase):
-        async def process(self, msg: Message, pool: Pool) -> Response:
+        async def process(self, msg: InboundMessage, pool: Pool) -> Response:
             raise RuntimeError("simulated agent failure")
 
     config = Agent(name="failing", system_prompt="", memory_namespace="test")
     hub.register_agent(FailingAgent(config))
-    hub.register_adapter(Platform.TELEGRAM, "main", CapturingAdapter())
+    hub.register_adapter(Platform.TELEGRAM, "main", CapturingAdapter())  # type: ignore[arg-type]
     hub.register_binding(
         Platform.TELEGRAM, "main", "chat:42", "failing", "telegram:main:chat:42"
     )
 
     # Act — put one message; hub processes it and sends an error reply
-    msg = make_message(platform=Platform.TELEGRAM, bot_id="main", user_id="alice")
+    msg = make_inbound_message(platform="telegram", bot_id="main", user_id="alice")
     await hub.bus.put(msg)
     hub_task = asyncio.create_task(hub.run())
     await asyncio.sleep(0.1)
@@ -1095,32 +1122,35 @@ class TestCrossScopeRateLimit:
     def test_rate_limit_spans_scopes(self) -> None:
         # Arrange — two different scopes for the same user_id
         hub = Hub(rate_limit=5, rate_window=60)
-        ctx_a = TelegramContext(chat_id=100)
-        ctx_b = TelegramContext(chat_id=200)
 
-        def make_scoped_message(ctx: TelegramContext) -> Message:
-            return Message(
+        def make_scoped_message(scope_id: str) -> InboundMessage:
+            return InboundMessage(
                 id="msg-1",
-                platform=Platform.TELEGRAM,
+                platform="telegram",
                 bot_id="main",
+                scope_id=scope_id,
                 user_id="alice",
                 user_name="Alice",
                 is_mention=False,
-                is_from_bot=False,
-                content="hello",
-                type=MessageType.TEXT,
+                text="hello",
+                text_raw="hello",
                 timestamp=datetime.now(timezone.utc),
-                platform_context=ctx,
+                platform_meta={
+                    "chat_id": int(scope_id.split(":")[-1]),
+                    "topic_id": None,
+                    "message_id": None,
+                    "is_group": False,
+                },
             )
 
         # Act — send RATE_LIMIT (5) messages, 3 from scope A and 2 from scope B
         results = []
         for _ in range(3):
-            results.append(hub._is_rate_limited(make_scoped_message(ctx_a)))
+            results.append(hub._is_rate_limited(make_scoped_message("chat:100")))
         for _ in range(2):
-            results.append(hub._is_rate_limited(make_scoped_message(ctx_b)))
+            results.append(hub._is_rate_limited(make_scoped_message("chat:200")))
         # The 6th message (RATE_LIMIT+1) must be rate-limited regardless of scope
-        last_result = hub._is_rate_limited(make_scoped_message(ctx_a))
+        last_result = hub._is_rate_limited(make_scoped_message("chat:100"))
 
         # Assert — first 5 messages pass, 6th is rate-limited
         assert all(r is False for r in results), (
@@ -1129,7 +1159,7 @@ class TestCrossScopeRateLimit:
         assert last_result is True, (
             "Expected 6th message to be rate-limited (rate limit spans scopes)"
         )
-        # Key type must be a plain tuple (platform.value, bot_id, user_id),
+        # Key type must be a plain tuple (platform, bot_id, user_id),
         # NOT a RoutingKey — prevents scope-switching bypass.
         assert ("telegram", "main", "alice") in hub._rate_timestamps
 
@@ -1145,35 +1175,43 @@ class TestScopeIsolatedPools:
     def test_scope_isolated_pools(self) -> None:
         # Arrange — wildcard binding; same user, two different chat_ids (scopes)
         hub = Hub()
-        hub.register_binding(
-            Platform.TELEGRAM, "main", "*", "lyra", "telegram:main:*"
-        )
+        hub.register_binding(Platform.TELEGRAM, "main", "*", "lyra", "telegram:main:*")
 
-        msg_a = Message(
+        msg_a = InboundMessage(
             id="msg-a",
-            platform=Platform.TELEGRAM,
+            platform="telegram",
             bot_id="main",
+            scope_id="chat:100",
             user_id="alice",
             user_name="Alice",
             is_mention=False,
-            is_from_bot=False,
-            content="hello",
-            type=MessageType.TEXT,
+            text="hello",
+            text_raw="hello",
             timestamp=datetime.now(timezone.utc),
-            platform_context=TelegramContext(chat_id=100),
+            platform_meta={
+                "chat_id": 100,
+                "topic_id": None,
+                "message_id": None,
+                "is_group": False,
+            },
         )
-        msg_b = Message(
+        msg_b = InboundMessage(
             id="msg-b",
-            platform=Platform.TELEGRAM,
+            platform="telegram",
             bot_id="main",
+            scope_id="chat:200",
             user_id="alice",
             user_name="Alice",
             is_mention=False,
-            is_from_bot=False,
-            content="hello",
-            type=MessageType.TEXT,
+            text="hello",
+            text_raw="hello",
             timestamp=datetime.now(timezone.utc),
-            platform_context=TelegramContext(chat_id=200),
+            platform_meta={
+                "chat_id": 200,
+                "topic_id": None,
+                "message_id": None,
+                "is_group": False,
+            },
         )
 
         # Act — resolve binding and create pools for each scoped message

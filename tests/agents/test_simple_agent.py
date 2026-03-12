@@ -11,6 +11,7 @@ from lyra.core.cli_pool import CliResult
 from lyra.core.message import (
     AudioContent,
     ImageContent,
+    InboundMessage,
     Message,
     MessageType,
     Platform,
@@ -39,6 +40,27 @@ def make_message(content: object = "hello") -> Message:
         type=MessageType.TEXT,
         timestamp=datetime.now(timezone.utc),
         platform_context=TelegramContext(chat_id=42),
+    )
+
+
+def make_inbound_message(text: str = "hello") -> InboundMessage:
+    return InboundMessage(
+        id="msg-1",
+        platform="telegram",
+        bot_id="main",
+        scope_id="chat:42",
+        user_id="alice",
+        user_name="Alice",
+        is_mention=False,
+        text=text,
+        text_raw=text,
+        timestamp=datetime.now(timezone.utc),
+        platform_meta={
+            "chat_id": 42,
+            "topic_id": None,
+            "message_id": None,
+            "is_group": False,
+        },
     )
 
 
@@ -93,7 +115,7 @@ class TestSimpleAgentProcess:
             return_value=CliResult(result="hello", session_id="s1")
         )
         agent = make_agent(cli_pool)
-        msg = make_message("hi")
+        msg = make_inbound_message("hi")
         pool = make_pool()
 
         response = await agent.process(msg, pool)
@@ -107,7 +129,7 @@ class TestSimpleAgentProcess:
         cli_pool = MagicMock()
         cli_pool.send = AsyncMock(return_value=CliResult(error="boom"))
         agent = make_agent(cli_pool)
-        msg = make_message("hi")
+        msg = make_inbound_message("hi")
         pool = make_pool()
 
         response = await agent.process(msg, pool)
@@ -121,7 +143,7 @@ class TestSimpleAgentProcess:
         cli_pool = MagicMock()
         cli_pool.send = AsyncMock(return_value=CliResult(error="Timeout after 300s"))
         agent = make_agent(cli_pool)
-        msg = make_message("hi")
+        msg = make_inbound_message("hi")
         pool = make_pool()
 
         response = await agent.process(msg, pool)
@@ -135,7 +157,7 @@ class TestSimpleAgentProcess:
             return_value=CliResult(result="ok", session_id="s1", warning="truncated")
         )
         agent = make_agent(cli_pool)
-        msg = make_message("hi")
+        msg = make_inbound_message("hi")
         pool = make_pool()
 
         response = await agent.process(msg, pool)
@@ -148,7 +170,7 @@ class TestSimpleAgentProcess:
         cli_pool = MagicMock()
         cli_pool.send = AsyncMock(return_value=CliResult(result="ok", session_id="s1"))
         agent = make_agent(cli_pool)
-        msg = make_message("test text")
+        msg = make_inbound_message("test text")
         pool = make_pool(pool_id="telegram:main:bob")
 
         await agent.process(msg, pool)

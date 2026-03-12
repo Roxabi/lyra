@@ -234,9 +234,7 @@ class TestRunFallbackChain:
     @pytest.fixture()
     def _mock_config(self, monkeypatch: pytest.MonkeyPatch, tmp_path):
         """Set env vars so load_monitoring_config() succeeds."""
-        monkeypatch.setenv(
-            "LYRA_CONFIG", str(tmp_path / "nonexistent.toml")
-        )
+        monkeypatch.setenv("LYRA_CONFIG", str(tmp_path / "nonexistent.toml"))
         monkeypatch.setenv("TELEGRAM_TOKEN", "fake")
         monkeypatch.setenv("ANTHROPIC_API_KEY", "fake")
         monkeypatch.setenv("TELEGRAM_ADMIN_CHAT_ID", "12345")
@@ -272,9 +270,7 @@ class TestRunFallbackChain:
             "circuits": {"anthropic": {"state": "closed"}},
         }
 
-        with patch(
-            "lyra.monitoring.checks.httpx.AsyncClient"
-        ) as mock_cls:
+        with patch("lyra.monitoring.checks.httpx.AsyncClient") as mock_cls:
             mc = AsyncMock()
             mc.get.return_value = mock_resp
             mc.__aenter__ = AsyncMock(return_value=mc)
@@ -304,12 +300,8 @@ class TestRunFallbackChain:
         call_log: list[str] = []
 
         with (
-            patch(
-                "lyra.monitoring.checks.httpx.AsyncClient"
-            ) as checks_cls,
-            patch(
-                "lyra.monitoring.escalation.httpx.AsyncClient"
-            ) as esc_cls,
+            patch("lyra.monitoring.checks.httpx.AsyncClient") as checks_cls,
+            patch("lyra.monitoring.escalation.httpx.AsyncClient") as esc_cls,
         ):
             # HTTP health check fails (hub down)
             mc_checks = AsyncMock()
@@ -362,12 +354,8 @@ class TestRunFallbackChain:
         import httpx
 
         with (
-            patch(
-                "lyra.monitoring.checks.httpx.AsyncClient"
-            ) as checks_cls,
-            patch(
-                "lyra.monitoring.escalation.httpx.AsyncClient"
-            ) as esc_cls,
+            patch("lyra.monitoring.checks.httpx.AsyncClient") as checks_cls,
+            patch("lyra.monitoring.escalation.httpx.AsyncClient") as esc_cls,
         ):
             mc_checks = AsyncMock()
             mc_checks.get.side_effect = httpx.ConnectError("refused")

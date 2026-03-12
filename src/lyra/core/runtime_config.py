@@ -206,6 +206,7 @@ def set_param(rc: RuntimeConfig, key: str, value: str) -> RuntimeConfig:
             parsed = None
         else:
             import re as _re
+
             if not _re.match(r"^[a-zA-Z0-9_.:-]+$", value):
                 raise ValueError(
                     f"Invalid model ID {value!r}. "
@@ -215,6 +216,7 @@ def set_param(rc: RuntimeConfig, key: str, value: str) -> RuntimeConfig:
 
     elif key == "language":
         import re as _re
+
         if value != "auto" and not _re.match(r"^[a-z]{2,8}$", value):
             raise ValueError(
                 f"Invalid language {value!r}. "

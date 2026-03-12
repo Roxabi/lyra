@@ -17,12 +17,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.core.message import (
-    Message,
-    MessageType,
-    Platform,
+    InboundMessage,
     Response,
-    TelegramContext,
-    TextContent,
 )
 from lyra.core.pool import Pool
 
@@ -65,18 +61,25 @@ def fast_pool(hub_mock: MagicMock) -> Pool:
     )
 
 
-def make_msg(text: str = "hello") -> Message:
-    """Build a minimal Message for testing."""
-    ctx = TelegramContext(chat_id=1)
-    return Message.from_adapter(
-        platform=Platform.TELEGRAM,
+def make_msg(text: str = "hello") -> InboundMessage:
+    """Build a minimal InboundMessage for testing."""
+    return InboundMessage(
+        id="msg-1",
+        platform="telegram",
         bot_id="main",
+        scope_id="chat:1",
         user_id="tg:user:1",
         user_name="Alice",
-        content=TextContent(text=text),
-        type=MessageType.TEXT,
+        is_mention=False,
+        text=text,
+        text_raw=text,
         timestamp=datetime.now(timezone.utc),
-        platform_context=ctx,
+        platform_meta={
+            "chat_id": 1,
+            "topic_id": None,
+            "message_id": None,
+            "is_group": False,
+        },
     )
 
 
@@ -85,7 +88,7 @@ class SlowAgent:
 
     name = "test_agent"
 
-    async def process(self, msg: Message, pool: Pool) -> Response:
+    async def process(self, msg: InboundMessage, pool: Pool) -> Response:
         await asyncio.sleep(10)  # never finishes in test
         return Response(content="done")
 
@@ -95,9 +98,8 @@ class FastAgent:
 
     name = "test_agent"
 
-    async def process(self, msg: Message, pool: Pool) -> Response:
-        text = msg.content.text if isinstance(msg.content, TextContent) else ""
-        return Response(content=f"echo: {text}")
+    async def process(self, msg: InboundMessage, pool: Pool) -> Response:
+        return Response(content=f"echo: {msg.text}")
 
 
 class RaisingAgent:
@@ -105,7 +107,7 @@ class RaisingAgent:
 
     name = "test_agent"
 
-    async def process(self, msg: Message, pool: Pool) -> Response:
+    async def process(self, msg: InboundMessage, pool: Pool) -> Response:
         raise RuntimeError("boom")
 
 
@@ -118,10 +120,9 @@ class TwoMsgAgent:
     def __init__(self) -> None:
         self.calls = []
 
-    async def process(self, msg: Message, pool: Pool) -> Response:
-        text = msg.content.text if isinstance(msg.content, TextContent) else ""
-        self.calls.append(text)
-        return Response(content=f"reply:{text}")
+    async def process(self, msg: InboundMessage, pool: Pool) -> Response:
+        self.calls.append(msg.text)
+        return Response(content=f"reply:{msg.text}")
 
 
 async def _drain(pool: Pool, *, timeout: float = 2.0) -> None:
@@ -374,16 +375,16 @@ class TestPoolExceptionHandling:
         assert hub_mock.dispatch_response.await_count == 2
 
         # The first call should be the generic error reply
-        first_call_response: Response = (
-            hub_mock.dispatch_response.call_args_list[0][0][1]
-        )
+        first_call_response: Response = hub_mock.dispatch_response.call_args_list[0][0][
+            1
+        ]
         assert isinstance(first_call_response, Response)
         assert len(first_call_response.content) > 0  # non-empty generic reply
 
         # Verify the second call processed the good message
-        second_call_response: Response = (
-            hub_mock.dispatch_response.call_args_list[1][0][1]
-        )
+        second_call_response: Response = hub_mock.dispatch_response.call_args_list[1][
+            0
+        ][1]
         content = second_call_response.content
         assert "good" in content.lower() or content != ""
 
@@ -404,10 +405,12 @@ class TestExtendSdkHistory:
         pool.extend_sdk_history(initial)
 
         # Act — add 2 more; should evict the oldest to stay at cap=3
-        pool.extend_sdk_history([
-            {"role": "user", "content": "new1"},
-            {"role": "user", "content": "new2"},
-        ])
+        pool.extend_sdk_history(
+            [
+                {"role": "user", "content": "new1"},
+                {"role": "user", "content": "new2"},
+            ]
+        )
 
         # Assert
         assert len(pool.sdk_history) == 3
@@ -441,7 +444,7 @@ class StreamingAgent:
     name = "test_agent"
 
     async def process(  # type: ignore[override]
-        self, msg: Message, pool: Pool
+        self, msg: InboundMessage, pool: Pool
     ) -> collections.abc.AsyncIterator[str]:
         async def _gen() -> collections.abc.AsyncIterator[str]:
             yield "hello "
@@ -456,7 +459,7 @@ class FailingStreamingAgent:
     name = "test_agent"
 
     async def process(  # type: ignore[override]
-        self, msg: Message, pool: Pool
+        self, msg: InboundMessage, pool: Pool
     ) -> collections.abc.AsyncIterator[str]:
         async def _gen() -> collections.abc.AsyncIterator[str]:
             yield "partial"
@@ -491,9 +494,7 @@ class TestPoolStreaming:
         hub_mock.dispatch_streaming.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_pool_streaming_records_cb_success(
-        self, hub_mock: MagicMock
-    ) -> None:
+    async def test_pool_streaming_records_cb_success(self, hub_mock: MagicMock) -> None:
         """Successful streaming records CB success when a circuit registry exists."""
         # Arrange
         from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry

@@ -18,7 +18,7 @@ import anthropic
 
 from lyra.core.agent import _AGENTS_DIR, Agent, AgentBase
 from lyra.core.circuit_breaker import CircuitRegistry
-from lyra.core.message import AudioContent, Message, MessageType, extract_text
+from lyra.core.message import InboundMessage
 from lyra.core.messages import MessageManager
 from lyra.core.pool import Pool
 from lyra.core.runtime_config import RuntimeConfig, RuntimeConfigHolder
@@ -56,8 +56,10 @@ class AnthropicAgent(AgentBase):
         agents_dir: Path | None = None,
     ) -> None:
         resolved_agents_dir: Path = agents_dir or _AGENTS_DIR
-        rc = runtime_config if runtime_config is not None else RuntimeConfig.load(
-            resolved_agents_dir / "lyra_runtime.toml"
+        rc = (
+            runtime_config
+            if runtime_config is not None
+            else RuntimeConfig.load(resolved_agents_dir / "lyra_runtime.toml")
         )
         self._runtime_config_holder = RuntimeConfigHolder(rc)
         self._runtime_config_path = resolved_agents_dir / "lyra_runtime.toml"
@@ -98,7 +100,7 @@ class AnthropicAgent(AgentBase):
         raise ValueError(f"Unknown tool: {name}")
 
     async def process(  # type: ignore[override]
-        self, msg: Message, pool: Pool
+        self, msg: InboundMessage, pool: Pool
     ) -> AsyncIterator[str]:
         """Stream response from Anthropic API, handling tool use loops.
 
@@ -111,18 +113,14 @@ class AnthropicAgent(AgentBase):
         llm_text: str
         history_text: str
 
-        # Hoist: resolve AudioContent and tmp_path once for all AUDIO paths
-        if msg.type == MessageType.AUDIO:
-            if not isinstance(msg.content, AudioContent):
-                raise TypeError(
-                    "AUDIO message must carry AudioContent, "
-                    f"got {type(msg.content).__name__}"
-                )
-            tmp_path = Path(msg.content.url)
+        # Detect audio attachment and resolve local path once for all AUDIO paths
+        _audio = next((a for a in msg.attachments if a.type == "audio"), None)
+        if _audio is not None:
+            tmp_path = Path(str(_audio.url_or_bytes))
 
         # outer try: temp-file cleanup (ADR-013)
         try:
-            if msg.type == MessageType.AUDIO and self._stt is not None:
+            if _audio is not None and self._stt is not None:
                 # tmp_path already set above
                 stt_result = await self._stt.transcribe(tmp_path)  # type: ignore[arg-type]
                 if is_whisper_noise(stt_result.text):
@@ -137,7 +135,7 @@ class AnthropicAgent(AgentBase):
                     return
                 llm_text = f"🎤 [transcribed]: {stt_result.text}"
                 history_text = stt_result.text
-            elif msg.type == MessageType.AUDIO and self._stt is None:
+            elif _audio is not None and self._stt is None:
                 # tmp_path already set above
                 if tmp_path is not None:
                     tmp_path.unlink(missing_ok=True)
@@ -149,7 +147,7 @@ class AnthropicAgent(AgentBase):
                 )
                 return
             else:
-                llm_text = history_text = extract_text(msg)
+                llm_text = history_text = msg.text
 
             messages = self._build_messages(llm_text, pool)
 

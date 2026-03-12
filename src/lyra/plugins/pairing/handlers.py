@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 
-from lyra.core.message import Message, Response
+from lyra.core.message import InboundMessage, Response
 from lyra.core.pairing import PairingError, get_pairing_manager
 from lyra.core.pool import Pool
 
@@ -18,7 +18,7 @@ _NOT_ENABLED = "Pairing is not enabled."
 _ADMIN_ONLY = "This command is admin-only."
 
 
-async def cmd_invite(msg: Message, pool: Pool, args: list[str]) -> Response:
+async def cmd_invite(msg: InboundMessage, pool: Pool, args: list[str]) -> Response:
     """Generate a pairing code. Admin-only."""
     pm = get_pairing_manager()
     if pm is None or not pm.config.enabled:
@@ -39,7 +39,7 @@ async def cmd_invite(msg: Message, pool: Pool, args: list[str]) -> Response:
     )
 
 
-async def cmd_join(msg: Message, pool: Pool, args: list[str]) -> Response:
+async def cmd_join(msg: InboundMessage, pool: Pool, args: list[str]) -> Response:
     """Redeem a pairing code. Rate-limited."""
     pm = get_pairing_manager()
     if pm is None or not pm.config.enabled:
@@ -62,7 +62,7 @@ async def cmd_join(msg: Message, pool: Pool, args: list[str]) -> Response:
     return Response(content=message)
 
 
-async def cmd_unpair(msg: Message, pool: Pool, args: list[str]) -> Response:
+async def cmd_unpair(msg: InboundMessage, pool: Pool, args: list[str]) -> Response:
     """Revoke a user's paired session. Admin-only."""
     pm = get_pairing_manager()
     if pm is None or not pm.config.enabled:

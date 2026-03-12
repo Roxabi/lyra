@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from .message import Message, Platform
+from .message import InboundMessage, Platform
 
 log = logging.getLogger(__name__)
 
@@ -29,8 +29,8 @@ class InboundBus:
     """
 
     def __init__(self) -> None:
-        self._queues: dict[Platform, asyncio.Queue[Message]] = {}
-        self._staging: asyncio.Queue[Message] = asyncio.Queue()
+        self._queues: dict[Platform, asyncio.Queue[InboundMessage]] = {}
+        self._staging: asyncio.Queue[InboundMessage] = asyncio.Queue()
         self._feeders: dict[Platform, asyncio.Task[None]] = {}
 
     def register(self, platform: Platform, maxsize: int = 100) -> None:
@@ -47,7 +47,7 @@ class InboundBus:
             )
         self._queues[platform] = asyncio.Queue(maxsize=maxsize)
 
-    def put(self, platform: Platform, msg: Message) -> None:
+    def put(self, platform: Platform, msg: InboundMessage) -> None:
         """Enqueue a message on the platform's queue.
 
         Raises asyncio.QueueFull if the platform queue is at capacity.
@@ -56,7 +56,7 @@ class InboundBus:
         """
         self._queues[platform].put_nowait(msg)
 
-    async def get(self) -> Message:
+    async def get(self) -> InboundMessage:
         """Wait for and return the next message from the staging queue.
 
         Called exclusively by Hub.run() (single consumer).
@@ -76,7 +76,7 @@ class InboundBus:
             self._feeders[platform] = task
 
     async def _feeder(
-        self, platform: Platform, queue: asyncio.Queue[Message]
+        self, platform: Platform, queue: asyncio.Queue[InboundMessage]
     ) -> None:
         """Drain platform queue into the staging queue indefinitely."""
         log.debug("InboundBus feeder started for platform=%s", platform.value)

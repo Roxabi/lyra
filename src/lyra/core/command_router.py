@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .circuit_breaker import CircuitRegistry
-from .message import Message, Response, TextContent, extract_text
+from .message import InboundMessage, Response
 from .messages import MessageManager
 from .plugin_loader import AsyncHandler, PluginLoader
 from .pool import Pool
@@ -86,32 +86,27 @@ class CommandRouter:
     # Detection
     # ------------------------------------------------------------------
 
-    def is_command(self, msg: Message) -> bool:
+    def is_command(self, msg: InboundMessage) -> bool:
         """Return True if the message starts with '/' followed by a word char."""
-        if not isinstance(msg.content, (TextContent, str)):
-            return False
-        return bool(_COMMAND_RE.match(extract_text(msg)))
+        return bool(_COMMAND_RE.match(msg.text))
 
-    def get_command_name(self, msg: Message) -> str | None:
+    def get_command_name(self, msg: InboundMessage) -> str | None:
         """Extract the slash-command name (e.g. '/join') or None if not a command.
 
         Single source of truth for command-name parsing, used by the hub pairing
         gate and by dispatch().
         """
-        if not isinstance(msg.content, (TextContent, str)):
+        if not _COMMAND_RE.match(msg.text):
             return None
-        text = extract_text(msg)
-        if not _COMMAND_RE.match(text):
-            return None
-        return text.split(maxsplit=1)[0].lower()
+        return msg.text.split(maxsplit=1)[0].lower()
 
     # ------------------------------------------------------------------
     # Dispatch
     # ------------------------------------------------------------------
 
-    async def dispatch(self, msg: Message, pool: Pool | None = None) -> Response:
+    async def dispatch(self, msg: InboundMessage, pool: Pool | None = None) -> Response:
         """Parse the command name + args and route to the appropriate handler."""
-        parts = extract_text(msg).split()
+        parts = msg.text.split()
         command_name = parts[0].lower()
         args = parts[1:]
 
@@ -181,7 +176,7 @@ class CommandRouter:
                 lines.append(f"  {cmd_name} — (plugin command)")
         return Response(content="\n".join(lines))
 
-    def _circuit_status(self, msg: Message) -> Response:
+    def _circuit_status(self, msg: InboundMessage) -> Response:
         """Return circuit status table (admin-only)."""
         sender_id = msg.user_id
         if not self._admin_user_ids or sender_id not in self._admin_user_ids:
@@ -199,7 +194,7 @@ class CommandRouter:
         lines.append("─" * 38)
         return Response(content="\n".join(lines))
 
-    def _cmd_config(self, msg: Message, args: list[str]) -> Response:
+    def _cmd_config(self, msg: InboundMessage, args: list[str]) -> Response:
         if not self._admin_user_ids or msg.user_id not in self._admin_user_ids:
             return Response(content="This command is admin-only.")
         if self._runtime_config_holder is None:

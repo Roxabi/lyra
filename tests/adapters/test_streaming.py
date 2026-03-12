@@ -7,48 +7,53 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.message import (
-    DiscordContext,
-    Message,
-    MessageType,
-    Platform,
-    TelegramContext,
-)
+from lyra.core.message import InboundMessage
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
-def make_tg_message() -> Message:
-    return Message(
+def make_tg_message() -> InboundMessage:
+    return InboundMessage(
         id="msg-1",
-        platform=Platform.TELEGRAM,
+        platform="telegram",
         bot_id="main",
+        scope_id="chat:42",
         user_id="alice",
         user_name="Alice",
         is_mention=False,
-        is_from_bot=False,
-        content="hello",
-        type=MessageType.TEXT,
+        text="hello",
+        text_raw="hello",
         timestamp=datetime.now(timezone.utc),
-        platform_context=TelegramContext(chat_id=42),
+        platform_meta={
+            "chat_id": 42,
+            "topic_id": None,
+            "message_id": None,
+            "is_group": False,
+        },
     )
 
 
-def make_dc_message() -> Message:
-    return Message(
+def make_dc_message() -> InboundMessage:
+    return InboundMessage(
         id="msg-1",
-        platform=Platform.DISCORD,
+        platform="discord",
         bot_id="main",
+        scope_id="channel:100",
         user_id="alice",
         user_name="Alice",
         is_mention=False,
-        is_from_bot=False,
-        content="hello",
-        type=MessageType.TEXT,
+        text="hello",
+        text_raw="hello",
         timestamp=datetime.now(timezone.utc),
-        platform_context=DiscordContext(guild_id=1, channel_id=100, message_id=200),
+        platform_meta={
+            "guild_id": 1,
+            "channel_id": 100,
+            "message_id": 200,
+            "thread_id": None,
+            "channel_type": "text",
+        },
     )
 
 

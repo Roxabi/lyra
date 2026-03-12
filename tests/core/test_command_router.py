@@ -29,7 +29,7 @@ from lyra.core.agent import Agent, AgentBase, load_agent_config
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.command_router import CommandConfig, CommandRouter
 from lyra.core.hub import Hub
-from lyra.core.message import Message, MessageType, Platform, Response, TelegramContext
+from lyra.core.message import InboundMessage, Platform, Response
 from lyra.core.messages import MessageManager
 from lyra.core.plugin_loader import PluginLoader
 from lyra.core.pool import Pool
@@ -49,24 +49,28 @@ TOML_PATH = (
 
 def make_message(
     content: str = "hello",
-    platform: Platform = Platform.TELEGRAM,
+    platform: str = "telegram",
     bot_id: str = "main",
     user_id: str = "alice",
-) -> Message:
-    """Build a minimal Message for testing. Uses direct construction (not
-    from_adapter) so that content can be a plain string as the router receives."""
-    return Message(
+) -> InboundMessage:
+    """Build a minimal InboundMessage for testing."""
+    return InboundMessage(
         id="msg-test-1",
         platform=platform,
         bot_id=bot_id,
+        scope_id="chat:42",
         user_id=user_id,
         user_name="Alice",
         is_mention=False,
-        is_from_bot=False,
-        content=content,
-        type=MessageType.TEXT,
+        text=content,
+        text_raw=content,
         timestamp=datetime.now(timezone.utc),
-        platform_context=TelegramContext(chat_id=42),
+        platform_meta={
+            "chat_id": 42,
+            "topic_id": None,
+            "message_id": None,
+            "is_group": False,
+        },
     )
 
 
@@ -310,7 +314,7 @@ class TestHotReloadUpdatesCommands:
     def test_hot_reload_updates_plugin_commands(self, tmp_path: Path) -> None:
         # Arrange — create a concrete AgentBase subclass for testing
         class ConcreteAgent(AgentBase):
-            async def process(self, msg: Message, pool: Pool) -> Response:
+            async def process(self, msg: InboundMessage, pool: Pool) -> Response:
                 return Response(content="ok")
 
         # Build a plugins directory with the echo plugin
@@ -364,10 +368,10 @@ class TestPassthroughNonCommandInHub:
     @pytest.mark.asyncio
     async def test_passthrough_non_command_in_hub(self) -> None:
         # Arrange — wire up a full hub with a capturing agent
-        process_calls: list[Message] = []
+        process_calls: list[InboundMessage] = []
 
         class CapturingAgent(AgentBase):
-            async def process(self, msg: Message, pool: Pool) -> Response:
+            async def process(self, msg: InboundMessage, pool: Pool) -> Response:
                 process_calls.append(msg)
                 return Response(content="agent reply")
 
@@ -378,15 +382,17 @@ class TestPassthroughNonCommandInHub:
         hub.register_agent(agent)
 
         class CapturingAdapter:
-            async def send(self, original_msg: Message, response: Response) -> None:
-                pass
-
-            async def send_streaming(
-                self, original_msg: Message, chunks: object
+            async def send(
+                self, original_msg: InboundMessage, response: Response
             ) -> None:
                 pass
 
-        hub.register_adapter(Platform.TELEGRAM, "main", CapturingAdapter())
+            async def send_streaming(
+                self, original_msg: InboundMessage, chunks: object
+            ) -> None:
+                pass
+
+        hub.register_adapter(Platform.TELEGRAM, "main", CapturingAdapter())  # type: ignore[arg-type]
         hub.register_binding(
             Platform.TELEGRAM, "main", "chat:42", "lyra", "telegram:main:chat:42"
         )
@@ -402,16 +408,16 @@ class TestPassthroughNonCommandInHub:
 
         # Assert — agent.process() was called with the plain-text message
         assert len(process_calls) == 1
-        assert process_calls[0].content == "hello, how are you?"
+        assert process_calls[0].text == "hello, how are you?"
 
     @pytest.mark.asyncio
     async def test_slash_command_does_not_reach_agent_process(self) -> None:
         """When the router handles a /command, agent.process() is never called."""
         # Arrange
-        process_calls: list[Message] = []
+        process_calls: list[InboundMessage] = []
 
         class TrackingAgent(AgentBase):
-            async def process(self, msg: Message, pool: Pool) -> Response:
+            async def process(self, msg: InboundMessage, pool: Pool) -> Response:
                 process_calls.append(msg)
                 return Response(content="should not be reached")
 
@@ -421,15 +427,17 @@ class TestPassthroughNonCommandInHub:
         hub.register_agent(agent)
 
         class CapturingAdapter:
-            async def send(self, original_msg: Message, response: Response) -> None:
-                pass
-
-            async def send_streaming(
-                self, original_msg: Message, chunks: object
+            async def send(
+                self, original_msg: InboundMessage, response: Response
             ) -> None:
                 pass
 
-        hub.register_adapter(Platform.TELEGRAM, "main", CapturingAdapter())
+            async def send_streaming(
+                self, original_msg: InboundMessage, chunks: object
+            ) -> None:
+                pass
+
+        hub.register_adapter(Platform.TELEGRAM, "main", CapturingAdapter())  # type: ignore[arg-type]
         hub.register_binding(
             Platform.TELEGRAM, "main", "chat:42", "lyra", "telegram:main:chat:42"
         )
@@ -478,20 +486,25 @@ def make_circuit_router(
     )
 
 
-def make_circuit_msg(user_id: str = "tg:user:42") -> Message:
-    """Build a /circuit Message from a Telegram user."""
-    return Message(
+def make_circuit_msg(user_id: str = "tg:user:42") -> InboundMessage:
+    """Build a /circuit InboundMessage from a Telegram user."""
+    return InboundMessage(
         id="msg-circuit-1",
-        platform=Platform.TELEGRAM,
+        platform="telegram",
         bot_id="main",
+        scope_id="chat:42",
         user_id=user_id,
         user_name="Admin",
         is_mention=False,
-        is_from_bot=False,
-        content="/circuit",
-        type=MessageType.TEXT,
+        text="/circuit",
+        text_raw="/circuit",
         timestamp=datetime.now(timezone.utc),
-        platform_context=TelegramContext(chat_id=42),
+        platform_meta={
+            "chat_id": 42,
+            "topic_id": None,
+            "message_id": None,
+            "is_group": False,
+        },
     )
 
 
@@ -768,20 +781,27 @@ def make_config_router(
     )
 
 
-def make_config_msg(user_id: str = "tg:user:42", content: str = "/config") -> Message:
-    """Build a /config Message."""
-    return Message(
+def make_config_msg(
+    user_id: str = "tg:user:42", content: str = "/config"
+) -> InboundMessage:
+    """Build a /config InboundMessage."""
+    return InboundMessage(
         id="msg-config-1",
-        platform=Platform.TELEGRAM,
+        platform="telegram",
         bot_id="main",
+        scope_id="chat:42",
         user_id=user_id,
         user_name="Admin",
         is_mention=False,
-        is_from_bot=False,
-        content=content,
-        type=MessageType.TEXT,
+        text=content,
+        text_raw=content,
         timestamp=datetime.now(timezone.utc),
-        platform_context=TelegramContext(chat_id=42),
+        platform_meta={
+            "chat_id": 42,
+            "topic_id": None,
+            "message_id": None,
+            "is_group": False,
+        },
     )
 
 

@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 from .circuit_breaker import CircuitRegistry
 from .command_router import CommandConfig, CommandRouter
-from .message import Message, Response
+from .message import InboundMessage, Response
 from .messages import MessageManager
 from .plugin_loader import PluginLoader
 from .pool import Pool
@@ -525,4 +525,4 @@ class AgentBase(ABC):
         return {}
 
     @abstractmethod
-    async def process(self, msg: Message, pool: Pool) -> Response: ...
+    async def process(self, msg: InboundMessage, pool: Pool) -> Response: ...

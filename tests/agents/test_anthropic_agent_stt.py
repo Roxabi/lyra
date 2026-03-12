@@ -21,13 +21,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.core.agent import Agent, ModelConfig
-from lyra.core.message import (
-    AudioContent,
-    Message,
-    MessageType,
-    Platform,
-    TelegramContext,
-)
+from lyra.core.message import Attachment, InboundMessage
 from lyra.core.pool import Pool
 from lyra.stt import STTService, TranscriptionResult
 
@@ -36,35 +30,40 @@ from lyra.stt import STTService, TranscriptionResult
 # ---------------------------------------------------------------------------
 
 
-def make_audio_message(url: str) -> Message:
-    return Message(
+def make_audio_message(url: str) -> InboundMessage:
+    return InboundMessage(
         id="msg-audio",
-        platform=Platform.TELEGRAM,
+        platform="telegram",
         bot_id="main",
-        user_id="alice",
+        scope_id="chat:42",
+        user_id="tg:user:alice",
         user_name="Alice",
         is_mention=False,
-        is_from_bot=False,
-        content=AudioContent(url=url),
-        type=MessageType.AUDIO,
+        text="",
+        text_raw="",
+        attachments=[Attachment(type="audio", url_or_bytes=url, mime_type="audio/ogg")],
         timestamp=datetime.now(timezone.utc),
-        platform_context=TelegramContext(chat_id=42),
+        platform_meta={
+            "chat_id": 42, "topic_id": None, "is_group": False, "message_id": None
+        },
     )
 
 
-def make_text_message(text: str = "hello") -> Message:
-    return Message(
+def make_text_message(text: str = "hello") -> InboundMessage:
+    return InboundMessage(
         id="msg-text",
-        platform=Platform.TELEGRAM,
+        platform="telegram",
         bot_id="main",
-        user_id="alice",
+        scope_id="chat:42",
+        user_id="tg:user:alice",
         user_name="Alice",
         is_mention=False,
-        is_from_bot=False,
-        content=text,
-        type=MessageType.TEXT,
+        text=text,
+        text_raw=text,
         timestamp=datetime.now(timezone.utc),
-        platform_context=TelegramContext(chat_id=42),
+        platform_meta={
+            "chat_id": 42, "topic_id": None, "is_group": False, "message_id": None
+        },
     )
 
 

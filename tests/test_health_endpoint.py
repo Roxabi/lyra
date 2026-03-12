@@ -11,11 +11,8 @@ from httpx import ASGITransport, AsyncClient
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.hub import Hub
 from lyra.core.message import (
-    Message,
-    MessageType,
+    InboundMessage,
     Platform,
-    TelegramContext,
-    TextContent,
 )
 
 # ---------------------------------------------------------------------------
@@ -66,15 +63,23 @@ class TestHealthEndpoint:
         from lyra.__main__ import create_health_app
 
         # Put a message directly on the staging queue
-        msg = Message.from_adapter(
-            platform=Platform.TELEGRAM,
+        msg = InboundMessage(
+            id="msg-health-1",
+            platform="telegram",
             bot_id="main",
             user_id="test",
             user_name="test",
-            content=TextContent(text="hello"),
-            type=MessageType.TEXT,
+            is_mention=False,
+            text="hello",
+            text_raw="hello",
             timestamp=datetime.now(timezone.utc),
-            platform_context=TelegramContext(chat_id=123),
+            scope_id="chat:123",
+            platform_meta={
+                "chat_id": 123,
+                "topic_id": None,
+                "message_id": None,
+                "is_group": False,
+            },
         )
         await hub.bus.put(msg)  # hub.bus is the staging queue alias
 
@@ -101,15 +106,23 @@ class TestHealthEndpoint:
         hub.register_outbound_dispatcher(Platform.TELEGRAM, "main", tg_dispatcher)
 
         # Enqueue one message to the per-platform inbound queue
-        msg = Message.from_adapter(
-            platform=Platform.TELEGRAM,
+        msg = InboundMessage(
+            id="msg-health-2",
+            platform="telegram",
             bot_id="main",
             user_id="test",
             user_name="test",
-            content=TextContent(text="hello"),
-            type=MessageType.TEXT,
+            is_mention=False,
+            text="hello",
+            text_raw="hello",
             timestamp=datetime.now(timezone.utc),
-            platform_context=TelegramContext(chat_id=123),
+            scope_id="chat:123",
+            platform_meta={
+                "chat_id": 123,
+                "topic_id": None,
+                "message_id": None,
+                "is_group": False,
+            },
         )
         hub.inbound_bus.put(Platform.TELEGRAM, msg)
 

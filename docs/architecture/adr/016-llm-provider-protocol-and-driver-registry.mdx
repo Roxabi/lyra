@@ -1,0 +1,103 @@
+---
+title: "ADR-016: LLM Provider Protocol and Driver Registry"
+description: Extract LLM dispatch into a dedicated lyra.llm module with a Protocol, concrete drivers, composable decorators, and a ProviderRegistry.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+Prior to this change, LLM dispatch was embedded directly in agent classes
+(`SimpleAgent`, `AnthropicAgent`). Adding a second backend (Anthropic SDK
+alongside Claude CLI) would require either duplicating dispatch logic or
+introducing ad-hoc conditionals inside agent code, violating the
+single-responsibility principle and making backend selection harder to test.
+
+The codebase already had `CliPool` as an infrastructure concern. The missing
+piece was a uniform interface so agents could call any backend the same way,
+and so cross-cutting concerns (retry, circuit-breaking) could be applied
+consistently without repeating them per-agent.
+
+## Options Considered
+
+### Option A: Inline backend switching in agents
+
+Add `if backend == "anthropic-sdk": ... else: ...` branching inside each agent's
+`process()` method.
+
+- **Pros:** No new module; minimal surface area.
+- **Cons:** Each new backend requires changes in every agent. Cross-cutting
+  concerns (retry, CB) must be applied per-agent or per-branch. Not extensible.
+
+### Option B: Shared base class with abstract dispatch method
+
+Introduce an `LlmAgent` ABC with `_dispatch()` that subclasses override.
+
+- **Pros:** Familiar OOP pattern.
+- **Cons:** Forces inheritance for what is a composition concern. Decorating
+  (retry, CB) still requires per-subclass wiring or metaclass machinery.
+
+### Option C: Protocol + adapter registry + composable decorators (chosen)
+
+Define an `LlmProvider` Protocol in `lyra.llm.base`. Implement concrete drivers
+(`AnthropicSdkDriver`, `ClaudeCliDriver`) in `lyra.llm.drivers.*`. Wrap drivers
+with `RetryDecorator` and `CircuitBreakerDecorator` via composition. Register
+wrapped providers in a `ProviderRegistry`. Wire at startup in `__main__.py`.
+
+- **Pros:** Dependency direction is clean (agents import from `lyra.llm`, never
+  the reverse). Adding a driver requires no changes to agents or the registry
+  contract. Decorators are composable and independently testable. `isinstance()`
+  structural checks work via `@runtime_checkable`.
+- **Cons:** Slightly more files; `__main__.py` owns wiring complexity.
+
+## Decision
+
+Option C was adopted. The `lyra.llm` package is a pure infrastructure module
+that sits between `lyra.core` (which owns `ModelConfig`) and `lyra.agents`
+(which consume `LlmProvider`). The dependency rule is:
+
+```
+lyra.agents → lyra.llm → lyra.core
+```
+
+`lyra.llm` imports from `lyra.core` only. `lyra.agents` imports from `lyra.llm`
+only the `LlmProvider` Protocol and `LlmResult`. No upward dependency exists.
+Wiring (`ProviderRegistry` construction, decorator chaining) lives entirely in
+`lyra.__main__`.
+
+Decorator composition order: `CircuitBreakerDecorator(RetryDecorator(driver))`.
+The CB is outer so that an open circuit short-circuits immediately without
+triggering retry cycles.
+
+## Consequences
+
+### Positive
+
+- Agents are backend-agnostic; swapping or adding a driver requires zero agent
+  changes.
+- RetryDecorator and CircuitBreakerDecorator are independently testable with
+  mock providers.
+- The registry pattern eliminates all `if backend == ...` chains from agent
+  code.
+- Protocol structural typing (`@runtime_checkable`) enables lightweight
+  isinstance checks without ABC inheritance.
+
+### Negative
+
+- `RetryDecorator(max_retries=N)` makes N+1 total API calls (one pre-loop,
+  then N retries). Callers must size `failure_threshold` in circuit-breaker
+  config to account for the full retry chain rather than individual attempts.
+- The `messages` parameter on `LlmProvider.complete()` is silently ignored by
+  `ClaudeCliDriver` because `CliPool` manages history via session. This
+  asymmetry is undocumented at the Protocol level.
+
+### Neutral
+
+- `TOOLS` for the SDK driver is a module-level constant in
+  `lyra.llm.drivers.sdk`. As per ADR-010, this will evolve into an injectable
+  tool registry when a second tool is added.
+- `lyra.__main__._create_agent` retains a fallback driver-construction path
+  (lines 166–173) that is unreachable in production. It should be removed in
+  a follow-up cleanup.

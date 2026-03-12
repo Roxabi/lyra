@@ -332,10 +332,25 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
         await pm.connect()
         set_pairing_manager(pm)
 
+    stt_service: STTService | None = None
+    if os.environ.get("STT_MODEL_SIZE"):
+        try:
+            stt_cfg = load_stt_config()
+            stt_service = STTService(stt_cfg)
+            log.info(
+                "STT enabled: model=%s device=%s compute_type=%s",
+                stt_cfg.model_size,
+                stt_cfg.device,
+                stt_cfg.compute_type,
+            )
+        except ValueError as exc:
+            raise SystemExit(f"Invalid STT configuration: {exc}") from exc
+
     hub = Hub(
         circuit_registry=circuit_registry,
         msg_manager=msg_manager,
         pairing_manager=pm,
+        stt=stt_service,
     )
 
     cli_pool: CliPool | None = None
@@ -357,20 +372,6 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
     provider_registry, smart_routing_decorator = _build_provider_registry(
         circuit_registry, cli_pool, smart_routing_config=sr_config
     )
-
-    stt_service: STTService | None = None
-    if os.environ.get("STT_MODEL_SIZE"):
-        try:
-            stt_cfg = load_stt_config()
-            stt_service = STTService(stt_cfg)
-            log.info(
-                "STT enabled: model=%s device=%s compute_type=%s",
-                stt_cfg.model_size,
-                stt_cfg.device,
-                stt_cfg.compute_type,
-            )
-        except ValueError as exc:
-            raise SystemExit(f"Invalid STT configuration: {exc}") from exc
 
     agent = _create_agent(
         agent_config,
@@ -448,6 +449,7 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
 
     tasks = [
         asyncio.create_task(hub.run(), name="hub"),
+        asyncio.create_task(hub._audio_loop(), name="hub-audio"),
         asyncio.create_task(
             # handle_signals=False is mandatory when aiogram runs inside
             # asyncio.gather() — otherwise it installs its own signal handlers

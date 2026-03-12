@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from lyra.adapters.discord import DiscordAdapter
+from lyra.adapters.discord import _ALLOW_ALL, DiscordAdapter
 from lyra.core.message import InboundAudio
 
 
@@ -49,7 +49,9 @@ def _make_discord_msg(
 
 def _make_adapter() -> DiscordAdapter:
     hub = MagicMock()
-    return DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+    return DiscordAdapter(
+        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -103,7 +105,9 @@ async def test_on_message_enqueues_audio_on_audio_bus() -> None:
     hub.inbound_bus = MagicMock()
     hub.inbound_audio_bus = MagicMock()
     hub.inbound_audio_bus.put = MagicMock()
-    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+    adapter = DiscordAdapter(
+        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+    )
 
     attachment_obj = SimpleNamespace(
         content_type="audio/ogg",
@@ -154,7 +158,9 @@ async def test_on_message_audio_too_large_sends_reply() -> None:
     hub = MagicMock()
     hub.inbound_bus = MagicMock()
     hub.inbound_audio_bus = MagicMock()
-    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+    adapter = DiscordAdapter(
+        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+    )
 
     attachment_obj = SimpleNamespace(
         content_type="audio/ogg",
@@ -179,7 +185,9 @@ async def test_on_message_does_not_call_normalize_audio_for_non_audio() -> None:
     """on_message() does not call normalize_audio() for non-audio attachments."""
     hub = MagicMock()
     hub.inbound_bus = MagicMock()
-    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+    adapter = DiscordAdapter(
+        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+    )
 
     image_attachment = SimpleNamespace(
         content_type="image/png",
@@ -214,7 +222,9 @@ async def test_on_message_returns_after_audio_skips_text_path() -> None:
     """on_message() must not enqueue a text hub_msg when audio is processed."""
     hub = MagicMock()
     hub.inbound_bus = MagicMock()
-    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+    adapter = DiscordAdapter(
+        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+    )
 
     attachment_obj = SimpleNamespace(
         content_type="audio/ogg",

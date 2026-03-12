@@ -10,6 +10,7 @@ import logging
 import os
 import re
 import signal
+import sys
 import time
 import tomllib
 from datetime import datetime, timezone
@@ -25,6 +26,7 @@ from lyra.adapters.telegram import TelegramAdapter
 from lyra.adapters.telegram import load_config as load_telegram_config
 from lyra.agents.simple_agent import SimpleAgent
 from lyra.core.agent import Agent, AgentBase, SmartRoutingConfig, load_agent_config
+from lyra.core.auth import AuthMiddleware
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.cli_pool import CliPool
 from lyra.core.hub import Hub, RoutingKey
@@ -299,6 +301,11 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
 
     raw_config = _load_raw_config()
     circuit_registry, admin_user_ids = _load_circuit_config(raw_config)
+    try:
+        tg_auth = AuthMiddleware.from_config(raw_config, "telegram")
+        dc_auth = AuthMiddleware.from_config(raw_config, "discord")
+    except ValueError as exc:
+        sys.exit(str(exc))
 
     # Config loaders call sys.exit() on missing required env vars — no partial startup.
     tg_cfg = load_telegram_config()
@@ -393,6 +400,7 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
         webhook_secret=tg_cfg.webhook_secret,
         circuit_registry=circuit_registry,
         msg_manager=msg_manager,
+        auth=tg_auth,
     )
     dc_adapter = DiscordAdapter(
         hub=hub,
@@ -400,6 +408,7 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
         circuit_registry=circuit_registry,
         msg_manager=msg_manager,
         auto_thread=dc_cfg.auto_thread,
+        auth=dc_auth,
     )
 
     hub.register_adapter(Platform.TELEGRAM, "main", tg_adapter)

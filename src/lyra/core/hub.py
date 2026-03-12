@@ -438,6 +438,7 @@ class Hub:
                     text=result.text,
                     text_raw=text,
                     timestamp=audio.timestamp,
+                    trust_level=audio.trust_level,
                     trust=audio.trust,
                     platform_meta=audio.platform_meta,
                 )
@@ -492,6 +493,7 @@ class Hub:
             text="",
             text_raw="",
             timestamp=audio.timestamp,
+            trust_level=audio.trust_level,
             trust=audio.trust,
             platform_meta=audio.platform_meta,
         )

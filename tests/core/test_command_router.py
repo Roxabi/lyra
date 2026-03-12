@@ -26,6 +26,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from lyra.core.agent import Agent, AgentBase, load_agent_config
+from lyra.core.auth import TrustLevel
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.command_router import CommandConfig, CommandRouter
 from lyra.core.hub import Hub
@@ -76,6 +77,7 @@ def make_message(
             "message_id": None,
             "is_group": False,
         },
+        trust_level=TrustLevel.TRUSTED,
     )
 
 
@@ -511,6 +513,7 @@ def make_circuit_msg(user_id: str = "tg:user:42") -> InboundMessage:
             "message_id": None,
             "is_group": False,
         },
+        trust_level=TrustLevel.TRUSTED,
     )
 
 
@@ -808,6 +811,7 @@ def make_config_msg(
             "message_id": None,
             "is_group": False,
         },
+        trust_level=TrustLevel.TRUSTED,
     )
 
 

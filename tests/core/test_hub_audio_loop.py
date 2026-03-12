@@ -10,6 +10,7 @@ import pytest
 
 from lyra.core.hub import Hub
 from lyra.core.message import InboundAudio, InboundMessage, Platform, Response
+from lyra.core.trust import TrustLevel
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -32,6 +33,7 @@ def _make_audio(
         duration_ms=3000,
         file_id="file-1",
         timestamp=datetime.now(timezone.utc),
+        trust_level=TrustLevel.TRUSTED,
         user_name="Alice",
         platform_meta={"chat_id": 42, "is_group": False},
     )

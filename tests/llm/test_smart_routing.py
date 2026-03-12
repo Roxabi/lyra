@@ -9,6 +9,7 @@ from lyra.core.agent import Complexity, ModelConfig, SmartRoutingConfig
 from lyra.core.command_router import CommandRouter
 from lyra.core.message import InboundMessage
 from lyra.core.plugin_loader import PluginLoader
+from lyra.core.trust import TrustLevel
 from lyra.llm.base import LlmResult
 from lyra.llm.smart_routing import (
     ComplexityClassifier,
@@ -68,6 +69,7 @@ def _make_admin_msg(
         is_mention=False,
         text=text,
         text_raw=text,
+        trust_level=TrustLevel.TRUSTED,
     )
 
 

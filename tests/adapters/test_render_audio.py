@@ -22,6 +22,7 @@ import pytest
 
 from lyra.adapters.discord import DiscordAdapter
 from lyra.adapters.telegram import TelegramAdapter
+from lyra.core.auth import TrustLevel
 from lyra.core.message import (
     InboundMessage,
     OutboundAudio,
@@ -52,6 +53,7 @@ def _tg_msg(
             "topic_id": topic_id,
             "is_group": False,
         },
+        trust_level=TrustLevel.TRUSTED,
     )
 
 
@@ -74,6 +76,7 @@ def _dc_msg(channel_id: int = 99, message_id: int = 55) -> InboundMessage:
             "thread_id": None,
             "channel_type": "text",
         },
+        trust_level=TrustLevel.TRUSTED,
     )
 
 
@@ -268,6 +271,7 @@ async def test_dc_render_audio_no_reply_to_id_sends_normally() -> None:
         text="hi",
         text_raw="hi",
         timestamp=datetime.now(timezone.utc),
+        trust_level=TrustLevel.TRUSTED,
         platform_meta={
             "guild_id": 1,
             "channel_id": 99,

@@ -138,20 +138,24 @@ Discord  ──▶ dc_inbound Queue ──┘         (bounded 100)        │
 
 **Unified message format:**
 ```python
-@dataclass
-class Message:
+@dataclass(frozen=True)
+class InboundMessage:
     id: str
-    platform: Platform          # Platform.TELEGRAM | Platform.DISCORD
+    platform: str               # "telegram" | "discord" | ...
     bot_id: str                 # "main" (one bot per platform)
+    scope_id: str               # canonical routing scope (computed by adapter)
     user_id: str                # canonical sender ID (rate-limiting, pairing)
-    platform_context: ...       # TelegramContext | DiscordContext (scope routing)
-    content: MessageContent     # TextContent | ImageContent | AudioContent
-    type: MessageType
+    user_name: str
+    is_mention: bool
+    text: str                   # normalized plain text (markup stripped)
+    text_raw: str               # original text with platform markup
+    attachments: list[Attachment]
+    reply_to_id: str | None
+    thread_id: str | None
     timestamp: datetime
-    metadata: dict
-
-    def extract_scope_id(self) -> str:
-        """Return conversation scope: chat:NNN, thread:NNN, channel:NNN, …"""
+    locale: str | None
+    trust: Literal["user", "system"]
+    platform_meta: dict         # platform-specific routing data (chat_id, guild_id, …)
 ```
 
 ### Bindings (routing table)

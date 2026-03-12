@@ -373,8 +373,24 @@ class Hub:
         while True:
             audio: InboundAudio = await self.inbound_audio_bus.get()
             try:
-                platform_enum = Platform(audio.platform)
+                try:
+                    platform_enum = Platform(audio.platform)
+                except ValueError:
+                    log.warning(
+                        "unknown platform %r in audio id=%s — audio dropped",
+                        audio.platform,
+                        audio.id,
+                    )
+                    continue
                 key = RoutingKey(platform_enum, audio.bot_id, audio.scope_id)
+
+                if audio.trust != "user":
+                    log.error(
+                        "audio %s has trust=%r (expected 'user') — dropped",
+                        audio.id,
+                        audio.trust,
+                    )
+                    continue
 
                 if self._stt is None:
                     _content = (
@@ -388,10 +404,10 @@ class Hub:
 
                 # Write audio bytes to a temp file for STT
                 fd, tmp_str = tempfile.mkstemp(suffix=_mime_to_ext(audio.mime_type))
-                os.close(fd)
                 tmp = Path(tmp_str)
                 try:
-                    tmp.write_bytes(audio.audio_bytes)
+                    os.write(fd, audio.audio_bytes)
+                    os.close(fd)
                     result = await self._stt.transcribe(tmp)
                 finally:
                     tmp.unlink(missing_ok=True)

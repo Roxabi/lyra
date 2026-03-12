@@ -188,9 +188,10 @@ class TestAudioLoopSTTFailure:
 class TestAudioLoopNoise:
     """When STT returns noise tokens, reply with stt_noise."""
 
+    @pytest.mark.parametrize("noise_text", ["[silence]", "", "  "])
     @pytest.mark.asyncio()
-    async def test_noise_dispatches_noise_reply(self):
-        stt = FakeSTT(text="[silence]")
+    async def test_noise_dispatches_noise_reply(self, noise_text: str):
+        stt = FakeSTT(text=noise_text)
         hub = Hub(stt=stt)  # type: ignore[arg-type]
         hub.inbound_bus.register(Platform.TELEGRAM, maxsize=10)
         hub.inbound_audio_bus.register(Platform.TELEGRAM, maxsize=10)

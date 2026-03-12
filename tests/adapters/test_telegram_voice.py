@@ -10,16 +10,14 @@ Covers:
 
 from __future__ import annotations
 
-import tempfile
 from datetime import datetime, timezone
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from lyra.adapters.telegram import TelegramAdapter
-from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry, CircuitState
+from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.message import AudioContent, MessageType, Platform
 
 
@@ -59,23 +57,19 @@ def _make_adapter() -> tuple[TelegramAdapter, MagicMock]:
 
 
 @pytest.mark.asyncio
-async def test_voice_message_produces_audio_type() -> None:
+async def test_voice_message_produces_audio_type(tmp_path) -> None:
     """Voice message → hub receives MessageType.AUDIO."""
     adapter, hub = _make_adapter()
+    tmp_file = tmp_path / "audio.ogg"
+    tmp_file.touch()
 
-    with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
-        tmp_path = f.name
-
-    with patch.object(adapter, "_download_audio", return_value=(Path(tmp_path), 3.0)):
+    with patch.object(adapter, "_download_audio", return_value=(tmp_file, 3.0)):
         await adapter._on_voice_message(_make_voice_msg())
 
     call_args = hub.inbound_bus.put.call_args
     hub_msg = call_args[0][1]
     assert hub_msg.type == MessageType.AUDIO
     assert hub_msg.platform == Platform.TELEGRAM
-
-    # Cleanup
-    Path(tmp_path).unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------
@@ -84,24 +78,21 @@ async def test_voice_message_produces_audio_type() -> None:
 
 
 @pytest.mark.asyncio
-async def test_voice_audio_content_fields() -> None:
+async def test_voice_audio_content_fields(tmp_path) -> None:
     """AudioContent on the hub message has correct url, duration, file_id."""
     adapter, hub = _make_adapter()
+    tmp_file = tmp_path / "audio.ogg"
+    tmp_file.touch()
 
-    with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
-        tmp_path = f.name
-
-    with patch.object(adapter, "_download_audio", return_value=(Path(tmp_path), 3.0)):
+    with patch.object(adapter, "_download_audio", return_value=(tmp_file, 3.0)):
         await adapter._on_voice_message(_make_voice_msg(file_id="FILEXYZ", duration=3))
 
     hub_msg = hub.inbound_bus.put.call_args[0][1]
     content: AudioContent = hub_msg.content
     assert isinstance(content, AudioContent)
-    assert content.url == tmp_path
+    assert content.url == str(tmp_file)
     assert content.duration_seconds == 3.0
     assert content.file_id == "FILEXYZ"
-
-    Path(tmp_path).unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------
@@ -110,29 +101,26 @@ async def test_voice_audio_content_fields() -> None:
 
 
 @pytest.mark.asyncio
-async def test_typing_action_sent_before_download() -> None:
+async def test_typing_action_sent_before_download(tmp_path) -> None:
     """send_chat_action(TYPING) must be called before _download_audio."""
     adapter, hub = _make_adapter()
     call_order: list[str] = []
+    tmp_file = tmp_path / "audio.ogg"
+    tmp_file.touch()
 
     adapter.bot.send_chat_action = AsyncMock(
         side_effect=lambda **_: call_order.append("typing")
     )
 
-    async def fake_download(file_id: str, duration: int | None = None):
+    async def fake_download(_file_id: str, _duration: int | None = None):
         call_order.append("download")
-        with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
-            return Path(f.name), 1.0
+        return tmp_file, 1.0
 
     with patch.object(adapter, "_download_audio", side_effect=fake_download):
         await adapter._on_voice_message(_make_voice_msg())
 
     assert call_order[0] == "typing", "Typing action must fire before download"
     assert "download" in call_order
-
-    # Cleanup any created temp file
-    hub_msg = hub.inbound_bus.put.call_args[0][1]
-    Path(hub_msg.content.url).unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------
@@ -159,13 +147,10 @@ async def test_voice_from_bot_is_ignored() -> None:
 
 
 @pytest.mark.asyncio
-async def test_circuit_open_drops_message_and_cleans_temp_file() -> None:
+async def test_circuit_open_drops_message_and_cleans_temp_file(tmp_path) -> None:
     """When hub circuit is open, message is dropped and temp file is deleted."""
-    import time
-
     cb = CircuitBreaker(name="hub", failure_threshold=1, recovery_timeout=3600)
-    cb._state = CircuitState.OPEN  # force open
-    cb._opened_at = time.monotonic()  # needed so is_open() doesn't auto-transition
+    cb.record_failure()  # trip to OPEN (failure_threshold=1)
 
     registry = CircuitRegistry()
     registry.register(cb)
@@ -178,14 +163,14 @@ async def test_circuit_open_drops_message_and_cleans_temp_file() -> None:
     bot_mock = AsyncMock()
     adapter.bot = bot_mock
 
-    with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
-        tmp_path = Path(f.name)
+    tmp_file = tmp_path / "audio.ogg"
+    tmp_file.touch()
 
-    with patch.object(adapter, "_download_audio", return_value=(tmp_path, 2.0)):
+    with patch.object(adapter, "_download_audio", return_value=(tmp_file, 2.0)):
         await adapter._on_voice_message(_make_voice_msg())
 
     hub.inbound_bus.put.assert_not_called()
-    assert not tmp_path.exists(), "Temp file must be deleted when circuit is open"
+    assert not tmp_file.exists(), "Temp file must be deleted when circuit is open"
 
 
 # ---------------------------------------------------------------------------
@@ -194,18 +179,42 @@ async def test_circuit_open_drops_message_and_cleans_temp_file() -> None:
 
 
 @pytest.mark.asyncio
-async def test_queue_full_cleans_temp_file() -> None:
+async def test_queue_full_cleans_temp_file(tmp_path) -> None:
     """When hub queue is full, temp file is deleted and backpressure message sent."""
     import asyncio
 
     adapter, hub = _make_adapter()
     hub.inbound_bus.put.side_effect = asyncio.QueueFull()
 
-    with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
-        tmp_path = Path(f.name)
+    tmp_file = tmp_path / "audio.ogg"
+    tmp_file.touch()
 
-    with patch.object(adapter, "_download_audio", return_value=(tmp_path, 1.0)):
+    with patch.object(adapter, "_download_audio", return_value=(tmp_file, 1.0)):
         await adapter._on_voice_message(_make_voice_msg())
 
-    assert not tmp_path.exists(), "Temp file must be deleted on QueueFull"
+    assert not tmp_file.exists(), "Temp file must be deleted on QueueFull"
     adapter.bot.send_message.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# msg.audio field (F.audio filter) coverage
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_audio_field_message_produces_audio_type(tmp_path) -> None:
+    """msg.audio path (F.audio filter) normalises to MessageType.AUDIO."""
+    adapter, hub = _make_adapter()
+    msg = _make_voice_msg()
+    msg.voice = None
+    msg.audio = SimpleNamespace(file_id="AUDFILE", duration=5)
+
+    tmp_file = tmp_path / "audio.ogg"
+    tmp_file.touch()
+
+    with patch.object(adapter, "_download_audio", return_value=(tmp_file, 5.0)):
+        await adapter._on_voice_message(msg)
+
+    hub_msg = hub.inbound_bus.put.call_args[0][1]
+    assert hub_msg.type == MessageType.AUDIO
+    assert hub_msg.content.file_id == "AUDFILE"

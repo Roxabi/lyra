@@ -16,6 +16,8 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 if TYPE_CHECKING:
     from lyra.core.hub import Hub
 
+from aiogram.enums import ChatAction
+
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
@@ -102,6 +104,10 @@ class TelegramAdapter:
         self._hub: Hub = hub
         self._circuit_registry = circuit_registry
         self._msg_manager = msg_manager
+        self._audio_tmp_dir: str | None = os.environ.get("LYRA_AUDIO_TMP") or None
+        self._max_audio_bytes: int = int(
+            os.environ.get("LYRA_MAX_AUDIO_BYTES", 5 * 1024 * 1024)
+        )
 
         # bot is a public attribute so tests can replace it with AsyncMock.
         # Deferred lazily so tests can assign adapter.bot = AsyncMock() after
@@ -114,7 +120,9 @@ class TelegramAdapter:
         self._dp = Dispatcher()
         # Voice handler must be registered before the generic text handler so
         # aiogram routes voice/audio updates here rather than _on_message.
-        self._dp.message.register(self._on_voice_message, F.voice | F.audio)
+        self._dp.message.register(
+            self._on_voice_message, F.voice | F.audio | F.video_note
+        )
         self._dp.message.register(self._on_message)
 
         self.app = FastAPI()
@@ -231,11 +239,31 @@ class TelegramAdapter:
     ) -> tuple[Path, float | None]:
         """Download a Telegram audio/voice file to a local temp file.
 
+        Checks file size against LYRA_MAX_AUDIO_BYTES before downloading.
+        Cleans up the temp file if the download fails.
+
         Returns (path, duration_seconds). Caller is responsible for cleanup.
         """
-        _, tmp_str = tempfile.mkstemp(suffix=".ogg")
+        file_ = await self.bot.get_file(file_id)
+        if file_.file_size is not None and file_.file_size > self._max_audio_bytes:
+            log.warning(
+                "Audio file_id=%s rejected: %d bytes exceeds %d byte limit",
+                file_id,
+                file_.file_size,
+                self._max_audio_bytes,
+            )
+            raise ValueError(
+                f"Audio file too large: "
+                f"{file_.file_size} > {self._max_audio_bytes} bytes"
+            )
+        _, tmp_str = tempfile.mkstemp(suffix=".ogg", dir=self._audio_tmp_dir)
         tmp_path = Path(tmp_str)
-        await self.bot.download(file=file_id, destination=tmp_str)
+        try:
+            await self.bot.download(file=file_id, destination=tmp_str)
+        except Exception:
+            tmp_path.unlink(missing_ok=True)
+            raise
+        log.debug("Downloaded audio file_id=%s to %s", file_id, tmp_path)
         return tmp_path, float(duration) if duration is not None else None
 
     async def _on_voice_message(self, msg) -> None:
@@ -249,18 +277,20 @@ class TelegramAdapter:
         delete the temp file here. Otherwise the agent (process()) owns cleanup
         per ADR-013.
         """
-        if msg.from_user and getattr(msg.from_user, "is_bot", False):
+        if not msg.from_user or getattr(msg.from_user, "is_bot", False):
             return
-
-        from aiogram.enums import ChatAction
 
         await self.bot.send_chat_action(chat_id=msg.chat.id, action=ChatAction.TYPING)
 
-        voice = msg.voice or msg.audio
+        voice = msg.voice or msg.audio or msg.video_note
         file_id: str = voice.file_id
         duration: int | None = getattr(voice, "duration", None)
 
-        tmp_path, duration_seconds = await self._download_audio(file_id, duration)
+        try:
+            tmp_path, duration_seconds = await self._download_audio(file_id, duration)
+        except Exception:
+            log.exception("Failed to download audio file_id=%s", file_id)
+            return
 
         platform_context = TelegramContext(
             chat_id=msg.chat.id,

@@ -284,7 +284,7 @@ class TelegramAdapter:
         if not msg.from_user or getattr(msg.from_user, "is_bot", False):
             return
 
-        user_id = f"tg:user:{msg.from_user.id}" if msg.from_user else None
+        user_id = f"tg:user:{msg.from_user.id}"
         trust = self._auth.check(user_id)
         if trust == TrustLevel.BLOCKED:
             log.info(

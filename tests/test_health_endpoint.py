@@ -215,3 +215,84 @@ class TestHubTimestamps:
         """SC-3: Hub._last_processed_at is None initially."""
         assert hasattr(hub, "_last_processed_at")
         assert hub._last_processed_at is None
+
+
+# ---------------------------------------------------------------------------
+# T3 — GET /config endpoint (issue #135)
+# ---------------------------------------------------------------------------
+
+
+class TestConfigEndpoint:
+    """GET /config exposes runtime config when an AnthropicAgent is registered."""
+
+    async def test_config_returns_correct_json_shape(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AnthropicAgent registered as lyra_default → 200 with all expected keys."""
+        # Arrange
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
+        from lyra.__main__ import create_health_app
+        from lyra.agents.anthropic_agent import AnthropicAgent
+        from lyra.core.agent import Agent, ModelConfig
+        from lyra.core.runtime_config import RuntimeConfig
+
+        config = Agent(
+            name="lyra_default",
+            system_prompt="You are Lyra.",
+            memory_namespace="lyra",
+            model_config=ModelConfig(
+                backend="anthropic-sdk",
+                model="claude-sonnet-4-5",
+                max_turns=10,
+                tools=(),
+            ),
+        )
+        runtime_config = RuntimeConfig(
+            style="concise",
+            language="auto",
+            temperature=0.7,
+        )
+        test_hub = Hub()
+        agent = AnthropicAgent(config, runtime_config=runtime_config)
+        test_hub.register_agent(agent)
+
+        app = create_health_app(test_hub)
+        transport = ASGITransport(app=app)
+
+        # Act
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/config")
+
+        # Assert
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "style" in data
+        assert "language" in data
+        assert "temperature" in data
+        assert "model" in data
+        assert "max_steps" in data
+        assert "extra_instructions" in data
+        assert "effective_model" in data
+        assert "effective_max_steps" in data
+        # Spot-check values
+        assert data["style"] == "concise"
+        assert data["language"] == "auto"
+        assert data["temperature"] == 0.7
+        assert data["effective_model"] == "claude-sonnet-4-5"
+        assert data["effective_max_steps"] == 10
+
+    async def test_config_returns_404_when_no_anthropic_agent(self) -> None:
+        """No agent (or non-AnthropicAgent) registered → 404."""
+        # Arrange
+        from lyra.__main__ import create_health_app
+
+        test_hub = Hub()
+        app = create_health_app(test_hub)
+        transport = ASGITransport(app=app)
+
+        # Act
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/config")
+
+        # Assert
+        assert resp.status_code == 404

@@ -11,7 +11,8 @@
     "linkedin-post-generator@roxabi-marketplace": true,
     "roxabi-memory@roxabi-memory-marketplace": true,
     "typescript-lsp@claude-plugins-official": true,
-    "pyright-lsp@claude-plugins-official": true
+    "pyright-lsp@claude-plugins-official": true,
+    "visual-explainer@roxabi-marketplace": true
   },
   "extraKnownMarketplaces": {
     "roxabi-marketplace": {

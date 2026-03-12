@@ -9,12 +9,16 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from .circuit_breaker import CircuitRegistry
 from .message import Message, Response, TextContent, extract_text
 from .messages import MessageManager
 from .plugin_loader import AsyncHandler, PluginLoader
 from .pool import Pool
+
+if TYPE_CHECKING:
+    from lyra.core.runtime_config import RuntimeConfigHolder
 
 log = logging.getLogger(__name__)
 
@@ -42,6 +46,9 @@ class CommandRouter:
         "/stop": CommandConfig(
             builtin=True, description="Cancel the current processing turn"
         ),
+        "/config": CommandConfig(
+            builtin=True, description="Show/set runtime config (admin-only)"
+        ),
     }
 
     def __init__(
@@ -52,6 +59,7 @@ class CommandRouter:
         circuit_registry: CircuitRegistry | None = None,
         admin_user_ids: set[str] | None = None,
         msg_manager: MessageManager | None = None,
+        runtime_config_holder: RuntimeConfigHolder | None = None,
     ) -> None:
         self._plugin_loader = plugin_loader
         self._enabled_plugins = enabled_plugins
@@ -61,6 +69,7 @@ class CommandRouter:
         self._circuit_registry = circuit_registry
         self._admin_user_ids = admin_user_ids or set()
         self._msg_manager = msg_manager
+        self._runtime_config_holder = runtime_config_holder
         # Guard: raise early if any loaded plugin command clashes with a builtin.
         plugin_handlers = plugin_loader.get_commands(enabled_plugins)
         conflicts = set(plugin_handlers) & set(self._builtins)
@@ -114,6 +123,9 @@ class CommandRouter:
                 pool.cancel()
             # reply sent by Pool._process_loop on CancelledError
             return Response(content="")
+
+        if command_name == "/config":
+            return self._cmd_config(msg, args)
 
         builtin = self._builtins.get(command_name)
         if builtin and builtin.builtin:
@@ -183,3 +195,74 @@ class CommandRouter:
             lines.append(f"  {name:<12} {state_str}")
         lines.append("─" * 38)
         return Response(content="\n".join(lines))
+
+    def _cmd_config(self, msg: Message, args: list[str]) -> Response:
+        if not self._admin_user_ids or msg.user_id not in self._admin_user_ids:
+            return Response(content="This command is admin-only.")
+        if self._runtime_config_holder is None:
+            return Response(content="Runtime config not available for this backend.")
+        if not args:
+            return self._cmd_config_show()
+        if args[0] == "reset":
+            return self._cmd_config_reset(args[1:])
+        return self._cmd_config_set(args)
+
+    def _cmd_config_show(self) -> Response:
+        holder = self._runtime_config_holder
+        assert holder is not None
+        rc = holder.value
+        lines = ["Runtime Config", "─" * 35]
+        lines.append(f"  {'style':<20} {rc.style}")
+        lines.append(f"  {'language':<20} {rc.language}")
+        lines.append(f"  {'temperature':<20} {rc.temperature}")
+        lines.append(f"  {'model':<20} {rc.model or '(persona default)'}")
+        lines.append(f"  {'max_steps':<20} {rc.max_steps or '(model default)'}")
+        extra = rc.extra_instructions or "(none)"
+        lines.append(f"  {'extra_instructions':<20} {extra}")
+        lines.append("─" * 35)
+        return Response(content="\n".join(lines))
+
+    def _cmd_config_set(self, args: list[str]) -> Response:
+        from lyra.core.agent import _AGENTS_DIR
+        from lyra.core.runtime_config import set_param
+
+        holder = self._runtime_config_holder
+        assert holder is not None
+        rc = holder.value
+        updates: list[str] = []
+        for token in args:
+            if "=" not in token:
+                return Response(content=f"Invalid format: {token!r}. Use key=value.")
+            key, _, value = token.partition("=")
+            try:
+                rc = set_param(rc, key.strip(), value.strip())
+                updates.append(f"{key.strip()} = {value.strip()}")
+            except ValueError as exc:
+                return Response(content=str(exc))
+        runtime_file = _AGENTS_DIR / "lyra_runtime.toml"
+        rc.save(runtime_file)
+        holder.value = rc
+        summary = f"Updated: {', '.join(updates)}\nSaved to {runtime_file.name}"
+        return Response(content=summary)
+
+    def _cmd_config_reset(self, args: list[str]) -> Response:
+        from lyra.core.agent import _AGENTS_DIR
+        from lyra.core.runtime_config import RuntimeConfig
+
+        holder = self._runtime_config_holder
+        assert holder is not None
+        runtime_file = _AGENTS_DIR / "lyra_runtime.toml"
+        if not args:
+            holder.value = RuntimeConfig()
+            try:
+                runtime_file.unlink(missing_ok=True)
+            except OSError:
+                pass
+            return Response(content="Runtime config reset to defaults.")
+        key = args[0]
+        try:
+            holder.value = RuntimeConfig.reset(holder.value, key)
+        except ValueError as exc:
+            return Response(content=str(exc))
+        holder.value.save(runtime_file)
+        return Response(content=f"Reset: {key} = (default). Saved.")

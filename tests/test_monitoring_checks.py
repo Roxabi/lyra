@@ -136,16 +136,21 @@ class TestCheckIdle:
         )
         assert result.passed is True
 
-    def test_exceeds_threshold(self) -> None:
+    def test_exceeds_threshold(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """SC-6: check_idle fails when last_message_age_s exceeds threshold."""
-        from lyra.monitoring.checks import check_idle
+        from lyra.monitoring import checks
 
-        result = check_idle(
-            {"last_message_age_s": 25200.0},  # 7 hours
-            threshold_hours=6,
-            quiet_start="00:00",
-            quiet_end="08:00",
-        )
+        # Pin time to midday so quiet window (00:00-08:00) never suppresses.
+        mock_now = datetime(2026, 3, 10, 12, 0, 0, tzinfo=timezone.utc)
+        with patch("lyra.monitoring.checks.datetime") as mock_dt:
+            mock_dt.now.return_value = mock_now
+            mock_dt.strptime = datetime.strptime
+            result = checks.check_idle(
+                {"last_message_age_s": 25200.0},  # 7 hours
+                threshold_hours=6,
+                quiet_start="00:00",
+                quiet_end="08:00",
+            )
         assert result.passed is False
 
     def test_skips_during_quiet_hours(self, monkeypatch: pytest.MonkeyPatch) -> None:

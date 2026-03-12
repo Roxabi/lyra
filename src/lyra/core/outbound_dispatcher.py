@@ -102,10 +102,11 @@ class OutboundDispatcher:
         while True:
             item = await self._queue.get()
             try:
-                if len(item) == 4:
-                    kind, msg, payload, outbound = item
+                kind = item[0]
+                if kind == "streaming":
+                    _, msg, payload, outbound = item
                 else:
-                    kind, msg, payload = item
+                    _, msg, payload = item
                     outbound = None
                 if self._circuit is not None and self._circuit.is_open():
                     log.warning(
@@ -117,18 +118,17 @@ class OutboundDispatcher:
                     if kind == "streaming":
                         async for _ in payload:
                             pass
+                    if outbound is not None:
+                        outbound.metadata["reply_message_id"] = None
                     continue
 
                 try:
                     if kind == "send":
                         await self._adapter.send(msg, payload)
                     else:
-                        if outbound is not None:
-                            await self._adapter.send_streaming(
-                                msg, payload, outbound
-                            )
-                        else:
-                            await self._adapter.send_streaming(msg, payload)
+                        await self._adapter.send_streaming(
+                            msg, payload, outbound
+                        )
                     if self._circuit is not None:
                         self._circuit.record_success()
                 except BaseException as exc:

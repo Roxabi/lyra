@@ -151,6 +151,17 @@ class TestTelegramStreaming:
 
         bot.send_message.assert_awaited_once()
 
+    async def test_mid_stream_error_stores_reply_message_id(self) -> None:
+        adapter, bot = self._make_adapter()
+        msg = make_tg_message()
+        outbound = OutboundMessage.from_text("")
+
+        with pytest.raises(RuntimeError, match="stream died"):
+            await adapter.send_streaming(msg, error_chunks(), outbound)
+
+        # reply_message_id set before error (placeholder succeeded)
+        assert outbound.metadata["reply_message_id"] == 999
+
     async def test_mid_stream_error_appends_interrupted(self) -> None:
         adapter, bot = self._make_adapter()
         msg = make_tg_message()
@@ -164,6 +175,20 @@ class TestTelegramStreaming:
         assert "\\[response interrupted\\]" in last_edit.kwargs["text"]
         assert "partial" in last_edit.kwargs["text"]
         assert last_edit.kwargs.get("parse_mode") == "MarkdownV2"
+
+    async def test_placeholder_failure_writes_fallback_id_to_outbound(self) -> None:
+        adapter, bot = self._make_adapter()
+        fallback_msg = MagicMock()
+        fallback_msg.message_id = 1001
+        bot.send_message = AsyncMock(
+            side_effect=[RuntimeError("network"), fallback_msg]
+        )
+        msg = make_tg_message()
+        outbound = OutboundMessage.from_text("")
+
+        await adapter.send_streaming(msg, quick_chunks(), outbound)
+
+        assert outbound.metadata["reply_message_id"] == 1001
 
 
 # ---------------------------------------------------------------------------
@@ -217,6 +242,17 @@ class TestDiscordStreaming:
         outbound = OutboundMessage.from_text("")
 
         await adapter.send_streaming(msg, quick_chunks(), outbound)
+
+        assert outbound.metadata["reply_message_id"] == 777
+
+    async def test_mid_stream_error_stores_reply_message_id(self) -> None:
+        adapter, channel, placeholder = self._make_adapter()
+        placeholder.id = 777
+        msg = make_dc_message()
+        outbound = OutboundMessage.from_text("")
+
+        with pytest.raises(RuntimeError, match="stream died"):
+            await adapter.send_streaming(msg, error_chunks(), outbound)
 
         assert outbound.metadata["reply_message_id"] == 777
 

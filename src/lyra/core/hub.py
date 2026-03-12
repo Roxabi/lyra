@@ -330,12 +330,15 @@ class Hub:
                 "Call register_adapter() before dispatching responses."
             )
         if hasattr(adapter, "send_streaming"):
-            if outbound is not None:
-                await adapter.send_streaming(msg, chunks, outbound)
-            else:
-                await adapter.send_streaming(msg, chunks)
+            await adapter.send_streaming(msg, chunks, outbound)
         else:
             # Fallback: accumulate and send as one message
+            if outbound is not None:
+                log.warning(
+                    "Adapter for %s lacks send_streaming; "
+                    "reply_message_id will not be recorded",
+                    msg.platform,
+                )
             text = ""
             async for chunk in chunks:
                 text += chunk

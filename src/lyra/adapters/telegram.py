@@ -572,11 +572,15 @@ class TelegramAdapter:
             fallback_content = accumulated or _placeholder_text
             chunks_rendered = self._render_text(fallback_content)
             if chunks_rendered:
-                await self.bot.send_message(
+                fallback_msg = await self.bot.send_message(
                     chat_id=chat_id, text=chunks_rendered[0], parse_mode="MarkdownV2"
                 )
             else:
-                await self.bot.send_message(chat_id=chat_id, text=fallback_content)
+                fallback_msg = await self.bot.send_message(
+                    chat_id=chat_id, text=fallback_content
+                )
+            if outbound is not None:
+                outbound.metadata["reply_message_id"] = fallback_msg.message_id
             return
 
         last_edit = time.monotonic()

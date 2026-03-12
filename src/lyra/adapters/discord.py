@@ -531,7 +531,12 @@ class DiscordAdapter(discord.Client):
             async for chunk in chunks:
                 accumulated += chunk
             fallback_content = accumulated or _placeholder_text
-            await self.send(original_msg, OutboundMessage.from_text(fallback_content))
+            fallback_outbound = OutboundMessage.from_text(fallback_content)
+            await self.send(original_msg, fallback_outbound)
+            if outbound is not None:
+                outbound.metadata["reply_message_id"] = fallback_outbound.metadata.get(
+                    "reply_message_id"
+                )
             return
 
         last_edit = time.monotonic()

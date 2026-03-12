@@ -7,6 +7,7 @@ import re
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from io import BytesIO
 from typing import TYPE_CHECKING, Any, cast
 
 import discord
@@ -347,8 +348,6 @@ class DiscordAdapter(discord.Client):
         reply_to_id overrides the default reply target
         (ctx.platform_context.message_id).
         """
-        from io import BytesIO
-
         if not isinstance(ctx.platform_context, DiscordContext):
             log.error(
                 "render_audio() called with non-DiscordContext for msg id=%s", ctx.id
@@ -395,4 +394,8 @@ class DiscordAdapter(discord.Client):
                     reply_to_id,
                 )
 
+        # Reconstruct discord.File — the BytesIO may be exhausted if the reply
+        # attempt above partially consumed the buffer before raising.
+        audio_buf.seek(0)
+        attachment = discord.File(fp=audio_buf, filename=filename)
         await messageable.send(content=content or None, file=attachment)

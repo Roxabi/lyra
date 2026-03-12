@@ -8,6 +8,7 @@ import time
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from io import BytesIO
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -483,8 +484,6 @@ class TelegramAdapter:
         reply_to_message_id is derived from ctx.platform_context.message_id
         unless msg.reply_to_id overrides it explicitly.
         """
-        from io import BytesIO
-
         if not isinstance(ctx.platform_context, TelegramContext):
             log.error(
                 "render_audio() called with non-TelegramContext for msg id=%s", ctx.id

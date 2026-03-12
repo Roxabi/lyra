@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, Literal, TypeAlias
 
 from pydantic import BaseModel
 
@@ -174,7 +174,7 @@ class OutboundAudio:
     audio_bytes holds the raw audio payload (e.g. ogg/opus from TTS).
     """
 
-    audio_bytes: bytes
+    audio_bytes: bytes = field(repr=False)
     mime_type: str = "audio/ogg"  # e.g. "audio/ogg", "audio/mpeg"
     duration_ms: int | None = None
     caption: str | None = None
@@ -184,4 +184,4 @@ class OutboundAudio:
 
 # RenderContext is the original inbound Message — passed to render_audio()
 # so adapters can read platform_context (chat_id, channel_id, etc.).
-RenderContext = Message
+RenderContext: TypeAlias = Message

@@ -14,6 +14,7 @@ import discord
 if TYPE_CHECKING:
     from lyra.core.hub import Hub
 
+from lyra.core.auth import TrustLevel
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
@@ -153,6 +154,7 @@ class DiscordAdapter(discord.Client):
             content=TextContent(text=content),
             type=MessageType.TEXT,
             timestamp=message.created_at,
+            trust_level=TrustLevel.TRUSTED,  # placeholder — S5 replaces
             is_mention=is_mention,
             is_from_bot=message.author.bot,
             platform_context=ctx,

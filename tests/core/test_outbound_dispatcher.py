@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
+from lyra.core.auth import TrustLevel
 from lyra.core.circuit_breaker import CircuitBreaker
 from lyra.core.message import (
     Message,
@@ -28,6 +29,7 @@ def _make_msg() -> Message:
         content=TextContent(text="hello"),
         type=MessageType.TEXT,
         timestamp=datetime.now(timezone.utc),
+        trust_level=TrustLevel.TRUSTED,
         platform_context=TelegramContext(chat_id=123),
     )
 

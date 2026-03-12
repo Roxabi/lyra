@@ -21,6 +21,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.core.agent import Agent, ModelConfig
+from lyra.core.auth import TrustLevel
 from lyra.core.message import (
     AudioContent,
     Message,
@@ -48,6 +49,7 @@ def make_audio_message(url: str) -> Message:
         content=AudioContent(url=url),
         type=MessageType.AUDIO,
         timestamp=datetime.now(timezone.utc),
+        trust_level=TrustLevel.TRUSTED,
         platform_context=TelegramContext(chat_id=42),
     )
 
@@ -64,6 +66,7 @@ def make_text_message(text: str = "hello") -> Message:
         content=text,
         type=MessageType.TEXT,
         timestamp=datetime.now(timezone.utc),
+        trust_level=TrustLevel.TRUSTED,
         platform_context=TelegramContext(chat_id=42),
     )
 

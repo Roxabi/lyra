@@ -4,6 +4,7 @@ import asyncio
 from datetime import datetime, timezone
 
 from lyra.core.agent import Agent, AgentBase
+from lyra.core.auth import TrustLevel
 from lyra.core.hub import Hub
 from lyra.core.message import (
     Message,
@@ -60,6 +61,7 @@ async def main() -> None:
             content=TextContent(text=text),
             type=MessageType.TEXT,
             timestamp=datetime.now(timezone.utc),
+            trust_level=TrustLevel.TRUSTED,
             platform_context=TelegramContext(chat_id=123),
         )
         print(f"  -> {text}")

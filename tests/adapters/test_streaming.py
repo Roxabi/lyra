@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from lyra.core.auth import TrustLevel
 from lyra.core.message import (
     DiscordContext,
     Message,
@@ -32,6 +33,7 @@ def make_tg_message() -> Message:
         content="hello",
         type=MessageType.TEXT,
         timestamp=datetime.now(timezone.utc),
+        trust_level=TrustLevel.TRUSTED,
         platform_context=TelegramContext(chat_id=42),
     )
 
@@ -48,6 +50,7 @@ def make_dc_message() -> Message:
         content="hello",
         type=MessageType.TEXT,
         timestamp=datetime.now(timezone.utc),
+        trust_level=TrustLevel.TRUSTED,
         platform_context=DiscordContext(guild_id=1, channel_id=100, message_id=200),
     )
 

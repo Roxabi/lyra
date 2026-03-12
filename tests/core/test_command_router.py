@@ -26,6 +26,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from lyra.core.agent import Agent, AgentBase, load_agent_config
+from lyra.core.auth import TrustLevel
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.command_router import CommandConfig, CommandRouter
 from lyra.core.hub import Hub
@@ -66,6 +67,7 @@ def make_message(
         content=content,
         type=MessageType.TEXT,
         timestamp=datetime.now(timezone.utc),
+        trust_level=TrustLevel.TRUSTED,
         platform_context=TelegramContext(chat_id=42),
     )
 
@@ -491,6 +493,7 @@ def make_circuit_msg(user_id: str = "tg:user:42") -> Message:
         content="/circuit",
         type=MessageType.TEXT,
         timestamp=datetime.now(timezone.utc),
+        trust_level=TrustLevel.TRUSTED,
         platform_context=TelegramContext(chat_id=42),
     )
 
@@ -781,6 +784,7 @@ def make_config_msg(user_id: str = "tg:user:42", content: str = "/config") -> Me
         content=content,
         type=MessageType.TEXT,
         timestamp=datetime.now(timezone.utc),
+        trust_level=TrustLevel.TRUSTED,
         platform_context=TelegramContext(chat_id=42),
     )
 

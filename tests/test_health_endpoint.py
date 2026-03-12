@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from lyra.core.auth import TrustLevel
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.hub import Hub
 from lyra.core.message import (
@@ -74,6 +75,7 @@ class TestHealthEndpoint:
             content=TextContent(text="hello"),
             type=MessageType.TEXT,
             timestamp=datetime.now(timezone.utc),
+            trust_level=TrustLevel.TRUSTED,
             platform_context=TelegramContext(chat_id=123),
         )
         await hub.bus.put(msg)  # hub.bus is the staging queue alias
@@ -109,6 +111,7 @@ class TestHealthEndpoint:
             content=TextContent(text="hello"),
             type=MessageType.TEXT,
             timestamp=datetime.now(timezone.utc),
+            trust_level=TrustLevel.TRUSTED,
             platform_context=TelegramContext(chat_id=123),
         )
         hub.inbound_bus.put(Platform.TELEGRAM, msg)

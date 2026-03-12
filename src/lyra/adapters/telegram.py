@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
 from aiogram.enums import ChatAction
 
+from lyra.core.auth import TrustLevel
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
@@ -229,6 +230,7 @@ class TelegramAdapter:
             content=content,
             type=MessageType.TEXT,
             timestamp=timestamp,
+            trust_level=TrustLevel.TRUSTED,  # placeholder — S4 replaces
             is_mention=is_mention,
             is_from_bot=getattr(msg.from_user, "is_bot", False),
             platform_context=platform_context,
@@ -314,6 +316,7 @@ class TelegramAdapter:
             ),
             type=MessageType.AUDIO,
             timestamp=timestamp,
+            trust_level=TrustLevel.TRUSTED,  # placeholder — S4 replaces
             is_mention=False,
             is_from_bot=False,
             platform_context=platform_context,

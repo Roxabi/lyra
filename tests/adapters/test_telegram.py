@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from lyra.core.auth import TrustLevel
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.message import DiscordContext
 from lyra.core.messages import MessageManager
@@ -162,6 +163,7 @@ def test_from_adapter_hardcodes_trust() -> None:
         timestamp=datetime.now(timezone.utc),
         is_mention=False,
         is_from_bot=False,
+        trust_level=TrustLevel.TRUSTED,
         platform_context=TelegramContext(chat_id=123),
     )
 
@@ -242,6 +244,7 @@ async def test_send_calls_bot_send_message() -> None:
         content=TextContent(text="hello"),
         type=MessageType.TEXT,
         timestamp=datetime.now(timezone.utc),
+        trust_level=TrustLevel.TRUSTED,
         platform_context=TelegramContext(chat_id=123),
     )
     response = Response(content="reply")
@@ -325,6 +328,7 @@ async def test_send_skips_when_platform_context_is_not_telegram(
         content=TextContent(text="hello"),
         type=MessageType.TEXT,
         timestamp=datetime.now(timezone.utc),
+        trust_level=TrustLevel.TRUSTED,
         platform_context=DiscordContext(guild_id=None, channel_id=123, message_id=456),
     )
 
@@ -467,6 +471,7 @@ async def test_send_stores_reply_message_id_in_metadata() -> None:
         content=TextContent(text="hello"),
         type=MessageType.TEXT,
         timestamp=datetime.now(timezone.utc),
+        trust_level=TrustLevel.TRUSTED,
         platform_context=TelegramContext(chat_id=123, message_id=777),
     )
     response = Response(content="reply")
@@ -586,6 +591,7 @@ async def test_send_always_delivers_regardless_of_circuit_state() -> None:
         content=TextContent(text="hello"),
         type=MessageType.TEXT,
         timestamp=datetime.now(timezone.utc),
+        trust_level=TrustLevel.TRUSTED,
         platform_context=TelegramContext(chat_id=123, message_id=1),
     )
     response = Response(content="reply")

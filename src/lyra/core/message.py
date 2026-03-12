@@ -7,6 +7,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
+from lyra.core.auth import TrustLevel
+
 # Shared user-facing fallback for unhandled agent or dispatch errors.
 GENERIC_ERROR_REPLY = "Something went wrong. Please try again."
 
@@ -103,6 +105,7 @@ class Message:
     type: MessageType
     timestamp: datetime
     platform_context: PlatformContext
+    trust_level: TrustLevel  # required — caller must provide resolved trust level
     # Security: adapters must always set trust="user". Only internal hub code
     # may set trust="system". Never derive trust from inbound channel data.
     trust: Literal["user", "system"] = "user"
@@ -136,6 +139,7 @@ class Message:
         content: MessageContent,
         type: MessageType,
         timestamp: datetime,
+        trust_level: TrustLevel,
         is_mention: bool = False,
         is_from_bot: bool = False,
         platform_context: PlatformContext,
@@ -143,6 +147,7 @@ class Message:
         """Construct a Message from an adapter.
 
         trust is always 'user' — never caller-controlled.
+        trust_level must be provided by the adapter after resolving via AuthMiddleware.
         """
         return cls(
             id=f"{platform.value}:{user_id}:{int(timestamp.timestamp())}",
@@ -156,6 +161,7 @@ class Message:
             type=type,
             timestamp=timestamp,
             platform_context=platform_context,
+            trust_level=trust_level,
             trust="user",  # SECURITY: never caller-controlled
         )
 

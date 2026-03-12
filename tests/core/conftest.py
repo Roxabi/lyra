@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from lyra.core.auth import TrustLevel
 from lyra.core.message import (
     DiscordContext,
     Message,
@@ -32,5 +33,6 @@ def make_message(
         content="hello",
         type=MessageType.TEXT,
         timestamp=datetime.now(timezone.utc),
+        trust_level=TrustLevel.TRUSTED,
         platform_context=platform_context,
     )

@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from lyra.core.auth import TrustLevel
 from lyra.core.message import (
     Message,
     MessageType,
@@ -76,6 +77,7 @@ def make_msg(text: str = "hello") -> Message:
         content=TextContent(text=text),
         type=MessageType.TEXT,
         timestamp=datetime.now(timezone.utc),
+        trust_level=TrustLevel.TRUSTED,
         platform_context=ctx,
     )
 

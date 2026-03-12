@@ -25,6 +25,7 @@ from lyra.core import (
     Pool,
     Response,
 )
+from lyra.core.auth import TrustLevel
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.message import (
     DiscordContext,
@@ -122,6 +123,7 @@ class TestMessage:
             content=ImageContent(url="https://example.com/img.png"),
             type=MessageType.IMAGE,
             timestamp=datetime.now(timezone.utc),
+            trust_level=TrustLevel.TRUSTED,
             platform_context=TelegramContext(chat_id=42),
         )
         assert isinstance(msg.content, ImageContent)
@@ -143,6 +145,7 @@ class TestMessage:
             content="internal",
             type=MessageType.SYSTEM,
             timestamp=datetime.now(timezone.utc),
+            trust_level=TrustLevel.TRUSTED,
             platform_context=TelegramContext(chat_id=42),
             trust="system",
         )
@@ -1110,6 +1113,7 @@ class TestCrossScopeRateLimit:
                 content="hello",
                 type=MessageType.TEXT,
                 timestamp=datetime.now(timezone.utc),
+                trust_level=TrustLevel.TRUSTED,
                 platform_context=ctx,
             )
 
@@ -1160,6 +1164,7 @@ class TestScopeIsolatedPools:
             content="hello",
             type=MessageType.TEXT,
             timestamp=datetime.now(timezone.utc),
+            trust_level=TrustLevel.TRUSTED,
             platform_context=TelegramContext(chat_id=100),
         )
         msg_b = Message(
@@ -1173,6 +1178,7 @@ class TestScopeIsolatedPools:
             content="hello",
             type=MessageType.TEXT,
             timestamp=datetime.now(timezone.utc),
+            trust_level=TrustLevel.TRUSTED,
             platform_context=TelegramContext(chat_id=200),
         )
 

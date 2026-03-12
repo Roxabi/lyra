@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 import pytest
 
+from lyra.core.auth import TrustLevel
 from lyra.core.inbound_bus import InboundBus
 from lyra.core.message import (
     Message,
@@ -32,6 +33,7 @@ def _make_msg(platform: Platform = Platform.TELEGRAM) -> Message:
         content=TextContent(text="hello"),
         type=MessageType.TEXT,
         timestamp=datetime.now(timezone.utc),
+        trust_level=TrustLevel.TRUSTED,
         platform_context=ctx,
     )
 

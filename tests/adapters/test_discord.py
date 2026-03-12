@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
+from lyra.core.auth import TrustLevel
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.messages import MessageManager
 
@@ -189,6 +190,7 @@ async def test_send_reply_on_mention() -> None:
         content=TextContent(text="hello"),
         type=MessageType.TEXT,
         timestamp=datetime.now(timezone.utc),
+        trust_level=TrustLevel.TRUSTED,
         platform_context=DiscordContext(guild_id=111, channel_id=333, message_id=555),
     )
     response = Response(content="hi")
@@ -235,6 +237,7 @@ async def test_send_channel_on_no_mention() -> None:
         content=TextContent(text="hello"),
         type=MessageType.TEXT,
         timestamp=datetime.now(timezone.utc),
+        trust_level=TrustLevel.TRUSTED,
         platform_context=DiscordContext(guild_id=111, channel_id=333, message_id=555),
     )
     response = Response(content="hi")
@@ -613,6 +616,7 @@ async def test_send_skips_when_discord_circuit_open() -> None:
         content=TextContent(text="hello"),
         type=MessageType.TEXT,
         timestamp=datetime.now(timezone.utc),
+        trust_level=TrustLevel.TRUSTED,
         platform_context=DiscordContext(guild_id=111, channel_id=333, message_id=555),
     )
     response = Response(content="hi")
@@ -708,6 +712,7 @@ async def test_send_stores_reply_message_id_channel_send() -> None:
         content=TextContent(text="hello"),
         type=MessageType.TEXT,
         timestamp=datetime.now(timezone.utc),
+        trust_level=TrustLevel.TRUSTED,
         platform_context=DiscordContext(guild_id=111, channel_id=333, message_id=555),
     )
     response = Response(content="hi")
@@ -760,6 +765,7 @@ async def test_send_stores_reply_message_id_msg_reply() -> None:
         content=TextContent(text="hello"),
         type=MessageType.TEXT,
         timestamp=datetime.now(timezone.utc),
+        trust_level=TrustLevel.TRUSTED,
         platform_context=DiscordContext(guild_id=111, channel_id=333, message_id=555),
     )
     response = Response(content="hi")
@@ -810,6 +816,7 @@ async def test_send_no_reply_message_id_on_failure() -> None:
         content=TextContent(text="hello"),
         type=MessageType.TEXT,
         timestamp=datetime.now(timezone.utc),
+        trust_level=TrustLevel.TRUSTED,
         platform_context=DiscordContext(guild_id=111, channel_id=333, message_id=555),
     )
     response = Response(content="hi")
@@ -891,6 +898,7 @@ class TestDiscordAutoThread:
             type=MessageType.TEXT,
             timestamp=datetime.now(timezone.utc),
             is_mention=True,
+            trust_level=TrustLevel.TRUSTED,
             platform_context=DiscordContext(
                 guild_id=111,
                 channel_id=333,
@@ -963,6 +971,7 @@ class TestDiscordAutoThread:
             type=MessageType.TEXT,
             timestamp=datetime.now(timezone.utc),
             is_mention=True,
+            trust_level=TrustLevel.TRUSTED,
             platform_context=DiscordContext(
                 guild_id=111,
                 channel_id=333,
@@ -1030,6 +1039,7 @@ class TestDiscordAutoThread:
             type=MessageType.TEXT,
             timestamp=datetime.now(timezone.utc),
             is_mention=True,
+            trust_level=TrustLevel.TRUSTED,
             platform_context=DiscordContext(
                 guild_id=111,
                 channel_id=333,
@@ -1098,6 +1108,7 @@ class TestDiscordAutoThread:
             type=MessageType.TEXT,
             timestamp=datetime.now(timezone.utc),
             is_mention=True,
+            trust_level=TrustLevel.TRUSTED,
             platform_context=DiscordContext(
                 guild_id=111,
                 channel_id=333,

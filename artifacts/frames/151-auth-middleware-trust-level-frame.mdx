@@ -1,0 +1,54 @@
+---
+title: "feat(auth): AuthMiddleware + TrustLevel par adapter"
+issue: 151
+status: approved
+tier: F-full
+date: 2026-03-12
+---
+
+## Problem
+
+Sans mécanisme d'authentification, n'importe quel utilisateur peut envoyer un message qui
+atteint le Bus interne de Lyra et consomme des ressources (tokens LLM, mémoire, CPU).
+Sur Telegram et Discord en particulier, cela représente un risque réel : un bot public
+pourrait être spammé ou utilisé à des fins non autorisées.
+
+La solution documentée dans `docs/architecture/security-routing.md#auth` consiste à
+implémenter un `AuthMiddleware` au niveau de chaque Adapter, **avant** le Bus. Le message
+est rejeté à la source si l'utilisateur n'est pas autorisé — il ne consomme aucune ressource.
+
+## Who
+
+- **Primary:** Mickael (owner) — seul utilisateur de confiance actuellement. L'auth permet
+  de verrouiller le bot en production sans craindre les accès non sollicités.
+- **Secondary:** L'architecture Lyra elle-même — `TrustLevel` sera propagé dans chaque
+  `Message` et consommé en aval par le Router, CommandParser, et MemoryManager (issues #routing,
+  #commands, #memory-isolation dépendent de ce champ).
+
+## Constraints
+
+- `TrustLevel` doit être attaché au `Message` dès la normalisation — les issues aval en dépendent.
+- Config via TOML existant (`config.toml`) — pas de nouveau fichier de config.
+- Intégration dans les 3 adapters existants : `TelegramAdapter`, `DiscordAdapter`, `CLIAdapter`.
+- `CLIAdapter` : trust = OWNER par défaut (usage local uniquement).
+- Rejet silencieux pour `BLOCKED` (pas de réponse à l'utilisateur non autorisé).
+- Logging obligatoire des rejets : `user_id`, `channel`, `timestamp`.
+
+## Out of Scope
+
+- Auth basée sur des rôles Discord (seuls les user_ids sont supportés en V1).
+- Interface admin pour modifier la trust_map à chaud (config statique TOML uniquement).
+- Authentification multi-facteur ou OAuth.
+- Les issues #routing, #commands, #memory-isolation (consomment `TrustLevel` mais ne le définissent pas).
+
+## Complexity
+
+**Tier: F-full** — Nouvelle infrastructure partagée (`AuthMiddleware`, `TrustLevel`, config parser)
+intégrée dans 3 adapters existants avec impact transversal sur le modèle de données `Message`.
+
+Signaux observés :
+- Nouveau fichier shared `auth.py` + enum `TrustLevel` (impact sur `Message` dataclass)
+- 3 adapters à modifier : `TelegramAdapter`, `DiscordAdapter`, `CLIAdapter`
+- Config parser TOML nouveau (section `[auth.*]`)
+- Logging cross-adapter
+- `TrustLevel` propagé dans `Message` → consommé par issues futures (#routing, #commands)

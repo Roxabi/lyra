@@ -8,6 +8,7 @@ import time
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from io import BytesIO
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -24,7 +25,9 @@ from lyra.core.message import (
     AudioContent,
     Message,
     MessageType,
+    OutboundAudio,
     Platform,
+    RenderContext,
     Response,
     TelegramContext,
     TextContent,
@@ -385,9 +388,7 @@ class TelegramAdapter:
             return
         ctx = original_msg.platform_context
 
-        sent = await self.bot.send_message(
-            chat_id=ctx.chat_id, text=response.content
-        )
+        sent = await self.bot.send_message(chat_id=ctx.chat_id, text=response.content)
         # Store for session persistence (#67) and reply-to-resume (#83).
         response.metadata["reply_message_id"] = sent.message_id
 
@@ -474,3 +475,53 @@ class TelegramAdapter:
         # Re-raise stream error so OutboundDispatcher can record CB failure
         if stream_error is not None:
             raise stream_error
+
+    async def render_audio(self, msg: OutboundAudio, ctx: RenderContext) -> None:
+        """Send an OutboundAudio envelope as a Telegram voice note (ogg/opus).
+
+        Uses bot.send_voice() with a BytesIO buffer — no temp file required.
+        caption (if set) is attached to the voice message.
+        reply_to_message_id is derived from ctx.platform_context.message_id
+        unless msg.reply_to_id overrides it explicitly.
+        """
+        if not isinstance(ctx.platform_context, TelegramContext):
+            log.error(
+                "render_audio() called with non-TelegramContext for msg id=%s", ctx.id
+            )
+            return
+
+        tg_ctx = ctx.platform_context
+
+        # Determine reply target: explicit override first, else original message id
+        reply_to: int | None = None
+        if msg.reply_to_id is not None:
+            try:
+                reply_to = int(msg.reply_to_id)
+            except ValueError:
+                log.warning(
+                    "render_audio: invalid reply_to_id=%r, ignoring", msg.reply_to_id
+                )
+        elif tg_ctx.message_id is not None:
+            reply_to = tg_ctx.message_id
+
+        duration_sec: int | None = (
+            msg.duration_ms // 1000 if msg.duration_ms is not None else None
+        )
+
+        audio_buf = BytesIO(msg.audio_bytes)
+        audio_buf.name = "voice.ogg"
+
+        kwargs: dict = {
+            "chat_id": tg_ctx.chat_id,
+            "voice": audio_buf,
+        }
+        if tg_ctx.topic_id is not None:
+            kwargs["message_thread_id"] = tg_ctx.topic_id
+        if reply_to is not None:
+            kwargs["reply_to_message_id"] = reply_to
+        if msg.caption:
+            kwargs["caption"] = msg.caption[:1024]
+        if duration_sec is not None:
+            kwargs["duration"] = duration_sec
+
+        await self.bot.send_voice(**kwargs)

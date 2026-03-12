@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, Literal, TypeAlias
 
 from pydantic import BaseModel
 
@@ -164,3 +164,23 @@ class Message:
 class Response:
     content: str
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class OutboundAudio:
+    """Typed envelope for outbound audio data on the bus.
+
+    Produced by TTS / voice pipelines; consumed by adapter render_audio().
+    audio_bytes holds the raw audio payload (e.g. ogg/opus from TTS).
+    """
+
+    audio_bytes: bytes = field(repr=False)
+    mime_type: str = "audio/ogg"  # e.g. "audio/ogg", "audio/mpeg"
+    duration_ms: int | None = None
+    caption: str | None = None
+    reply_to_id: str | None = None  # platform message ID to reply to
+
+
+# RenderContext is the original inbound Message — passed to render_audio()
+# so adapters can read platform_context (chat_id, channel_id, etc.).
+RenderContext: TypeAlias = Message

@@ -7,6 +7,7 @@ import re
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from io import BytesIO
 from typing import TYPE_CHECKING, Any, cast
 
 import discord
@@ -20,7 +21,9 @@ from lyra.core.message import (
     DiscordContext,
     Message,
     MessageType,
+    OutboundAudio,
     Platform,
+    RenderContext,
     Response,
     TextContent,
 )
@@ -256,9 +259,7 @@ class DiscordAdapter(discord.Client):
             sent = await messageable.send(content)
         # Store for session persistence (#67) and reply-to-resume (#83).
         response.metadata["reply_message_id"] = sent.id
-        log.debug(
-            "stored reply_message_id=%s for msg_id=%s", sent.id, original_msg.id
-        )
+        log.debug("stored reply_message_id=%s for msg_id=%s", sent.id, original_msg.id)
 
     async def send_streaming(
         self, original_msg: Message, chunks: AsyncIterator[str]
@@ -338,3 +339,65 @@ class DiscordAdapter(discord.Client):
         # Re-raise stream error so OutboundDispatcher can record CB failure
         if stream_error is not None:
             raise stream_error
+
+    async def render_audio(self, msg: OutboundAudio, ctx: RenderContext) -> None:
+        """Send an OutboundAudio envelope as a Discord audio file attachment.
+
+        Sends audio_bytes as a discord.File attachment. caption (if set)
+        is passed as the message content alongside the attachment.
+        reply_to_id overrides the default reply target
+        (ctx.platform_context.message_id).
+        """
+        if not isinstance(ctx.platform_context, DiscordContext):
+            log.error(
+                "render_audio() called with non-DiscordContext for msg id=%s", ctx.id
+            )
+            return
+
+        dc_ctx = ctx.platform_context
+
+        channel = self.get_channel(dc_ctx.channel_id)
+        if channel is None:
+            channel = await self.fetch_channel(dc_ctx.channel_id)
+
+        messageable = cast(discord.abc.Messageable, channel)
+
+        # Derive filename from mime_type — whitelist to prevent crafted filenames.
+        _AUDIO_EXTS = {"ogg", "mp3", "mp4", "mpeg", "opus", "wav", "flac", "aac"}
+        raw_ext = msg.mime_type.split("/")[-1] if "/" in msg.mime_type else ""
+        ext = raw_ext if raw_ext in _AUDIO_EXTS else "bin"
+        filename = f"audio.{ext}"
+
+        audio_buf = BytesIO(msg.audio_bytes)
+        attachment = discord.File(fp=audio_buf, filename=filename)
+
+        # Determine message to reply to
+        reply_to_id: int | None = None
+        if msg.reply_to_id is not None:
+            try:
+                reply_to_id = int(msg.reply_to_id)
+            except ValueError:
+                log.warning(
+                    "render_audio: invalid reply_to_id=%r, ignoring", msg.reply_to_id
+                )
+        else:
+            reply_to_id = dc_ctx.message_id
+
+        content = (msg.caption or "")[:DISCORD_MAX_LENGTH]
+
+        if reply_to_id is not None:
+            try:
+                ref_msg = await messageable.fetch_message(reply_to_id)
+                await ref_msg.reply(content=content or None, file=attachment)
+                return
+            except Exception:
+                log.warning(
+                    "render_audio: could not reply to message_id=%s, sending normally",
+                    reply_to_id,
+                )
+
+        # Reconstruct discord.File — the BytesIO may be exhausted if the reply
+        # attempt above partially consumed the buffer before raising.
+        audio_buf.seek(0)
+        attachment = discord.File(fp=audio_buf, filename=filename)
+        await messageable.send(content=content or None, file=attachment)

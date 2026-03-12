@@ -7,6 +7,17 @@ log = logging.getLogger(__name__)
 
 
 class TrustLevel(Enum):
+    """Authorization trust levels for inbound messages.
+
+    OWNER   — local/CLI or explicitly designated owner user. Full access.
+    TRUSTED — explicitly listed user. Full access (same as OWNER for now).
+    PUBLIC  — currently synonymous with TRUSTED: passes through to the hub
+              with no additional restrictions. Reserved for future capability-
+              gating (e.g. rate-limits, read-only commands).
+              # TODO: differentiate PUBLIC from TRUSTED once #commands lands.
+    BLOCKED — rejected at the adapter layer before _normalize(). No LLM call.
+    """
+
     OWNER = "owner"
     TRUSTED = "trusted"
     PUBLIC = "public"

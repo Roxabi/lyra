@@ -16,6 +16,7 @@ GENERIC_ERROR_REPLY = "Something went wrong. Please try again."
 class Platform(str, Enum):
     TELEGRAM = "telegram"
     DISCORD = "discord"
+    CLI = "cli"
 
 
 class MessageType(str, Enum):

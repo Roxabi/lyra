@@ -163,6 +163,12 @@ class TestAuthMiddlewareFromConfig:
         assert auth.check("any:user") == TrustLevel.OWNER
         assert auth.check(None) == TrustLevel.OWNER
 
+    def test_missing_default_field_raises_system_exit(self) -> None:
+        """[auth.telegram] section present but 'default' key absent → SystemExit."""
+        raw = {"auth": {"telegram": {"owner_users": ["123"]}}}
+        with pytest.raises(SystemExit, match="missing 'default' field"):
+            AuthMiddleware.from_config(raw, "telegram")
+
     def test_invalid_default_value_raises_system_exit(self) -> None:
         """SC-6: 'open' is not a valid TrustLevel → SystemExit."""
         raw = {"auth": {"telegram": {"default": "open"}}}

@@ -11,6 +11,7 @@ Spec trace: SC-7, SC-8, SC-9, SC-10, SC-13, SC-14
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -40,6 +41,12 @@ def owner_auth() -> AuthMiddleware:
 def discord_owner_auth() -> AuthMiddleware:
     """AuthMiddleware that gives dc:user:42 OWNER, everyone else BLOCKED."""
     return AuthMiddleware({"dc:user:42": TrustLevel.OWNER}, TrustLevel.BLOCKED)
+
+
+@pytest.fixture
+def public_auth() -> AuthMiddleware:
+    """AuthMiddleware with PUBLIC default — every unknown user passes through."""
+    return AuthMiddleware({}, TrustLevel.PUBLIC)
 
 
 def _make_aiogram_msg(user_id: int = 42, is_bot: bool = False) -> SimpleNamespace:
@@ -193,6 +200,34 @@ class TestTelegramAdapterOnMessageAuthGate:
         # Must not raise
         await adapter._on_message(aiogram_msg)
 
+    @pytest.mark.asyncio
+    async def test_public_user_calls_normalize(
+        self, public_auth: AuthMiddleware
+    ) -> None:
+        """PUBLIC default → unknown user passes through, _normalize() is called."""
+        from lyra.adapters.telegram import TelegramAdapter
+
+        hub = MagicMock()
+        hub.inbound_bus = MagicMock()
+        hub.inbound_bus.put = MagicMock()
+        adapter = TelegramAdapter(
+            bot_id="main",
+            token="test-token",
+            hub=hub,
+            auth=public_auth,  # type: ignore[call-arg]
+        )
+        # user_id=999 is not in the trust_map → falls to PUBLIC default
+        aiogram_msg = _make_aiogram_msg(user_id=999)
+
+        _ret = MagicMock()
+        with (
+            patch.object(adapter, "_normalize", return_value=_ret) as mock_normalize,
+            patch.object(adapter, "_push_to_hub", new_callable=AsyncMock),
+        ):
+            await adapter._on_message(aiogram_msg)
+
+        mock_normalize.assert_called_once()
+
 
 # ---------------------------------------------------------------------------
 # SC-8: TelegramAdapter._on_voice_message() does NOT call _normalize() when BLOCKED
@@ -249,6 +284,38 @@ class TestTelegramAdapterOnVoiceAuthGate:
 
         # Must not raise
         await adapter._on_voice_message(voice_msg)
+
+    @pytest.mark.asyncio
+    async def test_allowed_user_voice_calls_download(
+        self, owner_auth: AuthMiddleware
+    ) -> None:
+        """SC-8 positive path: allowed user → _download_audio is called."""
+        from lyra.adapters.telegram import TelegramAdapter
+
+        hub = MagicMock()
+        hub.inbound_bus = MagicMock()
+        hub.inbound_bus.put = MagicMock()
+        adapter = TelegramAdapter(
+            bot_id="main",
+            token="test-token",
+            hub=hub,
+            auth=owner_auth,  # type: ignore[call-arg]
+        )
+        bot_mock = AsyncMock()
+        bot_mock.send_chat_action = AsyncMock()
+        adapter.bot = bot_mock
+
+        # user_id=1 maps to tg:user:1 which is OWNER in owner_auth fixture
+        voice_msg = _make_voice_msg(user_id=1)
+
+        with patch.object(
+            adapter, "_download_audio", new_callable=AsyncMock
+        ) as mock_dl:
+            mock_dl.return_value = ("/tmp/test.ogg", 3.0)
+            with patch.object(adapter, "_normalize", wraps=adapter._normalize):
+                await adapter._on_voice_message(voice_msg)
+
+        mock_dl.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -346,6 +413,38 @@ class TestDiscordAdapterOnMessageAuthGate:
 
         mock_normalize.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_public_user_calls_normalize(
+        self, public_auth: AuthMiddleware
+    ) -> None:
+        """PUBLIC default → unknown Discord user passes through."""
+        import discord
+
+        from lyra.adapters.discord import DiscordAdapter
+
+        hub = MagicMock()
+        hub.inbound_bus = MagicMock()
+        hub.inbound_bus.put = MagicMock()
+        adapter = DiscordAdapter(
+            hub=hub,
+            bot_id="main",
+            auth=public_auth,  # type: ignore[call-arg]
+            intents=discord.Intents.none(),
+        )
+        bot_user = SimpleNamespace(id=999, bot=True)
+        adapter._bot_user = bot_user
+
+        # user_id=77 is not in the trust_map → falls to PUBLIC default
+        discord_msg = _make_discord_msg(user_id=77)
+
+        _ret = MagicMock()
+        _norm = patch.object(adapter, "_normalize", return_value=_ret)
+        _bus = patch.object(adapter._hub.inbound_bus, "put", MagicMock())
+        with _norm as mock_normalize, _bus:
+            await adapter.on_message(discord_msg)
+
+        mock_normalize.assert_called_once()
+
 
 # ---------------------------------------------------------------------------
 # SC-10: Rejection log contains user_id, channel, timestamp for BLOCKED messages
@@ -368,15 +467,17 @@ class TestAuthRejectionLogging:
             hub=hub,
             auth=blocked_auth,  # type: ignore[call-arg]
         )
-        aiogram_msg = _make_aiogram_msg(user_id=123)
+        # user_id=999 is distinct from chat.id=123 to avoid false-positive matches
+        aiogram_msg = _make_aiogram_msg(user_id=999)
 
         with caplog.at_level(logging.INFO, logger="lyra.adapters.telegram"):
             await adapter._on_message(aiogram_msg)
 
-        # At least one log record must mention the user and channel
+        # SC-10: log must contain user_id, channel, and ISO timestamp
         combined = " ".join(caplog.messages)
-        assert "tg:user:123" in combined or "123" in combined
+        assert "tg:user:999" in combined
         assert "telegram" in combined.lower()
+        assert re.search(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", combined)
 
     @pytest.mark.asyncio
     async def test_discord_blocked_logs_user_id_channel_timestamp(
@@ -403,9 +504,11 @@ class TestAuthRejectionLogging:
         with caplog.at_level(logging.INFO, logger="lyra.adapters.discord"):
             await adapter.on_message(discord_msg)
 
+        # SC-10: log must contain user_id, channel, and ISO timestamp
         combined = " ".join(caplog.messages)
-        assert "dc:user:42" in combined or "42" in combined
+        assert "dc:user:42" in combined
         assert "discord" in combined.lower()
+        assert re.search(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", combined)
 
 
 # ---------------------------------------------------------------------------

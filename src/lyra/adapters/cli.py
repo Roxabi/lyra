@@ -25,7 +25,7 @@ class CLIAdapter:
     def on_input(self, text: str, user_id: str = "cli:user:local") -> Message:
         """Convert a CLI text input to a Message with TrustLevel.OWNER."""
         return Message.from_adapter(
-            platform=Platform.TELEGRAM,  # placeholder — CLI has no platform
+            platform=Platform.CLI,
             bot_id=self._bot_id,
             user_id=user_id,
             user_name="local",
@@ -33,5 +33,6 @@ class CLIAdapter:
             type=MessageType.TEXT,
             timestamp=datetime.now(timezone.utc),
             trust_level=TrustLevel.OWNER,
+            # placeholder — no CLIContext type exists yet
             platform_context=TelegramContext(chat_id=0),
         )

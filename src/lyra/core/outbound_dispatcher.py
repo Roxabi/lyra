@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-# Queue item: (kind: "send"|"streaming", msg: InboundMessage, payload)
+# Queue item: (kind, msg, payload) for send; (kind, msg, chunks, outbound) for streaming
 _ITEM = tuple
 
 
@@ -67,14 +67,17 @@ class OutboundDispatcher:
         self._queue.put_nowait(("send", msg, response))
 
     def enqueue_streaming(
-        self, msg: InboundMessage, chunks: AsyncIterator[str]
+        self,
+        msg: InboundMessage,
+        chunks: AsyncIterator[str],
+        outbound: OutboundMessage | None = None,
     ) -> None:
         """Enqueue a streaming response for delivery.
 
         Fire-and-forget: returns immediately. The worker task consumes the
         iterator and calls adapter.send_streaming() asynchronously.
         """
-        self._queue.put_nowait(("streaming", msg, chunks))
+        self._queue.put_nowait(("streaming", msg, chunks, outbound))
 
     async def start(self) -> None:
         """Spawn the background worker task."""
@@ -99,7 +102,11 @@ class OutboundDispatcher:
         while True:
             item = await self._queue.get()
             try:
-                kind, msg, payload = item
+                if len(item) == 4:
+                    kind, msg, payload, outbound = item
+                else:
+                    kind, msg, payload = item
+                    outbound = None
                 if self._circuit is not None and self._circuit.is_open():
                     log.warning(
                         '{"event": "%s_circuit_open", "action": "%s", "dropped": true}',
@@ -116,7 +123,12 @@ class OutboundDispatcher:
                     if kind == "send":
                         await self._adapter.send(msg, payload)
                     else:
-                        await self._adapter.send_streaming(msg, payload)
+                        if outbound is not None:
+                            await self._adapter.send_streaming(
+                                msg, payload, outbound
+                            )
+                        else:
+                            await self._adapter.send_streaming(msg, payload)
                     if self._circuit is not None:
                         self._circuit.record_success()
                 except BaseException as exc:

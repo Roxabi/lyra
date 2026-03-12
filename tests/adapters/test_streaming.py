@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.message import InboundMessage
+from lyra.core.message import InboundMessage, OutboundMessage
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -134,6 +134,23 @@ class TestTelegramStreaming:
         assert fallback_call.kwargs["text"] == "Hello world\\!"
         assert fallback_call.kwargs.get("parse_mode") == "MarkdownV2"
 
+    async def test_stores_reply_message_id_in_outbound(self) -> None:
+        adapter, bot = self._make_adapter()
+        msg = make_tg_message()
+        outbound = OutboundMessage.from_text("")
+
+        await adapter.send_streaming(msg, quick_chunks(), outbound)
+
+        assert outbound.metadata["reply_message_id"] == 999
+
+    async def test_no_outbound_still_works(self) -> None:
+        adapter, bot = self._make_adapter()
+        msg = make_tg_message()
+
+        await adapter.send_streaming(msg, quick_chunks())
+
+        bot.send_message.assert_awaited_once()
+
     async def test_mid_stream_error_appends_interrupted(self) -> None:
         adapter, bot = self._make_adapter()
         msg = make_tg_message()
@@ -192,6 +209,16 @@ class TestDiscordStreaming:
 
         last_edit = placeholder.edit.call_args
         assert "[response interrupted]" in last_edit.kwargs["content"]
+
+    async def test_stores_reply_message_id_in_outbound(self) -> None:
+        adapter, channel, placeholder = self._make_adapter()
+        placeholder.id = 777
+        msg = make_dc_message()
+        outbound = OutboundMessage.from_text("")
+
+        await adapter.send_streaming(msg, quick_chunks(), outbound)
+
+        assert outbound.metadata["reply_message_id"] == 777
 
     async def test_truncates_at_discord_max(self) -> None:
         adapter, channel, placeholder = self._make_adapter()

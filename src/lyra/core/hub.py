@@ -51,12 +51,16 @@ class ChannelAdapter(Protocol):
     ) -> None: ...
 
     async def send_streaming(
-        self, original_msg: InboundMessage, chunks: AsyncIterator[str]
+        self,
+        original_msg: InboundMessage,
+        chunks: AsyncIterator[str],
+        outbound: OutboundMessage | None = None,
     ) -> None:
         """Stream response to the channel with edit-in-place.
 
-        Default implementation accumulates all chunks and calls send().
-        Adapters override for progressive display.
+        When *outbound* is provided, adapters write the platform message ID
+        to ``outbound.metadata["reply_message_id"]`` after sending the
+        placeholder, mirroring the contract of :meth:`send`.
         """
         ...
 
@@ -299,17 +303,23 @@ class Hub:
         self._last_processed_at = time.monotonic()
 
     async def dispatch_streaming(
-        self, msg: InboundMessage, chunks: AsyncIterator[str]
+        self,
+        msg: InboundMessage,
+        chunks: AsyncIterator[str],
+        outbound: OutboundMessage | None = None,
     ) -> None:
         """Stream response back via the originating adapter.
 
         Routes through the OutboundDispatcher when one is registered (fire-and-forget).
         Falls back to a direct adapter call when no dispatcher is registered.
+
+        When *outbound* is provided it is forwarded to the adapter so the
+        platform message ID can be recorded in ``outbound.metadata``.
         """
         platform = Platform(msg.platform)
         dispatcher = self.outbound_dispatchers.get((platform, msg.bot_id))
         if dispatcher is not None:
-            dispatcher.enqueue_streaming(msg, chunks)
+            dispatcher.enqueue_streaming(msg, chunks, outbound)
             self._last_processed_at = time.monotonic()
             return
         # Fallback: direct adapter call (backward compat / no dispatcher registered)
@@ -320,7 +330,10 @@ class Hub:
                 "Call register_adapter() before dispatching responses."
             )
         if hasattr(adapter, "send_streaming"):
-            await adapter.send_streaming(msg, chunks)
+            if outbound is not None:
+                await adapter.send_streaming(msg, chunks, outbound)
+            else:
+                await adapter.send_streaming(msg, chunks)
         else:
             # Fallback: accumulate and send as one message
             text = ""

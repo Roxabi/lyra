@@ -526,15 +526,18 @@ class TelegramAdapter:
                 outbound.metadata["reply_message_id"] = sent.message_id
 
     async def send_streaming(
-        self, original_msg: InboundMessage, chunks: AsyncIterator[str]
+        self,
+        original_msg: InboundMessage,
+        chunks: AsyncIterator[str],
+        outbound: OutboundMessage | None = None,
     ) -> None:
         """Stream response with edit-in-place, debounced at ~500ms.
 
         Circuit breaker checks and recording are handled by OutboundDispatcher,
         not here. This method performs the bare streaming send and raises on failure.
 
-        TODO: store placeholder.message_id in response.metadata["reply_message_id"]
-        once send_streaming() receives a Response argument (#67).
+        When *outbound* is provided, ``outbound.metadata["reply_message_id"]``
+        is set to the placeholder message ID after it is sent.
         """
         if original_msg.platform != "telegram":
             log.error(
@@ -560,6 +563,8 @@ class TelegramAdapter:
             placeholder = await self.bot.send_message(
                 chat_id=chat_id, text=_placeholder_text
             )
+            if outbound is not None:
+                outbound.metadata["reply_message_id"] = placeholder.message_id
         except Exception:
             log.exception("Failed to send placeholder — falling back to non-streaming")
             async for chunk in chunks:

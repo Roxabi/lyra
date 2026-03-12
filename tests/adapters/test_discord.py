@@ -1204,6 +1204,7 @@ class TestDiscordOutboundMessage:
 
 
 # ---------------------------------------------------------------------------
+<<<<<<< HEAD
 # Inbound attachment extraction (#183)
 # ---------------------------------------------------------------------------
 
@@ -1341,3 +1342,129 @@ class TestDiscordAttachments:
         assert msg.text == "check this out"
         assert len(msg.attachments) == 1
         assert msg.attachments[0].type == "image"
+
+
+# ---------------------------------------------------------------------------
+# Slice S5: DiscordAdapter auth gate tests
+# ---------------------------------------------------------------------------
+
+
+def _make_discord_msg_ns(user_id: int = 42, roles: list | None = None) -> object:
+    """Build a minimal discord-like message SimpleNamespace."""
+    author_kwargs: dict = {
+        "id": user_id,
+        "name": "Alice",
+        "display_name": "Alice",
+        "bot": False,
+    }
+    if roles is not None:
+        author_kwargs["roles"] = [SimpleNamespace(name=r) for r in roles]
+    return SimpleNamespace(
+        guild=SimpleNamespace(id=111),
+        channel=SimpleNamespace(id=333, send=AsyncMock()),
+        author=SimpleNamespace(**author_kwargs),
+        content="hello",
+        created_at=datetime.now(timezone.utc),
+        id=555,
+        mentions=[],
+        reply=AsyncMock(),
+        attachments=[],
+    )
+
+
+class TestDiscordAuth:
+    """Auth gate tests for DiscordAdapter.on_message."""
+
+    @pytest.mark.asyncio
+    async def test_blocked_user_skips_normalize(self) -> None:
+        """BLOCKED user: on_message returns early without calling normalize()."""
+        from unittest.mock import patch
+
+        from lyra.adapters.discord import DiscordAdapter
+        from lyra.core.auth import AuthMiddleware, TrustLevel
+
+        auth = MagicMock(spec=AuthMiddleware)
+        auth.check.return_value = TrustLevel.BLOCKED
+
+        hub = MagicMock()
+        hub.inbound_bus = MagicMock()
+        hub.inbound_bus.put = MagicMock()
+        adapter = DiscordAdapter(
+            hub=hub, bot_id="main", intents=discord.Intents.none(), auth=auth
+        )
+        adapter._bot_user = SimpleNamespace(id=999, bot=True)
+
+        with patch.object(adapter, "normalize") as mock_norm:
+            await adapter.on_message(_make_discord_msg_ns())
+
+        mock_norm.assert_not_called()
+        hub.inbound_bus.put.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_role_match_returns_trust(self) -> None:
+        """User with a matching role: message produced with correct trust_level."""
+        from lyra.adapters.discord import DiscordAdapter
+        from lyra.core.auth import AuthMiddleware, TrustLevel
+
+        auth = MagicMock(spec=AuthMiddleware)
+        auth.check.return_value = TrustLevel.TRUSTED
+
+        hub = MagicMock()
+        hub.inbound_bus = MagicMock()
+        hub.inbound_bus.put = MagicMock()
+        adapter = DiscordAdapter(
+            hub=hub, bot_id="main", intents=discord.Intents.none(), auth=auth
+        )
+        adapter._bot_user = SimpleNamespace(id=999, bot=True)
+
+        msg_ns = _make_discord_msg_ns(roles=["friends"])
+        await adapter.on_message(msg_ns)
+
+        # Verify roles were passed to auth.check
+        call_kwargs = auth.check.call_args
+        assert call_kwargs is not None
+        passed_roles = call_kwargs.kwargs.get("roles") or (
+            call_kwargs.args[1] if len(call_kwargs.args) > 1 else []
+        )
+        assert "friends" in passed_roles
+
+    @pytest.mark.asyncio
+    async def test_dm_fallback_user_id_only(self) -> None:
+        """DM message (no roles attribute): auth.check called with roles=[]."""
+        from lyra.adapters.discord import DiscordAdapter
+        from lyra.core.auth import AuthMiddleware, TrustLevel
+
+        auth = MagicMock(spec=AuthMiddleware)
+        auth.check.return_value = TrustLevel.PUBLIC
+
+        hub = MagicMock()
+        hub.inbound_bus = MagicMock()
+        hub.inbound_bus.put = MagicMock()
+        adapter = DiscordAdapter(
+            hub=hub, bot_id="main", intents=discord.Intents.none(), auth=auth
+        )
+        adapter._bot_user = SimpleNamespace(id=999, bot=True)
+
+        # No roles attribute on author (DM scenario)
+        dm_msg = SimpleNamespace(
+            guild=None,
+            channel=SimpleNamespace(id=333, send=AsyncMock()),
+            author=SimpleNamespace(
+                id=42, name="Alice", display_name="Alice", bot=False
+            ),
+            content="hello",
+            created_at=datetime.now(timezone.utc),
+            id=555,
+            mentions=[],
+            reply=AsyncMock(),
+            attachments=[],
+        )
+
+        await adapter.on_message(dm_msg)
+
+        call_kwargs = auth.check.call_args
+        assert call_kwargs is not None
+        passed_roles = call_kwargs.kwargs.get("roles") or (
+            call_kwargs.args[1] if len(call_kwargs.args) > 1 else []
+        )
+        assert passed_roles == []

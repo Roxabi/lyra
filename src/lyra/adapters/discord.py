@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from lyra.core.hub import Hub
 
 from lyra.adapters._shared import parse_reply_to_id, push_to_hub_guarded
+from lyra.core.auth import AuthMiddleware, TrustLevel
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
@@ -112,6 +113,7 @@ class DiscordAdapter(discord.Client):
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
         auto_thread: bool = True,
+        auth: AuthMiddleware | None = None,
     ) -> None:
         if intents is None:
             intents = discord.Intents.default()
@@ -122,6 +124,7 @@ class DiscordAdapter(discord.Client):
         self._circuit_registry = circuit_registry
         self._msg_manager = msg_manager
         self._auto_thread = auto_thread
+        self._auth = auth
         self._max_audio_bytes: int = int(
             os.environ.get("LYRA_MAX_AUDIO_BYTES", 5 * 1024 * 1024)
         )
@@ -156,7 +159,11 @@ class DiscordAdapter(discord.Client):
             )
 
     def normalize_audio(
-        self, raw: Any, audio_bytes: bytes, mime_type: str
+        self,
+        raw: Any,
+        audio_bytes: bytes,
+        mime_type: str,
+        trust_level: TrustLevel = TrustLevel.TRUSTED,
     ) -> InboundAudio:
         """Build an InboundAudio envelope from a Discord audio message.
 
@@ -182,6 +189,7 @@ class DiscordAdapter(discord.Client):
             timestamp=timestamp,
             user_name=(getattr(raw.author, "display_name", None) or raw.author.name),
             is_mention=False,
+            trust_level=trust_level,
             platform_meta={
                 "guild_id": raw.guild.id if raw.guild else None,
                 "channel_id": raw.channel.id,
@@ -195,6 +203,7 @@ class DiscordAdapter(discord.Client):
         *,
         thread_id: int | None = None,
         channel_id: int | None = None,
+        trust_level: TrustLevel = TrustLevel.TRUSTED,
     ) -> InboundMessage:
         """Convert a discord.py Message (or SimpleNamespace) to InboundMessage.
 
@@ -266,6 +275,7 @@ class DiscordAdapter(discord.Client):
             attachments=attachments,
             timestamp=timestamp,
             trust="user",
+            trust_level=trust_level,
             platform_meta={
                 "guild_id": raw.guild.id if raw.guild else None,
                 "channel_id": resolved_channel_id,
@@ -285,6 +295,20 @@ class DiscordAdapter(discord.Client):
         # Discard bot messages early — before normalization to avoid waste.
         if message.author.bot:
             return
+
+        # Auth gate — runs before normalize() and before audio handling.
+        trust = TrustLevel.TRUSTED
+        if self._auth is not None:
+            user_id = f"dc:user:{message.author.id}"
+            roles = (
+                [r.name for r in message.author.roles]
+                if hasattr(message.author, "roles")
+                else []
+            )
+            trust = self._auth.check(user_id, roles=roles)
+            if trust == TrustLevel.BLOCKED:
+                log.info("auth_reject user=%s channel=discord", user_id)
+                return
 
         # Audio attachment detection
         audio_attachment = next(
@@ -389,6 +413,7 @@ class DiscordAdapter(discord.Client):
                 message,
                 thread_id=resolved_thread_id,
                 channel_id=resolved_channel_id,
+                trust_level=trust,
             )
         except Exception:
             log.exception("Failed to normalize discord message id=%s", message.id)

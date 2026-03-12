@@ -19,7 +19,9 @@ import pytest
 from lyra.core.agent import Agent
 from lyra.core.hub import Hub, _is_group_message
 from lyra.core.message import (
-    InboundMessage,
+    DiscordContext,
+    InboundInboundMessage,
+    OutboundMessage,
     Platform,
     Response,
 )
@@ -614,15 +616,15 @@ class TestHubGate:
         hub.register_agent(agent)
         return hub
 
-    def _make_capturing_adapter(self) -> tuple[object, list[Response]]:
+    def _make_capturing_adapter(self) -> tuple[object, list[OutboundMessage]]:
         """Return (adapter, captured_responses) pair."""
-        captured: list[Response] = []
+        captured: list[OutboundMessage] = []
 
         class CapturingAdapter:
             async def send(
-                self, original_msg: InboundMessage, response: Response
+                self, original_msg: InboundMessage, outbound: OutboundMessage
             ) -> None:
-                captured.append(response)
+                captured.append(outbound)
 
             async def send_streaming(
                 self, original_msg: InboundMessage, chunks: object
@@ -650,7 +652,7 @@ class TestHubGate:
         await self._run_hub_once(hub, msg)
 
         assert len(captured) == 1
-        assert "not paired" in captured[0].content.lower()
+        assert "not paired" in str(captured[0].content).lower()
 
     async def test_unpaired_group_message_silently_dropped(self) -> None:
         pm = await make_pm(enabled=True)
@@ -683,7 +685,7 @@ class TestHubGate:
         # The key assertion: no "not paired" rejection was sent
         assert len(captured) >= 1, "expected a response, not a silent drop"
         for resp in captured:
-            assert "not paired" not in resp.content.lower()
+            assert "not paired" not in str(resp.content).lower()
 
     async def test_admin_bypasses_gate(self) -> None:
         pm = await make_pm(enabled=True)
@@ -699,7 +701,7 @@ class TestHubGate:
         # Should have a response (agent processed it) — not a rejection
         assert len(captured) >= 1, "admin should not be blocked"
         for resp in captured:
-            assert "not paired" not in resp.content.lower()
+            assert "not paired" not in str(resp.content).lower()
 
     async def test_gate_inactive_when_disabled(self) -> None:
         pm = await make_pm(enabled=False)
@@ -715,7 +717,7 @@ class TestHubGate:
         # No rejection since gate is disabled
         assert len(captured) >= 1, "gate should be inactive"
         for resp in captured:
-            assert "not paired" not in resp.content.lower()
+            assert "not paired" not in str(resp.content).lower()
 
     async def test_expired_session_rejected(self) -> None:
         pm = await make_pm(enabled=True)
@@ -739,7 +741,7 @@ class TestHubGate:
         await self._run_hub_once(hub, msg)
 
         assert len(captured) == 1
-        assert "not paired" in captured[0].content.lower()
+        assert "not paired" in str(captured[0].content).lower()
 
     async def test_discord_unpaired_dm_rejected(self) -> None:
         pm = await make_pm(enabled=True)
@@ -758,7 +760,7 @@ class TestHubGate:
         await self._run_hub_once(hub, msg)
 
         assert len(captured) == 1
-        assert "not paired" in captured[0].content.lower()
+        assert "not paired" in str(captured[0].content).lower()
 
     async def test_discord_unpaired_guild_silently_dropped(self) -> None:
         pm = await make_pm(enabled=True)

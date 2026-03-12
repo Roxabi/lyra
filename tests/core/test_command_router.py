@@ -29,7 +29,13 @@ from lyra.core.agent import Agent, AgentBase, load_agent_config
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.command_router import CommandConfig, CommandRouter
 from lyra.core.hub import Hub
-from lyra.core.message import InboundMessage, Platform, Response
+from lyra.core.message import (
+    InboundInboundMessage,
+    OutboundMessage,
+    Platform,
+    Response,
+    TelegramContext,
+)
 from lyra.core.messages import MessageManager
 from lyra.core.plugin_loader import PluginLoader
 from lyra.core.pool import Pool
@@ -383,7 +389,12 @@ class TestPassthroughNonCommandInHub:
 
         class CapturingAdapter:
             async def send(
-                self, original_msg: InboundMessage, response: Response
+                self, original_msg: InboundMessage, outbound: OutboundMessage
+            ) -> None:
+                pass
+
+            async def send_streaming(
+                self, original_msg: InboundMessage, chunks: object
             ) -> None:
                 pass
 
@@ -428,7 +439,12 @@ class TestPassthroughNonCommandInHub:
 
         class CapturingAdapter:
             async def send(
-                self, original_msg: InboundMessage, response: Response
+                self, original_msg: InboundMessage, outbound: OutboundMessage
+            ) -> None:
+                pass
+
+            async def send_streaming(
+                self, original_msg: InboundMessage, chunks: object
             ) -> None:
                 pass
 

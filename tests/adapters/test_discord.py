@@ -163,7 +163,7 @@ async def test_own_message_is_filtered() -> None:
 async def test_send_reply_on_mention() -> None:
     """adapter.send() calls msg.reply(text) when is_mention=True."""
     from lyra.adapters.discord import DiscordAdapter
-    from lyra.core.message import InboundMessage, Response
+    from lyra.core.message import InboundMessage, OutboundMessage
 
     hub = MagicMock()
     adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
@@ -193,9 +193,8 @@ async def test_send_reply_on_mention() -> None:
             "channel_type": "text",
         },
     )
-    response = Response(content="hi")
 
-    await adapter.send(hub_msg, response)
+    await adapter.send(hub_msg, OutboundMessage.from_text("hi"))
 
     mock_channel.fetch_message.assert_awaited_once_with(555)
     mock_message.reply.assert_awaited_once_with("hi")
@@ -210,7 +209,7 @@ async def test_send_reply_on_mention() -> None:
 async def test_send_channel_on_no_mention() -> None:
     """send() calls channel.send(text) when is_mention=False."""
     from lyra.adapters.discord import DiscordAdapter
-    from lyra.core.message import InboundMessage, Response
+    from lyra.core.message import InboundMessage, OutboundMessage
 
     hub = MagicMock()
     adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
@@ -238,9 +237,8 @@ async def test_send_channel_on_no_mention() -> None:
             "channel_type": "text",
         },
     )
-    response = Response(content="hi")
 
-    await adapter.send(hub_msg, response)
+    await adapter.send(hub_msg, OutboundMessage.from_text("hi"))
 
     mock_channel.send.assert_awaited_once_with("hi")
 
@@ -575,7 +573,7 @@ async def test_send_skips_when_discord_circuit_open() -> None:
     CB check is owned by OutboundDispatcher. Adapter always delivers.
     """
     from lyra.adapters.discord import DiscordAdapter
-    from lyra.core.message import InboundMessage, Response
+    from lyra.core.message import InboundMessage, OutboundMessage
 
     # Arrange
     registry = _make_open_registry("discord")
@@ -611,10 +609,9 @@ async def test_send_skips_when_discord_circuit_open() -> None:
             "channel_type": "text",
         },
     )
-    response = Response(content="hi")
 
     # Act
-    await adapter.send(hub_msg, response)
+    await adapter.send(hub_msg, OutboundMessage.from_text("hi"))
 
     # Assert — CB is open but adapter still calls channel.send (CB check in dispatcher)
     mock_channel.send.assert_awaited_once()
@@ -673,9 +670,9 @@ async def test_discord_msg_manager_injection_backpressure_ack() -> None:
 
 @pytest.mark.asyncio
 async def test_send_stores_reply_message_id_channel_send() -> None:
-    """send() via channel.send() stores sent message id in response.metadata."""
+    """send() via channel.send() stores sent message id in outbound.metadata."""
     from lyra.adapters.discord import DiscordAdapter
-    from lyra.core.message import InboundMessage, Response
+    from lyra.core.message import InboundMessage, OutboundMessage
 
     # Arrange
     hub = MagicMock()
@@ -705,14 +702,14 @@ async def test_send_stores_reply_message_id_channel_send() -> None:
             "channel_type": "text",
         },
     )
-    response = Response(content="hi")
+    outbound = OutboundMessage.from_text("hi")
 
     # Act
-    await adapter.send(hub_msg, response)
+    await adapter.send(hub_msg, outbound)
 
     # Assert
     mock_channel.send.assert_awaited_once_with("hi")
-    assert response.metadata["reply_message_id"] == 888
+    assert outbound.metadata["reply_message_id"] == 888
 
 
 # ---------------------------------------------------------------------------
@@ -722,9 +719,9 @@ async def test_send_stores_reply_message_id_channel_send() -> None:
 
 @pytest.mark.asyncio
 async def test_send_stores_reply_message_id_msg_reply() -> None:
-    """send() via msg.reply() stores sent message id in response.metadata."""
+    """send() via msg.reply() stores sent message id in outbound.metadata."""
     from lyra.adapters.discord import DiscordAdapter
-    from lyra.core.message import InboundMessage, Response
+    from lyra.core.message import InboundMessage, OutboundMessage
 
     # Arrange
     hub = MagicMock()
@@ -756,15 +753,15 @@ async def test_send_stores_reply_message_id_msg_reply() -> None:
             "channel_type": "text",
         },
     )
-    response = Response(content="hi")
+    outbound = OutboundMessage.from_text("hi")
 
     # Act
-    await adapter.send(hub_msg, response)
+    await adapter.send(hub_msg, outbound)
 
     # Assert
     mock_channel.fetch_message.assert_awaited_once_with(555)
     mock_message.reply.assert_awaited_once_with("hi")
-    assert response.metadata["reply_message_id"] == 7777
+    assert outbound.metadata["reply_message_id"] == 7777
 
 
 # ---------------------------------------------------------------------------
@@ -776,7 +773,7 @@ async def test_send_stores_reply_message_id_msg_reply() -> None:
 async def test_send_no_reply_message_id_on_failure() -> None:
     """send() must NOT set reply_message_id in metadata when the send call throws."""
     from lyra.adapters.discord import DiscordAdapter
-    from lyra.core.message import InboundMessage, Response
+    from lyra.core.message import InboundMessage, OutboundMessage
 
     # Arrange
     hub = MagicMock()
@@ -805,14 +802,14 @@ async def test_send_no_reply_message_id_on_failure() -> None:
             "channel_type": "text",
         },
     )
-    response = Response(content="hi")
+    outbound = OutboundMessage.from_text("hi")
 
     # Act — send() now raises on failure (CB recording handled by OutboundDispatcher)
     with pytest.raises(Exception, match="network error"):
-        await adapter.send(hub_msg, response)
+        await adapter.send(hub_msg, outbound)
 
     # Assert
-    assert "reply_message_id" not in response.metadata
+    assert "reply_message_id" not in outbound.metadata
 
 
 # ---------------------------------------------------------------------------
@@ -1031,3 +1028,160 @@ def test_normalize_empty_text() -> None:
     msg = adapter.normalize(discord_msg)
     assert isinstance(msg, InboundMessage)
     assert msg.text == ""
+
+
+# ---------------------------------------------------------------------------
+# RED — Slice 4: OutboundMessage render tests for DiscordAdapter (#138)
+# ---------------------------------------------------------------------------
+
+from lyra.core.message import (  # noqa: E402,F401 — Slice V2 green
+    Button,
+    OutboundMessage,
+)
+
+
+def _make_discord_adapter():
+    """Build a DiscordAdapter with a MagicMock hub."""
+    from lyra.adapters.discord import DiscordAdapter  # ImportError expected in RED
+
+    hub = MagicMock()
+    return DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+
+
+def _make_discord_message(*, is_mention: bool = False):
+    """Build a minimal InboundMessage for adapter.send() calls."""
+    from datetime import datetime, timezone
+
+    from lyra.core.message import InboundMessage
+
+    return InboundMessage(
+        id="msg-dc-138",
+        platform="discord",
+        bot_id="main",
+        scope_id="channel:333",
+        user_id="dc:user:42",
+        user_name="Alice",
+        is_mention=is_mention,
+        text="hello",
+        text_raw="hello",
+        timestamp=datetime.now(timezone.utc),
+        platform_meta={
+            "guild_id": 111,
+            "channel_id": 333,
+            "message_id": 555,
+            "thread_id": None,
+            "channel_type": "text",
+        },
+    )
+
+
+class TestDiscordOutboundMessage:
+    """Slice 4 RED tests — DiscordAdapter rendering of OutboundMessage."""
+
+    @pytest.mark.asyncio
+    async def test_send_accepts_outbound_message(self) -> None:
+        """adapter.send(msg, OutboundMessage.from_text("hello")) calls channel.send."""
+        # Arrange
+        adapter = _make_discord_adapter()
+
+        sent_mock = SimpleNamespace(id=88)
+        mock_channel = AsyncMock()
+        mock_channel.send = AsyncMock(return_value=sent_mock)
+        adapter.get_channel = MagicMock(return_value=mock_channel)
+
+        outbound = OutboundMessage.from_text("hello")
+        original_msg = _make_discord_message()
+
+        # Act
+        await adapter.send(original_msg, outbound)
+
+        # Assert
+        mock_channel.send.assert_awaited()
+
+    def test_render_text_chunks_at_2000(self) -> None:
+        """_render_text("x" * 2500) returns 2 chunks, each ≤ 2000 characters."""
+        # Arrange
+        adapter = _make_discord_adapter()
+        text = "x" * 2500
+
+        # Act
+        chunks = adapter._render_text(text)  # type: ignore[attr-defined]
+
+        # Assert
+        assert len(chunks) == 2
+        assert all(len(c) <= 2000 for c in chunks)
+
+    def test_render_buttons_none_when_empty(self) -> None:
+        """_render_buttons([]) returns None."""
+        # Arrange
+        adapter = _make_discord_adapter()
+
+        # Act
+        result = adapter._render_buttons([])  # type: ignore[attr-defined]
+
+        # Assert
+        assert result is None
+
+    def test_render_buttons_returns_view(self) -> None:
+        """_render_buttons([Button("Yes","yes")]) returns a discord.ui.View."""
+        # Arrange
+        adapter = _make_discord_adapter()
+
+        # Act
+        result = adapter._render_buttons([Button("Yes", "yes")])  # type: ignore[attr-defined]
+
+        # Assert
+        assert isinstance(result, discord.ui.View)
+
+    @pytest.mark.asyncio
+    async def test_buttons_only_on_last_chunk(self) -> None:
+        """Sending OutboundMessage with long content + buttons: first channel.send
+        call has no view (or view=None), second (last) call has view set."""
+        # Arrange
+        adapter = _make_discord_adapter()
+
+        calls: list[dict] = []
+
+        async def capture_send(*args, **kwargs):  # type: ignore[return]
+            calls.append(dict(kwargs))
+            return SimpleNamespace(id=len(calls))
+
+        mock_channel = AsyncMock()
+        mock_channel.send = capture_send
+        adapter.get_channel = MagicMock(return_value=mock_channel)
+
+        outbound = OutboundMessage(
+            content=["x" * 2500],
+            buttons=[Button("Yes", "yes")],
+        )
+        original_msg = _make_discord_message(is_mention=False)
+
+        # Act
+        await adapter.send(original_msg, outbound)
+
+        # Assert — two send calls made (2500 chars → 2 chunks of ≤ 2000)
+        assert len(calls) == 2, f"Expected 2 channel.send calls, got {len(calls)}"
+        # First chunk: no view, or view is None
+        assert calls[0].get("view") is None or "view" not in calls[0]
+        # Last chunk: view is set (truthy)
+        assert calls[1].get("view") is not None
+
+    @pytest.mark.asyncio
+    async def test_reply_message_id_stored_in_metadata(self) -> None:
+        """send() stores the reply message id in outbound.metadata."""
+        # Arrange
+        adapter = _make_discord_adapter()
+
+        sent_mock = SimpleNamespace(id=7654)
+        mock_channel = AsyncMock()
+        mock_channel.send = AsyncMock(return_value=sent_mock)
+        adapter.get_channel = MagicMock(return_value=mock_channel)
+
+        outbound = OutboundMessage.from_text("hi")
+        original_msg = _make_discord_message()
+
+        # Act
+        await adapter.send(original_msg, outbound)
+
+        # Assert
+        assert outbound.metadata.get("reply_message_id") == 7654

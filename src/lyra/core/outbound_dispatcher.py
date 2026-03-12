@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 from anthropic import APIError as AnthropicAPIError
 
 from .circuit_breaker import CircuitBreaker, CircuitRegistry
-from .message import InboundMessage, Response
+from .message import InboundMessage, OutboundMessage
 
 if TYPE_CHECKING:
     from lyra.core.hub import ChannelAdapter
@@ -59,7 +59,7 @@ class OutboundDispatcher:
         self._queue: asyncio.Queue[_ITEM] = asyncio.Queue()
         self._worker: asyncio.Task[None] | None = None
 
-    def enqueue(self, msg: InboundMessage, response: Response) -> None:
+    def enqueue(self, msg: InboundMessage, response: OutboundMessage) -> None:
         """Enqueue a non-streaming response for delivery.
 
         Fire-and-forget: returns immediately. The worker task delivers asynchronously.

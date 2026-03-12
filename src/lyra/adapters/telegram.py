@@ -23,11 +23,12 @@ from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
     Attachment,
+    CodeBlock,
     InboundMessage,
     OutboundAudio,
+    OutboundMessage,
     Platform,
     RenderContext,
-    Response,
     TelegramContext,
 )
 from lyra.core.messages import MessageManager
@@ -35,6 +36,27 @@ from lyra.core.messages import MessageManager
 log = logging.getLogger(__name__)
 
 TELEGRAM_MAX_LENGTH = 4096  # Telegram Bot API text message limit
+
+
+def _outbound_to_text(outbound: OutboundMessage) -> str:
+    """Flatten OutboundMessage content parts to a plain text string.
+
+    Handles str (plain text) and CodeBlock parts. Attachment parts are
+    rendered as their URL. This is the minimal adapter-layer rendering
+    used until _render_text / _render_buttons are implemented (Slice V3).
+    """
+    parts: list[str] = []
+    for part in outbound.content:
+        if isinstance(part, str):
+            parts.append(part)
+        elif isinstance(part, CodeBlock):
+            lang = part.language or ""
+            parts.append(f"```{lang}\n{part.code}\n```")
+        else:
+            # Attachment
+            caption = f" — {part.caption}" if part.caption else ""
+            parts.append(f"{part.url}{caption}")
+    return "\n".join(parts)
 
 
 @dataclass(frozen=True)
@@ -399,7 +421,7 @@ class TelegramAdapter:
         # the update indefinitely.
         await self._push_to_hub(hub_msg)
 
-    async def send(self, original_msg: InboundMessage, response: Response) -> None:
+    async def send(self, original_msg: InboundMessage, outbound: OutboundMessage) -> None:
         """Send a response back to Telegram via bot.send_message.
 
         Circuit breaker checks and recording are handled by OutboundDispatcher,
@@ -417,9 +439,10 @@ class TelegramAdapter:
                 "platform_meta missing required key 'chat_id' for send()"
             )
 
-        sent = await self.bot.send_message(chat_id=chat_id, text=response.content)
+        text = _outbound_to_text(outbound)
+        sent = await self.bot.send_message(chat_id=chat_id, text=text)
         # Store for session persistence (#67) and reply-to-resume (#83).
-        response.metadata["reply_message_id"] = sent.message_id
+        outbound.metadata["reply_message_id"] = sent.message_id
 
     async def send_streaming(
         self, original_msg: InboundMessage, chunks: AsyncIterator[str]
@@ -461,7 +484,7 @@ class TelegramAdapter:
             async for chunk in chunks:
                 accumulated += chunk
             fallback_content = accumulated or _placeholder_text
-            await self.send(original_msg, Response(content=fallback_content))
+            await self.send(original_msg, OutboundMessage.from_text(fallback_content))
             return
 
         last_edit = time.monotonic()

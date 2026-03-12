@@ -18,18 +18,40 @@ if TYPE_CHECKING:
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
+    CodeBlock,
     DiscordContext,
     InboundMessage,
     OutboundAudio,
+    OutboundMessage,
     Platform,
     RenderContext,
-    Response,
 )
 from lyra.core.messages import MessageManager
 
 log = logging.getLogger(__name__)
 
 DISCORD_MAX_LENGTH = 2000  # Discord API message length limit
+
+
+def _outbound_to_text(outbound: OutboundMessage) -> str:
+    """Flatten OutboundMessage content parts to a plain text string.
+
+    Handles str (plain text) and CodeBlock parts. Attachment parts are
+    rendered as their URL. This is the minimal adapter-layer rendering
+    used until _render_text / _render_buttons are implemented (Slice V3).
+    """
+    parts: list[str] = []
+    for part in outbound.content:
+        if isinstance(part, str):
+            parts.append(part)
+        elif isinstance(part, CodeBlock):
+            lang = part.language or ""
+            parts.append(f"```{lang}\n{part.code}\n```")
+        else:
+            # Attachment
+            caption = f" — {part.caption}" if part.caption else ""
+            parts.append(f"{part.url}{caption}")
+    return "\n".join(parts)
 _AUTO_THREAD_TRUE = frozenset({"1", "true", "yes", "on"})
 
 
@@ -249,7 +271,7 @@ class DiscordAdapter(discord.Client):
             )
             await message.reply(text)
 
-    async def send(self, original_msg: InboundMessage, response: Response) -> None:
+    async def send(self, original_msg: InboundMessage, outbound: OutboundMessage) -> None:
         """Send response back to Discord.
 
         Circuit breaker checks and recording are handled by OutboundDispatcher,
@@ -276,7 +298,7 @@ class DiscordAdapter(discord.Client):
         if send_channel is None:
             send_channel = await self.fetch_channel(send_to_id)
 
-        content = response.content[:DISCORD_MAX_LENGTH]
+        content = _outbound_to_text(outbound)[:DISCORD_MAX_LENGTH]
 
         messageable = cast(discord.abc.Messageable, send_channel)
         if original_msg.is_mention and thread_id is None:
@@ -292,8 +314,10 @@ class DiscordAdapter(discord.Client):
             # Thread exists (send in thread) or non-mention: plain send.
             sent = await messageable.send(content)
         # Store for session persistence (#67) and reply-to-resume (#83).
-        response.metadata["reply_message_id"] = sent.id
-        log.debug("stored reply_message_id=%s for msg_id=%s", sent.id, original_msg.id)
+        outbound.metadata["reply_message_id"] = sent.id
+        log.debug(
+            "stored reply_message_id=%s for msg_id=%s", sent.id, original_msg.id
+        )
 
     async def send_streaming(
         self, original_msg: InboundMessage, chunks: AsyncIterator[str]
@@ -340,7 +364,7 @@ class DiscordAdapter(discord.Client):
             async for chunk in chunks:
                 accumulated += chunk
             fallback_content = accumulated or _placeholder_text
-            await self.send(original_msg, Response(content=fallback_content))
+            await self.send(original_msg, OutboundMessage.from_text(fallback_content))
             return
 
         last_edit = time.monotonic()

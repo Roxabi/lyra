@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 from lyra.core.circuit_breaker import CircuitBreaker
 from lyra.core.message import (
     InboundMessage,
-    Response,
+    OutboundMessage,
 )
 from lyra.core.outbound_dispatcher import OutboundDispatcher
 
@@ -50,11 +50,11 @@ class TestOutboundDispatcherEnqueue:
         await dispatcher.start()
         try:
             msg = _make_msg()
-            response = Response(content="hi")
-            dispatcher.enqueue(msg, response)
+            outbound = OutboundMessage.from_text("hi")
+            dispatcher.enqueue(msg, outbound)
             # Wait for worker to process
             await asyncio.sleep(0.05)
-            adapter.send.assert_awaited_once_with(msg, response)
+            adapter.send.assert_awaited_once_with(msg, outbound)
         finally:
             await dispatcher.stop()
 
@@ -81,9 +81,9 @@ class TestOutboundDispatcherEnqueue:
         try:
             msg = _make_msg()
             # Enqueue 3 items quickly — worker is blocked on the first
-            dispatcher.enqueue(msg, Response(content="1"))
-            dispatcher.enqueue(msg, Response(content="2"))
-            dispatcher.enqueue(msg, Response(content="3"))
+            dispatcher.enqueue(msg, OutboundMessage.from_text("1"))
+            dispatcher.enqueue(msg, OutboundMessage.from_text("2"))
+            dispatcher.enqueue(msg, OutboundMessage.from_text("3"))
             assert dispatcher.qsize() >= 2  # 3 enqueued, worker blocked on 1st
         finally:
             await dispatcher.stop()
@@ -104,7 +104,7 @@ class TestOutboundDispatcherCircuitBreaker:
         await dispatcher.start()
         try:
             msg = _make_msg()
-            dispatcher.enqueue(msg, Response(content="hi"))
+            dispatcher.enqueue(msg, OutboundMessage.from_text("hi"))
             await asyncio.sleep(0.05)
             # Circuit is open — adapter.send should NOT be called
             adapter.send.assert_not_awaited()
@@ -127,7 +127,7 @@ class TestOutboundDispatcherCircuitBreaker:
         await dispatcher.start()
         try:
             msg = _make_msg()
-            dispatcher.enqueue(msg, Response(content="hi"))
+            dispatcher.enqueue(msg, OutboundMessage.from_text("hi"))
             await asyncio.sleep(0.05)
             adapter.send.assert_awaited_once()
             # CB should be closed after successful send
@@ -148,7 +148,7 @@ class TestOutboundDispatcherCircuitBreaker:
         await dispatcher.start()
         try:
             msg = _make_msg()
-            dispatcher.enqueue(msg, Response(content="hi"))
+            dispatcher.enqueue(msg, OutboundMessage.from_text("hi"))
             await asyncio.sleep(0.05)
             assert cb._failure_count >= 1
         finally:
@@ -160,3 +160,24 @@ class TestOutboundDispatcherCircuitBreaker:
         assert dispatcher._worker is not None
         await dispatcher.stop()
         assert dispatcher._worker is None
+
+
+# ---------------------------------------------------------------------------
+# RED — #138: OutboundDispatcher accepts OutboundMessage (Slice V2)
+# ---------------------------------------------------------------------------
+
+
+def test_enqueue_accepts_outbound_message() -> None:
+    """OutboundDispatcher.enqueue() must accept an OutboundMessage payload
+    without raising TypeError (issue #138, U3)."""
+    from lyra.core.message import OutboundMessage
+
+    # Arrange
+    adapter = MagicMock()
+    adapter.send = AsyncMock()
+    dispatcher = OutboundDispatcher(platform_name="telegram", adapter=adapter)
+    mock_msg = _make_msg()
+    outbound = OutboundMessage.from_text("test")
+
+    # Act / Assert — must not raise TypeError
+    dispatcher.enqueue(mock_msg, outbound)

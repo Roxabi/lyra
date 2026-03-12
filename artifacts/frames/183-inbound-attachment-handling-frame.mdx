@@ -1,0 +1,44 @@
+---
+title: "Incoming attachment handling — typed InboundAttachment"
+issue: 183
+status: approved
+tier: F-lite
+date: 2026-03-12
+---
+
+## Problem
+
+When users send images, documents, or files to Lyra via Discord or Telegram, these attachments are silently ignored. Audio attachments are detected but replied to with "not yet supported." The `Attachment` dataclass and `InboundMessage.attachments` field already exist in `core/message.py`, but neither adapter populates them for non-audio content.
+
+This blocks any downstream feature that needs to process user-uploaded media (image understanding, document parsing, file storage).
+
+## Who
+
+- **Primary:** Lyra users sending images/documents/files via Discord or Telegram
+- **Secondary:** Agent consumers (e.g. vision-capable LLMs) that need attachment metadata to process media
+
+## Constraints
+
+- Must use the existing `Attachment` dataclass (`core/message.py:17–24`) — no new envelope type needed
+- Lazy approach: store platform URL or file_id in `url_or_bytes`, don't download bytes during normalization (normalization = converting platform-specific formats into the common `Attachment` dataclass)
+- Must not block the ingest pipeline — attachment metadata extraction should be lightweight
+- Part of epic #139 (Message & Media Normalization) — must align with existing `InboundMessage` / `InboundAudio` patterns
+- Discord attachments have direct CDN URLs; Telegram requires Bot API `getFile` call to resolve file_id → URL
+
+## Out of Scope
+
+- Downloading/fetching attachment bytes (future: add async fetch helper)
+- Processing attachments (vision, OCR, etc.) — that's consumer logic
+- Outbound attachment sending
+- Size/type filtering — consumers decide what to handle
+- Audio attachments (already partially handled, separate issue)
+
+## Complexity
+
+**Tier: F-lite** — Clear scope, single domain (adapters), known patterns.
+
+- ~4–5 files touched: `discord.py`, `telegram.py`, `message.py` (minor if needed), + tests
+- Known patterns: follows existing `normalize()` / `normalize_audio()` flow
+- Single domain: adapters layer only
+- No new architecture: reuses existing `Attachment` dataclass and `InboundMessage.attachments` field
+- Low risk: additive change, no existing behavior modified

@@ -271,6 +271,22 @@ class DiscordAdapter(discord.Client):
             )
             await message.reply(text)
 
+    def _render_text(self, text: str) -> list[str]:
+        """Split text into ≤2000-char chunks (Discord limit). No escaping needed."""
+        if not text:
+            return [""]
+        return [text[i:i + DISCORD_MAX_LENGTH]
+                for i in range(0, len(text), DISCORD_MAX_LENGTH)]
+
+    def _render_buttons(self, buttons: list) -> discord.ui.View | None:
+        """Convert list[Button] to discord.ui.View with buttons, or None if empty."""
+        if not buttons:
+            return None
+        view = discord.ui.View()
+        for b in buttons:
+            view.add_item(discord.ui.Button(label=b.text, custom_id=b.callback_data))
+        return view
+
     async def send(self, original_msg: InboundMessage, outbound: OutboundMessage) -> None:
         """Send response back to Discord.
 
@@ -280,7 +296,7 @@ class DiscordAdapter(discord.Client):
         Fetches channel from cache (or network fallback) to avoid storing raw
         discord.py objects in hub domain metadata.
         Uses message.reply() for @-mentions, channel.send() otherwise.
-        Content is truncated to Discord's 2000-char limit.
+        Long content is split into ≤2000-char chunks; buttons appear on the last chunk.
         """
         if original_msg.platform != "discord":
             log.error("send() called with non-discord message id=%s", original_msg.id)
@@ -298,25 +314,38 @@ class DiscordAdapter(discord.Client):
         if send_channel is None:
             send_channel = await self.fetch_channel(send_to_id)
 
-        content = _outbound_to_text(outbound)[:DISCORD_MAX_LENGTH]
+        text = _outbound_to_text(outbound)
+        chunks = self._render_text(text)
+        view = self._render_buttons(outbound.buttons)
+        last_idx = len(chunks) - 1
 
         messageable = cast(discord.abc.Messageable, send_channel)
-        if original_msg.is_mention and thread_id is None:
-            # No auto-thread: reply to original message in parent channel.
-            msg_id: int | None = original_msg.platform_meta.get("message_id")
-            if msg_id is None:
-                raise ValueError(
-                    "platform_meta missing required key 'message_id' for mention reply"
-                )
-            msg = await messageable.fetch_message(msg_id)
-            sent = await msg.reply(content)
-        else:
-            # Thread exists (send in thread) or non-mention: plain send.
-            sent = await messageable.send(content)
-        # Store for session persistence (#67) and reply-to-resume (#83).
-        outbound.metadata["reply_message_id"] = sent.id
+        for i, chunk in enumerate(chunks):
+            chunk_view = view if (i == last_idx and view is not None) else None
+            if original_msg.is_mention and thread_id is None and i == 0:
+                # No auto-thread: reply to original message in parent channel.
+                msg_id: int | None = original_msg.platform_meta.get("message_id")
+                if msg_id is None:
+                    raise ValueError(
+                        "platform_meta missing required key 'message_id' for mention reply"
+                    )
+                msg_obj = await messageable.fetch_message(msg_id)
+                if chunk_view is not None:
+                    sent = await msg_obj.reply(chunk, view=chunk_view)
+                else:
+                    sent = await msg_obj.reply(chunk)
+            else:
+                # Thread exists (send in thread) or non-mention: plain send.
+                if chunk_view is not None:
+                    sent = await messageable.send(chunk, view=chunk_view)
+                else:
+                    sent = await messageable.send(chunk)
+            if i == last_idx:
+                outbound.metadata["reply_message_id"] = sent.id
         log.debug(
-            "stored reply_message_id=%s for msg_id=%s", sent.id, original_msg.id
+            "stored reply_message_id=%s for msg_id=%s",
+            outbound.metadata.get("reply_message_id"),
+            original_msg.id,
         )
 
     async def send_streaming(

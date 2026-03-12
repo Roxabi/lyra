@@ -693,3 +693,43 @@ async def test_telegram_msg_manager_injection_backpressure_ack() -> None:
     assert call_kwargs.kwargs.get("text") == expected or (
         len(call_kwargs.args) > 1 and call_kwargs.args[1] == expected
     )
+
+
+def test_normalize_empty_text() -> None:
+    """normalize() with text=None produces msg.text == \"\"."""
+    from lyra.adapters.telegram import TelegramAdapter
+
+    hub = MagicMock()
+    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+    aiogram_msg = SimpleNamespace(
+        chat=SimpleNamespace(id=123, type="private"),
+        from_user=SimpleNamespace(id=42, full_name="Alice", is_bot=False),
+        text=None,
+        date=datetime.now(timezone.utc),
+        message_thread_id=None,
+        message_id=99,
+        entities=None,
+    )
+    msg = adapter.normalize(aiogram_msg)
+    assert msg.text == ""
+
+
+@pytest.mark.asyncio
+async def test_on_message_drops_bot_text_message() -> None:
+    """_on_message drops messages when from_user.is_bot=True."""
+    from lyra.adapters.telegram import TelegramAdapter
+
+    hub = MagicMock()
+    hub.inbound_bus = MagicMock()
+    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+    bot_msg = SimpleNamespace(
+        chat=SimpleNamespace(id=123, type="private"),
+        from_user=SimpleNamespace(id=99, full_name="BotUser", is_bot=True),
+        text="I am a bot",
+        date=datetime.now(timezone.utc),
+        message_thread_id=None,
+        message_id=1,
+        entities=None,
+    )
+    await adapter._on_message(bot_msg)
+    hub.inbound_bus.put.assert_not_called()

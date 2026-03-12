@@ -181,6 +181,13 @@ class TelegramAdapter:
                 "timestamp": ts,
             }
 
+    @staticmethod
+    def _make_scope_id(chat_id: int, topic_id: int | None) -> str:
+        """Build the canonical scope_id for a Telegram chat/topic."""
+        if topic_id is not None:
+            return f"chat:{chat_id}:topic:{topic_id}"
+        return f"chat:{chat_id}"
+
     def normalize(self, raw: Any) -> InboundMessage:
         """Convert an aiogram Message (or SimpleNamespace) to an InboundMessage.
 
@@ -207,7 +214,7 @@ class TelegramAdapter:
 
         chat_id: int = raw.chat.id
         topic_id: int | None = raw.message_thread_id
-        scope_id = f"chat:{chat_id}:topic:{topic_id}" if topic_id else f"chat:{chat_id}"
+        scope_id = self._make_scope_id(chat_id, topic_id)
 
         text = raw.text or ""
         timestamp = raw.date
@@ -306,9 +313,7 @@ class TelegramAdapter:
 
         _chat_id: int = msg.chat.id
         _topic_id: int | None = msg.message_thread_id
-        _scope_id = (
-            f"chat:{_chat_id}:topic:{_topic_id}" if _topic_id else f"chat:{_chat_id}"
-        )
+        _scope_id = self._make_scope_id(_chat_id, _topic_id)
         _user_id = f"tg:user:{msg.from_user.id}"
 
         hub_msg = InboundMessage(

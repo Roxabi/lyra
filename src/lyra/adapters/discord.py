@@ -203,7 +203,10 @@ class DiscordAdapter(discord.Client):
         ):
             try:
                 thread = await message.create_thread(
-                    name=f"Chat with {message.author.display_name}"[:100].strip()
+                    name=(
+                        f"Chat with {message.author.display_name}"
+                        f" ({str(message.author.id)[-4:]})"
+                    )[:100].strip()
                 )
                 resolved_thread_id = thread.id
                 # Keep parent channel_id for fetch_message() in send().

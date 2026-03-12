@@ -1009,3 +1009,25 @@ class TestDiscordAutoThread:
 
         # Assert
         assert config.auto_thread is True
+
+
+def test_normalize_empty_text() -> None:
+    """normalize() with content=\"\" produces msg.text == \"\"."""
+    from lyra.adapters.discord import DiscordAdapter
+    from lyra.core.message import InboundMessage
+
+    hub = MagicMock()
+    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+    adapter._bot_user = SimpleNamespace(id=999, bot=True)
+    discord_msg = SimpleNamespace(
+        guild=SimpleNamespace(id=111),
+        channel=SimpleNamespace(id=333, send=AsyncMock()),
+        author=SimpleNamespace(id=42, name="Alice", display_name="Alice", bot=False),
+        content="",
+        created_at=datetime.now(timezone.utc),
+        id=555,
+        mentions=[],
+    )
+    msg = adapter.normalize(discord_msg)
+    assert isinstance(msg, InboundMessage)
+    assert msg.text == ""

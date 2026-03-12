@@ -234,7 +234,8 @@ class Hub:
         Inactive-user entries are cleaned up when their deque empties to prevent
         unbounded dict growth.
         """
-        key = (msg.platform, msg.bot_id, msg.user_id)
+        # str() normalizes platform: InboundMessage.platform is str, not Platform enum
+        key = (str(msg.platform), msg.bot_id, msg.user_id)
         now = time.monotonic()
         window_start = now - self._rate_window
         timestamps = self._rate_timestamps.get(key)
@@ -441,8 +442,8 @@ class Hub:
 
 def _is_group_message(msg: InboundMessage) -> bool:
     """Return True if the message originated from a group/guild channel."""
-    if msg.platform == "telegram":
+    if msg.platform == Platform.TELEGRAM.value:
         return bool(msg.platform_meta.get("is_group", False))
-    if msg.platform == "discord":
+    if msg.platform == Platform.DISCORD.value:
         return msg.platform_meta.get("guild_id") is not None
     return False

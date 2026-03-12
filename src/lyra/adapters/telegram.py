@@ -24,6 +24,7 @@ from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
     Attachment,
+    InboundAudio,
     InboundMessage,
     OutboundAudio,
     OutboundMessage,
@@ -36,9 +37,7 @@ from lyra.core.messages import MessageManager
 log = logging.getLogger(__name__)
 
 TELEGRAM_MAX_LENGTH = 4096  # Telegram Bot API text message limit
-_MARKDOWNV2_SPECIAL = re.compile(r'([_*\[\]()~`>#\+\-=|{}.!\\])')
-
-
+_MARKDOWNV2_SPECIAL = re.compile(r"([_*\[\]()~`>#\+\-=|{}.!\\])")
 
 
 @dataclass(frozen=True)
@@ -253,6 +252,37 @@ class TelegramAdapter:
             },
         )
 
+    def normalize_audio(
+        self, raw: Any, audio_bytes: bytes, mime_type: str
+    ) -> InboundAudio:
+        """Build an InboundAudio envelope from a Telegram voice/audio/video_note."""
+        scope_id = self._make_scope_id(
+            raw.chat.id, getattr(raw, "message_thread_id", None)
+        )
+        voice = raw.voice or raw.audio or getattr(raw, "video_note", None)
+        duration_ms: int | None = None
+        if voice is not None:
+            d = getattr(voice, "duration", None)
+            if d is not None:
+                duration_ms = int(d) * 1000
+        file_id: str | None = (
+            getattr(voice, "file_id", None) if voice is not None else None
+        )
+        timestamp = raw.date
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=timezone.utc)
+        return InboundAudio(
+            platform=Platform.TELEGRAM.value,
+            bot_id=self._bot_id,
+            scope_id=scope_id,
+            user_id=f"tg:user:{raw.from_user.id}",
+            audio_bytes=audio_bytes,
+            mime_type=mime_type,
+            duration_ms=duration_ms,
+            file_id=file_id,
+            timestamp=timestamp,
+        )
+
     async def _download_audio(
         self, file_id: str, duration: int | None = None
     ) -> tuple[Path, float | None]:
@@ -306,10 +336,23 @@ class TelegramAdapter:
         duration: int | None = getattr(voice, "duration", None)
 
         try:
-            tmp_path, duration_seconds = await self._download_audio(file_id, duration)
+            tmp_path, _duration_seconds = await self._download_audio(file_id, duration)
         except Exception:
             log.exception("Failed to download audio file_id=%s", file_id)
             return
+
+        try:
+            audio_bytes = tmp_path.read_bytes()
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+        if msg.voice or getattr(msg, "video_note", None):
+            mime_type = "audio/ogg"
+        else:
+            mime_type = getattr(msg.audio, "mime_type", None) or "audio/ogg"
+
+        _inbound_audio = self.normalize_audio(msg, audio_bytes, mime_type)
+        # TODO(#140-follow-on): enqueue _inbound_audio onto InboundAudioBus
 
         timestamp = msg.date
         if timestamp.tzinfo is None:
@@ -333,8 +376,8 @@ class TelegramAdapter:
             attachments=[
                 Attachment(
                     type="audio",
-                    url_or_bytes=str(tmp_path),
-                    mime_type="audio/ogg",
+                    url_or_bytes=audio_bytes,
+                    mime_type=mime_type,
                     filename=None,
                 )
             ],
@@ -348,9 +391,7 @@ class TelegramAdapter:
             },
         )
 
-        await self._push_to_hub(
-            hub_msg, on_drop=lambda: tmp_path.unlink(missing_ok=True)
-        )
+        await self._push_to_hub(hub_msg)
 
     async def _push_to_hub(
         self,
@@ -405,19 +446,26 @@ class TelegramAdapter:
 
     def _render_text(self, text: str) -> list[str]:
         """Escape MarkdownV2 special characters and split into ≤4096-char chunks."""
-        escaped = _MARKDOWNV2_SPECIAL.sub(r'\\\1', text)
+        escaped = _MARKDOWNV2_SPECIAL.sub(r"\\\1", text)
         if not escaped:
             return []
-        return [escaped[i:i + TELEGRAM_MAX_LENGTH]
-                for i in range(0, len(escaped), TELEGRAM_MAX_LENGTH)]
+        return [
+            escaped[i : i + TELEGRAM_MAX_LENGTH]
+            for i in range(0, len(escaped), TELEGRAM_MAX_LENGTH)
+        ]
 
     def _render_buttons(self, buttons: list) -> object | None:
         """Convert list[Button] to InlineKeyboardMarkup, or None if empty."""
         if not buttons:
             return None
         from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-        kb = [[InlineKeyboardButton(text=b.text, callback_data=b.callback_data)
-               for b in buttons]]
+
+        kb = [
+            [
+                InlineKeyboardButton(text=b.text, callback_data=b.callback_data)
+                for b in buttons
+            ]
+        ]
         return InlineKeyboardMarkup(inline_keyboard=kb)
 
     async def send(
@@ -436,9 +484,7 @@ class TelegramAdapter:
             return
         chat_id: int | None = original_msg.platform_meta.get("chat_id")
         if chat_id is None:
-            raise ValueError(
-                "platform_meta missing required key 'chat_id' for send()"
-            )
+            raise ValueError("platform_meta missing required key 'chat_id' for send()")
 
         # Flatten content parts to plain text, escape and chunk
         text = outbound.to_text()

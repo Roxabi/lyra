@@ -13,6 +13,7 @@ from .circuit_breaker import CircuitRegistry
 from .inbound_bus import InboundBus
 from .message import (
     GENERIC_ERROR_REPLY,
+    InboundAudio,
     InboundMessage,
     OutboundMessage,
     Platform,
@@ -40,6 +41,10 @@ class ChannelAdapter(Protocol):
     """
 
     def normalize(self, raw: Any) -> InboundMessage: ...
+
+    def normalize_audio(
+        self, raw: Any, audio_bytes: bytes, mime_type: str
+    ) -> InboundAudio: ...
 
     async def send(
         self, original_msg: InboundMessage, outbound: OutboundMessage

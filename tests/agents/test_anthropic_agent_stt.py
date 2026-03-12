@@ -44,7 +44,10 @@ def make_audio_message(url: str) -> InboundMessage:
         attachments=[Attachment(type="audio", url_or_bytes=url, mime_type="audio/ogg")],
         timestamp=datetime.now(timezone.utc),
         platform_meta={
-            "chat_id": 42, "topic_id": None, "is_group": False, "message_id": None
+            "chat_id": 42,
+            "topic_id": None,
+            "is_group": False,
+            "message_id": None,
         },
     )
 
@@ -62,7 +65,10 @@ def make_text_message(text: str = "hello") -> InboundMessage:
         text_raw=text,
         timestamp=datetime.now(timezone.utc),
         platform_meta={
-            "chat_id": 42, "topic_id": None, "is_group": False, "message_id": None
+            "chat_id": 42,
+            "topic_id": None,
+            "is_group": False,
+            "message_id": None,
         },
     )
 
@@ -195,10 +201,17 @@ class TestAnthropicAgentAudioBranch:
         assert "couldn't make out" in full_reply.lower()
         agent._client.messages.stream.assert_not_called()
 
-    @pytest.mark.parametrize("noise_text", [
-        "[Music]", "[Applause]", "[Laughter]", "[Silence]", "[Noise]",
-        "   ",  # whitespace-only
-    ])
+    @pytest.mark.parametrize(
+        "noise_text",
+        [
+            "[Music]",
+            "[Applause]",
+            "[Laughter]",
+            "[Silence]",
+            "[Noise]",
+            "   ",  # whitespace-only
+        ],
+    )
     async def test_audio_noise_transcript(
         self, monkeypatch: pytest.MonkeyPatch, noise_text: str
     ) -> None:

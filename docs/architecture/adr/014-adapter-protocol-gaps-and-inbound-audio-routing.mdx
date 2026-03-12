@@ -1,0 +1,161 @@
+---
+title: "ADR-014: Adapter Protocol Gaps and Inbound Audio Routing"
+description: Documents the structural gaps in the ChannelAdapter protocol and the inbound audio dead-end discovered in the Phase 1b adapter review, and establishes the required resolutions before Phase 2 entry.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+A deep architectural review of the text and voice adapter system was conducted against the
+following files: `src/lyra/core/message.py`, `src/lyra/core/hub.py`,
+`src/lyra/core/inbound_bus.py`, `src/lyra/core/outbound_dispatcher.py`,
+`src/lyra/adapters/telegram.py`, and `src/lyra/adapters/discord.py`.
+
+The review identified three classes of structural problems that are not captured by any
+existing ADR:
+
+1. **The inbound audio dead-end**: `InboundAudio` is produced by both adapters via
+   `normalize_audio()` but immediately abandoned. The adapters then construct a second
+   `InboundMessage` from the same raw data, repacking audio bytes into `Attachment.url_or_bytes`.
+   This double-normalization (`telegram.py:366–406`, `discord.py:257–266`) means `InboundAudio`
+   is a dead type: it satisfies the `ChannelAdapter` protocol but is never enqueued or consumed.
+   The `InboundBus` type is `asyncio.Queue[InboundMessage]`; there is no path for `InboundAudio`
+   to reach the hub or pool.
+
+2. **Protocol surface is incomplete**: The `ChannelAdapter` Protocol (`hub.py:32–61`) declares
+   `normalize`, `normalize_audio`, `send`, and `send_streaming`. It omits:
+   - `render_audio()` — implemented on both adapters but invisible to the protocol
+   - `start()` / `stop()` — the hub cannot uniformly manage adapter lifecycle
+
+3. **platform_meta is an untyped escape hatch**: `InboundMessage.platform_meta: dict` carries
+   routing-critical fields (`chat_id`, `guild_id`, `thread_id`, `is_group`) that are read by
+   the hub (`hub.py:459–465`) and both adapters' `send()` methods. The typed `PlatformContext`
+   hierarchy (`TelegramContext`, `DiscordContext`) exists on the legacy `Message` dataclass but
+   was not ported to `InboundMessage`. There is no documented key contract for `platform_meta`;
+   callers infer the keys from adapter implementation.
+
+These three issues compound: a new platform developer must read adapter source to understand
+the undocumented `platform_meta` contract, cannot rely on the protocol for audio output, and
+has no lifecycle interface to follow.
+
+## Options Considered
+
+### Option A: Accept the current state, resolve issues ad-hoc per feature
+
+Leave `InboundAudio` as a dead type, continue using `platform_meta: dict`, and add
+`render_audio()` and lifecycle methods to the protocol only when a third platform is added.
+
+- **Pros:** Zero cost now. No migration required. Consistent with "add when real need arises."
+- **Cons:** The `InboundAudio` dead-end is not "deferral" — it is active technical debt that
+  grows with each audio-related feature (#80 voice STT, Phase 2 audio pipeline). The double-
+  normalization produces two envelopes from the same event; if they diverge, the bug will be
+  silent. The `platform_meta` dict will accumulate undocumented keys; adding a third platform
+  without a key contract will produce either runtime `ValueError`s or silent wrong-platform
+  bugs.
+
+### Option B: Delete InboundAudio, commit to InboundMessage + Attachment as the audio envelope
+
+Remove `normalize_audio()` from the protocol and both adapters. Audio arrives as
+`InboundMessage` with `Attachment(type="audio", ...)` as it does today. The hub routes
+it via the text path.
+
+- **Pros:** Eliminates the dead type and the double-normalization. Simpler — one envelope
+  type for all inbound events. `InboundBus` type is unchanged.
+- **Cons:** Audio and text lose their distinct envelope types. An STT service receiving
+  an `InboundMessage` with `Attachment` must inspect the attachment list to find audio bytes,
+  rather than receiving a typed `InboundAudio`. Adding audio-specific metadata (codec info,
+  channel count, sample rate) requires extending `Attachment`, which is shared with images
+  and files. Phase 2 audio-specific routing (e.g., dispatch to STT before LLM) would require
+  inspecting attachment types in the hub run loop, which is ad-hoc detection rather than
+  typed dispatch.
+
+### Option C: Unify inbound under InboundEnvelope union; extend bus and hub loop
+
+Define `InboundEnvelope = InboundMessage | InboundAudio`. Change `InboundBus` to
+`asyncio.Queue[InboundEnvelope]`. Add a second consumer branch in `hub.run()` for
+`InboundAudio`. Remove the double-normalization from both adapters: `_on_voice_message`
+enqueues the `InboundAudio` directly without constructing a redundant `InboundMessage`.
+
+- **Pros:** Audio and text are typed distinctly end-to-end. The hub can dispatch audio
+  to a dedicated pipeline (STT → text → pool) without ad-hoc attachment inspection.
+  `normalize_audio()` becomes a live, useful protocol method. Aligns with the Phase 2
+  cognitive flow (message → routing SLM → ...) where audio must be transcribed before
+  intent routing.
+- **Cons:** Requires changes to `InboundBus` type signature, `hub.run()` dispatch branch,
+  and both adapter `_on_voice_message` / `on_message` handlers. More surface area than
+  Option B.
+
+### Option D (for protocol gaps only): Add render_audio() and lifecycle methods to ChannelAdapter
+
+Extend the `ChannelAdapter` Protocol regardless of which audio routing option is chosen.
+Add `render_audio()` with a default no-op, `start()` and `stop()` with default no-ops.
+This is independent of Options A–C and can be done in any order.
+
+- **Pros:** Makes audio output and lifecycle first-class protocol methods. New adapters
+  cannot be registered without knowing the full surface. Type checkers can enforce the
+  contract.
+- **Cons:** `render_audio()` signature depends on `RenderContext = Message` (the legacy
+  type). If `Message` is ever retired, `RenderContext` must be updated.
+
+## Decision
+
+**For inbound audio routing**: Option C is the target design. The double-normalization in
+both adapters is to be removed. `InboundBus` will accept `InboundEnvelope = InboundMessage |
+InboundAudio`. `hub.run()` will dispatch `InboundAudio` to a dedicated audio pipeline
+(transcription → synthesise `InboundMessage` with transcribed text → pool).
+
+However, this change is **blocked on issue #80 (voice STT)**: the audio pipeline that
+`InboundAudio` would feed into does not exist yet. Until #80 ships a functioning
+`STTService`, Option B is the interim state — `InboundAudio` is produced but the
+`InboundMessage + Attachment` envelope is what reaches the hub. The `normalize_audio()`
+double-normalization is an acceptable interim cost.
+
+**Constraint**: `InboundAudio` must not be deleted before #80 ships. It is the correct
+future type for audio envelopes; deleting it now would require re-creating it in #80.
+
+**For protocol gaps** (Option D): Add `render_audio()` and `start()` / `stop()` to
+`ChannelAdapter`. This is not blocked on #80 and should be done in the next protocol
+iteration. Default no-op implementations make this non-breaking.
+
+**For platform_meta**: The typed `PlatformContext` approach used on the legacy `Message`
+type is the correct design. Porting `platform_context: TelegramContext | DiscordContext`
+to `InboundMessage` (replacing `platform_meta: dict`) is the required migration before
+a third platform is added. This is deferred but documented here as a hard prerequisite.
+
+## Consequences
+
+### Positive
+
+- The dead-end status of `InboundAudio` is documented and its intended role is clear:
+  it is the correct typed envelope for the future audio pipeline, not a mistake.
+- Adding `render_audio()` to the protocol makes audio output type-safe and visible to
+  new adapter implementors.
+- Adding lifecycle methods to the protocol allows the hub to uniformly manage adapter
+  startup and shutdown.
+- The `platform_meta` migration path is documented before a third platform forces the
+  issue.
+
+### Negative
+
+- The double-normalization (`InboundAudio` produced and discarded, `InboundMessage +
+  Attachment` used instead) remains until #80 ships. Any change to audio metadata in
+  `normalize_audio()` during this period must be mirrored in `_on_voice_message()` or
+  the two envelopes will diverge.
+- `render_audio()` on the protocol depends on `RenderContext = Message` (the legacy
+  type). This ties the protocol to the legacy type until `RenderContext` is migrated
+  to `InboundMessage`.
+- The `platform_meta` dict contract remains undocumented in code until the typed
+  migration is done. New platform implementors must read adapter source to discover
+  required keys.
+
+### Neutral
+
+- Option B (delete `InboundAudio`) is explicitly rejected. The type carries correct
+  semantics and is the right shape for audio envelopes. Its current dead-end status is
+  an implementation gap, not a design error.
+- The outbound queue in `OutboundDispatcher` is unbounded (`asyncio.Queue()` with no
+  `maxsize`). This is a separate resilience concern documented in the same review but
+  not part of this ADR's scope. It should be addressed independently.

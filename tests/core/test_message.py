@@ -43,8 +43,7 @@ def test_from_text_factory() -> None:
 
 
 def test_response_to_outbound() -> None:
-    """Response(content='x').to_outbound() returns OutboundMessage with content=['x'].
-    """
+    """Response(content='x').to_outbound() returns OutboundMessage with content=['x']."""  # noqa: E501
     from lyra.core.message import OutboundMessage, Response
 
     # Arrange

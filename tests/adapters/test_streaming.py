@@ -104,9 +104,10 @@ class TestTelegramStreaming:
 
         # Placeholder sent
         bot.send_message.assert_awaited_once()
-        # Final edit called with full text
+        # Final edit called with full text (MarkdownV2-escaped)
         last_edit = bot.edit_message_text.call_args
-        assert last_edit.kwargs["text"] == "Hello world!"
+        assert last_edit.kwargs["text"] == "Hello world\\!"
+        assert last_edit.kwargs.get("parse_mode") == "MarkdownV2"
 
     async def test_debounce_limits_edits(self) -> None:
         adapter, bot = self._make_adapter()
@@ -130,7 +131,8 @@ class TestTelegramStreaming:
         # Should fall back to regular send with full accumulated text
         assert bot.send_message.await_count == 2
         fallback_call = bot.send_message.call_args_list[1]
-        assert fallback_call.kwargs["text"] == "Hello world!"
+        assert fallback_call.kwargs["text"] == "Hello world\\!"
+        assert fallback_call.kwargs.get("parse_mode") == "MarkdownV2"
 
     async def test_mid_stream_error_appends_interrupted(self) -> None:
         adapter, bot = self._make_adapter()
@@ -142,8 +144,9 @@ class TestTelegramStreaming:
             await adapter.send_streaming(msg, error_chunks())
 
         last_edit = bot.edit_message_text.call_args
-        assert "[response interrupted]" in last_edit.kwargs["text"]
+        assert "\\[response interrupted\\]" in last_edit.kwargs["text"]
         assert "partial" in last_edit.kwargs["text"]
+        assert last_edit.kwargs.get("parse_mode") == "MarkdownV2"
 
 
 # ---------------------------------------------------------------------------

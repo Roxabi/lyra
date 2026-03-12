@@ -31,7 +31,10 @@ def make_message(text: str = "hello") -> InboundMessage:
         text_raw=text,
         timestamp=datetime.now(timezone.utc),
         platform_meta={
-            "chat_id": 42, "topic_id": None, "is_group": False, "message_id": None
+            "chat_id": 42,
+            "topic_id": None,
+            "is_group": False,
+            "message_id": None,
         },
     )
 

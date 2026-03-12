@@ -163,10 +163,17 @@ class TestSimpleAgentAudioBranch:
         assert "couldn't make out" in response.content.lower()
         cli_pool.send.assert_not_called()
 
-    @pytest.mark.parametrize("noise_text", [
-        "[Music]", "[Applause]", "[Laughter]", "[Silence]", "[Noise]",
-        "   ",  # whitespace-only
-    ])
+    @pytest.mark.parametrize(
+        "noise_text",
+        [
+            "[Music]",
+            "[Applause]",
+            "[Laughter]",
+            "[Silence]",
+            "[Noise]",
+            "   ",  # whitespace-only
+        ],
+    )
     async def test_audio_noise_transcript(self, noise_text: str) -> None:
         """SC5: noise/whitespace-only transcripts trigger retry prompt."""
         # Arrange

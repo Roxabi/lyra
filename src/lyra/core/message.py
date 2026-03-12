@@ -105,6 +105,9 @@ class InboundAudio:
     file_id: str | None
     timestamp: datetime
     trust: Literal["user", "system"] = "user"
+    user_name: str = ""
+    is_mention: bool = False
+    platform_meta: dict = field(default_factory=dict)
 
 
 def extract_text(msg: "Message") -> str:
@@ -229,7 +232,7 @@ class Response:
         return OutboundMessage.from_text(self.content)
 
 
-@dataclass
+@dataclass(frozen=True)
 class OutboundAudio:
     """Typed envelope for outbound audio data on the bus.
 

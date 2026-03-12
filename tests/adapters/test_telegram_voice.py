@@ -266,8 +266,7 @@ def test_normalize_audio_voice_fields() -> None:
 
 
 def test_normalize_audio_audio_file_fields() -> None:
-    """normalize_audio reads mime_type and duration from msg.audio when voice is None.
-    """
+    """normalize_audio reads mime_type and duration from msg.audio when voice is None."""  # noqa: E501
     from lyra.core.message import InboundAudio
 
     adapter, _ = _make_adapter()

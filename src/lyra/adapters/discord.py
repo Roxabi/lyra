@@ -133,7 +133,7 @@ class DiscordAdapter(discord.Client):
         user_id = f"dc:user:{raw.author.id}"
         timestamp = raw.created_at
         return InboundAudio(
-            id=f"discord:{user_id}:{int(timestamp.timestamp())}",
+            id=f"discord:{user_id}:{int(timestamp.timestamp())}:{raw.id}",
             platform=Platform.DISCORD.value,
             bot_id=self._bot_id,
             scope_id=scope_id,
@@ -143,6 +143,13 @@ class DiscordAdapter(discord.Client):
             duration_ms=None,
             file_id=None,
             timestamp=timestamp,
+            user_name=getattr(raw.author, "display_name", None) or raw.author.name,
+            is_mention=False,
+            platform_meta={
+                "guild_id": raw.guild.id if raw.guild else None,
+                "channel_id": raw.channel.id,
+                "message_id": raw.id,
+            },
         )
 
     def normalize(
@@ -200,7 +207,7 @@ class DiscordAdapter(discord.Client):
 
         _display_name = getattr(raw.author, "display_name", None)
         return InboundMessage(
-            id=f"discord:dc:user:{raw.author.id}:{int(timestamp.timestamp())}",
+            id=f"discord:dc:user:{raw.author.id}:{int(timestamp.timestamp())}:{raw.id}",
             platform="discord",
             bot_id=self._bot_id,
             scope_id=scope_id,
@@ -251,9 +258,38 @@ class DiscordAdapter(discord.Client):
                     _size,
                     message.id,
                 )
+                try:
+                    await message.reply(
+                        self._msg_manager.get("stt_failed", platform="discord")
+                        if self._msg_manager
+                        else "Sorry, that audio file is too large to process."
+                    )
+                except Exception:
+                    log.warning(
+                        "Failed to send audio-too-large reply for message_id=%s",
+                        message.id,
+                    )
+                return
             else:
                 try:
-                    audio_bytes = await audio_attachment.read()
+                    try:
+                        audio_bytes = await asyncio.wait_for(
+                            audio_attachment.read(), timeout=30.0
+                        )
+                    except asyncio.TimeoutError:
+                        log.warning(
+                            "Audio attachment download timed out for message_id=%s",
+                            message.id,
+                        )
+                        try:
+                            await message.reply(
+                                self._msg_manager.get("stt_failed", platform="discord")
+                                if self._msg_manager
+                                else "Sorry, the audio download timed out."
+                            )
+                        except Exception:
+                            pass
+                        return
                     mime_type = audio_attachment.content_type
                     _inbound_audio = self.normalize_audio(
                         message, audio_bytes, mime_type
@@ -262,6 +298,17 @@ class DiscordAdapter(discord.Client):
                 except Exception:
                     log.exception(
                         "Failed to read audio attachment message_id=%s", message.id
+                    )
+                try:
+                    await message.reply(
+                        self._msg_manager.get("stt_unsupported", platform="discord")
+                        if self._msg_manager
+                        else "Voice messages are not yet supported here."
+                    )
+                except Exception:
+                    log.warning(
+                        "Failed to send audio-unsupported reply for message_id=%s",
+                        message.id,
                     )
             return  # audio messages handled separately; skip text path
 
@@ -302,6 +349,14 @@ class DiscordAdapter(discord.Client):
         except Exception:
             log.exception("Failed to normalize discord message id=%s", message.id)
             return
+
+        log.info(
+            '{"event": "message_received", "platform": "discord",'
+            ' "user_id": "%s", "scope_id": "%s", "msg_id": "%s"}',
+            hub_msg.user_id,
+            hub_msg.scope_id,
+            hub_msg.id,
+        )
 
         # Hub circuit guard
         if self._circuit_registry is not None:

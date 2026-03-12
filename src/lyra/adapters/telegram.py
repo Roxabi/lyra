@@ -233,7 +233,10 @@ class TelegramAdapter:
         )
 
         return InboundMessage(
-            id=f"telegram:{user_id}:{int(timestamp.timestamp())}",
+            id=(
+                f"telegram:{user_id}:{int(timestamp.timestamp())}"
+                f":{getattr(raw, 'message_id', '')}"
+            ),
             platform="telegram",
             bot_id=self._bot_id,
             scope_id=scope_id,
@@ -281,8 +284,9 @@ class TelegramAdapter:
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=timezone.utc)
         user_id = f"tg:user:{raw.from_user.id}"
+        _voice_file_id = getattr(voice, "file_id", "") if voice is not None else ""
         return InboundAudio(
-            id=f"telegram:{user_id}:{int(timestamp.timestamp())}",
+            id=f"telegram:{user_id}:{int(timestamp.timestamp())}:{_voice_file_id}",
             platform=Platform.TELEGRAM.value,
             bot_id=self._bot_id,
             scope_id=scope_id,
@@ -292,6 +296,14 @@ class TelegramAdapter:
             duration_ms=duration_ms,
             file_id=file_id,
             timestamp=timestamp,
+            user_name=raw.from_user.full_name,
+            is_mention=False,
+            platform_meta={
+                "chat_id": raw.chat.id,
+                "topic_id": getattr(raw, "message_thread_id", None),
+                "message_id": getattr(raw, "message_id", None),
+                "is_group": raw.chat.type != "private",
+            },
         )
 
     async def _download_audio(
@@ -376,7 +388,10 @@ class TelegramAdapter:
         _user_id = f"tg:user:{msg.from_user.id}"
 
         hub_msg = InboundMessage(
-            id=f"telegram:{_user_id}:{int(timestamp.timestamp())}",
+            id=(
+                f"telegram:{_user_id}:{int(timestamp.timestamp())}"
+                f":{getattr(msg, 'message_id', '')}"
+            ),
             platform="telegram",
             bot_id=self._bot_id,
             scope_id=_scope_id,
@@ -403,6 +418,12 @@ class TelegramAdapter:
             },
         )
 
+        log.info(
+            '{"event": "audio_received", "platform": "telegram",'
+            ' "user_id": "%s", "scope_id": "%s"}',
+            hub_msg.user_id,
+            hub_msg.scope_id,
+        )
         await self._push_to_hub(hub_msg)
 
     async def _push_to_hub(
@@ -440,9 +461,12 @@ class TelegramAdapter:
             )
             chat_id = hub_msg.platform_meta.get("chat_id")
             if chat_id is None:
-                raise ValueError(
-                    "platform_meta missing required key 'chat_id' for backpressure ack"
+                log.error(
+                    "_push_to_hub: platform_meta missing 'chat_id',"
+                    " dropping backpressure ack for user_id=%s",
+                    hub_msg.user_id,
                 )
+                return
             await self.bot.send_message(chat_id, text)
 
     async def _on_message(self, msg) -> None:
@@ -451,6 +475,13 @@ class TelegramAdapter:
             return
 
         hub_msg = self.normalize(msg)
+        log.info(
+            '{"event": "message_received", "platform": "telegram",'
+            ' "user_id": "%s", "scope_id": "%s", "msg_id": "%s"}',
+            hub_msg.user_id,
+            hub_msg.scope_id,
+            hub_msg.id,
+        )
         # IMPORTANT: Always return normally to aiogram — webhook must return
         # {"ok": True} (HTTP 200). Never raise here or Telegram will retry
         # the update indefinitely.
@@ -556,9 +587,13 @@ class TelegramAdapter:
             async for chunk in chunks:
                 accumulated += chunk
             fallback_content = accumulated or _placeholder_text
-            # Streaming fallback sends plain text directly (streaming path does not
-            # apply MarkdownV2 escaping — consistent with the edit-in-place path).
-            await self.bot.send_message(chat_id=chat_id, text=fallback_content)
+            chunks_rendered = self._render_text(fallback_content)
+            if chunks_rendered:
+                await self.bot.send_message(
+                    chat_id=chat_id, text=chunks_rendered[0], parse_mode="MarkdownV2"
+                )
+            else:
+                await self.bot.send_message(chat_id=chat_id, text=fallback_content)
             return
 
         last_edit = time.monotonic()
@@ -568,10 +603,14 @@ class TelegramAdapter:
                 accumulated += chunk
                 now = time.monotonic()
                 if now - last_edit >= 0.5:
+                    _escaped = _MARKDOWNV2_SPECIAL.sub(
+                        r"\\\1", accumulated[:TELEGRAM_MAX_LENGTH]
+                    )
                     await self.bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=placeholder.message_id,
-                        text=accumulated[:TELEGRAM_MAX_LENGTH],
+                        text=_escaped,
+                        parse_mode="MarkdownV2",
                     )
                     last_edit = now
         except Exception as exc:
@@ -594,10 +633,14 @@ class TelegramAdapter:
         # Final edit with complete text (always runs, even after stream error)
         if accumulated:
             try:
+                _escaped = _MARKDOWNV2_SPECIAL.sub(
+                    r"\\\1", accumulated[:TELEGRAM_MAX_LENGTH]
+                )
                 await self.bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=placeholder.message_id,
-                    text=accumulated[:TELEGRAM_MAX_LENGTH],
+                    text=_escaped,
+                    parse_mode="MarkdownV2",
                 )
             except Exception:
                 log.exception("Final edit failed")

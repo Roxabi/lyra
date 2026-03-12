@@ -43,7 +43,7 @@ _GREETING_PATTERNS = re.compile(
     re.IGNORECASE,
 )
 _COMPLEX_KEYWORDS = re.compile(
-    r"\b(analyze|analyse|compare|design|implement|architect|refactor|debug|optimize|review|write\s+(\w+\s+)*(code|function|class|script|program|test))\b",
+    r"\b(analyze|analyse|compare|design|implement|architect|refactor|debug|optimize|review|write\s+(?:\w+\s+){0,6}(?:code|function|class|script|program|test))\b",
     re.IGNORECASE,
 )
 _MODERATE_KEYWORDS = re.compile(
@@ -152,6 +152,7 @@ class SmartRoutingDecorator:
                 exc_info=True,
             )
             routed_cfg = model_cfg
+            reason = "classifier_error (fallback)"
 
         result = await self._inner.complete(
             pool_id, text, routed_cfg, system_prompt, messages=messages

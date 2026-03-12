@@ -343,8 +343,19 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
         cli_pool = CliPool()
         await cli_pool.start()
 
+    sr_config = agent_config.smart_routing
+    if (
+        sr_config is not None
+        and sr_config.enabled
+        and agent_config.model_config.backend != "anthropic-sdk"
+    ):
+        log.warning(
+            "smart_routing.enabled=true but backend=%r — "
+            "smart routing only applies to anthropic-sdk",
+            agent_config.model_config.backend,
+        )
     provider_registry, smart_routing_decorator = _build_provider_registry(
-        circuit_registry, cli_pool, smart_routing_config=agent_config.smart_routing
+        circuit_registry, cli_pool, smart_routing_config=sr_config
     )
 
     stt_service: STTService | None = None

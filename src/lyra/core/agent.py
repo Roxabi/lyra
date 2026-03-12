@@ -363,6 +363,12 @@ def load_agent_config(
         for level in Complexity:
             model_id = sr_models.get(level.value)
             if model_id:
+                if not re.match(r"^[a-zA-Z0-9_.:-]+$", model_id):
+                    raise ValueError(
+                        f"Invalid model {model_id!r} for smart_routing "
+                        f"level {level.value!r}: "
+                        "only [a-zA-Z0-9_.:-] characters allowed"
+                    )
                 routing_table[level] = model_id
         smart_routing = SmartRoutingConfig(
             enabled=bool(sr_section.get("enabled", False)),
@@ -558,6 +564,7 @@ class AgentBase(ABC):
                 circuit_registry=self._circuit_registry,
                 admin_user_ids=self._admin_user_ids,
                 msg_manager=self._msg_manager,
+                smart_routing_decorator=self._smart_routing_decorator,
                 **self._build_router_kwargs(),
             )
 

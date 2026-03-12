@@ -5,7 +5,7 @@ import logging
 import os
 import tempfile
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -319,29 +319,46 @@ class TelegramAdapter:
             platform_context=platform_context,
         )
 
-        # Hub circuit guard — same contract as _on_message: always return normally
-        # to aiogram so the webhook returns HTTP 200.
+        await self._push_to_hub(
+            hub_msg, on_drop=lambda: tmp_path.unlink(missing_ok=True)
+        )
+
+    async def _push_to_hub(
+        self,
+        hub_msg: Message,
+        on_drop: Callable[[], None] | None = None,
+    ) -> None:
+        """Put hub_msg on the inbound bus with circuit-open and backpressure guards.
+
+        on_drop is called before early return in both circuit-open and QueueFull
+        cases (e.g. to clean up a temp audio file). Always returns normally so
+        aiogram receives HTTP 200.
+        """
         if self._circuit_registry is not None:
             cb = self._circuit_registry.get("hub")
             if cb is not None and cb.is_open():
                 log.warning(
                     '{"event": "hub_circuit_open", "platform": "telegram",'
-                    ' "user_id": "%s", "dropped": true, "type": "audio"}',
+                    ' "user_id": "%s", "dropped": true, "type": "%s"}',
                     hub_msg.user_id,
+                    hub_msg.type.value,
                 )
-                tmp_path.unlink(missing_ok=True)
+                if on_drop is not None:
+                    on_drop()
                 return
 
         try:
             self._hub.inbound_bus.put(Platform.TELEGRAM, hub_msg)
         except asyncio.QueueFull:
-            tmp_path.unlink(missing_ok=True)
+            if on_drop is not None:
+                on_drop()
             text = (
                 self._msg_manager.get("backpressure_ack", platform="telegram")
                 if self._msg_manager
                 else "Processing your request\u2026"
             )
-            await self.bot.send_message(msg.chat.id, text)
+            chat_id = getattr(hub_msg.platform_context, "chat_id")
+            await self.bot.send_message(chat_id, text)
 
     async def _on_message(self, msg) -> None:
         """Handle an incoming aiogram message: apply backpressure and put on bus."""
@@ -349,33 +366,10 @@ class TelegramAdapter:
             return
 
         hub_msg = self._normalize(msg)
-
-        # Hub circuit guard — drop silently if hub is overloaded.
         # IMPORTANT: Always return normally to aiogram — webhook must return
         # {"ok": True} (HTTP 200). Never raise here or Telegram will retry
         # the update indefinitely.
-        if self._circuit_registry is not None:
-            cb = self._circuit_registry.get("hub")
-            if cb is not None and cb.is_open():
-                log.warning(
-                    '{"event": "hub_circuit_open", "platform": "telegram",'
-                    ' "user_id": "%s", "dropped": true}',
-                    hub_msg.user_id,
-                )
-                return  # silent drop
-
-        try:
-            self._hub.inbound_bus.put(Platform.TELEGRAM, hub_msg)
-        except asyncio.QueueFull:
-            text = (
-                self._msg_manager.get("backpressure_ack", platform="telegram")
-                if self._msg_manager
-                else "Processing your request\u2026"
-            )
-            await self.bot.send_message(
-                msg.chat.id,
-                text,
-            )
+        await self._push_to_hub(hub_msg)
 
     async def send(self, original_msg: Message, response: Response) -> None:
         """Send a response back to Telegram via bot.send_message.

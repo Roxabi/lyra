@@ -82,8 +82,18 @@ def _patch_all(monkeypatch: pytest.MonkeyPatch) -> list[Hub]:
             model_config=ModelConfig(backend="claude-cli"),
         ),
     )
+    from lyra.core.auth import AuthMiddleware, TrustLevel
+
     monkeypatch.setattr(main_mod, "TelegramAdapter", lambda **kwargs: _FakeTgAdapter())
     monkeypatch.setattr(main_mod, "DiscordAdapter", CapturingDcAdapter)
+    monkeypatch.setattr(
+        main_mod,
+        "_load_auth_config",
+        lambda raw: (
+            AuthMiddleware({}, TrustLevel.TRUSTED),
+            AuthMiddleware({}, TrustLevel.TRUSTED),
+        ),
+    )
     return captured
 
 

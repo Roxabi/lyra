@@ -434,8 +434,8 @@ class AgentBase(ABC):
                 effective.append(name)
             except ValueError as exc:
                 log.warning("Skipping plugin %r: %s", name, exc)
-            except Exception:  # noqa: BLE001
-                log.warning("Failed to load plugin %r", name)
+            except Exception:  # noqa: BLE001  # resilient: don't let one bad plugin block startup
+                log.warning("Failed to load plugin %r", name, exc_info=True)
         return effective
 
     def _record_plugin_mtimes(self) -> dict[str, float]:
@@ -508,8 +508,8 @@ class AgentBase(ABC):
                     self._plugin_mtimes[name] = new_mtime
                     plugins_changed = True
                     log.info("Hot-reloaded plugin %r", name)
-                except Exception:  # noqa: BLE001
-                    log.warning("Failed to reload plugin %r", name)
+                except Exception:  # noqa: BLE001  # resilient: don't let hot-reload crash the agent
+                    log.warning("Failed to reload plugin %r", name, exc_info=True)
         if plugins_changed:
             self.command_router = CommandRouter(
                 self._plugin_loader,

@@ -6,6 +6,7 @@ or to built-in handlers (/help, /circuit). SkillHandler and SKILL_REGISTRY remov
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from dataclasses import dataclass
@@ -151,7 +152,16 @@ class CommandRouter:
                 f"Plugin command '{command_name}' requires a real Pool instance. "
                 "Pass pool=<Pool> when calling dispatch() for plugin commands."
             )
-        return await handler(msg, pool, args)
+        timeout = self._plugin_loader.get_timeout(command_name, self._enabled_plugins)
+        try:
+            return await asyncio.wait_for(handler(msg, pool, args), timeout=timeout)
+        except TimeoutError:
+            log.warning(
+                "Plugin command %s timed out after %.1fs", command_name, timeout
+            )
+            return Response(
+                content=f"Command {command_name} timed out after {timeout:.0f}s."
+            )
 
     # ------------------------------------------------------------------
     # Builtins

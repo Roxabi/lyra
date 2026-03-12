@@ -103,7 +103,7 @@ class PluginLoader:
             try:
                 with toml_path.open("rb") as f:
                     data = tomllib.load(f)
-            except Exception:
+            except Exception:  # noqa: BLE001  # resilient: skip unreadable plugin.toml
                 log.debug("Skipping malformed plugin.toml in %s", subdir)
                 continue
             try:
@@ -144,7 +144,7 @@ class PluginLoader:
             )
         module = importlib.util.module_from_spec(spec)
         sys.modules[f"lyra.plugins.{name}.handlers"] = module
-        spec.loader.exec_module(module)  # type: ignore[union-attr]
+        spec.loader.exec_module(module)  # type: ignore[union-attr]  # guarded by None check above
 
         handlers: dict[str, AsyncHandler] = {}
         for cmd in manifest.commands:
@@ -209,3 +209,10 @@ class PluginLoader:
             if name in enabled:
                 result.update(plugin.handlers)
         return result
+
+    def get_timeout(self, command_name: str, enabled: list[str]) -> float:
+        """Return the timeout for a plugin command (default 30s)."""
+        for name, plugin in self._loaded.items():
+            if name in enabled and command_name in plugin.handlers:
+                return plugin.manifest.timeout
+        return 30.0

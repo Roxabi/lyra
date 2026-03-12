@@ -99,7 +99,7 @@ class AnthropicAgent(AgentBase):
             return datetime.now(timezone.utc).isoformat()
         raise ValueError(f"Unknown tool: {name}")
 
-    async def process(  # type: ignore[override]
+    async def process(  # type: ignore[override]  # returns AsyncIterator, not Response
         self, msg: InboundMessage, pool: Pool
     ) -> AsyncIterator[str]:
         """Stream response from Anthropic API, handling tool use loops.

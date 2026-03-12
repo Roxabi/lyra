@@ -113,7 +113,7 @@ class Pool:
         if not isinstance(result, collections.abc.AsyncIterator):
             # Regular coroutine — await to get the actual result
             try:
-                result = await result  # type: ignore[assignment]
+                result = await result  # type: ignore[assignment]  # coroutine → Response|AsyncIterator
             except Exception as exc:
                 self._record_cb_failure(exc)
                 raise

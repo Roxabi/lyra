@@ -1049,3 +1049,89 @@ class TestTelegramAttachments:
         adapter = self._make_adapter()
         msg = adapter.normalize(self._make_msg())
         assert msg.attachments == []
+
+
+# ---------------------------------------------------------------------------
+# Slice S4: TelegramAdapter auth gate tests
+# ---------------------------------------------------------------------------
+
+
+def _make_aiogram_msg(user_id: int = 42) -> object:
+    """Build a minimal aiogram-like message SimpleNamespace."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        chat=SimpleNamespace(id=123, type="private"),
+        from_user=SimpleNamespace(id=user_id, full_name="Alice", is_bot=False),
+        text="hello",
+        date=datetime.now(timezone.utc),
+        message_thread_id=None,
+        message_id=1,
+        entities=None,
+    )
+
+
+class TestTelegramAuth:
+    """Auth gate tests for TelegramAdapter._on_message and _on_voice_message."""
+
+    @pytest.mark.asyncio
+    async def test_blocked_user_skips_normalize(self) -> None:
+        """BLOCKED user: _on_message returns early without calling normalize()."""
+        from unittest.mock import patch
+
+        from lyra.adapters.telegram import TelegramAdapter
+        from lyra.core.auth import AuthMiddleware, TrustLevel
+
+        auth = MagicMock(spec=AuthMiddleware)
+        auth.check.return_value = TrustLevel.BLOCKED
+
+        hub = MagicMock()
+        hub.inbound_bus = MagicMock()
+        adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub, auth=auth)
+
+        with patch.object(adapter, "normalize") as mock_norm:
+            await adapter._on_message(_make_aiogram_msg())
+
+        mock_norm.assert_not_called()
+        hub.inbound_bus.put.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_allowed_user_has_trust_level(self) -> None:
+        """TRUSTED user: message produced with correct trust_level."""
+        from lyra.adapters.telegram import TelegramAdapter
+        from lyra.core.auth import AuthMiddleware, TrustLevel
+
+        auth = MagicMock(spec=AuthMiddleware)
+        auth.check.return_value = TrustLevel.TRUSTED
+
+        hub = MagicMock()
+        hub.inbound_bus = MagicMock()
+        hub.inbound_bus.put = MagicMock()
+        adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub, auth=auth)
+        adapter.bot = AsyncMock()
+
+        await adapter._on_message(_make_aiogram_msg())
+
+        hub.inbound_bus.put.assert_called_once()
+        _platform, msg = hub.inbound_bus.put.call_args[0]
+        assert msg.trust_level == TrustLevel.TRUSTED
+
+    @pytest.mark.asyncio
+    async def test_voice_blocked_skips_normalize(self) -> None:
+        """BLOCKED user on voice: _on_voice_message returns early without sending."""
+        from lyra.adapters.telegram import TelegramAdapter
+        from lyra.core.auth import AuthMiddleware, TrustLevel
+
+        auth = MagicMock(spec=AuthMiddleware)
+        auth.check.return_value = TrustLevel.BLOCKED
+
+        hub = MagicMock()
+        bot = AsyncMock()
+        adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub, auth=auth)
+        adapter.bot = bot
+
+        voice_msg = _make_aiogram_msg()
+        await adapter._on_voice_message(voice_msg)
+
+        # bot.send_message should NOT have been called (blocked before handling)
+        bot.send_message.assert_not_called()

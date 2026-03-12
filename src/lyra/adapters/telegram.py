@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from lyra.core.hub import Hub
 
 from lyra.adapters._shared import parse_reply_to_id, push_to_hub_guarded
+from lyra.core.auth import AuthMiddleware, TrustLevel
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
@@ -149,6 +150,7 @@ class TelegramAdapter:
         webhook_secret: str = "",
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
+        auth: AuthMiddleware | None = None,
     ) -> None:
         self._bot_id = bot_id
         self._token = token  # kept private — never logged
@@ -161,6 +163,7 @@ class TelegramAdapter:
         self._hub: Hub = hub
         self._circuit_registry = circuit_registry
         self._msg_manager = msg_manager
+        self._auth = auth
         self._audio_tmp_dir: str | None = os.environ.get("LYRA_AUDIO_TMP") or None
         self._max_audio_bytes: int = int(
             os.environ.get("LYRA_MAX_AUDIO_BYTES", 5 * 1024 * 1024)
@@ -252,7 +255,9 @@ class TelegramAdapter:
             return f"chat:{chat_id}:topic:{topic_id}"
         return f"chat:{chat_id}"
 
-    def normalize(self, raw: Any) -> InboundMessage:
+    def normalize(
+        self, raw: Any, trust_level: TrustLevel = TrustLevel.TRUSTED
+    ) -> InboundMessage:
         """Convert an aiogram Message (or SimpleNamespace) to an InboundMessage.
 
         Security: trust is always 'user'. normalize() is never called for bot
@@ -310,6 +315,7 @@ class TelegramAdapter:
             attachments=attachments,
             timestamp=timestamp,
             trust="user",
+            trust_level=trust_level,
             platform_meta={
                 "chat_id": chat_id,
                 "topic_id": topic_id,
@@ -319,7 +325,11 @@ class TelegramAdapter:
         )
 
     def normalize_audio(
-        self, raw: Any, audio_bytes: bytes, mime_type: str
+        self,
+        raw: Any,
+        audio_bytes: bytes,
+        mime_type: str,
+        trust_level: TrustLevel = TrustLevel.TRUSTED,
     ) -> InboundAudio:
         """Build an InboundAudio envelope from a Telegram voice/audio/video_note.
 
@@ -360,6 +370,7 @@ class TelegramAdapter:
             timestamp=timestamp,
             user_name=raw.from_user.full_name,
             is_mention=False,
+            trust_level=trust_level,
             platform_meta={
                 "chat_id": chat_id,
                 "topic_id": topic_id,
@@ -408,6 +419,13 @@ class TelegramAdapter:
         """
         if not msg.from_user or getattr(msg.from_user, "is_bot", False):
             return
+
+        uid = str(msg.from_user.id)
+        trust = self._auth.check(uid)
+        if trust == TrustLevel.BLOCKED:
+            log.info("auth_reject user=%s channel=telegram", uid)
+            return
+        # TODO(#140): pass trust to normalize_audio() when audio bus is wired
 
         voice = msg.voice or msg.audio or getattr(msg, "video_note", None)
         if voice is None:
@@ -515,7 +533,15 @@ class TelegramAdapter:
         if not msg.from_user or getattr(msg.from_user, "is_bot", False):
             return
 
-        hub_msg = self.normalize(msg)
+        trust = TrustLevel.TRUSTED
+        if self._auth is not None:
+            user_id = str(msg.from_user.id)
+            trust = self._auth.check(user_id)
+            if trust == TrustLevel.BLOCKED:
+                log.info("auth_reject user=%s channel=telegram", user_id)
+                return
+
+        hub_msg = self.normalize(msg, trust_level=trust)
         log.info(
             "message_received",
             extra={

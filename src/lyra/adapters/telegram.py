@@ -516,7 +516,9 @@ class TelegramAdapter:
             async for chunk in chunks:
                 accumulated += chunk
             fallback_content = accumulated or _placeholder_text
-            await self.send(original_msg, OutboundMessage.from_text(fallback_content))
+            # Streaming fallback sends plain text directly (streaming path does not
+            # apply MarkdownV2 escaping — consistent with the edit-in-place path).
+            await self.bot.send_message(chat_id=ctx.chat_id, text=fallback_content)
             return
 
         last_edit = time.monotonic()

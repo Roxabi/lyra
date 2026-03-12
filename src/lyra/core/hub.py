@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple, Protocol
 
 from .agent import AgentBase
 from .circuit_breaker import CircuitRegistry
+from .inbound_audio_bus import InboundAudioBus
 from .inbound_bus import InboundBus
 from .message import (
     GENERIC_ERROR_REPLY,
@@ -106,6 +107,7 @@ class Hub:
     ) -> None:
         self._bus_size = bus_size
         self.inbound_bus: InboundBus = InboundBus()
+        self.inbound_audio_bus: InboundAudioBus = InboundAudioBus()
         self.outbound_dispatchers: dict[tuple[Platform, str], OutboundDispatcher] = {}
         self.adapter_registry: dict[tuple[Platform, str], ChannelAdapter] = {}
         self.agent_registry: dict[str, AgentBase] = {}
@@ -156,6 +158,8 @@ class Hub:
         # Register per-platform inbound queue on first adapter for this platform
         if platform not in self.inbound_bus.registered_platforms():
             self.inbound_bus.register(platform, maxsize=self._bus_size)
+        if platform not in self.inbound_audio_bus.registered_platforms():
+            self.inbound_audio_bus.register(platform, maxsize=self._bus_size)
 
     def register_outbound_dispatcher(
         self, platform: Platform, bot_id: str, dispatcher: OutboundDispatcher

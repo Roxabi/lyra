@@ -61,7 +61,7 @@ memory_namespace = "lyra"
 permissions = []
 
 [model]
-backend = "claude-cli"          # "claude-cli" uses Claude Code; "ollama" is planned for Phase 2
+backend = "claude-cli"          # "claude-cli" (default) | "anthropic-sdk" | "ollama" (Phase 2)
 model = "claude-sonnet-4-5"
 max_turns = 10
 tools = ["Read", "Grep", "Glob", "WebFetch", "WebSearch"]
@@ -115,7 +115,7 @@ The `.env` file was not found or the variable is empty. Make sure `.env` is in t
 Check that **Message Content Intent** is enabled in the Discord Developer Portal under Bot settings. Without it, the bot receives events but cannot read message content.
 
 **Claude CLI errors**
-The default agent uses `claude-cli` backend, which shells out to the `claude` CLI. Make sure you're logged in: run `claude` once to authenticate. If you don't have a Claude subscription, switch `backend = "ollama"` in the TOML (Ollama integration is Phase 2).
+The default agent uses `claude-cli` backend, which shells out to the `claude` CLI. Make sure you're logged in: run `claude` once to authenticate. If you don't have a Claude subscription, the Anthropic SDK driver (#76) is available — set `backend = "anthropic-sdk"` and provide `ANTHROPIC_API_KEY` in `.env`. Ollama (`backend = "ollama"`) is Phase 2 and not yet available.
 
 **Queue full warning**
 If the hub logs `Processing your request…`, the bounded queue (100) is full. This is expected under burst load — messages are queued and processed in order.

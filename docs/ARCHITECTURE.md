@@ -1,7 +1,7 @@
 # Lyra — Architecture & Decisions
 
 > Living document. Updated as decisions are made.
-> Last updated: 2026-03-05 (ADR-010 external tool integration)
+> Last updated: 2026-03-12 (Phase 1b completions: per-channel queues #126, fastembed #82, scope_id #125, LLM circuit breaker #104)
 
 ---
 
@@ -63,52 +63,30 @@ Goal: take the best of each. Lightweight like NullClaw, feature-rich like OpenCl
 ### Overview
 
 ```
-                    adapter_registry
-                    ┌─────────────────────────────────┐
-                    │ "telegram" → TelegramAdapter │
-                    │ "discord"  → DiscordAdapter  │
-                    └─────────────────────────────────┘
-                           ▲ register()        ▲ send(response)
-                           │                   │
-Telegram ──┐               │                   │
-Discord  ──┼──▶ asyncio.Queue(100) ──▶ Hub ──▶ resolve_binding()
-Signal   ──┘     (bounded)                │
-                                          ▼
-                                   get_or_create_pool()
-                                          │
-                                          ▼
-                                   agent.process(msg, pool)
-                                          │
-                             ┌────────────┴────────────┐
-                             │                         │
-                          skills                API Machine 2
-                     (CPU / VRAM M1)          (heavy LLM /llm)
-                             │
-                             ▼
-              adapter_registry[msg.channel].send(response)
+Telegram ──▶ tg_inbound Queue ──┐
+                                 ├──▶ InboundBus (staging) ──▶ Hub ──▶ resolve_binding()
+Discord  ──▶ dc_inbound Queue ──┘         (bounded 100)        │
+                                                                ▼
+                                                        get_or_create_pool()
+                                                                │
+                                                                ▼
+                                                        agent.process(msg, pool)
+                                                                │
+                                               ┌────────────────┴────────────────┐
+                                               │                                 │
+                                      tg_outbound Queue                dc_outbound Queue
+                                      OutboundDispatcher               OutboundDispatcher
+                                               │                                 │
+                                          Telegram                           Discord
 ```
+
+**Adapter registry** (`dict[str, ChannelAdapter]`) — each adapter registers at startup via `hub.register_adapter("telegram", adapter)`. The OutboundDispatcher routes responses back to the originating channel.
 
 ### The Bus
 
-`asyncio.Queue(maxsize=100)` **bounded**. Each channel adapter runs as an independent asyncio task, normalizes messages into a unified format, and pushes them into the queue. The hub consumes and routes.
+**Per-channel queues** (#126, completed): each channel adapter has its own bounded inbound queue → feeds a shared staging queue → Hub consumes and routes. Outbound has a symmetric per-channel queue + OutboundDispatcher.
 
-**Backpressure**: when the queue is full, the adapter sends an immediate acknowledgment ("message received, ~Xs wait") then performs a blocking `await bus.put()` until a slot frees up.
-
-### Adapter Registry (response routing)
-
-The hub maintains a `dict[str, ChannelAdapter]` — the adapter registry. Each adapter registers at startup via `hub.register_adapter("telegram", telegram_adapter)`. When `agent.process()` returns a response, the hub calls `adapter_registry[message.channel].send(response)`.
-
-```python
-class Hub:
-    adapter_registry: dict[str, ChannelAdapter]
-
-    def register_adapter(self, name: str, adapter: ChannelAdapter) -> None:
-        self.adapter_registry[name] = adapter
-
-    async def dispatch_response(self, original_msg: Message, response: Response) -> None:
-        adapter = self.adapter_registry[original_msg.channel]
-        await adapter.send(original_msg, response)
-```
+**Backpressure**: when the staging queue is full, the adapter sends an immediate acknowledgment ("message received, ~Xs wait") then performs a blocking `await bus.put()` until a slot frees up.
 
 **Unified message format:**
 ```python
@@ -181,36 +159,36 @@ Multiple agents run simultaneously on different pools. A single agent (e.g., `ly
 
 ## Memory Layer (5 levels)
 
-| Level | Name | Nature | Lifetime |
-|-------|------|--------|----------|
-| 0 | **Working memory** | Active context window (current messages) | Volatile |
-| 1 | **Session memory** | Multi-turn session state per pool | Session duration |
-| 2 | **Episodic** | Dated Markdown, immutable, human-auditable | Permanent |
-| 3 | **Semantic** | SQLite + BM25 + embeddings, hybrid search | Permanent |
-| 4 | **Procedural** | Learned skills, memorized patterns, preferences | Permanent |
+| Level | Name | Nature | Lifetime | Phase 1 Status |
+|-------|------|--------|----------|----------------|
+| 0 | **Working memory** | Active context window (current messages) | Volatile | ✅ Built — L0 compaction in #83 |
+| 1 | **Session memory** | Multi-turn session state per pool | Session duration | Deferred (Phase 2) |
+| 2 | **Episodic** | Dated Markdown, immutable, human-auditable | Permanent | Deferred (Phase 2) |
+| 3 | **Semantic** | SQLite + FTS5/BM25 + fastembed + sqlite-vec | Permanent | ✅ Built (#78/#81/#82) |
+| 4 | **Procedural** | Learned skills, memorized patterns, preferences | Permanent | Deferred (Phase 3) |
 
 ### Level 0 — Working memory
 - Active context window, volatile, managed by the LLM
-- Automatically compacted when the window approaches its limit
+- Automatically compacted when the window approaches its limit (L0 compaction: #83)
 
-### Level 1 — Session memory
+### Level 1 — Session memory *(Phase 2)*
 - Multi-turn session state per pool (`asyncio.Task` per scope)
 - Ongoing commands, conversation context
 - Configurable timeout, cleaned up on disconnect
 
-### Level 2 — Episodic
+### Level 2 — Episodic *(Phase 2)*
 - Dated Markdown files (`memory/YYYY-MM-DD.md`)
 - Immutable, auditable, human-readable
 - Each interaction logged with timestamp + channel
 
-### Level 3 — Semantic
+### Level 3 — Semantic ✅
 - SQLite + `aiosqlite` (non-blocking)
-- BM25 via `rank-bm25` (keywords, proper nouns, dates)
-- Embeddings via `sqlite-vec` (conceptual similarity)
+- BM25 via FTS5 built-in SQLite (keywords, proper nouns, dates)
+- Embeddings via `fastembed` ONNX + `sqlite-vec` (conceptual similarity, non-blocking)
 - Hybrid search BM25 + cosine similarity
 - **Mandatory URL indexing from the initial schema**: `normalized_url` and `resolved_url` indexed columns → O(1) deduplication via SQL, no O(n) scan in Python (lesson from 2ndBrain #129)
 
-### Level 4 — Procedural
+### Level 4 — Procedural *(Phase 3)*
 - Dynamically learned skills, memorized patterns
 - Persistent user preferences per agent
 - Stored in SQLite, updated via automatic consolidation
@@ -257,7 +235,7 @@ See `docs/architecture/adr/010-external-tool-integration-pattern.mdx` for full r
 ## Features
 
 - **24/7 Autonomy**: embedded scheduler (no external cron), temporal triggers and webhooks
-- **Session persistence**: multi-turn context per pool, configurable timeout
+- **In-memory session state**: multi-turn context per pool, configurable timeout (persistent JSONL logs = #67, Phase 2)
 - **Auto compaction**: summary of old turns → semantic memory (virtuous loop)
 - **Multi-channel**: Telegram first, Discord without touching the core
 - **Multi-agent**: routing via bindings, isolated workspaces
@@ -278,10 +256,10 @@ See `docs/architecture/adr/010-external-tool-integration-pattern.mdx` for full r
 | Webhook server | FastAPI + uvicorn (Telegram webhook endpoint) |
 | HTTP client | httpx[asyncio] |
 | SQLite async | aiosqlite |
-| BM25 | rank-bm25 |
-| Vector search | sqlite-vec |
+| BM25 | FTS5 (built-in SQLite) |
+| Vector search | sqlite-vec + fastembed ONNX |
 | TTS | voicecli (Qwen-fast) |
-| Embeddings | sentence-transformers (nomic-embed-text) |
+| Embeddings | fastembed ONNX (nomic-embed-text) + sqlite-vec |
 | Process mgmt | supervisord + systemd |
 | Internal API | FastAPI |
 
@@ -312,15 +290,20 @@ client = AsyncOpenAI(
 
 - **Python + asyncio** — Go/Rust/Zig/Node eliminated. Python AI ecosystem is unbeatable, asyncio is sufficient for 1-5 I/O-bound users.
 - **2 machines** — Machine 1 autonomous (hub + TTS + embeddings), Machine 2 on demand (heavy LLM). Eliminates VRAM contention.
-- **Cloud LLM by default** — Anthropic API from Machine 1. Local LLM Machine 2 = offline fallback / cost control.
+- **Cloud LLM by default** — Currently Claude Code CLI subprocess (`claude-cli`). Anthropic SDK driver planned in #123 (LlmProvider protocol). Local LLM on Machine 2 = Phase 2 (NATS worker).
 - **SQLite** — No Postgres. SQLite + WAL mode + `aiosqlite` amply covers personal use.
 
-### Resolved decisions (REVIEW.md gaps, 2026-03-02)
+### Resolved decisions (Phase 1b completions)
 
 - **Response routing** — Adapter registry: `dict[str, ChannelAdapter]` in the Hub. Each adapter registers at startup. The hub routes the response via `adapter_registry[msg.channel].send()`.
 - **Pool/agent: stateless singleton** — An agent = immutable config shared across all pools. All mutable state lives in the Pool. No duplication, no race condition.
 - **Backpressure: bounded queue (100)** — `asyncio.Queue(maxsize=100)`. Queue full → immediate acknowledgment + blocking `await put()`.
-- **Reduced Phase 1 memory scope** — Levels 0 (working) + 3 (semantic) only. Levels 1, 2, 4 added when the real need arises.
+- **Per-channel queues** (#126) — Each channel adapter has an isolated inbound/outbound queue pair. InboundBus staging queue feeds the Hub. OutboundDispatcher per channel handles responses.
+- **scope_id replaces user_id in RoutingKey** (#125) — `RoutingKey(platform, bot_id, scope_id)`. Scope extracted from platform context: `chat:NNN`, `thread:NNN`, `channel:NNN`, etc.
+- **fastembed ONNX replaces sentence-transformers** (#82) — Non-blocking ONNX runtime, no `run_in_executor` needed. Hybrid BM25 (FTS5) + cosine (sqlite-vec).
+- **LLM circuit breaker** (#104) — Timeout + retry logic for Anthropic SDK calls. Graceful degradation on failure.
+- **LlmProvider protocol** (#123, in analysis) — Multi-driver abstraction: `AnthropicSdkDriver`, `ClaudeCliDriver`, `OllamaDriver`. Unblocks #83.
+- **Reduced Phase 1 memory scope** — Level 0 (working, L0 compaction in #83) + Level 3 (semantic, shipped #78/#81/#82). Levels 1, 2, 4 added when the real need arises.
 
 ### External tool integration
 
@@ -328,9 +311,9 @@ client = AsyncOpenAI(
 
 ### Deferred Gaps (Phase 2)
 
-- **Synchronous embeddings** — `sentence-transformers` blocks the event loop without `run_in_executor`. Evaluate `fastembed` or embeddings via Ollama in P2.
-- **Machine 2 fallback** — Timeout + circuit breaker if Machine 2 is off. Not relevant in P1 (cloud LLM only).
+- **Machine 2 / local LLM** — OllamaDriver in #123 will add the driver; NATS worker for Machine 2 is Phase 2 (#51). Circuit breaker for remote LLM: #23.
 - **Machine 1 VRAM under load** — Measure with `nvidia-smi` before planning Phase 2 SLMs.
+- **Memory levels 1, 2, 4** — Session memory (L1), episodic Markdown logs (L2), procedural seeds (L4) deferred. Add when real need arises.
 
 ### Technical constraints (not decisions, facts)
 
@@ -342,20 +325,24 @@ client = AsyncOpenAI(
 
 ## Phase 1 — Scope
 
-What is built in Phase 1:
-- Hub: asyncio bus (bounded queue) + bindings + pools + adapter registry
-- Memory levels 0 (working) + 3 (semantic) only
-- Telegram adapter (migration from 2ndBrain)
-- Cloud LLM (Anthropic) as the sole generation engine
+What is built in Phase 1 / 1b:
+- Hub: per-channel queues + bindings + pools + adapter registry (#112 epic ✅)
+- Memory level 0 (working, L0 compaction in #83) + level 3 (semantic ✅: #78/#81/#82)
+- Telegram + Discord adapters (✅)
+- LLM: Claude CLI subprocess (✅), Anthropic SDK driver (#76 ✅), multi-driver abstraction (#123 in analysis)
+- Agent identity + persona (#75 ✅), session lifecycle (#83 in progress)
+
+**Phase 1b tail** (in progress):
+- Message normalization (#139) → LlmProvider protocol (#123) → agent integration (#83) → hub command sessions (#99)
+- Independent: runtime config (#135), smart routing (#134), voice STT (#80)
 
 What is **explicitly excluded from Phase 1**:
 - Memory levels 1 (session), 2 (episodic), 4 (procedural) — added when the real need arises
-- Atomic SLMs (see Phase 2)
+- Atomic SLMs (Phase 3)
 - Cognitive meta-language between SLMs
 - Knowledge graph (optional level 4)
-- Machine 2 / local LLM (added in P2 once the hub is stable)
-- Hash-chained audit trail (P3 — unnecessary for personal use)
-- Heavy `sentence-transformers` — evaluate `fastembed` or embeddings via Ollama in P2
+- Machine 2 / local LLM (Phase 2, NATS-based)
+- Hash-chained audit trail (Phase 4 — unnecessary for personal use)
 
 ## Phase 2 — Atomic SLM & Cognitive Meta-language
 
@@ -396,41 +383,12 @@ class CognitiveFrame:
 
 **Cognitive flow**: message → routing SLM → memory SLM → planner SLM → skills → LLM (if needed) → NER SLM → memory update.
 
-## Next Steps (Phase 1)
+## Current Status (Phase 1b tail)
 
-1. Prototype the hub (bus + bindings + pools) — ~150 lines
-2. Connect the existing Telegram adapter
-3. Validate the hybrid memory layer (levels 2 + 3)
-4. Migrate existing skills (2ndBrain) to the new system
+Phase 1 core is complete. Active work on closing out the agent core:
 
----
+**Critical path**: #139 (message normalization) ∥ #123 (LlmProvider) → #83 (agent integration) → #99 (hub command sessions)
 
-## Business Projects
+**Independent**: #135 (runtime config), #134 (smart routing), #80 (voice STT)
 
-### Selected Tracks
-
-1. **Automated YouTube** — script → voice (voicecli) → video (MoviePy/Remotion) → publication. French-speaking dev/AI niche. Revenue: AdSense + partnerships.
-2. **Micro-SaaS** — roxabi_boilerplate base (Bun + TurboRepo + TanStack Start + NestJS). Local inference on Machine 2 = privacy selling point.
-3. **Social media** — coordinated animation of roxabi_site + projects (Lyra, SaaS). Build in public.
-
-**Synergies**: YouTube → clips recycled as posts → traffic to SaaS → funds the content.
-
----
-
-### Priority SaaS: LegalTech for Lawyers/Notaries
-
-**Context**: Real-world experience with Angelique (asset calculation for separation) + compte_appart → validated domain knowledge, existing real client.
-
-**Market**: ~70,000 lawyers in France, poorly digitized, high perceived value (billed at 200-400EUR/h → 99-299EUR/month is a no-brainer).
-
-**Key argument**: local LLM inference on Machine 2 → sensitive data never leaves the firm.
-
-**Target features**:
-- Personal injury damage calculation (IPP, AIPP, loss of earnings, third-party assistance)
-- Divorce calculation: compensatory allowance, alimony, asset division
-- Document generation: pleadings, summons, briefs from templates
-- Opposing party document analysis: summary, weak points, counter-arguments
-- Automated case timeline
-- Moral/economic damage justification with case law
-
-**Stack**: roxabi_boilerplate (frontend + backend) + local LLM Machine 2 via internal API.
+See [ROADMAP.md](ROADMAP.md) for the full backlog and priorities.

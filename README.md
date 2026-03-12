@@ -54,7 +54,7 @@ flowchart TD
 | **Backpressure** | Bounded queue (100) → immediate ack + blocking `await put()` |
 | **LLM** | Claude Code CLI (Phase 1) · Ollama OpenAI-compatible API (Phase 2) |
 | **Agents** | Stateless singleton · isolated per-scope pools · TOML config per agent |
-| **Memory** | 5 levels: working → session → episodic → semantic (SQLite + BM25) → procedural |
+| **Memory** | 5 levels: working (L0) → session → episodic → semantic (SQLite + FTS5 + fastembed, ✅ Phase 1) → procedural |
 | **Security** | Prompt injection guard · sandboxed skills · least-privilege tool permissions |
 
 ## Quick start
@@ -133,6 +133,7 @@ docs/
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Hub design, memory model, hardware, key decisions |
 | [vision.md](docs/vision.md) | Why Lyra exists and what it is not |
 | [ROADMAP.md](docs/ROADMAP.md) | Phase 1/2/3 scope, priorities, timeline |
+| [COMMANDS.md](docs/COMMANDS.md) | Command router — slash commands, external tool integration pattern |
 | [GETTING-STARTED.md](docs/GETTING-STARTED.md) | Machine 1 (Ubuntu Server) hardware setup |
 | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production service management on Machine 1 (systemd, logs, firewall) |
 | [ADRs](docs/architecture/adr/) | 8 architecture decision records with full rationale |

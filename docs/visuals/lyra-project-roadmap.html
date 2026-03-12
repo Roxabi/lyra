@@ -1,0 +1,1897 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lyra Engine — Project Roadmap</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<style>
+/* ─── RESET ─────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; }
+
+/* ─── TOKENS — Swiss Clean × Terminal Dark ───────────────── */
+:root {
+  --font-display: 'Space Grotesk', system-ui, sans-serif;
+  --font-body:    'Space Grotesk', system-ui, sans-serif;
+  --font-mono:    'JetBrains Mono', 'Space Mono', 'Fira Code', monospace;
+
+  /* Core palette */
+  --bg:        #0a0e1a;
+  --bg2:       #0f1423;
+  --surface:   #141929;
+  --surface-2: #1c2238;
+  --border:    rgba(255,255,255,0.07);
+  --border-2:  rgba(255,255,255,0.13);
+  --text:      #e4e8f2;
+  --text-dim:  #6b7a9b;
+  --text-muted:#3d4f6b;
+
+  /* Accent */
+  --cyan:      #00d4ff;
+  --cyan-dim:  rgba(0,212,255,0.10);
+  --cyan-glow: rgba(0,212,255,0.22);
+  --green:     #00e5a0;
+  --green-dim: rgba(0,229,160,0.10);
+  --amber:     #ffb800;
+  --amber-dim: rgba(255,184,0,0.10);
+  --violet:    #9b8ef8;
+  --violet-dim:rgba(155,142,248,0.10);
+  --rose:      #ff4d7e;
+  --rose-dim:  rgba(255,77,126,0.10);
+  --blue:      #4b9eff;
+  --blue-dim:  rgba(75,158,255,0.10);
+
+  /* Status */
+  --done:     #00e5a0;
+  --active:   #ffb800;
+  --ready:    #00d4ff;
+  --blocked:  #ff4d7e;
+  --frozen:   #4d5a7a;
+  --planned:  #9b8ef8;
+  --analysis: #4b9eff;
+
+  --radius:   8px;
+  --radius-lg:14px;
+}
+
+/* ─── BODY ───────────────────────────────────────────────── */
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.55;
+  background-image:
+    radial-gradient(ellipse at 10% 15%, rgba(0,212,255,0.05) 0%, transparent 50%),
+    radial-gradient(ellipse at 90% 85%, rgba(155,142,248,0.05) 0%, transparent 50%);
+}
+
+/* ─── SLIDE ENGINE ───────────────────────────────────────── */
+.deck { width: 100vw; height: 100vh; position: relative; }
+
+.slide {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+}
+.slide.active { display: flex; }
+
+/* ─── GRID BACKGROUNDS ───────────────────────────────────── */
+.slide-bg-grid::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.slide-bg-dots::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, rgba(255,255,255,0.04) 1px, transparent 1px);
+  background-size: 24px 24px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ─── SLIDE INNER ────────────────────────────────────────── */
+.slide-inner {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 52px 60px 40px;
+}
+
+/* Wide padding for full-bleed */
+.slide-inner.flush { padding: 0; }
+.slide-inner.centered { align-items: center; justify-content: center; text-align: center; }
+
+/* ─── EYEBROW ────────────────────────────────────────────── */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--cyan);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.eyebrow::before {
+  content: '';
+  display: inline-block;
+  width: 28px; height: 1px;
+  background: var(--cyan);
+  opacity: 0.5;
+}
+
+/* ─── TITLES ─────────────────────────────────────────────── */
+.slide-title {
+  font-family: var(--font-display);
+  font-size: clamp(28px, 3.8vw, 54px);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+.slide-title .accent { color: var(--cyan); }
+.slide-title .accent-v { color: var(--violet); }
+.slide-title .accent-g { color: var(--green); }
+.slide-title .accent-a { color: var(--amber); }
+
+.slide-subtitle {
+  font-size: 16px;
+  color: var(--text-dim);
+  margin-top: 12px;
+  font-weight: 400;
+  max-width: 600px;
+}
+
+.section-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+/* ─── SPLIT LAYOUT ───────────────────────────────────────── */
+.split {
+  display: grid;
+  gap: 40px;
+  flex: 1;
+  align-items: start;
+}
+.split-50-50 { grid-template-columns: 1fr 1fr; }
+.split-60-40 { grid-template-columns: 3fr 2fr; }
+.split-40-60 { grid-template-columns: 2fr 3fr; }
+.split-65-35 { grid-template-columns: 65fr 35fr; }
+
+/* ─── TABLE ──────────────────────────────────────────────── */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.data-table th {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-2);
+  text-align: left;
+  font-weight: 500;
+}
+.data-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.data-table tr:last-child td { border-bottom: none; }
+.data-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+/* ─── BADGES ─────────────────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.badge-done     { background: var(--green-dim); color: var(--done); border: 1px solid rgba(0,229,160,0.2); }
+.badge-active   { background: var(--amber-dim); color: var(--active); border: 1px solid rgba(255,184,0,0.2); }
+.badge-ready    { background: var(--cyan-dim); color: var(--ready); border: 1px solid rgba(0,212,255,0.2); }
+.badge-blocked  { background: var(--rose-dim); color: var(--blocked); border: 1px solid rgba(255,77,126,0.2); }
+.badge-frozen   { background: rgba(77,90,122,0.12); color: var(--frozen); border: 1px solid rgba(77,90,122,0.25); }
+.badge-planned  { background: var(--violet-dim); color: var(--planned); border: 1px solid rgba(155,142,248,0.2); }
+.badge-analysis { background: var(--blue-dim); color: var(--analysis); border: 1px solid rgba(75,158,255,0.2); }
+.badge-unblocked{ background: rgba(0,212,255,0.08); color: var(--cyan); border: 1px solid rgba(0,212,255,0.2); }
+
+.badge-p1 { background: rgba(255,77,126,0.08); color: var(--rose); border: 1px solid rgba(255,77,126,0.2); }
+.badge-p2 { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(255,184,0,0.2); }
+.badge-p3 { background: rgba(77,90,122,0.12); color: var(--frozen); border: 1px solid rgba(77,90,122,0.25); }
+
+.badge-s  { background: var(--green-dim); color: var(--green); border: 1px solid rgba(0,229,160,0.2); }
+.badge-m  { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(255,184,0,0.2); }
+.badge-l  { background: var(--rose-dim); color: var(--rose); border: 1px solid rgba(255,77,126,0.2); }
+
+/* ─── CARDS ──────────────────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px 22px;
+}
+.card-accent-cyan  { border-left: 3px solid var(--cyan); }
+.card-accent-green { border-left: 3px solid var(--green); }
+.card-accent-amber { border-left: 3px solid var(--amber); }
+.card-accent-violet{ border-left: 3px solid var(--violet); }
+.card-accent-rose  { border-left: 3px solid var(--rose); }
+
+/* ─── PILL LIST ──────────────────────────────────────────── */
+.pill-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.pill {
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 13px;
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+}
+.pill-cyan  { background: var(--cyan-dim); border-color: rgba(0,212,255,0.2); color: var(--cyan); }
+.pill-green { background: var(--green-dim); border-color: rgba(0,229,160,0.2); color: var(--green); }
+.pill-amber { background: var(--amber-dim); border-color: rgba(255,184,0,0.2); color: var(--amber); }
+.pill-violet{ background: var(--violet-dim); border-color: rgba(155,142,248,0.2); color: var(--violet); }
+
+/* ─── MERMAID WRAPPER ────────────────────────────────────── */
+.diagram-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  overflow: hidden;
+  position: relative;
+}
+.diagram-wrap .mermaid {
+  display: flex;
+  justify-content: center;
+  transform-origin: center center;
+  transition: transform 0.2s ease;
+}
+.zoom-controls {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  gap: 6px;
+  z-index: 10;
+}
+.zoom-btn {
+  width: 28px; height: 28px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+  border-radius: 6px;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+  font-family: var(--font-mono);
+}
+.zoom-btn:hover { background: var(--border-2); color: var(--cyan); border-color: var(--cyan); }
+
+/* ─── FLOW NODES ─────────────────────────────────────────── */
+.flow {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-wrap: wrap;
+}
+.flow-node {
+  background: var(--surface);
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--cyan);
+  white-space: nowrap;
+  position: relative;
+}
+.flow-node.green { color: var(--green); border-color: rgba(0,229,160,0.3); }
+.flow-node.amber { color: var(--amber); border-color: rgba(255,184,0,0.3); }
+.flow-node.violet { color: var(--violet); border-color: rgba(155,142,248,0.3); }
+.flow-arrow {
+  color: var(--text-muted);
+  font-size: 18px;
+  margin: 0 6px;
+  line-height: 1;
+}
+
+/* ─── DIVIDER ────────────────────────────────────────────── */
+.divider {
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border-2), transparent);
+  margin: 16px 0;
+}
+
+/* ─── STAT BLOCKS ────────────────────────────────────────── */
+.stat-row {
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+}
+.stat {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  text-align: center;
+}
+.stat-num {
+  font-family: var(--font-mono);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1;
+}
+.stat-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* ─── NAV ────────────────────────────────────────────────── */
+.nav {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(10,14,26,0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-2);
+  border-radius: 999px;
+  padding: 8px 16px;
+  z-index: 100;
+}
+.nav-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  transition: all 0.15s;
+  font-family: var(--font-mono);
+  display: flex; align-items: center; justify-content: center;
+}
+.nav-btn:hover { background: var(--surface-2); color: var(--cyan); }
+.nav-counter {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  min-width: 48px;
+  text-align: center;
+}
+.nav-dots {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+.nav-dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.nav-dot.active {
+  background: var(--cyan);
+  width: 16px;
+  border-radius: 3px;
+}
+
+/* ─── SVG DECORATIONS ────────────────────────────────────── */
+.deco-corner {
+  position: absolute;
+  opacity: 0.15;
+  pointer-events: none;
+}
+
+/* ─── FULL-BLEED HERO ────────────────────────────────────── */
+.hero-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(0,212,255,0.12) 0%, transparent 55%),
+    radial-gradient(ellipse at 80% 50%, rgba(155,142,248,0.10) 0%, transparent 55%),
+    radial-gradient(ellipse at 50% 80%, rgba(0,229,160,0.06) 0%, transparent 40%);
+  z-index: 0;
+}
+
+/* ─── TIMELINE ────────────────────────────────────────────── */
+.timeline {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding-left: 32px;
+}
+.timeline::before {
+  content: '';
+  position: absolute;
+  left: 10px;
+  top: 12px;
+  bottom: 12px;
+  width: 2px;
+  background: linear-gradient(180deg, var(--done), var(--active), var(--planned), var(--frozen), var(--frozen));
+}
+.tl-item {
+  position: relative;
+  padding: 14px 0 14px 20px;
+}
+.tl-item::before {
+  content: '';
+  position: absolute;
+  left: -22px;
+  top: 20px;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--text-muted);
+}
+.tl-item.done::before  { border-color: var(--done); background: rgba(0,229,160,0.15); }
+.tl-item.active::before{ border-color: var(--active); background: rgba(255,184,0,0.15); box-shadow: 0 0 8px rgba(255,184,0,0.4); }
+.tl-item.unblocked::before{ border-color: var(--cyan); background: rgba(0,212,255,0.15); }
+.tl-item.planned::before{ border-color: var(--planned); background: rgba(155,142,248,0.15); }
+.tl-item.frozen::before { border-color: var(--frozen); background: rgba(77,90,122,0.15); }
+.tl-title { font-weight: 600; font-size: 14px; }
+.tl-sub   { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+
+/* ─── CHART CONTAINER ────────────────────────────────────── */
+.chart-container {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+}
+
+/* ─── PHASE CHIP ─────────────────────────────────────────── */
+.phase-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+.phase-chip {
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 90px;
+}
+.phase-chip .pc-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+/* ─── SCROLLABLE PANEL ───────────────────────────────────── */
+.scroll-panel {
+  overflow-y: auto;
+  max-height: 100%;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-2) transparent;
+}
+
+/* ─── UTILITIES ──────────────────────────────────────────── */
+.mt-4  { margin-top: 4px; }
+.mt-8  { margin-top: 8px; }
+.mt-12 { margin-top: 12px; }
+.mt-16 { margin-top: 16px; }
+.mt-20 { margin-top: 20px; }
+.mt-24 { margin-top: 24px; }
+.gap-8 { gap: 8px; }
+.mono { font-family: var(--font-mono); font-size: 12px; }
+.text-dim { color: var(--text-dim); }
+.text-muted { color: var(--text-muted); }
+.text-cyan  { color: var(--cyan); }
+.text-green { color: var(--green); }
+.text-amber { color: var(--amber); }
+.text-violet { color: var(--violet); }
+.text-rose  { color: var(--rose); }
+.fw-600 { font-weight: 600; }
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.items-start { align-items: flex-start; }
+.items-center { align-items: center; }
+.gap-16 { gap: 16px; }
+.flex-1 { flex: 1; }
+.small { font-size: 12px; }
+.smaller { font-size: 11px; }
+.code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  padding: 2px 7px;
+  border-radius: 4px;
+  color: var(--cyan);
+}
+
+/* ─── PROGRESS BAR ───────────────────────────────────────── */
+.progress-track {
+  background: var(--surface-2);
+  border-radius: 999px;
+  height: 6px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--cyan);
+  transition: width 0.5s ease;
+}
+.progress-fill.green { background: var(--green); }
+.progress-fill.amber { background: var(--amber); }
+.progress-fill.violet { background: var(--violet); }
+
+/* ─── MERMAID OVERRIDES ──────────────────────────────────── */
+.mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* ─── SLIDE 1 — full-bleed title ────────────────────────── */
+#s1 { background: var(--bg); }
+#s1 .slide-inner {
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  height: 100%;
+}
+#s1 .s1-left {
+  padding: 64px 52px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border-right: 1px solid var(--border);
+  position: relative;
+}
+#s1 .s1-right {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 64px 52px;
+  position: relative;
+}
+.s1-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--cyan);
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.s1-tag::before {
+  content: '';
+  width: 24px; height: 1px;
+  background: var(--cyan);
+}
+.s1-title {
+  font-family: var(--font-display);
+  font-size: clamp(36px, 5vw, 68px);
+  font-weight: 700;
+  line-height: 1.0;
+  letter-spacing: -0.03em;
+}
+.s1-title span { color: var(--cyan); display: block; }
+.s1-sub {
+  margin-top: 20px;
+  font-size: 16px;
+  color: var(--text-dim);
+  line-height: 1.6;
+  max-width: 420px;
+}
+.s1-meta {
+  margin-top: 36px;
+  display: flex;
+  gap: 24px;
+}
+.s1-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.s1-meta-item .label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.s1-meta-item .value {
+  font-weight: 600;
+  font-size: 14px;
+}
+</style>
+</head>
+<body>
+<div class="deck" id="deck">
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 1 — TITLE (full-bleed split)
+     ═══════════════════════════════════════════════════════ -->
+<div class="slide slide-bg-grid active" id="s1">
+  <div class="hero-bg"></div>
+  <div class="slide-inner">
+    <div class="s1-left">
+      <!-- corner decoration -->
+      <svg class="deco-corner" style="top:0;left:0;width:120px;height:120px;" viewBox="0 0 120 120" fill="none">
+        <path d="M0 0 L120 0 L0 120 Z" fill="rgba(0,212,255,0.03)"/>
+        <line x1="0" y1="60" x2="60" y2="0" stroke="rgba(0,212,255,0.12)" stroke-width="1"/>
+        <line x1="0" y1="90" x2="90" y2="0" stroke="rgba(0,212,255,0.07)" stroke-width="1"/>
+      </svg>
+
+      <div class="s1-tag">Lyra Engine · 2026</div>
+      <div class="s1-title">
+        Project<br>Roadmap
+        <span>v1b→v2</span>
+      </div>
+      <div class="s1-sub">
+        From agent core to distributed multi-machine engine.
+        Hub-and-spoke, asyncio, multi-channel.
+      </div>
+      <div class="s1-meta">
+        <div class="s1-meta-item">
+          <span class="label">Updated</span>
+          <span class="value">Mar 11, 2026</span>
+        </div>
+        <div class="s1-meta-item">
+          <span class="label">Phase</span>
+          <span class="value text-amber">1b Tail</span>
+        </div>
+        <div class="s1-meta-item">
+          <span class="label">Next</span>
+          <span class="value text-cyan">#139</span>
+        </div>
+      </div>
+    </div>
+    <div class="s1-right">
+      <svg class="deco-corner" style="bottom:0;right:0;width:160px;height:160px;" viewBox="0 0 160 160" fill="none">
+        <path d="M160 160 L0 160 L160 0 Z" fill="rgba(155,142,248,0.04)"/>
+        <line x1="160" y1="80" x2="80" y2="160" stroke="rgba(155,142,248,0.1)" stroke-width="1"/>
+        <line x1="160" y1="40" x2="40" y2="160" stroke="rgba(155,142,248,0.06)" stroke-width="1"/>
+      </svg>
+      <div class="section-label">Current focus</div>
+      <div class="timeline">
+        <div class="tl-item done">
+          <div class="tl-title">Phase 0 — Bot core parity</div>
+          <div class="tl-sub">Pairing, circuit breaker, TOML, plugins (#101)</div>
+        </div>
+        <div class="tl-item done">
+          <div class="tl-title">Phase 1 — Hub</div>
+          <div class="tl-sub">asyncio bus, adapters, SimpleAgent, command router</div>
+        </div>
+        <div class="tl-item active">
+          <div class="tl-title">Phase 1b tail — Agent core</div>
+          <div class="tl-sub">Memory · LlmProvider · normalization · sessions</div>
+        </div>
+        <div class="tl-item unblocked">
+          <div class="tl-title">Voice pipeline (#74)</div>
+          <div class="tl-sub">TTS + STT — unblocked since #76</div>
+        </div>
+        <div class="tl-item planned">
+          <div class="tl-title">Phase 2 — NATS + Machine 2</div>
+          <div class="tl-sub">Distributed bus, LLM worker, health checks</div>
+        </div>
+        <div class="tl-item frozen">
+          <div class="tl-title">Phase 3–5 — Frozen</div>
+          <div class="tl-sub">SLMs · Resilience · Multi-agent orchestration</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 2 — PHASE OVERVIEW (centered)
+     ═══════════════════════════════════════════════════════ -->
+<div class="slide slide-bg-dots" id="s2">
+  <div class="slide-inner" style="padding:52px 60px 52px;">
+    <div class="eyebrow">Phase overview</div>
+    <div class="slide-title">Where we are</div>
+    <div class="mt-20" style="flex:1; display:flex; flex-direction:column; gap:10px; overflow:hidden;">
+
+      <!-- progress chart + phase table -->
+      <div class="split split-60-40" style="flex:1; align-items:start; gap:32px;">
+        <div class="scroll-panel">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Phase</th>
+                <th>Epic</th>
+                <th>Status</th>
+                <th>Summary</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="mono text-cyan">#0</td>
+                <td class="mono">#101</td>
+                <td><span class="badge badge-done">✓ Done</span></td>
+                <td class="small">Bot core: pairing, circuit breaker, TOML, plugins</td>
+              </tr>
+              <tr>
+                <td class="mono text-cyan">#1</td>
+                <td class="mono">—</td>
+                <td><span class="badge badge-done">✓ Done</span></td>
+                <td class="small">Hub: asyncio bus, adapters (TG/DC), SimpleAgent, router</td>
+              </tr>
+              <tr>
+                <td class="mono text-amber">#1b</td>
+                <td class="mono">#73</td>
+                <td><span class="badge badge-active">⟳ Tail</span></td>
+                <td class="small">Agent core: persona ✓, SDK ✓, parity ✓, memory ✓, hub refactor ✓</td>
+              </tr>
+              <tr>
+                <td class="mono text-cyan">Voice</td>
+                <td class="mono">#74</td>
+                <td><span class="badge badge-unblocked">⚡ Unblocked</span></td>
+                <td class="small">TTS + STT — unblocked since #76 shipped</td>
+              </tr>
+              <tr>
+                <td class="mono text-violet">#2</td>
+                <td class="mono">#60</td>
+                <td><span class="badge badge-planned">Planned</span></td>
+                <td class="small">NATS introduction + Machine 2 coordination</td>
+              </tr>
+              <tr>
+                <td class="mono text-muted">#3</td>
+                <td class="mono">#61</td>
+                <td><span class="badge badge-frozen">Frozen</span></td>
+                <td class="small">Atomic SLMs + cognitive pipeline</td>
+              </tr>
+              <tr>
+                <td class="mono text-muted">#4</td>
+                <td class="mono">#62</td>
+                <td><span class="badge badge-frozen">Frozen</span></td>
+                <td class="small">Resilience, observability, security</td>
+              </tr>
+              <tr>
+                <td class="mono text-muted">#5</td>
+                <td class="mono">#63</td>
+                <td><span class="badge badge-frozen">Frozen</span></td>
+                <td class="small">Multi-agent orchestration</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:16px;">
+          <div class="card card-accent-green">
+            <div class="section-label">Completed</div>
+            <div class="stat-num text-green mt-4">Phase 0 + 1</div>
+            <div style="font-size:12px; color:var(--text-dim); margin-top:6px;">17 issues shipped in Phase 1b alone</div>
+            <div class="progress-track mt-8">
+              <div class="progress-fill green" style="width:100%"></div>
+            </div>
+          </div>
+          <div class="card card-accent-amber">
+            <div class="section-label">In progress</div>
+            <div class="stat-num text-amber mt-4">Phase 1b tail</div>
+            <div style="font-size:12px; color:var(--text-dim); margin-top:6px;">7 remaining items, critical path clear</div>
+            <div class="progress-track mt-8">
+              <div class="progress-fill amber" style="width:72%"></div>
+            </div>
+          </div>
+          <div class="card card-accent-cyan">
+            <div class="section-label">Unblocked now</div>
+            <div class="stat-num text-cyan mt-4">Voice #74</div>
+            <div style="font-size:12px; color:var(--text-dim); margin-top:6px;">STT ready (#80) · TTS ready (#79)</div>
+            <div class="progress-track mt-8">
+              <div class="progress-fill" style="width:20%"></div>
+            </div>
+          </div>
+          <div class="card" style="border-left:3px solid var(--violet);">
+            <div class="section-label">Next phase</div>
+            <div class="stat-num text-violet mt-4">Phase 2</div>
+            <div style="font-size:12px; color:var(--text-dim); margin-top:6px;">NATS + Machine 2 — after 1b stable</div>
+            <div class="progress-track mt-8">
+              <div class="progress-fill violet" style="width:0%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 3 — PHASE 1b TAIL ACTIVE WORK (left-heavy)
+     ═══════════════════════════════════════════════════════ -->
+<div class="slide slide-bg-grid" id="s3">
+  <div class="slide-inner">
+    <div class="eyebrow">Phase 1b tail</div>
+    <div class="slide-title">Active work — <span class="accent-a">7 remaining</span></div>
+    <div class="slide-subtitle">Core is done. Wrapping up normalization, LlmProvider, memory integration, sessions.</div>
+    <div class="mt-20 split split-65-35" style="flex:1; overflow:hidden; align-items:start;">
+      <div class="scroll-panel">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Issue</th>
+              <th>Size</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="background:rgba(0,212,255,0.04);">
+              <td class="mono text-cyan fw-600">#139</td>
+              <td><span class="fw-600">Message &amp; Media Normalization</span> — typed bus envelope <span class="code">BusEnvelope</span></td>
+              <td><span class="badge badge-l">L</span></td>
+              <td><span class="badge badge-ready">▶ Next</span></td>
+            </tr>
+            <tr>
+              <td class="mono text-cyan">#123</td>
+              <td>LlmProvider protocol — <span class="code">AnthropicSdkDriver</span> + <span class="code">ClaudeCliDriver</span> + <span class="code">OllamaDriver</span></td>
+              <td><span class="badge badge-l">L</span></td>
+              <td><span class="badge badge-analysis">Analysis</span></td>
+            </tr>
+            <tr>
+              <td class="mono text-amber">#83</td>
+              <td>Lyra agent integration — identity anchor, session lifecycle, L0 compaction</td>
+              <td><span class="badge badge-l">L</span></td>
+              <td><span class="badge badge-blocked">Blocked #123</span></td>
+            </tr>
+            <tr>
+              <td class="mono text-amber">#99</td>
+              <td>Hub command sessions — <span class="code">/add</span> <span class="code">/explain</span> <span class="code">/summarize</span> <span class="code">/search</span></td>
+              <td><span class="badge badge-l">L</span></td>
+              <td><span class="badge badge-blocked">Blocked #83+#139</span></td>
+            </tr>
+            <tr>
+              <td class="mono text-green">#135</td>
+              <td>Runtime agent config — <span class="code">!config</span> live tuning without restart</td>
+              <td><span class="badge badge-s">S</span></td>
+              <td><span class="badge badge-ready">Ready</span></td>
+            </tr>
+            <tr>
+              <td class="mono text-green">#134</td>
+              <td>LLM smart routing — complexity-based model selection</td>
+              <td><span class="badge badge-m">M</span></td>
+              <td><span class="badge badge-ready">Ready</span></td>
+            </tr>
+            <tr>
+              <td class="mono text-muted">#136</td>
+              <td>Multi-bot registry upgrade — per-bot-id routing + multi-token config</td>
+              <td><span class="badge badge-m">M</span></td>
+              <td><span class="badge badge-blocked">Last — #83+#79</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:12px;">
+        <div class="card card-accent-cyan">
+          <div class="section-label">Critical path</div>
+          <div style="margin-top:10px; display:flex; flex-direction:column; gap:6px;">
+            <div class="flow-node" style="display:inline-block;">#139</div>
+            <div style="font-size:18px; color:var(--text-muted); padding-left:4px;">↕</div>
+            <div class="flow-node" style="display:inline-block;">#123</div>
+            <div style="font-size:18px; color:var(--text-muted); padding-left:4px;">↓</div>
+            <div class="flow-node amber" style="display:inline-block;">#83</div>
+            <div style="font-size:18px; color:var(--text-muted); padding-left:4px;">↓</div>
+            <div class="flow-node" style="color:var(--violet); border-color:rgba(155,142,248,0.3); display:inline-block;">#99</div>
+          </div>
+        </div>
+
+        <div class="card card-accent-green">
+          <div class="section-label">Independent — do anytime</div>
+          <div class="pill-list mt-8">
+            <div class="pill pill-green">#135 S</div>
+            <div class="pill pill-amber">#134 M</div>
+            <div class="pill pill-cyan">#80 STT</div>
+          </div>
+        </div>
+
+        <div class="card" style="background:rgba(255,184,0,0.04); border:1px solid rgba(255,184,0,0.15);">
+          <div class="section-label">Key unlock</div>
+          <div style="font-size:12px; color:var(--text-dim); margin-top:6px; line-height:1.6;">
+            <span class="text-cyan">#139</span> unblocks #99, #80, #79<br>
+            <span class="text-cyan">#123</span> unblocks #83<br>
+            <span class="text-amber">#83</span> unblocks #99, #67, #128
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 4 — CRITICAL PATH DEEP DIVE (diagram)
+     ═══════════════════════════════════════════════════════ -->
+<div class="slide slide-bg-dots" id="s4">
+  <div class="slide-inner">
+    <div class="eyebrow">Critical path</div>
+    <div class="slide-title">#139 → #123 → #83 → #99</div>
+    <div class="slide-subtitle">The four gates to shipping agent sessions.</div>
+    <div class="mt-20 split split-60-40" style="flex:1; overflow:hidden; align-items:start; gap:28px;">
+      <div class="diagram-wrap" style="height:100%; max-height:360px;">
+        <div class="zoom-controls" id="zc4">
+          <button class="zoom-btn" onclick="zoom('d4',-0.15)" title="Zoom out">−</button>
+          <button class="zoom-btn" onclick="zoom('d4', 0.15)" title="Zoom in">+</button>
+          <button class="zoom-btn" onclick="zoom('d4', 0, true)" title="Reset">⟳</button>
+        </div>
+        <div class="mermaid" id="d4" data-zoom="1">
+%%{init: {'theme':'dark','themeVariables':{'primaryColor':'#141929','primaryBorderColor':'#00d4ff','primaryTextColor':'#e4e8f2','lineColor':'#4d5a7a','secondaryColor':'#1c2238','tertiaryColor':'#0f1423','fontFamily':'JetBrains Mono'}}}%%
+flowchart LR
+    A["#139\nMsg Normalization\n🔵 Ready"] -->|"unblocks"| D
+    B["#123\nLlmProvider\n🔵 Analysis"] -->|"unblocks"| C
+    C["#83\nAgent Integration\n🟡 Blocked"] -->|"unblocks"| D
+    D["#99\nHub Sessions\n🔴 Blocked"] -->|"ships"| E["✓ Phase 1b\nComplete"]
+    A -->|"also unblocks"| F["#80 STT\n🟢 Ready"]
+    A -->|"also unblocks"| G["#79 TTS\n🟢 Ready"]
+    C -->|"also unblocks"| H["#67 Persistence\n#128 Import"]
+    style A fill:#0f1d2d,stroke:#00d4ff,color:#00d4ff
+    style B fill:#0f1d2d,stroke:#4b9eff,color:#4b9eff
+    style C fill:#1a1500,stroke:#ffb800,color:#ffb800
+    style D fill:#1a0b10,stroke:#ff4d7e,color:#ff4d7e
+    style E fill:#0a1f17,stroke:#00e5a0,color:#00e5a0
+    style F fill:#0a1f17,stroke:#00e5a0,color:#00e5a0
+    style G fill:#0a1f17,stroke:#00e5a0,color:#00e5a0
+    style H fill:#141929,stroke:#4d5a7a,color:#6b7a9b
+        </div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:12px; overflow-y:auto;">
+        <div class="card card-accent-cyan">
+          <div class="mono text-cyan fw-600">#139 — Msg Normalization</div>
+          <div class="small text-dim mt-4">Typed <span class="code">BusEnvelope</span> for all adapters. Standardizes every message flowing through the hub.</div>
+          <div class="mt-8"><span class="badge badge-ready">▶ Start here</span> <span class="badge badge-l" style="margin-left:4px;">L</span></div>
+        </div>
+        <div class="card" style="border-left:3px solid var(--blue);">
+          <div class="mono text-blue fw-600">#123 — LlmProvider</div>
+          <div class="small text-dim mt-4">Protocol: <span class="code">AnthropicSdkDriver</span>, <span class="code">ClaudeCliDriver</span>, <span class="code">OllamaDriver</span>. In analysis.</div>
+          <div class="mt-8"><span class="badge badge-analysis">Analysis</span> <span class="badge badge-l" style="margin-left:4px;">L</span></div>
+        </div>
+        <div class="card card-accent-amber">
+          <div class="mono text-amber fw-600">#83 — Agent Integration</div>
+          <div class="small text-dim mt-4">Identity anchor, session lifecycle, L0 compaction. Needs #123 first.</div>
+          <div class="mt-8"><span class="badge badge-blocked">Blocked</span> <span class="badge badge-l" style="margin-left:4px;">L</span></div>
+        </div>
+        <div class="card" style="border-left:3px solid var(--violet);">
+          <div class="mono text-violet fw-600">#99 — Hub Sessions</div>
+          <div class="small text-dim mt-4"><span class="code">/add</span> <span class="code">/explain</span> <span class="code">/summarize</span> <span class="code">/search</span> — the payoff.</div>
+          <div class="mt-8"><span class="badge badge-blocked">Blocked #83+#139</span> <span class="badge badge-l" style="margin-left:4px;">L</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 5 — MEMORY TRACK (split table)
+     ═══════════════════════════════════════════════════════ -->
+<div class="slide slide-bg-grid" id="s5">
+  <div class="slide-inner">
+    <div class="eyebrow">Memory track</div>
+    <div class="slide-title">Built vs <span class="accent" style="color:var(--frozen)">Deferred</span></div>
+    <div class="slide-subtitle">Foundation is solid. Higher levels frozen until agent core ships.</div>
+    <div class="mt-20 split split-50-50" style="flex:1; overflow:hidden; align-items:start; gap:28px;">
+
+      <div>
+        <div class="section-label" style="margin-bottom:12px;">✓ Shipped — Memory Foundation</div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <div class="card card-accent-green">
+            <div class="flex items-center gap-16">
+              <div>
+                <div class="mono text-green fw-600">#81 — roxabi-memory package</div>
+                <div class="small text-dim mt-4">Schema v2, FTS5/BM25, namespacing. The foundation.</div>
+              </div>
+              <span class="badge badge-done" style="flex-shrink:0;">Done</span>
+            </div>
+          </div>
+          <div class="card card-accent-green">
+            <div class="flex items-center gap-16">
+              <div>
+                <div class="mono text-green fw-600">#82 — Hybrid search</div>
+                <div class="small text-dim mt-4">fastembed ONNX + sqlite-vec. Semantic + BM25.</div>
+              </div>
+              <span class="badge badge-done" style="flex-shrink:0;">Done</span>
+            </div>
+          </div>
+          <div class="card card-accent-green">
+            <div class="flex items-center gap-16">
+              <div>
+                <div class="mono text-green fw-600">#78 — Vault semantic backend</div>
+                <div class="small text-dim mt-4">Level 3 memory (semantic). Vault-migrate shipped.</div>
+              </div>
+              <span class="badge badge-done" style="flex-shrink:0;">Done</span>
+            </div>
+          </div>
+          <div class="card card-accent-amber">
+            <div class="flex items-center gap-16">
+              <div>
+                <div class="mono text-amber fw-600">#83 — Agent integration</div>
+                <div class="small text-dim mt-4">Identity anchor, L0 compaction. Critical path.</div>
+              </div>
+              <span class="badge badge-blocked" style="flex-shrink:0;">P1</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-label" style="margin-bottom:12px;">Pending / Frozen</div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <div class="card" style="border-left:3px solid var(--blue);">
+            <div class="flex items-center gap-16">
+              <div>
+                <div class="mono text-blue fw-600">#128 — Import 2ndBrain history</div>
+                <div class="small text-dim mt-4">Episodic memory L3. Blocked by #83.</div>
+              </div>
+              <span class="badge badge-blocked" style="flex-shrink:0;">P2</span>
+            </div>
+          </div>
+          <div class="card" style="border-left:3px solid var(--text-muted);">
+            <div class="flex items-center gap-16">
+              <div>
+                <div class="mono fw-600">#67 — Session persistence</div>
+                <div class="small text-dim mt-4">JSONL conversation history.</div>
+              </div>
+              <span class="badge badge-frozen" style="flex-shrink:0;">P2</span>
+            </div>
+          </div>
+          <div class="card" style="border-left:3px solid var(--frozen);">
+            <div class="flex items-center gap-16">
+              <div>
+                <div class="mono text-muted fw-600">#71 — Memory SLM</div>
+                <div class="small text-dim mt-4">Episodic→semantic promotion. Phase 3.</div>
+              </div>
+              <span class="badge badge-frozen" style="flex-shrink:0;">Frozen</span>
+            </div>
+          </div>
+          <div class="card" style="border-left:3px solid var(--frozen);">
+            <div class="flex items-center gap-16">
+              <div>
+                <div class="mono text-muted fw-600">#72 — Memory Phase 2</div>
+                <div class="small text-dim mt-4">Level 4 procedural seeds. Phase 3.</div>
+              </div>
+              <span class="badge badge-frozen" style="flex-shrink:0;">Frozen</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card mt-16" style="background:rgba(0,229,160,0.04); border:1px solid rgba(0,229,160,0.12);">
+          <div class="section-label">Memory levels</div>
+          <div style="font-size:12px; margin-top:8px; display:flex; flex-direction:column; gap:4px;">
+            <div class="flex items-center gap-16"><span class="code">L0</span> <span class="text-dim">Working context (in-prompt)</span> <span class="badge badge-active" style="margin-left:auto;">Planned #83</span></div>
+            <div class="flex items-center gap-16"><span class="code">L1</span> <span class="text-dim">Episodic (JSONL)</span> <span class="badge badge-frozen" style="margin-left:auto;">#67</span></div>
+            <div class="flex items-center gap-16"><span class="code">L3</span> <span class="text-dim">Semantic (Vault / sqlite-vec)</span> <span class="badge badge-done" style="margin-left:auto;">Done</span></div>
+            <div class="flex items-center gap-16"><span class="code">L4</span> <span class="text-dim">Procedural seeds</span> <span class="badge badge-frozen" style="margin-left:auto;">Ph3</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 6 — VOICE PIPELINE (right-heavy)
+     ═══════════════════════════════════════════════════════ -->
+<div class="slide slide-bg-dots" id="s6">
+  <div class="slide-inner">
+    <div class="eyebrow">Voice pipeline</div>
+    <div class="slide-title"><span class="accent">Unblocked</span> — ready to ship</div>
+    <div class="slide-subtitle">Voice epic #74: TTS + STT integration. STT is fully unblocked right now.</div>
+    <div class="mt-20 split split-40-60" style="flex:1; overflow:hidden; align-items:start; gap:28px;">
+
+      <div style="display:flex; flex-direction:column; gap:12px;">
+        <div class="stat-row">
+          <div class="stat">
+            <div class="stat-num text-cyan">3</div>
+            <div class="stat-label">Issues</div>
+          </div>
+          <div class="stat">
+            <div class="stat-num text-green">2</div>
+            <div class="stat-label">Ready now</div>
+          </div>
+          <div class="stat">
+            <div class="stat-num text-amber">1</div>
+            <div class="stat-label">Conditional</div>
+          </div>
+        </div>
+
+        <div class="card card-accent-cyan">
+          <div class="section-label">Architecture</div>
+          <div style="font-size:13px; margin-top:10px; line-height:1.7;">
+            <div class="flex items-center gap-16 mt-4">
+              <span style="width:52px; font-family:var(--font-mono); font-size:11px; color:var(--text-muted);">Input</span>
+              <span class="text-dim">Telegram voice message</span>
+            </div>
+            <div style="padding-left:8px; color:var(--text-muted); font-size:18px;">↓</div>
+            <div class="flex items-center gap-16">
+              <span style="width:52px; font-family:var(--font-mono); font-size:11px; color:var(--cyan);">STT</span>
+              <span class="text-dim">Whisper transcription (#80)</span>
+            </div>
+            <div style="padding-left:8px; color:var(--text-muted); font-size:18px;">↓</div>
+            <div class="flex items-center gap-16">
+              <span style="width:52px; font-family:var(--font-mono); font-size:11px; color:var(--violet);">Hub</span>
+              <span class="text-dim">BusEnvelope → Agent → LLM</span>
+            </div>
+            <div style="padding-left:8px; color:var(--text-muted); font-size:18px;">↓</div>
+            <div class="flex items-center gap-16">
+              <span style="width:52px; font-family:var(--font-mono); font-size:11px; color:var(--green);">TTS</span>
+              <span class="text-dim">voicecli → OGG reply (#79)</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="background:rgba(0,212,255,0.04); border:1px solid rgba(0,212,255,0.12);">
+          <div class="section-label">Dependency note</div>
+          <div style="font-size:12px; color:var(--text-dim); margin-top:6px; line-height:1.6;">
+            #80 (STT) is ready <span class="text-green fw-600">now</span>.<br>
+            #79 (TTS) needs #136 (multi-bot registry) first.<br>
+            #42 (lang detect) is also ready.
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <div class="section-label" style="margin-bottom:4px;">Voice issues</div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Issue</th>
+              <th>Priority</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="mono text-cyan fw-600">#79</td>
+              <td>Voice TTS in Telegram (voicecli integration)</td>
+              <td><span class="badge badge-p2">P2</span></td>
+              <td><span class="badge badge-ready">Ready</span></td>
+            </tr>
+            <tr>
+              <td class="mono text-cyan fw-600">#80</td>
+              <td>Voice STT — audio transcription (Whisper)</td>
+              <td><span class="badge badge-p2">P2</span></td>
+              <td><span class="badge badge-ready">Ready ✓</span></td>
+            </tr>
+            <tr>
+              <td class="mono text-cyan fw-600">#42</td>
+              <td>Automatic language detection</td>
+              <td><span class="badge badge-p2">P2</span></td>
+              <td><span class="badge badge-ready">Ready</span></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="card card-accent-green" style="margin-top:8px;">
+          <div class="section-label">voicecli daemons (Machine 2)</div>
+          <div style="font-size:12px; margin-top:10px; display:flex; flex-direction:column; gap:6px;">
+            <div class="flex items-center gap-16">
+              <span class="code">voicecli_tts</span>
+              <span class="text-dim">Chatterbox TTS server</span>
+              <span class="badge badge-done" style="margin-left:auto;">Running</span>
+            </div>
+            <div class="flex items-center gap-16">
+              <span class="code">voicecli_stt</span>
+              <span class="text-dim">Whisper STT server</span>
+              <span class="badge badge-done" style="margin-left:auto;">Running</span>
+            </div>
+          </div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:10px;">Supervised by lyra-stack on Machine 2 (RTX 5070 Ti)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 7 — CHIMERA PATTERNS (split)
+     ═══════════════════════════════════════════════════════ -->
+<div class="slide slide-bg-grid" id="s7">
+  <div class="slide-inner">
+    <div class="eyebrow">Chimera strategy</div>
+    <div class="slide-title">Phase 2 patterns from <span class="accent-v">ClawFamily</span></div>
+    <div class="slide-subtitle">
+      Best-of-breed patterns extracted from IronClaw, ScalyClaw, OpenClaw, OpenFang.
+      See <span class="code">artifacts/explorations/clawfamily/chimera-strategy.md</span>
+    </div>
+    <div class="mt-20 split split-60-40" style="flex:1; overflow:hidden; align-items:start; gap:28px;">
+      <div class="scroll-panel">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Pattern</th>
+              <th>Source</th>
+              <th>Size</th>
+              <th>Phase</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="background:rgba(0,212,255,0.03);">
+              <td class="mono text-cyan">#134</td>
+              <td><span class="fw-600">Smart routing</span> — complexity-based model selection</td>
+              <td><span style="color:var(--blue); font-size:12px;">IronClaw</span></td>
+              <td><span class="badge badge-m">M</span></td>
+              <td><span class="badge badge-active">1b tail</span></td>
+            </tr>
+            <tr style="background:rgba(0,212,255,0.03);">
+              <td class="mono text-cyan">#135</td>
+              <td><span class="fw-600">Runtime agent config</span> — <span class="code">!config</span> live tuning</td>
+              <td><span style="color:var(--green); font-size:12px;">ScalyClaw</span></td>
+              <td><span class="badge badge-s">S</span></td>
+              <td><span class="badge badge-active">1b tail</span></td>
+            </tr>
+            <tr>
+              <td class="mono text-muted">—</td>
+              <td><span class="fw-600">Proactive engagement engine</span> — 2-phase cron+queue</td>
+              <td><span style="color:var(--green); font-size:12px;">ScalyClaw</span></td>
+              <td><span class="badge badge-l">L</span></td>
+              <td><span class="badge badge-planned">Phase 2</span></td>
+            </tr>
+            <tr>
+              <td class="mono text-muted">—</td>
+              <td><span class="fw-600">Command shield</span> — deterministic blocklist, no LLM</td>
+              <td><span style="color:var(--green); font-size:12px;">ScalyClaw</span></td>
+              <td><span class="badge badge-s">S</span></td>
+              <td><span class="badge badge-planned">Phase 2</span></td>
+            </tr>
+            <tr>
+              <td class="mono text-muted">—</td>
+              <td><span class="fw-600">Memory consolidation</span> — LLM-driven clustering</td>
+              <td><span style="color:var(--green); font-size:12px;">ScalyClaw</span></td>
+              <td><span class="badge badge-m">M</span></td>
+              <td><span class="badge badge-planned">Phase 2</span></td>
+            </tr>
+            <tr>
+              <td class="mono text-muted">—</td>
+              <td><span class="fw-600">Lane-based queue</span> — cron lane separate from user</td>
+              <td><span style="color:var(--cyan); font-size:12px;">OpenClaw</span></td>
+              <td><span class="badge badge-s">S</span></td>
+              <td><span class="badge badge-planned">Phase 2</span></td>
+            </tr>
+            <tr>
+              <td class="mono text-muted">—</td>
+              <td><span class="fw-600">Diagnostic events + stuck detection</span></td>
+              <td><span style="color:var(--cyan); font-size:12px;">OpenClaw</span></td>
+              <td><span class="badge badge-m">M</span></td>
+              <td><span class="badge badge-planned">Phase 2</span></td>
+            </tr>
+            <tr>
+              <td class="mono text-muted">—</td>
+              <td><span class="fw-600">Prompt injection scanner</span></td>
+              <td><span style="color:var(--rose); font-size:12px;">OpenFang</span></td>
+              <td><span class="badge badge-s">S</span></td>
+              <td><span class="badge badge-planned">Phase 2</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:12px;">
+        <div class="card card-accent-cyan">
+          <div class="section-label">Pulling in now (1b tail)</div>
+          <div style="margin-top:8px; display:flex; flex-direction:column; gap:8px;">
+            <div>
+              <div class="mono text-cyan fw-600" style="font-size:12px;">#134 Smart routing</div>
+              <div class="small text-dim mt-4">Complexity-based: simple → cheap model, complex → powerful model</div>
+            </div>
+            <div class="divider"></div>
+            <div>
+              <div class="mono text-green fw-600" style="font-size:12px;">#135 !config</div>
+              <div class="small text-dim mt-4">Hot-reload persona, model, temperature without restart</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="border-left:3px solid var(--violet);">
+          <div class="section-label">Phase 2 highlight</div>
+          <div class="small text-dim mt-8">Proactive engagement (ScalyClaw) is the flagship Phase 2 pattern: cron lane fires scheduled tasks without blocking user messages.</div>
+        </div>
+
+        <div class="card" style="border-left:3px solid var(--rose);">
+          <div class="section-label">Security</div>
+          <div class="small text-dim mt-8">Prompt injection scanner (OpenFang) — S-sized, high leverage. Ships early in Phase 2.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 8 — PHASE 2: NATS + MACHINE 2 (centered + arch)
+     ═══════════════════════════════════════════════════════ -->
+<div class="slide slide-bg-dots" id="s8">
+  <div class="slide-inner">
+    <div class="eyebrow">Phase 2</div>
+    <div class="slide-title">NATS + <span class="accent-v">Machine 2</span></div>
+    <div class="slide-subtitle">Replace asyncio.Queue with NATS. Enable Machine 2 as a local LLM worker. Zero downtime migration.</div>
+
+    <div class="mt-20 split split-50-50" style="flex:1; overflow:hidden; align-items:start; gap:28px;">
+      <div class="diagram-wrap" style="max-height:340px;">
+        <div class="zoom-controls" id="zc8">
+          <button class="zoom-btn" onclick="zoom('d8',-0.15)" title="Zoom out">−</button>
+          <button class="zoom-btn" onclick="zoom('d8', 0.15)" title="Zoom in">+</button>
+          <button class="zoom-btn" onclick="zoom('d8', 0, true)" title="Reset">⟳</button>
+        </div>
+        <div class="mermaid" id="d8" data-zoom="1">
+%%{init: {'theme':'dark','themeVariables':{'primaryColor':'#141929','primaryBorderColor':'#9b8ef8','primaryTextColor':'#e4e8f2','lineColor':'#4d5a7a','secondaryColor':'#1c2238','tertiaryColor':'#0f1423','fontFamily':'JetBrains Mono'}}}%%
+graph TD
+    subgraph M1["Machine 1 — Hub (24/7)"]
+      A["Telegram\nAdapter"] --> B["Hub core"]
+      C["Discord\nAdapter"] --> B
+      B <--> N["NATS Server\n:4222"]
+      B --> DB["Memory DB\n(sqlite-vec)"]
+      B --> TTS["TTS worker"]
+    end
+    subgraph M2["Machine 2 — AI (on-demand)"]
+      LW["LLM worker\n(Ollama / Qwen)"]
+      HW["Health\ncheckpoint"]
+    end
+    N <-->|"lyra.task.llm"| LW
+    N <-->|"lyra.health.*"| HW
+    B -..->|"fallback if M2 offline"| CLOUD["☁ Anthropic API"]
+    style M1 fill:#0f1423,stroke:#4d5a7a
+    style M2 fill:#0f1423,stroke:#9b8ef8
+    style N fill:#141929,stroke:#00d4ff,color:#00d4ff
+    style CLOUD fill:#1a1a2e,stroke:#4d5a7a,color:#6b7a9b
+        </div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:10px; overflow-y:auto;">
+        <div class="section-label" style="margin-bottom:4px;">Migration steps</div>
+        <table class="data-table">
+          <thead>
+            <tr><th>Step</th><th>Action</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="mono text-cyan fw-600">2.1</td>
+              <td class="small">Install NATS server on Machine 1 (~20MB binary)</td>
+            </tr>
+            <tr>
+              <td class="mono text-cyan fw-600">2.2</td>
+              <td class="small">Add <span class="code">nats-py</span> async client to Lyra deps</td>
+            </tr>
+            <tr>
+              <td class="mono text-cyan fw-600">2.3</td>
+              <td class="small">Create <span class="code">NatsBus</span> — same interface as <span class="code">LocalBus</span></td>
+            </tr>
+            <tr>
+              <td class="mono text-cyan fw-600">2.4–5</td>
+              <td class="small">Adapters publish to <span class="code">lyra.inbound.{ch}</span>, Hub subscribes</td>
+            </tr>
+            <tr>
+              <td class="mono text-cyan fw-600">2.6</td>
+              <td class="small">LLM worker on Machine 2 — <span class="code">lyra.task.llm</span> queue group</td>
+            </tr>
+            <tr>
+              <td class="mono text-cyan fw-600">2.7–8</td>
+              <td class="small">Health checks + fallback to cloud if M2 offline</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="card card-accent-violet" style="margin-top:4px;">
+          <div class="section-label">Key design decisions</div>
+          <div style="font-size:12px; margin-top:8px; display:flex; flex-direction:column; gap:6px; line-height:1.6;">
+            <div>→ NATS server on <span class="text-cyan">Machine 1</span> (24/7, single node)</div>
+            <div>→ No JetStream yet — plain pub/sub sufficient</div>
+            <div>→ <span class="code">asyncio.Queue</span> kept as local fallback</div>
+            <div>→ Hub depends on <span class="code">Bus</span> interface, not implementation</div>
+            <div>→ Config toggle: <span class="code">bus: local | nats</span></div>
+          </div>
+        </div>
+
+        <div class="card" style="background:rgba(0,229,160,0.04); border:1px solid rgba(0,229,160,0.12);">
+          <div class="section-label">Why NATS</div>
+          <div style="font-size:12px; color:var(--text-dim); margin-top:6px; line-height:1.6;">
+            ~20MB binary · &lt;1ms latency · native queue groups · zero ops overhead · optional JetStream persistence
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 9 — LONG-TERM VISION (full-bleed timeline)
+     ═══════════════════════════════════════════════════════ -->
+<div class="slide slide-bg-grid" id="s9">
+  <div class="slide-inner">
+    <div class="eyebrow">Long-term vision</div>
+    <div class="slide-title">Phase 3 → 5 — <span class="accent-v">The end state</span></div>
+    <div class="slide-subtitle">Frozen until Phase 1b + Voice are stable. Unlock order is prerequisites-driven, not calendar-driven.</div>
+
+    <div class="mt-20 split split-50-50" style="flex:1; overflow:hidden; align-items:start; gap:32px;">
+      <div>
+        <div class="diagram-wrap" style="max-height:330px;">
+          <div class="zoom-controls" id="zc9">
+            <button class="zoom-btn" onclick="zoom('d9',-0.15)" title="Zoom out">−</button>
+            <button class="zoom-btn" onclick="zoom('d9', 0.15)" title="Zoom in">+</button>
+            <button class="zoom-btn" onclick="zoom('d9', 0, true)" title="Reset">⟳</button>
+          </div>
+          <div class="mermaid" id="d9" data-zoom="1">
+%%{init: {'theme':'dark','themeVariables':{'primaryColor':'#141929','primaryBorderColor':'#4d5a7a','primaryTextColor':'#e4e8f2','lineColor':'#3d4f6b','secondaryColor':'#1c2238','tertiaryColor':'#0f1423','fontFamily':'JetBrains Mono'}}}%%
+flowchart TB
+    P1["Phase 1b\n✓ Agent core"] --> P2["Phase 2\nNATS + M2"]
+    P2 --> P3["Phase 3\nAtomic SLMs"]
+    P3 --> P4["Phase 4\nResilience"]
+    P4 --> P5["Phase 5\nMulti-agent"]
+    style P1 fill:#0a1f17,stroke:#00e5a0,color:#00e5a0
+    style P2 fill:#1a1500,stroke:#ffb800,color:#ffb800
+    style P3 fill:#0f1423,stroke:#4d5a7a,color:#6b7a9b
+    style P4 fill:#0f1423,stroke:#4d5a7a,color:#6b7a9b
+    style P5 fill:#0f1423,stroke:#4d5a7a,color:#6b7a9b
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:10px; overflow-y:auto;">
+        <div class="card" style="border-left:3px solid var(--frozen);">
+          <div class="flex items-center gap-16">
+            <div class="mono text-violet fw-600" style="font-size:13px;">Phase 3 — Atomic SLMs</div>
+            <span class="badge badge-frozen" style="margin-left:auto;">Frozen</span>
+          </div>
+          <div class="small text-dim mt-8">Router (1-3B), Planner (3-7B), NER (3B) as NATS workers. CognitiveFrame protocol. 80–90% of messages skip the heavy LLM.</div>
+          <div class="pill-list mt-8">
+            <div class="pill">Router SLM</div>
+            <div class="pill">Planner SLM</div>
+            <div class="pill">NER SLM</div>
+            <div class="pill">CognitiveFrame</div>
+          </div>
+        </div>
+        <div class="card" style="border-left:3px solid var(--frozen);">
+          <div class="flex items-center gap-16">
+            <div class="mono text-muted fw-600" style="font-size:13px;">Phase 4 — Resilience</div>
+            <span class="badge badge-frozen" style="margin-left:auto;">Frozen</span>
+          </div>
+          <div class="small text-dim mt-8">JetStream persistence, 3-node NATS cluster, worker auto-scaling, distributed memory, Prometheus/Grafana, nkey/JWT auth.</div>
+          <div class="pill-list mt-8">
+            <div class="pill">JetStream</div>
+            <div class="pill">HA Cluster</div>
+            <div class="pill">Observability</div>
+            <div class="pill">Auth</div>
+          </div>
+        </div>
+        <div class="card" style="border-left:3px solid var(--frozen);">
+          <div class="flex items-center gap-16">
+            <div class="mono text-muted fw-600" style="font-size:13px;">Phase 5 — Multi-agent</div>
+            <span class="badge badge-frozen" style="margin-left:auto;">Frozen</span>
+          </div>
+          <div class="small text-dim mt-8">Agent-to-agent messaging on <span class="code">lyra.agent.{name}.*</span>. DAG workflow engine. External integrations (webhook, calendar, CI). Plugin marketplace.</div>
+          <div class="pill-list mt-8">
+            <div class="pill">A2A messaging</div>
+            <div class="pill">DAG workflows</div>
+            <div class="pill">Marketplace</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 10 — BUSINESS TRACK (left-heavy)
+     ═══════════════════════════════════════════════════════ -->
+<div class="slide slide-bg-dots" id="s10">
+  <div class="slide-inner">
+    <div class="eyebrow">Business track</div>
+    <div class="slide-title">Parallel validation — <span class="accent" style="color:var(--rose)">separate from tech</span></div>
+    <div class="slide-subtitle">Social-first validation. No direct interviews. Posts about niche pain points → observe signals.</div>
+
+    <div class="mt-20 split split-65-35" style="flex:1; overflow:hidden; align-items:start; gap:28px;">
+      <div class="scroll-panel">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Issue</th>
+              <th>Priority</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="background:rgba(255,77,126,0.03);">
+              <td class="mono text-rose fw-600">#10</td>
+              <td><span class="fw-600">LegalTech validation</span> — LinkedIn posts</td>
+              <td><span class="badge badge-p1">P1</span></td>
+              <td><span class="badge badge-ready">Open</span></td>
+            </tr>
+            <tr style="background:rgba(255,77,126,0.03);">
+              <td class="mono text-rose fw-600">#47</td>
+              <td><span class="fw-600">Social media strategy synthesis</span></td>
+              <td><span class="badge badge-p1">P1</span></td>
+              <td><span class="badge badge-ready">Open</span></td>
+            </tr>
+            <tr>
+              <td class="mono text-amber">#11</td>
+              <td>MedTech validation — LinkedIn posts</td>
+              <td><span class="badge badge-p2">P2</span></td>
+              <td><span class="badge badge-ready">Open</span></td>
+            </tr>
+            <tr>
+              <td class="mono text-amber">#65</td>
+              <td>Google Workspace integration (epic)</td>
+              <td><span class="badge badge-p2">P2</span></td>
+              <td><span class="badge badge-ready">Open</span></td>
+            </tr>
+            <tr>
+              <td class="mono text-amber">#14</td>
+              <td>LLM benchmark: Qwen vs Mistral</td>
+              <td><span class="badge badge-p2">P2</span></td>
+              <td><span class="badge badge-ready">Open</span></td>
+            </tr>
+            <tr>
+              <td class="mono text-muted">#16</td>
+              <td>LegalTech SaaS development</td>
+              <td><span class="badge badge-p3">P3</span></td>
+              <td class="small text-muted">Gated on #10 signal</td>
+            </tr>
+            <tr>
+              <td class="mono text-muted">#17</td>
+              <td>MedTech cardio development</td>
+              <td><span class="badge badge-p3">P3</span></td>
+              <td class="small text-muted">Gated on #11 signal</td>
+            </tr>
+            <tr>
+              <td class="mono text-muted">#18</td>
+              <td>YouTube automation pipeline</td>
+              <td><span class="badge badge-p3">P3</span></td>
+              <td class="small text-muted">After 1 manual workflow validated</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:12px;">
+        <div class="card card-accent-rose">
+          <div class="section-label">Go/No-Go signals</div>
+          <div style="font-size:12px; margin-top:10px; display:flex; flex-direction:column; gap:8px; line-height:1.6;">
+            <div>
+              <span class="text-rose fw-600">LegalTech #10</span><br>
+              <span class="text-dim">Min: 3 qualified DMs or 1 pricing request</span>
+            </div>
+            <div class="divider"></div>
+            <div>
+              <span class="text-amber fw-600">MedTech #11</span><br>
+              <span class="text-dim">Same signal threshold</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card card-accent-violet">
+          <div class="section-label">Target channels — LegalTech</div>
+          <div style="font-size:11px; color:var(--text-dim); margin-top:8px; line-height:1.7;">
+            LinkedIn lawyer groups<br>
+            Bar association forums<br>
+            Professional WhatsApp<br>
+            Dalloz Actualité, Gazette du Palais<br>
+            CNB/FNUJA events
+          </div>
+        </div>
+
+        <div class="card" style="background:rgba(255,77,126,0.04); border:1px solid rgba(255,77,126,0.12);">
+          <div class="section-label">Strategy</div>
+          <div style="font-size:12px; color:var(--text-dim); margin-top:6px; line-height:1.6;">
+            Concrete cases from Angelique. Zero product pitch until signal is positive.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 11 — ROLLING DECISIONS + FROZEN (centered)
+     ═══════════════════════════════════════════════════════ -->
+<div class="slide slide-bg-grid" id="s11">
+  <div class="slide-inner">
+    <div class="eyebrow">Governance</div>
+    <div class="slide-title">Rolling decisions &amp; <span class="accent" style="color:var(--frozen)">frozen items</span></div>
+    <div class="slide-subtitle">Explicit gates. Nothing frozen is blocked forever — each has a clear unlock condition.</div>
+
+    <div class="mt-20 split split-50-50" style="flex:1; overflow:hidden; align-items:start; gap:28px;">
+      <div>
+        <div class="section-label" style="margin-bottom:12px;">Rolling decisions (pending signals)</div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <div class="card card-accent-cyan">
+            <div class="mono text-cyan fw-600" style="font-size:12px;">Default LLM — Machine 2</div>
+            <div class="small text-dim mt-4">Gate: benchmark #14 (Qwen vs Mistral) complete</div>
+          </div>
+          <div class="card card-accent-rose">
+            <div class="mono text-rose fw-600" style="font-size:12px;">LegalTech go/no-go</div>
+            <div class="small text-dim mt-4">Gate: social signals #10 — 3 qualified DMs or 1 pricing request</div>
+          </div>
+          <div class="card card-accent-amber">
+            <div class="mono text-amber fw-600" style="font-size:12px;">MedTech go/no-go</div>
+            <div class="small text-dim mt-4">Gate: social signals #11 — same threshold as LegalTech</div>
+          </div>
+          <div class="card" style="border-left:3px solid var(--text-muted);">
+            <div class="mono fw-600" style="font-size:12px;">YouTube automation</div>
+            <div class="small text-dim mt-4">Gate: 1 validated manual workflow exists</div>
+          </div>
+          <div class="card card-accent-violet">
+            <div class="mono text-violet fw-600" style="font-size:12px;">NATS adoption</div>
+            <div class="small text-dim mt-4">Gate: Phase 1b tail shipped and stable in production</div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-label" style="margin-bottom:12px;">Explicitly frozen — do not do now</div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <div class="card" style="border-left:3px solid var(--frozen); opacity:0.8;">
+            <div class="mono fw-600" style="font-size:12px; color:var(--frozen);">NATS / distributed bus</div>
+            <div class="small text-muted mt-4">Phase 2. Needs Phase 1b stable first.</div>
+          </div>
+          <div class="card" style="border-left:3px solid var(--frozen); opacity:0.8;">
+            <div class="mono fw-600" style="font-size:12px; color:var(--frozen);">Atomic SLMs</div>
+            <div class="small text-muted mt-4">Phase 3. No local model benchmark done yet (#14).</div>
+          </div>
+          <div class="card" style="border-left:3px solid var(--frozen); opacity:0.8;">
+            <div class="mono fw-600" style="font-size:12px; color:var(--frozen);">Proactive engine</div>
+            <div class="small text-muted mt-4">Phase 2. No infra for it yet.</div>
+          </div>
+          <div class="card" style="border-left:3px solid var(--frozen); opacity:0.8;">
+            <div class="mono fw-600" style="font-size:12px; color:var(--frozen);">Funding rate arbitrage / DeFi</div>
+            <div class="small text-muted mt-4">Full-time topic, incompatible with solo.</div>
+          </div>
+          <div class="card" style="border-left:3px solid var(--frozen); opacity:0.8;">
+            <div class="mono fw-600" style="font-size:12px; color:var(--frozen);">Multiple themed social accounts</div>
+            <div class="small text-muted mt-4">LinkedIn first, single account.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 12 — SUMMARY: WHAT SHIPS NEXT (impact full-bleed)
+     ═══════════════════════════════════════════════════════ -->
+<div class="slide" id="s12" style="background:var(--bg);">
+  <div class="hero-bg" style="opacity:0.8;"></div>
+  <div class="slide-inner" style="position:relative; z-index:1; display:grid; grid-template-columns:1fr 1fr; padding:0; height:100%;">
+
+    <div style="padding:60px 52px; display:flex; flex-direction:column; justify-content:center; border-right:1px solid var(--border);">
+      <svg class="deco-corner" style="top:0;left:0;width:140px;height:140px;" viewBox="0 0 140 140" fill="none">
+        <path d="M0 0 L140 0 L0 140 Z" fill="rgba(0,212,255,0.04)"/>
+        <line x1="0" y1="70" x2="70" y2="0" stroke="rgba(0,212,255,0.1)" stroke-width="1"/>
+      </svg>
+
+      <div class="eyebrow">What ships next</div>
+      <div class="slide-title" style="font-size:clamp(30px,4vw,52px);">
+        The next<br>
+        <span style="color:var(--cyan);">30 days</span>
+      </div>
+      <div class="mt-24" style="display:flex; flex-direction:column; gap:12px;">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div style="width:28px; height:28px; border-radius:6px; background:var(--cyan-dim); border:1px solid rgba(0,212,255,0.3); display:flex; align-items:center; justify-content:center; font-family:var(--font-mono); font-size:11px; color:var(--cyan); flex-shrink:0;">1</div>
+          <div>
+            <div class="fw-600" style="font-size:14px;"><span class="code">#139</span> Message normalization</div>
+            <div class="small text-dim">Typed BusEnvelope — unblocks #99, voice</div>
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div style="width:28px; height:28px; border-radius:6px; background:var(--blue-dim); border:1px solid rgba(75,158,255,0.3); display:flex; align-items:center; justify-content:center; font-family:var(--font-mono); font-size:11px; color:var(--blue); flex-shrink:0;">2</div>
+          <div>
+            <div class="fw-600" style="font-size:14px;"><span class="code">#123</span> LlmProvider protocol</div>
+            <div class="small text-dim">AnthropicSdk + ClaudeCLI + Ollama drivers</div>
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div style="width:28px; height:28px; border-radius:6px; background:var(--green-dim); border:1px solid rgba(0,229,160,0.3); display:flex; align-items:center; justify-content:center; font-family:var(--font-mono); font-size:11px; color:var(--green); flex-shrink:0;">3</div>
+          <div>
+            <div class="fw-600" style="font-size:14px;"><span class="code">#135 #134</span> Quick wins</div>
+            <div class="small text-dim">!config hot-reload + smart routing</div>
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div style="width:28px; height:28px; border-radius:6px; background:var(--cyan-dim); border:1px solid rgba(0,212,255,0.3); display:flex; align-items:center; justify-content:center; font-family:var(--font-mono); font-size:11px; color:var(--cyan); flex-shrink:0;">4</div>
+          <div>
+            <div class="fw-600" style="font-size:14px;"><span class="code">#80</span> STT — anytime</div>
+            <div class="small text-dim">Whisper transcription, unblocked now</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="padding:60px 52px; display:flex; flex-direction:column; justify-content:center;">
+      <svg class="deco-corner" style="bottom:0;right:0;width:160px;height:160px;" viewBox="0 0 160 160" fill="none">
+        <path d="M160 160 L0 160 L160 0 Z" fill="rgba(155,142,248,0.05)"/>
+        <line x1="160" y1="80" x2="80" y2="160" stroke="rgba(155,142,248,0.1)" stroke-width="1"/>
+      </svg>
+
+      <div class="section-label" style="margin-bottom:16px;">Phase gate — unlocks after 1b</div>
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <div class="card card-accent-violet">
+          <div class="mono text-violet fw-600" style="font-size:12px;">Voice pipeline complete</div>
+          <div class="small text-dim mt-4">TTS + STT + lang detection fully integrated</div>
+        </div>
+        <div class="card card-accent-violet">
+          <div class="mono text-violet fw-600" style="font-size:12px;">Phase 2 — NATS starts</div>
+          <div class="small text-dim mt-4">NatsBus abstraction, Machine 2 as LLM worker</div>
+        </div>
+        <div class="card card-accent-violet">
+          <div class="mono text-violet fw-600" style="font-size:12px;">Chimera Phase 2 patterns</div>
+          <div class="small text-dim mt-4">Proactive engine, command shield, consolidation</div>
+        </div>
+      </div>
+
+      <div class="divider mt-24"></div>
+      <div style="font-family:var(--font-mono); font-size:10px; color:var(--text-muted); letter-spacing:1.5px; text-transform:uppercase; margin-top:16px;">
+        Lyra Engine · ROADMAP.md · Mar 2026
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /deck -->
+
+<!-- ─── NAVIGATION ───────────────────────────────────────── -->
+<nav class="nav" id="nav">
+  <button class="nav-btn" id="prev-btn" onclick="goTo(current-1)" title="Previous (←)">←</button>
+  <div class="nav-dots" id="dots"></div>
+  <span class="nav-counter" id="counter">1 / 12</span>
+  <button class="nav-btn" id="next-btn" onclick="goTo(current+1)" title="Next (→)">→</button>
+</nav>
+
+<script>
+// ─── SLIDE ENGINE ─────────────────────────────────────────
+const TOTAL = 12;
+let current = 0;
+
+function goTo(n) {
+  n = Math.max(0, Math.min(TOTAL - 1, n));
+  if (n === current) return;
+  const slides = document.querySelectorAll('.slide');
+  slides[current].classList.remove('active');
+  slides[n].classList.add('active');
+  current = n;
+  updateNav();
+}
+
+function updateNav() {
+  document.getElementById('counter').textContent = `${current + 1} / ${TOTAL}`;
+  const dots = document.querySelectorAll('.nav-dot');
+  dots.forEach((d, i) => d.classList.toggle('active', i === current));
+  document.getElementById('prev-btn').style.opacity = current === 0 ? '0.3' : '1';
+  document.getElementById('next-btn').style.opacity = current === TOTAL - 1 ? '0.3' : '1';
+}
+
+// Build dots
+const dotContainer = document.getElementById('dots');
+for (let i = 0; i < TOTAL; i++) {
+  const d = document.createElement('div');
+  d.className = 'nav-dot' + (i === 0 ? ' active' : '');
+  d.title = `Slide ${i+1}`;
+  d.onclick = () => goTo(i);
+  dotContainer.appendChild(d);
+}
+updateNav();
+
+// Keyboard
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') {
+    e.preventDefault();
+    goTo(current + 1);
+  } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    goTo(current - 1);
+  } else if (e.key === 'Home') {
+    goTo(0);
+  } else if (e.key === 'End') {
+    goTo(TOTAL - 1);
+  }
+});
+
+// Click anywhere on slide to advance (except nav and buttons)
+document.getElementById('deck').addEventListener('click', (e) => {
+  if (e.target.closest('nav') || e.target.closest('button') || e.target.closest('.zoom-btn')) return;
+  goTo(current + 1);
+});
+
+// ─── MERMAID ──────────────────────────────────────────────
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'dark',
+  darkMode: true,
+  fontFamily: "'JetBrains Mono', monospace",
+  flowchart: { curve: 'basis', useMaxWidth: true },
+  themeVariables: {
+    background: '#141929',
+    primaryColor: '#141929',
+    primaryBorderColor: '#00d4ff',
+    primaryTextColor: '#e4e8f2',
+    lineColor: '#4d5a7a',
+    secondaryColor: '#1c2238',
+    tertiaryColor: '#0f1423',
+    edgeLabelBackground: '#141929',
+    clusterBkg: '#0f1423',
+    clusterBorder: '#4d5a7a',
+  }
+});
+
+// Render all diagrams
+document.querySelectorAll('.mermaid[id]').forEach(async (el) => {
+  try {
+    const { svg } = await mermaid.render('svg_' + el.id, el.textContent.trim());
+    el.innerHTML = svg;
+  } catch(err) {
+    el.innerHTML = `<div style="color:var(--text-muted);font-size:11px;font-family:var(--font-mono);padding:16px;">Diagram render error: ${err.message}</div>`;
+  }
+});
+
+// ─── ZOOM ─────────────────────────────────────────────────
+function zoom(id, delta, reset = false) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  let z = parseFloat(el.dataset.zoom || '1');
+  if (reset) { z = 1; } else { z = Math.max(0.4, Math.min(2.5, z + delta)); }
+  el.dataset.zoom = z;
+  el.style.transform = `scale(${z})`;
+  el.style.transformOrigin = 'center top';
+}
+</script>
+</body>
+</html>

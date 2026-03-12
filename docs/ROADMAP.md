@@ -112,7 +112,7 @@
 ## Chimera strategy — Phase 2 patterns
 
 > Patterns sourced from ClawFamily analysis. Implement after Phase 1b tail is closed.
-> See `artifacts/analyses/clawfamily/chimera-strategy.md` for full design.
+> See `artifacts/explorations/clawfamily/chimera-strategy.md` for full design.
 
 | # | Pattern | Source | Size | Phase |
 |---|---------|--------|------|-------|

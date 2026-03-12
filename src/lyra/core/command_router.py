@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .circuit_breaker import CircuitRegistry
@@ -60,6 +61,7 @@ class CommandRouter:
         admin_user_ids: set[str] | None = None,
         msg_manager: MessageManager | None = None,
         runtime_config_holder: RuntimeConfigHolder | None = None,
+        runtime_config_path: Path | None = None,
     ) -> None:
         self._plugin_loader = plugin_loader
         self._enabled_plugins = enabled_plugins
@@ -70,6 +72,7 @@ class CommandRouter:
         self._admin_user_ids = admin_user_ids or set()
         self._msg_manager = msg_manager
         self._runtime_config_holder = runtime_config_holder
+        self._runtime_config_path = runtime_config_path
         # Guard: raise early if any loaded plugin command clashes with a builtin.
         plugin_handlers = plugin_loader.get_commands(enabled_plugins)
         conflicts = set(plugin_handlers) & set(self._builtins)
@@ -239,7 +242,7 @@ class CommandRouter:
                 updates.append(f"{key.strip()} = {value.strip()}")
             except ValueError as exc:
                 return Response(content=str(exc))
-        runtime_file = _AGENTS_DIR / "lyra_runtime.toml"
+        runtime_file = self._runtime_config_path or (_AGENTS_DIR / "lyra_runtime.toml")
         rc.save(runtime_file)
         holder.value = rc
         summary = f"Updated: {', '.join(updates)}\nSaved to {runtime_file.name}"
@@ -251,7 +254,7 @@ class CommandRouter:
 
         holder = self._runtime_config_holder
         assert holder is not None
-        runtime_file = _AGENTS_DIR / "lyra_runtime.toml"
+        runtime_file = self._runtime_config_path or (_AGENTS_DIR / "lyra_runtime.toml")
         if not args:
             holder.value = RuntimeConfig()
             try:

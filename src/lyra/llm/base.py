@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from lyra.core.agent import ModelConfig
 
@@ -20,7 +20,7 @@ class LlmResult:
 
 @runtime_checkable
 class LlmProvider(Protocol):
-    capabilities: dict
+    capabilities: dict[str, Any]
 
     async def complete(
         self,

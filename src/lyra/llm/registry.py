@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import logging
+
 from .base import LlmProvider
+
+log = logging.getLogger(__name__)
 
 
 class ProviderRegistry:
@@ -12,7 +16,8 @@ class ProviderRegistry:
 
     def get(self, backend: str) -> LlmProvider:
         if backend not in self._drivers:
-            raise KeyError(
-                f"No provider for {backend!r}. Registered: {sorted(self._drivers)}"
+            log.debug(
+                "Unknown backend %r. Registered: %s", backend, sorted(self._drivers)
             )
+            raise KeyError(f"Unknown backend: {backend!r}")
         return self._drivers[backend]

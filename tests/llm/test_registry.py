@@ -57,7 +57,7 @@ class TestProviderRegistry:
         assert "ollama" in str(exc_info.value)
 
     def test_get_keyerror_message_format(self) -> None:
-        """KeyError lists registered backends sorted alphabetically."""
+        """KeyError mentions the unknown backend but not the registered list."""
         # Arrange
         registry = ProviderRegistry()
         registry.register("claude-cli", make_mock_driver())
@@ -68,9 +68,7 @@ class TestProviderRegistry:
             registry.get("ollama")
 
         error_msg = str(exc_info.value)
-        # All three names appear in the error
         assert "ollama" in error_msg
-        assert "anthropic-sdk" in error_msg
-        assert "claude-cli" in error_msg
-        # Registered backends are sorted: anthropic-sdk before claude-cli
-        assert error_msg.index("anthropic-sdk") < error_msg.index("claude-cli")
+        # Registered backends are no longer leaked in the error message
+        assert "anthropic-sdk" not in error_msg
+        assert "claude-cli" not in error_msg

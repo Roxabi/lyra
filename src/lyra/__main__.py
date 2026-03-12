@@ -18,7 +18,7 @@ from pathlib import Path
 
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 
 from lyra.adapters.discord import DiscordAdapter, load_discord_config
 from lyra.adapters.telegram import TelegramAdapter
@@ -243,7 +243,10 @@ def create_health_app(hub: Hub) -> FastAPI:
         }
 
     @app.get("/config")
-    async def config_endpoint() -> dict:
+    async def config_endpoint(authorization: str = Header(default="")) -> dict:
+        config_secret = os.environ.get("LYRA_CONFIG_SECRET", "")
+        if not config_secret or authorization != f"Bearer {config_secret}":
+            raise HTTPException(status_code=401, detail="unauthorized")
         from lyra.agents.anthropic_agent import AnthropicAgent
 
         agent = hub.agent_registry.get("lyra_default")

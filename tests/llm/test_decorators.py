@@ -9,14 +9,14 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from lyra.llm.decorators import (  # type: ignore[reportMissingImports]
-    CircuitBreakerDecorator,
-    RetryDecorator,
-)
 
 from lyra.core.agent import ModelConfig
 from lyra.core.circuit_breaker import CircuitBreaker
 from lyra.llm.base import LlmResult
+from lyra.llm.decorators import (  # type: ignore[reportMissingImports]
+    CircuitBreakerDecorator,
+    RetryDecorator,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -201,4 +201,4 @@ class TestCircuitBreakerDecorator:
 
         # Assert — result ok, circuit still closed, no exception
         assert result.ok is True
-        assert real_cb._state.value == "closed"
+        assert real_cb.is_open() is False

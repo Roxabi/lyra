@@ -120,9 +120,20 @@ class AnthropicSdkDriver:
 
             return LlmResult(result=accumulated_text)
 
-        except Exception as exc:
-            log.exception("AnthropicSdkDriver error [pool:%s]: %s", pool_id, exc)
-            return LlmResult(error=str(exc))
+        except anthropic.AuthenticationError:
+            log.debug("AnthropicSdkDriver auth error [pool:%s]", pool_id, exc_info=True)
+            return LlmResult(error="provider_auth_error")
+        except anthropic.RateLimitError:
+            log.debug("AnthropicSdkDriver rate limit [pool:%s]", pool_id, exc_info=True)
+            return LlmResult(error="provider_rate_limit")
+        except anthropic.APIError:
+            log.debug("AnthropicSdkDriver API error [pool:%s]", pool_id, exc_info=True)
+            return LlmResult(error="provider_api_error")
+        except Exception:
+            log.debug(
+                "AnthropicSdkDriver unexpected error [pool:%s]", pool_id, exc_info=True
+            )
+            return LlmResult(error="provider_error")
 
     async def _execute_tool(self, name: str, tool_input: dict) -> str:
         if name == "get_time":

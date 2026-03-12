@@ -19,6 +19,13 @@ from lyra.llm.base import LlmResult
 # ---------------------------------------------------------------------------
 
 
+def _extract_system_prompt(call_args: object) -> str:
+    """Extract system_prompt from provider.complete() call args."""
+    if len(call_args.args) > 3:  # type: ignore[union-attr]
+        return call_args.args[3]  # type: ignore[union-attr]
+    return call_args.kwargs.get("system_prompt", "")  # type: ignore[union-attr]
+
+
 def make_message(text: str = "hello") -> InboundMessage:
     return InboundMessage(
         id="msg-1",
@@ -217,8 +224,9 @@ class TestSystemPrompt:
         pool = make_pool()
         await agent.process(msg, pool)
 
-        call_kwargs = provider.complete.call_args
-        assert call_kwargs.args[3] == "You are Lyra, a helpful assistant."
+        call_args = provider.complete.call_args
+        system_prompt_sent = _extract_system_prompt(call_args)
+        assert system_prompt_sent == "You are Lyra, a helpful assistant."
 
     async def test_empty_system_prompt_passed_as_empty_string(self) -> None:
         from lyra.agents.anthropic_agent import AnthropicAgent
@@ -231,8 +239,9 @@ class TestSystemPrompt:
         pool = make_pool()
         await agent.process(msg, pool)
 
-        call_kwargs = provider.complete.call_args
-        assert call_kwargs.args[3] == ""
+        call_args = provider.complete.call_args
+        system_prompt_sent = _extract_system_prompt(call_args)
+        assert system_prompt_sent == ""
 
 
 # ---------------------------------------------------------------------------

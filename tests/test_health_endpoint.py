@@ -243,6 +243,7 @@ class TestConfigEndpoint:
     ) -> None:
         """AnthropicAgent registered as lyra_default → 200 with all expected keys."""
         # Arrange
+        monkeypatch.setenv("LYRA_CONFIG_SECRET", "test-config-secret")
         from unittest.mock import AsyncMock, MagicMock
 
         from lyra.__main__ import create_health_app
@@ -279,7 +280,9 @@ class TestConfigEndpoint:
 
         # Act
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/config")
+            resp = await client.get(
+                "/config", headers={"authorization": "Bearer test-config-secret"}
+            )
 
         # Assert
         assert resp.status_code == 200
@@ -299,9 +302,12 @@ class TestConfigEndpoint:
         assert data["effective_model"] == "claude-sonnet-4-5"
         assert data["effective_max_steps"] == 10
 
-    async def test_config_returns_404_when_no_anthropic_agent(self) -> None:
+    async def test_config_returns_404_when_no_anthropic_agent(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """No agent (or non-AnthropicAgent) registered → 404."""
         # Arrange
+        monkeypatch.setenv("LYRA_CONFIG_SECRET", "test-config-secret")
         from lyra.__main__ import create_health_app
 
         test_hub = Hub()
@@ -310,7 +316,9 @@ class TestConfigEndpoint:
 
         # Act
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/config")
+            resp = await client.get(
+                "/config", headers={"authorization": "Bearer test-config-secret"}
+            )
 
         # Assert
         assert resp.status_code == 404

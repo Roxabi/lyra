@@ -243,11 +243,13 @@ class TestConfigEndpoint:
     ) -> None:
         """AnthropicAgent registered as lyra_default → 200 with all expected keys."""
         # Arrange
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
+        from unittest.mock import AsyncMock, MagicMock
+
         from lyra.__main__ import create_health_app
         from lyra.agents.anthropic_agent import AnthropicAgent
         from lyra.core.agent import Agent, ModelConfig
         from lyra.core.runtime_config import RuntimeConfig
+        from lyra.llm.base import LlmResult
 
         config = Agent(
             name="lyra_default",
@@ -265,8 +267,11 @@ class TestConfigEndpoint:
             language="auto",
             temperature=0.7,
         )
+        mock_provider = MagicMock()
+        mock_provider.capabilities = {"streaming": False, "auth": "api_key"}
+        mock_provider.complete = AsyncMock(return_value=LlmResult(result="ok"))
         test_hub = Hub()
-        agent = AnthropicAgent(config, runtime_config=runtime_config)
+        agent = AnthropicAgent(config, mock_provider, runtime_config=runtime_config)
         test_hub.register_agent(agent)
 
         app = create_health_app(test_hub)

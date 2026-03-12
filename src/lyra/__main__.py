@@ -126,9 +126,15 @@ def _create_agent(
     backend = config.model_config.backend
     if backend == "anthropic-sdk":
         from lyra.agents.anthropic_agent import AnthropicAgent
+        from lyra.llm.drivers.sdk import AnthropicSdkDriver
 
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise SystemExit("Missing required env var: ANTHROPIC_API_KEY")
+        provider = AnthropicSdkDriver(api_key)
         return AnthropicAgent(
             config,
+            provider,
             circuit_registry=circuit_registry,
             admin_user_ids=admin_user_ids,
             msg_manager=msg_manager,

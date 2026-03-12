@@ -39,24 +39,30 @@ class RetryDecorator:
         *,
         messages: list[dict] | None = None,
     ) -> LlmResult:
-        result = await self._inner.complete(
-            pool_id, text, model_cfg, system_prompt, messages=messages
-        )
-        for attempt in range(self._max_retries):
-            if result.ok:
-                return result
-            delay = self._backoff_base * (2**attempt)
-            log.warning(
-                "LlmProvider error (attempt %d/%d): %s — retrying in %.1fs",
-                attempt + 1,
-                self._max_retries,
-                result.error,
-                delay,
-            )
-            await asyncio.sleep(delay)
+        total_attempts = self._max_retries + 1
+        result: LlmResult | None = None
+        for attempt in range(total_attempts):
             result = await self._inner.complete(
                 pool_id, text, model_cfg, system_prompt, messages=messages
             )
+            if result.ok:
+                return result
+            if attempt < self._max_retries:
+                delay = self._backoff_base * (2**attempt)
+                log.warning(
+                    "LlmProvider error (attempt %d/%d): %s — retrying in %.1fs",
+                    attempt + 1,
+                    total_attempts,
+                    result.error,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+        log.warning(
+            "LlmProvider: all %d attempts failed: %s",
+            total_attempts,
+            result.error if result else "unknown",
+        )
+        assert result is not None  # total_attempts ≥ 1
         return result
 
 

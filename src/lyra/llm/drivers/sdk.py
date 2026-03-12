@@ -62,10 +62,12 @@ class AnthropicSdkDriver:
             final: Any = None
 
             for _turn in range(max_turns):
+                turn_text = ""
                 async with self._client.messages.stream(**kwargs) as stream:
                     async for delta in stream.text_stream:
-                        accumulated_text += delta
+                        turn_text += delta
                     final = await stream.get_final_message()
+                accumulated_text = turn_text
 
                 log.info(
                     "SDK stream [pool:%s]: in=%d out=%d tokens",

@@ -140,13 +140,14 @@ class TestAnthropicAgentAudioBranch:
         # Act
         response = await process(agent, msg, pool)
 
-        # Assert — LLM received the prefixed text
+        # Assert — LLM received clean text (no emoji prefix)
         call_kwargs = provider.complete.call_args
         messages_sent = call_kwargs.kwargs["messages"]
         user_message = next(m for m in messages_sent if m["role"] == "user")
-        assert "\U0001f3a4 [transcribed]: Hello world" in user_message["content"]
+        assert user_message["content"] == "Hello world"
+        assert "\U0001f3a4" not in user_message["content"]
 
-        # Assert — sdk_history stores raw text (no prefix)
+        # Assert — sdk_history stores same clean text
         assert len(pool.sdk_history) >= 1
         user_history = next(m for m in pool.sdk_history if m["role"] == "user")
         assert user_history["content"] == "Hello world"

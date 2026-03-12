@@ -122,7 +122,7 @@ class AnthropicAgent(AgentBase):
 
             # Build messages array for SDK (includes history + new user message)
             messages: list[dict] = list(pool.sdk_history)
-            messages.append({"role": "user", "content": llm_text})
+            messages.append({"role": "user", "content": history_text})
 
             # Build effective ModelConfig from overlay
             effective_cfg = ModelConfig(

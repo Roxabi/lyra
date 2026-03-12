@@ -182,8 +182,11 @@ def _create_agent(
     if backend in ("claude-cli", "ollama"):
         if cli_pool is None:
             raise RuntimeError(f"CliPool required for {backend} backend")
-        from lyra.llm.drivers.cli import ClaudeCliDriver
-        provider = ClaudeCliDriver(cli_pool)
+        if provider_registry is not None:
+            provider = provider_registry.get("claude-cli")
+        else:
+            from lyra.llm.drivers.cli import ClaudeCliDriver
+            provider = ClaudeCliDriver(cli_pool)
         return SimpleAgent(
             config,
             provider,

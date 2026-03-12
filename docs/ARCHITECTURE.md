@@ -1,7 +1,42 @@
 # Lyra — Architecture & Decisions
 
 > Living document. Updated as decisions are made.
-> Last updated: 2026-03-12 (Phase 1b completions: per-channel queues #126, fastembed #82, scope_id #125, LLM circuit breaker #104)
+> Last updated: 2026-03-12 (Phase 1b completions: per-channel queues #126, fastembed #82, scope_id #125, LLM circuit breaker #104; Python-first paradigm #165)
+
+---
+
+## Python-first Paradigm
+
+> Adopted 2026-03-08. All new Roxabi projects follow this model.
+
+**No more monolithic servers.** Every project ships as:
+
+1. **A Python library** — importable package with a clean public API (`__init__.py` with `__all__`). Other projects depend on it directly via `uv` path/git dependency.
+2. **A CLI entrypoint** — thin shell over the library (`cli.py`), installed via `[project.scripts]`. The CLI adds zero logic; it parses args and calls library functions.
+
+### What "library" means per project
+
+| Project | Package | Public API surface | CLI entrypoint |
+|---------|---------|-------------------|---------------|
+| `voiceCLI` | `voicecli` | `generate`, `generate_async`, `clone`, `clone_async`, `transcribe`, `transcribe_async`, `list_engines`, `list_voices` | `voicecli` |
+| `imageCLI` | `imagecli` | `generate`, `get_engine`, `list_engines`, `preflight_check`, `load_config`, `parse_prompt_file` | `imagecli` |
+| `lyra` | `lyra` | Hub, Agent, Pool, Message, ChannelAdapter (internal SDK — not public) | daemon via supervisord |
+| `2ndBrain` | `knowledge` | Vault read/write/search (internal SDK) | `knowledge_bot` daemon |
+
+### Rules
+
+- **Library first**: implement in library, expose in CLI. Never implement logic in `cli.py`.
+- **No side effects on import**: engines/models load lazily. `import voicecli` is instant.
+- **`__all__` is the contract**: anything not in `__all__` is private. Other projects depend only on `__all__` exports.
+- **Python everywhere**: backends, CLIs, agents — all Python. Frontend (React, Vue) stays TypeScript when required by the target platform.
+- **`uv` for all**: `uv sync` installs; `uv tool install .` for global CLI install; cross-project deps via `uv add --editable path/to/lib`.
+
+### Why
+
+- Lyra can call `from voicecli import generate_async` — no subprocess, no HTTP server.
+- imageCLI, voiceCLI become Lyra skills with zero glue code.
+- Uniform patterns across projects reduce context-switching overhead.
+- Library callers get type-checked, IDE-navigable APIs. Shell callers get the same logic via CLI.
 
 ---
 

@@ -1,7 +1,7 @@
 # Lyra — Prioritized Roadmap
 
 > Living document. Updated as decisions are made.
-> Last updated: 2026-03-11
+> Last updated: 2026-03-12
 
 ---
 
@@ -159,6 +159,24 @@
 | #18 | YouTube automation pipeline | P3 |
 | #19 | Meta-skills + atomic SLM | P3 |
 | #20 | Polymarket agent | P3 |
+
+---
+
+## Paradigm enforcement
+
+> Python-first, CLI/Library paradigm adopted 2026-03-08. Formalized in #165.
+
+When onboarding a new project or reviewing an existing one, verify:
+
+- [ ] Package has `__init__.py` with `__all__` (library contract)
+- [ ] `cli.py` contains zero business logic (thin shell only)
+- [ ] Models/engines load lazily (no side effects on import)
+- [ ] Cross-project dependencies declared as `uv add --editable path/to/lib`
+- [ ] No HTTP server used as an inter-project integration layer
+
+Projects needing a library API review (tracked separately): `roxabi_boilerplate` (NestJS backend → FastAPI migration?), `ryvo` (same), `roxabi_site` (Vue/TS frontend — frontend stays TS).
+
+See `docs/ARCHITECTURE.md` → **Python-first Paradigm** for the full definition.
 
 ---
 

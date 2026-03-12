@@ -32,6 +32,8 @@ from lyra.core.message import Platform
 from lyra.core.messages import MessageManager
 from lyra.core.outbound_dispatcher import OutboundDispatcher
 from lyra.core.pairing import PairingConfig, PairingManager, set_pairing_manager
+from lyra.llm.base import LlmProvider
+from lyra.llm.registry import ProviderRegistry
 from lyra.stt import STTService, load_stt_config
 
 log = logging.getLogger(__name__)
@@ -114,6 +116,38 @@ def _load_messages(language: str = "en") -> MessageManager:
     return MessageManager(path_str, language=language)
 
 
+def _build_provider_registry(
+    circuit_registry: CircuitRegistry,
+    cli_pool: CliPool | None,
+) -> ProviderRegistry:
+    """Build and return a ProviderRegistry with all configured drivers."""
+    from lyra.llm.decorators import CircuitBreakerDecorator, RetryDecorator
+
+    registry = ProviderRegistry()
+
+    if cli_pool is not None:
+        from lyra.llm.drivers.cli import ClaudeCliDriver
+
+        registry.register("claude-cli", ClaudeCliDriver(cli_pool))
+        log.info("ProviderRegistry: registered claude-cli driver")
+
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if api_key:
+        from lyra.llm.drivers.sdk import AnthropicSdkDriver
+
+        sdk_driver = AnthropicSdkDriver(api_key)
+        retry = RetryDecorator(sdk_driver, max_retries=3, backoff_base=1.0)
+        anthropic_cb = circuit_registry.get("anthropic")
+        if anthropic_cb is not None:
+            provider: LlmProvider = CircuitBreakerDecorator(retry, anthropic_cb)
+        else:
+            provider = retry
+        registry.register("anthropic-sdk", provider)
+        log.info("ProviderRegistry: registered anthropic-sdk driver (CB+Retry chain)")
+
+    return registry
+
+
 def _create_agent(
     config: Agent,
     cli_pool: CliPool | None,
@@ -121,17 +155,22 @@ def _create_agent(
     admin_user_ids: set[str] | None = None,
     msg_manager: MessageManager | None = None,
     stt: STTService | None = None,
+    provider_registry: ProviderRegistry | None = None,
 ) -> AgentBase:
     """Select agent implementation based on backend config."""
     backend = config.model_config.backend
     if backend == "anthropic-sdk":
         from lyra.agents.anthropic_agent import AnthropicAgent
-        from lyra.llm.drivers.sdk import AnthropicSdkDriver
 
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise SystemExit("Missing required env var: ANTHROPIC_API_KEY")
-        provider = AnthropicSdkDriver(api_key)
+        if provider_registry is not None:
+            provider = provider_registry.get("anthropic-sdk")
+        else:
+            from lyra.llm.drivers.sdk import AnthropicSdkDriver
+
+            api_key = os.environ.get("ANTHROPIC_API_KEY")
+            if not api_key:
+                raise SystemExit("Missing required env var: ANTHROPIC_API_KEY")
+            provider = AnthropicSdkDriver(api_key)
         return AnthropicAgent(
             config,
             provider,
@@ -143,9 +182,11 @@ def _create_agent(
     if backend in ("claude-cli", "ollama"):
         if cli_pool is None:
             raise RuntimeError(f"CliPool required for {backend} backend")
+        from lyra.llm.drivers.cli import ClaudeCliDriver
+        provider = ClaudeCliDriver(cli_pool)
         return SimpleAgent(
             config,
-            cli_pool,
+            provider,
             circuit_registry=circuit_registry,
             admin_user_ids=admin_user_ids,
             msg_manager=msg_manager,
@@ -202,8 +243,6 @@ def create_health_app(hub: Hub) -> FastAPI:
     async def config_endpoint() -> dict:
         from lyra.agents.anthropic_agent import AnthropicAgent
 
-        # TODO(#123): replace isinstance(AnthropicAgent) with a RuntimeConfigCapable
-        # protocol check once the LlmProvider abstraction is introduced.
         agent = hub.agent_registry.get("lyra_default")
         if not isinstance(agent, AnthropicAgent):
             raise HTTPException(
@@ -279,6 +318,8 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
         cli_pool = CliPool()
         await cli_pool.start()
 
+    provider_registry = _build_provider_registry(circuit_registry, cli_pool)
+
     stt_service: STTService | None = None
     if os.environ.get("STT_MODEL_SIZE"):
         try:
@@ -300,6 +341,7 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
         admin_user_ids=admin_user_ids,
         msg_manager=msg_manager,
         stt=stt_service,
+        provider_registry=provider_registry,
     )
     hub.register_agent(agent)
 

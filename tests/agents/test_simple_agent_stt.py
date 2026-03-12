@@ -22,13 +22,13 @@ import pytest
 
 from lyra.agents.simple_agent import SimpleAgent
 from lyra.core.agent import Agent, ModelConfig
-from lyra.core.cli_pool import CliResult
 from lyra.core.message import (
     Attachment,
     InboundMessage,
     Response,
 )
 from lyra.core.pool import Pool
+from lyra.llm.base import LlmResult
 from lyra.stt import STTService, TranscriptionResult
 
 # ---------------------------------------------------------------------------
@@ -105,9 +105,11 @@ def make_mock_stt(
 
 
 def make_cli_pool(result: str = "cli response") -> MagicMock:
-    cli_pool = MagicMock()
-    cli_pool.send = AsyncMock(return_value=CliResult(result=result, session_id="s1"))
-    return cli_pool
+    provider = MagicMock()
+    provider.complete = AsyncMock(
+        return_value=LlmResult(result=result, session_id="s1")
+    )
+    return provider
 
 
 # ---------------------------------------------------------------------------
@@ -133,8 +135,8 @@ class TestSimpleAgentAudioBranch:
         response = await agent.process(msg, pool)
 
         # Assert — CLI was called with the prefixed transcript
-        cli_pool.send.assert_awaited_once()
-        call_args = cli_pool.send.call_args
+        cli_pool.complete.assert_awaited_once()
+        call_args = cli_pool.complete.call_args
         text_sent = call_args[0][1]
         assert "🎤 [transcribed]: Hello world" in text_sent
 
@@ -161,7 +163,7 @@ class TestSimpleAgentAudioBranch:
         # Assert
         assert isinstance(response, Response)
         assert "couldn't make out" in response.content.lower()
-        cli_pool.send.assert_not_called()
+        cli_pool.complete.assert_not_called()
 
     @pytest.mark.parametrize(
         "noise_text",
@@ -193,7 +195,7 @@ class TestSimpleAgentAudioBranch:
         # Assert
         assert isinstance(response, Response)
         assert "couldn't make out" in response.content.lower()
-        cli_pool.send.assert_not_called()
+        cli_pool.complete.assert_not_called()
 
     async def test_audio_transcription_exception(self) -> None:
         """AUDIO with transcription exception: error Response, no crash."""
@@ -215,7 +217,7 @@ class TestSimpleAgentAudioBranch:
         assert isinstance(response, Response)
         assert "couldn't transcribe" in response.content.lower()
         assert response.metadata.get("error") is True
-        cli_pool.send.assert_not_called()
+        cli_pool.complete.assert_not_called()
 
     async def test_audio_no_stt(self) -> None:
         """AUDIO with stt=None: unsupported Response, CLI not called."""
@@ -235,7 +237,7 @@ class TestSimpleAgentAudioBranch:
         # Assert
         assert isinstance(response, Response)
         assert "not supported" in response.content.lower()
-        cli_pool.send.assert_not_called()
+        cli_pool.complete.assert_not_called()
 
     async def test_audio_tmp_file_deleted_on_success(self) -> None:
         """Temp file is unlinked after a successful transcription."""
@@ -335,6 +337,6 @@ class TestSimpleAgentAudioBranch:
         assert response.content == "text response"
 
         # Assert — CLI was called with the literal text
-        call_args = cli_pool.send.call_args
+        call_args = cli_pool.complete.call_args
         text_sent = call_args[0][1]
         assert text_sent == "tell me something"

@@ -7,12 +7,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 from lyra.agents.simple_agent import SimpleAgent
 from lyra.core.agent import Agent, ModelConfig
-from lyra.core.cli_pool import CliResult
 from lyra.core.message import (
     InboundMessage,
     Response,
 )
 from lyra.core.pool import Pool
+from lyra.llm.base import LlmResult
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -44,14 +44,14 @@ def make_pool(pool_id: str = "telegram:main:alice") -> Pool:
     return Pool(pool_id=pool_id, agent_name="lyra", hub=MagicMock())
 
 
-def make_agent(cli_pool: object) -> SimpleAgent:
+def make_agent(provider: object) -> SimpleAgent:
     config = Agent(
         name="lyra",
         system_prompt="You are Lyra.",
         memory_namespace="lyra",
         model_config=ModelConfig(),
     )
-    return SimpleAgent(config, cli_pool)  # type: ignore[arg-type]
+    return SimpleAgent(config, provider)  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
@@ -61,11 +61,11 @@ def make_agent(cli_pool: object) -> SimpleAgent:
 
 class TestSimpleAgentProcess:
     async def test_success_response(self) -> None:
-        cli_pool = MagicMock()
-        cli_pool.send = AsyncMock(
-            return_value=CliResult(result="hello", session_id="s1")
+        provider = MagicMock()
+        provider.complete = AsyncMock(
+            return_value=LlmResult(result="hello", session_id="s1")
         )
-        agent = make_agent(cli_pool)
+        agent = make_agent(provider)
         msg = make_inbound_message("hi")
         pool = make_pool()
 
@@ -77,9 +77,9 @@ class TestSimpleAgentProcess:
         assert "error" not in response.metadata
 
     async def test_error_response(self) -> None:
-        cli_pool = MagicMock()
-        cli_pool.send = AsyncMock(return_value=CliResult(error="boom"))
-        agent = make_agent(cli_pool)
+        provider = MagicMock()
+        provider.complete = AsyncMock(return_value=LlmResult(error="boom"))
+        agent = make_agent(provider)
         msg = make_inbound_message("hi")
         pool = make_pool()
 
@@ -91,9 +91,11 @@ class TestSimpleAgentProcess:
         assert response.metadata.get("error") is True
 
     async def test_timeout_error_response(self) -> None:
-        cli_pool = MagicMock()
-        cli_pool.send = AsyncMock(return_value=CliResult(error="Timeout after 300s"))
-        agent = make_agent(cli_pool)
+        provider = MagicMock()
+        provider.complete = AsyncMock(
+            return_value=LlmResult(error="Timeout after 300s")
+        )
+        agent = make_agent(provider)
         msg = make_inbound_message("hi")
         pool = make_pool()
 
@@ -103,11 +105,11 @@ class TestSimpleAgentProcess:
         assert response.metadata.get("error") is True
 
     async def test_warning_response(self) -> None:
-        cli_pool = MagicMock()
-        cli_pool.send = AsyncMock(
-            return_value=CliResult(result="ok", session_id="s1", warning="truncated")
+        provider = MagicMock()
+        provider.complete = AsyncMock(
+            return_value=LlmResult(result="ok", session_id="s1", warning="truncated")
         )
-        agent = make_agent(cli_pool)
+        agent = make_agent(provider)
         msg = make_inbound_message("hi")
         pool = make_pool()
 
@@ -118,15 +120,17 @@ class TestSimpleAgentProcess:
         assert response.metadata["session_id"] == "s1"
 
     async def test_send_called_with_pool_id_and_text(self) -> None:
-        cli_pool = MagicMock()
-        cli_pool.send = AsyncMock(return_value=CliResult(result="ok", session_id="s1"))
-        agent = make_agent(cli_pool)
+        provider = MagicMock()
+        provider.complete = AsyncMock(
+            return_value=LlmResult(result="ok", session_id="s1")
+        )
+        agent = make_agent(provider)
         msg = make_inbound_message("test text")
         pool = make_pool(pool_id="telegram:main:bob")
 
         await agent.process(msg, pool)
 
-        cli_pool.send.assert_awaited_once()
-        args = cli_pool.send.call_args
+        provider.complete.assert_awaited_once()
+        args = provider.complete.call_args
         assert args[0][0] == "telegram:main:bob"
         assert args[0][1] == "test text"

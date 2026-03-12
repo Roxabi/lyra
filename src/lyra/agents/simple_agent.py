@@ -1,7 +1,7 @@
 """
 SimpleAgent — first concrete AgentBase implementation.
 
-Wraps CliPool to route messages through a persistent Claude CLI process.
+Wraps an LlmProvider to route messages through the configured backend.
 Model and backend are read from the agent's TOML config (ModelConfig),
 not hardcoded here.
 """
@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING, Any
 
 from lyra.core.agent import Agent, AgentBase
 from lyra.core.circuit_breaker import CircuitRegistry
-from lyra.core.cli_pool import CliPool, CliResult
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
     InboundMessage,
@@ -22,6 +21,7 @@ from lyra.core.message import (
 )
 from lyra.core.messages import MessageManager
 from lyra.core.pool import Pool
+from lyra.llm.base import LlmProvider
 from lyra.stt import is_whisper_noise
 
 if TYPE_CHECKING:
@@ -31,9 +31,9 @@ log = logging.getLogger(__name__)
 
 
 class SimpleAgent(AgentBase):
-    """Agent that routes every message through a persistent Claude CLI process.
+    """Agent that routes every message through an LlmProvider.
 
-    One CliPool instance is shared across all SimpleAgent instances —
+    One LlmProvider instance is shared across all SimpleAgent instances —
     pass it in from the hub so it can be stopped cleanly on shutdown.
 
     Wiring (in main.py / hub bootstrap)::
@@ -41,15 +41,16 @@ class SimpleAgent(AgentBase):
         cli_pool = CliPool()
         await cli_pool.start()
 
+        provider = ClaudeCliDriver(cli_pool)
         agent_config = load_agent_config("lyra_default")
-        agent = SimpleAgent(agent_config, cli_pool)
+        agent = SimpleAgent(agent_config, provider)
         hub.register_agent(agent)
     """
 
     def __init__(
         self,
         config: Agent,
-        cli_pool: CliPool,
+        provider: LlmProvider,
         circuit_registry: CircuitRegistry | None = None,
         admin_user_ids: set[str] | None = None,
         msg_manager: MessageManager | None = None,
@@ -62,7 +63,7 @@ class SimpleAgent(AgentBase):
             msg_manager=msg_manager,
             stt=stt,
         )
-        self._pool = cli_pool
+        self._provider = provider
 
     async def process(self, msg: InboundMessage, pool: Pool) -> Response:
         self._maybe_reload()
@@ -117,8 +118,8 @@ class SimpleAgent(AgentBase):
             len(text),
         )
 
-        result: CliResult = await self._pool.send(
-            pool.pool_id, text, model_cfg, system_prompt=self.config.system_prompt
+        result = await self._provider.complete(
+            pool.pool_id, text, model_cfg, self.config.system_prompt
         )
 
         if not result.ok:

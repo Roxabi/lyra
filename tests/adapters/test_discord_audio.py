@@ -62,6 +62,7 @@ def test_normalize_audio_attachment_fields() -> None:
     msg = _make_discord_msg(attachments=[_make_audio_attachment("audio/ogg")])
     result = adapter.normalize_audio(msg, b"bytes", "audio/ogg")
     assert isinstance(result, InboundAudio)
+    assert result.id.startswith("discord:dc:user:42:")
     assert result.scope_id == "channel:333"
     assert result.mime_type == "audio/ogg"
     assert result.duration_ms is None
@@ -70,6 +71,7 @@ def test_normalize_audio_attachment_fields() -> None:
     assert result.platform == "discord"
     assert result.bot_id == "main"
     assert result.audio_bytes == b"bytes"
+    assert result.trust == "user"
 
 
 def test_normalize_audio_channel_scope_id() -> None:

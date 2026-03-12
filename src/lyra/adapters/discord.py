@@ -35,6 +35,19 @@ DISCORD_MAX_LENGTH = 2000  # Discord API message length limit
 
 _AUTO_THREAD_TRUE = frozenset({"1", "true", "yes", "on"})
 
+# Accepted audio MIME types for inbound attachment detection.
+_AUDIO_MIME_TYPES = frozenset(
+    {
+        "audio/ogg",
+        "audio/mpeg",
+        "audio/mp4",
+        "audio/opus",
+        "audio/wav",
+        "audio/flac",
+        "audio/aac",
+    }
+)
+
 
 @dataclass(frozen=True)
 class DiscordConfig:
@@ -109,21 +122,27 @@ class DiscordAdapter(discord.Client):
     def normalize_audio(
         self, raw: Any, audio_bytes: bytes, mime_type: str
     ) -> InboundAudio:
-        """Build an InboundAudio envelope from a Discord audio message."""
+        """Build an InboundAudio envelope from a Discord audio message.
+
+        Security: trust is always 'user'. Bot messages are filtered by on_message().
+        """
         if isinstance(raw.channel, discord.Thread):
             scope_id = f"thread:{raw.channel.id}"
         else:
             scope_id = f"channel:{raw.channel.id}"
+        user_id = f"dc:user:{raw.author.id}"
+        timestamp = raw.created_at
         return InboundAudio(
+            id=f"discord:{user_id}:{int(timestamp.timestamp())}",
             platform=Platform.DISCORD.value,
             bot_id=self._bot_id,
             scope_id=scope_id,
-            user_id=f"dc:user:{raw.author.id}",
+            user_id=user_id,
             audio_bytes=audio_bytes,
             mime_type=mime_type,
             duration_ms=None,
             file_id=None,
-            timestamp=raw.created_at,
+            timestamp=timestamp,
         )
 
     def normalize(
@@ -220,8 +239,7 @@ class DiscordAdapter(discord.Client):
             (
                 a
                 for a in (getattr(message, "attachments", None) or [])
-                if getattr(a, "content_type", "")
-                and a.content_type.startswith("audio/")
+                if getattr(a, "content_type", "") in _AUDIO_MIME_TYPES
             ),
             None,
         )

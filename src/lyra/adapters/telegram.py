@@ -255,7 +255,16 @@ class TelegramAdapter:
     def normalize_audio(
         self, raw: Any, audio_bytes: bytes, mime_type: str
     ) -> InboundAudio:
-        """Build an InboundAudio envelope from a Telegram voice/audio/video_note."""
+        """Build an InboundAudio envelope from a Telegram voice/audio/video_note.
+
+        Security: trust is always 'user'. normalize_audio() is never called for
+        bot messages. Never logs the bot token.
+        """
+        if raw.from_user is None:
+            raise ValueError(
+                "normalize_audio() called with no from_user — "
+                "service messages must be filtered before normalization"
+            )
         scope_id = self._make_scope_id(
             raw.chat.id, getattr(raw, "message_thread_id", None)
         )
@@ -271,11 +280,13 @@ class TelegramAdapter:
         timestamp = raw.date
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=timezone.utc)
+        user_id = f"tg:user:{raw.from_user.id}"
         return InboundAudio(
+            id=f"telegram:{user_id}:{int(timestamp.timestamp())}",
             platform=Platform.TELEGRAM.value,
             bot_id=self._bot_id,
             scope_id=scope_id,
-            user_id=f"tg:user:{raw.from_user.id}",
+            user_id=user_id,
             audio_bytes=audio_bytes,
             mime_type=mime_type,
             duration_ms=duration_ms,

@@ -91,8 +91,10 @@ class InboundAudio:
 
     Mirrors InboundMessage for audio: adapters produce this; hub/agents consume it.
     Bus enqueue is a future concern (issue #140 follow-on).
+    Security: trust is always 'user' from adapters — never set above adapter layer.
     """
 
+    id: str
     platform: str  # "telegram" | "discord" | ...
     bot_id: str
     scope_id: str
@@ -102,6 +104,7 @@ class InboundAudio:
     duration_ms: int | None
     file_id: str | None
     timestamp: datetime
+    trust: Literal["user", "system"] = "user"
 
 
 def extract_text(msg: "Message") -> str:

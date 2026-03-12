@@ -253,6 +253,7 @@ def test_normalize_audio_voice_fields() -> None:
     msg = _make_voice_msg_for_normalize(file_id="F1", duration=3, chat_id=42, user_id=7)
     result = adapter.normalize_audio(msg, b"data", "audio/ogg")
     assert isinstance(result, InboundAudio)
+    assert result.id.startswith("telegram:tg:user:7:")
     assert result.scope_id == "chat:42"
     assert result.mime_type == "audio/ogg"
     assert result.duration_ms == 3000
@@ -261,6 +262,7 @@ def test_normalize_audio_voice_fields() -> None:
     assert result.platform == "telegram"
     assert result.bot_id == "main"
     assert result.audio_bytes == b"data"
+    assert result.trust == "user"
 
 
 def test_normalize_audio_audio_file_fields() -> None:

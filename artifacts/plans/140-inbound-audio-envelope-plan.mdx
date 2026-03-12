@@ -249,12 +249,8 @@ uv run pytest tests/adapters/test_telegram_voice.py::test_normalize_audio_voice_
 **Code snippet:**
 ```python
 def normalize_audio(self, msg: Any, audio_bytes: bytes, mime_type: str) -> InboundAudio:
-    chat_id = msg.chat.id
-    topic_id = getattr(msg, "message_thread_id", None)
-    scope_id = (
-        f"chat:{chat_id}:topic:{topic_id}" if topic_id is not None
-        else f"chat:{chat_id}"
-    )
+    # _make_scope_id() added by #137 — reuse instead of duplicating
+    scope_id = self._make_scope_id(msg.chat.id, getattr(msg, "message_thread_id", None))
     voice = msg.voice or msg.audio or msg.video_note
     duration_ms: int | None = None
     if voice is not None:

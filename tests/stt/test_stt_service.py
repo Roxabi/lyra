@@ -36,12 +36,20 @@ def test_config_validate_valid_combos():
     STTConfig(device="auto", compute_type="auto").validate()
 
 
+def test_config_validate_invalid_device_raises():
+    with pytest.raises(ValueError, match="device="):
+        STTConfig(device="cude", compute_type="auto").validate()
+
+
 # ---------------------------------------------------------------------------
 # load_stt_config() env vars
 # ---------------------------------------------------------------------------
 
 
-def test_load_stt_config_defaults():
+def test_load_stt_config_defaults(monkeypatch):
+    monkeypatch.delenv("STT_MODEL_SIZE", raising=False)
+    monkeypatch.delenv("STT_DEVICE", raising=False)
+    monkeypatch.delenv("STT_COMPUTE_TYPE", raising=False)
     cfg = load_stt_config()
     assert cfg.model_size == "small"
     assert cfg.device == "auto"
@@ -107,6 +115,16 @@ def test_stt_service_cuda_when_torch_available():
 
 def test_stt_service_explicit_device_not_overridden():
     svc = STTService(STTConfig(device="cpu", compute_type="int8"))
+    assert svc._device == "cpu"
+    assert svc._compute_type == "int8"
+
+
+def test_stt_service_auto_cpu_when_cuda_unavailable():
+    """When torch present but cuda.is_available() is False, device resolves to cpu."""
+    mock_torch = MagicMock()
+    mock_torch.cuda.is_available.return_value = False
+    with patch.dict("sys.modules", {"torch": mock_torch}):
+        svc = STTService(STTConfig(device="auto"))
     assert svc._device == "cpu"
     assert svc._compute_type == "int8"
 
@@ -181,3 +199,20 @@ def test_model_not_loaded_at_init():
     """Model must NOT be loaded during __init__ (lazy)."""
     svc = STTService(STTConfig(device="cpu", compute_type="int8"))
     assert svc._model is None
+
+
+# ---------------------------------------------------------------------------
+# STTService.transcribe() — error path
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_transcribe_propagates_model_error():
+    """Errors from WhisperModel.transcribe() propagate to the caller."""
+    svc = STTService(STTConfig(device="cpu", compute_type="int8"))
+    mock_model = MagicMock()
+    mock_model.transcribe.side_effect = RuntimeError("CUDA OOM")
+    svc._model = mock_model
+
+    with pytest.raises(RuntimeError, match="CUDA OOM"):
+        await svc.transcribe("/tmp/fake.ogg")

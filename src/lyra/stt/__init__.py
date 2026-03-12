@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -27,6 +28,11 @@ class STTConfig:
     compute_type: str = "auto"  # "auto" | "float16" | "int8"
 
     def validate(self) -> None:
+        valid_devices = {"auto", "cpu", "cuda"}
+        if self.device not in valid_devices:
+            raise ValueError(
+                f"device={self.device!r} is not valid; choose from {valid_devices}"
+            )
         if self.device == "cpu" and self.compute_type == "float16":
             raise ValueError(
                 "compute_type='float16' requires CUDA — use 'int8' or 'auto' for CPU"
@@ -58,6 +64,7 @@ class STTService:
         config.validate()
         self._config = config
         self._model = None
+        self._load_lock = threading.Lock()
 
         # Resolve "auto" device
         if config.device == "auto":
@@ -84,24 +91,25 @@ class STTService:
         )
 
     def _load_model(self):
-        if self._model is None:
-            from faster_whisper import WhisperModel
+        with self._load_lock:
+            if self._model is None:
+                from faster_whisper import WhisperModel  # type: ignore[import-untyped]
 
-            log.info(
-                "Loading WhisperModel %s on %s/%s",
-                self._config.model_size,
-                self._device,
-                self._compute_type,
-            )
-            self._model = WhisperModel(
-                self._config.model_size,
-                device=self._device,
-                compute_type=self._compute_type,
-            )
+                log.info(
+                    "Loading WhisperModel %s on %s/%s",
+                    self._config.model_size,
+                    self._device,
+                    self._compute_type,
+                )
+                self._model = WhisperModel(
+                    self._config.model_size,
+                    device=self._device,
+                    compute_type=self._compute_type,
+                )
         return self._model
 
     async def transcribe(self, path: Path | str) -> TranscriptionResult:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._transcribe_sync, str(path))
 
     def _transcribe_sync(self, path: str) -> TranscriptionResult:

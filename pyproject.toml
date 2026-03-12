@@ -17,7 +17,7 @@ dependencies = [
     # Agent backends
     "anthropic>=0.49",
     # STT
-    "faster-whisper>=1.0",
+    "faster-whisper>=1.0,<2",
 ]
 
 [project.optional-dependencies]

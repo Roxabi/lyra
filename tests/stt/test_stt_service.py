@@ -30,9 +30,15 @@ def test_config_validate_int8_cuda_raises():
         STTConfig(device="cuda", compute_type="int8").validate()
 
 
-def test_config_validate_valid_combos():
+def test_config_validate_cpu_int8_is_valid():
     STTConfig(device="cpu", compute_type="int8").validate()
+
+
+def test_config_validate_cuda_float16_is_valid():
     STTConfig(device="cuda", compute_type="float16").validate()
+
+
+def test_config_validate_auto_auto_is_valid():
     STTConfig(device="auto", compute_type="auto").validate()
 
 

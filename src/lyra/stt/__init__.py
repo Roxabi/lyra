@@ -113,11 +113,20 @@ class STTService:
         return await loop.run_in_executor(None, self._transcribe_sync, str(path))
 
     def _transcribe_sync(self, path: str) -> TranscriptionResult:
-        model = self._load_model()
-        segments, info = model.transcribe(path, beam_size=5)
-        full_text = "".join(seg.text for seg in segments).strip()
-        return TranscriptionResult(
-            text=full_text,
-            language=info.language,
-            duration_seconds=info.duration,
-        )
+        try:
+            model = self._load_model()
+            segments, info = model.transcribe(path, beam_size=5)
+            full_text = "".join(seg.text for seg in segments).strip()
+            return TranscriptionResult(
+                text=full_text,
+                language=info.language,
+                duration_seconds=info.duration,
+            )
+        except Exception:
+            log.exception(
+                "Transcription failed: path=%s model=%s device=%s",
+                path,
+                self._config.model_size,
+                self._device,
+            )
+            raise

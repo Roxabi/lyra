@@ -56,9 +56,11 @@ def test_normalize_builds_correct_discord_context() -> None:
 
     assert isinstance(msg, InboundMessage)
     assert msg.platform == "discord"
+    assert msg.scope_id == "channel:333"
     assert msg.platform_meta["guild_id"] == 111
     assert msg.platform_meta["channel_id"] == 333
     assert msg.platform_meta["message_id"] == 555
+    assert msg.platform_meta["channel_type"] == "text"
 
 
 # ---------------------------------------------------------------------------

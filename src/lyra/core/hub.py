@@ -322,7 +322,16 @@ class Hub:
             msg = await self.inbound_bus.get()
             try:
                 scope = msg.scope_id
-                key = RoutingKey(Platform(msg.platform), msg.bot_id, scope)
+                try:
+                    platform_enum = Platform(msg.platform)
+                except ValueError:
+                    log.warning(
+                        "unknown platform %r in msg id=%s — message dropped",
+                        msg.platform,
+                        msg.id,
+                    )
+                    continue
+                key = RoutingKey(platform_enum, msg.bot_id, scope)
                 if self._is_rate_limited(msg):
                     log.warning("rate limit exceeded for %s — message dropped", key)
                     continue

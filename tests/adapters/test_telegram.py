@@ -83,6 +83,8 @@ def test_normalize_private_chat_context() -> None:
     assert isinstance(msg, InboundMessage)
     assert msg.platform == "telegram"
     assert msg.scope_id == "chat:123"
+    assert msg.text == "hello"
+    assert msg.user_id == "tg:user:42"
     assert msg.platform_meta["chat_id"] == 123
     assert msg.platform_meta["topic_id"] is None
     assert msg.platform_meta["is_group"] is False

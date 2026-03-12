@@ -206,7 +206,8 @@ class DiscordAdapter(discord.Client):
                     name=f"Chat with {message.author.display_name}"[:100].strip()
                 )
                 resolved_thread_id = thread.id
-                resolved_channel_id = thread.id
+                # Keep parent channel_id for fetch_message() in send().
+                # resolved_channel_id remains message.channel.id (set above).
             except Exception:
                 log.exception(
                     "Failed to create Discord thread for message id=%s", message.id
@@ -260,19 +261,32 @@ class DiscordAdapter(discord.Client):
             log.error("send() called with non-discord message id=%s", original_msg.id)
             return
 
-        channel_id: int = original_msg.platform_meta["channel_id"]
-        channel = self.get_channel(channel_id)
-        if channel is None:
-            channel = await self.fetch_channel(channel_id)
+        channel_id: int | None = original_msg.platform_meta.get("channel_id")
+        if channel_id is None:
+            raise ValueError(
+                "platform_meta missing required key 'channel_id' for send()"
+            )
+        thread_id: int | None = original_msg.platform_meta.get("thread_id")
+        # Route to thread when one was auto-created; fall back to parent channel.
+        send_to_id: int = thread_id if thread_id is not None else channel_id
+        send_channel = self.get_channel(send_to_id)
+        if send_channel is None:
+            send_channel = await self.fetch_channel(send_to_id)
 
         content = response.content[:DISCORD_MAX_LENGTH]
 
-        messageable = cast(discord.abc.Messageable, channel)
-        if original_msg.is_mention:
-            msg_id: int = original_msg.platform_meta["message_id"]
+        messageable = cast(discord.abc.Messageable, send_channel)
+        if original_msg.is_mention and thread_id is None:
+            # No auto-thread: reply to original message in parent channel.
+            msg_id: int | None = original_msg.platform_meta.get("message_id")
+            if msg_id is None:
+                raise ValueError(
+                    "platform_meta missing required key 'message_id' for mention reply"
+                )
             msg = await messageable.fetch_message(msg_id)
             sent = await msg.reply(content)
         else:
+            # Thread exists (send in thread) or non-mention: plain send.
             sent = await messageable.send(content)
         # Store for session persistence (#67) and reply-to-resume (#83).
         response.metadata["reply_message_id"] = sent.id
@@ -296,10 +310,16 @@ class DiscordAdapter(discord.Client):
             )
             return
 
-        channel_id = original_msg.platform_meta["channel_id"]
-        channel = self.get_channel(channel_id)
+        channel_id: int | None = original_msg.platform_meta.get("channel_id")
+        if channel_id is None:
+            raise ValueError(
+                "platform_meta missing required key 'channel_id' for send_streaming()"
+            )
+        thread_id: int | None = original_msg.platform_meta.get("thread_id")
+        send_to_id: int = thread_id if thread_id is not None else channel_id
+        channel = self.get_channel(send_to_id)
         if channel is None:
-            channel = await self.fetch_channel(channel_id)
+            channel = await self.fetch_channel(send_to_id)
 
         messageable = cast(discord.abc.Messageable, channel)
         accumulated = ""

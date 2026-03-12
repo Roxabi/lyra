@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.core.agent import Agent, ModelConfig
-from lyra.core.message import Message, MessageType, Platform, TelegramContext
+from lyra.core.message import InboundMessage
 from lyra.core.pool import Pool
 
 # ---------------------------------------------------------------------------
@@ -18,19 +18,21 @@ from lyra.core.pool import Pool
 # ---------------------------------------------------------------------------
 
 
-def make_message(content: object = "hello") -> Message:
-    return Message(
+def make_message(text: str = "hello") -> InboundMessage:
+    return InboundMessage(
         id="msg-1",
-        platform=Platform.TELEGRAM,
+        platform="telegram",
         bot_id="main",
-        user_id="alice",
+        scope_id="chat:42",
+        user_id="tg:user:alice",
         user_name="Alice",
         is_mention=False,
-        is_from_bot=False,
-        content=content,  # type: ignore[arg-type]
-        type=MessageType.TEXT,
+        text=text,
+        text_raw=text,
         timestamp=datetime.now(timezone.utc),
-        platform_context=TelegramContext(chat_id=42),
+        platform_meta={
+            "chat_id": 42, "topic_id": None, "is_group": False, "message_id": None
+        },
     )
 
 

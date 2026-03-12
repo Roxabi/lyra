@@ -187,6 +187,11 @@ class TelegramAdapter:
         Security: trust is always 'user'. normalize() is never called for bot messages.
         Never logs the bot token.
         """
+        if raw.from_user is None:
+            raise ValueError(
+                "normalize() called with no from_user — "
+                "service messages must be filtered before normalization"
+            )
         chat_type = raw.chat.type
         is_group = chat_type != "private"
 
@@ -371,12 +376,16 @@ class TelegramAdapter:
                 if self._msg_manager
                 else "Processing your request\u2026"
             )
-            chat_id = hub_msg.platform_meta["chat_id"]
+            chat_id = hub_msg.platform_meta.get("chat_id")
+            if chat_id is None:
+                raise ValueError(
+                    "platform_meta missing required key 'chat_id' for backpressure ack"
+                )
             await self.bot.send_message(chat_id, text)
 
     async def _on_message(self, msg) -> None:
         """Handle an incoming aiogram message: apply backpressure and put on bus."""
-        if msg.from_user and getattr(msg.from_user, "is_bot", False):
+        if not msg.from_user or getattr(msg.from_user, "is_bot", False):
             return
 
         hub_msg = self.normalize(msg)
@@ -397,7 +406,11 @@ class TelegramAdapter:
                 original_msg.id,
             )
             return
-        chat_id: int = original_msg.platform_meta["chat_id"]
+        chat_id: int | None = original_msg.platform_meta.get("chat_id")
+        if chat_id is None:
+            raise ValueError(
+                "platform_meta missing required key 'chat_id' for send()"
+            )
 
         sent = await self.bot.send_message(chat_id=chat_id, text=response.content)
         # Store for session persistence (#67) and reply-to-resume (#83).
@@ -420,7 +433,11 @@ class TelegramAdapter:
                 original_msg.id,
             )
             return
-        chat_id: int = original_msg.platform_meta["chat_id"]
+        chat_id: int | None = original_msg.platform_meta.get("chat_id")
+        if chat_id is None:
+            raise ValueError(
+                "platform_meta missing required key 'chat_id' for send_streaming()"
+            )
 
         accumulated = ""
 

@@ -43,6 +43,7 @@ def _make_discord_msg(
         id=777,
         mentions=[],
         attachments=attachments or [],
+        reply=AsyncMock(),
     )
 
 
@@ -91,13 +92,13 @@ def test_normalize_audio_thread_scope_id() -> None:
 
 
 # ---------------------------------------------------------------------------
-# on_message() audio attachment detection
+# on_message() audio attachment → unsupported reply (no download)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_on_message_calls_normalize_audio_for_audio_attachment() -> None:
-    """on_message() calls normalize_audio() when an audio attachment is detected."""
+async def test_on_message_replies_unsupported_for_audio_attachment() -> None:
+    """on_message() replies unsupported without downloading for audio attachments."""
     hub = MagicMock()
     hub.inbound_bus = MagicMock()
     adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
@@ -110,19 +111,13 @@ async def test_on_message_calls_normalize_audio_for_audio_attachment() -> None:
     msg = _make_discord_msg(attachments=[attachment_obj])
     msg.author.bot = False
 
-    called_with: list = []
-    original = adapter.normalize_audio
-
-    def spy(m, ab, mt):
-        called_with.append((ab, mt))
-        return original(m, ab, mt)
-
-    adapter.normalize_audio = spy  # type: ignore[method-assign]
-
     await adapter.on_message(msg)
 
-    assert len(called_with) == 1
-    assert called_with[0] == (b"ogg_bytes", "audio/ogg")
+    # Audio bytes should NOT be downloaded (bus not wired)
+    attachment_obj.read.assert_not_called()
+    hub.inbound_bus.put.assert_not_called()
+    # Unsupported reply sent
+    msg.reply.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -156,7 +151,7 @@ async def test_on_message_does_not_call_normalize_audio_for_non_audio() -> None:
 
 
 # ---------------------------------------------------------------------------
-# on_message() returns after audio (B1 fix) — text path skipped
+# on_message() returns after audio — text path skipped
 # ---------------------------------------------------------------------------
 
 
@@ -178,32 +173,4 @@ async def test_on_message_returns_after_audio_skips_text_path() -> None:
 
     await adapter.on_message(msg)
 
-    hub.inbound_bus.put.assert_not_called()
-
-
-# ---------------------------------------------------------------------------
-# on_message() size guard (S1 fix) — oversized audio dropped
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_on_message_drops_oversized_audio_attachment() -> None:
-    """on_message() silently drops audio attachments exceeding LYRA_MAX_AUDIO_BYTES."""
-    hub = MagicMock()
-    hub.inbound_bus = MagicMock()
-    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
-    adapter._max_audio_bytes = 100  # type: ignore[reportAttributeAccessIssue]
-
-    attachment_obj = SimpleNamespace(
-        content_type="audio/ogg",
-        url="https://cdn.example/audio.ogg",
-        size=999,  # exceeds 100-byte limit
-        read=AsyncMock(return_value=b"x" * 999),
-    )
-    msg = _make_discord_msg(attachments=[attachment_obj])
-    msg.author.bot = False
-
-    await adapter.on_message(msg)
-
-    attachment_obj.read.assert_not_called()
     hub.inbound_bus.put.assert_not_called()

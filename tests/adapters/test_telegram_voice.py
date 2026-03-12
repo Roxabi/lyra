@@ -1,23 +1,20 @@
 """Tests for Telegram voice message handling and normalize_audio (issues #147, #140).
 
 Covers:
-- Voice message normalised to MessageType.AUDIO with correct AudioContent
-- Typing indicator sent before download
-- file_id propagated to AudioContent
-- Circuit-open drops message + cleans up temp file
+- Voice message → unsupported reply (audio bus not yet wired)
 - Bot message drops voice messages from bots
+- normalize_audio envelope correctness
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from lyra.adapters.telegram import TelegramAdapter
-from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 
 
 def _make_voice_msg(
@@ -51,78 +48,21 @@ def _make_adapter() -> tuple[TelegramAdapter, MagicMock]:
 
 
 # ---------------------------------------------------------------------------
-# Hub receives MessageType.AUDIO
+# Voice message → unsupported reply (no download, no hub)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_voice_message_sends_unsupported_reply(tmp_path) -> None:
+async def test_voice_message_sends_unsupported_reply() -> None:
     """Voice message → sends unsupported reply; hub is NOT called."""
     adapter, hub = _make_adapter()
-    tmp_file = tmp_path / "audio.ogg"
-    tmp_file.touch()
 
-    with patch.object(adapter, "_download_audio", return_value=(tmp_file, 3.0)):
-        await adapter._on_voice_message(_make_voice_msg())
+    await adapter._on_voice_message(_make_voice_msg())
 
     hub.inbound_bus.put.assert_not_called()
     adapter.bot.send_message.assert_called_once()
     call_kwargs = adapter.bot.send_message.call_args
     assert call_kwargs.kwargs["chat_id"] == 42
-
-
-# ---------------------------------------------------------------------------
-# AudioContent fields are correct
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_voice_audio_normalize_audio_called(tmp_path) -> None:
-    """normalize_audio is called during voice message handling; hub is NOT called."""
-    adapter, hub = _make_adapter()
-    tmp_file = tmp_path / "audio.ogg"
-    tmp_file.touch()
-
-    with patch.object(adapter, "_download_audio", return_value=(tmp_file, 3.0)):
-        with patch.object(
-            adapter, "normalize_audio", wraps=adapter.normalize_audio
-        ) as mock_norm:
-            await adapter._on_voice_message(
-                _make_voice_msg(file_id="FILEXYZ", duration=3)
-            )
-
-    hub.inbound_bus.put.assert_not_called()
-    mock_norm.assert_called_once()
-    _, _, mime = mock_norm.call_args.args
-    assert mime == "audio/ogg"
-
-
-# ---------------------------------------------------------------------------
-# Typing indicator fires before download
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_typing_action_sent_before_download(tmp_path) -> None:
-    """send_chat_action(TYPING) must be called before _download_audio."""
-    adapter, hub = _make_adapter()
-    call_order: list[str] = []
-    tmp_file = tmp_path / "audio.ogg"
-    tmp_file.touch()
-
-    adapter.bot.send_chat_action = AsyncMock(
-        side_effect=lambda **_: call_order.append("typing")
-    )
-
-    async def fake_download(_file_id: str, _duration: int | None = None):
-        call_order.append("download")
-        return tmp_file, 1.0
-
-    with patch.object(adapter, "_download_audio", side_effect=fake_download):
-        await adapter._on_voice_message(_make_voice_msg())
-
-    assert call_order[0] == "typing", "Typing action must fire before download"
-    assert "download" in call_order
 
 
 # ---------------------------------------------------------------------------
@@ -140,85 +80,7 @@ async def test_voice_from_bot_is_ignored() -> None:
     await adapter._on_voice_message(msg)
 
     hub.inbound_bus.put.assert_not_called()
-    adapter.bot.send_chat_action.assert_not_called()
-
-
-# ---------------------------------------------------------------------------
-# Circuit-open: temp file cleaned up, hub not called
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_circuit_open_drops_message_and_cleans_temp_file(tmp_path) -> None:
-    """When hub circuit is open, message is dropped and temp file is deleted."""
-    cb = CircuitBreaker(name="hub", failure_threshold=1, recovery_timeout=3600)
-    cb.record_failure()  # trip to OPEN (failure_threshold=1)
-
-    registry = CircuitRegistry()
-    registry.register(cb)
-
-    hub = MagicMock()
-    hub.inbound_bus = MagicMock()
-    adapter = TelegramAdapter(
-        bot_id="main", token="tok", hub=hub, circuit_registry=registry
-    )
-    bot_mock = AsyncMock()
-    adapter.bot = bot_mock
-
-    tmp_file = tmp_path / "audio.ogg"
-    tmp_file.touch()
-
-    with patch.object(adapter, "_download_audio", return_value=(tmp_file, 2.0)):
-        await adapter._on_voice_message(_make_voice_msg())
-
-    hub.inbound_bus.put.assert_not_called()
-    assert not tmp_file.exists(), "Temp file must be deleted when circuit is open"
-
-
-# ---------------------------------------------------------------------------
-# QueueFull: temp file cleaned up
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_queue_full_cleans_temp_file(tmp_path) -> None:
-    """When hub queue is full, temp file is deleted and backpressure message sent."""
-    import asyncio
-
-    adapter, hub = _make_adapter()
-    hub.inbound_bus.put.side_effect = asyncio.QueueFull()
-
-    tmp_file = tmp_path / "audio.ogg"
-    tmp_file.touch()
-
-    with patch.object(adapter, "_download_audio", return_value=(tmp_file, 1.0)):
-        await adapter._on_voice_message(_make_voice_msg())
-
-    assert not tmp_file.exists(), "Temp file must be deleted on QueueFull"
-    adapter.bot.send_message.assert_called_once()
-
-
-# ---------------------------------------------------------------------------
-# msg.audio field (F.audio filter) coverage
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_audio_field_message_sends_unsupported_reply(tmp_path) -> None:
-    """msg.audio path sends unsupported reply; hub is NOT called."""
-    adapter, hub = _make_adapter()
-    msg = _make_voice_msg()
-    msg.voice = None
-    msg.audio = SimpleNamespace(file_id="AUDFILE", duration=5)
-
-    tmp_file = tmp_path / "audio.ogg"
-    tmp_file.touch()
-
-    with patch.object(adapter, "_download_audio", return_value=(tmp_file, 5.0)):
-        await adapter._on_voice_message(msg)
-
-    hub.inbound_bus.put.assert_not_called()
-    adapter.bot.send_message.assert_called_once()
+    adapter.bot.send_message.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -302,25 +164,15 @@ def test_normalize_audio_topic_chat_scope_id() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_video_note_normalize_audio_uses_video_mp4(tmp_path) -> None:
-    """video_note messages must call normalize_audio with mime_type='video/mp4'."""
-    adapter, hub = _make_adapter()
-    tmp_file = tmp_path / "note.mp4"
-    tmp_file.touch()
-
-    msg = _make_voice_msg()
+def test_normalize_audio_video_note_fields() -> None:
+    """video_note messages produce correct mime_type and fields."""
+    adapter, _ = _make_adapter()
+    msg = _make_voice_msg_for_normalize()
     msg.voice = None
     msg.audio = None
     msg.video_note = SimpleNamespace(file_id="VN123", duration=5)
 
-    with patch.object(adapter, "_download_audio", return_value=(tmp_file, 5.0)):
-        with patch.object(
-            adapter, "normalize_audio", wraps=adapter.normalize_audio
-        ) as mock_norm:
-            await adapter._on_voice_message(msg)
-
-    hub.inbound_bus.put.assert_not_called()
-    mock_norm.assert_called_once()
-    _, _, mime = mock_norm.call_args.args
-    assert mime == "video/mp4"
+    result = adapter.normalize_audio(msg, b"vid", "video/mp4")
+    assert result.mime_type == "video/mp4"
+    assert result.duration_ms == 5000
+    assert result.file_id == "VN123"

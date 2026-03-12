@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 import re
@@ -18,8 +17,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 if TYPE_CHECKING:
     from lyra.core.hub import Hub
 
-from aiogram.enums import ChatAction
-
+from lyra.adapters._shared import parse_reply_to_id, push_to_hub_guarded
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
@@ -181,6 +179,14 @@ class TelegramAdapter:
                 "timestamp": ts,
             }
 
+    def _msg(self, key: str, fallback: str) -> str:
+        """Return a localised message string, falling back when no manager."""
+        return (
+            self._msg_manager.get(key, platform="telegram")
+            if self._msg_manager
+            else fallback
+        )
+
     @staticmethod
     def _make_scope_id(chat_id: int, topic_id: int | None) -> str:
         """Build the canonical scope_id for a Telegram chat/topic."""
@@ -191,8 +197,8 @@ class TelegramAdapter:
     def normalize(self, raw: Any) -> InboundMessage:
         """Convert an aiogram Message (or SimpleNamespace) to an InboundMessage.
 
-        Security: trust is always 'user'. normalize() is never called for bot messages.
-        Never logs the bot token.
+        Security: trust is always 'user'. normalize() is never called for bot
+        messages.  Never logs the bot token.
         """
         if raw.from_user is None:
             raise ValueError(
@@ -234,7 +240,7 @@ class TelegramAdapter:
                 f"telegram:{user_id}:{int(timestamp.timestamp())}"
                 f":{getattr(raw, 'message_id', '')}"
             ),
-            platform="telegram",
+            platform=Platform.TELEGRAM.value,
             bot_id=self._bot_id,
             scope_id=scope_id,
             user_id=user_id,
@@ -265,9 +271,9 @@ class TelegramAdapter:
                 "normalize_audio() called with no from_user — "
                 "service messages must be filtered before normalization"
             )
-        scope_id = self._make_scope_id(
-            raw.chat.id, getattr(raw, "message_thread_id", None)
-        )
+        chat_id: int = raw.chat.id
+        topic_id: int | None = getattr(raw, "message_thread_id", None)
+        scope_id = self._make_scope_id(chat_id, topic_id)
         voice = raw.voice or raw.audio or getattr(raw, "video_note", None)
         duration_ms: int | None = None
         if voice is not None:
@@ -281,9 +287,8 @@ class TelegramAdapter:
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=timezone.utc)
         user_id = f"tg:user:{raw.from_user.id}"
-        _voice_file_id = getattr(voice, "file_id", "") if voice is not None else ""
         return InboundAudio(
-            id=f"telegram:{user_id}:{int(timestamp.timestamp())}:{_voice_file_id}",
+            id=(f"telegram:{user_id}:{int(timestamp.timestamp())}:{file_id or ''}"),
             platform=Platform.TELEGRAM.value,
             bot_id=self._bot_id,
             scope_id=scope_id,
@@ -296,8 +301,8 @@ class TelegramAdapter:
             user_name=raw.from_user.full_name,
             is_mention=False,
             platform_meta={
-                "chat_id": raw.chat.id,
-                "topic_id": getattr(raw, "message_thread_id", None),
+                "chat_id": chat_id,
+                "topic_id": topic_id,
                 "message_id": getattr(raw, "message_id", None),
                 "is_group": raw.chat.type != "private",
             },
@@ -338,65 +343,34 @@ class TelegramAdapter:
     async def _on_voice_message(self, msg) -> None:
         """Handle an incoming voice or audio message.
 
-        Sends a typing indicator immediately, downloads the audio to a temp
-        file, normalises to MessageType.AUDIO, and pushes to the hub.
-
-        Security: same circuit-guard and trust rules as _on_message.
-        Temp file cleanup: the audio bytes are read and the temp file is
-        deleted immediately in the try/finally block before any hub interaction.
+        Audio bus is not yet wired (#140 follow-on) — log receipt and
+        reply with "unsupported" without downloading the file.
         """
         if not msg.from_user or getattr(msg.from_user, "is_bot", False):
             return
 
-        await self.bot.send_chat_action(chat_id=msg.chat.id, action=ChatAction.TYPING)
-
-        voice = msg.voice or msg.audio or msg.video_note
-        file_id: str = voice.file_id
-        duration: int | None = getattr(voice, "duration", None)
-
-        try:
-            tmp_path, _ = await self._download_audio(file_id, duration)
-        except Exception:
-            log.exception("Failed to download audio file_id=%s", file_id)
-            return
-
-        loop = asyncio.get_event_loop()
-        try:
-            audio_bytes = await loop.run_in_executor(None, tmp_path.read_bytes)
-        finally:
-            await loop.run_in_executor(None, lambda: tmp_path.unlink(missing_ok=True))
-
-        if msg.voice:
-            mime_type = "audio/ogg"
-        elif getattr(msg, "video_note", None):
-            mime_type = "video/mp4"
-        else:
-            mime_type = getattr(msg.audio, "mime_type", None) or "audio/ogg"
-
-        _inbound_audio = self.normalize_audio(msg, audio_bytes, mime_type)
-        # TODO(#140-follow-on): enqueue _inbound_audio onto InboundAudioBus
-
+        user_id = f"tg:user:{msg.from_user.id}"
+        scope_id = self._make_scope_id(msg.chat.id, msg.message_thread_id)
         log.info(
             "audio_received",
             extra={
                 "platform": "telegram",
-                "user_id": f"tg:user:{msg.from_user.id}",
-                "scope_id": self._make_scope_id(msg.chat.id, msg.message_thread_id),
+                "user_id": user_id,
+                "scope_id": scope_id,
             },
         )
         try:
             await self.bot.send_message(
                 chat_id=msg.chat.id,
-                text=(
-                    self._msg_manager.get("stt_unsupported", platform="telegram")
-                    if self._msg_manager
-                    else "Voice messages are not yet supported here."
+                text=self._msg(
+                    "stt_unsupported",
+                    "Voice messages are not yet supported here.",
                 ),
             )
         except Exception:
             log.warning(
                 "Failed to send audio-unsupported reply for user_id=%s",
-                f"tg:user:{msg.from_user.id}",
+                user_id,
             )
 
     async def _push_to_hub(
@@ -410,32 +384,9 @@ class TelegramAdapter:
         cases (e.g. to clean up a temp audio file). Always returns normally so
         aiogram receives HTTP 200.
         """
-        if self._circuit_registry is not None:
-            cb = self._circuit_registry.get("hub")
-            if cb is not None and cb.is_open():
-                log.warning(
-                    "hub_circuit_open",
-                    extra={
-                        "platform": "telegram",
-                        "user_id": hub_msg.user_id,
-                        "dropped": True,
-                    },
-                )
-                if on_drop is not None:
-                    on_drop()
-                return
+        chat_id = hub_msg.platform_meta.get("chat_id")
 
-        try:
-            self._hub.inbound_bus.put(Platform.TELEGRAM, hub_msg)
-        except asyncio.QueueFull:
-            if on_drop is not None:
-                on_drop()
-            text = (
-                self._msg_manager.get("backpressure_ack", platform="telegram")
-                if self._msg_manager
-                else "Processing your request\u2026"
-            )
-            chat_id = hub_msg.platform_meta.get("chat_id")
+        async def _send_bp(text: str) -> None:
             if chat_id is None:
                 log.error(
                     "_push_to_hub: platform_meta missing 'chat_id',"
@@ -444,6 +395,16 @@ class TelegramAdapter:
                 )
                 return
             await self.bot.send_message(chat_id, text)
+
+        await push_to_hub_guarded(
+            inbound_bus=self._hub.inbound_bus,
+            platform=Platform.TELEGRAM,
+            msg=hub_msg,
+            circuit_registry=self._circuit_registry,
+            on_drop=on_drop,
+            send_backpressure=_send_bp,
+            get_msg=self._msg,
+        )
 
     async def _on_message(self, msg) -> None:
         """Handle an incoming aiogram message: apply backpressure and put on bus."""
@@ -466,7 +427,7 @@ class TelegramAdapter:
         await self._push_to_hub(hub_msg)
 
     def _render_text(self, text: str) -> list[str]:
-        """Escape MarkdownV2 special characters and split into ≤4096-char chunks."""
+        """Escape MarkdownV2 special characters and split into <=4096-char chunks."""
         escaped = _MARKDOWNV2_SPECIAL.sub(r"\\\1", text)
         if not escaped:
             return []
@@ -497,7 +458,7 @@ class TelegramAdapter:
         Circuit breaker checks and recording are handled by OutboundDispatcher,
         not here. This method performs the bare send and raises on failure.
         """
-        if original_msg.platform != "telegram":
+        if original_msg.platform != Platform.TELEGRAM.value:
             log.error(
                 "send() called with non-telegram message id=%s",
                 original_msg.id,
@@ -534,12 +495,13 @@ class TelegramAdapter:
         """Stream response with edit-in-place, debounced at ~500ms.
 
         Circuit breaker checks and recording are handled by OutboundDispatcher,
-        not here. This method performs the bare streaming send and raises on failure.
+        not here. This method performs the bare streaming send and raises on
+        failure.
 
         When *outbound* is provided, ``outbound.metadata["reply_message_id"]``
         is set to the placeholder message ID after it is sent.
         """
-        if original_msg.platform != "telegram":
+        if original_msg.platform != Platform.TELEGRAM.value:
             log.error(
                 "send_streaming() called with non-telegram message id=%s",
                 original_msg.id,
@@ -551,31 +513,27 @@ class TelegramAdapter:
                 "platform_meta missing required key 'chat_id' for send_streaming()"
             )
 
-        accumulated = ""
+        parts: list[str] = []
 
         # Send placeholder
-        _placeholder_text = (
-            self._msg_manager.get("stream_placeholder", platform="telegram")
-            if self._msg_manager
-            else "\u2026"
-        )
+        _placeholder_text = self._msg("stream_placeholder", "\u2026")
         try:
             placeholder = await self.bot.send_message(
                 chat_id=chat_id, text=_placeholder_text
             )
             if outbound is not None:
-                # telegram-bot-api: Message.message_id (placeholder ID
-                # during streaming; not updated to a final ID on completion)
                 outbound.metadata["reply_message_id"] = placeholder.message_id
         except Exception:
             log.exception("Failed to send placeholder — falling back to non-streaming")
             async for chunk in chunks:
-                accumulated += chunk
-            fallback_content = accumulated or _placeholder_text
+                parts.append(chunk)
+            fallback_content = "".join(parts) or _placeholder_text
             chunks_rendered = self._render_text(fallback_content)
             if chunks_rendered:
                 fallback_msg = await self.bot.send_message(
-                    chat_id=chat_id, text=chunks_rendered[0], parse_mode="MarkdownV2"
+                    chat_id=chat_id,
+                    text=chunks_rendered[0],
+                    parse_mode="MarkdownV2",
                 )
             else:
                 fallback_msg = await self.bot.send_message(
@@ -589,9 +547,10 @@ class TelegramAdapter:
         stream_error: Exception | None = None
         try:
             async for chunk in chunks:
-                accumulated += chunk
+                parts.append(chunk)
                 now = time.monotonic()
                 if now - last_edit >= 0.5:
+                    accumulated = "".join(parts)
                     _escaped = _MARKDOWNV2_SPECIAL.sub(
                         r"\\\1", accumulated[:TELEGRAM_MAX_LENGTH]
                     )
@@ -605,19 +564,15 @@ class TelegramAdapter:
         except Exception as exc:
             stream_error = exc
             log.exception("Stream interrupted")
+
+        accumulated = "".join(parts)
+        if stream_error is not None:
             if accumulated:
-                suffix = (
-                    self._msg_manager.get("stream_interrupted", platform="telegram")
-                    if self._msg_manager
-                    else " [response interrupted]"
+                accumulated += self._msg(
+                    "stream_interrupted", " [response interrupted]"
                 )
-                accumulated += suffix
             else:
-                accumulated = (
-                    self._msg_manager.get("generic", platform="telegram")
-                    if self._msg_manager
-                    else GENERIC_ERROR_REPLY
-                )
+                accumulated = self._msg("generic", GENERIC_ERROR_REPLY)
 
         # Final edit with complete text (always runs, even after stream error)
         if accumulated:
@@ -646,9 +601,10 @@ class TelegramAdapter:
         reply_to_message_id is derived from inbound.platform_meta["message_id"]
         unless msg.reply_to_id overrides it explicitly.
         """
-        if inbound.platform != "telegram":
+        if inbound.platform != Platform.TELEGRAM.value:
             log.error(
-                "render_audio() called with non-telegram message id=%s", inbound.id
+                "render_audio() called with non-telegram message id=%s",
+                inbound.id,
             )
             return
 
@@ -663,16 +619,9 @@ class TelegramAdapter:
         topic_id: int | None = inbound.platform_meta.get("topic_id")
         message_id: int | None = inbound.platform_meta.get("message_id")
 
-        # Determine reply target: explicit override first, else original message id
-        reply_to: int | None = None
-        if msg.reply_to_id is not None:
-            try:
-                reply_to = int(msg.reply_to_id)
-            except ValueError:
-                log.warning(
-                    "render_audio: invalid reply_to_id=%r, ignoring", msg.reply_to_id
-                )
-        elif message_id is not None:
+        # Determine reply target: explicit override first, else original
+        reply_to = parse_reply_to_id(msg.reply_to_id)
+        if reply_to is None and message_id is not None:
             reply_to = message_id
 
         duration_sec: int | None = (

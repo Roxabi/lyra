@@ -24,7 +24,7 @@ from lyra.adapters.discord import DiscordAdapter, load_discord_config
 from lyra.adapters.telegram import TelegramAdapter
 from lyra.adapters.telegram import load_config as load_telegram_config
 from lyra.agents.simple_agent import SimpleAgent
-from lyra.core.agent import Agent, AgentBase, load_agent_config
+from lyra.core.agent import Agent, AgentBase, SmartRoutingConfig, load_agent_config
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.cli_pool import CliPool
 from lyra.core.hub import Hub, RoutingKey
@@ -34,6 +34,7 @@ from lyra.core.outbound_dispatcher import OutboundDispatcher
 from lyra.core.pairing import PairingConfig, PairingManager, set_pairing_manager
 from lyra.llm.base import LlmProvider
 from lyra.llm.registry import ProviderRegistry
+from lyra.llm.smart_routing import SmartRoutingDecorator
 from lyra.stt import STTService, load_stt_config
 
 log = logging.getLogger(__name__)
@@ -119,11 +120,17 @@ def _load_messages(language: str = "en") -> MessageManager:
 def _build_provider_registry(
     circuit_registry: CircuitRegistry,
     cli_pool: CliPool | None,
-) -> ProviderRegistry:
-    """Build and return a ProviderRegistry with all configured drivers."""
+    smart_routing_config: SmartRoutingConfig | None = None,
+) -> tuple[ProviderRegistry, SmartRoutingDecorator | None]:
+    """Build and return a ProviderRegistry with all configured drivers.
+
+    Returns (registry, smart_routing_decorator_or_None) so the routing
+    decorator's history is accessible to the /routing admin command.
+    """
     from lyra.llm.decorators import CircuitBreakerDecorator, RetryDecorator
 
     registry = ProviderRegistry()
+    routing_decorator: SmartRoutingDecorator | None = None
 
     if cli_pool is not None:
         from lyra.llm.drivers.cli import ClaudeCliDriver
@@ -137,15 +144,24 @@ def _build_provider_registry(
 
         sdk_driver = AnthropicSdkDriver(api_key)
         retry = RetryDecorator(sdk_driver, max_retries=3, backoff_base=1.0)
+
+        # Smart routing wraps retry (CB → SmartRouting → Retry → Driver)
+        inner: LlmProvider = retry
+        if smart_routing_config is not None:
+            from lyra.llm.smart_routing import SmartRoutingDecorator as SRD
+
+            routing_decorator = SRD(retry, smart_routing_config)
+            inner = routing_decorator
+
         anthropic_cb = circuit_registry.get("anthropic")
         if anthropic_cb is not None:
-            provider: LlmProvider = CircuitBreakerDecorator(retry, anthropic_cb)
+            provider: LlmProvider = CircuitBreakerDecorator(inner, anthropic_cb)
         else:
-            provider = retry
+            provider = inner
         registry.register("anthropic-sdk", provider)
-        log.info("ProviderRegistry: registered anthropic-sdk driver (CB+Retry chain)")
+        log.info("ProviderRegistry: registered anthropic-sdk driver (decorated)")
 
-    return registry
+    return registry, routing_decorator
 
 
 def _create_agent(
@@ -156,6 +172,7 @@ def _create_agent(
     msg_manager: MessageManager | None = None,
     stt: STTService | None = None,
     provider_registry: ProviderRegistry | None = None,
+    smart_routing_decorator: SmartRoutingDecorator | None = None,
 ) -> AgentBase:
     """Select agent implementation based on backend config."""
     backend = config.model_config.backend
@@ -178,6 +195,7 @@ def _create_agent(
             admin_user_ids=admin_user_ids,
             msg_manager=msg_manager,
             stt=stt,
+            smart_routing_decorator=smart_routing_decorator,
         )
     if backend in ("claude-cli", "ollama"):
         if cli_pool is None:
@@ -325,7 +343,20 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
         cli_pool = CliPool()
         await cli_pool.start()
 
-    provider_registry = _build_provider_registry(circuit_registry, cli_pool)
+    sr_config = agent_config.smart_routing
+    if (
+        sr_config is not None
+        and sr_config.enabled
+        and agent_config.model_config.backend != "anthropic-sdk"
+    ):
+        log.warning(
+            "smart_routing.enabled=true but backend=%r — "
+            "smart routing only applies to anthropic-sdk",
+            agent_config.model_config.backend,
+        )
+    provider_registry, smart_routing_decorator = _build_provider_registry(
+        circuit_registry, cli_pool, smart_routing_config=sr_config
+    )
 
     stt_service: STTService | None = None
     if os.environ.get("STT_MODEL_SIZE"):
@@ -349,6 +380,7 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
         msg_manager=msg_manager,
         stt=stt_service,
         provider_registry=provider_registry,
+        smart_routing_decorator=smart_routing_decorator,
     )
     hub.register_agent(agent)
 

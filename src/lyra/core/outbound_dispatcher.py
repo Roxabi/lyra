@@ -126,9 +126,7 @@ class OutboundDispatcher:
                     if kind == "send":
                         await self._adapter.send(msg, payload)
                     else:
-                        await self._adapter.send_streaming(
-                            msg, payload, outbound
-                        )
+                        await self._adapter.send_streaming(msg, payload, outbound)
                     if self._circuit is not None:
                         self._circuit.record_success()
                 except BaseException as exc:

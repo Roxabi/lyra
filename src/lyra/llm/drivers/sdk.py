@@ -1,4 +1,5 @@
 """AnthropicSdkDriver — LlmProvider implementation wrapping AsyncAnthropic."""
+
 from __future__ import annotations
 
 import logging
@@ -87,19 +88,23 @@ class AnthropicSdkDriver:
                             result_str = await self._execute_tool(
                                 block.name, block.input
                             )
-                            tool_results.append({
-                                "type": "tool_result",
-                                "tool_use_id": block.id,
-                                "content": result_str,
-                            })
+                            tool_results.append(
+                                {
+                                    "type": "tool_result",
+                                    "tool_use_id": block.id,
+                                    "content": result_str,
+                                }
+                            )
                         except Exception:
                             log.exception("Tool %s failed", block.name)
-                            tool_results.append({
-                                "type": "tool_result",
-                                "tool_use_id": block.id,
-                                "content": "Tool execution failed.",
-                                "is_error": True,
-                            })
+                            tool_results.append(
+                                {
+                                    "type": "tool_result",
+                                    "tool_use_id": block.id,
+                                    "content": "Tool execution failed.",
+                                    "is_error": True,
+                                }
+                            )
 
                 kwargs["messages"] = [
                     *kwargs["messages"],

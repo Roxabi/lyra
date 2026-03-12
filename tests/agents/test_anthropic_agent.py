@@ -162,10 +162,12 @@ class TestProcess:
 
         pool = make_pool()
         # Pre-seed history
-        pool.extend_sdk_history([
-            {"role": "user", "content": "first question"},
-            {"role": "assistant", "content": "first answer"},
-        ])
+        pool.extend_sdk_history(
+            [
+                {"role": "user", "content": "first question"},
+                {"role": "assistant", "content": "first answer"},
+            ]
+        )
 
         msg = make_message("second question")
         await agent.process(msg, pool)

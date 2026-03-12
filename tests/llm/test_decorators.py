@@ -188,9 +188,7 @@ class TestCircuitBreakerDecorator:
     async def test_cb_record_success_noop_when_closed(self) -> None:
         """Real CB in CLOSED state: record_success() is a no-op, no exception."""
         # Arrange — real CircuitBreaker (not a mock) to verify no-op contract
-        real_cb = CircuitBreaker(
-            name="test", failure_threshold=5, recovery_timeout=60
-        )
+        real_cb = CircuitBreaker(name="test", failure_threshold=5, recovery_timeout=60)
         # real_cb starts CLOSED
 
         inner = _make_inner([make_ok_result()])

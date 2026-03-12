@@ -8,11 +8,10 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.llm.drivers.cli import ClaudeCliDriver  # type: ignore[reportMissingImports]
-
 from lyra.core.agent import ModelConfig
 from lyra.core.cli_pool import CliResult
 from lyra.llm.base import LlmResult
+from lyra.llm.drivers.cli import ClaudeCliDriver  # type: ignore[reportMissingImports]
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -55,9 +54,7 @@ class TestClaudeCliDriverComplete:
         )
 
         # Assert
-        pool.send.assert_awaited_once_with(
-            "my-pool", "hello", model_cfg, "be helpful"
-        )
+        pool.send.assert_awaited_once_with("my-pool", "hello", model_cfg, "be helpful")
 
     async def test_complete_translates_success(self) -> None:
         """CliResult(result='hi', session_id='s1') → LlmResult(result='hi', ok=True)."""

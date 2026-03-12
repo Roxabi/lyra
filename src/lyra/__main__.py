@@ -186,6 +186,7 @@ def _create_agent(
             provider = provider_registry.get("claude-cli")
         else:
             from lyra.llm.drivers.cli import ClaudeCliDriver
+
             provider = ClaudeCliDriver(cli_pool)
         return SimpleAgent(
             config,

@@ -99,8 +99,7 @@ class AnthropicAgent(AgentBase):
                         self._msg_manager.get("stt_noise")
                         if self._msg_manager
                         else (
-                            "I couldn't make out your voice message,"
-                            " please try again."
+                            "I couldn't make out your voice message, please try again."
                         )
                     )
                     return Response(content=_noise_msg)
@@ -154,10 +153,12 @@ class AnthropicAgent(AgentBase):
                 return Response(content=user_msg, metadata={"error": True})
 
             # Persist to SDK history: user turn + assistant reply
-            pool.extend_sdk_history([
-                {"role": "user", "content": history_text},
-                {"role": "assistant", "content": result.result},
-            ])
+            pool.extend_sdk_history(
+                [
+                    {"role": "user", "content": history_text},
+                    {"role": "assistant", "content": result.result},
+                ]
+            )
 
             log.info(
                 "[agent:%s][pool:%s] response: %d chars",

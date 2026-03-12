@@ -9,7 +9,6 @@ Usage:
 
 from __future__ import annotations
 
-import sys
 from collections.abc import Sequence
 from enum import Enum
 
@@ -99,7 +98,7 @@ class AuthMiddleware:
             if section == "cli":
                 # CLI is always local/trusted — fixed OWNER, no config required.
                 return cls(user_map={}, role_map={}, default=TrustLevel.OWNER)
-            sys.exit(
+            raise ValueError(
                 f"Missing [auth.{section}] in lyra.toml"
                 f" — auth config required for networked adapters"
             )
@@ -110,7 +109,7 @@ class AuthMiddleware:
             default = TrustLevel(raw_default)
         except ValueError:
             valid = ", ".join(t.value for t in TrustLevel)
-            sys.exit(
+            raise ValueError(
                 f"Invalid default '{raw_default}' in [auth.{section}]"
                 f" — must be one of: {valid}"
             )

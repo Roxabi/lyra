@@ -10,6 +10,7 @@ import logging
 import os
 import re
 import signal
+import sys
 import time
 import tomllib
 from datetime import datetime, timezone
@@ -98,10 +99,12 @@ def _load_auth_config(raw: dict) -> tuple[AuthMiddleware, AuthMiddleware]:
     Returns (tg_auth, dc_auth). Calls sys.exit() if a required section is missing
     or contains an invalid default value.
     """
-    return (
-        AuthMiddleware.from_config(raw, "telegram"),
-        AuthMiddleware.from_config(raw, "discord"),
-    )
+    try:
+        tg_auth = AuthMiddleware.from_config(raw, "telegram")
+        dc_auth = AuthMiddleware.from_config(raw, "discord")
+    except ValueError as exc:
+        sys.exit(str(exc))
+    return tg_auth, dc_auth
 
 
 def _load_pairing_config(raw: dict) -> PairingConfig:

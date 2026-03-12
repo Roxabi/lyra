@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.adapters.telegram import TelegramAdapter
+from lyra.adapters.telegram import _ALLOW_ALL, TelegramAdapter
 
 
 def _make_voice_msg(
@@ -44,7 +44,7 @@ def _make_adapter() -> tuple[TelegramAdapter, MagicMock]:
     hub.inbound_bus = MagicMock()
     hub.inbound_audio_bus = MagicMock()
     hub.inbound_audio_bus.put = MagicMock()
-    adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub)
+    adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub, auth=_ALLOW_ALL)
     bot_mock = AsyncMock()
     bot_mock.send_chat_action = AsyncMock()
     bot_mock.send_message = AsyncMock()

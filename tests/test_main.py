@@ -348,5 +348,5 @@ class TestLoadAuthConfig:
                 "discord": {"default": "public"},
             }
         }
-        with pytest.raises(SystemExit):
+        with pytest.raises(SystemExit, match="invalid_level"):
             main_mod._load_auth_config(raw)

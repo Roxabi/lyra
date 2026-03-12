@@ -34,6 +34,12 @@ from lyra.core.messages import MessageManager
 log = logging.getLogger(__name__)
 
 TELEGRAM_MAX_LENGTH = 4096  # Telegram Bot API text message limit
+
+# Sentinel used when no AuthMiddleware is provided — denies all traffic by default.
+_DENY_ALL = AuthMiddleware(user_map={}, role_map={}, default=TrustLevel.BLOCKED)
+
+# Permissive sentinel for use in tests — allows all traffic as PUBLIC.
+_ALLOW_ALL = AuthMiddleware(user_map={}, role_map={}, default=TrustLevel.PUBLIC)
 _MARKDOWNV2_SPECIAL = re.compile(r"([_*\[\]()~`>#\+\-=|{}.!\\])")
 
 
@@ -150,7 +156,7 @@ class TelegramAdapter:
         webhook_secret: str = "",
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
-        auth: AuthMiddleware | None = None,
+        auth: AuthMiddleware = _DENY_ALL,
     ) -> None:
         self._bot_id = bot_id
         self._token = token  # kept private — never logged
@@ -163,7 +169,7 @@ class TelegramAdapter:
         self._hub: Hub = hub
         self._circuit_registry = circuit_registry
         self._msg_manager = msg_manager
-        self._auth = auth
+        self._auth: AuthMiddleware = auth
         self._audio_tmp_dir: str | None = os.environ.get("LYRA_AUDIO_TMP") or None
         self._max_audio_bytes: int = int(
             os.environ.get("LYRA_MAX_AUDIO_BYTES", 5 * 1024 * 1024)
@@ -533,13 +539,11 @@ class TelegramAdapter:
         if not msg.from_user or getattr(msg.from_user, "is_bot", False):
             return
 
-        trust = TrustLevel.TRUSTED
-        if self._auth is not None:
-            user_id = str(msg.from_user.id)
-            trust = self._auth.check(user_id)
-            if trust == TrustLevel.BLOCKED:
-                log.info("auth_reject user=%s channel=telegram", user_id)
-                return
+        user_id = str(msg.from_user.id)
+        trust = self._auth.check(user_id)
+        if trust == TrustLevel.BLOCKED:
+            log.info("auth_reject user=%s channel=telegram", user_id)
+            return
 
         hub_msg = self.normalize(msg, trust_level=trust)
         log.info(

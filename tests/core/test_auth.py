@@ -124,12 +124,12 @@ class TestFromConfig:
         assert auth.check("unknown") == TrustLevel.BLOCKED
         assert auth.check("unknown", roles=["admin"]) == TrustLevel.TRUSTED
 
-    def test_missing_section_for_telegram_raises_system_exit(self) -> None:
-        with pytest.raises(SystemExit):
+    def test_missing_section_for_telegram_raises_value_error(self) -> None:
+        with pytest.raises(ValueError):
             AuthMiddleware.from_config({}, "telegram")
 
-    def test_missing_section_for_discord_raises_system_exit(self) -> None:
-        with pytest.raises(SystemExit):
+    def test_missing_section_for_discord_raises_value_error(self) -> None:
+        with pytest.raises(ValueError):
             AuthMiddleware.from_config({}, "discord")
 
     def test_missing_section_for_cli_returns_owner_middleware(self) -> None:
@@ -138,9 +138,9 @@ class TestFromConfig:
         assert auth.check("anyone") == TrustLevel.OWNER
         assert auth.check(None) == TrustLevel.OWNER
 
-    def test_invalid_default_raises_system_exit(self) -> None:
+    def test_invalid_default_raises_value_error(self) -> None:
         raw = self._make_raw("telegram", default="open")
-        with pytest.raises(SystemExit):
+        with pytest.raises(ValueError):
             AuthMiddleware.from_config(raw, "telegram")
 
     def test_owner_users_get_owner_level(self) -> None:
@@ -188,13 +188,13 @@ class TestFromConfig:
         auth = AuthMiddleware.from_config(raw, "telegram")
         assert auth.check("anyone") == TrustLevel.PUBLIC
 
-    def test_system_exit_message_contains_section(self) -> None:
-        with pytest.raises(SystemExit) as exc_info:
+    def test_value_error_message_contains_section(self) -> None:
+        with pytest.raises(ValueError) as exc_info:
             AuthMiddleware.from_config({}, "telegram")
         assert "telegram" in str(exc_info.value)
 
-    def test_system_exit_invalid_default_message(self) -> None:
+    def test_value_error_invalid_default_message(self) -> None:
         raw = self._make_raw("telegram", default="superadmin")
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(ValueError) as exc_info:
             AuthMiddleware.from_config(raw, "telegram")
         assert "superadmin" in str(exc_info.value)

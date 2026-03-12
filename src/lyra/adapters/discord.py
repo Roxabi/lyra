@@ -32,6 +32,12 @@ log = logging.getLogger(__name__)
 
 DISCORD_MAX_LENGTH = 2000  # Discord API message length limit
 
+# Sentinel used when no AuthMiddleware is provided — denies all traffic by default.
+_DENY_ALL = AuthMiddleware(user_map={}, role_map={}, default=TrustLevel.BLOCKED)
+
+# Permissive sentinel for use in tests — allows all traffic as PUBLIC.
+_ALLOW_ALL = AuthMiddleware(user_map={}, role_map={}, default=TrustLevel.PUBLIC)
+
 
 _AUTO_THREAD_TRUE = frozenset({"1", "true", "yes", "on"})
 
@@ -113,7 +119,7 @@ class DiscordAdapter(discord.Client):
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
         auto_thread: bool = True,
-        auth: AuthMiddleware | None = None,
+        auth: AuthMiddleware = _DENY_ALL,
     ) -> None:
         if intents is None:
             intents = discord.Intents.default()
@@ -124,7 +130,7 @@ class DiscordAdapter(discord.Client):
         self._circuit_registry = circuit_registry
         self._msg_manager = msg_manager
         self._auto_thread = auto_thread
-        self._auth = auth
+        self._auth: AuthMiddleware = auth
         self._max_audio_bytes: int = int(
             os.environ.get("LYRA_MAX_AUDIO_BYTES", 5 * 1024 * 1024)
         )
@@ -297,18 +303,18 @@ class DiscordAdapter(discord.Client):
             return
 
         # Auth gate — runs before normalize() and before audio handling.
-        trust = TrustLevel.TRUSTED
-        if self._auth is not None:
-            user_id = f"dc:user:{message.author.id}"
-            roles = (
-                [r.name for r in message.author.roles]
-                if hasattr(message.author, "roles")
-                else []
+        _raw_uid = str(message.author.id)
+        roles = (
+            [r.name for r in message.author.roles]
+            if hasattr(message.author, "roles")
+            else []
+        )
+        trust = self._auth.check(_raw_uid, roles=roles)
+        if trust == TrustLevel.BLOCKED:
+            log.info(
+                "auth_reject user=%s channel=discord", f"dc:user:{message.author.id}"
             )
-            trust = self._auth.check(user_id, roles=roles)
-            if trust == TrustLevel.BLOCKED:
-                log.info("auth_reject user=%s channel=discord", user_id)
-                return
+            return
 
         # Audio attachment detection
         audio_attachment = next(

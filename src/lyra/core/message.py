@@ -51,6 +51,7 @@ class InboundMessage:
     is_mention: bool
     text: str  # normalized plain text (markup stripped)
     text_raw: str  # original text with platform markup
+    trust_level: TrustLevel
     attachments: list[Attachment] = field(default_factory=list)
     reply_to_id: str | None = None
     thread_id: str | None = None
@@ -60,7 +61,6 @@ class InboundMessage:
     # Removal tracked separately.
     trust: Literal["user", "system"] = "user"
     platform_meta: dict = field(default_factory=dict)
-    trust_level: TrustLevel = TrustLevel.TRUSTED
 
 
 @dataclass(frozen=True)
@@ -82,13 +82,13 @@ class InboundAudio:
     duration_ms: int | None
     file_id: str | None
     timestamp: datetime
+    trust_level: TrustLevel
     # Deprecated: use trust_level (TrustLevel) for authorization.
     # Removal tracked separately.
     trust: Literal["user", "system"] = "user"
     user_name: str = ""
     is_mention: bool = False
     platform_meta: dict = field(default_factory=dict)
-    trust_level: TrustLevel = TrustLevel.TRUSTED
 
 
 @dataclass

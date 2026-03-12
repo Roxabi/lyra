@@ -271,6 +271,7 @@ async def test_dc_render_audio_no_reply_to_id_sends_normally() -> None:
         text="hi",
         text_raw="hi",
         timestamp=datetime.now(timezone.utc),
+        trust_level=TrustLevel.TRUSTED,
         platform_meta={
             "guild_id": 1,
             "channel_id": 99,

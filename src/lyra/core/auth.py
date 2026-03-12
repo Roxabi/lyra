@@ -10,16 +10,10 @@ Usage:
 from __future__ import annotations
 
 from collections.abc import Sequence
-from enum import Enum
 
+from lyra.core.trust import TrustLevel
 
-class TrustLevel(str, Enum):
-    """Authorization level assigned to an inbound message sender."""
-
-    OWNER = "owner"
-    TRUSTED = "trusted"
-    PUBLIC = "public"
-    BLOCKED = "blocked"
+__all__ = ["AuthMiddleware", "TrustLevel"]
 
 
 # Ordering used to pick the highest trust level among multiple role matches.
@@ -121,6 +115,8 @@ class AuthMiddleware:
             # owner_users take precedence — do not downgrade
             user_map.setdefault(str(uid), TrustLevel.TRUSTED)
 
+        # trusted_roles must contain Discord role snowflake IDs (numeric strings),
+        # not display names. Example: trusted_roles = ["123456789012345678"]
         role_map: dict[str, TrustLevel] = {}
         for role in section_cfg.get("trusted_roles", []):
             role_map[str(role)] = TrustLevel.TRUSTED

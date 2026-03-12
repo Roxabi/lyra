@@ -49,3 +49,12 @@ def test_on_input_unique_ids() -> None:
     msg1 = adapter.on_input("a")
     msg2 = adapter.on_input("b")
     assert msg1.id != msg2.id
+
+
+def test_on_input_empty_string() -> None:
+    """on_input('') produces an InboundMessage with empty text and OWNER trust."""
+    adapter = CLIAdapter()
+    msg = adapter.on_input("")
+    assert msg.text == ""
+    assert msg.text_raw == ""
+    assert msg.trust_level == TrustLevel.OWNER

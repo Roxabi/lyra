@@ -1411,7 +1411,7 @@ def _make_discord_msg_ns(user_id: int = 42, roles: list | None = None) -> object
         "bot": False,
     }
     if roles is not None:
-        author_kwargs["roles"] = [SimpleNamespace(name=r) for r in roles]
+        author_kwargs["roles"] = [SimpleNamespace(id=r) for r in roles]
     return SimpleNamespace(
         guild=SimpleNamespace(id=111),
         channel=SimpleNamespace(id=333, send=AsyncMock()),
@@ -1475,16 +1475,16 @@ class TestDiscordAuth:
         )
         adapter._bot_user = SimpleNamespace(id=999, bot=True)
 
-        msg_ns = _make_discord_msg_ns(roles=["friends"])
+        msg_ns = _make_discord_msg_ns(roles=["123456"])
         await adapter.on_message(msg_ns)
 
-        # Verify roles were passed to auth.check
+        # Verify role snowflake IDs were passed to auth.check
         call_kwargs = auth.check.call_args
         assert call_kwargs is not None
         passed_roles = call_kwargs.kwargs.get("roles") or (
             call_kwargs.args[1] if len(call_kwargs.args) > 1 else []
         )
-        assert "friends" in passed_roles
+        assert "123456" in passed_roles
 
     @pytest.mark.asyncio
     async def test_dm_fallback_user_id_only(self) -> None:

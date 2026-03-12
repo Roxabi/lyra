@@ -169,6 +169,7 @@ class DiscordAdapter(discord.Client):
         raw: Any,
         audio_bytes: bytes,
         mime_type: str,
+        *,
         trust_level: TrustLevel = TrustLevel.TRUSTED,
     ) -> InboundAudio:
         """Build an InboundAudio envelope from a Discord audio message.
@@ -305,7 +306,7 @@ class DiscordAdapter(discord.Client):
         # Auth gate — runs before normalize() and before audio handling.
         _raw_uid = str(message.author.id)
         roles = (
-            [r.name for r in message.author.roles]
+            [str(r.id) for r in message.author.roles]
             if hasattr(message.author, "roles")
             else []
         )

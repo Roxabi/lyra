@@ -93,20 +93,6 @@ def _load_circuit_config(
     return registry, admin_ids
 
 
-def _load_auth_config(raw: dict) -> tuple[AuthMiddleware, AuthMiddleware]:
-    """Load [auth.telegram] and [auth.discord] sections from raw config dict.
-
-    Returns (tg_auth, dc_auth). Calls sys.exit() if a required section is missing
-    or contains an invalid default value.
-    """
-    try:
-        tg_auth = AuthMiddleware.from_config(raw, "telegram")
-        dc_auth = AuthMiddleware.from_config(raw, "discord")
-    except ValueError as exc:
-        sys.exit(str(exc))
-    return tg_auth, dc_auth
-
-
 def _load_pairing_config(raw: dict) -> PairingConfig:
     """Load [pairing] section from raw config dict. Missing section → all defaults."""
     pairing_section: dict = raw.get("pairing", {})
@@ -315,7 +301,11 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
 
     raw_config = _load_raw_config()
     circuit_registry, admin_user_ids = _load_circuit_config(raw_config)
-    tg_auth, dc_auth = _load_auth_config(raw_config)
+    try:
+        tg_auth = AuthMiddleware.from_config(raw_config, "telegram")
+        dc_auth = AuthMiddleware.from_config(raw_config, "discord")
+    except ValueError as exc:
+        sys.exit(str(exc))
 
     # Config loaders call sys.exit() on missing required env vars — no partial startup.
     tg_cfg = load_telegram_config()

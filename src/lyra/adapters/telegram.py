@@ -262,7 +262,7 @@ class TelegramAdapter:
         return f"chat:{chat_id}"
 
     def normalize(
-        self, raw: Any, trust_level: TrustLevel = TrustLevel.TRUSTED
+        self, raw: Any, *, trust_level: TrustLevel = TrustLevel.TRUSTED
     ) -> InboundMessage:
         """Convert an aiogram Message (or SimpleNamespace) to an InboundMessage.
 
@@ -335,6 +335,7 @@ class TelegramAdapter:
         raw: Any,
         audio_bytes: bytes,
         mime_type: str,
+        *,
         trust_level: TrustLevel = TrustLevel.TRUSTED,
     ) -> InboundAudio:
         """Build an InboundAudio envelope from a Telegram voice/audio/video_note.

@@ -9,6 +9,7 @@ import pytest
 
 import lyra.__main__ as main_mod
 from lyra.core.agent import Agent, ModelConfig
+from lyra.core.auth import AuthMiddleware
 from lyra.core.hub import Hub
 from lyra.core.message import Platform
 
@@ -66,11 +67,13 @@ def _patch_all(monkeypatch: pytest.MonkeyPatch) -> list[Hub]:
             captured.append(hub)
             super().__init__(hub, **kwargs)
 
+    mock_tg_auth, mock_dc_auth = _make_mock_auth_pair()
+    _auth_results = iter([mock_tg_auth, mock_dc_auth])
     monkeypatch.setattr(main_mod, "load_dotenv", lambda: None)
     monkeypatch.setattr(
-        main_mod,
-        "_load_auth_config",
-        lambda raw: _make_mock_auth_pair(),
+        AuthMiddleware,
+        "from_config",
+        classmethod(lambda cls, raw, section: next(_auth_results)),
     )
     monkeypatch.setattr(
         main_mod,
@@ -305,48 +308,87 @@ class TestInvalidSTTConfig:
 
 
 # ---------------------------------------------------------------------------
-# T6 — _load_auth_config tests
+# T6 — AuthMiddleware.from_config tests (inlined into _main)
 # ---------------------------------------------------------------------------
 
 
-class TestLoadAuthConfig:
-    def test_valid_config_returns_two_middlewares(self) -> None:
-        """Valid auth config returns (tg_auth, dc_auth) tuple."""
-        from lyra.core.auth import AuthMiddleware
-
-        raw = {
-            "auth": {
-                "telegram": {"default": "public"},
-                "discord": {"default": "public"},
-            }
-        }
-        tg_auth, dc_auth = main_mod._load_auth_config(raw)
-        assert isinstance(tg_auth, AuthMiddleware)
-        assert isinstance(dc_auth, AuthMiddleware)
-
-    def test_missing_telegram_section_exits(self) -> None:
-        """Missing [auth.telegram] causes SystemExit."""
-        raw: dict = {}
+class TestAuthConfig:
+    async def test_missing_telegram_section_exits(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Missing [auth.telegram] causes SystemExit when _main() runs."""
+        monkeypatch.setattr(main_mod, "load_dotenv", lambda: None)
+        monkeypatch.setattr(
+            main_mod,
+            "load_telegram_config",
+            lambda: MagicMock(token="t", webhook_secret="s", bot_username="b"),
+        )
+        monkeypatch.setattr(
+            main_mod,
+            "load_discord_config",
+            lambda: MagicMock(token="d"),
+        )
+        monkeypatch.setattr(
+            main_mod,
+            "_load_raw_config",
+            lambda: {},
+        )
+        stop = asyncio.Event()
+        stop.set()
         with pytest.raises(SystemExit, match="auth.telegram"):
-            main_mod._load_auth_config(raw)
+            await main_mod._main(_stop=stop)
 
-    def test_missing_discord_section_exits(self) -> None:
-        """Missing [auth.discord] causes SystemExit (telegram section present)."""
-        raw = {
-            "auth": {
-                "telegram": {"default": "public"},
-            }
-        }
+    async def test_missing_discord_section_exits(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Missing [auth.discord] causes SystemExit when _main() runs."""
+        monkeypatch.setattr(main_mod, "load_dotenv", lambda: None)
+        monkeypatch.setattr(
+            main_mod,
+            "load_telegram_config",
+            lambda: MagicMock(token="t", webhook_secret="s", bot_username="b"),
+        )
+        monkeypatch.setattr(
+            main_mod,
+            "load_discord_config",
+            lambda: MagicMock(token="d"),
+        )
+        monkeypatch.setattr(
+            main_mod,
+            "_load_raw_config",
+            lambda: {"auth": {"telegram": {"default": "public"}}},
+        )
+        stop = asyncio.Event()
+        stop.set()
         with pytest.raises(SystemExit, match="auth.discord"):
-            main_mod._load_auth_config(raw)
+            await main_mod._main(_stop=stop)
 
-    def test_invalid_default_exits(self) -> None:
-        """Invalid default value in [auth.telegram] causes SystemExit."""
-        raw = {
-            "auth": {
-                "telegram": {"default": "invalid_level"},
-                "discord": {"default": "public"},
-            }
-        }
+    async def test_invalid_default_exits(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Invalid default in [auth.telegram] causes SystemExit when _main() runs."""
+        monkeypatch.setattr(main_mod, "load_dotenv", lambda: None)
+        monkeypatch.setattr(
+            main_mod,
+            "load_telegram_config",
+            lambda: MagicMock(token="t", webhook_secret="s", bot_username="b"),
+        )
+        monkeypatch.setattr(
+            main_mod,
+            "load_discord_config",
+            lambda: MagicMock(token="d"),
+        )
+        monkeypatch.setattr(
+            main_mod,
+            "_load_raw_config",
+            lambda: {
+                "auth": {
+                    "telegram": {"default": "invalid_level"},
+                    "discord": {"default": "public"},
+                }
+            },
+        )
+        stop = asyncio.Event()
+        stop.set()
         with pytest.raises(SystemExit, match="invalid_level"):
-            main_mod._load_auth_config(raw)
+            await main_mod._main(_stop=stop)

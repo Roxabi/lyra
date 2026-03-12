@@ -449,7 +449,7 @@ class TelegramAdapter:
             return
         except Exception:
             log.exception(
-                "Failed to download audio file_id=%s for user_id=%s",
+                "Failed to download audio file_id=%r for user_id=%s",
                 file_id,
                 user_id,
             )

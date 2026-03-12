@@ -158,7 +158,9 @@ async def test_on_message_audio_too_large_sends_reply() -> None:
     hub = MagicMock()
     hub.inbound_bus = MagicMock()
     hub.inbound_audio_bus = MagicMock()
-    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+    adapter = DiscordAdapter(
+        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+    )
 
     attachment_obj = SimpleNamespace(
         content_type="audio/ogg",

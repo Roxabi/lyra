@@ -1,0 +1,44 @@
+---
+title: "Outgoing attachment handling — typed OutboundAttachment"
+issue: 184
+status: approved
+tier: F-lite
+date: 2026-03-12
+---
+
+## Problem
+
+Lyra has no typed envelope for outbound attachments. The inbound side has `Attachment` (image, audio, video, file) and outbound audio has `OutboundAudio`, but when the agent or hub needs to send a file, image, or document back to the user, there is no channel-agnostic data structure. Each adapter would need ad-hoc logic, breaking the hub-and-spoke normalization pattern.
+
+This is part of the Message & Media Normalization epic (#139). Adding `OutboundAttachment` completes the outbound media story alongside the existing `OutboundAudio`.
+
+## Who
+
+- **Primary:** Lyra agents that generate files, images, or documents as responses (e.g. image generation, PDF export, code snippets as files).
+- **Secondary:** Adapter maintainers who need a clear contract for rendering outbound media per platform.
+
+## Constraints
+
+- Must follow the existing frozen-dataclass pattern used by `OutboundAudio`, `Attachment`, `MediaPart`.
+- Adapters own all platform-specific rendering — the dataclass is channel-agnostic.
+- Telegram: `send_photo` for images, `send_document` for documents/files, `send_video` for video.
+- Discord: `discord.File` wrapping bytes or a file-like object.
+- Must integrate with the existing `OutboundMessage` flow or be sendable alongside it (attachments may accompany text).
+- No new dependencies.
+
+## Out of Scope
+
+- Outbound audio (already handled by `OutboundAudio`).
+- Inline media in streaming responses (edit-in-place).
+- Attachment storage / CDN / caching layer.
+- Inbound attachment changes (already typed via `Attachment`).
+
+## Complexity
+
+**Tier: F-lite** — Clear scope, single domain (adapters + message types), no architectural unknowns.
+
+Signals:
+- Mirrors existing `OutboundAudio` pattern — proven template.
+- Touches 3 files: `message.py` (dataclass), `telegram.py` (render), `discord.py` (render).
+- No new architectural patterns or cross-domain concerns.
+- Platform APIs are well-understood (`send_photo`, `send_document`, `discord.File`).

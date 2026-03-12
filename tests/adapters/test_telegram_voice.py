@@ -295,3 +295,27 @@ def test_normalize_audio_topic_chat_scope_id() -> None:
     msg = _make_voice_msg_for_normalize(chat_id=42, topic_id=7, chat_type="supergroup")
     result = adapter.normalize_audio(msg, b"x", "audio/ogg")
     assert result.scope_id == "chat:42:topic:7"
+
+
+# ---------------------------------------------------------------------------
+# video_note mime_type (B2 fix) — video/mp4, not audio/ogg
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_video_note_produces_video_mp4_mime_type(tmp_path) -> None:
+    """video_note messages must use mime_type='video/mp4', not 'audio/ogg'."""
+    adapter, hub = _make_adapter()
+    tmp_file = tmp_path / "note.mp4"
+    tmp_file.touch()
+
+    msg = _make_voice_msg()
+    msg.voice = None
+    msg.audio = None
+    msg.video_note = SimpleNamespace(file_id="VN123", duration=5)
+
+    with patch.object(adapter, "_download_audio", return_value=(tmp_file, 5.0)):
+        await adapter._on_voice_message(msg)
+
+    hub_msg = hub.inbound_bus.put.call_args[0][1]
+    assert hub_msg.attachments[0].mime_type == "video/mp4"

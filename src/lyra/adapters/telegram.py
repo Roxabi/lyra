@@ -322,9 +322,8 @@ class TelegramAdapter:
         file, normalises to MessageType.AUDIO, and pushes to the hub.
 
         Security: same circuit-guard and trust rules as _on_message.
-        Temp file cleanup: if the hub queue is full or circuit is open, we
-        delete the temp file here. Otherwise the agent (process()) owns cleanup
-        per ADR-013.
+        Temp file cleanup: the audio bytes are read and the temp file is
+        deleted immediately in the try/finally block before any hub interaction.
         """
         if not msg.from_user or getattr(msg.from_user, "is_bot", False):
             return
@@ -336,7 +335,7 @@ class TelegramAdapter:
         duration: int | None = getattr(voice, "duration", None)
 
         try:
-            tmp_path, _duration_seconds = await self._download_audio(file_id, duration)
+            tmp_path, _ = await self._download_audio(file_id, duration)
         except Exception:
             log.exception("Failed to download audio file_id=%s", file_id)
             return
@@ -346,8 +345,10 @@ class TelegramAdapter:
         finally:
             tmp_path.unlink(missing_ok=True)
 
-        if msg.voice or getattr(msg, "video_note", None):
+        if msg.voice:
             mime_type = "audio/ogg"
+        elif getattr(msg, "video_note", None):
+            mime_type = "video/mp4"
         else:
             mime_type = getattr(msg.audio, "mime_type", None) or "audio/ogg"
 

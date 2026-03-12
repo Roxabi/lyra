@@ -151,3 +151,57 @@ async def test_on_message_does_not_call_normalize_audio_for_non_audio() -> None:
     await adapter.on_message(msg)
 
     assert not called
+
+
+# ---------------------------------------------------------------------------
+# on_message() returns after audio (B1 fix) — text path skipped
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_on_message_returns_after_audio_skips_text_path() -> None:
+    """on_message() must not enqueue a text hub_msg when audio is processed."""
+    hub = MagicMock()
+    hub.inbound_bus = MagicMock()
+    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+
+    attachment_obj = SimpleNamespace(
+        content_type="audio/ogg",
+        url="https://cdn.example/audio.ogg",
+        size=1024,
+        read=AsyncMock(return_value=b"ogg_bytes"),
+    )
+    msg = _make_discord_msg(attachments=[attachment_obj])
+    msg.author.bot = False
+
+    await adapter.on_message(msg)
+
+    hub.inbound_bus.put.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# on_message() size guard (S1 fix) — oversized audio dropped
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_on_message_drops_oversized_audio_attachment() -> None:
+    """on_message() silently drops audio attachments exceeding LYRA_MAX_AUDIO_BYTES."""
+    hub = MagicMock()
+    hub.inbound_bus = MagicMock()
+    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+    adapter._max_audio_bytes = 100  # type: ignore[reportAttributeAccessIssue]
+
+    attachment_obj = SimpleNamespace(
+        content_type="audio/ogg",
+        url="https://cdn.example/audio.ogg",
+        size=999,  # exceeds 100-byte limit
+        read=AsyncMock(return_value=b"x" * 999),
+    )
+    msg = _make_discord_msg(attachments=[attachment_obj])
+    msg.author.bot = False
+
+    await adapter.on_message(msg)
+
+    attachment_obj.read.assert_not_called()
+    hub.inbound_bus.put.assert_not_called()

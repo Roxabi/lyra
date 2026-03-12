@@ -83,6 +83,9 @@ class DiscordAdapter(discord.Client):
         self._circuit_registry = circuit_registry
         self._msg_manager = msg_manager
         self._auto_thread = auto_thread
+        self._max_audio_bytes: int = int(
+            os.environ.get("LYRA_MAX_AUDIO_BYTES", 5 * 1024 * 1024)
+        )
         # Set on on_ready; None until login completes. Tests set this directly.
         self._bot_user: Any = None
         # Compiled once in on_ready (requires bot user ID). None until then.
@@ -223,15 +226,26 @@ class DiscordAdapter(discord.Client):
             None,
         )
         if audio_attachment is not None:
-            try:
-                audio_bytes = await audio_attachment.read()
-                mime_type = audio_attachment.content_type
-                _inbound_audio = self.normalize_audio(message, audio_bytes, mime_type)
-                # TODO(#140-follow-on): enqueue _inbound_audio onto InboundAudioBus
-            except Exception:
-                log.exception(
-                    "Failed to read audio attachment message_id=%s", message.id
+            _size = getattr(audio_attachment, "size", None)
+            if _size is not None and _size > self._max_audio_bytes:
+                log.warning(
+                    "Audio attachment too large: %d bytes for message_id=%s",
+                    _size,
+                    message.id,
                 )
+            else:
+                try:
+                    audio_bytes = await audio_attachment.read()
+                    mime_type = audio_attachment.content_type
+                    _inbound_audio = self.normalize_audio(
+                        message, audio_bytes, mime_type
+                    )
+                    # TODO(#140-follow-on): enqueue _inbound_audio onto InboundAudioBus
+                except Exception:
+                    log.exception(
+                        "Failed to read audio attachment message_id=%s", message.id
+                    )
+            return  # audio messages handled separately; skip text path
 
         # Pre-detect mention (needed for auto-thread decision, before normalize)
         _is_mention = self._bot_user is not None and self._bot_user in message.mentions

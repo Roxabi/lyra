@@ -396,6 +396,7 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
 
     # Start InboundBus feeder tasks and OutboundDispatcher workers
     await hub.inbound_bus.start()
+    await hub.inbound_audio_bus.start()
     await tg_dispatcher.start()
     await dc_dispatcher.start()
 
@@ -438,6 +439,7 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
         task.cancel()
     await asyncio.gather(*tasks, return_exceptions=True)
     await hub.inbound_bus.stop()
+    await hub.inbound_audio_bus.stop()
     await tg_dispatcher.stop()
     await dc_dispatcher.stop()
     await dc_adapter.close()

@@ -96,6 +96,73 @@ async def test_voice_from_bot_is_ignored() -> None:
     await adapter._on_voice_message(msg)
 
     hub.inbound_bus.put.assert_not_called()
+    hub.inbound_audio_bus.put.assert_not_called()
+    adapter.bot.send_message.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Error paths (#173)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_voice_message_no_voice_object_returns_early() -> None:
+    """Message with voice=None, audio=None, video_note=None → early return."""
+    adapter, hub = _make_adapter()
+    msg = _make_voice_msg()
+    msg.voice = None
+    msg.audio = None
+
+    await adapter._on_voice_message(msg)
+
+    hub.inbound_audio_bus.put.assert_not_called()
+    adapter.bot.send_message.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_voice_message_no_file_id_returns_early() -> None:
+    """Voice object with file_id=None → early return."""
+    adapter, hub = _make_adapter()
+    msg = _make_voice_msg()
+    msg.voice = SimpleNamespace(file_id=None, duration=3)
+
+    await adapter._on_voice_message(msg)
+
+    hub.inbound_audio_bus.put.assert_not_called()
+    adapter.bot.send_message.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_voice_message_too_large_sends_reply() -> None:
+    """_download_audio raises ValueError → user gets 'too large' reply."""
+    adapter, hub = _make_adapter()
+
+    with patch.object(
+        adapter,
+        "_download_audio",
+        new_callable=AsyncMock,
+        side_effect=ValueError("Audio file too large"),
+    ):
+        await adapter._on_voice_message(_make_voice_msg())
+
+    hub.inbound_audio_bus.put.assert_not_called()
+    adapter.bot.send_message.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_voice_message_download_error_returns_silently() -> None:
+    """_download_audio raises generic exception → log + return, no enqueue."""
+    adapter, hub = _make_adapter()
+
+    with patch.object(
+        adapter,
+        "_download_audio",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("network error"),
+    ):
+        await adapter._on_voice_message(_make_voice_msg())
+
+    hub.inbound_audio_bus.put.assert_not_called()
     adapter.bot.send_message.assert_not_called()
 
 

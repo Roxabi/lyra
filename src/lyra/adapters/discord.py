@@ -305,6 +305,30 @@ class DiscordAdapter(discord.Client):
                     "message_id": message.id,
                 },
             )
+            # Pre-download size check (matches Telegram's _download_audio guard)
+            att_size = getattr(audio_attachment, "size", None)
+            if att_size is not None and att_size > self._max_audio_bytes:
+                log.warning(
+                    "Audio attachment rejected: %d bytes exceeds %d byte limit"
+                    " (message_id=%s)",
+                    att_size,
+                    self._max_audio_bytes,
+                    message.id,
+                )
+                try:
+                    await message.reply(
+                        self._msg(
+                            "audio_too_large",
+                            "That audio file is too large to process.",
+                        )
+                    )
+                except Exception:
+                    log.warning(
+                        "Failed to send audio-too-large reply for message_id=%s",
+                        message.id,
+                    )
+                return
+
             try:
                 audio_bytes = await audio_attachment.read()
             except Exception:

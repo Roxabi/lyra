@@ -125,6 +125,56 @@ async def test_on_message_enqueues_audio_on_audio_bus() -> None:
 
 
 @pytest.mark.asyncio
+async def test_on_message_audio_download_failure_returns_cleanly() -> None:
+    """on_message() handles download failure gracefully — no enqueue, no crash."""
+    hub = MagicMock()
+    hub.inbound_bus = MagicMock()
+    hub.inbound_audio_bus = MagicMock()
+    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+
+    attachment_obj = SimpleNamespace(
+        content_type="audio/ogg",
+        url="https://cdn.example/audio.ogg",
+        size=1000,
+        read=AsyncMock(side_effect=RuntimeError("network error")),
+    )
+    msg = _make_discord_msg(attachments=[attachment_obj])
+    msg.author.bot = False
+
+    await adapter.on_message(msg)
+
+    hub.inbound_audio_bus.put.assert_not_called()
+    hub.inbound_bus.put.assert_not_called()
+    msg.reply.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_on_message_audio_too_large_sends_reply() -> None:
+    """on_message() rejects oversized audio with user-facing reply."""
+    hub = MagicMock()
+    hub.inbound_bus = MagicMock()
+    hub.inbound_audio_bus = MagicMock()
+    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+
+    attachment_obj = SimpleNamespace(
+        content_type="audio/ogg",
+        url="https://cdn.example/audio.ogg",
+        size=999_999_999,  # way over limit
+        read=AsyncMock(return_value=b"ogg_bytes"),
+    )
+    msg = _make_discord_msg(attachments=[attachment_obj])
+    msg.author.bot = False
+
+    await adapter.on_message(msg)
+
+    # Should NOT download
+    attachment_obj.read.assert_not_called()
+    hub.inbound_audio_bus.put.assert_not_called()
+    # Should reply with too-large message
+    msg.reply.assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_on_message_does_not_call_normalize_audio_for_non_audio() -> None:
     """on_message() does not call normalize_audio() for non-audio attachments."""
     hub = MagicMock()

@@ -455,8 +455,10 @@ class TelegramAdapter:
             )
             return
 
-        audio_bytes = tmp_path.read_bytes()
-        tmp_path.unlink(missing_ok=True)
+        try:
+            audio_bytes = tmp_path.read_bytes()
+        finally:
+            tmp_path.unlink(missing_ok=True)
 
         hub_audio = self.normalize_audio(
             msg, audio_bytes=audio_bytes, mime_type="audio/ogg"

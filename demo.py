@@ -5,24 +5,15 @@ from datetime import datetime, timezone
 
 from lyra.core.agent import Agent, AgentBase
 from lyra.core.hub import Hub
-from lyra.core.message import (
-    Message,
-    MessageType,
-    Platform,
-    Response,
-    TelegramContext,
-    TextContent,
-)
+from lyra.core.message import InboundMessage, Platform, Response
 from lyra.core.pool import Pool
 
 
 class EchoAgent(AgentBase):
     """Echoes back whatever the user sends."""
 
-    async def process(self, msg: Message, pool: Pool) -> Response:
-        content = msg.content
-        text = content.text if isinstance(content, TextContent) else str(content)
-        return Response(content=f"Echo: {text}")
+    async def process(self, msg: InboundMessage, pool: Pool) -> Response:
+        return Response(content=f"Echo: {msg.text}")
 
 
 class FakeAdapter:
@@ -31,7 +22,7 @@ class FakeAdapter:
     def __init__(self) -> None:
         self.responses: list[Response] = []
 
-    async def send(self, original_msg: Message, response: Response) -> None:
+    async def send(self, original_msg: InboundMessage, response: Response) -> None:
         self.responses.append(response)
         print(f"  <- {response.content}")
 
@@ -52,15 +43,18 @@ async def main() -> None:
 
     # Simulate messages
     for text in ["Hello Lyra!", "How does routing work?", "Goodbye"]:
-        msg = Message.from_adapter(
-            platform=Platform.TELEGRAM,
+        msg = InboundMessage(
+            id=f"demo-{text[:5]}",
+            platform="telegram",
             bot_id="main",
+            scope_id="chat:123",
             user_id="tg:user:42",
             user_name="Mickael",
-            content=TextContent(text=text),
-            type=MessageType.TEXT,
+            is_mention=True,
+            text=text,
+            text_raw=text,
             timestamp=datetime.now(timezone.utc),
-            platform_context=TelegramContext(chat_id=123),
+            platform_meta={"chat_id": 123},
         )
         print(f"  -> {text}")
         await hub.bus.put(msg)

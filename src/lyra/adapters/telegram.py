@@ -3,10 +3,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import tempfile
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -14,9 +16,12 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 if TYPE_CHECKING:
     from lyra.core.hub import Hub
 
+from aiogram.enums import ChatAction
+
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
+    AudioContent,
     Message,
     MessageType,
     Platform,
@@ -99,6 +104,10 @@ class TelegramAdapter:
         self._hub: Hub = hub
         self._circuit_registry = circuit_registry
         self._msg_manager = msg_manager
+        self._audio_tmp_dir: str | None = os.environ.get("LYRA_AUDIO_TMP") or None
+        self._max_audio_bytes: int = int(
+            os.environ.get("LYRA_MAX_AUDIO_BYTES", 5 * 1024 * 1024)
+        )
 
         # bot is a public attribute so tests can replace it with AsyncMock.
         # Deferred lazily so tests can assign adapter.bot = AsyncMock() after
@@ -106,9 +115,14 @@ class TelegramAdapter:
         self._bot: Any = None
         self._dp: Any = None
 
-        from aiogram import Dispatcher
+        from aiogram import Dispatcher, F
 
         self._dp = Dispatcher()
+        # Voice handler must be registered before the generic text handler so
+        # aiogram routes voice/audio updates here rather than _on_message.
+        self._dp.message.register(
+            self._on_voice_message, F.voice | F.audio | F.video_note
+        )
         self._dp.message.register(self._on_message)
 
         self.app = FastAPI()
@@ -220,39 +234,142 @@ class TelegramAdapter:
             platform_context=platform_context,
         )
 
+    async def _download_audio(
+        self, file_id: str, duration: int | None = None
+    ) -> tuple[Path, float | None]:
+        """Download a Telegram audio/voice file to a local temp file.
+
+        Checks file size against LYRA_MAX_AUDIO_BYTES before downloading.
+        Cleans up the temp file if the download fails.
+
+        Returns (path, duration_seconds). Caller is responsible for cleanup.
+        """
+        file_ = await self.bot.get_file(file_id)
+        if file_.file_size is not None and file_.file_size > self._max_audio_bytes:
+            log.warning(
+                "Audio file_id=%s rejected: %d bytes exceeds %d byte limit",
+                file_id,
+                file_.file_size,
+                self._max_audio_bytes,
+            )
+            raise ValueError(
+                f"Audio file too large: "
+                f"{file_.file_size} > {self._max_audio_bytes} bytes"
+            )
+        _, tmp_str = tempfile.mkstemp(suffix=".ogg", dir=self._audio_tmp_dir)
+        tmp_path = Path(tmp_str)
+        try:
+            await self.bot.download(file=file_id, destination=tmp_str)
+        except Exception:
+            tmp_path.unlink(missing_ok=True)
+            raise
+        log.debug("Downloaded audio file_id=%s to %s", file_id, tmp_path)
+        return tmp_path, float(duration) if duration is not None else None
+
+    async def _on_voice_message(self, msg) -> None:
+        """Handle an incoming voice or audio message.
+
+        Sends a typing indicator immediately, downloads the audio to a temp
+        file, normalises to MessageType.AUDIO, and pushes to the hub.
+
+        Security: same circuit-guard and trust rules as _on_message.
+        Temp file cleanup: if the hub queue is full or circuit is open, we
+        delete the temp file here. Otherwise the agent (process()) owns cleanup
+        per ADR-013.
+        """
+        if not msg.from_user or getattr(msg.from_user, "is_bot", False):
+            return
+
+        await self.bot.send_chat_action(chat_id=msg.chat.id, action=ChatAction.TYPING)
+
+        voice = msg.voice or msg.audio or msg.video_note
+        file_id: str = voice.file_id
+        duration: int | None = getattr(voice, "duration", None)
+
+        try:
+            tmp_path, duration_seconds = await self._download_audio(file_id, duration)
+        except Exception:
+            log.exception("Failed to download audio file_id=%s", file_id)
+            return
+
+        platform_context = TelegramContext(
+            chat_id=msg.chat.id,
+            topic_id=msg.message_thread_id,
+            is_group=msg.chat.type != "private",
+            message_id=getattr(msg, "message_id", None),
+        )
+        timestamp = msg.date
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=timezone.utc)
+
+        hub_msg = Message.from_adapter(
+            platform=Platform.TELEGRAM,
+            bot_id=self._bot_id,
+            user_id=f"tg:user:{msg.from_user.id}",
+            user_name=msg.from_user.full_name,
+            content=AudioContent(
+                url=str(tmp_path),
+                duration_seconds=duration_seconds,
+                file_id=file_id,
+            ),
+            type=MessageType.AUDIO,
+            timestamp=timestamp,
+            is_mention=False,
+            is_from_bot=False,
+            platform_context=platform_context,
+        )
+
+        await self._push_to_hub(
+            hub_msg, on_drop=lambda: tmp_path.unlink(missing_ok=True)
+        )
+
+    async def _push_to_hub(
+        self,
+        hub_msg: Message,
+        on_drop: Callable[[], None] | None = None,
+    ) -> None:
+        """Put hub_msg on the inbound bus with circuit-open and backpressure guards.
+
+        on_drop is called before early return in both circuit-open and QueueFull
+        cases (e.g. to clean up a temp audio file). Always returns normally so
+        aiogram receives HTTP 200.
+        """
+        if self._circuit_registry is not None:
+            cb = self._circuit_registry.get("hub")
+            if cb is not None and cb.is_open():
+                log.warning(
+                    '{"event": "hub_circuit_open", "platform": "telegram",'
+                    ' "user_id": "%s", "dropped": true, "type": "%s"}',
+                    hub_msg.user_id,
+                    hub_msg.type.value,
+                )
+                if on_drop is not None:
+                    on_drop()
+                return
+
+        try:
+            self._hub.inbound_bus.put(Platform.TELEGRAM, hub_msg)
+        except asyncio.QueueFull:
+            if on_drop is not None:
+                on_drop()
+            text = (
+                self._msg_manager.get("backpressure_ack", platform="telegram")
+                if self._msg_manager
+                else "Processing your request\u2026"
+            )
+            chat_id = getattr(hub_msg.platform_context, "chat_id")
+            await self.bot.send_message(chat_id, text)
+
     async def _on_message(self, msg) -> None:
         """Handle an incoming aiogram message: apply backpressure and put on bus."""
         if msg.from_user and getattr(msg.from_user, "is_bot", False):
             return
 
         hub_msg = self._normalize(msg)
-
-        # Hub circuit guard — drop silently if hub is overloaded.
         # IMPORTANT: Always return normally to aiogram — webhook must return
         # {"ok": True} (HTTP 200). Never raise here or Telegram will retry
         # the update indefinitely.
-        if self._circuit_registry is not None:
-            cb = self._circuit_registry.get("hub")
-            if cb is not None and cb.is_open():
-                log.warning(
-                    '{"event": "hub_circuit_open", "platform": "telegram",'
-                    ' "user_id": "%s", "dropped": true}',
-                    hub_msg.user_id,
-                )
-                return  # silent drop
-
-        try:
-            self._hub.inbound_bus.put(Platform.TELEGRAM, hub_msg)
-        except asyncio.QueueFull:
-            text = (
-                self._msg_manager.get("backpressure_ack", platform="telegram")
-                if self._msg_manager
-                else "Processing your request\u2026"
-            )
-            await self.bot.send_message(
-                msg.chat.id,
-                text,
-            )
+        await self._push_to_hub(hub_msg)
 
     async def send(self, original_msg: Message, response: Response) -> None:
         """Send a response back to Telegram via bot.send_message.

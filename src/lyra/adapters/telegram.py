@@ -403,10 +403,17 @@ class TelegramAdapter:
     async def _on_voice_message(self, msg) -> None:
         """Handle an incoming voice or audio message.
 
-        Audio bus is not yet wired (#140 follow-on) — log receipt and
-        reply with "unsupported" without downloading the file.
+        Downloads audio, builds an InboundAudio envelope, and enqueues it
+        on the inbound audio bus with backpressure / circuit-open guards.
         """
         if not msg.from_user or getattr(msg.from_user, "is_bot", False):
+            return
+
+        voice = msg.voice or msg.audio or getattr(msg, "video_note", None)
+        if voice is None:
+            return
+        file_id = getattr(voice, "file_id", None)
+        if file_id is None:
             return
 
         user_id = f"tg:user:{msg.from_user.id}"
@@ -419,19 +426,54 @@ class TelegramAdapter:
                 "scope_id": scope_id,
             },
         )
+
         try:
-            await self.bot.send_message(
-                chat_id=msg.chat.id,
-                text=self._msg(
-                    "stt_unsupported",
-                    "Voice messages are not yet supported here.",
-                ),
+            tmp_path, _duration_s = await self._download_audio(
+                file_id, getattr(voice, "duration", None)
             )
+        except ValueError:
+            # File too large — notify user
+            try:
+                await self.bot.send_message(
+                    chat_id=msg.chat.id,
+                    text=self._msg(
+                        "audio_too_large",
+                        "That audio file is too large to process.",
+                    ),
+                )
+            except Exception:
+                log.warning(
+                    "Failed to send audio-too-large reply for user_id=%s",
+                    user_id,
+                )
+            return
         except Exception:
-            log.warning(
-                "Failed to send audio-unsupported reply for user_id=%s",
+            log.exception(
+                "Failed to download audio file_id=%s for user_id=%s",
+                file_id,
                 user_id,
             )
+            return
+
+        audio_bytes = tmp_path.read_bytes()
+        tmp_path.unlink(missing_ok=True)
+
+        hub_audio = self.normalize_audio(
+            msg, audio_bytes=audio_bytes, mime_type="audio/ogg"
+        )
+
+        async def _send_bp(text: str) -> None:
+            await self.bot.send_message(msg.chat.id, text)
+
+        await push_to_hub_guarded(
+            inbound_bus=self._hub.inbound_audio_bus,
+            platform=Platform.TELEGRAM,
+            msg=hub_audio,
+            circuit_registry=self._circuit_registry,
+            on_drop=None,
+            send_backpressure=_send_bp,
+            get_msg=self._msg,
+        )
 
     async def _push_to_hub(
         self,

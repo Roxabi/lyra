@@ -11,7 +11,7 @@ import logging
 from collections.abc import Awaitable, Callable
 
 from lyra.core.circuit_breaker import CircuitRegistry
-from lyra.core.message import InboundMessage, Platform
+from lyra.core.message import InboundAudio, InboundMessage, Platform
 
 log = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ async def push_to_hub_guarded(
     *,
     inbound_bus: object,
     platform: Platform,
-    msg: InboundMessage,
+    msg: InboundMessage | InboundAudio,
     circuit_registry: CircuitRegistry | None,
     on_drop: Callable[[], None] | None,
     send_backpressure: Callable[[str], Awaitable[None]],

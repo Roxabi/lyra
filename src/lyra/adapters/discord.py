@@ -296,27 +296,42 @@ class DiscordAdapter(discord.Client):
             None,
         )
         if audio_attachment is not None:
-            # Audio bus not yet wired (#140 follow-on) — log and reply
-            # without downloading.
+            user_id = f"dc:user:{message.author.id}"
             log.info(
                 "audio_received",
                 extra={
                     "platform": "discord",
-                    "user_id": f"dc:user:{message.author.id}",
+                    "user_id": user_id,
                     "message_id": message.id,
                 },
             )
             try:
-                _txt = self._msg(
-                    "stt_unsupported",
-                    "Voice messages are not yet supported here.",
-                )
-                await message.reply(_txt)
+                audio_bytes = await audio_attachment.read()
             except Exception:
-                log.warning(
-                    "Failed to send audio-unsupported reply for message_id=%s",
+                log.exception(
+                    "Failed to download audio attachment for message_id=%s",
                     message.id,
                 )
+                return
+
+            hub_audio = self.normalize_audio(
+                message,
+                audio_bytes=audio_bytes,
+                mime_type=getattr(audio_attachment, "content_type", "audio/ogg"),
+            )
+
+            async def _send_bp(text: str) -> None:
+                await message.reply(text)
+
+            await push_to_hub_guarded(
+                inbound_bus=self._hub.inbound_audio_bus,
+                platform=Platform.DISCORD,
+                msg=hub_audio,
+                circuit_registry=self._circuit_registry,
+                on_drop=None,
+                send_backpressure=_send_bp,
+                get_msg=self._msg,
+            )
             return  # audio messages handled separately; skip text path
 
         # Pre-detect mention (needed for auto-thread decision)

@@ -92,15 +92,17 @@ def test_normalize_audio_thread_scope_id() -> None:
 
 
 # ---------------------------------------------------------------------------
-# on_message() audio attachment → unsupported reply (no download)
+# on_message() audio attachment → download + enqueue on audio bus
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_on_message_replies_unsupported_for_audio_attachment() -> None:
-    """on_message() replies unsupported without downloading for audio attachments."""
+async def test_on_message_enqueues_audio_on_audio_bus() -> None:
+    """on_message() downloads audio and enqueues on inbound_audio_bus."""
     hub = MagicMock()
     hub.inbound_bus = MagicMock()
+    hub.inbound_audio_bus = MagicMock()
+    hub.inbound_audio_bus.put = MagicMock()
     adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
 
     attachment_obj = SimpleNamespace(
@@ -113,11 +115,13 @@ async def test_on_message_replies_unsupported_for_audio_attachment() -> None:
 
     await adapter.on_message(msg)
 
-    # Audio bytes should NOT be downloaded (bus not wired)
-    attachment_obj.read.assert_not_called()
+    # Audio bytes downloaded
+    attachment_obj.read.assert_called_once()
+    # Enqueued on audio bus (not text bus)
+    hub.inbound_audio_bus.put.assert_called_once()
     hub.inbound_bus.put.assert_not_called()
-    # Unsupported reply sent
-    msg.reply.assert_called_once()
+    # No unsupported reply sent
+    msg.reply.assert_not_called()
 
 
 @pytest.mark.asyncio

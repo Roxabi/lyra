@@ -1,7 +1,9 @@
-"""Tests for Telegram voice message handling and normalize_audio (issues #147, #140).
+"""Tests for Telegram voice message handling and normalize_audio.
+
+Issues: #147, #140, #173.
 
 Covers:
-- Voice message → unsupported reply (audio bus not yet wired)
+- Voice message → download + enqueue on inbound audio bus
 - Bot message drops voice messages from bots
 - normalize_audio envelope correctness
 """
@@ -9,8 +11,9 @@ Covers:
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -39,6 +42,8 @@ def _make_voice_msg(
 def _make_adapter() -> tuple[TelegramAdapter, MagicMock]:
     hub = MagicMock()
     hub.inbound_bus = MagicMock()
+    hub.inbound_audio_bus = MagicMock()
+    hub.inbound_audio_bus.put = MagicMock()
     adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub)
     bot_mock = AsyncMock()
     bot_mock.send_chat_action = AsyncMock()
@@ -48,21 +53,32 @@ def _make_adapter() -> tuple[TelegramAdapter, MagicMock]:
 
 
 # ---------------------------------------------------------------------------
-# Voice message → unsupported reply (no download, no hub)
+# Voice message → download + enqueue on audio bus (#173)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_voice_message_sends_unsupported_reply() -> None:
-    """Voice message → sends unsupported reply; hub is NOT called."""
+async def test_voice_message_enqueues_on_audio_bus(tmp_path: Path) -> None:
+    """Voice message → downloads audio and enqueues on inbound_audio_bus."""
     adapter, hub = _make_adapter()
 
-    await adapter._on_voice_message(_make_voice_msg())
+    # Create a temp file to simulate download
+    audio_file = tmp_path / "voice.ogg"
+    audio_file.write_bytes(b"fake_ogg_data")
 
+    with patch.object(
+        adapter,
+        "_download_audio",
+        new_callable=AsyncMock,
+        return_value=(audio_file, 3.0),
+    ):
+        await adapter._on_voice_message(_make_voice_msg())
+
+    # Enqueued on audio bus (not text bus)
+    hub.inbound_audio_bus.put.assert_called_once()
     hub.inbound_bus.put.assert_not_called()
-    adapter.bot.send_message.assert_called_once()
-    call_kwargs = adapter.bot.send_message.call_args
-    assert call_kwargs.kwargs["chat_id"] == 42
+    # No unsupported reply sent
+    adapter.bot.send_message.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

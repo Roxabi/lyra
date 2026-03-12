@@ -117,11 +117,19 @@ class STTService:
             model = self._load_model()
             segments, info = model.transcribe(path, beam_size=5)
             full_text = "".join(seg.text for seg in segments).strip()
-            return TranscriptionResult(
+            result = TranscriptionResult(
                 text=full_text,
                 language=info.language,
                 duration_seconds=info.duration,
             )
+            log.info(
+                "Transcription complete: path=%s lang=%s dur=%.2fs text_len=%d",
+                path,
+                result.language,
+                result.duration_seconds,
+                len(result.text),
+            )
+            return result
         except Exception:
             log.exception(
                 "Transcription failed: path=%s model=%s device=%s",

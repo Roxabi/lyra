@@ -37,6 +37,19 @@ Goal: take the best of each. Lightweight like NullClaw, feature-rich like OpenCl
 - Embeddings (nomic-embed-text): ~0.5GB
 - **Total: ~5.5GB / 10GB** → 4.5GB headroom
 
+**STT Whisper VRAM** (faster-whisper, float16 on CUDA):
+
+| Model (`STT_MODEL_SIZE`) | VRAM | Notes |
+|--------------------------|------|-------|
+| `tiny` | ~0.2GB | Fastest, low accuracy |
+| `small` | ~0.5GB | **Default** — good balance |
+| `medium` | ~1.5GB | Higher accuracy |
+| `large-v3` | ~3.0GB | Best accuracy, slowest |
+
+Default (`small`) adds ~0.5GB → total **~6GB / 10GB** with 4GB headroom.
+
+**STT env vars**: `STT_MODEL_SIZE` (default: `small`), `STT_DEVICE` (default: `auto`), `STT_COMPUTE_TYPE` (default: `auto`).
+
 ### Machine 2 — AI Server
 
 | Spec | Value |

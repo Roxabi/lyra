@@ -195,15 +195,19 @@ class TestAnthropicAgentAudioBranch:
         assert "couldn't make out" in full_reply.lower()
         agent._client.messages.stream.assert_not_called()
 
+    @pytest.mark.parametrize("noise_text", [
+        "[Music]", "[Applause]", "[Laughter]", "[Silence]", "[Noise]",
+        "   ",  # whitespace-only
+    ])
     async def test_audio_noise_transcript(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, noise_text: str
     ) -> None:
-        """AUDIO with Whisper noise token: retry prompt returned."""
+        """SC5: noise/whitespace-only transcripts trigger retry prompt."""
         # Arrange
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
         from lyra.agents.anthropic_agent import AnthropicAgent
 
-        stt = make_mock_stt(TranscriptionResult("[Music]", "en", 0.5))
+        stt = make_mock_stt(TranscriptionResult(noise_text, "en", 0.5))
         agent = AnthropicAgent(make_config(), stt=stt)
         agent._client.messages.stream = MagicMock()
 
@@ -224,7 +228,9 @@ class TestAnthropicAgentAudioBranch:
     async def test_audio_transcription_exception(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """AUDIO with transcription exception: error reply returned, no crash."""
+        """SC6: transcription exception propagates to caller (AnthropicAgent re-raises
+        for circuit breaker). Contrast: SimpleAgent catches and returns error Response.
+        """
         # Arrange
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
         from lyra.agents.anthropic_agent import AnthropicAgent
@@ -338,6 +344,38 @@ class TestAnthropicAgentAudioBranch:
         await collect(agent, msg, pool)
 
         # Assert
+        assert not Path(tmp_path).exists()
+
+    async def test_audio_tmp_file_deleted_on_empty_transcript(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """SC7: tmp file is deleted even when transcript is empty."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        from lyra.agents.anthropic_agent import AnthropicAgent
+
+        stt = make_mock_stt(TranscriptionResult("", "en", 0.5))
+        agent = AnthropicAgent(make_config(), stt=stt)
+        with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
+            tmp_path = f.name
+        msg = make_audio_message(tmp_path)
+        pool = make_pool()
+        await collect(agent, msg, pool)
+        assert not Path(tmp_path).exists()
+
+    async def test_audio_tmp_file_deleted_on_noise_transcript(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """SC7: tmp file is deleted even when transcript is noise-only."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        from lyra.agents.anthropic_agent import AnthropicAgent
+
+        stt = make_mock_stt(TranscriptionResult("[Music]", "en", 0.5))
+        agent = AnthropicAgent(make_config(), stt=stt)
+        with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
+            tmp_path = f.name
+        msg = make_audio_message(tmp_path)
+        pool = make_pool()
+        await collect(agent, msg, pool)
         assert not Path(tmp_path).exists()
 
     async def test_text_message_unaffected(

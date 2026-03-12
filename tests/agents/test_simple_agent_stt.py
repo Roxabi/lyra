@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from lyra.agents.simple_agent import SimpleAgent
 from lyra.core.agent import Agent, ModelConfig
 from lyra.core.cli_pool import CliResult
@@ -161,10 +163,14 @@ class TestSimpleAgentAudioBranch:
         assert "couldn't make out" in response.content.lower()
         cli_pool.send.assert_not_called()
 
-    async def test_audio_noise_transcript(self) -> None:
-        """AUDIO with Whisper noise token: retry prompt Response."""
+    @pytest.mark.parametrize("noise_text", [
+        "[Music]", "[Applause]", "[Laughter]", "[Silence]", "[Noise]",
+        "   ",  # whitespace-only
+    ])
+    async def test_audio_noise_transcript(self, noise_text: str) -> None:
+        """SC5: noise/whitespace-only transcripts trigger retry prompt."""
         # Arrange
-        stt = make_mock_stt(TranscriptionResult("[Music]", "en", 0.5))
+        stt = make_mock_stt(TranscriptionResult(noise_text, "en", 0.5))
         cli_pool = make_cli_pool()
         agent = SimpleAgent(make_config(), cli_pool, stt=stt)
 

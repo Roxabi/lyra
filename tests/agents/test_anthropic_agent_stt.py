@@ -21,8 +21,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.core.agent import Agent, ModelConfig
-from lyra.core.message import Attachment, InboundMessage
+from lyra.core.message import Attachment, InboundMessage, Response
 from lyra.core.pool import Pool
+from lyra.llm.base import LlmResult
 from lyra.stt import STTService, TranscriptionResult
 
 # ---------------------------------------------------------------------------
@@ -102,35 +103,17 @@ def make_mock_stt(
     return stt
 
 
-def _make_mock_stream(text_chunks: list[str], stop_reason: str = "end_turn"):
-    """Create a mock stream context manager that yields text_chunks."""
-    mock_final = MagicMock()
-    mock_final.content = [MagicMock(type="text", text="".join(text_chunks))]
-    mock_final.stop_reason = stop_reason
-    mock_final.usage.input_tokens = 100
-    mock_final.usage.output_tokens = 50
-
-    async def text_stream_iter():
-        for chunk in text_chunks:
-            yield chunk
-
-    stream_ctx = MagicMock()
-    stream_ctx.text_stream = text_stream_iter()
-    stream_ctx.get_final_message = AsyncMock(return_value=mock_final)
-
-    ctx_manager = AsyncMock()
-    ctx_manager.__aenter__ = AsyncMock(return_value=stream_ctx)
-    ctx_manager.__aexit__ = AsyncMock(return_value=False)
-
-    return ctx_manager, mock_final
+def make_mock_provider(reply: str = "ok") -> MagicMock:
+    """Return a mock LlmProvider that returns a successful LlmResult."""
+    provider = MagicMock()
+    provider.capabilities = {"streaming": False, "auth": "api_key"}
+    provider.complete = AsyncMock(return_value=LlmResult(result=reply))
+    return provider
 
 
-async def collect(agent, msg, pool) -> list[str]:
-    """Drain an async generator agent.process() and return all chunks."""
-    chunks = []
-    async for chunk in agent.process(msg, pool):
-        chunks.append(chunk)
-    return chunks
+async def process(agent, msg, pool) -> Response:
+    """Call agent.process() and return the Response."""
+    return await agent.process(msg, pool)
 
 
 # ---------------------------------------------------------------------------
@@ -139,17 +122,14 @@ async def collect(agent, msg, pool) -> list[str]:
 
 
 class TestAnthropicAgentAudioBranch:
-    async def test_audio_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_audio_success(self) -> None:
         """AUDIO with valid transcript: LLM gets prefixed text; history stores raw."""
         # Arrange
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
         from lyra.agents.anthropic_agent import AnthropicAgent
 
         stt = make_mock_stt(TranscriptionResult("Hello world", "en", 1.5))
-        agent = AnthropicAgent(make_config(), stt=stt)
-
-        stream_ctx, _ = _make_mock_stream(["Sure, here is my reply."])
-        agent._client.messages.stream = MagicMock(return_value=stream_ctx)
+        provider = make_mock_provider("Sure, here is my reply.")
+        agent = AnthropicAgent(make_config(), provider, stt=stt)
 
         with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
             tmp_path = f.name
@@ -158,34 +138,32 @@ class TestAnthropicAgentAudioBranch:
         pool = make_pool()
 
         # Act
-        chunks = await collect(agent, msg, pool)
+        response = await process(agent, msg, pool)
 
-        # Assert — LLM received the prefixed text
-        call_kwargs = agent._client.messages.stream.call_args.kwargs
-        messages_sent = call_kwargs["messages"]
+        # Assert — LLM received clean text (no emoji prefix)
+        call_kwargs = provider.complete.call_args
+        messages_sent = call_kwargs.kwargs["messages"]
         user_message = next(m for m in messages_sent if m["role"] == "user")
-        assert "🎤 [transcribed]: Hello world" in user_message["content"]
+        assert user_message["content"] == "Hello world"
+        assert "\U0001f3a4" not in user_message["content"]
 
-        # Assert — sdk_history stores raw text (no prefix)
+        # Assert — sdk_history stores same clean text
         assert len(pool.sdk_history) >= 1
         user_history = next(m for m in pool.sdk_history if m["role"] == "user")
         assert user_history["content"] == "Hello world"
-        assert "🎤" not in user_history["content"]
+        assert "\U0001f3a4" not in user_history["content"]
 
-        # Assert — LLM reply was yielded
-        assert chunks == ["Sure, here is my reply."]
+        # Assert — LLM reply returned
+        assert response.content == "Sure, here is my reply."
 
-    async def test_audio_empty_transcript(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_audio_empty_transcript(self) -> None:
         """AUDIO with empty transcript: agent replies with retry prompt, no LLM call."""
         # Arrange
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
         from lyra.agents.anthropic_agent import AnthropicAgent
 
         stt = make_mock_stt(TranscriptionResult("", "en", 0.5))
-        agent = AnthropicAgent(make_config(), stt=stt)
-        agent._client.messages.stream = MagicMock()
+        provider = make_mock_provider()
+        agent = AnthropicAgent(make_config(), provider, stt=stt)
 
         with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
             tmp_path = f.name
@@ -194,12 +172,11 @@ class TestAnthropicAgentAudioBranch:
         pool = make_pool()
 
         # Act
-        chunks = await collect(agent, msg, pool)
+        response = await process(agent, msg, pool)
 
         # Assert
-        full_reply = "".join(chunks)
-        assert "couldn't make out" in full_reply.lower()
-        agent._client.messages.stream.assert_not_called()
+        assert "couldn't make out" in response.content.lower()
+        provider.complete.assert_not_called()
 
     @pytest.mark.parametrize(
         "noise_text",
@@ -212,17 +189,14 @@ class TestAnthropicAgentAudioBranch:
             "   ",  # whitespace-only
         ],
     )
-    async def test_audio_noise_transcript(
-        self, monkeypatch: pytest.MonkeyPatch, noise_text: str
-    ) -> None:
+    async def test_audio_noise_transcript(self, noise_text: str) -> None:
         """SC5: noise/whitespace-only transcripts trigger retry prompt."""
         # Arrange
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
         from lyra.agents.anthropic_agent import AnthropicAgent
 
         stt = make_mock_stt(TranscriptionResult(noise_text, "en", 0.5))
-        agent = AnthropicAgent(make_config(), stt=stt)
-        agent._client.messages.stream = MagicMock()
+        provider = make_mock_provider()
+        agent = AnthropicAgent(make_config(), provider, stt=stt)
 
         with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
             tmp_path = f.name
@@ -231,26 +205,22 @@ class TestAnthropicAgentAudioBranch:
         pool = make_pool()
 
         # Act
-        chunks = await collect(agent, msg, pool)
+        response = await process(agent, msg, pool)
 
         # Assert
-        full_reply = "".join(chunks)
-        assert "couldn't make out" in full_reply.lower()
-        agent._client.messages.stream.assert_not_called()
+        assert "couldn't make out" in response.content.lower()
+        provider.complete.assert_not_called()
 
-    async def test_audio_transcription_exception(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_audio_transcription_exception(self) -> None:
         """SC6: transcription exception propagates to caller (AnthropicAgent re-raises
         for circuit breaker). Contrast: SimpleAgent catches and returns error Response.
         """
         # Arrange
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
         from lyra.agents.anthropic_agent import AnthropicAgent
 
         stt = make_mock_stt(raises=RuntimeError("transcription failed"))
-        agent = AnthropicAgent(make_config(), stt=stt)
-        agent._client.messages.stream = MagicMock()
+        provider = make_mock_provider()
+        agent = AnthropicAgent(make_config(), provider, stt=stt)
 
         with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
             tmp_path = f.name
@@ -260,16 +230,15 @@ class TestAnthropicAgentAudioBranch:
 
         # Act — RuntimeError should propagate (agent re-raises)
         with pytest.raises(RuntimeError, match="transcription failed"):
-            await collect(agent, msg, pool)
+            await process(agent, msg, pool)
 
-    async def test_audio_no_stt(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_audio_no_stt(self) -> None:
         """AUDIO with stt=None: unsupported reply returned."""
         # Arrange
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
         from lyra.agents.anthropic_agent import AnthropicAgent
 
-        agent = AnthropicAgent(make_config(), stt=None)
-        agent._client.messages.stream = MagicMock()
+        provider = make_mock_provider()
+        agent = AnthropicAgent(make_config(), provider, stt=None)
 
         with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
             tmp_path = f.name
@@ -278,25 +247,20 @@ class TestAnthropicAgentAudioBranch:
         pool = make_pool()
 
         # Act
-        chunks = await collect(agent, msg, pool)
+        response = await process(agent, msg, pool)
 
         # Assert
-        full_reply = "".join(chunks)
-        assert "not supported" in full_reply.lower()
-        agent._client.messages.stream.assert_not_called()
+        assert "not supported" in response.content.lower()
+        provider.complete.assert_not_called()
 
-    async def test_audio_tmp_file_deleted_on_success(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_audio_tmp_file_deleted_on_success(self) -> None:
         """Temp file is unlinked after a successful transcription + LLM call."""
         # Arrange
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
         from lyra.agents.anthropic_agent import AnthropicAgent
 
         stt = make_mock_stt(TranscriptionResult("Hello world", "en", 1.5))
-        agent = AnthropicAgent(make_config(), stt=stt)
-        stream_ctx, _ = _make_mock_stream(["ok"])
-        agent._client.messages.stream = MagicMock(return_value=stream_ctx)
+        provider = make_mock_provider("ok")
+        agent = AnthropicAgent(make_config(), provider, stt=stt)
 
         with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
             tmp_path = f.name
@@ -306,21 +270,19 @@ class TestAnthropicAgentAudioBranch:
         pool = make_pool()
 
         # Act
-        await collect(agent, msg, pool)
+        await process(agent, msg, pool)
 
         # Assert
         assert not Path(tmp_path).exists()
 
-    async def test_audio_tmp_file_deleted_on_exception(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_audio_tmp_file_deleted_on_exception(self) -> None:
         """Temp file is unlinked even when transcription raises an exception."""
         # Arrange
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
         from lyra.agents.anthropic_agent import AnthropicAgent
 
         stt = make_mock_stt(raises=RuntimeError("boom"))
-        agent = AnthropicAgent(make_config(), stt=stt)
+        provider = make_mock_provider()
+        agent = AnthropicAgent(make_config(), provider, stt=stt)
 
         with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
             tmp_path = f.name
@@ -331,20 +293,18 @@ class TestAnthropicAgentAudioBranch:
 
         # Act — exception propagates but file must still be deleted
         with pytest.raises(RuntimeError):
-            await collect(agent, msg, pool)
+            await process(agent, msg, pool)
 
         # Assert
         assert not Path(tmp_path).exists()
 
-    async def test_audio_tmp_file_deleted_no_stt(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_audio_tmp_file_deleted_no_stt(self) -> None:
         """Temp file is unlinked even when stt=None (unsupported path)."""
         # Arrange
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
         from lyra.agents.anthropic_agent import AnthropicAgent
 
-        agent = AnthropicAgent(make_config(), stt=None)
+        provider = make_mock_provider()
+        agent = AnthropicAgent(make_config(), provider, stt=None)
 
         with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
             tmp_path = f.name
@@ -354,65 +314,57 @@ class TestAnthropicAgentAudioBranch:
         pool = make_pool()
 
         # Act
-        await collect(agent, msg, pool)
+        await process(agent, msg, pool)
 
         # Assert
         assert not Path(tmp_path).exists()
 
-    async def test_audio_tmp_file_deleted_on_empty_transcript(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_audio_tmp_file_deleted_on_empty_transcript(self) -> None:
         """SC7: tmp file is deleted even when transcript is empty."""
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
         from lyra.agents.anthropic_agent import AnthropicAgent
 
         stt = make_mock_stt(TranscriptionResult("", "en", 0.5))
-        agent = AnthropicAgent(make_config(), stt=stt)
+        provider = make_mock_provider()
+        agent = AnthropicAgent(make_config(), provider, stt=stt)
         with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
             tmp_path = f.name
         msg = make_audio_message(tmp_path)
         pool = make_pool()
-        await collect(agent, msg, pool)
+        await process(agent, msg, pool)
         assert not Path(tmp_path).exists()
 
-    async def test_audio_tmp_file_deleted_on_noise_transcript(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_audio_tmp_file_deleted_on_noise_transcript(self) -> None:
         """SC7: tmp file is deleted even when transcript is noise-only."""
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
         from lyra.agents.anthropic_agent import AnthropicAgent
 
         stt = make_mock_stt(TranscriptionResult("[Music]", "en", 0.5))
-        agent = AnthropicAgent(make_config(), stt=stt)
+        provider = make_mock_provider()
+        agent = AnthropicAgent(make_config(), provider, stt=stt)
         with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
             tmp_path = f.name
         msg = make_audio_message(tmp_path)
         pool = make_pool()
-        await collect(agent, msg, pool)
+        await process(agent, msg, pool)
         assert not Path(tmp_path).exists()
 
-    async def test_text_message_unaffected(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_text_message_unaffected(self) -> None:
         """Non-AUDIO messages follow the normal path — AUDIO branch not entered."""
         # Arrange
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
         from lyra.agents.anthropic_agent import AnthropicAgent
 
         stt = make_mock_stt(TranscriptionResult("should not be called", "en", 0.0))
-        agent = AnthropicAgent(make_config(), stt=stt)
-        stream_ctx, _ = _make_mock_stream(["text response"])
-        agent._client.messages.stream = MagicMock(return_value=stream_ctx)
+        provider = make_mock_provider("text response")
+        agent = AnthropicAgent(make_config(), provider, stt=stt)
 
         msg = make_text_message("tell me something")
         pool = make_pool()
 
         # Act
-        chunks = await collect(agent, msg, pool)
+        response = await process(agent, msg, pool)
 
         # Assert — STT was never called
         cast(AsyncMock, stt.transcribe).assert_not_called()
-        assert chunks == ["text response"]
+        assert response.content == "text response"
 
         # Assert — sdk_history stores the literal user text
         user_history = next(m for m in pool.sdk_history if m["role"] == "user")

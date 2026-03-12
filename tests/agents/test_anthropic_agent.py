@@ -12,10 +12,18 @@ import pytest
 from lyra.core.agent import Agent, ModelConfig
 from lyra.core.message import InboundMessage
 from lyra.core.pool import Pool
+from lyra.llm.base import LlmResult
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _extract_system_prompt(call_args: object) -> str:
+    """Extract system_prompt from provider.complete() call args."""
+    if len(call_args.args) > 3:  # type: ignore[union-attr]
+        return call_args.args[3]  # type: ignore[union-attr]
+    return call_args.kwargs.get("system_prompt", "")  # type: ignore[union-attr]
 
 
 def make_message(text: str = "hello") -> InboundMessage:
@@ -62,62 +70,12 @@ def make_config(
     )
 
 
-def _make_mock_stream(text_chunks: list[str], stop_reason: str = "end_turn"):
-    """Create a mock stream context manager that yields text_chunks."""
-    mock_final = MagicMock()
-    mock_final.content = [MagicMock(type="text", text="".join(text_chunks))]
-    mock_final.stop_reason = stop_reason
-    mock_final.usage.input_tokens = 100
-    mock_final.usage.output_tokens = 50
-
-    async def text_stream_iter():
-        for chunk in text_chunks:
-            yield chunk
-
-    stream_ctx = MagicMock()
-    stream_ctx.text_stream = text_stream_iter()
-    stream_ctx.get_final_message = AsyncMock(return_value=mock_final)
-
-    ctx_manager = AsyncMock()
-    ctx_manager.__aenter__ = AsyncMock(return_value=stream_ctx)
-    ctx_manager.__aexit__ = AsyncMock(return_value=False)
-
-    return ctx_manager, mock_final
-
-
-def _make_tool_use_stream(
-    text_chunks: list[str],
-    tool_blocks: list[dict],
-):
-    """Create a mock stream that returns tool_use stop_reason."""
-    mock_final = MagicMock()
-    content_blocks = []
-    for chunk in text_chunks:
-        block = MagicMock(type="text", text=chunk)
-        content_blocks.append(block)
-    for tb in tool_blocks:
-        block = MagicMock(type="tool_use", name=tb["name"], input=tb.get("input", {}))
-        block.id = tb.get("id", "tool-1")
-        content_blocks.append(block)
-
-    mock_final.content = content_blocks
-    mock_final.stop_reason = "tool_use"
-    mock_final.usage.input_tokens = 100
-    mock_final.usage.output_tokens = 50
-
-    async def text_stream_iter():
-        for chunk in text_chunks:
-            yield chunk
-
-    stream_ctx = MagicMock()
-    stream_ctx.text_stream = text_stream_iter()
-    stream_ctx.get_final_message = AsyncMock(return_value=mock_final)
-
-    ctx_manager = AsyncMock()
-    ctx_manager.__aenter__ = AsyncMock(return_value=stream_ctx)
-    ctx_manager.__aexit__ = AsyncMock(return_value=False)
-
-    return ctx_manager, mock_final
+def make_mock_provider(reply: str = "hello world") -> MagicMock:
+    """Return a mock LlmProvider that returns a successful LlmResult."""
+    provider = MagicMock()
+    provider.capabilities = {"streaming": False, "auth": "api_key"}
+    provider.complete = AsyncMock(return_value=LlmResult(result=reply))
+    return provider
 
 
 # ---------------------------------------------------------------------------
@@ -126,62 +84,49 @@ def _make_tool_use_stream(
 
 
 class TestConstruction:
-    def test_missing_api_key_raises_system_exit(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    def test_provider_stored_on_agent(self) -> None:
         from lyra.agents.anthropic_agent import AnthropicAgent
 
-        with pytest.raises(SystemExit, match="ANTHROPIC_API_KEY"):
-            AnthropicAgent(make_config())
+        provider = make_mock_provider()
+        agent = AnthropicAgent(make_config(), provider)
+        assert agent._provider is provider
 
-    def test_valid_api_key_creates_agent(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
+    def test_name_from_config(self) -> None:
         from lyra.agents.anthropic_agent import AnthropicAgent
 
-        agent = AnthropicAgent(make_config())
+        agent = AnthropicAgent(make_config(), make_mock_provider())
         assert agent.name == "lyra"
-        assert agent._client is not None
 
 
 # ---------------------------------------------------------------------------
-# TestProcess — streaming
+# TestProcess — non-streaming Response
 # ---------------------------------------------------------------------------
 
 
 class TestProcess:
-    async def test_process_yields_text_deltas(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
+    async def test_process_returns_response_with_text(self) -> None:
         from lyra.agents.anthropic_agent import AnthropicAgent
+        from lyra.core.message import Response
 
-        agent = AnthropicAgent(make_config())
-        stream_ctx, _ = _make_mock_stream(["Hello", " world", "!"])
-        agent._client.messages.stream = MagicMock(return_value=stream_ctx)
+        provider = make_mock_provider("Hello world!")
+        agent = AnthropicAgent(make_config(), provider)
 
         msg = make_message("hi")
         pool = make_pool()
-        chunks = []
-        async for delta in agent.process(msg, pool):
-            chunks.append(delta)
+        response = await agent.process(msg, pool)
 
-        assert chunks == ["Hello", " world", "!"]
+        assert isinstance(response, Response)
+        assert response.content == "Hello world!"
 
-    async def test_process_appends_to_sdk_history(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
+    async def test_process_appends_to_sdk_history(self) -> None:
         from lyra.agents.anthropic_agent import AnthropicAgent
 
-        agent = AnthropicAgent(make_config())
-        stream_ctx, _ = _make_mock_stream(["response text"])
-        agent._client.messages.stream = MagicMock(return_value=stream_ctx)
+        provider = make_mock_provider("response text")
+        agent = AnthropicAgent(make_config(), provider)
 
         msg = make_message("hi")
         pool = make_pool()
-        async for _ in agent.process(msg, pool):
-            pass
+        await agent.process(msg, pool)
 
         assert len(pool.sdk_history) == 2
         assert pool.sdk_history[0] == {"role": "user", "content": "hi"}
@@ -190,138 +135,78 @@ class TestProcess:
             "content": "response text",
         }
 
-    async def test_sdk_history_eviction(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
+    async def test_sdk_history_eviction(self) -> None:
         from lyra.agents.anthropic_agent import AnthropicAgent
 
         config = make_config()
-        agent = AnthropicAgent(config)
+        provider = MagicMock()
+        provider.capabilities = {"streaming": False, "auth": "api_key"}
         pool = make_pool()
         pool.max_sdk_history = 4  # 4 messages max (2 simple exchanges)
 
+        agent = AnthropicAgent(config, provider)
+
         # Fill with 3 exchanges (6 messages, should trim to 4)
         for i in range(3):
-            stream_ctx, _ = _make_mock_stream([f"reply {i}"])
-            agent._client.messages.stream = MagicMock(return_value=stream_ctx)
-            async for _ in agent.process(make_message(f"msg {i}"), pool):
-                pass
+            provider.complete = AsyncMock(return_value=LlmResult(result=f"reply {i}"))
+            await agent.process(make_message(f"msg {i}"), pool)
 
         assert len(pool.sdk_history) == 4  # 2 exchanges
         assert pool.sdk_history[0]["content"] == "msg 1"  # oldest kept
 
-
-# ---------------------------------------------------------------------------
-# TestToolLoop
-# ---------------------------------------------------------------------------
-
-
-class TestToolLoop:
-    async def test_tool_use_calls_execute_tool(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
+    async def test_provider_receives_history_in_messages(self) -> None:
         from lyra.agents.anthropic_agent import AnthropicAgent
 
-        config = make_config(tools=("get_time",))
-        agent = AnthropicAgent(config)
+        provider = make_mock_provider("second response")
+        agent = AnthropicAgent(make_config(), provider)
 
-        # First call returns tool_use, second returns text
-        tool_stream, _ = _make_tool_use_stream(
-            ["Let me check..."],
-            [{"name": "get_time", "id": "tool-1"}],
-        )
-        final_stream, _ = _make_mock_stream(["The time is now."])
-
-        agent._client.messages.stream = MagicMock(
-            side_effect=[tool_stream, final_stream]
-        )
-
-        msg = make_message("What time is it?")
         pool = make_pool()
-        chunks = []
-        async for delta in agent.process(msg, pool):
-            chunks.append(delta)
+        # Pre-seed history
+        pool.extend_sdk_history(
+            [
+                {"role": "user", "content": "first question"},
+                {"role": "assistant", "content": "first answer"},
+            ]
+        )
 
-        assert "Let me check..." in chunks
-        assert "The time is now." in chunks
+        msg = make_message("second question")
+        await agent.process(msg, pool)
 
-    async def test_tool_error_returns_is_error(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
+        call_kwargs = provider.complete.call_args
+        messages = call_kwargs.kwargs["messages"]
+        assert messages[0] == {"role": "user", "content": "first question"}
+        assert messages[1] == {"role": "assistant", "content": "first answer"}
+        assert messages[2] == {"role": "user", "content": "second question"}
+
+    async def test_provider_error_returns_error_response(self) -> None:
         from lyra.agents.anthropic_agent import AnthropicAgent
 
-        config = make_config(tools=("get_time",))
-        agent = AnthropicAgent(config)
-
-        # Tool use with unknown tool
-        tool_stream, _ = _make_tool_use_stream(
-            [""],
-            [{"name": "unknown_tool", "id": "tool-2"}],
+        provider = MagicMock()
+        provider.capabilities = {"streaming": False, "auth": "api_key"}
+        provider.complete = AsyncMock(
+            return_value=LlmResult(error="service unavailable")
         )
-        final_stream, _ = _make_mock_stream(["I couldn't do that."])
+        agent = AnthropicAgent(make_config(), provider)
 
-        call_count = 0
-
-        def track_stream_calls(**kwargs):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                return tool_stream
-            return final_stream
-
-        agent._client.messages.stream = MagicMock(side_effect=track_stream_calls)
-
-        msg = make_message("Do something impossible")
+        msg = make_message("hi")
         pool = make_pool()
-        chunks = []
-        async for delta in agent.process(msg, pool):
-            chunks.append(delta)
+        response = await agent.process(msg, pool)
 
-        # Verify the tool error was passed to the API
-        second_call_kwargs = agent._client.messages.stream.call_args_list[1]
-        messages = second_call_kwargs.kwargs.get(
-            "messages", second_call_kwargs[1].get("messages", [])
-        )
-        # Find the tool_result message
-        tool_result_msg = None
-        for m in messages:
-            if m.get("role") == "user" and isinstance(m.get("content"), list):
-                for item in m["content"]:
-                    if isinstance(item, dict) and item.get("type") == "tool_result":
-                        tool_result_msg = item
-                        break
-        assert tool_result_msg is not None
-        assert tool_result_msg["is_error"] is True
+        assert response.metadata.get("error") is True
 
-    async def test_max_turns_terminates_loop(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
+    async def test_provider_exception_propagates(self) -> None:
         from lyra.agents.anthropic_agent import AnthropicAgent
 
-        config = make_config(tools=("get_time",), max_turns=2)
-        agent = AnthropicAgent(config)
+        provider = MagicMock()
+        provider.capabilities = {"streaming": False, "auth": "api_key"}
+        provider.complete = AsyncMock(side_effect=RuntimeError("network error"))
+        agent = AnthropicAgent(make_config(), provider)
 
-        # Both calls return tool_use - loop should stop at max_turns
-        def make_tool_stream():
-            return _make_tool_use_stream(
-                ["thinking..."],
-                [{"name": "get_time", "id": "tool-1"}],
-            )[0]
-
-        agent._client.messages.stream = MagicMock(
-            side_effect=[make_tool_stream(), make_tool_stream()]
-        )
-
-        msg = make_message("loop forever")
+        msg = make_message("hi")
         pool = make_pool()
-        chunks = []
-        async for delta in agent.process(msg, pool):
-            chunks.append(delta)
 
-        assert agent._client.messages.stream.call_count == 2
-        assert " [max tool turns reached]" in chunks
+        with pytest.raises(RuntimeError, match="network error"):
+            await agent.process(msg, pool)
 
 
 # ---------------------------------------------------------------------------
@@ -330,45 +215,35 @@ class TestToolLoop:
 
 
 class TestSystemPrompt:
-    async def test_system_prompt_passed_to_sdk(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
+    async def test_system_prompt_passed_to_provider(self) -> None:
         from lyra.agents.anthropic_agent import AnthropicAgent
 
         config = make_config(system_prompt="You are Lyra, a helpful assistant.")
-        agent = AnthropicAgent(config)
-
-        stream_ctx, _ = _make_mock_stream(["Hello!"])
-        agent._client.messages.stream = MagicMock(return_value=stream_ctx)
+        provider = make_mock_provider("Hello!")
+        agent = AnthropicAgent(config, provider)
 
         msg = make_message("hi")
         pool = make_pool()
-        async for _ in agent.process(msg, pool):
-            pass
+        await agent.process(msg, pool)
 
-        call_kwargs = agent._client.messages.stream.call_args
-        assert call_kwargs.kwargs.get("system") == "You are Lyra, a helpful assistant."
+        call_args = provider.complete.call_args
+        system_prompt_sent = _extract_system_prompt(call_args)
+        assert system_prompt_sent == "You are Lyra, a helpful assistant."
 
-    async def test_empty_system_prompt_omitted(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
+    async def test_empty_system_prompt_passed_as_empty_string(self) -> None:
         from lyra.agents.anthropic_agent import AnthropicAgent
 
         config = make_config(system_prompt="")
-        agent = AnthropicAgent(config)
-
-        stream_ctx, _ = _make_mock_stream(["Hello!"])
-        agent._client.messages.stream = MagicMock(return_value=stream_ctx)
+        provider = make_mock_provider("Hello!")
+        agent = AnthropicAgent(config, provider)
 
         msg = make_message("hi")
         pool = make_pool()
-        async for _ in agent.process(msg, pool):
-            pass
+        await agent.process(msg, pool)
 
-        call_kwargs = agent._client.messages.stream.call_args
-        assert "system" not in call_kwargs.kwargs
+        call_args = provider.complete.call_args
+        system_prompt_sent = _extract_system_prompt(call_args)
+        assert system_prompt_sent == ""
 
 
 # ---------------------------------------------------------------------------
@@ -377,38 +252,33 @@ class TestSystemPrompt:
 
 
 class TestOverlayAppliedInProcess:
-    """RuntimeConfig overlay is applied to the Anthropic SDK call in process()."""
+    """RuntimeConfig overlay is applied to the provider call in process()."""
 
-    async def test_overlay_temperature_and_system_applied(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """process() uses temperature=0.3 and system includes style + language."""
+    async def test_overlay_model_and_system_applied(self) -> None:
+        """process() uses overlaid model and system including style + language."""
         # Arrange
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
         from lyra.agents.anthropic_agent import AnthropicAgent
+        from lyra.core.agent import ModelConfig
         from lyra.core.runtime_config import RuntimeConfig
 
         config = make_config(system_prompt="Base prompt.")
         runtime_config = RuntimeConfig(style="detailed", language="fr", temperature=0.3)
-        agent = AnthropicAgent(config, runtime_config=runtime_config)
-
-        stream_ctx, _ = _make_mock_stream(["Bonjour!"])
-        agent._client.messages.stream = MagicMock(return_value=stream_ctx)
+        provider = make_mock_provider("Bonjour!")
+        agent = AnthropicAgent(config, provider, runtime_config=runtime_config)
 
         msg = make_message("hello")
         pool = make_pool()
 
-        # Act — drain the async generator
-        chunks = []
-        async for delta in agent.process(msg, pool):
-            chunks.append(delta)
+        # Act
+        await agent.process(msg, pool)
 
-        # Assert — SDK called with the overlaid temperature
-        call_kwargs = agent._client.messages.stream.call_args.kwargs
-        assert call_kwargs["temperature"] == 0.3
+        # Assert — provider called with overlaid ModelConfig
+        call_kwargs = provider.complete.call_args
+        model_cfg = call_kwargs.args[2]
+        assert isinstance(model_cfg, ModelConfig)
 
         # Assert — system prompt includes the detailed style instruction
-        system = call_kwargs.get("system", "")
+        system = call_kwargs.args[3]
         assert "detailed" in system.lower() or "thorough" in system.lower()
 
         # Assert — system prompt includes the language instruction

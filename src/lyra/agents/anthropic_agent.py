@@ -1,27 +1,23 @@
 """AnthropicAgent — direct Anthropic SDK agent.
 
-Calls the Messages API via AsyncAnthropic with streaming, tool use,
-and system prompt injection. Opt-in via backend = "anthropic-sdk" in
-agent TOML config.
+Calls the Messages API via an LlmProvider (AnthropicSdkDriver), handling STT,
+conversation history, and system prompt injection. Opt-in via
+backend = "anthropic-sdk" in agent TOML config.
 """
 
 from __future__ import annotations
 
 import logging
-import os
-from collections.abc import AsyncIterator
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-import anthropic
-
-from lyra.core.agent import _AGENTS_DIR, Agent, AgentBase
+from lyra.core.agent import _AGENTS_DIR, Agent, AgentBase, ModelConfig
 from lyra.core.circuit_breaker import CircuitRegistry
-from lyra.core.message import InboundMessage
+from lyra.core.message import InboundMessage, Response
 from lyra.core.messages import MessageManager
 from lyra.core.pool import Pool
 from lyra.core.runtime_config import RuntimeConfig, RuntimeConfigHolder
+from lyra.llm.base import LlmProvider
 from lyra.stt import is_whisper_noise
 
 if TYPE_CHECKING:
@@ -29,25 +25,18 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-TOOLS: list[dict[str, Any]] = [
-    {
-        "name": "get_time",
-        "description": "Get the current date and time in UTC",
-        "input_schema": {"type": "object", "properties": {}, "required": []},
-    },
-]
-
 
 class AnthropicAgent(AgentBase):
-    """Agent that calls the Anthropic Messages API directly.
+    """Agent that calls the Anthropic Messages API via an LlmProvider.
 
-    Supports streaming (async generator), tool use, and system prompt
-    injection from agent TOML config.
+    Delegates all SDK interaction to the injected provider. Returns a
+    complete Response rather than streaming — adapters receive the full reply.
     """
 
     def __init__(
         self,
         config: Agent,
+        provider: LlmProvider,
         circuit_registry: CircuitRegistry | None = None,
         admin_user_ids: set[str] | None = None,
         msg_manager: MessageManager | None = None,
@@ -63,6 +52,7 @@ class AnthropicAgent(AgentBase):
         )
         self._runtime_config_holder = RuntimeConfigHolder(rc)
         self._runtime_config_path = resolved_agents_dir / "lyra_runtime.toml"
+        self._provider = provider
         super().__init__(
             config,
             agents_dir=agents_dir,
@@ -71,10 +61,6 @@ class AnthropicAgent(AgentBase):
             msg_manager=msg_manager,
             stt=stt,
         )
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise SystemExit("Missing required env var: ANTHROPIC_API_KEY")
-        self._client = anthropic.AsyncAnthropic(api_key=api_key)
 
     @property
     def runtime_config(self) -> RuntimeConfig:
@@ -87,25 +73,8 @@ class AnthropicAgent(AgentBase):
             "runtime_config_path": self._runtime_config_path,
         }
 
-    def _build_messages(self, text: str, pool: Pool) -> list[dict[str, Any]]:
-        """Build SDK messages array from pool history + new user message."""
-        messages: list[dict[str, Any]] = list(pool.sdk_history)
-        messages.append({"role": "user", "content": text})
-        return messages
-
-    async def _execute_tool(self, name: str, tool_input: dict) -> str:
-        """Execute a tool by name and return result as string."""
-        if name == "get_time":
-            return datetime.now(timezone.utc).isoformat()
-        raise ValueError(f"Unknown tool: {name}")
-
-    async def process(  # type: ignore[override]  # returns AsyncIterator, not Response
-        self, msg: InboundMessage, pool: Pool
-    ) -> AsyncIterator[str]:
-        """Stream response from Anthropic API, handling tool use loops.
-
-        Yields text deltas for the adapter to display progressively.
-        """
+    async def process(self, msg: InboundMessage, pool: Pool) -> Response:
+        """Call the LlmProvider, handle STT, update history, return Response."""
         self._maybe_reload()
         effective = self.runtime_config.overlay(self.config)
 
@@ -121,131 +90,83 @@ class AnthropicAgent(AgentBase):
         # outer try: temp-file cleanup (ADR-013)
         try:
             if _audio is not None and self._stt is not None:
-                # tmp_path already set above
                 stt_result = await self._stt.transcribe(tmp_path)  # type: ignore[arg-type]
                 if is_whisper_noise(stt_result.text):
                     if tmp_path is not None:
                         tmp_path.unlink(missing_ok=True)
                         tmp_path = None  # prevent double-unlink in outer finally
-                    yield (
+                    _noise_msg = (
                         self._msg_manager.get("stt_noise")
                         if self._msg_manager
-                        else "I couldn't make out your voice message, please try again."
+                        else (
+                            "I couldn't make out your voice message, please try again."
+                        )
                     )
-                    return
-                llm_text = f"🎤 [transcribed]: {stt_result.text}"
+                    return Response(content=_noise_msg)
+                llm_text = f"\U0001f3a4 [transcribed]: {stt_result.text}"
                 history_text = stt_result.text
             elif _audio is not None and self._stt is None:
-                # tmp_path already set above
                 if tmp_path is not None:
                     tmp_path.unlink(missing_ok=True)
                     tmp_path = None  # prevent double-unlink in outer finally
-                yield (
-                    self._msg_manager.get("stt_unsupported")
-                    if self._msg_manager
-                    else "Voice messages are not supported — STT is not configured."
+                return Response(
+                    content=(
+                        self._msg_manager.get("stt_unsupported")
+                        if self._msg_manager
+                        else "Voice messages are not supported — STT is not configured."
+                    )
                 )
-                return
             else:
                 llm_text = history_text = msg.text
 
-            messages = self._build_messages(llm_text, pool)
+            # Build messages array for SDK (includes history + new user message)
+            messages: list[dict] = list(pool.sdk_history)
+            messages.append({"role": "user", "content": history_text})
 
-            kwargs: dict[str, Any] = {
-                "model": effective.model,
-                "max_tokens": 4096,
-                "temperature": effective.temperature,
-                "messages": messages,
-            }
-            if effective.system_prompt:
-                kwargs["system"] = effective.system_prompt
-            if self.config.model_config.tools:
-                kwargs["tools"] = [
-                    t for t in TOOLS if t["name"] in self.config.model_config.tools
-                ]
+            # Build effective ModelConfig from overlay
+            effective_cfg = ModelConfig(
+                backend="anthropic-sdk",
+                model=effective.model,
+                max_turns=effective.max_turns,
+                tools=self.config.model_config.tools,
+            )
 
-            accumulated_text = ""
-            max_turns = effective.max_turns
-            final: Any = None
-            new_messages: list[dict[str, Any]] = [
-                {"role": "user", "content": history_text}
-            ]
-
-            # inner try: LLM streaming loop + history persistence
             try:
-                for _turn in range(max_turns):
-                    async with self._client.messages.stream(**kwargs) as stream:
-                        async for delta in stream.text_stream:
-                            accumulated_text += delta
-                            yield delta
-                        final = await stream.get_final_message()
-
-                    log.info(
-                        "SDK stream: in=%d out=%d tokens",
-                        final.usage.input_tokens,
-                        final.usage.output_tokens,
-                    )
-
-                    if final.stop_reason != "tool_use":
-                        break
-
-                    # Handle tool use blocks
-                    tool_results: list[dict[str, Any]] = []
-                    for block in final.content:
-                        if block.type == "tool_use":
-                            try:
-                                result = await self._execute_tool(
-                                    block.name, block.input
-                                )
-                                tool_results.append(
-                                    {
-                                        "type": "tool_result",
-                                        "tool_use_id": block.id,
-                                        "content": result,
-                                    }
-                                )
-                            except Exception:
-                                log.exception("Tool %s failed", block.name)
-                                tool_results.append(
-                                    {
-                                        "type": "tool_result",
-                                        "tool_use_id": block.id,
-                                        "content": "Tool execution failed.",
-                                        "is_error": True,
-                                    }
-                                )
-
-                    # Track intermediate turns for history
-                    assistant_turn = {"role": "assistant", "content": final.content}
-                    tool_turn = {"role": "user", "content": tool_results}
-                    new_messages.append(assistant_turn)
-                    new_messages.append(tool_turn)
-
-                    # Continue conversation with tool results
-                    kwargs["messages"] = [
-                        *kwargs["messages"],
-                        assistant_turn,
-                        tool_turn,
-                    ]
-                else:
-                    # max_turns exhausted
-                    if final and final.stop_reason == "tool_use":
-                        yield " [max tool turns reached]"
-                # Build final assistant message for history
-                reply_text = accumulated_text
-                if not reply_text and final and final.content:
-                    for block in final.content:
-                        if hasattr(block, "text"):
-                            reply_text = block.text
-                            break
-                new_messages.append({"role": "assistant", "content": reply_text})
+                result = await self._provider.complete(
+                    pool.pool_id,
+                    llm_text,
+                    effective_cfg,
+                    effective.system_prompt or "",
+                    messages=messages,
+                )
             except Exception:
-                log.exception("Streaming error in AnthropicAgent")
-                raise  # re-raise so Hub.dispatch_streaming() can record circuit failure
-            finally:
-                # Persist history even on failure so partial turns survive
-                if len(new_messages) > 1:
-                    pool.extend_sdk_history(new_messages)
+                log.exception("AnthropicAgent: provider.complete() failed")
+                raise  # let pool record CB failure
+
+            if not result.ok:
+                log.warning("[agent:%s] provider error: %s", self.name, result.error)
+                user_msg = (
+                    self._msg_manager.get("generic")
+                    if self._msg_manager
+                    else "Sorry, something went wrong. Please try again."
+                )
+                return Response(content=user_msg, metadata={"error": True})
+
+            # Persist to SDK history: user turn + assistant reply
+            pool.extend_sdk_history(
+                [
+                    {"role": "user", "content": history_text},
+                    {"role": "assistant", "content": result.result},
+                ]
+            )
+
+            log.info(
+                "[agent:%s][pool:%s] response: %d chars",
+                self.name,
+                pool.pool_id,
+                len(result.result),
+            )
+            return Response(content=result.result)
         finally:
             if tmp_path is not None:
                 tmp_path.unlink(missing_ok=True)

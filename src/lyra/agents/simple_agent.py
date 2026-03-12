@@ -9,19 +9,26 @@ not hardcoded here.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from lyra.core.agent import Agent, AgentBase
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.cli_pool import CliPool, CliResult
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
+    AudioContent,
     Message,
+    MessageType,
     Response,
     extract_text,
 )
 from lyra.core.messages import MessageManager
 from lyra.core.pool import Pool
+from lyra.stt import is_whisper_noise
+
+if TYPE_CHECKING:
+    from lyra.stt import STTService
 
 log = logging.getLogger(__name__)
 
@@ -49,18 +56,65 @@ class SimpleAgent(AgentBase):
         circuit_registry: CircuitRegistry | None = None,
         admin_user_ids: set[str] | None = None,
         msg_manager: MessageManager | None = None,
+        stt: STTService | None = None,
     ) -> None:
         super().__init__(
             config,
             circuit_registry=circuit_registry,
             admin_user_ids=admin_user_ids,
             msg_manager=msg_manager,
+            stt=stt,
         )
         self._pool = cli_pool
 
     async def process(self, msg: Message, pool: Pool) -> Response:
         self._maybe_reload()
-        text = extract_text(msg)
+
+        # Handle AUDIO messages
+        if msg.type == MessageType.AUDIO:
+            audio = msg.content
+            if not isinstance(audio, AudioContent):
+                raise TypeError(
+                    f"AUDIO message must carry AudioContent, got {type(audio).__name__}"
+                )
+            tmp_path = Path(audio.url)
+            try:
+                if self._stt is None:
+                    return Response(
+                        content=(
+                            self._msg_manager.get("stt_unsupported")
+                            if self._msg_manager
+                            else (
+                                "Voice messages are not supported"
+                                " — STT is not configured."
+                            )
+                        )
+                    )
+                stt_result = await self._stt.transcribe(tmp_path)
+            except Exception:
+                log.exception("STT transcription failed in SimpleAgent")
+                return Response(
+                    content=(
+                        self._msg_manager.get("stt_failed")
+                        if self._msg_manager
+                        else "Sorry, I couldn't transcribe your voice message."
+                    ),
+                    metadata={"error": True},
+                )
+            finally:
+                tmp_path.unlink(missing_ok=True)
+            if is_whisper_noise(stt_result.text):
+                return Response(
+                    content=(
+                        self._msg_manager.get("stt_noise")
+                        if self._msg_manager
+                        else "I couldn't make out your voice message, please try again."
+                    )
+                )
+            text = f"🎤 [transcribed]: {stt_result.text}"
+        else:
+            text = extract_text(msg)
+
         model_cfg = self.config.model_config
 
         log.debug(
@@ -83,7 +137,11 @@ class SimpleAgent(AgentBase):
             )
             # Timeout gets a specific message; all other errors get a generic one
             if "Timeout" in result.error:
-                user_msg = "Response timed out. Please try again."
+                user_msg = (
+                    self._msg_manager.get("timeout")
+                    if self._msg_manager
+                    else "Your request timed out. Please try again."
+                )
             else:
                 user_msg = (
                     self._msg_manager.get("generic")

@@ -19,6 +19,9 @@ _FALLBACKS: dict[str, str] = {
     "stream_interrupted": " [response interrupted]",
     "timeout": "Your request timed out. Please try again.",
     "cancelled": "Request cancelled.",
+    "stt_noise": "I couldn't make out your voice message, please try again.",
+    "stt_unsupported": "Voice messages are not supported — STT is not configured.",
+    "stt_failed": "Sorry, I couldn't transcribe your voice message.",
 }
 
 

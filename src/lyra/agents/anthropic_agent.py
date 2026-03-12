@@ -12,16 +12,20 @@ import os
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import anthropic
 
 from lyra.core.agent import _AGENTS_DIR, Agent, AgentBase
 from lyra.core.circuit_breaker import CircuitRegistry
-from lyra.core.message import Message, extract_text
+from lyra.core.message import AudioContent, Message, MessageType, extract_text
 from lyra.core.messages import MessageManager
 from lyra.core.pool import Pool
 from lyra.core.runtime_config import RuntimeConfig, RuntimeConfigHolder
+from lyra.stt import is_whisper_noise
+
+if TYPE_CHECKING:
+    from lyra.stt import STTService
 
 log = logging.getLogger(__name__)
 
@@ -48,6 +52,7 @@ class AnthropicAgent(AgentBase):
         admin_user_ids: set[str] | None = None,
         msg_manager: MessageManager | None = None,
         runtime_config: RuntimeConfig | None = None,
+        stt: STTService | None = None,
         agents_dir: Path | None = None,
     ) -> None:
         resolved_agents_dir: Path = agents_dir or _AGENTS_DIR
@@ -62,6 +67,7 @@ class AnthropicAgent(AgentBase):
             circuit_registry=circuit_registry,
             admin_user_ids=admin_user_ids,
             msg_manager=msg_manager,
+            stt=stt,
         )
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
@@ -100,96 +106,148 @@ class AnthropicAgent(AgentBase):
         """
         self._maybe_reload()
         effective = self.runtime_config.overlay(self.config)
-        text = extract_text(msg)
-        messages = self._build_messages(text, pool)
 
-        kwargs: dict[str, Any] = {
-            "model": effective.model,
-            "max_tokens": 4096,
-            "temperature": effective.temperature,
-            "messages": messages,
-        }
-        if effective.system_prompt:
-            kwargs["system"] = effective.system_prompt
-        if self.config.model_config.tools:
-            kwargs["tools"] = [
-                t for t in TOOLS if t["name"] in self.config.model_config.tools
+        tmp_path: Path | None = None
+        llm_text: str
+        history_text: str
+
+        # Hoist: resolve AudioContent and tmp_path once for all AUDIO paths
+        if msg.type == MessageType.AUDIO:
+            if not isinstance(msg.content, AudioContent):
+                raise TypeError(
+                    "AUDIO message must carry AudioContent, "
+                    f"got {type(msg.content).__name__}"
+                )
+            tmp_path = Path(msg.content.url)
+
+        # outer try: temp-file cleanup (ADR-013)
+        try:
+            if msg.type == MessageType.AUDIO and self._stt is not None:
+                # tmp_path already set above
+                stt_result = await self._stt.transcribe(tmp_path)  # type: ignore[arg-type]
+                if is_whisper_noise(stt_result.text):
+                    if tmp_path is not None:
+                        tmp_path.unlink(missing_ok=True)
+                        tmp_path = None  # prevent double-unlink in outer finally
+                    yield (
+                        self._msg_manager.get("stt_noise")
+                        if self._msg_manager
+                        else "I couldn't make out your voice message, please try again."
+                    )
+                    return
+                llm_text = f"🎤 [transcribed]: {stt_result.text}"
+                history_text = stt_result.text
+            elif msg.type == MessageType.AUDIO and self._stt is None:
+                # tmp_path already set above
+                if tmp_path is not None:
+                    tmp_path.unlink(missing_ok=True)
+                    tmp_path = None  # prevent double-unlink in outer finally
+                yield (
+                    self._msg_manager.get("stt_unsupported")
+                    if self._msg_manager
+                    else "Voice messages are not supported — STT is not configured."
+                )
+                return
+            else:
+                llm_text = history_text = extract_text(msg)
+
+            messages = self._build_messages(llm_text, pool)
+
+            kwargs: dict[str, Any] = {
+                "model": effective.model,
+                "max_tokens": 4096,
+                "temperature": effective.temperature,
+                "messages": messages,
+            }
+            if effective.system_prompt:
+                kwargs["system"] = effective.system_prompt
+            if self.config.model_config.tools:
+                kwargs["tools"] = [
+                    t for t in TOOLS if t["name"] in self.config.model_config.tools
+                ]
+
+            accumulated_text = ""
+            max_turns = effective.max_turns
+            final: Any = None
+            new_messages: list[dict[str, Any]] = [
+                {"role": "user", "content": history_text}
             ]
 
-        accumulated_text = ""
-        max_turns = effective.max_turns
-        final: Any = None
-        new_messages: list[dict[str, Any]] = [{"role": "user", "content": text}]
+            # inner try: LLM streaming loop + history persistence
+            try:
+                for _turn in range(max_turns):
+                    async with self._client.messages.stream(**kwargs) as stream:
+                        async for delta in stream.text_stream:
+                            accumulated_text += delta
+                            yield delta
+                        final = await stream.get_final_message()
 
-        try:
-            for _turn in range(max_turns):
-                async with self._client.messages.stream(**kwargs) as stream:
-                    async for delta in stream.text_stream:
-                        accumulated_text += delta
-                        yield delta
-                    final = await stream.get_final_message()
+                    log.info(
+                        "SDK stream: in=%d out=%d tokens",
+                        final.usage.input_tokens,
+                        final.usage.output_tokens,
+                    )
 
-                log.info(
-                    "SDK stream: in=%d out=%d tokens",
-                    final.usage.input_tokens,
-                    final.usage.output_tokens,
-                )
-
-                if final.stop_reason != "tool_use":
-                    break
-
-                # Handle tool use blocks
-                tool_results: list[dict[str, Any]] = []
-                for block in final.content:
-                    if block.type == "tool_use":
-                        try:
-                            result = await self._execute_tool(block.name, block.input)
-                            tool_results.append(
-                                {
-                                    "type": "tool_result",
-                                    "tool_use_id": block.id,
-                                    "content": result,
-                                }
-                            )
-                        except Exception:
-                            log.exception("Tool %s failed", block.name)
-                            tool_results.append(
-                                {
-                                    "type": "tool_result",
-                                    "tool_use_id": block.id,
-                                    "content": "Tool execution failed.",
-                                    "is_error": True,
-                                }
-                            )
-
-                # Track intermediate turns for history
-                assistant_turn = {"role": "assistant", "content": final.content}
-                tool_turn = {"role": "user", "content": tool_results}
-                new_messages.append(assistant_turn)
-                new_messages.append(tool_turn)
-
-                # Continue conversation with tool results
-                kwargs["messages"] = [
-                    *kwargs["messages"],
-                    assistant_turn,
-                    tool_turn,
-                ]
-            else:
-                # max_turns exhausted
-                if final and final.stop_reason == "tool_use":
-                    yield " [max tool turns reached]"
-            # Build final assistant message for history
-            reply_text = accumulated_text
-            if not reply_text and final and final.content:
-                for block in final.content:
-                    if hasattr(block, "text"):
-                        reply_text = block.text
+                    if final.stop_reason != "tool_use":
                         break
-            new_messages.append({"role": "assistant", "content": reply_text})
-        except Exception:
-            log.exception("Streaming error in AnthropicAgent")
-            raise  # re-raise so Hub.dispatch_streaming() can record circuit failure
+
+                    # Handle tool use blocks
+                    tool_results: list[dict[str, Any]] = []
+                    for block in final.content:
+                        if block.type == "tool_use":
+                            try:
+                                result = await self._execute_tool(
+                                    block.name, block.input
+                                )
+                                tool_results.append(
+                                    {
+                                        "type": "tool_result",
+                                        "tool_use_id": block.id,
+                                        "content": result,
+                                    }
+                                )
+                            except Exception:
+                                log.exception("Tool %s failed", block.name)
+                                tool_results.append(
+                                    {
+                                        "type": "tool_result",
+                                        "tool_use_id": block.id,
+                                        "content": "Tool execution failed.",
+                                        "is_error": True,
+                                    }
+                                )
+
+                    # Track intermediate turns for history
+                    assistant_turn = {"role": "assistant", "content": final.content}
+                    tool_turn = {"role": "user", "content": tool_results}
+                    new_messages.append(assistant_turn)
+                    new_messages.append(tool_turn)
+
+                    # Continue conversation with tool results
+                    kwargs["messages"] = [
+                        *kwargs["messages"],
+                        assistant_turn,
+                        tool_turn,
+                    ]
+                else:
+                    # max_turns exhausted
+                    if final and final.stop_reason == "tool_use":
+                        yield " [max tool turns reached]"
+                # Build final assistant message for history
+                reply_text = accumulated_text
+                if not reply_text and final and final.content:
+                    for block in final.content:
+                        if hasattr(block, "text"):
+                            reply_text = block.text
+                            break
+                new_messages.append({"role": "assistant", "content": reply_text})
+            except Exception:
+                log.exception("Streaming error in AnthropicAgent")
+                raise  # re-raise so Hub.dispatch_streaming() can record circuit failure
+            finally:
+                # Persist history even on failure so partial turns survive
+                if len(new_messages) > 1:
+                    pool.extend_sdk_history(new_messages)
         finally:
-            # Persist history even on failure so partial turns survive
-            if len(new_messages) > 1:
-                pool.extend_sdk_history(new_messages)
+            if tmp_path is not None:
+                tmp_path.unlink(missing_ok=True)

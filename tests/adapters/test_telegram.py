@@ -217,9 +217,12 @@ async def test_backpressure_sends_ack_when_bus_full() -> None:
 
 @pytest.mark.asyncio
 async def test_send_calls_bot_send_message() -> None:
-    """adapter.send(hub_msg, Response) calls bot.send_message(chat_id=..., text=...)."""
+    """adapter.send(hub_msg, OutboundMessage) calls bot.send_message.
+
+    Verifies chat_id and text are passed correctly.
+    """
     from lyra.adapters.telegram import TelegramAdapter  # ImportError expected in RED
-    from lyra.core.message import InboundMessage, Response
+    from lyra.core.message import InboundMessage, OutboundMessage
 
     hub = MagicMock()
     bot = AsyncMock()
@@ -245,11 +248,13 @@ async def test_send_calls_bot_send_message() -> None:
             "is_group": False,
         },
     )
-    response = Response(content="reply")
+    outbound = OutboundMessage.from_text("reply")
 
-    await adapter.send(original_msg, response)
+    await adapter.send(original_msg, outbound)
 
-    bot.send_message.assert_awaited_once_with(chat_id=123, text="reply")
+    bot.send_message.assert_awaited_once_with(
+        chat_id=123, text="reply", parse_mode="MarkdownV2"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -307,7 +312,7 @@ async def test_send_skips_when_platform_context_is_not_telegram(
     """adapter.send() with a non-telegram platform InboundMessage must not call
     bot.send_message."""
     from lyra.adapters.telegram import TelegramAdapter  # ImportError expected in RED
-    from lyra.core.message import InboundMessage, Response
+    from lyra.core.message import InboundMessage, OutboundMessage
 
     hub = MagicMock()
     bot = AsyncMock()
@@ -336,7 +341,7 @@ async def test_send_skips_when_platform_context_is_not_telegram(
     )
 
     with caplog.at_level(logging.WARNING, logger="lyra.adapters.telegram"):
-        await adapter.send(original_msg, Response(content="hi"))
+        await adapter.send(original_msg, OutboundMessage.from_text("hi"))
 
     bot.send_message.assert_not_awaited()
     assert any("non-telegram" in r.message for r in caplog.records)
@@ -441,9 +446,9 @@ def test_normalize_captures_topic_and_message_id_for_forum() -> None:
 
 @pytest.mark.asyncio
 async def test_send_stores_reply_message_id_in_metadata() -> None:
-    """adapter.send() stores bot reply message_id in response.metadata."""
+    """adapter.send() stores bot reply message_id in outbound.metadata."""
     from lyra.adapters.telegram import TelegramAdapter
-    from lyra.core.message import InboundMessage, Response
+    from lyra.core.message import InboundMessage, OutboundMessage
 
     # Arrange
     hub = MagicMock()
@@ -472,14 +477,16 @@ async def test_send_stores_reply_message_id_in_metadata() -> None:
             "is_group": False,
         },
     )
-    response = Response(content="reply")
+    outbound = OutboundMessage.from_text("reply")
 
     # Act
-    await adapter.send(original_msg, response)
+    await adapter.send(original_msg, outbound)
 
     # Assert
-    bot.send_message.assert_awaited_once_with(chat_id=123, text="reply")
-    assert response.metadata["reply_message_id"] == 888
+    bot.send_message.assert_awaited_once_with(
+        chat_id=123, text="reply", parse_mode="MarkdownV2"
+    )
+    assert outbound.metadata["reply_message_id"] == 888
 
 
 # ---------------------------------------------------------------------------
@@ -554,7 +561,7 @@ async def test_send_always_delivers_regardless_of_circuit_state() -> None:
     CB check is owned by OutboundDispatcher. Adapter always delivers.
     """
     from lyra.adapters.telegram import TelegramAdapter
-    from lyra.core.message import InboundMessage, Response
+    from lyra.core.message import InboundMessage, OutboundMessage
 
     # Arrange — circuit is OPEN but adapter should still send (CB check in dispatcher)
     registry = _make_open_registry("telegram")
@@ -589,10 +596,9 @@ async def test_send_always_delivers_regardless_of_circuit_state() -> None:
             "is_group": False,
         },
     )
-    response = Response(content="reply")
 
     # Act
-    await adapter.send(original_msg, response)
+    await adapter.send(original_msg, OutboundMessage.from_text("reply"))
 
     # Assert — CB is open but adapter still sends (CB check owned by dispatcher)
     bot.send_message.assert_awaited_once()
@@ -733,3 +739,202 @@ async def test_on_message_drops_bot_text_message() -> None:
     )
     await adapter._on_message(bot_msg)
     hub.inbound_bus.put.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# RED — Slice 3: OutboundMessage render tests for TelegramAdapter (#138)
+# ---------------------------------------------------------------------------
+
+from lyra.core.message import (  # noqa: E402,F401 — Slice V2 green
+    Attachment,
+    Button,
+    CodeBlock,
+    OutboundMessage,
+)
+
+
+def _make_telegram_adapter():
+    """Build a TelegramAdapter with a MagicMock hub (no bot attached)."""
+    from lyra.adapters.telegram import TelegramAdapter  # ImportError expected in RED
+
+    hub = MagicMock()
+    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+    return adapter
+
+
+def _make_telegram_message():
+    """Build a minimal InboundMessage for adapter.send() calls."""
+    from datetime import datetime, timezone
+
+    from lyra.core.message import InboundMessage
+
+    return InboundMessage(
+        id="msg-tg-138",
+        platform="telegram",
+        bot_id="main",
+        scope_id="chat:123",
+        user_id="tg:user:42",
+        user_name="Alice",
+        is_mention=False,
+        text="hello",
+        text_raw="hello",
+        timestamp=datetime.now(timezone.utc),
+        platform_meta={"chat_id": 123, "message_id": 1},
+    )
+
+
+class TestTelegramOutboundMessage:
+    """Slice 3 RED tests — TelegramAdapter rendering of OutboundMessage."""
+
+    @pytest.mark.asyncio
+    async def test_send_accepts_outbound_message(self) -> None:
+        """adapter.send(msg, OutboundMessage.from_text("hello")) calls
+        bot.send_message once with chat_id and text="hello"."""
+        # Arrange
+        adapter = _make_telegram_adapter()
+        sent_mock = MagicMock()
+        sent_mock.message_id = 42
+        adapter.bot = AsyncMock()
+        adapter.bot.send_message = AsyncMock(return_value=sent_mock)
+
+        outbound = OutboundMessage.from_text("hello")
+        original_msg = _make_telegram_message()
+
+        # Act
+        await adapter.send(original_msg, outbound)
+
+        # Assert
+        adapter.bot.send_message.assert_awaited_once()
+        call_kwargs = adapter.bot.send_message.call_args
+        assert call_kwargs.kwargs.get("chat_id") == 123 or (
+            len(call_kwargs.args) > 0 and call_kwargs.args[0] == 123
+        )
+        assert call_kwargs.kwargs.get("text") == "hello" or (
+            len(call_kwargs.args) > 1 and call_kwargs.args[1] == "hello"
+        )
+
+    def test_render_text_empty_returns_no_chunks(self) -> None:
+        """_render_text("") returns [] — no empty-string chunk to send to the API."""
+        # Arrange
+        adapter = _make_telegram_adapter()
+
+        # Act
+        chunks = adapter._render_text("")  # type: ignore[attr-defined]
+
+        # Assert
+        assert chunks == []
+
+    def test_render_text_escapes_markdownv2(self) -> None:
+        # _render_text("hello_world") returns ["hello\\_world"] (underscore escaped).
+        # Arrange
+        adapter = _make_telegram_adapter()
+
+        # Act
+        chunks = adapter._render_text("hello_world")  # type: ignore[attr-defined]
+
+        # Assert
+        assert chunks == [r"hello\_world"]
+
+    def test_render_text_no_escape_for_plain(self) -> None:
+        """_render_text("hello world") returns ["hello world"] unchanged.
+
+        No special chars means no escaping needed.
+        """
+        # Arrange
+        adapter = _make_telegram_adapter()
+
+        # Act
+        chunks = adapter._render_text("hello world")  # type: ignore[attr-defined]
+
+        # Assert
+        assert chunks == ["hello world"]
+
+    def test_render_text_chunks_at_4096(self) -> None:
+        """_render_text("x" * 5000) returns 2 chunks, each ≤ 4096 characters."""
+        # Arrange
+        adapter = _make_telegram_adapter()
+        text = "x" * 5000
+
+        # Act
+        chunks = adapter._render_text(text)  # type: ignore[attr-defined]
+
+        # Assert
+        assert len(chunks) == 2
+        assert all(len(c) <= 4096 for c in chunks)
+
+    def test_render_buttons_none_when_empty(self) -> None:
+        """_render_buttons([]) returns None."""
+        # Arrange
+        adapter = _make_telegram_adapter()
+
+        # Act
+        result = adapter._render_buttons([])  # type: ignore[attr-defined]
+
+        # Assert
+        assert result is None
+
+    def test_render_buttons_returns_keyboard(self) -> None:
+        """_render_buttons([Button("Yes","yes")]) returns an InlineKeyboardMarkup."""
+        from aiogram.types import InlineKeyboardMarkup  # ImportError if aiogram absent
+
+        # Arrange
+        adapter = _make_telegram_adapter()
+
+        # Act
+        result = adapter._render_buttons([Button("Yes", "yes")])  # type: ignore[attr-defined]
+
+        # Assert
+        assert isinstance(result, InlineKeyboardMarkup)
+
+    @pytest.mark.asyncio
+    async def test_buttons_only_on_last_chunk(self) -> None:
+        """Sending OutboundMessage with long content + buttons: first bot.send_message
+        call has no reply_markup, second (last) call has reply_markup."""
+        # Arrange
+        adapter = _make_telegram_adapter()
+
+        calls: list[dict] = []
+
+        async def capture_send(**kwargs):  # type: ignore[return]
+            calls.append(dict(kwargs))
+            m = MagicMock()
+            m.message_id = len(calls)
+            return m
+
+        adapter.bot = AsyncMock()
+        adapter.bot.send_message = capture_send
+
+        outbound = OutboundMessage(
+            content=["x" * 5000],
+            buttons=[Button("Yes", "yes")],
+        )
+        original_msg = _make_telegram_message()
+
+        # Act
+        await adapter.send(original_msg, outbound)
+
+        # Assert — two send calls were made (5000 chars → 2 chunks of ≤ 4096)
+        assert len(calls) == 2, f"Expected 2 send_message calls, got {len(calls)}"
+        # First chunk: no reply_markup key, or reply_markup is None/falsy
+        assert calls[0].get("reply_markup") is None or "reply_markup" not in calls[0]
+        # Last chunk: reply_markup is set (truthy)
+        assert calls[1].get("reply_markup") is not None
+
+    @pytest.mark.asyncio
+    async def test_reply_message_id_stored_in_metadata(self) -> None:
+        """send() stores the reply message_id in outbound.metadata."""
+        # Arrange
+        adapter = _make_telegram_adapter()
+        sent_mock = MagicMock()
+        sent_mock.message_id = 999
+        adapter.bot = AsyncMock()
+        adapter.bot.send_message = AsyncMock(return_value=sent_mock)
+
+        outbound = OutboundMessage.from_text("hi")
+        original_msg = _make_telegram_message()
+
+        # Act
+        await adapter.send(original_msg, outbound)
+
+        # Assert
+        assert outbound.metadata.get("reply_message_id") == 999

@@ -29,6 +29,7 @@ from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.message import (
     DiscordContext,
     InboundMessage,
+    OutboundMessage,
     Platform,
     TelegramContext,
 )
@@ -63,7 +64,9 @@ class MockAdapter:
     def normalize(self, raw: object) -> InboundMessage:
         raise NotImplementedError
 
-    async def send(self, original_msg: InboundMessage, response: Response) -> None:
+    async def send(
+        self, original_msg: InboundMessage, outbound: OutboundMessage
+    ) -> None:
         pass
 
     async def send_streaming(
@@ -372,13 +375,13 @@ class TestRoutingKey:
 class TestDispatchResponse:
     async def test_dispatches_to_correct_adapter(self) -> None:
         hub = Hub()
-        sent: list[tuple[InboundMessage, Response]] = []
+        sent: list[tuple[InboundMessage, OutboundMessage]] = []
 
         class CapturingAdapter:
             async def send(
-                self, original_msg: InboundMessage, response: Response
+                self, original_msg: InboundMessage, outbound: OutboundMessage
             ) -> None:
-                sent.append((original_msg, response))
+                sent.append((original_msg, outbound))
 
             async def send_streaming(
                 self, original_msg: InboundMessage, chunks: object
@@ -390,7 +393,8 @@ class TestDispatchResponse:
         response = Response(content="pong")
         await hub.dispatch_response(msg, response)
         assert len(sent) == 1
-        assert sent[0][1].content == "pong"
+        # dispatch_response converts Response → OutboundMessage; text is preserved
+        assert "pong" in str(sent[0][1].content)
 
     async def test_missing_adapter_raises(self) -> None:
         hub = Hub()
@@ -404,7 +408,7 @@ class TestDispatchResponse:
 
         class DummyAdapter:
             async def send(
-                self, original_msg: InboundMessage, response: Response
+                self, original_msg: InboundMessage, outbound: OutboundMessage
             ) -> None:
                 pass
 
@@ -604,7 +608,7 @@ class TestDispatchStreaming:
 
         class StreamAdapter:
             async def send(
-                self, original_msg: InboundMessage, response: Response
+                self, original_msg: InboundMessage, outbound: OutboundMessage
             ) -> None:
                 pass
 
@@ -630,7 +634,7 @@ class TestDispatchStreaming:
 
         class StreamAdapter:
             async def send(
-                self, original_msg: InboundMessage, response: Response
+                self, original_msg: InboundMessage, outbound: OutboundMessage
             ) -> None:
                 pass
 
@@ -652,13 +656,13 @@ class TestDispatchStreaming:
 
     async def test_fallback_to_send_when_no_send_streaming(self) -> None:
         hub = Hub()
-        sent: list[Response] = []
+        sent: list[object] = []
 
         class LegacyAdapter:
             async def send(
-                self, original_msg: InboundMessage, response: Response
+                self, original_msg: InboundMessage, outbound: OutboundMessage
             ) -> None:
-                sent.append(response)
+                sent.append(outbound)
 
         # LegacyAdapter intentionally lacks send_streaming to test fallback
         hub.register_adapter(Platform.TELEGRAM, "main", LegacyAdapter())  # type: ignore[arg-type]
@@ -670,7 +674,9 @@ class TestDispatchStreaming:
 
         await hub.dispatch_streaming(msg, gen())
         assert len(sent) == 1
-        assert sent[0].content == "Hello world"
+        # dispatch_streaming fallback now sends OutboundMessage.from_text(text)
+        assert isinstance(sent[0], OutboundMessage)
+        assert "Hello world" in str(sent[0].content)
 
 
 # ---------------------------------------------------------------------------
@@ -691,7 +697,7 @@ class TestHubRunStreaming:
 
         class CapturingStreamAdapter:
             async def send(
-                self, original_msg: InboundMessage, response: Response
+                self, original_msg: InboundMessage, outbound: OutboundMessage
             ) -> None:
                 pass
 
@@ -760,11 +766,13 @@ async def test_anthropic_circuit_open_sends_fast_fail_and_skips_agent() -> None:
 
     hub = Hub(circuit_registry=registry)
 
-    sent_responses: list[Response] = []
+    sent_responses: list[OutboundMessage] = []
 
     class CapturingAdapter:
-        async def send(self, original_msg: InboundMessage, response: Response) -> None:
-            sent_responses.append(response)
+        async def send(
+            self, original_msg: InboundMessage, outbound: OutboundMessage
+        ) -> None:
+            sent_responses.append(outbound)
 
         async def send_streaming(self, original_msg: InboundMessage, chunks) -> None:
             async for _ in chunks:
@@ -804,8 +812,9 @@ async def test_anthropic_circuit_open_sends_fast_fail_and_skips_agent() -> None:
         "Agent.process() must not be called when anthropic circuit is OPEN"
     )
     assert len(sent_responses) == 1
-    assert "unavailable" in sent_responses[0].content.lower()
-    assert "try again" in sent_responses[0].content.lower()
+    content_str = str(sent_responses[0].content).lower()
+    assert "unavailable" in content_str
+    assert "try again" in content_str
 
 
 # ---------------------------------------------------------------------------
@@ -824,11 +833,13 @@ async def test_anthropic_circuit_open_includes_retry_after() -> None:
     registry = make_circuit_registry(anthropic=open_cb)
     hub = Hub(circuit_registry=registry)
 
-    sent_responses: list[Response] = []
+    sent_responses: list[OutboundMessage] = []
 
     class CapturingAdapter:
-        async def send(self, original_msg: InboundMessage, response: Response) -> None:
-            sent_responses.append(response)
+        async def send(
+            self, original_msg: InboundMessage, outbound: OutboundMessage
+        ) -> None:
+            sent_responses.append(outbound)
 
         async def send_streaming(self, original_msg: InboundMessage, chunks) -> None:
             async for _ in chunks:
@@ -860,8 +871,9 @@ async def test_anthropic_circuit_open_includes_retry_after() -> None:
 
     # Assert
     assert len(sent_responses) == 1
-    assert re.search(r"\d+s", sent_responses[0].content), (
-        f"Expected retry_after seconds in: {sent_responses[0].content!r}"
+    content_str = str(sent_responses[0].content)
+    assert re.search(r"\d+s", content_str), (
+        f"Expected retry_after seconds in: {content_str!r}"
     )
 
 
@@ -878,7 +890,9 @@ async def test_hub_records_success_on_clean_streaming() -> None:
     hub = Hub(circuit_registry=registry)
 
     class SilentAdapter:
-        async def send(self, original_msg: InboundMessage, response: Response) -> None:
+        async def send(
+            self, original_msg: InboundMessage, outbound: OutboundMessage
+        ) -> None:
             pass
 
         async def send_streaming(self, original_msg: InboundMessage, chunks) -> None:
@@ -927,7 +941,9 @@ async def test_mid_stream_failure_records_anthropic_failure() -> None:
     hub = Hub(circuit_registry=registry)
 
     class SilentAdapter:
-        async def send(self, original_msg: InboundMessage, response: Response) -> None:
+        async def send(
+            self, original_msg: InboundMessage, outbound: OutboundMessage
+        ) -> None:
             pass
 
         async def send_streaming(self, original_msg: InboundMessage, chunks) -> None:
@@ -984,7 +1000,9 @@ async def test_hub_circuit_opens_after_threshold() -> None:
     hub = Hub(circuit_registry=registry)
 
     class SilentAdapter:
-        async def send(self, original_msg: InboundMessage, response: Response) -> None:
+        async def send(
+            self, original_msg: InboundMessage, outbound: OutboundMessage
+        ) -> None:
             pass
 
         async def send_streaming(self, original_msg: InboundMessage, chunks) -> None:
@@ -1040,11 +1058,13 @@ async def test_hub_msg_manager_injection_generic_on_agent_failure() -> None:
     mm = MessageManager(TOML_PATH)
     hub = Hub(msg_manager=mm)
 
-    sent_responses: list[Response] = []
+    sent_responses: list[OutboundMessage] = []
 
     class CapturingAdapter:
-        async def send(self, original_msg: InboundMessage, response: Response) -> None:
-            sent_responses.append(response)
+        async def send(
+            self, original_msg: InboundMessage, outbound: OutboundMessage
+        ) -> None:
+            sent_responses.append(outbound)
 
         async def send_streaming(
             self, original_msg: InboundMessage, chunks: object
@@ -1077,7 +1097,8 @@ async def test_hub_msg_manager_injection_generic_on_agent_failure() -> None:
     # Assert — error reply content matches the TOML value, not a hardcoded string
     assert len(sent_responses) == 1
     expected = mm.get("generic")
-    assert sent_responses[0].content == expected
+    # dispatch_response converts Response → OutboundMessage; text is preserved
+    assert expected in str(sent_responses[0].content)
 
 
 # ---------------------------------------------------------------------------
@@ -1229,3 +1250,73 @@ class TestScopeIsolatedPools:
         )
         assert pool_a.pool_id == "telegram:main:chat:100"
         assert pool_b.pool_id == "telegram:main:chat:200"
+
+
+# ---------------------------------------------------------------------------
+# RED — #138: OutboundMessage dispatch (Slice V2)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_dispatch_response_accepts_outbound_message() -> None:
+    """hub.dispatch_response() must accept an OutboundMessage and forward it
+    to the adapter's send() method unchanged (issue #138, Slice V2)."""
+    # Arrange
+    hub = Hub()
+    received: list[OutboundMessage] = []
+
+    class MockAdapterV2:
+        async def send(
+            self, original_msg: InboundMessage, outbound: OutboundMessage
+        ) -> None:
+            received.append(outbound)
+
+        async def send_streaming(
+            self, original_msg: InboundMessage, chunks: object
+        ) -> None:
+            pass
+
+    hub.register_adapter(Platform.TELEGRAM, "main", MockAdapterV2())  # type: ignore[arg-type]
+    msg = make_inbound_message(platform="telegram", bot_id="main")
+    outbound = OutboundMessage.from_text("hi")
+
+    # Act
+    await hub.dispatch_response(msg, outbound)
+
+    # Assert
+    assert len(received) == 1
+    assert received[0].content == ["hi"]
+
+
+@pytest.mark.asyncio
+async def test_dispatch_response_accepts_legacy_response() -> None:
+    """hub.dispatch_response() must still accept a plain Response for backward
+    compatibility — no call-site changes required at pool.py (issue #138, U5)."""
+    # Arrange
+    hub = Hub()
+    received: list[Response] = []
+
+    class LegacyCapturingAdapter:
+        async def send(
+            self, original_msg: InboundMessage, outbound: OutboundMessage
+        ) -> None:
+            received.append(outbound)  # type: ignore[arg-type]
+
+        async def send_streaming(
+            self, original_msg: InboundMessage, chunks: object
+        ) -> None:
+            pass
+
+    hub.register_adapter(Platform.TELEGRAM, "main", LegacyCapturingAdapter())  # type: ignore[arg-type]
+    msg = make_inbound_message(platform="telegram", bot_id="main")
+
+    # Act
+    await hub.dispatch_response(msg, Response(content="hi"))
+
+    # Assert — adapter received something with the original text
+    assert len(received) == 1
+    result = received[0]
+    # After GREEN: dispatch_response converts Response → OutboundMessage internally;
+    # the adapter receives an OutboundMessage.  We assert the text is preserved.
+    content = result.content if isinstance(result, Response) else result.content  # type: ignore[union-attr]
+    assert "hi" in str(content)

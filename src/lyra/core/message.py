@@ -202,6 +202,10 @@ class Response:
     content: str
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    def to_outbound(self) -> "OutboundMessage":
+        """Convert to OutboundMessage for use with the typed dispatch path."""
+        return OutboundMessage.from_text(self.content)
+
 
 @dataclass
 class OutboundAudio:
@@ -221,3 +225,77 @@ class OutboundAudio:
 # RenderContext is the original inbound Message — passed to render_audio()
 # so adapters can read platform_context (chat_id, channel_id, etc.).
 RenderContext: TypeAlias = Message
+
+
+# ── Outbound envelope ────────────────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class Button:
+    """A button to display below a message."""
+    text: str
+    callback_data: str
+
+
+@dataclass(frozen=True)
+class CodeBlock:
+    """A fenced code block content part."""
+    code: str
+    language: str | None = None
+
+
+@dataclass(frozen=True)
+class MediaPart:
+    """A media attachment content part for outbound messages.
+
+    Distinct from the inbound Attachment type (which carries raw bytes/URL
+    for received media). MediaPart is for outbound OutboundMessage.content[].
+    """
+    url: str
+    media_type: str
+    caption: str | None = None
+
+
+# ContentPart: plain text, code block, or media attachment.
+ContentPart = str | CodeBlock | MediaPart
+
+
+@dataclass
+class OutboundMessage:
+    """Normalized output envelope produced by the hub/agents.
+
+    Adapters consume this through their send() method, owning all
+    platform-specific translation (MarkdownV2 escaping, chunking, button
+    construction) internally.
+
+    Not frozen — metadata["reply_message_id"] is written by adapters after send.
+    edit_id and is_final are reserved for future streaming unification.
+    """
+
+    content: list[ContentPart]
+    buttons: list[Button] = field(default_factory=list)
+    edit_id: str | None = None
+    is_final: bool = True
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_text(cls, text: str) -> "OutboundMessage":
+        """Convenience constructor: single plain-text content part."""
+        return cls(content=[text])
+
+    def to_text(self) -> str:
+        """Flatten content parts to a plain string for adapter rendering.
+
+        str parts → verbatim; CodeBlock → fenced code block; Attachment → URL caption.
+        """
+        parts: list[str] = []
+        for part in self.content:
+            if isinstance(part, str):
+                parts.append(part)
+            elif isinstance(part, CodeBlock):
+                lang = part.language or ""
+                parts.append(f"```{lang}\n{part.code}\n```")
+            else:
+                # Attachment
+                caption = f" — {part.caption}" if part.caption else ""
+                parts.append(f"{part.url}{caption}")
+        return "\n".join(parts)

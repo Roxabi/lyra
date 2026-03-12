@@ -14,6 +14,7 @@ from .inbound_bus import InboundBus
 from .message import (
     GENERIC_ERROR_REPLY,
     InboundMessage,
+    OutboundMessage,
     Platform,
     Response,
 )
@@ -40,7 +41,9 @@ class ChannelAdapter(Protocol):
 
     def normalize(self, raw: Any) -> InboundMessage: ...
 
-    async def send(self, original_msg: InboundMessage, response: Response) -> None: ...
+    async def send(
+        self, original_msg: InboundMessage, outbound: OutboundMessage
+    ) -> None: ...
 
     async def send_streaming(
         self, original_msg: InboundMessage, chunks: AsyncIterator[str]
@@ -259,17 +262,25 @@ class Hub:
     # Dispatch
     # ------------------------------------------------------------------
 
-    async def dispatch_response(self, msg: InboundMessage, response: Response) -> None:
+    async def dispatch_response(
+        self, msg: InboundMessage, response: Response | OutboundMessage
+    ) -> None:
         """Send response back via the originating adapter.
 
         Routes through the OutboundDispatcher when one is registered for the
         platform (fire-and-forget queue). Falls back to a direct adapter call
         when no dispatcher is registered (used in tests and command responses).
+
+        Accepts either a Response (backward compat) or OutboundMessage directly.
         """
+        if isinstance(response, OutboundMessage):
+            outbound = response
+        else:
+            outbound = response.to_outbound()
         platform = Platform(msg.platform)
         dispatcher = self.outbound_dispatchers.get((platform, msg.bot_id))
         if dispatcher is not None:
-            dispatcher.enqueue(msg, response)
+            dispatcher.enqueue(msg, outbound)
             self._last_processed_at = time.monotonic()
             return
         # Fallback: direct adapter call (backward compat / no dispatcher registered)
@@ -279,7 +290,7 @@ class Hub:
                 f"No adapter registered for ({msg.platform!r}, {msg.bot_id!r}). "
                 "Call register_adapter() before dispatching responses."
             )
-        await adapter.send(msg, response)
+        await adapter.send(msg, outbound)
         self._last_processed_at = time.monotonic()
 
     async def dispatch_streaming(
@@ -310,7 +321,7 @@ class Hub:
             text = ""
             async for chunk in chunks:
                 text += chunk
-            await adapter.send(msg, Response(content=text))
+            await adapter.send(msg, OutboundMessage.from_text(text))
         self._last_processed_at = time.monotonic()
 
     # ------------------------------------------------------------------

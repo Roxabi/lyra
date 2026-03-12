@@ -39,7 +39,7 @@ def _make_config(
         Complexity.TRIVIAL: "claude-haiku-4-5-20251001",
         Complexity.SIMPLE: "claude-haiku-4-5-20251001",
         Complexity.MODERATE: "claude-sonnet-4-6",
-        Complexity.COMPLEX: "claude-sonnet-4-6",
+        Complexity.COMPLEX: "claude-opus-4-6",
     }
     return SmartRoutingConfig(
         enabled=enabled, routing_table=table, history_size=history_size
@@ -137,7 +137,7 @@ class TestSmartRoutingDecorator:
         call_args = inner.complete.call_args
         assert call_args[0][2].model == "claude-haiku-4-5-20251001"
 
-    async def test_routes_complex_to_sonnet(self) -> None:
+    async def test_routes_complex_to_opus(self) -> None:
         inner = _make_inner()
         config = _make_config(enabled=True)
         decorator = SmartRoutingDecorator(inner, config)
@@ -151,7 +151,7 @@ class TestSmartRoutingDecorator:
         )
 
         call_args = inner.complete.call_args
-        assert call_args[0][2].model == "claude-sonnet-4-6"
+        assert call_args[0][2].model == "claude-opus-4-6"
 
     async def test_model_cfg_not_mutated(self) -> None:
         """Original model_cfg must not be mutated by the decorator."""

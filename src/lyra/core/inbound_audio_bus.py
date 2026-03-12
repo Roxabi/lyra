@@ -60,7 +60,15 @@ class InboundAudioBus:
         self._staging.task_done()
 
     async def start(self) -> None:
-        """Spawn one feeder task per registered platform."""
+        """Spawn one feeder task per registered platform.
+
+        Raises RuntimeError if called while feeders are already running.
+        """
+        if self._feeders:
+            raise RuntimeError(
+                "InboundAudioBus.start() called while feeders are "
+                "already running — call stop() first."
+            )
         for platform, queue in self._queues.items():
             task = asyncio.create_task(
                 self._feeder(platform, queue),

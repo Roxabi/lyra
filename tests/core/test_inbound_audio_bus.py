@@ -61,6 +61,11 @@ class TestInboundAudioBusRegistration:
         with pytest.raises(asyncio.QueueFull):
             bus.put(Platform.TELEGRAM, _make_audio())
 
+    def test_put_unregistered_platform_raises(self) -> None:
+        bus = InboundAudioBus()
+        with pytest.raises(KeyError):
+            bus.put(Platform.TELEGRAM, _make_audio())
+
     def test_registered_platforms(self) -> None:
         bus = InboundAudioBus()
         bus.register(Platform.TELEGRAM)
@@ -113,7 +118,32 @@ class TestInboundAudioBusFeeder:
 
         try:
             bus.put(Platform.TELEGRAM, _make_audio())
-            await asyncio.sleep(0.05)  # let feeder drain
-            assert bus.staging_qsize() == 1
+            # Wait for feeder to forward (avoids sleep-based flake)
+            await asyncio.wait_for(bus.get(), timeout=0.5)
+            bus.task_done()
+            assert bus.staging_qsize() == 0
+        finally:
+            await bus.stop()
+
+    async def test_task_done(self) -> None:
+        bus = InboundAudioBus()
+        bus.register(Platform.TELEGRAM, maxsize=10)
+        await bus.start()
+
+        try:
+            bus.put(Platform.TELEGRAM, _make_audio())
+            await asyncio.wait_for(bus.get(), timeout=0.5)
+            bus.task_done()  # should not raise
+        finally:
+            await bus.stop()
+
+    async def test_double_start_raises(self) -> None:
+        bus = InboundAudioBus()
+        bus.register(Platform.TELEGRAM, maxsize=10)
+        await bus.start()
+
+        try:
+            with pytest.raises(RuntimeError, match="already running"):
+                await bus.start()
         finally:
             await bus.stop()

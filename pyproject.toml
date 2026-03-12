@@ -16,6 +16,8 @@ dependencies = [
     "python-dotenv>=1.0",
     # Agent backends
     "anthropic>=0.49",
+    # STT
+    "faster-whisper>=1.0",
 ]
 
 [project.optional-dependencies]

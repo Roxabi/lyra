@@ -272,11 +272,7 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
         await cli_pool.start()
 
     stt_service: STTService | None = None
-    if (
-        os.environ.get("STT_MODEL_SIZE")
-        or os.environ.get("STT_DEVICE")
-        or os.environ.get("STT_COMPUTE_TYPE")
-    ):
+    if os.environ.get("STT_MODEL_SIZE"):
         try:
             stt_cfg = load_stt_config()
             stt_service = STTService(stt_cfg)

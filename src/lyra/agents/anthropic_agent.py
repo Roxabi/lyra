@@ -18,7 +18,7 @@ import anthropic
 
 from lyra.core.agent import _AGENTS_DIR, Agent, AgentBase
 from lyra.core.circuit_breaker import CircuitRegistry
-from lyra.core.message import Message, MessageType, extract_text
+from lyra.core.message import AudioContent, Message, MessageType, extract_text
 from lyra.core.messages import MessageManager
 from lyra.core.pool import Pool
 from lyra.core.runtime_config import RuntimeConfig, RuntimeConfigHolder
@@ -108,26 +108,42 @@ class AnthropicAgent(AgentBase):
         llm_text: str
         history_text: str
 
+        # Hoist: resolve AudioContent and tmp_path once for all AUDIO paths
+        if msg.type == MessageType.AUDIO:
+            if not isinstance(msg.content, AudioContent):
+                raise TypeError(
+                    "AUDIO message must carry AudioContent, "
+                    f"got {type(msg.content).__name__}"
+                )
+            tmp_path = Path(msg.content.url)
+
+        # outer try: temp-file cleanup (ADR-013)
         try:
             if msg.type == MessageType.AUDIO and self._stt is not None:
-                from lyra.core.message import AudioContent
-
-                audio = msg.content
-                assert isinstance(audio, AudioContent)
-                tmp_path = Path(audio.url)
-                stt_result = await self._stt.transcribe(tmp_path)
+                # tmp_path already set above
+                stt_result = await self._stt.transcribe(tmp_path)  # type: ignore[arg-type]
                 if is_whisper_noise(stt_result.text):
-                    yield "I couldn't make out your voice message, please try again."
+                    if tmp_path is not None:
+                        tmp_path.unlink(missing_ok=True)
+                        tmp_path = None  # prevent double-unlink in outer finally
+                    yield (
+                        self._msg_manager.get("stt_noise")
+                        if self._msg_manager
+                        else "I couldn't make out your voice message, please try again."
+                    )
                     return
                 llm_text = f"🎤 [transcribed]: {stt_result.text}"
                 history_text = stt_result.text
             elif msg.type == MessageType.AUDIO and self._stt is None:
-                from lyra.core.message import AudioContent
-
-                audio = msg.content
-                assert isinstance(audio, AudioContent)
-                tmp_path = Path(audio.url)
-                yield "Voice messages are not supported — STT is not configured."
+                # tmp_path already set above
+                if tmp_path is not None:
+                    tmp_path.unlink(missing_ok=True)
+                    tmp_path = None  # prevent double-unlink in outer finally
+                yield (
+                    self._msg_manager.get("stt_unsupported")
+                    if self._msg_manager
+                    else "Voice messages are not supported — STT is not configured."
+                )
                 return
             else:
                 llm_text = history_text = extract_text(msg)
@@ -154,6 +170,7 @@ class AnthropicAgent(AgentBase):
                 {"role": "user", "content": history_text}
             ]
 
+            # inner try: LLM streaming loop + history persistence
             try:
                 for _turn in range(max_turns):
                     async with self._client.messages.stream(**kwargs) as stream:

@@ -374,6 +374,9 @@ class AgentBase(ABC):
         self._circuit_registry = circuit_registry
         self._admin_user_ids = admin_user_ids
         self._msg_manager = msg_manager
+        # Subclasses must invoke self._stt when msg.type == MessageType.AUDIO.
+        # Temp file cleanup (AudioContent.url) must live in a finally block in
+        # process() — the agent owns it, not STTService. See ADR-013.
         self._stt = stt
         self._plugins_dir = plugins_dir or _PLUGINS_DIR
         self._plugin_loader = PluginLoader(self._plugins_dir)

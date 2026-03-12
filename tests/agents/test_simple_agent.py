@@ -126,7 +126,7 @@ class TestSimpleAgentProcess:
 
         response = await agent.process(msg, pool)
 
-        assert response.content == "Response timed out. Please try again."
+        assert response.content == "Your request timed out. Please try again."
         assert response.metadata.get("error") is True
 
     async def test_warning_response(self) -> None:

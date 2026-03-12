@@ -996,11 +996,35 @@ class TestTelegramAttachments:
         assert a.type == "video"
         assert a.url_or_bytes == "tg:file_id:vid101"
 
+    def test_normalize_animation_attachment(self) -> None:
+        """Animation (GIF) → type='image', image/gif."""
+        adapter = self._make_adapter()
+        anim = SimpleNamespace(file_id="gif999")
+        msg = adapter.normalize(
+            self._make_msg(animation=anim),
+        )
+        assert len(msg.attachments) == 1
+        a = msg.attachments[0]
+        assert a.type == "image"
+        assert a.mime_type == "image/gif"
+        assert a.url_or_bytes == "tg:file_id:gif999"
+
     def test_normalize_animated_sticker_skipped(self) -> None:
         """Animated sticker (is_animated=True) → NOT in attachments."""
         adapter = self._make_adapter()
         sticker = SimpleNamespace(file_id="stk1", is_animated=True, is_video=False)
         msg = adapter.normalize(self._make_msg(sticker=sticker))
+        assert len(msg.attachments) == 0
+
+    def test_normalize_video_sticker_skipped(self) -> None:
+        """Video sticker (is_video=True) → NOT in attachments."""
+        adapter = self._make_adapter()
+        sticker = SimpleNamespace(
+            file_id="stk3", is_animated=False, is_video=True,
+        )
+        msg = adapter.normalize(
+            self._make_msg(sticker=sticker),
+        )
         assert len(msg.attachments) == 0
 
     def test_normalize_static_sticker(self) -> None:

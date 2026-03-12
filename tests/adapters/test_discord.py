@@ -1286,6 +1286,22 @@ class TestDiscordAttachments:
         )
         assert len(msg.attachments) == 2
 
+    def test_normalize_video_attachment(self) -> None:
+        """Video content_type → type='video'."""
+        adapter = self._make_adapter()
+        att = SimpleNamespace(
+            content_type="video/mp4",
+            url="https://cdn.discord.com/clip.mp4",
+            filename="clip.mp4",
+        )
+        msg = adapter.normalize(
+            self._make_msg(attachments=[att]),
+        )
+        assert len(msg.attachments) == 1
+        a = msg.attachments[0]
+        assert a.type == "video"
+        assert a.mime_type == "video/mp4"
+
     def test_normalize_audio_attachment_excluded(self) -> None:
         """Audio content_type → NOT in attachments list."""
         adapter = self._make_adapter()

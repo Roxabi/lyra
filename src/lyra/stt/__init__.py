@@ -123,7 +123,8 @@ class STTService:
                 duration_seconds=info.duration,
             )
             log.info(
-                "Transcription complete: language=%s duration=%.2fs text_len=%d",
+                "Transcription complete: path=%s lang=%s dur=%.2fs text_len=%d",
+                path,
                 result.language,
                 result.duration_seconds,
                 len(result.text),

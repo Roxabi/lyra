@@ -14,7 +14,11 @@ import discord
 if TYPE_CHECKING:
     from lyra.core.hub import Hub
 
-from lyra.adapters._shared import parse_reply_to_id, push_to_hub_guarded
+from lyra.adapters._shared import (
+    parse_reply_to_id,
+    push_to_hub_guarded,
+    sanitize_filename,
+)
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
@@ -625,9 +629,11 @@ class DiscordAdapter(discord.Client):
         send_to_id = thread_id if thread_id is not None else channel_id
         messageable = await self._resolve_channel(send_to_id)
 
-        # Derive filename: use explicit filename, else derive from mime_type.
+        # Derive filename: sanitize explicit name or derive from mime_type.
         if msg.filename:
-            filename = msg.filename
+            filename = sanitize_filename(
+                msg.filename, _ATTACHMENT_EXTS,
+            )
         else:
             raw_ext = msg.mime_type.split("/")[-1] if "/" in msg.mime_type else ""
             ext = raw_ext if raw_ext in _ATTACHMENT_EXTS else "bin"

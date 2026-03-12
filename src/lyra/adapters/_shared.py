@@ -56,6 +56,39 @@ async def push_to_hub_guarded(
         await send_backpressure(text)
 
 
+def sanitize_filename(
+    filename: str,
+    allowed_exts: frozenset[str],
+    fallback: str = "attachment.bin",
+) -> str:
+    """Sanitize a caller-supplied filename for outbound attachments.
+
+    Strips path components, control characters, and validates the
+    extension against *allowed_exts*. Returns *fallback* if the
+    result is empty or the extension is not whitelisted.
+    """
+    import os
+    import re
+
+    # Strip path components (defense against ../../ traversal)
+    name = os.path.basename(filename)
+    # Strip control characters and null bytes
+    name = re.sub(r"[\x00-\x1f\x7f]", "", name)
+    # Enforce length cap
+    name = name[:255]
+
+    if not name:
+        return fallback
+
+    # Validate extension against whitelist
+    _, ext = os.path.splitext(name)
+    ext_clean = ext.lstrip(".").lower()
+    if ext_clean not in allowed_exts:
+        return fallback
+
+    return name
+
+
 def parse_reply_to_id(reply_to_id: str | None) -> int | None:
     """Parse a string reply_to_id into an int, returning None on bad input."""
     if reply_to_id is None:

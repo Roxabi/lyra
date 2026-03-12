@@ -108,6 +108,12 @@ class OutboundAttachment:
     Produced by agents or pipelines; consumed by adapter render_attachment().
     Mirrors OutboundAudio for non-audio media. Adapters dispatch to
     platform-specific send methods based on the type field.
+
+    Type semantics:
+      - "image": rendered inline (Telegram send_photo, Discord embed)
+      - "video": rendered inline (Telegram send_video)
+      - "document": file with preview (Telegram send_document, shown as doc)
+      - "file": opaque binary (Telegram send_document, no preview hint)
     """
 
     data: bytes = field(repr=False)

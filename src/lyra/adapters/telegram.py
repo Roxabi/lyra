@@ -17,7 +17,11 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 if TYPE_CHECKING:
     from lyra.core.hub import Hub
 
-from lyra.adapters._shared import parse_reply_to_id, push_to_hub_guarded
+from lyra.adapters._shared import (
+    parse_reply_to_id,
+    push_to_hub_guarded,
+    sanitize_filename,
+)
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
@@ -31,6 +35,14 @@ from lyra.core.message import (
 from lyra.core.messages import MessageManager
 
 log = logging.getLogger(__name__)
+
+# Allowed file extensions for outbound attachment filenames (whitelist).
+_ATTACHMENT_EXTS = frozenset({
+    "png", "jpg", "jpeg", "gif", "webp", "bmp",  # image
+    "mp4", "webm", "mov", "avi",  # video
+    "pdf", "txt", "csv", "json", "xml", "zip", "tar", "gz",  # document
+    "ogg", "mp3", "opus", "wav", "flac", "aac",  # audio
+})
 
 TELEGRAM_MAX_LENGTH = 4096  # Telegram Bot API text message limit
 _MARKDOWNV2_SPECIAL = re.compile(r"([_*\[\]()~`>#\+\-=|{}.!\\])")
@@ -678,8 +690,14 @@ class TelegramAdapter:
             reply_to = message_id
 
         buf = BytesIO(msg.data)
+        # Derive safe filename: sanitize explicit name or fallback from mime
         if msg.filename:
-            buf.name = msg.filename
+            buf.name = sanitize_filename(
+                msg.filename, _ATTACHMENT_EXTS,
+            )
+        else:
+            raw_ext = msg.mime_type.split("/")[-1] if "/" in msg.mime_type else "bin"
+            buf.name = f"attachment.{raw_ext}"
 
         kwargs: dict = {"chat_id": chat_id}
         if topic_id is not None:

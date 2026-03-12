@@ -364,6 +364,58 @@ class TestDiscordRenderAttachment:
         assert call_kwargs["content"] == "Check this"
 
     @pytest.mark.asyncio
+    async def test_reply_to_override(self) -> None:
+        adapter = _make_dc_adapter()
+        channel = _mock_channel()
+        ref_msg = AsyncMock()
+        ref_msg.reply = AsyncMock()
+        channel.fetch_message = AsyncMock(return_value=ref_msg)
+
+        att = OutboundAttachment(
+            data=b"x", type="image",
+            mime_type="image/png", reply_to_id="200",
+        )
+        inbound = _dc_msg(message_id=55)
+
+        with patch.object(adapter, "get_channel", return_value=channel):
+            await adapter.render_attachment(att, inbound)
+
+        channel.fetch_message.assert_called_with(200)
+
+    @pytest.mark.asyncio
+    async def test_no_reply_target_sends_directly(self) -> None:
+        adapter = _make_dc_adapter()
+        channel = _mock_channel()
+
+        att = OutboundAttachment(
+            data=b"x", type="image", mime_type="image/png",
+        )
+        inbound = InboundMessage(
+            id="discord:dc:user:1:0:0",
+            platform="discord",
+            bot_id="main",
+            scope_id="channel:99",
+            user_id="dc:user:1",
+            user_name="Bob",
+            is_mention=False,
+            text="hi",
+            text_raw="hi",
+            timestamp=datetime.now(timezone.utc),
+            platform_meta={
+                "guild_id": 1,
+                "channel_id": 99,
+                "message_id": None,
+                "thread_id": None,
+                "channel_type": "text",
+            },
+        )
+
+        with patch.object(adapter, "get_channel", return_value=channel):
+            await adapter.render_attachment(att, inbound)
+
+        channel.send.assert_awaited_once()
+
+    @pytest.mark.asyncio
     async def test_reply_fallback(self) -> None:
         adapter = _make_dc_adapter()
         channel = _mock_channel()

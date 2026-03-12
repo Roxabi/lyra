@@ -19,6 +19,7 @@ from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
     DiscordContext,
+    InboundAudio,
     InboundMessage,
     OutboundAudio,
     OutboundMessage,
@@ -32,8 +33,20 @@ log = logging.getLogger(__name__)
 DISCORD_MAX_LENGTH = 2000  # Discord API message length limit
 
 
-
 _AUTO_THREAD_TRUE = frozenset({"1", "true", "yes", "on"})
+
+# Accepted audio MIME types for inbound attachment detection.
+_AUDIO_MIME_TYPES = frozenset(
+    {
+        "audio/ogg",
+        "audio/mpeg",
+        "audio/mp4",
+        "audio/opus",
+        "audio/wav",
+        "audio/flac",
+        "audio/aac",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -83,6 +96,9 @@ class DiscordAdapter(discord.Client):
         self._circuit_registry = circuit_registry
         self._msg_manager = msg_manager
         self._auto_thread = auto_thread
+        self._max_audio_bytes: int = int(
+            os.environ.get("LYRA_MAX_AUDIO_BYTES", 5 * 1024 * 1024)
+        )
         # Set on on_ready; None until login completes. Tests set this directly.
         self._bot_user: Any = None
         # Compiled once in on_ready (requires bot user ID). None until then.
@@ -102,6 +118,32 @@ class DiscordAdapter(discord.Client):
                 "guild message content will be empty. "
                 "Enable 'Message Content Intent' in the Discord Developer Portal."
             )
+
+    def normalize_audio(
+        self, raw: Any, audio_bytes: bytes, mime_type: str
+    ) -> InboundAudio:
+        """Build an InboundAudio envelope from a Discord audio message.
+
+        Security: trust is always 'user'. Bot messages are filtered by on_message().
+        """
+        if isinstance(raw.channel, discord.Thread):
+            scope_id = f"thread:{raw.channel.id}"
+        else:
+            scope_id = f"channel:{raw.channel.id}"
+        user_id = f"dc:user:{raw.author.id}"
+        timestamp = raw.created_at
+        return InboundAudio(
+            id=f"discord:{user_id}:{int(timestamp.timestamp())}",
+            platform=Platform.DISCORD.value,
+            bot_id=self._bot_id,
+            scope_id=scope_id,
+            user_id=user_id,
+            audio_bytes=audio_bytes,
+            mime_type=mime_type,
+            duration_ms=None,
+            file_id=None,
+            timestamp=timestamp,
+        )
 
     def normalize(
         self, raw: Any, *, thread_id: int | None = None, channel_id: int | None = None
@@ -192,6 +234,37 @@ class DiscordAdapter(discord.Client):
         if message.author == self._bot_user:
             return
 
+        # Audio attachment detection: normalize before text path
+        audio_attachment = next(
+            (
+                a
+                for a in (getattr(message, "attachments", None) or [])
+                if getattr(a, "content_type", "") in _AUDIO_MIME_TYPES
+            ),
+            None,
+        )
+        if audio_attachment is not None:
+            _size = getattr(audio_attachment, "size", None)
+            if _size is not None and _size > self._max_audio_bytes:
+                log.warning(
+                    "Audio attachment too large: %d bytes for message_id=%s",
+                    _size,
+                    message.id,
+                )
+            else:
+                try:
+                    audio_bytes = await audio_attachment.read()
+                    mime_type = audio_attachment.content_type
+                    _inbound_audio = self.normalize_audio(
+                        message, audio_bytes, mime_type
+                    )
+                    # TODO(#140-follow-on): enqueue _inbound_audio onto InboundAudioBus
+                except Exception:
+                    log.exception(
+                        "Failed to read audio attachment message_id=%s", message.id
+                    )
+            return  # audio messages handled separately; skip text path
+
         # Pre-detect mention (needed for auto-thread decision, before normalize)
         _is_mention = self._bot_user is not None and self._bot_user in message.mentions
 
@@ -256,8 +329,10 @@ class DiscordAdapter(discord.Client):
         """Split text into ≤2000-char chunks (Discord limit). No escaping needed."""
         if not text:
             return []
-        return [text[i:i + DISCORD_MAX_LENGTH]
-                for i in range(0, len(text), DISCORD_MAX_LENGTH)]
+        return [
+            text[i : i + DISCORD_MAX_LENGTH]
+            for i in range(0, len(text), DISCORD_MAX_LENGTH)
+        ]
 
     def _render_buttons(self, buttons: list) -> discord.ui.View | None:
         """Convert list[Button] to discord.ui.View with buttons, or None if empty."""

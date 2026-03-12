@@ -1,4 +1,4 @@
-"""Tests for Telegram voice message handling (issue #147 / STT V1).
+"""Tests for Telegram voice message handling and normalize_audio (issues #147, #140).
 
 Covers:
 - Voice message normalised to MessageType.AUDIO with correct AudioContent
@@ -93,7 +93,7 @@ async def test_voice_audio_content_fields(tmp_path) -> None:
     attachment: Attachment = hub_msg.attachments[0]
     assert isinstance(attachment, Attachment)
     assert attachment.type == "audio"
-    assert attachment.url_or_bytes == str(tmp_file)
+    assert isinstance(attachment.url_or_bytes, bytes)
     assert attachment.mime_type == "audio/ogg"
 
 
@@ -220,3 +220,104 @@ async def test_audio_field_message_produces_audio_type(tmp_path) -> None:
     hub_msg = hub.inbound_bus.put.call_args[0][1]
     assert len(hub_msg.attachments) == 1
     assert hub_msg.attachments[0].type == "audio"
+
+
+# ---------------------------------------------------------------------------
+# normalize_audio() — issue #140
+# ---------------------------------------------------------------------------
+
+
+def _make_voice_msg_for_normalize(
+    file_id: str = "FILE1",
+    duration: int = 3,
+    chat_id: int = 42,
+    user_id: int = 7,
+    topic_id: int | None = None,
+    chat_type: str = "private",
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        chat=SimpleNamespace(id=chat_id, type=chat_type),
+        from_user=SimpleNamespace(id=user_id, full_name="Alice", is_bot=False),
+        voice=SimpleNamespace(file_id=file_id, duration=duration),
+        audio=None,
+        date=datetime.now(timezone.utc),
+        message_thread_id=topic_id,
+    )
+
+
+def test_normalize_audio_voice_fields() -> None:
+    """normalize_audio returns InboundAudio with correct fields for a voice message."""
+    from lyra.core.message import InboundAudio
+
+    adapter, _ = _make_adapter()
+    msg = _make_voice_msg_for_normalize(file_id="F1", duration=3, chat_id=42, user_id=7)
+    result = adapter.normalize_audio(msg, b"data", "audio/ogg")
+    assert isinstance(result, InboundAudio)
+    assert result.id.startswith("telegram:tg:user:7:")
+    assert result.scope_id == "chat:42"
+    assert result.mime_type == "audio/ogg"
+    assert result.duration_ms == 3000
+    assert result.file_id == "F1"
+    assert result.user_id == "tg:user:7"
+    assert result.platform == "telegram"
+    assert result.bot_id == "main"
+    assert result.audio_bytes == b"data"
+    assert result.trust == "user"
+
+
+def test_normalize_audio_audio_file_fields() -> None:
+    """normalize_audio reads mime_type and duration from msg.audio when voice is None.
+    """
+    from lyra.core.message import InboundAudio
+
+    adapter, _ = _make_adapter()
+    msg = _make_voice_msg_for_normalize(
+        file_id="AF1", duration=5, chat_id=99, user_id=8
+    )
+    msg.voice = None
+    msg.audio = SimpleNamespace(file_id="AF1", duration=5, mime_type="audio/mpeg")
+    result = adapter.normalize_audio(msg, b"bytes", "audio/mpeg")
+    assert isinstance(result, InboundAudio)
+    assert result.mime_type == "audio/mpeg"
+    assert result.duration_ms == 5000
+    assert result.file_id == "AF1"
+
+
+def test_normalize_audio_private_chat_scope_id() -> None:
+    """Private chat → scope_id='chat:<id>'."""
+    adapter, _ = _make_adapter()
+    msg = _make_voice_msg_for_normalize(chat_id=42, chat_type="private")
+    result = adapter.normalize_audio(msg, b"x", "audio/ogg")
+    assert result.scope_id == "chat:42"
+
+
+def test_normalize_audio_topic_chat_scope_id() -> None:
+    """Topic chat → scope_id='chat:<id>:topic:<topic_id>'."""
+    adapter, _ = _make_adapter()
+    msg = _make_voice_msg_for_normalize(chat_id=42, topic_id=7, chat_type="supergroup")
+    result = adapter.normalize_audio(msg, b"x", "audio/ogg")
+    assert result.scope_id == "chat:42:topic:7"
+
+
+# ---------------------------------------------------------------------------
+# video_note mime_type (B2 fix) — video/mp4, not audio/ogg
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_video_note_produces_video_mp4_mime_type(tmp_path) -> None:
+    """video_note messages must use mime_type='video/mp4', not 'audio/ogg'."""
+    adapter, hub = _make_adapter()
+    tmp_file = tmp_path / "note.mp4"
+    tmp_file.touch()
+
+    msg = _make_voice_msg()
+    msg.voice = None
+    msg.audio = None
+    msg.video_note = SimpleNamespace(file_id="VN123", duration=5)
+
+    with patch.object(adapter, "_download_audio", return_value=(tmp_file, 5.0)):
+        await adapter._on_voice_message(msg)
+
+    hub_msg = hub.inbound_bus.put.call_args[0][1]
+    assert hub_msg.attachments[0].mime_type == "video/mp4"

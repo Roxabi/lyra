@@ -28,6 +28,7 @@ from lyra.core import (
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.message import (
     DiscordContext,
+    InboundAudio,
     InboundMessage,
     OutboundMessage,
     Platform,
@@ -62,6 +63,11 @@ class MockAdapter:
     """Minimal ChannelAdapter for testing."""
 
     def normalize(self, raw: object) -> InboundMessage:
+        raise NotImplementedError
+
+    def normalize_audio(
+        self, raw: object, audio_bytes: bytes, mime_type: str
+    ) -> InboundAudio:
         raise NotImplementedError
 
     async def send(

@@ -85,6 +85,28 @@ class InboundMessage:
     platform_meta: dict = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class InboundAudio:
+    """Normalized inbound audio envelope produced by all channel adapters.
+
+    Mirrors InboundMessage for audio: adapters produce this; hub/agents consume it.
+    Bus enqueue is a future concern (issue #140 follow-on).
+    Security: trust is always 'user' from adapters — never set above adapter layer.
+    """
+
+    id: str
+    platform: str  # "telegram" | "discord" | ...
+    bot_id: str
+    scope_id: str
+    user_id: str
+    audio_bytes: bytes
+    mime_type: str
+    duration_ms: int | None
+    file_id: str | None
+    timestamp: datetime
+    trust: Literal["user", "system"] = "user"
+
+
 def extract_text(msg: "Message") -> str:
     """Extract plain text from a Message, regardless of content type."""
     content: MessageContent | str = msg.content
@@ -229,9 +251,11 @@ RenderContext: TypeAlias = Message
 
 # ── Outbound envelope ────────────────────────────────────────────────────────
 
+
 @dataclass(frozen=True)
 class Button:
     """A button to display below a message."""
+
     text: str
     callback_data: str
 
@@ -239,6 +263,7 @@ class Button:
 @dataclass(frozen=True)
 class CodeBlock:
     """A fenced code block content part."""
+
     code: str
     language: str | None = None
 
@@ -250,6 +275,7 @@ class MediaPart:
     Distinct from the inbound Attachment type (which carries raw bytes/URL
     for received media). MediaPart is for outbound OutboundMessage.content[].
     """
+
     url: str
     media_type: str
     caption: str | None = None

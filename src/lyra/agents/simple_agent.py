@@ -9,7 +9,7 @@ not hardcoded here.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from lyra.core.agent import Agent, AgentBase
 from lyra.core.circuit_breaker import CircuitRegistry
@@ -22,6 +22,9 @@ from lyra.core.message import (
 )
 from lyra.core.messages import MessageManager
 from lyra.core.pool import Pool
+
+if TYPE_CHECKING:
+    from lyra.stt import STTService
 
 log = logging.getLogger(__name__)
 
@@ -49,18 +52,57 @@ class SimpleAgent(AgentBase):
         circuit_registry: CircuitRegistry | None = None,
         admin_user_ids: set[str] | None = None,
         msg_manager: MessageManager | None = None,
+        stt: STTService | None = None,
     ) -> None:
         super().__init__(
             config,
             circuit_registry=circuit_registry,
             admin_user_ids=admin_user_ids,
             msg_manager=msg_manager,
+            stt=stt,
         )
         self._pool = cli_pool
 
     async def process(self, msg: Message, pool: Pool) -> Response:
+        from pathlib import Path
+
+        from lyra.core.message import MessageType
+        from lyra.stt import is_whisper_noise
+
         self._maybe_reload()
-        text = extract_text(msg)
+
+        # Handle AUDIO messages
+        if msg.type == MessageType.AUDIO:
+            from lyra.core.message import AudioContent
+
+            audio = msg.content
+            assert isinstance(audio, AudioContent)
+            tmp_path = Path(audio.url)
+            try:
+                if self._stt is None:
+                    return Response(
+                        content=(
+                            "Voice messages are not supported"
+                            " — STT is not configured."
+                        )
+                    )
+                stt_result = await self._stt.transcribe(tmp_path)
+            except Exception:
+                log.exception("STT transcription failed in SimpleAgent")
+                return Response(
+                    content="Sorry, I couldn't transcribe your voice message.",
+                    metadata={"error": True},
+                )
+            finally:
+                tmp_path.unlink(missing_ok=True)
+            if is_whisper_noise(stt_result.text):
+                return Response(
+                    content="I couldn't make out your voice message, please try again."
+                )
+            text = f"🎤 [transcribed]: {stt_result.text}"
+        else:
+            text = extract_text(msg)
+
         model_cfg = self.config.model_config
 
         log.debug(

@@ -73,10 +73,6 @@ class AnthropicAgent(AgentBase):
         """Current runtime config. Always reflects the latest /config set."""
         return self._runtime_config_holder.value
 
-    @property
-    def _runtime_config(self) -> RuntimeConfig:
-        return self.runtime_config
-
     def _build_router_kwargs(self) -> dict[str, object]:
         return {
             "runtime_config_holder": self._runtime_config_holder,
@@ -103,7 +99,7 @@ class AnthropicAgent(AgentBase):
         Yields text deltas for the adapter to display progressively.
         """
         self._maybe_reload()
-        effective = self._runtime_config.overlay(self.config)
+        effective = self.runtime_config.overlay(self.config)
         text = extract_text(msg)
         messages = self._build_messages(text, pool)
 

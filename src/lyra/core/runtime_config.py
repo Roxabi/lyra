@@ -197,6 +197,8 @@ def set_param(rc: RuntimeConfig, key: str, value: str) -> RuntimeConfig:
             raise ValueError(f"max_steps must be a positive integer, got {value!r}")
         if iv <= 0:
             raise ValueError(f"max_steps must be a positive integer (≥1), got {iv}")
+        if iv > 50:
+            raise ValueError(f"max_steps too large ({iv}). Maximum is 50.")
         parsed = iv
 
     elif key == "model":

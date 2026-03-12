@@ -518,6 +518,24 @@ class TestSetParam:
         with pytest.raises(ValueError):
             set_param(rc, "max_steps", "-1")
 
+    def test_max_steps_upper_bound_accepted(self) -> None:
+        # Arrange — 50 is the max allowed value
+        rc = RuntimeConfig()
+
+        # Act
+        updated = set_param(rc, "max_steps", "50")
+
+        # Assert
+        assert updated.max_steps == 50
+
+    def test_max_steps_above_upper_bound_raises(self) -> None:
+        # Arrange — 51 exceeds the 50-turn ceiling
+        rc = RuntimeConfig()
+
+        # Act / Assert
+        with pytest.raises(ValueError):
+            set_param(rc, "max_steps", "51")
+
     def test_max_steps_non_int_raises(self) -> None:
         # Arrange
         rc = RuntimeConfig()

@@ -21,6 +21,7 @@ from lyra.adapters._shared import parse_reply_to_id, push_to_hub_guarded
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
+    Attachment,
     InboundAudio,
     InboundMessage,
     OutboundAudio,
@@ -33,6 +34,63 @@ log = logging.getLogger(__name__)
 
 TELEGRAM_MAX_LENGTH = 4096  # Telegram Bot API text message limit
 _MARKDOWNV2_SPECIAL = re.compile(r"([_*\[\]()~`>#\+\-=|{}.!\\])")
+
+
+def _extract_attachments(msg: Any) -> list[Attachment]:
+    """Extract non-audio Attachment objects from a Telegram message."""
+    result: list[Attachment] = []
+    # photo: list of PhotoSize, take largest (last)
+    if getattr(msg, "photo", None):
+        largest = msg.photo[-1]
+        result.append(
+            Attachment(
+                type="image",
+                url_or_bytes=f"tg:file_id:{largest.file_id}",
+                mime_type="image/jpeg",
+            )
+        )
+    if getattr(msg, "document", None):
+        doc = msg.document
+        result.append(
+            Attachment(
+                type="file",
+                url_or_bytes=f"tg:file_id:{doc.file_id}",
+                mime_type=getattr(doc, "mime_type", None) or "application/octet-stream",
+                filename=getattr(doc, "file_name", None),
+            )
+        )
+    if getattr(msg, "video", None):
+        vid = msg.video
+        result.append(
+            Attachment(
+                type="video",
+                url_or_bytes=f"tg:file_id:{vid.file_id}",
+                mime_type=getattr(vid, "mime_type", None) or "video/mp4",
+            )
+        )
+    if getattr(msg, "animation", None):
+        anim = msg.animation
+        result.append(
+            Attachment(
+                type="image",
+                url_or_bytes=f"tg:file_id:{anim.file_id}",
+                mime_type="image/gif",
+            )
+        )
+    if getattr(msg, "sticker", None):
+        sticker = msg.sticker
+        # Only static WebP stickers; skip animated (.tgs) and video (.webm)
+        if not getattr(sticker, "is_animated", False) and not getattr(
+            sticker, "is_video", False
+        ):
+            result.append(
+                Attachment(
+                    type="image",
+                    url_or_bytes=f"tg:file_id:{sticker.file_id}",
+                    mime_type="image/webp",
+                )
+            )
+    return result
 
 
 @dataclass(frozen=True)
@@ -222,7 +280,7 @@ class TelegramAdapter:
         topic_id: int | None = raw.message_thread_id
         scope_id = self._make_scope_id(chat_id, topic_id)
 
-        text = raw.text or ""
+        text = raw.text or getattr(raw, "caption", None) or ""
         timestamp = raw.date
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=timezone.utc)
@@ -235,6 +293,7 @@ class TelegramAdapter:
             chat_id,
         )
 
+        attachments = _extract_attachments(raw)
         return InboundMessage(
             id=(
                 f"telegram:{user_id}:{int(timestamp.timestamp())}"
@@ -248,6 +307,7 @@ class TelegramAdapter:
             is_mention=is_mention,
             text=text,
             text_raw=text,
+            attachments=attachments,
             timestamp=timestamp,
             trust="user",
             platform_meta={

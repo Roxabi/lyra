@@ -18,6 +18,7 @@ from lyra.adapters._shared import parse_reply_to_id, push_to_hub_guarded
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
+    Attachment,
     InboundAudio,
     InboundMessage,
     OutboundAudio,
@@ -48,6 +49,30 @@ _AUDIO_MIME_TYPES = frozenset(
 
 # Allowed file extensions for outbound audio filenames (whitelist).
 _AUDIO_EXTS = frozenset({"ogg", "mp3", "mp4", "mpeg", "opus", "wav", "flac", "aac"})
+
+
+def _extract_attachments(raw_attachments: list[Any]) -> list[Attachment]:
+    """Extract non-audio Attachment objects from Discord message.attachments."""
+    result: list[Attachment] = []
+    for a in raw_attachments:
+        ct = getattr(a, "content_type", None) or ""
+        if ct in _AUDIO_MIME_TYPES:
+            continue
+        if ct.startswith("image/"):
+            att_type = "image"
+        elif ct.startswith("video/"):
+            att_type = "video"
+        else:
+            att_type = "file"
+        result.append(
+            Attachment(
+                type=att_type,
+                url_or_bytes=a.url,
+                mime_type=ct or "application/octet-stream",
+                filename=getattr(a, "filename", None),
+            )
+        )
+    return result
 
 
 @dataclass(frozen=True)
@@ -225,6 +250,9 @@ class DiscordAdapter(discord.Client):
         )
 
         _display_name = getattr(raw.author, "display_name", None)
+        attachments = _extract_attachments(
+            getattr(raw, "attachments", None) or []
+        )
         return InboundMessage(
             id=(f"discord:{user_id}:{int(timestamp.timestamp())}:{raw.id}"),
             platform=Platform.DISCORD.value,
@@ -235,6 +263,7 @@ class DiscordAdapter(discord.Client):
             is_mention=is_mention,
             text=text,
             text_raw=raw.content,
+            attachments=attachments,
             timestamp=timestamp,
             trust="user",
             platform_meta={

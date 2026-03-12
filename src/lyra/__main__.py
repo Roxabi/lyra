@@ -192,6 +192,8 @@ def create_health_app(hub: Hub) -> FastAPI:
     async def config_endpoint() -> dict:
         from lyra.agents.anthropic_agent import AnthropicAgent
 
+        # TODO(#123): replace isinstance(AnthropicAgent) with a RuntimeConfigCapable
+        # protocol check once the LlmProvider abstraction is introduced.
         agent = hub.agent_registry.get("lyra_default")
         if not isinstance(agent, AnthropicAgent):
             raise HTTPException(

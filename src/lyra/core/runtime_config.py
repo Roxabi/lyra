@@ -69,6 +69,9 @@ class RuntimeConfig:
         """Build EffectiveConfig by merging this overlay on top of base Agent config."""
         parts: list[str] = [base.system_prompt] if base.system_prompt else []
 
+        # "concise" is the no-op default, intentionally absent from _STYLE_INSTRUCTIONS.
+        # The != "concise" guard preserves this: even if "concise" is later added to the
+        # dict, it won't be injected — keeping concise a true no-injection default.
         if self.style != "concise" and self.style in _STYLE_INSTRUCTIONS:
             parts.append(_STYLE_INSTRUCTIONS[self.style])
 
@@ -119,6 +122,9 @@ class RuntimeConfig:
                 log.warning("Unknown runtime config key %r in %s — skipping", key, path)
                 continue
             try:
+                # Convert TOML-parsed native types (float, int) to str so set_param
+                # can validate and coerce them. str(0.7) → "0.7" → float("0.7") = 0.7
+                # round-trips cleanly for all values that tomllib produces in practice.
                 str_value = value if isinstance(value, str) else str(value)
                 rc = set_param(rc, key, str_value)
             except ValueError as exc:
@@ -186,9 +192,14 @@ def set_param(rc: RuntimeConfig, key: str, value: str) -> RuntimeConfig:
 
     elif key == "max_steps":
         try:
-            parsed = int(value)
+            iv = int(value)
         except (ValueError, TypeError):
-            raise ValueError(f"max_steps must be an integer, got {value!r}")
+            raise ValueError(f"max_steps must be a positive integer, got {value!r}")
+        if iv <= 0:
+            raise ValueError(f"max_steps must be a positive integer (≥1), got {iv}")
+        if iv > 50:
+            raise ValueError(f"max_steps too large ({iv}). Maximum is 50.")
+        parsed = iv
 
     elif key == "model":
         if value.lower() in ("", "none"):
@@ -212,7 +223,11 @@ def set_param(rc: RuntimeConfig, key: str, value: str) -> RuntimeConfig:
         parsed = value
 
     else:
-        # extra_instructions — accept as-is
+        # extra_instructions — accept as-is, but cap length to avoid bloating context
+        if len(value) > 500:
+            raise ValueError(
+                f"extra_instructions too long ({len(value)} chars). Max is 500."
+            )
         parsed = value
 
     return replace(rc, **{key: parsed})
@@ -223,6 +238,12 @@ class RuntimeConfigHolder:
 
     Both hold the *same* holder instance. Mutations replace `holder.value`
     (a new RuntimeConfig), so all readers see the updated config immediately.
+
+    Concurrency contract: designed for use on a single asyncio event loop.
+    `.value` assignment is GIL-atomic in CPython — no locking is needed provided
+    no coroutine yields between reading and re-assigning the same holder.
+    If porting to free-threaded Python (PEP 703) or adding run_in_executor
+    paths, protect mutations with an asyncio.Lock.
     """
 
     __slots__ = ("value",)

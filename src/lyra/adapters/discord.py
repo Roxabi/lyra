@@ -482,15 +482,18 @@ class DiscordAdapter(discord.Client):
         )
 
     async def send_streaming(
-        self, original_msg: InboundMessage, chunks: AsyncIterator[str]
+        self,
+        original_msg: InboundMessage,
+        chunks: AsyncIterator[str],
+        outbound: OutboundMessage | None = None,
     ) -> None:
         """Stream response with edit-in-place, debounced at ~1s.
 
         Circuit breaker checks and recording are handled by OutboundDispatcher,
         not here. This method performs the bare streaming send and raises on failure.
 
-        TODO: store placeholder.id in response.metadata["reply_message_id"]
-        once send_streaming() receives a Response argument (#67).
+        When *outbound* is provided, ``outbound.metadata["reply_message_id"]``
+        is set to the placeholder message ID after it is sent.
         """
         if original_msg.platform != "discord":
             log.error(
@@ -521,12 +524,21 @@ class DiscordAdapter(discord.Client):
         )
         try:
             placeholder = await messageable.send(_placeholder_text)
+            if outbound is not None:
+                # discord.py: Message.id (placeholder ID during streaming;
+                # not updated to a final ID on completion)
+                outbound.metadata["reply_message_id"] = placeholder.id
         except Exception:
             log.exception("Failed to send placeholder — falling back to non-streaming")
             async for chunk in chunks:
                 accumulated += chunk
             fallback_content = accumulated or _placeholder_text
-            await self.send(original_msg, OutboundMessage.from_text(fallback_content))
+            fallback_outbound = OutboundMessage.from_text(fallback_content)
+            await self.send(original_msg, fallback_outbound)
+            if outbound is not None:
+                outbound.metadata["reply_message_id"] = fallback_outbound.metadata.get(
+                    "reply_message_id"
+                )
             return
 
         last_edit = time.monotonic()

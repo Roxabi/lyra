@@ -73,6 +73,7 @@ class MockAdapter:
         self,
         original_msg: InboundMessage,
         chunks: object,
+        outbound: object = None,
     ) -> None:
         pass
 
@@ -302,7 +303,7 @@ class TestDispatchResponse:
                 sent.append((original_msg, outbound))
 
             async def send_streaming(
-                self, original_msg: InboundMessage, chunks: object
+                self, original_msg: InboundMessage, chunks: object, outbound=None,
             ) -> None:
                 pass
 
@@ -331,7 +332,7 @@ class TestDispatchResponse:
                 pass
 
             async def send_streaming(
-                self, original_msg: InboundMessage, chunks: object
+                self, original_msg: InboundMessage, chunks: object, outbound=None,
             ) -> None:
                 pass
 
@@ -531,7 +532,7 @@ class TestDispatchStreaming:
                 pass
 
             async def send_streaming(
-                self, original_msg: InboundMessage, chunks: object
+                self, original_msg: InboundMessage, chunks: object, outbound=None,
             ) -> None:
                 async for chunk in chunks:  # type: ignore[union-attr]
                     received.append(chunk)
@@ -557,7 +558,7 @@ class TestDispatchStreaming:
                 pass
 
             async def send_streaming(
-                self, original_msg: InboundMessage, chunks: object
+                self, original_msg: InboundMessage, chunks: object, outbound=None,
             ) -> None:
                 async for _ in chunks:  # type: ignore[union-attr]
                     pass
@@ -620,7 +621,7 @@ class TestHubRunStreaming:
                 pass
 
             async def send_streaming(
-                self, original_msg: InboundMessage, chunks: object
+                self, original_msg: InboundMessage, chunks: object, outbound=None,
             ) -> None:
                 async for chunk in chunks:  # type: ignore[union-attr]
                     received_chunks.append(chunk)
@@ -692,7 +693,9 @@ async def test_anthropic_circuit_open_sends_fast_fail_and_skips_agent() -> None:
         ) -> None:
             sent_responses.append(outbound)
 
-        async def send_streaming(self, original_msg: InboundMessage, chunks) -> None:
+        async def send_streaming(
+            self, original_msg: InboundMessage, chunks, outbound=None,
+        ) -> None:
             async for _ in chunks:
                 pass
 
@@ -759,7 +762,9 @@ async def test_anthropic_circuit_open_includes_retry_after() -> None:
         ) -> None:
             sent_responses.append(outbound)
 
-        async def send_streaming(self, original_msg: InboundMessage, chunks) -> None:
+        async def send_streaming(
+            self, original_msg: InboundMessage, chunks, outbound=None,
+        ) -> None:
             async for _ in chunks:
                 pass
 
@@ -813,7 +818,9 @@ async def test_hub_records_success_on_clean_streaming() -> None:
         ) -> None:
             pass
 
-        async def send_streaming(self, original_msg: InboundMessage, chunks) -> None:
+        async def send_streaming(
+            self, original_msg: InboundMessage, chunks, outbound=None,
+        ) -> None:
             async for _ in chunks:
                 pass
 
@@ -864,7 +871,9 @@ async def test_mid_stream_failure_records_anthropic_failure() -> None:
         ) -> None:
             pass
 
-        async def send_streaming(self, original_msg: InboundMessage, chunks) -> None:
+        async def send_streaming(
+            self, original_msg: InboundMessage, chunks, outbound=None,
+        ) -> None:
             async for _ in chunks:
                 pass  # exception propagates from the generator
 
@@ -923,7 +932,9 @@ async def test_hub_circuit_opens_after_threshold() -> None:
         ) -> None:
             pass
 
-        async def send_streaming(self, original_msg: InboundMessage, chunks) -> None:
+        async def send_streaming(
+            self, original_msg: InboundMessage, chunks, outbound=None,
+        ) -> None:
             async for _ in chunks:
                 pass
 
@@ -985,7 +996,7 @@ async def test_hub_msg_manager_injection_generic_on_agent_failure() -> None:
             sent_responses.append(outbound)
 
         async def send_streaming(
-            self, original_msg: InboundMessage, chunks: object
+            self, original_msg: InboundMessage, chunks: object, outbound=None,
         ) -> None:
             async for _ in chunks:  # type: ignore[union-attr]
                 pass
@@ -1190,7 +1201,7 @@ async def test_dispatch_response_accepts_outbound_message() -> None:
             received.append(outbound)
 
         async def send_streaming(
-            self, original_msg: InboundMessage, chunks: object
+            self, original_msg: InboundMessage, chunks: object, outbound=None,
         ) -> None:
             pass
 
@@ -1221,7 +1232,7 @@ async def test_dispatch_response_accepts_legacy_response() -> None:
             received.append(outbound)  # type: ignore[arg-type]
 
         async def send_streaming(
-            self, original_msg: InboundMessage, chunks: object
+            self, original_msg: InboundMessage, chunks: object, outbound=None,
         ) -> None:
             pass
 

@@ -70,6 +70,27 @@ class TestOutboundDispatcherEnqueue:
             dispatcher.enqueue_streaming(msg, chunks())
             await asyncio.sleep(0.05)
             adapter.send_streaming.assert_awaited_once()
+            call_args = adapter.send_streaming.call_args
+            assert call_args[0][0] is msg
+        finally:
+            await dispatcher.stop()
+
+    async def test_enqueue_streaming_forwards_outbound(self) -> None:
+        adapter, dispatcher = _make_adapter()
+        await dispatcher.start()
+        try:
+            msg = _make_msg()
+            outbound = OutboundMessage.from_text("")
+
+            async def chunks() -> AsyncIterator[str]:
+                yield "hello"
+
+            dispatcher.enqueue_streaming(msg, chunks(), outbound)
+            await asyncio.sleep(0.05)
+            adapter.send_streaming.assert_awaited_once()
+            call_args = adapter.send_streaming.call_args
+            assert call_args[0][0] is msg
+            assert call_args[0][2] is outbound
         finally:
             await dispatcher.stop()
 
@@ -108,6 +129,32 @@ class TestOutboundDispatcherCircuitBreaker:
             await asyncio.sleep(0.05)
             # Circuit is open — adapter.send should NOT be called
             adapter.send.assert_not_awaited()
+        finally:
+            await dispatcher.stop()
+
+    async def test_open_circuit_drops_streaming_and_sets_sentinel(self) -> None:
+        adapter = MagicMock()
+        adapter.send_streaming = AsyncMock()
+
+        cb = CircuitBreaker(name="telegram", failure_threshold=1)
+        cb.record_failure()
+        assert cb.is_open()
+
+        dispatcher = OutboundDispatcher(
+            platform_name="telegram", adapter=adapter, circuit=cb
+        )
+        await dispatcher.start()
+        try:
+            msg = _make_msg()
+            outbound = OutboundMessage.from_text("")
+
+            async def chunks() -> AsyncIterator[str]:
+                yield "hello"
+
+            dispatcher.enqueue_streaming(msg, chunks(), outbound)
+            await asyncio.sleep(0.05)
+            adapter.send_streaming.assert_not_awaited()
+            assert outbound.metadata["reply_message_id"] is None
         finally:
             await dispatcher.stop()
 

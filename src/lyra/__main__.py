@@ -32,6 +32,7 @@ from lyra.core.message import Platform
 from lyra.core.messages import MessageManager
 from lyra.core.outbound_dispatcher import OutboundDispatcher
 from lyra.core.pairing import PairingConfig, PairingManager, set_pairing_manager
+from lyra.stt import STTService, load_stt_config
 
 log = logging.getLogger(__name__)
 
@@ -119,6 +120,7 @@ def _create_agent(
     circuit_registry: CircuitRegistry | None = None,
     admin_user_ids: set[str] | None = None,
     msg_manager: MessageManager | None = None,
+    stt: STTService | None = None,
 ) -> AgentBase:
     """Select agent implementation based on backend config."""
     backend = config.model_config.backend
@@ -130,6 +132,7 @@ def _create_agent(
             circuit_registry=circuit_registry,
             admin_user_ids=admin_user_ids,
             msg_manager=msg_manager,
+            stt=stt,
         )
     if backend in ("claude-cli", "ollama"):
         if cli_pool is None:
@@ -140,6 +143,7 @@ def _create_agent(
             circuit_registry=circuit_registry,
             admin_user_ids=admin_user_ids,
             msg_manager=msg_manager,
+            stt=stt,
         )
     raise ValueError(f"Unknown backend: {backend}")
 
@@ -267,12 +271,31 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
         cli_pool = CliPool()
         await cli_pool.start()
 
+    stt_service: STTService | None = None
+    if (
+        os.environ.get("STT_MODEL_SIZE")
+        or os.environ.get("STT_DEVICE")
+        or os.environ.get("STT_COMPUTE_TYPE")
+    ):
+        try:
+            stt_cfg = load_stt_config()
+            stt_service = STTService(stt_cfg)
+            log.info(
+                "STT enabled: model=%s device=%s compute_type=%s",
+                stt_cfg.model_size,
+                stt_cfg.device,
+                stt_cfg.compute_type,
+            )
+        except ValueError as exc:
+            raise SystemExit(f"Invalid STT configuration: {exc}") from exc
+
     agent = _create_agent(
         agent_config,
         cli_pool,
         circuit_registry=circuit_registry,
         admin_user_ids=admin_user_ids,
         msg_manager=msg_manager,
+        stt=stt_service,
     )
     hub.register_agent(agent)
 

@@ -379,6 +379,7 @@ class AgentBase(ABC):
             circuit_registry=circuit_registry,
             admin_user_ids=admin_user_ids,
             msg_manager=msg_manager,
+            **self._build_router_kwargs(),
         )
         self._persona_path: Path | None = None
         self._persona_mtime: float = 0.0
@@ -477,6 +478,7 @@ class AgentBase(ABC):
                         circuit_registry=self._circuit_registry,
                         admin_user_ids=self._admin_user_ids,
                         msg_manager=self._msg_manager,
+                        **self._build_router_kwargs(),
                     )
                 self._last_mtime = mtime
                 self._update_persona_tracking()
@@ -506,7 +508,12 @@ class AgentBase(ABC):
                 circuit_registry=self._circuit_registry,
                 admin_user_ids=self._admin_user_ids,
                 msg_manager=self._msg_manager,
+                **self._build_router_kwargs(),
             )
+
+    def _build_router_kwargs(self) -> dict:
+        """Hook for subclasses to inject extra CommandRouter constructor kwargs."""
+        return {}
 
     @abstractmethod
     async def process(self, msg: Message, pool: Pool) -> Response: ...

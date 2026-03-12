@@ -15,11 +15,12 @@ from typing import Any
 
 import anthropic
 
-from lyra.core.agent import Agent, AgentBase
+from lyra.core.agent import _AGENTS_DIR, Agent, AgentBase
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import Message, extract_text
 from lyra.core.messages import MessageManager
 from lyra.core.pool import Pool
+from lyra.core.runtime_config import RuntimeConfig, RuntimeConfigHolder
 
 log = logging.getLogger(__name__)
 
@@ -45,7 +46,12 @@ class AnthropicAgent(AgentBase):
         circuit_registry: CircuitRegistry | None = None,
         admin_user_ids: set[str] | None = None,
         msg_manager: MessageManager | None = None,
+        runtime_config: RuntimeConfig | None = None,
     ) -> None:
+        rc = runtime_config if runtime_config is not None else RuntimeConfig.load(
+            _AGENTS_DIR / "lyra_runtime.toml"
+        )
+        self._runtime_config_holder = RuntimeConfigHolder(rc)
         super().__init__(
             config,
             circuit_registry=circuit_registry,
@@ -56,6 +62,18 @@ class AnthropicAgent(AgentBase):
         if not api_key:
             raise SystemExit("Missing required env var: ANTHROPIC_API_KEY")
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
+
+    @property
+    def runtime_config(self) -> RuntimeConfig:
+        """Current runtime config. Always reflects the latest /config set."""
+        return self._runtime_config_holder.value
+
+    @property
+    def _runtime_config(self) -> RuntimeConfig:
+        return self.runtime_config
+
+    def _build_router_kwargs(self) -> dict[str, object]:
+        return {"runtime_config_holder": self._runtime_config_holder}
 
     def _build_messages(self, text: str, pool: Pool) -> list[dict[str, Any]]:
         """Build SDK messages array from pool history + new user message."""
@@ -77,23 +95,25 @@ class AnthropicAgent(AgentBase):
         Yields text deltas for the adapter to display progressively.
         """
         self._maybe_reload()
+        effective = self._runtime_config.overlay(self.config)
         text = extract_text(msg)
         messages = self._build_messages(text, pool)
 
         kwargs: dict[str, Any] = {
-            "model": self.config.model_config.model,
+            "model": effective.model,
             "max_tokens": 4096,
+            "temperature": effective.temperature,
             "messages": messages,
         }
-        if self.config.system_prompt:
-            kwargs["system"] = self.config.system_prompt
+        if effective.system_prompt:
+            kwargs["system"] = effective.system_prompt
         if self.config.model_config.tools:
             kwargs["tools"] = [
                 t for t in TOOLS if t["name"] in self.config.model_config.tools
             ]
 
         accumulated_text = ""
-        max_turns = self.config.model_config.max_turns
+        max_turns = effective.max_turns
         final: Any = None
         new_messages: list[dict[str, Any]] = [{"role": "user", "content": text}]
 

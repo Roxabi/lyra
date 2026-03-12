@@ -18,7 +18,7 @@ from pathlib import Path
 
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
 from lyra.adapters.discord import DiscordAdapter, load_discord_config
 from lyra.adapters.telegram import TelegramAdapter
@@ -186,6 +186,28 @@ def create_health_app(hub: Hub) -> FastAPI:
             "last_message_age_s": last_message_age_s,
             "uptime_s": round(uptime_s, 1),
             "circuits": circuits,
+        }
+
+    @app.get("/config")
+    async def config_endpoint() -> dict:
+        from lyra.agents.anthropic_agent import AnthropicAgent
+
+        agent = hub.agent_registry.get("lyra_default")
+        if not isinstance(agent, AnthropicAgent):
+            raise HTTPException(
+                status_code=404,
+                detail="runtime config not available for this agent backend",
+            )
+        rc = agent.runtime_config
+        return {
+            "style": rc.style,
+            "language": rc.language,
+            "temperature": rc.temperature,
+            "model": rc.model,
+            "max_steps": rc.max_steps,
+            "extra_instructions": rc.extra_instructions,
+            "effective_model": rc.model or agent.config.model_config.model,
+            "effective_max_steps": rc.max_steps or agent.config.model_config.max_turns,
         }
 
     return app

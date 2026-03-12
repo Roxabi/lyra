@@ -11,3 +11,4 @@ build/
 .ruff_cache/
 .claude/stack.yml
 .claude/worktrees/
+src/lyra/agents/lyra_runtime.toml

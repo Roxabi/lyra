@@ -741,3 +741,178 @@ class TestStopCommand:
         # Act / Assert — must not raise even when pool is absent
         response = await router.dispatch(msg, pool=None)
         assert isinstance(response, Response)
+
+
+# ---------------------------------------------------------------------------
+# Slice 6 — /config command (issue #135)
+# ---------------------------------------------------------------------------
+
+
+def make_config_router(
+    tmp_path: Path,
+    admin_ids: set[str] | None = None,
+    with_holder: bool = True,
+) -> CommandRouter:
+    """Build a CommandRouter with runtime_config_holder and admin_user_ids set."""
+    from lyra.core.runtime_config import RuntimeConfig, RuntimeConfigHolder
+
+    plugins_dir = tmp_path / "plugins"
+    plugins_dir.mkdir(exist_ok=True)
+    loader = PluginLoader(plugins_dir)
+    holder = RuntimeConfigHolder(RuntimeConfig()) if with_holder else None
+    return CommandRouter(
+        plugin_loader=loader,
+        enabled_plugins=[],
+        admin_user_ids=admin_ids,
+        runtime_config_holder=holder,
+    )
+
+
+def make_config_msg(user_id: str = "tg:user:42", content: str = "/config") -> Message:
+    """Build a /config Message."""
+    return Message(
+        id="msg-config-1",
+        platform=Platform.TELEGRAM,
+        bot_id="main",
+        user_id=user_id,
+        user_name="Admin",
+        is_mention=False,
+        is_from_bot=False,
+        content=content,
+        type=MessageType.TEXT,
+        timestamp=datetime.now(timezone.utc),
+        platform_context=TelegramContext(chat_id=42),
+    )
+
+
+class TestConfigCommand:
+    """/config builtin — admin gate, show, set, reset (issue #135)."""
+
+    @pytest.mark.asyncio
+    async def test_config_non_admin_denied(self, tmp_path: Path) -> None:
+        """Non-admin sender → 'This command is admin-only.'"""
+        # Arrange — admin is a different user
+        router = make_config_router(tmp_path, admin_ids={"tg:user:999"})
+        msg = make_config_msg(user_id="tg:user:42")
+
+        # Act
+        response = await router.dispatch(msg)
+
+        # Assert
+        assert isinstance(response, Response)
+        assert "admin-only" in response.content.lower()
+
+    @pytest.mark.asyncio
+    async def test_config_show_all_fields(self, tmp_path: Path) -> None:
+        """Admin /config (no args) → table showing all 6 config fields."""
+        # Arrange
+        router = make_config_router(tmp_path, admin_ids={"tg:user:42"})
+        msg = make_config_msg(user_id="tg:user:42", content="/config")
+
+        # Act
+        response = await router.dispatch(msg)
+
+        # Assert — all 6 field names appear in the output
+        assert isinstance(response, Response)
+        assert "style" in response.content
+        assert "language" in response.content
+        assert "temperature" in response.content
+        assert "model" in response.content
+        assert "max_steps" in response.content
+        assert "extra_instructions" in response.content
+
+    @pytest.mark.asyncio
+    async def test_config_set_valid_param(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Admin /config style=detailed → sets param, returns 'Updated:...'"""
+        # Arrange — monkeypatch _AGENTS_DIR so save() writes into tmp_path
+        monkeypatch.setattr("lyra.core.agent._AGENTS_DIR", tmp_path)
+        router = make_config_router(tmp_path, admin_ids={"tg:user:42"})
+        msg = make_config_msg(user_id="tg:user:42", content="/config style=detailed")
+
+        # Act
+        response = await router.dispatch(msg)
+
+        # Assert
+        assert isinstance(response, Response)
+        assert "Updated:" in response.content
+        assert "style" in response.content
+
+    @pytest.mark.asyncio
+    async def test_config_set_unknown_key(self, tmp_path: Path) -> None:
+        """Admin /config foo=bar → 'Unknown config key'"""
+        # Arrange
+        router = make_config_router(tmp_path, admin_ids={"tg:user:42"})
+        msg = make_config_msg(user_id="tg:user:42", content="/config foo=bar")
+
+        # Act
+        response = await router.dispatch(msg)
+
+        # Assert
+        assert isinstance(response, Response)
+        assert "Unknown config key" in response.content
+
+    @pytest.mark.asyncio
+    async def test_config_reset_all(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Admin /config reset → 'Runtime config reset to defaults.'"""
+        # Arrange
+        monkeypatch.setattr("lyra.core.agent._AGENTS_DIR", tmp_path)
+        router = make_config_router(tmp_path, admin_ids={"tg:user:42"})
+        msg = make_config_msg(user_id="tg:user:42", content="/config reset")
+
+        # Act
+        response = await router.dispatch(msg)
+
+        # Assert
+        assert isinstance(response, Response)
+        assert "Runtime config reset to defaults." in response.content
+
+    @pytest.mark.asyncio
+    async def test_config_reset_single_key(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Admin /config reset style → 'Reset: style = (default). Saved.'"""
+        # Arrange
+        monkeypatch.setattr("lyra.core.agent._AGENTS_DIR", tmp_path)
+        router = make_config_router(tmp_path, admin_ids={"tg:user:42"})
+        msg = make_config_msg(user_id="tg:user:42", content="/config reset style")
+
+        # Act
+        response = await router.dispatch(msg)
+
+        # Assert
+        assert isinstance(response, Response)
+        assert "Reset: style = (default). Saved." in response.content
+
+    @pytest.mark.asyncio
+    async def test_config_reset_unknown_key(self, tmp_path: Path) -> None:
+        """Admin /config reset unknown_key → error with 'Unknown config key'"""
+        # Arrange
+        router = make_config_router(tmp_path, admin_ids={"tg:user:42"})
+        msg = make_config_msg(user_id="tg:user:42", content="/config reset unknown_key")
+
+        # Act
+        response = await router.dispatch(msg)
+
+        # Assert
+        assert isinstance(response, Response)
+        assert "Unknown config key" in response.content
+
+    @pytest.mark.asyncio
+    async def test_config_no_holder(self, tmp_path: Path) -> None:
+        """/config when runtime_config_holder is None → not available message."""
+        # Arrange — router built without a holder
+        router = make_config_router(
+            tmp_path, admin_ids={"tg:user:42"}, with_holder=False
+        )
+        msg = make_config_msg(user_id="tg:user:42", content="/config")
+
+        # Act
+        response = await router.dispatch(msg)
+
+        # Assert
+        assert isinstance(response, Response)
+        assert "not available" in response.content.lower()

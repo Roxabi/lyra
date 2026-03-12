@@ -439,6 +439,42 @@ class TestSetParam:
         # Assert
         assert updated.temperature == pytest.approx(0.3)
 
+    def test_temperature_min_boundary_accepted(self) -> None:
+        # Arrange
+        rc = RuntimeConfig()
+
+        # Act
+        updated = set_param(rc, "temperature", "0.0")
+
+        # Assert — 0.0 is the inclusive lower boundary
+        assert updated.temperature == pytest.approx(0.0)
+
+    def test_temperature_max_boundary_accepted(self) -> None:
+        # Arrange
+        rc = RuntimeConfig()
+
+        # Act
+        updated = set_param(rc, "temperature", "1.0")
+
+        # Assert — 1.0 is the inclusive upper boundary
+        assert updated.temperature == pytest.approx(1.0)
+
+    def test_temperature_below_min_raises(self) -> None:
+        # Arrange
+        rc = RuntimeConfig()
+
+        # Act / Assert
+        with pytest.raises(ValueError):
+            set_param(rc, "temperature", "-0.001")
+
+    def test_temperature_above_max_raises(self) -> None:
+        # Arrange
+        rc = RuntimeConfig()
+
+        # Act / Assert
+        with pytest.raises(ValueError):
+            set_param(rc, "temperature", "1.001")
+
     def test_temperature_out_of_range_raises(self) -> None:
         # Arrange
         rc = RuntimeConfig()
@@ -464,6 +500,41 @@ class TestSetParam:
 
         # Assert
         assert updated.max_steps == 5
+
+    def test_max_steps_zero_raises(self) -> None:
+        # Arrange — 0 would produce range(0) in process(), returning no response.
+        # Policy: reject 0 to prevent silent no-op turns.
+        rc = RuntimeConfig()
+
+        # Act / Assert
+        with pytest.raises(ValueError):
+            set_param(rc, "max_steps", "0")
+
+    def test_max_steps_negative_raises(self) -> None:
+        # Arrange — negative values produce range(0) like 0.
+        rc = RuntimeConfig()
+
+        # Act / Assert
+        with pytest.raises(ValueError):
+            set_param(rc, "max_steps", "-1")
+
+    def test_max_steps_upper_bound_accepted(self) -> None:
+        # Arrange — 50 is the max allowed value
+        rc = RuntimeConfig()
+
+        # Act
+        updated = set_param(rc, "max_steps", "50")
+
+        # Assert
+        assert updated.max_steps == 50
+
+    def test_max_steps_above_upper_bound_raises(self) -> None:
+        # Arrange — 51 exceeds the 50-turn ceiling
+        rc = RuntimeConfig()
+
+        # Act / Assert
+        with pytest.raises(ValueError):
+            set_param(rc, "max_steps", "51")
 
     def test_max_steps_non_int_raises(self) -> None:
         # Arrange
@@ -511,6 +582,60 @@ class TestSetParam:
         # Assert — original is unchanged
         assert rc.style == "concise"
         assert updated is not rc
+
+    def test_language_two_char_min_boundary_accepted(self) -> None:
+        # Arrange — 2 chars is the minimum valid language code
+        rc = RuntimeConfig()
+
+        # Act
+        updated = set_param(rc, "language", "fr")
+
+        # Assert
+        assert updated.language == "fr"
+
+    def test_language_eight_char_max_boundary_accepted(self) -> None:
+        # Arrange — 8 chars is the maximum valid language code
+        rc = RuntimeConfig()
+
+        # Act
+        updated = set_param(rc, "language", "zhtwblah")  # 8-char code
+
+        # Assert
+        assert updated.language == "zhtwblah"
+
+    def test_language_one_char_too_short_raises(self) -> None:
+        # Arrange — 1 char is below the 2-char minimum
+        rc = RuntimeConfig()
+
+        # Act / Assert
+        with pytest.raises(ValueError):
+            set_param(rc, "language", "f")
+
+    def test_language_nine_char_too_long_raises(self) -> None:
+        # Arrange — 9 chars exceeds the 8-char maximum
+        rc = RuntimeConfig()
+
+        # Act / Assert
+        with pytest.raises(ValueError):
+            set_param(rc, "language", "abcdefghi")
+
+    def test_language_auto_accepted(self) -> None:
+        # Arrange — "auto" is the special sentinel value
+        rc = RuntimeConfig(language="fr")
+
+        # Act
+        updated = set_param(rc, "language", "auto")
+
+        # Assert
+        assert updated.language == "auto"
+
+    def test_language_uppercase_rejected(self) -> None:
+        # Arrange — regex requires lowercase only
+        rc = RuntimeConfig()
+
+        # Act / Assert
+        with pytest.raises(ValueError):
+            set_param(rc, "language", "FR")
 
 
 # ---------------------------------------------------------------------------

@@ -53,13 +53,17 @@ class AnthropicAgent(AgentBase):
         msg_manager: MessageManager | None = None,
         runtime_config: RuntimeConfig | None = None,
         stt: STTService | None = None,
+        agents_dir: Path | None = None,
     ) -> None:
+        resolved_agents_dir: Path = agents_dir or _AGENTS_DIR
         rc = runtime_config if runtime_config is not None else RuntimeConfig.load(
-            _AGENTS_DIR / "lyra_runtime.toml"
+            resolved_agents_dir / "lyra_runtime.toml"
         )
         self._runtime_config_holder = RuntimeConfigHolder(rc)
+        self._runtime_config_path = resolved_agents_dir / "lyra_runtime.toml"
         super().__init__(
             config,
+            agents_dir=agents_dir,
             circuit_registry=circuit_registry,
             admin_user_ids=admin_user_ids,
             msg_manager=msg_manager,
@@ -75,12 +79,11 @@ class AnthropicAgent(AgentBase):
         """Current runtime config. Always reflects the latest /config set."""
         return self._runtime_config_holder.value
 
-    @property
-    def _runtime_config(self) -> RuntimeConfig:
-        return self.runtime_config
-
     def _build_router_kwargs(self) -> dict[str, object]:
-        return {"runtime_config_holder": self._runtime_config_holder}
+        return {
+            "runtime_config_holder": self._runtime_config_holder,
+            "runtime_config_path": self._runtime_config_path,
+        }
 
     def _build_messages(self, text: str, pool: Pool) -> list[dict[str, Any]]:
         """Build SDK messages array from pool history + new user message."""
@@ -102,7 +105,7 @@ class AnthropicAgent(AgentBase):
         Yields text deltas for the adapter to display progressively.
         """
         self._maybe_reload()
-        effective = self._runtime_config.overlay(self.config)
+        effective = self.runtime_config.overlay(self.config)
 
         tmp_path: Path | None = None
         llm_text: str

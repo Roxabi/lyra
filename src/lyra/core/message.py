@@ -63,7 +63,7 @@ class InboundAudio:
     """Normalized inbound audio envelope produced by all channel adapters.
 
     Mirrors InboundMessage for audio: adapters produce this; hub/agents consume it.
-    Bus enqueue is a future concern (issue #140 follow-on).
+    Adapters enqueue via InboundAudioBus; hub/agents consume from its staging queue.
     Security: trust is always 'user' from adapters — never set above adapter layer.
     """
 

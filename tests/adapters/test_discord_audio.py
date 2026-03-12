@@ -92,15 +92,17 @@ def test_normalize_audio_thread_scope_id() -> None:
 
 
 # ---------------------------------------------------------------------------
-# on_message() audio attachment → unsupported reply (no download)
+# on_message() audio attachment → download + enqueue on audio bus
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_on_message_replies_unsupported_for_audio_attachment() -> None:
-    """on_message() replies unsupported without downloading for audio attachments."""
+async def test_on_message_enqueues_audio_on_audio_bus() -> None:
+    """on_message() downloads audio and enqueues on inbound_audio_bus."""
     hub = MagicMock()
     hub.inbound_bus = MagicMock()
+    hub.inbound_audio_bus = MagicMock()
+    hub.inbound_audio_bus.put = MagicMock()
     adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
 
     attachment_obj = SimpleNamespace(
@@ -113,10 +115,62 @@ async def test_on_message_replies_unsupported_for_audio_attachment() -> None:
 
     await adapter.on_message(msg)
 
-    # Audio bytes should NOT be downloaded (bus not wired)
-    attachment_obj.read.assert_not_called()
+    # Audio bytes downloaded
+    attachment_obj.read.assert_called_once()
+    # Enqueued on audio bus (not text bus)
+    hub.inbound_audio_bus.put.assert_called_once()
     hub.inbound_bus.put.assert_not_called()
-    # Unsupported reply sent
+    # No unsupported reply sent
+    msg.reply.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_on_message_audio_download_failure_returns_cleanly() -> None:
+    """on_message() handles download failure gracefully — no enqueue, no crash."""
+    hub = MagicMock()
+    hub.inbound_bus = MagicMock()
+    hub.inbound_audio_bus = MagicMock()
+    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+
+    attachment_obj = SimpleNamespace(
+        content_type="audio/ogg",
+        url="https://cdn.example/audio.ogg",
+        size=1000,
+        read=AsyncMock(side_effect=RuntimeError("network error")),
+    )
+    msg = _make_discord_msg(attachments=[attachment_obj])
+    msg.author.bot = False
+
+    await adapter.on_message(msg)
+
+    hub.inbound_audio_bus.put.assert_not_called()
+    hub.inbound_bus.put.assert_not_called()
+    msg.reply.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_on_message_audio_too_large_sends_reply() -> None:
+    """on_message() rejects oversized audio with user-facing reply."""
+    hub = MagicMock()
+    hub.inbound_bus = MagicMock()
+    hub.inbound_audio_bus = MagicMock()
+    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+
+    attachment_obj = SimpleNamespace(
+        content_type="audio/ogg",
+        url="https://cdn.example/audio.ogg",
+        size=999_999_999,  # way over limit
+        read=AsyncMock(return_value=b"ogg_bytes"),
+    )
+    msg = _make_discord_msg(attachments=[attachment_obj])
+    msg.author.bot = False
+
+    await adapter.on_message(msg)
+
+    # Should NOT download
+    attachment_obj.read.assert_not_called()
+    hub.inbound_audio_bus.put.assert_not_called()
+    # Should reply with too-large message
     msg.reply.assert_called_once()
 
 

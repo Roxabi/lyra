@@ -296,27 +296,66 @@ class DiscordAdapter(discord.Client):
             None,
         )
         if audio_attachment is not None:
-            # Audio bus not yet wired (#140 follow-on) — log and reply
-            # without downloading.
+            user_id = f"dc:user:{message.author.id}"
             log.info(
                 "audio_received",
                 extra={
                     "platform": "discord",
-                    "user_id": f"dc:user:{message.author.id}",
+                    "user_id": user_id,
                     "message_id": message.id,
                 },
             )
-            try:
-                _txt = self._msg(
-                    "stt_unsupported",
-                    "Voice messages are not yet supported here.",
-                )
-                await message.reply(_txt)
-            except Exception:
+            # Pre-download size check (matches Telegram's _download_audio guard)
+            att_size = getattr(audio_attachment, "size", None)
+            if att_size is not None and att_size > self._max_audio_bytes:
                 log.warning(
-                    "Failed to send audio-unsupported reply for message_id=%s",
+                    "Audio attachment rejected: %d bytes exceeds %d byte limit"
+                    " (message_id=%s)",
+                    att_size,
+                    self._max_audio_bytes,
                     message.id,
                 )
+                try:
+                    await message.reply(
+                        self._msg(
+                            "audio_too_large",
+                            "That audio file is too large to process.",
+                        )
+                    )
+                except Exception:
+                    log.warning(
+                        "Failed to send audio-too-large reply for message_id=%s",
+                        message.id,
+                    )
+                return
+
+            try:
+                audio_bytes = await audio_attachment.read()
+            except Exception:
+                log.exception(
+                    "Failed to download audio attachment for message_id=%s",
+                    message.id,
+                )
+                return
+
+            hub_audio = self.normalize_audio(
+                message,
+                audio_bytes=audio_bytes,
+                mime_type=getattr(audio_attachment, "content_type", "audio/ogg"),
+            )
+
+            async def _send_bp(text: str) -> None:
+                await message.reply(text)
+
+            await push_to_hub_guarded(
+                inbound_bus=self._hub.inbound_audio_bus,
+                platform=Platform.DISCORD,
+                msg=hub_audio,
+                circuit_registry=self._circuit_registry,
+                on_drop=None,
+                send_backpressure=_send_bp,
+                get_msg=self._msg,
+            )
             return  # audio messages handled separately; skip text path
 
         # Pre-detect mention (needed for auto-thread decision)

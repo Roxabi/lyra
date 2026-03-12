@@ -1,0 +1,48 @@
+---
+title: "refactor: Claude CLI wrapper library — LlmProvider Protocol + ClaudeCliDriver"
+issue: 123
+status: approved
+tier: F-lite
+date: 2026-03-12
+---
+
+## Problem
+
+Lyra's LLM access is currently monolithic: the `AnthropicAgent` is the only path to Claude, and 2ndBrain's battle-tested CLI pool (`claude_pool.py`, `claude_client.py`) lives in a separate repo with no bridge to Lyra. As additional backends emerge — local Ollama inference on Machine 2, OpenRouter for multi-model routing, and the free-tier Claude Max subscription via CLI — there is no stable abstraction to plug them in cleanly.
+
+The chimera-strategy analysis (`artifacts/analyses/clawfamily/chimera-strategy.md`) has already defined the target design: an `LlmProvider` Protocol with a decorator chain and a metadata-driven `ProviderRegistry`. This issue formalizes that protocol and delivers the first two concrete drivers (`AnthropicSdkDriver` and `ClaudeCliDriver`) so the hub talks to a unified interface rather than a specific backend.
+
+Without this, every new LLM backend requires ad-hoc integration, the circuit-breaker work from #104 can't be reused cleanly, and smart routing (#134) has no stable base to build on.
+
+## Who
+
+- **Primary:** Lyra hub internals — `SimpleAgent` and future agents dispatch through `ProviderRegistry` without knowing the backend.
+- **Secondary:** Developers extending Lyra — adding a new LLM backend means implementing one Protocol, not rewriting the hub.
+
+## Constraints
+
+- `ClaudeCliDriver` must wrap 2ndBrain's persistent pool design (stream-json protocol, session persistence, idle reaper) — not reinvent it.
+- Auth for `ClaudeCliDriver` is `oauth_only` — value prop is flat billing via Claude Max subscription. Must not break when Anthropic API key is absent.
+- No token-level streaming from `ClaudeCliDriver` (subprocess boundary); message-level completion only. `capabilities["streaming"] = False` must be declared.
+- Decorator chain order is fixed: `Retry → CircuitBreaker (#104) → SmartRouting (#134) → <driver>`. CircuitBreaker extracted/ported from 2ndBrain.
+- `AnthropicSdkDriver` must be a thin refactor of the existing `AnthropicAgent` (#76) — not a rewrite.
+- Tests must cover: unit (mocked subprocess + mocked SDK) + integration path.
+- Phase 2 drivers (`OllamaDriver`, `OpenRouterDriver`) are explicitly deferred.
+
+## Out of Scope
+
+- `OllamaDriver` and `OpenRouterDriver` (Phase 2, future issues)
+- `SmartRoutingDecorator` implementation (tracked in #134)
+- Changes to the bus, adapters, or message envelope layer
+- 2ndBrain migration — the pool code stays in 2ndBrain; only the design is ported
+
+## Complexity
+
+**Tier: F-lite** — Clear backend scope, single domain (`lyra.llm`), no cross-cutting architectural changes. Design is pre-validated by chimera-strategy analysis; implementation risk is moderate (subprocess pool lifecycle).
+
+Signals observed:
+- Issue label: M (→ F-lite)
+- Single domain: `lyra.llm` only
+- Chimera strategy already defines the target architecture — no design unknowns
+- Moderate implementation risk: pool process lifecycle + session persistence
+- Blocks #83 (memory layer) — sequencing constraint, not scope bloat

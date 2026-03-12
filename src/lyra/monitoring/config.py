@@ -43,9 +43,7 @@ class MonitoringConfig:
                 f"quiet_start must be HH:MM format, got {self.quiet_start!r}"
             )
         if not _hhmm.match(self.quiet_end):
-            raise ValueError(
-                f"quiet_end must be HH:MM format, got {self.quiet_end!r}"
-            )
+            raise ValueError(f"quiet_end must be HH:MM format, got {self.quiet_end!r}")
         _service_name_re = re.compile(r"^[a-zA-Z0-9_@.\-]+$")
         if not _service_name_re.match(self.service_name):
             raise ValueError(

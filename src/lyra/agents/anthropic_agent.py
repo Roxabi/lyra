@@ -56,8 +56,10 @@ class AnthropicAgent(AgentBase):
         agents_dir: Path | None = None,
     ) -> None:
         resolved_agents_dir: Path = agents_dir or _AGENTS_DIR
-        rc = runtime_config if runtime_config is not None else RuntimeConfig.load(
-            resolved_agents_dir / "lyra_runtime.toml"
+        rc = (
+            runtime_config
+            if runtime_config is not None
+            else RuntimeConfig.load(resolved_agents_dir / "lyra_runtime.toml")
         )
         self._runtime_config_holder = RuntimeConfigHolder(rc)
         self._runtime_config_path = resolved_agents_dir / "lyra_runtime.toml"

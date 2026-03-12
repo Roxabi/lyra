@@ -18,12 +18,12 @@ from types import ModuleType
 from typing import TYPE_CHECKING, Callable, cast
 
 if TYPE_CHECKING:
-    from lyra.core.message import Message, Response
+    from lyra.core.message import InboundMessage, Response
     from lyra.core.pool import Pool
 
 log = logging.getLogger(__name__)
 
-AsyncHandler = Callable[["Message", "Pool", list[str]], "Awaitable[Response]"]
+AsyncHandler = Callable[["InboundMessage", "Pool", list[str]], "Awaitable[Response]"]
 
 
 @dataclass(frozen=True)

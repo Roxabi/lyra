@@ -18,7 +18,7 @@ import pytest
 
 from lyra.adapters.telegram import TelegramAdapter
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
-from lyra.core.message import AudioContent, MessageType, Platform
+from lyra.core.message import Attachment
 
 
 def _make_voice_msg(
@@ -68,8 +68,9 @@ async def test_voice_message_produces_audio_type(tmp_path) -> None:
 
     call_args = hub.inbound_bus.put.call_args
     hub_msg = call_args[0][1]
-    assert hub_msg.type == MessageType.AUDIO
-    assert hub_msg.platform == Platform.TELEGRAM
+    assert len(hub_msg.attachments) == 1
+    assert hub_msg.attachments[0].type == "audio"
+    assert hub_msg.platform == "telegram"
 
 
 # ---------------------------------------------------------------------------
@@ -88,11 +89,12 @@ async def test_voice_audio_content_fields(tmp_path) -> None:
         await adapter._on_voice_message(_make_voice_msg(file_id="FILEXYZ", duration=3))
 
     hub_msg = hub.inbound_bus.put.call_args[0][1]
-    content: AudioContent = hub_msg.content
-    assert isinstance(content, AudioContent)
-    assert content.url == str(tmp_file)
-    assert content.duration_seconds == 3.0
-    assert content.file_id == "FILEXYZ"
+    assert len(hub_msg.attachments) == 1
+    attachment: Attachment = hub_msg.attachments[0]
+    assert isinstance(attachment, Attachment)
+    assert attachment.type == "audio"
+    assert attachment.url_or_bytes == str(tmp_file)
+    assert attachment.mime_type == "audio/ogg"
 
 
 # ---------------------------------------------------------------------------
@@ -216,5 +218,5 @@ async def test_audio_field_message_produces_audio_type(tmp_path) -> None:
         await adapter._on_voice_message(msg)
 
     hub_msg = hub.inbound_bus.put.call_args[0][1]
-    assert hub_msg.type == MessageType.AUDIO
-    assert hub_msg.content.file_id == "AUDFILE"
+    assert len(hub_msg.attachments) == 1
+    assert hub_msg.attachments[0].type == "audio"

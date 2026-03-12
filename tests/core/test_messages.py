@@ -433,7 +433,7 @@ class TestHotReloadPreservesMsgManager:
     ) -> None:
         """msg_manager survives CommandRouter rebuild on config hot-reload."""
         from lyra.core.agent import AgentBase, load_agent_config
-        from lyra.core.message import Message, Response
+        from lyra.core.message import InboundMessage, Response
         from lyra.core.pool import Pool
 
         # Arrange — write a minimal agent TOML
@@ -452,7 +452,7 @@ system = "You are a test assistant."
 
         # Create a concrete subclass of AgentBase for testing
         class ConcreteAgent(AgentBase):
-            async def process(self, msg: Message, pool: Pool) -> Response:
+            async def process(self, msg: InboundMessage, pool: Pool) -> Response:
                 return Response(content="ok")
 
         config = load_agent_config("reloadtest", agents_dir=tmp_path)
@@ -496,7 +496,7 @@ system = "You are a test assistant (reloaded)."
 
         from lyra.core.agent import AgentBase, load_agent_config
         from lyra.core.command_router import CommandRouter
-        from lyra.core.message import Message, Response
+        from lyra.core.message import InboundMessage, Response
         from lyra.core.pool import Pool
 
         # Arrange — write minimal agent TOML
@@ -536,7 +536,7 @@ system = "test"
         )
 
         class ConcreteAgent(AgentBase):
-            async def process(self, msg: Message, pool: Pool) -> Response:
+            async def process(self, msg: InboundMessage, pool: Pool) -> Response:
                 return Response(content="ok")
 
         config = load_agent_config("pluginreload", agents_dir=tmp_path)
@@ -575,7 +575,7 @@ system = "test"
         """When msg_manager is not passed, command_router._msg_manager is None
         (backward-compatible with existing code paths — SC-9)."""
         from lyra.core.agent import AgentBase, load_agent_config
-        from lyra.core.message import Message, Response
+        from lyra.core.message import InboundMessage, Response
         from lyra.core.pool import Pool
 
         toml_content = b"""
@@ -585,7 +585,7 @@ system = "test"
         (tmp_path / "noinjection.toml").write_bytes(toml_content)
 
         class ConcreteAgent(AgentBase):
-            async def process(self, msg: Message, pool: Pool) -> Response:
+            async def process(self, msg: InboundMessage, pool: Pool) -> Response:
                 return Response(content="ok")
 
         config = load_agent_config("noinjection", agents_dir=tmp_path)

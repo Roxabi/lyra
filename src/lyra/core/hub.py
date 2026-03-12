@@ -6,18 +6,16 @@ import time
 from collections import deque
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, NamedTuple, Protocol
+from typing import TYPE_CHECKING, Any, NamedTuple, Protocol
 
 from .agent import AgentBase
 from .circuit_breaker import CircuitRegistry
 from .inbound_bus import InboundBus
 from .message import (
     GENERIC_ERROR_REPLY,
-    DiscordContext,
-    Message,
+    InboundMessage,
     Platform,
     Response,
-    TelegramContext,
 )
 from .messages import MessageManager
 from .outbound_dispatcher import OutboundDispatcher
@@ -34,16 +32,18 @@ class ChannelAdapter(Protocol):
 
     Security contract: adapters are responsible for verifying the identity
     of the sender (e.g. via platform token, signed webhook, or session)
-    before constructing a Message. The hub trusts ``Message.user_id`` as the
-    authenticated sender identity (used for rate limiting and pairing) and
-    ``Message.extract_scope_id()`` as the conversation scope (used for pool
-    routing). Never derive either from unverified inbound data.
+    before constructing an InboundMessage. The hub trusts ``InboundMessage.user_id``
+    as the authenticated sender identity (used for rate limiting and pairing) and
+    ``InboundMessage.scope_id`` as the conversation scope (used for pool routing).
+    Never derive either from unverified inbound data.
     """
 
-    async def send(self, original_msg: Message, response: Response) -> None: ...
+    def normalize(self, raw: Any) -> InboundMessage: ...
+
+    async def send(self, original_msg: InboundMessage, response: Response) -> None: ...
 
     async def send_streaming(
-        self, original_msg: Message, chunks: AsyncIterator[str]
+        self, original_msg: InboundMessage, chunks: AsyncIterator[str]
     ) -> None:
         """Stream response to the channel with edit-in-place.
 
@@ -113,7 +113,7 @@ class Hub:
         self._last_processed_at: float | None = None
 
     @property
-    def bus(self) -> asyncio.Queue[Message]:
+    def bus(self) -> asyncio.Queue[InboundMessage]:
         """Backward-compat alias for the inbound staging queue.
 
         New code should use ``inbound_bus.put(platform, msg)`` for per-platform
@@ -191,20 +191,22 @@ class Hub:
             pool_id=pool_id,
         )
 
-    def resolve_binding(self, msg: Message) -> Binding | None:
+    def resolve_binding(self, msg: InboundMessage) -> Binding | None:
         """Resolve binding: exact key, then wildcard fallback, else None."""
-        scope = msg.extract_scope_id()
-        key = RoutingKey(msg.platform, msg.bot_id, scope)
+        scope = msg.scope_id
+        key = RoutingKey(Platform(msg.platform), msg.bot_id, scope)
         exact = self.bindings.get(key)
         if exact is not None:
             return exact
-        wildcard = RoutingKey(msg.platform, msg.bot_id, "*")
+        wildcard = RoutingKey(Platform(msg.platform), msg.bot_id, "*")
         wildcard_binding = self.bindings.get(wildcard)
         if wildcard_binding is not None:
             # Synthesise a per-scope pool_id from the message scope so each
             # conversation scope gets an isolated Pool (own lock, own subprocess,
             # own conversation).
-            concrete_pool_id = RoutingKey(msg.platform, msg.bot_id, scope).to_pool_id()
+            concrete_pool_id = RoutingKey(
+                Platform(msg.platform), msg.bot_id, scope
+            ).to_pool_id()
             return Binding(
                 agent_name=wildcard_binding.agent_name, pool_id=concrete_pool_id
             )
@@ -224,7 +226,7 @@ class Hub:
     # Rate limiting
     # ------------------------------------------------------------------
 
-    def _is_rate_limited(self, msg: Message) -> bool:
+    def _is_rate_limited(self, msg: InboundMessage) -> bool:
         """Return True if this user has exceeded the per-window message limit.
 
         Uses a sliding window: tracks timestamps of recent messages and drops
@@ -232,7 +234,7 @@ class Hub:
         Inactive-user entries are cleaned up when their deque empties to prevent
         unbounded dict growth.
         """
-        key = (msg.platform.value, msg.bot_id, msg.user_id)
+        key = (msg.platform, msg.bot_id, msg.user_id)
         now = time.monotonic()
         window_start = now - self._rate_window
         timestamps = self._rate_timestamps.get(key)
@@ -256,20 +258,21 @@ class Hub:
     # Dispatch
     # ------------------------------------------------------------------
 
-    async def dispatch_response(self, msg: Message, response: Response) -> None:
+    async def dispatch_response(self, msg: InboundMessage, response: Response) -> None:
         """Send response back via the originating adapter.
 
         Routes through the OutboundDispatcher when one is registered for the
         platform (fire-and-forget queue). Falls back to a direct adapter call
         when no dispatcher is registered (used in tests and command responses).
         """
-        dispatcher = self.outbound_dispatchers.get((msg.platform, msg.bot_id))
+        platform = Platform(msg.platform)
+        dispatcher = self.outbound_dispatchers.get((platform, msg.bot_id))
         if dispatcher is not None:
             dispatcher.enqueue(msg, response)
             self._last_processed_at = time.monotonic()
             return
         # Fallback: direct adapter call (backward compat / no dispatcher registered)
-        adapter = self.adapter_registry.get((msg.platform, msg.bot_id))
+        adapter = self.adapter_registry.get((platform, msg.bot_id))
         if adapter is None:
             raise KeyError(
                 f"No adapter registered for ({msg.platform!r}, {msg.bot_id!r}). "
@@ -279,20 +282,21 @@ class Hub:
         self._last_processed_at = time.monotonic()
 
     async def dispatch_streaming(
-        self, msg: Message, chunks: AsyncIterator[str]
+        self, msg: InboundMessage, chunks: AsyncIterator[str]
     ) -> None:
         """Stream response back via the originating adapter.
 
         Routes through the OutboundDispatcher when one is registered (fire-and-forget).
         Falls back to a direct adapter call when no dispatcher is registered.
         """
-        dispatcher = self.outbound_dispatchers.get((msg.platform, msg.bot_id))
+        platform = Platform(msg.platform)
+        dispatcher = self.outbound_dispatchers.get((platform, msg.bot_id))
         if dispatcher is not None:
             dispatcher.enqueue_streaming(msg, chunks)
             self._last_processed_at = time.monotonic()
             return
         # Fallback: direct adapter call (backward compat / no dispatcher registered)
-        adapter = self.adapter_registry.get((msg.platform, msg.bot_id))
+        adapter = self.adapter_registry.get((platform, msg.bot_id))
         if adapter is None:
             raise KeyError(
                 f"No adapter registered for ({msg.platform!r}, {msg.bot_id!r}). "
@@ -317,16 +321,8 @@ class Hub:
         while True:
             msg = await self.inbound_bus.get()
             try:
-                try:
-                    scope = msg.extract_scope_id()
-                except ValueError:
-                    log.warning(
-                        "unknown platform context %s for msg %s — message dropped",
-                        type(msg.platform_context).__name__,
-                        msg.id,
-                    )
-                    continue
-                key = RoutingKey(msg.platform, msg.bot_id, scope)
+                scope = msg.scope_id
+                key = RoutingKey(Platform(msg.platform), msg.bot_id, scope)
                 if self._is_rate_limited(msg):
                     log.warning("rate limit exceeded for %s — message dropped", key)
                     continue
@@ -390,7 +386,7 @@ class Hub:
                         log.exception("dispatch_response() failed for %s: %s", key, exc)
                     continue
                 # Fail fast — check adapter exists before spending LLM tokens
-                if (msg.platform, msg.bot_id) not in self.adapter_registry:
+                if (Platform(msg.platform), msg.bot_id) not in self.adapter_registry:
                     log.error(
                         "no adapter registered for (%s, %s) — response dropped",
                         msg.platform,
@@ -434,11 +430,10 @@ class Hub:
 # ---------------------------------------------------------------------------
 
 
-def _is_group_message(msg: Message) -> bool:
+def _is_group_message(msg: InboundMessage) -> bool:
     """Return True if the message originated from a group/guild channel."""
-    ctx = msg.platform_context
-    if isinstance(ctx, TelegramContext):
-        return ctx.is_group
-    if isinstance(ctx, DiscordContext):
-        return ctx.guild_id is not None
+    if msg.platform == "telegram":
+        return bool(msg.platform_meta.get("is_group", False))
+    if msg.platform == "discord":
+        return msg.platform_meta.get("guild_id") is not None
     return False

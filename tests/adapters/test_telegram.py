@@ -20,7 +20,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
-from lyra.core.message import DiscordContext
+from lyra.core.message import InboundMessage
 from lyra.core.messages import MessageManager
 
 TOML_PATH = (
@@ -62,9 +62,8 @@ async def test_missing_secret_returns_401() -> None:
 
 
 def test_normalize_private_chat_context() -> None:
-    """_normalize() on a private-chat message produces correct TelegramContext."""
+    """normalize() on a private-chat message produces correct platform_meta."""
     from lyra.adapters.telegram import TelegramAdapter  # ImportError expected in RED
-    from lyra.core.message import Platform, TelegramContext
 
     hub = MagicMock()
     adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
@@ -79,13 +78,15 @@ def test_normalize_private_chat_context() -> None:
         entities=None,
     )
 
-    msg = adapter._normalize(aiogram_msg)
+    msg = adapter.normalize(aiogram_msg)
 
-    assert msg.platform == Platform.TELEGRAM
-    expected_ctx = TelegramContext(
-        chat_id=123, topic_id=None, is_group=False, message_id=99
-    )
-    assert msg.platform_context == expected_ctx
+    assert isinstance(msg, InboundMessage)
+    assert msg.platform == "telegram"
+    assert msg.scope_id == "chat:123"
+    assert msg.platform_meta["chat_id"] == 123
+    assert msg.platform_meta["topic_id"] is None
+    assert msg.platform_meta["is_group"] is False
+    assert msg.platform_meta["message_id"] == 99
 
 
 # ---------------------------------------------------------------------------
@@ -109,7 +110,7 @@ def test_is_mention_false_in_private_chat() -> None:
         entities=None,
     )
 
-    msg = adapter._normalize(aiogram_msg)
+    msg = adapter.normalize(aiogram_msg)
 
     assert msg.is_mention is False
 
@@ -131,7 +132,7 @@ def test_is_mention_true_when_entity_at_offset_zero() -> None:
         entities=[entity],
     )
 
-    msg = adapter._normalize(aiogram_msg)
+    msg = adapter.normalize(aiogram_msg)
 
     assert msg.is_mention is True
 
@@ -216,14 +217,7 @@ async def test_backpressure_sends_ack_when_bus_full() -> None:
 async def test_send_calls_bot_send_message() -> None:
     """adapter.send(hub_msg, Response) calls bot.send_message(chat_id=..., text=...)."""
     from lyra.adapters.telegram import TelegramAdapter  # ImportError expected in RED
-    from lyra.core.message import (
-        Message,
-        MessageType,
-        Platform,
-        Response,
-        TelegramContext,
-        TextContent,
-    )
+    from lyra.core.message import InboundMessage, Response
 
     hub = MagicMock()
     bot = AsyncMock()
@@ -231,18 +225,23 @@ async def test_send_calls_bot_send_message() -> None:
     adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
     adapter.bot = bot
 
-    original_msg = Message(
+    original_msg = InboundMessage(
         id="msg-1",
-        platform=Platform.TELEGRAM,
+        platform="telegram",
         bot_id="main",
+        scope_id="chat:123",
         user_id="tg:user:42",
         user_name="Alice",
         is_mention=False,
-        is_from_bot=False,
-        content=TextContent(text="hello"),
-        type=MessageType.TEXT,
+        text="hello",
+        text_raw="hello",
         timestamp=datetime.now(timezone.utc),
-        platform_context=TelegramContext(chat_id=123),
+        platform_meta={
+            "chat_id": 123,
+            "topic_id": None,
+            "message_id": 99,
+            "is_group": False,
+        },
     )
     response = Response(content="reply")
 
@@ -273,7 +272,7 @@ def test_token_not_in_logs(caplog: pytest.LogCaptureFixture) -> None:
     )
 
     with caplog.at_level(logging.DEBUG, logger="lyra.adapters.telegram"):
-        adapter._normalize(aiogram_msg)
+        adapter.normalize(aiogram_msg)
 
     for record in caplog.records:
         assert "test-token-secret" not in record.getMessage()
@@ -303,10 +302,10 @@ def test_missing_token_raises_on_load(monkeypatch: pytest.MonkeyPatch) -> None:
 async def test_send_skips_when_platform_context_is_not_telegram(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """adapter.send() with a non-TelegramContext platform_context must not call
+    """adapter.send() with a non-telegram platform InboundMessage must not call
     bot.send_message."""
     from lyra.adapters.telegram import TelegramAdapter  # ImportError expected in RED
-    from lyra.core.message import Message, MessageType, Platform, Response, TextContent
+    from lyra.core.message import InboundMessage, Response
 
     hub = MagicMock()
     bot = AsyncMock()
@@ -314,25 +313,31 @@ async def test_send_skips_when_platform_context_is_not_telegram(
     adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
     adapter.bot = bot
 
-    original_msg = Message(
+    original_msg = InboundMessage(
         id="msg-discord",
-        platform=Platform.TELEGRAM,
+        platform="discord",
         bot_id="main",
-        user_id="tg:user:42",
+        scope_id="channel:123",
+        user_id="dc:user:42",
         user_name="Alice",
         is_mention=False,
-        is_from_bot=False,
-        content=TextContent(text="hello"),
-        type=MessageType.TEXT,
+        text="hello",
+        text_raw="hello",
         timestamp=datetime.now(timezone.utc),
-        platform_context=DiscordContext(guild_id=None, channel_id=123, message_id=456),
+        platform_meta={
+            "guild_id": None,
+            "channel_id": 123,
+            "message_id": 456,
+            "thread_id": None,
+            "channel_type": "text",
+        },
     )
 
     with caplog.at_level(logging.WARNING, logger="lyra.adapters.telegram"):
         await adapter.send(original_msg, Response(content="hi"))
 
     bot.send_message.assert_not_awaited()
-    assert any("non-TelegramContext" in r.message for r in caplog.records)
+    assert any("non-telegram" in r.message for r in caplog.records)
 
 
 # ---------------------------------------------------------------------------
@@ -341,9 +346,8 @@ async def test_send_skips_when_platform_context_is_not_telegram(
 
 
 def test_normalize_captures_message_id() -> None:
-    """_normalize() sets TelegramContext.message_id from incoming aiogram message."""
+    """normalize() captures message_id in platform_meta."""
     from lyra.adapters.telegram import TelegramAdapter
-    from lyra.core.message import TelegramContext
 
     # Arrange
     hub = MagicMock()
@@ -359,21 +363,20 @@ def test_normalize_captures_message_id() -> None:
     )
 
     # Act
-    msg = adapter._normalize(aiogram_msg)
+    msg = adapter.normalize(aiogram_msg)
 
     # Assert
-    assert isinstance(msg.platform_context, TelegramContext)
-    assert msg.platform_context.message_id == 777
+    assert isinstance(msg, InboundMessage)
+    assert msg.platform_meta["message_id"] == 777
 
 
 def test_normalize_message_id_none_when_absent() -> None:
-    """_normalize() sets TelegramContext.message_id=None when message_id absent.
+    """normalize() sets platform_meta message_id=None when message_id absent.
 
     Note: real aiogram Message objects always have message_id (required Bot API field).
     This test exercises the getattr defensive fallback used by SimpleNamespace stubs.
     """
     from lyra.adapters.telegram import TelegramAdapter
-    from lyra.core.message import TelegramContext
 
     # Arrange
     hub = MagicMock()
@@ -389,11 +392,11 @@ def test_normalize_message_id_none_when_absent() -> None:
     )
 
     # Act
-    msg = adapter._normalize(aiogram_msg)
+    msg = adapter.normalize(aiogram_msg)
 
     # Assert
-    assert isinstance(msg.platform_context, TelegramContext)
-    assert msg.platform_context.message_id is None
+    assert isinstance(msg, InboundMessage)
+    assert msg.platform_meta["message_id"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -404,7 +407,6 @@ def test_normalize_message_id_none_when_absent() -> None:
 def test_normalize_captures_topic_and_message_id_for_forum() -> None:
     """Forum supergroup: both topic_id and message_id captured simultaneously."""
     from lyra.adapters.telegram import TelegramAdapter
-    from lyra.core.message import TelegramContext
 
     # Arrange
     hub = MagicMock()
@@ -420,13 +422,14 @@ def test_normalize_captures_topic_and_message_id_for_forum() -> None:
     )
 
     # Act
-    msg = adapter._normalize(aiogram_msg)
+    msg = adapter.normalize(aiogram_msg)
 
     # Assert
-    assert isinstance(msg.platform_context, TelegramContext)
-    assert msg.platform_context.topic_id == 99
-    assert msg.platform_context.message_id == 777
-    assert msg.platform_context.is_group is True
+    assert isinstance(msg, InboundMessage)
+    assert msg.platform_meta["topic_id"] == 99
+    assert msg.platform_meta["message_id"] == 777
+    assert msg.platform_meta["is_group"] is True
+    assert msg.scope_id == "chat:456:topic:99"
 
 
 # ---------------------------------------------------------------------------
@@ -438,14 +441,7 @@ def test_normalize_captures_topic_and_message_id_for_forum() -> None:
 async def test_send_stores_reply_message_id_in_metadata() -> None:
     """adapter.send() stores bot reply message_id in response.metadata."""
     from lyra.adapters.telegram import TelegramAdapter
-    from lyra.core.message import (
-        Message,
-        MessageType,
-        Platform,
-        Response,
-        TelegramContext,
-        TextContent,
-    )
+    from lyra.core.message import InboundMessage, Response
 
     # Arrange
     hub = MagicMock()
@@ -456,18 +452,23 @@ async def test_send_stores_reply_message_id_in_metadata() -> None:
     adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
     adapter.bot = bot
 
-    original_msg = Message(
+    original_msg = InboundMessage(
         id="msg-1",
-        platform=Platform.TELEGRAM,
+        platform="telegram",
         bot_id="main",
+        scope_id="chat:123",
         user_id="tg:user:42",
         user_name="Alice",
         is_mention=False,
-        is_from_bot=False,
-        content=TextContent(text="hello"),
-        type=MessageType.TEXT,
+        text="hello",
+        text_raw="hello",
         timestamp=datetime.now(timezone.utc),
-        platform_context=TelegramContext(chat_id=123, message_id=777),
+        platform_meta={
+            "chat_id": 123,
+            "topic_id": None,
+            "message_id": 777,
+            "is_group": False,
+        },
     )
     response = Response(content="reply")
 
@@ -551,14 +552,7 @@ async def test_send_always_delivers_regardless_of_circuit_state() -> None:
     CB check is owned by OutboundDispatcher. Adapter always delivers.
     """
     from lyra.adapters.telegram import TelegramAdapter
-    from lyra.core.message import (
-        Message,
-        MessageType,
-        Platform,
-        Response,
-        TelegramContext,
-        TextContent,
-    )
+    from lyra.core.message import InboundMessage, Response
 
     # Arrange — circuit is OPEN but adapter should still send (CB check in dispatcher)
     registry = _make_open_registry("telegram")
@@ -575,18 +569,23 @@ async def test_send_always_delivers_regardless_of_circuit_state() -> None:
     )
     adapter.bot = bot
 
-    original_msg = Message(
+    original_msg = InboundMessage(
         id="msg-1",
-        platform=Platform.TELEGRAM,
+        platform="telegram",
         bot_id="main",
+        scope_id="chat:123",
         user_id="tg:user:42",
         user_name="Alice",
         is_mention=False,
-        is_from_bot=False,
-        content=TextContent(text="hello"),
-        type=MessageType.TEXT,
+        text="hello",
+        text_raw="hello",
         timestamp=datetime.now(timezone.utc),
-        platform_context=TelegramContext(chat_id=123, message_id=1),
+        platform_meta={
+            "chat_id": 123,
+            "topic_id": None,
+            "message_id": 1,
+            "is_group": False,
+        },
     )
     response = Response(content="reply")
 

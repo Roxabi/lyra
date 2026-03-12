@@ -19,13 +19,11 @@ from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
     DiscordContext,
-    Message,
-    MessageType,
+    InboundMessage,
     OutboundAudio,
     Platform,
     RenderContext,
     Response,
-    TextContent,
 )
 from lyra.core.messages import MessageManager
 
@@ -102,70 +100,87 @@ class DiscordAdapter(discord.Client):
                 "Enable 'Message Content Intent' in the Discord Developer Portal."
             )
 
-    def _normalize(self, message: Any) -> Message:
-        """Convert a discord.py Message (or SimpleNamespace) to a hub Message.
+    def normalize(
+        self, raw: Any, *, thread_id: int | None = None, channel_id: int | None = None
+    ) -> InboundMessage:
+        """Convert a discord.py Message (or SimpleNamespace) to an InboundMessage.
 
-        Security: trust is always 'user' via Message.from_adapter().
-        Never logs the bot token.
+        thread_id and channel_id can be pre-resolved by on_message() after auto-thread
+        creation. platform_meta["message_id"] is always raw.id (original message,
+        never thread.id).
+        Security: trust='user' always.
         """
-        is_mention = self._bot_user is not None and self._bot_user in message.mentions
+        is_mention = self._bot_user is not None and self._bot_user in raw.mentions
 
         # Strip @mention prefix so content reaches the agent clean
-        content = message.content
+        text = raw.content
         if is_mention:
             if self._mention_re is None and self._bot_user is not None:
                 self._mention_re = re.compile(rf"<@!?{self._bot_user.id}>")
             if self._mention_re:
-                content = self._mention_re.sub("", content).strip()
+                text = self._mention_re.sub("", text).strip()
+
+        # Resolve channel routing (pre-resolved by on_message after thread creation)
+        resolved_channel_id: int = (
+            channel_id if channel_id is not None else raw.channel.id
+        )
+        resolved_thread_id: int | None = thread_id
+
+        # If no override, check if already in a thread
+        if resolved_thread_id is None and isinstance(raw.channel, discord.Thread):
+            resolved_thread_id = raw.channel.id
+
+        scope_id = (
+            f"thread:{resolved_thread_id}"
+            if resolved_thread_id
+            else f"channel:{resolved_channel_id}"
+        )
 
         # Detect channel type
         channel_type: str = "text"
-        if isinstance(message.channel, discord.Thread):
+        if isinstance(raw.channel, discord.Thread):
             channel_type = "thread"
-        elif isinstance(message.channel, discord.ForumChannel):
+        elif isinstance(raw.channel, discord.ForumChannel):
             channel_type = "forum"
-        elif isinstance(message.channel, discord.VoiceChannel):
+        elif isinstance(raw.channel, discord.VoiceChannel):
             channel_type = "voice"
 
-        ctx = DiscordContext(
-            guild_id=message.guild.id if message.guild else None,
-            channel_id=message.channel.id,
-            message_id=message.id,
-            thread_id=(
-                message.channel.id
-                if isinstance(message.channel, discord.Thread)
-                else None
-            ),
-            channel_type=channel_type,
-        )
+        timestamp = raw.created_at
 
         log.debug(
             "Normalizing discord message id=%s from user_id=dc:user:%s",
-            message.id,
-            message.author.id,
+            raw.id,
+            raw.author.id,
         )
 
-        _display_name = getattr(message.author, "display_name", None)
-        hub_msg = Message.from_adapter(
-            platform=Platform.DISCORD,
+        _display_name = getattr(raw.author, "display_name", None)
+        return InboundMessage(
+            id=f"discord:dc:user:{raw.author.id}:{int(timestamp.timestamp())}",
+            platform="discord",
             bot_id=self._bot_id,
-            user_id=f"dc:user:{message.author.id}",
-            user_name=(
-                _display_name if _display_name is not None else message.author.name
-            ),
-            content=TextContent(text=content),
-            type=MessageType.TEXT,
-            timestamp=message.created_at,
+            scope_id=scope_id,
+            user_id=f"dc:user:{raw.author.id}",
+            user_name=_display_name if _display_name is not None else raw.author.name,
             is_mention=is_mention,
-            is_from_bot=message.author.bot,
-            platform_context=ctx,
+            text=text,
+            text_raw=raw.content,
+            timestamp=timestamp,
+            trust="user",
+            platform_meta={
+                "guild_id": raw.guild.id if raw.guild else None,
+                "channel_id": resolved_channel_id,
+                # INVARIANT: always original message id, never thread.id
+                "message_id": raw.id,
+                "thread_id": resolved_thread_id,
+                "channel_type": channel_type,
+            },
         )
-        return hub_msg
 
     async def on_message(self, message: Any) -> None:
         """Handle incoming Gateway message.
 
-        Filters own/bot messages, applies backpressure, and enqueues to hub bus.
+        Filters own/bot messages, creates auto-thread before normalization,
+        applies backpressure, and enqueues to hub bus.
         """
         # S3: discard bot messages early — before normalization to avoid wasted work.
         # Own-message check uses cached _bot_user; falls back to author.bot pre-ready.
@@ -174,8 +189,36 @@ class DiscordAdapter(discord.Client):
         if message.author == self._bot_user:
             return
 
+        # Pre-detect mention (needed for auto-thread decision, before normalize)
+        _is_mention = self._bot_user is not None and self._bot_user in message.mentions
+
+        # S5: Auto-thread creation BEFORE normalize() (frozen dataclass invariant)
+        resolved_thread_id: int | None = None
+        resolved_channel_id: int = message.channel.id
+        if (
+            self._auto_thread
+            and _is_mention
+            and not isinstance(message.channel, discord.Thread)
+            and hasattr(message.channel, "create_thread")
+        ):
+            try:
+                thread = await message.create_thread(
+                    name=f"Chat with {message.author.display_name}"[:100].strip()
+                )
+                resolved_thread_id = thread.id
+                resolved_channel_id = thread.id
+            except Exception:
+                log.exception(
+                    "Failed to create Discord thread for message id=%s", message.id
+                )
+                # Fall through — process in original channel scope
+
         try:
-            hub_msg = self._normalize(message)
+            hub_msg = self.normalize(
+                message,
+                thread_id=resolved_thread_id,
+                channel_id=resolved_channel_id,
+            )
         except Exception:
             log.exception("Failed to normalize discord message id=%s", message.id)
             return
@@ -191,31 +234,6 @@ class DiscordAdapter(discord.Client):
                 )
                 return  # silent drop
 
-        # S5: Auto-thread creation on @mention in text channel
-        if (
-            self._auto_thread
-            and hub_msg.is_mention
-            and isinstance(hub_msg.platform_context, DiscordContext)
-            and hub_msg.platform_context.channel_type == "text"
-        ):
-            try:
-                thread = await message.create_thread(
-                    name=f"Chat with {message.author.display_name}"[:100].strip()
-                )
-                new_ctx = DiscordContext(
-                    guild_id=hub_msg.platform_context.guild_id,
-                    channel_id=thread.id,
-                    message_id=hub_msg.platform_context.message_id,
-                    thread_id=thread.id,
-                    channel_type="thread",
-                )
-                hub_msg.platform_context = new_ctx
-            except Exception:
-                log.exception(
-                    "Failed to create Discord thread for message id=%s", message.id
-                )
-                # Fall through — process in original channel scope
-
         # S5+S6: non-blocking enqueue with backpressure ack on full bus
         try:
             self._hub.inbound_bus.put(Platform.DISCORD, hub_msg)
@@ -227,7 +245,7 @@ class DiscordAdapter(discord.Client):
             )
             await message.reply(text)
 
-    async def send(self, original_msg: Message, response: Response) -> None:
+    async def send(self, original_msg: InboundMessage, response: Response) -> None:
         """Send response back to Discord.
 
         Circuit breaker checks and recording are handled by OutboundDispatcher,
@@ -238,22 +256,21 @@ class DiscordAdapter(discord.Client):
         Uses message.reply() for @-mentions, channel.send() otherwise.
         Content is truncated to Discord's 2000-char limit.
         """
-        if not isinstance(original_msg.platform_context, DiscordContext):
-            log.error(
-                "send() called with non-DiscordContext for msg_id=%s", original_msg.id
-            )
+        if original_msg.platform != "discord":
+            log.error("send() called with non-discord message id=%s", original_msg.id)
             return
 
-        ctx = original_msg.platform_context
-        channel = self.get_channel(ctx.channel_id)
+        channel_id: int = original_msg.platform_meta["channel_id"]
+        channel = self.get_channel(channel_id)
         if channel is None:
-            channel = await self.fetch_channel(ctx.channel_id)
+            channel = await self.fetch_channel(channel_id)
 
         content = response.content[:DISCORD_MAX_LENGTH]
 
         messageable = cast(discord.abc.Messageable, channel)
         if original_msg.is_mention:
-            msg = await messageable.fetch_message(ctx.message_id)
+            msg_id: int = original_msg.platform_meta["message_id"]
+            msg = await messageable.fetch_message(msg_id)
             sent = await msg.reply(content)
         else:
             sent = await messageable.send(content)
@@ -262,7 +279,7 @@ class DiscordAdapter(discord.Client):
         log.debug("stored reply_message_id=%s for msg_id=%s", sent.id, original_msg.id)
 
     async def send_streaming(
-        self, original_msg: Message, chunks: AsyncIterator[str]
+        self, original_msg: InboundMessage, chunks: AsyncIterator[str]
     ) -> None:
         """Stream response with edit-in-place, debounced at ~1s.
 
@@ -272,17 +289,17 @@ class DiscordAdapter(discord.Client):
         TODO: store placeholder.id in response.metadata["reply_message_id"]
         once send_streaming() receives a Response argument (#67).
         """
-        if not isinstance(original_msg.platform_context, DiscordContext):
+        if original_msg.platform != "discord":
             log.error(
-                "send_streaming() called with non-DiscordContext for msg_id=%s",
+                "send_streaming() called with non-discord message id=%s",
                 original_msg.id,
             )
             return
 
-        ctx = original_msg.platform_context
-        channel = self.get_channel(ctx.channel_id)
+        channel_id = original_msg.platform_meta["channel_id"]
+        channel = self.get_channel(channel_id)
         if channel is None:
-            channel = await self.fetch_channel(ctx.channel_id)
+            channel = await self.fetch_channel(channel_id)
 
         messageable = cast(discord.abc.Messageable, channel)
         accumulated = ""

@@ -19,12 +19,9 @@ import pytest
 from lyra.core.agent import Agent
 from lyra.core.hub import Hub, _is_group_message
 from lyra.core.message import (
-    DiscordContext,
-    Message,
-    MessageType,
+    InboundMessage,
     Platform,
     Response,
-    TelegramContext,
 )
 from lyra.core.pairing import (
     PairingConfig,
@@ -64,29 +61,38 @@ def make_message(
     user_id: str = _USER_ID,
     is_group: bool = False,
     guild_id: int | None = None,
-) -> Message:
-    """Build a minimal Message for testing."""
+) -> InboundMessage:
+    """Build a minimal InboundMessage for testing."""
     if platform == Platform.DISCORD:
-        ctx: TelegramContext | DiscordContext = DiscordContext(
-            guild_id=guild_id,
-            channel_id=1,
-            message_id=1,
-        )
+        scope = "channel:1"
+        meta = {
+            "guild_id": guild_id,
+            "channel_id": 1,
+            "message_id": 1,
+            "thread_id": None,
+            "channel_type": "text",
+        }
     else:
-        ctx = TelegramContext(chat_id=42, is_group=is_group)
+        scope = "chat:42"
+        meta = {
+            "chat_id": 42,
+            "topic_id": None,
+            "message_id": None,
+            "is_group": is_group,
+        }
 
-    return Message(
+    return InboundMessage(
         id="msg-test-1",
-        platform=platform,
+        platform=platform.value,
         bot_id=bot_id,
+        scope_id=scope,
         user_id=user_id,
         user_name="Tester",
         is_mention=False,
-        is_from_bot=False,
-        content=content,
-        type=MessageType.TEXT,
+        text=content,
+        text_raw=content,
         timestamp=datetime.now(timezone.utc),
-        platform_context=ctx,
+        platform_meta=meta,
     )
 
 
@@ -215,9 +221,7 @@ class TestGenerateCode:
         code = await pm.generate_code(_ADMIN_ID)
         # Manually expire the existing code in the DB
         assert pm._db is not None
-        past = (
-            datetime.now(timezone.utc) - timedelta(seconds=10)
-        ).isoformat()
+        past = (datetime.now(timezone.utc) - timedelta(seconds=10)).isoformat()
         await pm._db.execute(
             "UPDATE pairing_codes SET expires_at = ? WHERE code_hash = ?",
             (past, _sha256(code)),
@@ -603,7 +607,7 @@ class TestHubGate:
         from lyra.core.agent import AgentBase
 
         class NullAgent(AgentBase):
-            async def process(self, msg: Message, pool: Pool) -> Response:
+            async def process(self, msg: InboundMessage, pool: Pool) -> Response:
                 return Response(content="ok")
 
         agent = NullAgent(config)
@@ -615,17 +619,19 @@ class TestHubGate:
         captured: list[Response] = []
 
         class CapturingAdapter:
-            async def send(self, original_msg: Message, response: Response) -> None:
+            async def send(
+                self, original_msg: InboundMessage, response: Response
+            ) -> None:
                 captured.append(response)
 
             async def send_streaming(
-                self, original_msg: Message, chunks: object
+                self, original_msg: InboundMessage, chunks: object
             ) -> None:
                 pass
 
         return CapturingAdapter(), captured
 
-    async def _run_hub_once(self, hub: Hub, msg: Message) -> None:
+    async def _run_hub_once(self, hub: Hub, msg: InboundMessage) -> None:
         """Put a message on the bus and run the hub for one iteration."""
         await hub.bus.put(msg)
         try:

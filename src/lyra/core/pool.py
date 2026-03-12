@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from .agent import AgentBase
     from .hub import Hub
 
-from .message import GENERIC_ERROR_REPLY, Message, Response
+from .message import GENERIC_ERROR_REPLY, InboundMessage, Response
 
 log = logging.getLogger(__name__)
 
@@ -35,15 +35,15 @@ class Pool:
         # TODO: decide eviction strategy before adding memory layer:
         #   option A: deque(maxlen=N) for sliding-window compaction
         #   option B: Pool.append(msg) mutator with compaction callback (0→3 cascade)
-        self.history: list[Message] = []
+        self.history: list[InboundMessage] = []
         self.sdk_history: deque[dict] = deque()
         self.max_sdk_history: int = 50
         self._hub = hub
         self._turn_timeout = turn_timeout
-        self._inbox: asyncio.Queue[Message] = asyncio.Queue()
+        self._inbox: asyncio.Queue[InboundMessage] = asyncio.Queue()
         self._current_task: asyncio.Task | None = None
 
-    def submit(self, msg: Message) -> None:
+    def submit(self, msg: InboundMessage) -> None:
         """Enqueue msg; start processing task if not running."""
         self._inbox.put_nowait(msg)
         if self._current_task is None or self._current_task.done():
@@ -102,7 +102,7 @@ class Pool:
         finally:
             self._current_task = None
 
-    async def _process_one(self, msg: Message, agent: "AgentBase") -> None:
+    async def _process_one(self, msg: InboundMessage, agent: "AgentBase") -> None:
         """Run agent.process and dispatch result. Records CB success.
 
         Accepts both streaming patterns:
@@ -146,7 +146,7 @@ class Pool:
                 if _ant_cb is not None:
                     _ant_cb.record_failure()
 
-    async def _safe_dispatch(self, msg: Message, response: Response) -> None:
+    async def _safe_dispatch(self, msg: InboundMessage, response: Response) -> None:
         try:
             await asyncio.wait_for(
                 self._hub.dispatch_response(msg, response),

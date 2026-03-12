@@ -9,30 +9,36 @@ import pytest
 
 from lyra.core.inbound_bus import InboundBus
 from lyra.core.message import (
-    Message,
-    MessageType,
+    InboundMessage,
     Platform,
-    TelegramContext,
-    TextContent,
 )
 
 
-def _make_msg(platform: Platform = Platform.TELEGRAM) -> Message:
-    from lyra.core.message import DiscordContext
-
+def _make_msg(platform: Platform = Platform.TELEGRAM) -> InboundMessage:
     if platform == Platform.TELEGRAM:
-        ctx = TelegramContext(chat_id=123)
+        scope = "chat:123"
+        meta = {"chat_id": 123, "topic_id": None, "message_id": None, "is_group": False}
     else:
-        ctx = DiscordContext(guild_id=1, channel_id=2, message_id=3)
-    return Message.from_adapter(
-        platform=platform,
+        scope = "channel:2"
+        meta = {
+            "guild_id": 1,
+            "channel_id": 2,
+            "message_id": 3,
+            "thread_id": None,
+            "channel_type": "text",
+        }
+    return InboundMessage(
+        id="msg-1",
+        platform=platform.value,
         bot_id="main",
+        scope_id=scope,
         user_id="user:1",
         user_name="Alice",
-        content=TextContent(text="hello"),
-        type=MessageType.TEXT,
+        is_mention=False,
+        text="hello",
+        text_raw="hello",
         timestamp=datetime.now(timezone.utc),
-        platform_context=ctx,
+        platform_meta=meta,
     )
 
 

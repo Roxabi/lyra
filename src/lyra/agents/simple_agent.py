@@ -17,11 +17,8 @@ from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.cli_pool import CliPool, CliResult
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
-    AudioContent,
-    Message,
-    MessageType,
+    InboundMessage,
     Response,
-    extract_text,
 )
 from lyra.core.messages import MessageManager
 from lyra.core.pool import Pool
@@ -67,17 +64,13 @@ class SimpleAgent(AgentBase):
         )
         self._pool = cli_pool
 
-    async def process(self, msg: Message, pool: Pool) -> Response:
+    async def process(self, msg: InboundMessage, pool: Pool) -> Response:
         self._maybe_reload()
 
-        # Handle AUDIO messages
-        if msg.type == MessageType.AUDIO:
-            audio = msg.content
-            if not isinstance(audio, AudioContent):
-                raise TypeError(
-                    f"AUDIO message must carry AudioContent, got {type(audio).__name__}"
-                )
-            tmp_path = Path(audio.url)
+        # Handle audio messages — attachments with type="audio"
+        audio_attachment = next((a for a in msg.attachments if a.type == "audio"), None)
+        if audio_attachment is not None:
+            tmp_path = Path(str(audio_attachment.url_or_bytes))
             try:
                 if self._stt is None:
                     return Response(
@@ -113,7 +106,7 @@ class SimpleAgent(AgentBase):
                 )
             text = f"🎤 [transcribed]: {stt_result.text}"
         else:
-            text = extract_text(msg)
+            text = msg.text
 
         model_cfg = self.config.model_config
 

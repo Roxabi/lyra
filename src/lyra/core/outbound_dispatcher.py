@@ -19,14 +19,14 @@ from typing import TYPE_CHECKING
 from anthropic import APIError as AnthropicAPIError
 
 from .circuit_breaker import CircuitBreaker, CircuitRegistry
-from .message import Message, Response
+from .message import InboundMessage, Response
 
 if TYPE_CHECKING:
     from lyra.core.hub import ChannelAdapter
 
 log = logging.getLogger(__name__)
 
-# Queue item: (kind: "send"|"streaming", msg: Message, payload)
+# Queue item: (kind: "send"|"streaming", msg: InboundMessage, payload)
 _ITEM = tuple
 
 
@@ -59,7 +59,7 @@ class OutboundDispatcher:
         self._queue: asyncio.Queue[_ITEM] = asyncio.Queue()
         self._worker: asyncio.Task[None] | None = None
 
-    def enqueue(self, msg: Message, response: Response) -> None:
+    def enqueue(self, msg: InboundMessage, response: Response) -> None:
         """Enqueue a non-streaming response for delivery.
 
         Fire-and-forget: returns immediately. The worker task delivers asynchronously.
@@ -67,7 +67,7 @@ class OutboundDispatcher:
         self._queue.put_nowait(("send", msg, response))
 
     def enqueue_streaming(
-        self, msg: Message, chunks: AsyncIterator[str]
+        self, msg: InboundMessage, chunks: AsyncIterator[str]
     ) -> None:
         """Enqueue a streaming response for delivery.
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Literal, TypeAlias
 
@@ -46,6 +46,43 @@ class AudioContent(BaseModel):
 
 
 MessageContent = TextContent | ImageContent | AudioContent
+
+
+@dataclass(frozen=True)
+class Attachment:
+    """A file or media attachment on an InboundMessage."""
+
+    type: str  # "image" | "audio" | "video" | "file"
+    url_or_bytes: str | bytes  # URL string or raw bytes
+    mime_type: str
+    filename: str | None = None
+
+
+@dataclass(frozen=True)
+class InboundMessage:
+    """Normalized inbound envelope produced by all channel adapters.
+
+    platform_meta carries platform-specific routing data. See spec platform_meta table.
+    Security: trust is always 'user' from adapters — never set above adapter layer.
+    Bot-authored messages are filtered by adapters before normalize() is called.
+    """
+
+    id: str
+    platform: str  # "telegram" | "discord" | ...
+    bot_id: str
+    scope_id: str  # canonical routing scope (computed by adapter)
+    user_id: str
+    user_name: str
+    is_mention: bool
+    text: str  # normalized plain text (markup stripped)
+    text_raw: str  # original text with platform markup
+    attachments: list[Attachment] = field(default_factory=list)
+    reply_to_id: str | None = None
+    thread_id: str | None = None
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    locale: str | None = None
+    trust: Literal["user", "system"] = "user"
+    platform_meta: dict = field(default_factory=dict)
 
 
 def extract_text(msg: "Message") -> str:

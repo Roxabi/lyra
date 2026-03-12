@@ -9,26 +9,30 @@ from unittest.mock import AsyncMock, MagicMock
 
 from lyra.core.circuit_breaker import CircuitBreaker
 from lyra.core.message import (
-    Message,
-    MessageType,
-    Platform,
+    InboundMessage,
     Response,
-    TelegramContext,
-    TextContent,
 )
 from lyra.core.outbound_dispatcher import OutboundDispatcher
 
 
-def _make_msg() -> Message:
-    return Message.from_adapter(
-        platform=Platform.TELEGRAM,
+def _make_msg() -> InboundMessage:
+    return InboundMessage(
+        id="msg-1",
+        platform="telegram",
         bot_id="main",
+        scope_id="chat:123",
         user_id="tg:user:42",
         user_name="Alice",
-        content=TextContent(text="hello"),
-        type=MessageType.TEXT,
+        is_mention=False,
+        text="hello",
+        text_raw="hello",
         timestamp=datetime.now(timezone.utc),
-        platform_context=TelegramContext(chat_id=123),
+        platform_meta={
+            "chat_id": 123,
+            "topic_id": None,
+            "message_id": None,
+            "is_group": False,
+        },
     )
 
 
@@ -36,9 +40,7 @@ def _make_adapter() -> tuple[MagicMock, OutboundDispatcher]:
     adapter = MagicMock()
     adapter.send = AsyncMock()
     adapter.send_streaming = AsyncMock()
-    dispatcher = OutboundDispatcher(
-        platform_name="telegram", adapter=adapter
-    )
+    dispatcher = OutboundDispatcher(platform_name="telegram", adapter=adapter)
     return adapter, dispatcher
 
 

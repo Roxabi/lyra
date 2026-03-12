@@ -16,6 +16,7 @@ from .message import (
     GENERIC_ERROR_REPLY,
     InboundAudio,
     InboundMessage,
+    OutboundAttachment,
     OutboundMessage,
     Platform,
     Response,
@@ -63,6 +64,12 @@ class ChannelAdapter(Protocol):
         to ``outbound.metadata["reply_message_id"]`` after sending the
         placeholder, mirroring the contract of :meth:`send`.
         """
+        ...
+
+    async def render_attachment(
+        self, msg: OutboundAttachment, inbound: InboundMessage
+    ) -> None:
+        """Send an outbound attachment (image/video/document/file) to the channel."""
         ...
 
 

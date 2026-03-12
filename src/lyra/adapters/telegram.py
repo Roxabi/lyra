@@ -23,6 +23,7 @@ from lyra.core.message import (
     GENERIC_ERROR_REPLY,
     InboundAudio,
     InboundMessage,
+    OutboundAttachment,
     OutboundAudio,
     OutboundMessage,
     Platform,
@@ -645,3 +646,56 @@ class TelegramAdapter:
             kwargs["duration"] = duration_sec
 
         await self.bot.send_voice(**kwargs)
+
+    async def render_attachment(
+        self, msg: OutboundAttachment, inbound: InboundMessage
+    ) -> None:
+        """Send an OutboundAttachment envelope via the appropriate Telegram method.
+
+        Dispatches to send_photo, send_video, or send_document based on msg.type.
+        Caption, reply_to, and topic threading follow the same pattern as render_audio.
+        """
+        if inbound.platform != Platform.TELEGRAM.value:
+            log.error(
+                "render_attachment() called with non-telegram message id=%s",
+                inbound.id,
+            )
+            return
+
+        chat_id: int | None = inbound.platform_meta.get("chat_id")
+        if chat_id is None:
+            log.error(
+                "render_attachment: platform_meta missing 'chat_id' for msg id=%s",
+                inbound.id,
+            )
+            return
+
+        topic_id: int | None = inbound.platform_meta.get("topic_id")
+        message_id: int | None = inbound.platform_meta.get("message_id")
+
+        reply_to = parse_reply_to_id(msg.reply_to_id)
+        if reply_to is None and message_id is not None:
+            reply_to = message_id
+
+        buf = BytesIO(msg.data)
+        if msg.filename:
+            buf.name = msg.filename
+
+        kwargs: dict = {"chat_id": chat_id}
+        if topic_id is not None:
+            kwargs["message_thread_id"] = topic_id
+        if reply_to is not None:
+            kwargs["reply_to_message_id"] = reply_to
+        if msg.caption:
+            kwargs["caption"] = msg.caption[:1024]
+
+        if msg.type == "image":
+            kwargs["photo"] = buf
+            await self.bot.send_photo(**kwargs)
+        elif msg.type == "video":
+            kwargs["video"] = buf
+            await self.bot.send_video(**kwargs)
+        else:
+            # "document" and "file" both use send_document
+            kwargs["document"] = buf
+            await self.bot.send_document(**kwargs)

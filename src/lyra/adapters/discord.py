@@ -18,7 +18,6 @@ if TYPE_CHECKING:
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
-    CodeBlock,
     DiscordContext,
     InboundMessage,
     OutboundAudio,
@@ -33,25 +32,7 @@ log = logging.getLogger(__name__)
 DISCORD_MAX_LENGTH = 2000  # Discord API message length limit
 
 
-def _outbound_to_text(outbound: OutboundMessage) -> str:
-    """Flatten OutboundMessage content parts to a plain text string.
 
-    Handles str (plain text) and CodeBlock parts. Attachment parts are
-    rendered as their URL. This is the minimal adapter-layer rendering
-    used until _render_text / _render_buttons are implemented (Slice V3).
-    """
-    parts: list[str] = []
-    for part in outbound.content:
-        if isinstance(part, str):
-            parts.append(part)
-        elif isinstance(part, CodeBlock):
-            lang = part.language or ""
-            parts.append(f"```{lang}\n{part.code}\n```")
-        else:
-            # Attachment
-            caption = f" — {part.caption}" if part.caption else ""
-            parts.append(f"{part.url}{caption}")
-    return "\n".join(parts)
 _AUTO_THREAD_TRUE = frozenset({"1", "true", "yes", "on"})
 
 
@@ -274,7 +255,7 @@ class DiscordAdapter(discord.Client):
     def _render_text(self, text: str) -> list[str]:
         """Split text into ≤2000-char chunks (Discord limit). No escaping needed."""
         if not text:
-            return [""]
+            return []
         return [text[i:i + DISCORD_MAX_LENGTH]
                 for i in range(0, len(text), DISCORD_MAX_LENGTH)]
 
@@ -314,7 +295,7 @@ class DiscordAdapter(discord.Client):
         if send_channel is None:
             send_channel = await self.fetch_channel(send_to_id)
 
-        text = _outbound_to_text(outbound)
+        text = outbound.to_text()
         chunks = self._render_text(text)
         view = self._render_buttons(outbound.buttons)
         last_idx = len(chunks) - 1
@@ -329,7 +310,7 @@ class DiscordAdapter(discord.Client):
                     raise ValueError(
                         "platform_meta missing required key 'message_id' for mention reply"
                     )
-                msg_obj = await messageable.fetch_message(msg_id)
+                msg_obj = messageable.get_partial_message(msg_id)  # type: ignore[attr-defined]
                 if chunk_view is not None:
                     sent = await msg_obj.reply(chunk, view=chunk_view)
                 else:

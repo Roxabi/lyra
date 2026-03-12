@@ -171,7 +171,7 @@ async def test_send_reply_on_mention() -> None:
     mock_message = AsyncMock()
     mock_message.reply = AsyncMock()
     mock_channel = AsyncMock()
-    mock_channel.fetch_message = AsyncMock(return_value=mock_message)
+    mock_channel.get_partial_message = MagicMock(return_value=mock_message)
     adapter.get_channel = MagicMock(return_value=mock_channel)
 
     hub_msg = InboundMessage(
@@ -196,7 +196,7 @@ async def test_send_reply_on_mention() -> None:
 
     await adapter.send(hub_msg, OutboundMessage.from_text("hi"))
 
-    mock_channel.fetch_message.assert_awaited_once_with(555)
+    mock_channel.get_partial_message.assert_called_once_with(555)
     mock_message.reply.assert_awaited_once_with("hi")
 
 
@@ -731,7 +731,7 @@ async def test_send_stores_reply_message_id_msg_reply() -> None:
     mock_message = AsyncMock()
     mock_message.reply = AsyncMock(return_value=sent_msg)
     mock_channel = AsyncMock()
-    mock_channel.fetch_message = AsyncMock(return_value=mock_message)
+    mock_channel.get_partial_message = MagicMock(return_value=mock_message)
     adapter.get_channel = MagicMock(return_value=mock_channel)
 
     hub_msg = InboundMessage(
@@ -759,7 +759,7 @@ async def test_send_stores_reply_message_id_msg_reply() -> None:
     await adapter.send(hub_msg, outbound)
 
     # Assert
-    mock_channel.fetch_message.assert_awaited_once_with(555)
+    mock_channel.get_partial_message.assert_called_once_with(555)
     mock_message.reply.assert_awaited_once_with("hi")
     assert outbound.metadata["reply_message_id"] == 7777
 
@@ -1035,7 +1035,9 @@ def test_normalize_empty_text() -> None:
 # ---------------------------------------------------------------------------
 
 from lyra.core.message import (  # noqa: E402,F401 — Slice V2 green
+    Attachment,
     Button,
+    CodeBlock,
     OutboundMessage,
 )
 
@@ -1097,6 +1099,17 @@ class TestDiscordOutboundMessage:
 
         # Assert
         mock_channel.send.assert_awaited()
+
+    def test_render_text_empty_returns_no_chunks(self) -> None:
+        """_render_text("") returns [] — no empty-string chunk to send to the API."""
+        # Arrange
+        adapter = _make_discord_adapter()
+
+        # Act
+        chunks = adapter._render_text("")  # type: ignore[attr-defined]
+
+        # Assert
+        assert chunks == []
 
     def test_render_text_chunks_at_2000(self) -> None:
         """_render_text("x" * 2500) returns 2 chunks, each ≤ 2000 characters."""

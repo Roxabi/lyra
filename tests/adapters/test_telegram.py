@@ -746,7 +746,9 @@ async def test_on_message_drops_bot_text_message() -> None:
 # ---------------------------------------------------------------------------
 
 from lyra.core.message import (  # noqa: E402,F401 — Slice V2 green
+    Attachment,
     Button,
+    CodeBlock,
     OutboundMessage,
 )
 
@@ -810,6 +812,17 @@ class TestTelegramOutboundMessage:
         assert call_kwargs.kwargs.get("text") == "hello" or (
             len(call_kwargs.args) > 1 and call_kwargs.args[1] == "hello"
         )
+
+    def test_render_text_empty_returns_no_chunks(self) -> None:
+        """_render_text("") returns [] — no empty-string chunk to send to the API."""
+        # Arrange
+        adapter = _make_telegram_adapter()
+
+        # Act
+        chunks = adapter._render_text("")  # type: ignore[attr-defined]
+
+        # Assert
+        assert chunks == []
 
     def test_render_text_escapes_markdownv2(self) -> None:
         # _render_text("hello_world") returns ["hello\\_world"] (underscore escaped).

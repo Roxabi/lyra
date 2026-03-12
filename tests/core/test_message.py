@@ -58,6 +58,58 @@ def test_response_to_outbound() -> None:
     assert outbound.content == ["x"]
 
 
+def test_to_text_renders_code_block() -> None:
+    """OutboundMessage.to_text() renders CodeBlock as a fenced code block string."""
+    from lyra.core.message import CodeBlock, OutboundMessage
+
+    # Arrange
+    outbound = OutboundMessage(content=[CodeBlock(code="x = 1", language="python")])
+
+    # Act
+    text = outbound.to_text()
+
+    # Assert
+    assert "```python" in text
+    assert "x = 1" in text
+
+
+def test_to_text_renders_attachment() -> None:
+    """OutboundMessage.to_text() renders Attachment as 'url — caption'."""
+    from lyra.core.message import Attachment, OutboundMessage
+
+    # Arrange
+    outbound = OutboundMessage(
+        content=[
+            Attachment(url="http://example/img", media_type="image/png", caption="pic")
+        ]
+    )
+
+    # Act
+    text = outbound.to_text()
+
+    # Assert
+    assert "http://example/img" in text
+    assert "pic" in text
+
+
+def test_to_text_multi_part() -> None:
+    """OutboundMessage.to_text() joins multiple content parts with newlines."""
+    from lyra.core.message import CodeBlock, OutboundMessage
+
+    # Arrange
+    outbound = OutboundMessage(
+        content=["hello", CodeBlock(code="y = 2", language=None)]
+    )
+
+    # Act
+    text = outbound.to_text()
+
+    # Assert
+    assert "hello" in text
+    assert "y = 2" in text
+    assert "\n" in text  # parts joined by newline
+
+
 def test_outbound_importable_from_core() -> None:
     """OutboundMessage, Button, CodeBlock, Attachment, ContentPart must be
     importable from lyra.core (the package __init__ re-exports)."""

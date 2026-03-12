@@ -281,3 +281,21 @@ class OutboundMessage:
     def from_text(cls, text: str) -> "OutboundMessage":
         """Convenience constructor: single plain-text content part."""
         return cls(content=[text])
+
+    def to_text(self) -> str:
+        """Flatten content parts to a plain string for adapter rendering.
+
+        str parts → verbatim; CodeBlock → fenced code block; Attachment → URL caption.
+        """
+        parts: list[str] = []
+        for part in self.content:
+            if isinstance(part, str):
+                parts.append(part)
+            elif isinstance(part, CodeBlock):
+                lang = part.language or ""
+                parts.append(f"```{lang}\n{part.code}\n```")
+            else:
+                # Attachment
+                caption = f" — {part.caption}" if part.caption else ""
+                parts.append(f"{part.url}{caption}")
+        return "\n".join(parts)

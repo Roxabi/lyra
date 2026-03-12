@@ -24,7 +24,6 @@ from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
     Attachment,
-    CodeBlock,
     InboundMessage,
     OutboundAudio,
     OutboundMessage,
@@ -40,25 +39,6 @@ TELEGRAM_MAX_LENGTH = 4096  # Telegram Bot API text message limit
 _MARKDOWNV2_SPECIAL = re.compile(r'([_*\[\]()~`>#\+\-=|{}.!\\])')
 
 
-def _outbound_to_text(outbound: OutboundMessage) -> str:
-    """Flatten OutboundMessage content parts to a plain text string.
-
-    Handles str (plain text) and CodeBlock parts. Attachment parts are
-    rendered as their URL. This is the minimal adapter-layer rendering
-    used until _render_text / _render_buttons are implemented (Slice V3).
-    """
-    parts: list[str] = []
-    for part in outbound.content:
-        if isinstance(part, str):
-            parts.append(part)
-        elif isinstance(part, CodeBlock):
-            lang = part.language or ""
-            parts.append(f"```{lang}\n{part.code}\n```")
-        else:
-            # Attachment
-            caption = f" — {part.caption}" if part.caption else ""
-            parts.append(f"{part.url}{caption}")
-    return "\n".join(parts)
 
 
 @dataclass(frozen=True)
@@ -427,7 +407,7 @@ class TelegramAdapter:
         """Escape MarkdownV2 special characters and split into ≤4096-char chunks."""
         escaped = _MARKDOWNV2_SPECIAL.sub(r'\\\1', text)
         if not escaped:
-            return [""]
+            return []
         return [escaped[i:i + TELEGRAM_MAX_LENGTH]
                 for i in range(0, len(escaped), TELEGRAM_MAX_LENGTH)]
 
@@ -459,7 +439,7 @@ class TelegramAdapter:
             )
 
         # Flatten content parts to plain text, escape and chunk
-        text = _outbound_to_text(outbound)
+        text = outbound.to_text()
         chunks = self._render_text(text)
         keyboard = self._render_buttons(outbound.buttons)
         last_idx = len(chunks) - 1
@@ -518,7 +498,7 @@ class TelegramAdapter:
             fallback_content = accumulated or _placeholder_text
             # Streaming fallback sends plain text directly (streaming path does not
             # apply MarkdownV2 escaping — consistent with the edit-in-place path).
-            await self.bot.send_message(chat_id=ctx.chat_id, text=fallback_content)
+            await self.bot.send_message(chat_id=chat_id, text=fallback_content)
             return
 
         last_edit = time.monotonic()

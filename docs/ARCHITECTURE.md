@@ -72,18 +72,20 @@ Goal: take the best of each. Lightweight like NullClaw, feature-rich like OpenCl
 - Embeddings (nomic-embed-text): ~0.5GB
 - **Total: ~5.5GB / 10GB** → 4.5GB headroom
 
-**STT Whisper VRAM** (faster-whisper, float16 on CUDA):
+**STT Whisper VRAM** (via voicecli library, faster-whisper under the hood, float16 on CUDA):
 
 | Model (`STT_MODEL_SIZE`) | VRAM | Notes |
 |--------------------------|------|-------|
 | `tiny` | ~0.2GB | Fastest, low accuracy |
-| `small` | ~0.5GB | **Default** — good balance |
+| `small` | ~0.5GB | Good balance |
 | `medium` | ~1.5GB | Higher accuracy |
+| `large-v3-turbo` | ~3.0GB | **Default** — best accuracy/speed ratio |
 | `large-v3` | ~3.0GB | Best accuracy, slowest |
 
-Default (`small`) adds ~0.5GB → total **~6GB / 10GB** with 4GB headroom.
+Default (`large-v3-turbo`) adds ~3GB → total **~8.5GB / 10GB** with 1.5GB headroom.
 
-**STT env vars**: `STT_MODEL_SIZE` (default: `small`), `STT_DEVICE` (default: `auto`), `STT_COMPUTE_TYPE` (default: `auto`).
+**STT env vars**: `STT_MODEL_SIZE` (default: `large-v3-turbo`), `STT_DEVICE` (default: `auto`), `STT_COMPUTE_TYPE` (default: `auto`).
+**Personal vocab**: loaded automatically from `~/.voicecli/voicecli.vocab` (shared with voicecli dictate daemon).
 
 ### Machine 2 — AI Server
 
@@ -310,7 +312,8 @@ See `docs/architecture/adr/010-external-tool-integration-pattern.mdx` for full r
 | SQLite async | aiosqlite |
 | BM25 | FTS5 (built-in SQLite) |
 | Vector search | sqlite-vec + fastembed ONNX |
-| TTS | voicecli (Qwen-fast) |
+| TTS | voicecli (Qwen-fast) — Phase 2 |
+| STT | voicecli library (faster-whisper, `large-v3-turbo`) |
 | Embeddings | fastembed ONNX (nomic-embed-text) + sqlite-vec |
 | Process mgmt | supervisord + systemd |
 | Internal API | FastAPI |
@@ -361,7 +364,7 @@ client = AsyncOpenAI(
 - **TTL eviction for Hub.pools** (#205 ✅) — Prevents memory leak from stale pools.
 - **Message normalization** (#139 ✅) — Full bus envelope: InboundMessage, OutboundMessage, InboundAudio, OutboundAudioChunk, OutboundAttachment. Per-adapter render functions.
 - **Runtime agent config** (#135 ✅) — Live tuning via `!config` command, no restart needed.
-- **Voice STT** (#80 ✅) — STTService + STTConfig with faster-whisper, InboundAudioBus, audio consumer loop in Hub.
+- **Voice STT** (#80 ✅) — STTService delegates to voicecli library (faster-whisper + personal vocab from `~/.voicecli/voicecli.vocab`), InboundAudioBus, audio consumer loop in Hub.
 - **Typing indicator redesign** (#229 ✅) — `TelegramAdapter` starts typing at message receipt (`_on_message`) and cancels at the start of `send()`; long-running requests keep the indicator alive via a background task.
 - **Intermediate turns** (`show_intermediate` ✅) — `on_intermediate` callback threaded through LlmProvider decorators into `CliPool._read_until_result`. When `show_intermediate = true` in agent TOML, each intermediate CLI turn is dispatched to the user as a `⏳`-prefixed message.
 - **`/clear` resets backend session** ✅ — `pool.reset_session()` is now async and delegates to `CliPool.reset()` via `_session_reset_fn`, clearing both in-memory history and the CLI process session.

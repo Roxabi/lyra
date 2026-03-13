@@ -56,7 +56,7 @@ flowchart TD
 | **Agents** | Stateless singleton · isolated per-scope pools · TOML config per agent |
 | **Memory** | 5 levels: working (L0) → session → episodic → semantic (SQLite + FTS5 + fastembed, ✅ Phase 1) → procedural |
 | **Auth** | AuthMiddleware + TrustLevel per adapter (owner/trusted/public/blocked) · RoutingContext outbound verification |
-| **Voice** | STT via faster-whisper (InboundAudioBus → STTService) · TTS via voicecli (Phase 2) |
+| **Voice** | STT via voicecli library (faster-whisper `large-v3-turbo` + personal vocab · InboundAudioBus → STTService) · TTS via voicecli (Phase 2) |
 | **Security** | Prompt injection guard · sandboxed skills · least-privilege tool permissions · hmac webhook verification |
 
 ## Quick start

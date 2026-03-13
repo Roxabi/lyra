@@ -19,14 +19,15 @@ from typing import TYPE_CHECKING
 from anthropic import APIError as AnthropicAPIError
 
 from .circuit_breaker import CircuitBreaker, CircuitRegistry
-from .message import InboundMessage, OutboundMessage
+from .message import InboundMessage, OutboundAudio, OutboundMessage
 
 if TYPE_CHECKING:
     from lyra.core.hub import ChannelAdapter
 
 log = logging.getLogger(__name__)
 
-# Queue item: (kind, msg, payload) for send; (kind, msg, chunks, outbound) for streaming
+# Queue item: (kind, msg, payload) for send;
+# (kind, msg, chunks, outbound) for streaming; (kind, inbound, audio) for audio
 _ITEM = tuple
 
 
@@ -79,6 +80,16 @@ class OutboundDispatcher:
         """
         self._queue.put_nowait(("streaming", msg, chunks, outbound))
 
+    def enqueue_audio(
+        self, inbound: InboundMessage, audio: OutboundAudio
+    ) -> None:
+        """Enqueue an audio response for delivery.
+
+        Fire-and-forget: returns immediately. The worker task calls
+        adapter.render_audio() asynchronously with CB ownership.
+        """
+        self._queue.put_nowait(("audio", inbound, audio))
+
     async def start(self) -> None:
         """Spawn the background worker task."""
         self._worker = asyncio.create_task(
@@ -105,6 +116,9 @@ class OutboundDispatcher:
                 kind = item[0]
                 if kind == "streaming":
                     _, msg, payload, outbound = item
+                elif kind == "audio":
+                    _, msg, payload = item
+                    outbound = None
                 else:
                     _, msg, payload = item
                     outbound = None
@@ -125,6 +139,8 @@ class OutboundDispatcher:
                 try:
                     if kind == "send":
                         await self._adapter.send(msg, payload)
+                    elif kind == "audio":
+                        await self._adapter.render_audio(payload, msg)
                     else:
                         await self._adapter.send_streaming(msg, payload, outbound)
                     if self._circuit is not None:

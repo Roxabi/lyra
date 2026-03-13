@@ -66,8 +66,8 @@ No `CLIAdapter` exists in `src/lyra/adapters/`. `cli_pool.py` is an LLM subproce
 
 ```toml
 [auth.telegram]
-owner_users   = ["7377831990"]
-trusted_users = ["7377831990"]
+owner_users   = ["123456789"]
+trusted_users = ["123456789"]
 default       = "blocked"
 
 [auth.discord]
@@ -79,7 +79,7 @@ One load path, one secrets surface, consistent with existing adapter credential 
 
 ### Config loading failure
 
-**Security-critical edge case:** if the auth section is absent or malformed at startup, the system must **fail closed** (default = `BLOCKED`) — never fail open. `AuthMiddleware.from_config()` must raise `SystemExit` or default to `BLOCKED` if the section is missing when `default` is unset.
+**Security-critical edge case:** if an auth section is absent, `AuthMiddleware.from_config()` returns `None` and logs a warning — that adapter is disabled (fails closed by omission). If **both** sections are absent, `__main__.py` raises `SystemExit`. A malformed `default` value always raises `ValueError` → `SystemExit`. The system never fails open.
 
 ## Shapes
 

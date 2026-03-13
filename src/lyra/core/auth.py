@@ -9,9 +9,12 @@ Usage:
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 
 from lyra.core.trust import TrustLevel
+
+log = logging.getLogger(__name__)
 
 __all__ = ["AuthMiddleware", "TrustLevel"]
 
@@ -70,7 +73,7 @@ class AuthMiddleware:
         return self._default
 
     @classmethod
-    def from_config(cls, raw: dict, section: str) -> "AuthMiddleware":
+    def from_config(cls, raw: dict, section: str) -> "AuthMiddleware | None":
         """Parse raw TOML config dict and build an AuthMiddleware instance.
 
         Args:
@@ -78,12 +81,11 @@ class AuthMiddleware:
             section: Adapter section name, e.g. "telegram", "discord", "cli".
 
         Returns:
-            AuthMiddleware instance.
+            AuthMiddleware instance, or None if the section is missing (non-CLI).
+            Missing section for "cli" never returns None — returns OWNER middleware.
 
         Raises:
-            SystemExit: If a required section is missing or the default value is
-                invalid. Missing section for "cli" never raises — returns OWNER
-                middleware.
+            ValueError: If the section exists but contains an invalid default value.
         """
         auth_block: dict = raw.get("auth", {})
         section_cfg: dict | None = auth_block.get(section)
@@ -92,10 +94,12 @@ class AuthMiddleware:
             if section == "cli":
                 # CLI is always local/trusted — fixed OWNER, no config required.
                 return cls(user_map={}, role_map={}, default=TrustLevel.OWNER)
-            raise ValueError(
-                f"Missing [auth.{section}] in lyra.toml"
-                f" — auth config required for networked adapters"
+            log.warning(
+                "Missing [auth.%s] in lyra.toml — %s adapter will be disabled",
+                section,
+                section,
             )
+            return None
 
         # Validate default
         raw_default: str = section_cfg.get("default", "")

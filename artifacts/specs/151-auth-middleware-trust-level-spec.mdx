@@ -32,8 +32,8 @@ Reject unauthorized inbound messages at the adapter layer — before `normalize(
 1. `lyra.toml` defines `[auth.telegram]` and `[auth.discord]` sections:
    ```toml
    [auth.telegram]
-   owner_users   = ["7377831990"]
-   trusted_users = ["7377831990"]
+   owner_users   = ["123456789"]
+   trusted_users = ["123456789"]
    default       = "blocked"
 
    [auth.discord]
@@ -52,9 +52,9 @@ Reject unauthorized inbound messages at the adapter layer — before `normalize(
 
 | Scenario | Behavior |
 |----------|----------|
-| Missing `[auth.telegram]` or `[auth.discord]` at startup | `SystemExit` with message: `"Missing [auth.{section}] in lyra.toml — auth config required for networked adapters"` |
+| Missing `[auth.telegram]` or `[auth.discord]` at startup | Log warning, return `None` — that adapter is disabled. Both missing → `SystemExit` |
 | Missing `[auth.cli]` section | Return fixed-OWNER middleware (CLI is always local/trusted) |
-| Missing `lyra.toml` entirely | `_load_raw_config()` returns `{}` → missing auth sections → `SystemExit` |
+| Missing `lyra.toml` entirely | `_load_raw_config()` returns `{}` → both auth sections missing → `SystemExit` |
 | Invalid `default` value (e.g. `"open"`) | `SystemExit` with message: `"Invalid default '{value}' in [auth.{section}] — must be one of: owner, trusted, public, blocked"` |
 | `user_id` is `None` (e.g. Telegram service message) | `check()` returns `self._default` |
 | Discord DM (author is `User`, not `Member`) | Role check skipped — falls back to user ID lookup then `_default` |
@@ -232,9 +232,9 @@ flowchart TD
 - [ ] `AuthMiddleware.check(None)` returns configured default (not raises)
 - [ ] `AuthMiddleware.check(user_id, roles=["admin"])` returns trust for matched role when user not in user_map
 - [ ] User map takes precedence over role map (explicit user assignment wins)
-- [ ] `from_config(raw, "telegram")` raises `SystemExit` when `[auth.telegram]` absent
+- [ ] `from_config(raw, "telegram")` returns `None` + logs warning when `[auth.telegram]` absent
 - [ ] `from_config(raw, "cli")` returns fixed-OWNER middleware when `[auth.cli]` absent
-- [ ] `from_config(raw, "telegram")` raises `SystemExit` when `default` value is invalid
+- [ ] `from_config(raw, "telegram")` raises `ValueError` when `default` value is invalid
 - [ ] `TelegramAdapter._on_message()` does NOT call `normalize()` when `check()` returns BLOCKED
 - [ ] `TelegramAdapter._on_voice_message()` does NOT call `normalize_audio()` when `check()` returns BLOCKED
 - [ ] `DiscordAdapter.on_message()` does NOT call `normalize()` when `check()` returns BLOCKED
@@ -243,8 +243,9 @@ flowchart TD
 - [ ] `InboundAudio` requires `trust_level` as a field (no default value)
 - [ ] All existing tests updated to pass `trust_level` and remain green
 - [ ] `CLIAdapter.on_input(text)` returns `InboundMessage` with `trust_level=OWNER`
-- [ ] Service starts successfully with valid `lyra.toml` containing `[auth.telegram]` and `[auth.discord]`
-- [ ] Service raises `SystemExit` when `[auth.telegram]` is absent from `lyra.toml`
+- [ ] Service starts successfully with only `[auth.telegram]` in `lyra.toml` (discord adapter disabled)
+- [ ] Service starts successfully with only `[auth.discord]` in `lyra.toml` (telegram adapter disabled)
+- [ ] Service raises `SystemExit` when both `[auth.telegram]` and `[auth.discord]` are absent
 
 ## Open Questions
 

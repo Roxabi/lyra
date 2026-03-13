@@ -62,16 +62,19 @@ async def on_event(self, raw_event) -> Message | None:
 ### Config
 
 ```toml
-# config.toml
+# lyra.toml (gitignored — copy from lyra.toml.example)
 [auth.telegram]
-trusted_users = ["7377831990"]  # Mickael
-owner_users   = ["7377831990"]
+owner_users   = [123456789]    # numeric — get from @userinfobot on Telegram
+trusted_users = []
 default       = "blocked"
 
 [auth.discord]
-trusted_roles = ["admin", "trusted"]
+owner_users   = [123456789012345678]   # numeric snowflake
+trusted_roles = []                     # Discord role snowflake IDs
 default       = "blocked"
 ```
+
+At least one section must be present. A missing section logs a warning and disables that adapter — Lyra starts with the remaining adapter. Both missing → `SystemExit`.
 
 ### Implementation — ✅ Shipped (#151)
 

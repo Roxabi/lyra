@@ -1,0 +1,29 @@
+# lyra.toml.example — copy to lyra.toml and fill in your values
+# lyra.toml is gitignored — never commit it (it contains your user IDs)
+# See .env.example for environment variables (tokens, secrets)
+#
+# At least one adapter section ([auth.telegram] or [auth.discord]) must be present.
+# Both sections are required even if you only use one adapter.
+
+[admin]
+# User IDs allowed to run admin commands (/invite, /unpair, etc.)
+# Format: "tg:user:<numeric_id>" or "dc:user:<numeric_snowflake>"
+# Get Telegram ID: message @userinfobot on Telegram
+# Get Discord ID: Settings → Advanced → Developer Mode → right-click username → Copy User ID
+user_ids = [
+    # "tg:user:123456789",
+    # "dc:user:123456789012345678",
+]
+
+[auth.telegram]
+# Trust level for unknown users: "blocked" | "trusted" | "owner"
+# "blocked" = only owner_users can interact (recommended for personal bots)
+default = "blocked"
+owner_users = []        # numeric Telegram user IDs
+trusted_users = []      # numeric Telegram user IDs (can interact, cannot admin)
+
+[auth.discord]
+# Trust level for unknown users: "blocked" | "trusted" | "owner"
+default = "blocked"
+owner_users = []        # numeric Discord user snowflake IDs
+trusted_roles = []      # numeric Discord role snowflake IDs (trusted access)

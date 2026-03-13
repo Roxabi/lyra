@@ -119,21 +119,21 @@ class TestFromConfig:
     def test_valid_config_parses_correctly(self) -> None:
         raw = self._make_raw("telegram")
         auth = AuthMiddleware.from_config(raw, "telegram")
+        assert auth is not None
         assert auth.check("owner1") == TrustLevel.OWNER
         assert auth.check("trusted1") == TrustLevel.TRUSTED
         assert auth.check("unknown") == TrustLevel.BLOCKED
         assert auth.check("unknown", roles=["admin"]) == TrustLevel.TRUSTED
 
-    def test_missing_section_for_telegram_raises_value_error(self) -> None:
-        with pytest.raises(ValueError):
-            AuthMiddleware.from_config({}, "telegram")
+    def test_missing_section_for_telegram_returns_none(self) -> None:
+        assert AuthMiddleware.from_config({}, "telegram") is None
 
-    def test_missing_section_for_discord_raises_value_error(self) -> None:
-        with pytest.raises(ValueError):
-            AuthMiddleware.from_config({}, "discord")
+    def test_missing_section_for_discord_returns_none(self) -> None:
+        assert AuthMiddleware.from_config({}, "discord") is None
 
     def test_missing_section_for_cli_returns_owner_middleware(self) -> None:
         auth = AuthMiddleware.from_config({}, "cli")
+        assert auth is not None
         # CLI is always OWNER
         assert auth.check("anyone") == TrustLevel.OWNER
         assert auth.check(None) == TrustLevel.OWNER
@@ -148,16 +148,19 @@ class TestFromConfig:
             "auth": {"telegram": {"owner_users": ["7377831990"], "default": "blocked"}}
         }
         auth = AuthMiddleware.from_config(raw, "telegram")
+        assert auth is not None
         assert auth.check("7377831990") == TrustLevel.OWNER
 
     def test_trusted_users_get_trusted_level(self) -> None:
         raw = {"auth": {"telegram": {"trusted_users": ["9999"], "default": "blocked"}}}
         auth = AuthMiddleware.from_config(raw, "telegram")
+        assert auth is not None
         assert auth.check("9999") == TrustLevel.TRUSTED
 
     def test_trusted_roles_get_trusted_level(self) -> None:
         raw = {"auth": {"discord": {"trusted_roles": ["staff"], "default": "public"}}}
         auth = AuthMiddleware.from_config(raw, "discord")
+        assert auth is not None
         assert auth.check("user", roles=["staff"]) == TrustLevel.TRUSTED
 
     def test_owner_users_not_downgraded_by_trusted_users(self) -> None:
@@ -172,6 +175,7 @@ class TestFromConfig:
             }
         }
         auth = AuthMiddleware.from_config(raw, "telegram")
+        assert auth is not None
         assert auth.check("42") == TrustLevel.OWNER
 
     def test_empty_lists_allowed(self) -> None:
@@ -186,12 +190,18 @@ class TestFromConfig:
             }
         }
         auth = AuthMiddleware.from_config(raw, "telegram")
+        assert auth is not None
         assert auth.check("anyone") == TrustLevel.PUBLIC
 
-    def test_value_error_message_contains_section(self) -> None:
-        with pytest.raises(ValueError) as exc_info:
-            AuthMiddleware.from_config({}, "telegram")
-        assert "telegram" in str(exc_info.value)
+    def test_missing_section_warning_logged(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="lyra.core.auth"):
+            result = AuthMiddleware.from_config({}, "telegram")
+        assert result is None
+        assert "telegram" in caplog.text
 
     def test_value_error_invalid_default_message(self) -> None:
         raw = self._make_raw("telegram", default="superadmin")

@@ -264,6 +264,34 @@ DISCORD_TOKEN=your-discord-bot-token
 
 ---
 
+## Step 9b — Create lyra.toml (auth config)
+
+`lyra.toml` is required to start Lyra with networked adapters. It is gitignored — never committed.
+
+```bash
+cp lyra.toml.example lyra.toml
+nano lyra.toml
+```
+
+Fill in your user IDs:
+
+```toml
+[admin]
+user_ids = ["tg:user:YOUR_TELEGRAM_ID", "dc:user:YOUR_DISCORD_ID"]
+
+[auth.telegram]
+default = "blocked"
+owner_users = [YOUR_TELEGRAM_ID]   # numeric — get from @userinfobot on Telegram
+
+[auth.discord]
+default = "blocked"
+owner_users = [YOUR_DISCORD_ID]    # numeric — Settings → Advanced → Developer Mode → right-click username
+```
+
+At least one of `[auth.telegram]` or `[auth.discord]` must be present. A missing section logs a warning and disables that adapter — Lyra still starts with the remaining adapter.
+
+---
+
 ## Step 10 — Run the tests
 
 ```bash

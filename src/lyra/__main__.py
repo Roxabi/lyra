@@ -323,9 +323,16 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:  # noqa: C901, P
     except ValueError as exc:
         sys.exit(str(exc))
 
-    # Config loaders call sys.exit() on missing required env vars — no partial startup.
-    tg_cfg = load_telegram_config()
-    dc_cfg = load_discord_config()
+    if tg_auth is None and dc_auth is None:
+        sys.exit(
+            "No adapters configured — add at least one of [auth.telegram] or"
+            " [auth.discord] to lyra.toml"
+        )
+
+    # Config loaders call sys.exit() on missing required env vars — only load
+    # configs for adapters that have an auth section configured.
+    tg_cfg = load_telegram_config() if tg_auth is not None else None
+    dc_cfg = load_discord_config() if dc_auth is not None else None
 
     agent_config = load_agent_config("lyra_default")
     log.info(
@@ -411,57 +418,72 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:  # noqa: C901, P
     )
     hub.register_agent(agent)
 
-    tg_adapter = TelegramAdapter(
-        bot_id="main",
-        token=tg_cfg.token,
-        hub=hub,
-        bot_username=tg_cfg.bot_username,
-        webhook_secret=tg_cfg.webhook_secret,
-        circuit_registry=circuit_registry,
-        msg_manager=msg_manager,
-        auth=tg_auth,
-    )
-    dc_adapter = DiscordAdapter(
-        hub=hub,
-        bot_id="main",
-        circuit_registry=circuit_registry,
-        msg_manager=msg_manager,
-        auto_thread=dc_cfg.auto_thread,
-        auth=dc_auth,
-    )
+    tg_adapter: TelegramAdapter | None = None
+    dc_adapter: DiscordAdapter | None = None
 
-    hub.register_adapter(Platform.TELEGRAM, "main", tg_adapter)
-    hub.register_adapter(Platform.DISCORD, "main", dc_adapter)
-    tg_key = RoutingKey(Platform.TELEGRAM, "main", "*")
-    dc_key = RoutingKey(Platform.DISCORD, "main", "*")
-    hub.register_binding(
-        Platform.TELEGRAM, "main", "*", agent.name, tg_key.to_pool_id()
-    )
-    hub.register_binding(Platform.DISCORD, "main", "*", agent.name, dc_key.to_pool_id())
+    if tg_auth is not None and tg_cfg is not None:
+        tg_adapter = TelegramAdapter(
+            bot_id="main",
+            token=tg_cfg.token,
+            hub=hub,
+            bot_username=tg_cfg.bot_username,
+            webhook_secret=tg_cfg.webhook_secret,
+            circuit_registry=circuit_registry,
+            msg_manager=msg_manager,
+            auth=tg_auth,
+        )
+        hub.register_adapter(Platform.TELEGRAM, "main", tg_adapter)
+        tg_key = RoutingKey(Platform.TELEGRAM, "main", "*")
+        hub.register_binding(
+            Platform.TELEGRAM, "main", "*", agent.name, tg_key.to_pool_id()
+        )
+
+    if dc_auth is not None and dc_cfg is not None:
+        dc_adapter = DiscordAdapter(
+            hub=hub,
+            bot_id="main",
+            circuit_registry=circuit_registry,
+            msg_manager=msg_manager,
+            auto_thread=dc_cfg.auto_thread,
+            auth=dc_auth,
+        )
+        hub.register_adapter(Platform.DISCORD, "main", dc_adapter)
+        dc_key = RoutingKey(Platform.DISCORD, "main", "*")
+        hub.register_binding(
+            Platform.DISCORD, "main", "*", agent.name, dc_key.to_pool_id()
+        )
 
     # Create and register per-platform outbound dispatchers
-    tg_dispatcher = OutboundDispatcher(
-        platform_name="telegram",
-        adapter=tg_adapter,
-        circuit=circuit_registry.get("telegram"),
-        circuit_registry=circuit_registry,
-        bot_id="main",
-    )
-    dc_dispatcher = OutboundDispatcher(
-        platform_name="discord",
-        adapter=dc_adapter,
-        circuit=circuit_registry.get("discord"),
-        circuit_registry=circuit_registry,
-        bot_id="main",
-    )
-    hub.register_outbound_dispatcher(Platform.TELEGRAM, "main", tg_dispatcher)
-    hub.register_outbound_dispatcher(Platform.DISCORD, "main", dc_dispatcher)
+    tg_dispatcher: OutboundDispatcher | None = None
+    dc_dispatcher: OutboundDispatcher | None = None
+
+    if tg_adapter is not None:
+        tg_dispatcher = OutboundDispatcher(
+            platform_name="telegram",
+            adapter=tg_adapter,
+            circuit=circuit_registry.get("telegram"),
+            circuit_registry=circuit_registry,
+            bot_id="main",
+        )
+        hub.register_outbound_dispatcher(Platform.TELEGRAM, "main", tg_dispatcher)
+
+    if dc_adapter is not None:
+        dc_dispatcher = OutboundDispatcher(
+            platform_name="discord",
+            adapter=dc_adapter,
+            circuit=circuit_registry.get("discord"),
+            circuit_registry=circuit_registry,
+            bot_id="main",
+        )
+        hub.register_outbound_dispatcher(Platform.DISCORD, "main", dc_dispatcher)
 
     # Start InboundBus feeder tasks and OutboundDispatcher workers
     await hub.inbound_bus.start()
     await hub.inbound_audio_bus.start()
-    await tg_dispatcher.start()
-    await dc_dispatcher.start()
+    if tg_dispatcher is not None:
+        await tg_dispatcher.start()
+    if dc_dispatcher is not None:
+        await dc_dispatcher.start()
 
     # Health endpoint (SC-1): root FastAPI app on configurable port
     health_port = int(os.environ.get("LYRA_HEALTH_PORT", "8443"))
@@ -480,19 +502,28 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:  # noqa: C901, P
     tasks = [
         asyncio.create_task(hub.run(), name="hub"),
         asyncio.create_task(hub._audio_loop(), name="hub-audio"),
-        asyncio.create_task(
-            # handle_signals=False is mandatory when aiogram runs inside
-            # asyncio.gather() — otherwise it installs its own signal handlers
-            # that conflict with the event loop's, causing double-cancellation.
-            tg_adapter.dp.start_polling(tg_adapter.bot, handle_signals=False),
-            name="telegram",
-        ),
-        asyncio.create_task(dc_adapter.start(dc_cfg.token), name="discord"),
         asyncio.create_task(health_server.serve(), name="health"),
     ]
+    if tg_adapter is not None:
+        tasks.append(
+            asyncio.create_task(
+                # handle_signals=False is mandatory when aiogram runs inside
+                # asyncio.gather() — otherwise it installs its own signal handlers
+                # that conflict with the event loop's, causing double-cancellation.
+                tg_adapter.dp.start_polling(tg_adapter.bot, handle_signals=False),
+                name="telegram",
+            )
+        )
+    if dc_adapter is not None and dc_cfg is not None:
+        tasks.append(
+            asyncio.create_task(dc_adapter.start(dc_cfg.token), name="discord")
+        )
 
+    task_names = {t.get_name() for t in tasks}
+    active = [name for name in ("telegram", "discord") if name in task_names]
     log.info(
-        "Lyra started — Telegram + Discord adapters running, health on :%d.",
+        "Lyra started — adapters: %s, health on :%d.",
+        ", ".join(active) if active else "none",
         health_port,
     )
 
@@ -504,9 +535,12 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:  # noqa: C901, P
     await asyncio.gather(*tasks, return_exceptions=True)
     await hub.inbound_bus.stop()
     await hub.inbound_audio_bus.stop()
-    await tg_dispatcher.stop()
-    await dc_dispatcher.stop()
-    await dc_adapter.close()
+    if tg_dispatcher is not None:
+        await tg_dispatcher.stop()
+    if dc_dispatcher is not None:
+        await dc_dispatcher.stop()
+    if dc_adapter is not None:
+        await dc_adapter.close()
     if pm is not None:
         await pm.close()
     if cli_pool is not None:

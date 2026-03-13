@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import logging
 import os
 import re
@@ -151,7 +152,7 @@ def _make_verifier(secret: str):
 
     async def verify(request: Request) -> None:
         incoming = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
-        if not secret or incoming != secret:
+        if not secret or not hmac.compare_digest(incoming, secret):
             raise HTTPException(status_code=401, detail="Unauthorized")
 
     return verify

@@ -181,7 +181,7 @@ class OutboundDispatcher:
                 # Verify routing context matches this dispatcher.
                 # "send": check payload (OutboundMessage) routing.
                 # "streaming": check outbound routing if provided.
-                # "audio"/"attachment": always use msg (InboundMessage) routing.
+                # "audio"/"audio_stream"/"attachment": use msg (InboundMessage) routing.
                 if kind == "send":
                     _routing = getattr(payload, "routing", None) or msg.routing
                 elif kind in ("audio", "audio_stream", "attachment"):

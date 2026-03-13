@@ -129,7 +129,7 @@ ATTACHMENT_EXTS_BASE = frozenset(
 
 
 # Allowed file extensions for outbound audio filenames (whitelist).
-_AUDIO_EXTS = frozenset({"ogg", "mp3", "mp4", "mpeg", "opus", "wav", "flac", "aac"})
+AUDIO_EXTS = frozenset({"ogg", "mp3", "mp4", "mpeg", "opus", "wav", "flac", "aac"})
 
 _MAX_OUTBOUND_AUDIO_BYTES: int = int(
     os.environ.get("LYRA_MAX_AUDIO_BYTES", 5 * 1024 * 1024)

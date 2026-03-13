@@ -12,7 +12,7 @@ import logging
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -466,8 +466,6 @@ class TestDispatchAudio:
         dispatcher.enqueue_audio.assert_called_once_with(msg, audio)
 
     async def test_fallback_to_adapter(self) -> None:
-        from unittest.mock import AsyncMock
-
         hub = Hub()
         adapter = MagicMock()
         adapter.render_audio = AsyncMock()
@@ -484,9 +482,7 @@ class TestDispatchAudio:
         with pytest.raises(KeyError):
             await hub.dispatch_audio(msg, audio)
 
-    async def test_updates_last_processed_at(self) -> None:
-        from unittest.mock import AsyncMock
-
+    async def test_updates_last_processed_at_on_success(self) -> None:
         hub = Hub()
         adapter = MagicMock()
         adapter.render_audio = AsyncMock()
@@ -523,8 +519,6 @@ class TestDispatchAudioStream:
         dispatcher.enqueue_audio_stream.assert_called_once_with(msg, c)
 
     async def test_fallback_to_adapter(self) -> None:
-        from unittest.mock import AsyncMock
-
         hub = Hub()
         adapter = MagicMock()
         adapter.render_audio_stream = AsyncMock()
@@ -538,6 +532,8 @@ class TestDispatchAudioStream:
 
         await hub.dispatch_audio_stream(msg, chunks())
         adapter.render_audio_stream.assert_awaited_once()
+        call_args = adapter.render_audio_stream.call_args[0]
+        assert call_args[1] is msg
 
     async def test_missing_adapter_raises(self) -> None:
         hub = Hub()
@@ -550,6 +546,22 @@ class TestDispatchAudioStream:
 
         with pytest.raises(KeyError):
             await hub.dispatch_audio_stream(msg, chunks())
+
+    async def test_updates_last_processed_at_on_success(self) -> None:
+        hub = Hub()
+        adapter = MagicMock()
+        adapter.render_audio_stream = AsyncMock()
+        hub.register_adapter(Platform.TELEGRAM, "main", adapter)
+        assert hub._last_processed_at is None
+        msg = make_inbound_message(platform="telegram", bot_id="main")
+
+        async def chunks() -> AsyncIterator[OutboundAudioChunk]:
+            yield OutboundAudioChunk(
+                chunk_bytes=b"x", session_id="s1", chunk_index=0, is_final=True
+            )
+
+        await hub.dispatch_audio_stream(msg, chunks())
+        assert hub._last_processed_at is not None
 
 
 # ---------------------------------------------------------------------------

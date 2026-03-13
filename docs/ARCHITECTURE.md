@@ -370,6 +370,7 @@ client = AsyncOpenAI(
 - **`/clear` resets backend session** ✅ — `pool.reset_session()` is now async and delegates to `CliPool.reset()` via `_session_reset_fn`, clearing both in-memory history and the CLI process session.
 - **`is_backend_alive()`** ✅ — `Agent` and `CliPool` expose `is_backend_alive(pool_id)` / `is_alive(pool_id)`. On timeout, `Pool` checks liveness and logs an error if the backend process died.
 - **SimpleAgent `runtime_config` wiring** ✅ — `_build_router_kwargs()` injects `runtime_config_holder` and `runtime_config_path`, making `/config` functional on the `claude-cli` backend.
+- **`[model].cwd` and `[workspaces]`** ✅ — `ModelConfig.cwd` sets a fixed working directory for the Claude subprocess for a given agent. `[workspaces]` in agent TOML registers named directory shortcuts; each key becomes a `/keyname` slash command that stores a per-pool cwd override in `CliPool._cwd_overrides`. Switching workspace clears pool history and kills/respawns the Claude subprocess with the new cwd.
 - **Reduced Phase 1 memory scope** — Level 0 (working, L0 compaction in #83) + Level 3 (semantic, shipped #78/#81/#82). Levels 1, 2, 4 added when the real need arises.
 
 ### External tool integration

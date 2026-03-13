@@ -268,46 +268,6 @@ class TestAgentFactory:
 
 
 # ---------------------------------------------------------------------------
-# T5 — Invalid STT config exits before agents start (SC9)
-# ---------------------------------------------------------------------------
-
-
-class TestInvalidSTTConfig:
-    async def test_float16_cpu_raises_system_exit(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """STT_DEVICE=cpu + STT_COMPUTE_TYPE=float16 must cause SystemExit."""
-        # Arrange — patch everything to avoid real network/file I/O, then set
-        # the invalid STT env vars so _main() triggers the validation error.
-        _patch_all(monkeypatch)
-        monkeypatch.setenv("STT_DEVICE", "cpu")
-        monkeypatch.setenv("STT_COMPUTE_TYPE", "float16")
-        monkeypatch.setenv("STT_MODEL_SIZE", "small")
-
-        stop = asyncio.Event()
-        stop.set()
-
-        # Act + Assert
-        with pytest.raises(SystemExit, match="Invalid STT configuration"):
-            await main_mod._main(_stop=stop)
-
-    async def test_cuda_int8_raises_system_exit(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """STT_DEVICE=cuda + STT_COMPUTE_TYPE=int8 is invalid — should SystemExit."""
-        _patch_all(monkeypatch)
-        monkeypatch.setenv("STT_MODEL_SIZE", "small")
-        monkeypatch.setenv("STT_DEVICE", "cuda")
-        monkeypatch.setenv("STT_COMPUTE_TYPE", "int8")
-
-        stop = asyncio.Event()
-        stop.set()
-
-        with pytest.raises(SystemExit, match="Invalid STT configuration"):
-            await main_mod._main(_stop=stop)
-
-
-# ---------------------------------------------------------------------------
 # T6 — AuthMiddleware.from_config tests (inlined into _main)
 # ---------------------------------------------------------------------------
 

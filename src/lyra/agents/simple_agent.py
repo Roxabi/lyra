@@ -87,6 +87,7 @@ class SimpleAgent(AgentBase):
         return {
             "runtime_config_holder": self._runtime_config_holder,
             "runtime_config_path": self._runtime_config_path,
+            "workspaces": self.config.workspaces,
         }
 
     def _maybe_register_reset(self, pool: Pool) -> None:
@@ -99,6 +100,11 @@ class SimpleAgent(AgentBase):
             if reset_fn is not None:
                 _pool_id = pool.pool_id
                 pool._session_reset_fn = lambda: reset_fn(_pool_id)
+
+        switch_fn = getattr(self._provider, "switch_cwd", None)
+        if switch_fn is not None and pool._switch_workspace_fn is None:
+            _pool_id = pool.pool_id
+            pool._switch_workspace_fn = lambda cwd: switch_fn(_pool_id, cwd)
 
     async def process(  # noqa: C901
         self,

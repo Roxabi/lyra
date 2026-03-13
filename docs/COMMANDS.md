@@ -30,6 +30,41 @@ User → hello    → Telegram → Hub → (not a command) → Agent (LLM) → R
 | `/echo <text>` | Echo back the message (test) | — (plugin) |
 | `/voice <text>` | Generate speech | `voicecli` |
 | `/image <prompt>` | Generate image prompt | — (prompt-only) |
+| `/<workspace>` | Switch working directory (dynamic) | — (TOML-defined) |
+
+---
+
+## Workspace Commands
+
+Workspaces are named directory shortcuts defined in the agent TOML under `[workspaces]`. Each key becomes a `/keyname` slash command that sets the working directory for the Claude subprocess in that conversation scope.
+
+### Configuration
+
+```toml
+# src/lyra/agents/lyra_default.toml
+
+[model]
+cwd = "~/projects/lyra"   # optional: fixed default cwd for this agent
+
+[workspaces]
+lyra        = "~/projects/lyra"
+projects    = "~/projects"
+roxabi-vault = "~/.roxabi-vault"
+```
+
+### Usage
+
+```
+Syntax: /<workspace>
+        /<workspace> <question>
+```
+
+- `/lyra` — sets the workspace to `~/projects/lyra`, responds with a context confirmation
+- `/lyra what's the last commit?` — sets the workspace, then forwards the question to Claude with `cwd=~/projects/lyra`
+
+The cwd override persists for the pool (thread/conversation) lifetime. `/clear` respawns the process but keeps the same workspace. Use another workspace command to switch.
+
+In Discord with `auto_thread=True`: each thread has its own pool, so workspace commands are per-thread. Multiple threads can have different workspaces in parallel.
 
 ---
 

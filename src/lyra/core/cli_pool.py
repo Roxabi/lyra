@@ -109,6 +109,7 @@ class CliPool:
         self._default_timeout = default_timeout
         self._entries: dict[str, _ProcessEntry] = {}
         self._reaper_task: asyncio.Task[None] | None = None
+        self._cwd_overrides: dict[str, Path] = {}
 
     async def start(self) -> None:
         """Start the idle reaper background task."""
@@ -202,6 +203,12 @@ class CliPool:
         await self._kill(pool_id)
         log.info("[pool:%s] reset", pool_id)
 
+    async def switch_cwd(self, pool_id: str, cwd: Path) -> None:
+        """Kill any existing process and store cwd override. Next send() respawns."""
+        await self._kill(pool_id)  # _kill pops _cwd_overrides — set override after
+        self._cwd_overrides[pool_id] = cwd
+        log.info("[pool:%s] workspace switched to %s", pool_id, cwd)
+
     # -------------------------------------------------------------------------
     # Internal
     # -------------------------------------------------------------------------
@@ -235,15 +242,16 @@ class CliPool:
     async def _spawn(
         self, pool_id: str, model_config: ModelConfig, system_prompt: str = ""
     ) -> _ProcessEntry | None:
+        spawn_cwd = self._cwd_overrides.get(pool_id) or model_config.cwd or _LYRA_ROOT
         cmd = self._build_cmd(model_config, system_prompt=system_prompt)
         log.info(
-            "[pool:%s] spawning: backend=%s model=%s",
+            "[pool:%s] spawning: backend=%s model=%s cwd=%s",
             pool_id,
             model_config.backend,
             model_config.model,
+            spawn_cwd,
         )
         log.debug("[pool:%s] cmd: %s", pool_id, " ".join(cmd))
-
         env = {k: v for k, v in os.environ.items() if k in _SAFE_ENV_KEYS}
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -251,7 +259,7 @@ class CliPool:
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                cwd=str(_LYRA_ROOT),
+                cwd=str(spawn_cwd),
                 limit=1024 * 1024,  # 1MB — prevents LimitOverrunError
                 env=env,
             )
@@ -409,6 +417,7 @@ class CliPool:
 
     async def _kill(self, pool_id: str) -> None:
         entry = self._entries.pop(pool_id, None)
+        self._cwd_overrides.pop(pool_id, None)
         if entry is None:
             return
         if entry.is_alive():

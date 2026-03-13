@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 
 from lyra.core.agent import ModelConfig
 from lyra.core.cli_pool import CliPool
@@ -27,6 +28,10 @@ class ClaudeCliDriver:
     async def reset(self, pool_id: str) -> None:
         """Kill the CLI process for this pool. Next send() spawns a fresh one."""
         await self._pool.reset(pool_id)
+
+    async def switch_cwd(self, pool_id: str, cwd: Path) -> None:
+        """Delegate workspace switch to CliPool."""
+        await self._pool.switch_cwd(pool_id, cwd)
 
     def is_alive(self, pool_id: str) -> bool:
         """Delegate liveness check to CliPool."""

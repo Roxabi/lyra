@@ -36,6 +36,10 @@ _VAULT_DIR = Path(
 )
 _PERSONAS_DIR = _VAULT_DIR / "personas"
 
+_WORKSPACE_BUILTIN_CONFLICTS = frozenset(
+    {"help", "circuit", "routing", "stop", "config", "clear", "new"}
+)
+
 
 @dataclass(frozen=True)
 class ModelConfig:
@@ -46,6 +50,10 @@ class ModelConfig:
     model:   model identifier passed to the backend CLI.
     max_turns: max agentic turns per conversation turn.
     tools:   allowed tools (empty = backend defaults).
+    cwd:     working directory for the Claude subprocess (claude-cli only).
+             None → defaults to the Lyra project root.
+             Useful to point a dedicated agent at another project so it reads
+             that project's CLAUDE.md and has access to its files.
 
     This will evolve into an intelligent model selection system.
     """
@@ -54,6 +62,10 @@ class ModelConfig:
     model: str = "claude-sonnet-4-5"
     max_turns: int = 10
     tools: tuple[str, ...] = field(default=())
+    # compare=False: cwd is spawn-routing config, not model identity.
+    # Changing cwd should not trigger the "model_config mismatch" warning
+    # in CliPool.send() — that check is for backend/model/tools changes only.
+    cwd: Path | None = field(default=None, compare=False)
 
 
 class Complexity(Enum):
@@ -127,6 +139,7 @@ class Agent:
     i18n_language: str = "en"
     smart_routing: SmartRoutingConfig | None = None
     show_intermediate: bool = False  # show ⏳-prefixed intermediate turns to the user
+    workspaces: dict[str, Path] = field(default_factory=dict)
 
 
 def load_persona(name: str, personas_dir: Path | None = None) -> PersonaConfig:
@@ -312,11 +325,22 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
             "only [a-zA-Z0-9_.:-] characters allowed"
         )
 
+    cwd: Path | None = None
+    raw_cwd = model_section.get("cwd")
+    if raw_cwd is not None:
+        resolved = Path(raw_cwd).expanduser().resolve()
+        if not resolved.is_dir():
+            raise ValueError(
+                f"[model].cwd {raw_cwd!r} for agent {name!r} is not a directory"
+            )
+        cwd = resolved
+
     model_cfg = ModelConfig(
         backend=backend,
         model=model,
         max_turns=int(model_section.get("max_turns", 10)),
         tools=tuple(model_section.get("tools", [])),
+        cwd=cwd,
     )
 
     # Persona loading
@@ -379,6 +403,27 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
             history_size=int(sr_section.get("history_size", 50)),
         )
 
+    workspaces_section = data.get("workspaces", {})
+    workspaces: dict[str, Path] = {}
+    for key, raw_path in workspaces_section.items():
+        if not re.match(r"^[a-zA-Z0-9_-]+$", key):
+            raise ValueError(
+                f"Invalid workspace name {key!r} in agent {name!r}: "
+                "only [a-zA-Z0-9_-] allowed"
+            )
+        if key in _WORKSPACE_BUILTIN_CONFLICTS:
+            raise ValueError(
+                f"Workspace key {key!r} in agent {name!r} clashes with "
+                f"built-in command /{key}"
+            )
+        resolved = Path(raw_path).expanduser().resolve()
+        if not resolved.is_dir():
+            raise ValueError(
+                f"[workspaces].{key} path {raw_path!r} for agent {name!r} "
+                "is not a directory"
+            )
+        workspaces[key] = resolved
+
     return Agent(
         name=name,
         system_prompt=system_prompt,
@@ -391,6 +436,7 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
         i18n_language=i18n_language,
         smart_routing=smart_routing,
         show_intermediate=bool(agent_section.get("show_intermediate", False)),
+        workspaces=workspaces,
     )
 
 

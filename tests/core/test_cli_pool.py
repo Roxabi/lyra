@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -473,3 +474,90 @@ class TestOnIntermediateException:
         assert result.ok
         # The exception must have been logged at WARNING level
         assert any("on_intermediate" in r.message.lower() for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# TestCliPoolSpawnCwd
+# ---------------------------------------------------------------------------
+
+
+class TestCliPoolSpawnCwd:
+    """CliPool._spawn passes model_config.cwd (or _LYRA_ROOT) as cwd."""
+
+    async def test_spawn_uses_lyra_root_when_cwd_is_none(self, tmp_path: Path) -> None:
+        proc = make_fake_proc([INIT_LINE, ASSISTANT_LINE, RESULT_LINE])
+        pool = CliPool()
+
+        with patch(_PATCH_TARGET, new=AsyncMock(return_value=proc)) as mock_spawn:
+            await pool.send("pool-cwd", "hello", DEFAULT_MODEL)
+
+        _args, kwargs = mock_spawn.call_args
+        from lyra.core.cli_pool import _LYRA_ROOT
+
+        assert kwargs["cwd"] == str(_LYRA_ROOT)
+
+    async def test_spawn_cwd_override_takes_priority_over_model_config_cwd(
+        self, tmp_path: Path
+    ) -> None:
+        """_cwd_overrides[pool_id] wins over model_config.cwd."""
+        override_dir = tmp_path / "override"
+        override_dir.mkdir()
+        model_dir = tmp_path / "model"
+        model_dir.mkdir()
+
+        model = ModelConfig(cwd=model_dir)
+        pool = CliPool()
+        # Pre-set a cwd override (simulates a prior workspace switch)
+        pool._cwd_overrides["pool-priority"] = override_dir
+
+        proc = make_fake_proc([INIT_LINE, ASSISTANT_LINE, RESULT_LINE])
+        with patch(_PATCH_TARGET, new=AsyncMock(return_value=proc)) as mock_spawn:
+            await pool.send("pool-priority", "hello", model)
+
+        _args, kwargs = mock_spawn.call_args
+        assert kwargs["cwd"] == str(override_dir)
+
+    async def test_spawn_uses_model_config_cwd_when_set(self, tmp_path: Path) -> None:
+        custom_dir = tmp_path / "myproject"
+        custom_dir.mkdir()
+        model = ModelConfig(cwd=custom_dir)
+        proc = make_fake_proc([INIT_LINE, ASSISTANT_LINE, RESULT_LINE])
+        pool = CliPool()
+
+        with patch(_PATCH_TARGET, new=AsyncMock(return_value=proc)) as mock_spawn:
+            await pool.send("pool-cwd2", "hello", model)
+
+        _args, kwargs = mock_spawn.call_args
+        assert kwargs["cwd"] == str(custom_dir)
+
+
+# ---------------------------------------------------------------------------
+# TestCliPoolSwitchCwd
+# ---------------------------------------------------------------------------
+
+
+class TestCliPoolSwitchCwd:
+    async def test_switch_cwd_stores_override(self, tmp_path: Path) -> None:
+        pool = CliPool()
+        await pool.switch_cwd("pool-ws", tmp_path)
+        assert pool._cwd_overrides["pool-ws"] == tmp_path
+
+    async def test_switch_cwd_override_used_on_spawn(self, tmp_path: Path) -> None:
+        custom_dir = tmp_path / "ws"
+        custom_dir.mkdir()
+        pool = CliPool()
+        await pool.switch_cwd("pool-ws2", custom_dir)
+        proc = make_fake_proc([INIT_LINE, ASSISTANT_LINE, RESULT_LINE])
+        with patch(_PATCH_TARGET, new=AsyncMock(return_value=proc)) as mock_spawn:
+            await pool.send("pool-ws2", "hello", DEFAULT_MODEL)
+        _args, kwargs = mock_spawn.call_args
+        assert kwargs["cwd"] == str(custom_dir)
+
+    async def test_switch_cwd_kills_existing_process(self, tmp_path: Path) -> None:
+        pool = CliPool()
+        proc = make_fake_proc([INIT_LINE, ASSISTANT_LINE, RESULT_LINE])
+        # Pre-populate with a live process
+        entry = _ProcessEntry(proc=proc, pool_id="pool-ws3", model_config=DEFAULT_MODEL)
+        pool._entries["pool-ws3"] = entry
+        await pool.switch_cwd("pool-ws3", tmp_path)
+        assert "pool-ws3" not in pool._entries

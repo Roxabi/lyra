@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import collections.abc
 from datetime import datetime, timezone
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -497,6 +498,43 @@ class TestPoolExceptionHandling:
 # ---------------------------------------------------------------------------
 # extend_sdk_history — trim to max_sdk_history
 # ---------------------------------------------------------------------------
+
+
+class TestPoolSwitchWorkspace:
+    @pytest.mark.asyncio
+    async def test_switch_workspace_calls_fn_with_cwd(self, tmp_path: Path) -> None:
+        """switch_workspace calls _switch_workspace_fn with the given cwd."""
+        ctx = MagicMock()
+        ctx.get_message.return_value = None
+        pool = Pool("pool-ws", "agent", ctx)
+
+        called_with: list[Path] = []
+
+        async def fake_switch(cwd: Path) -> None:
+            called_with.append(cwd)
+
+        pool._switch_workspace_fn = fake_switch
+        await pool.switch_workspace(tmp_path)
+
+        assert called_with == [tmp_path]
+        assert list(pool.sdk_history) == []
+        assert pool.history == []
+
+    @pytest.mark.asyncio
+    async def test_switch_workspace_noop_when_fn_is_none(self, tmp_path: Path) -> None:
+        """switch_workspace is a no-op when _switch_workspace_fn is None (SDK)."""
+        ctx = MagicMock()
+        ctx.get_message.return_value = None
+        pool = Pool("pool-sdk", "agent", ctx)
+        pool.history = [MagicMock()]
+        pool.sdk_history.append({"role": "user", "content": "hello"})
+
+        # _switch_workspace_fn is None by default
+        await pool.switch_workspace(tmp_path)
+
+        # History must NOT be cleared (no-op for SDK backends — B7 fix)
+        assert len(pool.history) == 1
+        assert len(pool.sdk_history) == 1
 
 
 class TestExtendSdkHistory:

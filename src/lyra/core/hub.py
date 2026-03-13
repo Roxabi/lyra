@@ -786,15 +786,23 @@ class Hub:
                     )
                     continue
                 if result.action == Action.COMMAND_HANDLED:
-                    if result.response and result.response.content:
+                    if result.response and (
+                        result.response.content or result.response.audio
+                    ):
                         try:
-                            await self.dispatch_response(
-                                msg,
-                                result.response,
-                            )
+                            if result.response.audio:
+                                await self.dispatch_audio(
+                                    msg,
+                                    result.response.audio,
+                                )
+                            if result.response.content:
+                                await self.dispatch_response(
+                                    msg,
+                                    result.response,
+                                )
                         except Exception as exc:
                             log.exception(
-                                "dispatch_response() failed: %s",
+                                "dispatch failed: %s",
                                 exc,
                             )
                     else:

@@ -6,6 +6,7 @@ Starts Telegram + Discord adapters in one event loop.
 from __future__ import annotations
 
 import asyncio
+import hmac
 import logging
 import os
 import re
@@ -228,14 +229,26 @@ def create_health_app(hub: Hub) -> FastAPI:
     app = FastAPI(title="Lyra Hub")
 
     @app.get("/health")
-    async def health() -> dict:
+    async def health(authorization: str = Header(default="")) -> dict:
+        health_secret = os.environ.get("LYRA_HEALTH_SECRET", "")
+        expected = f"Bearer {health_secret}"
+        authenticated = bool(health_secret) and hmac.compare_digest(
+            authorization, expected
+        )
+
+        # Security: wrong/missing token intentionally returns the minimal
+        # response rather than 401, to avoid revealing whether a secret is
+        # configured.  This differs from /config which returns 401.
+        if not authenticated:
+            return {"ok": True}
+
         uptime_s = time.monotonic() - hub._start_time
 
         last_message_age_s: float | None = None
         if hub._last_processed_at is not None:
             last_message_age_s = time.monotonic() - hub._last_processed_at
 
-        circuits: dict = {}
+        circuits: dict[str, dict[str, object]] = {}
         if hub.circuit_registry is not None:
             all_status = hub.circuit_registry.get_all_status()
             circuits = {
@@ -256,6 +269,7 @@ def create_health_app(hub: Hub) -> FastAPI:
         }
 
         return {
+            "ok": True,
             "queue_size": hub.inbound_bus.staging_qsize(),
             "queues": {"inbound": inbound, "outbound": outbound},
             "last_message_age_s": last_message_age_s,
@@ -266,7 +280,9 @@ def create_health_app(hub: Hub) -> FastAPI:
     @app.get("/config")
     async def config_endpoint(authorization: str = Header(default="")) -> dict:
         config_secret = os.environ.get("LYRA_CONFIG_SECRET", "")
-        if not config_secret or authorization != f"Bearer {config_secret}":
+        if not config_secret or not hmac.compare_digest(
+            authorization, f"Bearer {config_secret}"
+        ):
             raise HTTPException(status_code=401, detail="unauthorized")
         from lyra.agents.anthropic_agent import AnthropicAgent
 

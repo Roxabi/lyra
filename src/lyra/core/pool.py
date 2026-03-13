@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import collections.abc
+import contextlib
 import logging
 import time
 from collections import deque
@@ -11,6 +12,7 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 if TYPE_CHECKING:
     from .agent import AgentBase
 
+from .debouncer import DEFAULT_DEBOUNCE_MS, MessageDebouncer
 from .message import GENERIC_ERROR_REPLY, InboundMessage, OutboundMessage, Response
 
 log = logging.getLogger(__name__)
@@ -56,6 +58,7 @@ class Pool:
         agent_name: str,
         ctx: PoolContext,
         turn_timeout: float = TURN_TIMEOUT_DEFAULT,
+        debounce_ms: int = DEFAULT_DEBOUNCE_MS,
     ) -> None:
         self.pool_id = pool_id
         self.agent_name = agent_name
@@ -67,9 +70,20 @@ class Pool:
         self.max_sdk_history: int = 50
         self._ctx = ctx
         self._turn_timeout = turn_timeout
+        self._debouncer = MessageDebouncer(debounce_ms)
         self._inbox: asyncio.Queue[InboundMessage] = asyncio.Queue()
         self._current_task: asyncio.Task | None = None
         self._last_active: float = time.monotonic()
+
+    @property
+    def debounce_ms(self) -> int:
+        """Current debounce window in milliseconds."""
+        return self._debouncer.debounce_ms
+
+    @debounce_ms.setter
+    def debounce_ms(self, value: int) -> None:
+        """Update debounce window on the live debouncer."""
+        self._debouncer.debounce_ms = value
 
     @property
     def last_active(self) -> float:
@@ -104,44 +118,153 @@ class Pool:
         result = self._ctx.get_message(key)
         return result if result is not None else fallback
 
-    async def _process_loop(self) -> None:
-        """Consume inbox sequentially until empty."""
+    async def _process_loop(self) -> None:  # noqa: C901 — debounce + cancel-in-flight adds inherent branches
+        """Consume inbox with debounce aggregation and cancel-in-flight.
+
+        1. Collect messages via the debouncer (aggregates rapid-fire typing).
+        2. Dispatch the merged message to the agent.
+        3. While the agent is processing, race against new inbox arrivals:
+           - Agent finishes first → done, loop back for more.
+           - New message arrives first → cancel agent, re-collect, re-merge,
+             and re-dispatch with the combined context.
+        """
+        _last_msg: InboundMessage | None = None
         try:
             while True:
-                try:
-                    msg = self._inbox.get_nowait()
-                except asyncio.QueueEmpty:
+                # Exit when the inbox is empty — mirrors the original get_nowait()
+                # break.  submit() will create a fresh task if new messages arrive
+                # after this loop exits.
+                if self._inbox.empty():
                     break
+
+                # Phase 1: collect messages (non-blocking since inbox is non-empty,
+                # then debounces for rapid follow-ups)
+                buffer = await self._debouncer.collect(self._inbox)
+
                 agent = self._ctx.get_agent(self.agent_name)
                 if agent is None:
                     log.error(
-                        "no agent %r for pool %s — message dropped",
+                        "no agent %r for pool %s — message(s) dropped",
                         self.agent_name,
                         self.pool_id,
                     )
-                    continue
-                try:
-                    await asyncio.wait_for(
-                        self._process_one(msg, agent), timeout=self._turn_timeout
-                    )
-                except asyncio.TimeoutError:
-                    _reply = self._msg(
-                        "timeout", "Your request timed out. Please try again."
-                    )
-                    await self._safe_dispatch(msg, Response(content=_reply))
-                except asyncio.CancelledError:
-                    _reply = self._msg("cancelled", "Request cancelled.")
-                    await asyncio.shield(
-                        self._safe_dispatch(msg, Response(content=_reply))
-                    )
-                    raise
-                except Exception as exc:
-                    log.exception("unhandled error in pool %s: %s", self.pool_id, exc)
-                    _reply = self._msg("generic", GENERIC_ERROR_REPLY)
-                    await self._safe_dispatch(msg, Response(content=_reply))
-                    self._ctx.record_circuit_failure(exc)
+                    # Drain any remaining queued messages before exiting
+                    while not self._inbox.empty():
+                        try:
+                            self._inbox.get_nowait()
+                        except asyncio.QueueEmpty:
+                            break
+                    break
+
+                # Phase 2: process with cancel-in-flight
+                msg = MessageDebouncer.merge(buffer)
+                _last_msg = msg
+                _last_msg = await self._process_with_cancel(msg, buffer, agent)
+        except asyncio.CancelledError:
+            # /stop cancellation — send a reply if we have a message context.
+            if _last_msg is not None:
+                _reply = self._msg("cancelled", "Request cancelled.")
+                await asyncio.shield(
+                    self._safe_dispatch(_last_msg, Response(content=_reply))
+                )
+            raise
         finally:
             self._current_task = None
+
+    async def _process_with_cancel(
+        self,
+        msg: InboundMessage,
+        buffer: list[InboundMessage],
+        agent: "AgentBase",
+    ) -> InboundMessage:
+        """Run agent.process() but cancel and re-dispatch if new messages arrive.
+
+        Races the agent task against inbox.get(). If a new message wins,
+        the agent task is cancelled, the new message(s) are debounced and
+        merged with the existing buffer, and the agent is re-invoked with
+        the combined context.
+
+        Returns the latest merged InboundMessage (may differ from the input
+        if cancel-in-flight cycles extended the buffer).
+        """
+        while True:
+            agent_task = asyncio.create_task(
+                self._guarded_process_one(msg, agent),
+                name=f"agent:{self.pool_id}",
+            )
+            inbox_waiter = asyncio.create_task(
+                self._inbox.get(), name=f"inbox:{self.pool_id}"
+            )
+
+            done, _pending = await asyncio.wait(
+                {agent_task, inbox_waiter},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            if agent_task in done:
+                # Agent finished — errors handled inside _guarded_process_one.
+                inbox_waiter.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await inbox_waiter
+                # If inbox_waiter also completed (race), put the message back.
+                if inbox_waiter in done and not inbox_waiter.cancelled():
+                    try:
+                        self._inbox.put_nowait(inbox_waiter.result())
+                    except asyncio.QueueFull:
+                        log.warning(
+                            "pool %s: inbox full, message lost in race",
+                            self.pool_id,
+                        )
+                    except Exception:
+                        log.warning(
+                            "pool %s: unexpected error in inbox race",
+                            self.pool_id,
+                            exc_info=True,
+                        )
+                # Propagate CancelledError from /stop.
+                if agent_task.cancelled():
+                    raise asyncio.CancelledError
+                return msg
+
+            # New message arrived while agent was processing → cancel-in-flight.
+            new_msg = inbox_waiter.result()
+            agent_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await agent_task
+
+            log.debug(
+                "cancel-in-flight in pool %s: new message while LLM processing",
+                self.pool_id,
+            )
+
+            # Debounce the new message (drain any rapid follow-ups).
+            buffer.append(new_msg)
+            buffer.extend(await self._debouncer.drain_followups(self._inbox))
+
+            msg = MessageDebouncer.merge(buffer)
+            # Loop to re-dispatch with combined context.
+
+    async def _guarded_process_one(
+        self, msg: InboundMessage, agent: "AgentBase"
+    ) -> None:
+        """Wrap _process_one with timeout and error handling."""
+        try:
+            await asyncio.wait_for(
+                self._process_one(msg, agent), timeout=self._turn_timeout
+            )
+        except asyncio.TimeoutError:
+            _reply = self._msg("timeout", "Your request timed out. Please try again.")
+            await self._safe_dispatch(msg, Response(content=_reply))
+        except asyncio.CancelledError:
+            # Distinguish /stop cancellation (from pool.cancel()) vs
+            # debounce cancel-in-flight.  Cancel-in-flight catches this
+            # inside _process_with_cancel; /stop propagates outward.
+            raise
+        except Exception as exc:
+            log.exception("unhandled error in pool %s: %s", self.pool_id, exc)
+            _reply = self._msg("generic", GENERIC_ERROR_REPLY)
+            await self._safe_dispatch(msg, Response(content=_reply))
+            self._ctx.record_circuit_failure(exc)
 
     async def _process_one(self, msg: InboundMessage, agent: "AgentBase") -> None:
         """Run agent.process and dispatch result. Records CB success.

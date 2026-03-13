@@ -369,11 +369,14 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:  # noqa: C901, P
         except ValueError as exc:
             raise SystemExit(f"Invalid STT configuration: {exc}") from exc
 
+    from lyra.core.debouncer import DEFAULT_DEBOUNCE_MS
+
     hub = Hub(
         circuit_registry=circuit_registry,
         msg_manager=msg_manager,
         pairing_manager=pm,
         stt=stt_service,
+        debounce_ms=DEFAULT_DEBOUNCE_MS,
     )
 
     cli_pool: CliPool | None = None

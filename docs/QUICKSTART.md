@@ -70,7 +70,7 @@ tools = ["Read", "Grep", "Glob", "WebFetch", "WebSearch"]
 system = """You are Lyra, a personal AI assistant..."""
 ```
 
-To create a second agent, duplicate the file (`my_agent.toml`) and pass its name to `load_agent_config()` in `__main__.py`.
+To add a second agent, duplicate the file (`my_agent.toml`) and reference it in `lyra.toml` via a `[[telegram.bots]]` or `[[discord.bots]]` entry with `agent = "my_agent"`. No Python changes needed.
 
 ## 4. Run
 

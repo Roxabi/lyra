@@ -126,3 +126,74 @@ class AuthMiddleware:
             role_map[str(role)] = TrustLevel.TRUSTED
 
         return cls(user_map=user_map, role_map=role_map, default=default)
+
+    @classmethod
+    def from_bot_config(
+        cls, raw: dict, section: str, bot_id: str
+    ) -> "AuthMiddleware | None":
+        """Parse per-bot auth config from [[auth.<section>_bots]] array.
+
+        Looks up the entry with matching bot_id from the array
+        ``auth.<section>_bots`` (e.g. ``auth.telegram_bots`` for section="telegram").
+        Does NOT fall back to the flat ``auth.<section>`` section — per-bot entries
+        must be explicit. Use ``from_config()`` for the legacy single-bot path.
+
+        Args:
+            raw: Top-level parsed TOML dict.
+            section: Platform section name, e.g. "telegram", "discord".
+            bot_id: The bot_id to look up in the per-bot array.
+
+        Returns:
+            AuthMiddleware instance, or None if no matching entry found (bot disabled).
+
+        Raises:
+            ValueError: If the entry exists but contains an invalid default value.
+        """
+        auth_block: dict = raw.get("auth", {})
+        bots_key = f"{section}_bots"
+        bots_list: list[dict] = auth_block.get(bots_key, [])
+
+        # Find matching entry by bot_id — no flat-section fallback to prevent
+        # cross-bot trust bleed (a bot without an explicit entry is disabled).
+        section_cfg: dict | None = None
+        for entry in bots_list:
+            if entry.get("bot_id") == bot_id:
+                section_cfg = entry
+                break
+
+        if section_cfg is None:
+            if section == "cli":
+                return cls(user_map={}, role_map={}, default=TrustLevel.OWNER)
+            log.warning(
+                "Missing [auth.%s] or [[auth.%s]] entry for bot_id=%r"
+                " — %s adapter bot_id=%r will be disabled",
+                section,
+                bots_key,
+                bot_id,
+                section,
+                bot_id,
+            )
+            return None
+
+        raw_default: str = section_cfg.get("default", "")
+        try:
+            default = TrustLevel(raw_default)
+        except ValueError:
+            valid = ", ".join(t.value for t in TrustLevel)
+            raise ValueError(
+                f"Invalid default '{raw_default}' in auth config"
+                f" for {section} bot_id={bot_id!r}"
+                f" — must be one of: {valid}"
+            )
+
+        user_map: dict[str, TrustLevel] = {}
+        for uid in section_cfg.get("owner_users", []):
+            user_map[str(uid)] = TrustLevel.OWNER
+        for uid in section_cfg.get("trusted_users", []):
+            user_map.setdefault(str(uid), TrustLevel.TRUSTED)
+
+        role_map: dict[str, TrustLevel] = {}
+        for role in section_cfg.get("trusted_roles", []):
+            role_map[str(role)] = TrustLevel.TRUSTED
+
+        return cls(user_map=user_map, role_map=role_map, default=default)

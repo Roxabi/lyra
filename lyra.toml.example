@@ -2,9 +2,10 @@
 # lyra.toml is gitignored — never commit it (it contains your user IDs)
 # See .env.example for environment variables (tokens, secrets)
 #
-# At least one adapter section ([auth.telegram] or [auth.discord]) must be present.
-# A missing section logs a warning and disables that adapter — Lyra starts with the remaining one.
-# Both sections missing → SystemExit.
+# Multi-bot schema (preferred): use [[telegram.bots]] / [[discord.bots]] arrays.
+# Legacy schema (backward compat): use [auth.telegram] / [auth.discord] flat
+# sections — Lyra will synthesize a single bot_id="main" from env vars.
+# Both schemas require at least one adapter configured, or Lyra exits.
 
 [admin]
 # User IDs allowed to run admin commands (/invite, /unpair, etc.)
@@ -16,15 +17,54 @@ user_ids = [
     # "dc:user:123456789012345678",
 ]
 
-[auth.telegram]
+# ---------------------------------------------------------------------------
+# Multi-bot schema (preferred for new deployments)
+# ---------------------------------------------------------------------------
+# Each [[telegram.bots]] / [[discord.bots]] entry defines one bot instance.
+# token / webhook_secret / bot_username support "env:VAR_NAME" to read from
+# the environment (recommended — keeps secrets out of this file).
+
+[[telegram.bots]]
+bot_id = "lyra"
+token = "env:TELEGRAM_TOKEN"
+bot_username = "env:TELEGRAM_BOT_USERNAME"
+webhook_secret = "env:TELEGRAM_WEBHOOK_SECRET"
+agent = "lyra_default"
+
+[[auth.telegram_bots]]
+bot_id = "lyra"
 # Trust level for unknown users: "blocked" | "trusted" | "owner"
 # "blocked" = only owner_users can interact (recommended for personal bots)
 default = "blocked"
 owner_users = []        # numeric Telegram user IDs
 trusted_users = []      # numeric Telegram user IDs (can interact, cannot admin)
 
-[auth.discord]
+[[discord.bots]]
+bot_id = "lyra"
+token = "env:DISCORD_TOKEN"
+auto_thread = true
+agent = "lyra_default"
+
+[[auth.discord_bots]]
+bot_id = "lyra"
 # Trust level for unknown users: "blocked" | "trusted" | "owner"
 default = "blocked"
 owner_users = []        # numeric Discord user snowflake IDs
 trusted_roles = []      # numeric Discord role snowflake IDs (trusted access)
+
+# ---------------------------------------------------------------------------
+# Legacy schema (backward compat — single bot per platform via env vars)
+# ---------------------------------------------------------------------------
+# Uncomment the sections below and remove the [[*.bots]] arrays above if you
+# prefer the old flat configuration. Lyra will use bot_id="main" and read
+# TELEGRAM_TOKEN / DISCORD_TOKEN directly from the environment.
+
+# [auth.telegram]
+# default = "blocked"
+# owner_users = []
+# trusted_users = []
+
+# [auth.discord]
+# default = "blocked"
+# owner_users = []
+# trusted_roles = []

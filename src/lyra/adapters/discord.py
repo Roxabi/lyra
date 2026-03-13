@@ -553,6 +553,25 @@ class DiscordAdapter(discord.Client):
             original_msg.id,
         )
 
+        for att in outbound.attachments:
+            await self._send_attachment(messageable, att)
+
+    async def _send_attachment(
+        self,
+        messageable: discord.abc.Messageable,
+        att: OutboundAttachment,
+    ) -> None:
+        """Send a single OutboundAttachment to a Discord channel."""
+        data: bytes | str = att.bytes_or_path
+        if isinstance(data, str):
+            from pathlib import Path
+
+            data = Path(data).read_bytes()
+        buf = BytesIO(data)
+        attachment = discord.File(fp=buf, filename=att.file_name)
+        content = (att.caption or "")[:DISCORD_MAX_LENGTH] or None
+        await messageable.send(content=content, file=attachment)
+
     async def send_streaming(  # noqa: C901 — streaming protocol: edit/chunk/finalize branches are inherently sequential
         self,
         original_msg: InboundMessage,

@@ -640,6 +640,34 @@ class TelegramAdapter:
             if i == last_idx:
                 outbound.metadata["reply_message_id"] = sent.message_id
 
+        for att in outbound.attachments:
+            await self._send_attachment(chat_id, att)
+
+    async def _send_attachment(
+        self, chat_id: int, att: OutboundAttachment
+    ) -> None:
+        """Send a single OutboundAttachment to a Telegram chat."""
+        data: bytes | str = att.bytes_or_path
+        if isinstance(data, str):
+            data = Path(data).read_bytes()
+        buf = BytesIO(data)
+        buf.name = att.file_name
+
+        kwargs: dict[str, Any] = {"chat_id": chat_id}
+        if att.caption:
+            kwargs["caption"] = att.caption[:1024]
+
+        mime = att.mime_type
+        if mime.startswith("image/"):
+            kwargs["photo"] = buf
+            await self.bot.send_photo(**kwargs)
+        elif mime.startswith("video/"):
+            kwargs["video"] = buf
+            await self.bot.send_video(**kwargs)
+        else:
+            kwargs["document"] = buf
+            await self.bot.send_document(**kwargs)
+
     async def send_streaming(  # noqa: C901 — streaming protocol: edit/chunk/finalize branches are inherently sequential
         self,
         original_msg: InboundMessage,

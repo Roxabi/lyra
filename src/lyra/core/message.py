@@ -174,6 +174,20 @@ class MediaPart:
     caption: str | None = None
 
 
+@dataclass(frozen=True)
+class OutboundAttachment:
+    """A file attachment on an OutboundMessage.
+
+    bytes_or_path holds the file data: either raw bytes or a filesystem path
+    (str) to read from. Adapters resolve paths at send time.
+    """
+
+    bytes_or_path: bytes | str
+    file_name: str
+    mime_type: str = "application/octet-stream"
+    caption: str | None = None
+
+
 # ContentPart: plain text, code block, or media attachment.
 ContentPart = str | CodeBlock | MediaPart
 
@@ -191,6 +205,7 @@ class OutboundMessage:
     """
 
     content: list[ContentPart]
+    attachments: list[OutboundAttachment] = field(default_factory=list)
     buttons: list[Button] = field(default_factory=list)
     edit_id: str | None = None
     is_final: bool = True

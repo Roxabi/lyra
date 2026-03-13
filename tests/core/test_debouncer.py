@@ -74,7 +74,9 @@ class SlowAgent:
 
     name = "test_agent"
 
-    async def process(self, msg: InboundMessage, pool: Pool) -> Response:
+    async def process(
+        self, msg: InboundMessage, pool: Pool, *, on_intermediate=None
+    ) -> Response:
         await asyncio.sleep(10)
         return Response(content="done")
 
@@ -84,7 +86,9 @@ class FastAgent:
 
     name = "test_agent"
 
-    async def process(self, msg: InboundMessage, pool: Pool) -> Response:
+    async def process(
+        self, msg: InboundMessage, pool: Pool, *, on_intermediate=None
+    ) -> Response:
         return Response(content=f"echo: {msg.text}")
 
 
@@ -96,7 +100,9 @@ class RecordingAgent:
     def __init__(self) -> None:
         self.calls: list[str] = []
 
-    async def process(self, msg: InboundMessage, pool: Pool) -> Response:
+    async def process(
+        self, msg: InboundMessage, pool: Pool, *, on_intermediate=None
+    ) -> Response:
         self.calls.append(msg.text)
         return Response(content=f"reply:{msg.text}")
 
@@ -369,7 +375,9 @@ class TestPoolCancelInFlight:
         started = asyncio.Event()
         original_process = agent.process
 
-        async def _slow_then_fast(msg: InboundMessage, pool: Pool) -> Response:
+        async def _slow_then_fast(
+            msg: InboundMessage, pool: Pool, *, on_intermediate=None
+        ) -> Response:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
@@ -378,7 +386,7 @@ class TestPoolCancelInFlight:
                 await asyncio.sleep(10)
                 return Response(content="should not reach")
             # Second call: fast — combined message
-            return await original_process(msg, pool)
+            return await original_process(msg, pool, on_intermediate=on_intermediate)
 
         agent.process = _slow_then_fast  # type: ignore[assignment]
 

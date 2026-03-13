@@ -3,7 +3,8 @@
 # See .env.example for environment variables (tokens, secrets)
 #
 # At least one adapter section ([auth.telegram] or [auth.discord]) must be present.
-# Both sections are required even if you only use one adapter.
+# A missing section logs a warning and disables that adapter — Lyra starts with the remaining one.
+# Both sections missing → SystemExit.
 
 [admin]
 # User IDs allowed to run admin commands (/invite, /unpair, etc.)

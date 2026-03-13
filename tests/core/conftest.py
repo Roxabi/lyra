@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from lyra.core.auth import TrustLevel
 from lyra.core.message import (
     InboundMessage,
 )
@@ -57,4 +58,5 @@ def make_inbound_message(
         text_raw="hello",
         timestamp=datetime.now(timezone.utc),
         platform_meta=_meta,
+        trust_level=TrustLevel.TRUSTED,
     )

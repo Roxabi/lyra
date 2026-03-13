@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import re
 from collections.abc import Awaitable, Callable
 
 from lyra.core.circuit_breaker import CircuitRegistry
-from lyra.core.message import InboundMessage, Platform
+from lyra.core.message import InboundAudio, InboundMessage, Platform
 
 log = logging.getLogger(__name__)
 
@@ -20,7 +22,7 @@ async def push_to_hub_guarded(
     *,
     inbound_bus: object,
     platform: Platform,
-    msg: InboundMessage,
+    msg: InboundMessage | InboundAudio,
     circuit_registry: CircuitRegistry | None,
     on_drop: Callable[[], None] | None,
     send_backpressure: Callable[[str], Awaitable[None]],
@@ -74,9 +76,6 @@ def sanitize_filename(
     extension against *allowed_exts*. Returns *fallback* if the
     result is empty or the extension is not whitelisted.
     """
-    import os
-    import re
-
     # Strip path components (defense against ../../ traversal)
     name = os.path.basename(filename)
     # Strip control characters and null bytes
@@ -94,6 +93,32 @@ def sanitize_filename(
         return fallback
 
     return name
+
+
+# Shared base set of allowed file extensions for outbound attachment filenames.
+# Adapters may extend this with platform-specific extensions.
+ATTACHMENT_EXTS_BASE = frozenset(
+    {
+        "png",
+        "jpg",
+        "jpeg",
+        "gif",
+        "webp",
+        "bmp",  # image
+        "mp4",
+        "webm",
+        "mov",
+        "avi",  # video
+        "pdf",
+        "txt",
+        "csv",
+        "json",
+        "xml",
+        "zip",
+        "tar",
+        "gz",  # document/file
+    }
+)
 
 
 def parse_reply_to_id(reply_to_id: str | None) -> int | None:

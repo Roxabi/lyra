@@ -21,6 +21,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.core.agent import Agent, ModelConfig
+from lyra.core.auth import TrustLevel
 from lyra.core.message import Attachment, InboundMessage, Response
 from lyra.core.pool import Pool
 from lyra.llm.base import LlmResult
@@ -50,6 +51,7 @@ def make_audio_message(url: str) -> InboundMessage:
             "is_group": False,
             "message_id": None,
         },
+        trust_level=TrustLevel.TRUSTED,
     )
 
 
@@ -71,6 +73,7 @@ def make_text_message(text: str = "hello") -> InboundMessage:
             "is_group": False,
             "message_id": None,
         },
+        trust_level=TrustLevel.TRUSTED,
     )
 
 

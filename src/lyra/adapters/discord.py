@@ -15,14 +15,17 @@ if TYPE_CHECKING:
     from lyra.core.hub import Hub
 
 from lyra.adapters._shared import (
+    ATTACHMENT_EXTS_BASE,
     parse_reply_to_id,
     push_to_hub_guarded,
     sanitize_filename,
     truncate_caption,
 )
+from lyra.core.auth import AuthMiddleware, TrustLevel
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
+    Attachment,
     InboundAudio,
     InboundMessage,
     OutboundAttachment,
@@ -32,16 +35,18 @@ from lyra.core.message import (
 )
 from lyra.core.messages import MessageManager
 
-# Allowed file extensions for outbound attachment filenames (whitelist).
-_ATTACHMENT_EXTS = frozenset({
-    "png", "jpg", "jpeg", "gif", "webp", "bmp",  # image
-    "mp4", "webm", "mov", "avi",  # video
-    "pdf", "txt", "csv", "json", "xml", "zip", "tar", "gz",  # document/file
-})
+# Discord: same base extensions, no platform-specific additions needed.
+_ATTACHMENT_EXTS = ATTACHMENT_EXTS_BASE
 
 log = logging.getLogger(__name__)
 
 DISCORD_MAX_LENGTH = 2000  # Discord API message length limit
+
+# Sentinel used when no AuthMiddleware is provided — denies all traffic by default.
+_DENY_ALL = AuthMiddleware(user_map={}, role_map={}, default=TrustLevel.BLOCKED)
+
+# Permissive sentinel for use in tests — allows all traffic as PUBLIC.
+_ALLOW_ALL = AuthMiddleware(user_map={}, role_map={}, default=TrustLevel.PUBLIC)
 
 
 _AUTO_THREAD_TRUE = frozenset({"1", "true", "yes", "on"})
@@ -61,6 +66,30 @@ _AUDIO_MIME_TYPES = frozenset(
 
 # Allowed file extensions for outbound audio filenames (whitelist).
 _AUDIO_EXTS = frozenset({"ogg", "mp3", "mp4", "mpeg", "opus", "wav", "flac", "aac"})
+
+
+def _extract_attachments(raw_attachments: list[Any]) -> list[Attachment]:
+    """Extract non-audio Attachment objects from Discord message.attachments."""
+    result: list[Attachment] = []
+    for a in raw_attachments:
+        ct = getattr(a, "content_type", None) or ""
+        if ct in _AUDIO_MIME_TYPES:
+            continue
+        if ct.startswith("image/"):
+            att_type = "image"
+        elif ct.startswith("video/"):
+            att_type = "video"
+        else:
+            att_type = "file"
+        result.append(
+            Attachment(
+                type=att_type,
+                url_or_bytes=a.url,
+                mime_type=ct or "application/octet-stream",
+                filename=getattr(a, "filename", None),
+            )
+        )
+    return result
 
 
 @dataclass(frozen=True)
@@ -100,6 +129,7 @@ class DiscordAdapter(discord.Client):
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
         auto_thread: bool = True,
+        auth: AuthMiddleware = _DENY_ALL,
     ) -> None:
         if intents is None:
             intents = discord.Intents.default()
@@ -110,6 +140,7 @@ class DiscordAdapter(discord.Client):
         self._circuit_registry = circuit_registry
         self._msg_manager = msg_manager
         self._auto_thread = auto_thread
+        self._auth: AuthMiddleware = auth
         self._max_audio_bytes: int = int(
             os.environ.get("LYRA_MAX_AUDIO_BYTES", 5 * 1024 * 1024)
         )
@@ -144,7 +175,12 @@ class DiscordAdapter(discord.Client):
             )
 
     def normalize_audio(
-        self, raw: Any, audio_bytes: bytes, mime_type: str
+        self,
+        raw: Any,
+        audio_bytes: bytes,
+        mime_type: str,
+        *,
+        trust_level: TrustLevel = TrustLevel.TRUSTED,
     ) -> InboundAudio:
         """Build an InboundAudio envelope from a Discord audio message.
 
@@ -170,6 +206,7 @@ class DiscordAdapter(discord.Client):
             timestamp=timestamp,
             user_name=(getattr(raw.author, "display_name", None) or raw.author.name),
             is_mention=False,
+            trust_level=trust_level,
             platform_meta={
                 "guild_id": raw.guild.id if raw.guild else None,
                 "channel_id": raw.channel.id,
@@ -183,6 +220,7 @@ class DiscordAdapter(discord.Client):
         *,
         thread_id: int | None = None,
         channel_id: int | None = None,
+        trust_level: TrustLevel = TrustLevel.TRUSTED,
     ) -> InboundMessage:
         """Convert a discord.py Message (or SimpleNamespace) to InboundMessage.
 
@@ -238,6 +276,7 @@ class DiscordAdapter(discord.Client):
         )
 
         _display_name = getattr(raw.author, "display_name", None)
+        attachments = _extract_attachments(getattr(raw, "attachments", None) or [])
         return InboundMessage(
             id=(f"discord:{user_id}:{int(timestamp.timestamp())}:{raw.id}"),
             platform=Platform.DISCORD.value,
@@ -248,8 +287,10 @@ class DiscordAdapter(discord.Client):
             is_mention=is_mention,
             text=text,
             text_raw=raw.content,
+            attachments=attachments,
             timestamp=timestamp,
             trust="user",
+            trust_level=trust_level,
             platform_meta={
                 "guild_id": raw.guild.id if raw.guild else None,
                 "channel_id": resolved_channel_id,
@@ -270,6 +311,20 @@ class DiscordAdapter(discord.Client):
         if message.author.bot:
             return
 
+        # Auth gate — runs before normalize() and before audio handling.
+        _raw_uid = str(message.author.id)
+        roles = (
+            [str(r.id) for r in message.author.roles]
+            if hasattr(message.author, "roles")
+            else []
+        )
+        trust = self._auth.check(_raw_uid, roles=roles)
+        if trust == TrustLevel.BLOCKED:
+            log.info(
+                "auth_reject user=%s channel=discord", f"dc:user:{message.author.id}"
+            )
+            return
+
         # Audio attachment detection
         audio_attachment = next(
             (
@@ -280,27 +335,66 @@ class DiscordAdapter(discord.Client):
             None,
         )
         if audio_attachment is not None:
-            # Audio bus not yet wired (#140 follow-on) — log and reply
-            # without downloading.
+            user_id = f"dc:user:{message.author.id}"
             log.info(
                 "audio_received",
                 extra={
                     "platform": "discord",
-                    "user_id": f"dc:user:{message.author.id}",
+                    "user_id": user_id,
                     "message_id": message.id,
                 },
             )
-            try:
-                _txt = self._msg(
-                    "stt_unsupported",
-                    "Voice messages are not yet supported here.",
-                )
-                await message.reply(_txt)
-            except Exception:
+            # Pre-download size check (matches Telegram's _download_audio guard)
+            att_size = getattr(audio_attachment, "size", None)
+            if att_size is not None and att_size > self._max_audio_bytes:
                 log.warning(
-                    "Failed to send audio-unsupported reply for message_id=%s",
+                    "Audio attachment rejected: %d bytes exceeds %d byte limit"
+                    " (message_id=%s)",
+                    att_size,
+                    self._max_audio_bytes,
                     message.id,
                 )
+                try:
+                    await message.reply(
+                        self._msg(
+                            "audio_too_large",
+                            "That audio file is too large to process.",
+                        )
+                    )
+                except Exception:
+                    log.warning(
+                        "Failed to send audio-too-large reply for message_id=%s",
+                        message.id,
+                    )
+                return
+
+            try:
+                audio_bytes = await audio_attachment.read()
+            except Exception:
+                log.exception(
+                    "Failed to download audio attachment for message_id=%s",
+                    message.id,
+                )
+                return
+
+            hub_audio = self.normalize_audio(
+                message,
+                audio_bytes=audio_bytes,
+                mime_type=getattr(audio_attachment, "content_type", "audio/ogg"),
+            )
+
+            async def _send_bp(text: str) -> None:
+                await message.reply(text)
+
+            await push_to_hub_guarded(
+                inbound_bus=self._hub.inbound_audio_bus,
+                platform=Platform.DISCORD,
+                msg=hub_audio,
+                circuit_registry=self._circuit_registry,
+                on_drop=None,
+                send_backpressure=_send_bp,
+                get_msg=self._msg,
+            )
             return  # audio messages handled separately; skip text path
 
         # Pre-detect mention (needed for auto-thread decision)
@@ -334,6 +428,7 @@ class DiscordAdapter(discord.Client):
                 message,
                 thread_id=resolved_thread_id,
                 channel_id=resolved_channel_id,
+                trust_level=trust,
             )
         except Exception:
             log.exception("Failed to normalize discord message id=%s", message.id)
@@ -633,7 +728,8 @@ class DiscordAdapter(discord.Client):
         # Derive filename: sanitize explicit name or derive from mime_type.
         if msg.filename:
             filename = sanitize_filename(
-                msg.filename, _ATTACHMENT_EXTS,
+                msg.filename,
+                _ATTACHMENT_EXTS,
             )
         else:
             raw_ext = msg.mime_type.split("/")[-1] if "/" in msg.mime_type else ""

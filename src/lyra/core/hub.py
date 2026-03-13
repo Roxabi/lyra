@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import tempfile
 import time
 from collections import deque
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple, Protocol
 
 from .agent import AgentBase
@@ -27,6 +30,7 @@ from .outbound_dispatcher import OutboundDispatcher
 from .pool import Pool
 
 if TYPE_CHECKING:
+    from ..stt import STTService
     from .pairing import PairingManager
 
 log = logging.getLogger(__name__)
@@ -118,6 +122,7 @@ class Hub:
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
         pairing_manager: PairingManager | None = None,
+        stt: STTService | None = None,
     ) -> None:
         self._bus_size = bus_size
         self.inbound_bus: InboundBus = InboundBus()
@@ -130,6 +135,7 @@ class Hub:
         self.circuit_registry = circuit_registry
         self._msg_manager = msg_manager
         self._pairing_manager = pairing_manager
+        self._stt: STTService | None = stt
         self._rate_limit = rate_limit
         self._rate_window = rate_window
         # Sliding window: maps (platform.value, bot_id, user_id) → deque of timestamps.
@@ -364,6 +370,150 @@ class Hub:
         self._last_processed_at = time.monotonic()
 
     # ------------------------------------------------------------------
+    # Audio consumer loop
+    # ------------------------------------------------------------------
+
+    async def _audio_loop(self) -> None:
+        """Drain InboundAudioBus, transcribe via STT, re-enqueue as InboundMessage.
+
+        When STT is not configured, sends an ``stt_unsupported`` reply and drops
+        the audio envelope. When transcription fails, sends an ``stt_failed``
+        reply. When the transcription is noise, sends an ``stt_noise`` reply.
+
+        Runs until cancelled.
+        """
+        from ..stt import is_whisper_noise
+
+        while True:
+            audio: InboundAudio = await self.inbound_audio_bus.get()
+            try:
+                try:
+                    platform_enum = Platform(audio.platform)
+                except ValueError:
+                    log.warning(
+                        "unknown platform %r in audio id=%s — audio dropped",
+                        audio.platform,
+                        audio.id,
+                    )
+                    continue
+                key = RoutingKey(platform_enum, audio.bot_id, audio.scope_id)
+
+                if audio.trust != "user":
+                    log.error(
+                        "audio %s has trust=%r (expected 'user') — dropped",
+                        audio.id,
+                        audio.trust,
+                    )
+                    continue
+
+                if self._stt is None:
+                    _content = (
+                        self._msg_manager.get("stt_unsupported")
+                        if self._msg_manager
+                        else "Voice messages are not supported — STT is not configured."
+                    )
+                    await self._dispatch_audio_reply(audio, _content)
+                    log.warning("STT not configured — audio %s dropped", audio.id)
+                    continue
+
+                # Write audio bytes to a temp file for STT
+                fd, tmp_str = tempfile.mkstemp(suffix=_mime_to_ext(audio.mime_type))
+                tmp = Path(tmp_str)
+                try:
+                    os.write(fd, audio.audio_bytes)
+                    os.close(fd)
+                    result = await self._stt.transcribe(tmp)
+                finally:
+                    tmp.unlink(missing_ok=True)
+
+                if is_whisper_noise(result.text):
+                    _content = (
+                        self._msg_manager.get("stt_noise")
+                        if self._msg_manager
+                        else "I couldn't make out your voice message, please try again."
+                    )
+                    await self._dispatch_audio_reply(audio, _content)
+                    log.info(
+                        "STT noise for audio %s — replied with stt_noise",
+                        audio.id,
+                    )
+                    continue
+
+                # Build InboundMessage from the transcribed audio
+                text = f"\U0001f3a4 [voice]: {result.text}"
+                msg = InboundMessage(
+                    id=audio.id,
+                    platform=audio.platform,
+                    bot_id=audio.bot_id,
+                    scope_id=audio.scope_id,
+                    user_id=audio.user_id,
+                    user_name=audio.user_name,
+                    is_mention=audio.is_mention,
+                    text=result.text,
+                    text_raw=text,
+                    timestamp=audio.timestamp,
+                    trust_level=audio.trust_level,
+                    trust=audio.trust,
+                    platform_meta=audio.platform_meta,
+                )
+                # Re-enqueue on InboundBus for normal Hub.run() processing
+                try:
+                    self.inbound_bus.put(platform_enum, msg)
+                except asyncio.QueueFull:
+                    log.warning(
+                        "inbound bus full — transcribed audio %s dropped",
+                        audio.id,
+                    )
+                    continue
+                log.info(
+                    "Audio %s transcribed (%s, %.1fs) → re-enqueued as text on %s",
+                    audio.id,
+                    result.language,
+                    result.duration_seconds,
+                    key,
+                )
+            except Exception:
+                log.exception("audio_loop failed for audio id=%s", audio.id)
+                _content = (
+                    self._msg_manager.get("stt_failed")
+                    if self._msg_manager
+                    else "Sorry, I couldn't transcribe your voice message."
+                )
+                try:
+                    await self._dispatch_audio_reply(audio, _content)
+                except Exception:
+                    log.exception(
+                        "dispatch_audio_reply failed for audio id=%s", audio.id
+                    )
+            finally:
+                self.inbound_audio_bus.task_done()
+
+    async def _dispatch_audio_reply(
+        self, audio: InboundAudio, content: str
+    ) -> None:
+        """Send an error/info reply for an audio envelope.
+
+        Constructs a synthetic InboundMessage from the audio envelope so
+        dispatch_response() can route the reply back to the originating adapter.
+        """
+        synthetic = InboundMessage(
+            id=audio.id,
+            platform=audio.platform,
+            bot_id=audio.bot_id,
+            scope_id=audio.scope_id,
+            user_id=audio.user_id,
+            user_name=audio.user_name,
+            is_mention=False,
+            text="",
+            text_raw="",
+            timestamp=audio.timestamp,
+            trust_level=audio.trust_level,
+            trust=audio.trust,
+            platform_meta=audio.platform_meta,
+        )
+        await self.dispatch_response(synthetic, Response(content=content))
+
+    # ------------------------------------------------------------------
     # Run loop
     # ------------------------------------------------------------------
 
@@ -488,6 +638,19 @@ class Hub:
 # ---------------------------------------------------------------------------
 # Module-level helpers for the pairing gate
 # ---------------------------------------------------------------------------
+
+
+def _mime_to_ext(mime_type: str) -> str:
+    """Map common audio MIME types to file extensions for STT temp files."""
+    _MAP = {
+        "audio/ogg": ".ogg",
+        "audio/mpeg": ".mp3",
+        "audio/mp4": ".m4a",
+        "audio/wav": ".wav",
+        "audio/x-wav": ".wav",
+        "audio/webm": ".webm",
+    }
+    return _MAP.get(mime_type, ".ogg")
 
 
 def _is_group_message(msg: InboundMessage) -> bool:

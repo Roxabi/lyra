@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Literal
 
+from lyra.core.trust import TrustLevel
+
 # Shared user-facing fallback for unhandled agent or dispatch errors.
 GENERIC_ERROR_REPLY = "Something went wrong. Please try again."
 
@@ -16,7 +18,14 @@ class Platform(str, Enum):
 
 @dataclass(frozen=True)
 class Attachment:
-    """A file or media attachment on an InboundMessage."""
+    """A file or media attachment on an InboundMessage.
+
+    url_or_bytes stores platform-specific references:
+    - Discord: direct CDN URL (str) — fetchable with HTTP GET.
+    - Telegram: prefixed file_id (str, ``"tg:file_id:{id}"``) — resolve via
+      Bot API ``getFile``. Detect with ``url_or_bytes.startswith("tg:file_id:")``.
+    - Raw bytes (bytes) — for pre-downloaded media (future).
+    """
 
     type: str  # "image" | "audio" | "video" | "file"
     url_or_bytes: str | bytes  # URL string or raw bytes
@@ -42,11 +51,14 @@ class InboundMessage:
     is_mention: bool
     text: str  # normalized plain text (markup stripped)
     text_raw: str  # original text with platform markup
+    trust_level: TrustLevel
     attachments: list[Attachment] = field(default_factory=list)
     reply_to_id: str | None = None
     thread_id: str | None = None
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     locale: str | None = None
+    # Deprecated: use trust_level (TrustLevel) for authorization.
+    # Removal tracked separately.
     trust: Literal["user", "system"] = "user"
     platform_meta: dict = field(default_factory=dict)
 
@@ -56,7 +68,7 @@ class InboundAudio:
     """Normalized inbound audio envelope produced by all channel adapters.
 
     Mirrors InboundMessage for audio: adapters produce this; hub/agents consume it.
-    Bus enqueue is a future concern (issue #140 follow-on).
+    Adapters enqueue via InboundAudioBus; hub/agents consume from its staging queue.
     Security: trust is always 'user' from adapters — never set above adapter layer.
     """
 
@@ -70,6 +82,9 @@ class InboundAudio:
     duration_ms: int | None
     file_id: str | None
     timestamp: datetime
+    trust_level: TrustLevel
+    # Deprecated: use trust_level (TrustLevel) for authorization.
+    # Removal tracked separately.
     trust: Literal["user", "system"] = "user"
     user_name: str = ""
     is_mention: bool = False

@@ -43,6 +43,7 @@ class AnthropicAgent(AgentBase):
         runtime_config: RuntimeConfig | None = None,
         stt: STTService | None = None,
         agents_dir: Path | None = None,
+        smart_routing_decorator: object | None = None,
     ) -> None:
         resolved_agents_dir: Path = agents_dir or _AGENTS_DIR
         rc = (
@@ -60,6 +61,7 @@ class AnthropicAgent(AgentBase):
             admin_user_ids=admin_user_ids,
             msg_manager=msg_manager,
             stt=stt,
+            smart_routing_decorator=smart_routing_decorator,
         )
 
     @property

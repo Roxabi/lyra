@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
+from lyra.core.auth import TrustLevel
 from lyra.core.circuit_breaker import CircuitBreaker
 from lyra.core.message import (
     InboundMessage,
@@ -33,6 +34,7 @@ def _make_msg() -> InboundMessage:
             "message_id": None,
             "is_group": False,
         },
+        trust_level=TrustLevel.TRUSTED,
     )
 
 

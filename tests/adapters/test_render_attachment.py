@@ -19,8 +19,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from lyra.adapters._shared import sanitize_filename, truncate_caption
 from lyra.adapters.discord import DiscordAdapter
 from lyra.adapters.telegram import TelegramAdapter
+from lyra.core.auth import TrustLevel
 from lyra.core.message import (
     InboundMessage,
     OutboundAttachment,
@@ -32,7 +34,11 @@ from lyra.core.message import (
 
 
 def _tg_msg(
-    chat_id: int = 42, message_id: int = 10, topic_id: int | None = None
+    chat_id: int = 42,
+    message_id: int = 10,
+    topic_id: int | None = None,
+    *,
+    omit_chat_id: bool = False,
 ) -> InboundMessage:
     return InboundMessage(
         id=f"telegram:tg:user:1:0:{message_id}",
@@ -44,9 +50,10 @@ def _tg_msg(
         is_mention=False,
         text="hi",
         text_raw="hi",
+        trust_level=TrustLevel.TRUSTED,
         timestamp=datetime.now(timezone.utc),
         platform_meta={
-            "chat_id": chat_id,
+            **({"chat_id": chat_id} if not omit_chat_id else {}),
             "message_id": message_id,
             "topic_id": topic_id,
             "is_group": False,
@@ -55,7 +62,11 @@ def _tg_msg(
 
 
 def _dc_msg(
-    channel_id: int = 99, message_id: int = 55, thread_id: int | None = None
+    channel_id: int = 99,
+    message_id: int = 55,
+    thread_id: int | None = None,
+    *,
+    omit_channel_id: bool = False,
 ) -> InboundMessage:
     return InboundMessage(
         id=f"discord:dc:user:1:0:{message_id}",
@@ -67,10 +78,11 @@ def _dc_msg(
         is_mention=False,
         text="hi",
         text_raw="hi",
+        trust_level=TrustLevel.TRUSTED,
         timestamp=datetime.now(timezone.utc),
         platform_meta={
             "guild_id": 1,
-            "channel_id": channel_id,
+            **({"channel_id": channel_id} if not omit_channel_id else {}),
             "message_id": message_id,
             "thread_id": thread_id,
             "channel_type": "text",
@@ -171,8 +183,10 @@ class TestTelegramRenderAttachment:
     async def test_send_document(self) -> None:
         adapter = _make_tg_adapter()
         att = OutboundAttachment(
-            data=b"PDF", type="document",
-            mime_type="application/pdf", filename="doc.pdf"
+            data=b"PDF",
+            type="document",
+            mime_type="application/pdf",
+            filename="doc.pdf",
         )
         inbound = _tg_msg()
 
@@ -188,7 +202,8 @@ class TestTelegramRenderAttachment:
     async def test_send_file_uses_send_document(self) -> None:
         adapter = _make_tg_adapter()
         att = OutboundAttachment(
-            data=b"BIN", type="file",
+            data=b"BIN",
+            type="file",
             mime_type="application/octet-stream",
         )
         inbound = _tg_msg()
@@ -213,8 +228,7 @@ class TestTelegramRenderAttachment:
     async def test_missing_chat_id(self) -> None:
         adapter = _make_tg_adapter()
         att = OutboundAttachment(data=b"x", type="image", mime_type="image/png")
-        inbound = _tg_msg()
-        inbound.platform_meta.pop("chat_id")
+        inbound = _tg_msg(omit_chat_id=True)
 
         await adapter.render_attachment(att, inbound)
 
@@ -309,7 +323,8 @@ class TestDiscordRenderAttachment:
         ref_msg.reply = AsyncMock()
         channel.fetch_message = AsyncMock(return_value=ref_msg)
         att = OutboundAttachment(
-            data=b"x", type="document",
+            data=b"x",
+            type="document",
             mime_type="application/pdf",
         )
         inbound = _dc_msg()
@@ -340,8 +355,7 @@ class TestDiscordRenderAttachment:
         adapter = _make_dc_adapter()
         channel = _mock_channel()
         att = OutboundAttachment(data=b"x", type="image", mime_type="image/png")
-        inbound = _dc_msg()
-        inbound.platform_meta.pop("channel_id")
+        inbound = _dc_msg(omit_channel_id=True)
 
         with patch.object(adapter, "get_channel", return_value=channel):
             await adapter.render_attachment(att, inbound)
@@ -378,8 +392,10 @@ class TestDiscordRenderAttachment:
         channel.fetch_message = AsyncMock(return_value=ref_msg)
 
         att = OutboundAttachment(
-            data=b"x", type="image",
-            mime_type="image/png", reply_to_id="200",
+            data=b"x",
+            type="image",
+            mime_type="image/png",
+            reply_to_id="200",
         )
         inbound = _dc_msg(message_id=55)
 
@@ -394,7 +410,9 @@ class TestDiscordRenderAttachment:
         channel = _mock_channel()
 
         att = OutboundAttachment(
-            data=b"x", type="image", mime_type="image/png",
+            data=b"x",
+            type="image",
+            mime_type="image/png",
         )
         inbound = InboundMessage(
             id="discord:dc:user:1:0:0",
@@ -406,6 +424,7 @@ class TestDiscordRenderAttachment:
             is_mention=False,
             text="hi",
             text_raw="hi",
+            trust_level=TrustLevel.TRUSTED,
             timestamp=datetime.now(timezone.utc),
             platform_meta={
                 "guild_id": 1,
@@ -453,3 +472,177 @@ class TestDiscordRenderAttachment:
 
         # Assert — _resolve_channel called with thread_id, not channel_id
         resolve.assert_called_with(777)
+
+
+# ---------------------------------------------------------------------------
+# sanitize_filename
+# ---------------------------------------------------------------------------
+
+
+class TestSanitizeFilename:
+    _EXTS = frozenset({"png", "jpg", "pdf"})
+
+    def test_clean_filename_passes_through(self) -> None:
+        assert sanitize_filename("photo.png", self._EXTS) == "photo.png"
+
+    def test_path_traversal_stripped(self) -> None:
+        result = sanitize_filename("../../etc/passwd.png", self._EXTS)
+        assert "/" not in result
+        assert ".." not in result or result == "attachment.bin"
+        assert result == "passwd.png"
+
+    def test_control_characters_stripped(self) -> None:
+        result = sanitize_filename("file\x00name.png", self._EXTS)
+        assert "\x00" not in result
+        assert result == "filename.png"
+
+    def test_long_name_truncated(self) -> None:
+        long_name = "a" * 300 + ".png"
+        result = sanitize_filename(long_name, self._EXTS)
+        assert len(result) <= 255
+
+    def test_extension_not_in_whitelist_returns_fallback(self) -> None:
+        assert sanitize_filename("script.exe", self._EXTS) == "attachment.bin"
+
+    def test_empty_name_returns_fallback(self) -> None:
+        assert sanitize_filename("", self._EXTS) == "attachment.bin"
+
+    def test_custom_fallback(self) -> None:
+        result = sanitize_filename("bad.exe", self._EXTS, fallback="safe.bin")
+        assert result == "safe.bin"
+
+
+# ---------------------------------------------------------------------------
+# truncate_caption
+# ---------------------------------------------------------------------------
+
+
+class TestTruncateCaption:
+    def test_none_returns_none(self) -> None:
+        assert truncate_caption(None, 100) is None
+
+    def test_empty_returns_none(self) -> None:
+        assert truncate_caption("", 100) is None
+
+    def test_within_limit_unchanged(self) -> None:
+        assert truncate_caption("hello", 100) == "hello"
+
+    def test_at_limit_unchanged(self) -> None:
+        s = "x" * 100
+        assert truncate_caption(s, 100) == s
+
+    def test_over_limit_truncated(self) -> None:
+        s = "x" * 200
+        result = truncate_caption(s, 100)
+        assert result is not None
+        assert len(result) == 100
+
+
+# ---------------------------------------------------------------------------
+# Integration: traversal filenames + caption truncation boundaries
+# ---------------------------------------------------------------------------
+
+
+class TestTelegramIntegration:
+    @pytest.mark.asyncio
+    async def test_traversal_filename_sanitized(self) -> None:
+        adapter = _make_tg_adapter()
+        att = OutboundAttachment(
+            data=b"x",
+            type="document",
+            mime_type="application/pdf",
+            filename="../../etc/evil.pdf",
+        )
+        inbound = _tg_msg()
+        await adapter.render_attachment(att, inbound)
+        buf = adapter.bot.send_document.call_args.kwargs["document"]
+        assert "/" not in buf.name
+        assert ".." not in buf.name
+
+    @pytest.mark.asyncio
+    async def test_caption_truncated_at_1024(self) -> None:
+        adapter = _make_tg_adapter()
+        long_caption = "x" * 2000
+        att = OutboundAttachment(
+            data=b"x",
+            type="image",
+            mime_type="image/png",
+            caption=long_caption,
+        )
+        inbound = _tg_msg()
+        await adapter.render_attachment(att, inbound)
+        kwargs = adapter.bot.send_photo.call_args.kwargs
+        assert len(kwargs["caption"]) == 1024
+
+    @pytest.mark.asyncio
+    async def test_unknown_mime_fallback(self) -> None:
+        adapter = _make_tg_adapter()
+        att = OutboundAttachment(
+            data=b"x",
+            type="file",
+            mime_type="application/x-custom",
+        )
+        inbound = _tg_msg()
+        await adapter.render_attachment(att, inbound)
+        buf = adapter.bot.send_document.call_args.kwargs["document"]
+        assert buf.name == "attachment.bin"
+
+
+class TestDiscordIntegration:
+    @pytest.mark.asyncio
+    async def test_traversal_filename_sanitized(self) -> None:
+        adapter = _make_dc_adapter()
+        channel = _mock_channel()
+        ref_msg = AsyncMock()
+        ref_msg.reply = AsyncMock()
+        channel.fetch_message = AsyncMock(return_value=ref_msg)
+        att = OutboundAttachment(
+            data=b"x",
+            type="document",
+            mime_type="application/pdf",
+            filename="../../etc/evil.pdf",
+        )
+        inbound = _dc_msg()
+        with patch.object(adapter, "get_channel", return_value=channel):
+            await adapter.render_attachment(att, inbound)
+        file_obj = ref_msg.reply.call_args.kwargs["file"]
+        assert "/" not in file_obj.filename
+        assert ".." not in file_obj.filename
+
+    @pytest.mark.asyncio
+    async def test_caption_truncated_at_2000(self) -> None:
+        adapter = _make_dc_adapter()
+        channel = _mock_channel()
+        ref_msg = AsyncMock()
+        ref_msg.reply = AsyncMock()
+        channel.fetch_message = AsyncMock(return_value=ref_msg)
+        long_caption = "x" * 3000
+        att = OutboundAttachment(
+            data=b"x",
+            type="image",
+            mime_type="image/png",
+            caption=long_caption,
+        )
+        inbound = _dc_msg()
+        with patch.object(adapter, "get_channel", return_value=channel):
+            await adapter.render_attachment(att, inbound)
+        content = ref_msg.reply.call_args.kwargs["content"]
+        assert len(content) == 2000
+
+    @pytest.mark.asyncio
+    async def test_unknown_mime_fallback(self) -> None:
+        adapter = _make_dc_adapter()
+        channel = _mock_channel()
+        ref_msg = AsyncMock()
+        ref_msg.reply = AsyncMock()
+        channel.fetch_message = AsyncMock(return_value=ref_msg)
+        att = OutboundAttachment(
+            data=b"x",
+            type="file",
+            mime_type="application/x-custom",
+        )
+        inbound = _dc_msg()
+        with patch.object(adapter, "get_channel", return_value=channel):
+            await adapter.render_attachment(att, inbound)
+        file_obj = ref_msg.reply.call_args.kwargs["file"]
+        assert file_obj.filename == "attachment.bin"

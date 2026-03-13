@@ -18,14 +18,17 @@ if TYPE_CHECKING:
     from lyra.core.hub import Hub
 
 from lyra.adapters._shared import (
+    ATTACHMENT_EXTS_BASE,
     parse_reply_to_id,
     push_to_hub_guarded,
     sanitize_filename,
     truncate_caption,
 )
+from lyra.core.auth import AuthMiddleware, TrustLevel
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
+    Attachment,
     InboundAudio,
     InboundMessage,
     OutboundAttachment,
@@ -37,16 +40,83 @@ from lyra.core.messages import MessageManager
 
 log = logging.getLogger(__name__)
 
-# Allowed file extensions for outbound attachment filenames (whitelist).
-_ATTACHMENT_EXTS = frozenset({
-    "png", "jpg", "jpeg", "gif", "webp", "bmp",  # image
-    "mp4", "webm", "mov", "avi",  # video
-    "pdf", "txt", "csv", "json", "xml", "zip", "tar", "gz",  # document
-    "ogg", "mp3", "opus", "wav", "flac", "aac",  # audio
-})
+# Telegram: base extensions + audio (Telegram supports audio via send_document).
+_ATTACHMENT_EXTS = ATTACHMENT_EXTS_BASE | frozenset(
+    {
+        "ogg",
+        "mp3",
+        "opus",
+        "wav",
+        "flac",
+        "aac",  # audio
+    }
+)
 
 TELEGRAM_MAX_LENGTH = 4096  # Telegram Bot API text message limit
+
+# Sentinel used when no AuthMiddleware is provided — denies all traffic by default.
+_DENY_ALL = AuthMiddleware(user_map={}, role_map={}, default=TrustLevel.BLOCKED)
+
+# Permissive sentinel for use in tests — allows all traffic as PUBLIC.
+_ALLOW_ALL = AuthMiddleware(user_map={}, role_map={}, default=TrustLevel.PUBLIC)
 _MARKDOWNV2_SPECIAL = re.compile(r"([_*\[\]()~`>#\+\-=|{}.!\\])")
+
+
+def _extract_attachments(msg: Any) -> list[Attachment]:
+    """Extract non-audio Attachment objects from a Telegram message."""
+    result: list[Attachment] = []
+    # photo: list of PhotoSize, take largest (last)
+    if getattr(msg, "photo", None):
+        largest = msg.photo[-1]
+        result.append(
+            Attachment(
+                type="image",
+                url_or_bytes=f"tg:file_id:{largest.file_id}",
+                mime_type="image/jpeg",
+            )
+        )
+    if getattr(msg, "document", None):
+        doc = msg.document
+        result.append(
+            Attachment(
+                type="file",
+                url_or_bytes=f"tg:file_id:{doc.file_id}",
+                mime_type=getattr(doc, "mime_type", None) or "application/octet-stream",
+                filename=getattr(doc, "file_name", None),
+            )
+        )
+    if getattr(msg, "video", None):
+        vid = msg.video
+        result.append(
+            Attachment(
+                type="video",
+                url_or_bytes=f"tg:file_id:{vid.file_id}",
+                mime_type=getattr(vid, "mime_type", None) or "video/mp4",
+            )
+        )
+    if getattr(msg, "animation", None):
+        anim = msg.animation
+        result.append(
+            Attachment(
+                type="image",
+                url_or_bytes=f"tg:file_id:{anim.file_id}",
+                mime_type="image/gif",
+            )
+        )
+    if getattr(msg, "sticker", None):
+        sticker = msg.sticker
+        # Only static WebP stickers; skip animated (.tgs) and video (.webm)
+        if not getattr(sticker, "is_animated", False) and not getattr(
+            sticker, "is_video", False
+        ):
+            result.append(
+                Attachment(
+                    type="image",
+                    url_or_bytes=f"tg:file_id:{sticker.file_id}",
+                    mime_type="image/webp",
+                )
+            )
+    return result
 
 
 @dataclass(frozen=True)
@@ -105,6 +175,7 @@ class TelegramAdapter:
         webhook_secret: str = "",
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
+        auth: AuthMiddleware = _DENY_ALL,
     ) -> None:
         self._bot_id = bot_id
         self._token = token  # kept private — never logged
@@ -117,6 +188,7 @@ class TelegramAdapter:
         self._hub: Hub = hub
         self._circuit_registry = circuit_registry
         self._msg_manager = msg_manager
+        self._auth: AuthMiddleware = auth
         self._audio_tmp_dir: str | None = os.environ.get("LYRA_AUDIO_TMP") or None
         self._max_audio_bytes: int = int(
             os.environ.get("LYRA_MAX_AUDIO_BYTES", 5 * 1024 * 1024)
@@ -208,7 +280,9 @@ class TelegramAdapter:
             return f"chat:{chat_id}:topic:{topic_id}"
         return f"chat:{chat_id}"
 
-    def normalize(self, raw: Any) -> InboundMessage:
+    def normalize(
+        self, raw: Any, *, trust_level: TrustLevel = TrustLevel.TRUSTED
+    ) -> InboundMessage:
         """Convert an aiogram Message (or SimpleNamespace) to an InboundMessage.
 
         Security: trust is always 'user'. normalize() is never called for bot
@@ -236,7 +310,7 @@ class TelegramAdapter:
         topic_id: int | None = raw.message_thread_id
         scope_id = self._make_scope_id(chat_id, topic_id)
 
-        text = raw.text or ""
+        text = raw.text or getattr(raw, "caption", None) or ""
         timestamp = raw.date
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=timezone.utc)
@@ -249,6 +323,7 @@ class TelegramAdapter:
             chat_id,
         )
 
+        attachments = _extract_attachments(raw)
         return InboundMessage(
             id=(
                 f"telegram:{user_id}:{int(timestamp.timestamp())}"
@@ -262,8 +337,10 @@ class TelegramAdapter:
             is_mention=is_mention,
             text=text,
             text_raw=text,
+            attachments=attachments,
             timestamp=timestamp,
             trust="user",
+            trust_level=trust_level,
             platform_meta={
                 "chat_id": chat_id,
                 "topic_id": topic_id,
@@ -273,7 +350,12 @@ class TelegramAdapter:
         )
 
     def normalize_audio(
-        self, raw: Any, audio_bytes: bytes, mime_type: str
+        self,
+        raw: Any,
+        audio_bytes: bytes,
+        mime_type: str,
+        *,
+        trust_level: TrustLevel = TrustLevel.TRUSTED,
     ) -> InboundAudio:
         """Build an InboundAudio envelope from a Telegram voice/audio/video_note.
 
@@ -314,6 +396,7 @@ class TelegramAdapter:
             timestamp=timestamp,
             user_name=raw.from_user.full_name,
             is_mention=False,
+            trust_level=trust_level,
             platform_meta={
                 "chat_id": chat_id,
                 "topic_id": topic_id,
@@ -357,10 +440,24 @@ class TelegramAdapter:
     async def _on_voice_message(self, msg) -> None:
         """Handle an incoming voice or audio message.
 
-        Audio bus is not yet wired (#140 follow-on) — log receipt and
-        reply with "unsupported" without downloading the file.
+        Downloads audio, builds an InboundAudio envelope, and enqueues it
+        on the inbound audio bus with backpressure / circuit-open guards.
         """
         if not msg.from_user or getattr(msg.from_user, "is_bot", False):
+            return
+
+        uid = str(msg.from_user.id)
+        trust = self._auth.check(uid)
+        if trust == TrustLevel.BLOCKED:
+            log.info("auth_reject user=%s channel=telegram", uid)
+            return
+        # TODO(#140): pass trust to normalize_audio() when audio bus is wired
+
+        voice = msg.voice or msg.audio or getattr(msg, "video_note", None)
+        if voice is None:
+            return
+        file_id = getattr(voice, "file_id", None)
+        if file_id is None:
             return
 
         user_id = f"tg:user:{msg.from_user.id}"
@@ -373,19 +470,56 @@ class TelegramAdapter:
                 "scope_id": scope_id,
             },
         )
+
         try:
-            await self.bot.send_message(
-                chat_id=msg.chat.id,
-                text=self._msg(
-                    "stt_unsupported",
-                    "Voice messages are not yet supported here.",
-                ),
+            tmp_path, _duration_s = await self._download_audio(
+                file_id, getattr(voice, "duration", None)
             )
+        except ValueError:
+            # File too large — notify user
+            try:
+                await self.bot.send_message(
+                    chat_id=msg.chat.id,
+                    text=self._msg(
+                        "audio_too_large",
+                        "That audio file is too large to process.",
+                    ),
+                )
+            except Exception:
+                log.warning(
+                    "Failed to send audio-too-large reply for user_id=%s",
+                    user_id,
+                )
+            return
         except Exception:
-            log.warning(
-                "Failed to send audio-unsupported reply for user_id=%s",
+            log.exception(
+                "Failed to download audio file_id=%r for user_id=%s",
+                file_id,
                 user_id,
             )
+            return
+
+        try:
+            audio_bytes = tmp_path.read_bytes()
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+        hub_audio = self.normalize_audio(
+            msg, audio_bytes=audio_bytes, mime_type="audio/ogg"
+        )
+
+        async def _send_bp(text: str) -> None:
+            await self.bot.send_message(msg.chat.id, text)
+
+        await push_to_hub_guarded(
+            inbound_bus=self._hub.inbound_audio_bus,
+            platform=Platform.TELEGRAM,
+            msg=hub_audio,
+            circuit_registry=self._circuit_registry,
+            on_drop=None,
+            send_backpressure=_send_bp,
+            get_msg=self._msg,
+        )
 
     async def _push_to_hub(
         self,
@@ -425,7 +559,13 @@ class TelegramAdapter:
         if not msg.from_user or getattr(msg.from_user, "is_bot", False):
             return
 
-        hub_msg = self.normalize(msg)
+        user_id = str(msg.from_user.id)
+        trust = self._auth.check(user_id)
+        if trust == TrustLevel.BLOCKED:
+            log.info("auth_reject user=%s channel=telegram", user_id)
+            return
+
+        hub_msg = self.normalize(msg, trust_level=trust)
         log.info(
             "message_received",
             extra={
@@ -694,11 +834,13 @@ class TelegramAdapter:
         # Derive safe filename: sanitize explicit name or fallback from mime
         if msg.filename:
             buf.name = sanitize_filename(
-                msg.filename, _ATTACHMENT_EXTS,
+                msg.filename,
+                _ATTACHMENT_EXTS,
             )
         else:
-            raw_ext = msg.mime_type.split("/")[-1] if "/" in msg.mime_type else "bin"
-            buf.name = f"attachment.{raw_ext}"
+            raw_ext = msg.mime_type.split("/")[-1] if "/" in msg.mime_type else ""
+            ext = raw_ext if raw_ext in _ATTACHMENT_EXTS else "bin"
+            buf.name = f"attachment.{ext}"
 
         kwargs: dict = {"chat_id": chat_id}
         if topic_id is not None:

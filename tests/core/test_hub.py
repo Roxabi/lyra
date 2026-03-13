@@ -22,6 +22,7 @@ from lyra.core import (
     Pool,
     Response,
 )
+from lyra.core.auth import TrustLevel
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.message import (
     InboundAudio,
@@ -1134,6 +1135,7 @@ class TestCrossScopeRateLimit:
                     "message_id": None,
                     "is_group": False,
                 },
+                trust_level=TrustLevel.TRUSTED,
             )
 
         # Act — send RATE_LIMIT (5) messages, 3 from scope A and 2 from scope B
@@ -1187,6 +1189,7 @@ class TestScopeIsolatedPools:
                 "message_id": None,
                 "is_group": False,
             },
+            trust_level=TrustLevel.TRUSTED,
         )
         msg_b = InboundMessage(
             id="msg-b",
@@ -1205,6 +1208,7 @@ class TestScopeIsolatedPools:
                 "message_id": None,
                 "is_group": False,
             },
+            trust_level=TrustLevel.TRUSTED,
         )
 
         # Act — resolve binding and create pools for each scoped message

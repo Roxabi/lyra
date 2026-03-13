@@ -22,6 +22,7 @@ import pytest
 
 from lyra.agents.simple_agent import SimpleAgent
 from lyra.core.agent import Agent, ModelConfig
+from lyra.core.auth import TrustLevel
 from lyra.core.message import (
     Attachment,
     InboundMessage,
@@ -55,6 +56,7 @@ def make_audio_message(url: str) -> InboundMessage:
             "message_id": None,
             "is_group": False,
         },
+        trust_level=TrustLevel.TRUSTED,
     )
 
 
@@ -76,6 +78,7 @@ def make_text_message(text: str = "hello") -> InboundMessage:
             "message_id": None,
             "is_group": False,
         },
+        trust_level=TrustLevel.TRUSTED,
     )
 
 

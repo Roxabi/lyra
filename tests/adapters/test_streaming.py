@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from lyra.core.auth import TrustLevel
 from lyra.core.message import InboundMessage, OutboundMessage
 
 # ---------------------------------------------------------------------------
@@ -32,6 +33,7 @@ def make_tg_message() -> InboundMessage:
             "message_id": None,
             "is_group": False,
         },
+        trust_level=TrustLevel.TRUSTED,
     )
 
 
@@ -54,6 +56,7 @@ def make_dc_message() -> InboundMessage:
             "thread_id": None,
             "channel_type": "text",
         },
+        trust_level=TrustLevel.TRUSTED,
     )
 
 

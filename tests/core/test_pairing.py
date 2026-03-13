@@ -17,6 +17,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from lyra.core.agent import Agent
+from lyra.core.auth import TrustLevel
 from lyra.core.hub import Hub, _is_group_message
 from lyra.core.message import (
     InboundMessage,
@@ -94,6 +95,7 @@ def make_message(
         text_raw=content,
         timestamp=datetime.now(timezone.utc),
         platform_meta=meta,
+        trust_level=TrustLevel.TRUSTED,
     )
 
 

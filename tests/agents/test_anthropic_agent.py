@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.core.agent import Agent, ModelConfig
+from lyra.core.auth import TrustLevel
 from lyra.core.message import InboundMessage
 from lyra.core.pool import Pool
 from lyra.llm.base import LlmResult
@@ -44,6 +45,7 @@ def make_message(text: str = "hello") -> InboundMessage:
             "is_group": False,
             "message_id": None,
         },
+        trust_level=TrustLevel.TRUSTED,
     )
 
 

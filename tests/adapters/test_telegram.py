@@ -19,6 +19,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from lyra.adapters.telegram import _ALLOW_ALL
+from lyra.core.auth import TrustLevel
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.message import InboundMessage
 from lyra.core.messages import MessageManager
@@ -44,7 +46,9 @@ async def test_missing_secret_returns_401() -> None:
     from lyra.adapters.telegram import TelegramAdapter  # ImportError expected in RED
 
     hub = MagicMock()
-    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+    adapter = TelegramAdapter(
+        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+    )
 
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=adapter.app)
@@ -66,7 +70,9 @@ def test_normalize_private_chat_context() -> None:
     from lyra.adapters.telegram import TelegramAdapter  # ImportError expected in RED
 
     hub = MagicMock()
-    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+    adapter = TelegramAdapter(
+        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+    )
 
     aiogram_msg = SimpleNamespace(
         chat=SimpleNamespace(id=123, type="private"),
@@ -101,7 +107,9 @@ def test_is_mention_false_in_private_chat() -> None:
     from lyra.adapters.telegram import TelegramAdapter  # ImportError expected in RED
 
     hub = MagicMock()
-    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+    adapter = TelegramAdapter(
+        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+    )
 
     aiogram_msg = SimpleNamespace(
         chat=SimpleNamespace(id=123, type="private"),
@@ -122,7 +130,9 @@ def test_is_mention_true_when_entity_at_offset_zero() -> None:
     from lyra.adapters.telegram import TelegramAdapter  # ImportError expected in RED
 
     hub = MagicMock()
-    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+    adapter = TelegramAdapter(
+        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+    )
 
     entity = SimpleNamespace(type="mention", offset=0, length=9)  # "@lyra_bot"
     aiogram_msg = SimpleNamespace(
@@ -158,7 +168,9 @@ async def test_backpressure_sends_ack_when_bus_full() -> None:
     bot = AsyncMock()
     bot.get_me = AsyncMock(return_value=SimpleNamespace(username="lyra_bot"))
 
-    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+    adapter = TelegramAdapter(
+        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+    )
     adapter.bot = bot
 
     aiogram_msg = SimpleNamespace(
@@ -195,7 +207,9 @@ async def test_send_calls_bot_send_message() -> None:
     hub = MagicMock()
     bot = AsyncMock()
 
-    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+    adapter = TelegramAdapter(
+        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+    )
     adapter.bot = bot
 
     original_msg = InboundMessage(
@@ -215,6 +229,7 @@ async def test_send_calls_bot_send_message() -> None:
             "message_id": 99,
             "is_group": False,
         },
+        trust_level=TrustLevel.TRUSTED,
     )
     outbound = OutboundMessage.from_text("reply")
 
@@ -235,7 +250,9 @@ def test_token_not_in_logs(caplog: pytest.LogCaptureFixture) -> None:
     from lyra.adapters.telegram import TelegramAdapter  # ImportError expected in RED
 
     hub = MagicMock()
-    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+    adapter = TelegramAdapter(
+        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+    )
 
     aiogram_msg = SimpleNamespace(
         chat=SimpleNamespace(id=123, type="private"),
@@ -285,7 +302,9 @@ async def test_send_skips_when_platform_context_is_not_telegram(
     hub = MagicMock()
     bot = AsyncMock()
 
-    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+    adapter = TelegramAdapter(
+        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+    )
     adapter.bot = bot
 
     original_msg = InboundMessage(
@@ -306,6 +325,7 @@ async def test_send_skips_when_platform_context_is_not_telegram(
             "thread_id": None,
             "channel_type": "text",
         },
+        trust_level=TrustLevel.TRUSTED,
     )
 
     with caplog.at_level(logging.WARNING, logger="lyra.adapters.telegram"):
@@ -326,7 +346,9 @@ def test_normalize_captures_message_id() -> None:
 
     # Arrange
     hub = MagicMock()
-    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+    adapter = TelegramAdapter(
+        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+    )
     aiogram_msg = SimpleNamespace(
         chat=SimpleNamespace(id=123, type="private"),
         from_user=SimpleNamespace(id=42, full_name="Alice", is_bot=False),
@@ -355,7 +377,9 @@ def test_normalize_message_id_none_when_absent() -> None:
 
     # Arrange
     hub = MagicMock()
-    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+    adapter = TelegramAdapter(
+        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+    )
     aiogram_msg = SimpleNamespace(
         chat=SimpleNamespace(id=123, type="private"),
         from_user=SimpleNamespace(id=42, full_name="Alice", is_bot=False),
@@ -385,7 +409,9 @@ def test_normalize_captures_topic_and_message_id_for_forum() -> None:
 
     # Arrange
     hub = MagicMock()
-    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+    adapter = TelegramAdapter(
+        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+    )
     aiogram_msg = SimpleNamespace(
         chat=SimpleNamespace(id=456, type="supergroup"),
         from_user=SimpleNamespace(id=42, full_name="Alice", is_bot=False),
@@ -424,7 +450,9 @@ async def test_send_stores_reply_message_id_in_metadata() -> None:
     sent_msg = SimpleNamespace(message_id=888)
     bot.send_message.return_value = sent_msg
 
-    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+    adapter = TelegramAdapter(
+        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+    )
     adapter.bot = bot
 
     original_msg = InboundMessage(
@@ -444,6 +472,7 @@ async def test_send_stores_reply_message_id_in_metadata() -> None:
             "message_id": 777,
             "is_group": False,
         },
+        trust_level=TrustLevel.TRUSTED,
     )
     outbound = OutboundMessage.from_text("reply")
 
@@ -498,6 +527,7 @@ async def test_on_message_drops_silently_when_hub_circuit_open() -> None:
         token="test-token-secret",
         hub=hub,
         circuit_registry=registry,
+        auth=_ALLOW_ALL,
     )
     adapter.bot = bot
 
@@ -563,6 +593,7 @@ async def test_send_always_delivers_regardless_of_circuit_state() -> None:
             "message_id": 1,
             "is_group": False,
         },
+        trust_level=TrustLevel.TRUSTED,
     )
 
     # Act
@@ -598,6 +629,7 @@ async def test_get_status_endpoint_returns_all_circuits() -> None:
         hub=hub,
         webhook_secret="secret",
         circuit_registry=registry,
+        auth=_ALLOW_ALL,
     )
 
     # Act
@@ -643,7 +675,11 @@ async def test_telegram_msg_manager_injection_backpressure_ack() -> None:
     bot.get_me = AsyncMock(return_value=SimpleNamespace(username="lyra_bot"))
 
     adapter = TelegramAdapter(
-        bot_id="main", token="test-token-secret", hub=hub, msg_manager=mm
+        bot_id="main",
+        token="test-token-secret",
+        hub=hub,
+        msg_manager=mm,
+        auth=_ALLOW_ALL,
     )
     adapter.bot = bot
 
@@ -674,7 +710,9 @@ def test_normalize_empty_text() -> None:
     from lyra.adapters.telegram import TelegramAdapter
 
     hub = MagicMock()
-    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+    adapter = TelegramAdapter(
+        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+    )
     aiogram_msg = SimpleNamespace(
         chat=SimpleNamespace(id=123, type="private"),
         from_user=SimpleNamespace(id=42, full_name="Alice", is_bot=False),
@@ -695,7 +733,9 @@ async def test_on_message_drops_bot_text_message() -> None:
 
     hub = MagicMock()
     hub.inbound_bus = MagicMock()
-    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+    adapter = TelegramAdapter(
+        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+    )
     bot_msg = SimpleNamespace(
         chat=SimpleNamespace(id=123, type="private"),
         from_user=SimpleNamespace(id=99, full_name="BotUser", is_bot=True),
@@ -726,7 +766,9 @@ def _make_telegram_adapter():
     from lyra.adapters.telegram import TelegramAdapter  # ImportError expected in RED
 
     hub = MagicMock()
-    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+    adapter = TelegramAdapter(
+        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+    )
     return adapter
 
 
@@ -748,6 +790,7 @@ def _make_telegram_message():
         text_raw="hello",
         timestamp=datetime.now(timezone.utc),
         platform_meta={"chat_id": 123, "message_id": 1},
+        trust_level=TrustLevel.TRUSTED,
     )
 
 
@@ -906,3 +949,255 @@ class TestTelegramOutboundMessage:
 
         # Assert
         assert outbound.metadata.get("reply_message_id") == 999
+
+
+# ---------------------------------------------------------------------------
+# Inbound attachment extraction (#183)
+# ---------------------------------------------------------------------------
+
+
+class TestTelegramAttachments:
+    """TelegramAdapter.normalize() extracts non-audio attachments."""
+
+    def _make_adapter(self):
+        from lyra.adapters.telegram import TelegramAdapter
+
+        hub = MagicMock()
+        return TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+
+    def _make_msg(
+        self, *, text: str | None = "hello", caption=None,
+        photo=None, document=None, video=None,
+        animation=None, sticker=None,
+    ):
+        return SimpleNamespace(
+            chat=SimpleNamespace(id=123, type="private"),
+            from_user=SimpleNamespace(id=42, full_name="Alice", is_bot=False),
+            text=text,
+            caption=caption,
+            date=datetime.now(timezone.utc),
+            message_thread_id=None,
+            message_id=99,
+            entities=None,
+            photo=photo,
+            document=document,
+            video=video,
+            animation=animation,
+            sticker=sticker,
+        )
+
+    def test_normalize_photo_attachment(self) -> None:
+        """Photo → type='image', tg:file_id: prefix, image/jpeg."""
+        adapter = self._make_adapter()
+        photo = [
+            SimpleNamespace(file_id="small123"),
+            SimpleNamespace(file_id="large456"),
+        ]
+        msg = adapter.normalize(self._make_msg(photo=photo))
+        assert len(msg.attachments) == 1
+        a = msg.attachments[0]
+        assert a.type == "image"
+        assert a.url_or_bytes == "tg:file_id:large456"
+        assert a.mime_type == "image/jpeg"
+
+    def test_normalize_photo_with_caption(self) -> None:
+        """Photo with caption → caption in text, photo in attachments."""
+        adapter = self._make_adapter()
+        photo = [SimpleNamespace(file_id="pic123")]
+        msg = adapter.normalize(
+            self._make_msg(
+                text=None, caption="Look at this!", photo=photo,
+            ),
+        )
+        assert msg.text == "Look at this!"
+        assert len(msg.attachments) == 1
+        assert msg.attachments[0].type == "image"
+
+    def test_normalize_document_attachment(self) -> None:
+        """Document → type='file', correct mime_type and filename."""
+        adapter = self._make_adapter()
+        doc = SimpleNamespace(
+            file_id="doc789",
+            mime_type="application/pdf",
+            file_name="report.pdf",
+        )
+        msg = adapter.normalize(self._make_msg(document=doc))
+        assert len(msg.attachments) == 1
+        a = msg.attachments[0]
+        assert a.type == "file"
+        assert a.url_or_bytes == "tg:file_id:doc789"
+        assert a.mime_type == "application/pdf"
+        assert a.filename == "report.pdf"
+
+    def test_normalize_video_attachment(self) -> None:
+        """Video → type='video'."""
+        adapter = self._make_adapter()
+        vid = SimpleNamespace(file_id="vid101", mime_type="video/mp4")
+        msg = adapter.normalize(self._make_msg(video=vid))
+        assert len(msg.attachments) == 1
+        a = msg.attachments[0]
+        assert a.type == "video"
+        assert a.url_or_bytes == "tg:file_id:vid101"
+
+    def test_normalize_animation_attachment(self) -> None:
+        """Animation (GIF) → type='image', image/gif."""
+        adapter = self._make_adapter()
+        anim = SimpleNamespace(file_id="gif999")
+        msg = adapter.normalize(
+            self._make_msg(animation=anim),
+        )
+        assert len(msg.attachments) == 1
+        a = msg.attachments[0]
+        assert a.type == "image"
+        assert a.mime_type == "image/gif"
+        assert a.url_or_bytes == "tg:file_id:gif999"
+
+    def test_normalize_animated_sticker_skipped(self) -> None:
+        """Animated sticker (is_animated=True) → NOT in attachments."""
+        adapter = self._make_adapter()
+        sticker = SimpleNamespace(file_id="stk1", is_animated=True, is_video=False)
+        msg = adapter.normalize(self._make_msg(sticker=sticker))
+        assert len(msg.attachments) == 0
+
+    def test_normalize_video_sticker_skipped(self) -> None:
+        """Video sticker (is_video=True) → NOT in attachments."""
+        adapter = self._make_adapter()
+        sticker = SimpleNamespace(
+            file_id="stk3", is_animated=False, is_video=True,
+        )
+        msg = adapter.normalize(
+            self._make_msg(sticker=sticker),
+        )
+        assert len(msg.attachments) == 0
+
+    def test_normalize_static_sticker(self) -> None:
+        """Static sticker → type='image', image/webp."""
+        adapter = self._make_adapter()
+        sticker = SimpleNamespace(file_id="stk2", is_animated=False, is_video=False)
+        msg = adapter.normalize(self._make_msg(sticker=sticker))
+        assert len(msg.attachments) == 1
+        a = msg.attachments[0]
+        assert a.type == "image"
+        assert a.mime_type == "image/webp"
+        assert a.url_or_bytes == "tg:file_id:stk2"
+
+    def test_normalize_text_only_empty_attachments(self) -> None:
+        """Text-only message → empty attachments list."""
+        adapter = self._make_adapter()
+        msg = adapter.normalize(self._make_msg())
+        assert msg.attachments == []
+
+
+# ---------------------------------------------------------------------------
+# Slice S4: TelegramAdapter auth gate tests
+# ---------------------------------------------------------------------------
+
+
+def _make_aiogram_msg(user_id: int = 42) -> object:
+    """Build a minimal aiogram-like message SimpleNamespace."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        chat=SimpleNamespace(id=123, type="private"),
+        from_user=SimpleNamespace(id=user_id, full_name="Alice", is_bot=False),
+        text="hello",
+        date=datetime.now(timezone.utc),
+        message_thread_id=None,
+        message_id=1,
+        entities=None,
+    )
+
+
+class TestTelegramAuth:
+    """Auth gate tests for TelegramAdapter._on_message and _on_voice_message."""
+
+    @pytest.mark.asyncio
+    async def test_blocked_user_skips_normalize(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """BLOCKED user: _on_message returns early without calling normalize()."""
+        from unittest.mock import patch
+
+        from lyra.adapters.telegram import TelegramAdapter
+        from lyra.core.auth import AuthMiddleware, TrustLevel
+
+        auth = MagicMock(spec=AuthMiddleware)
+        auth.check.return_value = TrustLevel.BLOCKED
+
+        hub = MagicMock()
+        hub.inbound_bus = MagicMock()
+        adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub, auth=auth)
+
+        with caplog.at_level(logging.INFO, logger="lyra.adapters.telegram"):
+            with patch.object(adapter, "normalize") as mock_norm:
+                await adapter._on_message(_make_aiogram_msg())
+
+        mock_norm.assert_not_called()
+        hub.inbound_bus.put.assert_not_called()
+        assert any("auth_reject" in r.message for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_allowed_user_has_trust_level(self) -> None:
+        """TRUSTED user: message produced with correct trust_level."""
+        from lyra.adapters.telegram import TelegramAdapter
+        from lyra.core.auth import AuthMiddleware, TrustLevel
+
+        auth = MagicMock(spec=AuthMiddleware)
+        auth.check.return_value = TrustLevel.TRUSTED
+
+        hub = MagicMock()
+        hub.inbound_bus = MagicMock()
+        hub.inbound_bus.put = MagicMock()
+        adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub, auth=auth)
+        adapter.bot = AsyncMock()
+
+        await adapter._on_message(_make_aiogram_msg())
+
+        hub.inbound_bus.put.assert_called_once()
+        _platform, msg = hub.inbound_bus.put.call_args[0]
+        assert msg.trust_level == TrustLevel.TRUSTED
+
+    @pytest.mark.asyncio
+    async def test_voice_blocked_skips_normalize(self) -> None:
+        """BLOCKED user on voice: _on_voice_message returns early without sending."""
+        from unittest.mock import patch
+
+        from lyra.adapters.telegram import TelegramAdapter
+        from lyra.core.auth import AuthMiddleware, TrustLevel
+
+        auth = MagicMock(spec=AuthMiddleware)
+        auth.check.return_value = TrustLevel.BLOCKED
+
+        hub = MagicMock()
+        bot = AsyncMock()
+        adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub, auth=auth)
+        adapter.bot = bot
+
+        voice_msg = _make_aiogram_msg()
+        with patch.object(adapter, "normalize_audio") as mock_norm_audio:
+            await adapter._on_voice_message(voice_msg)
+
+        # bot.send_message should NOT have been called (blocked before handling)
+        bot.send_message.assert_not_called()
+        mock_norm_audio.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_public_user_message_forwarded(self) -> None:
+        """PUBLIC user: message reaches bus with trust_level=TrustLevel.PUBLIC."""
+        from lyra.adapters.telegram import TelegramAdapter
+        from lyra.core.auth import AuthMiddleware, TrustLevel
+
+        auth = MagicMock(spec=AuthMiddleware)
+        auth.check.return_value = TrustLevel.PUBLIC
+
+        hub = MagicMock()
+        hub.inbound_bus = MagicMock()
+        hub.inbound_bus.put = MagicMock()
+        adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub, auth=auth)
+        adapter.bot = AsyncMock()
+
+        await adapter._on_message(_make_aiogram_msg())
+
+        hub.inbound_bus.put.assert_called_once()
+        _platform, msg = hub.inbound_bus.put.call_args[0]
+        assert msg.trust_level == TrustLevel.PUBLIC

@@ -190,6 +190,10 @@ class Hub:
     def register_agent(self, agent: AgentBase) -> None:
         """Register an agent implementation by name."""
         self.agent_registry[agent.name] = agent
+        # Wire debounce_ms live-update callback if the agent has a command router.
+        router = getattr(agent, "command_router", None)
+        if router is not None and hasattr(router, "_on_debounce_change"):
+            router._on_debounce_change = self.set_debounce_ms
 
     def register_adapter(
         self, platform: Platform, bot_id: str, adapter: ChannelAdapter
@@ -296,6 +300,12 @@ class Hub:
         pool = self.pools[pool_id]
         pool._touch()
         return pool
+
+    def set_debounce_ms(self, ms: int) -> None:
+        """Update debounce window on all live pools and future pools."""
+        self._debounce_ms = ms
+        for pool in self.pools.values():
+            pool.debounce_ms = ms
 
     def _evict_stale_pools(self) -> None:
         """Remove idle pools whose last activity exceeds the TTL.

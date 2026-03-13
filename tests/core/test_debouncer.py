@@ -131,7 +131,7 @@ class TestMerge:
         assert result.text_raw == "hello\nworld"
 
     def test_three_messages_text_joined(self) -> None:
-        """Three messages produce double-newline-joined text."""
+        """Three messages produce newline-joined text."""
         msgs = [make_msg("a"), make_msg("b"), make_msg("c")]
         result = MessageDebouncer.merge(msgs)
         assert result.text == "a\nb\nc"

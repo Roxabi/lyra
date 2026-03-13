@@ -94,7 +94,10 @@ class MessageDebouncer:
         most recent message.
 
         Returns the message unchanged when len(messages) == 1.
+        Raises ValueError if messages is empty.
         """
+        if not messages:
+            raise ValueError("messages must be non-empty")
         if len(messages) == 1:
             return messages[0]
 

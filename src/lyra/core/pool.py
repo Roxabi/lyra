@@ -76,6 +76,16 @@ class Pool:
         self._last_active: float = time.monotonic()
 
     @property
+    def debounce_ms(self) -> int:
+        """Current debounce window in milliseconds."""
+        return self._debouncer.debounce_ms
+
+    @debounce_ms.setter
+    def debounce_ms(self, value: int) -> None:
+        """Update debounce window on the live debouncer."""
+        self._debouncer.debounce_ms = value
+
+    @property
     def last_active(self) -> float:
         """Monotonic timestamp of last activity (read-only for external callers)."""
         return self._last_active
@@ -197,14 +207,20 @@ class Pool:
                 if inbox_waiter in done and not inbox_waiter.cancelled():
                     try:
                         self._inbox.put_nowait(inbox_waiter.result())
+                    except asyncio.QueueFull:
+                        log.warning(
+                            "pool %s: inbox full, message lost in race",
+                            self.pool_id,
+                        )
                     except Exception:
-                        pass
-                # Propagate agent task exceptions (CancelledError from /stop).
+                        log.warning(
+                            "pool %s: unexpected error in inbox race",
+                            self.pool_id,
+                            exc_info=True,
+                        )
+                # Propagate CancelledError from /stop.
                 if agent_task.cancelled():
                     raise asyncio.CancelledError
-                exc = agent_task.exception()
-                if exc is not None and isinstance(exc, asyncio.CancelledError):
-                    raise exc
                 return
 
             # New message arrived while agent was processing → cancel-in-flight.

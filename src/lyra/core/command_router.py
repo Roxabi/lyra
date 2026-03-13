@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -68,6 +69,7 @@ class CommandRouter:
         runtime_config_holder: RuntimeConfigHolder | None = None,
         runtime_config_path: Path | None = None,
         smart_routing_decorator: SmartRoutingDecorator | None = None,
+        on_debounce_change: Callable[[int], None] | None = None,
     ) -> None:
         self._plugin_loader = plugin_loader
         self._enabled_plugins = enabled_plugins
@@ -80,6 +82,7 @@ class CommandRouter:
         self._runtime_config_holder = runtime_config_holder
         self._runtime_config_path = runtime_config_path
         self._smart_routing = smart_routing_decorator
+        self._on_debounce_change = on_debounce_change
         # Guard: raise early if any loaded plugin command clashes with a builtin.
         plugin_handlers = plugin_loader.get_commands(enabled_plugins)
         conflicts = set(plugin_handlers) & set(self._builtins)
@@ -284,7 +287,11 @@ class CommandRouter:
                 return Response(content=str(exc))
         runtime_file = self._runtime_config_path or (_AGENTS_DIR / "lyra_runtime.toml")
         rc.save(runtime_file)
+        old_rc = holder.value
         holder.value = rc
+        # Propagate debounce_ms changes to Hub's live pools.
+        if rc.debounce_ms != old_rc.debounce_ms and self._on_debounce_change:
+            self._on_debounce_change(rc.debounce_ms)
         summary = f"Updated: {', '.join(updates)}\nSaved to {runtime_file.name}"
         return Response(content=summary)
 

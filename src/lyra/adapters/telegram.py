@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
@@ -641,7 +642,14 @@ class TelegramAdapter:
                 outbound.metadata["reply_message_id"] = sent.message_id
 
         for att in outbound.attachments:
-            await self._send_attachment(chat_id, att)
+            try:
+                await self._send_attachment(chat_id, att)
+            except Exception:
+                log.exception(
+                    "Failed to send attachment %s to chat_id=%s",
+                    att.file_name,
+                    chat_id,
+                )
 
     async def _send_attachment(
         self, chat_id: int, att: OutboundAttachment
@@ -649,7 +657,14 @@ class TelegramAdapter:
         """Send a single OutboundAttachment to a Telegram chat."""
         data: bytes | str = att.bytes_or_path
         if isinstance(data, str):
-            data = Path(data).read_bytes()
+            data = await asyncio.to_thread(Path(data).read_bytes)
+        if len(data) > self._max_audio_bytes:
+            log.warning(
+                "Attachment %s too large (%d bytes), skipping",
+                att.file_name,
+                len(data),
+            )
+            return
         buf = BytesIO(data)
         buf.name = att.file_name
 
@@ -668,7 +683,7 @@ class TelegramAdapter:
             kwargs["document"] = buf
             await self.bot.send_document(**kwargs)
 
-    async def send_streaming(  # noqa: C901 — streaming protocol: edit/chunk/finalize branches are inherently sequential
+    async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: edit/chunk/finalize branches are inherently sequential
         self,
         original_msg: InboundMessage,
         chunks: AsyncIterator[str],
@@ -770,6 +785,18 @@ class TelegramAdapter:
                 )
             except Exception:
                 log.exception("Final edit failed")
+
+        # Send attachments after streaming completes (same as non-streaming)
+        if outbound is not None and stream_error is None:
+            for att in outbound.attachments:
+                try:
+                    await self._send_attachment(chat_id, att)
+                except Exception:
+                    log.exception(
+                        "Failed to send attachment %s to chat_id=%s",
+                        att.file_name,
+                        chat_id,
+                    )
 
         # Re-raise stream error so OutboundDispatcher can record CB failure
         if stream_error is not None:

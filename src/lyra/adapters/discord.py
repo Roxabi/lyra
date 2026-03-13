@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
@@ -7,6 +8,7 @@ import time
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from io import BytesIO
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import discord
@@ -497,7 +499,7 @@ class DiscordAdapter(discord.Client):
             view.add_item(discord.ui.Button(label=b.text, custom_id=b.callback_data))
         return view
 
-    async def send(
+    async def send(  # noqa: C901 — attachment loop adds branches
         self, original_msg: InboundMessage, outbound: OutboundMessage
     ) -> None:
         """Send response back to Discord.
@@ -554,7 +556,13 @@ class DiscordAdapter(discord.Client):
         )
 
         for att in outbound.attachments:
-            await self._send_attachment(messageable, att)
+            try:
+                await self._send_attachment(messageable, att)
+            except Exception:
+                log.exception(
+                    "Failed to send attachment %s",
+                    att.file_name,
+                )
 
     async def _send_attachment(
         self,
@@ -564,15 +572,20 @@ class DiscordAdapter(discord.Client):
         """Send a single OutboundAttachment to a Discord channel."""
         data: bytes | str = att.bytes_or_path
         if isinstance(data, str):
-            from pathlib import Path
-
-            data = Path(data).read_bytes()
+            data = await asyncio.to_thread(Path(data).read_bytes)
+        if len(data) > self._max_audio_bytes:
+            log.warning(
+                "Attachment %s too large (%d bytes), skipping",
+                att.file_name,
+                len(data),
+            )
+            return
         buf = BytesIO(data)
         attachment = discord.File(fp=buf, filename=att.file_name)
         content = (att.caption or "")[:DISCORD_MAX_LENGTH] or None
         await messageable.send(content=content, file=attachment)
 
-    async def send_streaming(  # noqa: C901 — streaming protocol: edit/chunk/finalize branches are inherently sequential
+    async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: edit/chunk/finalize branches are inherently sequential
         self,
         original_msg: InboundMessage,
         chunks: AsyncIterator[str],
@@ -652,6 +665,17 @@ class DiscordAdapter(discord.Client):
                 await placeholder.edit(content=accumulated[:DISCORD_MAX_LENGTH])
             except Exception:
                 log.exception("Final edit failed")
+
+        # Send attachments after streaming completes (same as non-streaming)
+        if outbound is not None and stream_error is None:
+            for att in outbound.attachments:
+                try:
+                    await self._send_attachment(messageable, att)
+                except Exception:
+                    log.exception(
+                        "Failed to send attachment %s",
+                        att.file_name,
+                    )
 
         # Re-raise stream error so OutboundDispatcher can record CB failure
         if stream_error is not None:

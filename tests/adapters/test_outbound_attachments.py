@@ -150,6 +150,63 @@ class TestTelegramOutboundAttachments:
         assert adapter.bot.send_photo.await_count == 1
         assert adapter.bot.send_document.await_count == 1
 
+    @pytest.mark.asyncio
+    async def test_send_attachment_from_path(
+        self, adapter: TelegramAdapter, tmp_path
+    ) -> None:
+        """Path-based attachment reads file and dispatches correctly."""
+        f = tmp_path / "report.pdf"
+        f.write_bytes(b"pdf-content")
+        att = OutboundAttachment(
+            bytes_or_path=str(f),
+            file_name="report.pdf",
+            mime_type="application/pdf",
+        )
+        outbound = OutboundMessage(content=["Here"], attachments=[att])
+        inbound = _make_inbound_telegram()
+
+        await adapter.send(inbound, outbound)
+
+        adapter.bot.send_document.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_send_attachment_missing_path(
+        self, adapter: TelegramAdapter
+    ) -> None:
+        """Missing file path logs error but does not crash send()."""
+        att = OutboundAttachment(
+            bytes_or_path="/nonexistent/file.png",
+            file_name="ghost.png",
+            mime_type="image/png",
+        )
+        outbound = OutboundMessage(content=["Here"], attachments=[att])
+        inbound = _make_inbound_telegram()
+
+        # Should not raise — error isolation catches the OSError
+        await adapter.send(inbound, outbound)
+
+        adapter.bot.send_photo.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_caption_truncated_to_1024(
+        self, adapter: TelegramAdapter
+    ) -> None:
+        """Telegram captions are truncated to 1024 characters."""
+        long_caption = "x" * 2000
+        att = OutboundAttachment(
+            bytes_or_path=b"data",
+            file_name="f.pdf",
+            mime_type="application/pdf",
+            caption=long_caption,
+        )
+        outbound = OutboundMessage(content=[""], attachments=[att])
+        inbound = _make_inbound_telegram()
+
+        await adapter.send(inbound, outbound)
+
+        call_kwargs = adapter.bot.send_document.call_args[1]
+        assert len(call_kwargs["caption"]) == 1024
+
 
 # ── Discord ───────────────────────────────────────────────────────────────
 

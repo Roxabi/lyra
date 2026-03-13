@@ -28,7 +28,9 @@ from lyra.adapters.telegram import load_config as load_telegram_config
 from lyra.agents.simple_agent import SimpleAgent
 from lyra.config import (
     DiscordBotConfig,
+    DiscordMultiConfig,
     TelegramBotConfig,
+    TelegramMultiConfig,
     load_multibot_config,
 )
 from lyra.core.agent import Agent, AgentBase, SmartRoutingConfig, load_agent_config
@@ -375,303 +377,294 @@ def _resolve_agents(  # noqa: PLR0913
     return agents
 
 
-async def _main(*, _stop: asyncio.Event | None = None) -> None:  # noqa: C901, PLR0915 — startup wiring: each adapter/service requires sequential conditional setup
-    """Wire hub + adapters and run until stop event fires.
+async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each adapter/service requires sequential conditional setup
+    raw_config: dict,
+    circuit_registry: CircuitRegistry,
+    admin_user_ids: set[str],
+    tg_multi_cfg: TelegramMultiConfig,
+    dc_multi_cfg: DiscordMultiConfig,
+    *,
+    _stop: asyncio.Event | None = None,
+) -> None:
+    """Wire hub + adapters for the multi-bot configuration schema and run until stop.
 
-    The optional _stop parameter is for testing: pass a pre-set Event to exit
-    immediately after setup without registering signal handlers.
-
-    Supports two configuration schemas:
-      - New multi-bot: [[telegram.bots]] / [[discord.bots]] arrays in lyra.toml.
-      - Legacy single-bot: [auth.telegram] / [auth.discord] flat sections
-        (backward compat).
-
-    When the new schema is detected (at least one bot list is non-empty), each bot is
-    wired individually with its own AuthMiddleware, OutboundDispatcher, and adapter.
-    When only the legacy schema is found, behavior is identical to the original
-    single-bot implementation.
+    Handles [[telegram.bots]] / [[discord.bots]] arrays from lyra.toml.
+    Each bot is wired individually with its own AuthMiddleware, OutboundDispatcher,
+    and adapter.
     """
-    load_dotenv()
-
-    raw_config = _load_raw_config()
-    circuit_registry, admin_user_ids = _load_circuit_config(raw_config)
-
     # ------------------------------------------------------------------
-    # Detect which configuration schema is in use.
-    # load_multibot_config returns empty lists when no [[*.bots]] arrays
-    # are defined; in that case we fall back to the legacy single-bot path.
+    # Multi-bot path: validate auth per bot, collect unique agent names.
     # ------------------------------------------------------------------
-    tg_multi_cfg, dc_multi_cfg = load_multibot_config(raw_config)
-    use_multibot = bool(tg_multi_cfg.bots or dc_multi_cfg.bots)
+    tg_bot_auths: list[tuple[TelegramBotConfig, AuthMiddleware]] = []
+    dc_bot_auths: list[tuple[DiscordBotConfig, AuthMiddleware]] = []
 
-    if use_multibot:
-        # ------------------------------------------------------------------
-        # Multi-bot path: validate auth per bot, collect unique agent names.
-        # ------------------------------------------------------------------
-        tg_bot_auths: list[tuple[TelegramBotConfig, AuthMiddleware]] = []
-        dc_bot_auths: list[tuple[DiscordBotConfig, AuthMiddleware]] = []
+    try:
+        for bot_cfg in tg_multi_cfg.bots:
+            auth = AuthMiddleware.from_bot_config(
+                raw_config, "telegram", bot_cfg.bot_id
+            )
+            if auth is None:
+                log.warning(
+                    "telegram bot_id=%r has no auth config — skipping",
+                    bot_cfg.bot_id,
+                )
+                continue
+            tg_bot_auths.append((bot_cfg, auth))
 
+        for bot_cfg in dc_multi_cfg.bots:
+            auth = AuthMiddleware.from_bot_config(raw_config, "discord", bot_cfg.bot_id)
+            if auth is None:
+                log.warning(
+                    "discord bot_id=%r has no auth config — skipping",
+                    bot_cfg.bot_id,
+                )
+                continue
+            dc_bot_auths.append((bot_cfg, auth))
+    except ValueError as exc:
+        sys.exit(str(exc))
+
+    if not tg_bot_auths and not dc_bot_auths:
+        sys.exit(
+            "No adapters configured — add at least one [[telegram.bots]] or"
+            " [[discord.bots]] entry with a matching [[auth.telegram_bots]] or"
+            " [[auth.discord_bots]] section to lyra.toml"
+        )
+
+    # Collect unique agent names referenced across all bot configs
+    agent_names: set[str] = set()
+    for bot_cfg, _ in tg_bot_auths:
+        agent_names.add(bot_cfg.agent)
+    for bot_cfg, _ in dc_bot_auths:
+        agent_names.add(bot_cfg.agent)
+
+    # Load all agent configs once — used for cli_pool detection, smart routing,
+    # msg_manager language, and agent creation. Avoids duplicate I/O and TOCTOU.
+    agent_configs: dict[str, Agent] = {
+        n: load_agent_config(n) for n in sorted(agent_names)
+    }
+    first_agent_name = next(iter(sorted(agent_names)))
+    first_agent_config = agent_configs[first_agent_name]
+
+    # Use the first agent's language for messages (all agents share one msg_manager)
+    msg_manager = _load_messages(language=first_agent_config.i18n_language)
+
+    pairing_config = _load_pairing_config(raw_config)
+    if pairing_config.enabled and not admin_user_ids:
+        log.warning(
+            "Pairing is enabled but no admin user_ids configured in "
+            "[admin].user_ids — no one can run /invite or /unpair"
+        )
+    pm: PairingManager | None = None
+    if pairing_config.enabled:
+        vault_dir = Path.home() / ".lyra"
+        vault_dir.mkdir(parents=True, exist_ok=True)
+        pm = PairingManager(
+            config=pairing_config,
+            db_path=vault_dir / "pairing.db",
+            admin_user_ids=admin_user_ids,
+        )
+        await pm.connect()
+        set_pairing_manager(pm)
+
+    stt_service: STTService | None = None
+    if os.environ.get("STT_MODEL_SIZE"):
         try:
-            for bot_cfg in tg_multi_cfg.bots:
-                auth = AuthMiddleware.from_bot_config(
-                    raw_config, "telegram", bot_cfg.bot_id
-                )
-                if auth is None:
-                    log.warning(
-                        "telegram bot_id=%r has no auth config — skipping",
-                        bot_cfg.bot_id,
-                    )
-                    continue
-                tg_bot_auths.append((bot_cfg, auth))
-
-            for bot_cfg in dc_multi_cfg.bots:
-                auth = AuthMiddleware.from_bot_config(
-                    raw_config, "discord", bot_cfg.bot_id
-                )
-                if auth is None:
-                    log.warning(
-                        "discord bot_id=%r has no auth config — skipping",
-                        bot_cfg.bot_id,
-                    )
-                    continue
-                dc_bot_auths.append((bot_cfg, auth))
+            stt_cfg = load_stt_config()
+            stt_service = STTService(stt_cfg)
+            log.info("STT enabled: model=%s (via voiceCLI)", stt_cfg.model_size)
         except ValueError as exc:
-            sys.exit(str(exc))
+            raise SystemExit(f"Invalid STT configuration: {exc}") from exc
 
-        if not tg_bot_auths and not dc_bot_auths:
-            sys.exit(
-                "No adapters configured — add at least one [[telegram.bots]] or"
-                " [[discord.bots]] entry with a matching [[auth.telegram_bots]] or"
-                " [[auth.discord_bots]] section to lyra.toml"
-            )
+    from lyra.core.debouncer import DEFAULT_DEBOUNCE_MS
 
-        # Collect unique agent names referenced across all bot configs
-        agent_names: set[str] = set()
-        for bot_cfg, _ in tg_bot_auths:
-            agent_names.add(bot_cfg.agent)
-        for bot_cfg, _ in dc_bot_auths:
-            agent_names.add(bot_cfg.agent)
+    hub = Hub(
+        circuit_registry=circuit_registry,
+        msg_manager=msg_manager,
+        pairing_manager=pm,
+        stt=stt_service,
+        debounce_ms=DEFAULT_DEBOUNCE_MS,
+    )
 
-        # Load all agent configs once — used for cli_pool detection, smart routing,
-        # msg_manager language, and agent creation. Avoids duplicate I/O and TOCTOU.
-        agent_configs: dict[str, Agent] = {
-            n: load_agent_config(n) for n in sorted(agent_names)
-        }
-        first_agent_name = next(iter(sorted(agent_names)))
-        first_agent_config = agent_configs[first_agent_name]
+    # Build cli_pool if any agent needs it (uses pre-loaded configs)
+    cli_pool: CliPool | None = None
+    for cfg in agent_configs.values():
+        if cfg.model_config.backend == "claude-cli":
+            cli_pool = CliPool()
+            await cli_pool.start()
+            break
 
-        # Use the first agent's language for messages (all agents share one msg_manager)
-        msg_manager = _load_messages(language=first_agent_config.i18n_language)
+    # Create all unique agents — each gets its own ProviderRegistry built from
+    # its own smart_routing config inside _resolve_agents().
+    all_agents = _resolve_agents(
+        agent_configs,
+        cli_pool,
+        circuit_registry,
+        admin_user_ids,
+        msg_manager,
+        stt_service,
+    )
+    for ag in all_agents.values():
+        hub.register_agent(ag)
 
-        pairing_config = _load_pairing_config(raw_config)
-        if pairing_config.enabled and not admin_user_ids:
-            log.warning(
-                "Pairing is enabled but no admin user_ids configured in "
-                "[admin].user_ids — no one can run /invite or /unpair"
-            )
-        pm: PairingManager | None = None
-        if pairing_config.enabled:
-            vault_dir = Path.home() / ".lyra"
-            vault_dir.mkdir(parents=True, exist_ok=True)
-            pm = PairingManager(
-                config=pairing_config,
-                db_path=vault_dir / "pairing.db",
-                admin_user_ids=admin_user_ids,
-            )
-            await pm.connect()
-            set_pairing_manager(pm)
-
-        stt_service: STTService | None = None
-        if os.environ.get("STT_MODEL_SIZE"):
-            try:
-                stt_cfg = load_stt_config()
-                stt_service = STTService(stt_cfg)
-                log.info("STT enabled: model=%s (via voiceCLI)", stt_cfg.model_size)
-            except ValueError as exc:
-                raise SystemExit(f"Invalid STT configuration: {exc}") from exc
-
-        from lyra.core.debouncer import DEFAULT_DEBOUNCE_MS
-
-        hub = Hub(
+    # Wire Telegram adapters
+    tg_adapters: list[TelegramAdapter] = []
+    tg_dispatchers: list[OutboundDispatcher] = []
+    for bot_cfg, auth in tg_bot_auths:
+        adapter = TelegramAdapter(
+            bot_id=bot_cfg.bot_id,
+            token=bot_cfg.token,
+            hub=hub,
+            bot_username=bot_cfg.bot_username,
+            webhook_secret=bot_cfg.webhook_secret,
             circuit_registry=circuit_registry,
             msg_manager=msg_manager,
-            pairing_manager=pm,
-            stt=stt_service,
-            debounce_ms=DEFAULT_DEBOUNCE_MS,
+            auth=auth,
         )
-
-        # Build cli_pool if any agent needs it (uses pre-loaded configs)
-        cli_pool: CliPool | None = None
-        for cfg in agent_configs.values():
-            if cfg.model_config.backend == "claude-cli":
-                cli_pool = CliPool()
-                await cli_pool.start()
-                break
-
-        # Create all unique agents — each gets its own ProviderRegistry built from
-        # its own smart_routing config inside _resolve_agents().
-        all_agents = _resolve_agents(
-            agent_configs,
-            cli_pool,
-            circuit_registry,
-            admin_user_ids,
-            msg_manager,
-            stt_service,
+        hub.register_adapter(Platform.TELEGRAM, bot_cfg.bot_id, adapter)
+        tg_key = RoutingKey(Platform.TELEGRAM, bot_cfg.bot_id, "*")
+        hub.register_binding(
+            Platform.TELEGRAM,
+            bot_cfg.bot_id,
+            "*",
+            bot_cfg.agent,
+            tg_key.to_pool_id(),
         )
-        for ag in all_agents.values():
-            hub.register_agent(ag)
-
-        # Wire Telegram adapters
-        tg_adapters: list[TelegramAdapter] = []
-        tg_dispatchers: list[OutboundDispatcher] = []
-        for bot_cfg, auth in tg_bot_auths:
-            adapter = TelegramAdapter(
-                bot_id=bot_cfg.bot_id,
-                token=bot_cfg.token,
-                hub=hub,
-                bot_username=bot_cfg.bot_username,
-                webhook_secret=bot_cfg.webhook_secret,
-                circuit_registry=circuit_registry,
-                msg_manager=msg_manager,
-                auth=auth,
-            )
-            hub.register_adapter(Platform.TELEGRAM, bot_cfg.bot_id, adapter)
-            tg_key = RoutingKey(Platform.TELEGRAM, bot_cfg.bot_id, "*")
-            hub.register_binding(
-                Platform.TELEGRAM,
-                bot_cfg.bot_id,
-                "*",
-                bot_cfg.agent,
-                tg_key.to_pool_id(),
-            )
-            dispatcher = OutboundDispatcher(
-                platform_name=f"telegram:{bot_cfg.bot_id}",
-                adapter=adapter,
-                circuit=circuit_registry.get("telegram"),
-                circuit_registry=circuit_registry,
-                bot_id=bot_cfg.bot_id,
-            )
-            hub.register_outbound_dispatcher(
-                Platform.TELEGRAM, bot_cfg.bot_id, dispatcher
-            )
-            tg_adapters.append(adapter)
-            tg_dispatchers.append(dispatcher)
-            log.info(
-                "Registered Telegram bot bot_id=%r agent=%r",
-                bot_cfg.bot_id,
-                bot_cfg.agent,
-            )
-
-        # Wire Discord adapters
-        dc_adapters: list[tuple[DiscordAdapter, DiscordBotConfig]] = []
-        dc_dispatchers: list[OutboundDispatcher] = []
-        for bot_cfg, auth in dc_bot_auths:
-            adapter = DiscordAdapter(
-                hub=hub,
-                bot_id=bot_cfg.bot_id,
-                circuit_registry=circuit_registry,
-                msg_manager=msg_manager,
-                auto_thread=bot_cfg.auto_thread,
-                auth=auth,
-            )
-            hub.register_adapter(Platform.DISCORD, bot_cfg.bot_id, adapter)
-            dc_key = RoutingKey(Platform.DISCORD, bot_cfg.bot_id, "*")
-            hub.register_binding(
-                Platform.DISCORD,
-                bot_cfg.bot_id,
-                "*",
-                bot_cfg.agent,
-                dc_key.to_pool_id(),
-            )
-            dispatcher = OutboundDispatcher(
-                platform_name=f"discord:{bot_cfg.bot_id}",
-                adapter=adapter,
-                circuit=circuit_registry.get("discord"),
-                circuit_registry=circuit_registry,
-                bot_id=bot_cfg.bot_id,
-            )
-            hub.register_outbound_dispatcher(
-                Platform.DISCORD, bot_cfg.bot_id, dispatcher
-            )
-            dc_adapters.append((adapter, bot_cfg))
-            dc_dispatchers.append(dispatcher)
-            log.info(
-                "Registered Discord bot bot_id=%r agent=%r",
-                bot_cfg.bot_id,
-                bot_cfg.agent,
-            )
-
-        # Start buses and dispatchers
-        await hub.inbound_bus.start()
-        await hub.inbound_audio_bus.start()
-        for d in tg_dispatchers:
-            await d.start()
-        for d in dc_dispatchers:
-            await d.start()
-
-        health_port = int(os.environ.get("LYRA_HEALTH_PORT", "8443"))
-        health_app = create_health_app(hub)
-        health_config = uvicorn.Config(
-            health_app, host="127.0.0.1", port=health_port, log_level="warning"
+        dispatcher = OutboundDispatcher(
+            platform_name=f"telegram:{bot_cfg.bot_id}",
+            adapter=adapter,
+            circuit=circuit_registry.get("telegram"),
+            circuit_registry=circuit_registry,
+            bot_id=bot_cfg.bot_id,
         )
-        health_server = uvicorn.Server(health_config)
-
-        stop = _stop if _stop is not None else asyncio.Event()
-        if _stop is None:
-            _loop = asyncio.get_running_loop()
-            _loop.add_signal_handler(signal.SIGINT, stop.set)
-            _loop.add_signal_handler(signal.SIGTERM, stop.set)
-
-        tasks = [
-            asyncio.create_task(hub.run(), name="hub"),
-            asyncio.create_task(hub._audio_loop(), name="hub-audio"),
-            asyncio.create_task(health_server.serve(), name="health"),
-        ]
-        for tg_adapter in tg_adapters:
-            tasks.append(
-                asyncio.create_task(
-                    tg_adapter.dp.start_polling(tg_adapter.bot, handle_signals=False),
-                    name=f"telegram:{tg_adapter._bot_id}",
-                )
-            )
-        for dc_adapter, dc_bot_cfg in dc_adapters:
-            tasks.append(
-                asyncio.create_task(
-                    dc_adapter.start(dc_bot_cfg.token),
-                    name=f"discord:{dc_bot_cfg.bot_id}",
-                )
-            )
-
-        tg_active = [f"telegram:{a._bot_id}" for a in tg_adapters]
-        dc_active = [f"discord:{c.bot_id}" for _, c in dc_adapters]
-        active = tg_active + dc_active
+        hub.register_outbound_dispatcher(Platform.TELEGRAM, bot_cfg.bot_id, dispatcher)
+        tg_adapters.append(adapter)
+        tg_dispatchers.append(dispatcher)
         log.info(
-            "Lyra started — adapters: %s, health on :%d.",
-            ", ".join(active) if active else "none",
-            health_port,
+            "Registered Telegram bot bot_id=%r agent=%r",
+            bot_cfg.bot_id,
+            bot_cfg.agent,
         )
 
-        await stop.wait()
+    # Wire Discord adapters
+    dc_adapters: list[tuple[DiscordAdapter, DiscordBotConfig]] = []
+    dc_dispatchers: list[OutboundDispatcher] = []
+    for bot_cfg, auth in dc_bot_auths:
+        adapter = DiscordAdapter(
+            hub=hub,
+            bot_id=bot_cfg.bot_id,
+            circuit_registry=circuit_registry,
+            msg_manager=msg_manager,
+            auto_thread=bot_cfg.auto_thread,
+            auth=auth,
+        )
+        hub.register_adapter(Platform.DISCORD, bot_cfg.bot_id, adapter)
+        dc_key = RoutingKey(Platform.DISCORD, bot_cfg.bot_id, "*")
+        hub.register_binding(
+            Platform.DISCORD,
+            bot_cfg.bot_id,
+            "*",
+            bot_cfg.agent,
+            dc_key.to_pool_id(),
+        )
+        dispatcher = OutboundDispatcher(
+            platform_name=f"discord:{bot_cfg.bot_id}",
+            adapter=adapter,
+            circuit=circuit_registry.get("discord"),
+            circuit_registry=circuit_registry,
+            bot_id=bot_cfg.bot_id,
+        )
+        hub.register_outbound_dispatcher(Platform.DISCORD, bot_cfg.bot_id, dispatcher)
+        dc_adapters.append((adapter, bot_cfg))
+        dc_dispatchers.append(dispatcher)
+        log.info(
+            "Registered Discord bot bot_id=%r agent=%r",
+            bot_cfg.bot_id,
+            bot_cfg.agent,
+        )
 
-        log.info("Shutdown signal received — stopping…")
-        for task in tasks:
-            task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
-        await hub.inbound_bus.stop()
-        await hub.inbound_audio_bus.stop()
-        for d in tg_dispatchers:
-            await d.stop()
-        for d in dc_dispatchers:
-            await d.stop()
-        for dc_adapter, _ in dc_adapters:
-            await dc_adapter.close()
-        if pm is not None:
-            await pm.close()
-        if cli_pool is not None:
-            await cli_pool.stop()
-        log.info("Lyra stopped.")
-        return
+    # Start buses and dispatchers
+    await hub.inbound_bus.start()
+    await hub.inbound_audio_bus.start()
+    for d in tg_dispatchers:
+        await d.start()
+    for d in dc_dispatchers:
+        await d.start()
 
+    health_port = int(os.environ.get("LYRA_HEALTH_PORT", "8443"))
+    health_app = create_health_app(hub)
+    health_config = uvicorn.Config(
+        health_app, host="127.0.0.1", port=health_port, log_level="warning"
+    )
+    health_server = uvicorn.Server(health_config)
+
+    stop = _stop if _stop is not None else asyncio.Event()
+    if _stop is None:
+        _loop = asyncio.get_running_loop()
+        _loop.add_signal_handler(signal.SIGINT, stop.set)
+        _loop.add_signal_handler(signal.SIGTERM, stop.set)
+
+    tasks = [
+        asyncio.create_task(hub.run(), name="hub"),
+        asyncio.create_task(hub._audio_loop(), name="hub-audio"),
+        asyncio.create_task(health_server.serve(), name="health"),
+    ]
+    for tg_adapter in tg_adapters:
+        tasks.append(
+            asyncio.create_task(
+                tg_adapter.dp.start_polling(tg_adapter.bot, handle_signals=False),
+                name=f"telegram:{tg_adapter._bot_id}",
+            )
+        )
+    for dc_adapter, dc_bot_cfg in dc_adapters:
+        tasks.append(
+            asyncio.create_task(
+                dc_adapter.start(dc_bot_cfg.token),
+                name=f"discord:{dc_bot_cfg.bot_id}",
+            )
+        )
+
+    tg_active = [f"telegram:{a._bot_id}" for a in tg_adapters]
+    dc_active = [f"discord:{c.bot_id}" for _, c in dc_adapters]
+    active = tg_active + dc_active
+    log.info(
+        "Lyra started — adapters: %s, health on :%d.",
+        ", ".join(active) if active else "none",
+        health_port,
+    )
+
+    await stop.wait()
+
+    log.info("Shutdown signal received — stopping…")
+    for task in tasks:
+        task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+    await hub.inbound_bus.stop()
+    await hub.inbound_audio_bus.stop()
+    for d in tg_dispatchers:
+        await d.stop()
+    for d in dc_dispatchers:
+        await d.stop()
+    for dc_adapter, _ in dc_adapters:
+        await dc_adapter.close()
+    if pm is not None:
+        await pm.close()
+    if cli_pool is not None:
+        await cli_pool.stop()
+    log.info("Lyra stopped.")
+
+
+async def _bootstrap_legacy(  # noqa: C901, PLR0915 — startup wiring: each adapter/service requires sequential conditional setup
+    raw_config: dict,
+    circuit_registry: CircuitRegistry,
+    admin_user_ids: set[str],
+    *,
+    _stop: asyncio.Event | None = None,
+) -> None:
+    """Wire hub + adapters for the legacy single-bot schema and run until stop.
+
+    Handles [auth.telegram] / [auth.discord] flat sections from lyra.toml.
+    Behavior is identical to the original single-bot implementation.
+    """
     # ------------------------------------------------------------------
     # Legacy single-bot path (backward compat).
     # Runs when no [[telegram.bots]] / [[discord.bots]] arrays are found.
@@ -914,6 +907,45 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:  # noqa: C901, P
     if cli_pool_legacy is not None:
         await cli_pool_legacy.stop()
     log.info("Lyra stopped.")
+
+
+async def _main(*, _stop: asyncio.Event | None = None) -> None:
+    """Wire hub + adapters and run until stop event fires.
+
+    The optional _stop parameter is for testing: pass a pre-set Event to exit
+    immediately after setup without registering signal handlers.
+
+    Supports two configuration schemas:
+      - New multi-bot: [[telegram.bots]] / [[discord.bots]] arrays in lyra.toml.
+      - Legacy single-bot: [auth.telegram] / [auth.discord] flat sections
+        (backward compat).
+
+    When the new schema is detected (at least one bot list is non-empty), each bot is
+    wired individually with its own AuthMiddleware, OutboundDispatcher, and adapter.
+    When only the legacy schema is found, behavior is identical to the original
+    single-bot implementation.
+    """
+    load_dotenv()
+    raw_config = _load_raw_config()
+    circuit_registry, admin_user_ids = _load_circuit_config(raw_config)
+    try:
+        tg_multi_cfg, dc_multi_cfg = load_multibot_config(raw_config)
+    except ValueError as exc:
+        sys.exit(str(exc))
+    use_multibot = bool(tg_multi_cfg.bots or dc_multi_cfg.bots)
+    if use_multibot:
+        await _bootstrap_multibot(
+            raw_config,
+            circuit_registry,
+            admin_user_ids,
+            tg_multi_cfg,
+            dc_multi_cfg,
+            _stop=_stop,
+        )
+    else:
+        await _bootstrap_legacy(
+            raw_config, circuit_registry, admin_user_ids, _stop=_stop
+        )
 
 
 def _setup_logging() -> None:

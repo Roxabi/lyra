@@ -117,11 +117,10 @@ def _parse_telegram_bots(raw: dict[str, Any]) -> list[TelegramBotConfig]:
         bot_username = _resolve_value(raw_username) or "lyra_bot"
 
         if not token:
-            log.error(
-                "telegram bot_id=%r: token is empty after resolution — skipping",
-                bot_id,
+            raise ValueError(
+                f"telegram bot_id={bot_id!r}: token is empty after resolution"
+                " — check that the env var referenced in 'token' is set"
             )
-            continue
         if not webhook_secret:
             log.warning(
                 "telegram bot_id=%r: webhook_secret is empty — "
@@ -162,11 +161,10 @@ def _parse_discord_bots(raw: dict[str, Any]) -> list[DiscordBotConfig]:
         token = _resolve_value(raw_token)
 
         if not token:
-            log.error(
-                "discord bot_id=%r: token is empty after resolution — skipping",
-                bot_id,
+            raise ValueError(
+                f"discord bot_id={bot_id!r}: token is empty after resolution"
+                " — check that the env var referenced in 'token' is set"
             )
-            continue
 
         bots.append(
             DiscordBotConfig(

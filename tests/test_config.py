@@ -90,15 +90,11 @@ class TestParseTelegramBots:
         assert bot.token == "tok123"
         assert bot.webhook_secret == "secret456"
 
-    def test_empty_token_skipped(self, caplog: pytest.LogCaptureFixture) -> None:
-        # Arrange
+    def test_empty_token_raises(self) -> None:
+        # Empty token is a fatal misconfiguration — raises ValueError
         raw = self._raw({"bot_id": "lyra", "token": "", "webhook_secret": "s"})
-        # Act
-        with caplog.at_level(logging.ERROR, logger="lyra.config"):
-            bots = _parse_telegram_bots(raw)
-        # Assert
-        assert bots == []
-        assert "lyra" in caplog.text
+        with pytest.raises(ValueError, match="lyra"):
+            _parse_telegram_bots(raw)
 
     def test_env_token_resolution(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # Arrange
@@ -176,15 +172,11 @@ class TestParseDiscordBots:
         assert bot.token == "dc_tok"
         assert bot.auto_thread is True  # default
 
-    def test_empty_token_skipped(self, caplog: pytest.LogCaptureFixture) -> None:
-        # Arrange
+    def test_empty_token_raises(self) -> None:
+        # Empty token is a fatal misconfiguration — raises ValueError
         raw = self._raw({"bot_id": "lyra", "token": ""})
-        # Act
-        with caplog.at_level(logging.ERROR, logger="lyra.config"):
-            bots = _parse_discord_bots(raw)
-        # Assert
-        assert bots == []
-        assert "lyra" in caplog.text
+        with pytest.raises(ValueError, match="lyra"):
+            _parse_discord_bots(raw)
 
     def test_auto_thread_false(self) -> None:
         # Arrange

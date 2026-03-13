@@ -179,7 +179,10 @@ class OutboundAttachment:
     """A file attachment on an OutboundMessage.
 
     bytes_or_path holds the file data: either raw bytes or a filesystem path
-    (str) to read from. Adapters resolve paths at send time.
+    (str) to read from. Adapters resolve paths at send time and enforce an
+    optional allowlist directory (LYRA_ATTACHMENTS_DIR env var).
+
+    caption is truncated per platform: Telegram 1024 chars, Discord 2000.
     """
 
     bytes_or_path: bytes | str

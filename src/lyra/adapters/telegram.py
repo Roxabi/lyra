@@ -55,6 +55,31 @@ _ATTACHMENT_EXTS = ATTACHMENT_EXTS_BASE | frozenset(
 
 TELEGRAM_MAX_LENGTH = 4096  # Telegram Bot API text message limit
 
+
+def _verified_mime(declared: str, filename: str) -> str:
+    """Cross-check declared MIME against filename extension.
+
+    If the extension-inferred MIME type category (image/video/other)
+    disagrees with the declared one, fall back to application/octet-stream
+    so the adapter sends as a generic document (safest).
+    """
+    import mimetypes
+
+    guessed, _ = mimetypes.guess_type(filename)
+    if guessed is None:
+        return declared
+    declared_cat = declared.split("/")[0]
+    guessed_cat = guessed.split("/")[0]
+    if declared_cat != guessed_cat:
+        log.warning(
+            "MIME mismatch: declared=%s, guessed=%s for %s — falling back",
+            declared,
+            guessed,
+            filename,
+        )
+        return "application/octet-stream"
+    return declared
+
 # Sentinel used when no AuthMiddleware is provided — denies all traffic by default.
 _DENY_ALL = AuthMiddleware(user_map={}, role_map={}, default=TrustLevel.BLOCKED)
 
@@ -193,6 +218,10 @@ class TelegramAdapter:
         self._audio_tmp_dir: str | None = os.environ.get("LYRA_AUDIO_TMP") or None
         self._max_audio_bytes: int = int(
             os.environ.get("LYRA_MAX_AUDIO_BYTES", 5 * 1024 * 1024)
+        )
+        _att_dir = os.environ.get("LYRA_ATTACHMENTS_DIR")
+        self._attachments_dir: Path | None = (
+            Path(_att_dir).resolve() if _att_dir else None
         )
 
         # bot is a public attribute so tests can replace it with AsyncMock.
@@ -657,7 +686,15 @@ class TelegramAdapter:
         """Send a single OutboundAttachment to a Telegram chat."""
         data: bytes | str = att.bytes_or_path
         if isinstance(data, str):
-            data = await asyncio.to_thread(Path(data).read_bytes)
+            resolved = Path(data).resolve()
+            if self._attachments_dir is not None:
+                if not resolved.is_relative_to(self._attachments_dir):
+                    log.warning(
+                        "Attachment path %s outside allowed dir, skipping",
+                        resolved,
+                    )
+                    return
+            data = await asyncio.to_thread(resolved.read_bytes)
         if len(data) > self._max_audio_bytes:
             log.warning(
                 "Attachment %s too large (%d bytes), skipping",
@@ -669,10 +706,11 @@ class TelegramAdapter:
         buf.name = att.file_name
 
         kwargs: dict[str, Any] = {"chat_id": chat_id}
-        if att.caption:
-            kwargs["caption"] = att.caption[:1024]
+        caption = (att.caption or "")[:1024] or None
+        if caption:
+            kwargs["caption"] = caption
 
-        mime = att.mime_type
+        mime = _verified_mime(att.mime_type, att.file_name)
         if mime.startswith("image/"):
             kwargs["photo"] = buf
             await self.bot.send_photo(**kwargs)

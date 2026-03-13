@@ -146,6 +146,10 @@ class DiscordAdapter(discord.Client):
         self._max_audio_bytes: int = int(
             os.environ.get("LYRA_MAX_AUDIO_BYTES", 5 * 1024 * 1024)
         )
+        _att_dir = os.environ.get("LYRA_ATTACHMENTS_DIR")
+        self._attachments_dir: Path | None = (
+            Path(_att_dir).resolve() if _att_dir else None
+        )
         # Set on on_ready; None until login completes. Tests set directly.
         self._bot_user: Any = None
         # Compiled once in on_ready (requires bot user ID). None until then.
@@ -572,7 +576,15 @@ class DiscordAdapter(discord.Client):
         """Send a single OutboundAttachment to a Discord channel."""
         data: bytes | str = att.bytes_or_path
         if isinstance(data, str):
-            data = await asyncio.to_thread(Path(data).read_bytes)
+            resolved = Path(data).resolve()
+            if self._attachments_dir is not None:
+                if not resolved.is_relative_to(self._attachments_dir):
+                    log.warning(
+                        "Attachment path %s outside allowed dir, skipping",
+                        resolved,
+                    )
+                    return
+            data = await asyncio.to_thread(resolved.read_bytes)
         if len(data) > self._max_audio_bytes:
             log.warning(
                 "Attachment %s too large (%d bytes), skipping",

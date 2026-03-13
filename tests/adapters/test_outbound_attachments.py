@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -213,7 +214,7 @@ class TestTelegramOutboundAttachments:
 
 class TestDiscordOutboundAttachments:
     @pytest.fixture
-    def adapter(self):
+    def adapter(self):  # type: ignore[override]
         from lyra.adapters.discord import _ALLOW_ALL, DiscordAdapter
 
         hub = MagicMock()
@@ -222,7 +223,7 @@ class TestDiscordOutboundAttachments:
         return a
 
     @pytest.mark.asyncio
-    async def test_send_attachment(self, adapter) -> None:
+    async def test_send_attachment(self, adapter: Any) -> None:
         """Attachment is sent as discord.File via messageable.send()."""
         att = OutboundAttachment(
             bytes_or_path=b"fake-png",
@@ -247,7 +248,7 @@ class TestDiscordOutboundAttachments:
         assert att_call[1]["file"] is not None
 
     @pytest.mark.asyncio
-    async def test_send_no_attachments(self, adapter) -> None:
+    async def test_send_no_attachments(self, adapter: Any) -> None:
         """No attachments → single send call for text only."""
         outbound = OutboundMessage.from_text("Just text")
         inbound = _make_inbound_discord()

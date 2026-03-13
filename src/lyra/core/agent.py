@@ -189,7 +189,7 @@ def load_persona(name: str, personas_dir: Path | None = None) -> PersonaConfig:
     )
 
 
-def compose_system_prompt(persona: PersonaConfig) -> str:
+def compose_system_prompt(persona: PersonaConfig) -> str:  # noqa: C901 — many optional persona fields each add one branch
     """Build a natural prose system prompt from PersonaConfig fields."""
     parts: list[str] = []
 
@@ -241,7 +241,7 @@ def compose_system_prompt(persona: PersonaConfig) -> str:
     return composed
 
 
-def load_agent_config(
+def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many independent TOML sections and validation branches
     name: str,
     agents_dir: Path | None = None,
     personas_dir: Path | None = None,
@@ -398,7 +398,7 @@ class AgentBase(ABC):
     on next message.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 — DI constructor, each arg is a required dependency
         self,
         config: Agent,
         agents_dir: Path | None = None,
@@ -541,7 +541,9 @@ class AgentBase(ABC):
             except Exception as exc:
                 log.warning("Failed to reload config for %r: %s", self.config.name, exc)
 
-        # Plugin hot-reload: runs unconditionally — not gated on agent TOML change
+        self._reload_plugins()
+
+    def _reload_plugins(self) -> None:
         plugins_changed = False
         for name in list(self._plugin_mtimes):
             handlers_path = self._plugins_dir / name / "handlers.py"

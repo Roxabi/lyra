@@ -147,7 +147,7 @@ def is_compliant(name: str, license_str: str, policy: dict) -> bool:
     return False
 
 
-def main() -> None:
+def main() -> None:  # noqa: C901 — CLI entry point: argparse setup + sequential validation steps
     parser = argparse.ArgumentParser(description="License compliance checker")
     parser.add_argument(
         "--policy",

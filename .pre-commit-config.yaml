@@ -11,6 +11,11 @@ repos:
         entry: uv run pyright
         language: system
         pass_filenames: false
+      - id: check-file-length
+        name: check-file-length
+        entry: tools/check_file_length.sh
+        language: system
+        pass_filenames: false
       - id: gitleaks
         name: gitleaks secret scan
         entry: gitleaks detect --source . --no-git

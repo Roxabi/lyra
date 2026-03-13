@@ -33,7 +33,7 @@ class AnthropicAgent(AgentBase):
     complete Response rather than streaming — adapters receive the full reply.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 — DI constructor, each arg is a required dependency
         self,
         config: Agent,
         provider: LlmProvider,

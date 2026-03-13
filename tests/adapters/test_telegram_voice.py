@@ -171,7 +171,7 @@ async def test_voice_message_download_error_returns_silently() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _make_voice_msg_for_normalize(
+def _make_voice_msg_for_normalize(  # noqa: PLR0913 — test factory with optional overrides
     file_id: str = "FILE1",
     duration: int = 3,
     chat_id: int = 42,

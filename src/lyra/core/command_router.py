@@ -57,7 +57,7 @@ class CommandRouter:
         ),
     }
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 — DI constructor, each arg is a required dependency
         self,
         plugin_loader: PluginLoader,
         enabled_plugins: list[str],
@@ -111,35 +111,37 @@ class CommandRouter:
     # Dispatch
     # ------------------------------------------------------------------
 
+    def _dispatch_builtin(
+        self, command_name: str, args: list[str], msg: InboundMessage, pool: Pool | None
+    ) -> Response | None:
+        if command_name == "/help":
+            return self._help()
+        if command_name == "/circuit":
+            return self._circuit_status(msg)
+        if command_name == "/routing":
+            return self._routing_status(msg)
+        if command_name == "/stop":
+            if pool is not None:
+                pool.cancel()
+            return Response(content="")
+        if command_name == "/config":
+            return self._cmd_config(msg, args)
+        builtin = self._builtins.get(command_name)
+        if builtin and builtin.builtin:
+            return Response(
+                content=f"Built-in command {command_name} is not yet implemented."
+            )
+        return None
+
     async def dispatch(self, msg: InboundMessage, pool: Pool | None = None) -> Response:
         """Parse the command name + args and route to the appropriate handler."""
         parts = msg.text.split()
         command_name = parts[0].lower()
         args = parts[1:]
 
-        if command_name == "/help":
-            return self._help()
-
-        if command_name == "/circuit":
-            return self._circuit_status(msg)
-
-        if command_name == "/routing":
-            return self._routing_status(msg)
-
-        if command_name == "/stop":
-            if pool is not None:
-                pool.cancel()
-            # reply sent by Pool._process_loop on CancelledError
-            return Response(content="")
-
-        if command_name == "/config":
-            return self._cmd_config(msg, args)
-
-        builtin = self._builtins.get(command_name)
-        if builtin and builtin.builtin:
-            return Response(
-                content=f"Built-in command {command_name} is not yet implemented."
-            )
+        builtin_response = self._dispatch_builtin(command_name, args, msg, pool)
+        if builtin_response is not None:
+            return builtin_response
 
         plugin_handlers: dict[str, AsyncHandler] = self._plugin_loader.get_commands(
             self._enabled_plugins

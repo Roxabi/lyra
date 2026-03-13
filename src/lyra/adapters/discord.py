@@ -110,7 +110,7 @@ class DiscordAdapter(discord.Client):
     - Bot's own messages are silently discarded.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 — DI constructor, each arg is a required dependency
         self,
         hub: "Hub",
         bot_id: str = "main",
@@ -293,7 +293,7 @@ class DiscordAdapter(discord.Client):
             },
         )
 
-    async def on_message(self, message: Any) -> None:
+    async def on_message(self, message: Any) -> None:  # noqa: C901 — gateway dispatch: each message type branch is independent
         """Handle incoming Gateway message.
 
         Filters own/bot messages, creates auto-thread before normalization,
@@ -545,7 +545,7 @@ class DiscordAdapter(discord.Client):
             original_msg.id,
         )
 
-    async def send_streaming(
+    async def send_streaming(  # noqa: C901 — streaming protocol: edit/chunk/finalize branches are inherently sequential
         self,
         original_msg: InboundMessage,
         chunks: AsyncIterator[str],

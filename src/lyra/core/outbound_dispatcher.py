@@ -97,7 +97,7 @@ class OutboundDispatcher:
         """Return the number of pending items in the outbound queue."""
         return self._queue.qsize()
 
-    async def _worker_loop(self) -> None:
+    async def _worker_loop(self) -> None:  # noqa: C901 — outbound dispatch with circuit-breaker, kind branching, and error classification
         """Consume the outbound queue indefinitely."""
         while True:
             item = await self._queue.get()

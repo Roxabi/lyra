@@ -34,7 +34,7 @@ class AnthropicSdkDriver:
     def __init__(self, api_key: str) -> None:
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
 
-    async def complete(
+    async def complete(  # noqa: C901 — tool-use loop with per-error-type handling; extracting would obscure the protocol flow
         self,
         pool_id: str,
         text: str,

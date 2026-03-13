@@ -100,7 +100,7 @@ class Hub:
     RATE_LIMIT = 20  # max messages per user per window
     RATE_WINDOW = 60  # window size in seconds
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 — DI constructor, each arg is a required dependency
         self,
         bus_size: int = BUS_SIZE,
         rate_limit: int = RATE_LIMIT,
@@ -359,6 +359,86 @@ class Hub:
     # Audio consumer loop
     # ------------------------------------------------------------------
 
+    async def _process_audio_item(self, audio: InboundAudio) -> None:
+        from ..stt import is_whisper_noise
+
+        try:
+            platform_enum = Platform(audio.platform)
+        except ValueError:
+            log.warning(
+                "unknown platform %r in audio id=%s — audio dropped",
+                audio.platform,
+                audio.id,
+            )
+            return
+        key = RoutingKey(platform_enum, audio.bot_id, audio.scope_id)
+
+        if audio.trust != "user":
+            log.error(
+                "audio %s has trust=%r (expected 'user') — dropped",
+                audio.id,
+                audio.trust,
+            )
+            return
+
+        if self._stt is None:
+            _content = (
+                self._msg_manager.get("stt_unsupported")
+                if self._msg_manager
+                else "Voice messages are not supported — STT is not configured."
+            )
+            await self._dispatch_audio_reply(audio, _content)
+            log.warning("STT not configured — audio %s dropped", audio.id)
+            return
+
+        fd, tmp_str = tempfile.mkstemp(suffix=_mime_to_ext(audio.mime_type))
+        tmp = Path(tmp_str)
+        try:
+            os.write(fd, audio.audio_bytes)
+            os.close(fd)
+            result = await self._stt.transcribe(tmp)
+        finally:
+            tmp.unlink(missing_ok=True)
+
+        if is_whisper_noise(result.text):
+            _content = (
+                self._msg_manager.get("stt_noise")
+                if self._msg_manager
+                else "I couldn't make out your voice message, please try again."
+            )
+            await self._dispatch_audio_reply(audio, _content)
+            log.info("STT noise for audio %s — replied with stt_noise", audio.id)
+            return
+
+        text = f"\U0001f3a4 [voice]: {result.text}"
+        msg = InboundMessage(
+            id=audio.id,
+            platform=audio.platform,
+            bot_id=audio.bot_id,
+            scope_id=audio.scope_id,
+            user_id=audio.user_id,
+            user_name=audio.user_name,
+            is_mention=audio.is_mention,
+            text=result.text,
+            text_raw=text,
+            timestamp=audio.timestamp,
+            trust_level=audio.trust_level,
+            trust=audio.trust,
+            platform_meta=audio.platform_meta,
+        )
+        try:
+            self.inbound_bus.put(platform_enum, msg)
+        except asyncio.QueueFull:
+            log.warning("inbound bus full — transcribed audio %s dropped", audio.id)
+            return
+        log.info(
+            "Audio %s transcribed (%s, %.1fs) → re-enqueued as text on %s",
+            audio.id,
+            result.language,
+            result.duration_seconds,
+            key,
+        )
+
     async def _audio_loop(self) -> None:
         """Drain InboundAudioBus, transcribe via STT, re-enqueue as InboundMessage.
 
@@ -368,96 +448,10 @@ class Hub:
 
         Runs until cancelled.
         """
-        from ..stt import is_whisper_noise
-
         while True:
             audio: InboundAudio = await self.inbound_audio_bus.get()
             try:
-                try:
-                    platform_enum = Platform(audio.platform)
-                except ValueError:
-                    log.warning(
-                        "unknown platform %r in audio id=%s — audio dropped",
-                        audio.platform,
-                        audio.id,
-                    )
-                    continue
-                key = RoutingKey(platform_enum, audio.bot_id, audio.scope_id)
-
-                if audio.trust != "user":
-                    log.error(
-                        "audio %s has trust=%r (expected 'user') — dropped",
-                        audio.id,
-                        audio.trust,
-                    )
-                    continue
-
-                if self._stt is None:
-                    _content = (
-                        self._msg_manager.get("stt_unsupported")
-                        if self._msg_manager
-                        else "Voice messages are not supported — STT is not configured."
-                    )
-                    await self._dispatch_audio_reply(audio, _content)
-                    log.warning("STT not configured — audio %s dropped", audio.id)
-                    continue
-
-                # Write audio bytes to a temp file for STT
-                fd, tmp_str = tempfile.mkstemp(suffix=_mime_to_ext(audio.mime_type))
-                tmp = Path(tmp_str)
-                try:
-                    os.write(fd, audio.audio_bytes)
-                    os.close(fd)
-                    result = await self._stt.transcribe(tmp)
-                finally:
-                    tmp.unlink(missing_ok=True)
-
-                if is_whisper_noise(result.text):
-                    _content = (
-                        self._msg_manager.get("stt_noise")
-                        if self._msg_manager
-                        else "I couldn't make out your voice message, please try again."
-                    )
-                    await self._dispatch_audio_reply(audio, _content)
-                    log.info(
-                        "STT noise for audio %s — replied with stt_noise",
-                        audio.id,
-                    )
-                    continue
-
-                # Build InboundMessage from the transcribed audio
-                text = f"\U0001f3a4 [voice]: {result.text}"
-                msg = InboundMessage(
-                    id=audio.id,
-                    platform=audio.platform,
-                    bot_id=audio.bot_id,
-                    scope_id=audio.scope_id,
-                    user_id=audio.user_id,
-                    user_name=audio.user_name,
-                    is_mention=audio.is_mention,
-                    text=result.text,
-                    text_raw=text,
-                    timestamp=audio.timestamp,
-                    trust_level=audio.trust_level,
-                    trust=audio.trust,
-                    platform_meta=audio.platform_meta,
-                )
-                # Re-enqueue on InboundBus for normal Hub.run() processing
-                try:
-                    self.inbound_bus.put(platform_enum, msg)
-                except asyncio.QueueFull:
-                    log.warning(
-                        "inbound bus full — transcribed audio %s dropped",
-                        audio.id,
-                    )
-                    continue
-                log.info(
-                    "Audio %s transcribed (%s, %.1fs) → re-enqueued as text on %s",
-                    audio.id,
-                    result.language,
-                    result.duration_seconds,
-                    key,
-                )
+                await self._process_audio_item(audio)
             except Exception:
                 log.exception("audio_loop failed for audio id=%s", audio.id)
                 _content = (
@@ -503,7 +497,50 @@ class Hub:
     # Run loop
     # ------------------------------------------------------------------
 
-    async def run(self) -> None:
+    async def _pairing_gate_drop(
+        self, msg: InboundMessage, router: Any, key: RoutingKey,
+    ) -> bool:
+        """Return True if the message should be dropped by the pairing gate."""
+        if not (self._pairing_manager and self._pairing_manager.config.enabled):
+            return False
+        _cmd_name = router.get_command_name(msg) if router is not None else None
+        if _cmd_name == "/join":
+            return False
+        paired = await self._pairing_manager.is_paired(msg.user_id)
+        if paired:
+            return False
+        if _is_group_message(msg):
+            log.debug("unpaired user %s in group — message dropped", key)
+            return True
+        rejection = Response(content="You are not paired. Use /join <CODE> to pair.")
+        try:
+            await self.dispatch_response(msg, rejection)
+        except Exception:
+            pass
+        return True
+
+    async def _circuit_breaker_drop(self, msg: InboundMessage) -> bool:
+        """Return True if the circuit is open and a fast-fail reply was sent."""
+        if self.circuit_registry is None:
+            return False
+        cb = self.circuit_registry.get("anthropic")
+        if cb is None or not cb.is_open():
+            return False
+        status = cb.get_status()
+        retry_secs = int(status.retry_after or 0)
+        _retry_str = str(retry_secs)
+        _unavail = (
+            self._msg_manager.get("unavailable", retry_secs=_retry_str)
+            if self._msg_manager
+            else f"Lyra is currently unavailable. Please try again in {retry_secs}s."
+        )
+        try:
+            await self.dispatch_response(msg, Response(content=_unavail))
+        except Exception as exc:
+            log.exception("dispatch_response failed for fast-fail reply: %s", exc)
+        return True
+
+    async def run(self) -> None:  # noqa: C901 — bus consumer: each message type dispatches independently
         """Hub bus consumer loop. Runs until cancelled."""
         while True:
             msg = await self.inbound_bus.get()
@@ -537,32 +574,8 @@ class Hub:
                 pool = self.get_or_create_pool(binding.pool_id, binding.agent_name)
                 router = getattr(agent, "command_router", None)
 
-                # Pairing gate: runs after binding resolution, before command dispatch.
-                if self._pairing_manager and self._pairing_manager.config.enabled:
-                    # Allow /join through so unpaired users can pair themselves.
-                    # Use router.get_command_name() as single source of truth (W4).
-                    _cmd_name = (
-                        router.get_command_name(msg) if router is not None else None
-                    )
-                    is_join_cmd = _cmd_name == "/join"
-                    if not is_join_cmd:
-                        paired = await self._pairing_manager.is_paired(msg.user_id)
-                        if not paired:
-                            if _is_group_message(msg):
-                                # Groups: silently drop to avoid spamming channels.
-                                log.debug(
-                                    "unpaired user %s in group — message dropped", key
-                                )
-                                continue
-                            # DMs: send a rejection message.
-                            rejection = Response(
-                                content="You are not paired. Use /join <CODE> to pair."
-                            )
-                            try:
-                                await self.dispatch_response(msg, rejection)
-                            except Exception:
-                                pass
-                            continue
+                if await self._pairing_gate_drop(msg, router, key):
+                    continue
 
                 if router and router.is_command(msg):
                     try:
@@ -581,7 +594,6 @@ class Hub:
                     except Exception as exc:
                         log.exception("dispatch_response() failed for %s: %s", key, exc)
                     continue
-                # Fail fast — check adapter exists before spending LLM tokens
                 if (Platform(msg.platform), msg.bot_id) not in self.adapter_registry:
                     log.error(
                         "no adapter registered for (%s, %s) — response dropped",
@@ -589,33 +601,8 @@ class Hub:
                         msg.bot_id,
                     )
                     continue
-                # Anthropic circuit pre-process check
-                # (Option B: hub-level check before agent.process())
-                if self.circuit_registry is not None:
-                    cb = self.circuit_registry.get("anthropic")
-                    if cb is not None and cb.is_open():
-                        status = cb.get_status()
-                        retry_secs = int(status.retry_after or 0)
-                        _retry_str = str(retry_secs)
-                        _unavail = (
-                            self._msg_manager.get("unavailable", retry_secs=_retry_str)
-                            if self._msg_manager
-                            else (
-                                "Lyra is currently unavailable. "
-                                f"Please try again in {retry_secs}s."
-                            )
-                        )
-                        reply = Response(content=_unavail)
-                        try:
-                            await self.dispatch_response(msg, reply)
-                        except Exception as exc:
-                            log.exception(
-                                "dispatch_response failed for fast-fail reply: %s",
-                                exc,
-                            )
-                        continue
-                # Submit to pool — non-blocking; processing + dispatch happen
-                # in Pool._process_loop task
+                if await self._circuit_breaker_drop(msg):
+                    continue
                 pool.submit(msg)
             finally:
                 self.inbound_bus.task_done()

@@ -147,7 +147,7 @@ class TelegramAdapter:
     - All inbound messages produce trust='user' via Message.from_adapter().
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 — DI constructor, each arg is a required dependency
         self,
         bot_id: str,
         token: str,
@@ -621,7 +621,7 @@ class TelegramAdapter:
             if i == last_idx:
                 outbound.metadata["reply_message_id"] = sent.message_id
 
-    async def send_streaming(
+    async def send_streaming(  # noqa: C901 — streaming protocol: edit/chunk/finalize branches are inherently sequential
         self,
         original_msg: InboundMessage,
         chunks: AsyncIterator[str],

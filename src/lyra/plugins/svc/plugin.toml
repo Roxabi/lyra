@@ -1,0 +1,11 @@
+name = "svc"
+description = "Service management via supervisorctl (admin-only)"
+version = "0.1.0"
+priority = 50
+enabled = true
+timeout = 15.0
+
+[[commands]]
+name = "svc"
+description = "Manage services: /svc <status|restart|start|stop> [service]"
+handler = "cmd_svc"

@@ -277,7 +277,8 @@ Fill in your user IDs:
 
 ```toml
 [admin]
-user_ids = ["tg:user:YOUR_TELEGRAM_ID", "dc:user:YOUR_DISCORD_ID"]
+# owner_users are automatically admin — only add extra IDs here if needed.
+user_ids = []
 
 [auth.telegram]
 default = "blocked"
@@ -289,6 +290,8 @@ default = "blocked"
 owner_users = [YOUR_DISCORD_ID]    # numeric — Settings → Advanced → Developer Mode → right-click username
 trusted_roles = []                 # numeric Discord role snowflake IDs (trusted access)
 ```
+
+> **Note:** `owner_users` in each adapter section are automatically granted admin privileges. You do not need to duplicate them in `[admin].user_ids`.
 
 At least one of `[auth.telegram]` or `[auth.discord]` must be present. A missing section logs a warning and disables that adapter — Lyra still starts with the remaining adapter.
 

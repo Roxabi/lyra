@@ -24,6 +24,7 @@ User → hello    → Telegram → Hub → (not a command) → Agent (LLM) → R
 | `/circuit` | Show circuit breaker status (admin-only) | — (builtin) |
 | `/routing` | Show smart routing decisions (admin-only) | — (builtin) |
 | `/config` | Show/set runtime config (admin-only) | — (builtin) |
+| `/svc <action> [service]` | Manage supervisor services (admin-only) | — (plugin) |
 | `/clear` | Clear conversation history | — (builtin) |
 | `/new` | Start a new session (alias for /clear) | — (builtin) |
 | `/echo <text>` | Echo back the message (test) | — (plugin) |
@@ -194,7 +195,7 @@ Built-in commands          Plugin commands             CLI-backed commands
 /help   → _help()          /echo  → cmd_echo()         /voice → voicecli
 /stop   → pool.cancel()    /invite → cmd_invite()
 /clear  → _cmd_clear()     /join   → cmd_join()
-/config → _cmd_config()
+/config → _cmd_config()    /svc    → cmd_svc()
 ```
 
 Two access paths for the same tools:

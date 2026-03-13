@@ -85,6 +85,12 @@ At least one section must be present. A missing section logs a warning and disab
 - [x] CLIAdapter (trust = OWNER by default)
 - [x] Rejection logging
 
+### Admin access
+
+`owner_users` in `[auth.telegram]` / `[auth.discord]` are automatically added to the admin set at startup — no need to duplicate IDs in `[admin].user_ids`. Extra non-owner admins can be added there explicitly.
+
+Module-level registry: `lyra.core.admin` — `is_admin(user_id)` / `set_admin_user_ids()` / `get_admin_user_ids()`. Plugins use `is_admin()` to gate admin-only commands without needing access to the config layer.
+
 ---
 
 ## #routing — RoutingContext + vérification Adapter — ✅ Shipped (#152)

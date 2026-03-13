@@ -40,6 +40,7 @@ __all__ = [
 log = logging.getLogger(__name__)
 
 _ENV_PREFIX = "env:"
+_AUTO_THREAD_TRUE = frozenset({"1", "true", "yes", "on"})
 
 
 def _resolve_value(value: str) -> str:
@@ -49,7 +50,7 @@ def _resolve_value(value: str) -> str:
     Falls back to empty string if the env var is missing (caller validates).
     """
     if value.startswith(_ENV_PREFIX):
-        env_var = value[len(_ENV_PREFIX):]
+        env_var = value[len(_ENV_PREFIX) :]
         resolved = os.environ.get(env_var, "")
         if not resolved:
             log.warning("env var %r referenced in config is not set", env_var)
@@ -196,9 +197,12 @@ def load_multibot_config(
     tg_bots = _parse_telegram_bots(raw)
     dc_bots = _parse_discord_bots(raw)
 
-    # Backward compat: no [[telegram.bots]] but [auth.telegram] is present
+    # Backward compat: no [[telegram.bots]] key declared but [auth.telegram] is present
     # → synthesize from env vars (legacy path).
-    if not tg_bots and "telegram" not in raw and raw.get("auth", {}).get("telegram"):
+    # Use "bots" not in telegram section (not top-level key) to distinguish
+    # "no bots declared" from "bots declared but all failed resolution".
+    tg_has_bots_key = "bots" in raw.get("telegram", {})
+    if not tg_bots and not tg_has_bots_key and raw.get("auth", {}).get("telegram"):
         token = os.environ.get("TELEGRAM_TOKEN", "")
         webhook_secret = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
         bot_username = os.environ.get("TELEGRAM_BOT_USERNAME", "lyra_bot")
@@ -217,12 +221,12 @@ def load_multibot_config(
                 )
             ]
 
-    # Backward compat: no [[discord.bots]] but [auth.discord] is present
-    if not dc_bots and "discord" not in raw and raw.get("auth", {}).get("discord"):
+    # Backward compat: no [[discord.bots]] key declared but [auth.discord] is present.
+    dc_has_bots_key = "bots" in raw.get("discord", {})
+    if not dc_bots and not dc_has_bots_key and raw.get("auth", {}).get("discord"):
         token = os.environ.get("DISCORD_TOKEN", "")
         if token:
             auto_thread_str = os.environ.get("DISCORD_AUTO_THREAD", "").strip().lower()
-            _AUTO_THREAD_TRUE = frozenset({"1", "true", "yes", "on"})
             auto_thread = (
                 auto_thread_str in _AUTO_THREAD_TRUE if auto_thread_str else True
             )

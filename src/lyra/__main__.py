@@ -287,7 +287,10 @@ def create_health_app(hub: Hub) -> FastAPI:
         }
 
     @app.get("/config")
-    async def config_endpoint(authorization: str = Header(default="")) -> dict:
+    async def config_endpoint(
+        authorization: str = Header(default=""),
+        agent: str = "lyra_default",
+    ) -> dict:
         config_secret = os.environ.get("LYRA_CONFIG_SECRET", "")
         if not config_secret or not hmac.compare_digest(
             authorization, f"Bearer {config_secret}"
@@ -295,13 +298,13 @@ def create_health_app(hub: Hub) -> FastAPI:
             raise HTTPException(status_code=401, detail="unauthorized")
         from lyra.agents.anthropic_agent import AnthropicAgent
 
-        agent = hub.agent_registry.get("lyra_default")
-        if not isinstance(agent, AnthropicAgent):
+        agent_obj = hub.agent_registry.get(agent)
+        if not isinstance(agent_obj, AnthropicAgent):
             raise HTTPException(
                 status_code=404,
                 detail="runtime config not available for this agent backend",
             )
-        rc = agent.runtime_config
+        rc = agent_obj.runtime_config
         return {
             "style": rc.style,
             "language": rc.language,
@@ -309,35 +312,54 @@ def create_health_app(hub: Hub) -> FastAPI:
             "model": rc.model,
             "max_steps": rc.max_steps,
             "extra_instructions": rc.extra_instructions,
-            "effective_model": rc.model or agent.config.model_config.model,
-            "effective_max_steps": rc.max_steps or agent.config.model_config.max_turns,
+            "effective_model": rc.model or agent_obj.config.model_config.model,
+            "effective_max_steps": (
+                rc.max_steps or agent_obj.config.model_config.max_turns
+            ),
         }
 
     return app
 
 
 def _resolve_agents(  # noqa: PLR0913
-    agent_names: set[str],
+    agent_configs: dict[str, Agent],
     cli_pool: CliPool | None,
     circuit_registry: CircuitRegistry,
     admin_user_ids: set[str],
     msg_manager: MessageManager,
     stt_service: STTService | None,
-    provider_registry: ProviderRegistry,
-    smart_routing_decorator: SmartRoutingDecorator | None,
 ) -> dict[str, AgentBase]:
-    """Load and create all uniquely named agents referenced by bot configs.
+    """Create all uniquely named agents referenced by bot configs.
 
+    Builds a per-agent ProviderRegistry (and SmartRoutingDecorator when configured)
+    so that each agent's routing settings are respected independently.
+    Accepts pre-loaded agent configs to avoid duplicate I/O.
     Returns a dict mapping agent_name → AgentBase instance.
     """
     agents: dict[str, AgentBase] = {}
-    for name in sorted(agent_names):  # sorted for deterministic log order
-        agent_config = load_agent_config(name)
+    for name, agent_config in sorted(agent_configs.items()):  # deterministic log order
         log.info(
             "Agent loaded: name=%s model=%s backend=%s",
             agent_config.name,
             agent_config.model_config.model,
             agent_config.model_config.backend,
+        )
+        # Build per-agent provider registry so each agent's smart_routing config
+        # is applied independently (avoids silent cross-agent routing mis-dispatch).
+        sr_config = agent_config.smart_routing
+        if (
+            sr_config is not None
+            and sr_config.enabled
+            and agent_config.model_config.backend != "anthropic-sdk"
+        ):
+            log.warning(
+                "agent %r: smart_routing.enabled=true but backend=%r — "
+                "smart routing only applies to anthropic-sdk",
+                name,
+                agent_config.model_config.backend,
+            )
+        per_agent_registry, per_agent_routing = _build_provider_registry(
+            circuit_registry, cli_pool, smart_routing_config=sr_config
         )
         agent = _create_agent(
             agent_config,
@@ -346,8 +368,8 @@ def _resolve_agents(  # noqa: PLR0913
             admin_user_ids=admin_user_ids,
             msg_manager=msg_manager,
             stt=stt_service,
-            provider_registry=provider_registry,
-            smart_routing_decorator=smart_routing_decorator,
+            provider_registry=per_agent_registry,
+            smart_routing_decorator=per_agent_routing,
         )
         agents[name] = agent
     return agents
@@ -430,9 +452,15 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:  # noqa: C901, P
         for bot_cfg, _ in dc_bot_auths:
             agent_names.add(bot_cfg.agent)
 
-        # Use the first agent's language for messages (all agents share one msg_manager)
+        # Load all agent configs once — used for cli_pool detection, smart routing,
+        # msg_manager language, and agent creation. Avoids duplicate I/O and TOCTOU.
+        agent_configs: dict[str, Agent] = {
+            n: load_agent_config(n) for n in sorted(agent_names)
+        }
         first_agent_name = next(iter(sorted(agent_names)))
-        first_agent_config = load_agent_config(first_agent_name)
+        first_agent_config = agent_configs[first_agent_name]
+
+        # Use the first agent's language for messages (all agents share one msg_manager)
         msg_manager = _load_messages(language=first_agent_config.i18n_language)
 
         pairing_config = _load_pairing_config(raw_config)
@@ -472,31 +500,23 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:  # noqa: C901, P
             debounce_ms=DEFAULT_DEBOUNCE_MS,
         )
 
-        # Build cli_pool if any agent needs it
+        # Build cli_pool if any agent needs it (uses pre-loaded configs)
         cli_pool: CliPool | None = None
-        for name in agent_names:
-            cfg = load_agent_config(name)
+        for cfg in agent_configs.values():
             if cfg.model_config.backend == "claude-cli":
                 cli_pool = CliPool()
                 await cli_pool.start()
                 break
 
-        # Use first agent's smart_routing config for provider registry
-        sr_config = first_agent_config.smart_routing
-        provider_registry, smart_routing_decorator = _build_provider_registry(
-            circuit_registry, cli_pool, smart_routing_config=sr_config
-        )
-
-        # Create all unique agents and register them
+        # Create all unique agents — each gets its own ProviderRegistry built from
+        # its own smart_routing config inside _resolve_agents().
         all_agents = _resolve_agents(
-            agent_names,
+            agent_configs,
             cli_pool,
             circuit_registry,
             admin_user_ids,
             msg_manager,
             stt_service,
-            provider_registry,
-            smart_routing_decorator,
         )
         for ag in all_agents.values():
             hub.register_agent(ag)

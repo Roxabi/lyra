@@ -135,7 +135,8 @@ class AuthMiddleware:
 
         Looks up the entry with matching bot_id from the array
         ``auth.<section>_bots`` (e.g. ``auth.telegram_bots`` for section="telegram").
-        Falls back to the flat ``auth.<section>`` section for backward compatibility.
+        Does NOT fall back to the flat ``auth.<section>`` section — per-bot entries
+        must be explicit. Use ``from_config()`` for the legacy single-bot path.
 
         Args:
             raw: Top-level parsed TOML dict.
@@ -143,25 +144,22 @@ class AuthMiddleware:
             bot_id: The bot_id to look up in the per-bot array.
 
         Returns:
-            AuthMiddleware instance, or None if no matching config found.
+            AuthMiddleware instance, or None if no matching entry found (bot disabled).
 
         Raises:
-            ValueError: If the section exists but contains an invalid default value.
+            ValueError: If the entry exists but contains an invalid default value.
         """
         auth_block: dict = raw.get("auth", {})
         bots_key = f"{section}_bots"
         bots_list: list[dict] = auth_block.get(bots_key, [])
 
-        # Find matching entry by bot_id
+        # Find matching entry by bot_id — no flat-section fallback to prevent
+        # cross-bot trust bleed (a bot without an explicit entry is disabled).
         section_cfg: dict | None = None
         for entry in bots_list:
             if entry.get("bot_id") == bot_id:
                 section_cfg = entry
                 break
-
-        # Fall back to flat [auth.<section>] if no per-bot entry found
-        if section_cfg is None:
-            section_cfg = auth_block.get(section)
 
         if section_cfg is None:
             if section == "cli":

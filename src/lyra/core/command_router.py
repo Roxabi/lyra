@@ -163,15 +163,22 @@ class CommandRouter:
         # Workspace switching — async because pool.switch_workspace() is async
         ws_key = command_name.lstrip("/")
         if ws_key in self._workspaces:
+            if not self._admin_user_ids or msg.user_id not in self._admin_user_ids:
+                return Response(content="This command is admin-only.")
             cwd = self._workspaces[ws_key]
             if pool is None:
-                return Response(content=f"Context: {cwd}")
+                return Response(content=f"Workspace: {ws_key}")
             await pool.switch_workspace(cwd)
-            remaining = " ".join(args).strip()
+            remaining = msg.text[len(command_name) :].lstrip()
             if remaining:
-                followup = replace(msg, text=remaining, text_raw=remaining)
+                raw_remaining = (
+                    msg.text_raw[len(command_name) :].lstrip()
+                    if msg.text_raw
+                    else remaining
+                )
+                followup = replace(msg, text=remaining, text_raw=raw_remaining)
                 pool.submit(followup)
-            return Response(content=f"Context: {cwd}")
+            return Response(content=f"Workspace: {ws_key}")
 
         builtin_response = self._dispatch_builtin(command_name, args, msg, pool)
         if builtin_response is not None:

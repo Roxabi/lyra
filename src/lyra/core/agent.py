@@ -36,6 +36,10 @@ _VAULT_DIR = Path(
 )
 _PERSONAS_DIR = _VAULT_DIR / "personas"
 
+_WORKSPACE_BUILTIN_CONFLICTS = frozenset(
+    {"help", "circuit", "routing", "stop", "config", "clear", "new"}
+)
+
 
 @dataclass(frozen=True)
 class ModelConfig:
@@ -406,6 +410,11 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
             raise ValueError(
                 f"Invalid workspace name {key!r} in agent {name!r}: "
                 "only [a-zA-Z0-9_-] allowed"
+            )
+        if key in _WORKSPACE_BUILTIN_CONFLICTS:
+            raise ValueError(
+                f"Workspace key {key!r} in agent {name!r} clashes with "
+                f"built-in command /{key}"
             )
         resolved = Path(raw_path).expanduser().resolve()
         if not resolved.is_dir():

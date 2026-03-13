@@ -200,22 +200,22 @@ system = "test"
         agent = load_agent_config("cwdagent", agents_dir=tmp_path)
         assert agent.model_config.cwd == project_dir.resolve()
 
-    def test_cwd_tilde_expands(self, tmp_path: Path) -> None:
-        # Use tmp_path as a stand-in; test that expanduser() is called by
-        # passing an absolute path (tilde expansion is OS-level, hard to unit
-        # test portably without touching $HOME).
-        project_dir = tmp_path / "expanded"
-        project_dir.mkdir()
-        toml_content = f"""
+    def test_cwd_tilde_expands(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        subdir = tmp_path / "expanded"
+        subdir.mkdir()
+        monkeypatch.setenv("HOME", str(tmp_path))
+        toml_content = """
 [model]
-cwd = "{project_dir}"
+cwd = "~/expanded"
 
 [prompt]
 system = "test"
 """
         (tmp_path / "tildeagent.toml").write_text(toml_content)
         agent = load_agent_config("tildeagent", agents_dir=tmp_path)
-        assert agent.model_config.cwd == project_dir.resolve()
+        assert agent.model_config.cwd == subdir.resolve()
 
     def test_cwd_nonexistent_raises(self, tmp_path: Path) -> None:
         toml_content = """

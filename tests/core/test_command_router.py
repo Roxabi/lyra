@@ -1070,6 +1070,7 @@ def make_workspace_router(tmp_path: Path, workspaces: dict[str, Path]) -> Comman
         plugin_loader=loader,
         enabled_plugins=[],
         workspaces=workspaces,
+        admin_user_ids={"alice"},  # make_message() default user_id
     )
 
 
@@ -1105,7 +1106,7 @@ class TestWorkspaceCommands:
         response = await router.dispatch(msg, pool=pool_mock)
 
         assert isinstance(response, Response)
-        assert f"Context: {ws_dir}" in response.content
+        assert "Workspace: proj" in response.content
         assert switch_called_with == [ws_dir]
 
     @pytest.mark.asyncio
@@ -1145,7 +1146,7 @@ class TestWorkspaceCommands:
         response = await router.dispatch(msg, pool=None)
 
         assert isinstance(response, Response)
-        assert f"Context: {ws_dir}" in response.content
+        assert "Workspace: solo" in response.content
 
     @pytest.mark.asyncio
     async def test_unknown_command_not_treated_as_workspace(

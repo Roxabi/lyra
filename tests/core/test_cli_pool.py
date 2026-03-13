@@ -496,6 +496,27 @@ class TestCliPoolSpawnCwd:
 
         assert kwargs["cwd"] == str(_LYRA_ROOT)
 
+    async def test_spawn_cwd_override_takes_priority_over_model_config_cwd(
+        self, tmp_path: Path
+    ) -> None:
+        """_cwd_overrides[pool_id] wins over model_config.cwd."""
+        override_dir = tmp_path / "override"
+        override_dir.mkdir()
+        model_dir = tmp_path / "model"
+        model_dir.mkdir()
+
+        model = ModelConfig(cwd=model_dir)
+        pool = CliPool()
+        # Pre-set a cwd override (simulates a prior workspace switch)
+        pool._cwd_overrides["pool-priority"] = override_dir
+
+        proc = make_fake_proc([INIT_LINE, ASSISTANT_LINE, RESULT_LINE])
+        with patch(_PATCH_TARGET, new=AsyncMock(return_value=proc)) as mock_spawn:
+            await pool.send("pool-priority", "hello", model)
+
+        _args, kwargs = mock_spawn.call_args
+        assert kwargs["cwd"] == str(override_dir)
+
     async def test_spawn_uses_model_config_cwd_when_set(self, tmp_path: Path) -> None:
         custom_dir = tmp_path / "myproject"
         custom_dir.mkdir()
@@ -508,7 +529,6 @@ class TestCliPoolSpawnCwd:
 
         _args, kwargs = mock_spawn.call_args
         assert kwargs["cwd"] == str(custom_dir)
-
 
 
 # ---------------------------------------------------------------------------

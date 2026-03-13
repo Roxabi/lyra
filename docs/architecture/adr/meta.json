@@ -18,6 +18,7 @@
     "015-outbound-audio-dispatch-gap-and-streaming-reply-id",
     "016-llm-provider-protocol-and-driver-registry",
     "017-coupling-hotspots-and-decoupling-strategy",
-    "018-intermediate-turns-typing-indicator-and-provider-protocol-evolution"
+    "018-intermediate-turns-typing-indicator-and-provider-protocol-evolution",
+    "019-multi-bot-startup-resource-sharing-policy"
   ]
 }

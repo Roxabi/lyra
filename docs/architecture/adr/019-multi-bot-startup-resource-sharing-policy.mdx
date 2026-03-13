@@ -1,0 +1,94 @@
+---
+title: "ADR-019: Multi-Bot Startup Resource-Sharing Policy"
+description: Documents the trade-offs between per-agent and per-process resource sharing for provider_registry, msg_manager, cli_pool, and smart_routing at multi-bot startup.
+---
+
+## Status
+
+Proposed
+
+## Context
+
+PR #231 introduces multi-bot × multi-agent support. At startup, when multiple agents are active, the following resources must be created and wired: a `ProviderRegistry` (with its `SmartRoutingDecorator`), a `MessageManager`, and a `CliPool`. The question is whether these are process-scoped (one shared instance) or agent-scoped (one instance per agent).
+
+The decision is non-trivial because:
+
+- `SmartRoutingDecorator` is stateful: it holds a routing decision history (`deque[RoutingDecision]`) and a routing table that maps `Complexity` → model name. The routing table comes from each agent's own `smart_routing` config.
+- `MessageManager` is parameterised by language (`i18n_language` per agent config).
+- `CliPool` is a shared process pool; creating one per agent would spawn redundant subprocess pools against the same backend.
+- The current implementation pins both the routing config and the language to the alphabetically first agent, silently applying them to all agents.
+
+---
+
+## Options Considered
+
+### Option A: Per-process (single shared) registry, manager, and pool
+
+One `ProviderRegistry`, one `MessageManager`, and one `CliPool` are created for the entire process. The first agent (sorted lexicographically) determines the `SmartRoutingConfig` used by the shared `SmartRoutingDecorator` and the language used by the shared `MessageManager`.
+
+- **Pros:**
+  - Simpler startup wiring — one code path for resource construction.
+  - `CliPool` correctly shared (only one subprocess pool needed regardless of agent count).
+  - Lower memory overhead at startup.
+- **Cons:**
+  - Silent misrouting: a second agent with a different `smart_routing` routing table will have its messages classified and routed using the first agent's table, with no log warning or error.
+  - Silent language mismatch: error and system messages sent to users of non-first agents will be in the first agent's language.
+  - Lexicographic ordering as an implicit configuration mechanism is fragile and undocumented.
+  - The routing decision history in `SmartRoutingDecorator` intermingles decisions from all agents, making the `/routing` admin command output ambiguous.
+
+### Option B: Per-agent registry and manager; shared pool
+
+One `ProviderRegistry` (with its own `SmartRoutingDecorator` configured from that agent's `smart_routing` config) and one `MessageManager` (with that agent's `i18n_language`) are created per agent. `CliPool` remains a single shared instance, since it is a process-management resource, not an agent-configuration resource.
+
+- **Pros:**
+  - Each agent's routing table and language are correctly isolated.
+  - Routing decision history is per-agent; the `/routing` command gives unambiguous output.
+  - Correct application of the clean-architecture principle: provider configuration is agent-scoped (application layer), process management is infrastructure-scoped.
+  - Adding a third agent later does not silently alter the first two agents' behaviour.
+- **Cons:**
+  - More instances created at startup: N `ProviderRegistry` objects, N `SmartRoutingDecorator` objects, N `MessageManager` objects (one per agent).
+  - `_resolve_agents()` must accept pre-loaded agent configs and per-agent registry/manager construction must happen in the bootstrap factory.
+  - `_build_provider_registry()` must be callable per-agent, not per-process.
+
+### Option C: Per-process registry with per-call routing override
+
+Keep one shared `ProviderRegistry` but extend `SmartRoutingDecorator.complete()` to accept an optional `routing_config` kwarg that overrides `self._config` for that call. Each agent passes its own `smart_routing` config on every `complete()` call.
+
+- **Pros:** Single decorator instance; no per-agent construction cost.
+- **Cons:** Couples agent code to decorator internals (the agent must know to pass its routing config). The history deque still intermingles agents. Adds a non-obvious API surface to `SmartRoutingDecorator` that violates the decorator pattern (decorators should be transparent).
+
+---
+
+## Decision
+
+**Adopt Option B** (per-agent registry and manager; shared pool) before any production deployment of multi-bot configuration.
+
+The current Option A implementation in PR #231 is acceptable as an **initial implementation** only if:
+
+1. The process runs exactly one agent (which is the current production configuration).
+2. A follow-up issue is filed to migrate to Option B before a second agent with different `smart_routing` or `i18n_language` is deployed.
+3. A startup warning is logged when `len(agent_names) > 1` and any two agents have differing `smart_routing` configs or `i18n_language` values, to surface the silent-misrouting risk.
+
+The `CliPool` sharing in Option A is correct and must be preserved in Option B: `CliPool` is a backend process resource, not a per-agent configuration resource.
+
+---
+
+## Consequences
+
+### Positive
+
+- Agent routing behaviour is predictable and auditable per agent.
+- The `/routing` admin command history reflects a single agent's decisions.
+- Adding agents with different routing tiers or languages is safe by default.
+- Aligns with the stateless-agent, mutable-pool model documented in ARCHITECTURE.md: agent = immutable config; provider registry is agent-scoped configuration.
+
+### Negative
+
+- Startup constructs N registries and N managers. For the expected scale (2–5 agents), this is negligible overhead.
+- `_resolve_agents()` and `_build_provider_registry()` signatures must change: callers pass pre-loaded `Agent` configs and per-agent resources rather than raw names.
+- The `create_health_app()` `/config` endpoint currently looks up `agent_registry.get("lyra_default")`. With multiple agents, a per-agent endpoint path (e.g., `/config/{agent_name}`) is needed.
+
+### Neutral
+
+- `_resolve_value()` (env-var indirection in multi-bot config parsing) is unaffected by this decision.
+- The `AuthMiddleware.from_bot_config()` coupling concern (ADR-019 review finding) is orthogonal and should be addressed separately.

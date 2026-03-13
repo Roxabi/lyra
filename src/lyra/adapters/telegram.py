@@ -38,6 +38,7 @@ from lyra.core.message import (
     OutboundAudioChunk,
     OutboundMessage,
     Platform,
+    RoutingContext,
 )
 from lyra.core.messages import MessageManager
 
@@ -326,10 +327,25 @@ class TelegramAdapter:
         )
 
         attachments = _extract_attachments(raw)
+        message_id = getattr(raw, "message_id", None)
+        platform_meta = {
+            "chat_id": chat_id,
+            "topic_id": topic_id,
+            "message_id": message_id,
+            "is_group": is_group,
+        }
+        routing = RoutingContext(
+            platform=Platform.TELEGRAM.value,
+            bot_id=self._bot_id,
+            scope_id=scope_id,
+            thread_id=str(topic_id) if topic_id is not None else None,
+            reply_to_message_id=str(message_id) if message_id is not None else None,
+            platform_meta=platform_meta,
+        )
         return InboundMessage(
             id=(
                 f"telegram:{user_id}:{int(timestamp.timestamp())}"
-                f":{getattr(raw, 'message_id', '')}"
+                f":{message_id or ''}"
             ),
             platform=Platform.TELEGRAM.value,
             bot_id=self._bot_id,
@@ -343,12 +359,8 @@ class TelegramAdapter:
             timestamp=timestamp,
             trust="user",
             trust_level=trust_level,
-            platform_meta={
-                "chat_id": chat_id,
-                "topic_id": topic_id,
-                "message_id": getattr(raw, "message_id", None),
-                "is_group": is_group,
-            },
+            platform_meta=platform_meta,
+            routing=routing,
         )
 
     def normalize_audio(
@@ -385,6 +397,21 @@ class TelegramAdapter:
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=timezone.utc)
         user_id = f"tg:user:{raw.from_user.id}"
+        message_id = getattr(raw, "message_id", None)
+        platform_meta = {
+            "chat_id": chat_id,
+            "topic_id": topic_id,
+            "message_id": message_id,
+            "is_group": raw.chat.type != "private",
+        }
+        routing = RoutingContext(
+            platform=Platform.TELEGRAM.value,
+            bot_id=self._bot_id,
+            scope_id=scope_id,
+            thread_id=str(topic_id) if topic_id is not None else None,
+            reply_to_message_id=str(message_id) if message_id is not None else None,
+            platform_meta=platform_meta,
+        )
         return InboundAudio(
             id=(f"telegram:{user_id}:{int(timestamp.timestamp())}:{file_id or ''}"),
             platform=Platform.TELEGRAM.value,
@@ -399,12 +426,8 @@ class TelegramAdapter:
             user_name=raw.from_user.full_name,
             is_mention=False,
             trust_level=trust_level,
-            platform_meta={
-                "chat_id": chat_id,
-                "topic_id": topic_id,
-                "message_id": getattr(raw, "message_id", None),
-                "is_group": raw.chat.type != "private",
-            },
+            platform_meta=platform_meta,
+            routing=routing,
         )
 
     async def _download_audio(

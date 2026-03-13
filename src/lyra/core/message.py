@@ -17,6 +17,24 @@ class Platform(str, Enum):
 
 
 @dataclass(frozen=True)
+class RoutingContext:
+    """Immutable routing envelope carried from inbound to outbound.
+
+    Populated by adapters during normalize(). Propagated through
+    InboundMessage → Response/OutboundMessage via Hub dispatch.
+    Verified by OutboundDispatcher before delivery — platform + bot_id
+    must match the dispatcher's own identity.
+    """
+
+    platform: str  # "telegram" | "discord"
+    bot_id: str  # bot identifier ("main")
+    scope_id: str  # canonical routing scope (chat:123, channel:456, thread:789)
+    thread_id: str | None = None
+    reply_to_message_id: str | None = None
+    platform_meta: dict = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class Attachment:
     """A file or media attachment on an InboundMessage.
 
@@ -64,6 +82,7 @@ class InboundMessage:
     # Removal tracked separately.
     trust: Literal["user", "system"] = "user"
     platform_meta: dict = field(default_factory=dict)
+    routing: RoutingContext | None = None
 
 
 @dataclass(frozen=True)
@@ -92,16 +111,20 @@ class InboundAudio:
     user_name: str = ""
     is_mention: bool = False
     platform_meta: dict = field(default_factory=dict)
+    routing: RoutingContext | None = None
 
 
 @dataclass
 class Response:
     content: str
     metadata: dict[str, Any] = field(default_factory=dict)
+    routing: RoutingContext | None = None
 
     def to_outbound(self) -> "OutboundMessage":
         """Convert to OutboundMessage for use with the typed dispatch path."""
-        return OutboundMessage.from_text(self.content)
+        outbound = OutboundMessage.from_text(self.content)
+        outbound.routing = self.routing
+        return outbound
 
 
 @dataclass(frozen=True)
@@ -212,6 +235,7 @@ class OutboundMessage:
     edit_id: str | None = None
     is_final: bool = True
     metadata: dict[str, Any] = field(default_factory=dict)
+    routing: RoutingContext | None = None
 
     @classmethod
     def from_text(cls, text: str) -> "OutboundMessage":

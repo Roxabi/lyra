@@ -442,12 +442,14 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:  # noqa: C901, P
         adapter=tg_adapter,
         circuit=circuit_registry.get("telegram"),
         circuit_registry=circuit_registry,
+        bot_id="main",
     )
     dc_dispatcher = OutboundDispatcher(
         platform_name="discord",
         adapter=dc_adapter,
         circuit=circuit_registry.get("discord"),
         circuit_registry=circuit_registry,
+        bot_id="main",
     )
     hub.register_outbound_dispatcher(Platform.TELEGRAM, "main", tg_dispatcher)
     hub.register_outbound_dispatcher(Platform.DISCORD, "main", dc_dispatcher)

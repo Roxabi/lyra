@@ -50,6 +50,16 @@ def _make_adapter() -> tuple[MagicMock, OutboundDispatcher]:
     return adapter, dispatcher
 
 
+def _make_attachment() -> OutboundAttachment:
+    return OutboundAttachment(
+        data=b"fake-png",
+        type="image",
+        mime_type="image/png",
+        filename="test.png",
+        caption="A test image",
+    )
+
+
 class TestOutboundDispatcherEnqueue:
     async def test_enqueue_delivers_via_adapter(self) -> None:
         adapter, dispatcher = _make_adapter()
@@ -337,16 +347,6 @@ class TestOutboundDispatcherAudio:
 # ---------------------------------------------------------------------------
 
 
-def _make_attachment() -> OutboundAttachment:
-    return OutboundAttachment(
-        data=b"fake-png",
-        type="image",
-        mime_type="image/png",
-        filename="test.png",
-        caption="A test image",
-    )
-
-
 class TestOutboundDispatcherAttachment:
     async def test_enqueue_attachment_delivers_via_adapter(self) -> None:
         from lyra.core.circuit_breaker import CircuitState
@@ -403,5 +403,39 @@ class TestOutboundDispatcherAttachment:
             dispatcher.enqueue_attachment(inbound, attachment)
             await asyncio.sleep(0.05)
             assert cb._failure_count >= 1
+        finally:
+            await dispatcher.stop()
+
+    async def test_anthropic_error_records_anthropic_cb(self) -> None:
+        from anthropic import APIError as AnthropicAPIError
+
+        from lyra.core.circuit_breaker import CircuitRegistry
+
+        adapter = MagicMock()
+        adapter.render_attachment = AsyncMock(
+            side_effect=AnthropicAPIError(
+                message="rate limited",
+                request=MagicMock(),
+                body=None,
+            )
+        )
+        platform_cb = CircuitBreaker(name="telegram", failure_threshold=5)
+        registry = CircuitRegistry()
+        ant_cb = CircuitBreaker(name="anthropic", failure_threshold=5)
+        registry.register(ant_cb)
+        dispatcher = OutboundDispatcher(
+            platform_name="telegram",
+            adapter=adapter,
+            circuit=platform_cb,
+            circuit_registry=registry,
+        )
+        await dispatcher.start()
+        try:
+            inbound = _make_msg()
+            attachment = _make_attachment()
+            dispatcher.enqueue_attachment(inbound, attachment)
+            await asyncio.sleep(0.05)
+            assert platform_cb._failure_count >= 1
+            assert ant_cb._failure_count >= 1
         finally:
             await dispatcher.stop()

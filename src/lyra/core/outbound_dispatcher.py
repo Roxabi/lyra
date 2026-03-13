@@ -27,7 +27,8 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 # Queue item: (kind, msg, payload) for send;
-# (kind, msg, chunks, outbound) for streaming; (kind, inbound, audio) for audio
+# (kind, msg, chunks, outbound) for streaming; (kind, inbound, audio) for audio;
+# (kind, inbound, attachment) for attachment
 _ITEM = tuple
 
 

@@ -27,6 +27,7 @@ from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.message import (
     InboundAudio,
     InboundMessage,
+    OutboundAttachment,
     OutboundMessage,
     Platform,
 )
@@ -78,14 +79,10 @@ class MockAdapter:
     ) -> None:
         pass
 
-    async def render_audio(
-        self, msg: object, inbound: InboundMessage
-    ) -> None:
+    async def render_audio(self, msg: object, inbound: InboundMessage) -> None:
         pass
 
-    async def render_attachment(
-        self, msg: object, inbound: InboundMessage
-    ) -> None:
+    async def render_attachment(self, msg: object, inbound: InboundMessage) -> None:
         pass
 
 
@@ -367,6 +364,79 @@ class TestDispatchResponse:
         with pytest.raises(KeyError):
             await hub.dispatch_response(msg, Response(content="x"))
         assert hub._last_processed_at is None
+
+
+# ---------------------------------------------------------------------------
+# #217 — dispatch_attachment
+# ---------------------------------------------------------------------------
+
+
+class TestDispatchAttachment:
+    async def test_dispatches_to_correct_adapter(self) -> None:
+        hub = Hub()
+        sent: list[tuple[OutboundAttachment, InboundMessage]] = []
+
+        class CapturingAdapter:
+            async def send(
+                self, original_msg: InboundMessage, outbound: OutboundMessage
+            ) -> None:
+                pass
+
+            async def send_streaming(
+                self, original_msg: InboundMessage, chunks: object, outbound=None
+            ) -> None:
+                pass
+
+            async def render_attachment(
+                self, attachment: OutboundAttachment, inbound: InboundMessage
+            ) -> None:
+                sent.append((attachment, inbound))
+
+        hub.register_adapter(Platform.TELEGRAM, "main", CapturingAdapter())  # type: ignore[arg-type]
+        msg = make_inbound_message(platform="telegram", bot_id="main")
+        attachment = OutboundAttachment(
+            data=b"img", type="image", mime_type="image/png"
+        )
+        await hub.dispatch_attachment(msg, attachment)
+        assert len(sent) == 1
+        assert sent[0][0] is attachment
+
+    async def test_missing_adapter_raises(self) -> None:
+        hub = Hub()
+        msg = make_inbound_message(platform="telegram", bot_id="ghost")
+        attachment = OutboundAttachment(
+            data=b"img", type="image", mime_type="image/png"
+        )
+        with pytest.raises(KeyError):
+            await hub.dispatch_attachment(msg, attachment)
+
+    async def test_updates_last_processed_at_on_success(self) -> None:
+        hub = Hub()
+
+        class DummyAdapter:
+            async def send(
+                self, original_msg: InboundMessage, outbound: OutboundMessage
+            ) -> None:
+                pass
+
+            async def send_streaming(
+                self, original_msg: InboundMessage, chunks: object, outbound=None
+            ) -> None:
+                pass
+
+            async def render_attachment(
+                self, attachment: OutboundAttachment, inbound: InboundMessage
+            ) -> None:
+                pass
+
+        hub.register_adapter(Platform.TELEGRAM, "main", DummyAdapter())  # type: ignore[arg-type]
+        assert hub._last_processed_at is None
+        msg = make_inbound_message(platform="telegram", bot_id="main")
+        attachment = OutboundAttachment(
+            data=b"img", type="image", mime_type="image/png"
+        )
+        await hub.dispatch_attachment(msg, attachment)
+        assert hub._last_processed_at is not None
 
 
 # ---------------------------------------------------------------------------

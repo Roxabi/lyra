@@ -37,6 +37,14 @@ class TestModelConfig:
         with pytest.raises(AttributeError):
             cfg.backend = "ollama"  # type: ignore[misc]
 
+    def test_cwd_defaults_to_none(self) -> None:
+        cfg = ModelConfig()
+        assert cfg.cwd is None
+
+    def test_cwd_accepts_path(self, tmp_path: Path) -> None:
+        cfg = ModelConfig(cwd=tmp_path)
+        assert cfg.cwd == tmp_path
+
 
 class TestLoadAgentConfig:
     def test_valid_load(self, tmp_path: Path) -> None:
@@ -168,6 +176,58 @@ system = "test"
 
         # Assert
         assert agent.plugins_enabled == ()
+
+    def test_cwd_absent_defaults_to_none(self, tmp_path: Path) -> None:
+        toml_content = """
+[prompt]
+system = "test"
+"""
+        (tmp_path / "noagent.toml").write_text(toml_content)
+        agent = load_agent_config("noagent", agents_dir=tmp_path)
+        assert agent.model_config.cwd is None
+
+    def test_cwd_valid_directory_is_resolved(self, tmp_path: Path) -> None:
+        project_dir = tmp_path / "myproject"
+        project_dir.mkdir()
+        toml_content = f"""
+[model]
+cwd = "{project_dir}"
+
+[prompt]
+system = "test"
+"""
+        (tmp_path / "cwdagent.toml").write_text(toml_content)
+        agent = load_agent_config("cwdagent", agents_dir=tmp_path)
+        assert agent.model_config.cwd == project_dir.resolve()
+
+    def test_cwd_tilde_expands(self, tmp_path: Path) -> None:
+        # Use tmp_path as a stand-in; test that expanduser() is called by
+        # passing an absolute path (tilde expansion is OS-level, hard to unit
+        # test portably without touching $HOME).
+        project_dir = tmp_path / "expanded"
+        project_dir.mkdir()
+        toml_content = f"""
+[model]
+cwd = "{project_dir}"
+
+[prompt]
+system = "test"
+"""
+        (tmp_path / "tildeagent.toml").write_text(toml_content)
+        agent = load_agent_config("tildeagent", agents_dir=tmp_path)
+        assert agent.model_config.cwd == project_dir.resolve()
+
+    def test_cwd_nonexistent_raises(self, tmp_path: Path) -> None:
+        toml_content = """
+[model]
+cwd = "/nonexistent/path/xyz"
+
+[prompt]
+system = "test"
+"""
+        (tmp_path / "badcwd.toml").write_text(toml_content)
+        with pytest.raises(ValueError, match="not a directory"):
+            load_agent_config("badcwd", agents_dir=tmp_path)
 
 
 class TestPersonaConfig:

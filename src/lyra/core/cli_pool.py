@@ -235,15 +235,16 @@ class CliPool:
     async def _spawn(
         self, pool_id: str, model_config: ModelConfig, system_prompt: str = ""
     ) -> _ProcessEntry | None:
+        spawn_cwd = model_config.cwd or _LYRA_ROOT
         cmd = self._build_cmd(model_config, system_prompt=system_prompt)
         log.info(
-            "[pool:%s] spawning: backend=%s model=%s",
+            "[pool:%s] spawning: backend=%s model=%s cwd=%s",
             pool_id,
             model_config.backend,
             model_config.model,
+            spawn_cwd,
         )
         log.debug("[pool:%s] cmd: %s", pool_id, " ".join(cmd))
-
         env = {k: v for k, v in os.environ.items() if k in _SAFE_ENV_KEYS}
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -251,7 +252,7 @@ class CliPool:
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                cwd=str(_LYRA_ROOT),
+                cwd=str(spawn_cwd),
                 limit=1024 * 1024,  # 1MB — prevents LimitOverrunError
                 env=env,
             )

@@ -46,6 +46,10 @@ class ModelConfig:
     model:   model identifier passed to the backend CLI.
     max_turns: max agentic turns per conversation turn.
     tools:   allowed tools (empty = backend defaults).
+    cwd:     working directory for the Claude subprocess (claude-cli only).
+             None → defaults to the Lyra project root.
+             Useful to point a dedicated agent at another project so it reads
+             that project's CLAUDE.md and has access to its files.
 
     This will evolve into an intelligent model selection system.
     """
@@ -54,6 +58,7 @@ class ModelConfig:
     model: str = "claude-sonnet-4-5"
     max_turns: int = 10
     tools: tuple[str, ...] = field(default=())
+    cwd: Path | None = None
 
 
 class Complexity(Enum):
@@ -312,11 +317,22 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
             "only [a-zA-Z0-9_.:-] characters allowed"
         )
 
+    cwd: Path | None = None
+    raw_cwd = model_section.get("cwd")
+    if raw_cwd is not None:
+        resolved = Path(raw_cwd).expanduser().resolve()
+        if not resolved.is_dir():
+            raise ValueError(
+                f"[model].cwd {raw_cwd!r} for agent {name!r} is not a directory"
+            )
+        cwd = resolved
+
     model_cfg = ModelConfig(
         backend=backend,
         model=model,
         max_turns=int(model_section.get("max_turns", 10)),
         tools=tuple(model_section.get("tools", [])),
+        cwd=cwd,
     )
 
     # Persona loading

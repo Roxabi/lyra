@@ -282,10 +282,12 @@ user_ids = ["tg:user:YOUR_TELEGRAM_ID", "dc:user:YOUR_DISCORD_ID"]
 [auth.telegram]
 default = "blocked"
 owner_users = [YOUR_TELEGRAM_ID]   # numeric — get from @userinfobot on Telegram
+trusted_users = []                 # numeric Telegram IDs (can interact, cannot admin)
 
 [auth.discord]
 default = "blocked"
 owner_users = [YOUR_DISCORD_ID]    # numeric — Settings → Advanced → Developer Mode → right-click username
+trusted_roles = []                 # numeric Discord role snowflake IDs (trusted access)
 ```
 
 At least one of `[auth.telegram]` or `[auth.discord]` must be present. A missing section logs a warning and disables that adapter — Lyra still starts with the remaining adapter.
@@ -312,8 +314,8 @@ uv run python -m lyra
 
 You should see:
 ```
-INFO lyra: Agent loaded: name=lyra_default model=claude-haiku-4-5-20251001 backend=claude-cli
-INFO lyra: Lyra started — Telegram + Discord adapters running.
+INFO lyra.__main__: Agent loaded: name=lyra_default model=claude-haiku-4-5-20251001 backend=claude-cli
+INFO lyra.__main__: Lyra started — adapters: telegram, discord, health on :8443.
 INFO lyra.adapters.discord: Discord bot ready: YourBot#1234 (id=...)
 ```
 
@@ -352,7 +354,7 @@ from datetime import datetime, timezone
 
 from lyra.core.agent import Agent, AgentBase
 from lyra.core.hub import Hub
-from lyra.core.message import InboundMessage, Platform, Response
+from lyra.core.message import InboundMessage, OutboundMessage, Platform, Response
 from lyra.core.pool import Pool
 
 
@@ -367,11 +369,11 @@ class FakeAdapter:
     """Prints responses to stdout instead of sending to a platform."""
 
     def __init__(self) -> None:
-        self.responses: list[Response] = []
+        self.responses: list[OutboundMessage] = []
 
-    async def send(self, original_msg: InboundMessage, response: Response) -> None:
-        self.responses.append(response)
-        print(f"  <- {response.content}")
+    async def send(self, original_msg: InboundMessage, outbound: OutboundMessage) -> None:
+        self.responses.append(outbound)
+        print(f"  <- {outbound.to_text()}")
 
 
 async def main() -> None:
@@ -385,7 +387,8 @@ async def main() -> None:
     hub.register_adapter(Platform.TELEGRAM, "main", adapter)
     hub.register_binding(Platform.TELEGRAM, "main", "*", "echo", "telegram:main:*")
 
-    # Start hub consumer
+    # Start per-platform inbound queues, then hub consumer
+    await hub.inbound_bus.start()
     hub_task = asyncio.create_task(hub.run())
 
     # Simulate messages
@@ -404,13 +407,14 @@ async def main() -> None:
             platform_meta={"chat_id": 123},
         )
         print(f"  -> {text}")
-        await hub.bus.put(msg)
+        hub.inbound_bus.put(Platform.TELEGRAM, msg)
 
     # Let the hub process all messages
     await hub.bus.join()
 
     print(f"\nDone — {len(adapter.responses)} messages routed successfully.")
     hub_task.cancel()
+    await hub.inbound_bus.stop()
 
 
 if __name__ == "__main__":

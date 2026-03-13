@@ -163,6 +163,21 @@ def _make_verifier(secret: str):
     return verify
 
 
+async def _typing_worker(bot: Any, chat_id: int, interval: float = 4.0) -> None:
+    """Continuously refresh the Telegram typing indicator for chat_id.
+
+    Sends 'typing' chat action immediately, then repeats every *interval*
+    seconds until cancelled. Telegram expires the indicator after ~5s so
+    the interval must stay below that.
+    """
+    while True:
+        try:
+            await bot.send_chat_action(chat_id, "typing")
+        except Exception as exc:
+            log.debug("typing worker: %s", exc)
+        await asyncio.sleep(interval)
+
+
 @asynccontextmanager
 async def _typing_loop(
     bot: Any,
@@ -240,6 +255,7 @@ class TelegramAdapter:
         self._max_audio_bytes: int = int(
             os.environ.get("LYRA_MAX_AUDIO_BYTES", 5 * 1024 * 1024)
         )
+        self._typing_tasks: dict[int, asyncio.Task] = {}
         # bot is a public attribute so tests can replace it with AsyncMock.
         # Deferred lazily so tests can assign adapter.bot = AsyncMock() after
         # construction without triggering aiogram token validation at test time.
@@ -318,6 +334,22 @@ class TelegramAdapter:
             if self._msg_manager
             else fallback
         )
+
+    def _start_typing(self, chat_id: int) -> None:
+        """Start (or restart) the typing indicator background task for chat_id."""
+        existing = self._typing_tasks.pop(chat_id, None)
+        if existing and not existing.done():
+            existing.cancel()
+        self._typing_tasks[chat_id] = asyncio.create_task(
+            _typing_worker(self.bot, chat_id),
+            name=f"typing:{chat_id}",
+        )
+
+    def _cancel_typing(self, chat_id: int) -> None:
+        """Cancel and remove the typing indicator task for chat_id."""
+        task = self._typing_tasks.pop(chat_id, None)
+        if task and not task.done():
+            task.cancel()
 
     @staticmethod
     def _make_scope_id(chat_id: int, topic_id: int | None) -> str:
@@ -576,6 +608,8 @@ class TelegramAdapter:
             msg, audio_bytes=audio_bytes, mime_type="audio/ogg"
         )
 
+        self._start_typing(msg.chat.id)
+
         async def _send_bp(text: str) -> None:
             await self.bot.send_message(msg.chat.id, text)
 
@@ -646,6 +680,7 @@ class TelegramAdapter:
         # IMPORTANT: Always return normally to aiogram — webhook must return
         # {"ok": True} (HTTP 200). Never raise here or Telegram will retry
         # the update indefinitely.
+        self._start_typing(msg.chat.id)
         await self._push_to_hub(hub_msg)
 
     def _render_text(self, text: str) -> list[str]:
@@ -690,24 +725,24 @@ class TelegramAdapter:
         if chat_id is None:
             raise ValueError("platform_meta missing required key 'chat_id' for send()")
 
-        async with _typing_loop(self.bot, chat_id):
-            # Flatten content parts to plain text, escape and chunk
-            text = outbound.to_text()
-            chunks = self._render_text(text)
-            keyboard = self._render_buttons(outbound.buttons)
-            last_idx = len(chunks) - 1
+        self._cancel_typing(chat_id)
+        # Flatten content parts to plain text, escape and chunk
+        text = outbound.to_text()
+        chunks = self._render_text(text)
+        keyboard = self._render_buttons(outbound.buttons)
+        last_idx = len(chunks) - 1
 
-            for i, chunk in enumerate(chunks):
-                kwargs: dict = {
-                    "chat_id": chat_id,
-                    "text": chunk,
-                    "parse_mode": "MarkdownV2",
-                }
-                if i == last_idx and keyboard is not None:
-                    kwargs["reply_markup"] = keyboard
-                sent = await self.bot.send_message(**kwargs)
-                if i == last_idx:
-                    outbound.metadata["reply_message_id"] = sent.message_id
+        for i, chunk in enumerate(chunks):
+            kwargs: dict = {
+                "chat_id": chat_id,
+                "text": chunk,
+                "parse_mode": "MarkdownV2",
+            }
+            if i == last_idx and keyboard is not None:
+                kwargs["reply_markup"] = keyboard
+            sent = await self.bot.send_message(**kwargs)
+            if i == last_idx:
+                outbound.metadata["reply_message_id"] = sent.message_id
 
     async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: edit/chunk/finalize branches are inherently sequential
         self,
@@ -736,6 +771,7 @@ class TelegramAdapter:
                 "platform_meta missing required key 'chat_id' for send_streaming()"
             )
 
+        self._cancel_typing(chat_id)
         async with _typing_loop(self.bot, chat_id):
             parts: list[str] = []
 

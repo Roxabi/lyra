@@ -16,6 +16,8 @@ if TYPE_CHECKING:
 
 from lyra.adapters._shared import (
     ATTACHMENT_EXTS_BASE,
+    _PartialAudioError,
+    buffer_audio_chunks,
     parse_reply_to_id,
     push_to_hub_guarded,
     sanitize_filename,
@@ -777,33 +779,11 @@ class DiscordAdapter(discord.Client):
             )
             return
 
-        buf = BytesIO()
-        caption: str | None = None
-        reply_to_id_raw: str | None = None
-        mime_type = "audio/ogg"
-
         try:
-            async for chunk in chunks:
-                buf.write(chunk.chunk_bytes)
-                caption = chunk.caption
-                reply_to_id_raw = chunk.reply_to_id
-                mime_type = chunk.mime_type
-                if chunk.is_final:
-                    break
-        except Exception:
-            log.warning(
-                "Audio stream interrupted, sending partial buffer for msg id=%s",
-                inbound.id,
-            )
-
-        if buf.tell() == 0:
+            assembled = await buffer_audio_chunks(chunks)
+        except _PartialAudioError as e:
+            await self.render_audio(e.audio, inbound)
+            raise e.cause from e
+        if assembled is None:
             return
-
-        buf.seek(0)
-        assembled = OutboundAudio(
-            audio_bytes=buf.read(),
-            mime_type=mime_type,
-            caption=caption,
-            reply_to_id=reply_to_id_raw,
-        )
         await self.render_audio(assembled, inbound)

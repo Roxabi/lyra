@@ -142,6 +142,23 @@ class OutboundAttachment:
     reply_to_id: str | None = None  # platform message ID to reply to
 
 
+@dataclass(frozen=True)
+class OutboundAudioChunk:
+    """A single chunk of streamed outbound audio.
+
+    Produced incrementally by TTS pipelines; consumed by adapter
+    render_audio_stream(). Adapters buffer chunks and send when is_final=True.
+    """
+
+    chunk_bytes: bytes = field(repr=False)
+    session_id: str
+    chunk_index: int
+    is_final: bool = False
+    mime_type: str = "audio/ogg"
+    caption: str | None = None
+    reply_to_id: str | None = None
+
+
 # ── Outbound envelope ────────────────────────────────────────────────────────
 
 

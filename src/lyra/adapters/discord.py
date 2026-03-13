@@ -16,6 +16,8 @@ if TYPE_CHECKING:
 
 from lyra.adapters._shared import (
     ATTACHMENT_EXTS_BASE,
+    _PartialAudioError,
+    buffer_audio_chunks,
     parse_reply_to_id,
     push_to_hub_guarded,
     sanitize_filename,
@@ -30,6 +32,7 @@ from lyra.core.message import (
     InboundMessage,
     OutboundAttachment,
     OutboundAudio,
+    OutboundAudioChunk,
     OutboundMessage,
     Platform,
 )
@@ -762,3 +765,25 @@ class DiscordAdapter(discord.Client):
         # Fallback: construct fresh discord.File (previous BytesIO may be consumed).
         file_obj = discord.File(fp=BytesIO(msg.data), filename=filename)
         await messageable.send(content=content or None, file=file_obj)
+
+    async def render_audio_stream(
+        self,
+        chunks: AsyncIterator[OutboundAudioChunk],
+        inbound: InboundMessage,
+    ) -> None:
+        """Buffer streamed audio chunks and send as a single Discord file attachment."""
+        if inbound.platform != Platform.DISCORD.value:
+            log.error(
+                "render_audio_stream() called with non-discord message id=%s",
+                inbound.id,
+            )
+            return
+
+        try:
+            assembled = await buffer_audio_chunks(chunks)
+        except _PartialAudioError as e:
+            await self.render_audio(e.audio, inbound)
+            raise e.cause from e
+        if assembled is None:
+            return
+        await self.render_audio(assembled, inbound)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
@@ -70,6 +71,53 @@ _AUDIO_MIME_TYPES = frozenset(
 
 # Allowed file extensions for outbound audio filenames (whitelist).
 _AUDIO_EXTS = frozenset({"ogg", "mp3", "mp4", "mpeg", "opus", "wav", "flac", "aac"})
+
+
+# ---------------------------------------------------------------------------
+# Typing indicator — two-phase design (mirrors TelegramAdapter pattern)
+#
+# Phase 1 (message receipt): _start_typing() creates a _discord_typing_worker
+#   Task that fires trigger_typing() every 8s (Discord expires after ~10s).
+#   Starts immediately when on_message() receives a message, before any
+#   processing begins.
+#
+# Phase 2 (response send): _cancel_typing() stops the task. For both send()
+#   and send_streaming() this happens at the top of each method, right before
+#   the response is written. This replaces the old `async with channel.typing()`
+#   wrapper which only covered the send phase, not the backend processing phase.
+# ---------------------------------------------------------------------------
+async def _discord_typing_worker(
+    resolve_channel: Callable,
+    channel_id: int,
+    interval: float = 8.0,
+) -> None:
+    """Continuously refresh Discord typing indicator for channel_id.
+
+    Calls trigger_typing() immediately, then repeats every *interval* seconds
+    until cancelled. Discord expires the indicator after ~10s so the interval
+    default is 8.0s (2s buffer).
+
+    Stops automatically after 3 consecutive trigger_typing() failures.
+    """
+    consecutive_failures = 0
+    while True:
+        try:
+            channel = await resolve_channel(channel_id)
+            await channel.trigger_typing()
+            consecutive_failures = 0
+        except Exception as exc:
+            consecutive_failures += 1
+            log.debug(
+                "discord typing worker: %s (failure %d/3)", exc, consecutive_failures
+            )
+            if consecutive_failures >= 3:
+                log.warning(
+                    "discord typing worker for channel %d:"
+                    " stopping after 3 consecutive failures",
+                    channel_id,
+                )
+                break
+        await asyncio.sleep(interval)
 
 
 def _extract_attachments(raw_attachments: list[Any]) -> list[Attachment]:
@@ -148,6 +196,7 @@ class DiscordAdapter(discord.Client):
         self._max_audio_bytes: int = int(
             os.environ.get("LYRA_MAX_AUDIO_BYTES", 5 * 1024 * 1024)
         )
+        self._typing_tasks: dict[int, asyncio.Task[None]] = {}
         # Set on on_ready; None until login completes. Tests set directly.
         self._bot_user: Any = None
         # Compiled once in on_ready (requires bot user ID). None until then.
@@ -160,6 +209,32 @@ class DiscordAdapter(discord.Client):
             if self._msg_manager
             else fallback
         )
+
+    def _start_typing(self, send_to_id: int) -> None:
+        """Start (or restart) the typing indicator background task for send_to_id."""
+        existing = self._typing_tasks.pop(send_to_id, None)
+        if existing and not existing.done():
+            existing.cancel()
+        self._typing_tasks[send_to_id] = asyncio.create_task(
+            _discord_typing_worker(self._resolve_channel, send_to_id),
+            name=f"typing:discord:{send_to_id}",
+        )
+
+    def _cancel_typing(self, send_to_id: int) -> None:
+        """Cancel and remove the typing indicator task for send_to_id."""
+        task = self._typing_tasks.pop(send_to_id, None)
+        if task and not task.done():
+            task.cancel()
+
+    async def close(self) -> None:
+        """Cancel all pending typing indicator tasks before closing the client."""
+        tasks = list(self._typing_tasks.values())
+        self._typing_tasks.clear()
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        await super().close()
 
     async def on_ready(self) -> None:
         """Cache bot user and compile mention regex on login."""
@@ -327,7 +402,7 @@ class DiscordAdapter(discord.Client):
             routing=routing,
         )
 
-    async def on_message(self, message: Any) -> None:  # noqa: C901 — gateway dispatch: each message type branch is independent
+    async def on_message(self, message: Any) -> None:  # noqa: C901, PLR0915 — gateway dispatch: each message type branch is independent
         """Handle incoming Gateway message.
 
         Filters own/bot messages, creates auto-thread before normalization,
@@ -412,15 +487,19 @@ class DiscordAdapter(discord.Client):
             async def _send_bp(text: str) -> None:
                 await message.reply(text)
 
-            await push_to_hub_guarded(
-                inbound_bus=self._hub.inbound_audio_bus,
-                platform=Platform.DISCORD,
-                msg=hub_audio,
-                circuit_registry=self._circuit_registry,
-                on_drop=None,
-                send_backpressure=_send_bp,
-                get_msg=self._msg,
-            )
+            self._start_typing(message.channel.id)
+            try:
+                await push_to_hub_guarded(
+                    inbound_bus=self._hub.inbound_audio_bus,
+                    platform=Platform.DISCORD,
+                    msg=hub_audio,
+                    circuit_registry=self._circuit_registry,
+                    on_drop=None,
+                    send_backpressure=_send_bp,
+                    get_msg=self._msg,
+                )
+            finally:
+                self._cancel_typing(message.channel.id)
             return  # audio messages handled separately; skip text path
 
         # Pre-detect mention (needed for auto-thread decision)
@@ -470,7 +549,16 @@ class DiscordAdapter(discord.Client):
             },
         )
 
-        await self._push_to_hub(hub_msg, source_message=message)
+        send_to_id: int = (
+            resolved_thread_id
+            if resolved_thread_id is not None
+            else resolved_channel_id
+        )
+        self._start_typing(send_to_id)
+        try:
+            await self._push_to_hub(hub_msg, source_message=message)
+        finally:
+            self._cancel_typing(send_to_id)
 
     async def _push_to_hub(
         self,
@@ -547,38 +635,38 @@ class DiscordAdapter(discord.Client):
         send_to_id: int = thread_id if thread_id is not None else channel_id
         messageable = await self._resolve_channel(send_to_id)
 
-        async with messageable.typing():
-            text = outbound.to_text()
-            chunks = self._render_text(text)
-            view = self._render_buttons(outbound.buttons)
-            last_idx = len(chunks) - 1
+        self._cancel_typing(send_to_id)
+        text = outbound.to_text()
+        chunks = self._render_text(text)
+        view = self._render_buttons(outbound.buttons)
+        last_idx = len(chunks) - 1
 
-            for i, chunk in enumerate(chunks):
-                chunk_view = view if (i == last_idx and view is not None) else None
-                if original_msg.is_mention and thread_id is None and i == 0:
-                    msg_id: int | None = original_msg.platform_meta.get("message_id")
-                    if msg_id is None:
-                        raise ValueError(
-                            "platform_meta missing required key"
-                            " 'message_id' for mention reply"
-                        )
-                    msg_obj = messageable.get_partial_message(msg_id)  # type: ignore[attr-defined]
-                    if chunk_view is not None:
-                        sent = await msg_obj.reply(chunk, view=chunk_view)
-                    else:
-                        sent = await msg_obj.reply(chunk)
+        for i, chunk in enumerate(chunks):
+            chunk_view = view if (i == last_idx and view is not None) else None
+            if original_msg.is_mention and thread_id is None and i == 0:
+                msg_id: int | None = original_msg.platform_meta.get("message_id")
+                if msg_id is None:
+                    raise ValueError(
+                        "platform_meta missing required key"
+                        " 'message_id' for mention reply"
+                    )
+                msg_obj = messageable.get_partial_message(msg_id)  # type: ignore[attr-defined]
+                if chunk_view is not None:
+                    sent = await msg_obj.reply(chunk, view=chunk_view)
                 else:
-                    if chunk_view is not None:
-                        sent = await messageable.send(chunk, view=chunk_view)
-                    else:
-                        sent = await messageable.send(chunk)
-                if i == last_idx:
-                    outbound.metadata["reply_message_id"] = sent.id
-            log.debug(
-                "stored reply_message_id=%s for msg_id=%s",
-                outbound.metadata.get("reply_message_id"),
-                original_msg.id,
-            )
+                    sent = await msg_obj.reply(chunk)
+            else:
+                if chunk_view is not None:
+                    sent = await messageable.send(chunk, view=chunk_view)
+                else:
+                    sent = await messageable.send(chunk)
+            if i == last_idx:
+                outbound.metadata["reply_message_id"] = sent.id
+        log.debug(
+            "stored reply_message_id=%s for msg_id=%s",
+            outbound.metadata.get("reply_message_id"),
+            original_msg.id,
+        )
 
     async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: edit/chunk/finalize branches are inherently sequential
         self,
@@ -610,63 +698,66 @@ class DiscordAdapter(discord.Client):
         send_to_id: int = thread_id if thread_id is not None else channel_id
         messageable = await self._resolve_channel(send_to_id)
 
-        async with messageable.typing():
-            parts: list[str] = []
+        # The typing task was started by _start_typing() in on_message() on receipt.
+        # Cancel it now — the placeholder message is the first visible content.
+        # _cancel_typing is a no-op if the task was already done or never started.
+        self._cancel_typing(send_to_id)
+        parts: list[str] = []
 
-            # Send placeholder
-            _placeholder_text = self._msg("stream_placeholder", "\u2026")
-            try:
-                placeholder = await messageable.send(_placeholder_text)
-                if outbound is not None:
-                    outbound.metadata["reply_message_id"] = placeholder.id
-            except Exception:
-                log.exception(
-                    "Failed to send placeholder — falling back to non-streaming"
+        # Send placeholder
+        _placeholder_text = self._msg("stream_placeholder", "\u2026")
+        try:
+            placeholder = await messageable.send(_placeholder_text)
+            if outbound is not None:
+                outbound.metadata["reply_message_id"] = placeholder.id
+        except Exception:
+            log.exception(
+                "Failed to send placeholder — falling back to non-streaming"
+            )
+            async for chunk in chunks:
+                parts.append(chunk)
+            fallback_content = "".join(parts) or _placeholder_text
+            fallback_outbound = OutboundMessage.from_text(fallback_content)
+            await self.send(original_msg, fallback_outbound)
+            if outbound is not None:
+                outbound.metadata["reply_message_id"] = (
+                    fallback_outbound.metadata.get("reply_message_id")
                 )
-                async for chunk in chunks:
-                    parts.append(chunk)
-                fallback_content = "".join(parts) or _placeholder_text
-                fallback_outbound = OutboundMessage.from_text(fallback_content)
-                await self.send(original_msg, fallback_outbound)
-                if outbound is not None:
-                    outbound.metadata["reply_message_id"] = (
-                        fallback_outbound.metadata.get("reply_message_id")
-                    )
-                return
+            return
 
-            last_edit = time.monotonic()
-            stream_error: Exception | None = None
-            try:
-                async for chunk in chunks:
-                    parts.append(chunk)
-                    now = time.monotonic()
-                    if now - last_edit >= 1.0:
-                        accumulated = "".join(parts)
-                        await placeholder.edit(content=accumulated[:DISCORD_MAX_LENGTH])
-                        last_edit = now
-            except Exception as exc:
-                stream_error = exc
-                log.exception("Stream interrupted")
-
-            accumulated = "".join(parts)
-            if stream_error is not None:
-                if accumulated:
-                    accumulated += self._msg(
-                        "stream_interrupted", " [response interrupted]"
-                    )
-                else:
-                    accumulated = self._msg("generic", GENERIC_ERROR_REPLY)
-
-            # Final edit with complete text (always runs, even after error)
-            if accumulated:
-                try:
+        last_edit = time.monotonic()
+        stream_error: Exception | None = None
+        try:
+            async for chunk in chunks:
+                parts.append(chunk)
+                now = time.monotonic()
+                if now - last_edit >= 1.0:
+                    accumulated = "".join(parts)
                     await placeholder.edit(content=accumulated[:DISCORD_MAX_LENGTH])
-                except Exception:
-                    log.exception("Final edit failed")
+                    last_edit = now
+        except Exception as exc:
+            stream_error = exc
+            log.exception("Stream interrupted")
 
-            # Re-raise stream error so OutboundDispatcher can record CB failure
-            if stream_error is not None:
-                raise stream_error
+        accumulated = "".join(parts)
+        if stream_error is not None:
+            if accumulated:
+                accumulated += self._msg(
+                    "stream_interrupted", " [response interrupted]"
+                )
+            else:
+                accumulated = self._msg("generic", GENERIC_ERROR_REPLY)
+
+        # Final edit with complete text (always runs, even after error)
+        if accumulated:
+            try:
+                await placeholder.edit(content=accumulated[:DISCORD_MAX_LENGTH])
+            except Exception:
+                log.exception("Final edit failed")
+
+        # Re-raise stream error so OutboundDispatcher can record CB failure
+        if stream_error is not None:
+            raise stream_error
 
     async def render_audio(self, msg: OutboundAudio, inbound: InboundMessage) -> None:
         """Send an OutboundAudio envelope as a Discord audio file attachment.

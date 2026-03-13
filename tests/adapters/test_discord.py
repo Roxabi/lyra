@@ -879,7 +879,6 @@ async def test_send_no_reply_message_id_on_failure() -> None:
 
     # Assert
     assert "reply_message_id" not in outbound.metadata
-    mock_channel.typing.return_value.__aexit__.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
@@ -1578,13 +1577,104 @@ class TestDiscordAuth:
 
 
 # ---------------------------------------------------------------------------
-# T2 (typing context) — send() and send_streaming() enter typing() CM
+# T2 (typing indicator) — two-phase design: start on receipt, cancel on send
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_send_uses_typing_context() -> None:
-    """adapter.send() enters messageable.typing() async context manager."""
+async def test_discord_typing_worker_fires_trigger_typing_immediately() -> None:
+    """_discord_typing_worker calls trigger_typing() on the first iteration."""
+    import asyncio
+
+    from lyra.adapters.discord import _discord_typing_worker
+
+    mock_channel = AsyncMock()
+    mock_channel.trigger_typing = AsyncMock()
+
+    async def resolve(_channel_id: int) -> AsyncMock:
+        return mock_channel
+
+    task = asyncio.create_task(
+        _discord_typing_worker(resolve, channel_id=123, interval=10.0)
+    )
+    await asyncio.sleep(0)  # yield to let the worker run once
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+    mock_channel.trigger_typing.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_discord_typing_worker_stops_after_3_failures() -> None:
+    """_discord_typing_worker exits after 3 consecutive trigger_typing() failures."""
+    from lyra.adapters.discord import _discord_typing_worker
+
+    mock_channel = AsyncMock()
+    mock_channel.trigger_typing = AsyncMock(side_effect=Exception("rate limited"))
+
+    async def resolve(_channel_id: int) -> AsyncMock:
+        return mock_channel
+
+    await _discord_typing_worker(resolve, channel_id=123, interval=0.001)
+
+    assert mock_channel.trigger_typing.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_start_typing_creates_background_task() -> None:
+    """_start_typing() creates a task in _typing_tasks for the given channel."""
+    import asyncio
+
+    from lyra.adapters.discord import DiscordAdapter
+
+    hub = MagicMock()
+    adapter = DiscordAdapter(
+        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+    )
+    mock_channel = AsyncMock()
+    mock_channel.trigger_typing = AsyncMock()
+    adapter.get_channel = MagicMock(return_value=mock_channel)
+
+    adapter._start_typing(333)
+    await asyncio.sleep(0)  # let task start
+
+    assert 333 in adapter._typing_tasks
+    assert not adapter._typing_tasks[333].done()
+
+    adapter._cancel_typing(333)
+    await asyncio.sleep(0)
+
+
+@pytest.mark.asyncio
+async def test_cancel_typing_cancels_task() -> None:
+    """_cancel_typing() cancels the background task and removes it from the dict."""
+    import asyncio
+
+    from lyra.adapters.discord import DiscordAdapter
+
+    hub = MagicMock()
+    adapter = DiscordAdapter(
+        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+    )
+    mock_channel = AsyncMock()
+    mock_channel.trigger_typing = AsyncMock()
+    adapter.get_channel = MagicMock(return_value=mock_channel)
+
+    adapter._start_typing(333)
+    await asyncio.sleep(0)
+
+    adapter._cancel_typing(333)
+    await asyncio.sleep(0)
+
+    assert 333 not in adapter._typing_tasks
+
+
+@pytest.mark.asyncio
+async def test_send_cancels_typing_task_at_start() -> None:
+    """send() calls _cancel_typing() before writing the response."""
     from lyra.adapters.discord import DiscordAdapter
     from lyra.core.message import InboundMessage, OutboundMessage
 
@@ -1593,13 +1683,8 @@ async def test_send_uses_typing_context() -> None:
         hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
     )
 
-    mock_typing_cm = AsyncMock()
-    mock_typing_cm.__aenter__ = AsyncMock(return_value=None)
-    mock_typing_cm.__aexit__ = AsyncMock(return_value=False)
-
     mock_channel = AsyncMock()
     mock_channel.send = AsyncMock(return_value=AsyncMock(id=999))
-    mock_channel.typing = MagicMock(return_value=mock_typing_cm)
     adapter.get_channel = MagicMock(return_value=mock_channel)
 
     hub_msg = InboundMessage(
@@ -1623,14 +1708,23 @@ async def test_send_uses_typing_context() -> None:
         trust_level=TrustLevel.TRUSTED,
     )
 
+    cancelled_ids: list[int] = []
+    original_cancel = adapter._cancel_typing
+
+    def spy_cancel(send_to_id: int) -> None:
+        cancelled_ids.append(send_to_id)
+        original_cancel(send_to_id)
+
+    adapter._cancel_typing = spy_cancel  # type: ignore[method-assign]
+
     await adapter.send(hub_msg, OutboundMessage.from_text("hi"))
 
-    mock_typing_cm.__aenter__.assert_awaited_once()
+    assert 333 in cancelled_ids
 
 
 @pytest.mark.asyncio
-async def test_send_streaming_uses_typing_context() -> None:
-    """adapter.send_streaming() enters messageable.typing() async context manager."""
+async def test_send_streaming_cancels_typing_task_at_start() -> None:
+    """send_streaming() calls _cancel_typing() before writing the response."""
     from lyra.adapters.discord import DiscordAdapter
     from lyra.core.message import InboundMessage
 
@@ -1639,17 +1733,12 @@ async def test_send_streaming_uses_typing_context() -> None:
         hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
     )
 
-    mock_typing_cm = AsyncMock()
-    mock_typing_cm.__aenter__ = AsyncMock(return_value=None)
-    mock_typing_cm.__aexit__ = AsyncMock(return_value=False)
-
     mock_placeholder = AsyncMock()
     mock_placeholder.id = 888
     mock_placeholder.edit = AsyncMock()
 
     mock_channel = AsyncMock()
     mock_channel.send = AsyncMock(return_value=mock_placeholder)
-    mock_channel.typing = MagicMock(return_value=mock_typing_cm)
     adapter.get_channel = MagicMock(return_value=mock_channel)
 
     hub_msg = InboundMessage(
@@ -1673,10 +1762,19 @@ async def test_send_streaming_uses_typing_context() -> None:
         trust_level=TrustLevel.TRUSTED,
     )
 
+    cancelled_ids: list[int] = []
+    original_cancel = adapter._cancel_typing
+
+    def spy_cancel(send_to_id: int) -> None:
+        cancelled_ids.append(send_to_id)
+        original_cancel(send_to_id)
+
+    adapter._cancel_typing = spy_cancel  # type: ignore[method-assign]
+
     async def _chunks() -> AsyncIterator[str]:
         yield "hello"
         yield " world"
 
     await adapter.send_streaming(hub_msg, _chunks())
 
-    mock_typing_cm.__aenter__.assert_awaited_once()
+    assert 333 in cancelled_ids

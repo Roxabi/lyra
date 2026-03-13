@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from lyra.core.auth import AuthMiddleware, TrustLevel
@@ -196,8 +198,6 @@ class TestFromConfig:
     def test_missing_section_warning_logged(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        import logging
-
         with caplog.at_level(logging.WARNING, logger="lyra.core.auth"):
             result = AuthMiddleware.from_config({}, "telegram")
         assert result is None
@@ -208,3 +208,79 @@ class TestFromConfig:
         with pytest.raises(ValueError) as exc_info:
             AuthMiddleware.from_config(raw, "telegram")
         assert "superadmin" in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# TestFromBotConfig
+# ---------------------------------------------------------------------------
+
+
+class TestFromBotConfig:
+    def _raw_with_bot(self, section: str, bot_id: str, **overrides) -> dict:
+        """Build a raw config with a single per-bot auth entry."""
+        entry: dict = {
+            "bot_id": bot_id,
+            "owner_users": ["owner1"],
+            "trusted_users": ["trusted1"],
+            "trusted_roles": ["admin"],
+            "default": "blocked",
+        }
+        entry.update(overrides)
+        return {"auth": {f"{section}_bots": [entry]}}
+
+    def test_per_bot_match(self) -> None:
+        # Arrange
+        raw = self._raw_with_bot("telegram", "lyra")
+        # Act
+        auth = AuthMiddleware.from_bot_config(raw, "telegram", "lyra")
+        # Assert
+        assert auth is not None
+        assert auth.check("owner1") == TrustLevel.OWNER
+        assert auth.check("trusted1") == TrustLevel.TRUSTED
+        assert auth.check("unknown") == TrustLevel.BLOCKED
+        assert auth.check("unknown", roles=["admin"]) == TrustLevel.TRUSTED
+
+    def test_no_fallback_to_flat_section(self) -> None:
+        # Arrange — bot_id NOT in per-bot list, but [auth.telegram] IS present
+        raw = {
+            "auth": {
+                "telegram": {"default": "public", "owner_users": ["owner1"]},
+                "telegram_bots": [{"bot_id": "other_bot", "default": "blocked"}],
+            }
+        }
+        # Act — looking for "lyra", which is not in telegram_bots
+        auth = AuthMiddleware.from_bot_config(raw, "telegram", "lyra")
+        # Assert — returns None; no fallback to flat section (security fix)
+        assert auth is None
+
+    def test_neither_present_returns_none(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # Arrange — no per-bot list, no flat section
+        raw: dict = {}
+        # Act
+        with caplog.at_level(logging.WARNING, logger="lyra.core.auth"):
+            auth = AuthMiddleware.from_bot_config(raw, "telegram", "lyra")
+        # Assert
+        assert auth is None
+        assert "lyra" in caplog.text
+
+    def test_cli_section_returns_owner(self) -> None:
+        # Arrange — section="cli", no config needed
+        raw: dict = {}
+        # Act
+        auth = AuthMiddleware.from_bot_config(raw, "cli", "main")
+        # Assert
+        assert auth is not None
+        assert auth.check("anyone") == TrustLevel.OWNER
+        assert auth.check(None) == TrustLevel.OWNER
+
+    def test_invalid_default_raises_with_bot_id(self) -> None:
+        # Arrange — matching entry with an invalid default value
+        raw = self._raw_with_bot("telegram", "lyra", default="superadmin")
+        # Act / Assert
+        with pytest.raises(ValueError) as exc_info:
+            AuthMiddleware.from_bot_config(raw, "telegram", "lyra")
+        error_msg = str(exc_info.value)
+        assert "lyra" in error_msg
+        assert "superadmin" in error_msg

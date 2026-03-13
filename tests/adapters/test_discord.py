@@ -9,6 +9,7 @@ but raise ImportError / AttributeError at runtime (not at collection time).
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -29,6 +30,21 @@ TOML_PATH = (
     / "config"
     / "messages.toml"
 )
+
+
+def _attach_typing_cm(mock_channel: MagicMock) -> None:
+    """Attach a valid async context manager to mock_channel.typing().
+
+    discord.py's Messageable.typing() returns an async context manager.
+    AsyncMock's default auto-spec returns a coroutine instead, which
+    causes ``async with messageable.typing()`` to raise TypeError.
+    Call this helper on every mock channel used with adapter.send() or
+    adapter.send_streaming().
+    """
+    mock_typing_cm = AsyncMock()
+    mock_typing_cm.__aenter__ = AsyncMock(return_value=None)
+    mock_typing_cm.__aexit__ = AsyncMock(return_value=False)
+    mock_channel.typing = MagicMock(return_value=mock_typing_cm)
 
 # ---------------------------------------------------------------------------
 # T2 — _normalize() builds correct DiscordContext
@@ -184,6 +200,7 @@ async def test_send_reply_on_mention() -> None:
     mock_message.reply = AsyncMock()
     mock_channel = AsyncMock()
     mock_channel.get_partial_message = MagicMock(return_value=mock_message)
+    _attach_typing_cm(mock_channel)
     adapter.get_channel = MagicMock(return_value=mock_channel)
 
     hub_msg = InboundMessage(
@@ -231,6 +248,7 @@ async def test_send_channel_on_no_mention() -> None:
 
     mock_channel = AsyncMock()
     mock_channel.send = AsyncMock()
+    _attach_typing_cm(mock_channel)
     adapter.get_channel = MagicMock(return_value=mock_channel)
 
     hub_msg = InboundMessage(
@@ -621,6 +639,7 @@ async def test_send_skips_when_discord_circuit_open() -> None:
 
     mock_channel = AsyncMock()
     mock_channel.send = AsyncMock()
+    _attach_typing_cm(mock_channel)
     adapter.get_channel = MagicMock(return_value=mock_channel)
 
     hub_msg = InboundMessage(
@@ -721,6 +740,7 @@ async def test_send_stores_reply_message_id_channel_send() -> None:
     sent_msg = SimpleNamespace(id=888)
     mock_channel = AsyncMock()
     mock_channel.send = AsyncMock(return_value=sent_msg)
+    _attach_typing_cm(mock_channel)
     adapter.get_channel = MagicMock(return_value=mock_channel)
 
     hub_msg = InboundMessage(
@@ -775,6 +795,7 @@ async def test_send_stores_reply_message_id_msg_reply() -> None:
     mock_message.reply = AsyncMock(return_value=sent_msg)
     mock_channel = AsyncMock()
     mock_channel.get_partial_message = MagicMock(return_value=mock_message)
+    _attach_typing_cm(mock_channel)
     adapter.get_channel = MagicMock(return_value=mock_channel)
 
     hub_msg = InboundMessage(
@@ -827,6 +848,7 @@ async def test_send_no_reply_message_id_on_failure() -> None:
 
     mock_channel = AsyncMock()
     mock_channel.send = AsyncMock(side_effect=Exception("network error"))
+    _attach_typing_cm(mock_channel)
     adapter.get_channel = MagicMock(return_value=mock_channel)
 
     hub_msg = InboundMessage(
@@ -857,6 +879,7 @@ async def test_send_no_reply_message_id_on_failure() -> None:
 
     # Assert
     assert "reply_message_id" not in outbound.metadata
+    mock_channel.typing.return_value.__aexit__.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
@@ -1145,6 +1168,7 @@ class TestDiscordOutboundMessage:
         sent_mock = SimpleNamespace(id=88)
         mock_channel = AsyncMock()
         mock_channel.send = AsyncMock(return_value=sent_mock)
+        _attach_typing_cm(mock_channel)
         adapter.get_channel = MagicMock(return_value=mock_channel)
 
         outbound = OutboundMessage.from_text("hello")
@@ -1217,6 +1241,7 @@ class TestDiscordOutboundMessage:
 
         mock_channel = AsyncMock()
         mock_channel.send = capture_send
+        _attach_typing_cm(mock_channel)
         adapter.get_channel = MagicMock(return_value=mock_channel)
 
         outbound = OutboundMessage(
@@ -1244,6 +1269,7 @@ class TestDiscordOutboundMessage:
         sent_mock = SimpleNamespace(id=7654)
         mock_channel = AsyncMock()
         mock_channel.send = AsyncMock(return_value=sent_mock)
+        _attach_typing_cm(mock_channel)
         adapter.get_channel = MagicMock(return_value=mock_channel)
 
         outbound = OutboundMessage.from_text("hi")
@@ -1549,3 +1575,108 @@ class TestDiscordAuth:
         hub.inbound_bus.put.assert_called_once()
         _platform, msg = hub.inbound_bus.put.call_args[0]
         assert msg.trust_level == TrustLevel.PUBLIC
+
+
+# ---------------------------------------------------------------------------
+# T2 (typing context) — send() and send_streaming() enter typing() CM
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_send_uses_typing_context() -> None:
+    """adapter.send() enters messageable.typing() async context manager."""
+    from lyra.adapters.discord import DiscordAdapter
+    from lyra.core.message import InboundMessage, OutboundMessage
+
+    hub = MagicMock()
+    adapter = DiscordAdapter(
+        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+    )
+
+    mock_typing_cm = AsyncMock()
+    mock_typing_cm.__aenter__ = AsyncMock(return_value=None)
+    mock_typing_cm.__aexit__ = AsyncMock(return_value=False)
+
+    mock_channel = AsyncMock()
+    mock_channel.send = AsyncMock(return_value=AsyncMock(id=999))
+    mock_channel.typing = MagicMock(return_value=mock_typing_cm)
+    adapter.get_channel = MagicMock(return_value=mock_channel)
+
+    hub_msg = InboundMessage(
+        id="msg-1",
+        platform="discord",
+        bot_id="main",
+        scope_id="channel:333",
+        user_id="dc:user:42",
+        user_name="Alice",
+        is_mention=False,
+        text="hello",
+        text_raw="hello",
+        timestamp=datetime.now(timezone.utc),
+        platform_meta={
+            "guild_id": 111,
+            "channel_id": 333,
+            "message_id": 555,
+            "thread_id": None,
+            "channel_type": "text",
+        },
+        trust_level=TrustLevel.TRUSTED,
+    )
+
+    await adapter.send(hub_msg, OutboundMessage.from_text("hi"))
+
+    mock_typing_cm.__aenter__.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_send_streaming_uses_typing_context() -> None:
+    """adapter.send_streaming() enters messageable.typing() async context manager."""
+    from lyra.adapters.discord import DiscordAdapter
+    from lyra.core.message import InboundMessage
+
+    hub = MagicMock()
+    adapter = DiscordAdapter(
+        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+    )
+
+    mock_typing_cm = AsyncMock()
+    mock_typing_cm.__aenter__ = AsyncMock(return_value=None)
+    mock_typing_cm.__aexit__ = AsyncMock(return_value=False)
+
+    mock_placeholder = AsyncMock()
+    mock_placeholder.id = 888
+    mock_placeholder.edit = AsyncMock()
+
+    mock_channel = AsyncMock()
+    mock_channel.send = AsyncMock(return_value=mock_placeholder)
+    mock_channel.typing = MagicMock(return_value=mock_typing_cm)
+    adapter.get_channel = MagicMock(return_value=mock_channel)
+
+    hub_msg = InboundMessage(
+        id="msg-2",
+        platform="discord",
+        bot_id="main",
+        scope_id="channel:333",
+        user_id="dc:user:42",
+        user_name="Alice",
+        is_mention=False,
+        text="hello",
+        text_raw="hello",
+        timestamp=datetime.now(timezone.utc),
+        platform_meta={
+            "guild_id": 111,
+            "channel_id": 333,
+            "message_id": 555,
+            "thread_id": None,
+            "channel_type": "text",
+        },
+        trust_level=TrustLevel.TRUSTED,
+    )
+
+    async def _chunks() -> AsyncIterator[str]:
+        yield "hello"
+        yield " world"
+
+    await adapter.send_streaming(hub_msg, _chunks())
+
+    mock_typing_cm.__aenter__.assert_awaited_once()

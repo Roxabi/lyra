@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
 import tempfile
 import time
 from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from io import BytesIO
@@ -159,6 +161,47 @@ def _make_verifier(secret: str):
             raise HTTPException(status_code=401, detail="Unauthorized")
 
     return verify
+
+
+@asynccontextmanager
+async def _typing_loop(
+    bot: Any,
+    chat_id: int,
+    interval: float = 3.0,
+) -> AsyncIterator[None]:
+    """Send typing indicator immediately and refresh every *interval* seconds.
+
+    Telegram expires the typing action after ~5s. The background task
+    re-sends it every *interval* seconds until the context exits.
+    stop_event.set() must precede task.cancel() for clean loop exit.
+    """
+    stop_event = asyncio.Event()
+    try:
+        await bot.send_chat_action(chat_id, "typing")
+    except Exception as exc:
+        log.debug("typing indicator failed: %s", exc)
+
+    async def keep_typing() -> None:
+        while not stop_event.is_set():
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=interval)
+                break
+            except asyncio.TimeoutError:
+                try:
+                    await bot.send_chat_action(chat_id, "typing")
+                except Exception as exc:
+                    log.debug("typing indicator failed: %s", exc)
+
+    task = asyncio.create_task(keep_typing())
+    try:
+        yield
+    finally:
+        stop_event.set()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 
 class TelegramAdapter:
@@ -647,23 +690,24 @@ class TelegramAdapter:
         if chat_id is None:
             raise ValueError("platform_meta missing required key 'chat_id' for send()")
 
-        # Flatten content parts to plain text, escape and chunk
-        text = outbound.to_text()
-        chunks = self._render_text(text)
-        keyboard = self._render_buttons(outbound.buttons)
-        last_idx = len(chunks) - 1
+        async with _typing_loop(self.bot, chat_id):
+            # Flatten content parts to plain text, escape and chunk
+            text = outbound.to_text()
+            chunks = self._render_text(text)
+            keyboard = self._render_buttons(outbound.buttons)
+            last_idx = len(chunks) - 1
 
-        for i, chunk in enumerate(chunks):
-            kwargs: dict = {
-                "chat_id": chat_id,
-                "text": chunk,
-                "parse_mode": "MarkdownV2",
-            }
-            if i == last_idx and keyboard is not None:
-                kwargs["reply_markup"] = keyboard
-            sent = await self.bot.send_message(**kwargs)
-            if i == last_idx:
-                outbound.metadata["reply_message_id"] = sent.message_id
+            for i, chunk in enumerate(chunks):
+                kwargs: dict = {
+                    "chat_id": chat_id,
+                    "text": chunk,
+                    "parse_mode": "MarkdownV2",
+                }
+                if i == last_idx and keyboard is not None:
+                    kwargs["reply_markup"] = keyboard
+                sent = await self.bot.send_message(**kwargs)
+                if i == last_idx:
+                    outbound.metadata["reply_message_id"] = sent.message_id
 
     async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: edit/chunk/finalize branches are inherently sequential
         self,
@@ -692,44 +736,73 @@ class TelegramAdapter:
                 "platform_meta missing required key 'chat_id' for send_streaming()"
             )
 
-        parts: list[str] = []
+        async with _typing_loop(self.bot, chat_id):
+            parts: list[str] = []
 
-        # Send placeholder
-        _placeholder_text = self._msg("stream_placeholder", "\u2026")
-        try:
-            placeholder = await self.bot.send_message(
-                chat_id=chat_id, text=_placeholder_text
-            )
-            if outbound is not None:
-                outbound.metadata["reply_message_id"] = placeholder.message_id
-        except Exception:
-            log.exception("Failed to send placeholder — falling back to non-streaming")
-            async for chunk in chunks:
-                parts.append(chunk)
-            fallback_content = "".join(parts) or _placeholder_text
-            chunks_rendered = self._render_text(fallback_content)
-            if chunks_rendered:
-                fallback_msg = await self.bot.send_message(
-                    chat_id=chat_id,
-                    text=chunks_rendered[0],
-                    parse_mode="MarkdownV2",
+            # Send placeholder
+            _placeholder_text = self._msg("stream_placeholder", "\u2026")
+            try:
+                placeholder = await self.bot.send_message(
+                    chat_id=chat_id, text=_placeholder_text
                 )
-            else:
-                fallback_msg = await self.bot.send_message(
-                    chat_id=chat_id, text=fallback_content
+                if outbound is not None:
+                    outbound.metadata["reply_message_id"] = placeholder.message_id
+            except Exception:
+                log.exception(
+                    "Failed to send placeholder — falling back to non-streaming"
                 )
-            if outbound is not None:
-                outbound.metadata["reply_message_id"] = fallback_msg.message_id
-            return
+                async for chunk in chunks:
+                    parts.append(chunk)
+                fallback_content = "".join(parts) or _placeholder_text
+                chunks_rendered = self._render_text(fallback_content)
+                if chunks_rendered:
+                    fallback_msg = await self.bot.send_message(
+                        chat_id=chat_id,
+                        text=chunks_rendered[0],
+                        parse_mode="MarkdownV2",
+                    )
+                else:
+                    fallback_msg = await self.bot.send_message(
+                        chat_id=chat_id, text=fallback_content
+                    )
+                if outbound is not None:
+                    outbound.metadata["reply_message_id"] = fallback_msg.message_id
+                return
 
-        last_edit = time.monotonic()
-        stream_error: Exception | None = None
-        try:
-            async for chunk in chunks:
-                parts.append(chunk)
-                now = time.monotonic()
-                if now - last_edit >= 0.5:
-                    accumulated = "".join(parts)
+            last_edit = time.monotonic()
+            stream_error: Exception | None = None
+            try:
+                async for chunk in chunks:
+                    parts.append(chunk)
+                    now = time.monotonic()
+                    if now - last_edit >= 0.5:
+                        accumulated = "".join(parts)
+                        _escaped = _MARKDOWNV2_SPECIAL.sub(
+                            r"\\\1", accumulated[:TELEGRAM_MAX_LENGTH]
+                        )
+                        await self.bot.edit_message_text(
+                            chat_id=chat_id,
+                            message_id=placeholder.message_id,
+                            text=_escaped,
+                            parse_mode="MarkdownV2",
+                        )
+                        last_edit = now
+            except Exception as exc:
+                stream_error = exc
+                log.exception("Stream interrupted")
+
+            accumulated = "".join(parts)
+            if stream_error is not None:
+                if accumulated:
+                    accumulated += self._msg(
+                        "stream_interrupted", " [response interrupted]"
+                    )
+                else:
+                    accumulated = self._msg("generic", GENERIC_ERROR_REPLY)
+
+            # Final edit with complete text (always runs, even after stream error)
+            if accumulated:
+                try:
                     _escaped = _MARKDOWNV2_SPECIAL.sub(
                         r"\\\1", accumulated[:TELEGRAM_MAX_LENGTH]
                     )
@@ -739,38 +812,12 @@ class TelegramAdapter:
                         text=_escaped,
                         parse_mode="MarkdownV2",
                     )
-                    last_edit = now
-        except Exception as exc:
-            stream_error = exc
-            log.exception("Stream interrupted")
+                except Exception:
+                    log.exception("Final edit failed")
 
-        accumulated = "".join(parts)
-        if stream_error is not None:
-            if accumulated:
-                accumulated += self._msg(
-                    "stream_interrupted", " [response interrupted]"
-                )
-            else:
-                accumulated = self._msg("generic", GENERIC_ERROR_REPLY)
-
-        # Final edit with complete text (always runs, even after stream error)
-        if accumulated:
-            try:
-                _escaped = _MARKDOWNV2_SPECIAL.sub(
-                    r"\\\1", accumulated[:TELEGRAM_MAX_LENGTH]
-                )
-                await self.bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=placeholder.message_id,
-                    text=_escaped,
-                    parse_mode="MarkdownV2",
-                )
-            except Exception:
-                log.exception("Final edit failed")
-
-        # Re-raise stream error so OutboundDispatcher can record CB failure
-        if stream_error is not None:
-            raise stream_error
+            # Re-raise stream error so OutboundDispatcher can record CB failure
+            if stream_error is not None:
+                raise stream_error
 
     async def render_audio(self, msg: OutboundAudio, inbound: InboundMessage) -> None:
         """Send an OutboundAudio envelope as a Telegram voice note (ogg/opus).

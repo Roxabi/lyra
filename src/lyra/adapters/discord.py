@@ -547,37 +547,38 @@ class DiscordAdapter(discord.Client):
         send_to_id: int = thread_id if thread_id is not None else channel_id
         messageable = await self._resolve_channel(send_to_id)
 
-        text = outbound.to_text()
-        chunks = self._render_text(text)
-        view = self._render_buttons(outbound.buttons)
-        last_idx = len(chunks) - 1
+        async with messageable.typing():
+            text = outbound.to_text()
+            chunks = self._render_text(text)
+            view = self._render_buttons(outbound.buttons)
+            last_idx = len(chunks) - 1
 
-        for i, chunk in enumerate(chunks):
-            chunk_view = view if (i == last_idx and view is not None) else None
-            if original_msg.is_mention and thread_id is None and i == 0:
-                msg_id: int | None = original_msg.platform_meta.get("message_id")
-                if msg_id is None:
-                    raise ValueError(
-                        "platform_meta missing required key"
-                        " 'message_id' for mention reply"
-                    )
-                msg_obj = messageable.get_partial_message(msg_id)  # type: ignore[attr-defined]
-                if chunk_view is not None:
-                    sent = await msg_obj.reply(chunk, view=chunk_view)
+            for i, chunk in enumerate(chunks):
+                chunk_view = view if (i == last_idx and view is not None) else None
+                if original_msg.is_mention and thread_id is None and i == 0:
+                    msg_id: int | None = original_msg.platform_meta.get("message_id")
+                    if msg_id is None:
+                        raise ValueError(
+                            "platform_meta missing required key"
+                            " 'message_id' for mention reply"
+                        )
+                    msg_obj = messageable.get_partial_message(msg_id)  # type: ignore[attr-defined]
+                    if chunk_view is not None:
+                        sent = await msg_obj.reply(chunk, view=chunk_view)
+                    else:
+                        sent = await msg_obj.reply(chunk)
                 else:
-                    sent = await msg_obj.reply(chunk)
-            else:
-                if chunk_view is not None:
-                    sent = await messageable.send(chunk, view=chunk_view)
-                else:
-                    sent = await messageable.send(chunk)
-            if i == last_idx:
-                outbound.metadata["reply_message_id"] = sent.id
-        log.debug(
-            "stored reply_message_id=%s for msg_id=%s",
-            outbound.metadata.get("reply_message_id"),
-            original_msg.id,
-        )
+                    if chunk_view is not None:
+                        sent = await messageable.send(chunk, view=chunk_view)
+                    else:
+                        sent = await messageable.send(chunk)
+                if i == last_idx:
+                    outbound.metadata["reply_message_id"] = sent.id
+            log.debug(
+                "stored reply_message_id=%s for msg_id=%s",
+                outbound.metadata.get("reply_message_id"),
+                original_msg.id,
+            )
 
     async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: edit/chunk/finalize branches are inherently sequential
         self,
@@ -609,60 +610,63 @@ class DiscordAdapter(discord.Client):
         send_to_id: int = thread_id if thread_id is not None else channel_id
         messageable = await self._resolve_channel(send_to_id)
 
-        parts: list[str] = []
+        async with messageable.typing():
+            parts: list[str] = []
 
-        # Send placeholder
-        _placeholder_text = self._msg("stream_placeholder", "\u2026")
-        try:
-            placeholder = await messageable.send(_placeholder_text)
-            if outbound is not None:
-                outbound.metadata["reply_message_id"] = placeholder.id
-        except Exception:
-            log.exception("Failed to send placeholder — falling back to non-streaming")
-            async for chunk in chunks:
-                parts.append(chunk)
-            fallback_content = "".join(parts) or _placeholder_text
-            fallback_outbound = OutboundMessage.from_text(fallback_content)
-            await self.send(original_msg, fallback_outbound)
-            if outbound is not None:
-                outbound.metadata["reply_message_id"] = fallback_outbound.metadata.get(
-                    "reply_message_id"
-                )
-            return
-
-        last_edit = time.monotonic()
-        stream_error: Exception | None = None
-        try:
-            async for chunk in chunks:
-                parts.append(chunk)
-                now = time.monotonic()
-                if now - last_edit >= 1.0:
-                    accumulated = "".join(parts)
-                    await placeholder.edit(content=accumulated[:DISCORD_MAX_LENGTH])
-                    last_edit = now
-        except Exception as exc:
-            stream_error = exc
-            log.exception("Stream interrupted")
-
-        accumulated = "".join(parts)
-        if stream_error is not None:
-            if accumulated:
-                accumulated += self._msg(
-                    "stream_interrupted", " [response interrupted]"
-                )
-            else:
-                accumulated = self._msg("generic", GENERIC_ERROR_REPLY)
-
-        # Final edit with complete text (always runs, even after error)
-        if accumulated:
+            # Send placeholder
+            _placeholder_text = self._msg("stream_placeholder", "\u2026")
             try:
-                await placeholder.edit(content=accumulated[:DISCORD_MAX_LENGTH])
+                placeholder = await messageable.send(_placeholder_text)
+                if outbound is not None:
+                    outbound.metadata["reply_message_id"] = placeholder.id
             except Exception:
-                log.exception("Final edit failed")
+                log.exception(
+                    "Failed to send placeholder — falling back to non-streaming"
+                )
+                async for chunk in chunks:
+                    parts.append(chunk)
+                fallback_content = "".join(parts) or _placeholder_text
+                fallback_outbound = OutboundMessage.from_text(fallback_content)
+                await self.send(original_msg, fallback_outbound)
+                if outbound is not None:
+                    outbound.metadata["reply_message_id"] = (
+                        fallback_outbound.metadata.get("reply_message_id")
+                    )
+                return
 
-        # Re-raise stream error so OutboundDispatcher can record CB failure
-        if stream_error is not None:
-            raise stream_error
+            last_edit = time.monotonic()
+            stream_error: Exception | None = None
+            try:
+                async for chunk in chunks:
+                    parts.append(chunk)
+                    now = time.monotonic()
+                    if now - last_edit >= 1.0:
+                        accumulated = "".join(parts)
+                        await placeholder.edit(content=accumulated[:DISCORD_MAX_LENGTH])
+                        last_edit = now
+            except Exception as exc:
+                stream_error = exc
+                log.exception("Stream interrupted")
+
+            accumulated = "".join(parts)
+            if stream_error is not None:
+                if accumulated:
+                    accumulated += self._msg(
+                        "stream_interrupted", " [response interrupted]"
+                    )
+                else:
+                    accumulated = self._msg("generic", GENERIC_ERROR_REPLY)
+
+            # Final edit with complete text (always runs, even after error)
+            if accumulated:
+                try:
+                    await placeholder.edit(content=accumulated[:DISCORD_MAX_LENGTH])
+                except Exception:
+                    log.exception("Final edit failed")
+
+            # Re-raise stream error so OutboundDispatcher can record CB failure
+            if stream_error is not None:
+                raise stream_error
 
     async def render_audio(self, msg: OutboundAudio, inbound: InboundMessage) -> None:
         """Send an OutboundAudio envelope as a Discord audio file attachment.

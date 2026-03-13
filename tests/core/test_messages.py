@@ -452,7 +452,9 @@ system = "You are a test assistant."
 
         # Create a concrete subclass of AgentBase for testing
         class ConcreteAgent(AgentBase):
-            async def process(self, msg: InboundMessage, pool: Pool) -> Response:
+            async def process(
+                self, msg: InboundMessage, pool: Pool, *, on_intermediate=None
+            ) -> Response:
                 return Response(content="ok")
 
         config = load_agent_config("reloadtest", agents_dir=tmp_path)
@@ -536,7 +538,9 @@ system = "test"
         )
 
         class ConcreteAgent(AgentBase):
-            async def process(self, msg: InboundMessage, pool: Pool) -> Response:
+            async def process(
+                self, msg: InboundMessage, pool: Pool, *, on_intermediate=None
+            ) -> Response:
                 return Response(content="ok")
 
         config = load_agent_config("pluginreload", agents_dir=tmp_path)
@@ -585,7 +589,9 @@ system = "test"
         (tmp_path / "noinjection.toml").write_bytes(toml_content)
 
         class ConcreteAgent(AgentBase):
-            async def process(self, msg: InboundMessage, pool: Pool) -> Response:
+            async def process(
+                self, msg: InboundMessage, pool: Pool, *, on_intermediate=None
+            ) -> Response:
                 return Response(content="ok")
 
         config = load_agent_config("noinjection", agents_dir=tmp_path)

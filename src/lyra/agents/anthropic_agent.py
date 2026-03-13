@@ -75,7 +75,9 @@ class AnthropicAgent(AgentBase):
             "runtime_config_path": self._runtime_config_path,
         }
 
-    async def process(self, msg: InboundMessage, pool: Pool) -> Response:
+    async def process(
+        self, msg: InboundMessage, pool: Pool, *, on_intermediate=None
+    ) -> Response:
         """Call the LlmProvider, handle STT, update history, return Response."""
         self._maybe_reload()
         effective = self.runtime_config.overlay(self.config)

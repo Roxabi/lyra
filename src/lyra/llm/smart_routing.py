@@ -176,3 +176,6 @@ class SmartRoutingDecorator:
         )
 
         return result
+
+    def is_alive(self, pool_id: str) -> bool:
+        return self._inner.is_alive(pool_id)

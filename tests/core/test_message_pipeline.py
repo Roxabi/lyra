@@ -58,7 +58,7 @@ class _NullAgent(AgentBase):
     """Minimal agent for testing — returns a fixed response."""
 
     async def process(
-        self, msg: InboundMessage, pool: Pool,
+        self, msg: InboundMessage, pool: Pool, *, on_intermediate=None,
     ) -> Response:
         return Response(content="ok")
 

@@ -322,7 +322,9 @@ class TestHotReloadUpdatesCommands:
     def test_hot_reload_updates_plugin_commands(self, tmp_path: Path) -> None:
         # Arrange — create a concrete AgentBase subclass for testing
         class ConcreteAgent(AgentBase):
-            async def process(self, msg: InboundMessage, pool: Pool) -> Response:
+            async def process(
+                self, msg: InboundMessage, pool: Pool, *, on_intermediate=None
+            ) -> Response:
                 return Response(content="ok")
 
         # Build a plugins directory with the echo plugin
@@ -379,7 +381,9 @@ class TestPassthroughNonCommandInHub:
         process_calls: list[InboundMessage] = []
 
         class CapturingAgent(AgentBase):
-            async def process(self, msg: InboundMessage, pool: Pool) -> Response:
+            async def process(
+                self, msg: InboundMessage, pool: Pool, *, on_intermediate=None
+            ) -> Response:
                 process_calls.append(msg)
                 return Response(content="agent reply")
 
@@ -425,7 +429,9 @@ class TestPassthroughNonCommandInHub:
         process_calls: list[InboundMessage] = []
 
         class TrackingAgent(AgentBase):
-            async def process(self, msg: InboundMessage, pool: Pool) -> Response:
+            async def process(
+                self, msg: InboundMessage, pool: Pool, *, on_intermediate=None
+            ) -> Response:
                 process_calls.append(msg)
                 return Response(content="should not be reached")
 

@@ -163,18 +163,44 @@ def _make_verifier(secret: str):
     return verify
 
 
+# ---------------------------------------------------------------------------
+# Typing indicator — two-phase design
+#
+# Phase 1 (message receipt): _start_typing() creates a _typing_worker Task that
+#   fires send_chat_action every 3s. This starts immediately when a message is
+#   received by _on_message / _on_voice_message, before any processing begins.
+#
+# Phase 2 (response send): _cancel_typing() stops the task. For regular replies
+#   (send()) this happens at the start of send(). For streaming replies
+#   (send_streaming()) the task runs until the first chunk arrives.
+#
+# _typing_loop is the original context-manager implementation used by
+# send_streaming for the streaming phase itself (typing while chunks are sent).
+# ---------------------------------------------------------------------------
 async def _typing_worker(bot: Any, chat_id: int, interval: float = 3.0) -> None:
     """Continuously refresh the Telegram typing indicator for chat_id.
 
     Sends 'typing' chat action immediately, then repeats every *interval*
     seconds until cancelled. Telegram expires the indicator after ~5s so
     the interval must stay well below that (default 3.0s gives a 2s buffer).
+
+    Stops automatically after 3 consecutive send_chat_action failures to avoid
+    hammering a blocked/deleted chat.
     """
+    consecutive_failures = 0
     while True:
         try:
             await bot.send_chat_action(chat_id, "typing")
+            consecutive_failures = 0
         except Exception as exc:
-            log.debug("typing worker: %s", exc)
+            consecutive_failures += 1
+            log.debug("typing worker: %s (failure %d/3)", exc, consecutive_failures)
+            if consecutive_failures >= 3:
+                log.warning(
+                    "typing worker for chat %d: stopping after 3 consecutive failures",
+                    chat_id,
+                )
+                break
         await asyncio.sleep(interval)
 
 
@@ -350,6 +376,15 @@ class TelegramAdapter:
         task = self._typing_tasks.pop(chat_id, None)
         if task and not task.done():
             task.cancel()
+
+    async def close(self) -> None:
+        """Cancel all pending typing indicator tasks."""
+        tasks = list(self._typing_tasks.values())
+        self._typing_tasks.clear()
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     @staticmethod
     def _make_scope_id(chat_id: int, topic_id: int | None) -> str:
@@ -609,19 +644,21 @@ class TelegramAdapter:
         )
 
         self._start_typing(msg.chat.id)
+        try:
+            async def _send_bp(text: str) -> None:
+                await self.bot.send_message(msg.chat.id, text)
 
-        async def _send_bp(text: str) -> None:
-            await self.bot.send_message(msg.chat.id, text)
-
-        await push_to_hub_guarded(
-            inbound_bus=self._hub.inbound_audio_bus,
-            platform=Platform.TELEGRAM,
-            msg=hub_audio,
-            circuit_registry=self._circuit_registry,
-            on_drop=None,
-            send_backpressure=_send_bp,
-            get_msg=self._msg,
-        )
+            await push_to_hub_guarded(
+                inbound_bus=self._hub.inbound_audio_bus,
+                platform=Platform.TELEGRAM,
+                msg=hub_audio,
+                circuit_registry=self._circuit_registry,
+                on_drop=None,
+                send_backpressure=_send_bp,
+                get_msg=self._msg,
+            )
+        finally:
+            self._cancel_typing(msg.chat.id)
 
     async def _push_to_hub(
         self,
@@ -681,7 +718,10 @@ class TelegramAdapter:
         # {"ok": True} (HTTP 200). Never raise here or Telegram will retry
         # the update indefinitely.
         self._start_typing(msg.chat.id)
-        await self._push_to_hub(hub_msg)
+        try:
+            await self._push_to_hub(hub_msg)
+        finally:
+            self._cancel_typing(msg.chat.id)
 
     def _render_text(self, text: str) -> list[str]:
         """Escape MarkdownV2 special characters and split into <=4096-char chunks."""
@@ -771,74 +811,53 @@ class TelegramAdapter:
                 "platform_meta missing required key 'chat_id' for send_streaming()"
             )
 
+        # The typing task was started by _start_typing() in _on_message on receipt.
+        # We let it run until the placeholder is sent (first visible content),
+        # then cancel it. _cancel_typing is a no-op if the task is already done.
+        parts: list[str] = []
+
+        # Send placeholder
+        _placeholder_text = self._msg("stream_placeholder", "\u2026")
+        try:
+            placeholder = await self.bot.send_message(
+                chat_id=chat_id, text=_placeholder_text
+            )
+            if outbound is not None:
+                outbound.metadata["reply_message_id"] = placeholder.message_id
+        except Exception:
+            self._cancel_typing(chat_id)
+            log.exception(
+                "Failed to send placeholder — falling back to non-streaming"
+            )
+            async for chunk in chunks:
+                parts.append(chunk)
+            fallback_content = "".join(parts) or _placeholder_text
+            chunks_rendered = self._render_text(fallback_content)
+            if chunks_rendered:
+                fallback_msg = await self.bot.send_message(
+                    chat_id=chat_id,
+                    text=chunks_rendered[0],
+                    parse_mode="MarkdownV2",
+                )
+            else:
+                fallback_msg = await self.bot.send_message(
+                    chat_id=chat_id, text=fallback_content
+                )
+            if outbound is not None:
+                outbound.metadata["reply_message_id"] = fallback_msg.message_id
+            return
+
+        # Placeholder sent — first content is visible, stop typing indicator.
         self._cancel_typing(chat_id)
-        async with _typing_loop(self.bot, chat_id):
-            parts: list[str] = []
 
-            # Send placeholder
-            _placeholder_text = self._msg("stream_placeholder", "\u2026")
-            try:
-                placeholder = await self.bot.send_message(
-                    chat_id=chat_id, text=_placeholder_text
-                )
-                if outbound is not None:
-                    outbound.metadata["reply_message_id"] = placeholder.message_id
-            except Exception:
-                log.exception(
-                    "Failed to send placeholder — falling back to non-streaming"
-                )
-                async for chunk in chunks:
-                    parts.append(chunk)
-                fallback_content = "".join(parts) or _placeholder_text
-                chunks_rendered = self._render_text(fallback_content)
-                if chunks_rendered:
-                    fallback_msg = await self.bot.send_message(
-                        chat_id=chat_id,
-                        text=chunks_rendered[0],
-                        parse_mode="MarkdownV2",
-                    )
-                else:
-                    fallback_msg = await self.bot.send_message(
-                        chat_id=chat_id, text=fallback_content
-                    )
-                if outbound is not None:
-                    outbound.metadata["reply_message_id"] = fallback_msg.message_id
-                return
-
-            last_edit = time.monotonic()
-            stream_error: Exception | None = None
-            try:
-                async for chunk in chunks:
-                    parts.append(chunk)
-                    now = time.monotonic()
-                    if now - last_edit >= 0.5:
-                        accumulated = "".join(parts)
-                        _escaped = _MARKDOWNV2_SPECIAL.sub(
-                            r"\\\1", accumulated[:TELEGRAM_MAX_LENGTH]
-                        )
-                        await self.bot.edit_message_text(
-                            chat_id=chat_id,
-                            message_id=placeholder.message_id,
-                            text=_escaped,
-                            parse_mode="MarkdownV2",
-                        )
-                        last_edit = now
-            except Exception as exc:
-                stream_error = exc
-                log.exception("Stream interrupted")
-
-            accumulated = "".join(parts)
-            if stream_error is not None:
-                if accumulated:
-                    accumulated += self._msg(
-                        "stream_interrupted", " [response interrupted]"
-                    )
-                else:
-                    accumulated = self._msg("generic", GENERIC_ERROR_REPLY)
-
-            # Final edit with complete text (always runs, even after stream error)
-            if accumulated:
-                try:
+        last_edit = time.monotonic()
+        stream_error: Exception | None = None
+        try:
+            async for chunk in chunks:
+                parts.append(chunk)
+                now = time.monotonic()
+                if now - last_edit >= 0.5:
+                    accumulated = "".join(parts)
                     _escaped = _MARKDOWNV2_SPECIAL.sub(
                         r"\\\1", accumulated[:TELEGRAM_MAX_LENGTH]
                     )
@@ -848,12 +867,38 @@ class TelegramAdapter:
                         text=_escaped,
                         parse_mode="MarkdownV2",
                     )
-                except Exception:
-                    log.exception("Final edit failed")
+                    last_edit = now
+        except Exception as exc:
+            stream_error = exc
+            log.exception("Stream interrupted")
 
-            # Re-raise stream error so OutboundDispatcher can record CB failure
-            if stream_error is not None:
-                raise stream_error
+        accumulated = "".join(parts)
+        if stream_error is not None:
+            if accumulated:
+                accumulated += self._msg(
+                    "stream_interrupted", " [response interrupted]"
+                )
+            else:
+                accumulated = self._msg("generic", GENERIC_ERROR_REPLY)
+
+        # Final edit with complete text (always runs, even after stream error)
+        if accumulated:
+            try:
+                _escaped = _MARKDOWNV2_SPECIAL.sub(
+                    r"\\\1", accumulated[:TELEGRAM_MAX_LENGTH]
+                )
+                await self.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=placeholder.message_id,
+                    text=_escaped,
+                    parse_mode="MarkdownV2",
+                )
+            except Exception:
+                log.exception("Final edit failed")
+
+        # Re-raise stream error so OutboundDispatcher can record CB failure
+        if stream_error is not None:
+            raise stream_error
 
     async def render_audio(self, msg: OutboundAudio, inbound: InboundMessage) -> None:
         """Send an OutboundAudio envelope as a Telegram voice note (ogg/opus).

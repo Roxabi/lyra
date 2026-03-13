@@ -69,6 +69,9 @@ class RetryDecorator:
         assert result is not None  # total_attempts ≥ 1
         return result
 
+    def is_alive(self, pool_id: str) -> bool:
+        return self._inner.is_alive(pool_id)
+
 
 class CircuitBreakerDecorator:
     """Circuit-breaker guard around an LlmProvider.
@@ -109,3 +112,6 @@ class CircuitBreakerDecorator:
         else:
             self._cb.record_failure()
         return result
+
+    def is_alive(self, pool_id: str) -> bool:
+        return self._inner.is_alive(pool_id)

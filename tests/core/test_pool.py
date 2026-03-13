@@ -104,7 +104,13 @@ class SlowAgent:
     def is_backend_alive(self, pool_id: str) -> bool:
         return True
 
-    async def process(self, msg: InboundMessage, pool: Pool) -> Response:
+    async def process(
+        self,
+        msg: InboundMessage,
+        pool: Pool,
+        *,
+        on_intermediate=None,
+    ) -> Response:
         await asyncio.sleep(10)  # never finishes in test
         return Response(content="done")
 
@@ -114,7 +120,13 @@ class FastAgent:
 
     name = "test_agent"
 
-    async def process(self, msg: InboundMessage, pool: Pool) -> Response:
+    async def process(
+        self,
+        msg: InboundMessage,
+        pool: Pool,
+        *,
+        on_intermediate=None,
+    ) -> Response:
         return Response(content=f"echo: {msg.text}")
 
 
@@ -123,7 +135,13 @@ class RaisingAgent:
 
     name = "test_agent"
 
-    async def process(self, msg: InboundMessage, pool: Pool) -> Response:
+    async def process(
+        self,
+        msg: InboundMessage,
+        pool: Pool,
+        *,
+        on_intermediate=None,
+    ) -> Response:
         raise RuntimeError("boom")
 
 
@@ -136,7 +154,13 @@ class TwoMsgAgent:
     def __init__(self) -> None:
         self.calls = []
 
-    async def process(self, msg: InboundMessage, pool: Pool) -> Response:
+    async def process(
+        self,
+        msg: InboundMessage,
+        pool: Pool,
+        *,
+        on_intermediate=None,
+    ) -> Response:
         self.calls.append(msg.text)
         return Response(content=f"reply:{msg.text}")
 
@@ -486,7 +510,11 @@ class StreamingAgent:
     name = "test_agent"
 
     async def process(  # type: ignore[override]
-        self, msg: InboundMessage, pool: Pool
+        self,
+        msg: InboundMessage,
+        pool: Pool,
+        *,
+        on_intermediate=None,
     ) -> collections.abc.AsyncIterator[str]:
         async def _gen() -> collections.abc.AsyncIterator[str]:
             yield "hello "
@@ -501,7 +529,11 @@ class FailingStreamingAgent:
     name = "test_agent"
 
     async def process(  # type: ignore[override]
-        self, msg: InboundMessage, pool: Pool
+        self,
+        msg: InboundMessage,
+        pool: Pool,
+        *,
+        on_intermediate=None,
     ) -> collections.abc.AsyncIterator[str]:
         async def _gen() -> collections.abc.AsyncIterator[str]:
             yield "partial"

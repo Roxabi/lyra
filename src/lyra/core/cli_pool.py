@@ -307,6 +307,7 @@ class CliPool:
         session_id: str | None = None
         # Accumulate text across all assistant events (Finding #16: avoid overwrite)
         result_parts: list[str] = []
+        assistant_turn_count = 0
 
         try:
             loop = asyncio.get_running_loop()
@@ -352,10 +353,19 @@ class CliPool:
                     blocks = data.get("message", {}).get("content", [])
                     texts = [b["text"] for b in blocks if b.get("type") == "text"]
                     result_parts.extend(texts)
-                    if on_intermediate and texts:
+                    assistant_turn_count += 1
+                    if on_intermediate and texts and assistant_turn_count >= 2:
                         combined = "\n\n".join(texts)
                         try:
-                            await on_intermediate(combined)
+                            await asyncio.wait_for(
+                                on_intermediate(combined), timeout=5.0
+                            )
+                        except asyncio.TimeoutError:
+                            log.warning(
+                                "[pool:%s] on_intermediate callback timed out"
+                                " (>5s) — dropping",
+                                entry.pool_id,
+                            )
                         except Exception:
                             log.warning(
                                 "[pool:%s] on_intermediate callback failed",

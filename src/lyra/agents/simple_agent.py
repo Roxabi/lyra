@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING, Any
 
 from lyra.core.agent import _AGENTS_DIR, Agent, AgentBase
 from lyra.core.circuit_breaker import CircuitRegistry
-from lyra.core.cli_pool import CliPool
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
     InboundMessage,
@@ -81,11 +80,8 @@ class SimpleAgent(AgentBase):
         self._provider = provider
 
     def is_backend_alive(self, pool_id: str) -> bool:
-        """Return True if the claude-cli process for this pool is alive."""
-        cli_pool = getattr(self._provider, "_pool", None)
-        if isinstance(cli_pool, CliPool):
-            return cli_pool.is_alive(pool_id)
-        return True
+        """Delegate to the LlmProvider's liveness check."""
+        return self._provider.is_alive(pool_id)
 
     def _build_router_kwargs(self) -> dict[str, object]:
         return {
@@ -104,7 +100,13 @@ class SimpleAgent(AgentBase):
                 _pool_id = pool.pool_id
                 pool._session_reset_fn = lambda: reset_fn(_pool_id)
 
-    async def process(self, msg: InboundMessage, pool: Pool) -> Response:  # noqa: C901
+    async def process(  # noqa: C901
+        self,
+        msg: InboundMessage,
+        pool: Pool,
+        *,
+        on_intermediate: "Callable[[str], Awaitable[None]] | None" = None,
+    ) -> Response:
         self._maybe_reload()
         self._maybe_register_reset(pool)
 
@@ -158,23 +160,15 @@ class SimpleAgent(AgentBase):
             len(text),
         )
 
-        on_intermediate: Callable[[str], Awaitable[None]] | None = None
-        if self.config.show_intermediate:
-
-            async def _intermediate_cb(turn_text: str) -> None:
-                await pool._ctx.dispatch_response(
-                    msg,
-                    Response(content=f"⏳ {turn_text}", metadata={"intermediate": True}),  # noqa: E501
-                )
-
-            on_intermediate = _intermediate_cb
+        # Use injected callback only if show_intermediate is enabled
+        cb = on_intermediate if self.config.show_intermediate else None
 
         result = await self._provider.complete(
             pool.pool_id,
             text,
             model_cfg,
             self.config.system_prompt,
-            on_intermediate=on_intermediate,
+            on_intermediate=cb,
         )
 
         if not result.ok:

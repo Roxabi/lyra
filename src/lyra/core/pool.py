@@ -279,7 +279,13 @@ class Pool:
         - async generator function (yields directly)
         - regular async def returning AsyncIterator or Response
         """
-        result = agent.process(msg, self)
+        async def _intermediate_cb(turn_text: str) -> None:
+            await self._safe_dispatch(
+                msg,
+                Response(content=f"⏳ {turn_text}", intermediate=True),
+            )
+
+        result = agent.process(msg, self, on_intermediate=_intermediate_cb)
         if not isinstance(result, collections.abc.AsyncIterator):
             # Regular coroutine — await to get the actual result
             try:

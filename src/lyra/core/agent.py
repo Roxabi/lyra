@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from lyra.stt import STTService
 
 from .circuit_breaker import CircuitRegistry
@@ -585,4 +587,10 @@ class AgentBase(ABC):
         return True
 
     @abstractmethod
-    async def process(self, msg: InboundMessage, pool: Pool) -> Response: ...
+    async def process(
+        self,
+        msg: InboundMessage,
+        pool: Pool,
+        *,
+        on_intermediate: "Callable[[str], Awaitable[None]] | None" = None,
+    ) -> Response: ...

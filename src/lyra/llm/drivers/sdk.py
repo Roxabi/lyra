@@ -147,6 +147,9 @@ class AnthropicSdkDriver:
             )
             return LlmResult(error="provider_error")
 
+    def is_alive(self, pool_id: str) -> bool:
+        return True  # SDK backend is always reachable (no persistent process)
+
     async def _execute_tool(self, name: str, tool_input: dict) -> str:
         if name == "get_time":
             return datetime.now(timezone.utc).isoformat()

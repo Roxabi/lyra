@@ -529,7 +529,9 @@ class TestMissingAdapterDrop:
         hub = Hub()
 
         class DummyAgent(AgentBase):
-            async def process(self, msg: InboundMessage, pool: Pool) -> Response:
+            async def process(
+                self, msg: InboundMessage, pool: Pool, *, on_intermediate=None
+            ) -> Response:
                 raise AssertionError("process() must not be called without adapter")
 
         config = Agent(name="lyra", system_prompt="", memory_namespace="lyra")
@@ -703,7 +705,9 @@ class TestHubRunStreaming:
         received_chunks: list[str] = []
 
         class StreamingAgent(AgentBase):
-            async def process(self, msg: InboundMessage, pool: Pool):  # type: ignore[override]
+            async def process(  # type: ignore[override]
+                self, msg: InboundMessage, pool: Pool, *, on_intermediate=None
+            ):
                 yield "chunk1"
                 yield "chunk2"
 
@@ -1112,7 +1116,9 @@ async def test_hub_msg_manager_injection_generic_on_agent_failure() -> None:
                 pass
 
     class FailingAgent(AgentBase):
-        async def process(self, msg: InboundMessage, pool: Pool) -> Response:
+        async def process(
+            self, msg: InboundMessage, pool: Pool, *, on_intermediate=None
+        ) -> Response:
             raise RuntimeError("simulated agent failure")
 
     config = Agent(name="failing", system_prompt="", memory_namespace="test")

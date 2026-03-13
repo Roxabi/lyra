@@ -121,6 +121,7 @@ class Response:
     content: str
     metadata: dict[str, Any] = field(default_factory=dict)
     routing: RoutingContext | None = None
+    intermediate: bool = False  # True for ⏳ intermediate turns
 
     def to_outbound(self) -> "OutboundMessage":
         """Convert to OutboundMessage for use with the typed dispatch path."""

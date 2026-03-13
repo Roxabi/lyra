@@ -610,7 +610,9 @@ class TestHubGate:
         from lyra.core.agent import AgentBase
 
         class NullAgent(AgentBase):
-            async def process(self, msg: InboundMessage, pool: Pool) -> Response:
+            async def process(
+                self, msg: InboundMessage, pool: Pool, *, on_intermediate=None
+            ) -> Response:
                 return Response(content="ok")
 
         agent = NullAgent(config)

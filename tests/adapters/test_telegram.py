@@ -1362,8 +1362,15 @@ async def test_send_cancels_typing_task() -> None:
 
 
 @pytest.mark.asyncio
-async def test_send_streaming_calls_send_chat_action_typing() -> None:
-    """adapter.send_streaming() calls bot.send_chat_action with (chat_id, "typing")."""
+async def test_send_streaming_cancels_typing_task_after_placeholder() -> None:
+    """adapter.send_streaming() cancels the pre-existing typing task once the
+    placeholder message is sent (first visible content in the chat).
+
+    The typing indicator is started by _start_typing() at message receipt
+    (_on_message / _on_voice_message). send_streaming() itself no longer
+    creates a new typing loop — it only cancels the pre-existing task.
+    """
+    import asyncio
     from typing import AsyncIterator
 
     from lyra.adapters.telegram import TelegramAdapter
@@ -1401,11 +1408,17 @@ async def test_send_streaming_calls_send_chat_action_typing() -> None:
         trust_level=TrustLevel.TRUSTED,
     )
 
+    # Simulate a typing task started by _start_typing() at message receipt.
+    mock_task = MagicMock(spec=asyncio.Task)
+    mock_task.done.return_value = False
+    adapter._typing_tasks[456] = mock_task
+
     async def _chunks() -> AsyncIterator[str]:
         yield "hello"
 
     # Act
     await adapter.send_streaming(original_msg, _chunks())
 
-    # Assert
-    bot.send_chat_action.assert_any_await(456, "typing")
+    # Assert — typing task was cancelled when the placeholder was sent.
+    mock_task.cancel.assert_called_once()
+    assert 456 not in adapter._typing_tasks

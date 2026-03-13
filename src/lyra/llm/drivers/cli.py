@@ -28,6 +28,10 @@ class ClaudeCliDriver:
         """Kill the CLI process for this pool. Next send() spawns a fresh one."""
         await self._pool.reset(pool_id)
 
+    def is_alive(self, pool_id: str) -> bool:
+        """Delegate liveness check to CliPool."""
+        return self._pool.is_alive(pool_id)
+
     async def complete(  # noqa: PLR0913
         self,
         pool_id: str,

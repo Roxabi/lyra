@@ -165,6 +165,25 @@ class TestAnthropicAgentVoiceCommand:
         tts.synthesize.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_voice_command_bare_no_args_not_intercepted(self) -> None:
+        """/voice with no trailing text (bare "/voice") falls through to LLM.
+
+        The pre-router uses startswith("/voice ") — trailing space required.
+        A bare "/voice" with no space+args does not match and is not intercepted.
+        """
+        tts = _make_tts_mock()
+        agent = self._make_agent(tts=tts)
+        msg = _make_message("/voice")
+        pool = _make_pool()
+        sentinel = Response(content="llm_handled_bare_voice")
+
+        with patch.object(agent, "_process_llm", return_value=sentinel):
+            response = await agent.process(msg, pool)
+
+        tts.synthesize.assert_not_awaited()
+        assert response.content == "llm_handled_bare_voice"
+
+    @pytest.mark.asyncio
     async def test_voice_command_with_no_tts_not_intercepted(self) -> None:
         """When tts=None, msg.text="/voice hello" is passed through to
         normal LLM processing.
@@ -222,6 +241,19 @@ class TestSimpleAgentVoiceCommand:
         assert response.audio.audio_bytes == b"fake_wav_data"
         assert response.audio.mime_type == "audio/wav"
         tts.synthesize.assert_awaited_once_with("hello")
+
+    @pytest.mark.asyncio
+    async def test_simple_agent_voice_bare_no_args_not_intercepted(self) -> None:
+        """/voice with no trailing text falls through to provider (not intercepted)."""
+        tts = _make_tts_mock()
+        agent = self._make_agent(tts=tts)
+        msg = _make_message("/voice")
+        pool = _make_pool()
+        result = await agent.process(msg, pool)
+
+        tts.synthesize.assert_not_awaited()
+        # Falls through to provider (which returns LLM response for "/voice" text)
+        assert result.audio is None
 
     @pytest.mark.asyncio
     async def test_simple_agent_voice_fallback_on_failure(self) -> None:

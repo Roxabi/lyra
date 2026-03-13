@@ -125,17 +125,27 @@ async def test_synthesize_cleans_up_temp_file_on_success():
 
 @pytest.mark.asyncio
 async def test_synthesize_cleans_up_temp_file_on_failure():
-    """synthesize() still cleans up temp resources when generate() raises."""
+    """synthesize() deletes the temp file even when generate() raises."""
     svc = TTSService(TTSConfig())
+
+    captured_path: list[str] = []
+    real_mkstemp = tempfile.mkstemp
+
+    def spy_mkstemp(**kwargs):
+        fd, path = real_mkstemp(**kwargs)
+        captured_path.append(path)
+        return fd, path
 
     def fake_generate_error(text, **kwargs):
         raise RuntimeError("TTS backend failed")
 
-    with patch("voicecli.generate", side_effect=fake_generate_error):
-        with pytest.raises(RuntimeError, match="TTS backend failed"):
-            await svc.synthesize("Failure cleanup test")
+    with patch("tempfile.mkstemp", side_effect=spy_mkstemp):
+        with patch("voicecli.generate", side_effect=fake_generate_error):
+            with pytest.raises(RuntimeError, match="TTS backend failed"):
+                await svc.synthesize("Failure cleanup test")
 
-    # Temp file is created then deleted in finally block — no orphaned files.
+    assert captured_path, "mkstemp must have been called"
+    assert not os.path.exists(captured_path[0]), "temp file must be deleted on failure"
 
 
 # ---------------------------------------------------------------------------

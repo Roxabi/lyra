@@ -375,12 +375,15 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:  # noqa: C901, P
         except ValueError as exc:
             raise SystemExit(f"Invalid STT configuration: {exc}") from exc
 
-    tts_service = TTSService(load_tts_config())
-    log.info(
-        "TTS enabled: engine=%s voice=%s (via voiceCLI)",
-        tts_service._engine or "default",
-        tts_service._voice or "default",
-    )
+    tts_service: TTSService | None = None
+    tts_cfg = load_tts_config()
+    if tts_cfg.engine or tts_cfg.voice or tts_cfg.language:
+        tts_service = TTSService(tts_cfg)
+        log.info(
+            "TTS enabled: engine=%s voice=%s (via voiceCLI)",
+            tts_cfg.engine or "default",
+            tts_cfg.voice or "default",
+        )
 
     from lyra.core.debouncer import DEFAULT_DEBOUNCE_MS
 

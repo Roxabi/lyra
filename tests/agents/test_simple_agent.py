@@ -136,3 +136,72 @@ class TestSimpleAgentProcess:
         args = provider.complete.call_args
         assert args[0][0] == "telegram:main:bob"
         assert args[0][1] == "test text"
+
+
+# ---------------------------------------------------------------------------
+# T4 — on_intermediate callback forwarding based on show_intermediate flag
+# ---------------------------------------------------------------------------
+
+
+class TestSimpleAgentOnIntermediate:
+    """SimpleAgent forwards on_intermediate based on show_intermediate flag (T4)."""
+
+    async def _make_agent_with_show_intermediate(
+        self, show_intermediate: bool, captured: dict
+    ) -> "tuple[SimpleAgent, MagicMock]":
+        """Return (agent, provider) capturing the on_intermediate kwarg."""
+        config = Agent(
+            name="lyra",
+            system_prompt="You are Lyra.",
+            memory_namespace="lyra",
+            show_intermediate=show_intermediate,
+            model_config=ModelConfig(),
+        )
+
+        async def fake_complete(
+            pool_id: str,
+            text: str,
+            model_cfg: ModelConfig,
+            system_prompt: str,
+            *,
+            on_intermediate=None,
+            **kw,
+        ) -> LlmResult:
+            captured["on_intermediate"] = on_intermediate
+            return LlmResult(result="done", session_id="s1")
+
+        provider = MagicMock()
+        provider.complete = fake_complete
+        provider.is_alive = MagicMock(return_value=True)
+        agent = SimpleAgent(config, provider)  # type: ignore[arg-type]
+        return agent, provider
+
+    async def test_show_intermediate_false_passes_none_to_provider(self) -> None:
+        """show_intermediate=False → on_intermediate=None forwarded to provider."""
+        # Arrange
+        captured: dict = {}
+        agent, _ = await self._make_agent_with_show_intermediate(False, captured)
+        msg = make_inbound_message("hello")
+        pool = make_pool()
+        injected_cb = AsyncMock()
+
+        # Act — pool injects an on_intermediate callback, but show_intermediate=False
+        await agent.process(msg, pool, on_intermediate=injected_cb)
+
+        # Assert — provider received None, not the injected callback
+        assert captured["on_intermediate"] is None
+
+    async def test_show_intermediate_true_passes_callback_to_provider(self) -> None:
+        """show_intermediate=True → injected callback is forwarded to provider."""
+        # Arrange
+        captured: dict = {}
+        agent, _ = await self._make_agent_with_show_intermediate(True, captured)
+        msg = make_inbound_message("hello")
+        pool = make_pool()
+        injected_cb = AsyncMock()
+
+        # Act — pool injects an on_intermediate callback, and show_intermediate=True
+        await agent.process(msg, pool, on_intermediate=injected_cb)
+
+        # Assert — provider received the same callback that was injected
+        assert captured["on_intermediate"] is injected_cb

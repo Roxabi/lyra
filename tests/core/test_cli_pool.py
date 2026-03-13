@@ -389,3 +389,89 @@ class TestCliPoolLifecycle:
         # Should not raise even if the pool_id does not exist
         await pool._kill("nonexistent")
         assert "nonexistent" not in pool._entries
+
+
+# ---------------------------------------------------------------------------
+# T10 — CliPool.is_alive() basic tests
+# ---------------------------------------------------------------------------
+
+
+class TestCliPoolIsAlive:
+    """CliPool.is_alive() returns correct liveness state (T10)."""
+
+    def test_returns_false_for_unknown_pool(self) -> None:
+        """is_alive() returns False when no entry exists for pool_id."""
+        # Arrange
+        pool = CliPool()
+
+        # Act / Assert
+        assert pool.is_alive("nonexistent") is False
+
+    def test_returns_true_for_live_process(self) -> None:
+        """is_alive() returns True when an entry has proc.returncode is None."""
+        # Arrange
+        pool = CliPool()
+        proc = MagicMock()
+        proc.returncode = None  # still running
+        entry = _ProcessEntry(
+            proc=proc, pool_id="test-pool", model_config=DEFAULT_MODEL
+        )
+        pool._entries["test-pool"] = entry
+
+        # Act / Assert
+        assert pool.is_alive("test-pool") is True
+
+    def test_returns_false_for_dead_process(self) -> None:
+        """is_alive() returns False when an entry has proc.returncode != None."""
+        # Arrange
+        pool = CliPool()
+        proc = MagicMock()
+        proc.returncode = 1  # exited
+        entry = _ProcessEntry(
+            proc=proc, pool_id="test-pool", model_config=DEFAULT_MODEL
+        )
+        pool._entries["test-pool"] = entry
+
+        # Act / Assert
+        assert pool.is_alive("test-pool") is False
+
+
+# ---------------------------------------------------------------------------
+# T5 — on_intermediate exception does not propagate
+# ---------------------------------------------------------------------------
+
+
+class TestOnIntermediateException:
+    """Exception in on_intermediate is swallowed; result still returned (T5)."""
+
+    async def test_on_intermediate_exception_does_not_propagate(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Exception in on_intermediate is caught; CliResult is still returned ok."""
+        # on_intermediate is only triggered for assistant_turn_count >= 2,
+        # so we need at least 2 assistant lines followed by a result line.
+        second_assistant = _ndjson(
+            {
+                "type": "assistant",
+                "message": {"content": [{"type": "text", "text": "Second turn"}]},
+            }
+        )
+        proc = make_fake_proc(
+            [INIT_LINE, ASSISTANT_LINE, second_assistant, RESULT_LINE]
+        )
+        pool = CliPool()
+
+        async def _raising_cb(text: str) -> None:
+            raise RuntimeError("callback exploded")
+
+        entry = _ProcessEntry(proc=proc, pool_id="pool-cb", model_config=DEFAULT_MODEL)
+
+        with caplog.at_level(logging.WARNING, logger="lyra.core.cli_pool"):
+            result = await pool._read_until_result(entry, on_intermediate=_raising_cb)
+
+        # Result must still be returned successfully
+        assert result.ok
+        # The exception must have been logged at WARNING level
+        assert any(
+            "on_intermediate" in r.message.lower() for r in caplog.records
+        )

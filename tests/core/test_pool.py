@@ -338,6 +338,45 @@ class TestPoolTimeout:
         assert "timed out" in content_lower or "timeout" in content_lower
 
     @pytest.mark.asyncio
+    async def test_pool_timeout_logs_dead_backend_error(
+        self, fast_pool: Pool, ctx_mock: MagicMock, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Timeout with dead backend logs ERROR distinguishing from normal timeout."""
+        # Arrange — patch is_backend_alive to return False (dead backend)
+        import logging
+
+        agent = SlowAgent()
+        agent.is_backend_alive = lambda pool_id: False  # type: ignore[method-assign]
+        ctx_mock._agents["test_agent"] = agent
+        msg = make_msg()
+
+        # Act
+        with caplog.at_level(logging.ERROR, logger="lyra.core.pool"):
+            fast_pool.submit(msg)
+            await _drain(fast_pool, timeout=2.0)
+
+        # Assert — pool logged ERROR about dead backend process
+        assert any("backend process died" in r.message for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_pool_timeout_does_not_log_dead_backend_when_alive(
+        self, fast_pool: Pool, ctx_mock: MagicMock, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Normal timeout (live backend) does NOT log the dead-backend ERROR."""
+        import logging
+
+        agent = SlowAgent()  # is_backend_alive returns True by default
+        ctx_mock._agents["test_agent"] = agent
+        msg = make_msg()
+
+        with caplog.at_level(logging.ERROR, logger="lyra.core.pool"):
+            fast_pool.submit(msg)
+            await _drain(fast_pool, timeout=2.0)
+
+        # Assert — no dead-backend error logged for a live backend
+        assert not any("backend process died" in r.message for r in caplog.records)
+
+    @pytest.mark.asyncio
     async def test_pool_history_not_updated_on_timeout(
         self, fast_pool: Pool, ctx_mock: MagicMock
     ) -> None:

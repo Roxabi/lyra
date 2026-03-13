@@ -405,11 +405,14 @@ class Hub:
             log.warning("STT not configured — audio %s dropped", audio.id)
             return
 
-        fd, tmp_str = tempfile.mkstemp(suffix=_mime_to_ext(audio.mime_type))
-        tmp = Path(tmp_str)
+        tmp = Path(
+            await asyncio.to_thread(
+                self._write_temp_audio,
+                audio.audio_bytes,
+                _mime_to_ext(audio.mime_type),
+            )
+        )
         try:
-            os.write(fd, audio.audio_bytes)
-            os.close(fd)
             result = await self._stt.transcribe(tmp)
         finally:
             tmp.unlink(missing_ok=True)
@@ -481,6 +484,19 @@ class Hub:
                     )
             finally:
                 self.inbound_audio_bus.task_done()
+
+    @staticmethod
+    def _write_temp_audio(data: bytes, suffix: str) -> str:
+        """Write *data* to a temp file (blocking I/O, run via to_thread)."""
+        fd, path = tempfile.mkstemp(suffix=suffix)
+        try:
+            os.write(fd, data)
+        except BaseException:
+            os.close(fd)
+            Path(path).unlink(missing_ok=True)
+            raise
+        os.close(fd)
+        return path
 
     async def _dispatch_audio_reply(
         self, audio: InboundAudio, content: str

@@ -128,7 +128,11 @@ class PluginLoader:
         self._validate_name(name)
         plugin_dir = self.plugins_dir / name
         toml_path = plugin_dir / "plugin.toml"
-        handlers_path = plugin_dir / "handlers.py"
+        handlers_path = (plugin_dir / "handlers.py").resolve()
+        if not handlers_path.is_relative_to(self.plugins_dir.resolve()):
+            raise ValueError(
+                f"Plugin '{name}': handlers.py resolves outside plugins directory"
+            )
 
         with toml_path.open("rb") as f:
             data = tomllib.load(f)
@@ -176,7 +180,11 @@ class PluginLoader:
 
         # Re-execute module source in the existing module object so handler
         # callables are refreshed without requiring sys.modules parent chain.
-        handlers_path = plugin_dir / "handlers.py"
+        handlers_path = (plugin_dir / "handlers.py").resolve()
+        if not handlers_path.is_relative_to(self.plugins_dir.resolve()):
+            raise ValueError(
+                f"Plugin '{name}': handlers.py resolves outside plugins directory"
+            )
         spec = importlib.util.spec_from_file_location(
             f"lyra.plugins.{name}.handlers", handlers_path
         )

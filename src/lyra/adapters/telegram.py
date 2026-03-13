@@ -178,8 +178,8 @@ async def _typing_loop(
     stop_event = asyncio.Event()
     try:
         await bot.send_chat_action(chat_id, "typing")
-    except Exception:
-        pass
+    except Exception as exc:
+        log.debug("typing indicator failed: %s", exc)
 
     async def keep_typing() -> None:
         while not stop_event.is_set():
@@ -189,8 +189,8 @@ async def _typing_loop(
             except asyncio.TimeoutError:
                 try:
                     await bot.send_chat_action(chat_id, "typing")
-                except Exception:
-                    pass
+                except Exception as exc:
+                    log.debug("typing indicator failed: %s", exc)
 
     task = asyncio.create_task(keep_typing())
     try:

@@ -879,6 +879,7 @@ async def test_send_no_reply_message_id_on_failure() -> None:
 
     # Assert
     assert "reply_message_id" not in outbound.metadata
+    mock_channel.typing.return_value.__aexit__.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------

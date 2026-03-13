@@ -1220,7 +1220,7 @@ async def test_typing_loop_sends_chat_action_immediately() -> None:
     async with _typing_loop(bot, chat_id):
         pass
 
-    bot.send_chat_action.assert_awaited_with(chat_id, "typing")
+    bot.send_chat_action.assert_awaited_once_with(chat_id, "typing")
 
 
 @pytest.mark.asyncio
@@ -1232,9 +1232,10 @@ async def test_typing_loop_refreshes_after_interval() -> None:
 
     bot = AsyncMock()
     chat_id = 456
+    interval = 0.05
 
-    async with _typing_loop(bot, chat_id, interval=0.05):
-        await asyncio.sleep(0.12)  # enough time for at least one refresh
+    async with _typing_loop(bot, chat_id, interval=interval):
+        await asyncio.sleep(interval * 5)  # enough time for at least one refresh
 
     # At least 2 calls: one on entry, at least one after interval
     assert bot.send_chat_action.await_count >= 2
@@ -1342,7 +1343,7 @@ async def test_send_calls_send_chat_action_typing() -> None:
     await adapter.send(original_msg, outbound)
 
     # Assert
-    bot.send_chat_action.assert_awaited_with(123, "typing")
+    bot.send_chat_action.assert_any_await(123, "typing")
 
 
 @pytest.mark.asyncio
@@ -1392,4 +1393,4 @@ async def test_send_streaming_calls_send_chat_action_typing() -> None:
     await adapter.send_streaming(original_msg, _chunks())
 
     # Assert
-    bot.send_chat_action.assert_awaited_with(456, "typing")
+    bot.send_chat_action.assert_any_await(456, "typing")

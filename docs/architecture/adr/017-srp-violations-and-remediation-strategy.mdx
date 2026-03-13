@@ -1,0 +1,247 @@
+---
+title: "ADR-017: SRP Violations and Remediation Strategy"
+description: Documents all Single Responsibility Principle violations found across src/lyra/, their severity, and the preferred remediation path for each.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+A systematic audit of `src/lyra/` was performed to identify Single Responsibility Principle (SRP) violations — modules, classes, and functions that mix unrelated concerns. The goal is to provide a prioritised, actionable record so that future feature work can be planned against a clear architectural baseline and violations can be addressed incrementally rather than all at once.
+
+SRP violations increase coupling, make unit testing harder (you cannot test one concern without exercising another), and create the conditions for "god object" accumulation over time.
+
+---
+
+## Findings
+
+### V-01 — `Hub.run()` mixes routing, rate-limiting, pairing, circuit-breaking, and dispatch orchestration
+
+**File:** `src/lyra/core/hub.py`, method `Hub.run()` (~115 lines)
+
+**Responsibilities mixed:**
+
+| Concern | Where it lives |
+|---------|---------------|
+| Rate limiting | `self._is_rate_limited(msg)` called inline |
+| Platform validation | `Platform(msg.platform)` try/except inline |
+| Binding resolution | `self.resolve_binding(msg)` inline |
+| Pairing gate (access control) | 25-line inline block with rejection-message logic |
+| Command routing decision | `router.is_command(msg)` inline |
+| Circuit breaker pre-check | 20-line inline block with message formatting |
+| Pool creation + submission | `get_or_create_pool` + `pool.submit` |
+
+`run()` is the top-level consumer loop and currently acts as an orchestration monolith: it validates, rate-limits, resolves, authorises, decides routing strategy, checks infrastructure health, and finally dispatches. Each concern is a distinct axis of change.
+
+**Fix:** Extract a `MessagePipeline` (or equivalent strategy chain) where each concern is a discrete step. The loop body becomes: `for step in pipeline: result = step.handle(msg); if result is Drop/Reject: break`. This makes each step independently testable and the ordering explicit.
+
+---
+
+### V-02 — `AgentBase` conflates agent lifecycle management, plugin management, and hot-reload orchestration
+
+**File:** `src/lyra/core/agent.py`, class `AgentBase` (~185 lines of `__init__` + helpers)
+
+**Responsibilities mixed:**
+
+| Concern | Methods |
+|---------|---------|
+| Plugin discovery and loading | `_init_plugins()`, `_plugin_loader` |
+| Plugin hot-reload tracking (mtimes) | `_record_plugin_mtimes()`, mtime dict in `_maybe_reload()` |
+| Agent config hot-reload | config mtime tracking, `load_agent_config()` call in `_maybe_reload()` |
+| Persona vault tracking | `_update_persona_tracking()`, `_persona_path`, `_persona_mtime` |
+| CommandRouter construction (repeated) | 3 separate `CommandRouter(...)` constructions in `_maybe_reload()` |
+
+`_maybe_reload()` alone has three orthogonal change triggers (agent TOML changed, persona TOML changed, plugin handlers.py changed) each causing `CommandRouter` reconstruction. The class knows too much about where files live, when to reload them, and how to wire the results.
+
+**Fix:** Extract a `HotReloadWatcher` that owns all mtime tracking and fires a callback when any watched source changes. `AgentBase` receives a pre-built `CommandRouter` factory and delegates reload decisions to the watcher. Plugin management could move to a `PluginRegistry` that `AgentBase` consults rather than drives.
+
+---
+
+### V-03 — `TelegramAdapter` / `DiscordAdapter` each carry four concerns in one class
+
+**Files:** `src/lyra/adapters/telegram.py` (~783 lines), `src/lyra/adapters/discord.py` (~691 lines)
+
+**Responsibilities mixed in both:**
+
+| Concern | Methods |
+|---------|---------|
+| Inbound normalisation | `normalize()`, `normalize_audio()` |
+| Audio download / size enforcement | `_download_audio()` (Telegram), inline in `on_message()` (Discord) |
+| Outbound text rendering | `_render_text()`, `_render_buttons()` |
+| Outbound streaming | `send_streaming()` — 100-line debounce + fallback logic |
+| Platform send I/O | `send()`, `render_audio()` |
+| Webhook / gateway event handling | `_on_message()`, `_on_voice_message()`, `on_message()`, `_register_routes()` |
+| Status endpoint construction | `get_status` route in `TelegramAdapter._register_routes()` |
+
+`send_streaming()` in Telegram alone mixes placeholder-send, debounce-accumulate, MarkdownV2 escaping, fallback-on-error, and final-edit logic. `_register_routes()` bundles both the webhook route and a circuit-breaker status API endpoint.
+
+**Fix:**
+- Extract a `TelegramRenderer` / `DiscordRenderer` that owns `_render_text`, `_render_buttons`, and the MarkdownV2 escaping. Adapters compose it.
+- Extract a `StreamingSender` that owns the debounce loop, placeholder lifecycle, and error fallback.
+- Move the `/status` route out of `TelegramAdapter` into a separate `StatusRouter` mounted on the same app. The adapter should not know it owns a status API.
+- Audio download logic (size check + temp file) could move to a shared `AudioDownloader` utility already partially in `_shared.py`.
+
+---
+
+### V-04 — `CommandRouter` implements builtin command business logic
+
+**File:** `src/lyra/core/command_router.py`, class `CommandRouter` (~310 lines)
+
+**Responsibilities mixed:**
+
+| Concern | Methods |
+|---------|---------|
+| Command dispatch routing | `dispatch()`, `is_command()`, `get_command_name()` |
+| Circuit status formatting | `_circuit_status()` — builds ASCII table |
+| Runtime config CRUD | `_cmd_config()`, `_cmd_config_show()`, `_cmd_config_set()`, `_cmd_config_reset()` |
+| Smart routing history formatting | `_routing_status()` — builds ASCII table |
+| Help text generation | `_help()` |
+| File I/O (save config to disk) | `_cmd_config_set()` calls `rc.save(runtime_file)` |
+
+`CommandRouter` is responsible for routing (knowing which handler to call) but also implements the handlers inline. Each builtin command is a distinct concern; the router should not own their implementations. In particular, `_cmd_config_set()` performs file I/O — a side-effectful infrastructure concern — directly inside what is conceptually a routing layer.
+
+**Fix:** Extract each builtin into a standalone handler function or handler class (e.g., `CircuitStatusHandler`, `ConfigHandler`, `RoutingStatusHandler`). The router's `dispatch()` becomes a pure lookup-and-delegate. This matches the pattern already used for plugin commands (external handlers loaded via `PluginLoader`).
+
+---
+
+### V-05 — `load_agent_config()` performs config parsing, validation, business rule enforcement, and object construction
+
+**File:** `src/lyra/core/agent.py`, function `load_agent_config()` (~150 lines)
+
+**Responsibilities mixed:**
+
+| Concern | Lines |
+|---------|-------|
+| File resolution and path-traversal guard | lines 269-281 |
+| TOML parsing | `tomllib.load()` |
+| Backend validation | regex + frozenset check |
+| Model name validation | regex |
+| Persona loading (delegates to `load_persona()`) | line 323 |
+| System prompt composition + byte-size check | lines 325-334 |
+| Commands section parsing | lines 336-343 |
+| Plugins section parsing | lines 345-346 |
+| i18n section parsing + fallback | lines 348-355 |
+| Smart routing section parsing | lines 357-377 |
+| `Agent` object construction | lines 379-390 |
+
+The function is a 150-line parser + validator + assembler. Any change to any section of the TOML schema requires touching this function. The byte-size check on the composed prompt is a business rule enforced inside a loader.
+
+**Fix:** Introduce a `AgentConfigParser` with per-section methods (`_parse_model()`, `_parse_commands()`, `_parse_smart_routing()`, etc.). The loader becomes a thin coordinator. Validation rules (byte limits, regex patterns) move to the `Agent` and `ModelConfig` dataclasses or a dedicated `AgentConfigValidator`.
+
+---
+
+### V-06 — `AnthropicAgent.process()` mixes STT transcription, LLM invocation, history management, and error message formatting
+
+**File:** `src/lyra/agents/anthropic_agent.py`, method `AnthropicAgent.process()` (~95 lines)
+
+**Responsibilities mixed:**
+
+| Concern | Lines |
+|---------|-------|
+| Audio attachment detection | lines 88-90 |
+| STT transcription + noise check | lines 94-107 |
+| Temp file cleanup | finally block |
+| Conversation history assembly | lines 125-126 |
+| ModelConfig overlay construction | lines 128-134 |
+| LLM call | lines 136-143 |
+| History persistence after success | lines 157-163 |
+| Error message selection (msg_manager fallback) | lines 150-155 |
+
+The same STT pattern (detect audio, transcribe, check noise, return error response) is duplicated verbatim in `SimpleAgent.process()`. This is a direct SRP + DRY violation: STT handling is a reusable concern that has leaked into two agent implementations.
+
+**Fix:** Extract an `AudioInputHandler` (or `SttGateway`) that accepts the message and `STTService` and returns either the transcribed text or an error `Response`. Both agents delegate to it. History assembly and ModelConfig overlay could each become helpers or be encapsulated in the pool / provider boundary.
+
+---
+
+### V-07 — `Hub._audio_loop()` performs STT orchestration, temp file I/O, and inbound-message construction
+
+**File:** `src/lyra/core/hub.py`, method `Hub._audio_loop()` (~115 lines)
+
+**Responsibilities mixed:**
+
+| Concern | Lines |
+|---------|-------|
+| Audio envelope dequeue | line 374 |
+| Trust validation | lines 387-393 |
+| STT-not-configured reply | lines 395-403 |
+| Temp file write + cleanup | lines 406-413 |
+| STT transcription call | line 411 |
+| Noise detection + reply | lines 415-426 |
+| `InboundMessage` construction from audio | lines 428-444 |
+| Re-enqueue on inbound bus | lines 446-452 |
+| Error reply dispatch | lines 461-473 |
+
+The `Hub` class is the routing backbone; it should not own STT orchestration, temp file management, or `InboundMessage` construction logic. This logic belongs in a dedicated `AudioProcessor` or `SttPipeline` service that the hub invokes.
+
+Note: The audio-to-text re-enqueue pattern (transcribe → construct `InboundMessage` → put back on bus) and the temp file management contract were documented in ADR-013. The SRP issue is that the hub owns the full pipeline rather than delegating to a service.
+
+**Fix:** Extract `AudioProcessor` with a single `async def process(audio: InboundAudio) -> InboundMessage | Response` method. The hub's `_audio_loop()` becomes: dequeue → validate trust → delegate to `AudioProcessor` → re-enqueue or dispatch reply.
+
+---
+
+## Severity Summary
+
+| ID | File | Severity | Impact |
+|----|------|----------|--------|
+| V-01 | `core/hub.py` — `Hub.run()` | High | Hard to test any single concern; all cross-cutting changes touch this method |
+| V-02 | `core/agent.py` — `AgentBase` | Medium | Hot-reload logic untestable without real files; plugin and config concerns entangled |
+| V-03 | `adapters/telegram.py`, `adapters/discord.py` | Medium | Streaming and rendering not independently testable; status route misplaced |
+| V-04 | `core/command_router.py` — `CommandRouter` | Medium | Builtin logic mixed with routing; file I/O in routing layer |
+| V-05 | `core/agent.py` — `load_agent_config()` | Low-Medium | 150-line loader brittle to schema changes; validation rules scattered |
+| V-06 | `agents/anthropic_agent.py` + `agents/simple_agent.py` | Medium | STT concern duplicated across two agents; process() not unit-testable in isolation |
+| V-07 | `core/hub.py` — `Hub._audio_loop()` | Medium | Hub owns STT pipeline; contradicts ADR-013 intent |
+
+---
+
+## Options Considered
+
+### Option A: Big-bang refactor — extract all violations in one pass
+
+- **Pros:** Consistent architecture from day one; no half-extracted state.
+- **Cons:** High risk; requires touching ~8 files simultaneously; breaks existing tests; large PR surface.
+
+### Option B: Incremental extraction — one violation per feature cycle, driven by pain
+
+- **Pros:** Low risk; each extraction is independently reviewable; can be done alongside feature work.
+- **Cons:** Violations coexist with fixes for an extended period; new code added during the interval may reinforce the violations.
+
+### Option C: Boundary enforcement only — add linting rules to prevent new violations without fixing existing ones
+
+- **Pros:** Zero refactor risk; prevents the situation from worsening.
+- **Cons:** Accumulating technical debt with no reduction path; violations remain as maintenance burden.
+
+---
+
+## Decision
+
+Adopt **Option B** (incremental extraction) with the following priority ordering derived from severity and upcoming feature risk:
+
+1. **V-06** (STT duplication in agents) — extract `AudioInputHandler` before any new agent type is added; the duplication is already present and will multiply.
+2. **V-07** (`Hub._audio_loop()`) — extract `AudioProcessor`; pairs naturally with V-06 work.
+3. **V-01** (`Hub.run()`) — extract pipeline steps; prerequisite for adding new cross-cutting concerns (e.g., auth middleware at hub level).
+4. **V-04** (`CommandRouter` builtins) — extract handler classes; prerequisite for testing builtins in isolation.
+5. **V-03** (adapter streaming/rendering) — extract `Renderer` and `StreamingSender`; prerequisite for adding new platforms without duplicating ~100 lines.
+6. **V-02** (`AgentBase` hot-reload) — extract `HotReloadWatcher`; lower urgency as hot-reload works correctly today.
+7. **V-05** (`load_agent_config()`) — extract `AgentConfigParser`; lowest urgency as the function is stable and well-tested.
+
+Each item must be addressed in a dedicated PR with its own tests. No violation should be "fixed" as a drive-by inside an unrelated feature PR — that is how the current state was reached.
+
+---
+
+## Consequences
+
+### Positive
+- Each extracted concern becomes independently unit-testable.
+- New platforms (adapters) can reuse `Renderer` and `StreamingSender` without copying.
+- `Hub.run()` pipeline steps can be configured, reordered, or bypassed in tests without mocking the full hub.
+- STT concern is extracted once and shared across all current and future agent implementations.
+
+### Negative
+- V-01 extraction (`Hub.run()`) requires careful ordering to avoid breaking the pairing gate and circuit-breaker contracts established in existing ADRs.
+- V-03 (`StreamingSender` extraction) requires the debounce timing and edit-in-place behaviour to be tested at the unit level — this currently has no direct unit tests.
+
+### Neutral
+- The overall class/module count will increase. This is expected and desirable; SRP compliance favours more, smaller modules over fewer, larger ones.
+- The `_shared.py` adapter utility module (`push_to_hub_guarded`, `parse_reply_to_id`) already demonstrates the extraction pattern — new utilities should follow that precedent.

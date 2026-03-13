@@ -16,6 +16,7 @@
     "013-media-temp-file-lifecycle-ownership",
     "014-adapter-protocol-gaps-and-inbound-audio-routing",
     "015-outbound-audio-dispatch-gap-and-streaming-reply-id",
-    "016-llm-provider-protocol-and-driver-registry"
+    "016-llm-provider-protocol-and-driver-registry",
+    "017-coupling-hotspots-and-decoupling-strategy"
   ]
 }

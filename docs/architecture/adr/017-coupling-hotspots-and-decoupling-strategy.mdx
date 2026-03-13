@@ -1,0 +1,233 @@
+---
+title: "ADR-017: Coupling Hotspots and Decoupling Strategy"
+description: Documents the five structural coupling issues found in the Phase 1b codebase and the preferred fix for each.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+A systematic coupling audit was performed across `src/lyra/` at the close of Phase 1b. The goal was to identify tight coupling before the Phase 2 work (memory layer, OllamaDriver, atomic SLMs) adds more modules on top of the existing structure. Coupling problems found now are cheaper to fix than after a second architectural layer exists above them.
+
+The audit traced every non-stdlib import across all modules, mapped the dependency graph, and applied the anti-pattern taxonomy from the project's clean-architecture standard.
+
+Five distinct coupling hotspots were identified, ordered by severity.
+
+---
+
+## Hotspot 1 — Pool reaches into Hub internals (worst)
+
+**File:** `core/pool.py`
+
+**What it looks like:**
+
+```python
+class Pool:
+    def __init__(self, ..., hub: "Hub") -> None:
+        self._hub = hub  # holds the entire Hub
+
+    def _msg(self, key, fallback):
+        return self._hub._msg_manager.get(key)  # private field access
+
+    async def _process_loop(self):
+        agent = self._hub.agent_registry.get(self.agent_name)  # dict access
+
+    def _record_cb_failure(self, exc):
+        _hub_cb = self._hub.circuit_registry.get("hub")
+        if isinstance(exc, AnthropicAPIError):          # provider leak
+            _ant_cb = self._hub.circuit_registry.get("anthropic")
+```
+
+Pool accesses `hub._msg_manager` (private), `hub.agent_registry` (dict), `hub.circuit_registry` (dict), `hub.dispatch_response()`, and `hub.dispatch_streaming()`. A Pool cannot function, or be tested, without a full Hub instance. This also means Pool imports `AnthropicAPIError` from the Anthropic SDK — a provider-specific exception type leaking into core infrastructure.
+
+**Root cause:** Pool was designed as an inner class of Hub and was later extracted without replacing the back-reference with a proper interface.
+
+**Fix:** Extract a `PoolContext` protocol (or dataclass) that Hub constructs and passes to Pool at creation time. Pool should receive callbacks, not a Hub reference.
+
+```python
+@dataclass
+class PoolContext:
+    agent_name: str
+    get_agent: Callable[[str], AgentBase | None]
+    dispatch: Callable[[InboundMessage, Response | OutboundMessage], Awaitable[None]]
+    dispatch_streaming: Callable[..., Awaitable[None]]
+    get_message: Callable[[str, str], str]       # (key, fallback) → str
+    record_cb_success: Callable[[], None]
+    record_cb_failure: Callable[[BaseException], None]
+```
+
+Hub passes a populated `PoolContext`; Pool holds `self._ctx` instead of `self._hub`. The Anthropic CB decision moves into Hub (which already knows about the circuit registry), expressed as a callable that Pool invokes without knowing the exception type.
+
+---
+
+## Hotspot 2 — LlmProvider Protocol depends on ModelConfig from core/agent
+
+**File:** `llm/base.py`
+
+**What it looks like:**
+
+```python
+from lyra.core.agent import ModelConfig
+
+class LlmProvider(Protocol):
+    async def complete(
+        self, pool_id: str, text: str,
+        model_cfg: ModelConfig, system_prompt: str, ...
+    ) -> LlmResult: ...
+```
+
+`ModelConfig` lives in `core/agent.py` alongside `AgentBase`, `Complexity`, `SmartRoutingConfig`, and persona loading. The LLM abstraction layer (`llm/`) imports from the agent module (`core/agent`) to define its own protocol signature. This is an inward dependency that flows in the wrong direction: the LLM layer should be an adapter that the application layer (`core/agent`) depends on, not the reverse.
+
+Additionally, `core/agent.py` is a 577-line fat module that conflates: agent configuration, persona loading, plugin lifecycle, hot-reload logic, CommandRouter construction, and three domain-specific dataclasses (`Complexity`, `SmartRoutingConfig`, `ModelConfig`). These dataclasses are reused by `llm/smart_routing.py` and `llm/base.py`, creating a coupling that ties the LLM layer to the agent module.
+
+**Fix (two steps):**
+
+Step 1: Extract `ModelConfig`, `Complexity`, and `SmartRoutingConfig` into a dedicated `core/model_config.py` module. This is a pure data module with no imports from the rest of `core/`. Both `core/agent.py` and `llm/` import from `core/model_config`.
+
+Step 2 (longer term): Define `LlmRequest` in `llm/base.py` as a self-contained dataclass that contains `model`, `max_turns`, and `tools` — mirroring the fields of `ModelConfig` that drivers actually use. Drivers then depend only on `llm/` types, and `core/agent` maps `ModelConfig` to `LlmRequest` at the boundary.
+
+---
+
+## Hotspot 3 — Provider-specific exception type in core infrastructure
+
+**Files:** `core/pool.py`, `core/outbound_dispatcher.py`
+
+**What it looks like:**
+
+```python
+# pool.py
+from anthropic import APIError as AnthropicAPIError
+
+def _record_cb_failure(self, exc: BaseException) -> None:
+    if isinstance(exc, AnthropicAPIError):
+        _ant_cb = self._hub.circuit_registry.get("anthropic")
+        ...
+
+# outbound_dispatcher.py
+from anthropic import APIError as AnthropicAPIError
+...
+if isinstance(exc, AnthropicAPIError) and self._circuit_registry is not None:
+    ant_cb = self._circuit_registry.get("anthropic")
+```
+
+Both `core/pool.py` and `core/outbound_dispatcher.py` import `AnthropicAPIError` from the Anthropic SDK to decide which named circuit breaker to trip. This hard-codes knowledge of the Anthropic SDK into two modules that are supposed to be provider-agnostic. When OllamaDriver (Phase 2) raises its own exception type, these files would need modification — violating the open/closed principle.
+
+**Fix:** Add a marker interface or a tagging mechanism on exceptions at the driver boundary. The simplest approach is to define a `ProviderError` base exception in `lyra/llm/base.py` and have drivers wrap SDK exceptions in it before re-raising. Core infrastructure catches `ProviderError` and maps it to a generic "provider" circuit breaker name — no SDK import needed in `core/`.
+
+```python
+# llm/base.py
+class ProviderError(Exception):
+    """Base for all provider-specific errors. Drivers raise this, not SDK errors."""
+    circuit_name: str = "provider"  # which CB to trip
+
+# llm/drivers/sdk.py — wraps anthropic errors
+raise ProviderError("rate_limit") from exc  # with circuit_name = "anthropic"
+```
+
+Circuit breaker dispatch in `Pool` and `OutboundDispatcher` then becomes:
+
+```python
+if isinstance(exc, ProviderError):
+    cb = self.circuit_registry.get(exc.circuit_name)
+```
+
+---
+
+## Hotspot 4 — CommandRouter imports private symbol from core/agent
+
+**File:** `core/command_router.py`
+
+**What it looks like:**
+
+```python
+def _cmd_config_set(self, args):
+    from lyra.core.agent import _AGENTS_DIR       # private module-level constant
+    from lyra.core.runtime_config import set_param
+    ...
+    runtime_file = self._runtime_config_path or (_AGENTS_DIR / "lyra_runtime.toml")
+
+def _cmd_config_reset(self, args):
+    from lyra.core.agent import _AGENTS_DIR       # same
+    from lyra.core.runtime_config import RuntimeConfig
+```
+
+`CommandRouter` is a command dispatcher, but these two handlers reach into `core/agent._AGENTS_DIR` — a private path constant — to derive a default file path. This is a structural dependency on a private symbol that exposes the internal directory layout of `core/agent` to a sibling module.
+
+**Fix:** Pass `runtime_config_path` explicitly at `CommandRouter` construction time (it is already an optional constructor parameter `runtime_config_path: Path | None`). Make the caller responsible for providing the resolved path, and remove the fallback that imports `_AGENTS_DIR`. The deferred imports disappear along with the coupling.
+
+---
+
+## Hotspot 5 — `__main__` hardcodes agent name in HTTP endpoint
+
+**File:** `lyra/__main__.py`
+
+**What it looks like:**
+
+```python
+@app.get("/config")
+async def config_endpoint(...):
+    agent = hub.agent_registry.get("lyra_default")   # hardcoded name
+    if not isinstance(agent, AnthropicAgent):         # concrete class check
+        raise HTTPException(...)
+    rc = agent.runtime_config
+```
+
+The HTTP health app directly reads `agent.runtime_config`, which is an attribute only on `AnthropicAgent`, not on `AgentBase`. This couples the infrastructure HTTP layer to a specific concrete agent class and to the string literal `"lyra_default"`.
+
+**Fix:** Add a `runtime_config: RuntimeConfig | None` property to `AgentBase` (returning `None` by default). `AnthropicAgent` overrides it. The HTTP endpoint checks `agent.runtime_config is not None` instead of `isinstance(agent, AnthropicAgent)`. The hardcoded name problem is separate: the agent name used here should come from a config variable (already readable from `agent_config.name` in `_main`) passed into `create_health_app` as a parameter rather than a hard-coded string.
+
+---
+
+## Options Considered
+
+### Option A: Fix all five hotspots in a single refactoring issue
+
+**Pros:** Clean slate, no intermediate inconsistent state.
+**Cons:** Large surface area, high risk of regressions, blocks Phase 2 work for weeks.
+
+### Option B: Fix in priority order across separate issues, validate each before the next
+
+**Pros:** Each fix is independently testable. Hotspot 1 (Pool/Hub coupling) unblocks the most future work. Hotspot 3 (provider exception leak) unblocks OllamaDriver. The others are lower urgency.
+**Cons:** Codebase is transiently inconsistent between fixes.
+
+### Option C: Accept current coupling, defer until Phase 2 memory layer forces redesign
+
+**Pros:** Zero immediate cost.
+**Cons:** Phase 2 adds a memory layer on top of Pool — the worst-coupled module. Retrofitting `PoolContext` while memory calls are in flight is significantly harder than doing it now.
+
+---
+
+## Decision
+
+Option B. Fix in priority order, each as its own issue:
+
+| Priority | Hotspot | Why now |
+|----------|---------|---------|
+| 1 | Pool → Hub back-reference (`PoolContext`) | Phase 2 memory layer will be owned by Pool. Decoupling Pool from Hub before that is critical. |
+| 2 | Provider exception in core (`ProviderError`) | OllamaDriver (Phase 2, #51) will add a second provider. Without this fix it will require editing `pool.py` and `outbound_dispatcher.py`. |
+| 3 | `ModelConfig` in `llm/base.py` (`core/model_config.py` extraction) | Low-risk structural move. Enables the LLM layer to be developed independently. |
+| 4 | `CommandRouter` private import | Low risk, fix alongside any CommandRouter change. |
+| 5 | `__main__` agent name hardcoding | Fix as part of the next HTTP endpoint work. |
+
+---
+
+## Consequences
+
+### Positive
+
+- Pool becomes independently testable with a mock `PoolContext` — no Hub setup required.
+- Adding OllamaDriver (Phase 2) requires no changes to `core/pool.py` or `core/outbound_dispatcher.py`.
+- `ModelConfig` extraction removes the cyclic direction between `llm/` and `core/agent`.
+- Each fix is a targeted refactor with a clear interface boundary, reducing regression risk.
+
+### Negative
+
+- Hotspot 1 (`PoolContext`) requires updating all Pool construction call sites (currently only `Hub.get_or_create_pool`) and all tests that construct `Pool` directly.
+- `ProviderError` requires updating both existing drivers (`AnthropicSdkDriver`, `ClaudeCliDriver`) to wrap their SDK-specific exceptions.
+
+### Neutral
+
+- The `AgentBase` fat-class problem (577 lines, mixed concerns) is noted but not addressed in this ADR. It is a code quality issue, not an architectural coupling violation, and should be tracked separately.
+- The monitoring module (`lyra/monitoring/`) is structurally isolated — no coupling issues detected there.

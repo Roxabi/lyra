@@ -211,7 +211,11 @@ def chunk_text(
 
     If *escape_fn* is provided it is applied to the entire text before
     chunking (e.g. MarkdownV2 escaping). Returns [] for empty text.
+
+    Raises ValueError if *max_len* is not positive.
     """
+    if max_len <= 0:
+        raise ValueError(f"chunk_text: max_len must be > 0, got {max_len!r}")
     if escape_fn is not None:
         text = escape_fn(text)
     if not text:

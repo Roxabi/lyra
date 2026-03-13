@@ -169,6 +169,23 @@ async def test_voice_too_large_replies_to_original_message() -> None:
 
 
 @pytest.mark.asyncio
+async def test_voice_too_large_no_reply_when_no_message_id() -> None:
+    """Audio-too-large error omits reply_to_message_id when message_id is None."""
+    adapter, _hub = _make_adapter()
+
+    with patch.object(
+        adapter,
+        "_download_audio",
+        new_callable=AsyncMock,
+        side_effect=ValueError("too large"),
+    ):
+        await adapter._on_voice_message(_make_voice_msg(message_id=None))
+
+    call_kwargs = adapter.bot.send_message.call_args.kwargs
+    assert "reply_to_message_id" not in call_kwargs
+
+
+@pytest.mark.asyncio
 async def test_voice_message_download_error_returns_silently() -> None:
     """_download_audio raises generic exception → log + return, no enqueue."""
     adapter, hub = _make_adapter()

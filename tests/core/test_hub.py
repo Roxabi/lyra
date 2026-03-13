@@ -937,7 +937,7 @@ async def test_anthropic_circuit_open_sends_fast_fail_and_skips_agent() -> None:
         name = "test"
         command_router = None
 
-        def process(self, msg: InboundMessage, pool: Pool):
+        def process(self, msg: InboundMessage, pool: Pool, *, on_intermediate=None):
             nonlocal process_called
             process_called = True
 
@@ -1007,7 +1007,7 @@ async def test_anthropic_circuit_open_includes_retry_after() -> None:
         name = "test"
         command_router = None
 
-        def process(self, msg: InboundMessage, pool: Pool):
+        def process(self, msg: InboundMessage, pool: Pool, *, on_intermediate=None):
             async def gen():
                 yield "x"
 
@@ -1066,7 +1066,7 @@ async def test_hub_records_success_on_clean_streaming() -> None:
         name = "test"
         command_router = None
 
-        def process(self, msg: InboundMessage, pool: Pool):
+        def process(self, msg: InboundMessage, pool: Pool, *, on_intermediate=None):
             async def gen():
                 yield "hello"
 
@@ -1122,7 +1122,7 @@ async def test_mid_stream_failure_records_anthropic_failure() -> None:
         name = "test"
         command_router = None
 
-        def process(self, msg: InboundMessage, pool: Pool):
+        def process(self, msg: InboundMessage, pool: Pool, *, on_intermediate=None):
             from lyra.errors import ProviderError
 
             async def gen():
@@ -1182,7 +1182,7 @@ async def test_hub_circuit_opens_after_threshold() -> None:
         name = "test"
         command_router = None
 
-        def process(self, msg: InboundMessage, pool: Pool):
+        def process(self, msg: InboundMessage, pool: Pool, *, on_intermediate=None):
             async def gen():
                 yield "x"
                 raise RuntimeError("forced failure")

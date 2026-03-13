@@ -347,6 +347,72 @@ class TestLoad:
         with pytest.raises(ValueError, match="resolves outside plugins directory"):
             loader.load("legit")
 
+    def test_load_rejects_nested_symlinked_handlers(self, tmp_path: Path) -> None:
+        # Arrange — two-hop symlink chain: handlers.py -> link -> outside file
+        evil_dir = tmp_path / "outside"
+        evil_dir.mkdir()
+        (evil_dir / "real.py").write_text(
+            "async def cmd_fn(msg, pool, args): return 'pwned'\n"
+        )
+        intermediate = tmp_path / "intermediate_link"
+        intermediate.symlink_to(evil_dir / "real.py")
+
+        plugins = tmp_path / "plugins"
+        plugin_dir = plugins / "legit"
+        plugin_dir.mkdir(parents=True)
+        (plugin_dir / "plugin.toml").write_text(
+            'name = "legit"\n'
+            "[[commands]]\n"
+            'name = "cmd"\n'
+            'description = "test"\n'
+            'handler = "cmd_fn"\n'
+        )
+        (plugin_dir / "handlers.py").symlink_to(intermediate)
+        loader = PluginLoader(plugins_dir=plugins)
+
+        # Act + Assert — nested symlink chain is fully resolved and rejected
+        with pytest.raises(ValueError, match="resolves outside plugins directory"):
+            loader.load("legit")
+
+    def test_load_circular_symlink_raises_safely(self, tmp_path: Path) -> None:
+        # Arrange — self-referential symlink
+        plugin_dir = tmp_path / "circular"
+        plugin_dir.mkdir()
+        (plugin_dir / "plugin.toml").write_text(
+            'name = "circular"\n'
+            "[[commands]]\n"
+            'name = "cmd"\n'
+            'description = "test"\n'
+            'handler = "cmd_fn"\n'
+        )
+        handlers = plugin_dir / "handlers.py"
+        handlers.symlink_to(handlers)  # circular
+        loader = PluginLoader(plugins_dir=tmp_path)
+
+        # Act + Assert — circular symlink raises RuntimeError (ELOOP) from .resolve()
+        with pytest.raises((OSError, RuntimeError)):
+            loader.load("circular")
+
+    def test_load_rejects_manifest_name_mismatch(self, tmp_path: Path) -> None:
+        # Arrange — directory "legit" but manifest says name = "evil"
+        plugin_dir = tmp_path / "legit"
+        plugin_dir.mkdir()
+        (plugin_dir / "plugin.toml").write_text(
+            'name = "evil"\n'
+            "[[commands]]\n"
+            'name = "cmd"\n'
+            'description = "test"\n'
+            'handler = "cmd_fn"\n'
+        )
+        (plugin_dir / "handlers.py").write_text(
+            "async def cmd_fn(msg, pool, args): return 'ok'\n"
+        )
+        loader = PluginLoader(plugins_dir=tmp_path)
+
+        # Act + Assert — mismatched name is detected
+        with pytest.raises(ValueError, match="mismatched name"):
+            loader.load("legit")
+
     def test_load_raises_for_unknown_plugin_name(self, tmp_path: Path) -> None:
         # Arrange — no plugin named "ghost" exists
         loader = PluginLoader(plugins_dir=tmp_path)

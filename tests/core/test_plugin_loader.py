@@ -297,6 +297,56 @@ class TestLoad:
         with pytest.raises(ValueError, match="resolves outside plugins directory"):
             loader.load("legit")
 
+    def test_load_rejects_symlinked_plugin_dir_outside_plugins_dir(
+        self, tmp_path: Path
+    ) -> None:
+        # Arrange — plugin directory itself is a symlink to outside plugins_dir
+        outside = tmp_path / "outside" / "evil"
+        outside.mkdir(parents=True)
+        (outside / "plugin.toml").write_text(
+            'name = "evil"\n'
+            "[[commands]]\n"
+            'name = "cmd"\n'
+            'description = "test"\n'
+            'handler = "cmd_fn"\n'
+        )
+        (outside / "handlers.py").write_text(
+            "async def cmd_fn(msg, pool, args): return 'pwned'\n"
+        )
+        plugins = tmp_path / "plugins"
+        plugins.mkdir()
+        (plugins / "evil").symlink_to(outside)
+        loader = PluginLoader(plugins_dir=plugins)
+
+        # Act + Assert — symlinked directory escapes plugins_dir
+        with pytest.raises(ValueError, match="escapes plugins directory"):
+            loader.load("evil")
+
+    def test_load_rejects_symlinked_plugin_toml_outside_plugins_dir(
+        self, tmp_path: Path
+    ) -> None:
+        # Arrange — plugin.toml is a symlink to a file outside plugins_dir
+        evil_dir = tmp_path / "outside"
+        evil_dir.mkdir()
+        (evil_dir / "evil.toml").write_text(
+            'name = "legit"\n'
+            "[[commands]]\n"
+            'name = "cmd"\n'
+            'description = "test"\n'
+            'handler = "cmd_fn"\n'
+        )
+        plugin_dir = tmp_path / "plugins" / "legit"
+        plugin_dir.mkdir(parents=True)
+        (plugin_dir / "plugin.toml").symlink_to(evil_dir / "evil.toml")
+        (plugin_dir / "handlers.py").write_text(
+            "async def cmd_fn(msg, pool, args): return 'ok'\n"
+        )
+        loader = PluginLoader(plugins_dir=tmp_path / "plugins")
+
+        # Act + Assert — symlinked plugin.toml is detected and rejected
+        with pytest.raises(ValueError, match="resolves outside plugins directory"):
+            loader.load("legit")
+
     def test_load_raises_for_unknown_plugin_name(self, tmp_path: Path) -> None:
         # Arrange — no plugin named "ghost" exists
         loader = PluginLoader(plugins_dir=tmp_path)
@@ -472,6 +522,29 @@ class TestReload:
         # Assert — manifest fields remain consistent (name unchanged by reload)
         reloaded_manifest = loader._loaded["stableplugin"].manifest
         assert reloaded_manifest.name == original_manifest.name
+
+    def test_reload_rejects_symlinked_handlers_outside_plugins_dir(
+        self, tmp_path: Path
+    ) -> None:
+        # Arrange — load a clean plugin, then swap handlers.py to a symlink
+        plugins = tmp_path / "plugins"
+        plugins.mkdir()
+        make_plugin(plugins, "hotplugin", handler_name="cmd_fn", cmd_name="cmd")
+        loader = PluginLoader(plugins_dir=plugins)
+        loader.load("hotplugin")
+
+        evil_dir = tmp_path / "outside"
+        evil_dir.mkdir()
+        (evil_dir / "handlers.py").write_text(
+            "async def cmd_fn(msg, pool, args): return 'pwned'\n"
+        )
+        handlers = plugins / "hotplugin" / "handlers.py"
+        handlers.unlink()
+        handlers.symlink_to(evil_dir / "handlers.py")
+
+        # Act + Assert — reload detects the symlink escape
+        with pytest.raises(ValueError, match="resolves outside plugins directory"):
+            loader.reload("hotplugin")
 
 
 # ---------------------------------------------------------------------------

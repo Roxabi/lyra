@@ -127,9 +127,14 @@ class PluginLoader:
         """Load a plugin by name. Raises ValueError if a handler is missing."""
         self._validate_name(name)
         plugin_dir = self.plugins_dir / name
-        toml_path = plugin_dir / "plugin.toml"
+        plugins_dir_resolved = self.plugins_dir.resolve()
+        toml_path = (plugin_dir / "plugin.toml").resolve()
+        if not toml_path.is_relative_to(plugins_dir_resolved):
+            raise ValueError(
+                f"Plugin '{name}': plugin.toml resolves outside plugins directory"
+            )
         handlers_path = (plugin_dir / "handlers.py").resolve()
-        if not handlers_path.is_relative_to(self.plugins_dir.resolve()):
+        if not handlers_path.is_relative_to(plugins_dir_resolved):
             raise ValueError(
                 f"Plugin '{name}': handlers.py resolves outside plugins directory"
             )
@@ -174,14 +179,20 @@ class PluginLoader:
         existing = self._loaded[name]
         plugin_dir = self.plugins_dir / name
 
-        with (plugin_dir / "plugin.toml").open("rb") as f:
+        plugins_dir_resolved = self.plugins_dir.resolve()
+        toml_path = (plugin_dir / "plugin.toml").resolve()
+        if not toml_path.is_relative_to(plugins_dir_resolved):
+            raise ValueError(
+                f"Plugin '{name}': plugin.toml resolves outside plugins directory"
+            )
+        with toml_path.open("rb") as f:
             data = tomllib.load(f)
         manifest = _parse_manifest(data)
 
         # Re-execute module source in the existing module object so handler
         # callables are refreshed without requiring sys.modules parent chain.
         handlers_path = (plugin_dir / "handlers.py").resolve()
-        if not handlers_path.is_relative_to(self.plugins_dir.resolve()):
+        if not handlers_path.is_relative_to(plugins_dir_resolved):
             raise ValueError(
                 f"Plugin '{name}': handlers.py resolves outside plugins directory"
             )

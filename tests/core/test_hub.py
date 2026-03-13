@@ -1414,13 +1414,41 @@ class TestPoolTTLEviction:
         hub = Hub()
         assert hub._pool_ttl == 3600
 
+    def test_done_task_pool_evicted(self) -> None:
+        """A pool whose task finished (done()=True) is evicted when stale."""
+        hub = Hub(pool_ttl=60)
+        pool = hub.get_or_create_pool("p1", "agent")
+        pool.last_active -= 120
+        # Simulate a finished task (done but not yet None)
+        pool._current_task = MagicMock()
+        pool._current_task.done.return_value = True
+        hub.get_or_create_pool("p2", "agent")
+        assert "p1" not in hub.pools  # evicted — task is done
+
+    def test_multiple_stale_pools_all_evicted(self) -> None:
+        """Multiple stale idle pools are evicted in a single pass."""
+        hub = Hub(pool_ttl=60)
+        p1 = hub.get_or_create_pool("p1", "agent")
+        hub.get_or_create_pool("p2", "agent")
+        p3 = hub.get_or_create_pool("p3", "agent")
+        # Make p1 and p3 stale, keep p2 fresh
+        p1.last_active -= 120
+        p3.last_active -= 120
+        hub.get_or_create_pool("p4", "agent")
+        assert "p1" not in hub.pools
+        assert "p3" not in hub.pools
+        assert "p2" in hub.pools
+        assert "p4" in hub.pools
+
     async def test_submit_refreshes_last_active(self) -> None:
         """Pool.submit() updates last_active timestamp."""
+        import time
+
         hub = Hub(pool_ttl=60)
         pool = hub.get_or_create_pool("p1", "agent")
         pool.last_active -= 50  # nearly stale
-        before = pool.last_active
+        t0 = time.monotonic()
         msg = make_inbound_message()
         pool.submit(msg)
-        assert pool.last_active > before
+        assert pool.last_active >= t0
         pool.cancel()

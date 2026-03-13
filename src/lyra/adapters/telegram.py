@@ -23,6 +23,8 @@ from lyra.adapters._shared import (
     ATTACHMENT_EXTS_BASE,
     _PartialAudioError,
     buffer_audio_chunks,
+    chunk_text,
+    get_msg,
     parse_reply_to_id,
     push_to_hub_guarded,
     sanitize_filename,
@@ -66,6 +68,14 @@ _DENY_ALL = AuthMiddleware(user_map={}, role_map={}, default=TrustLevel.BLOCKED)
 # Permissive sentinel for use in tests — allows all traffic as PUBLIC.
 _ALLOW_ALL = AuthMiddleware(user_map={}, role_map={}, default=TrustLevel.PUBLIC)
 _MARKDOWNV2_SPECIAL = re.compile(r"([_*\[\]()~`>#\+\-=|{}.!\\])")
+
+
+def _send_message_kwargs(chat_id: int, text: str, reply_to: int | None) -> dict:
+    """Build bot.send_message kwargs, adding reply_to_message_id when set."""
+    kwargs: dict = {"chat_id": chat_id, "text": text}
+    if reply_to is not None:
+        kwargs["reply_to_message_id"] = reply_to
+    return kwargs
 
 
 def _extract_attachments(msg: Any) -> list[Attachment]:
@@ -355,11 +365,7 @@ class TelegramAdapter:
 
     def _msg(self, key: str, fallback: str) -> str:
         """Return a localised message string, falling back when no manager."""
-        return (
-            self._msg_manager.get(key, platform="telegram")
-            if self._msg_manager
-            else fallback
-        )
+        return get_msg(self._msg_manager, key, "telegram", fallback)
 
     def _start_typing(self, chat_id: int) -> None:
         """Start (or restart) the typing indicator background task for chat_id."""
@@ -608,14 +614,14 @@ class TelegramAdapter:
                 file_id, getattr(voice, "duration", None)
             )
         except ValueError:
-            # File too large — notify user
+            # File too large — notify user, reply to their message (mirrors Discord)
             try:
+                _text = self._msg(
+                    "audio_too_large",
+                    "That audio file is too large to process.",
+                )
                 await self.bot.send_message(
-                    chat_id=msg.chat.id,
-                    text=self._msg(
-                        "audio_too_large",
-                        "That audio file is too large to process.",
-                    ),
+                    **_send_message_kwargs(msg.chat.id, _text, msg.message_id)
                 )
             except Exception:
                 log.warning(
@@ -644,7 +650,9 @@ class TelegramAdapter:
         try:
 
             async def _send_bp(text: str) -> None:
-                await self.bot.send_message(msg.chat.id, text)
+                await self.bot.send_message(
+                    **_send_message_kwargs(msg.chat.id, text, msg.message_id)
+                )
 
             await push_to_hub_guarded(
                 inbound_bus=self._hub.inbound_audio_bus,
@@ -729,13 +737,11 @@ class TelegramAdapter:
 
     def _render_text(self, text: str) -> list[str]:
         """Escape MarkdownV2 special characters and split into <=4096-char chunks."""
-        escaped = _MARKDOWNV2_SPECIAL.sub(r"\\\1", text)
-        if not escaped:
-            return []
-        return [
-            escaped[i : i + TELEGRAM_MAX_LENGTH]
-            for i in range(0, len(escaped), TELEGRAM_MAX_LENGTH)
-        ]
+        return chunk_text(
+            text,
+            TELEGRAM_MAX_LENGTH,
+            escape_fn=lambda t: _MARKDOWNV2_SPECIAL.sub(r"\\\1", t),
+        )
 
     def _render_buttons(self, buttons: list) -> object | None:
         """Convert list[Button] to InlineKeyboardMarkup, or None if empty."""
@@ -836,16 +842,18 @@ class TelegramAdapter:
             fallback_content = "".join(parts) or _placeholder_text
             chunks_rendered = self._render_text(fallback_content)
             if chunks_rendered:
-                fallback_msg = await self.bot.send_message(
-                    chat_id=chat_id,
-                    text=chunks_rendered[0],
-                    parse_mode="MarkdownV2",
-                )
+                fallback_msg = None
+                for rendered_chunk in chunks_rendered:
+                    fallback_msg = await self.bot.send_message(
+                        chat_id=chat_id,
+                        text=rendered_chunk,
+                        parse_mode="MarkdownV2",
+                    )
             else:
                 fallback_msg = await self.bot.send_message(
                     chat_id=chat_id, text=fallback_content
                 )
-            if outbound is not None:
+            if outbound is not None and fallback_msg is not None:
                 outbound.metadata["reply_message_id"] = fallback_msg.message_id
             return
 

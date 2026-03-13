@@ -20,12 +20,14 @@ import pytest
 from lyra.adapters.telegram import _ALLOW_ALL, TelegramAdapter
 
 
-def _make_voice_msg(
+def _make_voice_msg(  # noqa: PLR0913 — test factory with optional overrides
     file_id: str = "FILE123",
     duration: int = 3,
     chat_id: int = 42,
     user_id: int = 7,
     chat_type: str = "private",
+    topic_id: int | None = None,
+    message_id: int | None = 55,
 ) -> SimpleNamespace:
     """Build a minimal aiogram-like voice message stub."""
     return SimpleNamespace(
@@ -34,8 +36,8 @@ def _make_voice_msg(
         voice=SimpleNamespace(file_id=file_id, duration=duration),
         audio=None,
         date=datetime.now(timezone.utc),
-        message_thread_id=None,
-        message_id=55,
+        message_thread_id=topic_id,
+        message_id=message_id,
     )
 
 
@@ -150,6 +152,23 @@ async def test_voice_message_too_large_sends_reply() -> None:
 
 
 @pytest.mark.asyncio
+async def test_voice_too_large_replies_to_original_message() -> None:
+    """Audio-too-large error replies to the original message (mirrors Discord UX)."""
+    adapter, _hub = _make_adapter()
+
+    with patch.object(
+        adapter,
+        "_download_audio",
+        new_callable=AsyncMock,
+        side_effect=ValueError("too large"),
+    ):
+        await adapter._on_voice_message(_make_voice_msg(message_id=55))
+
+    call_kwargs = adapter.bot.send_message.call_args.kwargs
+    assert call_kwargs.get("reply_to_message_id") == 55
+
+
+@pytest.mark.asyncio
 async def test_voice_message_download_error_returns_silently() -> None:
     """_download_audio raises generic exception → log + return, no enqueue."""
     adapter, hub = _make_adapter()
@@ -171,30 +190,12 @@ async def test_voice_message_download_error_returns_silently() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _make_voice_msg_for_normalize(  # noqa: PLR0913 — test factory with optional overrides
-    file_id: str = "FILE1",
-    duration: int = 3,
-    chat_id: int = 42,
-    user_id: int = 7,
-    topic_id: int | None = None,
-    chat_type: str = "private",
-) -> SimpleNamespace:
-    return SimpleNamespace(
-        chat=SimpleNamespace(id=chat_id, type=chat_type),
-        from_user=SimpleNamespace(id=user_id, full_name="Alice", is_bot=False),
-        voice=SimpleNamespace(file_id=file_id, duration=duration),
-        audio=None,
-        date=datetime.now(timezone.utc),
-        message_thread_id=topic_id,
-    )
-
-
 def test_normalize_audio_voice_fields() -> None:
     """normalize_audio returns InboundAudio with correct fields for a voice message."""
     from lyra.core.message import InboundAudio
 
     adapter, _ = _make_adapter()
-    msg = _make_voice_msg_for_normalize(file_id="F1", duration=3, chat_id=42, user_id=7)
+    msg = _make_voice_msg(file_id="F1", duration=3, chat_id=42, user_id=7)
     result = adapter.normalize_audio(msg, b"data", "audio/ogg")
     assert isinstance(result, InboundAudio)
     assert result.id.startswith("telegram:tg:user:7:")
@@ -214,9 +215,7 @@ def test_normalize_audio_audio_file_fields() -> None:
     from lyra.core.message import InboundAudio
 
     adapter, _ = _make_adapter()
-    msg = _make_voice_msg_for_normalize(
-        file_id="AF1", duration=5, chat_id=99, user_id=8
-    )
+    msg = _make_voice_msg(file_id="AF1", duration=5, chat_id=99, user_id=8)
     msg.voice = None
     msg.audio = SimpleNamespace(file_id="AF1", duration=5, mime_type="audio/mpeg")
     result = adapter.normalize_audio(msg, b"bytes", "audio/mpeg")
@@ -229,7 +228,7 @@ def test_normalize_audio_audio_file_fields() -> None:
 def test_normalize_audio_private_chat_scope_id() -> None:
     """Private chat → scope_id='chat:<id>'."""
     adapter, _ = _make_adapter()
-    msg = _make_voice_msg_for_normalize(chat_id=42, chat_type="private")
+    msg = _make_voice_msg(chat_id=42, chat_type="private")
     result = adapter.normalize_audio(msg, b"x", "audio/ogg")
     assert result.scope_id == "chat:42"
 
@@ -237,7 +236,7 @@ def test_normalize_audio_private_chat_scope_id() -> None:
 def test_normalize_audio_topic_chat_scope_id() -> None:
     """Topic chat → scope_id='chat:<id>:topic:<topic_id>'."""
     adapter, _ = _make_adapter()
-    msg = _make_voice_msg_for_normalize(chat_id=42, topic_id=7, chat_type="supergroup")
+    msg = _make_voice_msg(chat_id=42, topic_id=7, chat_type="supergroup")
     result = adapter.normalize_audio(msg, b"x", "audio/ogg")
     assert result.scope_id == "chat:42:topic:7"
 
@@ -250,7 +249,7 @@ def test_normalize_audio_topic_chat_scope_id() -> None:
 def test_normalize_audio_video_note_fields() -> None:
     """video_note messages produce correct mime_type and fields."""
     adapter, _ = _make_adapter()
-    msg = _make_voice_msg_for_normalize()
+    msg = _make_voice_msg()
     msg.voice = None
     msg.audio = None
     msg.video_note = SimpleNamespace(file_id="VN123", duration=5)

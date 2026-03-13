@@ -202,6 +202,28 @@ class _PartialAudioError(Exception):
         self.cause = cause
 
 
+def chunk_text(
+    text: str,
+    max_len: int,
+    escape_fn: Callable[[str], str] | None = None,
+) -> list[str]:
+    """Split *text* into chunks of at most *max_len* characters.
+
+    If *escape_fn* is provided it is applied to the entire text before
+    chunking (e.g. MarkdownV2 escaping). Returns [] for empty text.
+    """
+    if escape_fn is not None:
+        text = escape_fn(text)
+    if not text:
+        return []
+    return [text[i : i + max_len] for i in range(0, len(text), max_len)]
+
+
+def get_msg(manager: object, key: str, platform: str, fallback: str) -> str:
+    """Return a localised message string, falling back when no manager."""
+    return manager.get(key, platform=platform) if manager is not None else fallback  # type: ignore[attr-defined]
+
+
 def parse_reply_to_id(reply_to_id: str | None) -> int | None:
     """Parse a string reply_to_id into an int, returning None on bad input."""
     if reply_to_id is None:

@@ -705,18 +705,25 @@ class Hub:
                         msg.id,
                     )
                     continue
-                if (
-                    result.action == Action.COMMAND_HANDLED
-                    and result.response
-                    and result.response.content
-                ):
-                    try:
-                        await self.dispatch_response(
-                            msg, result.response,
-                        )
-                    except Exception as exc:
-                        log.exception(
-                            "dispatch_response() failed: %s", exc,
+                if result.action == Action.COMMAND_HANDLED:
+                    if (
+                        result.response
+                        and result.response.content
+                    ):
+                        try:
+                            await self.dispatch_response(
+                                msg, result.response,
+                            )
+                        except Exception as exc:
+                            log.exception(
+                                "dispatch_response() failed: %s",
+                                exc,
+                            )
+                    else:
+                        log.debug(
+                            "command returned empty response"
+                            " for msg id=%s — skipping dispatch",
+                            msg.id,
                         )
                 elif (
                     result.action == Action.SUBMIT_TO_POOL

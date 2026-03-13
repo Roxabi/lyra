@@ -796,7 +796,7 @@ class TestHubGate:
                 pass
 
         assert any(
-            "dispatch_response failed for pairing rejection" in record.message
+            "dispatch_response failed for pairing rejection" in record.getMessage()
             for record in caplog.records
         ), f"Expected pairing rejection log, got: {[r.message for r in caplog.records]}"
 

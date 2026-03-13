@@ -5,7 +5,8 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.core.agent import Agent
+from lyra.core.agent import Agent, AgentBase
+from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.hub import (
     Action,
     Hub,
@@ -53,19 +54,20 @@ class _MockAdapter:
         pass
 
 
+class _NullAgent(AgentBase):
+    """Minimal agent for testing — returns a fixed response."""
+
+    async def process(
+        self, msg: InboundMessage, pool: Pool,
+    ) -> Response:
+        return Response(content="ok")
+
+
 def _make_hub(**kwargs: object) -> Hub:
     """Build a Hub with an agent, adapter, and binding pre-wired."""
     hub = Hub(**kwargs)  # type: ignore[arg-type]
 
-    from lyra.core.agent import AgentBase
-
-    class NullAgent(AgentBase):
-        async def process(
-            self, msg: InboundMessage, pool: Pool,
-        ) -> Response:
-            return Response(content="ok")
-
-    agent = NullAgent(Agent(
+    agent = _NullAgent(Agent(
         name="lyra", system_prompt="", memory_namespace="lyra",
     ))
     hub.register_agent(agent)
@@ -130,19 +132,49 @@ class TestPipelineGuardStages:
         result = await pipeline.process(msg)
         assert result.action == Action.DROP
 
+    async def test_circuit_breaker_open_drops(self) -> None:
+        """Open circuit breaker in terminal stage produces DROP."""
+        registry = CircuitRegistry()
+        cb = CircuitBreaker(
+            name="anthropic",
+            failure_threshold=1,
+            recovery_timeout=60,
+        )
+        registry.register(cb)
+        # Trip the circuit breaker
+        cb.record_failure()
+        hub = _make_hub(circuit_registry=registry)
+        pipeline = MessagePipeline(hub)
+        msg = make_inbound_message()
+        result = await pipeline.process(msg)
+        assert result.action == Action.DROP
+
+    async def test_pairing_gate_drops_unpaired_user(
+        self,
+    ) -> None:
+        """Pairing gate drops messages from unpaired users."""
+        from lyra.core.pairing import PairingConfig, PairingManager
+
+        config = PairingConfig(enabled=True)
+        pm = PairingManager(
+            config=config,
+            db_path=":memory:",
+            admin_user_ids={"admin"},
+        )
+        await pm.connect()
+        try:
+            hub = _make_hub(pairing_manager=pm)
+            pipeline = MessagePipeline(hub)
+            msg = make_inbound_message(user_id="unpaired-user")
+            result = await pipeline.process(msg)
+            assert result.action == Action.DROP
+        finally:
+            await pm.close()
+
     async def test_no_adapter_registered_drops(self) -> None:
         """Adapter miss in terminal stage produces DROP."""
         hub = Hub()
-
-        from lyra.core.agent import AgentBase
-
-        class NullAgent(AgentBase):
-            async def process(
-                self, msg: InboundMessage, pool: Pool,
-            ) -> Response:
-                return Response(content="ok")
-
-        agent = NullAgent(Agent(
+        agent = _NullAgent(Agent(
             name="lyra", system_prompt="",
             memory_namespace="lyra",
         ))
@@ -259,16 +291,21 @@ class TestPipelineIntegration:
         pool.submit for SUBMIT_TO_POOL."""
         hub = _make_hub()
         msg = make_inbound_message()
-        await hub.bus.put(msg)
 
-        # Run one iteration
+        # Pre-create the pool so we can spy on submit
+        binding = hub.resolve_binding(msg)
+        assert binding is not None
+        pool = hub.get_or_create_pool(
+            binding.pool_id, binding.agent_name,
+        )
+        submitted: list[InboundMessage] = []
+        pool.submit = lambda m: submitted.append(m)  # type: ignore[assignment]
+
+        await hub.bus.put(msg)
         try:
             await asyncio.wait_for(hub.run(), timeout=0.3)
         except asyncio.TimeoutError:
             pass
 
-        # Pool should have received the message
-        binding = hub.resolve_binding(msg)
-        assert binding is not None
-        pool = hub.pools.get(binding.pool_id)
-        assert pool is not None
+        assert len(submitted) == 1
+        assert submitted[0] is msg

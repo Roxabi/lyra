@@ -28,36 +28,45 @@ from lyra.core.pool import Pool
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture
-def hub_mock() -> MagicMock:
-    """Minimal hub stub with the attributes Pool._process_loop() touches."""
-    hub = MagicMock()
-    hub.agent_registry = {}
-    hub.circuit_registry = None
-    hub._msg_manager = None
-    hub.dispatch_response = AsyncMock(return_value=None)
-    hub.dispatch_streaming = AsyncMock(return_value=None)
-    return hub
+def _make_ctx_mock(agents: dict | None = None) -> MagicMock:
+    """Build a minimal PoolContext mock."""
+    ctx = MagicMock()
+    _agents: dict = agents or {}
+    ctx.get_agent = MagicMock(side_effect=lambda name: _agents.get(name))
+    ctx.get_message = MagicMock(return_value=None)
+    ctx.dispatch_response = AsyncMock(return_value=None)
+    ctx.dispatch_streaming = AsyncMock(return_value=None)
+    ctx.record_circuit_success = MagicMock()
+    ctx.record_circuit_failure = MagicMock()
+    # Keep a reference so tests can mutate the agent registry
+    ctx._agents = _agents
+    return ctx
 
 
 @pytest.fixture
-def pool(hub_mock: MagicMock) -> Pool:
+def ctx_mock() -> MagicMock:
+    """Minimal PoolContext stub with the methods Pool._process_loop() touches."""
+    return _make_ctx_mock()
+
+
+@pytest.fixture
+def pool(ctx_mock: MagicMock) -> Pool:
     """Pool with a very long timeout (not triggered in normal tests)."""
     return Pool(
         pool_id="test:main:chat:1",
         agent_name="test_agent",
-        hub=hub_mock,
+        ctx=ctx_mock,
         turn_timeout=60.0,
     )
 
 
 @pytest.fixture
-def fast_pool(hub_mock: MagicMock) -> Pool:
+def fast_pool(ctx_mock: MagicMock) -> Pool:
     """Pool with a very short timeout for timeout tests."""
     return Pool(
         pool_id="test:main:chat:1",
         agent_name="test_agent",
-        hub=hub_mock,
+        ctx=ctx_mock,
         turn_timeout=0.05,
     )
 
@@ -144,12 +153,12 @@ class TestPoolSubmit:
 
     @pytest.mark.asyncio
     async def test_pool_submit_creates_task(
-        self, pool: Pool, hub_mock: MagicMock
+        self, pool: Pool, ctx_mock: MagicMock
     ) -> None:
         """submit() when idle sets _current_task to a running asyncio.Task."""
         # Arrange
         agent = FastAgent()
-        hub_mock.agent_registry = {"test_agent": agent}
+        ctx_mock._agents["test_agent"] = agent
         msg = make_msg("hello")
 
         # Act
@@ -164,12 +173,12 @@ class TestPoolSubmit:
 
     @pytest.mark.asyncio
     async def test_pool_submit_reuses_running_task(
-        self, pool: Pool, hub_mock: MagicMock
+        self, pool: Pool, ctx_mock: MagicMock
     ) -> None:
         """Second submit() while task is running does NOT create a new task object."""
         # Arrange
         agent = FastAgent()
-        hub_mock.agent_registry = {"test_agent": agent}
+        ctx_mock._agents["test_agent"] = agent
         msg1 = make_msg("first")
         msg2 = make_msg("second")
 
@@ -197,12 +206,12 @@ class TestPoolTaskExitsOnIdle:
 
     @pytest.mark.asyncio
     async def test_pool_task_exits_on_idle(
-        self, pool: Pool, hub_mock: MagicMock
+        self, pool: Pool, ctx_mock: MagicMock
     ) -> None:
         """After processing all messages, _current_task becomes None."""
         # Arrange
         agent = FastAgent()
-        hub_mock.agent_registry = {"test_agent": agent}
+        ctx_mock._agents["test_agent"] = agent
         msg = make_msg()
 
         # Act
@@ -223,12 +232,12 @@ class TestPoolSequentialProcessing:
 
     @pytest.mark.asyncio
     async def test_pool_sequential_processing(
-        self, pool: Pool, hub_mock: MagicMock
+        self, pool: Pool, ctx_mock: MagicMock
     ) -> None:
         """Two messages processed in order; dispatch_response called twice."""
         # Arrange
         agent = TwoMsgAgent()
-        hub_mock.agent_registry = {"test_agent": agent}
+        ctx_mock._agents["test_agent"] = agent
         msg1 = make_msg("first")
         msg2 = make_msg("second")
 
@@ -238,7 +247,7 @@ class TestPoolSequentialProcessing:
         await _drain(pool, timeout=3.0)
 
         # Assert — dispatch_response called twice
-        assert hub_mock.dispatch_response.await_count == 2
+        assert ctx_mock.dispatch_response.await_count == 2
 
         # Assert — processing order matches submission order
         assert agent.calls == ["first", "second"]
@@ -254,12 +263,12 @@ class TestPoolTimeout:
 
     @pytest.mark.asyncio
     async def test_pool_timeout_sends_timeout_reply(
-        self, fast_pool: Pool, hub_mock: MagicMock
+        self, fast_pool: Pool, ctx_mock: MagicMock
     ) -> None:
         """Slow agent triggers TimeoutError; dispatch_response called with timeout."""
         # Arrange
         agent = SlowAgent()
-        hub_mock.agent_registry = {"test_agent": agent}
+        ctx_mock._agents["test_agent"] = agent
         msg = make_msg()
 
         # Act
@@ -267,20 +276,20 @@ class TestPoolTimeout:
         await _drain(fast_pool, timeout=2.0)
 
         # Assert — dispatch_response was called once with a timeout reply
-        hub_mock.dispatch_response.assert_awaited_once()
-        _args = hub_mock.dispatch_response.call_args
+        ctx_mock.dispatch_response.assert_awaited_once()
+        _args = ctx_mock.dispatch_response.call_args
         response_arg: Response = _args[0][1]
         content_lower = response_arg.content.lower()
         assert "timed out" in content_lower or "timeout" in content_lower
 
     @pytest.mark.asyncio
     async def test_pool_history_not_updated_on_timeout(
-        self, fast_pool: Pool, hub_mock: MagicMock
+        self, fast_pool: Pool, ctx_mock: MagicMock
     ) -> None:
         """After a timeout, pool.history is unchanged (partial result not recorded)."""
         # Arrange
         agent = SlowAgent()
-        hub_mock.agent_registry = {"test_agent": agent}
+        ctx_mock._agents["test_agent"] = agent
         msg = make_msg()
         initial_history_len = len(fast_pool.history)
 
@@ -302,12 +311,12 @@ class TestPoolCancel:
 
     @pytest.mark.asyncio
     async def test_pool_cancel_sends_cancelled_reply(
-        self, pool: Pool, hub_mock: MagicMock
+        self, pool: Pool, ctx_mock: MagicMock
     ) -> None:
         """cancel() while processing; dispatch_response called with cancelled msg."""
         # Arrange
         agent = SlowAgent()
-        hub_mock.agent_registry = {"test_agent": agent}
+        ctx_mock._agents["test_agent"] = agent
         msg = make_msg()
 
         # Act — submit, yield to let the task start, then cancel
@@ -323,8 +332,8 @@ class TestPoolCancel:
                 pass
 
         # Assert — dispatch_response was called once with cancelled content
-        hub_mock.dispatch_response.assert_awaited_once()
-        _args = hub_mock.dispatch_response.call_args
+        ctx_mock.dispatch_response.assert_awaited_once()
+        _args = ctx_mock.dispatch_response.call_args
         response_arg: Response = _args[0][1]
         assert len(response_arg.content) > 0  # non-empty cancelled reply
 
@@ -348,13 +357,13 @@ class TestPoolExceptionHandling:
 
     @pytest.mark.asyncio
     async def test_pool_exception_sends_generic_reply_and_continues(
-        self, pool: Pool, hub_mock: MagicMock
+        self, pool: Pool, ctx_mock: MagicMock
     ) -> None:
         """process() raises; generic reply sent; loop continues to next message."""
         # Arrange — two messages: first raises, second succeeds
         raising_agent = RaisingAgent()
         fast_agent = FastAgent()
-        hub_mock.agent_registry = {"test_agent": raising_agent}
+        ctx_mock._agents["test_agent"] = raising_agent
 
         msg1 = make_msg("bad")
         msg2 = make_msg("good")
@@ -367,24 +376,24 @@ class TestPoolExceptionHandling:
         await asyncio.sleep(0)
 
         # Now also queue the second message (agent updated)
-        hub_mock.agent_registry["test_agent"] = fast_agent
+        ctx_mock._agents["test_agent"] = fast_agent
         pool.submit(msg2)
 
         await _drain(pool, timeout=3.0)
 
         # Assert — dispatch_response called twice: once for the error reply,
         # once for the successful second message — proving the loop continued.
-        assert hub_mock.dispatch_response.await_count == 2
+        assert ctx_mock.dispatch_response.await_count == 2
 
         # The first call should be the generic error reply
-        first_call_response: Response = hub_mock.dispatch_response.call_args_list[0][0][
+        first_call_response: Response = ctx_mock.dispatch_response.call_args_list[0][0][
             1
         ]
         assert isinstance(first_call_response, Response)
         assert len(first_call_response.content) > 0  # non-empty generic reply
 
         # Verify the second call processed the good message
-        second_call_response: Response = hub_mock.dispatch_response.call_args_list[1][
+        second_call_response: Response = ctx_mock.dispatch_response.call_args_list[1][
             0
         ][1]
         content = second_call_response.content
@@ -474,16 +483,14 @@ class TestPoolStreaming:
     """Pool._process_one() async-generator (streaming) branch (S4-*)."""
 
     @pytest.mark.asyncio
-    async def test_pool_streaming_path_calls_dispatch_streaming(
-        self, hub_mock: MagicMock
-    ) -> None:
+    async def test_pool_streaming_path_calls_dispatch_streaming(self) -> None:
         """Streaming result routes to dispatch_streaming, not dispatch_response."""
         # Arrange
-        pool = Pool(
-            pool_id="test:main:chat:stream", agent_name="test_agent", hub=hub_mock
-        )
         agent = StreamingAgent()
-        hub_mock.agent_registry["test_agent"] = agent
+        ctx = _make_ctx_mock({"test_agent": agent})
+        pool = Pool(
+            pool_id="test:main:chat:stream", agent_name="test_agent", ctx=ctx
+        )
 
         msg = make_msg("stream test")
 
@@ -493,27 +500,18 @@ class TestPoolStreaming:
             await asyncio.wait_for(pool._current_task, timeout=2.0)
 
         # Assert — streaming path goes through dispatch_streaming
-        hub_mock.dispatch_streaming.assert_awaited_once()
+        ctx.dispatch_streaming.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_pool_streaming_records_cb_success(self, hub_mock: MagicMock) -> None:
+    async def test_pool_streaming_records_cb_success(self) -> None:
         """Successful streaming records CB success when a circuit registry exists."""
         # Arrange
-        from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
-
-        registry = CircuitRegistry()
-        registry.register(
-            CircuitBreaker(name="hub", failure_threshold=5, recovery_timeout=60)
-        )
-        registry.register(
-            CircuitBreaker(name="anthropic", failure_threshold=5, recovery_timeout=60)
-        )
-        hub_mock.circuit_registry = registry
+        agent = StreamingAgent()
+        ctx = _make_ctx_mock({"test_agent": agent})
 
         pool = Pool(
-            pool_id="test:main:chat:cbstream", agent_name="test_agent", hub=hub_mock
+            pool_id="test:main:chat:cbstream", agent_name="test_agent", ctx=ctx
         )
-        hub_mock.agent_registry["test_agent"] = StreamingAgent()
 
         msg = make_msg("cb stream")
 
@@ -523,19 +521,18 @@ class TestPoolStreaming:
             await asyncio.wait_for(pool._current_task, timeout=2.0)
 
         # Assert — streaming path dispatched successfully
-        hub_mock.dispatch_streaming.assert_awaited_once()
+        ctx.dispatch_streaming.assert_awaited_once()
+        ctx.record_circuit_success.assert_called()
 
     @pytest.mark.asyncio
-    async def test_pool_failing_stream_sends_generic_reply(
-        self, hub_mock: MagicMock
-    ) -> None:
+    async def test_pool_failing_stream_sends_generic_reply(self) -> None:
         """A stream that raises mid-iteration sends a generic error reply."""
         # Arrange
+        ctx = _make_ctx_mock({"test_agent": FailingStreamingAgent()})
         pool = Pool(
-            pool_id="test:main:chat:failstream", agent_name="test_agent", hub=hub_mock
+            pool_id="test:main:chat:failstream", agent_name="test_agent", ctx=ctx
         )
-        hub_mock.agent_registry["test_agent"] = FailingStreamingAgent()
-        hub_mock.dispatch_streaming.side_effect = RuntimeError("stream failed")
+        ctx.dispatch_streaming.side_effect = RuntimeError("stream failed")
 
         msg = make_msg("fail stream")
 
@@ -545,6 +542,6 @@ class TestPoolStreaming:
             await asyncio.wait_for(pool._current_task, timeout=2.0)
 
         # Assert — a generic error reply was dispatched in lieu of streaming
-        hub_mock.dispatch_response.assert_awaited()
-        response_arg: Response = hub_mock.dispatch_response.call_args[0][1]
+        ctx.dispatch_response.assert_awaited()
+        response_arg: Response = ctx.dispatch_response.call_args[0][1]
         assert len(response_arg.content) > 0

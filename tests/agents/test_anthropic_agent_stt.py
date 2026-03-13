@@ -80,7 +80,7 @@ def make_text_message(text: str = "hello") -> InboundMessage:
 
 
 def make_pool(pool_id: str = "telegram:main:alice") -> Pool:
-    return Pool(pool_id=pool_id, agent_name="lyra", hub=MagicMock())
+    return Pool(pool_id=pool_id, agent_name="lyra", ctx=MagicMock())
 
 
 def make_config() -> Agent:

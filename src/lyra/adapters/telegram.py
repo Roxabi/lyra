@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 import re
@@ -54,31 +53,6 @@ _ATTACHMENT_EXTS = ATTACHMENT_EXTS_BASE | frozenset(
 )
 
 TELEGRAM_MAX_LENGTH = 4096  # Telegram Bot API text message limit
-
-
-def _verified_mime(declared: str, filename: str) -> str:
-    """Cross-check declared MIME against filename extension.
-
-    If the extension-inferred MIME type category (image/video/other)
-    disagrees with the declared one, fall back to application/octet-stream
-    so the adapter sends as a generic document (safest).
-    """
-    import mimetypes
-
-    guessed, _ = mimetypes.guess_type(filename)
-    if guessed is None:
-        return declared
-    declared_cat = declared.split("/")[0]
-    guessed_cat = guessed.split("/")[0]
-    if declared_cat != guessed_cat:
-        log.warning(
-            "MIME mismatch: declared=%s, guessed=%s for %s — falling back",
-            declared,
-            guessed,
-            filename,
-        )
-        return "application/octet-stream"
-    return declared
 
 # Sentinel used when no AuthMiddleware is provided — denies all traffic by default.
 _DENY_ALL = AuthMiddleware(user_map={}, role_map={}, default=TrustLevel.BLOCKED)
@@ -219,11 +193,6 @@ class TelegramAdapter:
         self._max_audio_bytes: int = int(
             os.environ.get("LYRA_MAX_AUDIO_BYTES", 5 * 1024 * 1024)
         )
-        _att_dir = os.environ.get("LYRA_ATTACHMENTS_DIR")
-        self._attachments_dir: Path | None = (
-            Path(_att_dir).resolve() if _att_dir else None
-        )
-
         # bot is a public attribute so tests can replace it with AsyncMock.
         # Deferred lazily so tests can assign adapter.bot = AsyncMock() after
         # construction without triggering aiogram token validation at test time.
@@ -670,57 +639,6 @@ class TelegramAdapter:
             if i == last_idx:
                 outbound.metadata["reply_message_id"] = sent.message_id
 
-        for att in outbound.attachments:
-            try:
-                await self._send_attachment(chat_id, att)
-            except Exception:
-                log.exception(
-                    "Failed to send attachment %s to chat_id=%s",
-                    att.file_name,
-                    chat_id,
-                )
-
-    async def _send_attachment(
-        self, chat_id: int, att: OutboundAttachment
-    ) -> None:
-        """Send a single OutboundAttachment to a Telegram chat."""
-        data: bytes | str = att.bytes_or_path
-        if isinstance(data, str):
-            resolved = Path(data).resolve()
-            if self._attachments_dir is not None:
-                if not resolved.is_relative_to(self._attachments_dir):
-                    log.warning(
-                        "Attachment path %s outside allowed dir, skipping",
-                        resolved,
-                    )
-                    return
-            data = await asyncio.to_thread(resolved.read_bytes)
-        if len(data) > self._max_audio_bytes:
-            log.warning(
-                "Attachment %s too large (%d bytes), skipping",
-                att.file_name,
-                len(data),
-            )
-            return
-        buf = BytesIO(data)
-        buf.name = att.file_name
-
-        kwargs: dict[str, Any] = {"chat_id": chat_id}
-        caption = (att.caption or "")[:1024] or None
-        if caption:
-            kwargs["caption"] = caption
-
-        mime = _verified_mime(att.mime_type, att.file_name)
-        if mime.startswith("image/"):
-            kwargs["photo"] = buf
-            await self.bot.send_photo(**kwargs)
-        elif mime.startswith("video/"):
-            kwargs["video"] = buf
-            await self.bot.send_video(**kwargs)
-        else:
-            kwargs["document"] = buf
-            await self.bot.send_document(**kwargs)
-
     async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: edit/chunk/finalize branches are inherently sequential
         self,
         original_msg: InboundMessage,
@@ -823,18 +741,6 @@ class TelegramAdapter:
                 )
             except Exception:
                 log.exception("Final edit failed")
-
-        # Send attachments after streaming completes (same as non-streaming)
-        if outbound is not None and stream_error is None:
-            for att in outbound.attachments:
-                try:
-                    await self._send_attachment(chat_id, att)
-                except Exception:
-                    log.exception(
-                        "Failed to send attachment %s to chat_id=%s",
-                        att.file_name,
-                        chat_id,
-                    )
 
         # Re-raise stream error so OutboundDispatcher can record CB failure
         if stream_error is not None:

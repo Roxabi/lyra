@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 import re
@@ -8,7 +7,6 @@ import time
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from io import BytesIO
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import discord
@@ -145,10 +143,6 @@ class DiscordAdapter(discord.Client):
         self._auth: AuthMiddleware = auth
         self._max_audio_bytes: int = int(
             os.environ.get("LYRA_MAX_AUDIO_BYTES", 5 * 1024 * 1024)
-        )
-        _att_dir = os.environ.get("LYRA_ATTACHMENTS_DIR")
-        self._attachments_dir: Path | None = (
-            Path(_att_dir).resolve() if _att_dir else None
         )
         # Set on on_ready; None until login completes. Tests set directly.
         self._bot_user: Any = None
@@ -559,44 +553,6 @@ class DiscordAdapter(discord.Client):
             original_msg.id,
         )
 
-        for att in outbound.attachments:
-            try:
-                await self._send_attachment(messageable, att)
-            except Exception:
-                log.exception(
-                    "Failed to send attachment %s",
-                    att.file_name,
-                )
-
-    async def _send_attachment(
-        self,
-        messageable: discord.abc.Messageable,
-        att: OutboundAttachment,
-    ) -> None:
-        """Send a single OutboundAttachment to a Discord channel."""
-        data: bytes | str = att.bytes_or_path
-        if isinstance(data, str):
-            resolved = Path(data).resolve()
-            if self._attachments_dir is not None:
-                if not resolved.is_relative_to(self._attachments_dir):
-                    log.warning(
-                        "Attachment path %s outside allowed dir, skipping",
-                        resolved,
-                    )
-                    return
-            data = await asyncio.to_thread(resolved.read_bytes)
-        if len(data) > self._max_audio_bytes:
-            log.warning(
-                "Attachment %s too large (%d bytes), skipping",
-                att.file_name,
-                len(data),
-            )
-            return
-        buf = BytesIO(data)
-        attachment = discord.File(fp=buf, filename=att.file_name)
-        content = (att.caption or "")[:DISCORD_MAX_LENGTH] or None
-        await messageable.send(content=content, file=attachment)
-
     async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: edit/chunk/finalize branches are inherently sequential
         self,
         original_msg: InboundMessage,
@@ -677,17 +633,6 @@ class DiscordAdapter(discord.Client):
                 await placeholder.edit(content=accumulated[:DISCORD_MAX_LENGTH])
             except Exception:
                 log.exception("Final edit failed")
-
-        # Send attachments after streaming completes (same as non-streaming)
-        if outbound is not None and stream_error is None:
-            for att in outbound.attachments:
-                try:
-                    await self._send_attachment(messageable, att)
-                except Exception:
-                    log.exception(
-                        "Failed to send attachment %s",
-                        att.file_name,
-                    )
 
         # Re-raise stream error so OutboundDispatcher can record CB failure
         if stream_error is not None:

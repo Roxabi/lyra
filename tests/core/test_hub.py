@@ -1368,3 +1368,59 @@ async def test_dispatch_response_accepts_legacy_response() -> None:
     # the adapter receives an OutboundMessage.  We assert the text is preserved.
     content = result.content if isinstance(result, Response) else result.content  # type: ignore[union-attr]
     assert "hi" in str(content)
+
+
+# ---------------------------------------------------------------------------
+# Pool TTL eviction (#205)
+# ---------------------------------------------------------------------------
+
+
+class TestPoolTTLEviction:
+    """Hub._evict_stale_pools removes idle pools exceeding the TTL."""
+
+    def test_stale_idle_pool_evicted(self) -> None:
+        """An idle pool past TTL is removed on next get_or_create_pool call."""
+        hub = Hub(pool_ttl=60)
+        pool = hub.get_or_create_pool("p1", "agent")
+        # Simulate staleness: set last_active far in the past
+        pool.last_active -= 120
+        # Access triggers eviction
+        hub.get_or_create_pool("p2", "agent")
+        assert "p1" not in hub.pools
+        assert "p2" in hub.pools
+
+    def test_active_pool_not_evicted(self) -> None:
+        """A pool with a running task is never evicted, even past TTL."""
+        hub = Hub(pool_ttl=60)
+        pool = hub.get_or_create_pool("p1", "agent")
+        pool.last_active -= 120
+        # Simulate active task
+        pool._current_task = MagicMock()
+        pool._current_task.done.return_value = False
+        hub.get_or_create_pool("p2", "agent")
+        assert "p1" in hub.pools  # not evicted — still active
+
+    def test_fresh_pool_not_evicted(self) -> None:
+        """A recently active idle pool is kept."""
+        hub = Hub(pool_ttl=60)
+        hub.get_or_create_pool("p1", "agent")
+        # Immediately create another — p1 is fresh
+        hub.get_or_create_pool("p2", "agent")
+        assert "p1" in hub.pools
+
+    def test_pool_ttl_default(self) -> None:
+        """Default POOL_TTL is 3600 seconds."""
+        assert Hub.POOL_TTL == 3600
+        hub = Hub()
+        assert hub._pool_ttl == 3600
+
+    async def test_submit_refreshes_last_active(self) -> None:
+        """Pool.submit() updates last_active timestamp."""
+        hub = Hub(pool_ttl=60)
+        pool = hub.get_or_create_pool("p1", "agent")
+        pool.last_active -= 50  # nearly stale
+        before = pool.last_active
+        msg = make_inbound_message()
+        pool.submit(msg)
+        assert pool.last_active > before
+        pool.cancel()

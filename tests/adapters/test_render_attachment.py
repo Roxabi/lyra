@@ -282,6 +282,19 @@ class TestTelegramRenderAttachment:
         kwargs = adapter.bot.send_photo.call_args.kwargs
         assert kwargs["message_thread_id"] == 5
 
+    @pytest.mark.asyncio
+    async def test_invalid_reply_to_id_falls_back(self) -> None:
+        adapter = _make_tg_adapter()
+        att = OutboundAttachment(
+            data=b"x", type="image", mime_type="image/png", reply_to_id="not-a-number"
+        )
+        inbound = _tg_msg(message_id=77)
+
+        await adapter.render_attachment(att, inbound)
+
+        kwargs = adapter.bot.send_photo.call_args.kwargs
+        assert kwargs["reply_to_message_id"] == 77
+
 
 # ---------------------------------------------------------------------------
 # DiscordAdapter.render_attachment
@@ -472,6 +485,27 @@ class TestDiscordRenderAttachment:
 
         # Assert — _resolve_channel called with thread_id, not channel_id
         resolve.assert_called_with(777)
+
+    @pytest.mark.asyncio
+    async def test_invalid_reply_to_id_falls_back(self) -> None:
+        adapter = _make_dc_adapter()
+        channel = _mock_channel()
+        ref_msg = AsyncMock()
+        ref_msg.reply = AsyncMock()
+        channel.fetch_message = AsyncMock(return_value=ref_msg)
+        att = OutboundAttachment(
+            data=b"x",
+            type="image",
+            mime_type="image/png",
+            reply_to_id="not-a-number",
+        )
+        inbound = _dc_msg(message_id=55)
+
+        with patch.object(adapter, "get_channel", return_value=channel):
+            await adapter.render_attachment(att, inbound)
+
+        # Invalid reply_to_id → falls back to inbound message_id
+        channel.fetch_message.assert_called_with(55)
 
 
 # ---------------------------------------------------------------------------

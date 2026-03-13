@@ -697,7 +697,14 @@ class Hub:
         while True:
             msg = await self.inbound_bus.get()
             try:
-                result = await pipeline.process(msg)
+                try:
+                    result = await pipeline.process(msg)
+                except Exception:
+                    log.exception(
+                        "pipeline.process() failed for msg id=%s",
+                        msg.id,
+                    )
+                    continue
                 if (
                     result.action == Action.COMMAND_HANDLED
                     and result.response
@@ -747,16 +754,13 @@ class MessagePipeline:
         if result is not None:
             return result
 
-        result = self._resolve_binding(msg, key)
-        if result is not None:
-            return result
-        binding = self._hub.resolve_binding(msg)
-        assert binding is not None  # guarded above
+        binding = self._resolve_binding(msg, key)
+        if binding is None:
+            return _DROP
 
-        result = self._lookup_agent(binding, key)
-        if result is not None:
-            return result
-        agent = self._hub.agent_registry[binding.agent_name]
+        agent = self._lookup_agent(binding, key)
+        if agent is None:
+            return _DROP
 
         pool = self._hub.get_or_create_pool(
             binding.pool_id, binding.agent_name,
@@ -772,7 +776,7 @@ class MessagePipeline:
                 msg, router, pool, key,
             )
 
-        return await self._submit_to_pool(msg, pool)
+        return await self._submit_to_pool(msg, pool, key)
 
     # -- guard stages (return None to continue) ---
 
@@ -803,18 +807,19 @@ class MessagePipeline:
 
     def _resolve_binding(
         self, msg: InboundMessage, key: RoutingKey,
-    ) -> PipelineResult | None:
+    ) -> Binding | None:
+        """Return resolved binding, or None (with log) to drop."""
         binding = self._hub.resolve_binding(msg)
         if binding is None:
             log.warning(
                 "unmatched routing key %s — message dropped", key,
             )
-            return _DROP
-        return None
+        return binding
 
     def _lookup_agent(
         self, binding: Binding, key: RoutingKey,
-    ) -> PipelineResult | None:
+    ) -> AgentBase | None:
+        """Return agent, or None (with log) to drop."""
         agent = self._hub.agent_registry.get(binding.agent_name)
         if agent is None:
             log.warning(
@@ -823,8 +828,7 @@ class MessagePipeline:
                 binding.agent_name,
                 key,
             )
-            return _DROP
-        return None
+        return agent
 
     async def _pairing_gate(
         self,
@@ -863,9 +867,10 @@ class MessagePipeline:
 
     async def _submit_to_pool(
         self, msg: InboundMessage, pool: Pool,
+        key: RoutingKey,
     ) -> PipelineResult:
         if (
-            Platform(msg.platform), msg.bot_id
+            key.platform, msg.bot_id
         ) not in self._hub.adapter_registry:
             log.error(
                 "no adapter registered for (%s, %s)"

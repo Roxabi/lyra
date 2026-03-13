@@ -35,7 +35,7 @@ log "New version detected: $LOCAL -> $REMOTE"
 git pull origin main 2>&1 | tee -a "$LOG_FILE"
 
 # Install/update deps
-uv sync --all-extras 2>&1 | tee -a "$LOG_FILE"
+uv sync --all-extras --frozen 2>&1 | tee -a "$LOG_FILE"
 
 # Run tests
 if ! uv run pytest --tb=short -q 2>&1 | tee -a "$LOG_FILE"; then

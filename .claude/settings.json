@@ -9,7 +9,7 @@
     "get-invoice-details@roxabi-marketplace": true,
     "image-prompt-generator@roxabi-marketplace": true,
     "linkedin-post-generator@roxabi-marketplace": true,
-    "roxabi-memory@roxabi-memory-marketplace": true,
+    "roxabi-vault@roxabi-vault-marketplace": true,
     "typescript-lsp@claude-plugins-official": true,
     "pyright-lsp@claude-plugins-official": true,
     "visual-explainer@roxabi-marketplace": true
@@ -22,10 +22,10 @@
       },
       "autoUpdate": true
     },
-    "roxabi-memory-marketplace": {
+    "roxabi-vault-marketplace": {
       "source": {
         "source": "github",
-        "repo": "Roxabi/roxabi-memory"
+        "repo": "Roxabi/roxabi-vault"
       },
       "autoUpdate": true
     }

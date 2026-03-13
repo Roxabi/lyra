@@ -874,7 +874,7 @@ dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
     { name = "python-dotenv" },
-    { name = "roxabi-memory" },
+    { name = "roxabi-vault" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -899,7 +899,7 @@ requires-dist = [
     { name = "httpx", extras = ["asyncio"], specifier = ">=0.28" },
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "python-dotenv", specifier = ">=1.0" },
-    { name = "roxabi-memory", git = "https://github.com/Roxabi/roxabi-memory.git?branch=staging" },
+    { name = "roxabi-vault", git = "https://github.com/Roxabi/roxabi-vault.git?branch=staging" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34" },
 ]
 
@@ -1554,9 +1554,9 @@ wheels = [
 ]
 
 [[package]]
-name = "roxabi-memory"
+name = "roxabi-vault"
 version = "0.1.0"
-source = { git = "https://github.com/Roxabi/roxabi-memory.git?branch=staging#6712fc4ab86e4165fdca4f3dcc97d2377cc6e409" }
+source = { git = "https://github.com/Roxabi/roxabi-vault.git?branch=staging#703a3674d71ee9ee251e6cd73134a3190a0f5290" }
 dependencies = [
     { name = "aiosqlite" },
 ]

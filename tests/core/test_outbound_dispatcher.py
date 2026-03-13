@@ -11,6 +11,7 @@ from lyra.core.auth import TrustLevel
 from lyra.core.circuit_breaker import CircuitBreaker
 from lyra.core.message import (
     InboundMessage,
+    OutboundAudio,
     OutboundMessage,
 )
 from lyra.core.outbound_dispatcher import OutboundDispatcher
@@ -42,6 +43,7 @@ def _make_adapter() -> tuple[MagicMock, OutboundDispatcher]:
     adapter = MagicMock()
     adapter.send = AsyncMock()
     adapter.send_streaming = AsyncMock()
+    adapter.render_audio = AsyncMock()
     dispatcher = OutboundDispatcher(platform_name="telegram", adapter=adapter)
     return adapter, dispatcher
 
@@ -230,3 +232,58 @@ def test_enqueue_accepts_outbound_message() -> None:
 
     # Act / Assert — must not raise TypeError
     dispatcher.enqueue(mock_msg, outbound)
+
+
+# ---------------------------------------------------------------------------
+# #175: OutboundDispatcher.enqueue_audio() — CB ownership for render_audio()
+# ---------------------------------------------------------------------------
+
+
+class TestOutboundDispatcherAudio:
+    async def test_enqueue_audio_delivers_via_adapter(self) -> None:
+        adapter, dispatcher = _make_adapter()
+        await dispatcher.start()
+        try:
+            inbound = _make_msg()
+            audio = OutboundAudio(audio_bytes=b"fake-ogg", mime_type="audio/ogg")
+            dispatcher.enqueue_audio(inbound, audio)
+            await asyncio.sleep(0.05)
+            adapter.render_audio.assert_awaited_once_with(audio, inbound)
+        finally:
+            await dispatcher.stop()
+
+    async def test_open_circuit_drops_audio(self) -> None:
+        adapter = MagicMock()
+        adapter.render_audio = AsyncMock()
+        cb = CircuitBreaker(name="telegram", failure_threshold=1)
+        cb.record_failure()
+        assert cb.is_open()
+        dispatcher = OutboundDispatcher(
+            platform_name="telegram", adapter=adapter, circuit=cb
+        )
+        await dispatcher.start()
+        try:
+            inbound = _make_msg()
+            audio = OutboundAudio(audio_bytes=b"fake-ogg", mime_type="audio/ogg")
+            dispatcher.enqueue_audio(inbound, audio)
+            await asyncio.sleep(0.05)
+            adapter.render_audio.assert_not_awaited()
+        finally:
+            await dispatcher.stop()
+
+    async def test_failed_audio_records_cb_failure(self) -> None:
+        adapter = MagicMock()
+        adapter.render_audio = AsyncMock(side_effect=Exception("tts error"))
+        cb = CircuitBreaker(name="telegram", failure_threshold=5)
+        dispatcher = OutboundDispatcher(
+            platform_name="telegram", adapter=adapter, circuit=cb
+        )
+        await dispatcher.start()
+        try:
+            inbound = _make_msg()
+            audio = OutboundAudio(audio_bytes=b"fake-ogg", mime_type="audio/ogg")
+            dispatcher.enqueue_audio(inbound, audio)
+            await asyncio.sleep(0.05)
+            assert cb._failure_count >= 1
+        finally:
+            await dispatcher.stop()

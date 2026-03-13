@@ -1201,3 +1201,195 @@ class TestTelegramAuth:
         hub.inbound_bus.put.assert_called_once()
         _platform, msg = hub.inbound_bus.put.call_args[0]
         assert msg.trust_level == TrustLevel.PUBLIC
+
+
+# ---------------------------------------------------------------------------
+# T1.4 — Unit tests for _typing_loop
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_typing_loop_sends_chat_action_immediately() -> None:
+    """On entry, bot.send_chat_action called with (chat_id, "typing")."""
+
+    from lyra.adapters.telegram import _typing_loop  # ImportError expected in RED
+
+    bot = AsyncMock()
+    chat_id = 123
+
+    async with _typing_loop(bot, chat_id):
+        pass
+
+    bot.send_chat_action.assert_awaited_with(chat_id, "typing")
+
+
+@pytest.mark.asyncio
+async def test_typing_loop_refreshes_after_interval() -> None:
+    """After interval elapses, send_chat_action called again."""
+    import asyncio
+
+    from lyra.adapters.telegram import _typing_loop  # ImportError expected in RED
+
+    bot = AsyncMock()
+    chat_id = 456
+
+    async with _typing_loop(bot, chat_id, interval=0.05):
+        await asyncio.sleep(0.12)  # enough time for at least one refresh
+
+    # At least 2 calls: one on entry, at least one after interval
+    assert bot.send_chat_action.await_count >= 2
+
+
+@pytest.mark.asyncio
+async def test_typing_loop_cancels_background_task_on_exit() -> None:
+    """After context exits, no further send_chat_action calls are made."""
+    import asyncio
+
+    from lyra.adapters.telegram import _typing_loop  # ImportError expected in RED
+
+    bot = AsyncMock()
+    chat_id = 789
+
+    async with _typing_loop(bot, chat_id, interval=0.05):
+        pass  # exit immediately
+
+    count_at_exit = bot.send_chat_action.await_count
+
+    # Wait longer than interval to confirm no further calls after exit
+    await asyncio.sleep(0.12)
+
+    assert bot.send_chat_action.await_count == count_at_exit
+
+
+@pytest.mark.asyncio
+async def test_typing_loop_swallows_send_chat_action_exception() -> None:
+    """If send_chat_action raises, no exception propagates out of the context."""
+    from lyra.adapters.telegram import _typing_loop  # ImportError expected in RED
+
+    bot = AsyncMock()
+    bot.send_chat_action.side_effect = Exception("Telegram API error")
+    chat_id = 111
+
+    # Should not raise
+    async with _typing_loop(bot, chat_id, interval=0.05):
+        pass
+
+
+@pytest.mark.asyncio
+async def test_typing_loop_cancels_on_body_exception() -> None:
+    """If body raises, finally still cancels the loop cleanly."""
+    from lyra.adapters.telegram import _typing_loop  # ImportError expected in RED
+
+    bot = AsyncMock()
+    chat_id = 222
+
+    with pytest.raises(ValueError, match="body error"):
+        async with _typing_loop(bot, chat_id, interval=0.5):
+            raise ValueError("body error")
+
+    # No further calls should occur after the context exited (loop was cancelled)
+    import asyncio
+    count_after = bot.send_chat_action.await_count
+    await asyncio.sleep(0.1)
+    assert bot.send_chat_action.await_count == count_after
+
+
+# ---------------------------------------------------------------------------
+# T1.5 — Integration tests: send() and send_streaming() call send_chat_action
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_send_calls_send_chat_action_typing() -> None:
+    """adapter.send() calls bot.send_chat_action with (chat_id, "typing")."""
+    from lyra.adapters.telegram import TelegramAdapter
+    from lyra.core.message import InboundMessage, OutboundMessage
+
+    # Arrange
+    hub = MagicMock()
+    bot = AsyncMock()
+    sent_mock = MagicMock()
+    sent_mock.message_id = 1
+    bot.send_message = AsyncMock(return_value=sent_mock)
+
+    adapter = TelegramAdapter(
+        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+    )
+    adapter.bot = bot
+
+    original_msg = InboundMessage(
+        id="msg-typing-1",
+        platform="telegram",
+        bot_id="main",
+        scope_id="chat:123",
+        user_id="tg:user:42",
+        user_name="Alice",
+        is_mention=False,
+        text="hello",
+        text_raw="hello",
+        timestamp=datetime.now(timezone.utc),
+        platform_meta={
+            "chat_id": 123,
+            "topic_id": None,
+            "message_id": 99,
+            "is_group": False,
+        },
+        trust_level=TrustLevel.TRUSTED,
+    )
+    outbound = OutboundMessage.from_text("reply")
+
+    # Act
+    await adapter.send(original_msg, outbound)
+
+    # Assert
+    bot.send_chat_action.assert_awaited_with(123, "typing")
+
+
+@pytest.mark.asyncio
+async def test_send_streaming_calls_send_chat_action_typing() -> None:
+    """adapter.send_streaming() calls bot.send_chat_action with (chat_id, "typing")."""
+    from typing import AsyncIterator
+
+    from lyra.adapters.telegram import TelegramAdapter
+    from lyra.core.message import InboundMessage
+
+    # Arrange
+    hub = MagicMock()
+    bot = AsyncMock()
+    placeholder_mock = MagicMock()
+    placeholder_mock.message_id = 10
+    bot.send_message = AsyncMock(return_value=placeholder_mock)
+
+    adapter = TelegramAdapter(
+        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+    )
+    adapter.bot = bot
+
+    original_msg = InboundMessage(
+        id="msg-typing-stream-1",
+        platform="telegram",
+        bot_id="main",
+        scope_id="chat:456",
+        user_id="tg:user:99",
+        user_name="Bob",
+        is_mention=False,
+        text="stream this",
+        text_raw="stream this",
+        timestamp=datetime.now(timezone.utc),
+        platform_meta={
+            "chat_id": 456,
+            "topic_id": None,
+            "message_id": 10,
+            "is_group": False,
+        },
+        trust_level=TrustLevel.TRUSTED,
+    )
+
+    async def _chunks() -> AsyncIterator[str]:
+        yield "hello"
+
+    # Act
+    await adapter.send_streaming(original_msg, _chunks())
+
+    # Assert
+    bot.send_chat_action.assert_awaited_with(456, "typing")

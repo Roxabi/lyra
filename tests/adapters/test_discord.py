@@ -1778,3 +1778,94 @@ async def test_send_streaming_cancels_typing_task_at_start() -> None:
     await adapter.send_streaming(hub_msg, _chunks())
 
     assert 333 in cancelled_ids
+
+
+# ---------------------------------------------------------------------------
+# T2b — on_message does NOT cancel typing on successful queue (happy path)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_on_message_does_not_cancel_typing_when_message_queued() -> None:
+    """on_message() must NOT cancel the typing task when the hub accepts the message.
+
+    The typing task should remain alive until send() is called.  The old
+    ``finally: _cancel_typing`` bug cancelled typing immediately after the
+    synchronous hub.put(), so the indicator never showed during processing.
+    """
+    from lyra.adapters.discord import DiscordAdapter
+
+    hub = MagicMock()
+    hub.inbound_bus = MagicMock()
+    hub.inbound_bus.put = MagicMock()  # succeeds — no QueueFull
+
+    adapter = DiscordAdapter(
+        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+    )
+    adapter._bot_user = SimpleNamespace(id=999, bot=True)
+
+    mock_channel = AsyncMock()
+    mock_channel.trigger_typing = AsyncMock()
+    adapter.get_channel = MagicMock(return_value=mock_channel)
+
+    discord_msg = SimpleNamespace(
+        guild=SimpleNamespace(id=111),
+        channel=SimpleNamespace(id=333, send=AsyncMock()),
+        author=SimpleNamespace(id=42, name="Alice", display_name="Alice", bot=False),
+        content="hello",
+        created_at=datetime.now(timezone.utc),
+        id=555,
+        mentions=[],
+        reply=AsyncMock(),
+        attachments=[],
+    )
+
+    await adapter.on_message(discord_msg)
+
+    # Typing task must still be alive — send() (called later by hub) cancels it.
+    assert 333 in adapter._typing_tasks
+    assert not adapter._typing_tasks[333].done()
+
+    # Cleanup
+    import asyncio as _asyncio
+
+    adapter._cancel_typing(333)
+    await _asyncio.sleep(0)
+
+
+@pytest.mark.asyncio
+async def test_on_message_cancels_typing_when_message_dropped_queue_full() -> None:
+    """on_message() must cancel typing immediately when the bus is full (QueueFull)."""
+    import asyncio as _asyncio
+
+    from lyra.adapters.discord import DiscordAdapter
+
+    hub = MagicMock()
+    hub.inbound_bus = MagicMock()
+    hub.inbound_bus.put = MagicMock(side_effect=_asyncio.QueueFull())
+
+    adapter = DiscordAdapter(
+        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+    )
+    adapter._bot_user = SimpleNamespace(id=999, bot=True)
+
+    mock_channel = AsyncMock()
+    mock_channel.trigger_typing = AsyncMock()
+    adapter.get_channel = MagicMock(return_value=mock_channel)
+
+    discord_msg = SimpleNamespace(
+        guild=SimpleNamespace(id=111),
+        channel=SimpleNamespace(id=333, send=AsyncMock()),
+        author=SimpleNamespace(id=42, name="Alice", display_name="Alice", bot=False),
+        content="hello",
+        created_at=datetime.now(timezone.utc),
+        id=555,
+        mentions=[],
+        reply=AsyncMock(),
+        attachments=[],
+    )
+
+    await adapter.on_message(discord_msg)
+
+    # Typing task must be gone — no point keeping it when we already replied.
+    assert 333 not in adapter._typing_tasks

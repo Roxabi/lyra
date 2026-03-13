@@ -85,6 +85,9 @@ _AUDIO_EXTS = frozenset({"ogg", "mp3", "mp4", "mpeg", "opus", "wav", "flac", "aa
 #   and send_streaming() this happens at the top of each method, right before
 #   the response is written. This replaces the old `async with channel.typing()`
 #   wrapper which only covered the send phase, not the backend processing phase.
+#
+# Drop safety: if the message is dropped (circuit open or QueueFull), on_drop
+#   calls _cancel_typing() so the indicator doesn't spin indefinitely.
 # ---------------------------------------------------------------------------
 async def _discord_typing_worker(
     resolve_channel: Callable,
@@ -488,18 +491,15 @@ class DiscordAdapter(discord.Client):
                 await message.reply(text)
 
             self._start_typing(message.channel.id)
-            try:
-                await push_to_hub_guarded(
-                    inbound_bus=self._hub.inbound_audio_bus,
-                    platform=Platform.DISCORD,
-                    msg=hub_audio,
-                    circuit_registry=self._circuit_registry,
-                    on_drop=None,
-                    send_backpressure=_send_bp,
-                    get_msg=self._msg,
-                )
-            finally:
-                self._cancel_typing(message.channel.id)
+            await push_to_hub_guarded(
+                inbound_bus=self._hub.inbound_audio_bus,
+                platform=Platform.DISCORD,
+                msg=hub_audio,
+                circuit_registry=self._circuit_registry,
+                on_drop=lambda: self._cancel_typing(message.channel.id),
+                send_backpressure=_send_bp,
+                get_msg=self._msg,
+            )
             return  # audio messages handled separately; skip text path
 
         # Pre-detect mention (needed for auto-thread decision)
@@ -555,10 +555,11 @@ class DiscordAdapter(discord.Client):
             else resolved_channel_id
         )
         self._start_typing(send_to_id)
-        try:
-            await self._push_to_hub(hub_msg, source_message=message)
-        finally:
-            self._cancel_typing(send_to_id)
+        await self._push_to_hub(
+            hub_msg,
+            source_message=message,
+            on_drop=lambda: self._cancel_typing(send_to_id),
+        )
 
     async def _push_to_hub(
         self,

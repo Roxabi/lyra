@@ -5,20 +5,46 @@ import collections.abc
 import logging
 import time
 from collections import deque
-from typing import TYPE_CHECKING
-
-from lyra.errors import ProviderError
+from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from .agent import AgentBase
-    from .hub import Hub
 
-from .message import GENERIC_ERROR_REPLY, InboundMessage, Response
+from .message import GENERIC_ERROR_REPLY, InboundMessage, OutboundMessage, Response
 
 log = logging.getLogger(__name__)
 
 TURN_TIMEOUT_DEFAULT = 60.0
 SAFE_DISPATCH_TIMEOUT = 10.0
+
+
+@runtime_checkable
+class PoolContext(Protocol):
+    """Narrow interface that Pool needs from its owner (typically Hub).
+
+    Decouples Pool from the full Hub, enabling isolated testing and
+    reducing coupling (ADR-017, issue #204).
+    """
+
+    def get_agent(self, name: str) -> AgentBase | None: ...
+
+    def get_message(self, key: str) -> str | None: ...
+
+    async def dispatch_response(
+        self, msg: InboundMessage, response: Response | OutboundMessage
+    ) -> None: ...
+
+    async def dispatch_streaming(
+        self,
+        msg: InboundMessage,
+        chunks: AsyncIterator[str],
+        outbound: OutboundMessage | None = None,
+    ) -> None: ...
+
+    def record_circuit_success(self) -> None: ...
+
+    def record_circuit_failure(self, exc: BaseException) -> None: ...
 
 
 class Pool:
@@ -28,7 +54,7 @@ class Pool:
         self,
         pool_id: str,
         agent_name: str,
-        hub: "Hub",
+        ctx: PoolContext,
         turn_timeout: float = TURN_TIMEOUT_DEFAULT,
     ) -> None:
         self.pool_id = pool_id
@@ -39,7 +65,7 @@ class Pool:
         self.history: list[InboundMessage] = []
         self.sdk_history: deque[dict] = deque()
         self.max_sdk_history: int = 50
-        self._hub = hub
+        self._ctx = ctx
         self._turn_timeout = turn_timeout
         self._inbox: asyncio.Queue[InboundMessage] = asyncio.Queue()
         self._current_task: asyncio.Task | None = None
@@ -75,7 +101,8 @@ class Pool:
 
     def _msg(self, key: str, fallback: str) -> str:
         """Fetch a localised message, falling back to the given string."""
-        return self._hub._msg_manager.get(key) if self._hub._msg_manager else fallback
+        result = self._ctx.get_message(key)
+        return result if result is not None else fallback
 
     async def _process_loop(self) -> None:
         """Consume inbox sequentially until empty."""
@@ -85,7 +112,7 @@ class Pool:
                     msg = self._inbox.get_nowait()
                 except asyncio.QueueEmpty:
                     break
-                agent = self._hub.agent_registry.get(self.agent_name)
+                agent = self._ctx.get_agent(self.agent_name)
                 if agent is None:
                     log.error(
                         "no agent %r for pool %s — message dropped",
@@ -112,10 +139,7 @@ class Pool:
                     log.exception("unhandled error in pool %s: %s", self.pool_id, exc)
                     _reply = self._msg("generic", GENERIC_ERROR_REPLY)
                     await self._safe_dispatch(msg, Response(content=_reply))
-                    if self._hub.circuit_registry is not None:
-                        _cb = self._hub.circuit_registry.get("hub")
-                        if _cb is not None:
-                            _cb.record_failure()
+                    self._ctx.record_circuit_failure(exc)
         finally:
             self._current_task = None
 
@@ -132,41 +156,24 @@ class Pool:
             try:
                 result = await result  # type: ignore[assignment]  # coroutine → Response|AsyncIterator
             except Exception as exc:
-                self._record_cb_failure(exc)
+                self._ctx.record_circuit_failure(exc)
                 raise
 
         if isinstance(result, collections.abc.AsyncIterator):
             try:
-                await self._hub.dispatch_streaming(msg, result)
-                self._record_cb_success()
+                await self._ctx.dispatch_streaming(msg, result)
+                self._ctx.record_circuit_success()
             except BaseException as exc:
-                self._record_cb_failure(exc)
+                self._ctx.record_circuit_failure(exc)
                 raise
         else:
-            self._record_cb_success()
-            await self._hub.dispatch_response(msg, result)
-
-    def _record_cb_success(self) -> None:
-        if self._hub.circuit_registry is not None:
-            for name in ("anthropic", "hub"):
-                cb = self._hub.circuit_registry.get(name)
-                if cb is not None:
-                    cb.record_success()
-
-    def _record_cb_failure(self, exc: BaseException) -> None:
-        if self._hub.circuit_registry is not None:
-            _hub_cb = self._hub.circuit_registry.get("hub")
-            if _hub_cb is not None:
-                _hub_cb.record_failure()
-            if isinstance(exc, ProviderError):
-                _ant_cb = self._hub.circuit_registry.get("anthropic")
-                if _ant_cb is not None:
-                    _ant_cb.record_failure()
+            self._ctx.record_circuit_success()
+            await self._ctx.dispatch_response(msg, result)
 
     async def _safe_dispatch(self, msg: InboundMessage, response: Response) -> None:
         try:
             await asyncio.wait_for(
-                self._hub.dispatch_response(msg, response),
+                self._ctx.dispatch_response(msg, response),
                 timeout=SAFE_DISPATCH_TIMEOUT,
             )
         except Exception as exc:

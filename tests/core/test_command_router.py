@@ -263,7 +263,7 @@ class TestDispatchRoutesToPlugin:
         # Arrange
         router = make_router(tmp_path)
         msg = make_message(content="/echo hi")
-        pool = Pool(pool_id="test", agent_name="test_agent", hub=MagicMock())
+        pool = Pool(pool_id="test", agent_name="test_agent", ctx=MagicMock())
 
         # Act — call the real echo plugin handler
         response = await router.dispatch(msg, pool=pool)
@@ -277,7 +277,7 @@ class TestDispatchRoutesToPlugin:
         # Arrange
         router = make_router(tmp_path)
         msg = make_message(content="/echo foo bar baz")
-        pool = Pool(pool_id="test", agent_name="test_agent", hub=MagicMock())
+        pool = Pool(pool_id="test", agent_name="test_agent", ctx=MagicMock())
 
         # Act
         response = await router.dispatch(msg, pool=pool)

@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple, Protocol
 
+from lyra.errors import ProviderError
+
 from .agent import AgentBase
 from .circuit_breaker import CircuitRegistry
 from .inbound_audio_bus import InboundAudioBus
@@ -264,7 +266,7 @@ class Hub:
         """
         self._evict_stale_pools()
         if pool_id not in self.pools:
-            self.pools[pool_id] = Pool(pool_id=pool_id, agent_name=agent_name, hub=self)
+            self.pools[pool_id] = Pool(pool_id=pool_id, agent_name=agent_name, ctx=self)
         pool = self.pools[pool_id]
         pool._touch()
         return pool
@@ -290,6 +292,37 @@ class Hub:
         if stale:
             log.info("evicted %d stale pool(s)", len(stale))
             log.debug("evicted pool IDs: %s", stale)
+
+    # ------------------------------------------------------------------
+    # PoolContext protocol implementation
+    # ------------------------------------------------------------------
+
+    def get_agent(self, name: str) -> AgentBase | None:
+        """Return a registered agent by name, or None."""
+        return self.agent_registry.get(name)
+
+    def get_message(self, key: str) -> str | None:
+        """Return a localised message by key, or None if no manager."""
+        return self._msg_manager.get(key) if self._msg_manager else None
+
+    def record_circuit_success(self) -> None:
+        """Record a successful operation on all circuit breakers."""
+        if self.circuit_registry is not None:
+            for name in ("anthropic", "hub"):
+                cb = self.circuit_registry.get(name)
+                if cb is not None:
+                    cb.record_success()
+
+    def record_circuit_failure(self, exc: BaseException) -> None:
+        """Record a failure on the hub CB; also on anthropic CB if ProviderError."""
+        if self.circuit_registry is not None:
+            _hub_cb = self.circuit_registry.get("hub")
+            if _hub_cb is not None:
+                _hub_cb.record_failure()
+            if isinstance(exc, ProviderError):
+                _ant_cb = self.circuit_registry.get("anthropic")
+                if _ant_cb is not None:
+                    _ant_cb.record_failure()
 
     # ------------------------------------------------------------------
     # Rate limiting

@@ -119,7 +119,7 @@ class TestHealthUnauthenticated:
 
 class TestHealthEndpoint:
     @pytest.fixture(autouse=True)
-    def _set_health_secret(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def set_health_secret(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("LYRA_HEALTH_SECRET", HEALTH_SECRET)
 
     async def test_health_returns_json(self, hub: Hub) -> None:

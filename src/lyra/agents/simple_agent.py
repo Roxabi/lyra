@@ -12,7 +12,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from lyra.core.agent import Agent, AgentBase
+from lyra.core.agent import _AGENTS_DIR, Agent, AgentBase
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
@@ -21,6 +21,7 @@ from lyra.core.message import (
 )
 from lyra.core.messages import MessageManager
 from lyra.core.pool import Pool
+from lyra.core.runtime_config import RuntimeConfig, RuntimeConfigHolder
 from lyra.llm.base import LlmProvider
 from lyra.stt import is_whisper_noise
 
@@ -55,15 +56,32 @@ class SimpleAgent(AgentBase):
         admin_user_ids: set[str] | None = None,
         msg_manager: MessageManager | None = None,
         stt: STTService | None = None,
+        runtime_config: RuntimeConfig | None = None,
+        agents_dir: Path | None = None,
     ) -> None:
+        resolved_agents_dir = agents_dir or _AGENTS_DIR
+        rc = (
+            runtime_config
+            if runtime_config is not None
+            else RuntimeConfig.load(resolved_agents_dir / "lyra_runtime.toml")
+        )
+        self._runtime_config_holder = RuntimeConfigHolder(rc)
+        self._runtime_config_path = resolved_agents_dir / "lyra_runtime.toml"
         super().__init__(
             config,
+            agents_dir=agents_dir,
             circuit_registry=circuit_registry,
             admin_user_ids=admin_user_ids,
             msg_manager=msg_manager,
             stt=stt,
         )
         self._provider = provider
+
+    def _build_router_kwargs(self) -> dict[str, object]:
+        return {
+            "runtime_config_holder": self._runtime_config_holder,
+            "runtime_config_path": self._runtime_config_path,
+        }
 
     def _maybe_register_reset(self, pool: Pool) -> None:
         """Register a session reset callback on the pool the first time we process.

@@ -113,12 +113,14 @@ class Hub:
     # Per-user sliding window: drop messages beyond this rate.
     RATE_LIMIT = 20  # max messages per user per window
     RATE_WINDOW = 60  # window size in seconds
+    POOL_TTL: float = 3600.0  # evict idle pools after 1 hour (seconds)
 
     def __init__(  # noqa: PLR0913 — DI constructor, each arg is a required dependency
         self,
         bus_size: int = BUS_SIZE,
         rate_limit: int = RATE_LIMIT,
         rate_window: int = RATE_WINDOW,
+        pool_ttl: float = POOL_TTL,
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
         pairing_manager: PairingManager | None = None,
@@ -138,6 +140,8 @@ class Hub:
         self._stt: STTService | None = stt
         self._rate_limit = rate_limit
         self._rate_window = rate_window
+        self._pool_ttl = pool_ttl
+        self._last_eviction_check: float = 0.0
         # Sliding window: maps (platform.value, bot_id, user_id) → deque of timestamps.
         # Rate limiting is per-user (not per-scope) to prevent rate-limit bypass
         # by switching chats. Entries are removed when the deque empties.
@@ -253,10 +257,39 @@ class Hub:
     # ------------------------------------------------------------------
 
     def get_or_create_pool(self, pool_id: str, agent_name: str) -> Pool:
-        """Return existing pool or create a new one."""
+        """Return existing pool or create a new one.
+
+        Lazily evicts idle pools that have exceeded the TTL on each call
+        to bound memory growth.
+        """
+        self._evict_stale_pools()
         if pool_id not in self.pools:
             self.pools[pool_id] = Pool(pool_id=pool_id, agent_name=agent_name, hub=self)
-        return self.pools[pool_id]
+        pool = self.pools[pool_id]
+        pool._touch()
+        return pool
+
+    def _evict_stale_pools(self) -> None:
+        """Remove idle pools whose last activity exceeds the TTL.
+
+        Throttled: skips the scan if less than TTL/10 has elapsed since the
+        last check, turning the common case (nothing to evict) into a single
+        float comparison.
+        """
+        now = time.monotonic()
+        if (now - self._last_eviction_check) < self._pool_ttl / 10:
+            return
+        self._last_eviction_check = now
+        stale = [
+            pid
+            for pid, pool in self.pools.items()
+            if pool.is_idle and (now - pool.last_active) > self._pool_ttl
+        ]
+        for pid in stale:
+            del self.pools[pid]
+        if stale:
+            log.info("evicted %d stale pool(s)", len(stale))
+            log.debug("evicted pool IDs: %s", stale)
 
     # ------------------------------------------------------------------
     # Rate limiting

@@ -1368,3 +1368,99 @@ async def test_dispatch_response_accepts_legacy_response() -> None:
     # the adapter receives an OutboundMessage.  We assert the text is preserved.
     content = result.content if isinstance(result, Response) else result.content  # type: ignore[union-attr]
     assert "hi" in str(content)
+
+
+# ---------------------------------------------------------------------------
+# Pool TTL eviction (#205)
+# ---------------------------------------------------------------------------
+
+
+class TestPoolTTLEviction:
+    """Hub._evict_stale_pools removes idle pools exceeding the TTL."""
+
+    @staticmethod
+    def _force_eviction_eligible(hub: Hub) -> None:
+        """Reset throttle so the next get_or_create_pool triggers eviction."""
+        hub._last_eviction_check = 0.0
+
+    def test_stale_idle_pool_evicted(self) -> None:
+        """An idle pool past TTL is removed on next get_or_create_pool call."""
+        hub = Hub(pool_ttl=60)
+        pool = hub.get_or_create_pool("p1", "agent")
+        pool._last_active -= 120
+        self._force_eviction_eligible(hub)
+        hub.get_or_create_pool("p2", "agent")
+        assert "p1" not in hub.pools
+        assert "p2" in hub.pools
+
+    def test_active_pool_not_evicted(self) -> None:
+        """A pool with a running task is never evicted, even past TTL."""
+        hub = Hub(pool_ttl=60)
+        pool = hub.get_or_create_pool("p1", "agent")
+        pool._last_active -= 120
+        pool._current_task = MagicMock()
+        pool._current_task.done.return_value = False
+        self._force_eviction_eligible(hub)
+        hub.get_or_create_pool("p2", "agent")
+        assert "p1" in hub.pools  # not evicted — still active
+
+    def test_fresh_pool_not_evicted(self) -> None:
+        """A recently active idle pool is kept."""
+        hub = Hub(pool_ttl=60)
+        hub.get_or_create_pool("p1", "agent")
+        self._force_eviction_eligible(hub)
+        hub.get_or_create_pool("p2", "agent")
+        assert "p1" in hub.pools
+
+    def test_pool_ttl_default(self) -> None:
+        """Default POOL_TTL is 3600s and passes through to _pool_ttl."""
+        hub = Hub()
+        assert hub._pool_ttl == 3600.0
+
+    def test_done_task_pool_evicted(self) -> None:
+        """A pool whose task finished (done()=True) is evicted when stale."""
+        hub = Hub(pool_ttl=60)
+        pool = hub.get_or_create_pool("p1", "agent")
+        pool._last_active -= 120
+        pool._current_task = MagicMock()
+        pool._current_task.done.return_value = True
+        self._force_eviction_eligible(hub)
+        hub.get_or_create_pool("p2", "agent")
+        assert "p1" not in hub.pools  # evicted — task is done
+
+    def test_multiple_stale_pools_all_evicted(self) -> None:
+        """Multiple stale idle pools are evicted in a single pass."""
+        hub = Hub(pool_ttl=60)
+        p1 = hub.get_or_create_pool("p1", "agent")
+        hub.get_or_create_pool("p2", "agent")
+        p3 = hub.get_or_create_pool("p3", "agent")
+        p1._last_active -= 120
+        p3._last_active -= 120
+        self._force_eviction_eligible(hub)
+        hub.get_or_create_pool("p4", "agent")
+        assert "p1" not in hub.pools
+        assert "p3" not in hub.pools
+        assert "p2" in hub.pools
+        assert "p4" in hub.pools
+
+    def test_eviction_throttled(self) -> None:
+        """Eviction scan is throttled — skipped if less than TTL/10 elapsed."""
+        hub = Hub(pool_ttl=60)
+        pool = hub.get_or_create_pool("p1", "agent")
+        pool._last_active -= 120
+        # Don't reset throttle — second call is within TTL/10
+        hub.get_or_create_pool("p2", "agent")
+        assert "p1" in hub.pools  # not evicted — throttled
+
+    async def test_submit_refreshes_last_active(self) -> None:
+        """Pool.submit() updates last_active timestamp."""
+        import time
+
+        hub = Hub(pool_ttl=60)
+        pool = hub.get_or_create_pool("p1", "agent")
+        pool._last_active -= 50  # nearly stale
+        t0 = time.monotonic()
+        msg = make_inbound_message()
+        pool.submit(msg)
+        assert pool.last_active >= t0
+        pool.cancel()

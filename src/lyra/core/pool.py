@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import collections.abc
 import logging
+import time
 from collections import deque
 from typing import TYPE_CHECKING
 
@@ -42,14 +43,30 @@ class Pool:
         self._turn_timeout = turn_timeout
         self._inbox: asyncio.Queue[InboundMessage] = asyncio.Queue()
         self._current_task: asyncio.Task | None = None
+        self._last_active: float = time.monotonic()
+
+    @property
+    def last_active(self) -> float:
+        """Monotonic timestamp of last activity (read-only for external callers)."""
+        return self._last_active
+
+    def _touch(self) -> None:
+        """Refresh last_active to now."""
+        self._last_active = time.monotonic()
 
     def submit(self, msg: InboundMessage) -> None:
         """Enqueue msg; start processing task if not running."""
+        self._touch()
         self._inbox.put_nowait(msg)
         if self._current_task is None or self._current_task.done():
             self._current_task = asyncio.create_task(
                 self._process_loop(), name=f"pool:{self.pool_id}"
             )
+
+    @property
+    def is_idle(self) -> bool:
+        """Return True if the pool has no active processing task."""
+        return self._current_task is None or self._current_task.done()
 
     def cancel(self) -> None:
         """Cancel the current processing task (no-op if idle)."""

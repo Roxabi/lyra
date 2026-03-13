@@ -13,6 +13,7 @@ from lyra.core.message import (
     InboundMessage,
     OutboundAttachment,
     OutboundAudio,
+    OutboundAudioChunk,
     OutboundMessage,
 )
 from lyra.core.outbound_dispatcher import OutboundDispatcher
@@ -432,5 +433,97 @@ class TestOutboundDispatcherAttachment:
             await asyncio.sleep(0.05)
             assert platform_cb._failure_count >= 1
             assert ant_cb._failure_count >= 1
+        finally:
+            await dispatcher.stop()
+
+
+# ---------------------------------------------------------------------------
+# #182: OutboundDispatcher.enqueue_audio_stream() — CB ownership for streaming audio
+# ---------------------------------------------------------------------------
+
+
+class TestOutboundDispatcherAudioStream:
+    async def test_enqueue_audio_stream_delivers_via_adapter(self) -> None:
+        adapter = MagicMock()
+        adapter.render_audio_stream = AsyncMock()
+        dispatcher = OutboundDispatcher(platform_name="telegram", adapter=adapter)
+        await dispatcher.start()
+        try:
+            inbound = _make_msg()
+
+            async def chunks() -> AsyncIterator[OutboundAudioChunk]:
+                yield OutboundAudioChunk(
+                    chunk_bytes=b"data",
+                    session_id="s1",
+                    chunk_index=0,
+                    is_final=True,
+                )
+
+            dispatcher.enqueue_audio_stream(inbound, chunks())
+            await asyncio.sleep(0.05)
+            adapter.render_audio_stream.assert_awaited_once()
+            call_args = adapter.render_audio_stream.call_args[0]
+            assert call_args[1] is inbound
+
+        finally:
+            await dispatcher.stop()
+
+    async def test_open_circuit_drops_audio_stream_and_drains(self) -> None:
+        adapter = MagicMock()
+        adapter.render_audio_stream = AsyncMock()
+        cb = CircuitBreaker(name="telegram", failure_threshold=1)
+        cb.record_failure()
+        assert cb.is_open()
+        dispatcher = OutboundDispatcher(
+            platform_name="telegram", adapter=adapter, circuit=cb
+        )
+        await dispatcher.start()
+        try:
+            inbound = _make_msg()
+            drained: list[int] = []
+
+            async def chunks() -> AsyncIterator[OutboundAudioChunk]:
+                for i in range(3):
+                    drained.append(i)
+                    yield OutboundAudioChunk(
+                        chunk_bytes=b"x",
+                        session_id="s1",
+                        chunk_index=i,
+                        is_final=(i == 2),
+                    )
+
+            dispatcher.enqueue_audio_stream(inbound, chunks())
+            await asyncio.sleep(0.05)
+            adapter.render_audio_stream.assert_not_awaited()
+            assert len(drained) == 3  # iterator fully consumed
+
+        finally:
+            await dispatcher.stop()
+
+    async def test_failed_audio_stream_records_cb_failure(self) -> None:
+        adapter = MagicMock()
+        adapter.render_audio_stream = AsyncMock(
+            side_effect=Exception("stream error")
+        )
+        cb = CircuitBreaker(name="telegram", failure_threshold=5)
+        dispatcher = OutboundDispatcher(
+            platform_name="telegram", adapter=adapter, circuit=cb
+        )
+        await dispatcher.start()
+        try:
+            inbound = _make_msg()
+
+            async def chunks() -> AsyncIterator[OutboundAudioChunk]:
+                yield OutboundAudioChunk(
+                    chunk_bytes=b"data",
+                    session_id="s1",
+                    chunk_index=0,
+                    is_final=True,
+                )
+
+            dispatcher.enqueue_audio_stream(inbound, chunks())
+            await asyncio.sleep(0.05)
+            assert cb._failure_count >= 1
+
         finally:
             await dispatcher.stop()

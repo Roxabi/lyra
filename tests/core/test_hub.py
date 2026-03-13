@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -28,6 +29,8 @@ from lyra.core.message import (
     InboundAudio,
     InboundMessage,
     OutboundAttachment,
+    OutboundAudio,
+    OutboundAudioChunk,
     OutboundMessage,
     Platform,
 )
@@ -80,6 +83,11 @@ class MockAdapter:
         pass
 
     async def render_audio(self, msg: object, inbound: InboundMessage) -> None:
+        pass
+
+    async def render_audio_stream(
+        self, chunks: object, inbound: InboundMessage
+    ) -> None:
         pass
 
     async def render_attachment(self, msg: object, inbound: InboundMessage) -> None:
@@ -437,6 +445,111 @@ class TestDispatchAttachment:
         )
         await hub.dispatch_attachment(msg, attachment)
         assert hub._last_processed_at is not None
+
+
+# ---------------------------------------------------------------------------
+# #182 — dispatch_audio
+# ---------------------------------------------------------------------------
+
+
+class TestDispatchAudio:
+    async def test_routes_to_dispatcher(self) -> None:
+        hub = Hub()
+        adapter = MagicMock()
+        hub.register_adapter(Platform.TELEGRAM, "main", adapter)
+        dispatcher = MagicMock()
+        dispatcher.enqueue_audio = MagicMock()
+        hub.register_outbound_dispatcher(Platform.TELEGRAM, "main", dispatcher)
+        msg = make_inbound_message(platform="telegram", bot_id="main")
+        audio = OutboundAudio(audio_bytes=b"ogg", mime_type="audio/ogg")
+        await hub.dispatch_audio(msg, audio)
+        dispatcher.enqueue_audio.assert_called_once_with(msg, audio)
+
+    async def test_fallback_to_adapter(self) -> None:
+        from unittest.mock import AsyncMock
+
+        hub = Hub()
+        adapter = MagicMock()
+        adapter.render_audio = AsyncMock()
+        hub.register_adapter(Platform.TELEGRAM, "main", adapter)
+        msg = make_inbound_message(platform="telegram", bot_id="main")
+        audio = OutboundAudio(audio_bytes=b"ogg", mime_type="audio/ogg")
+        await hub.dispatch_audio(msg, audio)
+        adapter.render_audio.assert_awaited_once_with(audio, msg)
+
+    async def test_missing_adapter_raises(self) -> None:
+        hub = Hub()
+        msg = make_inbound_message(platform="telegram", bot_id="ghost")
+        audio = OutboundAudio(audio_bytes=b"ogg", mime_type="audio/ogg")
+        with pytest.raises(KeyError):
+            await hub.dispatch_audio(msg, audio)
+
+    async def test_updates_last_processed_at(self) -> None:
+        from unittest.mock import AsyncMock
+
+        hub = Hub()
+        adapter = MagicMock()
+        adapter.render_audio = AsyncMock()
+        hub.register_adapter(Platform.TELEGRAM, "main", adapter)
+        assert hub._last_processed_at is None
+        msg = make_inbound_message(platform="telegram", bot_id="main")
+        audio = OutboundAudio(audio_bytes=b"ogg", mime_type="audio/ogg")
+        await hub.dispatch_audio(msg, audio)
+        assert hub._last_processed_at is not None
+
+
+# ---------------------------------------------------------------------------
+# #182 — dispatch_audio_stream
+# ---------------------------------------------------------------------------
+
+
+class TestDispatchAudioStream:
+    async def test_routes_to_dispatcher(self) -> None:
+        hub = Hub()
+        adapter = MagicMock()
+        hub.register_adapter(Platform.TELEGRAM, "main", adapter)
+        dispatcher = MagicMock()
+        dispatcher.enqueue_audio_stream = MagicMock()
+        hub.register_outbound_dispatcher(Platform.TELEGRAM, "main", dispatcher)
+        msg = make_inbound_message(platform="telegram", bot_id="main")
+
+        async def chunks() -> AsyncIterator[OutboundAudioChunk]:
+            yield OutboundAudioChunk(
+                chunk_bytes=b"x", session_id="s1", chunk_index=0, is_final=True
+            )
+
+        c = chunks()
+        await hub.dispatch_audio_stream(msg, c)
+        dispatcher.enqueue_audio_stream.assert_called_once_with(msg, c)
+
+    async def test_fallback_to_adapter(self) -> None:
+        from unittest.mock import AsyncMock
+
+        hub = Hub()
+        adapter = MagicMock()
+        adapter.render_audio_stream = AsyncMock()
+        hub.register_adapter(Platform.TELEGRAM, "main", adapter)
+        msg = make_inbound_message(platform="telegram", bot_id="main")
+
+        async def chunks() -> AsyncIterator[OutboundAudioChunk]:
+            yield OutboundAudioChunk(
+                chunk_bytes=b"x", session_id="s1", chunk_index=0, is_final=True
+            )
+
+        await hub.dispatch_audio_stream(msg, chunks())
+        adapter.render_audio_stream.assert_awaited_once()
+
+    async def test_missing_adapter_raises(self) -> None:
+        hub = Hub()
+        msg = make_inbound_message(platform="telegram", bot_id="ghost")
+
+        async def chunks() -> AsyncIterator[OutboundAudioChunk]:
+            yield OutboundAudioChunk(
+                chunk_bytes=b"x", session_id="s1", chunk_index=0, is_final=True
+            )
+
+        with pytest.raises(KeyError):
+            await hub.dispatch_audio_stream(msg, chunks())
 
 
 # ---------------------------------------------------------------------------

@@ -24,6 +24,7 @@ from .message import (
     InboundMessage,
     OutboundAttachment,
     OutboundAudio,
+    OutboundAudioChunk,
     OutboundMessage,
     Platform,
     Response,
@@ -76,6 +77,18 @@ class ChannelAdapter(Protocol):
 
     async def render_audio(self, msg: OutboundAudio, inbound: InboundMessage) -> None:
         """Send an outbound audio envelope (voice note) to the channel."""
+        ...
+
+    async def render_audio_stream(
+        self,
+        chunks: AsyncIterator[OutboundAudioChunk],
+        inbound: InboundMessage,
+    ) -> None:
+        """Stream outbound audio chunks to the channel.
+
+        Adapters buffer chunks via ``buffer_audio_chunks()`` and send when
+        complete. Mirrors ``send_streaming()`` for text.
+        """
         ...
 
     async def render_attachment(
@@ -501,6 +514,56 @@ class Hub:
                 "Call register_adapter() before dispatching attachments."
             )
         await adapter.render_attachment(attachment, msg)
+        self._last_processed_at = time.monotonic()
+
+    async def dispatch_audio(
+        self, msg: InboundMessage, audio: OutboundAudio
+    ) -> None:
+        """Send an audio voice note back via the originating adapter.
+
+        Routes through the OutboundDispatcher when one is registered (fire-and-forget).
+        Falls back to a direct adapter call when no dispatcher is registered.
+        """
+        platform = Platform(msg.platform)
+        dispatcher = self.outbound_dispatchers.get((platform, msg.bot_id))
+        if dispatcher is not None:
+            dispatcher.enqueue_audio(msg, audio)
+            self._last_processed_at = time.monotonic()
+            return
+        # Fallback: direct adapter call (backward compat / no dispatcher registered)
+        adapter = self.adapter_registry.get((platform, msg.bot_id))
+        if adapter is None:
+            raise KeyError(
+                f"No adapter registered for ({msg.platform!r}, {msg.bot_id!r}). "
+                "Call register_adapter() before dispatching audio."
+            )
+        await adapter.render_audio(audio, msg)
+        self._last_processed_at = time.monotonic()
+
+    async def dispatch_audio_stream(
+        self,
+        msg: InboundMessage,
+        chunks: AsyncIterator[OutboundAudioChunk],
+    ) -> None:
+        """Stream audio chunks back via the originating adapter.
+
+        Routes through the OutboundDispatcher when one is registered (fire-and-forget).
+        Falls back to a direct adapter call when no dispatcher is registered.
+        """
+        platform = Platform(msg.platform)
+        dispatcher = self.outbound_dispatchers.get((platform, msg.bot_id))
+        if dispatcher is not None:
+            dispatcher.enqueue_audio_stream(msg, chunks)
+            self._last_processed_at = time.monotonic()
+            return
+        # Fallback: direct adapter call (backward compat / no dispatcher registered)
+        adapter = self.adapter_registry.get((platform, msg.bot_id))
+        if adapter is None:
+            raise KeyError(
+                f"No adapter registered for ({msg.platform!r}, {msg.bot_id!r}). "
+                "Call register_adapter() before dispatching audio stream."
+            )
+        await adapter.render_audio_stream(chunks, msg)
         self._last_processed_at = time.monotonic()
 
     # ------------------------------------------------------------------

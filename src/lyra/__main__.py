@@ -458,12 +458,7 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:  # noqa: C901, P
             try:
                 stt_cfg = load_stt_config()
                 stt_service = STTService(stt_cfg)
-                log.info(
-                    "STT enabled: model=%s device=%s compute_type=%s",
-                    stt_cfg.model_size,
-                    stt_cfg.device,
-                    stt_cfg.compute_type,
-                )
+                log.info("STT enabled: model=%s (via voiceCLI)", stt_cfg.model_size)
             except ValueError as exc:
                 raise SystemExit(f"Invalid STT configuration: {exc}") from exc
 

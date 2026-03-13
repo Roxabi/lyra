@@ -406,18 +406,13 @@ class TestOutboundDispatcherAttachment:
         finally:
             await dispatcher.stop()
 
-    async def test_anthropic_error_records_anthropic_cb(self) -> None:
-        from anthropic import APIError as AnthropicAPIError
-
+    async def test_provider_error_records_anthropic_cb(self) -> None:
         from lyra.core.circuit_breaker import CircuitRegistry
+        from lyra.errors import ProviderError
 
         adapter = MagicMock()
         adapter.render_attachment = AsyncMock(
-            side_effect=AnthropicAPIError(
-                message="rate limited",
-                request=MagicMock(),
-                body=None,
-            )
+            side_effect=ProviderError("rate limited")
         )
         platform_cb = CircuitBreaker(name="telegram", failure_threshold=5)
         registry = CircuitRegistry()

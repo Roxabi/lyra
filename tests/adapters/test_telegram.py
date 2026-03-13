@@ -1342,8 +1342,35 @@ async def test_send_calls_send_chat_action_typing() -> None:
     # Act
     await adapter.send(original_msg, outbound)
 
-    # Assert
+    # Assert — typing fired during send()
     bot.send_chat_action.assert_any_await(123, "typing")
+
+    # Assert — loop stopped after send() returned (SC3).
+    # Use a short-interval patch so any leak would fire within the sleep window.
+    import asyncio
+    import functools
+    from unittest.mock import patch
+
+    import lyra.adapters.telegram as _tel_mod
+
+    _real_loop = _tel_mod._typing_loop  # type: ignore[attr-defined]
+    short_loop = functools.partial(_real_loop, interval=0.05)
+    bot2 = AsyncMock()
+    sent_mock2 = MagicMock()
+    sent_mock2.message_id = 2
+    bot2.send_message = AsyncMock(return_value=sent_mock2)
+    adapter2 = TelegramAdapter(
+        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+    )
+    adapter2.bot = bot2
+    with patch.object(_tel_mod, "_typing_loop", short_loop):
+        await adapter2.send(original_msg, outbound)
+    count_after = bot2.send_chat_action.await_count
+    # 5× the 0.05s interval — loop would fire if not cancelled
+    await asyncio.sleep(0.25)
+    assert bot2.send_chat_action.await_count == count_after, (
+        "typing loop continued after send() returned"
+    )
 
 
 @pytest.mark.asyncio

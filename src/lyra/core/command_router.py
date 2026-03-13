@@ -56,6 +56,10 @@ class CommandRouter:
         "/config": CommandConfig(
             builtin=True, description="Show/set runtime config (admin-only)"
         ),
+        "/clear": CommandConfig(builtin=True, description="Clear conversation history"),
+        "/new": CommandConfig(
+            builtin=True, description="Start a new session (alias for /clear)"
+        ),
     }
 
     def __init__(  # noqa: PLR0913 — DI constructor, each arg is a required dependency
@@ -129,6 +133,8 @@ class CommandRouter:
             return Response(content="")
         if command_name == "/config":
             return self._cmd_config(msg, args)
+        if command_name in ("/clear", "/new"):
+            return self._cmd_clear(pool)
         builtin = self._builtins.get(command_name)
         if builtin and builtin.builtin:
             return Response(
@@ -316,3 +322,11 @@ class CommandRouter:
             return Response(content=str(exc))
         holder.value.save(runtime_file)
         return Response(content=f"Reset: {key} = (default). Saved.")
+
+    def _cmd_clear(self, pool: Pool | None) -> Response:
+        """Clear conversation history for the current scope."""
+        if pool is None:
+            return Response(content="No active session to clear.")
+        pool.sdk_history.clear()
+        pool.history.clear()
+        return Response(content="Conversation history cleared. Starting fresh.")

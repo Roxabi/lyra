@@ -110,3 +110,24 @@ class TestHubRunAudioDispatch:
 
         hub.dispatch_response.assert_not_awaited()
         hub.dispatch_audio.assert_not_awaited()
+
+    async def test_audio_dispatch_failure_does_not_block_text(self) -> None:
+        """Audio dispatch failure must not suppress the text reply.
+
+        When dispatch_audio() raises, dispatch_response() for content
+        must still be called (independent error handling after F2 fix).
+        """
+        hub = Hub()
+        msg = make_inbound_message(platform="telegram", bot_id="main")
+        audio = OutboundAudio(audio_bytes=b"ogg_data", mime_type="audio/ogg")
+        response = Response(content="hello", audio=audio)
+        pipeline_result = _make_pipeline_result(response)
+
+        hub.dispatch_audio = AsyncMock(side_effect=RuntimeError("send_voice failed"))
+        hub.dispatch_response = AsyncMock()
+
+        mock = AsyncMock(return_value=pipeline_result)
+        with patch.object(MessagePipeline, "process", new=mock):
+            await _run_hub_one_msg(hub, msg)
+
+        hub.dispatch_response.assert_awaited_once_with(msg, response)

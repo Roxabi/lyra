@@ -350,8 +350,7 @@ class TestTelegramAdapterRenderAudio:
 
     @pytest.mark.asyncio
     async def test_render_audio_mpeg_uses_send_audio(self) -> None:
-        """OutboundAudio(mime_type="audio/mpeg") calls send_audio(), not send_voice().
-        """
+        """OutboundAudio(mime_type="audio/mpeg") calls send_audio(), not send_voice()."""  # noqa: E501
         # Arrange
         from lyra.adapters.telegram import TelegramAdapter
 

@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 from lyra.core.agent import _AGENTS_DIR, Agent, AgentBase, ModelConfig
 from lyra.core.circuit_breaker import CircuitRegistry
-from lyra.core.message import InboundMessage, OutboundAudio, Response
+from lyra.core.message import InboundMessage, Response
 from lyra.core.messages import MessageManager
 from lyra.core.pool import Pool
 from lyra.core.runtime_config import RuntimeConfig, RuntimeConfigHolder
@@ -25,16 +25,6 @@ if TYPE_CHECKING:
     from lyra.tts import TTSService
 
 log = logging.getLogger(__name__)
-
-_VOICE_PREFIX = "/voice "
-
-
-def _parse_voice_command(content: str) -> str:
-    """Return the text after '/voice ' if present, else empty string."""
-    stripped = content.strip()
-    if stripped.lower().startswith(_VOICE_PREFIX):
-        return stripped[len(_VOICE_PREFIX):].strip()
-    return ""
 
 
 class AnthropicAgent(AgentBase):
@@ -87,20 +77,6 @@ class AnthropicAgent(AgentBase):
             "runtime_config_holder": self._runtime_config_holder,
             "runtime_config_path": self._runtime_config_path,
         }
-
-    async def _handle_voice_command(self, text: str) -> Response:
-        """Synthesize speech for the /voice command and return an audio Response."""
-        try:
-            result = await self._tts.synthesize(text)  # type: ignore[union-attr]
-            audio = OutboundAudio(
-                audio_bytes=result.audio_bytes,
-                mime_type=result.mime_type,
-                duration_ms=result.duration_ms,
-            )
-            return Response(content="", audio=audio)
-        except Exception:
-            log.error("TTS synthesis failed for /voice command", exc_info=True)
-            return Response(content="Sorry, I couldn't generate audio.")
 
     async def _process_llm(
         self, msg: InboundMessage, pool: Pool, *, on_intermediate=None
@@ -206,8 +182,7 @@ class AnthropicAgent(AgentBase):
         self, msg: InboundMessage, pool: Pool, *, on_intermediate=None
     ) -> Response:
         """Dispatch /voice commands or delegate to the LLM pipeline."""
-        # /voice pre-router — synthesize speech before CommandRouter dispatch
-        _voice_text = _parse_voice_command(msg.text) if self._tts else ""
-        if _voice_text:
-            return await self._handle_voice_command(_voice_text)
+        r = await self._handle_voice_command(msg)
+        if r is not None:
+            return r
         return await self._process_llm(msg, pool, on_intermediate=on_intermediate)

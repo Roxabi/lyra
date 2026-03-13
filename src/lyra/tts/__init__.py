@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 import tempfile
@@ -22,8 +21,8 @@ class SynthesisResult:
 
 @dataclass
 class TTSConfig:
-    engine: str | None = None    # TTS_ENGINE env var
-    voice: str | None = None     # TTS_VOICE env var
+    engine: str | None = None  # TTS_ENGINE env var
+    voice: str | None = None  # TTS_VOICE env var
     language: str | None = None  # TTS_LANGUAGE env var
 
 
@@ -58,18 +57,14 @@ class TTSService:
         )
 
     async def synthesize(self, text: str) -> SynthesisResult:
-        return await asyncio.to_thread(self._synthesize_sync, text)
-
-    def _synthesize_sync(self, text: str) -> SynthesisResult:
-        # voicecli handles daemon-first / library-fallback internally
-        from voicecli import generate
+        from voicecli import generate_async
 
         tmp_fd, tmp_str = tempfile.mkstemp(suffix=".wav")
         os.close(tmp_fd)
         tmp_path = Path(tmp_str)
         result = None
         try:
-            result = generate(
+            result = await generate_async(
                 text,
                 output=tmp_path,
                 engine=self._engine,
@@ -98,8 +93,6 @@ class TTSService:
             raise
         finally:
             tmp_path.unlink(missing_ok=True)
-            # Also clean up wav_path if different from tmp_path
-            # (voicecli may write to tmp_path directly or return a different path)
             try:
                 if result is not None and result.wav_path != tmp_path:
                     result.wav_path.unlink(missing_ok=True)

@@ -628,6 +628,37 @@ class AgentBase(ABC):
         """Hook for subclasses to inject extra CommandRouter constructor kwargs."""
         return {}
 
+    async def _handle_voice_command(self, msg: InboundMessage) -> "Response | None":
+        """Handle a /voice command if TTS is configured. Returns None to fall through.
+
+        Pre-router called at the top of each agent's process(). If the message
+        starts with "/voice <text>" and self._tts is set, synthesizes speech and
+        returns a Response with audio set. Returns None for all other messages
+        (text or bare /voice with no args) so normal processing continues.
+        """
+        if self._tts is None:
+            return None
+        stripped = msg.text.strip()
+        _VOICE_PREFIX = "/voice "
+        if not stripped.lower().startswith(_VOICE_PREFIX):
+            return None
+        text = stripped[len(_VOICE_PREFIX) :].strip()
+        if not text:
+            return None
+        from .message import OutboundAudio, Response
+
+        try:
+            result = await self._tts.synthesize(text)
+            audio = OutboundAudio(
+                audio_bytes=result.audio_bytes,
+                mime_type=result.mime_type,
+                duration_ms=result.duration_ms,
+            )
+            return Response(content="", audio=audio)
+        except Exception:
+            log.error("TTS synthesis failed for /voice command", exc_info=True)
+            return Response(content="Sorry, I couldn't generate audio.")
+
     def is_backend_alive(self, _pool_id: str) -> bool:
         """Return True if the backend process for this pool is alive.
 

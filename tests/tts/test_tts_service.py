@@ -6,7 +6,7 @@ import os
 import tempfile
 import wave
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -89,11 +89,11 @@ async def test_synthesize_returns_synthesis_result():
     _write_minimal_wav(wav_path, duration_ms=500)
     expected_bytes = Path(wav_path).read_bytes()
 
-    def fake_generate(text, **kwargs):
+    async def fake_generate(text, **kwargs):
         _write_minimal_wav(wav_path, duration_ms=500)
         return _make_generate_result(wav_path)
 
-    with patch("voicecli.generate", side_effect=fake_generate):
+    with patch("voicecli.generate_async", new=AsyncMock(side_effect=fake_generate)):
         result = await svc.synthesize("Hello world")
 
     assert isinstance(result, SynthesisResult)
@@ -113,11 +113,11 @@ async def test_synthesize_cleans_up_temp_file_on_success():
 
     _write_minimal_wav(wav_path, duration_ms=200)
 
-    def fake_generate(text, **kwargs):
+    async def fake_generate(text, **kwargs):
         _write_minimal_wav(wav_path, duration_ms=200)
         return _make_generate_result(wav_path)
 
-    with patch("voicecli.generate", side_effect=fake_generate):
+    with patch("voicecli.generate_async", new=AsyncMock(side_effect=fake_generate)):
         await svc.synthesize("Cleanup test")
 
     assert not os.path.exists(wav_path), "WAV file must be deleted after synthesis"
@@ -136,11 +136,12 @@ async def test_synthesize_cleans_up_temp_file_on_failure():
         captured_path.append(path)
         return fd, path
 
-    def fake_generate_error(text, **kwargs):
+    async def fake_generate_error(text, **kwargs):
         raise RuntimeError("TTS backend failed")
 
+    mock_gen = AsyncMock(side_effect=fake_generate_error)
     with patch("tempfile.mkstemp", side_effect=spy_mkstemp):
-        with patch("voicecli.generate", side_effect=fake_generate_error):
+        with patch("voicecli.generate_async", new=mock_gen):
             with pytest.raises(RuntimeError, match="TTS backend failed"):
                 await svc.synthesize("Failure cleanup test")
 

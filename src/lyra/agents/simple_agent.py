@@ -17,7 +17,6 @@ from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
     InboundMessage,
-    OutboundAudio,
     Response,
 )
 from lyra.core.messages import MessageManager
@@ -120,21 +119,10 @@ class SimpleAgent(AgentBase):
         self._maybe_reload()
         self._maybe_register_reset(pool)
 
-        # /voice pre-router — synthesize speech before CommandRouter dispatch
-        if self._tts is not None and msg.text.strip().lower().startswith("/voice "):
-            text = msg.text.strip()[len("/voice "):].strip()
-            if text:
-                try:
-                    result = await self._tts.synthesize(text)
-                    audio = OutboundAudio(
-                        audio_bytes=result.audio_bytes,
-                        mime_type=result.mime_type,
-                        duration_ms=result.duration_ms,
-                    )
-                    return Response(content="", audio=audio)
-                except Exception:
-                    log.error("TTS synthesis failed for /voice command", exc_info=True)
-                    return Response(content="Sorry, I couldn't generate audio.")
+        # /voice pre-router — handled by AgentBase
+        r = await self._handle_voice_command(msg)
+        if r is not None:
+            return r
 
         # Handle audio messages — attachments with type="audio"
         audio_attachment = next((a for a in msg.attachments if a.type == "audio"), None)

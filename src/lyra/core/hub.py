@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import enum
 import logging
 import os
 import tempfile
@@ -106,6 +107,26 @@ class RoutingKey(NamedTuple):
 class Binding:
     agent_name: str
     pool_id: str
+
+
+class Action(enum.Enum):
+    """Terminal action for the message pipeline."""
+
+    DROP = "drop"
+    COMMAND_HANDLED = "command_handled"
+    SUBMIT_TO_POOL = "submit_to_pool"
+
+
+@dataclass(frozen=True)
+class PipelineResult:
+    """Immutable result from MessagePipeline.process()."""
+
+    action: Action
+    response: Response | None = None
+    pool: Pool | None = None
+
+
+_DROP = PipelineResult(action=Action.DROP)
 
 
 class Hub:
@@ -670,72 +691,194 @@ class Hub:
             log.exception("dispatch_response failed for fast-fail reply: %s", exc)
         return True
 
-    async def run(self) -> None:  # noqa: C901 — bus consumer: each message type dispatches independently
+    async def run(self) -> None:
         """Hub bus consumer loop. Runs until cancelled."""
+        pipeline = MessagePipeline(self)
         while True:
             msg = await self.inbound_bus.get()
             try:
-                scope = msg.scope_id
-                try:
-                    platform_enum = Platform(msg.platform)
-                except ValueError:
-                    log.warning(
-                        "unknown platform %r in msg id=%s — message dropped",
-                        msg.platform,
-                        msg.id,
-                    )
-                    continue
-                key = RoutingKey(platform_enum, msg.bot_id, scope)
-                if self._is_rate_limited(msg):
-                    log.warning("rate limit exceeded for %s — message dropped", key)
-                    continue
-                binding = self.resolve_binding(msg)
-                if binding is None:
-                    log.warning("unmatched routing key %s — message dropped", key)
-                    continue
-                agent = self.agent_registry.get(binding.agent_name)
-                if agent is None:
-                    log.warning(
-                        "no agent registered for %r (routing %s) — message dropped",
-                        binding.agent_name,
-                        key,
-                    )
-                    continue
-                pool = self.get_or_create_pool(binding.pool_id, binding.agent_name)
-                router = getattr(agent, "command_router", None)
-
-                if await self._pairing_gate_drop(msg, router, key):
-                    continue
-
-                if router and router.is_command(msg):
+                result = await pipeline.process(msg)
+                if (
+                    result.action == Action.COMMAND_HANDLED
+                    and result.response
+                    and result.response.content
+                ):
                     try:
-                        response = await router.dispatch(msg, pool)
-                    except Exception as exc:
-                        log.exception("command dispatch failed for %s: %s", key, exc)
-                        _content = (
-                            self._msg_manager.get("generic")
-                            if self._msg_manager
-                            else GENERIC_ERROR_REPLY
+                        await self.dispatch_response(
+                            msg, result.response,
                         )
-                        response = Response(content=_content)
-                    try:
-                        if response.content:
-                            await self.dispatch_response(msg, response)
                     except Exception as exc:
-                        log.exception("dispatch_response() failed for %s: %s", key, exc)
-                    continue
-                if (Platform(msg.platform), msg.bot_id) not in self.adapter_registry:
-                    log.error(
-                        "no adapter registered for (%s, %s) — response dropped",
-                        msg.platform,
-                        msg.bot_id,
-                    )
-                    continue
-                if await self._circuit_breaker_drop(msg):
-                    continue
-                pool.submit(msg)
+                        log.exception(
+                            "dispatch_response() failed: %s", exc,
+                        )
+                elif (
+                    result.action == Action.SUBMIT_TO_POOL
+                    and result.pool
+                ):
+                    result.pool.submit(msg)
             finally:
                 self.inbound_bus.task_done()
+
+
+class MessagePipeline:
+    """Fail-fast message routing pipeline extracted from Hub.run().
+
+    Each guard stage returns ``PipelineResult`` to stop processing or
+    ``None`` to continue to the next stage. Terminal stages always
+    return a ``PipelineResult``.
+    """
+
+    def __init__(self, hub: Hub) -> None:
+        self._hub = hub
+
+    async def process(
+        self, msg: InboundMessage,
+    ) -> PipelineResult:
+        """Route *msg* through the pipeline stages."""
+        result = self._validate_platform(msg)
+        if result is not None:
+            return result
+
+        key = RoutingKey(
+            Platform(msg.platform), msg.bot_id, msg.scope_id,
+        )
+
+        result = self._check_rate_limit(msg, key)
+        if result is not None:
+            return result
+
+        result = self._resolve_binding(msg, key)
+        if result is not None:
+            return result
+        binding = self._hub.resolve_binding(msg)
+        assert binding is not None  # guarded above
+
+        result = self._lookup_agent(binding, key)
+        if result is not None:
+            return result
+        agent = self._hub.agent_registry[binding.agent_name]
+
+        pool = self._hub.get_or_create_pool(
+            binding.pool_id, binding.agent_name,
+        )
+        router = getattr(agent, "command_router", None)
+
+        result = await self._pairing_gate(msg, router, key)
+        if result is not None:
+            return result
+
+        if router and router.is_command(msg):
+            return await self._dispatch_command(
+                msg, router, pool, key,
+            )
+
+        return await self._submit_to_pool(msg, pool)
+
+    # -- guard stages (return None to continue) ---
+
+    def _validate_platform(
+        self, msg: InboundMessage,
+    ) -> PipelineResult | None:
+        try:
+            Platform(msg.platform)
+        except ValueError:
+            log.warning(
+                "unknown platform %r in msg id=%s — message dropped",
+                msg.platform,
+                msg.id,
+            )
+            return _DROP
+        return None
+
+    def _check_rate_limit(
+        self, msg: InboundMessage, key: RoutingKey,
+    ) -> PipelineResult | None:
+        if self._hub._is_rate_limited(msg):
+            log.warning(
+                "rate limit exceeded for %s — message dropped",
+                key,
+            )
+            return _DROP
+        return None
+
+    def _resolve_binding(
+        self, msg: InboundMessage, key: RoutingKey,
+    ) -> PipelineResult | None:
+        binding = self._hub.resolve_binding(msg)
+        if binding is None:
+            log.warning(
+                "unmatched routing key %s — message dropped", key,
+            )
+            return _DROP
+        return None
+
+    def _lookup_agent(
+        self, binding: Binding, key: RoutingKey,
+    ) -> PipelineResult | None:
+        agent = self._hub.agent_registry.get(binding.agent_name)
+        if agent is None:
+            log.warning(
+                "no agent registered for %r (routing %s)"
+                " — message dropped",
+                binding.agent_name,
+                key,
+            )
+            return _DROP
+        return None
+
+    async def _pairing_gate(
+        self,
+        msg: InboundMessage,
+        router: Any,
+        key: RoutingKey,
+    ) -> PipelineResult | None:
+        if await self._hub._pairing_gate_drop(msg, router, key):
+            return _DROP
+        return None
+
+    # -- terminal stages ---
+
+    async def _dispatch_command(
+        self,
+        msg: InboundMessage,
+        router: Any,
+        pool: Pool,
+        key: RoutingKey,
+    ) -> PipelineResult:
+        try:
+            response = await router.dispatch(msg, pool)
+        except Exception as exc:
+            log.exception(
+                "command dispatch failed for %s: %s", key, exc,
+            )
+            _content = (
+                self._hub._msg_manager.get("generic")
+                if self._hub._msg_manager
+                else GENERIC_ERROR_REPLY
+            )
+            response = Response(content=_content)
+        return PipelineResult(
+            action=Action.COMMAND_HANDLED, response=response,
+        )
+
+    async def _submit_to_pool(
+        self, msg: InboundMessage, pool: Pool,
+    ) -> PipelineResult:
+        if (
+            Platform(msg.platform), msg.bot_id
+        ) not in self._hub.adapter_registry:
+            log.error(
+                "no adapter registered for (%s, %s)"
+                " — response dropped",
+                msg.platform,
+                msg.bot_id,
+            )
+            return _DROP
+        if await self._hub._circuit_breaker_drop(msg):
+            return _DROP
+        return PipelineResult(
+            action=Action.SUBMIT_TO_POOL, pool=pool,
+        )
 
 
 # ---------------------------------------------------------------------------

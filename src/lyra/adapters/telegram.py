@@ -33,6 +33,7 @@ from lyra.core.message import (
     InboundMessage,
     OutboundAttachment,
     OutboundAudio,
+    OutboundAudioChunk,
     OutboundMessage,
     Platform,
 )
@@ -860,3 +861,55 @@ class TelegramAdapter:
             # "document" and "file" both use send_document
             kwargs["document"] = buf
             await self.bot.send_document(**kwargs)
+
+    async def render_audio_stream(
+        self,
+        chunks: AsyncIterator[OutboundAudioChunk],
+        inbound: InboundMessage,
+    ) -> None:
+        """Buffer streamed audio chunks and send as a single Telegram voice note."""
+        if inbound.platform != Platform.TELEGRAM.value:
+            log.error(
+                "render_audio_stream() called with non-telegram message id=%s",
+                inbound.id,
+            )
+            return
+
+        chat_id: int | None = inbound.platform_meta.get("chat_id")
+        if chat_id is None:
+            log.error(
+                "render_audio_stream: platform_meta missing 'chat_id' for msg id=%s",
+                inbound.id,
+            )
+            return
+
+        buf = BytesIO()
+        caption: str | None = None
+        reply_to_id_raw: str | None = None
+        mime_type = "audio/ogg"
+
+        try:
+            async for chunk in chunks:
+                buf.write(chunk.chunk_bytes)
+                caption = chunk.caption
+                reply_to_id_raw = chunk.reply_to_id
+                mime_type = chunk.mime_type
+                if chunk.is_final:
+                    break
+        except Exception:
+            log.warning(
+                "Audio stream interrupted, sending partial buffer for msg id=%s",
+                inbound.id,
+            )
+
+        if buf.tell() == 0:
+            return
+
+        buf.seek(0)
+        assembled = OutboundAudio(
+            audio_bytes=buf.read(),
+            mime_type=mime_type,
+            caption=caption,
+            reply_to_id=reply_to_id_raw,
+        )
+        await self.render_audio(assembled, inbound)

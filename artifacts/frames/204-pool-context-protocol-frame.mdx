@@ -1,0 +1,41 @@
+---
+title: "Extract PoolContext protocol to decouple Pool → Hub"
+issue: 204
+status: approved
+tier: F-lite
+date: 2026-03-13
+---
+
+## Problem
+
+`Pool` (`src/lyra/core/pool.py`) holds a direct reference to `Hub` and reaches into its private/internal attributes: `_msg_manager`, `agent_registry`, `circuit_registry`, plus calling `dispatch_response()` and `dispatch_streaming()`. This creates tight coupling — Pool cannot be tested, reasoned about, or reused without a full Hub instance.
+
+This is Hotspot #1 from ADR-017 (Coupling Hotspots) and item #2 in the codebase audit (#198). Severity is high because every change to Hub internals risks breaking Pool, and Pool cannot be unit-tested with a lightweight fake.
+
+## Who
+
+- **Primary:** Maintainers working on Hub or Pool — currently forced to understand both when changing either.
+- **Secondary:** Test authors — currently need a full Hub to test Pool behavior.
+
+## Constraints
+
+- Must not change runtime behavior — pure refactor, all existing tests must pass.
+- Blocker #205 (Hub TTL eviction) is already closed — clear to land.
+- Both Pool and Hub live in `src/lyra/core/` — single domain.
+- Pool accesses 5 Hub surface points: `_msg_manager`, `agent_registry`, `circuit_registry`, `dispatch_response()`, `dispatch_streaming()`.
+
+## Out of Scope
+
+- Refactoring Hub itself (only the Pool→Hub interface changes).
+- Decoupling other Hub consumers (adapters, buses).
+- Adding new Pool functionality.
+
+## Complexity
+
+**Tier: F-lite** — Single domain refactor with a clear fix approach (extract Protocol, inject via constructor). No architectural unknowns, no new patterns needed.
+
+Signals:
+- Clear scope: 2 files primarily affected (pool.py, hub.py), plus test updates
+- Single domain: core module only
+- Known pattern: Python `Protocol` class, already used for `ChannelAdapter` in hub.py
+- Fix approach specified in issue and ADR-017

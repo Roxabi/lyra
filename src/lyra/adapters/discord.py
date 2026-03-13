@@ -208,7 +208,7 @@ class DiscordAdapter(discord.Client):
             scope_id=scope_id,
             thread_id=str(raw.channel.id) if is_thread else None,
             reply_to_message_id=str(raw.id),
-            platform_meta=platform_meta,
+            platform_meta=dict(platform_meta),
         )
         return InboundAudio(
             id=f"discord:{user_id}:{int(timestamp.timestamp())}:{raw.id}",
@@ -307,7 +307,7 @@ class DiscordAdapter(discord.Client):
                 str(resolved_thread_id) if resolved_thread_id is not None else None
             ),
             reply_to_message_id=str(raw.id),
-            platform_meta=platform_meta,
+            platform_meta=dict(platform_meta),
         )
         return InboundMessage(
             id=(f"discord:{user_id}:{int(timestamp.timestamp())}:{raw.id}"),

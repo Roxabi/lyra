@@ -165,12 +165,20 @@ class OutboundDispatcher:
                 else:
                     _, msg, payload = item
                     outbound = None
-                # Verify routing context matches this dispatcher
-                _routing = getattr(payload, "routing", None) if kind == "send" else (
-                    outbound.routing if outbound is not None else msg.routing
-                )
-                if _routing is None:
+                # Verify routing context matches this dispatcher.
+                # "send": check payload (OutboundMessage) routing.
+                # "streaming": check outbound routing if provided.
+                # "audio"/"attachment": always use msg (InboundMessage) routing.
+                if kind == "send":
+                    _routing = getattr(payload, "routing", None) or msg.routing
+                elif kind in ("audio", "attachment"):
                     _routing = msg.routing
+                else:
+                    _routing = (
+                        outbound.routing
+                        if outbound is not None
+                        else msg.routing
+                    )
                 if not self._verify_routing(_routing):
                     if kind == "streaming":
                         async for _ in payload:

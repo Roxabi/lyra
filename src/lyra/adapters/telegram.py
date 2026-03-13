@@ -340,7 +340,7 @@ class TelegramAdapter:
             scope_id=scope_id,
             thread_id=str(topic_id) if topic_id is not None else None,
             reply_to_message_id=str(message_id) if message_id is not None else None,
-            platform_meta=platform_meta,
+            platform_meta=dict(platform_meta),
         )
         return InboundMessage(
             id=(
@@ -410,7 +410,7 @@ class TelegramAdapter:
             scope_id=scope_id,
             thread_id=str(topic_id) if topic_id is not None else None,
             reply_to_message_id=str(message_id) if message_id is not None else None,
-            platform_meta=platform_meta,
+            platform_meta=dict(platform_meta),
         )
         return InboundAudio(
             id=(f"telegram:{user_id}:{int(timestamp.timestamp())}:{file_id or ''}"),

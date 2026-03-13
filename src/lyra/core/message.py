@@ -30,6 +30,8 @@ class RoutingContext:
     bot_id: str  # bot identifier ("main")
     scope_id: str  # canonical routing scope (chat:123, channel:456, thread:789)
     thread_id: str | None = None
+    # The inbound message ID to reply to. Reserved for future outbound
+    # reply threading; not yet read by adapters (they use platform_meta).
     reply_to_message_id: str | None = None
     platform_meta: dict = field(default_factory=dict)
 

@@ -4,12 +4,14 @@ Covers:
 - RoutingContext creation and immutability
 - Population in TelegramAdapter.normalize() and DiscordAdapter.normalize()
 - Propagation from InboundMessage → Response → OutboundMessage
-- Verification in OutboundDispatcher
+- Verification in OutboundDispatcher (direct + integration)
+- Hub dispatch propagation (response + streaming)
+- InboundAudio routing
 """
 
 from __future__ import annotations
 
-import asyncio
+from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -18,6 +20,7 @@ import pytest
 
 from lyra.core.auth import TrustLevel
 from lyra.core.message import (
+    InboundAudio,
     InboundMessage,
     OutboundMessage,
     Platform,
@@ -70,8 +73,11 @@ class TestRoutingContext:
 
 
 # ---------------------------------------------------------------------------
-# InboundMessage carries routing
+# Helpers
 # ---------------------------------------------------------------------------
+
+_RC_TG = RoutingContext(platform="telegram", bot_id="main", scope_id="chat:123")
+_RC_DC = RoutingContext(platform="discord", bot_id="main", scope_id="channel:456")
 
 
 def _make_inbound(routing: RoutingContext | None = None) -> InboundMessage:
@@ -92,15 +98,59 @@ def _make_inbound(routing: RoutingContext | None = None) -> InboundMessage:
     )
 
 
+# ---------------------------------------------------------------------------
+# InboundMessage carries routing
+# ---------------------------------------------------------------------------
+
+
 class TestInboundMessageRouting:
     def test_default_none(self) -> None:
         msg = _make_inbound()
         assert msg.routing is None
 
     def test_with_routing(self) -> None:
-        rc = RoutingContext(platform="telegram", bot_id="main", scope_id="chat:123")
-        msg = _make_inbound(routing=rc)
-        assert msg.routing is rc
+        msg = _make_inbound(routing=_RC_TG)
+        assert msg.routing is _RC_TG
+
+
+# ---------------------------------------------------------------------------
+# InboundAudio carries routing
+# ---------------------------------------------------------------------------
+
+
+class TestInboundAudioRouting:
+    def test_default_none(self) -> None:
+        audio = InboundAudio(
+            id="a-1",
+            platform="telegram",
+            bot_id="main",
+            scope_id="chat:123",
+            user_id="tg:user:42",
+            audio_bytes=b"fake",
+            mime_type="audio/ogg",
+            duration_ms=None,
+            file_id=None,
+            timestamp=datetime.now(timezone.utc),
+            trust_level=TrustLevel.TRUSTED,
+        )
+        assert audio.routing is None
+
+    def test_with_routing(self) -> None:
+        audio = InboundAudio(
+            id="a-1",
+            platform="telegram",
+            bot_id="main",
+            scope_id="chat:123",
+            user_id="tg:user:42",
+            audio_bytes=b"fake",
+            mime_type="audio/ogg",
+            duration_ms=None,
+            file_id=None,
+            timestamp=datetime.now(timezone.utc),
+            trust_level=TrustLevel.TRUSTED,
+            routing=_RC_TG,
+        )
+        assert audio.routing is _RC_TG
 
 
 # ---------------------------------------------------------------------------
@@ -114,10 +164,9 @@ class TestResponseRoutingPropagation:
         assert r.routing is None
 
     def test_to_outbound_propagates_routing(self) -> None:
-        rc = RoutingContext(platform="telegram", bot_id="main", scope_id="chat:123")
-        r = Response(content="hi", routing=rc)
+        r = Response(content="hi", routing=_RC_TG)
         outbound = r.to_outbound()
-        assert outbound.routing is rc
+        assert outbound.routing is _RC_TG
 
     def test_to_outbound_none_routing(self) -> None:
         r = Response(content="hi")
@@ -136,10 +185,9 @@ class TestOutboundMessageRouting:
         assert om.routing is None
 
     def test_assignable(self) -> None:
-        rc = RoutingContext(platform="discord", bot_id="main", scope_id="channel:456")
         om = OutboundMessage.from_text("hi")
-        om.routing = rc
-        assert om.routing is rc
+        om.routing = _RC_DC
+        assert om.routing is _RC_DC
 
 
 # ---------------------------------------------------------------------------
@@ -215,6 +263,36 @@ class TestTelegramNormalizeRouting:
         assert msg.routing.scope_id == "chat:123:topic:456"
         assert msg.routing.thread_id == "456"
 
+    def test_routing_platform_meta_is_copy(self) -> None:
+        """RoutingContext.platform_meta must not alias InboundMessage.platform_meta."""
+        from lyra.adapters.telegram import _ALLOW_ALL, TelegramAdapter
+
+        hub = MagicMock()
+        adapter = TelegramAdapter(
+            bot_id="main", token="fake", hub=hub, auth=_ALLOW_ALL
+        )
+
+        raw = SimpleNamespace(
+            from_user=SimpleNamespace(id=42, full_name="Alice"),
+            chat=SimpleNamespace(id=123, type="private"),
+            text="hello",
+            date=datetime.now(timezone.utc),
+            message_id=999,
+            message_thread_id=None,
+            entities=None,
+            photo=None,
+            document=None,
+            video=None,
+            animation=None,
+            sticker=None,
+            caption=None,
+        )
+
+        msg = adapter.normalize(raw)
+        assert msg.routing is not None
+        assert msg.routing.platform_meta is not msg.platform_meta
+        assert msg.routing.platform_meta == msg.platform_meta
+
 
 # ---------------------------------------------------------------------------
 # DiscordAdapter.normalize() populates routing
@@ -259,11 +337,55 @@ class TestDiscordNormalizeRouting:
 
 
 # ---------------------------------------------------------------------------
-# OutboundDispatcher routing verification
+# OutboundDispatcher._verify_routing — direct unit tests
 # ---------------------------------------------------------------------------
 
 
-class TestDispatcherRoutingVerification:
+class TestVerifyRoutingDirect:
+    """Direct unit tests for _verify_routing (no async queue needed)."""
+
+    def test_none_passes(self) -> None:
+        from lyra.core.outbound_dispatcher import OutboundDispatcher
+
+        d = OutboundDispatcher(
+            platform_name="telegram", adapter=MagicMock(), bot_id="main"
+        )
+        assert d._verify_routing(None) is True
+
+    def test_matching_passes(self) -> None:
+        from lyra.core.outbound_dispatcher import OutboundDispatcher
+
+        d = OutboundDispatcher(
+            platform_name="telegram", adapter=MagicMock(), bot_id="main"
+        )
+        assert d._verify_routing(_RC_TG) is True
+
+    def test_platform_mismatch_fails(self) -> None:
+        from lyra.core.outbound_dispatcher import OutboundDispatcher
+
+        d = OutboundDispatcher(
+            platform_name="telegram", adapter=MagicMock(), bot_id="main"
+        )
+        assert d._verify_routing(_RC_DC) is False
+
+    def test_bot_id_mismatch_fails(self) -> None:
+        from lyra.core.outbound_dispatcher import OutboundDispatcher
+
+        rc = RoutingContext(
+            platform="telegram", bot_id="other", scope_id="chat:123"
+        )
+        d = OutboundDispatcher(
+            platform_name="telegram", adapter=MagicMock(), bot_id="main"
+        )
+        assert d._verify_routing(rc) is False
+
+
+# ---------------------------------------------------------------------------
+# OutboundDispatcher integration (queue-based, deterministic drain)
+# ---------------------------------------------------------------------------
+
+
+class TestDispatcherRoutingIntegration:
     async def test_matching_routing_passes(self) -> None:
         from lyra.core.outbound_dispatcher import OutboundDispatcher
 
@@ -274,14 +396,11 @@ class TestDispatcherRoutingVerification:
         )
         await dispatcher.start()
         try:
-            rc = RoutingContext(
-                platform="telegram", bot_id="main", scope_id="chat:123"
-            )
-            msg = _make_inbound(routing=rc)
+            msg = _make_inbound(routing=_RC_TG)
             outbound = OutboundMessage.from_text("hi")
-            outbound.routing = rc
+            outbound.routing = _RC_TG
             dispatcher.enqueue(msg, outbound)
-            await asyncio.sleep(0.05)
+            await dispatcher._queue.join()
             adapter.send.assert_awaited_once()
         finally:
             await dispatcher.stop()
@@ -303,7 +422,7 @@ class TestDispatcherRoutingVerification:
             outbound = OutboundMessage.from_text("hi")
             outbound.routing = rc
             dispatcher.enqueue(msg, outbound)
-            await asyncio.sleep(0.05)
+            await dispatcher._queue.join()
             adapter.send.assert_not_awaited()
         finally:
             await dispatcher.stop()
@@ -325,7 +444,7 @@ class TestDispatcherRoutingVerification:
             outbound = OutboundMessage.from_text("hi")
             outbound.routing = rc
             dispatcher.enqueue(msg, outbound)
-            await asyncio.sleep(0.05)
+            await dispatcher._queue.join()
             adapter.send.assert_not_awaited()
         finally:
             await dispatcher.stop()
@@ -344,8 +463,40 @@ class TestDispatcherRoutingVerification:
             msg = _make_inbound()  # routing=None
             outbound = OutboundMessage.from_text("hi")
             dispatcher.enqueue(msg, outbound)
-            await asyncio.sleep(0.05)
+            await dispatcher._queue.join()
             adapter.send.assert_awaited_once()
+        finally:
+            await dispatcher.stop()
+
+    async def test_streaming_mismatched_routing_drops_and_drains(self) -> None:
+        """Streaming with mismatched routing: message dropped, iterator drained."""
+        from lyra.core.outbound_dispatcher import OutboundDispatcher
+
+        adapter = MagicMock()
+        adapter.send_streaming = AsyncMock()
+        dispatcher = OutboundDispatcher(
+            platform_name="telegram", adapter=adapter, bot_id="main"
+        )
+        await dispatcher.start()
+        try:
+            rc = RoutingContext(
+                platform="discord", bot_id="main", scope_id="channel:456"
+            )
+            msg = _make_inbound(routing=rc)
+            outbound = OutboundMessage.from_text("")
+            outbound.routing = rc
+            drained = False
+
+            async def bad_chunks() -> AsyncIterator[str]:
+                nonlocal drained
+                yield "chunk1"
+                yield "chunk2"
+                drained = True
+
+            dispatcher.enqueue_streaming(msg, bad_chunks(), outbound)
+            await dispatcher._queue.join()
+            adapter.send_streaming.assert_not_awaited()
+            assert drained, "iterator must be drained on routing mismatch"
         finally:
             await dispatcher.stop()
 
@@ -364,13 +515,48 @@ class TestHubDispatchPropagation:
         adapter.send = AsyncMock()
         hub.register_adapter(Platform.TELEGRAM, "main", adapter)
 
-        rc = RoutingContext(platform="telegram", bot_id="main", scope_id="chat:123")
-        msg = _make_inbound(routing=rc)
+        msg = _make_inbound(routing=_RC_TG)
         response = Response(content="hi")
         await hub.dispatch_response(msg, response)
 
-        # The adapter.send should have been called with an OutboundMessage
-        # that has routing propagated from the InboundMessage
         call_args = adapter.send.call_args
         outbound = call_args[0][1]
-        assert outbound.routing is rc
+        assert outbound.routing is _RC_TG
+
+    async def test_dispatch_response_does_not_overwrite_existing(self) -> None:
+        """When outbound already has routing, hub must not overwrite it."""
+        from lyra.core.hub import Hub
+
+        hub = Hub()
+        adapter = MagicMock()
+        adapter.send = AsyncMock()
+        hub.register_adapter(Platform.TELEGRAM, "main", adapter)
+
+        rc_outbound = RoutingContext(
+            platform="telegram", bot_id="main", scope_id="chat:999"
+        )
+        msg = _make_inbound(routing=_RC_TG)
+        outbound = OutboundMessage.from_text("hi")
+        outbound.routing = rc_outbound
+        await hub.dispatch_response(msg, outbound)
+
+        call_args = adapter.send.call_args
+        sent_outbound = call_args[0][1]
+        assert sent_outbound.routing is rc_outbound
+
+    async def test_dispatch_streaming_propagates_routing(self) -> None:
+        from lyra.core.hub import Hub
+
+        hub = Hub()
+        adapter = MagicMock()
+        adapter.send_streaming = AsyncMock()
+        hub.register_adapter(Platform.TELEGRAM, "main", adapter)
+
+        msg = _make_inbound(routing=_RC_TG)
+        outbound = OutboundMessage.from_text("")
+
+        async def chunks() -> AsyncIterator[str]:
+            yield "hello"
+
+        await hub.dispatch_streaming(msg, chunks(), outbound)
+        assert outbound.routing is _RC_TG

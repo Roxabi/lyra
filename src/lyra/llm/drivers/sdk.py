@@ -34,7 +34,7 @@ class AnthropicSdkDriver:
     def __init__(self, api_key: str) -> None:
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
 
-    async def complete(  # noqa: C901 — tool-use loop with per-error-type handling; extracting would obscure the protocol flow
+    async def complete(  # noqa: C901, PLR0913 — tool-use loop with per-error-type handling; extracting would obscure the protocol flow
         self,
         pool_id: str,
         text: str,
@@ -42,6 +42,7 @@ class AnthropicSdkDriver:
         system_prompt: str,
         *,
         messages: list[dict] | None = None,
+        on_intermediate: object = None,  # not supported; accepted for protocol compat
     ) -> LlmResult:
         """Buffer full response including tool-use loop. Return LlmResult."""
         if messages is None:

@@ -13,6 +13,7 @@ import logging
 import re
 import time
 from collections import deque
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -121,7 +122,7 @@ class SmartRoutingDecorator:
         """Read-only access to routing decision history."""
         return self._history
 
-    async def complete(
+    async def complete(  # noqa: PLR0913
         self,
         pool_id: str,
         text: str,
@@ -129,10 +130,12 @@ class SmartRoutingDecorator:
         system_prompt: str,
         *,
         messages: list[dict] | None = None,
+        on_intermediate: Callable[[str], Awaitable[None]] | None = None,
     ) -> LlmResult:
         if not self._config.enabled:
             return await self._inner.complete(
-                pool_id, text, model_cfg, system_prompt, messages=messages
+                pool_id, text, model_cfg, system_prompt,
+                messages=messages, on_intermediate=on_intermediate,
             )
 
         # Classify and route
@@ -155,7 +158,8 @@ class SmartRoutingDecorator:
             reason = "classifier_error (fallback)"
 
         result = await self._inner.complete(
-            pool_id, text, routed_cfg, system_prompt, messages=messages
+            pool_id, text, routed_cfg, system_prompt,
+            messages=messages, on_intermediate=on_intermediate,
         )
 
         # Record decision

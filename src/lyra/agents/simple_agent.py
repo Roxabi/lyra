@@ -102,7 +102,7 @@ class SimpleAgent(AgentBase):
                 _pool_id = pool.pool_id
                 pool._session_reset_fn = lambda: reset_fn(_pool_id)
 
-    async def process(self, msg: InboundMessage, pool: Pool) -> Response:
+    async def process(self, msg: InboundMessage, pool: Pool) -> Response:  # noqa: C901
         self._maybe_reload()
         self._maybe_register_reset(pool)
 
@@ -156,8 +156,23 @@ class SimpleAgent(AgentBase):
             len(text),
         )
 
+        on_intermediate = None
+        if self.config.show_intermediate:
+
+            async def _intermediate_cb(turn_text: str) -> None:
+                await pool._ctx.dispatch_response(
+                    msg,
+                    Response(content=f"⏳ {turn_text}", metadata={"intermediate": True}),  # noqa: E501
+                )
+
+            on_intermediate = _intermediate_cb  # type: ignore[assignment]
+
         result = await self._provider.complete(
-            pool.pool_id, text, model_cfg, self.config.system_prompt
+            pool.pool_id,
+            text,
+            model_cfg,
+            self.config.system_prompt,
+            on_intermediate=on_intermediate,
         )
 
         if not result.ok:

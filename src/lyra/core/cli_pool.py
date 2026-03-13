@@ -19,6 +19,7 @@ import json
 import logging
 import os
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -132,6 +133,8 @@ class CliPool:
         message: str,
         model_config: ModelConfig,
         system_prompt: str = "",
+        *,
+        on_intermediate: Callable[[str], Awaitable[None]] | None = None,
     ) -> CliResult:
         """Send a message to the persistent process for this pool.
 
@@ -177,7 +180,7 @@ class CliPool:
             if not entry.is_alive():
                 return CliResult(error="Process died before send")
             try:
-                result = await self._send_and_read(entry, message)
+                result = await self._send_and_read(entry, message, on_intermediate)
                 if not result.ok and "Timeout" in result.error:
                     await self._kill(pool_id)
                     return result
@@ -266,7 +269,12 @@ class CliPool:
         log.info("[pool:%s] spawned (PID=%d)", pool_id, proc.pid)
         return entry
 
-    async def _send_and_read(self, entry: _ProcessEntry, message: str) -> CliResult:
+    async def _send_and_read(
+        self,
+        entry: _ProcessEntry,
+        message: str,
+        on_intermediate: Callable[[str], Awaitable[None]] | None = None,
+    ) -> CliResult:
         proc = entry.proc
         if proc.stdin is None:
             return CliResult(error="Process stdin is None")
@@ -284,9 +292,13 @@ class CliPool:
             await self._kill(entry.pool_id)
             return CliResult(error="Timeout writing to subprocess stdin")
 
-        return await self._read_until_result(entry)
+        return await self._read_until_result(entry, on_intermediate)
 
-    async def _read_until_result(self, entry: _ProcessEntry) -> CliResult:  # noqa: C901 — protocol dispatch: each JSON event type requires its own branch
+    async def _read_until_result(  # noqa: C901, PLR0915 — protocol dispatch: each JSON event type requires its own branch
+        self,
+        entry: _ProcessEntry,
+        on_intermediate: Callable[[str], Awaitable[None]] | None = None,
+    ) -> CliResult:
         proc = entry.proc
         if proc.stdout is None:
             return CliResult(error="Process stdout is None")
@@ -340,6 +352,16 @@ class CliPool:
                     blocks = data.get("message", {}).get("content", [])
                     texts = [b["text"] for b in blocks if b.get("type") == "text"]
                     result_parts.extend(texts)
+                    if on_intermediate and texts:
+                        combined = "\n\n".join(texts)
+                        try:
+                            await on_intermediate(combined)
+                        except Exception:
+                            log.debug(
+                                "[pool:%s] on_intermediate callback failed",
+                                entry.pool_id,
+                                exc_info=True,
+                            )
 
                 if msg_type == "result":
                     if not session_id:

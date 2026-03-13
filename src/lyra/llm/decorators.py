@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 
 from lyra.core.agent import ModelConfig
 from lyra.core.circuit_breaker import CircuitBreaker
@@ -31,7 +32,7 @@ class RetryDecorator:
         self._backoff_base = backoff_base
         self.capabilities: dict = inner.capabilities
 
-    async def complete(
+    async def complete(  # noqa: PLR0913
         self,
         pool_id: str,
         text: str,
@@ -39,12 +40,14 @@ class RetryDecorator:
         system_prompt: str,
         *,
         messages: list[dict] | None = None,
+        on_intermediate: Callable[[str], Awaitable[None]] | None = None,
     ) -> LlmResult:
         total_attempts = self._max_retries + 1
         result: LlmResult | None = None
         for attempt in range(total_attempts):
             result = await self._inner.complete(
-                pool_id, text, model_cfg, system_prompt, messages=messages
+                pool_id, text, model_cfg, system_prompt,
+                messages=messages, on_intermediate=on_intermediate,
             )
             if result.ok:
                 return result
@@ -81,7 +84,7 @@ class CircuitBreakerDecorator:
         self._cb = cb
         self.capabilities: dict = inner.capabilities
 
-    async def complete(
+    async def complete(  # noqa: PLR0913
         self,
         pool_id: str,
         text: str,
@@ -89,6 +92,7 @@ class CircuitBreakerDecorator:
         system_prompt: str,
         *,
         messages: list[dict] | None = None,
+        on_intermediate: Callable[[str], Awaitable[None]] | None = None,
     ) -> LlmResult:
         if self._cb.is_open():
             status = self._cb.get_status()
@@ -97,7 +101,8 @@ class CircuitBreakerDecorator:
                 error=f"Circuit '{self._cb.name}' is open. Retry in {retry_after:.0f}s."
             )
         result = await self._inner.complete(
-            pool_id, text, model_cfg, system_prompt, messages=messages
+            pool_id, text, model_cfg, system_prompt,
+            messages=messages, on_intermediate=on_intermediate,
         )
         if result.ok:
             self._cb.record_success()  # no-op when CLOSED; intentional

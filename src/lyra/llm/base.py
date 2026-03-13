@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
@@ -22,7 +23,7 @@ class LlmResult:
 class LlmProvider(Protocol):
     capabilities: dict[str, Any]
 
-    async def complete(
+    async def complete(  # noqa: PLR0913
         self,
         pool_id: str,
         text: str,
@@ -30,4 +31,5 @@ class LlmProvider(Protocol):
         system_prompt: str,
         *,
         messages: list[dict] | None = None,
+        on_intermediate: Callable[[str], Awaitable[None]] | None = None,
     ) -> LlmResult: ...

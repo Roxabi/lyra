@@ -124,6 +124,7 @@ class Agent:
     persona: PersonaConfig | None = None
     i18n_language: str = "en"
     smart_routing: SmartRoutingConfig | None = None
+    show_intermediate: bool = False  # show ⏳-prefixed intermediate turns to the user
 
 
 def load_persona(name: str, personas_dir: Path | None = None) -> PersonaConfig:
@@ -387,6 +388,7 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
         persona=persona,
         i18n_language=i18n_language,
         smart_routing=smart_routing,
+        show_intermediate=bool(agent_section.get("show_intermediate", False)),
     )
 
 

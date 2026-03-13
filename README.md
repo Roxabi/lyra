@@ -151,7 +151,7 @@ docs/
   ROADMAP.md        — priorities and scope
   QUICKSTART.md     — developer setup guide
   vision.md         — design principles and constraints
-  architecture/adr/ — architecture decision records (17 ADRs)
+  architecture/adr/ — architecture decision records (18 ADRs)
 ```
 
 ## Documentation
@@ -165,7 +165,7 @@ docs/
 | [COMMANDS.md](docs/COMMANDS.md) | Command router — slash commands, external tool integration pattern |
 | [GETTING-STARTED.md](docs/GETTING-STARTED.md) | Machine 1 (Ubuntu Server) hardware setup |
 | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production service management on Machine 1 (supervisord, logs, firewall) |
-| [ADRs](docs/architecture/adr/) | 17 architecture decision records with full rationale |
+| [ADRs](docs/architecture/adr/) | 18 architecture decision records with full rationale |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Branching model, commit conventions, adding adapters and agents |
 
 ## License

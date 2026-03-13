@@ -1,7 +1,7 @@
 # Lyra — Architecture & Decisions
 
 > Living document. Updated as decisions are made.
-> Last updated: 2026-03-13 (Phase 1b tail completions: message normalization #139, LlmProvider #123, auth #151, routing #152, smart routing #134, runtime config #135, STT #80, audio/attachment bus, PoolContext #204, TTL eviction #205)
+> Last updated: 2026-03-13 (Phase 1b tail completions: message normalization #139, LlmProvider #123, auth #151, routing #152, smart routing #134, runtime config #135, STT #80, audio/attachment bus, PoolContext #204, TTL eviction #205, typing indicator redesign #229, show_intermediate + on_intermediate callback, /clear session reset, is_backend_alive, SimpleAgent runtime_config wiring)
 
 ---
 
@@ -362,6 +362,11 @@ client = AsyncOpenAI(
 - **Message normalization** (#139 ✅) — Full bus envelope: InboundMessage, OutboundMessage, InboundAudio, OutboundAudioChunk, OutboundAttachment. Per-adapter render functions.
 - **Runtime agent config** (#135 ✅) — Live tuning via `!config` command, no restart needed.
 - **Voice STT** (#80 ✅) — STTService + STTConfig with faster-whisper, InboundAudioBus, audio consumer loop in Hub.
+- **Typing indicator redesign** (#229 ✅) — `TelegramAdapter` starts typing at message receipt (`_on_message`) and cancels at the start of `send()`; long-running requests keep the indicator alive via a background task.
+- **Intermediate turns** (`show_intermediate` ✅) — `on_intermediate` callback threaded through LlmProvider decorators into `CliPool._read_until_result`. When `show_intermediate = true` in agent TOML, each intermediate CLI turn is dispatched to the user as a `⏳`-prefixed message.
+- **`/clear` resets backend session** ✅ — `pool.reset_session()` is now async and delegates to `CliPool.reset()` via `_session_reset_fn`, clearing both in-memory history and the CLI process session.
+- **`is_backend_alive()`** ✅ — `Agent` and `CliPool` expose `is_backend_alive(pool_id)` / `is_alive(pool_id)`. On timeout, `Pool` checks liveness and logs an error if the backend process died.
+- **SimpleAgent `runtime_config` wiring** ✅ — `_build_router_kwargs()` injects `runtime_config_holder` and `runtime_config_path`, making `/config` functional on the `claude-cli` backend.
 - **Reduced Phase 1 memory scope** — Level 0 (working, L0 compaction in #83) + Level 3 (semantic, shipped #78/#81/#82). Levels 1, 2, 4 added when the real need arises.
 
 ### External tool integration
@@ -396,6 +401,7 @@ What is built in Phase 1 / 1b:
 - Hub hardening: PoolContext protocol (#204 ✅), TTL eviction (#205 ✅), async I/O audio loop (#203 ✅)
 - DX: complexity/size limits (#196 ✅), pytest-cov + coverage gate (#211 ✅)
 - Security: hmac.compare_digest (#212 ✅), two-tier /health (#207 ✅), symlink plugin_loader fix (#215 ✅)
+- UX: typing indicator redesign (#229 ✅), intermediate turns (`show_intermediate`) ✅, `/clear` session reset ✅
 
 **Remaining Phase 1b tail**:
 - #83 (agent integration — identity anchor, session lifecycle, L0 compaction)

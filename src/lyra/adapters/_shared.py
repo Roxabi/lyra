@@ -128,6 +128,9 @@ ATTACHMENT_EXTS_BASE = frozenset(
 )
 
 
+# Allowed file extensions for outbound audio filenames (whitelist).
+_AUDIO_EXTS = frozenset({"ogg", "mp3", "mp4", "mpeg", "opus", "wav", "flac", "aac"})
+
 _MAX_OUTBOUND_AUDIO_BYTES: int = int(
     os.environ.get("LYRA_MAX_AUDIO_BYTES", 5 * 1024 * 1024)
 )
@@ -197,7 +200,6 @@ class _PartialAudioError(Exception):
         super().__init__(str(cause))
         self.audio = audio
         self.cause = cause
-
 
 
 def parse_reply_to_id(reply_to_id: str | None) -> int | None:

@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from lyra.core.hub import Hub
 
 from lyra.adapters._shared import (
+    _AUDIO_EXTS,
     ATTACHMENT_EXTS_BASE,
     _PartialAudioError,
     buffer_audio_chunks,
@@ -68,9 +69,6 @@ _AUDIO_MIME_TYPES = frozenset(
         "audio/aac",
     }
 )
-
-# Allowed file extensions for outbound audio filenames (whitelist).
-_AUDIO_EXTS = frozenset({"ogg", "mp3", "mp4", "mpeg", "opus", "wav", "flac", "aac"})
 
 
 # ---------------------------------------------------------------------------

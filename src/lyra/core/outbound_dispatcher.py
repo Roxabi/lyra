@@ -23,6 +23,7 @@ from .message import (
     InboundMessage,
     OutboundAttachment,
     OutboundAudio,
+    OutboundAudioChunk,
     OutboundMessage,
     RoutingContext,
 )
@@ -34,7 +35,7 @@ log = logging.getLogger(__name__)
 
 # Queue item: (kind, msg, payload) for send;
 # (kind, msg, chunks, outbound) for streaming; (kind, inbound, audio) for audio;
-# (kind, inbound, attachment) for attachment
+# (kind, inbound, attachment) for attachment; (kind, inbound, chunks) for audio_stream
 _ITEM = tuple
 
 
@@ -113,15 +114,25 @@ class OutboundDispatcher:
         """
         self._queue.put_nowait(("streaming", msg, chunks, outbound))
 
-    def enqueue_audio(
-        self, inbound: InboundMessage, audio: OutboundAudio
-    ) -> None:
+    def enqueue_audio(self, inbound: InboundMessage, audio: OutboundAudio) -> None:
         """Enqueue an audio response for delivery.
 
         Fire-and-forget: returns immediately. The worker task calls
         adapter.render_audio() asynchronously with CB ownership.
         """
         self._queue.put_nowait(("audio", inbound, audio))
+
+    def enqueue_audio_stream(
+        self,
+        inbound: InboundMessage,
+        chunks: AsyncIterator[OutboundAudioChunk],
+    ) -> None:
+        """Enqueue a streaming audio response for delivery.
+
+        Fire-and-forget: returns immediately. The worker task calls
+        adapter.render_audio_stream() asynchronously with CB ownership.
+        """
+        self._queue.put_nowait(("audio_stream", inbound, chunks))
 
     def enqueue_attachment(
         self, inbound: InboundMessage, attachment: OutboundAttachment
@@ -159,28 +170,27 @@ class OutboundDispatcher:
                 kind = item[0]
                 if kind == "streaming":
                     _, msg, payload, outbound = item
-                elif kind == "audio":
+                elif kind in ("send", "audio", "audio_stream", "attachment"):
                     _, msg, payload = item
                     outbound = None
                 else:
-                    _, msg, payload = item
-                    outbound = None
+                    log.error(
+                        '{"event": "unknown_kind", "kind": "%s", "action": "skipped"}',
+                        kind,
+                    )
+                    continue
                 # Verify routing context matches this dispatcher.
                 # "send": check payload (OutboundMessage) routing.
                 # "streaming": check outbound routing if provided.
-                # "audio"/"attachment": always use msg (InboundMessage) routing.
+                # "audio"/"audio_stream"/"attachment": use msg (InboundMessage) routing.
                 if kind == "send":
                     _routing = getattr(payload, "routing", None) or msg.routing
-                elif kind in ("audio", "attachment"):
+                elif kind in ("audio", "audio_stream", "attachment"):
                     _routing = msg.routing
                 else:
-                    _routing = (
-                        outbound.routing
-                        if outbound is not None
-                        else msg.routing
-                    )
+                    _routing = outbound.routing if outbound is not None else msg.routing
                 if not self._verify_routing(_routing):
-                    if kind == "streaming":
+                    if kind in ("streaming", "audio_stream"):
                         async for _ in payload:
                             pass
                     continue
@@ -192,7 +202,7 @@ class OutboundDispatcher:
                         kind,
                     )
                     # Drain streaming iterator to prevent generator leaks
-                    if kind == "streaming":
+                    if kind in ("streaming", "audio_stream"):
                         async for _ in payload:
                             pass
                     if outbound is not None:
@@ -204,6 +214,8 @@ class OutboundDispatcher:
                         await self._adapter.send(msg, payload)
                     elif kind == "audio":
                         await self._adapter.render_audio(payload, msg)
+                    elif kind == "audio_stream":
+                        await self._adapter.render_audio_stream(payload, msg)
                     elif kind == "attachment":
                         await self._adapter.render_attachment(payload, msg)
                     else:

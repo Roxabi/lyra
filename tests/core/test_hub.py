@@ -920,15 +920,11 @@ async def test_mid_stream_failure_records_anthropic_failure() -> None:
         command_router = None
 
         def process(self, msg: InboundMessage, pool: Pool):
-            from anthropic import APIError as AnthropicAPIError
+            from lyra.errors import ProviderError
 
             async def gen():
                 yield "partial"
-                raise AnthropicAPIError(
-                    message="API error mid-stream",
-                    request=None,  # type: ignore[arg-type]
-                    body=None,
-                )
+                raise ProviderError("API error mid-stream")
 
             return gen()
 

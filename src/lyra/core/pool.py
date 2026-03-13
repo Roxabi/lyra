@@ -6,7 +6,7 @@ import logging
 from collections import deque
 from typing import TYPE_CHECKING
 
-from anthropic import APIError as AnthropicAPIError
+from lyra.errors import ProviderError
 
 if TYPE_CHECKING:
     from .agent import AgentBase
@@ -141,7 +141,7 @@ class Pool:
             _hub_cb = self._hub.circuit_registry.get("hub")
             if _hub_cb is not None:
                 _hub_cb.record_failure()
-            if isinstance(exc, AnthropicAPIError):
+            if isinstance(exc, ProviderError):
                 _ant_cb = self._hub.circuit_registry.get("anthropic")
                 if _ant_cb is not None:
                     _ant_cb.record_failure()

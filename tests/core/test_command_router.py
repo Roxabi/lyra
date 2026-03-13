@@ -971,6 +971,7 @@ class TestClearCommand:
         pool_mock = MagicMock(spec=Pool)
         pool_mock.sdk_history = MagicMock()
         pool_mock.history = MagicMock()
+
         async def _noop() -> None:
             pass
 

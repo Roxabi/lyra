@@ -268,9 +268,7 @@ class TestTelegramNormalizeRouting:
         from lyra.adapters.telegram import _ALLOW_ALL, TelegramAdapter
 
         hub = MagicMock()
-        adapter = TelegramAdapter(
-            bot_id="main", token="fake", hub=hub, auth=_ALLOW_ALL
-        )
+        adapter = TelegramAdapter(bot_id="main", token="fake", hub=hub, auth=_ALLOW_ALL)
 
         raw = SimpleNamespace(
             from_user=SimpleNamespace(id=42, full_name="Alice"),
@@ -371,9 +369,7 @@ class TestVerifyRoutingDirect:
     def test_bot_id_mismatch_fails(self) -> None:
         from lyra.core.outbound_dispatcher import OutboundDispatcher
 
-        rc = RoutingContext(
-            platform="telegram", bot_id="other", scope_id="chat:123"
-        )
+        rc = RoutingContext(platform="telegram", bot_id="other", scope_id="chat:123")
         d = OutboundDispatcher(
             platform_name="telegram", adapter=MagicMock(), bot_id="main"
         )

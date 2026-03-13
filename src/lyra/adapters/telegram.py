@@ -453,10 +453,7 @@ class TelegramAdapter:
             platform_meta=dict(platform_meta),
         )
         return InboundMessage(
-            id=(
-                f"telegram:{user_id}:{int(timestamp.timestamp())}"
-                f":{message_id or ''}"
-            ),
+            id=(f"telegram:{user_id}:{int(timestamp.timestamp())}:{message_id or ''}"),
             platform=Platform.TELEGRAM.value,
             bot_id=self._bot_id,
             scope_id=scope_id,
@@ -645,6 +642,7 @@ class TelegramAdapter:
 
         self._start_typing(msg.chat.id)
         try:
+
             async def _send_bp(text: str) -> None:
                 await self.bot.send_message(msg.chat.id, text)
 
@@ -826,9 +824,7 @@ class TelegramAdapter:
                 outbound.metadata["reply_message_id"] = placeholder.message_id
         except Exception:
             self._cancel_typing(chat_id)
-            log.exception(
-                "Failed to send placeholder — falling back to non-streaming"
-            )
+            log.exception("Failed to send placeholder — falling back to non-streaming")
             async for chunk in chunks:
                 parts.append(chunk)
             fallback_content = "".join(parts) or _placeholder_text

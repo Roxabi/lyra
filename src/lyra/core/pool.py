@@ -279,6 +279,7 @@ class Pool:
         - async generator function (yields directly)
         - regular async def returning AsyncIterator or Response
         """
+
         async def _intermediate_cb(turn_text: str) -> None:
             await self._safe_dispatch(
                 msg,

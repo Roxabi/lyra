@@ -369,9 +369,7 @@ class TestAuthConfig:
         with pytest.raises(SystemExit, match="past_auth"):
             await main_mod._main(_stop=stop)
 
-    async def test_invalid_default_exits(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_invalid_default_exits(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Invalid default in [auth.telegram] causes SystemExit when _main() runs."""
         monkeypatch.setattr(main_mod, "load_dotenv", lambda: None)
         monkeypatch.setattr(

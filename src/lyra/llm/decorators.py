@@ -46,8 +46,12 @@ class RetryDecorator:
         result: LlmResult | None = None
         for attempt in range(total_attempts):
             result = await self._inner.complete(
-                pool_id, text, model_cfg, system_prompt,
-                messages=messages, on_intermediate=on_intermediate,
+                pool_id,
+                text,
+                model_cfg,
+                system_prompt,
+                messages=messages,
+                on_intermediate=on_intermediate,
             )
             if result.ok:
                 return result
@@ -104,8 +108,12 @@ class CircuitBreakerDecorator:
                 error=f"Circuit '{self._cb.name}' is open. Retry in {retry_after:.0f}s."
             )
         result = await self._inner.complete(
-            pool_id, text, model_cfg, system_prompt,
-            messages=messages, on_intermediate=on_intermediate,
+            pool_id,
+            text,
+            model_cfg,
+            system_prompt,
+            messages=messages,
+            on_intermediate=on_intermediate,
         )
         if result.ok:
             self._cb.record_success()  # no-op when CLOSED; intentional

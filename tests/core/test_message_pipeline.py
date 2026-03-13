@@ -33,23 +33,31 @@ class _MockAdapter:
         self.sent: list[OutboundMessage] = []
 
     async def send(
-        self, original_msg: InboundMessage, outbound: OutboundMessage,
+        self,
+        original_msg: InboundMessage,
+        outbound: OutboundMessage,
     ) -> None:
         self.sent.append(outbound)
 
     async def send_streaming(
-        self, original_msg: InboundMessage, chunks: object,
+        self,
+        original_msg: InboundMessage,
+        chunks: object,
         outbound: object = None,
     ) -> None:
         pass
 
     async def render_audio(
-        self, msg: object, inbound: InboundMessage,
+        self,
+        msg: object,
+        inbound: InboundMessage,
     ) -> None:
         pass
 
     async def render_attachment(
-        self, msg: object, inbound: InboundMessage,
+        self,
+        msg: object,
+        inbound: InboundMessage,
     ) -> None:
         pass
 
@@ -58,7 +66,11 @@ class _NullAgent(AgentBase):
     """Minimal agent for testing — returns a fixed response."""
 
     async def process(
-        self, msg: InboundMessage, pool: Pool, *, on_intermediate=None,
+        self,
+        msg: InboundMessage,
+        pool: Pool,
+        *,
+        on_intermediate=None,
     ) -> Response:
         return Response(content="ok")
 
@@ -67,15 +79,23 @@ def _make_hub(**kwargs: object) -> Hub:
     """Build a Hub with an agent, adapter, and binding pre-wired."""
     hub = Hub(**kwargs)  # type: ignore[arg-type]
 
-    agent = _NullAgent(Agent(
-        name="lyra", system_prompt="", memory_namespace="lyra",
-    ))
+    agent = _NullAgent(
+        Agent(
+            name="lyra",
+            system_prompt="",
+            memory_namespace="lyra",
+        )
+    )
     hub.register_agent(agent)
 
     adapter = _MockAdapter()
     hub.register_adapter(Platform.TELEGRAM, "main", adapter)  # type: ignore[arg-type]
     hub.register_binding(
-        Platform.TELEGRAM, "main", "*", "lyra", "telegram:main:*",
+        Platform.TELEGRAM,
+        "main",
+        "*",
+        "lyra",
+        "telegram:main:*",
     )
     return hub
 
@@ -110,7 +130,9 @@ class TestPipelineGuardStages:
         hub = Hub()
         # Register adapter but no binding
         hub.register_adapter(
-            Platform.TELEGRAM, "main", _MockAdapter(),  # type: ignore[arg-type]
+            Platform.TELEGRAM,
+            "main",
+            _MockAdapter(),  # type: ignore[arg-type]
         )
         pipeline = MessagePipeline(hub)
         msg = make_inbound_message()
@@ -120,12 +142,17 @@ class TestPipelineGuardStages:
     async def test_no_agent_drops(self) -> None:
         hub = Hub()
         hub.register_adapter(
-            Platform.TELEGRAM, "main", _MockAdapter(),  # type: ignore[arg-type]
+            Platform.TELEGRAM,
+            "main",
+            _MockAdapter(),  # type: ignore[arg-type]
         )
         # Binding references non-existent agent
         hub.register_binding(
-            Platform.TELEGRAM, "main", "*",
-            "nonexistent", "telegram:main:*",
+            Platform.TELEGRAM,
+            "main",
+            "*",
+            "nonexistent",
+            "telegram:main:*",
         )
         pipeline = MessagePipeline(hub)
         msg = make_inbound_message()
@@ -174,15 +201,21 @@ class TestPipelineGuardStages:
     async def test_no_adapter_registered_drops(self) -> None:
         """Adapter miss in terminal stage produces DROP."""
         hub = Hub()
-        agent = _NullAgent(Agent(
-            name="lyra", system_prompt="",
-            memory_namespace="lyra",
-        ))
+        agent = _NullAgent(
+            Agent(
+                name="lyra",
+                system_prompt="",
+                memory_namespace="lyra",
+            )
+        )
         hub.register_agent(agent)
         # Binding exists but no adapter for discord
         hub.register_binding(
-            Platform.DISCORD, "main", "*",
-            "lyra", "discord:main:*",
+            Platform.DISCORD,
+            "main",
+            "*",
+            "lyra",
+            "discord:main:*",
         )
         pipeline = MessagePipeline(hub)
         msg = make_inbound_message(
@@ -296,7 +329,8 @@ class TestPipelineIntegration:
         binding = hub.resolve_binding(msg)
         assert binding is not None
         pool = hub.get_or_create_pool(
-            binding.pool_id, binding.agent_name,
+            binding.pool_id,
+            binding.agent_name,
         )
         submitted: list[InboundMessage] = []
         pool.submit = lambda m: submitted.append(m)  # type: ignore[assignment]

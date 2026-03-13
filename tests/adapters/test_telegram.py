@@ -966,9 +966,15 @@ class TestTelegramAttachments:
         return TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
 
     def _make_msg(  # noqa: PLR0913 — test factory with optional overrides
-        self, *, text: str | None = "hello", caption=None,
-        photo=None, document=None, video=None,
-        animation=None, sticker=None,
+        self,
+        *,
+        text: str | None = "hello",
+        caption=None,
+        photo=None,
+        document=None,
+        video=None,
+        animation=None,
+        sticker=None,
     ):
         return SimpleNamespace(
             chat=SimpleNamespace(id=123, type="private"),
@@ -1006,7 +1012,9 @@ class TestTelegramAttachments:
         photo = [SimpleNamespace(file_id="pic123")]
         msg = adapter.normalize(
             self._make_msg(
-                text=None, caption="Look at this!", photo=photo,
+                text=None,
+                caption="Look at this!",
+                photo=photo,
             ),
         )
         assert msg.text == "Look at this!"
@@ -1063,7 +1071,9 @@ class TestTelegramAttachments:
         """Video sticker (is_video=True) → NOT in attachments."""
         adapter = self._make_adapter()
         sticker = SimpleNamespace(
-            file_id="stk3", is_animated=False, is_video=True,
+            file_id="stk3",
+            is_animated=False,
+            is_video=True,
         )
         msg = adapter.normalize(
             self._make_msg(sticker=sticker),
@@ -1290,6 +1300,7 @@ async def test_typing_loop_cancels_on_body_exception() -> None:
 
     # No further calls should occur after the context exited (loop was cancelled)
     import asyncio
+
     count_after = bot.send_chat_action.await_count
     await asyncio.sleep(0.1)
     assert bot.send_chat_action.await_count == count_after

@@ -101,11 +101,14 @@
 
 ## Voice pipeline (#74)
 
-> STT shipped (#80 ✅). TTS (#79) ready, blocked by #136 (multi-bot registry).
+> STT shipped (#80 ✅). TTS unblocked — #79 (Telegram) + #232 (Discord) depend on #167 (TTSService wrapper).
+> Note: #136 (multi-bot registry) depends on #79, not the other way around.
 
 | # | Issue | Priority | Status |
 |---|-------|----------|--------|
-| #79 | Voice TTS in Telegram (voicecli integration) | P2 | Ready |
+| #167 | Formalize voiceCLI consumption — TTSService wrapper | P2 | Ready — **next** |
+| #79 | Voice TTS in Telegram (voicecli integration) | P2 | Ready — blocked by #167 |
+| #232 | Voice TTS in Discord (voicecli integration) | P2 | Ready — blocked by #167 + #79 |
 | #80 | Voice STT — audio transcription (Whisper) | P2 | ✅ Done |
 | #42 | Automatic language detection | P2 | Ready |
 

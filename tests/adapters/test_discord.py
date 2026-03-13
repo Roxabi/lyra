@@ -46,6 +46,7 @@ def _attach_typing_cm(mock_channel: MagicMock) -> None:
     mock_typing_cm.__aexit__ = AsyncMock(return_value=False)
     mock_channel.typing = MagicMock(return_value=mock_typing_cm)
 
+
 # ---------------------------------------------------------------------------
 # T2 — _normalize() builds correct DiscordContext
 # ---------------------------------------------------------------------------
@@ -1302,8 +1303,10 @@ class TestDiscordAttachments:
             guild=SimpleNamespace(id=111),
             channel=SimpleNamespace(id=333, send=AsyncMock()),
             author=SimpleNamespace(
-                id=42, name="Alice",
-                display_name="Alice", bot=False,
+                id=42,
+                name="Alice",
+                display_name="Alice",
+                bot=False,
             ),
             content=content,
             created_at=datetime.now(timezone.utc),

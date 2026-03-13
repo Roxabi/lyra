@@ -31,9 +31,11 @@ def make_ok_result(text: str = "ok") -> LlmResult:
 
 def _make_inner(return_values: list[LlmResult] | None = None) -> MagicMock:
     inner = MagicMock()
-    inner.complete = AsyncMock(
-        return_value=make_ok_result()
-    ) if return_values is None else MagicMock()
+    inner.complete = (
+        AsyncMock(return_value=make_ok_result())
+        if return_values is None
+        else MagicMock()
+    )
     if return_values is not None:
         inner.complete = AsyncMock(side_effect=return_values)
     inner.capabilities = {"streaming": False, "auth": "api_key"}
@@ -108,9 +110,7 @@ class TestComplexityClassifier:
 
     def test_moderate_explain(self) -> None:
         # Arrange / Act
-        level, _ = self.classifier.classify(
-            "Explain the decorator pattern in Python"
-        )
+        level, _ = self.classifier.classify("Explain the decorator pattern in Python")
         # Assert
         assert level == Complexity.MODERATE
 
@@ -198,9 +198,7 @@ class TestSmartRoutingDecorator:
         model_cfg = make_model_cfg("claude-sonnet-4-6")
 
         # Act
-        await decorator.complete(
-            "p1", "What time is it in Paris?", model_cfg, "sys"
-        )
+        await decorator.complete("p1", "What time is it in Paris?", model_cfg, "sys")
 
         # Assert
         call_args = inner.complete.call_args

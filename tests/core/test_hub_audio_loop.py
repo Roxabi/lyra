@@ -240,9 +240,7 @@ class TestAudioLoopTaskDone:
             # Give the loop time to call task_done
             await asyncio.sleep(0.05)
             # join() should return immediately since task_done was called
-            await asyncio.wait_for(
-                hub.inbound_audio_bus._staging.join(), timeout=1.0
-            )
+            await asyncio.wait_for(hub.inbound_audio_bus._staging.join(), timeout=1.0)
         finally:
             task.cancel()
             await hub.inbound_audio_bus.stop()

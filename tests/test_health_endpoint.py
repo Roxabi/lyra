@@ -104,9 +104,7 @@ class TestHealthUnauthenticated:
         app = create_health_app(hub)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get(
-                "/health", headers={"authorization": "Bearer "}
-            )
+            resp = await client.get("/health", headers={"authorization": "Bearer "})
 
         assert resp.status_code == 200
         assert resp.json() == {"ok": True}

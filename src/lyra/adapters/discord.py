@@ -710,17 +710,15 @@ class DiscordAdapter(discord.Client):
             if outbound is not None:
                 outbound.metadata["reply_message_id"] = placeholder.id
         except Exception:
-            log.exception(
-                "Failed to send placeholder — falling back to non-streaming"
-            )
+            log.exception("Failed to send placeholder — falling back to non-streaming")
             async for chunk in chunks:
                 parts.append(chunk)
             fallback_content = "".join(parts) or _placeholder_text
             fallback_outbound = OutboundMessage.from_text(fallback_content)
             await self.send(original_msg, fallback_outbound)
             if outbound is not None:
-                outbound.metadata["reply_message_id"] = (
-                    fallback_outbound.metadata.get("reply_message_id")
+                outbound.metadata["reply_message_id"] = fallback_outbound.metadata.get(
+                    "reply_message_id"
                 )
             return
 

@@ -472,6 +472,4 @@ class TestOnIntermediateException:
         # Result must still be returned successfully
         assert result.ok
         # The exception must have been logged at WARNING level
-        assert any(
-            "on_intermediate" in r.message.lower() for r in caplog.records
-        )
+        assert any("on_intermediate" in r.message.lower() for r in caplog.records)

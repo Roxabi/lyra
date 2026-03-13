@@ -766,7 +766,8 @@ class TestHubGate:
         assert "not paired" in str(captured[0].content).lower()
 
     async def test_pairing_gate_logs_dispatch_failure(
-        self, caplog: pytest.LogCaptureFixture,
+        self,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """Pairing rejection dispatch failure is logged, not silently swallowed."""
         pm = await make_pm(enabled=True)

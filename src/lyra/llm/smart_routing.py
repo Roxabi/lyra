@@ -134,8 +134,12 @@ class SmartRoutingDecorator:
     ) -> LlmResult:
         if not self._config.enabled:
             return await self._inner.complete(
-                pool_id, text, model_cfg, system_prompt,
-                messages=messages, on_intermediate=on_intermediate,
+                pool_id,
+                text,
+                model_cfg,
+                system_prompt,
+                messages=messages,
+                on_intermediate=on_intermediate,
             )
 
         # Classify and route
@@ -158,8 +162,12 @@ class SmartRoutingDecorator:
             reason = "classifier_error (fallback)"
 
         result = await self._inner.complete(
-            pool_id, text, routed_cfg, system_prompt,
-            messages=messages, on_intermediate=on_intermediate,
+            pool_id,
+            text,
+            routed_cfg,
+            system_prompt,
+            messages=messages,
+            on_intermediate=on_intermediate,
         )
 
         # Record decision

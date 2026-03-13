@@ -143,8 +143,6 @@ class CommandRouter:
             return Response(content="")
         if command_name == "/config":
             return self._cmd_config(msg, args)
-        if command_name in {f"/{k}" for k in self._workspaces}:
-            return None  # handled async in dispatch()
         builtin = self._builtins.get(command_name)
         if builtin and builtin.builtin:
             return Response(

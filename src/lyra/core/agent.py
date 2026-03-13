@@ -58,7 +58,10 @@ class ModelConfig:
     model: str = "claude-sonnet-4-5"
     max_turns: int = 10
     tools: tuple[str, ...] = field(default=())
-    cwd: Path | None = None
+    # compare=False: cwd is spawn-routing config, not model identity.
+    # Changing cwd should not trigger the "model_config mismatch" warning
+    # in CliPool.send() — that check is for backend/model/tools changes only.
+    cwd: Path | None = field(default=None, compare=False)
 
 
 class Complexity(Enum):

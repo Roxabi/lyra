@@ -327,11 +327,17 @@ class Pool:
             await self._session_reset_fn()
 
     async def switch_workspace(self, cwd: Path) -> None:
-        """Switch workspace cwd, kill process, clear history."""
+        """Switch workspace cwd, kill process, clear history.
+
+        No-op for SDK-backed agents (where _switch_workspace_fn is None)
+        — cwd is a CLI concept and history should not be silently wiped
+        on SDK backends.
+        """
+        if self._switch_workspace_fn is None:
+            return
         self.sdk_history.clear()
         self.history.clear()
-        if self._switch_workspace_fn is not None:
-            await self._switch_workspace_fn(cwd)
+        await self._switch_workspace_fn(cwd)
 
     def extend_sdk_history(self, new_messages: list[dict]) -> None:
         """Append messages from an exchange and trim to cap."""

@@ -204,9 +204,9 @@ class CliPool:
         log.info("[pool:%s] reset", pool_id)
 
     async def switch_cwd(self, pool_id: str, cwd: Path) -> None:
-        """Store cwd override and kill any existing process. Next send() respawns."""
+        """Kill any existing process and store cwd override. Next send() respawns."""
+        await self._kill(pool_id)  # _kill pops _cwd_overrides — set override after
         self._cwd_overrides[pool_id] = cwd
-        await self._kill(pool_id)
         log.info("[pool:%s] workspace switched to %s", pool_id, cwd)
 
     # -------------------------------------------------------------------------
@@ -417,6 +417,7 @@ class CliPool:
 
     async def _kill(self, pool_id: str) -> None:
         entry = self._entries.pop(pool_id, None)
+        self._cwd_overrides.pop(pool_id, None)
         if entry is None:
             return
         if entry.is_alive():

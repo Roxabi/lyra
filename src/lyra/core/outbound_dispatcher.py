@@ -16,7 +16,7 @@ import logging
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
 
-from anthropic import APIError as AnthropicAPIError
+from lyra.errors import ProviderError
 
 from .circuit_breaker import CircuitBreaker, CircuitRegistry
 from .message import InboundMessage, OutboundAudio, OutboundMessage
@@ -148,8 +148,8 @@ class OutboundDispatcher:
                 except BaseException as exc:
                     if self._circuit is not None:
                         self._circuit.record_failure()
-                    # Record Anthropic CB failure for Anthropic API errors
-                    if isinstance(exc, AnthropicAPIError) and (
+                    # Record provider CB failure for LLM provider errors
+                    if isinstance(exc, ProviderError) and (
                         self._circuit_registry is not None
                     ):
                         ant_cb = self._circuit_registry.get("anthropic")

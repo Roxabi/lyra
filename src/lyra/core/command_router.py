@@ -261,6 +261,7 @@ class CommandRouter:
         lines.append(f"  {'max_steps':<20} {rc.max_steps or '(model default)'}")
         extra = rc.extra_instructions or "(none)"
         lines.append(f"  {'extra_instructions':<20} {extra}")
+        lines.append(f"  {'debounce_ms':<20} {rc.debounce_ms}")
         lines.append("─" * 35)
         return Response(content="\n".join(lines))
 

@@ -57,6 +57,7 @@ def pool(ctx_mock: MagicMock) -> Pool:
         agent_name="test_agent",
         ctx=ctx_mock,
         turn_timeout=60.0,
+        debounce_ms=0,
     )
 
 
@@ -68,6 +69,7 @@ def fast_pool(ctx_mock: MagicMock) -> Pool:
         agent_name="test_agent",
         ctx=ctx_mock,
         turn_timeout=0.05,
+        debounce_ms=0,
     )
 
 
@@ -234,22 +236,48 @@ class TestPoolSequentialProcessing:
     async def test_pool_sequential_processing(
         self, pool: Pool, ctx_mock: MagicMock
     ) -> None:
-        """Two messages processed in order; dispatch_response called twice."""
+        """Two messages submitted before processing starts are batched together.
+
+        With the debouncer (even at debounce_ms=0), messages already on the
+        inbox queue are drained in one batch. The agent receives a single
+        merged message with both texts newline-joined.
+        """
         # Arrange
         agent = TwoMsgAgent()
         ctx_mock._agents["test_agent"] = agent
         msg1 = make_msg("first")
         msg2 = make_msg("second")
 
-        # Act
+        # Act — both submitted before the task processes anything
         pool.submit(msg1)
         pool.submit(msg2)
         await _drain(pool, timeout=3.0)
 
-        # Assert — dispatch_response called twice
-        assert ctx_mock.dispatch_response.await_count == 2
+        # Assert — debouncer batched both messages into one dispatch
+        assert ctx_mock.dispatch_response.await_count == 1
+        assert len(agent.calls) == 1
+        assert "first" in agent.calls[0]
+        assert "second" in agent.calls[0]
 
-        # Assert — processing order matches submission order
+    @pytest.mark.asyncio
+    async def test_pool_sequential_across_turns(
+        self, pool: Pool, ctx_mock: MagicMock
+    ) -> None:
+        """Messages submitted in separate turns are processed sequentially."""
+        agent = TwoMsgAgent()
+        ctx_mock._agents["test_agent"] = agent
+        msg1 = make_msg("first")
+        msg2 = make_msg("second")
+
+        # First message processed alone
+        pool.submit(msg1)
+        await _drain(pool, timeout=3.0)
+
+        # Second message in a new turn
+        pool.submit(msg2)
+        await _drain(pool, timeout=3.0)
+
+        assert ctx_mock.dispatch_response.await_count == 2
         assert agent.calls == ["first", "second"]
 
 
@@ -488,9 +516,7 @@ class TestPoolStreaming:
         # Arrange
         agent = StreamingAgent()
         ctx = _make_ctx_mock({"test_agent": agent})
-        pool = Pool(
-            pool_id="test:main:chat:stream", agent_name="test_agent", ctx=ctx
-        )
+        pool = Pool(pool_id="test:main:chat:stream", agent_name="test_agent", ctx=ctx)
 
         msg = make_msg("stream test")
 
@@ -509,9 +535,7 @@ class TestPoolStreaming:
         agent = StreamingAgent()
         ctx = _make_ctx_mock({"test_agent": agent})
 
-        pool = Pool(
-            pool_id="test:main:chat:cbstream", agent_name="test_agent", ctx=ctx
-        )
+        pool = Pool(pool_id="test:main:chat:cbstream", agent_name="test_agent", ctx=ctx)
 
         msg = make_msg("cb stream")
 

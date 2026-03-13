@@ -31,6 +31,7 @@ _DEFAULTS: dict[str, object] = {
     "model": None,
     "max_steps": None,
     "extra_instructions": "",
+    "debounce_ms": 300,
 }
 _VALID_PARAMS = {
     "style",
@@ -39,6 +40,7 @@ _VALID_PARAMS = {
     "model",
     "max_steps",
     "extra_instructions",
+    "debounce_ms",
 }
 
 
@@ -65,6 +67,7 @@ class RuntimeConfig:
     model: str | None = None
     max_steps: int | None = None
     extra_instructions: str = ""
+    debounce_ms: int = 300
 
     def overlay(self, base: Agent) -> EffectiveConfig:
         """Build EffectiveConfig by merging this overlay on top of base Agent config."""
@@ -221,6 +224,15 @@ def set_param(rc: RuntimeConfig, key: str, value: str) -> RuntimeConfig:  # noqa
                 "Use 'auto' or a 2-8 char lowercase code (e.g. 'fr', 'en')."
             )
         parsed = value
+
+    elif key == "debounce_ms":
+        try:
+            iv = int(value)
+        except (ValueError, TypeError):
+            raise ValueError(f"debounce_ms must be an integer (0–5000), got {value!r}")
+        if iv < 0 or iv > 5000:
+            raise ValueError(f"debounce_ms must be between 0 and 5000, got {iv}")
+        parsed = iv
 
     else:
         # extra_instructions — accept as-is, but cap length to avoid bloating context

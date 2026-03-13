@@ -74,9 +74,7 @@ class ChannelAdapter(Protocol):
         """
         ...
 
-    async def render_audio(
-        self, msg: OutboundAudio, inbound: InboundMessage
-    ) -> None:
+    async def render_audio(self, msg: OutboundAudio, inbound: InboundMessage) -> None:
         """Send an outbound audio envelope (voice note) to the channel."""
         ...
 
@@ -148,6 +146,7 @@ class Hub:
         msg_manager: MessageManager | None = None,
         pairing_manager: PairingManager | None = None,
         stt: STTService | None = None,
+        debounce_ms: int = 0,
     ) -> None:
         self._bus_size = bus_size
         self.inbound_bus: InboundBus = InboundBus()
@@ -164,6 +163,7 @@ class Hub:
         self._rate_limit = rate_limit
         self._rate_window = rate_window
         self._pool_ttl = pool_ttl
+        self._debounce_ms = debounce_ms
         self._last_eviction_check: float = 0.0
         # Sliding window: maps (platform.value, bot_id, user_id) → deque of timestamps.
         # Rate limiting is per-user (not per-scope) to prevent rate-limit bypass
@@ -287,7 +287,12 @@ class Hub:
         """
         self._evict_stale_pools()
         if pool_id not in self.pools:
-            self.pools[pool_id] = Pool(pool_id=pool_id, agent_name=agent_name, ctx=self)
+            self.pools[pool_id] = Pool(
+                pool_id=pool_id,
+                agent_name=agent_name,
+                ctx=self,
+                debounce_ms=self._debounce_ms,
+            )
         pool = self.pools[pool_id]
         pool._touch()
         return pool
@@ -618,9 +623,7 @@ class Hub:
         os.close(fd)
         return path
 
-    async def _dispatch_audio_reply(
-        self, audio: InboundAudio, content: str
-    ) -> None:
+    async def _dispatch_audio_reply(self, audio: InboundAudio, content: str) -> None:
         """Send an error/info reply for an audio envelope.
 
         Constructs a synthetic InboundMessage from the audio envelope so
@@ -649,7 +652,10 @@ class Hub:
     # ------------------------------------------------------------------
 
     async def _pairing_gate_drop(
-        self, msg: InboundMessage, router: Any, key: RoutingKey,
+        self,
+        msg: InboundMessage,
+        router: Any,
+        key: RoutingKey,
     ) -> bool:
         """Return True if the message should be dropped by the pairing gate."""
         if not (self._pairing_manager and self._pairing_manager.config.enabled):

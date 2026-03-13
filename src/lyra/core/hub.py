@@ -113,7 +113,7 @@ class Hub:
     # Per-user sliding window: drop messages beyond this rate.
     RATE_LIMIT = 20  # max messages per user per window
     RATE_WINDOW = 60  # window size in seconds
-    POOL_TTL = 3600  # evict idle pools after 1 hour (seconds)
+    POOL_TTL: float = 3600.0  # evict idle pools after 1 hour (seconds)
 
     def __init__(  # noqa: PLR0913 — DI constructor, each arg is a required dependency
         self,
@@ -141,6 +141,7 @@ class Hub:
         self._rate_limit = rate_limit
         self._rate_window = rate_window
         self._pool_ttl = pool_ttl
+        self._last_eviction_check: float = 0.0
         # Sliding window: maps (platform.value, bot_id, user_id) → deque of timestamps.
         # Rate limiting is per-user (not per-scope) to prevent rate-limit bypass
         # by switching chats. Entries are removed when the deque empties.
@@ -264,11 +265,21 @@ class Hub:
         self._evict_stale_pools()
         if pool_id not in self.pools:
             self.pools[pool_id] = Pool(pool_id=pool_id, agent_name=agent_name, hub=self)
-        return self.pools[pool_id]
+        pool = self.pools[pool_id]
+        pool._touch()
+        return pool
 
     def _evict_stale_pools(self) -> None:
-        """Remove idle pools whose last activity exceeds the TTL."""
+        """Remove idle pools whose last activity exceeds the TTL.
+
+        Throttled: skips the scan if less than TTL/10 has elapsed since the
+        last check, turning the common case (nothing to evict) into a single
+        float comparison.
+        """
         now = time.monotonic()
+        if (now - self._last_eviction_check) < self._pool_ttl / 10:
+            return
+        self._last_eviction_check = now
         stale = [
             pid
             for pid, pool in self.pools.items()
@@ -277,7 +288,8 @@ class Hub:
         for pid in stale:
             del self.pools[pid]
         if stale:
-            log.info("evicted %d stale pool(s): %s", len(stale), stale)
+            log.info("evicted %d stale pool(s)", len(stale))
+            log.debug("evicted pool IDs: %s", stale)
 
     # ------------------------------------------------------------------
     # Rate limiting

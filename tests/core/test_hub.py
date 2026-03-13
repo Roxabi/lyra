@@ -1378,13 +1378,17 @@ async def test_dispatch_response_accepts_legacy_response() -> None:
 class TestPoolTTLEviction:
     """Hub._evict_stale_pools removes idle pools exceeding the TTL."""
 
+    @staticmethod
+    def _force_eviction_eligible(hub: Hub) -> None:
+        """Reset throttle so the next get_or_create_pool triggers eviction."""
+        hub._last_eviction_check = 0.0
+
     def test_stale_idle_pool_evicted(self) -> None:
         """An idle pool past TTL is removed on next get_or_create_pool call."""
         hub = Hub(pool_ttl=60)
         pool = hub.get_or_create_pool("p1", "agent")
-        # Simulate staleness: set last_active far in the past
-        pool.last_active -= 120
-        # Access triggers eviction
+        pool._last_active -= 120
+        self._force_eviction_eligible(hub)
         hub.get_or_create_pool("p2", "agent")
         assert "p1" not in hub.pools
         assert "p2" in hub.pools
@@ -1393,10 +1397,10 @@ class TestPoolTTLEviction:
         """A pool with a running task is never evicted, even past TTL."""
         hub = Hub(pool_ttl=60)
         pool = hub.get_or_create_pool("p1", "agent")
-        pool.last_active -= 120
-        # Simulate active task
+        pool._last_active -= 120
         pool._current_task = MagicMock()
         pool._current_task.done.return_value = False
+        self._force_eviction_eligible(hub)
         hub.get_or_create_pool("p2", "agent")
         assert "p1" in hub.pools  # not evicted — still active
 
@@ -1404,24 +1408,23 @@ class TestPoolTTLEviction:
         """A recently active idle pool is kept."""
         hub = Hub(pool_ttl=60)
         hub.get_or_create_pool("p1", "agent")
-        # Immediately create another — p1 is fresh
+        self._force_eviction_eligible(hub)
         hub.get_or_create_pool("p2", "agent")
         assert "p1" in hub.pools
 
     def test_pool_ttl_default(self) -> None:
-        """Default POOL_TTL is 3600 seconds."""
-        assert Hub.POOL_TTL == 3600
+        """Default POOL_TTL is 3600s and passes through to _pool_ttl."""
         hub = Hub()
-        assert hub._pool_ttl == 3600
+        assert hub._pool_ttl == 3600.0
 
     def test_done_task_pool_evicted(self) -> None:
         """A pool whose task finished (done()=True) is evicted when stale."""
         hub = Hub(pool_ttl=60)
         pool = hub.get_or_create_pool("p1", "agent")
-        pool.last_active -= 120
-        # Simulate a finished task (done but not yet None)
+        pool._last_active -= 120
         pool._current_task = MagicMock()
         pool._current_task.done.return_value = True
+        self._force_eviction_eligible(hub)
         hub.get_or_create_pool("p2", "agent")
         assert "p1" not in hub.pools  # evicted — task is done
 
@@ -1431,14 +1434,23 @@ class TestPoolTTLEviction:
         p1 = hub.get_or_create_pool("p1", "agent")
         hub.get_or_create_pool("p2", "agent")
         p3 = hub.get_or_create_pool("p3", "agent")
-        # Make p1 and p3 stale, keep p2 fresh
-        p1.last_active -= 120
-        p3.last_active -= 120
+        p1._last_active -= 120
+        p3._last_active -= 120
+        self._force_eviction_eligible(hub)
         hub.get_or_create_pool("p4", "agent")
         assert "p1" not in hub.pools
         assert "p3" not in hub.pools
         assert "p2" in hub.pools
         assert "p4" in hub.pools
+
+    def test_eviction_throttled(self) -> None:
+        """Eviction scan is throttled — skipped if less than TTL/10 elapsed."""
+        hub = Hub(pool_ttl=60)
+        pool = hub.get_or_create_pool("p1", "agent")
+        pool._last_active -= 120
+        # Don't reset throttle — second call is within TTL/10
+        hub.get_or_create_pool("p2", "agent")
+        assert "p1" in hub.pools  # not evicted — throttled
 
     async def test_submit_refreshes_last_active(self) -> None:
         """Pool.submit() updates last_active timestamp."""
@@ -1446,7 +1458,7 @@ class TestPoolTTLEviction:
 
         hub = Hub(pool_ttl=60)
         pool = hub.get_or_create_pool("p1", "agent")
-        pool.last_active -= 50  # nearly stale
+        pool._last_active -= 50  # nearly stale
         t0 = time.monotonic()
         msg = make_inbound_message()
         pool.submit(msg)

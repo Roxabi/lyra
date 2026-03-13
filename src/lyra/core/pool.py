@@ -7,6 +7,7 @@ import logging
 import time
 from collections import deque
 from collections.abc import AsyncIterator, Awaitable, Callable
+from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
@@ -69,6 +70,7 @@ class Pool:
         self.sdk_history: deque[dict] = deque()
         self.max_sdk_history: int = 50
         self._session_reset_fn: Callable[[], Awaitable[None]] | None = None
+        self._switch_workspace_fn: Callable[[Path], Awaitable[None]] | None = None
         self._ctx = ctx
         self._turn_timeout = turn_timeout
         self._debouncer = MessageDebouncer(debounce_ms)
@@ -323,6 +325,13 @@ class Pool:
         """
         if self._session_reset_fn is not None:
             await self._session_reset_fn()
+
+    async def switch_workspace(self, cwd: Path) -> None:
+        """Switch workspace cwd, kill process, clear history."""
+        self.sdk_history.clear()
+        self.history.clear()
+        if self._switch_workspace_fn is not None:
+            await self._switch_workspace_fn(cwd)
 
     def extend_sdk_history(self, new_messages: list[dict]) -> None:
         """Append messages from an exchange and trim to cap."""

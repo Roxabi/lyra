@@ -509,3 +509,35 @@ class TestCliPoolSpawnCwd:
         _args, kwargs = mock_spawn.call_args
         assert kwargs["cwd"] == str(custom_dir)
 
+
+
+# ---------------------------------------------------------------------------
+# TestCliPoolSwitchCwd
+# ---------------------------------------------------------------------------
+
+
+class TestCliPoolSwitchCwd:
+    async def test_switch_cwd_stores_override(self, tmp_path: Path) -> None:
+        pool = CliPool()
+        await pool.switch_cwd("pool-ws", tmp_path)
+        assert pool._cwd_overrides["pool-ws"] == tmp_path
+
+    async def test_switch_cwd_override_used_on_spawn(self, tmp_path: Path) -> None:
+        custom_dir = tmp_path / "ws"
+        custom_dir.mkdir()
+        pool = CliPool()
+        await pool.switch_cwd("pool-ws2", custom_dir)
+        proc = make_fake_proc([INIT_LINE, ASSISTANT_LINE, RESULT_LINE])
+        with patch(_PATCH_TARGET, new=AsyncMock(return_value=proc)) as mock_spawn:
+            await pool.send("pool-ws2", "hello", DEFAULT_MODEL)
+        _args, kwargs = mock_spawn.call_args
+        assert kwargs["cwd"] == str(custom_dir)
+
+    async def test_switch_cwd_kills_existing_process(self, tmp_path: Path) -> None:
+        pool = CliPool()
+        proc = make_fake_proc([INIT_LINE, ASSISTANT_LINE, RESULT_LINE])
+        # Pre-populate with a live process
+        entry = _ProcessEntry(proc=proc, pool_id="pool-ws3", model_config=DEFAULT_MODEL)
+        pool._entries["pool-ws3"] = entry
+        await pool.switch_cwd("pool-ws3", tmp_path)
+        assert "pool-ws3" not in pool._entries

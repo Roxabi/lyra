@@ -10,7 +10,7 @@ import asyncio
 import logging
 import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -74,6 +74,7 @@ class CommandRouter:
         runtime_config_path: Path | None = None,
         smart_routing_decorator: SmartRoutingDecorator | None = None,
         on_debounce_change: Callable[[int], None] | None = None,
+        workspaces: dict[str, Path] | None = None,
     ) -> None:
         self._plugin_loader = plugin_loader
         self._enabled_plugins = enabled_plugins
@@ -87,6 +88,15 @@ class CommandRouter:
         self._runtime_config_path = runtime_config_path
         self._smart_routing = smart_routing_decorator
         self._on_debounce_change = on_debounce_change
+        self._workspaces: dict[str, Path] = workspaces or {}
+        # Register workspace commands as builtins
+        for ws_name in self._workspaces:
+            cmd = f"/{ws_name}"
+            if cmd not in self._builtins:
+                self._builtins[cmd] = CommandConfig(
+                    builtin=True,
+                    description=f"Switch to workspace: {self._workspaces[ws_name]}",
+                )
         # Guard: raise early if any loaded plugin command clashes with a builtin.
         plugin_handlers = plugin_loader.get_commands(enabled_plugins)
         conflicts = set(plugin_handlers) & set(self._builtins)
@@ -133,6 +143,8 @@ class CommandRouter:
             return Response(content="")
         if command_name == "/config":
             return self._cmd_config(msg, args)
+        if command_name in {f"/{k}" for k in self._workspaces}:
+            return None  # handled async in dispatch()
         builtin = self._builtins.get(command_name)
         if builtin and builtin.builtin:
             return Response(
@@ -149,6 +161,19 @@ class CommandRouter:
         # /clear and /new need async session reset — handle before _dispatch_builtin
         if command_name in ("/clear", "/new"):
             return await self._cmd_clear(pool)
+
+        # Workspace switching — async because pool.switch_workspace() is async
+        ws_key = command_name.lstrip("/")
+        if ws_key in self._workspaces:
+            cwd = self._workspaces[ws_key]
+            if pool is None:
+                return Response(content=f"Context: {cwd}")
+            await pool.switch_workspace(cwd)
+            remaining = " ".join(args).strip()
+            if remaining:
+                followup = replace(msg, text=remaining, text_raw=remaining)
+                pool.submit(followup)
+            return Response(content=f"Context: {cwd}")
 
         builtin_response = self._dispatch_builtin(command_name, args, msg, pool)
         if builtin_response is not None:

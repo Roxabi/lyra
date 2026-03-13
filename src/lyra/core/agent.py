@@ -132,6 +132,7 @@ class Agent:
     i18n_language: str = "en"
     smart_routing: SmartRoutingConfig | None = None
     show_intermediate: bool = False  # show ⏳-prefixed intermediate turns to the user
+    workspaces: dict[str, Path] = field(default_factory=dict)
 
 
 def load_persona(name: str, personas_dir: Path | None = None) -> PersonaConfig:
@@ -395,6 +396,22 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
             history_size=int(sr_section.get("history_size", 50)),
         )
 
+    workspaces_section = data.get("workspaces", {})
+    workspaces: dict[str, Path] = {}
+    for key, raw_path in workspaces_section.items():
+        if not re.match(r"^[a-zA-Z0-9_-]+$", key):
+            raise ValueError(
+                f"Invalid workspace name {key!r} in agent {name!r}: "
+                "only [a-zA-Z0-9_-] allowed"
+            )
+        resolved = Path(raw_path).expanduser().resolve()
+        if not resolved.is_dir():
+            raise ValueError(
+                f"[workspaces].{key} path {raw_path!r} for agent {name!r} "
+                "is not a directory"
+            )
+        workspaces[key] = resolved
+
     return Agent(
         name=name,
         system_prompt=system_prompt,
@@ -407,6 +424,7 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
         i18n_language=i18n_language,
         smart_routing=smart_routing,
         show_intermediate=bool(agent_section.get("show_intermediate", False)),
+        workspaces=workspaces,
     )
 
 

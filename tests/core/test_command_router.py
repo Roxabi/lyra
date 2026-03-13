@@ -1053,3 +1053,110 @@ class TestClearCommand:
 
         assert isinstance(response, Response)
         assert "cleared" in response.content.lower()
+
+
+# ---------------------------------------------------------------------------
+# Slice — workspace commands
+# ---------------------------------------------------------------------------
+
+
+def make_workspace_router(tmp_path: Path, workspaces: dict[str, Path]) -> CommandRouter:
+    """Build a CommandRouter with workspace commands registered."""
+    import tempfile as _tempfile
+
+    plugins_dir = Path(_tempfile.mkdtemp())
+    loader = PluginLoader(plugins_dir)
+    return CommandRouter(
+        plugin_loader=loader,
+        enabled_plugins=[],
+        workspaces=workspaces,
+    )
+
+
+class TestWorkspaceCommands:
+    """Workspace slash commands switch cwd, clear history, re-submit args."""
+
+    def test_workspace_commands_appear_in_builtins(self, tmp_path: Path) -> None:
+        """Workspace names are registered in _builtins."""
+        ws_dir = tmp_path / "myws"
+        ws_dir.mkdir()
+        router = make_workspace_router(tmp_path, {"myws": ws_dir})
+        assert "/myws" in router._builtins
+
+    @pytest.mark.asyncio
+    async def test_workspace_dispatch_returns_context_response(
+        self, tmp_path: Path
+    ) -> None:
+        """Dispatching a workspace command returns 'Context: <path>'."""
+        ws_dir = tmp_path / "proj"
+        ws_dir.mkdir()
+        router = make_workspace_router(tmp_path, {"proj": ws_dir})
+        msg = make_message(content="/proj")
+
+        switch_called_with: list[Path] = []
+
+        async def _fake_switch(cwd: Path) -> None:
+            switch_called_with.append(cwd)
+
+        pool_mock = MagicMock(spec=Pool)
+        pool_mock.switch_workspace = _fake_switch
+        pool_mock.submit = MagicMock()
+
+        response = await router.dispatch(msg, pool=pool_mock)
+
+        assert isinstance(response, Response)
+        assert f"Context: {ws_dir}" in response.content
+        assert switch_called_with == [ws_dir]
+
+    @pytest.mark.asyncio
+    async def test_workspace_dispatch_resubmits_remaining_args(
+        self, tmp_path: Path
+    ) -> None:
+        """Remaining args after workspace command are re-submitted via pool.submit."""
+        ws_dir = tmp_path / "proj"
+        ws_dir.mkdir()
+        router = make_workspace_router(tmp_path, {"proj": ws_dir})
+        msg = make_message(content="/proj what's the last commit?")
+
+        async def _fake_switch(cwd: Path) -> None:
+            pass
+
+        submitted: list = []
+        pool_mock = MagicMock(spec=Pool)
+        pool_mock.switch_workspace = _fake_switch
+        pool_mock.submit = MagicMock(side_effect=submitted.append)
+
+        await router.dispatch(msg, pool=pool_mock)
+
+        pool_mock.submit.assert_called_once()
+        submitted_msg = submitted[0]
+        assert submitted_msg.text == "what's the last commit?"
+
+    @pytest.mark.asyncio
+    async def test_workspace_dispatch_no_pool_still_returns_context(
+        self, tmp_path: Path
+    ) -> None:
+        """Without a pool, workspace command still returns 'Context: ...'."""
+        ws_dir = tmp_path / "solo"
+        ws_dir.mkdir()
+        router = make_workspace_router(tmp_path, {"solo": ws_dir})
+        msg = make_message(content="/solo")
+
+        response = await router.dispatch(msg, pool=None)
+
+        assert isinstance(response, Response)
+        assert f"Context: {ws_dir}" in response.content
+
+    @pytest.mark.asyncio
+    async def test_unknown_command_not_treated_as_workspace(
+        self, tmp_path: Path
+    ) -> None:
+        """Commands not in workspaces dict fall through to unknown-command handling."""
+        ws_dir = tmp_path / "myws"
+        ws_dir.mkdir()
+        router = make_workspace_router(tmp_path, {"myws": ws_dir})
+        msg = make_message(content="/otherws")
+
+        response = await router.dispatch(msg)
+
+        assert "unknown command" in response.content.lower()

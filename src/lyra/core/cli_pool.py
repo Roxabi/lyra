@@ -109,6 +109,7 @@ class CliPool:
         self._default_timeout = default_timeout
         self._entries: dict[str, _ProcessEntry] = {}
         self._reaper_task: asyncio.Task[None] | None = None
+        self._cwd_overrides: dict[str, Path] = {}
 
     async def start(self) -> None:
         """Start the idle reaper background task."""
@@ -202,6 +203,12 @@ class CliPool:
         await self._kill(pool_id)
         log.info("[pool:%s] reset", pool_id)
 
+    async def switch_cwd(self, pool_id: str, cwd: Path) -> None:
+        """Store cwd override and kill any existing process. Next send() respawns."""
+        self._cwd_overrides[pool_id] = cwd
+        await self._kill(pool_id)
+        log.info("[pool:%s] workspace switched to %s", pool_id, cwd)
+
     # -------------------------------------------------------------------------
     # Internal
     # -------------------------------------------------------------------------
@@ -235,7 +242,7 @@ class CliPool:
     async def _spawn(
         self, pool_id: str, model_config: ModelConfig, system_prompt: str = ""
     ) -> _ProcessEntry | None:
-        spawn_cwd = model_config.cwd or _LYRA_ROOT
+        spawn_cwd = self._cwd_overrides.get(pool_id) or model_config.cwd or _LYRA_ROOT
         cmd = self._build_cmd(model_config, system_prompt=system_prompt)
         log.info(
             "[pool:%s] spawning: backend=%s model=%s cwd=%s",

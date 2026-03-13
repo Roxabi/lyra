@@ -229,6 +229,54 @@ system = "test"
         with pytest.raises(ValueError, match="not a directory"):
             load_agent_config("badcwd", agents_dir=tmp_path)
 
+    def test_workspaces_parsed(self, tmp_path: Path) -> None:
+        project_dir = tmp_path / "myproject"
+        project_dir.mkdir()
+        toml_content = f"""
+[prompt]
+system = "test"
+
+[workspaces]
+myproject = "{project_dir}"
+"""
+        (tmp_path / "wsagent.toml").write_text(toml_content)
+        agent = load_agent_config("wsagent", agents_dir=tmp_path)
+        assert "myproject" in agent.workspaces
+        assert agent.workspaces["myproject"] == project_dir.resolve()
+
+    def test_workspaces_invalid_name_raises(self, tmp_path: Path) -> None:
+        toml_content = """
+[prompt]
+system = "test"
+
+[workspaces]
+"bad name!" = "/tmp"
+"""
+        (tmp_path / "badws.toml").write_text(toml_content)
+        with pytest.raises(ValueError, match="Invalid workspace name"):
+            load_agent_config("badws", agents_dir=tmp_path)
+
+    def test_workspaces_nonexistent_path_raises(self, tmp_path: Path) -> None:
+        toml_content = """
+[prompt]
+system = "test"
+
+[workspaces]
+ghost = "/nonexistent/xyz"
+"""
+        (tmp_path / "ghostws.toml").write_text(toml_content)
+        with pytest.raises(ValueError, match="not a directory"):
+            load_agent_config("ghostws", agents_dir=tmp_path)
+
+    def test_workspaces_defaults_to_empty(self, tmp_path: Path) -> None:
+        toml_content = """
+[prompt]
+system = "test"
+"""
+        (tmp_path / "nows.toml").write_text(toml_content)
+        agent = load_agent_config("nows", agents_dir=tmp_path)
+        assert agent.workspaces == {}
+
 
 class TestPersonaConfig:
     def test_frozen(self) -> None:

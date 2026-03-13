@@ -338,10 +338,10 @@ class TestAuthConfig:
         with pytest.raises(SystemExit, match="auth.telegram"):
             await main_mod._main(_stop=stop)
 
-    async def test_missing_discord_section_exits(
+    async def test_discord_section_optional_when_telegram_present(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Missing [auth.discord] causes SystemExit when _main() runs."""
+        """Missing [auth.discord] is allowed when [auth.telegram] is configured."""
         monkeypatch.setattr(main_mod, "load_dotenv", lambda: None)
         monkeypatch.setattr(
             main_mod,
@@ -358,9 +358,15 @@ class TestAuthConfig:
             "_load_raw_config",
             lambda: {"auth": {"telegram": {"default": "public"}}},
         )
+        # Sentinel: if we reach load_agent_config, auth validation passed.
+        monkeypatch.setattr(
+            main_mod,
+            "load_agent_config",
+            lambda name: (_ for _ in ()).throw(SystemExit("past_auth")),
+        )
         stop = asyncio.Event()
         stop.set()
-        with pytest.raises(SystemExit, match="auth.discord"):
+        with pytest.raises(SystemExit, match="past_auth"):
             await main_mod._main(_stop=stop)
 
     async def test_invalid_default_exits(

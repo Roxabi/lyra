@@ -1,0 +1,46 @@
+---
+title: "feat(voice): formalize voiceCLI consumption in Lyra"
+issue: 167
+status: approved
+tier: F-lite
+date: 2026-03-13
+---
+
+## Problem
+
+The audio dispatch pipeline is fully wired end-to-end: `dispatch_audio()` in Hub, `OutboundDispatcher.enqueue_audio()` with circuit breaker, and `render_audio()` in adapters are all in place. The STT side is similarly complete. However, there is no TTS service layer — no code in Lyra calls voiceCLI for text-to-speech. Agents cannot emit voice responses despite the pipeline being ready to carry them.
+
+The missing piece is a `TTSService` that wraps voiceCLI library calls, produces typed audio results, and slots into the existing dispatch flow. Without it, the entire outbound audio infrastructure is idle.
+
+## Who
+
+- **Primary:** Lyra itself (agents + commands that want to emit voice) — specifically any agent or command handler that detects an audio intent (e.g. `/voice`) and needs to produce audio bytes via the pipeline.
+- **Secondary:** Developers extending Lyra with voice-enabled agents — they gain a typed, testable TTS abstraction with a familiar API (mirror of `STTService`).
+
+## Constraints
+
+- Must call voiceCLI as a **library** (not subprocess) — same pattern as STT integration (#80).
+- Typed output: `TTSResult(audio_bytes, mime_type, duration_ms)`.
+- Async-native (asyncio).
+- Configurable voice via env var or per-agent config.
+- Fallback to text if TTS fails (graceful degradation).
+- Phase 2 MCP server evaluation is explicitly deferred.
+
+## Out of Scope
+
+- `OutboundAudio` envelope design (done, #141/#144)
+- `OutboundDispatcher` routing and circuit breaker (done, #175)
+- Adapter `render_audio()` / `render_audio_stream()` (done, #141/#144)
+- `dispatch_audio()` / `dispatch_audio_stream()` in Hub (done, #182/#228)
+- STT integration (done, #80)
+- MCP server integration as TTS backend (Phase 2 only)
+
+## Complexity
+
+**Tier: F-lite** — Clear, bounded scope: one new module (`src/lyra/tts/`) mirroring an established pattern, wired into Hub init, plus a command trigger. No new architectural patterns; all dispatch infrastructure is already in place.
+
+Signals observed:
+- Single domain (TTS service layer only)
+- Established pattern to follow (mirror `src/lyra/stt/`)
+- No unknowns: voiceCLI library API is known, Hub init wiring is understood
+- ≤5 files affected: `tts/__init__.py`, `hub.py` init, one command/agent handler, tests

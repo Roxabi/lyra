@@ -1,0 +1,198 @@
+---
+title: "ADR-018: Intermediate Turns, Typing Indicator Lifecycle, and LlmProvider Protocol Evolution"
+description: Documents the architectural decisions and outstanding issues introduced by the show_intermediate feature, the typing indicator redesign, and the on_intermediate callback propagation chain.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+Three related changes landed together in the staging branch:
+
+1. **Typing indicator redesign** — `TelegramAdapter` now starts a typing indicator
+   at message receipt (`_on_message`) and cancels it at the start of `send()` /
+   `send_streaming()`, replacing the previous context-manager-only approach that
+   only covered the send phase.
+
+2. **`on_intermediate` callback propagation** — `LlmProvider.complete()` gained
+   an `on_intermediate: Callable[[str], Awaitable[None]] | None = None` keyword
+   argument threaded through all decorators (`RetryDecorator`,
+   `CircuitBreakerDecorator`, `SmartRoutingDecorator`) and down into
+   `ClaudeCliDriver → CliPool._read_until_result`. When `show_intermediate = true`
+   in the agent TOML, each intermediate CLI turn is dispatched to the user via
+   `pool._ctx.dispatch_response()`.
+
+3. **SimpleAgent `runtime_config` wiring** — `_build_router_kwargs()` now injects
+   `runtime_config_holder` and `runtime_config_path`, and `is_backend_alive()`
+   was added to check whether the underlying CLI process is alive on timeout.
+
+A systematic review of these changes identified six architectural issues that
+require either immediate remediation or explicit deferral before Phase 2 work
+adds a memory layer on top of these modules.
+
+---
+
+## Issues Found
+
+### Issue 1 — Agent crosses the agent/infrastructure boundary via `pool._ctx`
+
+**File:** `agents/simple_agent.py:163`
+
+`SimpleAgent.process()` constructs `on_intermediate` as a closure that calls
+`pool._ctx.dispatch_response()` directly. `_ctx` is the private `PoolContext`
+back-reference that `Pool` uses to call into `Hub`. Agents should produce
+`Response` objects and return them; dispatch is a pool/hub concern (ADR-017
+Hotspot 1). Direct `_ctx` access also bypasses `Pool._process_one`'s
+circuit-breaker recording path.
+
+### Issue 2 — `on_intermediate: object = None` in AnthropicSdkDriver
+
+**File:** `llm/drivers/sdk.py:45`
+
+`LlmProvider` Protocol declares `on_intermediate: Callable[[str], Awaitable[None]] | None = None`.
+`AnthropicSdkDriver` uses `object = None` to suppress the type checker instead
+of conforming to the declared type. `@runtime_checkable` structural checks pass
+at runtime, but static analysers flag this as a protocol mismatch. It is also
+undocumented at the call site whether the argument is silently ignored or not
+supported.
+
+### Issue 3 — `metadata={"intermediate": True}` is an undocumented dispatch contract
+
+**File:** `agents/simple_agent.py:165`
+
+`Response(content=..., metadata={"intermediate": True})` is the signal used by
+downstream consumers to identify intermediate turns. This key is not defined on
+`Response`, not mentioned in any docstring, and not covered by static typing.
+Any future adapter or dispatcher must re-discover the convention from source.
+
+### Issue 4 — Typing tasks dict has no shutdown cleanup
+
+**File:** `adapters/telegram.py:258, 338-352`
+
+`_typing_tasks: dict[int, asyncio.Task]` accumulates tasks that each run an
+infinite `while True:` loop (`_typing_worker`). `TelegramAdapter` has no
+`close()` method. On application shutdown, all tasks in `_typing_tasks` are
+left pending, causing `Task exception was never retrieved` warnings or silent
+resource leaks.
+
+### Issue 5 — `is_backend_alive()` bypasses LlmProvider protocol via reflection
+
+**File:** `agents/simple_agent.py:83`
+
+`SimpleAgent.is_backend_alive()` uses `getattr(self._provider, "_pool", None)`
+and `isinstance(cli_pool, CliPool)` to reach into the driver's private field.
+Per ADR-016, agents must not know which concrete driver they hold. This breaks
+the protocol abstraction and will silently return `True` for any non-CLI driver.
+
+### Issue 6 — `on_intermediate` callback blocks the CLI stdout read loop
+
+**File:** `core/cli_pool.py:355-363`
+
+`on_intermediate(combined)` is awaited synchronously inside `_read_until_result`
+while `entry._lock` is held. A slow downstream dispatch (e.g. Telegram network
+lag) blocks stdout reading for the entire duration. With `max_turns = 10` and a
+slow connection, this creates a latency hazard that can cascade into timeout
+errors.
+
+---
+
+## Options Considered
+
+### Option A: Fix all six issues in this PR
+
+**Pros:** Clean state entering Phase 2.
+**Cons:** Large surface area; delays merging a feature that already works in
+the common case.
+
+### Option B: Ship as-is, file follow-up issues for each finding (chosen)
+
+**Pros:** Feature ships now. Each fix is independently scoped and testable.
+The issues are ranked by Phase 2 impact so they can be addressed in priority
+order.
+**Cons:** Codebase is transiently inconsistent between fixes.
+
+### Option C: Revert `on_intermediate` to a streaming response bus design
+
+**Pros:** Naturally decouples read loop from dispatch; eliminates Issues 1, 3,
+and 6 in one move.
+**Cons:** Requires rearchitecting the callback chain before Phase 2. The bus
+approach adds complexity (queue management, consumer task lifecycle) that is
+unjustified until a second driver needs intermediate turns.
+
+---
+
+## Decision
+
+Option B. The feature is accepted as shipped. Each issue is documented here and
+must be resolved before the Phase 2 memory layer is added, ordered by severity:
+
+| Priority | Issue | Reason |
+|----------|-------|--------|
+| 1 | Issue 1 (agent crosses `_ctx`) | Violates ADR-017 Hotspot 1; risks CB recording gap |
+| 2 | Issue 4 (typing tasks leak) | Resource leak on production shutdown |
+| 3 | Issue 5 (`is_backend_alive` reflection) | Violates ADR-016 protocol contract |
+| 4 | Issue 2 (SDK driver `object = None`) | Protocol lie; blocks static analysis |
+| 5 | Issue 3 (`intermediate` metadata undocumented) | Documentation debt |
+| 6 | Issue 6 (read loop blocked by callback) | Latency hazard; acceptable until multi-turn load is observed in production |
+
+### Remediation Designs
+
+**Issue 1:** `Pool` constructs the `on_intermediate` callback and passes it into
+`agent.process()` as a parameter, holding the `_ctx` reference inside `Pool`
+where it belongs. `AgentBase.process()` signature gains
+`on_intermediate: Callable[[str], Awaitable[None]] | None = None`.
+
+**Issue 2:** Declare `on_intermediate` with its full correct type in
+`AnthropicSdkDriver.complete()`. Add `# SDK driver: on_intermediate accepted
+for protocol compliance; not dispatched (no agentic turns)` inline comment.
+Add `capabilities["on_intermediate"] = False` to document the capability gap.
+
+**Issue 3:** Add `intermediate: bool = False` as a first-class field on
+`Response`. Migrate `metadata={"intermediate": True}` to `Response(intermediate=True)`.
+Remove the metadata key usage at all call sites.
+
+**Issue 4:** Add `async def close(self) -> None` to `TelegramAdapter` that
+cancels and awaits all tasks in `_typing_tasks`. Hook into the FastAPI lifespan
+`shutdown` event or Hub teardown sequence.
+
+**Issue 5:** Add `def is_alive(self, pool_id: str) -> bool: ...` to the
+`LlmProvider` Protocol (default `True`). `ClaudeCliDriver` delegates to
+`CliPool.is_alive(pool_id)`. Remove the `getattr`/`isinstance` reflection from
+`SimpleAgent`.
+
+**Issue 6:** Wrap the `on_intermediate` call with
+`asyncio.wait_for(on_intermediate(combined), timeout=SAFE_DISPATCH_TIMEOUT)` as
+a short-term fix. Long-term, evaluate an `asyncio.Queue`-based bus once
+multi-turn load profiles are available from production.
+
+---
+
+## Consequences
+
+### Positive
+
+- Typing indicator now covers the full processing window — users see activity
+  from message receipt through response delivery, not just the send phase.
+- Intermediate agentic turns are visible to the user when `show_intermediate = true`,
+  reducing perceived latency for long-running tool-use chains.
+- All six issues have documented remediation designs, so Phase 2 work does not
+  inherit undocumented debt.
+
+### Negative
+
+- Issues 1 and 5 must be resolved before the memory layer is added to `Pool`;
+  they are blocking for Phase 2.
+- Issue 4 (typing task leak) is a production reliability concern. Every adapter
+  shutdown leaks tasks until the `close()` method is added.
+
+### Neutral
+
+- The `_typing_loop` context manager (original implementation) is still present
+  in `send_streaming()` alongside the new `_typing_tasks` dict. Both mechanisms
+  coexist until Issue 4 cleanup consolidates them. The transition comment at
+  `send_streaming():774` should be added as part of Issue 4.
+- `on_intermediate` as a callback (rather than a streaming bus) is an acceptable
+  design for the current single-driver, single-agent topology. Revisit when
+  `OllamaDriver` is added in Phase 2.

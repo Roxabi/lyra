@@ -1,0 +1,1632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lyra — Visual Explainer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-body: 'Space Grotesk', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+    --bg: #06070f;
+    --surface: #0d0f1e;
+    --surface2: #111428;
+    --surface3: #161932;
+    --border: rgba(255,255,255,0.05);
+    --border-bright: rgba(255,255,255,0.10);
+    --text: #e8eaf6;
+    --text-dim: #6b7299;
+    --text-muted: #3d4466;
+    --cyan: #00e5ff;
+    --cyan-dim: rgba(0,229,255,0.08);
+    --cyan-glow: rgba(0,229,255,0.20);
+    --violet: #b388ff;
+    --violet-dim: rgba(179,136,255,0.08);
+    --violet-glow: rgba(179,136,255,0.20);
+    --green: #69ff47;
+    --green-dim: rgba(105,255,71,0.08);
+    --green-glow: rgba(105,255,71,0.18);
+    --amber: #ffcc02;
+    --amber-dim: rgba(255,204,2,0.08);
+    --amber-glow: rgba(255,204,2,0.18);
+    --rose: #ff5370;
+    --rose-dim: rgba(255,83,112,0.08);
+    --rose-glow: rgba(255,83,112,0.18);
+    --teal: #64ffda;
+    --teal-dim: rgba(100,255,218,0.08);
+    --teal-glow: rgba(100,255,218,0.18);
+    --orange: #ff9800;
+    --orange-dim: rgba(255,152,0,0.08);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background: var(--bg);
+    background-image:
+      radial-gradient(ellipse at 15% 0%, rgba(0,229,255,0.06) 0%, transparent 45%),
+      radial-gradient(ellipse at 85% 5%, rgba(179,136,255,0.08) 0%, transparent 40%),
+      radial-gradient(ellipse at 50% 100%, rgba(105,255,71,0.04) 0%, transparent 50%);
+    color: var(--text);
+    font-family: var(--font-body);
+    min-height: 100vh;
+    line-height: 1.5;
+  }
+  @keyframes fadeUp {
+    from { opacity:0; transform:translateY(16px); }
+    to   { opacity:1; transform:translateY(0); }
+  }
+  @keyframes pulseGlow {
+    0%,100% { opacity:0.6; }
+    50% { opacity:1; }
+  }
+  .fade { animation: fadeUp 0.4s ease-out both; animation-delay: calc(var(--i,0)*0.06s); }
+
+  /* HERO */
+  .hero {
+    position:relative; background:var(--surface);
+    border-bottom:1px solid rgba(0,229,255,0.12);
+    padding:36px 48px 32px; overflow:hidden;
+  }
+  .hero::before {
+    content:''; position:absolute; inset:0;
+    background:linear-gradient(135deg,rgba(0,229,255,0.04) 0%,transparent 60%,rgba(179,136,255,0.04) 100%);
+    pointer-events:none;
+  }
+  .hero-grid {
+    position:absolute; inset:0;
+    background-image:linear-gradient(rgba(0,229,255,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,0.025) 1px,transparent 1px);
+    background-size:32px 32px; pointer-events:none;
+  }
+  .hero-inner { position:relative; max-width:1600px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; gap:32px; flex-wrap:wrap; }
+  .hero-badge {
+    display:inline-flex; align-items:center; gap:6px;
+    background:var(--cyan-dim); border:1px solid rgba(0,229,255,0.2);
+    border-radius:100px; padding:4px 12px;
+    font-family:var(--font-mono); font-size:11px; color:var(--cyan);
+    letter-spacing:1px; text-transform:uppercase; margin-bottom:14px;
+  }
+  .dot-live { width:6px; height:6px; border-radius:50%; background:var(--cyan); animation:pulseGlow 2s ease-in-out infinite; }
+  .hero h1 { font-size:48px; font-weight:700; letter-spacing:-2px; line-height:1; margin-bottom:8px; }
+  .hero h1 .brand { color:var(--cyan); }
+  .hero-sub { font-size:14px; color:var(--text-dim); font-family:var(--font-mono); margin-bottom:16px; }
+  .hero-tagline { font-size:16px; color:var(--text-dim); max-width:500px; }
+  .hero-stats { display:flex; gap:28px; }
+  .hstat .num { font-size:32px; font-weight:700; font-family:var(--font-mono); line-height:1; }
+  .hstat .lbl { font-size:10px; color:var(--text-dim); text-transform:uppercase; letter-spacing:1px; }
+  .hstat--cyan .num { color:var(--cyan); }
+  .hstat--violet .num { color:var(--violet); }
+  .hstat--green .num { color:var(--green); }
+  .hstat--amber .num { color:var(--amber); }
+
+  /* TAB NAV */
+  .tabnav-wrap {
+    position:sticky; top:0; z-index:100;
+    background:rgba(6,7,15,0.92); backdrop-filter:blur(12px);
+    border-bottom:1px solid var(--border-bright);
+  }
+  .tabnav { max-width:1600px; margin:0 auto; display:flex; gap:2px; padding:0 48px; overflow-x:auto; }
+  .tab-btn {
+    flex-shrink:0; background:none; border:none; cursor:pointer;
+    padding:14px 18px; font-family:var(--font-body); font-size:13px; font-weight:500;
+    color:var(--text-dim); border-bottom:2px solid transparent; transition:all 0.2s;
+    white-space:nowrap;
+  }
+  .tab-btn:hover { color:var(--text); }
+  .tab-btn.active { color:var(--cyan); border-bottom-color:var(--cyan); }
+
+  /* CONTENT */
+  .content { max-width:1600px; margin:0 auto; padding:32px 48px 80px; }
+  .tab-panel { display:none; }
+  .tab-panel.active { display:block; animation:fadeUp 0.3s ease-out; }
+
+  /* CARDS */
+  .card {
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:14px; padding:24px 28px;
+  }
+  .card--cyan   { border-color:rgba(0,229,255,0.12); }
+  .card--violet { border-color:rgba(179,136,255,0.12); }
+  .card--green  { border-color:rgba(105,255,71,0.12); }
+  .card--amber  { border-color:rgba(255,204,2,0.12); }
+  .card--rose   { border-color:rgba(255,83,112,0.12); }
+  .card--teal   { border-color:rgba(100,255,218,0.12); }
+  .card--orange { border-color:rgba(255,152,0,0.12); }
+
+  .section-label {
+    display:flex; align-items:center; gap:8px;
+    font-family:var(--font-mono); font-size:10px; font-weight:600;
+    text-transform:uppercase; letter-spacing:2px; margin-bottom:20px;
+  }
+  .section-label .dot { width:7px; height:7px; border-radius:50%; }
+  .section-label--cyan   { color:var(--cyan); }
+  .section-label--cyan .dot { background:var(--cyan); box-shadow:0 0 8px var(--cyan-glow); }
+  .section-label--violet { color:var(--violet); }
+  .section-label--violet .dot { background:var(--violet); box-shadow:0 0 8px var(--violet-glow); }
+  .section-label--green  { color:var(--green); }
+  .section-label--green .dot  { background:var(--green); box-shadow:0 0 8px var(--green-glow); }
+  .section-label--amber  { color:var(--amber); }
+  .section-label--amber .dot  { background:var(--amber); box-shadow:0 0 8px var(--amber-glow); }
+  .section-label--rose   { color:var(--rose); }
+  .section-label--rose .dot   { background:var(--rose); box-shadow:0 0 8px var(--rose-glow); }
+  .section-label--teal   { color:var(--teal); }
+  .section-label--teal .dot   { background:var(--teal); box-shadow:0 0 8px var(--teal-glow); }
+
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+  .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px; }
+  .gap16 { display:flex; flex-direction:column; gap:16px; }
+  .gap20 { display:flex; flex-direction:column; gap:20px; }
+  .gap24 { display:flex; flex-direction:column; gap:24px; }
+
+  h2 { font-size:22px; font-weight:700; margin-bottom:6px; }
+  h3 { font-size:16px; font-weight:600; margin-bottom:10px; }
+  h4 { font-size:13px; font-weight:600; margin-bottom:6px; }
+  p  { font-size:14px; color:var(--text-dim); line-height:1.7; }
+
+  /* ARCH NODES */
+  .arch-flow { display:flex; align-items:center; gap:0; flex-wrap:wrap; }
+  .arch-node {
+    flex-shrink:0; background:var(--surface2); border:1px solid var(--border-bright);
+    border-radius:10px; padding:12px 16px; min-width:100px; text-align:center;
+  }
+  .arch-node .node-icon { font-size:20px; margin-bottom:4px; }
+  .arch-node .node-name { font-size:12px; font-weight:600; }
+  .arch-node .node-sub  { font-size:10px; color:var(--text-dim); margin-top:2px; font-family:var(--font-mono); }
+  .arch-node--cyan   { border-color:rgba(0,229,255,0.3); background:linear-gradient(135deg,rgba(0,229,255,0.07),var(--surface2)); }
+  .arch-node--violet { border-color:rgba(179,136,255,0.3); background:linear-gradient(135deg,rgba(179,136,255,0.07),var(--surface2)); }
+  .arch-node--green  { border-color:rgba(105,255,71,0.3); background:linear-gradient(135deg,rgba(105,255,71,0.07),var(--surface2)); }
+  .arch-node--amber  { border-color:rgba(255,204,2,0.3); background:linear-gradient(135deg,rgba(255,204,2,0.07),var(--surface2)); }
+  .arch-node--teal   { border-color:rgba(100,255,218,0.3); background:linear-gradient(135deg,rgba(100,255,218,0.07),var(--surface2)); }
+  .arch-node--rose   { border-color:rgba(255,83,112,0.3); background:linear-gradient(135deg,rgba(255,83,112,0.07),var(--surface2)); }
+  .arch-arrow { flex-shrink:0; display:flex; align-items:center; padding:0 8px; color:var(--text-muted); font-size:16px; }
+
+  /* TAGS / PILLS */
+  .tag {
+    display:inline-flex; align-items:center; gap:4px;
+    border-radius:6px; padding:3px 10px;
+    font-family:var(--font-mono); font-size:11px; font-weight:500;
+  }
+  .tag--cyan   { background:var(--cyan-dim); color:var(--cyan); border:1px solid rgba(0,229,255,0.2); }
+  .tag--green  { background:var(--green-dim); color:var(--green); border:1px solid rgba(105,255,71,0.2); }
+  .tag--amber  { background:var(--amber-dim); color:var(--amber); border:1px solid rgba(255,204,2,0.2); }
+  .tag--violet { background:var(--violet-dim); color:var(--violet); border:1px solid rgba(179,136,255,0.2); }
+  .tag--rose   { background:var(--rose-dim); color:var(--rose); border:1px solid rgba(255,83,112,0.2); }
+  .tag--teal   { background:var(--teal-dim); color:var(--teal); border:1px solid rgba(100,255,218,0.2); }
+  .tag--muted  { background:var(--surface3); color:var(--text-muted); border:1px solid var(--border); }
+
+  /* TABLE */
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th { text-align:left; padding:8px 12px; font-family:var(--font-mono); font-size:10px; text-transform:uppercase; letter-spacing:1px; color:var(--text-muted); border-bottom:1px solid var(--border-bright); }
+  td { padding:10px 12px; border-bottom:1px solid var(--border); vertical-align:top; }
+  tr:last-child td { border-bottom:none; }
+  td code { font-family:var(--font-mono); font-size:11px; color:var(--cyan); background:var(--cyan-dim); padding:2px 6px; border-radius:4px; }
+
+  /* CODE BLOCK */
+  pre {
+    background:var(--surface2); border:1px solid var(--border-bright);
+    border-radius:10px; padding:16px 20px; overflow-x:auto;
+    font-family:var(--font-mono); font-size:12px; color:var(--teal); line-height:1.7;
+  }
+  pre .cm { color:var(--text-muted); }
+  pre .kw { color:var(--violet); }
+  pre .fn { color:var(--cyan); }
+  pre .st { color:var(--green); }
+  pre .nb { color:var(--amber); }
+
+  /* PROGRESS BAR */
+  .progress-wrap { background:var(--surface3); border-radius:100px; height:8px; overflow:hidden; flex:1; }
+  .progress-fill { height:100%; border-radius:100px; transition:width 0.8s ease; }
+  .progress-fill--cyan   { background:linear-gradient(90deg,var(--cyan),rgba(0,229,255,0.5)); }
+  .progress-fill--green  { background:linear-gradient(90deg,var(--green),rgba(105,255,71,0.5)); }
+  .progress-fill--amber  { background:linear-gradient(90deg,var(--amber),rgba(255,204,2,0.5)); }
+  .progress-fill--violet { background:linear-gradient(90deg,var(--violet),rgba(179,136,255,0.5)); }
+  .progress-row { display:flex; align-items:center; gap:12px; }
+  .progress-label { font-size:12px; font-family:var(--font-mono); min-width:90px; }
+  .progress-val { font-size:12px; font-family:var(--font-mono); color:var(--text-dim); min-width:36px; text-align:right; }
+
+  /* ISSUE CARD */
+  .issue-card {
+    background:var(--surface2); border:1px solid var(--border-bright);
+    border-radius:10px; padding:14px 18px;
+    display:flex; align-items:flex-start; gap:14px;
+  }
+  .issue-num { font-family:var(--font-mono); font-size:12px; color:var(--text-muted); min-width:40px; }
+  .issue-title { font-size:13px; font-weight:500; margin-bottom:4px; }
+  .issue-meta { display:flex; gap:8px; flex-wrap:wrap; }
+
+  /* STEP */
+  .step { display:flex; gap:16px; align-items:flex-start; }
+  .step-num {
+    flex-shrink:0; width:32px; height:32px; border-radius:50%;
+    background:var(--cyan-dim); border:1px solid rgba(0,229,255,0.3);
+    display:flex; align-items:center; justify-content:center;
+    font-family:var(--font-mono); font-size:13px; font-weight:600; color:var(--cyan);
+  }
+  .step-body { flex:1; padding-top:4px; }
+  .step-title { font-size:14px; font-weight:600; margin-bottom:4px; }
+  .step-desc  { font-size:13px; color:var(--text-dim); }
+
+  /* VRAM BAR */
+  .vram-bar-wrap { margin-top:12px; }
+  .vram-segments { display:flex; height:24px; border-radius:8px; overflow:hidden; gap:2px; }
+  .vram-seg { display:flex; align-items:center; justify-content:center; font-size:10px; font-family:var(--font-mono); font-weight:600; transition:width 0.5s; }
+  .vram-labels { display:flex; gap:16px; margin-top:8px; flex-wrap:wrap; }
+  .vram-dot { width:8px; height:8px; border-radius:2px; flex-shrink:0; }
+  .vram-lbl { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text-dim); }
+
+  /* MEMORY PYRAMID */
+  .mem-row {
+    display:flex; align-items:center; gap:16px;
+    border-radius:10px; padding:14px 20px;
+    margin-bottom:8px;
+  }
+  .mem-level { font-family:var(--font-mono); font-size:22px; font-weight:700; min-width:40px; }
+  .mem-body { flex:1; }
+  .mem-name { font-size:14px; font-weight:600; margin-bottom:2px; }
+  .mem-desc { font-size:12px; color:var(--text-dim); }
+
+  /* CHAT BUBBLE */
+  .chat-wrap { display:flex; flex-direction:column; gap:10px; }
+  .bubble-row { display:flex; gap:10px; align-items:flex-end; }
+  .bubble-row.user { flex-direction:row-reverse; }
+  .bubble-avatar { width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:13px; flex-shrink:0; }
+  .bubble-avatar.user-av { background:var(--violet-dim); border:1px solid rgba(179,136,255,0.3); }
+  .bubble-avatar.lyra-av { background:var(--cyan-dim); border:1px solid rgba(0,229,255,0.3); }
+  .bubble {
+    max-width:70%; padding:10px 14px; border-radius:12px;
+    font-size:13px; line-height:1.6;
+  }
+  .bubble.user-bubble { background:var(--violet-dim); border:1px solid rgba(179,136,255,0.2); border-bottom-right-radius:4px; }
+  .bubble.lyra-bubble { background:var(--cyan-dim); border:1px solid rgba(0,229,255,0.2); border-bottom-left-radius:4px; }
+
+  /* SVG GRAPH */
+  .dep-graph { width:100%; overflow-x:auto; }
+
+  /* FOOTER */
+  footer { text-align:center; padding:32px 48px; font-size:11px; font-family:var(--font-mono); color:var(--text-muted); }
+</style>
+</head>
+<body>
+
+<!-- HERO -->
+<div class="hero fade">
+  <div class="hero-grid"></div>
+  <div class="hero-inner">
+    <div>
+      <div class="hero-badge"><span class="dot-live"></span> Phase 1b — Tail</div>
+      <h1><span class="brand">Lyra</span></h1>
+      <div class="hero-sub">Personal AI Agent Engine · Hub-and-spoke · asyncio · Python 3.12</div>
+      <p class="hero-tagline">Telegram + Discord · 2-machine infra · 5-level memory · Multi-agent routing</p>
+    </div>
+    <div class="hero-stats">
+      <div class="hstat hstat--cyan"><div class="num">2</div><div class="lbl">Machines</div></div>
+      <div class="hstat hstat--violet"><div class="num">5</div><div class="lbl">Memory Lvls</div></div>
+      <div class="hstat hstat--green"><div class="num">90%</div><div class="lbl">Phase 1b</div></div>
+      <div class="hstat hstat--amber"><div class="num">9</div><div class="lbl">Sections</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB NAV -->
+<div class="tabnav-wrap">
+  <nav class="tabnav" id="tabnav">
+    <button class="tab-btn active" data-tab="priorities">01 · Priorities</button>
+    <button class="tab-btn" data-tab="current-arch">02 · Current Arch</button>
+    <button class="tab-btn" data-tab="target-arch">03 · Target Arch</button>
+    <button class="tab-btn" data-tab="hardware">04 · Hardware</button>
+    <button class="tab-btn" data-tab="message-flow">05 · Message Flow</button>
+    <button class="tab-btn" data-tab="memory">06 · Memory</button>
+    <button class="tab-btn" data-tab="phases">07 · Phases</button>
+    <button class="tab-btn" data-tab="setup">08 · Setup</button>
+    <button class="tab-btn" data-tab="ux">09 · UX</button>
+    <button class="tab-btn" data-tab="decisions">10 · Decisions</button>
+  </nav>
+</div>
+
+<div class="content">
+
+<!-- ══════════════════════════════════════════════════════
+     01 · PRIORITIES
+══════════════════════════════════════════════════════ -->
+<div class="tab-panel active" id="tab-priorities">
+  <div class="gap24">
+    <div>
+      <h2>Next Priorities</h2>
+      <p>Phase 1b tail — 2 issues on the critical path, then voice pipeline.</p>
+    </div>
+
+    <!-- Dependency graph -->
+    <div class="card card--cyan">
+      <div class="section-label section-label--cyan"><div class="dot"></div>Dependency Graph</div>
+      <div class="dep-graph">
+        <svg viewBox="0 0 900 320" width="100%" style="max-height:320px">
+          <defs>
+            <marker id="arr" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+              <polygon points="0 0, 8 3, 0 6" fill="rgba(107,114,153,0.7)"/>
+            </marker>
+            <marker id="arr-cyan" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+              <polygon points="0 0, 8 3, 0 6" fill="#00e5ff"/>
+            </marker>
+          </defs>
+
+          <!-- #83 — NEXT -->
+          <rect x="330" y="20" width="240" height="72" rx="10" fill="rgba(0,229,255,0.08)" stroke="#00e5ff" stroke-width="1.5"/>
+          <text x="450" y="48" text-anchor="middle" fill="#00e5ff" font-family="JetBrains Mono, monospace" font-size="13" font-weight="600">#83 · Agent Integration</text>
+          <text x="450" y="66" text-anchor="middle" fill="#6b7299" font-family="JetBrains Mono, monospace" font-size="11">identity anchor · L0 compaction</text>
+          <text x="450" y="82" text-anchor="middle" fill="#69ff47" font-family="JetBrains Mono, monospace" font-size="10">NEXT · Size L · Ready</text>
+
+          <!-- #79 -->
+          <rect x="30" y="20" width="220" height="72" rx="10" fill="rgba(105,255,71,0.06)" stroke="rgba(105,255,71,0.3)" stroke-width="1"/>
+          <text x="140" y="48" text-anchor="middle" fill="#e8eaf6" font-family="JetBrains Mono, monospace" font-size="13" font-weight="600">#79 · Voice TTS</text>
+          <text x="140" y="66" text-anchor="middle" fill="#6b7299" font-family="JetBrains Mono, monospace" font-size="11">Telegram TTS · voicecli</text>
+          <text x="140" y="82" text-anchor="middle" fill="#69ff47" font-family="JetBrains Mono, monospace" font-size="10">Ready · P2</text>
+
+          <!-- #99 — blocked by #83 -->
+          <rect x="580" y="140" width="240" height="72" rx="10" fill="rgba(255,204,2,0.06)" stroke="rgba(255,204,2,0.3)" stroke-width="1"/>
+          <text x="700" y="168" text-anchor="middle" fill="#e8eaf6" font-family="JetBrains Mono, monospace" font-size="13" font-weight="600">#99 · Hub Commands</text>
+          <text x="700" y="186" text-anchor="middle" fill="#6b7299" font-family="JetBrains Mono, monospace" font-size="11">/add /explain /summarize /search</text>
+          <text x="700" y="202" text-anchor="middle" fill="#ffcc02" font-family="JetBrains Mono, monospace" font-size="10">Blocked by #83 · Size L</text>
+
+          <!-- #67 — blocked by #83 -->
+          <rect x="80" y="140" width="200" height="60" rx="10" fill="rgba(255,204,2,0.06)" stroke="rgba(255,204,2,0.3)" stroke-width="1"/>
+          <text x="180" y="165" text-anchor="middle" fill="#e8eaf6" font-family="JetBrains Mono, monospace" font-size="12" font-weight="600">#67 · Session Persist</text>
+          <text x="180" y="183" text-anchor="middle" fill="#ffcc02" font-family="JetBrains Mono, monospace" font-size="10">Blocked by #83</text>
+
+          <!-- #128 — blocked by #83 -->
+          <rect x="310" y="140" width="220" height="60" rx="10" fill="rgba(255,204,2,0.06)" stroke="rgba(255,204,2,0.3)" stroke-width="1"/>
+          <text x="420" y="165" text-anchor="middle" fill="#e8eaf6" font-family="JetBrains Mono, monospace" font-size="12" font-weight="600">#128 · Import History</text>
+          <text x="420" y="183" text-anchor="middle" fill="#ffcc02" font-family="JetBrains Mono, monospace" font-size="10">Blocked by #83</text>
+
+          <!-- #136 — blocked by #83 + #79 -->
+          <rect x="200" y="255" width="240" height="60" rx="10" fill="rgba(255,152,0,0.06)" stroke="rgba(255,152,0,0.25)" stroke-width="1"/>
+          <text x="320" y="280" text-anchor="middle" fill="#e8eaf6" font-family="JetBrains Mono, monospace" font-size="12" font-weight="600">#136 · Multi-bot Registry</text>
+          <text x="320" y="298" text-anchor="middle" fill="#ff9800" font-family="JetBrains Mono, monospace" font-size="10">Blocked by #83 + #79 — do last</text>
+
+          <!-- Arrows from #83 -->
+          <line x1="450" y1="92" x2="700" y2="140" stroke="rgba(107,114,153,0.5)" stroke-width="1.5" marker-end="url(#arr)"/>
+          <line x1="430" y1="92" x2="300" y2="140" stroke="rgba(107,114,153,0.5)" stroke-width="1.5" marker-end="url(#arr)"/>
+          <line x1="400" y1="92" x2="185" y2="140" stroke="rgba(107,114,153,0.5)" stroke-width="1.5" marker-end="url(#arr)"/>
+          <line x1="420" y1="92" x2="330" y2="255" stroke="rgba(107,114,153,0.5)" stroke-width="1.5" marker-end="url(#arr)"/>
+          <!-- Arrow from #79 -->
+          <line x1="200" y1="92" x2="310" y2="255" stroke="rgba(107,114,153,0.5)" stroke-width="1.5" marker-end="url(#arr)"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Critical path -->
+    <div class="card card--rose">
+      <div class="section-label section-label--rose"><div class="dot"></div>Critical Path</div>
+      <div class="arch-flow" style="gap:12px;flex-wrap:wrap">
+        <div class="arch-node arch-node--cyan">
+          <div class="node-icon">🧠</div>
+          <div class="node-name">#83</div>
+          <div class="node-sub">Agent Integration</div>
+        </div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node arch-node--amber">
+          <div class="node-icon">💬</div>
+          <div class="node-name">#99</div>
+          <div class="node-sub">Hub Commands</div>
+        </div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node arch-node--green">
+          <div class="node-icon">✅</div>
+          <div class="node-name">Phase 1b</div>
+          <div class="node-sub">Complete</div>
+        </div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node arch-node--violet">
+          <div class="node-icon">📣</div>
+          <div class="node-name">Voice #74</div>
+          <div class="node-sub">TTS + STT</div>
+        </div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node arch-node--teal">
+          <div class="node-icon">🚀</div>
+          <div class="node-name">Phase 2</div>
+          <div class="node-sub">NATS + M2</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Issue list -->
+    <div class="section-label section-label--amber" style="margin-bottom:12px"><div class="dot"></div>Active Issues</div>
+    <div class="gap16">
+      <div class="issue-card">
+        <div class="issue-num">#83</div>
+        <div class="issue-body" style="flex:1">
+          <div class="issue-title">Lyra agent integration — identity anchor, session lifecycle, L0 compaction</div>
+          <div class="issue-meta"><span class="tag tag--cyan">NEXT</span><span class="tag tag--muted">Size L</span><span class="tag tag--green">Ready</span><span class="tag tag--rose">P1</span></div>
+        </div>
+      </div>
+      <div class="issue-card">
+        <div class="issue-num">#99</div>
+        <div class="issue-body" style="flex:1">
+          <div class="issue-title">Hub command sessions — /add, /explain, /summarize, /search</div>
+          <div class="issue-meta"><span class="tag tag--amber">Blocked by #83</span><span class="tag tag--muted">Size L</span></div>
+        </div>
+      </div>
+      <div class="issue-card">
+        <div class="issue-num">#79</div>
+        <div class="issue-body" style="flex:1">
+          <div class="issue-title">Voice TTS in Telegram — voicecli integration</div>
+          <div class="issue-meta"><span class="tag tag--green">Ready</span><span class="tag tag--muted">P2</span></div>
+        </div>
+      </div>
+      <div class="issue-card">
+        <div class="issue-num">#136</div>
+        <div class="issue-body" style="flex:1">
+          <div class="issue-title">Multi-bot registry upgrade — per-bot-id routing + multi-token config</div>
+          <div class="issue-meta"><span class="tag tag--amber">Blocked by #83 + #79</span><span class="tag tag--muted">Do last</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     02 · CURRENT ARCHITECTURE
+══════════════════════════════════════════════════════ -->
+<div class="tab-panel" id="tab-current-arch">
+  <div class="gap24">
+    <div>
+      <h2>Current Architecture</h2>
+      <p>Hub-and-spoke asyncio engine. Per-channel queues, binding-based routing, stateless agents, discussion pools.</p>
+    </div>
+
+    <!-- Main flow -->
+    <div class="card card--cyan">
+      <div class="section-label section-label--cyan"><div class="dot"></div>Message Flow Overview</div>
+      <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:24px;align-items:start">
+        <!-- Inbound -->
+        <div class="gap16">
+          <div class="section-label section-label--green" style="margin-bottom:0"><div class="dot"></div>Inbound</div>
+          <div class="arch-flow" style="flex-direction:column;align-items:flex-start;gap:8px">
+            <div style="display:flex;gap:8px">
+              <div class="arch-node arch-node--teal" style="min-width:120px"><div class="node-icon">📱</div><div class="node-name">Telegram</div><div class="node-sub">aiogram v3</div></div>
+              <div class="arch-node arch-node--violet" style="min-width:120px"><div class="node-icon">🎮</div><div class="node-name">Discord</div><div class="node-sub">discord.py v2</div></div>
+            </div>
+            <div style="display:flex;gap:8px;margin-left:20px">
+              <div style="font-size:20px;color:var(--text-muted)">↓</div>
+              <div style="font-size:20px;color:var(--text-muted)">↓</div>
+              <div style="font-size:12px;color:var(--text-dim);margin-left:4px;padding-top:4px">per-channel inbound queues</div>
+            </div>
+            <div class="arch-node arch-node--cyan" style="width:260px">
+              <div class="node-icon">🚌</div>
+              <div class="node-name">InboundBus (staging)</div>
+              <div class="node-sub">bounded · maxsize=100 · backpressure</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Hub center -->
+        <div style="display:flex;flex-direction:column;align-items:center;gap:16px;padding-top:48px">
+          <div style="font-size:24px;color:var(--text-muted)">→</div>
+          <div class="arch-node arch-node--rose" style="min-width:140px;text-align:center">
+            <div class="node-icon">🌀</div>
+            <div class="node-name">Hub</div>
+            <div class="node-sub">resolve_binding()</div>
+            <div class="node-sub">get_or_create_pool()</div>
+          </div>
+          <div style="font-size:14px;color:var(--text-muted)">↓</div>
+          <div class="arch-node arch-node--amber" style="min-width:140px;text-align:center">
+            <div class="node-icon">🏊</div>
+            <div class="node-name">Pool</div>
+            <div class="node-sub">_process_loop</div>
+          </div>
+          <div style="font-size:14px;color:var(--text-muted)">↓</div>
+          <div class="arch-node arch-node--violet" style="min-width:140px;text-align:center">
+            <div class="node-icon">🤖</div>
+            <div class="node-name">Agent</div>
+            <div class="node-sub">stateless singleton</div>
+          </div>
+        </div>
+
+        <!-- Outbound -->
+        <div class="gap16">
+          <div class="section-label section-label--amber" style="margin-bottom:0"><div class="dot"></div>Outbound</div>
+          <div class="arch-flow" style="flex-direction:column;align-items:flex-start;gap:8px">
+            <div class="arch-node arch-node--amber" style="width:260px">
+              <div class="node-icon">📤</div>
+              <div class="node-name">OutboundDispatcher</div>
+              <div class="node-sub">per-channel · routes by RoutingContext</div>
+            </div>
+            <div style="display:flex;gap:8px;margin-left:20px">
+              <div style="font-size:20px;color:var(--text-muted)">↓</div>
+              <div style="font-size:20px;color:var(--text-muted)">↓</div>
+              <div style="font-size:12px;color:var(--text-dim);margin-left:4px;padding-top:4px">per-channel outbound queues</div>
+            </div>
+            <div style="display:flex;gap:8px">
+              <div class="arch-node arch-node--teal" style="min-width:120px"><div class="node-icon">📱</div><div class="node-name">Telegram</div></div>
+              <div class="arch-node arch-node--violet" style="min-width:120px"><div class="node-icon">🎮</div><div class="node-name">Discord</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bindings + Pool + Agent -->
+    <div class="grid3">
+      <div class="card card--violet">
+        <div class="section-label section-label--violet"><div class="dot"></div>Bindings (Routing Table)</div>
+        <p style="margin-bottom:12px">Rule: <code style="font-family:var(--font-mono);font-size:11px;color:var(--violet)">(platform, bot_id, scope_id)</code> → <code style="font-family:var(--font-mono);font-size:11px;color:var(--cyan)">(agent, pool_id)</code></p>
+        <table>
+          <tr><th>Scope</th><th>Example</th></tr>
+          <tr><td>Telegram DM/group</td><td><code>chat:555</code></td></tr>
+          <tr><td>Telegram forum topic</td><td><code>chat:1:topic:2</code></td></tr>
+          <tr><td>Discord thread</td><td><code>thread:888</code></td></tr>
+          <tr><td>Discord channel</td><td><code>channel:123</code></td></tr>
+          <tr><td>Wildcard</td><td><code>*</code> (entire platform)</td></tr>
+        </table>
+      </div>
+
+      <div class="card card--amber">
+        <div class="section-label section-label--amber"><div class="dot"></div>Pool</div>
+        <p style="margin-bottom:12px">One pool per conversation scope. Contains all mutable state.</p>
+        <div class="gap16">
+          <div><div class="tag tag--amber" style="margin-bottom:6px">history</div><p>Conversation messages (auto-compacted)</p></div>
+          <div><div class="tag tag--amber" style="margin-bottom:6px">session state</div><p>Multi-turn commands, ongoing context</p></div>
+          <div><div class="tag tag--amber" style="margin-bottom:6px">asyncio.Task</div><p>_process_loop — sequential within scope, parallel across scopes</p></div>
+          <div><div class="tag tag--amber" style="margin-bottom:6px">TTL eviction</div><p>Stale pools evicted (#205 ✅)</p></div>
+        </div>
+      </div>
+
+      <div class="card card--violet">
+        <div class="section-label section-label--violet"><div class="dot"></div>Agent (Stateless Singleton)</div>
+        <p style="margin-bottom:12px">Immutable config shared across all pools. Zero race conditions.</p>
+        <pre style="font-size:11px">
+<span class="kw">class</span> <span class="fn">Agent</span>:
+  name: str           <span class="cm"># immutable</span>
+  system_prompt: str  <span class="cm"># immutable</span>
+  memory_namespace: str
+  permissions: list[str]
+
+  <span class="kw">async def</span> <span class="fn">process</span>(
+    self,
+    msg: InboundMessage,
+    pool: Pool
+  ) -> Response:
+    ...</pre>
+      </div>
+    </div>
+
+    <!-- Tech stack -->
+    <div class="card">
+      <div class="section-label section-label--teal"><div class="dot"></div>Tech Stack — Machine 1</div>
+      <div class="grid3" style="gap:12px">
+        <div><h4 style="color:var(--cyan)">Runtime</h4><p>Python 3.12 + asyncio · uv · pydantic</p></div>
+        <div><h4 style="color:var(--teal)">Channels</h4><p>aiogram v3 (Telegram) · discord.py v2</p></div>
+        <div><h4 style="color:var(--violet)">LLM</h4><p>AnthropicSdkDriver + ClaudeCliDriver · Smart routing (#134)</p></div>
+        <div><h4 style="color:var(--amber)">Memory</h4><p>SQLite + aiosqlite · FTS5/BM25 · fastembed ONNX · sqlite-vec</p></div>
+        <div><h4 style="color:var(--green)">Voice</h4><p>faster-whisper (STT) · voicecli/Qwen (TTS)</p></div>
+        <div><h4 style="color:var(--rose)">Infra</h4><p>supervisord + systemd · FastAPI uvicorn · httpx async</p></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     03 · TARGET ARCHITECTURE
+══════════════════════════════════════════════════════ -->
+<div class="tab-panel" id="tab-target-arch">
+  <div class="gap24">
+    <div>
+      <h2>Target Architecture</h2>
+      <p>Phase 2: replace asyncio queues with NATS. Phase 3: Atomic SLMs + cognitive meta-language pipeline.</p>
+    </div>
+
+    <div class="card card--amber">
+      <div class="section-label section-label--amber"><div class="dot"></div>Phase 2 — NATS Bus + Machine 2 Worker</div>
+      <div class="arch-flow" style="flex-wrap:wrap;gap:12px">
+        <div class="arch-node arch-node--teal"><div class="node-icon">📱</div><div class="node-name">Telegram</div></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node arch-node--amber">
+          <div class="node-icon">🚌</div>
+          <div class="node-name">NATS Bus</div>
+          <div class="node-sub">JetStream · persistence</div>
+        </div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node arch-node--rose"><div class="node-icon">🌀</div><div class="node-name">Hub</div><div class="node-sub">Machine 1</div></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node arch-node--violet">
+          <div class="node-icon">🖥️</div>
+          <div class="node-name">LLM Worker</div>
+          <div class="node-sub">Machine 2 · NATS consumer</div>
+        </div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node arch-node--violet">
+          <div class="node-icon">🧠</div>
+          <div class="node-name">OllamaDriver</div>
+          <div class="node-sub">Qwen 14B / Gemma 27B</div>
+        </div>
+      </div>
+      <p style="margin-top:16px">NATS replaces asyncio.Queue everywhere. JetStream adds persistence and replay. Machine 2 subscribes as a NATS worker, transparent to the Hub via the LlmProvider protocol (#123).</p>
+    </div>
+
+    <div class="card card--violet">
+      <div class="section-label section-label--violet"><div class="dot"></div>Phase 3 — Atomic SLMs + Cognitive Pipeline</div>
+      <div class="arch-flow" style="flex-wrap:wrap;gap:8px;margin-bottom:20px">
+        <div class="arch-node arch-node--teal" style="min-width:90px"><div class="node-icon">📩</div><div class="node-name">Message</div></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node arch-node--violet" style="min-width:120px"><div class="node-icon">🔀</div><div class="node-name">Routing SLM</div><div class="node-sub">~1-3B · &lt;50ms</div></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node arch-node--violet" style="min-width:120px"><div class="node-icon">🧬</div><div class="node-name">Memory SLM</div><div class="node-sub">~1B · &lt;30ms</div></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node arch-node--violet" style="min-width:120px"><div class="node-icon">📋</div><div class="node-name">Planner SLM</div><div class="node-sub">~3-7B · &lt;200ms</div></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node arch-node--amber" style="min-width:120px"><div class="node-icon">⚡</div><div class="node-name">LLM (if needed)</div><div class="node-sub">Claude / Qwen</div></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node arch-node--violet" style="min-width:120px"><div class="node-icon">🏷️</div><div class="node-name">NER SLM</div><div class="node-sub">~3B · &lt;100ms</div></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node arch-node--green" style="min-width:100px"><div class="node-icon">💾</div><div class="node-name">Memory Update</div></div>
+      </div>
+      <div class="grid2">
+        <div>
+          <h4>CognitiveFrame</h4>
+          <pre style="font-size:11px">
+<span class="kw">@dataclass</span>
+<span class="kw">class</span> <span class="fn">CognitiveFrame</span>:
+  intent: str
+  entities: list[str]
+  context_refs: list[str]
+  skill_path: list[str]
+  confidence: float
+  emotional_tone: str | None
+  metadata: dict</pre>
+        </div>
+        <div>
+          <h4>SLM Impact</h4>
+          <div class="gap16">
+            <div><div class="tag tag--green" style="margin-bottom:6px">80-90% messages</div><p>Routed without full LLM. Cost ÷10, latency ÷5 on simple cases.</p></div>
+            <div><div class="tag tag--violet" style="margin-bottom:6px">4.5GB VRAM headroom</div><p>Machine 1 has room for SLMs after TTS + embeddings.</p></div>
+            <div><div class="tag tag--amber" style="margin-bottom:6px">Prerequisite</div><p>Stable Phase 1 hub + validated Machine 1 VRAM budget (#14).</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card card--teal">
+      <div class="section-label section-label--teal"><div class="dot"></div>Phase 2 Chimera Patterns</div>
+      <table>
+        <tr><th>Pattern</th><th>Source</th><th>Phase</th><th>Status</th></tr>
+        <tr><td>Smart routing — complexity-based model selection</td><td>IronClaw</td><td>1b</td><td><span class="tag tag--green">✅ Done #134</span></td></tr>
+        <tr><td>Runtime agent config — !config live tuning</td><td>ScalyClaw</td><td>1b</td><td><span class="tag tag--green">✅ Done #135</span></td></tr>
+        <tr><td>Proactive engagement engine (2-phase cron+queue)</td><td>ScalyClaw</td><td>2</td><td><span class="tag tag--amber">Planned</span></td></tr>
+        <tr><td>Command shield (deterministic blocklist, no LLM)</td><td>ScalyClaw</td><td>2</td><td><span class="tag tag--amber">Planned</span></td></tr>
+        <tr><td>Memory consolidation (LLM-driven clustering)</td><td>ScalyClaw</td><td>2</td><td><span class="tag tag--amber">Planned</span></td></tr>
+        <tr><td>Lane-based queue (cron lane separate from user)</td><td>OpenClaw</td><td>2</td><td><span class="tag tag--amber">Planned</span></td></tr>
+        <tr><td>Prompt injection scanner</td><td>OpenFang</td><td>2</td><td><span class="tag tag--amber">Planned</span></td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     04 · HARDWARE
+══════════════════════════════════════════════════════ -->
+<div class="tab-panel" id="tab-hardware">
+  <div class="gap24">
+    <div>
+      <h2>Hardware Infrastructure</h2>
+      <p>Two-machine setup: Machine 1 is the always-on hub, Machine 2 handles heavy LLM on demand.</p>
+    </div>
+    <div class="grid2">
+      <!-- Machine 1 -->
+      <div class="card card--cyan">
+        <div class="section-label section-label--cyan"><div class="dot"></div>Machine 1 — Hub</div>
+        <h3>roxabituwer · 192.168.1.16</h3>
+        <p style="margin-bottom:16px">Always on · Ubuntu Server 24.04 LTS</p>
+        <table style="margin-bottom:16px">
+          <tr><th>Spec</th><th>Value</th></tr>
+          <tr><td>CPU</td><td>AMD Ryzen 7 5800X</td></tr>
+          <tr><td>RAM</td><td>32 GB</td></tr>
+          <tr><td>GPU</td><td>RTX 3080 — <strong>10 GB VRAM</strong></td></tr>
+          <tr><td>OS</td><td>Ubuntu Server 24.04 LTS</td></tr>
+          <tr><td>Role</td><td>Hub · channels · DB · TTS · embeddings</td></tr>
+        </table>
+        <h4 style="margin-bottom:10px;color:var(--cyan)">VRAM Budget (10 GB)</h4>
+        <div class="vram-bar-wrap">
+          <div class="vram-segments">
+            <div class="vram-seg" style="width:50%;background:linear-gradient(90deg,rgba(0,229,255,0.7),rgba(0,229,255,0.4));color:#06070f">TTS 5GB</div>
+            <div class="vram-seg" style="width:5%;background:rgba(105,255,71,0.6)"></div>
+            <div class="vram-seg" style="width:5%;background:rgba(179,136,255,0.5)"></div>
+            <div class="vram-seg" style="width:40%;background:rgba(255,255,255,0.04);border:1px dashed rgba(255,255,255,0.1)"><span style="font-size:10px;color:var(--text-muted)">headroom</span></div>
+          </div>
+          <div class="vram-labels">
+            <div class="vram-lbl"><div class="vram-dot" style="background:rgba(0,229,255,0.7)"></div>TTS (Qwen) ~5 GB</div>
+            <div class="vram-lbl"><div class="vram-dot" style="background:rgba(105,255,71,0.6)"></div>Embeddings ~0.5 GB</div>
+            <div class="vram-lbl"><div class="vram-dot" style="background:rgba(179,136,255,0.5)"></div>STT Whisper ~0.5 GB</div>
+            <div class="vram-lbl"><div class="vram-dot" style="background:rgba(255,255,255,0.1);border:1px dashed rgba(255,255,255,0.2)"></div>Headroom ~4 GB</div>
+          </div>
+        </div>
+        <p style="margin-top:12px;font-size:12px;color:var(--text-dim)">Total in use: ~6 GB / 10 GB → 4 GB free for Phase 3 SLMs</p>
+        <h4 style="margin-top:16px;margin-bottom:8px;color:var(--teal)">STT Model Options</h4>
+        <table>
+          <tr><th>Model</th><th>VRAM</th><th>Notes</th></tr>
+          <tr><td><code>tiny</code></td><td>~0.2 GB</td><td>Fastest, low accuracy</td></tr>
+          <tr><td><code>small</code></td><td>~0.5 GB</td><td><span class="tag tag--green">Default</span></td></tr>
+          <tr><td><code>medium</code></td><td>~1.5 GB</td><td>Higher accuracy</td></tr>
+          <tr><td><code>large-v3</code></td><td>~3.0 GB</td><td>Best, slowest</td></tr>
+        </table>
+      </div>
+
+      <!-- Machine 2 -->
+      <div class="card card--violet">
+        <div class="section-label section-label--violet"><div class="dot"></div>Machine 2 — AI Server</div>
+        <h3>ROXABITOWER</h3>
+        <p style="margin-bottom:16px">On-demand · Windows + WSL2</p>
+        <table style="margin-bottom:16px">
+          <tr><th>Spec</th><th>Value</th></tr>
+          <tr><td>CPU</td><td>AMD Ryzen 7 9800X3D · 96 MB L3 V-Cache</td></tr>
+          <tr><td>RAM</td><td>32 GB</td></tr>
+          <tr><td>GPU</td><td>RTX 5070 Ti — <strong>16 GB VRAM</strong></td></tr>
+          <tr><td>OS</td><td>Windows + WSL2</td></tr>
+          <tr><td>Role</td><td>Heavy LLM · on demand</td></tr>
+        </table>
+        <h4 style="margin-bottom:10px;color:var(--violet)">VRAM Budget (16 GB)</h4>
+        <div class="vram-bar-wrap">
+          <div class="vram-segments">
+            <div class="vram-seg" style="width:69%;background:linear-gradient(90deg,rgba(179,136,255,0.7),rgba(179,136,255,0.4));color:#06070f">Qwen 14B ~11GB</div>
+            <div class="vram-seg" style="width:31%;background:rgba(255,255,255,0.04);border:1px dashed rgba(255,255,255,0.1)"><span style="font-size:10px;color:var(--text-muted)">5 GB free</span></div>
+          </div>
+        </div>
+        <div class="vram-bar-wrap" style="margin-top:8px">
+          <div class="vram-segments">
+            <div class="vram-seg" style="width:94%;background:linear-gradient(90deg,rgba(179,136,255,0.5),rgba(179,136,255,0.3));color:#06070f">Gemma 27B Q4 ~15GB</div>
+            <div class="vram-seg" style="width:6%;background:rgba(255,255,255,0.04);border:1px dashed rgba(255,255,255,0.1)"></div>
+          </div>
+        </div>
+        <div class="vram-labels" style="margin-top:8px">
+          <div class="vram-lbl"><div class="vram-dot" style="background:rgba(179,136,255,0.7)"></div>Qwen 2.5 14B Q6_K ~11 GB</div>
+          <div class="vram-lbl"><div class="vram-dot" style="background:rgba(179,136,255,0.4)"></div>Gemma 3 27B Q4 ~15 GB</div>
+        </div>
+        <h4 style="margin-top:16px;margin-bottom:8px;color:var(--amber)">CPU Fallback — 3D V-Cache</h4>
+        <p>The 9800X3D achieves <strong>~30-40 tok/s</strong> in CPU-only inference thanks to 96 MB L3 3D V-Cache. Good fallback if GPU is busy or offline.</p>
+        <h4 style="margin-top:16px;margin-bottom:8px;color:var(--teal)">Inter-machine Protocol</h4>
+        <p>httpx async · HTTP/2 on local network · OpenAI-compatible API. No gRPC — unnecessary at this throughput.</p>
+        <pre style="margin-top:10px;font-size:11px">
+client = AsyncOpenAI(
+  base_url=<span class="st">"http://192.168.1.16:8080/v1"</span>,
+  api_key=<span class="st">"local"</span>
+)</pre>
+      </div>
+    </div>
+
+    <div class="card card--teal">
+      <div class="section-label section-label--teal"><div class="dot"></div>Network Topology</div>
+      <div class="arch-flow" style="flex-wrap:wrap;gap:16px">
+        <div class="arch-node arch-node--cyan">
+          <div class="node-icon">🖥️</div>
+          <div class="node-name">Machine 1</div>
+          <div class="node-sub">192.168.1.16</div>
+          <div class="node-sub">Hub · 24/7</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:16px 0">
+          <div style="font-size:10px;font-family:var(--font-mono);color:var(--text-muted)">httpx HTTP/2</div>
+          <div style="font-size:20px;color:var(--text-muted)">⟺</div>
+          <div style="font-size:10px;font-family:var(--font-mono);color:var(--text-muted)">local network</div>
+        </div>
+        <div class="arch-node arch-node--violet">
+          <div class="node-icon">💻</div>
+          <div class="node-name">Machine 2</div>
+          <div class="node-sub">ROXABITOWER</div>
+          <div class="node-sub">LLM · on demand</div>
+        </div>
+        <div style="flex:1;padding:12px 0">
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;gap:8px;align-items:center">
+              <span class="tag tag--teal">SSH</span>
+              <span style="font-size:12px;color:var(--text-dim)">ssh mickael@192.168.1.16</span>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <span class="tag tag--amber">make deploy</span>
+              <span style="font-size:12px;color:var(--text-dim)">git pull → pytest → supervisorctl restart</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     05 · MESSAGE FLOW
+══════════════════════════════════════════════════════ -->
+<div class="tab-panel" id="tab-message-flow">
+  <div class="gap24">
+    <div>
+      <h2>Message Flow — Deep Dive</h2>
+      <p>Full inbound/outbound pipeline, audio path, backpressure, and message envelope.</p>
+    </div>
+
+    <div class="card card--cyan">
+      <div class="section-label section-label--cyan"><div class="dot"></div>InboundMessage Envelope</div>
+      <pre style="font-size:11px">
+<span class="kw">@dataclass</span>(frozen=True)
+<span class="kw">class</span> <span class="fn">InboundMessage</span>:
+  id: str
+  platform: str               <span class="cm"># "telegram" | "discord" | ...</span>
+  bot_id: str                 <span class="cm"># "main" (one bot per platform)</span>
+  scope_id: str               <span class="cm"># canonical routing scope (computed by adapter)</span>
+  user_id: str                <span class="cm"># canonical sender ID (rate-limiting, pairing)</span>
+  user_name: str
+  is_mention: bool
+  text: str                   <span class="cm"># normalized plain text (markup stripped)</span>
+  text_raw: str               <span class="cm"># original text with platform markup</span>
+  attachments: list[Attachment]
+  reply_to_id: str | None
+  thread_id: str | None
+  timestamp: datetime
+  locale: str | None
+  trust: Literal[<span class="st">"user"</span>, <span class="st">"system"</span>]
+  platform_meta: dict         <span class="cm"># platform-specific routing data (chat_id, guild_id, ...)</span></pre>
+    </div>
+
+    <div class="grid2">
+      <div class="card card--green">
+        <div class="section-label section-label--green"><div class="dot"></div>Inbound Pipeline</div>
+        <div class="gap16">
+          <div class="step"><div class="step-num">1</div><div class="step-body"><div class="step-title">Channel adapter receives event</div><div class="step-desc">Telegram on_message / Discord on_message — adapter normalizes to InboundMessage</div></div></div>
+          <div class="step"><div class="step-num">2</div><div class="step-body"><div class="step-title">Per-channel inbound queue</div><div class="step-desc">Isolated bounded queue per adapter. Provides per-channel backpressure.</div></div></div>
+          <div class="step"><div class="step-num">3</div><div class="step-body"><div class="step-title">InboundBus staging queue</div><div class="step-desc">Shared bounded queue (maxsize=100). Feeds the Hub consumer loop.</div></div></div>
+          <div class="step"><div class="step-num">4</div><div class="step-body"><div class="step-title">Hub.run() → resolve_binding()</div><div class="step-desc">Lookup (platform, bot_id, scope_id) → (agent, pool_id) in bindings table.</div></div></div>
+          <div class="step"><div class="step-num">5</div><div class="step-body"><div class="step-title">get_or_create_pool()</div><div class="step-desc">Pool created lazily. TTL eviction prevents memory leaks (#205).</div></div></div>
+          <div class="step"><div class="step-num">6</div><div class="step-body"><div class="step-title">pool._process_loop</div><div class="step-desc">asyncio.Task per pool. Sequential within scope, parallel across scopes.</div></div></div>
+          <div class="step"><div class="step-num">7</div><div class="step-body"><div class="step-title">agent.process(msg, pool)</div><div class="step-desc">Stateless agent processes message with pool's mutable state.</div></div></div>
+        </div>
+      </div>
+
+      <div class="card card--amber">
+        <div class="section-label section-label--amber"><div class="dot"></div>Outbound Pipeline</div>
+        <div class="gap16">
+          <div class="step"><div class="step-num">1</div><div class="step-body"><div class="step-title">Agent returns OutboundMessage</div><div class="step-desc">Carries RoutingContext (channel + bot_id) for verification (#152).</div></div></div>
+          <div class="step"><div class="step-num">2</div><div class="step-body"><div class="step-title">OutboundDispatcher.enqueue()</div><div class="step-desc">Routes to the correct per-channel outbound queue by platform.</div></div></div>
+          <div class="step"><div class="step-num">3</div><div class="step-body"><div class="step-title">Adapter verifies routing</div><div class="step-desc">Verifies channel + bot_id matches before sending. Prevents misrouting.</div></div></div>
+          <div class="step"><div class="step-num">4</div><div class="step-body"><div class="step-title">Platform API call</div><div class="step-desc">Telegram sendMessage / Discord channel.send</div></div></div>
+        </div>
+        <div style="margin-top:20px">
+          <div class="section-label section-label--rose" style="margin-bottom:12px"><div class="dot"></div>Backpressure</div>
+          <p style="font-size:13px">When staging queue is full (100 messages): adapter sends <strong>immediate ack</strong> ("message received, ~Xs wait"), then performs <code style="font-family:var(--font-mono);font-size:11px;color:var(--amber)">await bus.put()</code> — blocks until slot frees.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card card--violet">
+      <div class="section-label section-label--violet"><div class="dot"></div>Audio / Voice Path</div>
+      <div class="arch-flow" style="flex-wrap:wrap;gap:12px">
+        <div class="arch-node arch-node--teal"><div class="node-icon">🎤</div><div class="node-name">Voice Message</div><div class="node-sub">Telegram / Discord</div></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node arch-node--violet"><div class="node-icon">🎵</div><div class="node-name">InboundAudio</div><div class="node-sub">normalize_audio()</div></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node arch-node--violet"><div class="node-icon">🚌</div><div class="node-name">InboundAudioBus</div><div class="node-sub">per-platform bounded</div></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node arch-node--amber"><div class="node-icon">👂</div><div class="node-name">Audio Consumer Loop</div><div class="node-sub">Hub async loop</div></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node arch-node--green"><div class="node-icon">✍️</div><div class="node-name">STTService</div><div class="node-sub">faster-whisper · CUDA</div></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node arch-node--cyan"><div class="node-icon">📝</div><div class="node-name">Text → InboundBus</div><div class="node-sub">→ normal flow</div></div>
+      </div>
+      <p style="margin-top:16px">STT env: <code style="font-family:var(--font-mono);font-size:11px;color:var(--cyan)">STT_MODEL_SIZE</code> (default: small), <code style="font-family:var(--font-mono);font-size:11px;color:var(--cyan)">STT_DEVICE</code> (default: auto), <code style="font-family:var(--font-mono);font-size:11px;color:var(--cyan)">STT_COMPUTE_TYPE</code> (default: auto).</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     06 · MEMORY
+══════════════════════════════════════════════════════ -->
+<div class="tab-panel" id="tab-memory">
+  <div class="gap24">
+    <div>
+      <h2>Memory Architecture — 5 Levels</h2>
+      <p>From volatile working memory to permanent procedural knowledge. L0 + L3 shipped in Phase 1.</p>
+    </div>
+
+    <div class="card card--cyan">
+      <div class="section-label section-label--cyan"><div class="dot"></div>Memory Pyramid</div>
+      <div class="gap16" style="margin-bottom:8px">
+        <div class="mem-row" style="background:rgba(105,255,71,0.06);border:1px solid rgba(105,255,71,0.15)">
+          <div class="mem-level" style="color:var(--green)">L0</div>
+          <div class="mem-body">
+            <div class="mem-name">Working Memory <span class="tag tag--green" style="margin-left:8px">✅ Built</span></div>
+            <div class="mem-desc">Active context window · volatile · managed by LLM · L0 compaction in #83</div>
+          </div>
+          <div style="text-align:right"><div class="tag tag--muted">Volatile</div></div>
+        </div>
+        <div class="mem-row" style="background:rgba(255,204,2,0.04);border:1px solid rgba(255,204,2,0.1)">
+          <div class="mem-level" style="color:var(--amber)">L1</div>
+          <div class="mem-body">
+            <div class="mem-name">Session Memory <span class="tag tag--amber" style="margin-left:8px">Phase 2</span></div>
+            <div class="mem-desc">Multi-turn session state per pool · ongoing commands · configurable timeout · cleanup on disconnect</div>
+          </div>
+          <div style="text-align:right"><div class="tag tag--muted">Session</div></div>
+        </div>
+        <div class="mem-row" style="background:rgba(255,204,2,0.04);border:1px solid rgba(255,204,2,0.1)">
+          <div class="mem-level" style="color:var(--amber)">L2</div>
+          <div class="mem-body">
+            <div class="mem-name">Episodic Memory <span class="tag tag--amber" style="margin-left:8px">Phase 2</span></div>
+            <div class="mem-desc">Dated Markdown files (memory/YYYY-MM-DD.md) · immutable · human-auditable · each interaction logged</div>
+          </div>
+          <div style="text-align:right"><div class="tag tag--muted">Permanent</div></div>
+        </div>
+        <div class="mem-row" style="background:rgba(0,229,255,0.06);border:1px solid rgba(0,229,255,0.15)">
+          <div class="mem-level" style="color:var(--cyan)">L3</div>
+          <div class="mem-body">
+            <div class="mem-name">Semantic Memory <span class="tag tag--green" style="margin-left:8px">✅ Built</span></div>
+            <div class="mem-desc">SQLite + aiosqlite · FTS5/BM25 (keywords) + fastembed ONNX + sqlite-vec (cosine) · hybrid search</div>
+          </div>
+          <div style="text-align:right"><div class="tag tag--muted">Permanent</div></div>
+        </div>
+        <div class="mem-row" style="background:rgba(179,136,255,0.04);border:1px solid rgba(179,136,255,0.1)">
+          <div class="mem-level" style="color:var(--violet)">L4</div>
+          <div class="mem-body">
+            <div class="mem-name">Procedural Memory <span class="tag tag--violet" style="margin-left:8px">Phase 3</span></div>
+            <div class="mem-desc">Dynamically learned skills · memorized patterns · persistent user preferences per agent · stored in SQLite</div>
+          </div>
+          <div style="text-align:right"><div class="tag tag--muted">Permanent</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="card card--teal">
+        <div class="section-label section-label--teal"><div class="dot"></div>L3 Semantic — Tech Stack</div>
+        <div class="arch-flow" style="flex-direction:column;align-items:flex-start;gap:12px">
+          <div class="arch-node arch-node--teal" style="width:100%;text-align:left">
+            <div style="display:flex;align-items:center;gap:10px">
+              <div class="node-icon">🗄️</div>
+              <div><div class="node-name">SQLite + aiosqlite</div><div class="node-sub">Non-blocking I/O · WAL mode · mandatory in asyncio</div></div>
+            </div>
+          </div>
+          <div class="arch-node" style="width:100%;text-align:left;border-color:rgba(255,204,2,0.3);background:linear-gradient(135deg,rgba(255,204,2,0.06),var(--surface2))">
+            <div style="display:flex;align-items:center;gap:10px">
+              <div class="node-icon">🔍</div>
+              <div><div class="node-name">FTS5 / BM25</div><div class="node-sub">Keyword search · proper nouns · dates · built-in SQLite</div></div>
+            </div>
+          </div>
+          <div class="arch-node arch-node--violet" style="width:100%;text-align:left">
+            <div style="display:flex;align-items:center;gap:10px">
+              <div class="node-icon">🧮</div>
+              <div><div class="node-name">fastembed ONNX</div><div class="node-sub">nomic-embed-text · non-blocking · no run_in_executor</div></div>
+            </div>
+          </div>
+          <div class="arch-node arch-node--cyan" style="width:100%;text-align:left">
+            <div style="display:flex;align-items:center;gap:10px">
+              <div class="node-icon">📐</div>
+              <div><div class="node-name">sqlite-vec</div><div class="node-sub">Cosine similarity · vector search in SQLite</div></div>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:16px;padding:12px 16px;background:var(--surface2);border-radius:8px;border:1px solid var(--border-bright)">
+          <div style="font-size:11px;font-family:var(--font-mono);color:var(--teal);margin-bottom:4px">HYBRID SEARCH</div>
+          <p style="font-size:12px">BM25 (keywords) + cosine (concepts) → combined score. URL deduplication via indexed <code style="font-family:var(--font-mono);font-size:10px;color:var(--cyan)">normalized_url</code> column (O(1) SQL lookup — no O(n) Python scan).</p>
+        </div>
+      </div>
+
+      <div class="card card--green">
+        <div class="section-label section-label--green"><div class="dot"></div>Consolidation Loop</div>
+        <div class="arch-flow" style="flex-direction:column;align-items:flex-start;gap:12px">
+          <div class="arch-node arch-node--green" style="width:100%">
+            <div class="node-icon">💬</div>
+            <div class="node-name">Active Conversation (L0)</div>
+            <div class="node-sub">context window fills up</div>
+          </div>
+          <div style="font-size:20px;color:var(--text-muted);margin-left:60px">↓</div>
+          <div class="arch-node arch-node--amber" style="width:100%">
+            <div class="node-icon">🗜️</div>
+            <div class="node-name">L0 Compaction (#83)</div>
+            <div class="node-sub">old turns summarized by LLM</div>
+          </div>
+          <div style="font-size:20px;color:var(--text-muted);margin-left:60px">↓</div>
+          <div class="arch-node arch-node--cyan" style="width:100%">
+            <div class="node-icon">💾</div>
+            <div class="node-name">L3 Semantic Memory</div>
+            <div class="node-sub">summary embedded + stored</div>
+          </div>
+          <div style="font-size:20px;color:var(--text-muted);margin-left:60px">↓</div>
+          <div class="arch-node arch-node--violet" style="width:100%">
+            <div class="node-icon">🔄</div>
+            <div class="node-name">Virtuous Loop</div>
+            <div class="node-sub">future queries retrieve past summaries</div>
+          </div>
+        </div>
+        <div style="margin-top:16px">
+          <h4 style="margin-bottom:8px">Future (Phase 2+)</h4>
+          <div class="gap16">
+            <p><strong>Time-decay</strong>: decreasing relevance score → contextual noise reduction</p>
+            <p><strong>Entity extraction</strong>: people, dates, places, concepts → optional graph (networkx / kuzu)</p>
+            <p><strong>Memory consolidation</strong>: LLM-driven clustering of related memories</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     07 · PHASES
+══════════════════════════════════════════════════════ -->
+<div class="tab-panel" id="tab-phases">
+  <div class="gap24">
+    <div>
+      <h2>Phase Progress</h2>
+      <p>Full development timeline from bot core to multi-agent orchestration.</p>
+    </div>
+
+    <!-- Phase bars -->
+    <div class="card card--cyan">
+      <div class="section-label section-label--cyan"><div class="dot"></div>Phase Overview</div>
+      <div class="gap16">
+        <div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+            <span style="font-size:13px;font-weight:600">Phase 0 — Bot Core Parity <span class="tag tag--green" style="margin-left:8px">✅ Done</span></span>
+            <span style="font-size:12px;font-family:var(--font-mono);color:var(--green)">100%</span>
+          </div>
+          <div class="progress-wrap"><div class="progress-fill progress-fill--green" style="width:100%"></div></div>
+          <p style="font-size:12px;color:var(--text-muted);margin-top:4px">#101 · pairing, circuit breaker, TOML templates, plugin system</p>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+            <span style="font-size:13px;font-weight:600">Phase 1 — Hub Core <span class="tag tag--green" style="margin-left:8px">✅ Done</span></span>
+            <span style="font-size:12px;font-family:var(--font-mono);color:var(--green)">100%</span>
+          </div>
+          <div class="progress-wrap"><div class="progress-fill progress-fill--green" style="width:100%"></div></div>
+          <p style="font-size:12px;color:var(--text-muted);margin-top:4px">asyncio bus, adapters (Telegram/Discord), SimpleAgent, command router</p>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+            <span style="font-size:13px;font-weight:600">Phase 1b — Agent Core <span class="tag tag--cyan" style="margin-left:8px">🔄 Tail</span></span>
+            <span style="font-size:12px;font-family:var(--font-mono);color:var(--cyan)">~90%</span>
+          </div>
+          <div class="progress-wrap"><div class="progress-fill progress-fill--cyan" style="width:90%"></div></div>
+          <p style="font-size:12px;color:var(--text-muted);margin-top:4px">#73 · 2 remaining: #83 (agent integration), #99 (hub commands)</p>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+            <span style="font-size:13px;font-weight:600">Voice Pipeline <span class="tag tag--teal" style="margin-left:8px">🔓 Unblocked</span></span>
+            <span style="font-size:12px;font-family:var(--font-mono);color:var(--teal)">50%</span>
+          </div>
+          <div class="progress-wrap"><div class="progress-fill" style="width:50%;background:linear-gradient(90deg,var(--teal),rgba(100,255,218,0.4))"></div></div>
+          <p style="font-size:12px;color:var(--text-muted);margin-top:4px">#74 · STT shipped (#80 ✅) · TTS (#79) ready, pending #136</p>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+            <span style="font-size:13px;font-weight:600">Phase 2 — NATS + Machine 2 <span class="tag tag--amber" style="margin-left:8px">Planned</span></span>
+            <span style="font-size:12px;font-family:var(--font-mono);color:var(--text-muted)">0%</span>
+          </div>
+          <div class="progress-wrap"><div class="progress-fill progress-fill--amber" style="width:0%"></div></div>
+          <p style="font-size:12px;color:var(--text-muted);margin-top:4px">#60 · NATS bus, JetStream, Machine 2 worker, health checks</p>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+            <span style="font-size:13px;font-weight:600">Phase 3 — Atomic SLMs <span class="tag tag--muted" style="margin-left:8px">❄️ Frozen</span></span>
+            <span style="font-size:12px;font-family:var(--font-mono);color:var(--text-muted)">0%</span>
+          </div>
+          <div class="progress-wrap"><div class="progress-fill" style="width:0%;background:var(--violet)"></div></div>
+          <p style="font-size:12px;color:var(--text-muted);margin-top:4px">#61 · routing SLM, memory SLM, planner SLM, cognitive meta-language</p>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+            <span style="font-size:13px;font-weight:600">Phase 4 — Resilience <span class="tag tag--muted" style="margin-left:8px">❄️ Frozen</span></span>
+          </div>
+          <div class="progress-wrap"><div class="progress-fill" style="width:0%"></div></div>
+          <p style="font-size:12px;color:var(--text-muted);margin-top:4px">#62 · observability, security, hash-chained audit trail</p>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+            <span style="font-size:13px;font-weight:600">Phase 5 — Multi-agent <span class="tag tag--muted" style="margin-left:8px">❄️ Frozen</span></span>
+          </div>
+          <div class="progress-wrap"><div class="progress-fill" style="width:0%"></div></div>
+          <p style="font-size:12px;color:var(--text-muted);margin-top:4px">#63 · multi-agent orchestration, agent-to-agent communication</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 1b tail details -->
+    <div class="card card--amber">
+      <div class="section-label section-label--amber"><div class="dot"></div>Phase 1b — Remaining</div>
+      <div class="gap16">
+        <div class="issue-card">
+          <div class="issue-num">#83</div>
+          <div class="issue-body" style="flex:1">
+            <div class="issue-title">Lyra agent integration — identity anchor, session lifecycle, L0 compaction</div>
+            <p style="font-size:12px;color:var(--text-dim);margin-top:6px">Sets up agent identity, wires the conversation loop to the Pool, implements L0 compaction (summary of old turns → L3). Unblocks: #99, #67, #128, #136.</p>
+            <div class="issue-meta" style="margin-top:8px"><span class="tag tag--cyan">NEXT</span><span class="tag tag--muted">Size L</span><span class="tag tag--green">Ready</span></div>
+          </div>
+        </div>
+        <div class="issue-card">
+          <div class="issue-num">#99</div>
+          <div class="issue-body" style="flex:1">
+            <div class="issue-title">Hub command sessions — /add, /explain, /summarize, /search</div>
+            <p style="font-size:12px;color:var(--text-dim);margin-top:6px">Slash command routing in the Hub. Memory commands: /add stores to L3, /search queries hybrid BM25+cosine, /summarize generates a summary, /explain explains a concept.</p>
+            <div class="issue-meta" style="margin-top:8px"><span class="tag tag--amber">Blocked by #83</span><span class="tag tag--muted">Size L</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Do not do now -->
+    <div class="card card--rose">
+      <div class="section-label section-label--rose"><div class="dot"></div>Do Not Do Now</div>
+      <p style="margin-bottom:14px">Explicitly frozen. Reconsider when Phase 1b tail + voice are stable in production.</p>
+      <div class="grid3" style="gap:10px">
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px">
+          <div class="tag tag--amber" style="margin-bottom:8px">Phase 2 gate</div>
+          <p style="font-size:12px"><strong>NATS / distributed bus</strong> — needs Phase 1b stable first</p>
+        </div>
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px">
+          <div class="tag tag--violet" style="margin-bottom:8px">Phase 3 gate</div>
+          <p style="font-size:12px"><strong>Atomic SLMs</strong> — no local model benchmark done yet (#14)</p>
+        </div>
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px">
+          <div class="tag tag--amber" style="margin-bottom:8px">Phase 2 gate</div>
+          <p style="font-size:12px"><strong>Proactive engine</strong> — no infra for it yet</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     08 · SETUP
+══════════════════════════════════════════════════════ -->
+<div class="tab-panel" id="tab-setup">
+  <div class="gap24">
+    <div>
+      <h2>Step-by-Step Setup</h2>
+      <p>Machine 1 (Hub) setup from scratch. Assumes Ubuntu Server 24.04 LTS.</p>
+    </div>
+
+    <div class="card card--cyan">
+      <div class="section-label section-label--cyan"><div class="dot"></div>First-time Setup</div>
+      <div class="gap16">
+        <div class="step"><div class="step-num">1</div><div class="step-body">
+          <div class="step-title">Clone the repo</div>
+          <pre>git clone git@github.com:roxabi/lyra.git ~/projects/lyra
+cd ~/projects/lyra</pre>
+        </div></div>
+        <div class="step"><div class="step-num">2</div><div class="step-body">
+          <div class="step-title">Install dependencies</div>
+          <pre>uv sync</pre>
+          <div class="step-desc">Installs all Python dependencies via uv. No virtualenv setup needed.</div>
+        </div></div>
+        <div class="step"><div class="step-num">3</div><div class="step-body">
+          <div class="step-title">Configure environment</div>
+          <pre>cp .env.example .env
+<span class="cm"># Edit .env:</span>
+TELEGRAM_BOT_TOKEN=<span class="st">your_token</span>
+DISCORD_BOT_TOKEN=<span class="st">your_token</span>
+ANTHROPIC_API_KEY=<span class="st">your_key</span>
+STT_MODEL_SIZE=small
+STT_DEVICE=auto</pre>
+        </div></div>
+        <div class="step"><div class="step-num">4</div><div class="step-body">
+          <div class="step-title">Register with supervisor (one-time)</div>
+          <pre>make register</pre>
+          <div class="step-desc">Creates symlink in ~/projects/lyra-stack/conf.d/ and starts global supervisord if not running.</div>
+        </div></div>
+        <div class="step"><div class="step-num">5</div><div class="step-body">
+          <div class="step-title">Start Lyra</div>
+          <pre>make lyra</pre>
+          <div class="step-desc">Starts the Lyra daemon via supervisord.</div>
+        </div></div>
+        <div class="step"><div class="step-num">6</div><div class="step-body">
+          <div class="step-title">Verify it's running</div>
+          <pre>make lyra status
+make lyra logs</pre>
+          <div class="step-desc">Should show RUNNING. Logs show adapter connections and hub startup.</div>
+        </div></div>
+        <div class="step"><div class="step-num">7</div><div class="step-body">
+          <div class="step-title">Test end-to-end</div>
+          <div class="step-desc">Send a message on Telegram → Lyra should reply within a few seconds.</div>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="card card--teal">
+      <div class="section-label section-label--teal"><div class="dot"></div>Daily Operations</div>
+      <table>
+        <tr><th>Command</th><th>Action</th></tr>
+        <tr><td><code>make lyra</code></td><td>Start Lyra daemon</td></tr>
+        <tr><td><code>make lyra reload</code></td><td>Restart Lyra (graceful)</td></tr>
+        <tr><td><code>make lyra stop</code></td><td>Stop Lyra</td></tr>
+        <tr><td><code>make lyra status</code></td><td>Show supervisor status</td></tr>
+        <tr><td><code>make lyra logs</code></td><td>Tail stdout logs</td></tr>
+        <tr><td><code>make lyra errors</code></td><td>Tail stderr logs</td></tr>
+        <tr><td><code>make deploy</code></td><td>git pull → pytest → restart on Machine 1</td></tr>
+        <tr><td><code>make remote status</code></td><td>Check production supervisor status</td></tr>
+        <tr><td><code>make remote logs</code></td><td>Tail production stdout</td></tr>
+        <tr><td><code>make remote reload</code></td><td>Restart Lyra on production</td></tr>
+        <tr><td><code>make ps</code></td><td>Status of ALL programs (from lyra-stack)</td></tr>
+      </table>
+    </div>
+
+    <div class="grid2">
+      <div class="card card--violet">
+        <div class="section-label section-label--violet"><div class="dot"></div>Run Tests</div>
+        <pre>uv run pytest</pre>
+        <div class="step-desc" style="margin-top:8px">pytest-cov + coverage gate (#211). Deploy is blocked if tests fail.</div>
+      </div>
+      <div class="card card--amber">
+        <div class="section-label section-label--amber"><div class="dot"></div">Lint + Format</div>
+        <pre><span class="cm"># Check</span>
+uv run ruff check .
+
+<span class="cm"># Fix + format</span>
+uv run ruff format .</pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     09 · UX
+══════════════════════════════════════════════════════ -->
+<div class="tab-panel" id="tab-ux">
+  <div class="gap24">
+    <div>
+      <h2>UX — How to Use Lyra</h2>
+      <p>End-user guide for Telegram and Discord interactions.</p>
+    </div>
+
+    <div class="grid2">
+      <!-- Basic chat -->
+      <div class="card card--cyan">
+        <div class="section-label section-label--cyan"><div class="dot"></div>1 · Basic Chat</div>
+        <div class="chat-wrap">
+          <div class="bubble-row user">
+            <div class="bubble-avatar user-av">👤</div>
+            <div class="bubble user-bubble">Hey Lyra, what's the capital of France?</div>
+          </div>
+          <div class="bubble-row">
+            <div class="bubble-avatar lyra-av">🤖</div>
+            <div class="bubble lyra-bubble">The capital of France is Paris.</div>
+          </div>
+          <div class="bubble-row user">
+            <div class="bubble-avatar user-av">👤</div>
+            <div class="bubble user-bubble">And what's the population?</div>
+          </div>
+          <div class="bubble-row">
+            <div class="bubble-avatar lyra-av">🤖</div>
+            <div class="bubble lyra-bubble">Paris has approximately 2.1 million inhabitants in the city proper, and around 12 million in the greater metropolitan area.</div>
+          </div>
+        </div>
+        <p style="margin-top:14px;font-size:12px;color:var(--text-dim)">Each Telegram chat / Discord thread = isolated pool with its own conversation history. Parallel conversations run simultaneously.</p>
+      </div>
+
+      <!-- Voice message -->
+      <div class="card card--violet">
+        <div class="section-label section-label--violet"><div class="dot"></div>2 · Voice Messages</div>
+        <div class="chat-wrap">
+          <div class="bubble-row user">
+            <div class="bubble-avatar user-av">👤</div>
+            <div class="bubble user-bubble">🎤 [voice message: "Remind me to call the doctor tomorrow"]</div>
+          </div>
+          <div class="bubble-row">
+            <div class="bubble-avatar lyra-av">🤖</div>
+            <div class="bubble lyra-bubble">Got it. I'll remind you to call the doctor tomorrow morning. Would you like me to store this as a task?</div>
+          </div>
+        </div>
+        <div class="arch-flow" style="margin-top:16px;gap:8px;flex-wrap:wrap">
+          <div class="arch-node" style="min-width:80px;text-align:center;border-color:rgba(179,136,255,0.3)"><div class="node-icon">🎤</div><div class="node-name" style="font-size:10px">Voice msg</div></div>
+          <div class="arch-arrow" style="font-size:12px">→</div>
+          <div class="arch-node" style="min-width:80px;text-align:center;border-color:rgba(179,136,255,0.3)"><div class="node-icon">✍️</div><div class="node-name" style="font-size:10px">Whisper STT</div></div>
+          <div class="arch-arrow" style="font-size:12px">→</div>
+          <div class="arch-node arch-node--violet" style="min-width:80px;text-align:center"><div class="node-icon">🤖</div><div class="node-name" style="font-size:10px">Agent</div></div>
+        </div>
+      </div>
+
+      <!-- Commands -->
+      <div class="card card--amber">
+        <div class="section-label section-label--amber"><div class="dot"></div>3 · Hub Commands</div>
+        <table>
+          <tr><th>Command</th><th>What it does</th></tr>
+          <tr><td><code>/add</code></td><td>Store something in semantic memory (L3)</td></tr>
+          <tr><td><code>/search</code></td><td>Search semantic memory (BM25 + cosine)</td></tr>
+          <tr><td><code>/summarize</code></td><td>Summarize current conversation</td></tr>
+          <tr><td><code>/explain</code></td><td>Explain a concept in context</td></tr>
+        </table>
+        <div class="chat-wrap" style="margin-top:16px">
+          <div class="bubble-row user">
+            <div class="bubble-avatar user-av">👤</div>
+            <div class="bubble user-bubble">/add My preferred code style is ruff + type annotations everywhere</div>
+          </div>
+          <div class="bubble-row">
+            <div class="bubble-avatar lyra-av">🤖</div>
+            <div class="bubble lyra-bubble">✅ Stored to memory: "preferred code style — ruff + type annotations"</div>
+          </div>
+        </div>
+        <p style="margin-top:10px;font-size:11px;color:var(--text-muted)">Note: /add and /search require #99 (Phase 1b tail).</p>
+      </div>
+
+      <!-- Runtime config -->
+      <div class="card card--teal">
+        <div class="section-label section-label--teal"><div class="dot"></div>4 · Runtime Config</div>
+        <div class="chat-wrap">
+          <div class="bubble-row user">
+            <div class="bubble-avatar user-av">👤</div>
+            <div class="bubble user-bubble">!config model claude-opus-4-5</div>
+          </div>
+          <div class="bubble-row">
+            <div class="bubble-avatar lyra-av">🤖</div>
+            <div class="bubble lyra-bubble">Config updated: model = claude-opus-4-5. No restart needed.</div>
+          </div>
+        </div>
+        <p style="margin-top:14px;font-size:12px;color:var(--text-dim)">Live tuning without restarting the daemon. Config changes apply to the current pool immediately. (#135 ✅)</p>
+      </div>
+    </div>
+
+    <!-- Auth levels -->
+    <div class="card card--rose">
+      <div class="section-label section-label--rose"><div class="dot"></div>5 · Auth Levels</div>
+      <p style="margin-bottom:14px">Configured in TOML per adapter. Controls which users can access which capabilities.</p>
+      <div class="grid2" style="gap:12px">
+        <div style="background:var(--surface2);border-radius:8px;padding:14px;border:1px solid rgba(0,229,255,0.15)">
+          <div class="tag tag--cyan" style="margin-bottom:8px">owner</div>
+          <p style="font-size:12px">Full access to all commands, config, and memory. Only you.</p>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:14px;border:1px solid rgba(105,255,71,0.15)">
+          <div class="tag tag--green" style="margin-bottom:8px">trusted</div>
+          <p style="font-size:12px">Access to most commands. Explicitly allowlisted users.</p>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:14px;border:1px solid rgba(255,204,2,0.15)">
+          <div class="tag tag--amber" style="margin-bottom:8px">public</div>
+          <p style="font-size:12px">Basic chat only. No memory commands. Default for strangers.</p>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:14px;border:1px solid rgba(255,83,112,0.15)">
+          <div class="tag tag--rose" style="margin-bottom:8px">blocked</div>
+          <p style="font-size:12px">Silently ignored. No response sent.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Multi-scope -->
+    <div class="card card--green">
+      <div class="section-label section-label--green"><div class="dot"></div>6 · Multi-scope Isolation</div>
+      <p style="margin-bottom:16px">Each conversation scope gets its own pool with isolated history and session state.</p>
+      <div class="grid3" style="gap:10px">
+        <div style="background:var(--surface2);border-radius:8px;padding:12px;border:1px solid var(--border-bright)">
+          <div class="tag tag--teal" style="margin-bottom:8px">Telegram DM</div>
+          <p style="font-size:12px">scope: <code style="font-family:var(--font-mono);font-size:10px">chat:555</code><br/>Your personal 1-on-1 with Lyra</p>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:12px;border:1px solid var(--border-bright)">
+          <div class="tag tag--violet" style="margin-bottom:8px">Discord Thread</div>
+          <p style="font-size:12px">scope: <code style="font-family:var(--font-mono);font-size:10px">thread:888</code><br/>Isolated per thread</p>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:12px;border:1px solid var(--border-bright)">
+          <div class="tag tag--amber" style="margin-bottom:8px">Telegram Group</div>
+          <p style="font-size:12px">scope: <code style="font-family:var(--font-mono);font-size:10px">chat:group_id</code><br/>Shared pool for the group</p>
+        </div>
+      </div>
+      <p style="margin-top:14px;font-size:12px;color:var(--text-dim)">Pools run in parallel — your DM and a group chat are processed simultaneously via separate asyncio.Task instances.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     10 · DECISIONS
+══════════════════════════════════════════════════════ -->
+<div class="tab-panel" id="tab-decisions">
+  <div class="gap24">
+    <div>
+      <h2>Architecture Decisions</h2>
+      <p>Key choices made, why, and what was explicitly rejected. Living ADR log.</p>
+    </div>
+
+    <!-- Language & runtime -->
+    <div class="card card--cyan">
+      <div class="section-label section-label--cyan"><div class="dot"></div>Language &amp; Runtime</div>
+      <div class="gap16">
+        <div style="background:var(--surface2);border-radius:10px;padding:16px 20px;border-left:3px solid var(--cyan)">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+            <span class="tag tag--cyan">ADR-001</span>
+            <h4 style="margin:0">Python + asyncio over Go / Rust / Zig / Node</h4>
+            <span class="tag tag--green" style="margin-left:auto">Adopted</span>
+          </div>
+          <p style="margin-bottom:10px"><strong>Decision:</strong> Python 3.12 + asyncio everywhere for backends, CLIs, and agents.</p>
+          <p style="margin-bottom:10px"><strong>Why:</strong> Python's AI/ML ecosystem is unbeatable (fastembed, faster-whisper, aiogram, aiosqlite). asyncio is sufficient for 1–5 I/O-bound users. Other stacks offer no compensating benefit at this scale.</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <span class="tag tag--muted">❌ Go — no AI ecosystem</span>
+            <span class="tag tag--muted">❌ Rust — too low-level for prototyping</span>
+            <span class="tag tag--muted">❌ Zig — experimental</span>
+            <span class="tag tag--muted">❌ Node — ecosystem mismatch for AI</span>
+          </div>
+        </div>
+
+        <div style="background:var(--surface2);border-radius:10px;padding:16px 20px;border-left:3px solid var(--teal)">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+            <span class="tag tag--teal">ADR-002</span>
+            <h4 style="margin:0">Python-first Library Paradigm</h4>
+            <span class="tag tag--green">Adopted 2026-03-08</span>
+          </div>
+          <p style="margin-bottom:10px"><strong>Decision:</strong> Every project ships as a Python library (importable, <code style="font-family:var(--font-mono);font-size:11px;color:var(--cyan)">__all__</code> contract) + thin CLI shell. No logic in <code style="font-family:var(--font-mono);font-size:11px;color:var(--cyan)">cli.py</code>.</p>
+          <p style="margin-bottom:10px"><strong>Why:</strong> Lyra calls <code style="font-family:var(--font-mono);font-size:11px;color:var(--cyan)">from voicecli import generate_async</code> directly — no subprocess, no HTTP server. Uniform patterns across all projects. Type-checked, IDE-navigable APIs.</p>
+          <p><strong>Rule:</strong> Library first → CLI exposes it. Models load lazily (no side effects on import). Cross-project deps via <code style="font-family:var(--font-mono);font-size:11px;color:var(--cyan)">uv add --editable path/to/lib</code>.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Infrastructure -->
+    <div class="card card--violet">
+      <div class="section-label section-label--violet"><div class="dot"></div>Infrastructure</div>
+      <div class="gap16">
+        <div style="background:var(--surface2);border-radius:10px;padding:16px 20px;border-left:3px solid var(--violet)">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+            <span class="tag tag--violet">ADR-003</span>
+            <h4 style="margin:0">2-Machine Split — Hub + AI Server</h4>
+            <span class="tag tag--green">Adopted</span>
+          </div>
+          <p style="margin-bottom:10px"><strong>Decision:</strong> Machine 1 (RTX 3080, 24/7) handles Hub + TTS + embeddings + STT. Machine 2 (RTX 5070 Ti, on-demand) handles heavy LLM inference.</p>
+          <p style="margin-bottom:10px"><strong>Why:</strong> Eliminates VRAM contention. Machine 1 stays within 6 GB / 10 GB budget. Machine 2 can run Qwen 14B or Gemma 27B uncontested.</p>
+          <p><strong>Constraint:</strong> Machine 1 must never shut down. Machine 2 is optional — cloud LLM is the fallback when it's off.</p>
+        </div>
+
+        <div style="background:var(--surface2);border-radius:10px;padding:16px 20px;border-left:3px solid var(--amber)">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+            <span class="tag tag--amber">ADR-004</span>
+            <h4 style="margin:0">Cloud LLM by Default — Local LLM in Phase 2</h4>
+            <span class="tag tag--green">Adopted</span>
+          </div>
+          <p style="margin-bottom:10px"><strong>Decision:</strong> AnthropicSdkDriver + ClaudeCliDriver for Phase 1. OllamaDriver (Machine 2) deferred to Phase 2 via NATS worker.</p>
+          <p style="margin-bottom:10px"><strong>Why:</strong> Cloud LLM unblocks Phase 1 immediately. Local LLM adds infra complexity (NATS, worker health, circuit breaker) that isn't justified until Phase 1 is stable.</p>
+          <p><strong>Abstraction:</strong> LlmProvider protocol (#123 ✅) means swapping drivers requires zero core changes.</p>
+        </div>
+
+        <div style="background:var(--surface2);border-radius:10px;padding:16px 20px;border-left:3px solid var(--rose)">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+            <span class="tag tag--rose">ADR-005</span>
+            <h4 style="margin:0">asyncio.Queue Now, NATS in Phase 2</h4>
+            <span class="tag tag--green">Adopted</span>
+          </div>
+          <p style="margin-bottom:10px"><strong>Decision:</strong> Phase 1 bus = asyncio.Queue (in-process, bounded, simple). Phase 2 replaces with NATS + JetStream for persistence and Machine 2 coordination.</p>
+          <p><strong>Why:</strong> asyncio.Queue is sufficient for single-process personal use. Adding NATS before Phase 1 is stable would complicate debugging with no user-facing benefit.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Data / Storage -->
+    <div class="card card--green">
+      <div class="section-label section-label--green"><div class="dot"></div>Data &amp; Storage</div>
+      <div class="gap16">
+        <div style="background:var(--surface2);border-radius:10px;padding:16px 20px;border-left:3px solid var(--green)">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+            <span class="tag tag--green">ADR-006</span>
+            <h4 style="margin:0">SQLite over PostgreSQL</h4>
+            <span class="tag tag--green">Adopted</span>
+          </div>
+          <p style="margin-bottom:10px"><strong>Decision:</strong> SQLite + WAL mode + aiosqlite for all persistence (memory, sessions, vault).</p>
+          <p style="margin-bottom:10px"><strong>Why:</strong> Personal use. Single-writer workload. Zero ops overhead. WAL mode gives concurrent reads. FTS5 and sqlite-vec are built-in extensions — no separate search service needed.</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <span class="tag tag--muted">❌ PostgreSQL — ops overhead, overkill</span>
+            <span class="tag tag--muted">❌ Redis — extra process, no persistence guarantee</span>
+          </div>
+        </div>
+
+        <div style="background:var(--surface2);border-radius:10px;padding:16px 20px;border-left:3px solid var(--teal)">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+            <span class="tag tag--teal">ADR-007</span>
+            <h4 style="margin:0">fastembed ONNX over sentence-transformers</h4>
+            <span class="tag tag--green">Adopted</span>
+          </div>
+          <p style="margin-bottom:10px"><strong>Decision:</strong> fastembed ONNX runtime for embeddings instead of sentence-transformers + PyTorch.</p>
+          <p><strong>Why:</strong> ONNX runtime is non-blocking — no <code style="font-family:var(--font-mono);font-size:11px;color:var(--cyan)">run_in_executor</code> needed. sentence-transformers blocks the asyncio event loop. nomic-embed-text via ONNX gives the same quality at lower overhead.</p>
+        </div>
+
+        <div style="background:var(--surface2);border-radius:10px;padding:16px 20px;border-left:3px solid var(--cyan)">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+            <span class="tag tag--cyan">ADR-008</span>
+            <h4 style="margin:0">aiosqlite is Mandatory — Not Optional</h4>
+            <span class="tag tag--green">Constraint</span>
+          </div>
+          <p><strong>Fact (not a choice):</strong> Synchronous SQLite in an asyncio event loop blocks all coroutines. aiosqlite wraps SQLite in a background thread, making it safe in async contexts. This is non-negotiable.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Agent model -->
+    <div class="card card--amber">
+      <div class="section-label section-label--amber"><div class="dot"></div>Agent &amp; Routing Model</div>
+      <div class="gap16">
+        <div style="background:var(--surface2);border-radius:10px;padding:16px 20px;border-left:3px solid var(--amber)">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+            <span class="tag tag--amber">ADR-009</span>
+            <h4 style="margin:0">Stateless Agent Singleton</h4>
+            <span class="tag tag--green">Adopted</span>
+          </div>
+          <p style="margin-bottom:10px"><strong>Decision:</strong> Agent = immutable config (prompt, permissions, namespace). All mutable state lives in the Pool. Agent is a singleton shared across all pools.</p>
+          <p><strong>Why:</strong> Eliminates duplication and race conditions. Multiple pools can share one agent with zero coordination overhead. Upgrade path: add <code style="font-family:var(--font-mono);font-size:11px;color:var(--cyan)">agent_state: dict</code> to Pool if atomic SLMs need sub-ms recall — zero refactoring.</p>
+        </div>
+
+        <div style="background:var(--surface2);border-radius:10px;padding:16px 20px;border-left:3px solid var(--rose)">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+            <span class="tag tag--rose">ADR-010</span>
+            <h4 style="margin:0">scope_id Replaces user_id in RoutingKey</h4>
+            <span class="tag tag--green">Adopted (#125)</span>
+          </div>
+          <p style="margin-bottom:10px"><strong>Decision:</strong> RoutingKey = (platform, bot_id, scope_id). scope_id is the canonical conversation scope, not the sender.</p>
+          <p><strong>Why:</strong> Group chats and threads have multiple senders but one pool. Routing by user_id would create one pool per user in a group — wrong. Scope captures the conversation unit correctly: <code style="font-family:var(--font-mono);font-size:11px;color:var(--cyan)">chat:NNN</code>, <code style="font-family:var(--font-mono);font-size:11px;color:var(--cyan)">thread:NNN</code>, <code style="font-family:var(--font-mono);font-size:11px;color:var(--cyan)">channel:NNN</code>.</p>
+        </div>
+
+        <div style="background:var(--surface2);border-radius:10px;padding:16px 20px;border-left:3px solid var(--violet)">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+            <span class="tag tag--violet">ADR-011</span>
+            <h4 style="margin:0">External Tools — Install, Wrap, Declare</h4>
+            <span class="tag tag--green">Adopted</span>
+          </div>
+          <p style="margin-bottom:10px"><strong>Decision:</strong> External CLIs (VoiceCLI, ImageCLI, Google Workspace) follow a 3-layer pattern:</p>
+          <table>
+            <tr><th>Layer</th><th>What</th><th>Where</th></tr>
+            <tr><td><strong>Install</strong></td><td>CLI binary on PATH via setup.sh</td><td>Host machine</td></tr>
+            <tr><td><strong>Wrap</strong></td><td>Thin roxabi-plugins skill (SKILL.md only)</td><td>roxabi-plugins repo</td></tr>
+            <tr><td><strong>Declare</strong></td><td>Agent TOML declares tool access</td><td>lyra repo</td></tr>
+          </table>
+          <p style="margin-top:10px"><strong>Why:</strong> No forking or vendoring. Upstream maintains the CLI; we maintain the skill wrapper. Bash allowlist now, MCP later.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Inter-machine comms -->
+    <div class="card card--teal">
+      <div class="section-label section-label--teal"><div class="dot"></div>Inter-machine &amp; Network</div>
+      <div style="background:var(--surface2);border-radius:10px;padding:16px 20px;border-left:3px solid var(--teal)">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+          <span class="tag tag--teal">ADR-012</span>
+          <h4 style="margin:0">httpx HTTP/2 over gRPC</h4>
+          <span class="tag tag--green">Adopted</span>
+        </div>
+        <p style="margin-bottom:10px"><strong>Decision:</strong> httpx async + HTTP/2 for inter-machine communication (Machine 1 ↔ Machine 2). OpenAI-compatible API on Machine 2.</p>
+        <p><strong>Why:</strong> gRPC is unnecessary at personal-use throughput. httpx is already a project dependency. OpenAI-compatible API means any LLM runtime (Ollama, llama.cpp) works without a custom protocol.</p>
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+          <span class="tag tag--muted">❌ gRPC — overkill, extra tooling</span>
+          <span class="tag tag--muted">❌ WebSocket — not needed for req/resp LLM calls</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Memory scope -->
+    <div class="card card--rose">
+      <div class="section-label section-label--rose"><div class="dot"></div>Memory Scope Decisions</div>
+      <div style="background:var(--surface2);border-radius:10px;padding:16px 20px;border-left:3px solid var(--rose)">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+          <span class="tag tag--rose">ADR-013</span>
+          <h4 style="margin:0">Reduced Memory Scope for Phase 1</h4>
+          <span class="tag tag--green">Adopted</span>
+        </div>
+        <p style="margin-bottom:10px"><strong>Decision:</strong> Phase 1 ships only L0 (working) + L3 (semantic). Levels 1, 2, 4 deferred until real need arises.</p>
+        <p style="margin-bottom:10px"><strong>Why:</strong> L1 (session) and L2 (episodic) add complexity with marginal value at Phase 1 scope. L4 (procedural) requires L3 to be proven stable first. "Add when the real need arises" is the guiding principle.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <span class="tag tag--green">✅ L0 Working — #83</span>
+          <span class="tag tag--green">✅ L3 Semantic — #78/#81/#82</span>
+          <span class="tag tag--amber">⏳ L1 Session — Phase 2</span>
+          <span class="tag tag--amber">⏳ L2 Episodic — Phase 2</span>
+          <span class="tag tag--violet">❄️ L4 Procedural — Phase 3</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</div><!-- /content -->
+
+<footer>
+  Last updated: 2026-03-13 · Lyra by Roxabi · Personal AI Agent Engine
+</footer>
+
+<script>
+  const btns = document.querySelectorAll('.tab-btn');
+  const panels = document.querySelectorAll('.tab-panel');
+
+  btns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.tab;
+      btns.forEach(b => b.classList.remove('active'));
+      panels.forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      const panel = document.getElementById('tab-' + target);
+      if (panel) panel.classList.add('active');
+    });
+  });
+</script>
+</body>
+</html>

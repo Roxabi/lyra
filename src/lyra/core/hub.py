@@ -646,7 +646,7 @@ class Hub:
         try:
             await self.dispatch_response(msg, rejection)
         except Exception:
-            pass
+            log.exception("dispatch_response failed for pairing rejection: %s", key)
         return True
 
     async def _circuit_breaker_drop(self, msg: InboundMessage) -> bool:

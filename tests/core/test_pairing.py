@@ -763,6 +763,43 @@ class TestHubGate:
         assert len(captured) == 1
         assert "not paired" in str(captured[0].content).lower()
 
+    async def test_pairing_gate_logs_dispatch_failure(
+        self, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Pairing rejection dispatch failure is logged, not silently swallowed."""
+        pm = await make_pm(enabled=True)
+        hub = self._make_hub(pm)
+
+        class FailingAdapter:
+            async def send(
+                self, original_msg: InboundMessage, outbound: OutboundMessage
+            ) -> None:
+                raise RuntimeError("adapter send failed")
+
+            async def send_streaming(
+                self, original_msg: InboundMessage, chunks: object
+            ) -> None:
+                pass
+
+        hub.register_adapter(Platform.TELEGRAM, "main", FailingAdapter())  # type: ignore[arg-type]
+        hub.register_binding(Platform.TELEGRAM, "main", "*", "lyra", "telegram:main:*")
+
+        msg = make_message(content="hello", user_id=_USER_ID, is_group=False)
+        await hub.bus.put(msg)
+
+        import logging
+
+        with caplog.at_level(logging.ERROR, logger="lyra.core.hub"):
+            try:
+                await asyncio.wait_for(hub.run(), timeout=0.3)
+            except asyncio.TimeoutError:
+                pass
+
+        assert any(
+            "dispatch_response failed for pairing rejection" in record.message
+            for record in caplog.records
+        ), f"Expected pairing rejection log, got: {[r.message for r in caplog.records]}"
+
     async def test_discord_unpaired_guild_silently_dropped(self) -> None:
         pm = await make_pm(enabled=True)
         hub = self._make_hub(pm)

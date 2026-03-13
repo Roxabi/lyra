@@ -11,6 +11,7 @@ from .message import (
     OutboundMessage,
     Platform,
     Response,
+    RoutingContext,
 )
 from .pool import Pool
 
@@ -30,5 +31,6 @@ __all__ = [
     "Platform",
     "Pool",
     "Response",
+    "RoutingContext",
     "RoutingKey",
 ]

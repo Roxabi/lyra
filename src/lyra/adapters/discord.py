@@ -35,6 +35,7 @@ from lyra.core.message import (
     OutboundAudioChunk,
     OutboundMessage,
     Platform,
+    RoutingContext,
 )
 from lyra.core.messages import MessageManager
 
@@ -196,6 +197,19 @@ class DiscordAdapter(discord.Client):
         )
         user_id = f"dc:user:{raw.author.id}"
         timestamp = raw.created_at
+        platform_meta = {
+            "guild_id": raw.guild.id if raw.guild else None,
+            "channel_id": raw.channel.id,
+            "message_id": raw.id,
+        }
+        routing = RoutingContext(
+            platform=Platform.DISCORD.value,
+            bot_id=self._bot_id,
+            scope_id=scope_id,
+            thread_id=str(raw.channel.id) if is_thread else None,
+            reply_to_message_id=str(raw.id),
+            platform_meta=dict(platform_meta),
+        )
         return InboundAudio(
             id=f"discord:{user_id}:{int(timestamp.timestamp())}:{raw.id}",
             platform=Platform.DISCORD.value,
@@ -210,11 +224,8 @@ class DiscordAdapter(discord.Client):
             user_name=(getattr(raw.author, "display_name", None) or raw.author.name),
             is_mention=False,
             trust_level=trust_level,
-            platform_meta={
-                "guild_id": raw.guild.id if raw.guild else None,
-                "channel_id": raw.channel.id,
-                "message_id": raw.id,
-            },
+            platform_meta=platform_meta,
+            routing=routing,
         )
 
     def normalize(
@@ -280,6 +291,24 @@ class DiscordAdapter(discord.Client):
 
         _display_name = getattr(raw.author, "display_name", None)
         attachments = _extract_attachments(getattr(raw, "attachments", None) or [])
+        platform_meta = {
+            "guild_id": raw.guild.id if raw.guild else None,
+            "channel_id": resolved_channel_id,
+            # INVARIANT: always original message id, never thread.id
+            "message_id": raw.id,
+            "thread_id": resolved_thread_id,
+            "channel_type": channel_type,
+        }
+        routing = RoutingContext(
+            platform=Platform.DISCORD.value,
+            bot_id=self._bot_id,
+            scope_id=scope_id,
+            thread_id=(
+                str(resolved_thread_id) if resolved_thread_id is not None else None
+            ),
+            reply_to_message_id=str(raw.id),
+            platform_meta=dict(platform_meta),
+        )
         return InboundMessage(
             id=(f"discord:{user_id}:{int(timestamp.timestamp())}:{raw.id}"),
             platform=Platform.DISCORD.value,
@@ -294,14 +323,8 @@ class DiscordAdapter(discord.Client):
             timestamp=timestamp,
             trust="user",
             trust_level=trust_level,
-            platform_meta={
-                "guild_id": raw.guild.id if raw.guild else None,
-                "channel_id": resolved_channel_id,
-                # INVARIANT: always original message id, never thread.id
-                "message_id": raw.id,
-                "thread_id": resolved_thread_id,
-                "channel_type": channel_type,
-            },
+            platform_meta=platform_meta,
+            routing=routing,
         )
 
     async def on_message(self, message: Any) -> None:  # noqa: C901 — gateway dispatch: each message type branch is independent

@@ -343,6 +343,8 @@ class Hub:
             outbound = response
         else:
             outbound = response.to_outbound()
+        if outbound.routing is None and msg.routing is not None:
+            outbound.routing = msg.routing
         platform = Platform(msg.platform)
         dispatcher = self.outbound_dispatchers.get((platform, msg.bot_id))
         if dispatcher is not None:
@@ -373,6 +375,12 @@ class Hub:
         When *outbound* is provided it is forwarded to the adapter so the
         platform message ID can be recorded in ``outbound.metadata``.
         """
+        if (
+            outbound is not None
+            and outbound.routing is None
+            and msg.routing is not None
+        ):
+            outbound.routing = msg.routing
         platform = Platform(msg.platform)
         dispatcher = self.outbound_dispatchers.get((platform, msg.bot_id))
         if dispatcher is not None:
@@ -499,6 +507,7 @@ class Hub:
             trust_level=audio.trust_level,
             trust=audio.trust,
             platform_meta=audio.platform_meta,
+            routing=audio.routing,
         )
         try:
             self.inbound_bus.put(platform_enum, msg)
@@ -577,6 +586,7 @@ class Hub:
             trust_level=audio.trust_level,
             trust=audio.trust,
             platform_meta=audio.platform_meta,
+            routing=audio.routing,
         )
         await self.dispatch_response(synthetic, Response(content=content))
 

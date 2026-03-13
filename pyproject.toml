@@ -46,7 +46,14 @@ venv = ".venv"
 exclude = [".claude/worktrees"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I"]
+select = ["E", "F", "I", "C901", "PLR0913", "PLR0915"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-statements = 50
+max-args = 5
 
 [tool.ruff.format]
 

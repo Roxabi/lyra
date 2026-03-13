@@ -965,7 +965,7 @@ class TestTelegramAttachments:
         hub = MagicMock()
         return TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
 
-    def _make_msg(
+    def _make_msg(  # noqa: PLR0913 — test factory with optional overrides
         self, *, text: str | None = "hello", caption=None,
         photo=None, document=None, video=None,
         animation=None, sticker=None,

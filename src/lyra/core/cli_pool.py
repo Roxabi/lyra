@@ -281,7 +281,7 @@ class CliPool:
 
         return await self._read_until_result(entry)
 
-    async def _read_until_result(self, entry: _ProcessEntry) -> CliResult:
+    async def _read_until_result(self, entry: _ProcessEntry) -> CliResult:  # noqa: C901 — protocol dispatch: each JSON event type requires its own branch
         proc = entry.proc
         if proc.stdout is None:
             return CliResult(error="Process stdout is None")

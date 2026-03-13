@@ -65,8 +65,20 @@ class SimpleAgent(AgentBase):
         )
         self._provider = provider
 
+    def _maybe_register_reset(self, pool: Pool) -> None:
+        """Register a session reset callback on the pool the first time we process.
+
+        /clear calls pool.reset_session(), which delegates here → CliPool.reset().
+        """
+        if pool._session_reset_fn is None:
+            reset_fn = getattr(self._provider, "reset", None)
+            if reset_fn is not None:
+                _pool_id = pool.pool_id
+                pool._session_reset_fn = lambda: reset_fn(_pool_id)
+
     async def process(self, msg: InboundMessage, pool: Pool) -> Response:
         self._maybe_reload()
+        self._maybe_register_reset(pool)
 
         # Handle audio messages — attachments with type="audio"
         audio_attachment = next((a for a in msg.attachments if a.type == "audio"), None)

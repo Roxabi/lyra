@@ -23,6 +23,10 @@ class ClaudeCliDriver:
     def __init__(self, pool: CliPool) -> None:
         self._pool = pool
 
+    async def reset(self, pool_id: str) -> None:
+        """Kill the CLI process for this pool. Next send() spawns a fresh one."""
+        await self._pool.reset(pool_id)
+
     async def complete(
         self,
         pool_id: str,

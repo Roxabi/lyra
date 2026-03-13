@@ -6,7 +6,7 @@ import contextlib
 import logging
 import time
 from collections import deque
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
@@ -68,6 +68,7 @@ class Pool:
         self.history: list[InboundMessage] = []
         self.sdk_history: deque[dict] = deque()
         self.max_sdk_history: int = 50
+        self._session_reset_fn: Callable[[], Awaitable[None]] | None = None
         self._ctx = ctx
         self._turn_timeout = turn_timeout
         self._debouncer = MessageDebouncer(debounce_ms)
@@ -301,6 +302,15 @@ class Pool:
             )
         except Exception as exc:
             log.exception("_safe_dispatch failed for pool %s: %s", self.pool_id, exc)
+
+    async def reset_session(self) -> None:
+        """Reset external session state (e.g. CLI session_id).
+
+        Called by /clear. Clears in-memory history then delegates to any
+        registered reset callback (e.g. ClaudeCliDriver killing its process).
+        """
+        if self._session_reset_fn is not None:
+            await self._session_reset_fn()
 
     def extend_sdk_history(self, new_messages: list[dict]) -> None:
         """Append messages from an exchange and trim to cap."""

@@ -946,3 +946,103 @@ class TestConfigCommand:
         # Assert
         assert isinstance(response, Response)
         assert "not available" in response.content.lower()
+
+
+# ---------------------------------------------------------------------------
+# Slice — /clear and /new commands
+# ---------------------------------------------------------------------------
+
+
+class TestClearCommand:
+    """/clear and /new clear history and call pool.reset_session()."""
+
+    @pytest.mark.asyncio
+    async def test_clear_clears_sdk_history(self, tmp_path: Path) -> None:
+        """/clear empties pool.sdk_history."""
+        router = make_router(tmp_path)
+        msg = make_message(content="/clear")
+
+        pool_mock = MagicMock(spec=Pool)
+        pool_mock.sdk_history = MagicMock()
+        pool_mock.history = MagicMock()
+        async def _noop() -> None:
+            pass
+
+        pool_mock.reset_session = _noop
+
+        await router.dispatch(msg, pool=pool_mock)
+
+        pool_mock.sdk_history.clear.assert_called_once()
+        pool_mock.history.clear.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_clear_calls_reset_session(self, tmp_path: Path) -> None:
+        """/clear awaits pool.reset_session() to flush the backend session."""
+        router = make_router(tmp_path)
+        msg = make_message(content="/clear")
+
+        reset_called = False
+
+        async def _reset() -> None:
+            nonlocal reset_called
+            reset_called = True
+
+        pool_mock = MagicMock(spec=Pool)
+        pool_mock.sdk_history = MagicMock()
+        pool_mock.history = MagicMock()
+        pool_mock.reset_session = _reset
+
+        await router.dispatch(msg, pool=pool_mock)
+
+        assert reset_called, "pool.reset_session() was not awaited by /clear"
+
+    @pytest.mark.asyncio
+    async def test_new_alias_calls_reset_session(self, tmp_path: Path) -> None:
+        """/new is an alias for /clear — also calls pool.reset_session()."""
+        router = make_router(tmp_path)
+        msg = make_message(content="/new")
+
+        reset_called = False
+
+        async def _reset() -> None:
+            nonlocal reset_called
+            reset_called = True
+
+        pool_mock = MagicMock(spec=Pool)
+        pool_mock.sdk_history = MagicMock()
+        pool_mock.history = MagicMock()
+        pool_mock.reset_session = _reset
+
+        await router.dispatch(msg, pool=pool_mock)
+
+        assert reset_called
+
+    @pytest.mark.asyncio
+    async def test_clear_with_no_pool_safe(self, tmp_path: Path) -> None:
+        """/clear with pool=None returns a safe response without raising."""
+        router = make_router(tmp_path)
+        msg = make_message(content="/clear")
+
+        response = await router.dispatch(msg, pool=None)
+
+        assert isinstance(response, Response)
+        assert "no active session" in response.content.lower()
+
+    @pytest.mark.asyncio
+    async def test_clear_returns_confirmation(self, tmp_path: Path) -> None:
+        """/clear response confirms history was cleared."""
+        router = make_router(tmp_path)
+        msg = make_message(content="/clear")
+
+        async def _noop() -> None:
+            pass
+
+        pool_mock = MagicMock(spec=Pool)
+        pool_mock.sdk_history = MagicMock()
+        pool_mock.history = MagicMock()
+        pool_mock.reset_session = _noop
+
+        response = await router.dispatch(msg, pool=pool_mock)
+
+        assert isinstance(response, Response)
+        assert "cleared" in response.content.lower()

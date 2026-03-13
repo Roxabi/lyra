@@ -133,8 +133,6 @@ class CommandRouter:
             return Response(content="")
         if command_name == "/config":
             return self._cmd_config(msg, args)
-        if command_name in ("/clear", "/new"):
-            return self._cmd_clear(pool)
         builtin = self._builtins.get(command_name)
         if builtin and builtin.builtin:
             return Response(
@@ -147,6 +145,10 @@ class CommandRouter:
         parts = msg.text.split()
         command_name = parts[0].lower()
         args = parts[1:]
+
+        # /clear and /new need async session reset — handle before _dispatch_builtin
+        if command_name in ("/clear", "/new"):
+            return await self._cmd_clear(pool)
 
         builtin_response = self._dispatch_builtin(command_name, args, msg, pool)
         if builtin_response is not None:
@@ -323,10 +325,11 @@ class CommandRouter:
         holder.value.save(runtime_file)
         return Response(content=f"Reset: {key} = (default). Saved.")
 
-    def _cmd_clear(self, pool: Pool | None) -> Response:
-        """Clear conversation history for the current scope."""
+    async def _cmd_clear(self, pool: Pool | None) -> Response:
+        """Clear conversation history and reset backend session."""
         if pool is None:
             return Response(content="No active session to clear.")
         pool.sdk_history.clear()
         pool.history.clear()
+        await pool.reset_session()
         return Response(content="Conversation history cleared. Starting fresh.")

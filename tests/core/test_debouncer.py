@@ -326,8 +326,36 @@ class TestPoolDebounce:
 
         # With zero debounce, messages queued before task starts are still
         # drained together by collect(). Both arrive before the first
-        # collect() call, so they get merged.
-        assert len(agent.calls) >= 1
+        # collect() call, so they get merged into one.
+        assert len(agent.calls) == 1
+        assert "first" in agent.calls[0]
+        assert "second" in agent.calls[0]
+
+
+class TestPoolNoAgent:
+    """Pool handles missing agent gracefully."""
+
+    @pytest.mark.asyncio
+    async def test_no_agent_drains_inbox_and_exits(self) -> None:
+        """When agent is None, all queued messages are drained and loop exits."""
+        ctx = _make_ctx_mock()  # no agents registered
+        pool = Pool(
+            pool_id="test:main:chat:noagent",
+            agent_name="missing_agent",
+            ctx=ctx,
+            debounce_ms=0,
+        )
+
+        pool.submit(make_msg("first"))
+        pool.submit(make_msg("second"))
+        pool.submit(make_msg("third"))
+
+        await _drain(pool)
+
+        # No dispatch should have been called — agent was None.
+        ctx.dispatch_response.assert_not_awaited()
+        # Inbox should be fully drained.
+        assert pool._inbox.empty()
 
 
 class TestPoolCancelInFlight:
@@ -338,13 +366,15 @@ class TestPoolCancelInFlight:
         """New message during LLM processing cancels and re-dispatches."""
         agent = RecordingAgent()
         call_count = 0
+        started = asyncio.Event()
         original_process = agent.process
 
         async def _slow_then_fast(msg: InboundMessage, pool: Pool) -> Response:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                # First call: slow — will be cancelled
+                # Signal that the first call has started, then block.
+                started.set()
                 await asyncio.sleep(10)
                 return Response(content="should not reach")
             # Second call: fast — combined message
@@ -362,7 +392,7 @@ class TestPoolCancelInFlight:
 
         # Submit first message — agent starts slow processing.
         pool.submit(make_msg("explain X"))
-        await asyncio.sleep(0.05)  # let the agent task start
+        await started.wait()  # deterministic: agent is in-flight
 
         # Submit second message while agent is in-flight → cancel + re-dispatch.
         pool.submit(make_msg("actually explain Y"))

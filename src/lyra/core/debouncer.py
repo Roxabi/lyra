@@ -84,6 +84,33 @@ class MessageDebouncer:
 
         return buffer
 
+    async def drain_followups(
+        self, inbox: asyncio.Queue[InboundMessage]
+    ) -> list[InboundMessage]:
+        """Drain rapid follow-up messages within the debounce window.
+
+        Unlike collect(), does NOT block for the first message — only drains
+        what arrives within debounce_ms. Returns an empty list if nothing
+        arrives in time or if debounce_ms <= 0.
+        """
+        buffer: list[InboundMessage] = []
+        if self.debounce_ms <= 0:
+            while True:
+                try:
+                    buffer.append(inbox.get_nowait())
+                except asyncio.QueueEmpty:
+                    break
+            return buffer
+
+        timeout = self.debounce_ms / 1000.0
+        try:
+            while True:
+                msg = await asyncio.wait_for(inbox.get(), timeout=timeout)
+                buffer.append(msg)
+        except asyncio.TimeoutError:
+            pass
+        return buffer
+
     @staticmethod
     def merge(messages: list[InboundMessage]) -> InboundMessage:
         """Combine multiple messages into a single InboundMessage.

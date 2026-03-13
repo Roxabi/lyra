@@ -159,7 +159,7 @@ class Pool:
                 # Phase 2: process with cancel-in-flight
                 msg = MessageDebouncer.merge(buffer)
                 _last_msg = msg
-                await self._process_with_cancel(msg, buffer, agent)
+                _last_msg = await self._process_with_cancel(msg, buffer, agent)
         except asyncio.CancelledError:
             # /stop cancellation — send a reply if we have a message context.
             if _last_msg is not None:
@@ -176,13 +176,16 @@ class Pool:
         msg: InboundMessage,
         buffer: list[InboundMessage],
         agent: "AgentBase",
-    ) -> None:
+    ) -> InboundMessage:
         """Run agent.process() but cancel and re-dispatch if new messages arrive.
 
         Races the agent task against inbox.get(). If a new message wins,
         the agent task is cancelled, the new message(s) are debounced and
         merged with the existing buffer, and the agent is re-invoked with
         the combined context.
+
+        Returns the latest merged InboundMessage (may differ from the input
+        if cancel-in-flight cycles extended the buffer).
         """
         while True:
             agent_task = asyncio.create_task(
@@ -221,7 +224,7 @@ class Pool:
                 # Propagate CancelledError from /stop.
                 if agent_task.cancelled():
                     raise asyncio.CancelledError
-                return
+                return msg
 
             # New message arrived while agent was processing → cancel-in-flight.
             new_msg = inbox_waiter.result()
@@ -236,14 +239,7 @@ class Pool:
 
             # Debounce the new message (drain any rapid follow-ups).
             buffer.append(new_msg)
-            timeout = self._debouncer.debounce_ms / 1000.0
-            if timeout > 0:
-                try:
-                    while True:
-                        m = await asyncio.wait_for(self._inbox.get(), timeout=timeout)
-                        buffer.append(m)
-                except asyncio.TimeoutError:
-                    pass
+            buffer.extend(await self._debouncer.drain_followups(self._inbox))
 
             msg = MessageDebouncer.merge(buffer)
             # Loop to re-dispatch with combined context.

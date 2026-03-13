@@ -20,15 +20,18 @@ class Platform(str, Enum):
 class Attachment:
     """A file or media attachment on an InboundMessage.
 
-    url_or_bytes stores platform-specific references:
+    url_or_path_or_bytes stores platform-specific references:
     - Discord: direct CDN URL (str) — fetchable with HTTP GET.
     - Telegram: prefixed file_id (str, ``"tg:file_id:{id}"``) — resolve via
-      Bot API ``getFile``. Detect with ``url_or_bytes.startswith("tg:file_id:")``.
+      Bot API ``getFile``. Detect with
+      ``url_or_path_or_bytes.startswith("tg:file_id:")``.
+    - Local filesystem path (str, e.g. ``"/tmp/tmpXXX.ogg"``) — for audio
+      downloaded by adapters before normalization.
     - Raw bytes (bytes) — for pre-downloaded media (future).
     """
 
     type: str  # "image" | "audio" | "video" | "file"
-    url_or_bytes: str | bytes  # URL string or raw bytes
+    url_or_path_or_bytes: str | bytes  # URL, local path, or raw bytes
     mime_type: str
     filename: str | None = None
 

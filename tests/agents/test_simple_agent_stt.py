@@ -48,7 +48,9 @@ def make_audio_message(url: str) -> InboundMessage:
         is_mention=False,
         text="",
         text_raw="",
-        attachments=[Attachment(type="audio", url_or_bytes=url, mime_type="audio/ogg")],
+        attachments=[
+            Attachment(type="audio", url_or_path_or_bytes=url, mime_type="audio/ogg"),
+        ],
         timestamp=datetime.now(timezone.utc),
         platform_meta={
             "chat_id": 42,

@@ -273,7 +273,9 @@ cp lyra.toml.example lyra.toml
 nano lyra.toml
 ```
 
-Fill in your user IDs:
+Fill in your user IDs. Lyra supports two config schemas — single-bot (simple) and multi-bot:
+
+**Single-bot (default)** — one bot per platform, tokens from env vars:
 
 ```toml
 [admin]
@@ -291,9 +293,38 @@ owner_users = [YOUR_DISCORD_ID]    # numeric — Settings → Advanced → Devel
 trusted_roles = []                 # numeric Discord role snowflake IDs (trusted access)
 ```
 
+**Multi-bot** — multiple bots per platform, each mapped to a different agent:
+
+```toml
+[[telegram.bots]]
+bot_id = "lyra"
+token = "env:TELEGRAM_TOKEN"
+bot_username = "env:TELEGRAM_BOT_USERNAME"
+webhook_secret = "env:TELEGRAM_WEBHOOK_SECRET"
+agent = "lyra_default"
+
+[[discord.bots]]
+bot_id = "lyra"
+token = "env:DISCORD_TOKEN"
+auto_thread = true
+agent = "lyra_default"
+
+[[auth.telegram_bots]]
+bot_id = "lyra"
+default = "blocked"
+owner_users = [YOUR_TELEGRAM_ID]
+
+[[auth.discord_bots]]
+bot_id = "lyra"
+default = "blocked"
+owner_users = [YOUR_DISCORD_ID]
+```
+
+See `lyra.toml.example` for a full multi-bot example with multiple bots.
+
 > **Note:** `owner_users` in each adapter section are automatically granted admin privileges. You do not need to duplicate them in `[admin].user_ids`.
 
-At least one of `[auth.telegram]` or `[auth.discord]` must be present. A missing section logs a warning and disables that adapter — Lyra still starts with the remaining adapter.
+At least one bot (Telegram or Discord) must be configured. A missing platform logs a warning and skips that adapter — Lyra still starts with the remaining ones.
 
 ---
 

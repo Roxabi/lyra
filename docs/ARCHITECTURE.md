@@ -130,7 +130,7 @@ Discord  ──▶ dc_inbound Queue ──┘         (bounded 100)        │
                                           Telegram                           Discord
 ```
 
-**Adapter registry** (`dict[str, ChannelAdapter]`) — each adapter registers at startup via `hub.register_adapter("telegram", adapter)`. The OutboundDispatcher routes responses back to the originating channel.
+**Adapter registry** (`dict[tuple[Platform, str], ChannelAdapter]`) — keyed by `(platform, bot_id)`. Multiple bots per platform are supported; each registers independently via `hub.register_adapter(Platform.TELEGRAM, bot_id, adapter)`. The OutboundDispatcher routes responses back to the originating channel.
 
 ### The Bus
 
@@ -144,7 +144,7 @@ Discord  ──▶ dc_inbound Queue ──┘         (bounded 100)        │
 class InboundMessage:
     id: str
     platform: str               # "telegram" | "discord" | ...
-    bot_id: str                 # "main" (one bot per platform)
+    bot_id: str                 # bot identifier — multiple bots per platform supported
     scope_id: str               # canonical routing scope (computed by adapter)
     user_id: str                # canonical sender ID (rate-limiting, pairing)
     user_name: str

@@ -53,7 +53,7 @@ flowchart TD
 | **Concurrency** | Sequential per scope (`asyncio.Task`) · parallel across scopes and platforms — zero config |
 | **Backpressure** | Bounded queue (100) → immediate ack + blocking `await put()` |
 | **LLM** | LlmProvider protocol: Claude CLI + Anthropic SDK drivers · smart routing (complexity-based model selection) · Ollama (Phase 2) |
-| **Agents** | Stateless singleton · isolated per-scope pools · TOML config per agent |
+| **Agents** | Stateless singleton · isolated per-scope pools · TOML config per agent · N agents × N bots via `lyra.toml` |
 | **Memory** | 5 levels: working (L0) → session → episodic → semantic (SQLite + FTS5 + fastembed, ✅ Phase 1) → procedural |
 | **Auth** | AuthMiddleware + TrustLevel per adapter (owner/trusted/public/blocked) · RoutingContext outbound verification |
 | **Voice** | STT via voicecli library (faster-whisper `large-v3-turbo` + personal vocab · InboundAudioBus → STTService) · TTS via voicecli (Phase 2) |

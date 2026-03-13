@@ -228,7 +228,15 @@ def create_health_app(hub: Hub) -> FastAPI:
     app = FastAPI(title="Lyra Hub")
 
     @app.get("/health")
-    async def health() -> dict:
+    async def health(authorization: str = Header(default="")) -> dict:
+        health_secret = os.environ.get("LYRA_HEALTH_SECRET", "")
+        authenticated = (
+            bool(health_secret) and authorization == f"Bearer {health_secret}"
+        )
+
+        if not authenticated:
+            return {"ok": True}
+
         uptime_s = time.monotonic() - hub._start_time
 
         last_message_age_s: float | None = None
@@ -256,6 +264,7 @@ def create_health_app(hub: Hub) -> FastAPI:
         }
 
         return {
+            "ok": True,
             "queue_size": hub.inbound_bus.staging_qsize(),
             "queues": {"inbound": inbound, "outbound": outbound},
             "last_message_age_s": last_message_age_s,

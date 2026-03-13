@@ -122,6 +122,7 @@ class Response:
     metadata: dict[str, Any] = field(default_factory=dict)
     routing: RoutingContext | None = None
     intermediate: bool = False  # True for ⏳ intermediate turns
+    audio: "OutboundAudio | None" = None
 
     def to_outbound(self) -> "OutboundMessage":
         """Convert to OutboundMessage for use with the typed dispatch path."""

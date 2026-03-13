@@ -897,10 +897,14 @@ class TelegramAdapter:
             raise stream_error
 
     async def render_audio(self, msg: OutboundAudio, inbound: InboundMessage) -> None:
-        """Send an OutboundAudio envelope as a Telegram voice note (ogg/opus).
+        """Send an OutboundAudio envelope via the appropriate Telegram method.
 
-        Uses bot.send_voice() with a BytesIO buffer — no temp file required.
-        caption (if set) is attached to the voice message.
+        Routes based on MIME type:
+        - audio/wav, audio/mpeg, audio/mp3 → bot.send_audio() (file player UI)
+        - audio/ogg and anything else      → bot.send_voice() (voice bubble UI)
+
+        Uses a BytesIO buffer — no temp file required.
+        caption (if set) is attached to the message.
         reply_to_message_id is derived from inbound.platform_meta["message_id"]
         unless msg.reply_to_id overrides it explicitly.
         """
@@ -932,12 +936,15 @@ class TelegramAdapter:
         )
 
         audio_buf = BytesIO(msg.audio_bytes)
-        audio_buf.name = "voice.ogg"
 
-        kwargs: dict = {
-            "chat_id": chat_id,
-            "voice": audio_buf,
-        }
+        use_audio_method = msg.mime_type in ("audio/wav", "audio/mpeg", "audio/mp3")
+
+        if use_audio_method:
+            audio_buf.name = "audio.wav"
+        else:
+            audio_buf.name = "voice.ogg"
+
+        kwargs: dict = {"chat_id": chat_id}
         if topic_id is not None:
             kwargs["message_thread_id"] = topic_id
         if reply_to is not None:
@@ -947,7 +954,12 @@ class TelegramAdapter:
         if duration_sec is not None:
             kwargs["duration"] = duration_sec
 
-        await self.bot.send_voice(**kwargs)
+        if use_audio_method:
+            kwargs["audio"] = audio_buf
+            await self.bot.send_audio(**kwargs)
+        else:
+            kwargs["voice"] = audio_buf
+            await self.bot.send_voice(**kwargs)
 
     async def render_attachment(
         self, msg: OutboundAttachment, inbound: InboundMessage

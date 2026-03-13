@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
     from lyra.stt import STTService
+    from lyra.tts import TTSService
 
 from .circuit_breaker import CircuitRegistry
 from .command_router import CommandConfig, CommandRouter
@@ -456,7 +457,8 @@ class AgentBase(ABC):
         circuit_registry: CircuitRegistry | None = None,
         admin_user_ids: set[str] | None = None,
         msg_manager: MessageManager | None = None,
-        stt: STTService | None = None,
+        stt: "STTService | None" = None,
+        tts: "TTSService | None" = None,
         smart_routing_decorator: Any | None = None,
     ) -> None:
         self.config = config
@@ -472,6 +474,8 @@ class AgentBase(ABC):
         # Temp file cleanup (AudioContent.url) must live in a finally block in
         # process() — the agent owns it, not STTService. See ADR-013.
         self._stt = stt
+        # Subclasses invoke self._tts when /voice command detected in process().
+        self._tts = tts
         self._smart_routing_decorator = smart_routing_decorator
         self._plugins_dir = plugins_dir or _PLUGINS_DIR
         self._plugin_loader = PluginLoader(self._plugins_dir)
@@ -623,6 +627,37 @@ class AgentBase(ABC):
     def _build_router_kwargs(self) -> dict:
         """Hook for subclasses to inject extra CommandRouter constructor kwargs."""
         return {}
+
+    async def _handle_voice_command(self, msg: InboundMessage) -> "Response | None":
+        """Handle a /voice command if TTS is configured. Returns None to fall through.
+
+        Pre-router called at the top of each agent's process(). If the message
+        starts with "/voice <text>" and self._tts is set, synthesizes speech and
+        returns a Response with audio set. Returns None for all other messages
+        (text or bare /voice with no args) so normal processing continues.
+        """
+        if self._tts is None:
+            return None
+        stripped = msg.text.strip()
+        _VOICE_PREFIX = "/voice "
+        if not stripped.lower().startswith(_VOICE_PREFIX):
+            return None
+        text = stripped[len(_VOICE_PREFIX) :].strip()
+        if not text:
+            return None
+        from .message import OutboundAudio, Response
+
+        try:
+            result = await self._tts.synthesize(text)
+            audio = OutboundAudio(
+                audio_bytes=result.audio_bytes,
+                mime_type=result.mime_type,
+                duration_ms=result.duration_ms,
+            )
+            return Response(content="", audio=audio)
+        except Exception:
+            log.error("TTS synthesis failed for /voice command", exc_info=True)
+            return Response(content="Sorry, I couldn't generate audio.")
 
     def is_backend_alive(self, _pool_id: str) -> bool:
         """Return True if the backend process for this pool is alive.

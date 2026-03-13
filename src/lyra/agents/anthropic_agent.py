@@ -22,6 +22,7 @@ from lyra.stt import is_whisper_noise
 
 if TYPE_CHECKING:
     from lyra.stt import STTService
+    from lyra.tts import TTSService
 
 log = logging.getLogger(__name__)
 
@@ -41,7 +42,8 @@ class AnthropicAgent(AgentBase):
         admin_user_ids: set[str] | None = None,
         msg_manager: MessageManager | None = None,
         runtime_config: RuntimeConfig | None = None,
-        stt: STTService | None = None,
+        stt: "STTService | None" = None,
+        tts: "TTSService | None" = None,
         agents_dir: Path | None = None,
         smart_routing_decorator: object | None = None,
     ) -> None:
@@ -61,6 +63,7 @@ class AnthropicAgent(AgentBase):
             admin_user_ids=admin_user_ids,
             msg_manager=msg_manager,
             stt=stt,
+            tts=tts,
             smart_routing_decorator=smart_routing_decorator,
         )
 
@@ -75,7 +78,7 @@ class AnthropicAgent(AgentBase):
             "runtime_config_path": self._runtime_config_path,
         }
 
-    async def process(
+    async def _process_llm(
         self, msg: InboundMessage, pool: Pool, *, on_intermediate=None
     ) -> Response:
         """Call the LlmProvider, handle STT, update history, return Response."""
@@ -174,3 +177,12 @@ class AnthropicAgent(AgentBase):
         finally:
             if tmp_path is not None:
                 tmp_path.unlink(missing_ok=True)
+
+    async def process(
+        self, msg: InboundMessage, pool: Pool, *, on_intermediate=None
+    ) -> Response:
+        """Dispatch /voice commands or delegate to the LLM pipeline."""
+        r = await self._handle_voice_command(msg)
+        if r is not None:
+            return r
+        return await self._process_llm(msg, pool, on_intermediate=on_intermediate)

@@ -369,6 +369,30 @@ class Hub:
             await adapter.send(msg, OutboundMessage.from_text(text))
         self._last_processed_at = time.monotonic()
 
+    async def dispatch_attachment(
+        self, msg: InboundMessage, attachment: OutboundAttachment
+    ) -> None:
+        """Send an attachment back via the originating adapter.
+
+        Routes through the OutboundDispatcher when one is registered (fire-and-forget).
+        Falls back to a direct adapter call when no dispatcher is registered.
+        """
+        platform = Platform(msg.platform)
+        dispatcher = self.outbound_dispatchers.get((platform, msg.bot_id))
+        if dispatcher is not None:
+            dispatcher.enqueue_attachment(msg, attachment)
+            self._last_processed_at = time.monotonic()
+            return
+        # Fallback: direct adapter call (backward compat / no dispatcher registered)
+        adapter = self.adapter_registry.get((platform, msg.bot_id))
+        if adapter is None:
+            raise KeyError(
+                f"No adapter registered for ({msg.platform!r}, {msg.bot_id!r}). "
+                "Call register_adapter() before dispatching attachments."
+            )
+        await adapter.render_attachment(attachment, msg)
+        self._last_processed_at = time.monotonic()
+
     # ------------------------------------------------------------------
     # Audio consumer loop
     # ------------------------------------------------------------------

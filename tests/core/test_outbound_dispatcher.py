@@ -11,6 +11,7 @@ from lyra.core.auth import TrustLevel
 from lyra.core.circuit_breaker import CircuitBreaker
 from lyra.core.message import (
     InboundMessage,
+    OutboundAttachment,
     OutboundAudio,
     OutboundMessage,
 )
@@ -44,6 +45,7 @@ def _make_adapter() -> tuple[MagicMock, OutboundDispatcher]:
     adapter.send = AsyncMock()
     adapter.send_streaming = AsyncMock()
     adapter.render_audio = AsyncMock()
+    adapter.render_attachment = AsyncMock()
     dispatcher = OutboundDispatcher(platform_name="telegram", adapter=adapter)
     return adapter, dispatcher
 
@@ -326,5 +328,80 @@ class TestOutboundDispatcherAudio:
             await asyncio.sleep(0.05)
             assert platform_cb._failure_count >= 1
             assert ant_cb._failure_count >= 1
+        finally:
+            await dispatcher.stop()
+
+
+# ---------------------------------------------------------------------------
+# #217: OutboundDispatcher.enqueue_attachment() — CB ownership for render_attachment()
+# ---------------------------------------------------------------------------
+
+
+def _make_attachment() -> OutboundAttachment:
+    return OutboundAttachment(
+        data=b"fake-png",
+        type="image",
+        mime_type="image/png",
+        filename="test.png",
+        caption="A test image",
+    )
+
+
+class TestOutboundDispatcherAttachment:
+    async def test_enqueue_attachment_delivers_via_adapter(self) -> None:
+        from lyra.core.circuit_breaker import CircuitState
+
+        adapter = MagicMock()
+        adapter.render_attachment = AsyncMock()
+        cb = CircuitBreaker(name="telegram", failure_threshold=5)
+        cb._state = CircuitState.HALF_OPEN
+        dispatcher = OutboundDispatcher(
+            platform_name="telegram", adapter=adapter, circuit=cb
+        )
+        await dispatcher.start()
+        try:
+            inbound = _make_msg()
+            attachment = _make_attachment()
+            dispatcher.enqueue_attachment(inbound, attachment)
+            await asyncio.sleep(0.05)
+            adapter.render_attachment.assert_awaited_once_with(attachment, inbound)
+            assert cb._state == CircuitState.CLOSED
+        finally:
+            await dispatcher.stop()
+
+    async def test_open_circuit_drops_attachment(self) -> None:
+        adapter = MagicMock()
+        adapter.render_attachment = AsyncMock()
+        cb = CircuitBreaker(name="telegram", failure_threshold=1)
+        cb.record_failure()
+        assert cb.is_open()
+        dispatcher = OutboundDispatcher(
+            platform_name="telegram", adapter=adapter, circuit=cb
+        )
+        await dispatcher.start()
+        try:
+            inbound = _make_msg()
+            attachment = _make_attachment()
+            dispatcher.enqueue_attachment(inbound, attachment)
+            await asyncio.sleep(0.05)
+            adapter.render_attachment.assert_not_awaited()
+            assert dispatcher.qsize() == 0
+        finally:
+            await dispatcher.stop()
+
+    async def test_failed_attachment_records_cb_failure(self) -> None:
+        adapter = MagicMock()
+        adapter.render_attachment = AsyncMock(side_effect=Exception("send error"))
+        cb = CircuitBreaker(name="telegram", failure_threshold=5)
+        dispatcher = OutboundDispatcher(
+            platform_name="telegram", adapter=adapter, circuit=cb
+        )
+        await dispatcher.start()
+        try:
+            inbound = _make_msg()
+            attachment = _make_attachment()
+            dispatcher.enqueue_attachment(inbound, attachment)
+            await asyncio.sleep(0.05)
+            assert cb._failure_count >= 1
         finally:
             await dispatcher.stop()

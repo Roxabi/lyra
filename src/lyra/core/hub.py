@@ -491,8 +491,11 @@ class Hub:
         fd, path = tempfile.mkstemp(suffix=suffix)
         try:
             os.write(fd, data)
-        finally:
+        except BaseException:
             os.close(fd)
+            Path(path).unlink(missing_ok=True)
+            raise
+        os.close(fd)
         return path
 
     async def _dispatch_audio_reply(

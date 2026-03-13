@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 from lyra.errors import ProviderError
 
 from .circuit_breaker import CircuitBreaker, CircuitRegistry
-from .message import InboundMessage, OutboundAudio, OutboundMessage
+from .message import InboundMessage, OutboundAttachment, OutboundAudio, OutboundMessage
 
 if TYPE_CHECKING:
     from lyra.core.hub import ChannelAdapter
@@ -27,7 +27,8 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 # Queue item: (kind, msg, payload) for send;
-# (kind, msg, chunks, outbound) for streaming; (kind, inbound, audio) for audio
+# (kind, msg, chunks, outbound) for streaming; (kind, inbound, audio) for audio;
+# (kind, inbound, attachment) for attachment
 _ITEM = tuple
 
 
@@ -90,6 +91,16 @@ class OutboundDispatcher:
         """
         self._queue.put_nowait(("audio", inbound, audio))
 
+    def enqueue_attachment(
+        self, inbound: InboundMessage, attachment: OutboundAttachment
+    ) -> None:
+        """Enqueue an attachment for delivery.
+
+        Fire-and-forget: returns immediately. The worker task calls
+        adapter.render_attachment() asynchronously with CB ownership.
+        """
+        self._queue.put_nowait(("attachment", inbound, attachment))
+
     async def start(self) -> None:
         """Spawn the background worker task."""
         self._worker = asyncio.create_task(
@@ -141,6 +152,8 @@ class OutboundDispatcher:
                         await self._adapter.send(msg, payload)
                     elif kind == "audio":
                         await self._adapter.render_audio(payload, msg)
+                    elif kind == "attachment":
+                        await self._adapter.render_attachment(payload, msg)
                     else:
                         await self._adapter.send_streaming(msg, payload, outbound)
                     if self._circuit is not None:

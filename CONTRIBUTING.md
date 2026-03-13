@@ -54,7 +54,7 @@ uv run pre-commit install
 
 ## Adding a channel adapter
 
-A channel adapter normalizes messages from one platform into `Message` objects and sends `Response` objects back.
+A channel adapter normalizes messages from one platform into `InboundMessage` objects and sends `Response` objects back via the `OutboundDispatcher`.
 
 **1. Add a `Platform` variant** in `src/lyra/core/message.py`:
 
@@ -65,22 +65,15 @@ class Platform(str, Enum):
     SIGNAL   = "signal"        # new
 ```
 
-**2. Add a `PlatformContext` dataclass** in `src/lyra/core/message.py`:
-
-```python
-@dataclass(frozen=True)
-class SignalContext:
-    phone_number: str
-    group_id: str | None = None
-```
-
-**3. Create `src/lyra/adapters/signal.py`** implementing the `ChannelAdapter` protocol:
+**2. Create `src/lyra/adapters/signal.py`** implementing the `ChannelAdapter` protocol:
 
 ```python
 class SignalAdapter:
-    async def send(self, original_msg: Message, response: Response) -> None:
+    async def send(self, original_msg: InboundMessage, response: Response) -> None:
         ...
 ```
+
+See `src/lyra/adapters/_shared.py` for shared normalization helpers and render functions (audio, attachments).
 
 **4. Register it in `src/lyra/__main__.py`**:
 

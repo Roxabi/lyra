@@ -1,6 +1,7 @@
 # Lyra — Sécurité, Routing & Mémoire Isolée
 
-> Issues à créer / étendre. Dernière mise à jour : 2026-03-12.
+> Reference document. Last updated: 2026-03-13.
+> **Status**: #auth (#151 ✅), #routing (#152 ✅) are shipped. #commands and #memory-isolation remain open.
 
 ---
 
@@ -72,18 +73,18 @@ trusted_roles = ["admin", "trusted"]
 default       = "blocked"
 ```
 
-### À implémenter
+### Implementation — ✅ Shipped (#151)
 
-- [ ] `AuthMiddleware` base class
-- [ ] Config parser (TOML → trust_map)
-- [ ] Intégration `TelegramAdapter`
-- [ ] Intégration `DiscordAdapter`
-- [ ] Intégration `CLIAdapter` (trust = OWNER par défaut en local)
-- [ ] Logging des rejets (user_id + channel + timestamp)
+- [x] `AuthMiddleware` in `src/lyra/core/auth.py`
+- [x] `TrustLevel` enum in `src/lyra/core/trust.py`
+- [x] Config-driven trust_map (TOML)
+- [x] Integrated in TelegramAdapter + DiscordAdapter
+- [x] CLIAdapter (trust = OWNER by default)
+- [x] Rejection logging
 
 ---
 
-## #routing — RoutingContext + vérification Adapter
+## #routing — RoutingContext + vérification Adapter — ✅ Shipped (#152)
 
 ### Problème
 
@@ -137,13 +138,12 @@ async def send(self, response: Response) -> None:
     )
 ```
 
-### À implémenter
+### Implementation — ✅ Shipped (#152)
 
-- [ ] `RoutingContext` dataclass
-- [ ] Population dans `TelegramAdapter.normalize()`
-- [ ] Population dans `DiscordAdapter.normalize()`
-- [ ] Vérification `channel` + `bot_id` dans chaque Adapter outbound
-- [ ] Propagation `RoutingContext` de `Message` → `Response` (via Agent)
+- [x] `RoutingContext` dataclass in `src/lyra/core/message.py`
+- [x] Population in TelegramAdapter + DiscordAdapter normalize()
+- [x] Outbound verification (channel + bot_id) in each adapter
+- [x] Propagation RoutingContext from InboundMessage → Response
 
 ---
 

@@ -304,7 +304,7 @@ Stop with **Ctrl+C** (graceful shutdown).
 **Discord:** @mention your bot in a channel: `@YourBot hello!`
 
 What happens under the hood:
-1. The adapter normalizes your message into a `Message` object
+1. The adapter normalizes your message into an `InboundMessage` object
 2. It goes onto the hub's async bus (`asyncio.Queue`)
 3. The hub resolves the routing (wildcard binding → your user gets an isolated pool)
 4. `SimpleAgent` sends the text to a persistent `claude` subprocess

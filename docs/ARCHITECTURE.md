@@ -1,7 +1,7 @@
 # Lyra — Architecture & Decisions
 
 > Living document. Updated as decisions are made.
-> Last updated: 2026-03-12 (Phase 1b completions: per-channel queues #126, fastembed #82, scope_id #125, LLM circuit breaker #104; Python-first paradigm #165)
+> Last updated: 2026-03-13 (Phase 1b tail completions: message normalization #139, LlmProvider #123, auth #151, routing #152, smart routing #134, runtime config #135, STT #80, audio/attachment bus, PoolContext #204, TTL eviction #205)
 
 ---
 
@@ -20,7 +20,7 @@
 |---------|---------|-------------------|---------------|
 | `voiceCLI` | `voicecli` | `generate`, `generate_async`, `clone`, `clone_async`, `transcribe`, `transcribe_async`, `list_engines`, `list_voices` | `voicecli` |
 | `imageCLI` | `imagecli` | `generate`, `get_engine`, `list_engines`, `preflight_check`, `load_config`, `parse_prompt_file` | `imagecli` |
-| `lyra` | `lyra` | Hub, Agent, Pool, Message, ChannelAdapter (internal SDK — not public) | daemon via supervisord |
+| `lyra` | `lyra` | Hub, Agent, Pool, InboundMessage, OutboundMessage, ChannelAdapter (internal SDK — not public) | daemon via supervisord |
 | `2ndBrain` | `knowledge` | Vault read/write/search (internal SDK) | `knowledge_bot` daemon |
 
 ### Rules
@@ -198,7 +198,7 @@ class Agent:
     memory_namespace: str        # immutable — filters SQLite queries
     permissions: list[str]       # immutable
 
-    async def process(self, msg: Message, pool: Pool) -> Response:
+    async def process(self, msg: InboundMessage, pool: Pool) -> Response:
         # pool contains all mutable state (history, session)
         ...
 ```
@@ -342,7 +342,7 @@ client = AsyncOpenAI(
 
 - **Python + asyncio** — Go/Rust/Zig/Node eliminated. Python AI ecosystem is unbeatable, asyncio is sufficient for 1-5 I/O-bound users.
 - **2 machines** — Machine 1 autonomous (hub + TTS + embeddings), Machine 2 on demand (heavy LLM). Eliminates VRAM contention.
-- **Cloud LLM by default** — Currently Claude Code CLI subprocess (`claude-cli`). Anthropic SDK driver planned in #123 (LlmProvider protocol). Local LLM on Machine 2 = Phase 2 (NATS worker).
+- **Cloud LLM by default** — LlmProvider protocol (#123 ✅) with two drivers: `ClaudeCliDriver` (CLI subprocess) and `AnthropicSdkDriver` (direct API). Smart routing (#134 ✅) selects model by complexity. Local LLM on Machine 2 = Phase 2 (NATS worker).
 - **SQLite** — No Postgres. SQLite + WAL mode + `aiosqlite` amply covers personal use.
 
 ### Resolved decisions (Phase 1b completions)
@@ -354,7 +354,14 @@ client = AsyncOpenAI(
 - **scope_id replaces user_id in RoutingKey** (#125) — `RoutingKey(platform, bot_id, scope_id)`. Scope extracted from platform context: `chat:NNN`, `thread:NNN`, `channel:NNN`, etc.
 - **fastembed ONNX replaces sentence-transformers** (#82) — Non-blocking ONNX runtime, no `run_in_executor` needed. Hybrid BM25 (FTS5) + cosine (sqlite-vec).
 - **LLM circuit breaker** (#104) — Timeout + retry logic for Anthropic SDK calls. Graceful degradation on failure.
-- **LlmProvider protocol** (#123, spec approved) — Multi-driver abstraction: `AnthropicSdkDriver`, `ClaudeCliDriver`, `OllamaDriver`. Unblocks #83.
+- **LlmProvider protocol** (#123 ✅) — Multi-driver abstraction: `AnthropicSdkDriver`, `ClaudeCliDriver`. Smart routing (#134 ✅) selects model by complexity. OllamaDriver planned for Phase 2.
+- **AuthMiddleware + TrustLevel** (#151 ✅) — Per-adapter auth with trust levels (owner/trusted/public/blocked). Config-driven via TOML.
+- **RoutingContext + outbound verification** (#152 ✅) — Every outbound response carries a RoutingContext; adapters verify channel + bot_id before sending.
+- **PoolContext protocol** (#204 ✅) — Decouples Pool from Hub via a protocol interface.
+- **TTL eviction for Hub.pools** (#205 ✅) — Prevents memory leak from stale pools.
+- **Message normalization** (#139 ✅) — Full bus envelope: InboundMessage, OutboundMessage, InboundAudio, OutboundAudioChunk, OutboundAttachment. Per-adapter render functions.
+- **Runtime agent config** (#135 ✅) — Live tuning via `!config` command, no restart needed.
+- **Voice STT** (#80 ✅) — STTService + STTConfig with faster-whisper, InboundAudioBus, audio consumer loop in Hub.
 - **Reduced Phase 1 memory scope** — Level 0 (working, L0 compaction in #83) + Level 3 (semantic, shipped #78/#81/#82). Levels 1, 2, 4 added when the real need arises.
 
 ### External tool integration
@@ -381,12 +388,18 @@ What is built in Phase 1 / 1b:
 - Hub: per-channel queues + bindings + pools + adapter registry (#112 epic ✅)
 - Memory level 0 (working, L0 compaction in #83) + level 3 (semantic ✅: #78/#81/#82)
 - Telegram + Discord adapters (✅)
-- LLM: Claude CLI subprocess (✅), Anthropic SDK driver (#76 ✅), multi-driver abstraction (#123 spec approved)
-- Agent identity + persona (#75 ✅), session lifecycle (#83 in progress)
+- LLM: Claude CLI subprocess (✅), Anthropic SDK driver (#76 ✅), LlmProvider protocol (#123 ✅), smart routing (#134 ✅)
+- Agent identity + persona (#75 ✅), runtime config (#135 ✅)
+- Message normalization (#139 ✅): InboundMessage, OutboundMessage, InboundAudio, OutboundAudioChunk, OutboundAttachment
+- Auth: AuthMiddleware + TrustLevel (#151 ✅), RoutingContext + outbound verification (#152 ✅)
+- Voice: STTService + STTConfig (#80 ✅), InboundAudioBus, audio consumer loop
+- Hub hardening: PoolContext protocol (#204 ✅), TTL eviction (#205 ✅), async I/O audio loop (#203 ✅)
+- DX: complexity/size limits (#196 ✅), pytest-cov + coverage gate (#211 ✅)
+- Security: hmac.compare_digest (#212 ✅), two-tier /health (#207 ✅), symlink plugin_loader fix (#215 ✅)
 
-**Phase 1b tail** (in progress):
-- Message normalization (#139) → LlmProvider protocol (#123) → agent integration (#83) → hub command sessions (#99)
-- Independent: runtime config (#135), smart routing (#134), voice STT (#80)
+**Remaining Phase 1b tail**:
+- #83 (agent integration — identity anchor, session lifecycle, L0 compaction)
+- #99 (hub command sessions — /add, /explain, /summarize, /search)
 
 What is **explicitly excluded from Phase 1**:
 - Memory levels 1 (session), 2 (episodic), 4 (procedural) — added when the real need arises
@@ -437,10 +450,10 @@ class CognitiveFrame:
 
 ## Current Status (Phase 1b tail)
 
-Phase 1 core is complete. Active work on closing out the agent core:
+Phase 1b tail is nearly complete. The bus, auth, routing, LLM, voice, and DX layers are all shipped.
 
-**Critical path**: #139 (message normalization) ∥ #123 (LlmProvider) → #83 (agent integration) → #99 (hub command sessions)
+**Remaining critical path**: #83 (agent integration) → #99 (hub command sessions)
 
-**Independent**: #135 (runtime config), #134 (smart routing), #80 (voice STT)
+**All independent items shipped**: #135 (runtime config ✅), #134 (smart routing ✅), #80 (voice STT ✅), #139 (message normalization ✅), #123 (LlmProvider ✅), #151 (auth ✅), #152 (routing ✅)
 
 See [ROADMAP.md](ROADMAP.md) for the full backlog and priorities.

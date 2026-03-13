@@ -1,13 +1,13 @@
 # Lyra — Prioritized Roadmap
 
 > Living document. Updated as decisions are made.
-> Last updated: 2026-03-12
+> Last updated: 2026-03-13
 
 ---
 
 ## Current focus
 
-**Phase 1b tail — closing out the agent core**: message normalization (#139), LlmProvider protocol (#123), memory integration (#83), hub command sessions (#99), runtime config (#135), smart routing (#134). Voice pipeline (#74) is now unblocked.
+**Phase 1b tail — closing out the agent core**: #139 ✅, #123 ✅, #134 ✅, #135 ✅, #80 ✅, #151 ✅, #152 ✅ all shipped. Remaining: memory integration (#83), hub command sessions (#99).
 
 ---
 
@@ -32,23 +32,21 @@
 
 | # | Issue | Size | Status |
 |---|-------|------|--------|
-| #139 | Message & Media Normalization — typed bus envelope for all adapters | L | Ready — **next** |
-| #123 | LlmProvider protocol — AnthropicSdkDriver + ClaudeCliDriver + OllamaDriver | L | Analysis |
-| #83 | Lyra agent integration — identity anchor, session lifecycle, L0 compaction | L | Blocked by #123 |
-| #99 | Hub command sessions — /add, /explain, /summarize, /search | L | Blocked by #83 + #139 |
-| #135 | Runtime agent config — `!config` live tuning without restart | S | Ready |
-| #134 | LLM smart routing — complexity-based model selection | M | Ready |
+| #139 | Message & Media Normalization — typed bus envelope for all adapters | L | ✅ Done |
+| #123 | LlmProvider protocol — AnthropicSdkDriver + ClaudeCliDriver | L | ✅ Done |
+| #134 | LLM smart routing — complexity-based model selection | M | ✅ Done |
+| #135 | Runtime agent config — `!config` live tuning without restart | S | ✅ Done |
+| #151 | AuthMiddleware + TrustLevel per adapter | M | ✅ Done |
+| #152 | RoutingContext + outbound verification | M | ✅ Done |
+| #83 | Lyra agent integration — identity anchor, session lifecycle, L0 compaction | L | Ready — **next** |
+| #99 | Hub command sessions — /add, /explain, /summarize, /search | L | Blocked by #83 |
 | #136 | Multi-bot registry upgrade — per-bot-id routing + multi-token config | M | Blocked by #83 + #79 — do last |
 
-**Critical path**: #139 ∥ #123 → #83 → #99
-
-**Independent (do anytime)**: #135 (S), #134 (M), #128 (M), #80 STT (M)
+**Critical path**: #83 → #99
 
 **Dependencies**:
-- #139 unblocks: #99, #80 (STT), #79 (TTS)
-- #123 unblocks: #83
 - #83 unblocks: #99, #67, #128
-- #83 + #79 both needed before: #136 (multi-bot registry — not a blocker for voice)
+- #83 + #79 both needed before: #136 (multi-bot registry)
 
 ---
 
@@ -72,17 +70,43 @@
 | #125 | Hub: scope_id routing — replace user_id in RoutingKey |
 | #126 | Hub: per-channel inbound/outbound queues + OutboundDispatcher |
 | #127 | Hub: per-session Task + Discord thread auto-creation |
+| #123 | LlmProvider protocol — ClaudeCliDriver + AnthropicSdkDriver |
+| #134 | LLM smart routing — complexity-based model selection |
+| #135 | Runtime agent config — `!config` live tuning |
+| #139 | Message & Media Normalization — typed bus envelope |
+| #140 | InboundAudio envelope + normalize_audio() |
+| #141 | OutboundAudio envelope + render_audio() |
+| #143 | Outgoing attachment handling via OutboundMessage |
+| #144 | OutboundAudioChunk + render_audio_stream |
+| #151 | AuthMiddleware + TrustLevel per adapter |
+| #152 | RoutingContext + outbound verification |
+| #172 | InboundAudioBus — per-platform bounded queues |
+| #173 | Wire InboundAudio enqueue in Telegram + Discord |
+| #174 | Audio consumer loop for InboundAudio → STT routing |
+| #175 | OutboundDispatcher.enqueue_audio() with CB ownership |
+| #183 | Extract inbound attachments |
+| #184 | OutboundAttachment + render_attachment() |
+| #196 | Enforce Python complexity and size limits |
+| #203 | Replace blocking os.write/os.close in _audio_loop with async I/O |
+| #204 | Extract PoolContext protocol to decouple Pool → Hub |
+| #205 | TTL eviction for Hub.pools |
+| #207 | Two-tier /health endpoint |
+| #211 | pytest-cov and coverage gate |
+| #212 | hmac.compare_digest for webhook secrets |
+| #215 | Resolve symlink in plugin_loader before exec_module |
+| #217 | OutboundDispatcher.enqueue_attachment() with CB ownership |
+| #220 | Extract ProviderError to replace AnthropicAPIError in core |
 
 ---
 
 ## Voice pipeline (#74)
 
-> Partially unblocked. #80 (STT) is ready now. #79 (TTS) blocked by #136 (multi-bot registry).
+> STT shipped (#80 ✅). TTS (#79) ready, blocked by #136 (multi-bot registry).
 
 | # | Issue | Priority | Status |
 |---|-------|----------|--------|
 | #79 | Voice TTS in Telegram (voicecli integration) | P2 | Ready |
-| #80 | Voice STT — audio transcription (Whisper) | P2 | Ready |
+| #80 | Voice STT — audio transcription (Whisper) | P2 | ✅ Done |
 | #42 | Automatic language detection | P2 | Ready |
 
 ---
@@ -116,8 +140,8 @@
 
 | # | Pattern | Source | Size | Phase |
 |---|---------|--------|------|-------|
-| #134 | Smart routing — complexity-based model selection | IronClaw | M | 1b tail |
-| #135 | Runtime agent config — `!config` live tuning | ScalyClaw | S | 1b tail |
+| #134 | Smart routing — complexity-based model selection | IronClaw | M | ✅ Done |
+| #135 | Runtime agent config — `!config` live tuning | ScalyClaw | S | ✅ Done |
 | — | Proactive engagement engine (2-phase cron+queue) | ScalyClaw | L | 2 |
 | — | Command shield (deterministic blocklist, no LLM) | ScalyClaw | S | 2 |
 | — | Memory consolidation (LLM-driven clustering) | ScalyClaw | M | 2 |

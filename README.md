@@ -28,18 +28,18 @@ It's for developers who want a persistent personal AI without giving up ownershi
 
 ```mermaid
 flowchart TD
-    TG["Telegram\naiogram v3 · polling"] --> TQ["tg_inbound\nQueue"]
-    DC["Discord\ndiscord.py v2 · gateway"] --> DQ["dc_inbound\nQueue"]
-    TQ --> STG["InboundBus\nstaging Queue"]
+    TG["Telegram<br/>aiogram v3 · polling"] --> TQ["tg_inbound<br/>Queue"]
+    DC["Discord<br/>discord.py v2 · gateway"] --> DQ["dc_inbound<br/>Queue"]
+    TQ --> STG["InboundBus<br/>staging Queue"]
     DQ --> STG
-    STG --> HUB["Hub\nresolve_binding()"]
-    HUB -->|"telegram · main · chat:555"| P1["Pool\nasyncio.Task"]
-    HUB -->|"discord · main · thread:888"| P2["Pool\nasyncio.Task"]
-    P1 --> AGENT["Agent\nstateless singleton"]
+    STG --> HUB["Hub<br/>resolve_binding()"]
+    HUB -->|"telegram · main · chat:555"| P1["Pool<br/>asyncio.Task"]
+    HUB -->|"discord · main · thread:888"| P2["Pool<br/>asyncio.Task"]
+    P1 --> AGENT["Agent<br/>stateless singleton"]
     P2 --> AGENT
-    AGENT --> LLM["LLM\nClaude CLI (Phase 1)\nOllama (Phase 2)"]
-    P1 --> TGO["tg_outbound\nOutboundDispatcher"]
-    P2 --> DCO["dc_outbound\nOutboundDispatcher"]
+    AGENT --> LLM["LLM<br/>LlmProvider<br/>Claude CLI + SDK"]
+    P1 --> TGO["tg_outbound<br/>OutboundDispatcher"]
+    P2 --> DCO["dc_outbound<br/>OutboundDispatcher"]
     TGO --> TG
     DCO --> DC
 ```
@@ -52,10 +52,12 @@ flowchart TD
 | **Routing** | Typed `RoutingKey(platform, bot_id, scope_id)` · wildcard `*` per channel · scope = chat / thread / channel |
 | **Concurrency** | Sequential per scope (`asyncio.Task`) · parallel across scopes and platforms — zero config |
 | **Backpressure** | Bounded queue (100) → immediate ack + blocking `await put()` |
-| **LLM** | Claude Code CLI (Phase 1) · Ollama OpenAI-compatible API (Phase 2) |
+| **LLM** | LlmProvider protocol: Claude CLI + Anthropic SDK drivers · smart routing (complexity-based model selection) · Ollama (Phase 2) |
 | **Agents** | Stateless singleton · isolated per-scope pools · TOML config per agent |
 | **Memory** | 5 levels: working (L0) → session → episodic → semantic (SQLite + FTS5 + fastembed, ✅ Phase 1) → procedural |
-| **Security** | Prompt injection guard · sandboxed skills · least-privilege tool permissions |
+| **Auth** | AuthMiddleware + TrustLevel per adapter (owner/trusted/public/blocked) · RoutingContext outbound verification |
+| **Voice** | STT via faster-whisper (InboundAudioBus → STTService) · TTS via voicecli (Phase 2) |
+| **Security** | Prompt injection guard · sandboxed skills · least-privilege tool permissions · hmac webhook verification |
 
 ## Quick start
 
@@ -104,38 +106,51 @@ MACHINE1_DIR=~/projects/lyra
 ```
 src/lyra/
   core/
-    message.py             — Message, InboundMessage, RoutingKey, Platform, Response
-    hub.py                 — Hub (bus + adapter registry + bindings)
-    pool.py                — Pool (history + asyncio.Task per scope)
+    message.py             — InboundMessage, OutboundMessage, RoutingKey, Platform, Response
+    hub.py                 — Hub (bus + adapter registry + bindings + TTL eviction)
+    pool.py                — Pool (history + asyncio.Task per scope + PoolContext protocol)
     agent.py               — AgentBase, Agent config, ModelConfig
+    auth.py                — AuthMiddleware (per-adapter trust verification)
+    trust.py               — TrustLevel enum (owner/trusted/public/blocked)
     cli_pool.py            — Claude CLI subprocess pool
     inbound_bus.py         — InboundBus (per-platform queues + staging)
-    outbound_dispatcher.py — OutboundDispatcher (per-platform outbound + CB)
+    inbound_audio_bus.py   — InboundAudioBus (per-platform bounded audio queues)
+    outbound_dispatcher.py — OutboundDispatcher (per-platform outbound + CB + audio/attachment)
     command_router.py      — CommandRouter (builtins + plugin commands)
     circuit_breaker.py     — CircuitBreaker + CircuitRegistry
     pairing.py             — PairingManager (cross-platform identity linking)
     plugin_loader.py       — PluginLoader (TOML manifest + dynamic import)
-    runtime_config.py      — RuntimeConfig (mutable agent overlay)
+    runtime_config.py      — RuntimeConfig (mutable agent overlay via !config)
     messages.py            — MessageManager (i18n-ready message templates)
   adapters/
+    _shared.py      — shared adapter helpers (normalization, render functions)
     telegram.py     — aiogram v3 adapter (polling + webhook)
     discord.py      — discord.py v2 gateway adapter
+    cli.py          — CLI adapter (stdin/stdout)
   agents/
     simple_agent.py       — Claude CLI agent implementation
     anthropic_agent.py    — Anthropic SDK agent implementation
     lyra_default.toml     — default agent config (model, tools, system prompt)
-  stt/                    — STT service (Whisper transcription)
+  llm/
+    base.py               — LlmProvider protocol
+    drivers/cli.py        — ClaudeCliDriver
+    drivers/sdk.py        — AnthropicSdkDriver
+    registry.py           — driver registry
+    smart_routing.py      — complexity-based model selection
+    decorators.py         — LLM call decorators
+  stt/                    — STTService + STTConfig (faster-whisper)
   plugins/                — Plugin handlers (echo, pairing)
-  monitoring/             — Health checks + escalation
+  monitoring/             — Health checks (two-tier /health) + escalation
+  errors.py               — ProviderError + shared error types
 tests/
-  core/             — unit + integration tests (pytest-asyncio)
+  core/             — unit + integration tests (pytest-asyncio, pytest-cov)
   adapters/         — adapter tests (streaming, voice, normalization)
 docs/
   ARCHITECTURE.md   — full technical spec and decisions
   ROADMAP.md        — priorities and scope
   QUICKSTART.md     — developer setup guide
   vision.md         — design principles and constraints
-  architecture/adr/ — architecture decision records (15 ADRs)
+  architecture/adr/ — architecture decision records (17 ADRs)
 ```
 
 ## Documentation
@@ -149,7 +164,7 @@ docs/
 | [COMMANDS.md](docs/COMMANDS.md) | Command router — slash commands, external tool integration pattern |
 | [GETTING-STARTED.md](docs/GETTING-STARTED.md) | Machine 1 (Ubuntu Server) hardware setup |
 | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production service management on Machine 1 (systemd, logs, firewall) |
-| [ADRs](docs/architecture/adr/) | 15 architecture decision records with full rationale |
+| [ADRs](docs/architecture/adr/) | 17 architecture decision records with full rationale |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Branching model, commit conventions, adding adapters and agents |
 
 ## License

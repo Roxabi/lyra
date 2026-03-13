@@ -1,5 +1,7 @@
 # Lyra Engine — Architecture Overview
 
+> ⚠️ **Partially stale** — This document was written early in the project and uses old class names (`Message` → `InboundMessage`, `Bus` → `InboundBus`/`OutboundDispatcher`). For the current architecture, see [ARCHITECTURE.md](../ARCHITECTURE.md).
+>
 > Recap complet de l'architecture cible. Dernière mise à jour : 2026-03-12.
 > Diagramme interactif : `docs/architecture-visual-explainer.html`
 > Source Excalidraw : `docs/architecture-visual.excalidraw`

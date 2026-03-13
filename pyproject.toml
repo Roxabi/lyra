@@ -35,7 +35,14 @@ packages = ["src/lyra"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "--cov=lyra --cov-report=term-missing --cov-fail-under=50"
+addopts = "--cov=lyra --cov-report=term-missing --cov-report=xml --cov-fail-under=50"
+
+[tool.coverage.run]
+branch = true
+source = ["lyra"]
+
+[tool.coverage.report]
+show_missing = true
 
 [tool.pyright]
 pythonVersion = "3.12"

@@ -120,6 +120,7 @@ src/lyra/
     circuit_breaker.py     — CircuitBreaker + CircuitRegistry
     pairing.py             — PairingManager (cross-platform identity linking)
     plugin_loader.py       — PluginLoader (TOML manifest + dynamic import)
+    debouncer.py           — Debouncer (typing-aware message aggregation)
     runtime_config.py      — RuntimeConfig (mutable agent overlay via !config)
     messages.py            — MessageManager (i18n-ready message templates)
   adapters/
@@ -163,7 +164,7 @@ docs/
 | [ROADMAP.md](docs/ROADMAP.md) | Phase 1/2/3 scope, priorities, timeline |
 | [COMMANDS.md](docs/COMMANDS.md) | Command router — slash commands, external tool integration pattern |
 | [GETTING-STARTED.md](docs/GETTING-STARTED.md) | Machine 1 (Ubuntu Server) hardware setup |
-| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production service management on Machine 1 (systemd, logs, firewall) |
+| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production service management on Machine 1 (supervisord, logs, firewall) |
 | [ADRs](docs/architecture/adr/) | 17 architecture decision records with full rationale |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Branching model, commit conventions, adding adapters and agents |
 

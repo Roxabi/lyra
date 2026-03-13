@@ -62,7 +62,7 @@ permissions = []
 
 [model]
 backend = "claude-cli"          # "claude-cli" (default) | "anthropic-sdk" | "ollama" (Phase 2)
-model = "claude-sonnet-4-5"
+model = "claude-haiku-4-5-20251001"
 max_turns = 10
 tools = ["Read", "Grep", "Glob", "WebFetch", "WebSearch"]
 

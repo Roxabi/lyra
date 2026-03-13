@@ -1,154 +1,114 @@
 # Deployment — Machine 1 (Production)
 
-Running Lyra as a managed system service on Machine 1 (Ubuntu Server 24.04).
+Running Lyra as a managed service on Machine 1 (Ubuntu Server 24.04).
 
 ## Overview
 
-Lyra runs as a single Python process under the `lyra` system account, managed by systemd. The `lyra` user is created by `setup.sh` — it uses `rbash`, has no `sudo`, and its home directory is isolated from the admin account.
+Lyra runs as a single Python process managed by **supervisord** via `lyra-stack`. All daemons (lyra, voicecli_tts, voicecli_stt) are managed by a single supervisord instance.
 
 ```
 Machine 1 (roxabituwer, 192.168.1.16)
-├── systemd unit: lyra.service
-├── runs as: lyra (restricted bash, no sudo)
-├── working directory: /home/lyra/lyra/
-├── env file: /home/lyra/.env (mode 600)
-└── logs: journald (journalctl -u lyra)
+├── supervisord (lyra-stack)
+├── lyra program config: ~/projects/lyra/supervisor/lyra.conf
+├── symlinked into: ~/projects/lyra-stack/conf.d/lyra.conf
+├── working directory: ~/projects/lyra/
+├── env file: ~/projects/lyra/.env
+└── logs: ~/.lyra/logs/ (rotating, 10 MB × 5 files)
 ```
 
 ## Prerequisites
 
-Machine 1 must be set up with `setup.sh` first. See [GETTING-STARTED.md](GETTING-STARTED.md).
-
-```bash
-# Verify the lyra user exists
-id lyra
-
-# Verify uv is available for the lyra user (install if not)
-sudo -u lyra which uv || curl -LsSf https://astral.sh/uv/install.sh | sudo -u lyra sh
-```
+Machine 1 must be set up with `lyra-stack` and the provision script. See [GETTING-STARTED.md](GETTING-STARTED.md).
 
 ## 1. Deploy the code
 
 ```bash
-# As admin on Machine 1
-sudo -u lyra git clone https://github.com/roxabi/lyra /home/lyra/lyra
-cd /home/lyra/lyra
-sudo -u lyra uv sync --no-dev
+# From Machine 2 — pull, test, restart on Machine 1
+make deploy
 ```
 
-For updates:
+This runs `scripts/deploy.sh` on Machine 1: fetches `main`, runs tests (rolls back on failure), restarts Lyra via supervisord.
+
+For a manual update on Machine 1:
 
 ```bash
-cd /home/lyra/lyra
-sudo -u lyra git pull
-sudo -u lyra uv sync --no-dev
-sudo systemctl restart lyra
+cd ~/projects/lyra
+git pull
+uv sync --no-dev
+make lyra reload
 ```
 
 ## 2. Configure environment
 
-Create `/home/lyra/.env` as the `lyra` user:
+Create `~/projects/lyra/.env` on Machine 1:
 
 ```bash
-sudo -u lyra tee /home/lyra/.env > /dev/null << 'EOF'
+# Telegram (required if using Telegram adapter)
 TELEGRAM_TOKEN=your-telegram-bot-token
-TELEGRAM_WEBHOOK_SECRET=your-webhook-secret
+TELEGRAM_WEBHOOK_SECRET=any-random-string
 TELEGRAM_BOT_USERNAME=your_bot_username
+
+# Discord (required if using Discord adapter)
 DISCORD_TOKEN=your-discord-bot-token
-EOF
 
-sudo chmod 600 /home/lyra/.env
-sudo chown lyra:lyra /home/lyra/.env
-```
-
-Environment variables loaded at startup via `python-dotenv` (`load_dotenv()` in `__main__.py`). The `.env` file must be in the working directory or the user home — systemd `WorkingDirectory` points to the repo root, which is where `load_dotenv()` looks first.
-
-## 3. Install the systemd service
-
-Create `/etc/systemd/system/lyra.service`:
-
-```ini
-[Unit]
-Description=Lyra AI agent engine
-Documentation=https://github.com/roxabi/lyra
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=lyra
-Group=lyra
-WorkingDirectory=/home/lyra/lyra
-EnvironmentFile=/home/lyra/.env
-ExecStart=/home/lyra/.local/bin/uv run python -m lyra
-Restart=on-failure
-RestartSec=10
-TimeoutStopSec=30
-
-# Logging
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=lyra
-
-# Hardening
-NoNewPrivileges=yes
-PrivateTmp=yes
-ProtectSystem=full
-
-[Install]
-WantedBy=multi-user.target
+# Optional
+ANTHROPIC_API_KEY=sk-ant-...     # for anthropic-sdk backend
+LYRA_HEALTH_SECRET=...           # for authenticated /health endpoint
+LYRA_CONFIG_SECRET=...           # for /config HTTP endpoint
 ```
 
 ```bash
-# Enable and start
-sudo systemctl daemon-reload
-sudo systemctl enable lyra
-sudo systemctl start lyra
+chmod 600 ~/projects/lyra/.env
+```
 
-# Verify
-sudo systemctl status lyra
+## 3. Register with supervisord
+
+```bash
+# One-time setup on Machine 1
+cd ~/projects/lyra
+make register    # creates symlink in lyra-stack/conf.d/
 ```
 
 ## 4. Manage the service
 
+All commands can be run from Machine 1 or from Machine 2 via SSH (`make remote <cmd>`).
+
 ```bash
-# Status
-sudo systemctl status lyra
+# From Machine 1
+cd ~/projects/lyra
+make lyra          # status
+make lyra reload   # restart
+make lyra stop     # stop
+make lyra logs     # tail stdout
+make lyra errors   # tail stderr
 
-# Start / stop / restart
-sudo systemctl start lyra
-sudo systemctl stop lyra
-sudo systemctl restart lyra
+# From Machine 2 (via SSH)
+make remote status
+make remote reload
+make remote logs
+make remote errors
+```
 
-# View logs (live)
-journalctl -u lyra -f
+Or use supervisorctl directly on Machine 1:
 
-# View last 100 lines
-journalctl -u lyra -n 100
-
-# Logs since boot
-journalctl -u lyra -b
+```bash
+cd ~/projects/lyra-stack
+make ps            # all programs
+make lyra          # lyra status
+make lyra reload   # restart lyra
+make lyra logs     # tail stdout
 ```
 
 ## 5. Enable debug logging
 
-Lyra uses Python's `logging` module. The `basicConfig` in `__main__.py` defaults to `INFO`. To enable debug output without modifying code, override the log level via environment variable:
+Lyra writes rotating logs to `~/.lyra/logs/`. The log level defaults to `INFO`. To enable debug output, set `LOG_LEVEL` in `.env` and add support in `_setup_logging()`:
 
 ```bash
-# Add to /home/lyra/.env
+# ~/.lyra/.env
 LOG_LEVEL=DEBUG
 ```
 
-Then update `__main__.py` to read it:
-
-```python
-logging.basicConfig(
-    level=os.environ.get("LOG_LEVEL", "INFO").upper(),
-    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-)
-```
-
-Until that change is made, edit `basicConfig(level=logging.DEBUG)` directly.
+Until the env var is wired, edit `basicConfig(level=logging.DEBUG)` in `__main__.py` directly.
 
 ## 6. Monitor VRAM (Machine 1)
 
@@ -181,10 +141,6 @@ Polling mode (the default) requires no inbound ports beyond SSH.
 
 ## 8. Remote control from Machine 2 (Makefile)
 
-The Makefile provides shortcuts to manage Lyra on Machine 1 from Machine 2 via SSH.
-
-### Configuration
-
 Machine connection is read from `.env` (with hardcoded fallbacks):
 
 ```bash
@@ -199,8 +155,6 @@ MACHINE1_DIR=~/projects/lyra
 make deploy
 ```
 
-Runs `scripts/deploy.sh` on Machine 1: fetches `main`, runs tests (rolls back on failure), restarts Lyra.
-
 ### Remote service control
 
 ```bash
@@ -211,8 +165,6 @@ make remote logs      # tail stdout logs
 make remote errors    # tail stderr logs
 ```
 
-These execute the same `make lyra <cmd>` commands on Machine 1 over SSH.
-
 ---
 
 ## Troubleshooting
@@ -220,21 +172,21 @@ These execute the same `make lyra <cmd>` commands on Machine 1 over SSH.
 **Service fails to start — "Missing required env var"**
 The `.env` file is either missing, has wrong permissions, or is not in the working directory. Check:
 ```bash
-sudo -u lyra cat /home/lyra/lyra/.env   # should print vars
-sudo systemctl status lyra              # check the ExecStart path
+cat ~/projects/lyra/.env   # should print vars
+make lyra errors           # check the startup log
 ```
 
 **Service restarts in a loop**
-`Restart=on-failure` will retry on crash. Check logs for the root cause:
+supervisord will retry on crash (`autorestart=true`). Check stderr logs for the root cause:
 ```bash
-journalctl -u lyra -n 50
+make lyra errors
 ```
 
-**`uv` not found for lyra user**
+**`uv` not found**
 ```bash
-sudo -u lyra bash -c 'source ~/.bashrc && which uv'
+which uv
 # If not found:
-curl -LsSf https://astral.sh/uv/install.sh | sudo -u lyra sh
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 **NVIDIA GPU not visible**

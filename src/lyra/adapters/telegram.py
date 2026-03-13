@@ -17,7 +17,13 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 if TYPE_CHECKING:
     from lyra.core.hub import Hub
 
-from lyra.adapters._shared import parse_reply_to_id, push_to_hub_guarded
+from lyra.adapters._shared import (
+    ATTACHMENT_EXTS_BASE,
+    parse_reply_to_id,
+    push_to_hub_guarded,
+    sanitize_filename,
+    truncate_caption,
+)
 from lyra.core.auth import AuthMiddleware, TrustLevel
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
@@ -25,6 +31,7 @@ from lyra.core.message import (
     Attachment,
     InboundAudio,
     InboundMessage,
+    OutboundAttachment,
     OutboundAudio,
     OutboundMessage,
     Platform,
@@ -32,6 +39,18 @@ from lyra.core.message import (
 from lyra.core.messages import MessageManager
 
 log = logging.getLogger(__name__)
+
+# Telegram: base extensions + audio (Telegram supports audio via send_document).
+_ATTACHMENT_EXTS = ATTACHMENT_EXTS_BASE | frozenset(
+    {
+        "ogg",
+        "mp3",
+        "opus",
+        "wav",
+        "flac",
+        "aac",  # audio
+    }
+)
 
 TELEGRAM_MAX_LENGTH = 4096  # Telegram Bot API text message limit
 
@@ -780,3 +799,65 @@ class TelegramAdapter:
             kwargs["duration"] = duration_sec
 
         await self.bot.send_voice(**kwargs)
+
+    async def render_attachment(
+        self, msg: OutboundAttachment, inbound: InboundMessage
+    ) -> None:
+        """Send an OutboundAttachment envelope via the appropriate Telegram method.
+
+        Dispatches to send_photo, send_video, or send_document based on msg.type.
+        Caption, reply_to, and topic threading follow the same pattern as render_audio.
+        """
+        if inbound.platform != Platform.TELEGRAM.value:
+            log.error(
+                "render_attachment() called with non-telegram message id=%s",
+                inbound.id,
+            )
+            return
+
+        chat_id: int | None = inbound.platform_meta.get("chat_id")
+        if chat_id is None:
+            log.error(
+                "render_attachment: platform_meta missing 'chat_id' for msg id=%s",
+                inbound.id,
+            )
+            return
+
+        topic_id: int | None = inbound.platform_meta.get("topic_id")
+        message_id: int | None = inbound.platform_meta.get("message_id")
+
+        reply_to = parse_reply_to_id(msg.reply_to_id)
+        if reply_to is None and message_id is not None:
+            reply_to = message_id
+
+        buf = BytesIO(msg.data)
+        # Derive safe filename: sanitize explicit name or fallback from mime
+        if msg.filename:
+            buf.name = sanitize_filename(
+                msg.filename,
+                _ATTACHMENT_EXTS,
+            )
+        else:
+            raw_ext = msg.mime_type.split("/")[-1] if "/" in msg.mime_type else ""
+            ext = raw_ext if raw_ext in _ATTACHMENT_EXTS else "bin"
+            buf.name = f"attachment.{ext}"
+
+        kwargs: dict = {"chat_id": chat_id}
+        if topic_id is not None:
+            kwargs["message_thread_id"] = topic_id
+        if reply_to is not None:
+            kwargs["reply_to_message_id"] = reply_to
+        truncated = truncate_caption(msg.caption, 1024)
+        if truncated:
+            kwargs["caption"] = truncated
+
+        if msg.type == "image":
+            kwargs["photo"] = buf
+            await self.bot.send_photo(**kwargs)
+        elif msg.type == "video":
+            kwargs["video"] = buf
+            await self.bot.send_video(**kwargs)
+        else:
+            # "document" and "file" both use send_document
+            kwargs["document"] = buf
+            await self.bot.send_document(**kwargs)

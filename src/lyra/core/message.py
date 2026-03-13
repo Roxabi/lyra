@@ -119,6 +119,29 @@ class OutboundAudio:
     reply_to_id: str | None = None  # platform message ID to reply to
 
 
+@dataclass(frozen=True)
+class OutboundAttachment:
+    """Typed envelope for outbound file/image/video/document attachments.
+
+    Produced by agents or pipelines; consumed by adapter render_attachment().
+    Mirrors OutboundAudio for non-audio media. Adapters dispatch to
+    platform-specific send methods based on the type field.
+
+    Type semantics:
+      - "image": rendered inline (Telegram send_photo, Discord embed)
+      - "video": rendered inline (Telegram send_video)
+      - "document": file with preview (Telegram send_document, shown as doc)
+      - "file": opaque binary (Telegram send_document, no preview hint)
+    """
+
+    data: bytes = field(repr=False)
+    type: Literal["image", "video", "document", "file"]
+    mime_type: str
+    filename: str | None = None
+    caption: str | None = None
+    reply_to_id: str | None = None  # platform message ID to reply to
+
+
 # ── Outbound envelope ────────────────────────────────────────────────────────
 
 

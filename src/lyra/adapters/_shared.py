@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import re
 from collections.abc import Awaitable, Callable
 
 from lyra.core.circuit_breaker import CircuitRegistry
@@ -54,6 +56,69 @@ async def push_to_hub_guarded(  # noqa: PLR0913 — each arg is a distinct guard
             on_drop()
         text = get_msg("backpressure_ack", "Processing your request\u2026")
         await send_backpressure(text)
+
+
+def truncate_caption(caption: str | None, limit: int) -> str | None:
+    """Truncate caption to *limit* characters, returning None if empty."""
+    if not caption:
+        return None
+    return caption[:limit]
+
+
+def sanitize_filename(
+    filename: str,
+    allowed_exts: frozenset[str],
+    fallback: str = "attachment.bin",
+) -> str:
+    """Sanitize a caller-supplied filename for outbound attachments.
+
+    Strips path components, control characters, and validates the
+    extension against *allowed_exts*. Returns *fallback* if the
+    result is empty or the extension is not whitelisted.
+    """
+    # Strip path components (defense against ../../ traversal)
+    name = os.path.basename(filename)
+    # Strip control characters and null bytes
+    name = re.sub(r"[\x00-\x1f\x7f]", "", name)
+    # Enforce length cap
+    name = name[:255]
+
+    if not name:
+        return fallback
+
+    # Validate extension against whitelist
+    _, ext = os.path.splitext(name)
+    ext_clean = ext.lstrip(".").lower()
+    if ext_clean not in allowed_exts:
+        return fallback
+
+    return name
+
+
+# Shared base set of allowed file extensions for outbound attachment filenames.
+# Adapters may extend this with platform-specific extensions.
+ATTACHMENT_EXTS_BASE = frozenset(
+    {
+        "png",
+        "jpg",
+        "jpeg",
+        "gif",
+        "webp",
+        "bmp",  # image
+        "mp4",
+        "webm",
+        "mov",
+        "avi",  # video
+        "pdf",
+        "txt",
+        "csv",
+        "json",
+        "xml",
+        "zip",
+        "tar",
+        "gz",  # document/file
+    }
+)
 
 
 def parse_reply_to_id(reply_to_id: str | None) -> int | None:

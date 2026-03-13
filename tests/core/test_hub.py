@@ -78,6 +78,16 @@ class MockAdapter:
     ) -> None:
         pass
 
+    async def render_audio(
+        self, msg: object, inbound: InboundMessage
+    ) -> None:
+        pass
+
+    async def render_attachment(
+        self, msg: object, inbound: InboundMessage
+    ) -> None:
+        pass
+
 
 # ---------------------------------------------------------------------------
 # Pool (unchanged — no dependency on new API)

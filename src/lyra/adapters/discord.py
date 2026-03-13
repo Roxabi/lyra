@@ -14,7 +14,13 @@ import discord
 if TYPE_CHECKING:
     from lyra.core.hub import Hub
 
-from lyra.adapters._shared import parse_reply_to_id, push_to_hub_guarded
+from lyra.adapters._shared import (
+    ATTACHMENT_EXTS_BASE,
+    parse_reply_to_id,
+    push_to_hub_guarded,
+    sanitize_filename,
+    truncate_caption,
+)
 from lyra.core.auth import AuthMiddleware, TrustLevel
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
@@ -22,11 +28,15 @@ from lyra.core.message import (
     Attachment,
     InboundAudio,
     InboundMessage,
+    OutboundAttachment,
     OutboundAudio,
     OutboundMessage,
     Platform,
 )
 from lyra.core.messages import MessageManager
+
+# Discord: same base extensions, no platform-specific additions needed.
+_ATTACHMENT_EXTS = ATTACHMENT_EXTS_BASE
 
 log = logging.getLogger(__name__)
 
@@ -266,9 +276,7 @@ class DiscordAdapter(discord.Client):
         )
 
         _display_name = getattr(raw.author, "display_name", None)
-        attachments = _extract_attachments(
-            getattr(raw, "attachments", None) or []
-        )
+        attachments = _extract_attachments(getattr(raw, "attachments", None) or [])
         return InboundMessage(
             id=(f"discord:{user_id}:{int(timestamp.timestamp())}:{raw.id}"),
             platform=Platform.DISCORD.value,
@@ -688,3 +696,69 @@ class DiscordAdapter(discord.Client):
         # partially consumed by the failed reply attempt above.
         attachment = discord.File(fp=BytesIO(msg.audio_bytes), filename=filename)
         await messageable.send(content=content or None, file=attachment)
+
+    async def render_attachment(
+        self, msg: OutboundAttachment, inbound: InboundMessage
+    ) -> None:
+        """Send an OutboundAttachment envelope as a Discord file attachment.
+
+        Wraps data in discord.File and sends via messageable.send() or msg.reply().
+        Caption (if set) is passed as message content. Reply and thread routing
+        follow the same pattern as render_audio.
+        """
+        if inbound.platform != Platform.DISCORD.value:
+            log.error(
+                "render_attachment() called with non-discord message id=%s",
+                inbound.id,
+            )
+            return
+
+        channel_id: int | None = inbound.platform_meta.get("channel_id")
+        if channel_id is None:
+            log.error(
+                "render_attachment: platform_meta missing 'channel_id' for msg id=%s",
+                inbound.id,
+            )
+            return
+
+        thread_id: int | None = inbound.platform_meta.get("thread_id")
+        send_to_id = thread_id if thread_id is not None else channel_id
+        messageable = await self._resolve_channel(send_to_id)
+
+        # Derive filename: sanitize explicit name or derive from mime_type.
+        if msg.filename:
+            filename = sanitize_filename(
+                msg.filename,
+                _ATTACHMENT_EXTS,
+            )
+        else:
+            raw_ext = msg.mime_type.split("/")[-1] if "/" in msg.mime_type else ""
+            ext = raw_ext if raw_ext in _ATTACHMENT_EXTS else "bin"
+            filename = f"attachment.{ext}"
+
+        buf = BytesIO(msg.data)
+        file_obj = discord.File(fp=buf, filename=filename)
+
+        # Determine reply target
+        message_id: int | None = inbound.platform_meta.get("message_id")
+        reply_to_id = parse_reply_to_id(msg.reply_to_id)
+        if reply_to_id is None:
+            reply_to_id = message_id
+
+        content = truncate_caption(msg.caption, DISCORD_MAX_LENGTH) or ""
+
+        if reply_to_id is not None:
+            try:
+                ref_msg = await messageable.fetch_message(reply_to_id)  # type: ignore[attr-defined]
+                await ref_msg.reply(content=content or None, file=file_obj)
+                return
+            except Exception:
+                log.warning(
+                    "render_attachment: could not reply to"
+                    " message_id=%s, sending normally",
+                    reply_to_id,
+                )
+
+        # Fallback: construct fresh discord.File (previous BytesIO may be consumed).
+        file_obj = discord.File(fp=BytesIO(msg.data), filename=filename)
+        await messageable.send(content=content or None, file=file_obj)

@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
 import anthropic
 
@@ -42,9 +45,12 @@ class AnthropicSdkDriver:
         system_prompt: str,
         *,
         messages: list[dict] | None = None,
-        on_intermediate: object = None,  # not supported; accepted for protocol compat
+        # accepted for protocol compliance; not dispatched — SDK buffers full response
+        on_intermediate: Callable[[str], Awaitable[None]] | None = None,
     ) -> LlmResult:
         """Buffer full response including tool-use loop. Return LlmResult."""
+        if on_intermediate is not None:
+            log.debug("[sdk] on_intermediate not supported; callback ignored")
         if messages is None:
             messages = [{"role": "user", "content": text}]
 

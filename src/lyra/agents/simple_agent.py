@@ -27,6 +27,8 @@ from lyra.llm.base import LlmProvider
 from lyra.stt import is_whisper_noise
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from lyra.stt import STTService
 
 log = logging.getLogger(__name__)
@@ -156,7 +158,7 @@ class SimpleAgent(AgentBase):
             len(text),
         )
 
-        on_intermediate = None
+        on_intermediate: Callable[[str], Awaitable[None]] | None = None
         if self.config.show_intermediate:
 
             async def _intermediate_cb(turn_text: str) -> None:
@@ -165,7 +167,7 @@ class SimpleAgent(AgentBase):
                     Response(content=f"⏳ {turn_text}", metadata={"intermediate": True}),  # noqa: E501
                 )
 
-            on_intermediate = _intermediate_cb  # type: ignore[assignment]
+            on_intermediate = _intermediate_cb
 
         result = await self._provider.complete(
             pool.pool_id,

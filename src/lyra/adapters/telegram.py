@@ -163,12 +163,12 @@ def _make_verifier(secret: str):
     return verify
 
 
-async def _typing_worker(bot: Any, chat_id: int, interval: float = 4.0) -> None:
+async def _typing_worker(bot: Any, chat_id: int, interval: float = 3.0) -> None:
     """Continuously refresh the Telegram typing indicator for chat_id.
 
     Sends 'typing' chat action immediately, then repeats every *interval*
     seconds until cancelled. Telegram expires the indicator after ~5s so
-    the interval must stay below that.
+    the interval must stay well below that (default 3.0s gives a 2s buffer).
     """
     while True:
         try:

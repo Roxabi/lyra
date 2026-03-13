@@ -1301,8 +1301,14 @@ async def test_typing_loop_cancels_on_body_exception() -> None:
 
 
 @pytest.mark.asyncio
-async def test_send_calls_send_chat_action_typing() -> None:
-    """adapter.send() calls bot.send_chat_action with (chat_id, "typing")."""
+async def test_send_cancels_typing_task() -> None:
+    """adapter.send() cancels the typing task started on message receipt.
+
+    The typing indicator is a background task started by _start_typing() (called
+    in _on_message). send() cancels it via _cancel_typing() before sending the reply.
+    """
+    import asyncio
+
     from lyra.adapters.telegram import TelegramAdapter
     from lyra.core.message import InboundMessage, OutboundMessage
 
@@ -1339,38 +1345,20 @@ async def test_send_calls_send_chat_action_typing() -> None:
     )
     outbound = OutboundMessage.from_text("reply")
 
+    # Simulate message receipt: pre-populate a typing task for chat_id 123
+    mock_task = MagicMock(spec=asyncio.Task)
+    mock_task.done.return_value = False
+    adapter._typing_tasks[123] = mock_task
+
     # Act
     await adapter.send(original_msg, outbound)
 
-    # Assert — typing fired during send()
-    bot.send_chat_action.assert_any_await(123, "typing")
+    # Assert — typing task was cancelled before reply was sent
+    mock_task.cancel.assert_called_once()
+    assert 123 not in adapter._typing_tasks
 
-    # Assert — loop stopped after send() returned (SC3).
-    # Use a short-interval patch so any leak would fire within the sleep window.
-    import asyncio
-    import functools
-    from unittest.mock import patch
-
-    import lyra.adapters.telegram as _tel_mod
-
-    _real_loop = _tel_mod._typing_loop  # type: ignore[attr-defined]
-    short_loop = functools.partial(_real_loop, interval=0.05)
-    bot2 = AsyncMock()
-    sent_mock2 = MagicMock()
-    sent_mock2.message_id = 2
-    bot2.send_message = AsyncMock(return_value=sent_mock2)
-    adapter2 = TelegramAdapter(
-        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
-    )
-    adapter2.bot = bot2
-    with patch.object(_tel_mod, "_typing_loop", short_loop):
-        await adapter2.send(original_msg, outbound)
-    count_after = bot2.send_chat_action.await_count
-    # 5× the 0.05s interval — loop would fire if not cancelled
-    await asyncio.sleep(0.25)
-    assert bot2.send_chat_action.await_count == count_after, (
-        "typing loop continued after send() returned"
-    )
+    # Assert — reply was sent
+    bot.send_message.assert_awaited_once()
 
 
 @pytest.mark.asyncio

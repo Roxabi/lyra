@@ -101,6 +101,9 @@ class SlowAgent:
 
     name = "test_agent"
 
+    def is_backend_alive(self, pool_id: str) -> bool:
+        return True
+
     async def process(self, msg: InboundMessage, pool: Pool) -> Response:
         await asyncio.sleep(10)  # never finishes in test
         return Response(content="done")

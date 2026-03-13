@@ -357,7 +357,7 @@ class CliPool:
                         try:
                             await on_intermediate(combined)
                         except Exception:
-                            log.debug(
+                            log.warning(
                                 "[pool:%s] on_intermediate callback failed",
                                 entry.pool_id,
                                 exc_info=True,

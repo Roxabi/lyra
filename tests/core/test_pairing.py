@@ -56,7 +56,7 @@ async def _cleanup_pairing_state():
     _open_managers.clear()
 
 
-def make_message(
+def make_message(  # noqa: PLR0913 — test factory with optional overrides
     content: str = "hello",
     platform: Platform = Platform.TELEGRAM,
     bot_id: str = "main",
@@ -99,7 +99,7 @@ def make_message(
     )
 
 
-async def make_pm(
+async def make_pm(  # noqa: PLR0913 — test factory with optional overrides
     enabled: bool = True,
     admin_user_ids: set[str] | None = None,
     max_pending: int = 3,

@@ -71,7 +71,7 @@ def _extract_attachments(msg: Any) -> list[Attachment]:
         result.append(
             Attachment(
                 type="image",
-                url_or_bytes=f"tg:file_id:{largest.file_id}",
+                url_or_path_or_bytes=f"tg:file_id:{largest.file_id}",
                 mime_type="image/jpeg",
             )
         )
@@ -80,7 +80,7 @@ def _extract_attachments(msg: Any) -> list[Attachment]:
         result.append(
             Attachment(
                 type="file",
-                url_or_bytes=f"tg:file_id:{doc.file_id}",
+                url_or_path_or_bytes=f"tg:file_id:{doc.file_id}",
                 mime_type=getattr(doc, "mime_type", None) or "application/octet-stream",
                 filename=getattr(doc, "file_name", None),
             )
@@ -90,7 +90,7 @@ def _extract_attachments(msg: Any) -> list[Attachment]:
         result.append(
             Attachment(
                 type="video",
-                url_or_bytes=f"tg:file_id:{vid.file_id}",
+                url_or_path_or_bytes=f"tg:file_id:{vid.file_id}",
                 mime_type=getattr(vid, "mime_type", None) or "video/mp4",
             )
         )
@@ -99,7 +99,7 @@ def _extract_attachments(msg: Any) -> list[Attachment]:
         result.append(
             Attachment(
                 type="image",
-                url_or_bytes=f"tg:file_id:{anim.file_id}",
+                url_or_path_or_bytes=f"tg:file_id:{anim.file_id}",
                 mime_type="image/gif",
             )
         )
@@ -112,7 +112,7 @@ def _extract_attachments(msg: Any) -> list[Attachment]:
             result.append(
                 Attachment(
                     type="image",
-                    url_or_bytes=f"tg:file_id:{sticker.file_id}",
+                    url_or_path_or_bytes=f"tg:file_id:{sticker.file_id}",
                     mime_type="image/webp",
                 )
             )
@@ -166,7 +166,7 @@ class TelegramAdapter:
     - All inbound messages produce trust='user' via Message.from_adapter().
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 — DI constructor, each arg is a required dependency
         self,
         bot_id: str,
         token: str,
@@ -640,7 +640,7 @@ class TelegramAdapter:
             if i == last_idx:
                 outbound.metadata["reply_message_id"] = sent.message_id
 
-    async def send_streaming(
+    async def send_streaming(  # noqa: C901 — streaming protocol: edit/chunk/finalize branches are inherently sequential
         self,
         original_msg: InboundMessage,
         chunks: AsyncIterator[str],

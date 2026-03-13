@@ -1301,7 +1301,7 @@ class TestDiscordAttachments:
         assert len(msg.attachments) == 1
         a = msg.attachments[0]
         assert a.type == "image"
-        assert a.url_or_bytes == "https://cdn.discord.com/img.png"
+        assert a.url_or_path_or_bytes == "https://cdn.discord.com/img.png"
         assert a.mime_type == "image/png"
         assert a.filename == "img.png"
 

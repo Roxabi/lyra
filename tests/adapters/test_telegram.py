@@ -965,7 +965,7 @@ class TestTelegramAttachments:
         hub = MagicMock()
         return TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
 
-    def _make_msg(
+    def _make_msg(  # noqa: PLR0913 — test factory with optional overrides
         self, *, text: str | None = "hello", caption=None,
         photo=None, document=None, video=None,
         animation=None, sticker=None,
@@ -997,7 +997,7 @@ class TestTelegramAttachments:
         assert len(msg.attachments) == 1
         a = msg.attachments[0]
         assert a.type == "image"
-        assert a.url_or_bytes == "tg:file_id:large456"
+        assert a.url_or_path_or_bytes == "tg:file_id:large456"
         assert a.mime_type == "image/jpeg"
 
     def test_normalize_photo_with_caption(self) -> None:
@@ -1025,7 +1025,7 @@ class TestTelegramAttachments:
         assert len(msg.attachments) == 1
         a = msg.attachments[0]
         assert a.type == "file"
-        assert a.url_or_bytes == "tg:file_id:doc789"
+        assert a.url_or_path_or_bytes == "tg:file_id:doc789"
         assert a.mime_type == "application/pdf"
         assert a.filename == "report.pdf"
 
@@ -1037,7 +1037,7 @@ class TestTelegramAttachments:
         assert len(msg.attachments) == 1
         a = msg.attachments[0]
         assert a.type == "video"
-        assert a.url_or_bytes == "tg:file_id:vid101"
+        assert a.url_or_path_or_bytes == "tg:file_id:vid101"
 
     def test_normalize_animation_attachment(self) -> None:
         """Animation (GIF) → type='image', image/gif."""
@@ -1050,7 +1050,7 @@ class TestTelegramAttachments:
         a = msg.attachments[0]
         assert a.type == "image"
         assert a.mime_type == "image/gif"
-        assert a.url_or_bytes == "tg:file_id:gif999"
+        assert a.url_or_path_or_bytes == "tg:file_id:gif999"
 
     def test_normalize_animated_sticker_skipped(self) -> None:
         """Animated sticker (is_animated=True) → NOT in attachments."""
@@ -1079,7 +1079,7 @@ class TestTelegramAttachments:
         a = msg.attachments[0]
         assert a.type == "image"
         assert a.mime_type == "image/webp"
-        assert a.url_or_bytes == "tg:file_id:stk2"
+        assert a.url_or_path_or_bytes == "tg:file_id:stk2"
 
     def test_normalize_text_only_empty_attachments(self) -> None:
         """Text-only message → empty attachments list."""

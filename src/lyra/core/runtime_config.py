@@ -165,7 +165,7 @@ def _write_flat_toml(data: dict) -> str:
     return "\n".join(lines) + "\n" if lines else ""
 
 
-def set_param(rc: RuntimeConfig, key: str, value: str) -> RuntimeConfig:
+def set_param(rc: RuntimeConfig, key: str, value: str) -> RuntimeConfig:  # noqa: C901 — one validation branch per config key; inherently linear
     """Validate and apply a single key=value update to RuntimeConfig.
 
     Returns a new RuntimeConfig instance via dataclasses.replace().

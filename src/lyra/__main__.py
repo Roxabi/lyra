@@ -166,7 +166,7 @@ def _build_provider_registry(
     return registry, routing_decorator
 
 
-def _create_agent(
+def _create_agent(  # noqa: PLR0913 — factory with optional overrides for each agent dependency
     config: Agent,
     cli_pool: CliPool | None,
     circuit_registry: CircuitRegistry | None = None,
@@ -291,7 +291,7 @@ def create_health_app(hub: Hub) -> FastAPI:
     return app
 
 
-async def _main(*, _stop: asyncio.Event | None = None) -> None:
+async def _main(*, _stop: asyncio.Event | None = None) -> None:  # noqa: C901, PLR0915 — startup wiring: each adapter/service requires sequential conditional setup
     """Wire hub + adapters and run until stop event fires.
 
     The optional _stop parameter is for testing: pass a pre-set Event to exit

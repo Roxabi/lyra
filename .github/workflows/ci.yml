@@ -31,7 +31,7 @@ jobs:
       - name: Typecheck
         run: uv run pyright
 
-      - name: Test
+      - name: Test with coverage
         run: uv run pytest
 
   secrets:

@@ -94,14 +94,22 @@ class PluginLoader:
         manifests: list[PluginManifest] = []
         if not self.plugins_dir.is_dir():
             return manifests
+        plugins_dir_resolved = self.plugins_dir.resolve()
         for subdir in sorted(self.plugins_dir.iterdir()):
             if not subdir.is_dir():
+                continue
+            if not subdir.resolve().is_relative_to(plugins_dir_resolved):
+                log.debug("Skipping symlinked dir escaping plugins: %s", subdir)
                 continue
             toml_path = subdir / "plugin.toml"
             if not toml_path.exists():
                 continue
+            resolved_toml = toml_path.resolve()
+            if not resolved_toml.is_relative_to(plugins_dir_resolved):
+                log.debug("Skipping symlinked plugin.toml escaping plugins: %s", subdir)
+                continue
             try:
-                with toml_path.open("rb") as f:
+                with resolved_toml.open("rb") as f:
                     data = tomllib.load(f)
             except Exception:  # noqa: BLE001  # resilient: skip unreadable plugin.toml
                 log.debug("Skipping malformed plugin.toml in %s", subdir)
@@ -127,12 +135,26 @@ class PluginLoader:
         """Load a plugin by name. Raises ValueError if a handler is missing."""
         self._validate_name(name)
         plugin_dir = self.plugins_dir / name
-        toml_path = plugin_dir / "plugin.toml"
-        handlers_path = plugin_dir / "handlers.py"
+        plugins_dir_resolved = self.plugins_dir.resolve()
+        toml_path = (plugin_dir / "plugin.toml").resolve()
+        if not toml_path.is_relative_to(plugins_dir_resolved):
+            raise ValueError(
+                f"Plugin '{name}': plugin.toml resolves outside plugins directory"
+            )
+        handlers_path = (plugin_dir / "handlers.py").resolve()
+        if not handlers_path.is_relative_to(plugins_dir_resolved):
+            raise ValueError(
+                f"Plugin '{name}': handlers.py resolves outside plugins directory"
+            )
 
         with toml_path.open("rb") as f:
             data = tomllib.load(f)
         manifest = _parse_manifest(data)
+        if manifest.name != name:
+            raise ValueError(
+                f"Plugin directory '{name}' contains manifest "
+                f"with mismatched name '{manifest.name}'"
+            )
 
         spec = importlib.util.spec_from_file_location(
             f"lyra.plugins.{name}.handlers", handlers_path
@@ -170,13 +192,23 @@ class PluginLoader:
         existing = self._loaded[name]
         plugin_dir = self.plugins_dir / name
 
-        with (plugin_dir / "plugin.toml").open("rb") as f:
+        plugins_dir_resolved = self.plugins_dir.resolve()
+        toml_path = (plugin_dir / "plugin.toml").resolve()
+        if not toml_path.is_relative_to(plugins_dir_resolved):
+            raise ValueError(
+                f"Plugin '{name}': plugin.toml resolves outside plugins directory"
+            )
+        with toml_path.open("rb") as f:
             data = tomllib.load(f)
         manifest = _parse_manifest(data)
 
         # Re-execute module source in the existing module object so handler
         # callables are refreshed without requiring sys.modules parent chain.
-        handlers_path = plugin_dir / "handlers.py"
+        handlers_path = (plugin_dir / "handlers.py").resolve()
+        if not handlers_path.is_relative_to(plugins_dir_resolved):
+            raise ValueError(
+                f"Plugin '{name}': handlers.py resolves outside plugins directory"
+            )
         spec = importlib.util.spec_from_file_location(
             f"lyra.plugins.{name}.handlers", handlers_path
         )

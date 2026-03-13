@@ -1,0 +1,31 @@
+# Agent configuration for Aryl default agent.
+# Aryl is a sharp, direct, technically-focused counterpart to Lyra.
+
+[agent]
+name = "aryl_default"
+memory_namespace = "aryl"
+permissions = []
+persona = "aryl_default"
+show_intermediate = false
+
+[model]
+backend = "claude-cli"
+model = "claude-haiku-4-5-20251001"
+max_turns = 15
+tools = ["Read", "Grep", "Glob", "WebFetch", "WebSearch"]
+
+[agent.smart_routing]
+enabled = true
+
+[agent.smart_routing.models]
+trivial  = "claude-haiku-4-5-20251001"
+simple   = "claude-haiku-4-5-20251001"
+moderate = "claude-sonnet-4-6"
+complex  = "claude-opus-4-6"
+
+[plugins]
+enabled = ["echo"]
+
+# [workspaces]
+# lyra     = "~/projects/lyra"
+# projects = "~/projects"

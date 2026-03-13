@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
     from lyra.stt import STTService
+    from lyra.tts import TTSService
 
 from .circuit_breaker import CircuitRegistry
 from .command_router import CommandConfig, CommandRouter
@@ -456,7 +457,8 @@ class AgentBase(ABC):
         circuit_registry: CircuitRegistry | None = None,
         admin_user_ids: set[str] | None = None,
         msg_manager: MessageManager | None = None,
-        stt: STTService | None = None,
+        stt: "STTService | None" = None,
+        tts: "TTSService | None" = None,
         smart_routing_decorator: Any | None = None,
     ) -> None:
         self.config = config
@@ -472,6 +474,8 @@ class AgentBase(ABC):
         # Temp file cleanup (AudioContent.url) must live in a finally block in
         # process() — the agent owns it, not STTService. See ADR-013.
         self._stt = stt
+        # Subclasses invoke self._tts when /voice command detected in process().
+        self._tts = tts
         self._smart_routing_decorator = smart_routing_decorator
         self._plugins_dir = plugins_dir or _PLUGINS_DIR
         self._plugin_loader = PluginLoader(self._plugins_dir)

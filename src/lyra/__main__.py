@@ -39,6 +39,7 @@ from lyra.llm.base import LlmProvider
 from lyra.llm.registry import ProviderRegistry
 from lyra.llm.smart_routing import SmartRoutingDecorator
 from lyra.stt import STTService, load_stt_config
+from lyra.tts import TTSService, load_tts_config
 
 log = logging.getLogger(__name__)
 
@@ -174,6 +175,7 @@ def _create_agent(  # noqa: PLR0913 — factory with optional overrides for each
     admin_user_ids: set[str] | None = None,
     msg_manager: MessageManager | None = None,
     stt: STTService | None = None,
+    tts: TTSService | None = None,
     provider_registry: ProviderRegistry | None = None,
     smart_routing_decorator: SmartRoutingDecorator | None = None,
 ) -> AgentBase:
@@ -198,6 +200,7 @@ def _create_agent(  # noqa: PLR0913 — factory with optional overrides for each
             admin_user_ids=admin_user_ids,
             msg_manager=msg_manager,
             stt=stt,
+            tts=tts,
             smart_routing_decorator=smart_routing_decorator,
         )
     if backend in ("claude-cli", "ollama"):
@@ -216,6 +219,7 @@ def _create_agent(  # noqa: PLR0913 — factory with optional overrides for each
             admin_user_ids=admin_user_ids,
             msg_manager=msg_manager,
             stt=stt,
+            tts=tts,
         )
     raise ValueError(f"Unknown backend: {backend}")
 
@@ -371,6 +375,13 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:  # noqa: C901, P
         except ValueError as exc:
             raise SystemExit(f"Invalid STT configuration: {exc}") from exc
 
+    tts_service = TTSService(load_tts_config())
+    log.info(
+        "TTS enabled: engine=%s voice=%s (via voiceCLI)",
+        tts_service._engine or "default",
+        tts_service._voice or "default",
+    )
+
     from lyra.core.debouncer import DEFAULT_DEBOUNCE_MS
 
     hub = Hub(
@@ -408,6 +419,7 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:  # noqa: C901, P
         admin_user_ids=admin_user_ids,
         msg_manager=msg_manager,
         stt=stt_service,
+        tts=tts_service,
         provider_registry=provider_registry,
         smart_routing_decorator=smart_routing_decorator,
     )

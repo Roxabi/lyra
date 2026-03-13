@@ -22,6 +22,7 @@ from lyra.stt import is_whisper_noise
 
 if TYPE_CHECKING:
     from lyra.stt import STTService
+    from lyra.tts import TTSService
 
 log = logging.getLogger(__name__)
 
@@ -41,7 +42,8 @@ class AnthropicAgent(AgentBase):
         admin_user_ids: set[str] | None = None,
         msg_manager: MessageManager | None = None,
         runtime_config: RuntimeConfig | None = None,
-        stt: STTService | None = None,
+        stt: "STTService | None" = None,
+        tts: "TTSService | None" = None,
         agents_dir: Path | None = None,
         smart_routing_decorator: object | None = None,
     ) -> None:
@@ -61,6 +63,7 @@ class AnthropicAgent(AgentBase):
             admin_user_ids=admin_user_ids,
             msg_manager=msg_manager,
             stt=stt,
+            tts=tts,
             smart_routing_decorator=smart_routing_decorator,
         )
 

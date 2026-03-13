@@ -114,9 +114,7 @@ class OutboundDispatcher:
         """
         self._queue.put_nowait(("streaming", msg, chunks, outbound))
 
-    def enqueue_audio(
-        self, inbound: InboundMessage, audio: OutboundAudio
-    ) -> None:
+    def enqueue_audio(self, inbound: InboundMessage, audio: OutboundAudio) -> None:
         """Enqueue an audio response for delivery.
 
         Fire-and-forget: returns immediately. The worker task calls
@@ -172,12 +170,15 @@ class OutboundDispatcher:
                 kind = item[0]
                 if kind == "streaming":
                     _, msg, payload, outbound = item
-                elif kind in ("audio", "audio_stream"):
+                elif kind in ("send", "audio", "audio_stream", "attachment"):
                     _, msg, payload = item
                     outbound = None
                 else:
-                    _, msg, payload = item
-                    outbound = None
+                    log.error(
+                        '{"event": "unknown_kind", "kind": "%s", "action": "skipped"}',
+                        kind,
+                    )
+                    continue
                 # Verify routing context matches this dispatcher.
                 # "send": check payload (OutboundMessage) routing.
                 # "streaming": check outbound routing if provided.
@@ -187,11 +188,7 @@ class OutboundDispatcher:
                 elif kind in ("audio", "audio_stream", "attachment"):
                     _routing = msg.routing
                 else:
-                    _routing = (
-                        outbound.routing
-                        if outbound is not None
-                        else msg.routing
-                    )
+                    _routing = outbound.routing if outbound is not None else msg.routing
                 if not self._verify_routing(_routing):
                     if kind in ("streaming", "audio_stream"):
                         async for _ in payload:

@@ -464,6 +464,7 @@ class TestDispatchAudio:
         audio = OutboundAudio(audio_bytes=b"ogg", mime_type="audio/ogg")
         await hub.dispatch_audio(msg, audio)
         dispatcher.enqueue_audio.assert_called_once_with(msg, audio)
+        assert hub._last_processed_at is not None
 
     async def test_fallback_to_adapter(self) -> None:
         hub = Hub()
@@ -517,6 +518,7 @@ class TestDispatchAudioStream:
         c = chunks()
         await hub.dispatch_audio_stream(msg, c)
         dispatcher.enqueue_audio_stream.assert_called_once_with(msg, c)
+        assert hub._last_processed_at is not None
 
     async def test_fallback_to_adapter(self) -> None:
         hub = Hub()
@@ -530,9 +532,11 @@ class TestDispatchAudioStream:
                 chunk_bytes=b"x", session_id="s1", chunk_index=0, is_final=True
             )
 
-        await hub.dispatch_audio_stream(msg, chunks())
+        c = chunks()
+        await hub.dispatch_audio_stream(msg, c)
         adapter.render_audio_stream.assert_awaited_once()
         call_args = adapter.render_audio_stream.call_args[0]
+        assert call_args[0] is c
         assert call_args[1] is msg
 
     async def test_missing_adapter_raises(self) -> None:

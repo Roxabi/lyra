@@ -516,9 +516,7 @@ class Hub:
         await adapter.render_attachment(attachment, msg)
         self._last_processed_at = time.monotonic()
 
-    async def dispatch_audio(
-        self, msg: InboundMessage, audio: OutboundAudio
-    ) -> None:
+    async def dispatch_audio(self, msg: InboundMessage, audio: OutboundAudio) -> None:
         """Send an audio voice note back via the originating adapter.
 
         Routes through the OutboundDispatcher when one is registered (fire-and-forget).
@@ -549,6 +547,9 @@ class Hub:
 
         Routes through the OutboundDispatcher when one is registered (fire-and-forget).
         Falls back to a direct adapter call when no dispatcher is registered.
+
+        Note: fallback path has no circuit breaker coverage; prefer a registered
+        dispatcher for production audio streaming.
         """
         platform = Platform(msg.platform)
         dispatcher = self.outbound_dispatchers.get((platform, msg.bot_id))
@@ -785,13 +786,11 @@ class Hub:
                     )
                     continue
                 if result.action == Action.COMMAND_HANDLED:
-                    if (
-                        result.response
-                        and result.response.content
-                    ):
+                    if result.response and result.response.content:
                         try:
                             await self.dispatch_response(
-                                msg, result.response,
+                                msg,
+                                result.response,
                             )
                         except Exception as exc:
                             log.exception(
@@ -804,10 +803,7 @@ class Hub:
                             " for msg id=%s — skipping dispatch",
                             msg.id,
                         )
-                elif (
-                    result.action == Action.SUBMIT_TO_POOL
-                    and result.pool
-                ):
+                elif result.action == Action.SUBMIT_TO_POOL and result.pool:
                     result.pool.submit(msg)
             finally:
                 self.inbound_bus.task_done()
@@ -825,7 +821,8 @@ class MessagePipeline:
         self._hub = hub
 
     async def process(
-        self, msg: InboundMessage,
+        self,
+        msg: InboundMessage,
     ) -> PipelineResult:
         """Route *msg* through the pipeline stages."""
         result = self._validate_platform(msg)
@@ -833,7 +830,9 @@ class MessagePipeline:
             return result
 
         key = RoutingKey(
-            Platform(msg.platform), msg.bot_id, msg.scope_id,
+            Platform(msg.platform),
+            msg.bot_id,
+            msg.scope_id,
         )
 
         result = self._check_rate_limit(msg, key)
@@ -849,7 +848,8 @@ class MessagePipeline:
             return _DROP
 
         pool = self._hub.get_or_create_pool(
-            binding.pool_id, binding.agent_name,
+            binding.pool_id,
+            binding.agent_name,
         )
         router = getattr(agent, "command_router", None)
 
@@ -859,7 +859,10 @@ class MessagePipeline:
 
         if router and router.is_command(msg):
             return await self._dispatch_command(
-                msg, router, pool, key,
+                msg,
+                router,
+                pool,
+                key,
             )
 
         return await self._submit_to_pool(msg, pool, key)
@@ -867,7 +870,8 @@ class MessagePipeline:
     # -- guard stages (return None to continue) ---
 
     def _validate_platform(
-        self, msg: InboundMessage,
+        self,
+        msg: InboundMessage,
     ) -> PipelineResult | None:
         try:
             Platform(msg.platform)
@@ -881,7 +885,9 @@ class MessagePipeline:
         return None
 
     def _check_rate_limit(
-        self, msg: InboundMessage, key: RoutingKey,
+        self,
+        msg: InboundMessage,
+        key: RoutingKey,
     ) -> PipelineResult | None:
         if self._hub._is_rate_limited(msg):
             log.warning(
@@ -892,25 +898,29 @@ class MessagePipeline:
         return None
 
     def _resolve_binding(
-        self, msg: InboundMessage, key: RoutingKey,
+        self,
+        msg: InboundMessage,
+        key: RoutingKey,
     ) -> Binding | None:
         """Return resolved binding, or None (with log) to drop."""
         binding = self._hub.resolve_binding(msg)
         if binding is None:
             log.warning(
-                "unmatched routing key %s — message dropped", key,
+                "unmatched routing key %s — message dropped",
+                key,
             )
         return binding
 
     def _lookup_agent(
-        self, binding: Binding, key: RoutingKey,
+        self,
+        binding: Binding,
+        key: RoutingKey,
     ) -> AgentBase | None:
         """Return agent, or None (with log) to drop."""
         agent = self._hub.agent_registry.get(binding.agent_name)
         if agent is None:
             log.warning(
-                "no agent registered for %r (routing %s)"
-                " — message dropped",
+                "no agent registered for %r (routing %s) — message dropped",
                 binding.agent_name,
                 key,
             )
@@ -939,7 +949,9 @@ class MessagePipeline:
             response = await router.dispatch(msg, pool)
         except Exception as exc:
             log.exception(
-                "command dispatch failed for %s: %s", key, exc,
+                "command dispatch failed for %s: %s",
+                key,
+                exc,
             )
             _content = (
                 self._hub._msg_manager.get("generic")
@@ -948,19 +960,19 @@ class MessagePipeline:
             )
             response = Response(content=_content)
         return PipelineResult(
-            action=Action.COMMAND_HANDLED, response=response,
+            action=Action.COMMAND_HANDLED,
+            response=response,
         )
 
     async def _submit_to_pool(
-        self, msg: InboundMessage, pool: Pool,
+        self,
+        msg: InboundMessage,
+        pool: Pool,
         key: RoutingKey,
     ) -> PipelineResult:
-        if (
-            key.platform, msg.bot_id
-        ) not in self._hub.adapter_registry:
+        if (key.platform, msg.bot_id) not in self._hub.adapter_registry:
             log.error(
-                "no adapter registered for (%s, %s)"
-                " — response dropped",
+                "no adapter registered for (%s, %s) — response dropped",
                 msg.platform,
                 msg.bot_id,
             )
@@ -968,7 +980,8 @@ class MessagePipeline:
         if await self._hub._circuit_breaker_drop(msg):
             return _DROP
         return PipelineResult(
-            action=Action.SUBMIT_TO_POOL, pool=pool,
+            action=Action.SUBMIT_TO_POOL,
+            pool=pool,
         )
 
 

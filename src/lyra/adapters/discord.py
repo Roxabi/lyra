@@ -16,8 +16,8 @@ if TYPE_CHECKING:
     from lyra.core.hub import Hub
 
 from lyra.adapters._shared import (
+    _AUDIO_EXTS,
     ATTACHMENT_EXTS_BASE,
-    AUDIO_EXTS,
     _PartialAudioError,
     buffer_audio_chunks,
     parse_reply_to_id,
@@ -787,7 +787,7 @@ class DiscordAdapter(discord.Client):
 
         # Derive filename from mime_type — whitelist to prevent crafted names.
         raw_ext = msg.mime_type.split("/")[-1] if "/" in msg.mime_type else ""
-        ext = raw_ext if raw_ext in AUDIO_EXTS else "bin"
+        ext = raw_ext if raw_ext in _AUDIO_EXTS else "bin"
         filename = f"audio.{ext}"
 
         audio_buf = BytesIO(msg.audio_bytes)

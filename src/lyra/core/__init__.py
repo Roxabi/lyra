@@ -1,5 +1,12 @@
 from .agent import Agent, AgentBase
-from .hub import ChannelAdapter, Hub, RoutingKey
+from .hub import (
+    Action,
+    ChannelAdapter,
+    Hub,
+    MessagePipeline,
+    PipelineResult,
+    RoutingKey,
+)
 from .message import (
     Attachment,
     Button,
@@ -16,6 +23,7 @@ from .message import (
 from .pool import Pool
 
 __all__ = [
+    "Action",
     "Agent",
     "AgentBase",
     "Attachment",
@@ -24,10 +32,12 @@ __all__ = [
     "CodeBlock",
     "ContentPart",
     "Hub",
+    "MessagePipeline",
     "InboundMessage",
     "MediaPart",
     "OutboundAttachment",
     "OutboundMessage",
+    "PipelineResult",
     "Platform",
     "Pool",
     "Response",

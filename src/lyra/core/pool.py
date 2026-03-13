@@ -254,6 +254,11 @@ class Pool:
                 self._process_one(msg, agent), timeout=self._turn_timeout
             )
         except asyncio.TimeoutError:
+            if not agent.is_backend_alive(self.pool_id):
+                log.error(
+                    "pool %s: backend process died — timeout caused by dead process",
+                    self.pool_id,
+                )
             _reply = self._msg("timeout", "Your request timed out. Please try again.")
             await self._safe_dispatch(msg, Response(content=_reply))
         except asyncio.CancelledError:

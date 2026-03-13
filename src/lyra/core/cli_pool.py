@@ -189,6 +189,11 @@ class CliPool:
                 await self._kill(pool_id)
                 return CliResult(error=f"Send failed: {type(exc).__name__}")
 
+    def is_alive(self, pool_id: str) -> bool:
+        """Return True if a live process exists for pool_id."""
+        entry = self._entries.get(pool_id)
+        return entry is not None and entry.is_alive()
+
     async def reset(self, pool_id: str) -> None:
         """Kill the process for this pool. Next send() spawns a fresh one."""
         await self._kill(pool_id)

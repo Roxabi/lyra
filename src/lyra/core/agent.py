@@ -574,5 +574,13 @@ class AgentBase(ABC):
         """Hook for subclasses to inject extra CommandRouter constructor kwargs."""
         return {}
 
+    def is_backend_alive(self, _pool_id: str) -> bool:
+        """Return True if the backend process for this pool is alive.
+
+        Subclasses backed by persistent processes (e.g. SimpleAgent with
+        claude-cli) should override this to check the actual process state.
+        """
+        return True
+
     @abstractmethod
     async def process(self, msg: InboundMessage, pool: Pool) -> Response: ...

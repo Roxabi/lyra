@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 from lyra.core.agent import _AGENTS_DIR, Agent, AgentBase
 from lyra.core.circuit_breaker import CircuitRegistry
+from lyra.core.cli_pool import CliPool
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
     InboundMessage,
@@ -76,6 +77,13 @@ class SimpleAgent(AgentBase):
             stt=stt,
         )
         self._provider = provider
+
+    def is_backend_alive(self, pool_id: str) -> bool:
+        """Return True if the claude-cli process for this pool is alive."""
+        cli_pool = getattr(self._provider, "_pool", None)
+        if isinstance(cli_pool, CliPool):
+            return cli_pool.is_alive(pool_id)
+        return True
 
     def _build_router_kwargs(self) -> dict[str, object]:
         return {

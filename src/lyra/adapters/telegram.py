@@ -193,7 +193,6 @@ class TelegramAdapter:
         self._max_audio_bytes: int = int(
             os.environ.get("LYRA_MAX_AUDIO_BYTES", 5 * 1024 * 1024)
         )
-
         # bot is a public attribute so tests can replace it with AsyncMock.
         # Deferred lazily so tests can assign adapter.bot = AsyncMock() after
         # construction without triggering aiogram token validation at test time.
@@ -640,7 +639,7 @@ class TelegramAdapter:
             if i == last_idx:
                 outbound.metadata["reply_message_id"] = sent.message_id
 
-    async def send_streaming(  # noqa: C901 — streaming protocol: edit/chunk/finalize branches are inherently sequential
+    async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: edit/chunk/finalize branches are inherently sequential
         self,
         original_msg: InboundMessage,
         chunks: AsyncIterator[str],

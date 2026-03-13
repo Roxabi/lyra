@@ -497,7 +497,7 @@ class DiscordAdapter(discord.Client):
             view.add_item(discord.ui.Button(label=b.text, custom_id=b.callback_data))
         return view
 
-    async def send(
+    async def send(  # noqa: C901 — attachment loop adds branches
         self, original_msg: InboundMessage, outbound: OutboundMessage
     ) -> None:
         """Send response back to Discord.
@@ -553,7 +553,7 @@ class DiscordAdapter(discord.Client):
             original_msg.id,
         )
 
-    async def send_streaming(  # noqa: C901 — streaming protocol: edit/chunk/finalize branches are inherently sequential
+    async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: edit/chunk/finalize branches are inherently sequential
         self,
         original_msg: InboundMessage,
         chunks: AsyncIterator[str],

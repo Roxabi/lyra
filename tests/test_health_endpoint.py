@@ -44,8 +44,11 @@ def hub(circuit_registry: CircuitRegistry) -> Hub:
 
 
 class TestHealthUnauthenticated:
-    async def test_no_token_returns_ok_only(self, hub: Hub) -> None:
+    async def test_no_token_returns_ok_only(
+        self, hub: Hub, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """#207: Unauthenticated /health returns only {"ok": true}."""
+        monkeypatch.delenv("LYRA_HEALTH_SECRET", raising=False)
         from lyra.__main__ import create_health_app
 
         app = create_health_app(hub)
@@ -74,8 +77,11 @@ class TestHealthUnauthenticated:
         data = resp.json()
         assert data == {"ok": True}
 
-    async def test_no_secret_configured_returns_ok_only(self, hub: Hub) -> None:
+    async def test_no_secret_configured_returns_ok_only(
+        self, hub: Hub, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """#207: When LYRA_HEALTH_SECRET is unset, always minimal."""
+        monkeypatch.delenv("LYRA_HEALTH_SECRET", raising=False)
         from lyra.__main__ import create_health_app
 
         app = create_health_app(hub)
@@ -83,6 +89,23 @@ class TestHealthUnauthenticated:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.get(
                 "/health", headers={"authorization": "Bearer anything"}
+            )
+
+        assert resp.status_code == 200
+        assert resp.json() == {"ok": True}
+
+    async def test_empty_secret_env_returns_ok_only(
+        self, hub: Hub, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """#207: LYRA_HEALTH_SECRET='' still returns minimal response."""
+        monkeypatch.setenv("LYRA_HEALTH_SECRET", "")
+        from lyra.__main__ import create_health_app
+
+        app = create_health_app(hub)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get(
+                "/health", headers={"authorization": "Bearer "}
             )
 
         assert resp.status_code == 200
@@ -251,6 +274,7 @@ class TestHealthEndpoint:
         for name in ("anthropic", "telegram", "discord", "hub"):
             assert name in circuits
             assert circuits[name]["state"] == "closed"
+            assert circuits[name]["retry_after"] is None
 
     async def test_health_circuits_shows_open_state(
         self, hub: Hub, circuit_registry: CircuitRegistry
@@ -270,6 +294,7 @@ class TestHealthEndpoint:
 
         data = resp.json()
         assert data["circuits"]["anthropic"]["state"] == "open"
+        assert data["circuits"]["anthropic"]["retry_after"] is not None
 
 
 # ---------------------------------------------------------------------------
@@ -381,3 +406,33 @@ class TestConfigEndpoint:
 
         # Assert
         assert resp.status_code == 404
+
+    async def test_config_returns_401_without_token(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """#207: /config without auth returns 401."""
+        monkeypatch.setenv("LYRA_CONFIG_SECRET", "test-config-secret")
+        from lyra.__main__ import create_health_app
+
+        app = create_health_app(Hub())
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/config")
+
+        assert resp.status_code == 401
+
+    async def test_config_returns_401_with_wrong_token(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """#207: /config with wrong token returns 401."""
+        monkeypatch.setenv("LYRA_CONFIG_SECRET", "test-config-secret")
+        from lyra.__main__ import create_health_app
+
+        app = create_health_app(Hub())
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get(
+                "/config", headers={"authorization": "Bearer wrong"}
+            )
+
+        assert resp.status_code == 401

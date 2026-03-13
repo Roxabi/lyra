@@ -25,6 +25,9 @@ jobs:
       - name: Lint
         run: uv run ruff check .
 
+      - name: Check file length
+        run: bash tools/check_file_length.sh
+
       - name: Typecheck
         run: uv run pyright
 

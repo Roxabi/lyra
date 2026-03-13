@@ -3,6 +3,8 @@
 # Known exceptions are listed below — each must have a tracking issue.
 set -euo pipefail
 
+cd "$(git rev-parse --show-toplevel)"
+
 MAX=500
 FAIL=0
 
@@ -22,13 +24,13 @@ is_exempt() {
     return 1
 }
 
-while IFS= read -r f; do
+while IFS= read -r -d '' f; do
     is_exempt "$f" && continue
     LINES=$(wc -l < "$f")
     if [ "$LINES" -gt "$MAX" ]; then
         echo "$f - $LINES lines (max $MAX)"
         FAIL=1
     fi
-done < <(find src/ -name "*.py")
+done < <(find src/ -name "*.py" -print0)
 
 exit $FAIL

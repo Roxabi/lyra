@@ -1,0 +1,40 @@
+---
+title: "OutboundDispatcher.enqueue_audio() — circuit breaker ownership for render_audio()"
+issue: 175
+status: approved
+tier: F-lite
+date: 2026-03-13
+---
+
+## Problem
+
+`render_audio()` is called directly on adapters, bypassing the `OutboundDispatcher` entirely. This means audio outbound has no circuit breaker check, no queue, and no observability — unlike `send()` and `send_streaming()` which are fully dispatched.
+
+ADR-015 identified this gap and proposed adding `enqueue_audio()` as a third dispatch kind. The ADR noted a blocker on `RenderContext` migration (ADR-014), but that migration has shipped — the blocker is resolved and audio dispatch can now be wired through the dispatcher.
+
+Without this change, a failing TTS provider won't trip the circuit breaker, audio sends won't be queued or metered, and there's no unified drop/failure observability for the audio path.
+
+## Who
+
+- **Primary:** Lyra engine — unified outbound path for all message kinds
+- **Secondary:** Operators — consistent CB behavior and failure metrics across text/streaming/audio
+
+## Constraints
+
+- Must follow the existing dispatcher pattern (`enqueue_*` → queue → worker loop → adapter call → CB record)
+- `ChannelAdapter` protocol may need a `render_audio` method signature update if not already present
+- Audio items must drain cleanly when CB is open (same pattern as streaming iterator drain)
+
+## Out of Scope
+
+- TTS provider selection or routing changes
+- New observability/metrics infrastructure (use existing CB recording)
+- Changes to `render_audio()` implementation in adapters themselves
+
+## Complexity
+
+**Tier: F-lite** — single domain (outbound_dispatcher), clear pattern to follow from existing send/streaming kinds, well-defined in ADR-015.
+
+- Files: `outbound_dispatcher.py`, callers of `render_audio()`, tests
+- Pattern: mirrors existing `enqueue_streaming()` implementation
+- No new architecture — extends existing dispatcher with a third kind

@@ -87,7 +87,7 @@ class AnthropicAgent(AgentBase):
         # Detect audio attachment and resolve local path once for all AUDIO paths
         _audio = next((a for a in msg.attachments if a.type == "audio"), None)
         if _audio is not None:
-            tmp_path = Path(str(_audio.url_or_bytes))
+            tmp_path = Path(str(_audio.url_or_path_or_bytes))
 
         # outer try: temp-file cleanup (ADR-013)
         try:

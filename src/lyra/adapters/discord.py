@@ -74,7 +74,7 @@ def _extract_attachments(raw_attachments: list[Any]) -> list[Attachment]:
         result.append(
             Attachment(
                 type=att_type,
-                url_or_bytes=a.url,
+                url_or_path_or_bytes=a.url,
                 mime_type=ct or "application/octet-stream",
                 filename=getattr(a, "filename", None),
             )

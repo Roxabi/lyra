@@ -71,7 +71,7 @@ class SimpleAgent(AgentBase):
         # Handle audio messages — attachments with type="audio"
         audio_attachment = next((a for a in msg.attachments if a.type == "audio"), None)
         if audio_attachment is not None:
-            tmp_path = Path(str(audio_attachment.url_or_bytes))
+            tmp_path = Path(str(audio_attachment.url_or_path_or_bytes))
             try:
                 if self._stt is None:
                     return Response(

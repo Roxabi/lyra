@@ -1,0 +1,42 @@
+---
+title: "feat(bus): live audio streaming — chunked OutboundAudio for real-time TTS"
+issue: 144
+status: approved
+tier: F-lite
+date: 2026-03-13
+---
+
+## Problem
+
+Lyra currently has no way to stream TTS audio output to adapters. When a voice response is generated, the entire audio must be fully synthesized before delivery — adding latency and preventing real-time voice experiences.
+
+Issue #144 introduces a chunked streaming model: TTS output is yielded chunk-by-chunk through the bus, and adapters consume the stream according to their platform capabilities. This unblocks real-time voice responses and aligns with the existing `InboundAudio` envelope pattern (#140).
+
+## Who
+
+- **Primary:** Lyra users receiving voice responses via Telegram or Discord
+- **Secondary:** Developers building new adapters or TTS integrations
+
+## Constraints
+
+- Telegram has no push-streaming for audio — must buffer all chunks and send as a single voice note
+- Discord voice channel streaming is Phase 2+ — buffer-and-send for now
+- Depends on #80 (STT) and #79 (TTS) adapters for full end-to-end integration
+- Must follow existing bus message patterns (`InboundAudio`, `OutboundMessage`)
+
+## Out of Scope
+
+- Discord real-time voice channel streaming (future phase)
+- TTS engine selection or routing logic
+- STT pipeline changes
+- Audio format conversion or transcoding
+
+## Complexity
+
+**Tier: F-lite** — Clear scope within bus + adapters domain; new dataclass, one new adapter method, buffer-and-send strategy for both platforms.
+
+Signals:
+- Single domain (bus messages + adapter rendering)
+- Follows established envelope pattern from #138 and #140
+- No new architectural patterns — extends existing bus protocol
+- ~4-5 files touched (messages.py, base adapter, telegram adapter, discord adapter, tests)

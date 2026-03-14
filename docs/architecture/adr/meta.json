@@ -21,6 +21,7 @@
     "018-intermediate-turns-typing-indicator-and-provider-protocol-evolution",
     "019-multi-bot-startup-resource-sharing-policy",
     "020-cli-entry-point-dispatch-strategy",
-    "021-event-bus-singleton-vs-dependency-injection"
+    "021-hub-per-adapter",
+    "022-event-bus-singleton-vs-dependency-injection"
   ]
 }

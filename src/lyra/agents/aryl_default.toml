@@ -11,6 +11,7 @@ show_intermediate = false
 [model]
 backend = "claude-cli"
 model = "claude-haiku-4-5-20251001"
+cwd = "~/projects/roxabi_boilerplate"
 max_turns = 15
 tools = ["Read", "Grep", "Glob", "WebFetch", "WebSearch"]
 

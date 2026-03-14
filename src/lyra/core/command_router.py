@@ -60,6 +60,12 @@ class CommandRouter:
         "/new": CommandConfig(
             builtin=True, description="Start a new session (alias for /clear)"
         ),
+        "/folder": CommandConfig(
+            builtin=True, description="Switch working directory: /folder ~/projects/foo"
+        ),
+        "/cd": CommandConfig(
+            builtin=True, description="Alias for /folder"
+        ),
     }
 
     def __init__(  # noqa: PLR0913 — DI constructor, each arg is a required dependency
@@ -160,25 +166,14 @@ class CommandRouter:
         if command_name in ("/clear", "/new"):
             return await self._cmd_clear(pool)
 
+        # /folder and /cd — dynamic cwd switch, admin-only
+        if command_name in ("/folder", "/cd"):
+            return await self._cmd_folder(msg, args, pool)
+
         # Workspace switching — async because pool.switch_workspace() is async
         ws_key = command_name.lstrip("/")
         if ws_key in self._workspaces:
-            if not self._admin_user_ids or msg.user_id not in self._admin_user_ids:
-                return Response(content="This command is admin-only.")
-            cwd = self._workspaces[ws_key]
-            if pool is None:
-                return Response(content=f"Workspace: {ws_key}")
-            await pool.switch_workspace(cwd)
-            remaining = msg.text[len(command_name) :].lstrip()
-            if remaining:
-                raw_remaining = (
-                    msg.text_raw[len(command_name) :].lstrip()
-                    if msg.text_raw
-                    else remaining
-                )
-                followup = replace(msg, text=remaining, text_raw=raw_remaining)
-                pool.submit(followup)
-            return Response(content=f"Workspace: {ws_key}")
+            return await self._cmd_workspace(msg, command_name, ws_key, pool)
 
         builtin_response = self._dispatch_builtin(command_name, args, msg, pool)
         if builtin_response is not None:
@@ -354,6 +349,48 @@ class CommandRouter:
             return Response(content=str(exc))
         holder.value.save(runtime_file)
         return Response(content=f"Reset: {key} = (default). Saved.")
+
+    async def _cmd_workspace(
+        self, msg: InboundMessage, command_name: str, ws_key: str, pool: Pool | None
+    ) -> Response:
+        """Switch to a pre-registered workspace (admin-only)."""
+        if not self._admin_user_ids or msg.user_id not in self._admin_user_ids:
+            return Response(content="This command is admin-only.")
+        cwd = self._workspaces[ws_key]
+        if pool is None:
+            return Response(content=f"Workspace: {ws_key}")
+        await pool.switch_workspace(cwd)
+        remaining = msg.text[len(command_name) :].lstrip()
+        if remaining:
+            raw_remaining = (
+                msg.text_raw[len(command_name) :].lstrip()
+                if msg.text_raw
+                else remaining
+            )
+            followup = replace(msg, text=remaining, text_raw=raw_remaining)
+            pool.submit(followup)
+        return Response(content=f"Workspace: {ws_key}")
+
+    async def _cmd_folder(
+        self, msg: InboundMessage, args: list[str], pool: Pool | None
+    ) -> Response:
+        """Switch working directory dynamically (admin-only)."""
+        if not self._admin_user_ids or msg.user_id not in self._admin_user_ids:
+            return Response(content="This command is admin-only.")
+        if not args:
+            return Response(content="Usage: /folder <path>")
+        raw_path = Path(args[0]).expanduser().resolve()
+        if not raw_path.is_dir():
+            return Response(content=f"Not a directory: {args[0]}")
+        if pool is None:
+            return Response(content=f"cwd: {raw_path}")
+        await pool.switch_workspace(raw_path)
+        command_name = msg.text.split()[0]
+        remaining = msg.text[len(command_name) + len(args[0]) + 1 :].lstrip()
+        if remaining:
+            followup = replace(msg, text=remaining, text_raw=remaining)
+            pool.submit(followup)
+        return Response(content=f"cwd → {raw_path}")
 
     async def _cmd_clear(self, pool: Pool | None) -> Response:
         """Clear conversation history and reset backend session."""

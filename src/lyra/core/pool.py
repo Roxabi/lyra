@@ -53,6 +53,8 @@ class PoolContext(Protocol):
 class Pool:
     """One pool per conversation scope. Holds history and a per-session asyncio.Task."""
 
+    _session_resume_fn: Callable[[str], Awaitable[None]] | None
+
     def __init__(
         self,
         pool_id: str,

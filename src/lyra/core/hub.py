@@ -18,7 +18,6 @@ from lyra.errors import ProviderError
 from .agent import AgentBase
 from .circuit_breaker import CircuitRegistry
 from .command_parser import CommandParser
-from .context_resolver import ContextResolver
 from .inbound_audio_bus import InboundAudioBus
 from .inbound_bus import InboundBus
 from .message import (
@@ -38,6 +37,7 @@ from .pool import Pool
 
 if TYPE_CHECKING:
     from ..stt import STTService
+    from .context_resolver import ContextResolver
     from .pairing import PairingManager
 
 log = logging.getLogger(__name__)

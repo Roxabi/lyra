@@ -27,6 +27,7 @@ log = logging.getLogger(__name__)
 
 # Default agents config directory: src/lyra/agents/
 _AGENTS_DIR = Path(__file__).resolve().parent.parent / "agents"
+AGENTS_DIR = _AGENTS_DIR  # public alias
 _PLUGINS_DIR = Path(__file__).resolve().parent.parent / "plugins"
 
 _VALID_BACKENDS: frozenset[str] = frozenset({"claude-cli", "ollama", "anthropic-sdk"})

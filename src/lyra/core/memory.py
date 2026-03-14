@@ -127,7 +127,10 @@ class MemoryManager:
             await db.execute("PRAGMA foreign_keys = ON")
             await db.commit()
         except Exception:
-            log.debug("schema compat migration skipped or failed", exc_info=True)
+            log.warning(
+                "schema compat migration failed; database may be in inconsistent state",
+                exc_info=True,
+            )
 
     async def close(self) -> None:
         await self._db.close()
@@ -291,11 +294,16 @@ class MemoryManager:
             and json.loads(e.get("metadata", "{}")).get("user_id") == user_id
         ]
         lines = []
+        tokens_used = 0
         for p in sorted(prefs, key=lambda e: self._is_stale(e)):
             meta = json.loads(p.get("metadata", "{}"))
             name = meta.get("name", p["content"][:60])
             age_str = f" [~{self._age_str(p)}]" if self._is_stale(p) else ""
-            lines.append(f"- {name}{age_str}")
+            line = f"- {name}{age_str}"
+            tokens_used += len(line) // 4
+            if tokens_used > token_budget:
+                break
+            lines.append(line)
         return "[PREFERENCES]\n" + "\n".join(lines) if lines else ""
 
     # ------------------------------------------------------------------
@@ -303,7 +311,13 @@ class MemoryManager:
     # ------------------------------------------------------------------
 
     async def upsert_concept(self, snap: SessionSnapshot, data: dict) -> None:
-        name = data["name"]
+        name = data.get("name")
+        if not name:
+            log.warning(
+                "upsert_concept: skipping entry with missing 'name': %r",
+                list(data.keys()),
+            )
+            return
         db = self._db._db_or_raise()
         async with db.execute(
             "SELECT id, metadata, updated_at FROM entries"
@@ -368,7 +382,13 @@ class MemoryManager:
         await db.commit()
 
     async def upsert_preference(self, snap: SessionSnapshot, data: dict) -> None:
-        name = data["name"]
+        name = data.get("name")
+        if not name:
+            log.warning(
+                "upsert_preference: skipping entry with missing 'name': %r",
+                list(data.keys()),
+            )
+            return
         db = self._db._db_or_raise()
         async with db.execute(
             "SELECT id, metadata FROM entries"

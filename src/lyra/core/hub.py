@@ -38,6 +38,7 @@ from .pool import Pool
 
 if TYPE_CHECKING:
     from ..stt import STTService
+    from .memory import MemoryManager
     from .pairing import PairingManager
 
 log = logging.getLogger(__name__)
@@ -207,7 +208,7 @@ class Hub:
         self._event_bus: EventBus = EventBus()
         set_event_bus(self._event_bus)
         # S2 — memory layer (issue #83)
-        self._memory: Any | None = None  # MemoryManager | None
+        self._memory: "MemoryManager | None" = None
         self._memory_tasks: set[asyncio.Task] = set()
 
     @property
@@ -236,6 +237,17 @@ class Hub:
         router = getattr(agent, "command_router", None)
         if router is not None and hasattr(router, "_on_debounce_change"):
             router._on_debounce_change = self.set_debounce_ms
+
+    def set_memory(self, manager: "MemoryManager") -> None:
+        """Set the MemoryManager and inject into all registered agents.
+
+        Call this after constructing Hub and before processing messages.
+        If called after register_agent(), already-registered agents are updated.
+        """
+        self._memory = manager
+        for agent in self.agent_registry.values():
+            if hasattr(agent, "_memory"):
+                agent._memory = manager
 
     def register_adapter(
         self, platform: Platform, bot_id: str, adapter: ChannelAdapter

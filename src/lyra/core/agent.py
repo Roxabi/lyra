@@ -8,7 +8,6 @@ import re
 import sys
 import tomllib
 from abc import ABC, abstractmethod
-from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -510,9 +509,11 @@ class AgentBase(ABC):
         stt: "STTService | None" = None,
         tts: "TTSService | None" = None,
         smart_routing_decorator: Any | None = None,
+        compact_context_tokens: int = MODEL_CONTEXT_TOKENS,
         instance_overrides: dict | None = None,
     ) -> None:
         self._instance_overrides: dict = instance_overrides or {}
+        self._compact_context_tokens = compact_context_tokens
         self.config = config
         self._agents_dir = _find_agent_dir(config.name, agents_dir)
         self._config_path = self._agents_dir / f"{config.name}.toml"
@@ -728,11 +729,18 @@ class AgentBase(ABC):
             pool._system_prompt = self.config.system_prompt
             return
         pool._system_prompt = await self.build_system_prompt(pool)
-        pool.max_sdk_history = sys.maxsize  # compact owns truncation
+        # Disable the deque cap — compact() owns truncation when memory is wired.
+        # This side effect is intentional: Pool.__init__ sets max_sdk_history=50,
+        # but with memory active, compaction handles history reduction instead.
+        pool.max_sdk_history = sys.maxsize
 
     async def build_system_prompt(self, pool: "Pool") -> str:
         """Fetch identity anchor + recall block; seed anchor from TOML on first boot."""
-        assert self._memory is not None
+        if self._memory is None:
+            raise RuntimeError(
+                "build_system_prompt() called without memory wired"
+                " — call _ensure_system_prompt() instead"
+            )
         ns = self.config.memory_namespace
         anchor = await self._memory.get_identity_anchor(ns)
         if anchor is None:
@@ -742,12 +750,7 @@ class AgentBase(ABC):
         memory_block = await self._memory.recall(
             pool.user_id, ns, first_msg=first_msg, token_budget=700
         )
-        prefs_block = await self._memory._fetch_preferences(
-            pool.user_id, ns, token_budget=300
-        )
-        parts = [
-            p for p in [anchor, memory_block, prefs_block] if p and isinstance(p, str)
-        ]
+        parts = [p for p in [anchor, memory_block] if p and isinstance(p, str)]
         return "\n\n".join(parts)
 
     # S4 — session flush (issue #83)
@@ -769,6 +772,11 @@ class AgentBase(ABC):
         """Generate session summary. Base: simple truncation. Override for LLM."""
         turns = list(pool.sdk_history)[-20:]
         text = "\n".join(str(t.get("content", "")) for t in turns)
+        log.warning(
+            "_summarize_session not overridden — storing truncated transcript"
+            " for pool %s; override with an LLM call for production memory quality",
+            pool.pool_id,
+        )
         return f"Session summary ({pool.message_count} messages): {text[:500]}"
 
     def _schedule_extraction(
@@ -799,18 +807,24 @@ class AgentBase(ABC):
         history_len = (
             len(pool.sdk_history) if hasattr(pool.sdk_history, "__len__") else 0
         )
-        if token_est <= COMPACT_THRESHOLD and history_len < COMPACT_HISTORY_THRESHOLD:
+        compact_threshold = int(0.8 * self._compact_context_tokens)
+        if token_est <= compact_threshold and history_len < COMPACT_HISTORY_THRESHOLD:
             return
         summary = await self._summarize_session(pool)
         snap = pool.snapshot(self.config.memory_namespace)
         await self._memory.upsert_session(snap, summary, status="partial")
         tail = list(pool.sdk_history)[-COMPACT_TAIL:]
-        pool.sdk_history = deque([{"role": "system", "content": summary}] + tail)
+        pool.sdk_history.clear()
+        pool.sdk_history.extend([{"role": "system", "content": summary}] + tail)
 
     # S7 — concept + preference extraction (issue #83)
 
     async def _extraction_llm_call(self, prompt: str) -> str:
         """LLM call for extraction. Base: no-op. Overridden by concrete agents."""
+        log.debug(
+            "_extraction_llm_call not overridden — extraction skipped;"
+            " override in concrete agent"
+        )
         return "[]"
 
     async def _run_concept_extraction(
@@ -829,6 +843,19 @@ class AgentBase(ABC):
             concepts = json.loads(raw)
             if self._memory is not None:
                 for concept in concepts:
+                    if not isinstance(concept, dict):
+                        log.warning(
+                            "concept extraction: skipping non-dict item: %r",
+                            type(concept),
+                        )
+                        continue
+                    if not concept.get("name") or not concept.get("content"):
+                        log.warning(
+                            "concept extraction: skipping item missing required"
+                            " fields: %r",
+                            list(concept.keys()),
+                        )
+                        continue
                     if concept.get("confidence", 0) >= 0.7:
                         await self._memory.upsert_concept(snap, concept)
         except Exception:
@@ -854,6 +881,18 @@ class AgentBase(ABC):
             prefs = json.loads(raw)
             if self._memory is not None:
                 for pref in prefs:
+                    if not isinstance(pref, dict):
+                        log.warning(
+                            "preference extraction: skipping non-dict item: %r",
+                            type(pref),
+                        )
+                        continue
+                    if not pref.get("name"):
+                        log.warning(
+                            "preference extraction: skipping item missing 'name': %r",
+                            list(pref.keys()),
+                        )
+                        continue
                     await self._memory.upsert_preference(snap, pref)
         except Exception:
             log.warning(

@@ -6,6 +6,7 @@ completes the implementation.
 
 Spec trace: S2, S3, S4, S5, S6, S7
 """
+
 from __future__ import annotations
 
 import json

@@ -436,7 +436,7 @@ class DiscordAdapter(discord.Client):
             )
             # Pre-download size check (matches Telegram's _download_audio guard)
             att_size = getattr(audio_attachment, "size", None)
-            if att_size is not None and att_size > self._max_audio_bytes:
+            if att_size is None or att_size > self._max_audio_bytes:
                 log.warning(
                     "Audio attachment rejected: %d bytes exceeds %d byte limit"
                     " (message_id=%s)",

@@ -96,7 +96,7 @@ All bots share a single process and a single `CliPool` (Claude CLI subprocess po
 
 ### Supervisor: no changes needed
 
-The `lyra` supervisor program starts `python -m lyra`, which reads `config.toml` and starts all configured bots. Adding bots to `config.toml` takes effect on the next restart.
+The `lyra` supervisor program starts `lyra start`, which reads `config.toml` and starts all configured bots. Adding bots to `config.toml` takes effect on the next restart.
 
 ```bash
 # Restart after updating config.toml or .env

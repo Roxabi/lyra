@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import re
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
 
@@ -32,9 +32,9 @@ class MonitoringConfig:
     service_name: str = "lyra"
 
     # Secrets (from env vars)
-    telegram_token: str = ""
-    anthropic_api_key: str = ""
-    telegram_admin_chat_id: str = ""
+    telegram_token: str = field(default="", repr=False)
+    anthropic_api_key: str = field(default="", repr=False)
+    telegram_admin_chat_id: str = field(default="", repr=False)
 
     def __post_init__(self) -> None:
         _hhmm = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")

@@ -60,9 +60,10 @@ class TestAuthMiddleware:
         auth = AuthMiddleware(store=None, role_map={}, default=TrustLevel.BLOCKED)
         assert auth.check("unknown") == TrustLevel.BLOCKED
 
-    def test_check_none_user_returns_default(self) -> None:
+    def test_check_none_user_returns_blocked(self) -> None:
+        # None user_id is always BLOCKED regardless of default (security hardening)
         auth = AuthMiddleware(store=None, role_map={}, default=TrustLevel.PUBLIC)
-        assert auth.check(None) == TrustLevel.PUBLIC
+        assert auth.check(None) == TrustLevel.BLOCKED
 
     def test_check_none_user_returns_blocked_default(self) -> None:
         auth = AuthMiddleware(store=None, role_map={}, default=TrustLevel.BLOCKED)
@@ -167,7 +168,7 @@ class TestFromConfig:
         assert auth is not None
         # CLI is always OWNER
         assert auth.check("anyone") == TrustLevel.OWNER
-        assert auth.check(None) == TrustLevel.OWNER
+        assert auth.check(None) == TrustLevel.BLOCKED  # anonymous always BLOCKED
 
     def test_invalid_default_raises_value_error(self) -> None:
         raw = self._make_raw("telegram", default="open")
@@ -320,7 +321,7 @@ class TestFromBotConfig:
         # Assert
         assert auth is not None
         assert auth.check("anyone") == TrustLevel.OWNER
-        assert auth.check(None) == TrustLevel.OWNER
+        assert auth.check(None) == TrustLevel.BLOCKED  # anonymous always BLOCKED
 
     def test_invalid_default_raises_with_bot_id(self) -> None:
         # Arrange — matching entry with an invalid default value

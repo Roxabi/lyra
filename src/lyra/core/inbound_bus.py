@@ -30,7 +30,7 @@ class InboundBus:
 
     def __init__(self) -> None:
         self._queues: dict[Platform, asyncio.Queue[InboundMessage]] = {}
-        self._staging: asyncio.Queue[InboundMessage] = asyncio.Queue()
+        self._staging: asyncio.Queue[InboundMessage] = asyncio.Queue(maxsize=500)
         self._feeders: dict[Platform, asyncio.Task[None]] = {}
 
     def register(self, platform: Platform, maxsize: int = 100) -> None:

@@ -91,6 +91,10 @@ class AuthMiddleware:
         Returns:
             The resolved TrustLevel.
         """
+        # Anonymous/service messages are always blocked
+        if user_id is None:
+            return TrustLevel.BLOCKED
+
         # BLOCKED check first — even public commands are denied to blocked users
         stored = self._store_level(user_id)
         if stored == TrustLevel.BLOCKED:

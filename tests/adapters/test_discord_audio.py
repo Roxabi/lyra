@@ -112,6 +112,7 @@ async def test_on_message_enqueues_audio_on_audio_bus() -> None:
     attachment_obj = SimpleNamespace(
         content_type="audio/ogg",
         url="https://cdn.example/audio.ogg",
+        size=1024,
         read=AsyncMock(return_value=b"ogg_bytes"),
     )
     msg = _make_discord_msg(attachments=[attachment_obj])

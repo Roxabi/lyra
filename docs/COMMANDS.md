@@ -4,6 +4,71 @@
 
 ---
 
+## The `lyra` CLI
+
+The `lyra` CLI is the main entry point for managing Lyra from your shell. It replaces the former `python -m lyra` and `lyra-agent` commands.
+
+### Installation
+
+After `uv sync`, activate the virtual environment to put `lyra` on your PATH:
+
+```bash
+source .venv/bin/activate
+# Or add .venv/bin to your PATH permanently in ~/.bashrc:
+# export PATH="$HOME/projects/lyra/.venv/bin:$PATH"
+```
+
+### Subcommands
+
+**Server**
+
+| Command | Description |
+|---------|-------------|
+| `lyra` / `lyra start` | Start the Lyra server |
+| `lyra --version` / `lyra -V` | Print the installed version |
+| `lyra --help` | List all available subcommands |
+
+**Agent management**
+
+| Command | Description |
+|---------|-------------|
+| `lyra agent create <name>` | Scaffold a new agent TOML |
+| `lyra agent list` | List all discovered agents |
+| `lyra agent validate [<name>]` | Validate agent TOML config(s) |
+
+**Config management**
+
+| Command | Description |
+|---------|-------------|
+| `lyra config show` | Print the resolved `config.toml` |
+| `lyra config validate` | Validate `config.toml` against the schema |
+
+> `lyra-agent` still works but prints a deprecation warning. Migrate to `lyra agent <subcommand>`.
+
+### Agent config directories
+
+Lyra searches for agent TOML files in two locations, in order of precedence:
+
+1. `~/.lyra/agents/` — user-level configs (take precedence)
+2. `src/lyra/agents/` — project-level configs (bundled defaults)
+
+If the same agent name exists in both directories, the user-level file wins.
+
+### Machine-wide defaults (`config.toml [defaults]`)
+
+The `[defaults]` section in `config.toml` lets you set machine-wide fallbacks for `cwd`, `persona`, and `workspaces` that apply to all agents unless overridden in the agent's own TOML:
+
+```toml
+[defaults]
+cwd = "~/projects/lyra"
+
+[defaults.workspaces]
+lyra     = "~/projects/lyra"
+projects = "~/projects"
+```
+
+---
+
 ## Overview
 
 Lyra intercepts messages starting with `/` before they reach the LLM agent. Commands are routed to built-in handlers or plugins — fast, deterministic, zero token cost.

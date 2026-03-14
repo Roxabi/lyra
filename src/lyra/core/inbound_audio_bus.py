@@ -28,7 +28,7 @@ class InboundAudioBus:
 
     def __init__(self) -> None:
         self._queues: dict[Platform, asyncio.Queue[InboundAudio]] = {}
-        self._staging: asyncio.Queue[InboundAudio] = asyncio.Queue()
+        self._staging: asyncio.Queue[InboundAudio] = asyncio.Queue(maxsize=500)
         self._feeders: dict[Platform, asyncio.Task[None]] = {}
 
     def register(self, platform: Platform, maxsize: int = 100) -> None:

@@ -8,12 +8,8 @@ import logging
 import queue
 import shutil
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 
 import discord
-
-if TYPE_CHECKING:
-    pass
 
 log = logging.getLogger(__name__)
 
@@ -52,19 +48,18 @@ def _check_voice_deps() -> None:
     global _deps_checked
     if _deps_checked:
         return
-    try:
-        import discord.voice_client  # noqa: F401
-    except ImportError as exc:
-        raise VoiceDependencyError(
-            "discord.py[voice] not installed — run: pip install discord.py[voice]"
-        ) from exc
     if not discord.opus.is_loaded():
         opus_lib = ctypes.util.find_library("opus")
         if opus_lib is None:
             raise VoiceDependencyError(
                 "libopus not found — install libopus-dev (Ubuntu) or libopus (macOS)"
             )
-        discord.opus.load_opus(opus_lib)
+        try:
+            discord.opus.load_opus(opus_lib)
+        except OSError as exc:
+            raise VoiceDependencyError(
+                f"libopus failed to load ({opus_lib}) — {exc}"
+            ) from exc
     if shutil.which("ffmpeg") is None:
         raise VoiceDependencyError(
             "ffmpeg not found — install ffmpeg (apt install ffmpeg)"
@@ -155,8 +150,7 @@ class VoiceSession:
 class VoiceSessionManager:
     """Manages per-guild Discord voice sessions for DiscordAdapter."""
 
-    def __init__(self, client: discord.Client) -> None:
-        self._client = client
+    def __init__(self) -> None:
         self._sessions: dict[str, VoiceSession] = {}
 
     async def join(
@@ -216,3 +210,11 @@ class VoiceSessionManager:
     def get(self, guild_id: str) -> VoiceSession | None:
         """Return the active VoiceSession for guild_id, or None."""
         return self._sessions.get(guild_id)
+
+    async def leave_all(self) -> None:
+        """Disconnect and remove all active voice sessions.
+
+        Called during adapter shutdown.
+        """
+        for guild_id in list(self._sessions):
+            await self.leave(guild_id)

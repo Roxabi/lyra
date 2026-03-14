@@ -193,7 +193,7 @@ class DiscordAdapter(discord.Client):
         self._mention_re: re.Pattern[str] | None = None
         # Thread IDs created by or claimed by this bot — only this bot responds there.
         self._owned_threads: set[int] = set()
-        self._vsm: VoiceSessionManager = VoiceSessionManager(client=self)
+        self._vsm: VoiceSessionManager = VoiceSessionManager()
 
     def _msg(self, key: str, fallback: str) -> str:
         """Return a localised message string, falling back when no manager."""
@@ -218,13 +218,14 @@ class DiscordAdapter(discord.Client):
             task.cancel()
 
     async def close(self) -> None:
-        """Cancel all pending typing indicator tasks before closing the client."""
+        """Cancel pending typing tasks and drain voice sessions before closing."""
         tasks = list(self._typing_tasks.values())
         self._typing_tasks.clear()
         for task in tasks:
             task.cancel()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
+        await self._vsm.leave_all()
         await super().close()
 
     async def on_ready(self) -> None:
@@ -246,7 +247,7 @@ class DiscordAdapter(discord.Client):
 
     async def on_voice_state_update(
         self,
-        member: Any,
+        member: discord.Member,
         before: discord.VoiceState,
         after: discord.VoiceState,
     ) -> None:

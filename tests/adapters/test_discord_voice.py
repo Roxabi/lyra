@@ -57,10 +57,37 @@ class TestPCMQueueSource:
         src = PCMQueueSource()
         src.push_eof()
         src.push_eof()
-        assert src.read() == b""
+        assert src.read() == b""  # first sentinel consumed
+        assert src.read() == b""  # second sentinel also returns b"" cleanly
 
     def test_is_opus_false(self) -> None:
         assert PCMQueueSource().is_opus() is False
+
+
+class TestVoiceSession:
+    def test_is_active_true(self) -> None:
+        vc = MagicMock()
+        vc.is_connected.return_value = True
+        session = VoiceSession(
+            guild_id="1",
+            voice_client=vc,
+            channel_id=100,
+            mode=VoiceMode.TRANSIENT,
+            source=PCMQueueSource(),
+        )
+        assert session.is_active() is True
+
+    def test_is_active_false(self) -> None:
+        vc = MagicMock()
+        vc.is_connected.return_value = False
+        session = VoiceSession(
+            guild_id="1",
+            voice_client=vc,
+            channel_id=100,
+            mode=VoiceMode.PERSISTENT,
+            source=PCMQueueSource(),
+        )
+        assert session.is_active() is False
 
 
 # ---------------------------------------------------------------------------
@@ -127,8 +154,7 @@ class TestVoiceDeps:
 
 
 def _make_vsm() -> VoiceSessionManager:
-    client = MagicMock()
-    return VoiceSessionManager(client=client)
+    return VoiceSessionManager()
 
 
 def _make_guild(guild_id: int = 1) -> MagicMock:
@@ -173,8 +199,11 @@ class TestVoiceSessionManager:
         guild = _make_guild()
         channel, vc = _make_channel()
         with patch("lyra.adapters.discord_voice._check_voice_deps"):
-            await vsm.join(guild, channel, VoiceMode.TRANSIENT)
+            session = await vsm.join(guild, channel, VoiceMode.TRANSIENT)
+        mock_source = MagicMock(spec=PCMQueueSource)
+        session.source = mock_source
         await vsm.leave("1")
+        mock_source.push_eof.assert_called_once()
         vc.disconnect.assert_called_once()
         assert vsm.get("1") is None
 

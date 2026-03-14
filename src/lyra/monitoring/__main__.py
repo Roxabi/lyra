@@ -2,6 +2,11 @@
 
 Runs Layer 1 health checks. On anomaly, escalates to Layer 2 (LLM + Telegram).
 Exit 0 = all green, exit 1 = anomaly detected.
+
+NOTE (issue #44): The EventAggregator (lyra.core.event_bus) now handles real-time
+state-change monitoring. This cron process is kept as a safety net.
+Production cron interval should be increased to 4h+ once the aggregator
+is proven stable in production.
 """
 
 from __future__ import annotations

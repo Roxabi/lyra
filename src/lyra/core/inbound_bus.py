@@ -28,10 +28,12 @@ class InboundBus:
         await bus.stop()           # cancels feeder tasks
     """
 
-    def __init__(self) -> None:
+    def __init__(self, queue_depth_threshold: int = 100) -> None:
         self._queues: dict[Platform, asyncio.Queue[InboundMessage]] = {}
         self._staging: asyncio.Queue[InboundMessage] = asyncio.Queue(maxsize=500)
         self._feeders: dict[Platform, asyncio.Task[None]] = {}
+        self._threshold = queue_depth_threshold
+        self._depth_exceeded = False
 
     def register(self, platform: Platform, maxsize: int = 100) -> None:
         """Register a bounded queue for the given platform.
@@ -84,6 +86,25 @@ class InboundBus:
             msg = await queue.get()
             await self._staging.put(msg)
             queue.task_done()
+            depth = self._staging.qsize()
+            if depth > self._threshold and not self._depth_exceeded:
+                self._depth_exceeded = True
+                from .event_bus import get_event_bus
+                from .events import QueueDepthExceeded
+
+                if bus := get_event_bus():
+                    bus.emit(
+                        QueueDepthExceeded(
+                            queue_name="staging", depth=depth, threshold=self._threshold
+                        )
+                    )
+            elif depth <= self._threshold and self._depth_exceeded:
+                self._depth_exceeded = False
+                from .event_bus import get_event_bus
+                from .events import QueueDepthNormal
+
+                if bus := get_event_bus():
+                    bus.emit(QueueDepthNormal(queue_name="staging", depth=depth))
 
     async def stop(self) -> None:
         """Cancel all feeder tasks and wait for them to finish."""

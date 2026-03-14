@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 
 import pytest
@@ -13,6 +14,8 @@ from lyra.core.circuit_breaker import (
     CircuitState,
     CircuitStatus,
 )
+from lyra.core.event_bus import EventBus, set_event_bus
+from lyra.core.events import CircuitStateChanged
 
 # --- State transitions ---
 
@@ -224,3 +227,134 @@ def test_open_timer_resets_on_continued_failure(monkeypatch):
     cb.record_failure()
     assert cb._opened_at is not None
     assert cb._opened_at >= original_opened_at  # timer reset
+
+
+# ---------------------------------------------------------------------------
+# T7 — CircuitBreaker emits CircuitStateChanged via EventBus
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def cb_event_bus_fixture():
+    """Register a fresh EventBus singleton; reset after test."""
+    bus = EventBus()
+    set_event_bus(bus)
+    yield bus
+    set_event_bus(None)  # type: ignore[arg-type]
+
+
+def _attach_queue(bus: EventBus) -> asyncio.Queue:
+    """Attach a plain asyncio.Queue as a bus subscriber and return it."""
+    q: asyncio.Queue = asyncio.Queue()
+    bus._subscribers.append(q)
+    return q
+
+
+class TestCircuitBreakerEventBusIntegration:
+    """CircuitBreaker emits CircuitStateChanged on every state transition (T7)."""
+
+    def test_closed_to_open_emits_circuit_state_changed(
+        self, cb_event_bus_fixture: EventBus
+    ) -> None:
+        """Reaching failure threshold emits CircuitStateChanged(closed→open)."""
+        # Arrange
+        bus = cb_event_bus_fixture
+        q = _attach_queue(bus)
+        cb = CircuitBreaker("svc-a", failure_threshold=2, recovery_timeout=60)
+
+        # Act — one failure below threshold (should not emit a transition)
+        cb.record_failure()
+        # Second failure trips the breaker: CLOSED → OPEN
+        cb.record_failure()
+
+        # Assert
+        assert cb._state == CircuitState.OPEN
+        assert not q.empty(), "Expected a CircuitStateChanged event to be emitted"
+        event = q.get_nowait()
+        assert isinstance(event, CircuitStateChanged)
+        assert event.old_state == "closed"
+        assert event.new_state == "open"
+        assert event.platform == "svc-a"
+
+    def test_open_to_half_open_emits_circuit_state_changed(
+        self, cb_event_bus_fixture: EventBus, monkeypatch
+    ) -> None:
+        """After recovery_timeout, is_open() triggers OPEN→HALF_OPEN and emits event."""
+        # Arrange
+        bus = cb_event_bus_fixture
+        cb = CircuitBreaker("svc-b", failure_threshold=1, recovery_timeout=30)
+        cb.record_failure()
+        assert cb._state == CircuitState.OPEN
+
+        # Drain the CLOSED→OPEN event so the queue is clean before the test assertion
+        q = _attach_queue(bus)
+
+        original = time.monotonic()
+        monkeypatch.setattr(time, "monotonic", lambda: original + 31)
+
+        # Act — triggers OPEN → HALF_OPEN transition
+        result = cb.is_open()
+
+        # Assert
+        assert cb._state == CircuitState.HALF_OPEN
+        assert result is False  # probe slot acquired
+        assert not q.empty(), "Expected CircuitStateChanged(OPEN→HALF_OPEN)"
+        event = q.get_nowait()
+        assert isinstance(event, CircuitStateChanged)
+        assert event.old_state == "open"
+        assert event.new_state == "half_open"
+
+    def test_half_open_to_closed_emits_circuit_state_changed(
+        self, cb_event_bus_fixture: EventBus, monkeypatch
+    ) -> None:
+        """record_success() in HALF_OPEN emits CircuitStateChanged(HALF_OPEN→CLOSED)."""
+        # Arrange
+        bus = cb_event_bus_fixture
+        cb = CircuitBreaker("svc-c", failure_threshold=1, recovery_timeout=1)
+        cb.record_failure()
+        original = time.monotonic()
+        monkeypatch.setattr(time, "monotonic", lambda: original + 2)
+        cb.is_open()  # HALF_OPEN, probe acquired
+        assert cb._state == CircuitState.HALF_OPEN
+
+        # Drain events so far (CLOSED→OPEN and OPEN→HALF_OPEN)
+        q = _attach_queue(bus)
+
+        # Act
+        cb.record_success()
+
+        # Assert
+        assert cb._state == CircuitState.CLOSED
+        assert not q.empty(), "Expected CircuitStateChanged(HALF_OPEN→CLOSED)"
+        event = q.get_nowait()
+        assert isinstance(event, CircuitStateChanged)
+        assert event.old_state == "half_open"
+        assert event.new_state == "closed"
+
+    def test_half_open_to_open_emits_circuit_state_changed(
+        self, cb_event_bus_fixture: EventBus, monkeypatch
+    ) -> None:
+        """record_failure() in HALF_OPEN emits CircuitStateChanged(HALF_OPEN→OPEN)."""
+        # Arrange
+        bus = cb_event_bus_fixture
+        cb = CircuitBreaker("svc-d", failure_threshold=1, recovery_timeout=1)
+        cb.record_failure()
+        original = time.monotonic()
+        monkeypatch.setattr(time, "monotonic", lambda: original + 2)
+        cb.is_open()  # HALF_OPEN, probe acquired
+        assert cb._state == CircuitState.HALF_OPEN
+        # probe is in flight (set by is_open); record_failure clears it on entry
+
+        # Drain events so far
+        q = _attach_queue(bus)
+
+        # Act
+        cb.record_failure()  # probe failed → back to OPEN
+
+        # Assert
+        assert cb._state == CircuitState.OPEN
+        assert not q.empty(), "Expected CircuitStateChanged(HALF_OPEN→OPEN)"
+        event = q.get_nowait()
+        assert isinstance(event, CircuitStateChanged)
+        assert event.old_state == "half_open"
+        assert event.new_state == "open"

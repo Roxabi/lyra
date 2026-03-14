@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 import pytest
 
 from lyra.core.auth import TrustLevel
+from lyra.core.event_bus import EventBus, set_event_bus
+from lyra.core.events import QueueDepthExceeded, QueueDepthNormal
 from lyra.core.inbound_bus import InboundBus
 from lyra.core.message import (
     InboundMessage,
@@ -120,3 +122,108 @@ class TestInboundBusFeeder:
 
         await bus.stop()
         assert len(bus._feeders) == 0
+
+
+# ---------------------------------------------------------------------------
+# T9 — InboundBus emits QueueDepthExceeded / QueueDepthNormal via EventBus
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def ib_event_bus_fixture():
+    """Register a fresh EventBus singleton; reset after test."""
+    eb = EventBus()
+    set_event_bus(eb)
+    yield eb
+    set_event_bus(None)  # type: ignore[arg-type]
+
+
+def _attach_queue_ib(bus: EventBus) -> asyncio.Queue:
+    """Attach a plain asyncio.Queue as a bus subscriber and return it."""
+    q: asyncio.Queue = asyncio.Queue()
+    bus._subscribers.append(q)
+    return q
+
+
+class TestInboundBusQueueDepthEvents:
+    """InboundBus emits QueueDepthExceeded / QueueDepthNormal events (T9).
+
+    These are async tests — the depth check lives in _feeder() which only
+    runs after bus.start(). Tests start the bus, inject messages, wait for
+    feeders to drain to staging, then inspect emitted events.
+    """
+
+    @pytest.mark.asyncio
+    async def test_queue_depth_exceeded_emitted_on_threshold_crossing(
+        self, ib_event_bus_fixture: EventBus
+    ) -> None:
+        """Crossing queue_depth_threshold emits QueueDepthExceeded exactly once."""
+        eb = ib_event_bus_fixture
+        q = _attach_queue_ib(eb)
+        bus = InboundBus(queue_depth_threshold=2)
+        bus.register(Platform.TELEGRAM, maxsize=20)
+        await bus.start()
+        msg = _make_msg(Platform.TELEGRAM)
+        try:
+            # Put 3 messages — staging threshold (2) crossed on the 3rd
+            bus.put(Platform.TELEGRAM, msg)
+            bus.put(Platform.TELEGRAM, msg)
+            bus.put(Platform.TELEGRAM, msg)
+            # Give feeders a moment to drain to staging
+            await asyncio.sleep(0.05)
+        finally:
+            await bus.stop()
+
+        events = []
+        while not q.empty():
+            events.append(q.get_nowait())
+
+        exceeded = [e for e in events if isinstance(e, QueueDepthExceeded)]
+        assert len(exceeded) == 1, (
+            f"Expected 1 QueueDepthExceeded, got {len(exceeded)}: {events}"
+        )
+        assert exceeded[0].queue_name == "staging"
+        assert exceeded[0].depth >= 3
+        assert exceeded[0].threshold == 2
+
+    @pytest.mark.asyncio
+    async def test_queue_depth_normal_emitted_on_recovery(
+        self, ib_event_bus_fixture: EventBus
+    ) -> None:
+        """Draining staging below threshold emits QueueDepthNormal."""
+        eb = ib_event_bus_fixture
+        bus = InboundBus(queue_depth_threshold=2)
+        bus.register(Platform.TELEGRAM, maxsize=20)
+        await bus.start()
+        msg = _make_msg(Platform.TELEGRAM)
+        try:
+            # Cross threshold
+            bus.put(Platform.TELEGRAM, msg)
+            bus.put(Platform.TELEGRAM, msg)
+            bus.put(Platform.TELEGRAM, msg)
+            await asyncio.sleep(0.05)
+
+            # Now attach subscriber — only captures events from here onward
+            q = _attach_queue_ib(eb)
+
+            # Drain staging below threshold manually
+            for _ in range(3):
+                await asyncio.wait_for(bus._staging.get(), timeout=1.0)
+
+            # Send one more message — feeder moves it to staging (depth now 1 <= 2)
+            # and emits QueueDepthNormal because _depth_exceeded is still True
+            bus.put(Platform.TELEGRAM, msg)
+            await asyncio.sleep(0.05)
+        finally:
+            await bus.stop()
+
+        # Assert — at least one QueueDepthNormal event emitted
+        events = []
+        while not q.empty():
+            events.append(q.get_nowait())
+
+        normal = [e for e in events if isinstance(e, QueueDepthNormal)]
+        assert len(normal) >= 1, (
+            f"Expected at least 1 QueueDepthNormal event, got {len(normal)}: {events}"
+        )
+        assert normal[0].queue_name == "staging"

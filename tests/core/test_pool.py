@@ -18,6 +18,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.core.auth import TrustLevel
+from lyra.core.event_bus import EventBus, set_event_bus
+from lyra.core.events import AgentCompleted, AgentFailed, AgentIdle, AgentStarted
 from lyra.core.message import (
     InboundMessage,
     Response,
@@ -723,3 +725,117 @@ class TestPoolStreaming:
         ctx.dispatch_response.assert_awaited()
         response_arg: Response = ctx.dispatch_response.call_args[0][1]
         assert len(response_arg.content) > 0
+
+
+# ---------------------------------------------------------------------------
+# T5 — Pool event bus integration (AgentStarted, AgentCompleted, AgentIdle,
+#       AgentFailed)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def event_bus_fixture():
+    """Create and register an EventBus; tear down by resetting singleton."""
+    bus = EventBus()
+    set_event_bus(bus)
+    yield bus
+    set_event_bus(None)  # type: ignore[arg-type]
+
+
+def _subscribe_sync(bus: EventBus) -> "asyncio.Queue":
+    """Attach a raw queue to the bus and return it (no async needed)."""
+    q: asyncio.Queue = asyncio.Queue()
+    bus._subscribers.append(q)
+    return q
+
+
+class TestPoolEventBusIntegration:
+    """Pool emits monitoring events via EventBus (T5)."""
+
+    @pytest.mark.asyncio
+    async def test_pool_emits_started_completed_idle(
+        self,
+        ctx_mock: MagicMock,
+        event_bus_fixture: EventBus,
+    ) -> None:
+        """Successful cycle emits AgentStarted → AgentCompleted → AgentIdle in order.
+
+        AgentCompleted.duration_ms must be > 0.
+        """
+        # Arrange
+        bus = event_bus_fixture
+        q = _subscribe_sync(bus)
+
+        agent = FastAgent()
+        ctx_mock._agents["test_agent"] = agent
+        pool = Pool(
+            pool_id="test:main:chat:events",
+            agent_name="test_agent",
+            ctx=ctx_mock,
+            turn_timeout=60.0,
+            debounce_ms=0,
+        )
+        msg = make_msg("hi")
+
+        # Act
+        pool.submit(msg)
+        await _drain(pool)
+
+        # Assert — collect all emitted events
+        events = []
+        while not q.empty():
+            events.append(q.get_nowait())
+
+        types = [type(e) for e in events]
+        assert AgentStarted in types, f"AgentStarted missing; got {types}"
+        assert AgentCompleted in types, f"AgentCompleted missing; got {types}"
+        assert AgentIdle in types, f"AgentIdle missing; got {types}"
+
+        # Order: Started before Completed before Idle
+        started_idx = types.index(AgentStarted)
+        completed_idx = types.index(AgentCompleted)
+        idle_idx = types.index(AgentIdle)
+        assert started_idx < completed_idx < idle_idx
+
+        # duration_ms must be positive
+        completed_event: AgentCompleted = events[completed_idx]
+        assert completed_event.duration_ms > 0
+
+    @pytest.mark.asyncio
+    async def test_pool_emits_failed_on_exception(
+        self,
+        ctx_mock: MagicMock,
+        event_bus_fixture: EventBus,
+    ) -> None:
+        """Agent raising an exception emits AgentStarted → AgentFailed → AgentIdle."""
+        # Arrange
+        bus = event_bus_fixture
+        q = _subscribe_sync(bus)
+
+        agent = RaisingAgent()
+        ctx_mock._agents["test_agent"] = agent
+        pool = Pool(
+            pool_id="test:main:chat:failed",
+            agent_name="test_agent",
+            ctx=ctx_mock,
+            turn_timeout=60.0,
+            debounce_ms=0,
+        )
+        msg = make_msg("boom")
+
+        # Act
+        pool.submit(msg)
+        await _drain(pool)
+
+        # Assert — collect all emitted events
+        events = []
+        while not q.empty():
+            events.append(q.get_nowait())
+
+        types = [type(e) for e in events]
+        assert AgentStarted in types, f"AgentStarted missing; got {types}"
+        assert AgentFailed in types, f"AgentFailed missing; got {types}"
+        assert AgentIdle in types, f"AgentIdle missing; got {types}"
+
+        # AgentCompleted must NOT be present for a failed run
+        assert AgentCompleted not in types, "AgentCompleted must not appear on failure"

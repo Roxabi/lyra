@@ -743,12 +743,20 @@ class DiscordAdapter(discord.Client):
             else:
                 accumulated = self._msg("generic", GENERIC_ERROR_REPLY)
 
-        # Final edit with complete text (always runs, even after error)
+        # Final edit with complete text (always runs, even after error).
+        # If accumulated exceeds the limit, edit the placeholder with the first
+        # chunk and send any overflow chunks as follow-up messages.
         if accumulated:
+            final_chunks = self._render_text(accumulated)
             try:
-                await placeholder.edit(content=accumulated[:DISCORD_MAX_LENGTH])
+                await placeholder.edit(content=final_chunks[0])
             except Exception:
                 log.exception("Final edit failed")
+            for extra_chunk in final_chunks[1:]:
+                try:
+                    await messageable.send(extra_chunk)
+                except Exception:
+                    log.exception("Failed to send overflow chunk")
 
         # Re-raise stream error so OutboundDispatcher can record CB failure
         if stream_error is not None:

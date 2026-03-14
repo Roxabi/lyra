@@ -893,20 +893,29 @@ class TelegramAdapter:
             else:
                 accumulated = self._msg("generic", GENERIC_ERROR_REPLY)
 
-        # Final edit with complete text (always runs, even after stream error)
+        # Final edit with complete text (always runs, even after stream error).
+        # If accumulated exceeds the limit, edit the placeholder with the first
+        # chunk and send any overflow chunks as follow-up messages.
         if accumulated:
+            final_chunks = self._render_text(accumulated)
             try:
-                _escaped = _MARKDOWNV2_SPECIAL.sub(
-                    r"\\\1", accumulated[:TELEGRAM_MAX_LENGTH]
-                )
                 await self.bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=placeholder.message_id,
-                    text=_escaped,
+                    text=final_chunks[0],
                     parse_mode="MarkdownV2",
                 )
             except Exception:
                 log.exception("Final edit failed")
+            for extra_chunk in final_chunks[1:]:
+                try:
+                    await self.bot.send_message(
+                        chat_id=chat_id,
+                        text=extra_chunk,
+                        parse_mode="MarkdownV2",
+                    )
+                except Exception:
+                    log.exception("Failed to send overflow chunk")
 
         # Re-raise stream error so OutboundDispatcher can record CB failure
         if stream_error is not None:

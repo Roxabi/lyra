@@ -271,54 +271,72 @@ class DiscordAdapter(discord.Client):
         guild_id = str(member.guild.id)
         self._vsm.invalidate(guild_id)
 
-    async def _handle_voice_command(self, message: Any) -> bool:
-        """Detect and handle !join / !join stay / !leave voice commands.
+    async def _reply_safe(self, message: Any, text: str, *, label: str) -> None:
+        """Send a reply, logging a warning on failure."""
+        try:
+            await message.reply(text)
+        except Exception as exc:
+            log.warning(
+                "Failed to send %s reply for message_id=%s: %s",
+                label,
+                message.id,
+                exc,
+            )
 
-        Returns True if a voice command was handled (caller should return early).
-        Returns False if the message is not a voice command.
-        Voice commands are guild-only; callers must not invoke for DMs.
-        """
-        text = message.content.strip()
-        cmd = _command_parser.parse(text)
-        if cmd is None or cmd.name not in ("join", "leave"):
-            return False
-
-        guild = message.guild
-        guild_id = str(guild.id)
-
-        if cmd.name == "leave":
+    async def _handle_leave_command(self, message: Any, guild_id: str) -> None:
+        """Execute !leave: disconnect if active, reply with outcome."""
+        if self._vsm.get(guild_id) is None:
+            await self._reply_safe(
+                message, "I'm not in a voice channel.", label="not-in-channel"
+            )
+        else:
             await self._vsm.leave(guild_id)
-            return True
+            await self._reply_safe(message, "Left the voice channel.", label="leave")
 
-        # !join or !join stay — user must be in a voice channel
+    async def _handle_join_command(
+        self, message: Any, guild: Any, args: str
+    ) -> None:
+        """Execute !join / !join stay: connect to user's voice channel."""
         voice_state = getattr(message.author, "voice", None)
         if voice_state is None or voice_state.channel is None:
-            try:
-                await message.reply("Join a voice channel first.")
-            except Exception:
-                log.warning(
-                    "Failed to send voice-not-in-channel reply for message_id=%s",
-                    message.id,
-                )
-            return True
-
+            await self._reply_safe(
+                message, "Join a voice channel first.", label="not-in-voice"
+            )
+            return
         mode = (
             VoiceMode.PERSISTENT
-            if cmd.args.strip().lower() == "stay"
+            if args.strip().lower().split()[:1] == ["stay"]
             else VoiceMode.TRANSIENT
         )
         try:
             await self._vsm.join(guild, voice_state.channel, mode)
         except VoiceAlreadyActiveError:
-            try:
-                await message.reply("Already in a voice channel.")
-            except Exception:
-                log.warning(
-                    "Failed to send already-active reply for message_id=%s",
-                    message.id,
-                )
+            await self._reply_safe(
+                message, "Already in a voice channel.", label="already-active"
+            )
         except VoiceDependencyError as exc:
             log.error("Voice dependency error on join: %s", exc)
+            await self._reply_safe(
+                message, "Voice is not available right now.", label="voice-unavailable"
+            )
+
+    async def _handle_voice_command(self, message: Any) -> bool:
+        """Detect and handle !join / !join stay / !leave voice commands.
+
+        Returns True if a voice command was handled (caller should return early).
+        Returns False if the message is not a voice command.
+        Both ! and / prefixes are accepted (CommandParser handles both).
+        Voice commands are guild-only; callers must not invoke for DMs.
+        """
+        cmd = _command_parser.parse(message.content.strip())
+        if cmd is None or cmd.name not in ("join", "leave"):
+            return False
+        guild = message.guild
+        guild_id = str(guild.id)
+        if cmd.name == "leave":
+            await self._handle_leave_command(message, guild_id)
+        else:
+            await self._handle_join_command(message, guild, cmd.args)
         return True
 
     def normalize_audio(

@@ -19,6 +19,7 @@ dependencies = [
     # STT (via voiceCLI)
     "voicecli",
     "typer>=0.12",
+    "tomli-w>=1.0",
 ]
 
 [project.scripts]

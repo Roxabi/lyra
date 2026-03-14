@@ -6,9 +6,9 @@ from pathlib import Path
 
 # These imports will fail until cli.py exists — that's expected for RED phase
 from click.testing import Result
-from lyra.cli import app  # type: ignore[import-not-found]
 from typer.testing import CliRunner
 
+from lyra.cli import app  # type: ignore[import-not-found]
 from lyra.core.agent import load_agent_config
 
 # ---------------------------------------------------------------------------
@@ -20,19 +20,19 @@ runner = CliRunner()
 
 def _invoke_create(agents_dir: Path, input_str: str) -> Result:
     """Invoke `lyra-agent create --agents-dir <dir>` with the given stdin input."""
-    return runner.invoke(  # type: ignore[return-value]
+    return runner.invoke(
         app, ["create", "--agents-dir", str(agents_dir)], input=input_str
     )
 
 
 def _invoke_list(agents_dir: Path) -> Result:
     """Invoke `lyra-agent list --agents-dir <dir>`."""
-    return runner.invoke(app, ["list", "--agents-dir", str(agents_dir)])  # type: ignore[return-value]
+    return runner.invoke(app, ["list", "--agents-dir", str(agents_dir)])
 
 
 def _invoke_validate(agents_dir: Path, name: str) -> Result:
     """Invoke `lyra-agent validate <name> --agents-dir <dir>`."""
-    return runner.invoke(  # type: ignore[return-value]
+    return runner.invoke(
         app, ["validate", name, "--agents-dir", str(agents_dir)]
     )
 
@@ -158,6 +158,26 @@ class TestCreate:
         assert missing_dir.exists()
         assert (missing_dir / "newagent.toml").exists()
 
+    def test_invalid_max_turns_rejected(self, tmp_path: Path) -> None:
+        """Non-numeric max_turns should be rejected gracefully (no traceback)."""
+        bad_input = "\n".join([
+            "validagent",    # name
+            "claude-cli",    # backend
+            "claude-sonnet-4-5",  # model
+            "",              # cwd
+            "abc",           # max_turns — invalid
+            "",              # tools
+            "",              # persona
+            "N",             # show_intermediate
+            "N",             # smart_routing
+            "",              # plugins
+            "",
+        ])
+        result = _invoke_create(tmp_path, bad_input)
+        # Should not produce a Python traceback
+        assert "traceback" not in result.output.lower()
+        assert "valueerror" not in result.output.lower()
+
     def test_sr_forced_off_on_claude_cli(self, tmp_path: Path) -> None:
         """smart_routing forced off when backend=claude-cli + SR enabled by user."""
         # Arrange — user answers Y to smart routing but backend is claude-cli
@@ -190,6 +210,13 @@ class TestCreate:
         sr_section = data.get("agent", {}).get("smart_routing", {})
         assert sr_section.get("enabled") is False, (
             f"Expected smart_routing.enabled=false for claude-cli, got: {sr_section}"
+        )
+
+        # Assert — warning was printed to output
+        assert (
+            "warn" in result.output.lower()
+            or "disabling" in result.output.lower()
+            or "smart_routing" in result.output.lower()
         )
 
 
@@ -330,3 +357,17 @@ class TestValidate:
             or "invalid" in result.output.lower()
             or "parse" in result.output.lower()
         )
+
+    def test_sr_sdk_constraint_satisfied_exits_zero(self, tmp_path: Path) -> None:
+        """anthropic-sdk + SR enabled exits 0 with constraint-satisfied message."""
+        name = "sdkagent"
+        (tmp_path / f"{name}.toml").write_text(
+            f'[agent]\nmemory_namespace = "{name}"\n\n'
+            "[agent.smart_routing]\nenabled = true\n\n"
+            '[model]\nbackend = "anthropic-sdk"\nmodel = "claude-sonnet-4-6"\n\n'
+            '[prompt]\nsystem = "I use anthropic-sdk with SR."\n'
+        )
+        result = _invoke_validate(tmp_path, name)
+        assert result.exit_code == 0, result.output
+        assert "smart_routing" in result.output.lower()
+        assert "warn" not in result.output.lower()

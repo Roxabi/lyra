@@ -5,30 +5,24 @@ import re
 import tomllib
 from pathlib import Path
 
+import click
+import tomli_w
 import typer
 
-from lyra.core.agent import _AGENTS_DIR, load_agent_config
+from lyra.core.agent import AGENTS_DIR, load_agent_config
 
 app = typer.Typer(name="lyra-agent", help="Manage Lyra agent configurations.")
 
 _DEFAULT_TOOLS = ["Read", "Grep", "Glob", "WebFetch", "WebSearch"]
 
 _AGENTS_DIR_OPT = typer.Option(
-    _AGENTS_DIR, help="Directory where agent TOMLs live."
+    AGENTS_DIR, help="Directory where agent TOMLs live."
 )
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _toml_list(items: list[str]) -> str:
-    """Format a Python list as a TOML inline array."""
-    if not items:
-        return "[]"
-    inner = ", ".join(f'"{item}"' for item in items)
-    return f"[{inner}]"
 
 
 def _parse_tools(raw: str) -> list[str]:
@@ -58,8 +52,7 @@ def _prompt_sr_subconfig(
         return False, None, [], {}
 
     # anthropic-sdk: ask sub-prompts
-    history_raw = typer.prompt("SR history size (blank = 50)", default="")
-    history = int(history_raw) if history_raw.strip() else 50
+    history: int = typer.prompt("SR history size", default=50, type=int)
 
     high_raw = typer.prompt(
         "SR high-complexity commands (blank = none)", default=""
@@ -90,49 +83,43 @@ def _build_toml(  # noqa: PLR0913 — one arg per config key, intentional
     sr_models: dict[str, str],
     plugins: list[str],
 ) -> str:
-    """Render agent config as a TOML string."""
-    lines: list[str] = []
-
-    # [agent]
-    lines.append("[agent]")
-    lines.append(f'name = "{name}"')
-    lines.append(f'memory_namespace = "{name}"')
+    """Render agent config as a TOML string using tomli_w (no injection risk)."""
+    cfg: dict = {
+        "agent": {
+            "name": name,
+            "memory_namespace": name,
+            "permissions": [],
+            "show_intermediate": show_intermediate,
+        }
+    }
     if persona_raw.strip():
-        lines.append(f'persona = "{persona_raw.strip()}"')
-    lines.append("permissions = []")
-    lines.append(f"show_intermediate = {str(show_intermediate).lower()}")
-    lines.append("")
+        cfg["agent"]["persona"] = persona_raw.strip()
 
-    # [model]
-    lines.append("[model]")
-    lines.append(f'backend = "{backend}"')
-    lines.append(f'model = "{model}"')
+    cfg["model"] = {
+        "backend": backend,
+        "model": model,
+        "max_turns": max_turns,
+        "tools": tools,
+    }
     if cwd_raw.strip():
-        lines.append(f'cwd = "{cwd_raw.strip()}"')
-    lines.append(f"max_turns = {max_turns}")
-    lines.append(f"tools = {_toml_list(tools)}")
-    lines.append("")
+        cfg["model"]["cwd"] = cwd_raw.strip()
 
-    # [agent.smart_routing]
-    lines.append("[agent.smart_routing]")
-    lines.append(f"enabled = {str(sr_enabled).lower()}")
+    sr: dict = {"enabled": sr_enabled}
     if sr_enabled and sr_history is not None:
-        lines.append(f"history_size = {sr_history}")
+        sr["history_size"] = sr_history
     if sr_enabled and sr_high_cmds:
-        lines.append(f"high_complexity_commands = {_toml_list(sr_high_cmds)}")
+        sr["high_complexity_commands"] = sr_high_cmds
     if sr_enabled and sr_models:
-        lines.append("")
-        lines.append("[agent.smart_routing.models]")
-        for tier, model_id in sr_models.items():
-            lines.append(f'{tier} = "{model_id}"')
-    lines.append("")
+        sr["models"] = {
+            tier: sr_models[tier]
+            for tier in ("trivial", "simple", "moderate", "complex")
+            if tier in sr_models
+        }
+    cfg["agent"]["smart_routing"] = sr
 
-    # [plugins]
-    lines.append("[plugins]")
-    lines.append(f"enabled = {_toml_list(plugins)}")
-    lines.append("")
+    cfg["plugins"] = {"enabled": plugins}
 
-    return "\n".join(lines)
+    return tomli_w.dumps(cfg)
 
 
 # ---------------------------------------------------------------------------
@@ -161,14 +148,16 @@ def create(
         raise typer.Exit(1)
 
     # 2. Backend
-    backend = typer.prompt("Backend (claude-cli / anthropic-sdk)")
+    backend = typer.prompt(
+        "Backend",
+        type=click.Choice(["claude-cli", "anthropic-sdk"]),
+    )
     # 3. Model
     model = typer.prompt("Model", default="claude-sonnet-4-5")
     # 4. Working directory (blank = omit)
     cwd_raw = typer.prompt("Working directory (blank to skip)", default="")
     # 5. Max turns
-    max_turns_raw = typer.prompt("Max turns (blank = 10)", default="")
-    max_turns = int(max_turns_raw) if max_turns_raw.strip() else 10
+    max_turns: int = typer.prompt("Max turns", default=10, type=int)
     # 6. Tools
     tools_raw = typer.prompt(
         'Tools (blank=none, "default"=standard, or comma-separated)', default=""
@@ -232,7 +221,8 @@ def list_agents(
         agent_name = toml_file.stem
         try:
             cfg = load_agent_config(agent_name, agents_dir=agents_dir)
-        except Exception:
+        except Exception as e:
+            typer.echo(f"  [warn] skipped {toml_file.name}: {e}", err=True)
             continue
 
         sr_status = (
@@ -268,16 +258,15 @@ def validate(
 
     typer.echo("Schema: OK")
 
-    if (
-        cfg.smart_routing
-        and cfg.smart_routing.enabled
-        and cfg.model_config.backend != "anthropic-sdk"
-    ):
-        backend = cfg.model_config.backend
-        typer.echo(
-            f"Warning: smart_routing.enabled=true but backend={backend!r} "
-            "— smart routing will be ignored at runtime"
-        )
+    if cfg.smart_routing and cfg.smart_routing.enabled:
+        if cfg.model_config.backend != "anthropic-sdk":
+            backend = cfg.model_config.backend
+            typer.echo(
+                f"Warning: smart_routing.enabled=true but backend={backend!r} "
+                "— smart routing will be ignored at runtime"
+            )
+        else:
+            typer.echo("smart_routing: enabled (anthropic-sdk constraint satisfied)")
 
 
 # ---------------------------------------------------------------------------

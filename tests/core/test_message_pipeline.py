@@ -321,3 +321,25 @@ class TestPipelineIntegration:
 
         assert len(submitted) == 1
         assert submitted[0] is msg
+
+
+# ---------------------------------------------------------------------------
+# SC8 — Hub/Pipeline gate removal assertions (#245)
+# ---------------------------------------------------------------------------
+
+
+class TestGateMethodsRemoved:
+    """SC8: _pairing_gate_drop and _pairing_gate must not exist after #245."""
+
+    def test_hub_pairing_gate_drop_removed(self) -> None:
+        """Hub._pairing_gate_drop() must not exist (removed in #245, S4)."""
+        assert not hasattr(Hub, "_pairing_gate_drop"), (
+            "Hub._pairing_gate_drop must be removed — auth is resolved at adapter level"
+        )
+
+    def test_pipeline_pairing_gate_removed(self) -> None:
+        """MessagePipeline._pairing_gate() must not exist (removed in #245, S4)."""
+        assert not hasattr(MessagePipeline, "_pairing_gate"), (
+            "MessagePipeline._pairing_gate must be removed"
+            " — auth is resolved at adapter level"
+        )

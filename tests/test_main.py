@@ -58,8 +58,14 @@ def _make_mock_auth_pair():
     return MagicMock(), MagicMock()
 
 
-def _patch_all(monkeypatch: pytest.MonkeyPatch) -> list[Hub]:
-    """Patch __main__ globals to avoid real network calls. Returns hub list."""
+def _patch_all(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[list[Hub], MagicMock]:
+    """Patch __main__ globals to avoid real network calls.
+
+    Returns:
+        (captured_hubs, fake_auth_store) — callers can assert on the store mock.
+    """
     captured: list[Hub] = []
 
     class CapturingDcAdapter(_FakeDcAdapter):
@@ -104,7 +110,7 @@ def _patch_all(monkeypatch: pytest.MonkeyPatch) -> list[Hub]:
     )
     monkeypatch.setattr(main_mod, "TelegramAdapter", lambda **kwargs: _FakeTgAdapter())
     monkeypatch.setattr(main_mod, "DiscordAdapter", CapturingDcAdapter)
-    return captured
+    return captured, _fake_auth_store
 
 
 # ---------------------------------------------------------------------------
@@ -153,7 +159,7 @@ class TestHubWiring:
     async def test_registers_both_adapters(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        captured = _patch_all(monkeypatch)
+        captured, _ = _patch_all(monkeypatch)
         stop = asyncio.Event()
         stop.set()
 
@@ -166,7 +172,7 @@ class TestHubWiring:
     async def test_registers_wildcard_bindings(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        captured = _patch_all(monkeypatch)
+        captured, _ = _patch_all(monkeypatch)
         stop = asyncio.Event()
         stop.set()
 
@@ -190,12 +196,14 @@ class TestHubWiring:
 class TestGracefulShutdown:
     async def test_clean_exit_on_stop(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """_main() returns normally when stop fires — no exception raised."""
-        _patch_all(monkeypatch)
+        _, fake_store = _patch_all(monkeypatch)
         stop = asyncio.Event()
         stop.set()
 
-        # Must not raise
         await main_mod._main(_stop=stop)
+
+        # SC10: auth_store.close() must be awaited during shutdown
+        fake_store.close.assert_awaited_once()
 
     async def test_delayed_stop_cancels_tasks(
         self, monkeypatch: pytest.MonkeyPatch
@@ -211,6 +219,49 @@ class TestGracefulShutdown:
         trigger_task = asyncio.create_task(trigger())
         await main_mod._main(_stop=stop)
         await trigger_task  # ensure no lingering tasks
+
+    async def test_auth_store_boot_order(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """SC10 (S5): connect() and seed_from_config() called before from_config().
+
+        Boot constraint: cache must be warm before middleware reads from it.
+        """
+        call_log: list[str] = []
+
+        _, fake_store = _patch_all(monkeypatch)
+        fake_store.connect.side_effect = lambda: call_log.append("connect")
+        fake_store.seed_from_config.side_effect = (
+            lambda raw, section: call_log.append(f"seed:{section}")
+        )
+        # Re-patch from_config to record when it is called relative to connect/seed
+        from_config_calls: list[str] = []
+        monkeypatch.setattr(
+            AuthMiddleware,
+            "from_config",
+            classmethod(
+                lambda cls, raw, section, store=None: (
+                    from_config_calls.append(section)
+                    or MagicMock()
+                )
+            ),
+        )
+
+        stop = asyncio.Event()
+        stop.set()
+        await main_mod._main(_stop=stop)
+
+        assert "connect" in call_log, "auth_store.connect() was not called"
+        assert any(s.startswith("seed:") for s in call_log), (
+            "auth_store.seed_from_config() was not called"
+        )
+        # connect must precede all seed calls
+        connect_idx = call_log.index("connect")
+        for entry in call_log:
+            if entry.startswith("seed:"):
+                assert call_log.index(entry) > connect_idx, (
+                    f"seed_from_config({entry}) called before connect()"
+                )
 
 
 # ---------------------------------------------------------------------------

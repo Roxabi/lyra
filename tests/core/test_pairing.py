@@ -199,6 +199,38 @@ class TestPairingConfig:
 # ---------------------------------------------------------------------------
 
 
+class TestPairingManagerConnect:
+    """PairingManager.connect() — DB schema assertions (SC7)."""
+
+    async def test_paired_sessions_table_not_created(self) -> None:
+        """paired_sessions must not exist — replaced by AuthStore.grants (SC7)."""
+        pm = await make_pm()
+        assert pm._db is not None
+        async with pm._db.execute(
+            "SELECT name FROM sqlite_master"
+            " WHERE type='table' AND name='paired_sessions'"
+        ) as cur:
+            row = await cur.fetchone()
+        assert row is None, (
+            "paired_sessions table must not be created (removed in #245)"
+        )
+
+    async def test_pairing_codes_table_exists(self) -> None:
+        """pairing_codes table must still exist after connect()."""
+        pm = await make_pm()
+        assert pm._db is not None
+        async with pm._db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='pairing_codes'"
+        ) as cur:
+            row = await cur.fetchone()
+        assert row is not None, "pairing_codes table must still be created"
+
+
+# ---------------------------------------------------------------------------
+# TestGenerateCode
+# ---------------------------------------------------------------------------
+
+
 class TestGenerateCode:
     """generate_code() — AC1, AC10."""
 

@@ -246,7 +246,7 @@ docs/
   ROADMAP.md        — priorities and scope
   QUICKSTART.md     — developer setup guide
   vision.md         — design principles and constraints
-  architecture/adr/ — architecture decision records (18 ADRs)
+  architecture/adr/ — architecture decision records (22 ADRs)
 ```
 
 ## Documentation

@@ -48,27 +48,30 @@ endef
 lyra:
 ifeq ($(LYRA_CMD),stop)
 	$(ensure_hub)
-	@$(SUPERVISORCTL) stop lyra
+	@$(SUPERVISORCTL) stop lyra_telegram
+	@$(SUPERVISORCTL) stop lyra_discord
 else ifeq ($(LYRA_CMD),reload)
 	$(ensure_hub)
-	@$(SUPERVISORCTL) stop lyra
-	@sleep 1
-	@$(SUPERVISORCTL) start lyra
+	@$(SUPERVISORCTL) restart lyra_telegram
+	@$(SUPERVISORCTL) restart lyra_discord
 else ifeq ($(LYRA_CMD),logs)
 	$(ensure_hub)
-	@$(SUPERVISORCTL) tail -f lyra
+	@$(SUPERVISORCTL) tail -f lyra_telegram
 else ifeq ($(LYRA_CMD),errors)
 	$(ensure_hub)
-	@$(SUPERVISORCTL) tail -f lyra stderr
+	@$(SUPERVISORCTL) tail -f lyra_telegram stderr
 else ifeq ($(LYRA_CMD),status)
 	$(ensure_hub)
-	@$(SUPERVISORCTL) status
+	@$(SUPERVISORCTL) status lyra_telegram
+	@$(SUPERVISORCTL) status lyra_discord
 else ifeq ($(LYRA_CMD),)
 	@$(SUPERVISOR_START)
-	@$(SUPERVISORCTL) start lyra
+	@$(SUPERVISORCTL) start lyra_telegram
+	@$(SUPERVISORCTL) start lyra_discord
 else
 	$(ensure_hub)
-	@$(SUPERVISORCTL) $(LYRA_CMD) lyra
+	@$(SUPERVISORCTL) $(LYRA_CMD) lyra_telegram
+	@$(SUPERVISORCTL) $(LYRA_CMD) lyra_discord
 endif
 
 telegram:

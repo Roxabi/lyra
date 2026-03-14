@@ -159,10 +159,13 @@ MACHINE1_DIR=~/projects/lyra
 
 | Command | Description |
 |---------|-------------|
-| `make lyra` | Start Lyra locally (via supervisor) |
-| `make lyra stop` | Stop Lyra locally |
-| `make lyra status` | Check local service status |
-| `make lyra logs` | Tail local stdout logs |
+| `make lyra` | Start both adapters locally (telegram + discord) |
+| `make lyra stop` | Stop both adapters |
+| `make lyra reload` | Restart both adapters |
+| `make lyra status` | Status of both adapters |
+| `make lyra logs` | Tail lyra_telegram stdout |
+| `make telegram` | telegram adapter only (start\|stop\|reload\|logs\|errors) |
+| `make discord` | discord adapter only (start\|stop\|reload\|logs\|errors) |
 | `make deploy` | Deploy to Machine 1 (pull main + test + restart) |
 | `make remote stop` | Stop Lyra on Machine 1 |
 | `make remote status` | Check Machine 1 service status |

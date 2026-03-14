@@ -122,10 +122,9 @@ def _parse_telegram_bots(raw: dict[str, Any]) -> list[TelegramBotConfig]:
                 " — check that the env var referenced in 'token' is set"
             )
         if not webhook_secret:
-            log.warning(
-                "telegram bot_id=%r: webhook_secret is empty — "
-                "all webhook requests will be rejected",
-                bot_id,
+            raise ValueError(
+                f"telegram bot_id={bot_id!r}: webhook_secret is empty — "
+                "set the env var referenced in 'webhook_secret' before starting"
             )
 
         bots.append(

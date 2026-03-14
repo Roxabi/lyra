@@ -57,7 +57,10 @@ class AuthMiddleware:
         Returns:
             The resolved TrustLevel.
         """
-        if user_id is not None and user_id in self._user_map:
+        if user_id is None:
+            return TrustLevel.BLOCKED
+
+        if user_id in self._user_map:
             return self._user_map[user_id]
 
         if roles:

@@ -33,6 +33,7 @@ from lyra.config import (
     TelegramMultiConfig,
     load_multibot_config,
 )
+from lyra.core.admin import set_admin_user_ids
 from lyra.core.agent import Agent, AgentBase, SmartRoutingConfig, load_agent_config
 from lyra.core.auth import AuthMiddleware
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
@@ -950,8 +951,13 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
     single-bot implementation.
     """
     load_dotenv()
+    if not os.environ.get("LYRA_HEALTH_SECRET"):
+        log.warning(
+            "LYRA_HEALTH_SECRET is not set — /health returns minimal response only"
+        )
     raw_config = _load_raw_config()
     circuit_registry, admin_user_ids = _load_circuit_config(raw_config)
+    set_admin_user_ids(admin_user_ids)
     try:
         tg_multi_cfg, dc_multi_cfg = load_multibot_config(raw_config)
     except ValueError as exc:

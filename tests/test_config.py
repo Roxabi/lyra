@@ -113,19 +113,15 @@ class TestParseTelegramBots:
         assert len(bots) == 1
         assert bots[0].token == "resolved_token"
 
-    def test_missing_webhook_secret_warning(
-        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    def test_missing_webhook_secret_raises(
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # Arrange — valid token, no webhook_secret
         monkeypatch.delenv("TELEGRAM_BOT_USERNAME", raising=False)
         raw = self._raw({"bot_id": "lyra", "token": "tok123"})
-        # Act
-        with caplog.at_level(logging.WARNING, logger="lyra.config"):
-            bots = _parse_telegram_bots(raw)
-        # Assert — bot is included but warning was emitted
-        assert len(bots) == 1
-        assert bots[0].webhook_secret == ""
-        assert "webhook_secret" in caplog.text
+        # Act — empty webhook_secret must hard-fail at startup
+        with pytest.raises(ValueError, match="webhook_secret is empty"):
+            _parse_telegram_bots(raw)
 
     def test_two_bots_returned(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # Arrange

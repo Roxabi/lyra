@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import logging
 import os
 import re
@@ -167,7 +168,7 @@ def _make_verifier(secret: str):
 
     async def verify(request: Request) -> None:
         incoming = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
-        if not secret or incoming != secret:
+        if not secret or not hmac.compare_digest(incoming, secret):
             raise HTTPException(status_code=401, detail="Unauthorized")
 
     return verify
@@ -571,6 +572,13 @@ class TelegramAdapter:
         tmp_path = Path(tmp_str)
         try:
             await self.bot.download(file=file_id, destination=tmp_str)
+            actual_size = tmp_path.stat().st_size
+            if actual_size > self._max_audio_bytes:
+                tmp_path.unlink(missing_ok=True)
+                raise ValueError(
+                    f"Audio file too large after download: "
+                    f"{actual_size} > {self._max_audio_bytes} bytes"
+                )
         except Exception:
             tmp_path.unlink(missing_ok=True)
             raise

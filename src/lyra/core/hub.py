@@ -960,7 +960,14 @@ class MessagePipeline:
     async def _resolve_context(
         self, msg: InboundMessage, pool: Pool, pool_id: str
     ) -> None:
-        """Attempt reply-to-resume before pool.submit(). No-op on any failure."""
+        """Attempt reply-to-resume before pool.submit(). No-op on any failure.
+
+        # Note: pool._session_resume_fn is wired lazily by
+        # SimpleAgent._maybe_register_resume on the first process() call.
+        # If called before any process(), resume_session() is a no-op
+        # (fn is None). In practice, pools exist only after agent processing
+        # begins.
+        """
         if msg.reply_to_id is None:
             return
         resolver = self._hub._context_resolver
@@ -975,6 +982,14 @@ class MessagePipeline:
                 " (resolved=%r current=%r) — skipping",
                 resolved.pool_id,
                 pool_id,
+            )
+            return
+        # TODO(post-#67): replace with user_id ownership check once
+        # conversation_turns stores user_id. For now, restrict resume to
+        # private chats to prevent cross-user session access in group scopes.
+        if msg.platform_meta.get("is_group"):
+            log.info(
+                "reply-to-resume: group chat — skipping resume (cross-user risk)",
             )
             return
         if not pool.is_idle:
@@ -1006,7 +1021,14 @@ class MessagePipeline:
             return _DROP
         if await self._hub._circuit_breaker_drop(msg):
             return _DROP
-        await self._resolve_context(msg, pool, pool.pool_id)
+        try:
+            await self._resolve_context(msg, pool, pool.pool_id)
+        except Exception:
+            log.warning(
+                "reply-to-resume: _resolve_context failed"
+                " — continuing with active session",
+                exc_info=True,
+            )
         return PipelineResult(
             action=Action.SUBMIT_TO_POOL,
             pool=pool,

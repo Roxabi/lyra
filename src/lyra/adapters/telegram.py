@@ -451,7 +451,6 @@ class TelegramAdapter:
         reply_to_id = (
             str(reply_to_message.message_id)
             if reply_to_message is not None
-            and getattr(reply_to_message, "message_id", None) is not None
             else None
         )
         platform_meta = {

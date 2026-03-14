@@ -1433,3 +1433,59 @@ async def test_send_streaming_cancels_typing_task_after_placeholder() -> None:
     # Assert — typing task was cancelled when the placeholder was sent.
     mock_task.cancel.assert_called_once()
     assert 456 not in adapter._typing_tasks
+
+
+# ---------------------------------------------------------------------------
+# reply_to_id extraction in normalize()
+# ---------------------------------------------------------------------------
+
+
+def test_normalize_sets_reply_to_id_when_reply_present() -> None:
+    """normalize() sets reply_to_id from raw.reply_to_message.message_id."""
+    from types import SimpleNamespace
+
+    from lyra.adapters.telegram import TelegramAdapter
+
+    hub = MagicMock()
+    adapter = TelegramAdapter(
+        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+    )
+    reply_msg = SimpleNamespace(message_id=77)
+    aiogram_msg = SimpleNamespace(
+        chat=SimpleNamespace(id=123, type="private"),
+        from_user=SimpleNamespace(id=42, full_name="Alice", is_bot=False),
+        text="reply here",
+        date=datetime.now(timezone.utc),
+        message_thread_id=None,
+        message_id=88,
+        entities=None,
+        reply_to_message=reply_msg,
+    )
+
+    msg = adapter.normalize(aiogram_msg)
+
+    assert msg.reply_to_id == "77"
+
+
+def test_normalize_reply_to_id_none_when_no_reply() -> None:
+    """normalize() sets reply_to_id to None when raw.reply_to_message is absent."""
+    from lyra.adapters.telegram import TelegramAdapter
+
+    hub = MagicMock()
+    adapter = TelegramAdapter(
+        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+    )
+    aiogram_msg = SimpleNamespace(
+        chat=SimpleNamespace(id=123, type="private"),
+        from_user=SimpleNamespace(id=42, full_name="Alice", is_bot=False),
+        text="no reply",
+        date=datetime.now(timezone.utc),
+        message_thread_id=None,
+        message_id=88,
+        entities=None,
+        reply_to_message=None,
+    )
+
+    msg = adapter.normalize(aiogram_msg)
+
+    assert msg.reply_to_id is None

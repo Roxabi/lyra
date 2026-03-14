@@ -555,12 +555,14 @@ class TestCliPoolResumeAndReset:
         )
         pool._entries["pool:tg:chat:1"] = entry
 
+        _SESS = "abcdef01-2345-6789-abcd-ef0123456789"
+
         # Act — patch _session_file_exists to simulate a live session file
         with patch.object(pool, "_session_file_exists", return_value=True):
-            await pool.resume_and_reset("pool:tg:chat:1", "sess-abc")  # type: ignore[attr-defined]
+            await pool.resume_and_reset("pool:tg:chat:1", _SESS)  # type: ignore[attr-defined]
 
         # Assert — session stored for next spawn AND process killed
-        assert pool._resume_session_ids.get("pool:tg:chat:1") == "sess-abc"  # type: ignore[attr-defined]
+        assert pool._resume_session_ids.get("pool:tg:chat:1") == _SESS  # type: ignore[attr-defined]
         assert "pool:tg:chat:1" not in pool._entries
 
     async def test_resume_and_reset_skips_when_session_file_missing(self) -> None:

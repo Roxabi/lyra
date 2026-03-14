@@ -18,6 +18,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -26,6 +27,8 @@ from pathlib import Path
 from .agent import ModelConfig
 
 log = logging.getLogger(__name__)
+
+_SESSION_ID_RE = re.compile(r'^[0-9a-f-]{8,64}$')
 
 
 @dataclass
@@ -218,25 +221,20 @@ class CliPool:
         return any(_CLAUDE_PROJECTS.glob(f"*/{session_id}.jsonl"))
 
     async def resume_and_reset(self, pool_id: str, session_id: str) -> None:
-        """Kill process; next _spawn() will use --resume <session_id> (one-shot).
+        """Kill process; next _spawn() uses --resume <session_id> (one-shot).
 
-        No-op if the session file has been pruned from disk (Tier-2 fallback).
+        No-op on invalid session_id format or pruned session file (Tier-2).
         """
-        if not self._session_file_exists(session_id):
-            log.info(
-                "[pool:%s] resume_and_reset: session %r file not found on disk"
-                " — skipping (Tier-2 fallback)",
-                pool_id,
-                session_id,
-            )
+        if not _SESSION_ID_RE.match(session_id):
+            log.warning("[pool:%s] resume_and_reset: invalid session_id %r — skipping", pool_id, session_id)  # noqa: E501
             return
+        if not self._session_file_exists(session_id):
+            log.info("[pool:%s] resume_and_reset: session %r not on disk — skipping (Tier-2)", pool_id, session_id)  # noqa: E501
+            return
+        # is_idle verified by caller; race window is sub-millisecond.
         await self._kill(pool_id)
         self._resume_session_ids[pool_id] = session_id
-        log.info(
-            "[pool:%s] resume_and_reset: will resume session %s on next spawn",
-            pool_id,
-            session_id,
-        )
+        log.info("[pool:%s] resume_and_reset: will resume %s on next spawn", pool_id, session_id)  # noqa: E501
 
     # -------------------------------------------------------------------------
     # Internal
@@ -450,6 +448,9 @@ class CliPool:
             return CliResult(error=f"Read error: {type(exc).__name__}")
 
     async def _kill(self, pool_id: str) -> None:
+        # _cwd_overrides cleared here; switch_cwd() sets it after _kill.
+        # _resume_session_ids NOT cleared — resume_and_reset() sets it after
+        # calling _kill (one-shot handoff; clearing here would break it).
         entry = self._entries.pop(pool_id, None)
         self._cwd_overrides.pop(pool_id, None)
         if entry is None:

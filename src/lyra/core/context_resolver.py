@@ -30,7 +30,7 @@ class ContextResolver:
         if not self._db_path.exists():
             return None
         try:
-            async with aiosqlite.connect(str(self._db_path)) as db:
+            async with aiosqlite.connect(self._db_path) as db:
                 async with db.execute(
                     "SELECT session_id, pool_id FROM conversation_turns"
                     " WHERE reply_message_id = ? LIMIT 1",

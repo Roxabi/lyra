@@ -12,6 +12,7 @@ import os
 import re
 from collections.abc import AsyncIterator, Awaitable, Callable
 from io import BytesIO
+from typing import TYPE_CHECKING
 
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
@@ -21,6 +22,9 @@ from lyra.core.message import (
     OutboundAudioChunk,
     Platform,
 )
+
+if TYPE_CHECKING:
+    from lyra.core.messages import MessageManager
 
 log = logging.getLogger(__name__)
 
@@ -200,6 +204,36 @@ class _PartialAudioError(Exception):
         super().__init__(str(cause))
         self.audio = audio
         self.cause = cause
+
+
+def chunk_text(
+    text: str,
+    max_len: int,
+    escape_fn: Callable[[str], str] | None = None,
+) -> list[str]:
+    """Split *text* into chunks of at most *max_len* characters.
+
+    If *escape_fn* is provided it is applied to the entire text before
+    chunking (e.g. MarkdownV2 escaping), so *max_len* applies to the
+    post-escape length. Callers must account for any expansion the escape
+    function introduces. Returns [] for empty text.
+
+    Raises ValueError if *max_len* is not positive.
+    """
+    if max_len <= 0:
+        raise ValueError(f"chunk_text: max_len must be > 0, got {max_len!r}")
+    if escape_fn is not None:
+        text = escape_fn(text)
+    if not text:
+        return []
+    return [text[i : i + max_len] for i in range(0, len(text), max_len)]
+
+
+def resolve_msg(
+    manager: MessageManager | None, key: str, *, platform: str, fallback: str
+) -> str:
+    """Return a localised message string, falling back when no manager."""
+    return manager.get(key, platform=platform) if manager is not None else fallback
 
 
 def parse_reply_to_id(reply_to_id: str | None) -> int | None:

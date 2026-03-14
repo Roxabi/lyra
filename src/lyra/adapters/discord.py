@@ -20,8 +20,10 @@ from lyra.adapters._shared import (
     ATTACHMENT_EXTS_BASE,
     _PartialAudioError,
     buffer_audio_chunks,
+    chunk_text,
     parse_reply_to_id,
     push_to_hub_guarded,
+    resolve_msg,
     sanitize_filename,
     truncate_caption,
 )
@@ -193,10 +195,8 @@ class DiscordAdapter(discord.Client):
 
     def _msg(self, key: str, fallback: str) -> str:
         """Return a localised message string, falling back when no manager."""
-        return (
-            self._msg_manager.get(key, platform="discord")
-            if self._msg_manager
-            else fallback
+        return resolve_msg(
+            self._msg_manager, key, platform="discord", fallback=fallback
         )
 
     def _start_typing(self, send_to_id: int) -> None:
@@ -597,12 +597,7 @@ class DiscordAdapter(discord.Client):
 
     def _render_text(self, text: str) -> list[str]:
         """Split text into <=2000-char chunks (Discord limit)."""
-        if not text:
-            return []
-        return [
-            text[i : i + DISCORD_MAX_LENGTH]
-            for i in range(0, len(text), DISCORD_MAX_LENGTH)
-        ]
+        return chunk_text(text, DISCORD_MAX_LENGTH)
 
     def _render_buttons(self, buttons: list) -> discord.ui.View | None:
         """Convert list[Button] to discord.ui.View, or None if empty."""

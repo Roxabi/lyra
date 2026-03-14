@@ -270,3 +270,45 @@ class TestDiscordStreaming:
 
         last_edit = placeholder.edit.call_args
         assert len(last_edit.kwargs["content"]) <= 2000
+
+
+# ---------------------------------------------------------------------------
+# Bug fixes
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_telegram_streaming_fallback_sends_all_chunks() -> None:
+    """Streaming fallback must send ALL chunks when content exceeds 4096 chars.
+
+    Regression for: only chunks_rendered[0] was sent, truncating long responses.
+    """
+    from lyra.adapters.telegram import TelegramAdapter
+
+    hub = MagicMock()
+    hub.inbound_bus = MagicMock()
+    adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub, webhook_secret="s")
+    fallback_msgs = [MagicMock(message_id=i) for i in range(1, 4)]
+    bot = AsyncMock()
+    # First send_message raises (placeholder) → triggers fallback path
+    bot.send_message = AsyncMock(
+        side_effect=[RuntimeError("placeholder fail")] + fallback_msgs
+    )
+    adapter.bot = bot
+
+    msg = make_tg_message()
+
+    # Content that renders to 3 chunks of 4096 chars each (after escaping)
+    long_text = "a" * (4096 * 3)
+
+    async def long_chunks():
+        yield long_text
+
+    outbound = MagicMock()
+    outbound.metadata = {}
+    await adapter.send_streaming(msg, long_chunks(), outbound)
+
+    # Placeholder attempt + 3 fallback chunks = 4 total send_message calls
+    assert bot.send_message.await_count == 4
+    # reply_message_id set to the LAST chunk's message_id
+    assert outbound.metadata["reply_message_id"] == 3

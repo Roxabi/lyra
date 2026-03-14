@@ -99,7 +99,7 @@ All configuration is via `.env` (copy `.env.example` to get started). Key variab
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `TELEGRAM_TOKEN` | ✅ | Bot token from [@BotFather](https://t.me/BotFather) |
-| `TELEGRAM_BOT_USERNAME` | ✅ | Bot username (e.g. `lyra_bot`) |
+| `TELEGRAM_BOT_USERNAME` | optional | Bot username (e.g. `lyra_bot`) — defaults to `lyra_bot` |
 | `TELEGRAM_WEBHOOK_SECRET` | ✅ | Any random string — used to verify webhook payloads |
 | `TELEGRAM_ADMIN_CHAT_ID` | optional | Chat ID that receives owner-level trust |
 

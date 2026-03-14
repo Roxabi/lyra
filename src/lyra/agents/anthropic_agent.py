@@ -181,8 +181,6 @@ class AnthropicAgent(AgentBase):
     async def process(
         self, msg: InboundMessage, pool: Pool, *, on_intermediate=None
     ) -> Response:
-        """Dispatch /voice commands or delegate to the LLM pipeline."""
-        r = await self._handle_voice_command(msg)
-        if r is not None:
-            return r
+        """Rewrite /voice commands as voice-modality LLM requests, then process."""
+        msg = self._handle_voice_command(msg) or msg
         return await self._process_llm(msg, pool, on_intermediate=on_intermediate)

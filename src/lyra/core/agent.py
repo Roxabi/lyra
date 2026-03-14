@@ -687,13 +687,16 @@ class AgentBase(ABC):
         """Hook for subclasses to inject extra CommandRouter constructor kwargs."""
         return {}
 
-    async def _handle_voice_command(self, msg: InboundMessage) -> "Response | None":
-        """Handle a /voice command if TTS is configured. Returns None to fall through.
+    def _handle_voice_command(self, msg: "InboundMessage") -> "InboundMessage | None":
+        """Rewrite a /voice command as a voice-modality LLM request.
 
         Pre-router called at the top of each agent's process(). If the message
-        starts with "/voice <text>" and self._tts is set, synthesizes speech and
-        returns a Response with audio set. Returns None for all other messages
-        (text or bare /voice with no args) so normal processing continues.
+        starts with "/voice <prompt>", strips the prefix, injects a spoken-language
+        hint, sets modality="voice", and returns the rewritten message so the normal
+        LLM pipeline runs. The hub's dispatch_response() will auto-TTS the reply.
+
+        Returns None when the message is not a /voice command (fall-through).
+        TTS must be configured (self._tts is not None) for this to activate.
         """
         if self._tts is None:
             return None
@@ -701,22 +704,17 @@ class AgentBase(ABC):
         _VOICE_PREFIX = "/voice "
         if not stripped.lower().startswith(_VOICE_PREFIX):
             return None
-        text = stripped[len(_VOICE_PREFIX) :].strip()
-        if not text:
+        prompt = stripped[len(_VOICE_PREFIX) :].strip()
+        if not prompt:
             return None
-        from .message import OutboundAudio, Response
+        import dataclasses
 
-        try:
-            result = await self._tts.synthesize(text)
-            audio = OutboundAudio(
-                audio_bytes=result.audio_bytes,
-                mime_type=result.mime_type,
-                duration_ms=result.duration_ms,
-            )
-            return Response(content="", audio=audio)
-        except Exception:
-            log.error("TTS synthesis failed for /voice command", exc_info=True)
-            return Response(content="Sorry, I couldn't generate audio.")
+        # Prepend spoken-language hint so LLM avoids markdown in audio replies
+        _hint = "[Voice \u2014 reply in natural spoken language, no markdown]"
+        voice_hint = f"{_hint}\n{prompt}"
+        return dataclasses.replace(
+            msg, text=voice_hint, text_raw=prompt, modality="voice"
+        )
 
     # S3 — system prompt caching (issue #83)
 

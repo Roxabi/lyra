@@ -139,10 +139,8 @@ class SimpleAgent(AgentBase):
         self._maybe_register_reset(pool)
         self._maybe_register_resume(pool)
 
-        # /voice pre-router — handled by AgentBase
-        r = await self._handle_voice_command(msg)
-        if r is not None:
-            return r
+        # /voice pre-router: rewrite as voice-modality LLM request
+        msg = self._handle_voice_command(msg) or msg
 
         # Handle audio messages — attachments with type="audio"
         audio_attachment = next((a for a in msg.attachments if a.type == "audio"), None)

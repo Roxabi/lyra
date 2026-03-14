@@ -1,5 +1,11 @@
 """Tests for /voice command handling in AnthropicAgent, SimpleAgent,
 and Telegram adapter MIME routing (V4 of issue #167).
+
+/voice <prompt> rewrites the message as a voice-modality LLM request:
+- strips the /voice prefix
+- injects a spoken-language hint
+- sets modality="voice"
+- falls through to the normal LLM pipeline (TTS is done by hub.dispatch_response)
 """
 
 from __future__ import annotations
@@ -16,7 +22,6 @@ from lyra.core.auth import TrustLevel
 from lyra.core.message import InboundMessage, OutboundAudio, Response
 from lyra.core.pool import Pool
 from lyra.core.runtime_config import RuntimeConfig
-from lyra.tts import SynthesisResult
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -70,27 +75,74 @@ def _make_mock_provider() -> MagicMock:
     return provider
 
 
-def _make_synthesis_result() -> SynthesisResult:
-    return SynthesisResult(
-        audio_bytes=b"fake_wav_data",
-        mime_type="audio/wav",
-        duration_ms=500,
-    )
-
-
-def _make_tts_mock(result: SynthesisResult | None = None) -> AsyncMock:
+def _make_tts_mock() -> AsyncMock:
     tts = AsyncMock()
-    tts.synthesize = AsyncMock(return_value=result or _make_synthesis_result())
+    tts.synthesize = AsyncMock()
     return tts
 
 
 # ---------------------------------------------------------------------------
-# AnthropicAgent /voice pre-router
+# _handle_voice_command unit tests
+# ---------------------------------------------------------------------------
+
+
+class TestHandleVoiceCommand:
+    """AgentBase._handle_voice_command() rewrites /voice messages."""
+
+    def _make_agent(self, tts: object | None = None) -> AnthropicAgent:
+        return AnthropicAgent(
+            config=_make_agent_config(),
+            provider=_make_mock_provider(),
+            runtime_config=RuntimeConfig(),
+            tts=tts,  # type: ignore[arg-type]
+        )
+
+    def test_returns_rewritten_message_with_voice_modality(self) -> None:
+        """/voice hello → message rewritten with modality="voice" and hint prepended."""
+        agent = self._make_agent(tts=_make_tts_mock())
+        msg = _make_message("/voice hello")
+
+        result = agent._handle_voice_command(msg)
+
+        assert result is not None
+        assert result.modality == "voice"
+        assert result.text_raw == "hello"
+        assert "hello" in result.text
+        assert "[Voice response" in result.text
+
+    def test_strips_prefix_correctly(self) -> None:
+        """The raw prompt (without hint) is preserved in text_raw."""
+        agent = self._make_agent(tts=_make_tts_mock())
+        msg = _make_message("/voice What is the weather today?")
+
+        result = agent._handle_voice_command(msg)
+
+        assert result is not None
+        assert result.text_raw == "What is the weather today?"
+
+    def test_returns_none_for_non_voice_message(self) -> None:
+        """Regular messages return None (no rewrite)."""
+        agent = self._make_agent(tts=_make_tts_mock())
+        assert agent._handle_voice_command(_make_message("hello")) is None
+
+    def test_returns_none_when_tts_not_configured(self) -> None:
+        """When tts=None, /voice messages are not intercepted."""
+        agent = self._make_agent(tts=None)
+        assert agent._handle_voice_command(_make_message("/voice hello")) is None
+
+    def test_returns_none_for_bare_voice_no_args(self) -> None:
+        """Bare '/voice' with no prompt returns None (falls through to LLM as-is)."""
+        agent = self._make_agent(tts=_make_tts_mock())
+        assert agent._handle_voice_command(_make_message("/voice")) is None
+
+
+# ---------------------------------------------------------------------------
+# AnthropicAgent.process() integration
 # ---------------------------------------------------------------------------
 
 
 class TestAnthropicAgentVoiceCommand:
-    """AnthropicAgent: /voice command intercepted before LLM dispatch."""
+    """AnthropicAgent: /voice rewrites message and passes to LLM pipeline."""
 
     def _make_agent(self, tts: object | None = None) -> AnthropicAgent:
         return AnthropicAgent(
@@ -101,105 +153,72 @@ class TestAnthropicAgentVoiceCommand:
         )
 
     @pytest.mark.asyncio
-    async def test_voice_command_returns_audio_response(self) -> None:
-        """When tts is set and msg.text="/voice hello", process() returns
-        Response with .audio set and .content == "".
-        """
-        # Arrange
+    async def test_voice_command_passes_to_llm_with_voice_modality(self) -> None:
+        """/voice hello → LLM is called with modality="voice", no direct TTS."""
         tts = _make_tts_mock()
         agent = self._make_agent(tts=tts)
         msg = _make_message("/voice hello")
         pool = _make_pool()
+        sentinel = Response(content="llm voice reply")
 
-        # Act
-        response = await agent.process(msg, pool)
+        with patch.object(agent, "_process_llm", return_value=sentinel) as mock_llm:
+            response = await agent.process(msg, pool)
 
-        # Assert
-        assert isinstance(response, Response)
-        assert response.content == ""
-        assert response.audio is not None
-        assert isinstance(response.audio, OutboundAudio)
-        assert response.audio.audio_bytes == b"fake_wav_data"
-        assert response.audio.mime_type == "audio/wav"
-        tts.synthesize.assert_awaited_once_with("hello")
-
-    @pytest.mark.asyncio
-    async def test_voice_command_text_fallback_on_tts_failure(self) -> None:
-        """When tts.synthesize() raises RuntimeError, process() returns
-        Response(content="Sorry, I couldn't generate audio.").
-        """
-        # Arrange
-        tts = AsyncMock()
-        tts.synthesize = AsyncMock(side_effect=RuntimeError("TTS failure"))
-        agent = self._make_agent(tts=tts)
-        msg = _make_message("/voice hello")
-        pool = _make_pool()
-
-        # Act
-        response = await agent.process(msg, pool)
-
-        # Assert
-        assert isinstance(response, Response)
-        assert response.content == "Sorry, I couldn't generate audio."
-        assert response.audio is None
+        mock_llm.assert_awaited_once()
+        called_msg = mock_llm.call_args[0][0]
+        assert called_msg.modality == "voice"
+        assert called_msg.text_raw == "hello"
+        assert response.content == "llm voice reply"
+        tts.synthesize.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_non_voice_message_not_intercepted(self) -> None:
-        """When msg.text="hello" (no /voice prefix), /voice branch is NOT taken;
-        normal LLM processing returns its sentinel Response.
-        """
-        # Arrange
+        """Regular messages are passed to LLM unmodified."""
         tts = _make_tts_mock()
         agent = self._make_agent(tts=tts)
         msg = _make_message("hello")
         pool = _make_pool()
         sentinel = Response(content="sentinel_llm_reply")
 
-        # Act
         with patch.object(agent, "_process_llm", return_value=sentinel) as mock_llm:
             response = await agent.process(msg, pool)
 
-        # Assert
-        mock_llm.assert_awaited_once()
+        called_msg = mock_llm.call_args[0][0]
+        assert called_msg.modality is None
         assert response.content == "sentinel_llm_reply"
         tts.synthesize.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_voice_command_bare_no_args_not_intercepted(self) -> None:
-        """/voice with no trailing text (bare "/voice") falls through to LLM.
-
-        The pre-router uses startswith("/voice ") — trailing space required.
-        A bare "/voice" with no space+args does not match and is not intercepted.
-        """
+    async def test_voice_command_bare_no_args_falls_through_unmodified(self) -> None:
+        """Bare '/voice' with no args goes to LLM as-is (modality unchanged)."""
         tts = _make_tts_mock()
         agent = self._make_agent(tts=tts)
         msg = _make_message("/voice")
         pool = _make_pool()
         sentinel = Response(content="llm_handled_bare_voice")
 
-        with patch.object(agent, "_process_llm", return_value=sentinel):
+        with patch.object(agent, "_process_llm", return_value=sentinel) as mock_llm:
             response = await agent.process(msg, pool)
 
+        called_msg = mock_llm.call_args[0][0]
+        assert called_msg.modality is None
         tts.synthesize.assert_not_awaited()
         assert response.content == "llm_handled_bare_voice"
 
     @pytest.mark.asyncio
-    async def test_voice_command_with_no_tts_not_intercepted(self) -> None:
-        """When tts=None, msg.text="/voice hello" is passed through to
-        normal LLM processing.
-        """
-        # Arrange
+    async def test_voice_command_with_no_tts_falls_through_unmodified(self) -> None:
+        """When tts=None, /voice hello is passed to LLM unmodified (no rewrite)."""
         agent = self._make_agent(tts=None)
         msg = _make_message("/voice hello")
         pool = _make_pool()
         sentinel = Response(content="llm_handled_voice")
 
-        # Act
         with patch.object(agent, "_process_llm", return_value=sentinel) as mock_llm:
             response = await agent.process(msg, pool)
 
-        # Assert
-        mock_llm.assert_awaited_once()
+        called_msg = mock_llm.call_args[0][0]
+        assert called_msg.modality is None
+        assert called_msg.text == "/voice hello"
         assert response.content == "llm_handled_voice"
 
 
@@ -209,7 +228,7 @@ class TestAnthropicAgentVoiceCommand:
 
 
 class TestSimpleAgentVoiceCommand:
-    """SimpleAgent: /voice command intercepted before provider dispatch."""
+    """SimpleAgent: /voice rewrites message as voice-modality LLM request."""
 
     def _make_agent(self, tts: object | None = None) -> SimpleAgent:
         return SimpleAgent(
@@ -220,31 +239,25 @@ class TestSimpleAgentVoiceCommand:
         )
 
     @pytest.mark.asyncio
-    async def test_simple_agent_voice_command_returns_audio(self) -> None:
-        """When tts is set and msg.text="/voice hello", process() returns
-        Response with .audio set and .content == "".
-        """
-        # Arrange
+    async def test_simple_agent_voice_command_passes_to_llm(self) -> None:
+        """SimpleAgent: /voice hello → LLM processes it with modality="voice"."""
         tts = _make_tts_mock()
         agent = self._make_agent(tts=tts)
         msg = _make_message("/voice hello")
         pool = _make_pool()
 
-        # Act
+        # SimpleAgent calls provider directly; LLM returns "llm reply" (from mock)
         response = await agent.process(msg, pool)
 
-        # Assert
+        # TTS is NOT called directly by the pre-router
+        tts.synthesize.assert_not_awaited()
+        # LLM text response is returned (hub will TTS it via modality="voice")
         assert isinstance(response, Response)
-        assert response.content == ""
-        assert response.audio is not None
-        assert isinstance(response.audio, OutboundAudio)
-        assert response.audio.audio_bytes == b"fake_wav_data"
-        assert response.audio.mime_type == "audio/wav"
-        tts.synthesize.assert_awaited_once_with("hello")
+        assert response.audio is None
 
     @pytest.mark.asyncio
     async def test_simple_agent_voice_bare_no_args_not_intercepted(self) -> None:
-        """/voice with no trailing text falls through to provider (not intercepted)."""
+        """/voice with no trailing text falls through to provider unmodified."""
         tts = _make_tts_mock()
         agent = self._make_agent(tts=tts)
         msg = _make_message("/voice")
@@ -252,28 +265,7 @@ class TestSimpleAgentVoiceCommand:
         result = await agent.process(msg, pool)
 
         tts.synthesize.assert_not_awaited()
-        # Falls through to provider (which returns LLM response for "/voice" text)
         assert result.audio is None
-
-    @pytest.mark.asyncio
-    async def test_simple_agent_voice_fallback_on_failure(self) -> None:
-        """When tts.synthesize() raises RuntimeError, process() returns
-        Response(content="Sorry, I couldn't generate audio.").
-        """
-        # Arrange
-        tts = AsyncMock()
-        tts.synthesize = AsyncMock(side_effect=RuntimeError("TTS backend error"))
-        agent = self._make_agent(tts=tts)
-        msg = _make_message("/voice hello")
-        pool = _make_pool()
-
-        # Act
-        response = await agent.process(msg, pool)
-
-        # Assert
-        assert isinstance(response, Response)
-        assert response.content == "Sorry, I couldn't generate audio."
-        assert response.audio is None
 
 
 # ---------------------------------------------------------------------------

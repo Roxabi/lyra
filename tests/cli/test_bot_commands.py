@@ -16,6 +16,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from typer.testing import CliRunner
 
 from lyra.cli_bot import bot_app
@@ -26,6 +27,19 @@ from lyra.core.credential_store import CredentialStore, LyraKeyring
 # ---------------------------------------------------------------------------
 
 runner = CliRunner()
+
+
+@pytest.fixture(autouse=True)
+def restore_event_loop():
+    """Restore a fresh event loop after each test.
+
+    asyncio.run() closes the event loop on return. CLI commands call
+    asyncio.run() internally, leaving the main thread without a current
+    event loop and breaking subsequent tests that call asyncio.get_event_loop().
+    """
+    yield
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
 
 async def _setup_store(

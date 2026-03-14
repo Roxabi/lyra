@@ -260,7 +260,7 @@ class Pool:
             msg = MessageDebouncer.merge(buffer)
             # Loop to re-dispatch with combined context.
 
-    async def _guarded_process_one(
+    async def _guarded_process_one(  # noqa: C901 — event emission branches add inherent complexity
         self, msg: InboundMessage, agent: "AgentBase"
     ) -> None:
         """Wrap _process_one with timeout and error handling."""
@@ -268,6 +268,7 @@ class Pool:
         from .events import AgentCompleted, AgentFailed, AgentIdle, AgentStarted
 
         _start = time.monotonic()
+        _cancelled = False
         if bus := get_event_bus():
             bus.emit(AgentStarted(agent_id=self.pool_id, scope_id=msg.scope_id))
         try:
@@ -301,6 +302,7 @@ class Pool:
             # Distinguish /stop cancellation (from pool.cancel()) vs
             # debounce cancel-in-flight.  Cancel-in-flight catches this
             # inside _process_with_cancel; /stop propagates outward.
+            _cancelled = True
             raise
         except Exception as exc:
             log.exception("unhandled error in pool %s: %s", self.pool_id, exc)
@@ -310,8 +312,11 @@ class Pool:
             if bus := get_event_bus():
                 bus.emit(AgentFailed(agent_id=self.pool_id, error=str(exc)))
         finally:
-            if bus := get_event_bus():
-                bus.emit(AgentIdle(agent_id=self.pool_id, finished_at=time.monotonic()))
+            if not _cancelled:
+                if bus := get_event_bus():
+                    bus.emit(
+                        AgentIdle(agent_id=self.pool_id, finished_at=time.monotonic())
+                    )
 
     async def _process_one(self, msg: InboundMessage, agent: "AgentBase") -> None:
         """Run agent.process and dispatch result. Records CB success.

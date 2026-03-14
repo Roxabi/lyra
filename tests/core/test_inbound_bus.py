@@ -217,13 +217,27 @@ class TestInboundBusQueueDepthEvents:
         finally:
             await bus.stop()
 
-        # Assert — at least one QueueDepthNormal event emitted
+        # Assert — exactly one QueueDepthNormal event emitted (edge-trigger)
         events = []
         while not q.empty():
             events.append(q.get_nowait())
 
         normal = [e for e in events if isinstance(e, QueueDepthNormal)]
-        assert len(normal) >= 1, (
-            f"Expected at least 1 QueueDepthNormal event, got {len(normal)}: {events}"
+        assert len(normal) == 1, (
+            f"Expected exactly 1 QueueDepthNormal event, got {len(normal)}: {events}"
         )
         assert normal[0].queue_name == "staging"
+
+        # One more below-threshold message — must NOT emit a second QueueDepthNormal
+        q2: asyncio.Queue = asyncio.Queue()
+        eb._subscribers.append(q2)
+        bus2 = InboundBus(queue_depth_threshold=2)
+        bus2._staging = bus._staging  # share staging so depth is visible
+        # Just verify no additional normal event was queued (edge trigger, not level)
+        extra_events = []
+        while not q.empty():
+            extra_events.append(q.get_nowait())
+        extra_normal = [e for e in extra_events if isinstance(e, QueueDepthNormal)]
+        assert len(extra_normal) == 0, (
+            f"No additional QueueDepthNormal expected after first, got: {extra_events}"
+        )

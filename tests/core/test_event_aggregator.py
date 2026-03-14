@@ -1,6 +1,9 @@
 """Tests for EventAggregator dedup state machine."""
 from __future__ import annotations
 
+import asyncio
+import contextlib
+
 import pytest
 
 from lyra.core.event_bus import EventAggregator, EventBus, set_event_bus
@@ -105,3 +108,48 @@ class TestEventAggregatorDedup:
         await agg._handle(event)  # duplicate
         assert len(actions) == 1
         assert actions[0].new_state == "open"
+
+
+class TestEventAggregatorCrashRecovery:
+    @pytest.mark.asyncio
+    async def test_aggregator_continues_after_handler_exception(self, reset_bus):
+        """EventAggregator survives an exception in _trigger_monitoring_action."""
+        bus = EventBus()
+        set_event_bus(bus)
+        agg = EventAggregator(bus)
+
+        async def always_raises(event):  # noqa: ARG001
+            raise RuntimeError("monitoring action failed")
+
+        agg._trigger_monitoring_action = always_raises
+
+        task = asyncio.create_task(agg.run())
+        try:
+            # First event — causes exception in _trigger_monitoring_action
+            bus.emit(AgentFailed(agent_id="test", error="boom"))
+            await asyncio.sleep(0.05)
+
+            # Aggregator must still be running after first exception
+            assert not task.done(), (
+                "Aggregator task should still be running after first exception"
+            )
+
+            # Second event with different key — aggregator must process it too
+            second_processed = False
+
+            async def track_second(event):  # noqa: ARG001
+                nonlocal second_processed
+                second_processed = True
+
+            agg._trigger_monitoring_action = track_second
+            bus.emit(AgentFailed(agent_id="other", error="boom2"))
+            await asyncio.sleep(0.05)
+
+            assert second_processed, (
+                "Aggregator should have processed second event after first exception"
+            )
+            assert not task.done(), "Aggregator task should still be running"
+        finally:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task

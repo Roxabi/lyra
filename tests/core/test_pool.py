@@ -749,6 +749,84 @@ def _subscribe_sync(bus: EventBus) -> "asyncio.Queue":
     return q
 
 
+class TestPoolUnknownAgentDrain:
+    """When get_agent returns None, inbox is drained gracefully (no crash)."""
+
+    @pytest.mark.asyncio
+    async def test_process_loop_unknown_agent_drains_inbox(
+        self, ctx_mock: MagicMock
+    ) -> None:
+        """When the agent is not found, queued messages are drained without dispatch."""
+        ctx_mock.get_agent.return_value = None  # no agent registered
+
+        pool = Pool(
+            pool_id="test:main:chat:noagent",
+            agent_name="test_agent",
+            ctx=ctx_mock,
+            turn_timeout=60.0,
+            debounce_ms=0,
+        )
+
+        msg1 = make_msg("msg1")
+        msg2 = make_msg("msg2")
+        pool._inbox.put_nowait(msg1)
+        pool._inbox.put_nowait(msg2)
+
+        # Start the processing loop directly and let it run
+        task = asyncio.create_task(pool._process_loop())
+        await asyncio.sleep(0.1)
+
+        # dispatch_response should never be called — no agent found
+        ctx_mock.dispatch_response.assert_not_called()
+        # Inbox should be empty (drained)
+        assert pool._inbox.empty()
+        assert task.done()
+
+
+class TestPoolCancelInboxRace:
+    """cancel-in-flight: agent_task and inbox_waiter complete simultaneously."""
+
+    @pytest.mark.asyncio
+    async def test_process_with_cancel_inbox_race(self, ctx_mock: MagicMock) -> None:
+        """Two messages submitted rapidly — both are processed (second via re-queue)."""
+        results: list[str] = []
+
+        class RecordingAgent:
+            name = "test_agent"
+
+            async def process(
+                self,
+                msg: InboundMessage,
+                pool: Pool,
+                *,
+                on_intermediate=None,
+            ) -> Response:
+                results.append(msg.text)
+                return Response(content="ok")
+
+        agent = RecordingAgent()
+        ctx_mock._agents["test_agent"] = agent
+        pool = Pool(
+            pool_id="test:main:chat:race",
+            agent_name="test_agent",
+            ctx=ctx_mock,
+            turn_timeout=60.0,
+            debounce_ms=0,
+        )
+
+        msg1 = make_msg("first")
+        msg2 = make_msg("second")
+        pool.submit(msg1)
+        pool.submit(msg2)
+
+        await _drain(pool, timeout=3.0)
+
+        # Both messages should have been seen (may be merged into one turn by debouncer)
+        combined = "\n".join(results)
+        assert "first" in combined
+        assert "second" in combined
+
+
 class TestPoolEventBusIntegration:
     """Pool emits monitoring events via EventBus (T5)."""
 

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import AsyncGenerator
 
 from .events import (
@@ -52,6 +53,7 @@ class EventBus:
     def __init__(self) -> None:
         self._subscribers: list[asyncio.Queue[MonitoringEvent]] = []
         self.dropped_events: int = 0
+        self.dropped_events_since: float = time.monotonic()
 
     def emit(self, event: MonitoringEvent) -> None:
         """Emit an event to all subscribers.
@@ -59,7 +61,7 @@ class EventBus:
         Uses put_nowait() — never blocks. Increments dropped_events if a
         subscriber queue is at capacity.
         """
-        for queue in self._subscribers:
+        for queue in list(self._subscribers):
             try:
                 queue.put_nowait(event)
             except asyncio.QueueFull:
@@ -86,6 +88,19 @@ class EventBus:
                 self._subscribers.remove(queue)
             except ValueError:
                 pass
+
+    def reset_dropped_events(self) -> tuple[int, float]:
+        """Return and reset the dropped events counter.
+
+        Returns:
+            Tuple of (count, since) where count is the number of dropped events
+            since the last reset and since is the monotonic timestamp of the
+            previous reset.
+        """
+        count, since = self.dropped_events, self.dropped_events_since
+        self.dropped_events = 0
+        self.dropped_events_since = time.monotonic()
+        return count, since
 
 
 class EventAggregator:
@@ -181,11 +196,8 @@ class EventAggregator:
 _bus: EventBus | None = None
 
 
-def get_event_bus() -> EventBus:
-    """Return the module-level EventBus singleton, creating it if needed."""
-    global _bus
-    if _bus is None:
-        _bus = EventBus()
+def get_event_bus() -> EventBus | None:
+    """Return the module-level EventBus singleton, or None if not set."""
     return _bus
 
 

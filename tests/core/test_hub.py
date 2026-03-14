@@ -1622,5 +1622,12 @@ class TestHubEventAggregatorLifecycle:
         except asyncio.CancelledError:
             pass
 
+        # Aggregator task should have been cancelled and is no longer running
+        all_tasks = asyncio.all_tasks()
+        agg_tasks = [t for t in all_tasks if t.get_name() == "event-aggregator"]
+        assert len(agg_tasks) == 0, (
+            "event-aggregator task should have been cancelled and cleaned up"
+        )
+
         # No unhandled exceptions — if we get here, cleanup was clean
         set_event_bus(None)

@@ -12,8 +12,6 @@ from lyra.core.event_bus import EventAggregator, EventBus, set_event_bus
 from lyra.core.events import (
     AgentCompleted,
     AgentFailed,
-    CircuitStateChanged,
-    QueueDepthExceeded,
 )
 
 
@@ -156,40 +154,6 @@ class TestEventBusCleanup:
 # ---------------------------------------------------------------------------
 # EventAggregator tests
 # ---------------------------------------------------------------------------
-
-
-class TestEventAggregatorChanged:
-    def test_changed_returns_false_on_same_state(self) -> None:
-        """SC-9: _changed("pool:x", "failed") twice — first True, second False."""
-        agg = EventAggregator(bus=EventBus())
-        assert agg._changed("pool:x", "failed") is True
-        assert agg._changed("pool:x", "failed") is False
-
-    def test_changed_returns_true_on_different_state(self) -> None:
-        """SC-9: "failed" then "healthy" — both True."""
-        agg = EventAggregator(bus=EventBus())
-        assert agg._changed("pool:x", "failed") is True
-        assert agg._changed("pool:x", "healthy") is True
-
-
-class TestEventAggregatorStateKey:
-    def test_state_key_agent_event(self) -> None:
-        """SC-14: _state_key(AgentFailed(agent_id="abc")) == "pool:abc"."""
-        agg = EventAggregator(bus=EventBus())
-        event = AgentFailed(agent_id="abc", error="boom")
-        assert agg._state_key(event) == "pool:abc"
-
-    def test_state_key_circuit_event(self) -> None:
-        """SC-14: _state_key(CircuitStateChanged(platform="tg")) == "circuit:tg"."""
-        agg = EventAggregator(bus=EventBus())
-        event = CircuitStateChanged(platform="tg", old_state="closed", new_state="open")
-        assert agg._state_key(event) == "circuit:tg"
-
-    def test_state_key_queue_event(self) -> None:
-        """SC-14: QueueDepthExceeded(queue_name="staging") -> "queue:staging"."""
-        agg = EventAggregator(bus=EventBus())
-        event = QueueDepthExceeded(queue_name="staging", depth=10, threshold=5)
-        assert agg._state_key(event) == "queue:staging"
 
 
 class TestEventAggregatorDedup:

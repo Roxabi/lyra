@@ -1,8 +1,8 @@
 """AuthMiddleware + TrustLevel: per-adapter authorization gate.
 
 Usage:
-    auth = AuthMiddleware.from_config(raw_config, "telegram")
-    trust = auth.check(user_id, roles=role_names)
+    auth = AuthMiddleware.from_config(raw_config, "telegram", store=auth_store)
+    trust = auth.check(user_id, roles=role_names, command=command_name)
     if trust == TrustLevel.BLOCKED:
         return  # reject before normalize()
 """
@@ -11,8 +11,12 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 from lyra.core.trust import TrustLevel
+
+if TYPE_CHECKING:
+    from lyra.core.auth_store import AuthStore
 
 log = logging.getLogger(__name__)
 
@@ -29,37 +33,56 @@ _TRUST_ORDER: dict[TrustLevel, int] = {
 
 
 class AuthMiddleware:
-    """Stateless authorization gate injected into channel adapters.
+    """Authorization gate injected into channel adapters.
 
     Resolution order for check():
-      1. user_map lookup (explicit user assignment wins)
-      2. role_map lookup (highest trust level across all matched roles)
-      3. self._default (fallback)
+      1. command in public_commands -> TrustLevel.PUBLIC (bypasses all other checks)
+      2. store.check(user_id) -- if store returns non-default level, use it
+      3. role_map lookup (highest trust level across all matched roles)
+      4. self._default (fallback)
     """
 
     def __init__(
         self,
-        user_map: dict[str, TrustLevel],
+        store: AuthStore | None,
         role_map: dict[str, TrustLevel],
         default: TrustLevel,
+        public_commands: list[str] | None = None,
     ) -> None:
-        self._user_map = user_map
+        self._store = store
         self._role_map = role_map
         self._default = default
+        self._public_commands: frozenset[str] = frozenset(
+            public_commands if public_commands is not None else ["/join"]
+        )
 
-    def check(self, user_id: str | None, roles: Sequence[str] = ()) -> TrustLevel:
+    def check(
+        self,
+        user_id: str | None,
+        roles: Sequence[str] = (),
+        command: str | None = None,
+    ) -> TrustLevel:
         """Return the TrustLevel for the given user_id and optional roles.
 
         Args:
             user_id: Platform user identifier, or None for anonymous/service messages.
             roles: Role names (e.g. Discord guild roles) for role-based lookup.
+            command: Command name (e.g. "/join") -- public_commands bypass all checks.
 
         Returns:
             The resolved TrustLevel.
         """
-        if user_id is not None and user_id in self._user_map:
-            return self._user_map[user_id]
+        # (a) Public command bypass -- always allow regardless of trust level
+        if command is not None and command in self._public_commands:
+            return TrustLevel.PUBLIC
 
+        # (b) AuthStore lookup (sync, cache-only)
+        if self._store is not None and user_id is not None:
+            level = self._store.check(user_id)
+            if level != self._store._default:
+                return level
+
+        # (c) Role map lookup
         if roles:
             best: TrustLevel | None = None
             for role in roles:
@@ -73,16 +96,22 @@ class AuthMiddleware:
         return self._default
 
     @classmethod
-    def from_config(cls, raw: dict, section: str) -> "AuthMiddleware | None":
+    def from_config(
+        cls,
+        raw: dict,
+        section: str,
+        store: AuthStore | None = None,
+    ) -> "AuthMiddleware | None":
         """Parse raw TOML config dict and build an AuthMiddleware instance.
 
         Args:
             raw: Top-level parsed TOML dict (may contain an "auth" key).
             section: Adapter section name, e.g. "telegram", "discord", "cli".
+            store: Optional pre-connected AuthStore (seeds applied by caller).
 
         Returns:
             AuthMiddleware instance, or None if the section is missing (non-CLI).
-            Missing section for "cli" never returns None — returns OWNER middleware.
+            Missing section for "cli" never returns None -- returns OWNER middleware.
 
         Raises:
             ValueError: If the section exists but contains an invalid default value.
@@ -92,10 +121,10 @@ class AuthMiddleware:
 
         if section_cfg is None:
             if section == "cli":
-                # CLI is always local/trusted — fixed OWNER, no config required.
-                return cls(user_map={}, role_map={}, default=TrustLevel.OWNER)
+                # CLI is always local/trusted -- fixed OWNER, no config required.
+                return cls(store=None, role_map={}, default=TrustLevel.OWNER)
             log.warning(
-                "Missing [auth.%s] in lyra.toml — %s adapter will be disabled",
+                "Missing [auth.%s] in lyra.toml -- %s adapter will be disabled",
                 section,
                 section,
             )
@@ -109,15 +138,8 @@ class AuthMiddleware:
             valid = ", ".join(t.value for t in TrustLevel)
             raise ValueError(
                 f"Invalid default '{raw_default}' in [auth.{section}]"
-                f" — must be one of: {valid}"
+                f" -- must be one of: {valid}"
             )
-
-        user_map: dict[str, TrustLevel] = {}
-        for uid in section_cfg.get("owner_users", []):
-            user_map[str(uid)] = TrustLevel.OWNER
-        for uid in section_cfg.get("trusted_users", []):
-            # owner_users take precedence — do not downgrade
-            user_map.setdefault(str(uid), TrustLevel.TRUSTED)
 
         # trusted_roles must contain Discord role snowflake IDs (numeric strings),
         # not display names. Example: trusted_roles = ["123456789012345678"]
@@ -125,23 +147,28 @@ class AuthMiddleware:
         for role in section_cfg.get("trusted_roles", []):
             role_map[str(role)] = TrustLevel.TRUSTED
 
-        return cls(user_map=user_map, role_map=role_map, default=default)
+        return cls(store=store, role_map=role_map, default=default)
 
     @classmethod
     def from_bot_config(
-        cls, raw: dict, section: str, bot_id: str
+        cls,
+        raw: dict,
+        section: str,
+        bot_id: str,
+        store: AuthStore | None = None,
     ) -> "AuthMiddleware | None":
         """Parse per-bot auth config from [[auth.<section>_bots]] array.
 
         Looks up the entry with matching bot_id from the array
         ``auth.<section>_bots`` (e.g. ``auth.telegram_bots`` for section="telegram").
-        Does NOT fall back to the flat ``auth.<section>`` section — per-bot entries
+        Does NOT fall back to the flat ``auth.<section>`` section -- per-bot entries
         must be explicit. Use ``from_config()`` for the legacy single-bot path.
 
         Args:
             raw: Top-level parsed TOML dict.
             section: Platform section name, e.g. "telegram", "discord".
             bot_id: The bot_id to look up in the per-bot array.
+            store: Optional pre-connected AuthStore (seeds applied by caller).
 
         Returns:
             AuthMiddleware instance, or None if no matching entry found (bot disabled).
@@ -153,7 +180,7 @@ class AuthMiddleware:
         bots_key = f"{section}_bots"
         bots_list: list[dict] = auth_block.get(bots_key, [])
 
-        # Find matching entry by bot_id — no flat-section fallback to prevent
+        # Find matching entry by bot_id -- no flat-section fallback to prevent
         # cross-bot trust bleed (a bot without an explicit entry is disabled).
         section_cfg: dict | None = None
         for entry in bots_list:
@@ -163,10 +190,10 @@ class AuthMiddleware:
 
         if section_cfg is None:
             if section == "cli":
-                return cls(user_map={}, role_map={}, default=TrustLevel.OWNER)
+                return cls(store=None, role_map={}, default=TrustLevel.OWNER)
             log.warning(
                 "Missing [auth.%s] or [[auth.%s]] entry for bot_id=%r"
-                " — %s adapter bot_id=%r will be disabled",
+                " -- %s adapter bot_id=%r will be disabled",
                 section,
                 bots_key,
                 bot_id,
@@ -183,17 +210,11 @@ class AuthMiddleware:
             raise ValueError(
                 f"Invalid default '{raw_default}' in auth config"
                 f" for {section} bot_id={bot_id!r}"
-                f" — must be one of: {valid}"
+                f" -- must be one of: {valid}"
             )
-
-        user_map: dict[str, TrustLevel] = {}
-        for uid in section_cfg.get("owner_users", []):
-            user_map[str(uid)] = TrustLevel.OWNER
-        for uid in section_cfg.get("trusted_users", []):
-            user_map.setdefault(str(uid), TrustLevel.TRUSTED)
 
         role_map: dict[str, TrustLevel] = {}
         for role in section_cfg.get("trusted_roles", []):
             role_map[str(role)] = TrustLevel.TRUSTED
 
-        return cls(user_map=user_map, role_map=role_map, default=default)
+        return cls(store=store, role_map=role_map, default=default)

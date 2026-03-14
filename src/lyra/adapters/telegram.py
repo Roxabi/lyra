@@ -63,10 +63,10 @@ _ATTACHMENT_EXTS = ATTACHMENT_EXTS_BASE | frozenset(
 TELEGRAM_MAX_LENGTH = 4096  # Telegram Bot API text message limit
 
 # Sentinel used when no AuthMiddleware is provided — denies all traffic by default.
-_DENY_ALL = AuthMiddleware(user_map={}, role_map={}, default=TrustLevel.BLOCKED)
+_DENY_ALL = AuthMiddleware(store=None, role_map={}, default=TrustLevel.BLOCKED)
 
 # Permissive sentinel for use in tests — allows all traffic as PUBLIC.
-_ALLOW_ALL = AuthMiddleware(user_map={}, role_map={}, default=TrustLevel.PUBLIC)
+_ALLOW_ALL = AuthMiddleware(store=None, role_map={}, default=TrustLevel.PUBLIC)
 _MARKDOWNV2_SPECIAL = re.compile(r"([_*\[\]()~`>#\+\-=|{}.!\\])")
 
 

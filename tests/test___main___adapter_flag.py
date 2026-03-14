@@ -78,13 +78,8 @@ class TestMainAdapterFiltering:
         # Arrange
         from lyra.config import DiscordBotConfig, TelegramBotConfig
 
-        tg_bot = TelegramBotConfig(
-            bot_id="tg1",
-            token="fake-tg-token",
-            bot_username="lyra_bot",
-            webhook_secret="fake-secret",
-        )
-        dc_bot = DiscordBotConfig(bot_id="dc1", token="fake-dc-token")
+        tg_bot = TelegramBotConfig(bot_id="tg1", bot_username="lyra_bot")
+        dc_bot = DiscordBotConfig(bot_id="dc1")
 
         captured_dc_cfg: list[DiscordMultiConfig] = []
         captured_tg_cfg: list[TelegramMultiConfig] = []
@@ -136,13 +131,8 @@ class TestMainAdapterFiltering:
         # Arrange
         from lyra.config import DiscordBotConfig, TelegramBotConfig
 
-        tg_bot = TelegramBotConfig(
-            bot_id="tg1",
-            token="fake-tg-token",
-            bot_username="lyra_bot",
-            webhook_secret="fake-secret",
-        )
-        dc_bot = DiscordBotConfig(bot_id="dc1", token="fake-dc-token")
+        tg_bot = TelegramBotConfig(bot_id="tg1", bot_username="lyra_bot")
+        dc_bot = DiscordBotConfig(bot_id="dc1")
 
         captured_dc_cfg: list[DiscordMultiConfig] = []
         captured_tg_cfg: list[TelegramMultiConfig] = []
@@ -194,13 +184,8 @@ class TestMainAdapterFiltering:
         # Arrange
         from lyra.config import DiscordBotConfig, TelegramBotConfig
 
-        tg_bot = TelegramBotConfig(
-            bot_id="tg1",
-            token="fake-tg-token",
-            bot_username="lyra_bot",
-            webhook_secret="fake-secret",
-        )
-        dc_bot = DiscordBotConfig(bot_id="dc1", token="fake-dc-token")
+        tg_bot = TelegramBotConfig(bot_id="tg1", bot_username="lyra_bot")
+        dc_bot = DiscordBotConfig(bot_id="dc1")
 
         captured_dc_cfg: list[DiscordMultiConfig] = []
         captured_tg_cfg: list[TelegramMultiConfig] = []
@@ -279,7 +264,25 @@ class TestBootstrapLegacyAdapterParam:
         fake_auth_store.seed_from_config = AsyncMock()
         fake_auth_store.close = AsyncMock()
 
+        fake_keyring = MagicMock()
+        fake_keyring.key = b"fake-key-32-bytes-for-fernet-key"
+
+        fake_cred_store = MagicMock()
+        fake_cred_store.connect = AsyncMock()
+        fake_cred_store.close = AsyncMock()
+        fake_cred_store.get_full = AsyncMock(return_value=("fake-token", "fake-secret"))
+
         monkeypatch.setattr(main_mod, "AuthStore", lambda **kwargs: fake_auth_store)
+        monkeypatch.setattr(
+            main_mod,
+            "LyraKeyring",
+            MagicMock(load_or_create=AsyncMock(return_value=fake_keyring)),
+        )
+        monkeypatch.setattr(
+            main_mod,
+            "CredentialStore",
+            lambda **kwargs: fake_cred_store,
+        )
         monkeypatch.setattr(
             main_mod.AuthMiddleware,
             "from_config",
@@ -288,16 +291,6 @@ class TestBootstrapLegacyAdapterParam:
                     raw, section, store
                 )
             ),
-        )
-        monkeypatch.setattr(
-            main_mod,
-            "load_telegram_config",
-            lambda: MagicMock(token="t", webhook_secret="s", bot_username="b"),
-        )
-        monkeypatch.setattr(
-            main_mod,
-            "load_discord_config",
-            lambda: MagicMock(token="d"),
         )
         monkeypatch.setattr(
             main_mod,

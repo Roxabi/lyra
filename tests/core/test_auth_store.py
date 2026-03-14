@@ -6,6 +6,7 @@ ModuleNotFoundError until lyra.core.auth_store is implemented.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -106,10 +107,12 @@ class TestAuthStoreConnect:
             await store2.close()
 
     async def test_connect_is_idempotent(self, tmp_path: Path) -> None:
-        """Calling connect() twice should not raise."""
+        """Calling connect() twice should be a no-op — same connection reused."""
         store = await make_store(tmp_path)
         try:
-            await store.connect()  # second call — should not raise
+            first_db = store._db
+            await store.connect()  # second call — should be a no-op
+            assert store._db is first_db  # same connection object
         finally:
             await store.close()
 
@@ -167,7 +170,8 @@ class TestAuthStoreCheck:
             await store.upsert(
                 "expired-evict", TrustLevel.TRUSTED, past, "invite", "code-hash"
             )
-            store.check("expired-evict")  # triggers eviction
+            store.check("expired-evict")  # triggers eviction (schedules async task)
+            await asyncio.sleep(0)  # yield to event loop so revoke() task runs
             assert store._db is not None
             async with store._db.execute(
                 "SELECT id FROM grants WHERE identity_key = ?", ("expired-evict",)
@@ -217,11 +221,28 @@ class TestAuthStoreUpsertRevoke:
             await store.close()
 
     async def test_upsert_updates_existing_grant(self, tmp_path: Path) -> None:
+        """Upsert updates a temporary grant but never overwrites a permanent one (B3).
+
+        A temporary grant (expires_at set) can be replaced by a new upsert.
+        A permanent grant (expires_at=None) is protected: subsequent upserts
+        are silently ignored so that pairing flows cannot downgrade an OWNER.
+        """
         store = await make_store(tmp_path)
         try:
-            await store.upsert("dave", TrustLevel.TRUSTED, None, "invite", "hash1")
-            await store.upsert("dave", TrustLevel.OWNER, None, "config", "config.toml")
+            # Temporary grant can be replaced
+            future = datetime.now(timezone.utc) + timedelta(days=30)
+            await store.upsert("dave", TrustLevel.TRUSTED, future, "invite", "hash1")
+            await store.upsert(
+                "dave", TrustLevel.OWNER, future, "config", "config.toml"
+            )
             assert store.check("dave") == TrustLevel.OWNER
+
+            # Permanent grant is protected — second upsert is a no-op
+            await store.upsert("perm", TrustLevel.OWNER, None, "config", "config.toml")
+            await store.upsert("perm", TrustLevel.TRUSTED, future, "invite", "hash2")
+            assert store.check("perm") == TrustLevel.OWNER, (
+                "permanent grant must not be downgraded by upsert (B3)"
+            )
         finally:
             await store.close()
 
@@ -323,6 +344,8 @@ class TestSeedFromConfig:
             ) as cur:
                 row = await cur.fetchone()
             assert row is not None and row[0] == 1
+            # Trust level must be preserved after re-seed
+            assert store.check("owner-1") == TrustLevel.OWNER
         finally:
             await store.close()
 

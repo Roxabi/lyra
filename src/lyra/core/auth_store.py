@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
-import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -56,6 +56,8 @@ class AuthStore:
 
     async def connect(self) -> None:
         """Open aiosqlite, enable WAL, create grants table, warm cache."""
+        if self._db is not None:
+            return  # already connected — idempotent
         self._db = await aiosqlite.connect(self._db_path)
         await self._db.execute("PRAGMA journal_mode=WAL")
         await self._db.execute(_CREATE_GRANTS)
@@ -85,8 +87,8 @@ class AuthStore:
     def check(self, identity_key: str) -> TrustLevel:
         """Return the TrustLevel for identity_key from cache (sync, no I/O).
 
-        Expired grants are eagerly evicted from cache and synchronously removed
-        from DB via a brief sqlite3 call (WAL mode makes concurrent access safe).
+        Expired grants are eagerly evicted from cache; DB deletion is scheduled
+        as a fire-and-forget async task on the running event loop.
         """
         entry = self._cache.get(identity_key)
         if entry is None:
@@ -95,28 +97,15 @@ class AuthStore:
         if expires_at is not None and _utc_now() > expires_at:
             # Eagerly remove from cache
             self._cache.pop(identity_key, None)
-            # Synchronous DB delete — uses a separate sqlite3 connection so it
-            # doesn't race with the aiosqlite connection's async queue
-            self._evict_sync(identity_key)
+            # Schedule async DB delete — non-blocking, best-effort
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(self.revoke(identity_key))
+            except RuntimeError:
+                # No running loop (e.g. called from sync test context) — skip eviction
+                pass
             return self._default
         return trust
-
-    def _evict_sync(self, identity_key: str) -> None:
-        """Delete an expired grant from DB synchronously (called from check())."""
-        try:
-            conn = sqlite3.connect(self._db_path)
-            try:
-                conn.execute(
-                    "DELETE FROM grants WHERE identity_key = ?", (identity_key,)
-                )
-                conn.commit()
-            finally:
-                conn.close()
-        except Exception:
-            log.debug(
-                "Failed to evict expired grant for %s", identity_key, exc_info=True
-            )
-        log.debug("Evicted expired grant from DB for %s", identity_key)
 
     async def upsert(
         self,
@@ -137,30 +126,28 @@ class AuthStore:
             "trust_level=excluded.trust_level, "
             "expires_at=excluded.expires_at, "
             "granted_by=excluded.granted_by, "
-            "source=excluded.source"
+            "source=excluded.source "
+            "WHERE grants.expires_at IS NOT NULL"
         )
         await db.execute(
             _SQL,
             (identity_key, trust_level.value, exp_iso, granted_by, source),
         )
         await db.commit()
-        self._cache[identity_key] = (trust_level, expires_at)
+        existing = self._cache.get(identity_key)
+        if existing is None or existing[1] is not None:
+            self._cache[identity_key] = (trust_level, expires_at)
 
     async def revoke(self, identity_key: str) -> bool:
         """Delete a grant. Returns True if it existed, False otherwise."""
         db = self._require_db()
         async with db.execute(
-            "SELECT id FROM grants WHERE identity_key = ?", (identity_key,)
-        ) as cur:
-            row = await cur.fetchone()
-        if row is None:
-            return False
-        await db.execute(
             "DELETE FROM grants WHERE identity_key = ?", (identity_key,)
-        )
+        ) as cur:
+            deleted = cur.rowcount > 0
         await db.commit()
         self._cache.pop(identity_key, None)
-        return True
+        return deleted
 
     async def seed_from_config(self, raw: dict, section: str) -> None:
         """Seed owner_users and trusted_users from config as permanent grants.

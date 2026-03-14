@@ -348,13 +348,30 @@ class TestGrantAfterPairing:
     is_paired() is removed in S3 — trust is now read from AuthStore.
     """
 
-    async def test_validate_code_grants_trusted_in_auth_store(self) -> None:
+    async def test_validate_code_grant_has_correct_expiry(self) -> None:
+        """Grant written to AuthStore must expire ~session_max_age_days from now."""
+        from datetime import timezone as _tz
         store = await make_auth_store()
         pm = await make_pm(auth_store=store)
         code = await pm.generate_code(_ADMIN_ID)
-        success, _ = await pm.validate_code(code, _USER_ID)
-        assert success is True
-        assert store.check(_USER_ID) == TrustLevel.TRUSTED
+        before = datetime.now(_tz.utc)
+        await pm.validate_code(code, _USER_ID)
+        after = datetime.now(_tz.utc)
+
+        # Read the grant's expires_at from the DB
+        assert store._db is not None
+        async with store._db.execute(
+            "SELECT expires_at FROM grants WHERE identity_key = ?", (_USER_ID,)
+        ) as cur:
+            row = await cur.fetchone()
+        assert row is not None
+        expires_at = datetime.fromisoformat(row[0])
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=_tz.utc)
+
+        expected_days = pm.config.session_max_age_days
+        assert (expires_at - before).days >= expected_days - 1
+        assert (expires_at - after).days <= expected_days + 1
 
     async def test_unpaired_user_returns_default_from_store(self) -> None:
         store = await make_auth_store()

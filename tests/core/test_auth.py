@@ -374,15 +374,29 @@ class TestAuthMiddlewareWithStore:
         auth = AuthMiddleware(store=auth_store, role_map={}, default=TrustLevel.PUBLIC)
         assert auth.check("blocked-uid") == TrustLevel.BLOCKED
 
-    async def test_join_command_returns_public_regardless_of_grant(
+    async def test_join_command_blocked_for_blocked_user(
         self, auth_store: AuthStore
     ) -> None:
-        """public_commands bypass: /join returns PUBLIC even for BLOCKED user."""
+        """B2: BLOCKED users are denied even public commands like /join.
+
+        The BLOCKED check fires before the public_commands bypass so a blocked
+        user cannot re-pair by sending /join.
+        """
         await auth_store.upsert(
             "blocked-join", TrustLevel.BLOCKED, None, "config", "config.toml"
         )
         auth = AuthMiddleware(store=auth_store, role_map={}, default=TrustLevel.BLOCKED)
         result = auth.check("blocked-join", command="/join")
+        assert result == TrustLevel.BLOCKED
+
+    async def test_join_command_returns_public_for_non_blocked_user(
+        self, auth_store: AuthStore
+    ) -> None:
+        """public_commands bypass: /join returns PUBLIC for non-blocked users."""
+        auth = AuthMiddleware(
+            store=auth_store, role_map={}, default=TrustLevel.PUBLIC
+        )
+        result = auth.check("unknown-user", command="/join")
         assert result == TrustLevel.PUBLIC
 
     async def test_store_none_uses_role_map_and_default(self) -> None:
@@ -394,3 +408,25 @@ class TestAuthMiddlewareWithStore:
         )
         assert auth.check("unknown") == TrustLevel.BLOCKED
         assert auth.check("unknown", roles=["admin"]) == TrustLevel.TRUSTED
+
+    async def test_check_explicit_public_grant_falls_through_to_role_map(
+        self, tmp_path: Path, auth_store: AuthStore
+    ) -> None:
+        """PUBLIC grant in the store falls through to role_map (PUBLIC is the default).
+
+        After the B1 sentinel fix, only OWNER/TRUSTED/BLOCKED are returned directly
+        from the store. PUBLIC grants pass through to role_map, so a user with an
+        explicit PUBLIC grant can still be elevated by a role.
+        This is the documented behavior: PUBLIC = 'not explicitly trusted or blocked'.
+        """
+        await auth_store.upsert("alice", TrustLevel.PUBLIC, None, "test", "test")
+        role_map = {"admin_role": TrustLevel.OWNER}
+        mw = AuthMiddleware(
+            store=auth_store,
+            role_map=role_map,
+            default=TrustLevel.PUBLIC,
+        )
+        # With no roles, falls through to default
+        assert mw.check("alice") == TrustLevel.PUBLIC
+        # With a matching role, role wins (PUBLIC grant doesn't block role elevation)
+        assert mw.check("alice", roles=["admin_role"]) == TrustLevel.OWNER

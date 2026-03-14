@@ -56,6 +56,25 @@ class AuthMiddleware:
             public_commands if public_commands is not None else ["/join"]
         )
 
+    def _store_level(self, user_id: str | None) -> TrustLevel | None:
+        """Return the stored TrustLevel for user_id, or None if not present."""
+        if self._store is None or user_id is None:
+            return None
+        level = self._store.check(user_id)
+        if level in {TrustLevel.OWNER, TrustLevel.TRUSTED, TrustLevel.BLOCKED}:
+            return level
+        return None
+
+    def _best_role_level(self, roles: Sequence[str]) -> TrustLevel | None:
+        """Return the highest TrustLevel from role_map for the given roles."""
+        best: TrustLevel | None = None
+        for role in roles:
+            candidate = self._role_map.get(role)
+            if candidate is not None:
+                if best is None or _TRUST_ORDER[candidate] > _TRUST_ORDER[best]:
+                    best = candidate
+        return best
+
     def check(
         self,
         user_id: str | None,
@@ -72,26 +91,23 @@ class AuthMiddleware:
         Returns:
             The resolved TrustLevel.
         """
+        # BLOCKED check first — even public commands are denied to blocked users
+        stored = self._store_level(user_id)
+        if stored == TrustLevel.BLOCKED:
+            return TrustLevel.BLOCKED
+
         # (a) Public command bypass -- always allow regardless of trust level
         if command is not None and command in self._public_commands:
             return TrustLevel.PUBLIC
 
-        # (b) AuthStore lookup (sync, cache-only)
-        if self._store is not None and user_id is not None:
-            level = self._store.check(user_id)
-            if level != self._store._default:
-                return level
+        # (b) AuthStore lookup result (OWNER / TRUSTED already resolved above)
+        if stored is not None:
+            return stored
 
         # (c) Role map lookup
-        if roles:
-            best: TrustLevel | None = None
-            for role in roles:
-                if role in self._role_map:
-                    candidate = self._role_map[role]
-                    if best is None or _TRUST_ORDER[candidate] > _TRUST_ORDER[best]:
-                        best = candidate
-            if best is not None:
-                return best
+        best = self._best_role_level(roles)
+        if best is not None:
+            return best
 
         return self._default
 

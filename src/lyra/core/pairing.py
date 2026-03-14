@@ -242,13 +242,20 @@ class PairingManager:
 
         # Upsert TRUSTED grant into AuthStore (outside the IMMEDIATE transaction)
         if self._auth_store is not None:
-            await self._auth_store.upsert(
-                identity_key,
-                TrustLevel.TRUSTED,
-                session_expires_at,
-                granted_by="invite",
-                source=code_hash,
-            )
+            try:
+                await self._auth_store.upsert(
+                    identity_key,
+                    TrustLevel.TRUSTED,
+                    session_expires_at,
+                    granted_by="invite",
+                    source=code_hash,
+                )
+            except Exception:
+                log.exception(
+                    "validate_code: failed to persist grant for %s — code consumed",
+                    identity_key,
+                )
+                return False, "Internal error persisting grant."
             log.info(
                 "Paired %s via AuthStore (session expires %s)",
                 identity_key,

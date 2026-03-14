@@ -1,0 +1,49 @@
+---
+title: "feat(adapters): live audio streaming — real-time audio channel support"
+issue: 185
+status: approved
+tier: F-full
+date: 2026-03-14
+---
+
+## Problem
+
+Lyra can send and receive audio files (voice messages), but it cannot participate in live audio channels. When a user is in a Discord voice channel, Lyra has no way to join, stream a TTS response in real-time, or listen for voice commands — the interaction is limited to text or asynchronous voice notes.
+
+Real-time voice interaction requires three new layers that don't yet exist: a voice channel lifecycle manager (join/leave/session state per guild), a streaming-capable audio sink for Discord (VoiceClient + Opus), and a backpressure-aware audio bus that can pace TTS chunks to match what Discord's VoiceClient can consume. The existing `OutboundAudioChunk` bus (#182) and `InboundAudioBus` (#171) provide the envelope contracts — this issue builds the runtime on top of them.
+
+This is the most architecturally novel child of epic #139. It crosses the adapter layer (Discord), the bus layer (backpressure), and session/state management, making it a sub-epic in its own right.
+
+## Who
+
+- **Primary:** Users in Discord voice channels who want to interact with Lyra by voice — issuing commands via mic, receiving TTS responses as live audio
+- **Secondary:** Developers building voice-aware plugins or Lyra extensions that produce or consume real-time audio
+
+## Constraints
+
+- **Discord only (first iteration):** Telegram voice chats require pytgcalls (MTProto/user-account), not the standard Bot API. Telegram voice chat is explicitly deferred to a separate child issue.
+- **discord.py VoiceClient:** Requires Opus codec and FFmpeg. Must be provisioned on both dev (WSL2) and production (Machine 1, RTX 3080).
+- **One voice channel per guild:** discord.py restricts a bot to one VoiceClient per guild. Session lifecycle must enforce this.
+- **Hybrid trigger model:** Lyra joins on command (e.g., `!join`), optionally stays listening after response. Both join-and-leave and persistent modes must be supported.
+- **Backpressure required:** TTS chunks arrive asynchronously and at variable rates. The audio bus must pace chunk delivery to match VoiceClient's consumption rate; overflow must be buffered or dropped gracefully.
+- **Overlap with #232 (Discord TTS):** `feat(voice): TTS in Discord — voicecli integration` may share scope. Needs coordination before implementation to avoid duplication.
+- **Related epic #74 (Voice pipeline):** Children #79 (Telegram TTS), #42 (language detection), #232 (Discord TTS) define the higher-level voice UX. This issue provides the real-time transport layer underneath them.
+
+## Out of Scope
+
+- Telegram voice chat integration (deferred — MTProto/pytgcalls decision needed first)
+- Multi-user audio mixing or simultaneous speaker handling
+- STT within live voice channels (e.g., always-on transcription while joined — separate from #42)
+- Web, CLI, or any non-Discord voice streaming
+- Voice channel auto-join based on user presence (can be added later; join-on-command is sufficient for v1)
+
+## Complexity
+
+**Tier: F-full** — crosses three domains (adapter, bus, session management), introduces new runtime dependencies (Opus/FFmpeg/VoiceClient), and requires a new sub-epic breakdown before implementation.
+
+Signals observed:
+- New VoiceClient lifecycle pattern with no existing analog in the codebase
+- Backpressure bus is a new cross-cutting concern (not present in current OutboundAudioChunk)
+- Hybrid session model (transient + persistent) requires state management across events
+- Overlap with #232 needs resolution before scoping child issues
+- Telegram deferred but must be designed-for (interface should not preclude later addition)

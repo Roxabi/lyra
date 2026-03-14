@@ -28,7 +28,7 @@ from .agent import ModelConfig
 
 log = logging.getLogger(__name__)
 
-_SESSION_ID_RE = re.compile(r'^[0-9a-f-]{8,64}$')
+_SESSION_ID_RE = re.compile(r"^[0-9a-f-]{8,64}$")
 
 
 @dataclass

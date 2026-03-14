@@ -1,19 +1,21 @@
-"""Command router for Lyra hub (issue #66, updated #106).
+"""Command router for Lyra hub (issue #66, updated #106, #99).
 
-Dispatches slash-prefixed messages to plugin handlers loaded by PluginLoader,
-or to built-in handlers (/help, /circuit). SkillHandler and SKILL_REGISTRY removed.
+Routes slash commands to plugin handlers or builtins. Issue #99 adds session
+command handlers (async, isolated LLM call) and bare URL → /add rewrite.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from .circuit_breaker import CircuitRegistry
+from .command_parser import CommandContext
 from .message import InboundMessage, Response
 from .messages import MessageManager
 from .plugin_loader import AsyncHandler, PluginLoader
@@ -21,6 +23,7 @@ from .pool import Pool
 
 if TYPE_CHECKING:
     from lyra.core.runtime_config import RuntimeConfigHolder
+    from lyra.llm.base import LlmProvider
     from lyra.llm.smart_routing import SmartRoutingDecorator
 
 log = logging.getLogger(__name__)
@@ -35,8 +38,32 @@ class CommandConfig:
     timeout: float = 30.0
 
 
+@runtime_checkable
+class SessionCommandHandler(Protocol):
+    """Async handler: (msg, driver, args, timeout) -> Response. No pool history."""
+
+    async def __call__(
+        self,
+        msg: InboundMessage,
+        driver: "LlmProvider",
+        args: list[str],
+        timeout: float,
+    ) -> Response: ...
+
+
+@dataclass(frozen=True)
+class SessionCommandEntry:
+    """Registry entry for a session command (async, isolated LLM call)."""
+
+    handler: SessionCommandHandler
+    description: str = ""
+    timeout: float = 60.0
+
+
 class CommandRouter:
     """Routes slash commands to plugin handlers or built-in handlers."""
+
+    _BARE_URL_RE: re.Pattern[str] = re.compile(r"^https?://\S+$")
 
     _DEFAULT_BUILTINS: dict[str, CommandConfig] = {
         "/help": CommandConfig(builtin=True, description="List available commands"),
@@ -75,6 +102,7 @@ class CommandRouter:
         smart_routing_decorator: SmartRoutingDecorator | None = None,
         on_debounce_change: Callable[[int], None] | None = None,
         workspaces: dict[str, Path] | None = None,
+        session_driver: "LlmProvider | None" = None,
     ) -> None:
         self._plugin_loader = plugin_loader
         self._enabled_plugins = enabled_plugins
@@ -89,6 +117,8 @@ class CommandRouter:
         self._smart_routing = smart_routing_decorator
         self._on_debounce_change = on_debounce_change
         self._workspaces: dict[str, Path] = workspaces or {}
+        self._session_driver: LlmProvider | None = session_driver
+        self._session_handlers: dict[str, SessionCommandEntry] = {}
         # Register workspace commands as builtins
         for ws_name in self._workspaces:
             cmd = f"/{ws_name}"
@@ -106,27 +136,59 @@ class CommandRouter:
                 "Rename the plugin command or remove the builtin."
             )
 
-    # ------------------------------------------------------------------
-    # Detection
-    # ------------------------------------------------------------------
+    # --- Detection ---
+
+    def _rewrite_bare_url(self, msg: InboundMessage) -> InboundMessage:
+        """Attach a synthetic /add CommandContext for a bare URL message."""
+        url = msg.text.strip()
+        ctx = CommandContext(prefix="/", name="add", args=url, raw=msg.text)
+        return replace(msg, command=ctx)
+
+    def prepare(self, msg: InboundMessage) -> InboundMessage:
+        """Rewrite bare URL messages to /add; return the (possibly new) message."""
+        if msg.command is None and self._BARE_URL_RE.fullmatch(msg.text.strip()):
+            return self._rewrite_bare_url(msg)
+        return msg
 
     def is_command(self, msg: InboundMessage) -> bool:
-        """Return True if the message has a parsed CommandContext attached."""
-        return msg.command is not None
+        """Return True if msg carries a CommandContext or is a bare URL."""
+        if msg.command is not None:
+            return True
+        return bool(self._BARE_URL_RE.fullmatch(msg.text.strip()))
 
     def get_command_name(self, msg: InboundMessage) -> str | None:
-        """Return the full command name (e.g. '/join') or None if not a command.
-
-        Reads the pre-parsed CommandContext attached by the Hub pipeline.
-        Single source of truth for command-name resolution.
-        """
+        """Return full command name (e.g. '/join') or None. Single source of truth."""
         if msg.command is None:
             return None
         return f"{msg.command.prefix}{msg.command.name}"
 
-    # ------------------------------------------------------------------
-    # Dispatch
-    # ------------------------------------------------------------------
+    def register_session_command(
+        self,
+        name: str,
+        handler: SessionCommandHandler,
+        description: str = "",
+        timeout: float = 60.0,
+    ) -> None:
+        """Register session command; name has no leading slash. Raises on clash."""
+        cmd = f"/{name}"
+        if cmd in self._builtins:
+            raise ValueError(
+                f"Session command {cmd!r} clashes with a builtin command. "
+                "Rename the session command."
+            )
+        plugin_handlers = self._plugin_loader.get_commands(self._enabled_plugins)
+        if cmd in plugin_handlers:
+            raise ValueError(
+                f"Session command {cmd!r} clashes with a plugin command. "
+                "Rename the session command."
+            )
+        self._session_handlers[cmd] = SessionCommandEntry(
+            handler=handler,
+            description=description,
+            timeout=timeout,
+        )
+
+    # --- Dispatch ---
 
     def _dispatch_builtin(
         self, command_name: str, args: list[str], msg: InboundMessage, pool: Pool | None
@@ -150,15 +212,36 @@ class CommandRouter:
             )
         return None
 
+    async def _dispatch_session(
+        self,
+        name: str,
+        args: list[str],
+        msg: InboundMessage,
+        pool: Pool | None,  # noqa: ARG002 — future use; session commands are pool-agnostic
+    ) -> Response:
+        """Dispatch a session command with timeout and driver checks."""
+        entry = self._session_handlers[name]
+        if self._session_driver is None:
+            return Response(content="Session commands require anthropic-sdk backend.")
+        try:
+            return await asyncio.wait_for(
+                entry.handler(msg, self._session_driver, args, entry.timeout),
+                timeout=entry.timeout,
+            )
+        except TimeoutError:
+            log.warning("Session command %s timed out after %.1fs", name, entry.timeout)
+            return Response(content=f"Command timed out after {entry.timeout:.0f}s.")
+
     async def dispatch(  # noqa: C901 — command routing has inherent branching complexity
         self, msg: InboundMessage, pool: Pool | None = None
     ) -> Response | None:
         """Route the pre-parsed command to the appropriate handler.
 
-        Reads command name and args from msg.command (set by Hub pipeline).
-        Returns None (sentinel) for !-prefixed unknown commands so the Hub
-        can fall through to pool submission.
+        Calls prepare() first; returns None (sentinel) for !-prefixed unknowns.
         """
+        # Rewrite bare URLs to /add if not already a command
+        msg = self.prepare(msg)
+
         if msg.command is None:
             raise ValueError("dispatch() called on non-command message")
 
@@ -181,6 +264,10 @@ class CommandRouter:
         builtin_response = self._dispatch_builtin(command_name, args, msg, pool)
         if builtin_response is not None:
             return builtin_response
+
+        # Session commands — checked before plugin handlers
+        if command_name in self._session_handlers:
+            return await self._dispatch_session(command_name, args, msg, pool)
 
         plugin_handlers: dict[str, AsyncHandler] = self._plugin_loader.get_commands(
             self._enabled_plugins
@@ -216,12 +303,10 @@ class CommandRouter:
                 content=f"Command {command_name} timed out after {timeout:.0f}s."
             )
 
-    # ------------------------------------------------------------------
-    # Builtins
-    # ------------------------------------------------------------------
+    # --- Builtins ---
 
     def _help(self) -> Response:
-        """Return a listing of all available commands (builtins + plugins)."""
+        """Return a listing of all available commands."""
         header = (
             self._msg_manager.get("help_header")
             if self._msg_manager
@@ -232,6 +317,12 @@ class CommandRouter:
         for cmd_name, cfg in sorted(self._builtins.items()):
             desc = cfg.description or "(no description)"
             lines.append(f"  {cmd_name} — {desc}")
+        # Session commands
+        if self._session_handlers:
+            lines.append("Session commands:")
+            for cmd_name, entry in sorted(self._session_handlers.items()):
+                desc = entry.description or "(no description)"
+                lines.append(f"  {cmd_name} — {desc}")
         # Plugin commands
         plugin_handlers = self._plugin_loader.get_commands(self._enabled_plugins)
         for cmd_name in sorted(plugin_handlers):
@@ -240,7 +331,6 @@ class CommandRouter:
         return Response(content="\n".join(lines))
 
     def _circuit_status(self, msg: InboundMessage) -> Response:
-        """Return circuit status table (admin-only)."""
         sender_id = msg.user_id
         if not self._admin_user_ids or sender_id not in self._admin_user_ids:
             return Response(content="This command is admin-only.")
@@ -258,7 +348,6 @@ class CommandRouter:
         return Response(content="\n".join(lines))
 
     def _routing_status(self, msg: InboundMessage) -> Response:
-        """Return smart routing decisions table (admin-only)."""
         if not self._admin_user_ids or msg.user_id not in self._admin_user_ids:
             return Response(content="This command is admin-only.")
         if self._smart_routing is None:
@@ -359,7 +448,6 @@ class CommandRouter:
     async def _cmd_workspace(
         self, msg: InboundMessage, command_name: str, ws_key: str, pool: Pool | None
     ) -> Response:
-        """Switch to a pre-registered workspace (admin-only)."""
         if not self._admin_user_ids or msg.user_id not in self._admin_user_ids:
             return Response(content="This command is admin-only.")
         cwd = self._workspaces[ws_key]
@@ -380,7 +468,6 @@ class CommandRouter:
     async def _cmd_folder(
         self, msg: InboundMessage, args: list[str], pool: Pool | None
     ) -> Response:
-        """Switch working directory dynamically (admin-only)."""
         if not self._admin_user_ids or msg.user_id not in self._admin_user_ids:
             return Response(content="This command is admin-only.")
         if not args:
@@ -399,7 +486,6 @@ class CommandRouter:
         return Response(content=f"cwd → {raw_path}")
 
     async def _cmd_clear(self, pool: Pool | None) -> Response:
-        """Clear conversation history and reset backend session."""
         if pool is None:
             return Response(content="No active session to clear.")
         pool.sdk_history.clear()

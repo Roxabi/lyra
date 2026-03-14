@@ -285,3 +285,39 @@ class TestOverlayAppliedInProcess:
 
         # Assert — system prompt includes the language instruction
         assert "Reply in fr." in system
+
+
+# ---------------------------------------------------------------------------
+# TestSessionCommandWiring — issue #99
+# ---------------------------------------------------------------------------
+
+
+class TestSessionCommandWiring:
+    """Router is built with session_driver and /add /explain /summarize registered."""
+
+    def test_router_session_driver_set_to_provider(self) -> None:
+        from lyra.agents.anthropic_agent import AnthropicAgent
+
+        provider = make_mock_provider()
+        agent = AnthropicAgent(make_config(), provider)
+        assert agent.command_router._session_driver is provider
+
+    def test_session_handlers_contains_add_explain_summarize(self) -> None:
+        from lyra.agents.anthropic_agent import AnthropicAgent
+
+        provider = make_mock_provider()
+        agent = AnthropicAgent(make_config(), provider)
+        session_keys = set(agent.command_router._session_handlers.keys())
+        assert "/add" in session_keys
+        assert "/explain" in session_keys
+        assert "/summarize" in session_keys
+
+    def test_session_handlers_have_correct_descriptions(self) -> None:
+        from lyra.agents.anthropic_agent import AnthropicAgent
+
+        provider = make_mock_provider()
+        agent = AnthropicAgent(make_config(), provider)
+        handlers = agent.command_router._session_handlers
+        assert "vault" in handlers["/add"].description.lower()
+        assert "explain" in handlers["/explain"].description.lower()
+        assert "summarize" in handlers["/summarize"].description.lower()

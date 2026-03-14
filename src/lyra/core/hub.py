@@ -208,6 +208,7 @@ class Hub:
         self._start_time: float = time.monotonic()
         self._last_processed_at: float | None = None
         from .event_bus import EventBus, set_event_bus
+
         self._event_bus: EventBus = EventBus()
         set_event_bus(self._event_bus)
         # S2 — memory layer (issue #83)
@@ -907,9 +908,7 @@ class Hub:
     ) -> None:
         """Dispatch a pipeline result: send command response or submit to pool."""
         if result.action == Action.COMMAND_HANDLED:
-            if result.response and (
-                result.response.content or result.response.audio
-            ):
+            if result.response and (result.response.content or result.response.audio):
                 if result.response.audio:
                     try:
                         await self.dispatch_audio(
@@ -934,8 +933,7 @@ class Hub:
                         )
             else:
                 log.debug(
-                    "command returned empty response"
-                    " for msg id=%s — skipping dispatch",
+                    "command returned empty response for msg id=%s — skipping dispatch",
                     msg.id,
                 )
         elif result.action == Action.SUBMIT_TO_POOL and result.pool:
@@ -944,6 +942,7 @@ class Hub:
     async def run(self) -> None:
         """Hub bus consumer loop. Runs until cancelled."""
         from .event_bus import EventAggregator
+
         aggregator = EventAggregator(self._event_bus)
         agg_task = asyncio.create_task(aggregator.run(), name="event-aggregator")
         pipeline = MessagePipeline(self)
@@ -1018,6 +1017,10 @@ class MessagePipeline:
         cmd_ctx = _command_parser.parse(msg.text)
         if cmd_ctx is not None:
             msg = dataclasses.replace(msg, command=cmd_ctx)
+
+        # Rewrite bare URLs to /add before command detection (issue #99)
+        if router and hasattr(router, "prepare"):
+            msg = router.prepare(msg)
 
         if router and router.is_command(msg):
             return await self._dispatch_command(

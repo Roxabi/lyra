@@ -66,6 +66,8 @@ class AnthropicAgent(AgentBase):
             tts=tts,
             smart_routing_decorator=smart_routing_decorator,
         )
+        # Note: _register_session_commands() is called by AgentBase.__init__ via
+        # the hook. No explicit call needed here.
 
     @property
     def runtime_config(self) -> RuntimeConfig:
@@ -76,7 +78,31 @@ class AnthropicAgent(AgentBase):
         return {
             "runtime_config_holder": self._runtime_config_holder,
             "runtime_config_path": self._runtime_config_path,
+            "session_driver": self._provider,
         }
+
+    def _register_session_commands(self) -> None:
+        """Register /add, /explain, /summarize as session commands on the router."""
+        from lyra.core.session_commands import cmd_add, cmd_explain, cmd_summarize
+
+        self.command_router.register_session_command(
+            "add",
+            cmd_add,
+            description="Save a URL to the vault: /add <url>",
+            timeout=60.0,
+        )
+        self.command_router.register_session_command(
+            "explain",
+            cmd_explain,
+            description="Explain a URL in plain language: /explain <url>",
+            timeout=60.0,
+        )
+        self.command_router.register_session_command(
+            "summarize",
+            cmd_summarize,
+            description="Summarize a URL in bullet points: /summarize <url>",
+            timeout=60.0,
+        )
 
     async def _process_llm(
         self, msg: InboundMessage, pool: Pool, *, on_intermediate=None

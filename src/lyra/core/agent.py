@@ -62,7 +62,21 @@ _VAULT_DIR = Path(
 _PERSONAS_DIR = _VAULT_DIR / "personas"
 
 _WORKSPACE_BUILTIN_CONFLICTS = frozenset(
-    {"help", "circuit", "routing", "stop", "config", "clear", "new"}
+    {
+        "help",
+        "circuit",
+        "routing",
+        "stop",
+        "config",
+        "clear",
+        "new",
+        # Session command names — a workspace with these names would silently
+        # conflict with the session command registered in _register_session_commands().
+        "add",
+        "explain",
+        "summarize",
+        "search",
+    }
 )
 
 # S5 — compaction constants (issue #83)
@@ -542,6 +556,7 @@ class AgentBase(ABC):
             smart_routing_decorator=smart_routing_decorator,
             **self._build_router_kwargs(),
         )
+        self._register_session_commands()
         self._persona_path: Path | None = None
         self._persona_mtime: float = 0.0
         self._update_persona_tracking()
@@ -649,6 +664,7 @@ class AgentBase(ABC):
                         smart_routing_decorator=self._smart_routing_decorator,
                         **self._build_router_kwargs(),
                     )
+                    self._register_session_commands()
                 self._last_mtime = mtime
                 self._update_persona_tracking()
             except Exception as exc:
@@ -682,10 +698,19 @@ class AgentBase(ABC):
                 smart_routing_decorator=self._smart_routing_decorator,
                 **self._build_router_kwargs(),
             )
+            self._register_session_commands()
 
     def _build_router_kwargs(self) -> dict:
         """Hook for subclasses to inject extra CommandRouter constructor kwargs."""
         return {}
+
+    def _register_session_commands(self) -> None:
+        """Hook for subclasses to register session commands after router (re)build.
+
+        Called after CommandRouter construction in __init__, _maybe_reload, and
+        _reload_plugins. Base implementation is a no-op; override in concrete
+        agents that support session commands.
+        """
 
     def _handle_voice_command(self, msg: "InboundMessage") -> "InboundMessage | None":
         """Rewrite a /voice command as a voice-modality LLM request.

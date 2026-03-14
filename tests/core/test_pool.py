@@ -918,6 +918,7 @@ class TestPoolEventBusIntegration:
         # AgentCompleted must NOT be present for a failed run
         assert AgentCompleted not in types, "AgentCompleted must not appear on failure"
 
+
 # S1 — Pool identity / session fields (issue #83)
 #
 # RED phase: these tests FAIL until Pool gains session_id, user_id, medium,

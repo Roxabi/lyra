@@ -1,0 +1,11 @@
+name = "search"
+description = "Full-text search over the vault"
+version = "0.1.0"
+priority = 100
+enabled = true
+timeout = 30.0
+
+[[commands]]
+name = "search"
+description = "Search the vault: /search <query>"
+handler = "cmd_search"

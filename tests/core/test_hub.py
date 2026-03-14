@@ -1698,6 +1698,7 @@ class TestHubEventAggregatorLifecycle:
         # No unhandled exceptions — if we get here, cleanup was clean
         set_event_bus(None)
 
+
 # ---------------------------------------------------------------------------
 # S2 — Hub._memory + _memory_tasks fields (issue #83)
 #

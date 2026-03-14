@@ -305,9 +305,7 @@ class TestBootstrapLegacyAdapterParam:
 
         fake_tg_adapter = MagicMock()
         fake_tg_adapter.dp = MagicMock()
-        fake_tg_adapter.dp.start_polling = AsyncMock(
-            side_effect=asyncio.CancelledError
-        )
+        fake_tg_adapter.dp.start_polling = AsyncMock(side_effect=asyncio.CancelledError)
         fake_tg_adapter.bot = MagicMock()
         fake_tg_adapter._bot_id = "main"
 
@@ -359,9 +357,7 @@ class TestBootstrapLegacyAdapterParam:
             "_create_agent",
             lambda *a, **kw: MagicMock(name="lyra_default"),
         )
-        monkeypatch.setattr(
-            main_mod, "_load_messages", lambda **kw: MagicMock()
-        )
+        monkeypatch.setattr(main_mod, "_load_messages", lambda **kw: MagicMock())
         monkeypatch.setattr(
             main_mod,
             "_load_pairing_config",
@@ -374,7 +370,11 @@ class TestBootstrapLegacyAdapterParam:
         # Act
         # type: ignore[call-arg] — adapter param doesn't exist yet (RED phase)
         await main_mod._bootstrap_legacy(  # type: ignore[call-arg]
-            {}, MagicMock(), set(), adapter="telegram", _stop=stop  # type: ignore[call-arg]
+            {},
+            MagicMock(),
+            set(),
+            adapter="telegram",
+            _stop=stop,  # type: ignore[call-arg]
         )
 
         # Assert: from_config was called for telegram but NOT for discord

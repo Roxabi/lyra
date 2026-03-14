@@ -17,6 +17,7 @@ Covers:
 from __future__ import annotations
 
 import asyncio
+import dataclasses as _dataclasses
 import tempfile
 import textwrap
 from datetime import datetime, timezone
@@ -28,6 +29,7 @@ import pytest
 from lyra.core.agent import Agent, AgentBase, load_agent_config
 from lyra.core.auth import TrustLevel
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
+from lyra.core.command_parser import CommandParser
 from lyra.core.command_router import CommandConfig, CommandRouter
 from lyra.core.hub import Hub
 from lyra.core.message import (
@@ -59,7 +61,14 @@ def make_message(
     bot_id: str = "main",
     user_id: str = "alice",
 ) -> InboundMessage:
-    """Build a minimal InboundMessage for testing."""
+    """Build a minimal InboundMessage for testing.
+
+    Auto-parses CommandContext and attaches it to the message, mirroring
+    what the Hub pipeline does, so tests that call dispatch() or is_command()
+    directly work without going through Hub.
+    """
+    _parser = CommandParser()
+    cmd_ctx = _parser.parse(content)
     return InboundMessage(
         id="msg-test-1",
         platform=platform,
@@ -78,6 +87,7 @@ def make_message(
             "is_group": False,
         },
         trust_level=TrustLevel.TRUSTED,
+        command=cmd_ctx,  # type: ignore[call-arg]  # field added in #153
     )
 
 
@@ -234,7 +244,7 @@ class TestDispatchHelp:
         response = await router.dispatch(msg)
 
         # Assert — builtin description appears in the listing
-        assert "List available commands" in response.content
+        assert "List available commands" in response.content  # type: ignore[union-attr]
 
 
 class TestDispatchUnknownCommand:
@@ -298,7 +308,7 @@ class TestDispatchRoutesToPlugin:
         response = await router.dispatch(msg)
 
         # Assert — unknown command because echo is not enabled
-        assert "unknown command" in response.content.lower()
+        assert "unknown command" in response.content.lower()  # type: ignore[union-attr]
 
     @pytest.mark.asyncio
     async def test_dispatch_plugin_without_pool_raises(self, tmp_path: Path) -> None:
@@ -502,6 +512,7 @@ def make_circuit_router(
 
 def make_circuit_msg(user_id: str = "tg:user:42") -> InboundMessage:
     """Build a /circuit InboundMessage from a Telegram user."""
+    _parser = CommandParser()
     return InboundMessage(
         id="msg-circuit-1",
         platform="telegram",
@@ -520,6 +531,7 @@ def make_circuit_msg(user_id: str = "tg:user:42") -> InboundMessage:
             "is_group": False,
         },
         trust_level=TrustLevel.TRUSTED,
+        command=_parser.parse("/circuit"),  # type: ignore[call-arg]  # field added in #153
     )
 
 
@@ -800,6 +812,7 @@ def make_config_msg(
     user_id: str = "tg:user:42", content: str = "/config"
 ) -> InboundMessage:
     """Build a /config InboundMessage."""
+    _parser = CommandParser()
     return InboundMessage(
         id="msg-config-1",
         platform="telegram",
@@ -818,6 +831,7 @@ def make_config_msg(
             "is_group": False,
         },
         trust_level=TrustLevel.TRUSTED,
+        command=_parser.parse(content),  # type: ignore[call-arg]  # field added in #153
     )
 
 
@@ -1160,4 +1174,151 @@ class TestWorkspaceCommands:
 
         response = await router.dispatch(msg)
 
-        assert "unknown command" in response.content.lower()
+        assert "unknown command" in response.content.lower()  # type: ignore[union-attr]
+
+
+# ---------------------------------------------------------------------------
+# T13 — CommandParser integration: is_command reads msg.command (#153)
+# ---------------------------------------------------------------------------
+
+
+def make_message_with_command(content: str, **kwargs) -> InboundMessage:
+    """Build InboundMessage with CommandContext pre-attached (as Hub pipeline would)."""
+    parser = CommandParser()
+    cmd_ctx = parser.parse(content)
+    msg = make_message(content, **kwargs)
+    if cmd_ctx is not None:
+        msg = _dataclasses.replace(msg, command=cmd_ctx)
+    return msg
+
+
+class TestIsCommandReadsCommandContext:
+    """is_command() reads msg.command, not regex on text (#153 S3)."""
+
+    def test_is_command_true_when_command_set(self, tmp_path: Path) -> None:
+        # Arrange
+        router = make_router(tmp_path)
+        msg = make_message_with_command("/help")
+
+        # Act / Assert
+        assert router.is_command(msg) is True
+
+    def test_is_command_false_when_no_command(self, tmp_path: Path) -> None:
+        # Arrange
+        router = make_router(tmp_path)
+        msg = make_message("hello world")
+
+        # Act / Assert
+        assert router.is_command(msg) is False
+
+    def test_is_command_true_for_bang_prefix(self, tmp_path: Path) -> None:
+        # Arrange
+        router = make_router(tmp_path)
+        msg = make_message_with_command("!test")
+
+        # Act / Assert — ! prefix is a valid command prefix
+        assert router.is_command(msg) is True
+
+    def test_get_command_name_returns_full_name(self, tmp_path: Path) -> None:
+        # Arrange
+        router = make_router(tmp_path)
+        msg = make_message_with_command("/imagine cat")
+
+        # Act / Assert
+        assert router.get_command_name(msg) == "/imagine"
+
+    def test_get_command_name_bang_prefix(self, tmp_path: Path) -> None:
+        # Arrange
+        router = make_router(tmp_path)
+        msg = make_message_with_command("!help")
+
+        # Act / Assert
+        assert router.get_command_name(msg) == "!help"
+
+    def test_get_command_name_none_when_no_command(self, tmp_path: Path) -> None:
+        # Arrange
+        router = make_router(tmp_path)
+        msg = make_message("hello")
+
+        # Act / Assert
+        assert router.get_command_name(msg) is None
+
+
+class TestBangPrefixFallthrough:
+    """!-prefixed unknown commands return None sentinel — fallthrough to pool (#153)."""
+
+    @pytest.mark.asyncio
+    async def test_unknown_bang_command_returns_none(self, tmp_path: Path) -> None:
+        # Arrange
+        router = make_router(tmp_path)
+        msg = make_message_with_command("!unknown_command_xyz")
+
+        # Act
+        result = await router.dispatch(msg, pool=None)
+
+        # Assert — None sentinel triggers pool fallthrough in Hub pipeline
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_unknown_slash_command_returns_response(self, tmp_path: Path) -> None:
+        # Arrange — unknown / command still returns an error Response, not None
+        router = make_router(tmp_path)
+        msg = make_message_with_command("/totally_unknown_xyz123")
+
+        # Act
+        result = await router.dispatch(msg, pool=None)
+
+        # Assert — slash unknown: returns a Response (not None)
+        assert result is not None
+        assert hasattr(result, "content")
+
+    @pytest.mark.asyncio
+    async def test_unknown_bang_command_falls_through_to_pool_in_hub(
+        self, tmp_path: Path
+    ) -> None:
+        """Hub integration: !unknown_xyz → dispatch() returns None sentinel →
+        _dispatch_command() calls _submit_to_pool() → agent.process() reached."""
+        # Arrange — full hub with a capturing agent that has a command router
+        process_calls: list[InboundMessage] = []
+
+        class CapturingAgent(AgentBase):
+            async def process(
+                self, msg: InboundMessage, pool: Pool, *, on_intermediate=None
+            ) -> Response:
+                process_calls.append(msg)
+                return Response(content="agent reply")
+
+        hub = Hub()
+        config = Agent(name="lyra", system_prompt="", memory_namespace="lyra")
+        agent = CapturingAgent(config)
+        # Attach a router that knows /echo but has no !-prefixed commands
+        agent.command_router = make_router(tmp_path)
+        hub.register_agent(agent)
+
+        class SilentAdapter:
+            async def send(
+                self, original_msg: InboundMessage, outbound: OutboundMessage
+            ) -> None:
+                pass
+
+            async def send_streaming(
+                self, original_msg: InboundMessage, chunks: object
+            ) -> None:
+                pass
+
+        hub.register_adapter(Platform.TELEGRAM, "main", SilentAdapter())  # type: ignore[arg-type]
+        hub.register_binding(
+            Platform.TELEGRAM, "main", "chat:42", "lyra", "telegram:main:chat:42"
+        )
+
+        # Act — send !unknown_xyz; hub parses CommandContext internally
+        await hub.bus.put(make_message(content="!unknown_xyz"))
+
+        try:
+            await asyncio.wait_for(hub.run(), timeout=0.3)
+        except asyncio.TimeoutError:
+            pass
+
+        # Assert — agent.process() called via pool (not "Unknown command" response)
+        assert len(process_calls) == 1
+        assert process_calls[0].text == "!unknown_xyz"

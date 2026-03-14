@@ -18,7 +18,11 @@ dependencies = [
     "anthropic>=0.49",
     # STT (via voiceCLI)
     "voicecli",
+    "typer>=0.12",
 ]
+
+[project.scripts]
+lyra-agent = "lyra.cli:main"
 
 [project.optional-dependencies]
 

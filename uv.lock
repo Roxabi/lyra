@@ -946,6 +946,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "roxabi-vault" },
+    { name = "typer" },
     { name = "uvicorn", extra = ["standard"] },
     { name = "voicecli" },
 ]
@@ -971,6 +972,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "roxabi-vault", git = "https://github.com/Roxabi/roxabi-vault.git?branch=staging" },
+    { name = "typer", specifier = ">=0.12" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34" },
     { name = "voicecli", git = "https://github.com/Roxabi/voiceCLI.git?branch=staging" },
 ]

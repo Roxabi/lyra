@@ -175,6 +175,51 @@ Examples:
 - Discord thread 888 → agent `lyra`, pool `discord:main:thread:888`
 - Wildcard `*` possible for an entire platform/bot
 
+> **Note:** `"main"` is the legacy single-bot sentinel used in the examples above. In multi-bot mode, `"main"` is replaced with the configured `bot_id` (e.g., `"lyra"`, `"aryl"`), so the pool ID becomes `telegram:lyra:chat:555`.
+
+### Multi-Bot Architecture
+
+Lyra supports N bots per platform within a single process. The key structures that make this work:
+
+**Adapter registry** — `dict[(Platform, bot_id), ChannelAdapter]`
+
+Each bot registers independently at startup via `hub.register_adapter(Platform.TELEGRAM, bot_id, adapter)`. The hub routes inbound messages to the correct adapter, and the `OutboundDispatcher` verifies `(platform, bot_id)` before sending any response. A response can never be delivered by the wrong bot.
+
+**Routing key** — `RoutingKey(platform, bot_id, scope_id)`
+
+Every inbound message carries a 3-tuple routing key. Scope is extracted by the adapter:
+
+| Platform | Context | scope_id |
+|----------|---------|----------|
+| Telegram | DM or group chat | `chat:{chat_id}` |
+| Telegram | Forum topic | `chat:{chat_id}:topic:{topic_id}` |
+| Discord | Thread | `thread:{thread_id}` |
+| Discord | Channel | `channel:{channel_id}` |
+
+`bot_id` is the string defined in `lyra.toml` (e.g., `"lyra"`, `"aryl"`). A unique Pool is created for every unique `(platform, bot_id, scope_id)` combination — two bots talking to the same user in the same channel each have completely isolated conversation history and session state.
+
+**Per-agent vs shared resources**
+
+| Resource | Scope |
+|----------|-------|
+| ProviderRegistry | Per-agent |
+| SmartRoutingDecorator | Per-agent |
+| Memory namespace (SQLite) | Per-agent |
+| System prompt / persona | Per-agent |
+| CliPool (subprocess pool) | Shared across all agents |
+| asyncio event loop | Shared |
+| Inbound / outbound bus | Shared |
+
+**Discord thread ownership (cross-bot silence)**
+
+When multiple Discord bots share a server, each adapter maintains a `_owned_threads: set[int]`. When a bot creates a thread (via `auto_thread = true`), the thread ID is added to its set. On every inbound message in a thread, the adapter checks ownership: if the thread is not in `_owned_threads` and the bot was not directly mentioned, the message is silently dropped. Direct `@mention` always bypasses the check. This prevents two bots from responding to the same message.
+
+**Telegram webhook routing**
+
+Each Telegram bot is assigned a distinct webhook endpoint `/webhooks/telegram/{bot_id}`. The path parameter routes the update directly to the correct adapter — no secondary dispatch needed.
+
+See [MULTI-BOT.md](MULTI-BOT.md) for the full configuration reference and step-by-step setup guide.
+
 ### Discussion Pools
 
 One pool per conversation scope. Contains:
@@ -358,7 +403,7 @@ client = AsyncOpenAI(
 - **fastembed ONNX replaces sentence-transformers** (#82) — Non-blocking ONNX runtime, no `run_in_executor` needed. Hybrid BM25 (FTS5) + cosine (sqlite-vec).
 - **LLM circuit breaker** (#104) — Timeout + retry logic for Anthropic SDK calls. Graceful degradation on failure.
 - **LlmProvider protocol** (#123 ✅) — Multi-driver abstraction: `AnthropicSdkDriver`, `ClaudeCliDriver`. Smart routing (#134 ✅) selects model by complexity. OllamaDriver planned for Phase 2.
-- **AuthMiddleware + TrustLevel** (#151 ✅) — Per-adapter auth with trust levels (owner/trusted/public/blocked). Config-driven via TOML.
+- **AuthMiddleware + TrustLevel** (#151 ✅) — Per-adapter auth with trust levels (owner/trusted/public/blocked). Config-driven via TOML. Note: `[admin].user_ids` grants cross-platform admin commands to those users across ALL bots, whereas per-bot `owner_users` in `[[auth.telegram_bots]]` / `[[auth.discord_bots]]` sets the trust level for that specific bot only.
 - **RoutingContext + outbound verification** (#152 ✅) — Every outbound response carries a RoutingContext; adapters verify channel + bot_id before sending.
 - **PoolContext protocol** (#204 ✅) — Decouples Pool from Hub via a protocol interface.
 - **TTL eviction for Hub.pools** (#205 ✅) — Prevents memory leak from stale pools.

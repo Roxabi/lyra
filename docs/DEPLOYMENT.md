@@ -61,6 +61,61 @@ LYRA_CONFIG_SECRET=...           # for /config HTTP endpoint
 chmod 600 ~/projects/lyra/.env
 ```
 
+## Multi-Bot Deployment
+
+Running multiple bots requires no changes to the supervisor configuration — all bots run in the single `lyra` process.
+
+### Environment variables
+
+Add one set of variables per additional bot. The variable names are arbitrary; reference them in `lyra.toml` with the `env:` prefix.
+
+```bash
+# Second bot — Telegram
+ARYL_TELEGRAM_TOKEN=123456789:ABCdef...
+
+# Second bot — Discord
+ARYL_DISCORD_TOKEN=MTIz...
+
+# Webhook secret per bot (if using Telegram webhook mode)
+ARYL_TELEGRAM_WEBHOOK_SECRET=another-random-string
+```
+
+```bash
+chmod 600 ~/projects/lyra/.env
+```
+
+The `.env` file grows by two to three lines per additional bot. No other infrastructure changes are needed.
+
+### Resource considerations
+
+All bots share a single process and a single `CliPool` (Claude CLI subprocess pool). Implications:
+
+- **CPU / RAM**: each additional bot adds a small constant overhead (one adapter, one auth middleware instance). At personal-use scale this is negligible — expect under 50 MB additional RAM per bot.
+- **CliPool contention**: simultaneous long-running LLM requests from multiple bots compete for subprocess slots in the shared pool. `CliPool` has no pool-size configuration — subprocess contention cannot be tuned from config. The only mitigations are reducing load or running a separate Lyra process per bot.
+- **Crash scope**: an unhandled exception that kills the process takes down all bots at once. The supervisor's `autorestart=true` policy brings everything back automatically.
+
+### Supervisor: no changes needed
+
+The `lyra` supervisor program starts `python -m lyra`, which reads `lyra.toml` and starts all configured bots. Adding bots to `lyra.toml` takes effect on the next restart.
+
+```bash
+# Restart after updating lyra.toml or .env
+make lyra reload
+```
+
+Verify all bots started cleanly:
+
+```bash
+make lyra logs
+# Look for lines like:
+# INFO lyra.__main__: Registered Telegram bot bot_id='lyra' agent='lyra_default'
+# INFO lyra.__main__: Registered Telegram bot bot_id='aryl' agent='aryl_default'
+# INFO lyra.adapters.discord: Discord bot ready: RoxabiLyra (id=<id>)
+# INFO lyra.adapters.discord: Discord bot ready: RoxabiAryl (id=<id>)
+```
+
+---
+
 ## 3. Register with supervisord
 
 ```bash

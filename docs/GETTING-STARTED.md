@@ -324,6 +324,8 @@ See `lyra.toml.example` for a full multi-bot example with multiple bots.
 
 > **Note:** `owner_users` in each adapter section are automatically granted admin privileges. You do not need to duplicate them in `[admin].user_ids`.
 
+> **See also:** For a full guide on running and customizing multiple bots, see [MULTI-BOT.md](MULTI-BOT.md).
+
 At least one bot (Telegram or Discord) must be configured. A missing platform logs a warning and skips that adapter — Lyra still starts with the remaining ones.
 
 ---

@@ -120,6 +120,16 @@ The default agent uses `claude-cli` backend, which shells out to the `claude` CL
 **Queue full warning**
 If the hub logs `Processing your request…`, the bounded queue (100) is full. This is expected under burst load — messages are queued and processed in order.
 
+## Running Multiple Bots
+
+Lyra supports running multiple bots (each with its own persona and model) in a single process. The short version:
+
+1. Create an agent TOML in `src/lyra/agents/<name>.toml` for the new persona. Copy `src/lyra/agents/lyra_default.toml` to `src/lyra/agents/<name>.toml` and edit `[agent].name`, `[model].model`, and `[prompt]` to define the new agent.
+2. Add `[[telegram.bots]]` and/or `[[discord.bots]]` entries to `lyra.toml`, each with a unique `bot_id` and `agent = "<name>"`.
+3. Add matching `[[auth.telegram_bots]]` / `[[auth.discord_bots]]` entries and the new bot tokens to `.env`.
+
+See [MULTI-BOT.md](MULTI-BOT.md) for the full configuration reference, auth options, Discord thread ownership details, and a complete step-by-step checklist.
+
 ## Next steps
 
 - [Architecture](ARCHITECTURE.md) — understand the hub, bindings, pools, and memory model

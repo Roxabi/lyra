@@ -1,4 +1,5 @@
 """Tests for EventAggregator dedup state machine."""
+
 from __future__ import annotations
 
 import asyncio
@@ -72,9 +73,11 @@ class TestEventAggregatorDedup:
         bus = EventBus()
         agg = EventAggregator(bus=bus)
         call_count = 0
+
         async def mock_action(event):
             nonlocal call_count
             call_count += 1
+
         agg._trigger_monitoring_action = mock_action
         await agg._handle(AgentFailed(agent_id="x", error="err"))
         await agg._handle(AgentFailed(agent_id="x", error="err"))
@@ -86,9 +89,11 @@ class TestEventAggregatorDedup:
         bus = EventBus()
         agg = EventAggregator(bus=bus)
         call_count = 0
+
         async def mock_action(event):
             nonlocal call_count
             call_count += 1
+
         agg._trigger_monitoring_action = mock_action
         await agg._handle(AgentCompleted(agent_id="x", duration_ms=100))
         await agg._handle(AgentFailed(agent_id="x", error="err"))
@@ -99,8 +104,10 @@ class TestEventAggregatorDedup:
         bus = EventBus()
         agg = EventAggregator(bus=bus)
         actions = []
+
         async def mock_action(event):
             actions.append(event)
+
         agg._trigger_monitoring_action = mock_action
         event = CircuitStateChanged(
             platform="anthropic", old_state="closed", new_state="open"

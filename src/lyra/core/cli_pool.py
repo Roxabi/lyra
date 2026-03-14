@@ -18,6 +18,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -26,6 +27,8 @@ from pathlib import Path
 from .agent import ModelConfig
 
 log = logging.getLogger(__name__)
+
+_SESSION_ID_RE = re.compile(r'^[0-9a-f-]{8,64}$')
 
 
 @dataclass
@@ -72,6 +75,9 @@ def _find_project_root() -> Path:
 # cwd for the claude subprocess — lyra project root
 _LYRA_ROOT = _find_project_root()
 
+# Claude CLI session files live at ~/.claude/projects/<cwd-slug>/<session_id>.jsonl
+_CLAUDE_PROJECTS = Path.home() / ".claude" / "projects"
+
 
 @dataclass
 class _ProcessEntry:
@@ -110,6 +116,7 @@ class CliPool:
         self._entries: dict[str, _ProcessEntry] = {}
         self._reaper_task: asyncio.Task[None] | None = None
         self._cwd_overrides: dict[str, Path] = {}
+        self._resume_session_ids: dict[str, str] = {}
 
     async def start(self) -> None:
         """Start the idle reaper background task."""
@@ -209,6 +216,26 @@ class CliPool:
         self._cwd_overrides[pool_id] = cwd
         log.info("[pool:%s] workspace switched to %s", pool_id, cwd)
 
+    def _session_file_exists(self, session_id: str) -> bool:
+        """Return True if a Claude session JSONL file exists for this session_id."""
+        return any(_CLAUDE_PROJECTS.glob(f"*/{session_id}.jsonl"))
+
+    async def resume_and_reset(self, pool_id: str, session_id: str) -> None:
+        """Kill process; next _spawn() uses --resume <session_id> (one-shot).
+
+        No-op on invalid session_id format or pruned session file (Tier-2).
+        """
+        if not _SESSION_ID_RE.match(session_id):
+            log.warning("[pool:%s] resume_and_reset: invalid session_id %r — skipping", pool_id, session_id)  # noqa: E501
+            return
+        if not self._session_file_exists(session_id):
+            log.info("[pool:%s] resume_and_reset: session %r not on disk — skipping (Tier-2)", pool_id, session_id)  # noqa: E501
+            return
+        # is_idle verified by caller; race window is sub-millisecond.
+        await self._kill(pool_id)
+        self._resume_session_ids[pool_id] = session_id
+        log.info("[pool:%s] resume_and_reset: will resume %s on next spawn", pool_id, session_id)  # noqa: E501
+
     # -------------------------------------------------------------------------
     # Internal
     # -------------------------------------------------------------------------
@@ -243,7 +270,12 @@ class CliPool:
         self, pool_id: str, model_config: ModelConfig, system_prompt: str = ""
     ) -> _ProcessEntry | None:
         spawn_cwd = self._cwd_overrides.get(pool_id) or model_config.cwd or _LYRA_ROOT
-        cmd = self._build_cmd(model_config, system_prompt=system_prompt)
+        resume_session_id = self._resume_session_ids.pop(pool_id, None)
+        cmd = self._build_cmd(
+            model_config,
+            session_id=resume_session_id,
+            system_prompt=system_prompt,
+        )
         log.info(
             "[pool:%s] spawning: backend=%s model=%s cwd=%s",
             pool_id,
@@ -416,6 +448,9 @@ class CliPool:
             return CliResult(error=f"Read error: {type(exc).__name__}")
 
     async def _kill(self, pool_id: str) -> None:
+        # _cwd_overrides cleared here; switch_cwd() sets it after _kill.
+        # _resume_session_ids NOT cleared — resume_and_reset() sets it after
+        # calling _kill (one-shot handoff; clearing here would break it).
         entry = self._entries.pop(pool_id, None)
         self._cwd_overrides.pop(pool_id, None)
         if entry is None:

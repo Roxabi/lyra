@@ -18,6 +18,7 @@ from lyra.errors import ProviderError
 from .agent import AgentBase
 from .circuit_breaker import CircuitRegistry
 from .command_parser import CommandParser
+from .context_resolver import ContextResolver
 from .inbound_audio_bus import InboundAudioBus
 from .inbound_bus import InboundBus
 from .message import (
@@ -164,6 +165,7 @@ class Hub:
         pairing_manager: PairingManager | None = None,
         stt: STTService | None = None,
         debounce_ms: int = 0,
+        context_resolver: ContextResolver | None = None,
     ) -> None:
         self._bus_size = bus_size
         self.inbound_bus: InboundBus = InboundBus()
@@ -176,6 +178,7 @@ class Hub:
         self.circuit_registry = circuit_registry
         self._msg_manager = msg_manager
         self._pairing_manager = pairing_manager
+        self._context_resolver = context_resolver
         self._stt: STTService | None = stt
         self._rate_limit = rate_limit
         self._rate_window = rate_window
@@ -954,6 +957,55 @@ class MessagePipeline:
             response=response,
         )
 
+    async def _resolve_context(
+        self, msg: InboundMessage, pool: Pool, pool_id: str
+    ) -> None:
+        """Attempt reply-to-resume before pool.submit(). No-op on any failure.
+
+        # Note: pool._session_resume_fn is wired lazily by
+        # SimpleAgent._maybe_register_resume on the first process() call.
+        # If called before any process(), resume_session() is a no-op
+        # (fn is None). In practice, pools exist only after agent processing
+        # begins.
+        """
+        if msg.reply_to_id is None:
+            return
+        resolver = self._hub._context_resolver
+        if resolver is None:
+            return
+        resolved = await resolver.resolve(msg.reply_to_id)
+        if resolved is None:
+            return
+        if resolved.pool_id != pool_id:
+            log.info(
+                "reply-to-resume: cross-pool mismatch"
+                " (resolved=%r current=%r) — skipping",
+                resolved.pool_id,
+                pool_id,
+            )
+            return
+        # TODO(post-#67): replace with user_id ownership check once
+        # conversation_turns stores user_id. For now, restrict resume to
+        # private chats to prevent cross-user session access in group scopes.
+        if msg.platform_meta.get("is_group"):
+            log.info(
+                "reply-to-resume: group chat — skipping resume (cross-user risk)",
+            )
+            return
+        if not pool.is_idle:
+            log.info(
+                "reply-to-resume: pool %r busy — skipping resume of session %r",
+                pool_id,
+                resolved.session_id,
+            )
+            return
+        log.info(
+            "reply-to-resume: resuming session %r for pool %r",
+            resolved.session_id,
+            pool_id,
+        )
+        await pool.resume_session(resolved.session_id)
+
     async def _submit_to_pool(
         self,
         msg: InboundMessage,
@@ -969,6 +1021,14 @@ class MessagePipeline:
             return _DROP
         if await self._hub._circuit_breaker_drop(msg):
             return _DROP
+        try:
+            await self._resolve_context(msg, pool, pool.pool_id)
+        except Exception:
+            log.warning(
+                "reply-to-resume: _resolve_context failed"
+                " — continuing with active session",
+                exc_info=True,
+            )
         return PipelineResult(
             action=Action.SUBMIT_TO_POOL,
             pool=pool,

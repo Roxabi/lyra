@@ -447,6 +447,12 @@ class TelegramAdapter:
 
         attachments = _extract_attachments(raw)
         message_id = getattr(raw, "message_id", None)
+        reply_to_message = getattr(raw, "reply_to_message", None)
+        reply_to_id = (
+            str(reply_to_message.message_id)
+            if reply_to_message is not None
+            else None
+        )
         platform_meta = {
             "chat_id": chat_id,
             "topic_id": topic_id,
@@ -477,6 +483,7 @@ class TelegramAdapter:
             trust_level=trust_level,
             platform_meta=platform_meta,
             routing=routing,
+            reply_to_id=reply_to_id,
         )
 
     def normalize_audio(

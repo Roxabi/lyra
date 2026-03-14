@@ -53,6 +53,10 @@ class PoolContext(Protocol):
 class Pool:
     """One pool per conversation scope. Holds history and a per-session asyncio.Task."""
 
+    _session_reset_fn: Callable[[], Awaitable[None]] | None
+    _session_resume_fn: Callable[[str], Awaitable[None]] | None
+    _switch_workspace_fn: Callable[[Path], Awaitable[None]] | None
+
     def __init__(
         self,
         pool_id: str,
@@ -70,6 +74,7 @@ class Pool:
         self.sdk_history: deque[dict] = deque()
         self.max_sdk_history: int = 50
         self._session_reset_fn: Callable[[], Awaitable[None]] | None = None
+        self._session_resume_fn: Callable[[str], Awaitable[None]] | None = None
         self._switch_workspace_fn: Callable[[Path], Awaitable[None]] | None = None
         self._ctx = ctx
         self._turn_timeout = turn_timeout
@@ -115,6 +120,14 @@ class Pool:
         """Cancel the current processing task (no-op if idle)."""
         if self._current_task is not None and not self._current_task.done():
             self._current_task.cancel()
+
+    async def resume_session(self, session_id: str) -> None:
+        """Resume a specific Claude session (CLI backend).
+
+        No-op for SDK-backed pools.
+        """
+        if self._session_resume_fn is not None:
+            await self._session_resume_fn(session_id)
 
     def _msg(self, key: str, fallback: str) -> str:
         """Fetch a localised message, falling back to the given string."""

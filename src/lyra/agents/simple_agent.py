@@ -115,6 +115,19 @@ class SimpleAgent(AgentBase):
             _pool_id = pool.pool_id
             pool._switch_workspace_fn = lambda cwd: switch_fn(_pool_id, cwd)
 
+    def _maybe_register_resume(self, pool: Pool) -> None:
+        """Register session resume callback on the pool the first time we process.
+
+        Hub calls pool.resume_session(session_id) → delegates here →
+        CliPool.resume_and_reset(). Follows the same lazy-wiring pattern as
+        _maybe_register_reset.
+        """
+        if pool._session_resume_fn is None:
+            resume_fn = getattr(self._provider, "resume_and_reset", None)
+            if resume_fn is not None:
+                _pool_id = pool.pool_id
+                pool._session_resume_fn = lambda sid: resume_fn(_pool_id, sid)
+
     async def process(  # noqa: C901
         self,
         msg: InboundMessage,
@@ -124,6 +137,7 @@ class SimpleAgent(AgentBase):
     ) -> Response:
         self._maybe_reload()
         self._maybe_register_reset(pool)
+        self._maybe_register_resume(pool)
 
         # /voice pre-router — handled by AgentBase
         r = await self._handle_voice_command(msg)

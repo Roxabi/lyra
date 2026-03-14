@@ -1,0 +1,80 @@
+---
+title: "Memory agent integration — identity anchor, session lifecycle, memory pillars"
+issue: 83
+status: approved
+tier: F-full
+date: 2026-03-14
+---
+
+## Problem
+
+Lyra is fully stateless between sessions. When a conversation ends — by disconnect, restart,
+or 10h idle — everything is gone. The agent has no memory of who it talked to, what was
+discussed, or what the user prefers. Each new session starts from zero.
+
+Three compounding gaps:
+
+1. **No identity in Pool.** `Pool` holds `pool_id` and `agent_name` but has no `session_id`,
+   `user_id`, or `medium`. Without these, there is nothing to key a session record on.
+
+2. **No session persistence.** `AgentBase` never writes to L3. `flush_session()` does not
+   exist. The identity anchor (`IDENTITY_ANCHOR`) lives only in the TOML file — it cannot
+   evolve, and it is re-read from disk on every boot.
+
+3. **No memory pillars.** There is no storage for user contacts, extracted concepts,
+   preferences, or past session summaries. Cross-session recall is impossible.
+
+The result: Lyra cannot say "you mentioned this last week", cannot adapt its tone to a user's
+stated preferences, and cannot build a model of the world from its conversations.
+
+## Who
+
+- **Primary:** `AgentBase` subclasses (`SimpleAgent`) — gain session lifecycle hooks,
+  identity anchor from L3, and access to contact/concept/preference data at session start.
+- **Secondary:** Mickael (end user) — benefits from an agent that remembers, adapts, and
+  builds knowledge over time across Telegram, Discord, and CLI.
+- **Downstream issue #67** — raw turn logging — needs `Pool.append()` hook + `session_id`
+  + `user_id` that this issue introduces.
+
+## Constraints
+
+- **AsyncMemoryDB only** — `roxabi-vault` (`AsyncMemoryDB`) is already installed. All reads
+  and writes go through it. No direct `sqlite3` calls in the agent hot path.
+- **`user_id` isolation is non-negotiable** — every L3 query must be scoped by `user_id`.
+  No cross-user data leakage, ever.
+- **Asyncio-native** — `Pool` and `AgentBase` are fully async. No blocking SQLite calls on
+  the event loop. All vault I/O uses `aiosqlite`.
+- **Pool stays lightweight** — `pool.py` must not import heavy deps. Vault access lives in
+  `agent.py` (AgentBase), not Pool. Pool holds identity fields only.
+- **LLM calls in flush are background** — concept extraction and preference inference
+  require an LLM call. These run as `asyncio.create_task()` in `flush_session()` — they
+  must not block the session close path.
+- **Token budget** — the `[MEMORY]` + `[PREFERENCES]` injected into the system prompt has
+  a hard cap (default 1 000 tokens). Oldest entries truncated first.
+- **No external graph DB** — concept relations stored as JSON in `metadata`. Optional
+  in-memory `networkx` view for traversal. No Neo4j, no Kuzu in Phase 1.
+- **roxabi-vault schema is fixed** — we do not migrate the vault schema in this issue.
+  All new entry types (`session`, `contact`, `concept`, `preference`) use the existing
+  `entries` table via `type` + `metadata` fields.
+
+## Out of Scope
+
+- L1 (per-session SQLite) and L2 (episodic Markdown files) — deferred to Phase 2.
+- L4 procedural memory — deferred to Phase 3.
+- Multi-agent shared memory namespaces.
+- REST API for memory (except `GET /memory/preferences/{user_id}` for inspection).
+- Automatic TTL purge for L3 entries — schema supports `ttl` but enforcement is Phase 2.
+- networkx graph traversal — optional, not required for Phase 1.
+- Entity extraction NER pipeline — LLM-based extraction only (no spaCy/transformers).
+
+## Complexity
+
+**Tier: F-full** — Multi-domain (Pool identity, AgentBase lifecycle, L3 vault integration,
+LLM-based extraction, session replay), new architecture (memory pillars), 3+ unknowns
+(extraction prompt quality, preference inference threshold, token budget tuning).
+
+Signals:
+- XL size label
+- Touches `pool.py`, `agent.py`, new `memory/` module, tests across all three
+- New patterns: background LLM extraction, system prompt injection, upsert-by-key semantics
+- κ = 8 (recorded in issue body)

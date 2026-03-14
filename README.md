@@ -75,19 +75,23 @@ flowchart TD
 
 ```bash
 # 1. Install
-uv sync
+uv sync && source .venv/bin/activate
 
-# 2. Configure
+# 2. Tokens — create .env with your bot token(s)
 cat > .env <<'EOF'
 TELEGRAM_TOKEN=your-telegram-bot-token
 TELEGRAM_WEBHOOK_SECRET=any-random-secret
-DISCORD_TOKEN=your-discord-bot-token
+DISCORD_TOKEN=your-discord-bot-token   # omit if not using Discord
 EOF
 
-# 3. Run
+# 3. Auth config — tell Lyra which bots to run and who owns them
+cp config.toml.example config.toml
+# Edit config.toml: set your Telegram/Discord user ID in [[auth.telegram_bots]] / [[auth.discord_bots]]
+
+# 4. Run
 lyra start
 
-# Or see all available commands
+# Or see all commands
 lyra --help
 ```
 
@@ -129,6 +133,20 @@ All configuration is via `.env` (copy `.env.example` to get started). Key variab
 
 Agent behaviour (tools, model, system prompt) is configured per-agent in `src/lyra/agents/<name>.toml` (project-level) or `~/.lyra/agents/<name>.toml` (user-level, takes precedence).
 See [QUICKSTART.md](docs/QUICKSTART.md) for the full walkthrough.
+
+## CLI reference
+
+```bash
+lyra start                        # start all configured adapters
+lyra agent create                 # interactive wizard — create a new agent TOML
+lyra agent list                   # list all agents (user + system, with backend/model)
+lyra agent validate <name>        # validate agent TOML schema
+lyra config show                  # display parsed config.toml
+lyra config validate              # check tokens + env vars are set
+lyra --version
+```
+
+**Telegram-only or Discord-only**: simply omit `[[telegram.bots]]` or `[[discord.bots]]` from `config.toml`. Lyra starts with whichever adapters are configured — a missing platform logs a warning and is skipped.
 
 ## Operations (Makefile)
 

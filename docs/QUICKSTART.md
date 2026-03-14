@@ -56,7 +56,20 @@ DISCORD_TOKEN=MTIz...                      # from Discord Developer Portal → B
 
 ## 3. Configure the agent (optional)
 
-The default agent config lives at `src/lyra/agents/lyra_default.toml`. You can edit it without touching any Python:
+The default agent config lives at `src/lyra/agents/lyra_default.toml`. You can edit it directly, or use the CLI wizard:
+
+```bash
+# List existing agents
+lyra agent list
+
+# Create a new agent interactively
+lyra agent create
+
+# Validate a TOML after manual edits
+lyra agent validate lyra_default
+```
+
+Agents are TOML files — no Python needed:
 
 ```toml
 [agent]
@@ -65,8 +78,8 @@ memory_namespace = "lyra"
 permissions = []
 
 [model]
-backend = "claude-cli"          # "claude-cli" (default) | "anthropic-sdk" | "ollama" (Phase 2)
-model = "claude-haiku-4-5-20251001"
+backend = "claude-cli"          # "claude-cli" | "anthropic-sdk"
+model = "claude-sonnet-4-6"
 max_turns = 10
 tools = ["Read", "Grep", "Glob", "WebFetch", "WebSearch"]
 
@@ -74,7 +87,9 @@ tools = ["Read", "Grep", "Glob", "WebFetch", "WebSearch"]
 system = """You are Lyra, a personal AI assistant..."""
 ```
 
-To add a second agent, duplicate the file (`my_agent.toml`) and reference it in `config.toml` via a `[[telegram.bots]]` or `[[discord.bots]]` entry with `agent = "my_agent"`. No Python changes needed.
+**User-level overrides**: put your customised file at `~/.lyra/agents/<name>.toml` — it takes precedence over the versioned system default without touching the repo.
+
+**Second agent**: duplicate any `.toml` under a new name, then add a `[[telegram.bots]]` or `[[discord.bots]]` entry in `config.toml` pointing `agent = "<name>"`. No Python changes needed.
 
 ## 4. Run
 
@@ -93,6 +108,27 @@ Lyra is now:
 - Connected to Discord via gateway WebSocket
 
 Send a message to your Telegram bot or Discord bot — you should get a reply within a few seconds.
+
+### Telegram-only or Discord-only
+
+Just configure only the platforms you need in `config.toml`. A platform with no `[[telegram.bots]]` / `[[discord.bots]]` entries is silently skipped:
+
+```toml
+# Telegram only — omit [[discord.bots]] entirely
+[[telegram.bots]]
+bot_id = "lyra"
+token = "env:TELEGRAM_TOKEN"
+bot_username = "env:TELEGRAM_BOT_USERNAME"
+webhook_secret = "env:TELEGRAM_WEBHOOK_SECRET"
+agent = "lyra_default"
+
+[[auth.telegram_bots]]
+bot_id = "lyra"
+default = "blocked"
+owner_users = [YOUR_TELEGRAM_ID]
+```
+
+No flags needed — presence in `config.toml` is the switch.
 
 ## 5. Run tests
 

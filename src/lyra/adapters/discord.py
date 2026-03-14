@@ -929,3 +929,24 @@ class DiscordAdapter(discord.Client):
         if assembled is None:
             return
         await self.render_audio(assembled, inbound)
+
+    async def render_voice_stream(
+        self,
+        chunks: AsyncIterator[OutboundAudioChunk],
+        inbound: InboundMessage,
+    ) -> None:
+        """Route TTS stream to the active Discord voice session for this guild."""
+        if inbound.platform != Platform.DISCORD.value:
+            log.warning(
+                "render_voice_stream() called with non-discord message id=%s",
+                inbound.id,
+            )
+            return
+        guild_id = inbound.platform_meta.get("guild_id")
+        if guild_id is None:
+            log.warning(
+                "render_voice_stream: platform_meta missing 'guild_id' for msg id=%s",
+                inbound.id,
+            )
+            return
+        await self._vsm.stream(str(guild_id), chunks)

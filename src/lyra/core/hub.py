@@ -96,6 +96,17 @@ class ChannelAdapter(Protocol):
         """
         ...
 
+    async def render_voice_stream(
+        self,
+        chunks: AsyncIterator[OutboundAudioChunk],
+        inbound: InboundMessage,
+    ) -> None:
+        """Stream TTS audio to an active voice session (Discord voice channel).
+
+        Adapters that support voice playback implement this method.
+        """
+        ...
+
     async def render_attachment(
         self, msg: OutboundAttachment, inbound: InboundMessage
     ) -> None:
@@ -575,6 +586,31 @@ class Hub:
                 "Call register_adapter() before dispatching audio stream."
             )
         await adapter.render_audio_stream(chunks, msg)
+        self._last_processed_at = time.monotonic()
+
+    async def dispatch_voice_stream(
+        self,
+        msg: InboundMessage,
+        chunks: AsyncIterator[OutboundAudioChunk],
+    ) -> None:
+        """Stream TTS audio to an active Discord voice session.
+
+        Routes through the OutboundDispatcher when one is registered (fire-and-forget).
+        Falls back to a direct adapter call when no dispatcher is registered.
+        """
+        platform = Platform(msg.platform)
+        dispatcher = self.outbound_dispatchers.get((platform, msg.bot_id))
+        if dispatcher is not None:
+            dispatcher.enqueue_voice_stream(msg, chunks)
+            self._last_processed_at = time.monotonic()
+            return
+        adapter = self.adapter_registry.get((platform, msg.bot_id))
+        if adapter is None:
+            raise KeyError(
+                f"No adapter registered for ({msg.platform!r}, {msg.bot_id!r}). "
+                "Call register_adapter() before dispatching voice stream."
+            )
+        await adapter.render_voice_stream(chunks, msg)
         self._last_processed_at = time.monotonic()
 
     # ------------------------------------------------------------------

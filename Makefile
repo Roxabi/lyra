@@ -8,6 +8,16 @@ ifeq (remote,$(firstword $(MAKECMDGOALS)))
   $(eval $(REMOTE_CMD):;@:)
 endif
 
+ifeq (telegram,$(firstword $(MAKECMDGOALS)))
+  TELEGRAM_CMD := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
+  $(eval $(TELEGRAM_CMD):;@:)
+endif
+
+ifeq (discord,$(firstword $(MAKECMDGOALS)))
+  DISCORD_CMD := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
+  $(eval $(DISCORD_CMD):;@:)
+endif
+
 LYRA_STACK_DIR ?= $(HOME)/projects/lyra-stack
 SUPERVISORCTL  := $(LYRA_STACK_DIR)/scripts/supervisorctl.sh
 SUPERVISOR_START := $(LYRA_STACK_DIR)/scripts/start.sh
@@ -25,10 +35,15 @@ define ensure_hub
 	fi
 endef
 
-MACHINE1 := $(or $(shell grep '^MACHINE1_HOST=' .env 2>/dev/null | cut -d= -f2),mickael@192.168.1.16)
-MACHINE1_DIR := $(or $(shell grep '^MACHINE1_DIR=' .env 2>/dev/null | cut -d= -f2),~/projects/lyra)
+MACHINE1 := $(shell grep '^MACHINE1_HOST=' .env 2>/dev/null | cut -d= -f2)
+MACHINE1_DIR := $(shell grep '^MACHINE1_DIR=' .env 2>/dev/null | cut -d= -f2)
 
-.PHONY: lyra register deploy remote test lint typecheck format
+define require_machine1
+	@[ -n "$(MACHINE1)" ] || { echo "Error: MACHINE1_HOST not set in .env"; exit 1; }
+	@[ -n "$(MACHINE1_DIR)" ] || { echo "Error: MACHINE1_DIR not set in .env"; exit 1; }
+endef
+
+.PHONY: lyra telegram discord register deploy remote test lint typecheck format
 
 lyra:
 ifeq ($(LYRA_CMD),stop)
@@ -56,6 +71,58 @@ else
 	@$(SUPERVISORCTL) $(LYRA_CMD) lyra
 endif
 
+telegram:
+ifeq ($(TELEGRAM_CMD),stop)
+	$(ensure_hub)
+	@$(SUPERVISORCTL) stop lyra_telegram
+else ifeq ($(TELEGRAM_CMD),reload)
+	$(ensure_hub)
+	@$(SUPERVISORCTL) stop lyra_telegram
+	@sleep 1
+	@$(SUPERVISORCTL) start lyra_telegram
+else ifeq ($(TELEGRAM_CMD),logs)
+	$(ensure_hub)
+	@$(SUPERVISORCTL) tail -f lyra_telegram
+else ifeq ($(TELEGRAM_CMD),errors)
+	$(ensure_hub)
+	@$(SUPERVISORCTL) tail -f lyra_telegram stderr
+else ifeq ($(TELEGRAM_CMD),status)
+	$(ensure_hub)
+	@$(SUPERVISORCTL) status lyra_telegram
+else ifeq ($(TELEGRAM_CMD),)
+	@$(SUPERVISOR_START)
+	@$(SUPERVISORCTL) start lyra_telegram
+else
+	$(ensure_hub)
+	@$(SUPERVISORCTL) $(TELEGRAM_CMD) lyra_telegram
+endif
+
+discord:
+ifeq ($(DISCORD_CMD),stop)
+	$(ensure_hub)
+	@$(SUPERVISORCTL) stop lyra_discord
+else ifeq ($(DISCORD_CMD),reload)
+	$(ensure_hub)
+	@$(SUPERVISORCTL) stop lyra_discord
+	@sleep 1
+	@$(SUPERVISORCTL) start lyra_discord
+else ifeq ($(DISCORD_CMD),logs)
+	$(ensure_hub)
+	@$(SUPERVISORCTL) tail -f lyra_discord
+else ifeq ($(DISCORD_CMD),errors)
+	$(ensure_hub)
+	@$(SUPERVISORCTL) tail -f lyra_discord stderr
+else ifeq ($(DISCORD_CMD),status)
+	$(ensure_hub)
+	@$(SUPERVISORCTL) status lyra_discord
+else ifeq ($(DISCORD_CMD),)
+	@$(SUPERVISOR_START)
+	@$(SUPERVISORCTL) start lyra_discord
+else
+	$(ensure_hub)
+	@$(SUPERVISORCTL) $(DISCORD_CMD) lyra_discord
+endif
+
 register:
 	@echo "Registering lyra with lyra-stack..."
 	@if [ ! -d "$(LYRA_STACK_DIR)" ]; then \
@@ -64,18 +131,22 @@ register:
 		exit 1; \
 	fi
 	@mkdir -p "$(LYRA_STACK_DIR)/conf.d"
-	@ln -sf "$(abspath supervisor/conf.d/lyra.conf)" "$(LYRA_STACK_DIR)/conf.d/lyra.conf"
+	@ln -sf "$(abspath supervisor/conf.d/lyra_telegram.conf)" "$(LYRA_STACK_DIR)/conf.d/lyra_telegram.conf"
+	@ln -sf "$(abspath supervisor/conf.d/lyra_discord.conf)"  "$(LYRA_STACK_DIR)/conf.d/lyra_discord.conf"
+	@if [ -L "$(LYRA_STACK_DIR)/conf.d/lyra.conf" ]; then rm "$(LYRA_STACK_DIR)/conf.d/lyra.conf"; fi
 	@mkdir -p supervisor/logs
 	@if [ -S "$(LYRA_STACK_DIR)/supervisor.sock" ]; then \
 		$(SUPERVISORCTL) reread && $(SUPERVISORCTL) update; \
 	fi
-	@echo "Done. Run 'make lyra' to start."
+	@echo "Done. Run 'make telegram' and 'make discord' to start."
 
 deploy:
+	$(require_machine1)
 	@echo "Deploying to Machine 1 ($(MACHINE1))..."
 	@ssh $(MACHINE1) "cd $(MACHINE1_DIR) && bash scripts/deploy.sh"
 
 remote:
+	$(require_machine1)
 	@ssh $(MACHINE1) "cd $(MACHINE1_DIR) && make lyra $(REMOTE_CMD)"
 
 test:

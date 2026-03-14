@@ -449,9 +449,7 @@ class TelegramAdapter:
         message_id = getattr(raw, "message_id", None)
         reply_to_message = getattr(raw, "reply_to_message", None)
         reply_to_id = (
-            str(reply_to_message.message_id)
-            if reply_to_message is not None
-            else None
+            str(reply_to_message.message_id) if reply_to_message is not None else None
         )
         platform_meta = {
             "chat_id": chat_id,
@@ -1092,3 +1090,17 @@ class TelegramAdapter:
         if assembled is None:
             return
         await self.render_audio(assembled, inbound)
+
+    async def render_voice_stream(
+        self,
+        chunks: AsyncIterator[OutboundAudioChunk],
+        inbound: InboundMessage,
+    ) -> None:
+        """Not supported on Telegram — drain iterator and log a warning."""
+        log.warning(
+            "render_voice_stream() is not supported on Telegram (msg id=%s) — "
+            "use render_audio_stream() instead; draining iterator",
+            inbound.id,
+        )
+        async for _ in chunks:
+            pass

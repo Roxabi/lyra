@@ -22,13 +22,12 @@ class TranscriptionResult:
 
 @dataclass
 class STTConfig:
-    model_size: str = "large-v3-turbo"
+    model_size: str
 
 
 def load_stt_config() -> STTConfig:
-    return STTConfig(
-        model_size=os.environ.get("STT_MODEL_SIZE", "large-v3-turbo"),
-    )
+    model_size = os.environ.get("STT_MODEL_SIZE", "large-v3-turbo")
+    return STTConfig(model_size=model_size)
 
 
 def is_whisper_noise(text: str) -> bool:

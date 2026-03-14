@@ -20,6 +20,10 @@ Get Lyra running and send your first message in about 5 minutes.
 git clone https://github.com/roxabi/lyra
 cd lyra
 uv sync
+
+# Activate the virtual environment to get the `lyra` CLI on your PATH
+source .venv/bin/activate
+# Alternative: add .venv/bin to your PATH permanently in ~/.bashrc
 ```
 
 ## 2. Configure environment
@@ -75,7 +79,7 @@ To add a second agent, duplicate the file (`my_agent.toml`) and reference it in 
 ## 4. Run
 
 ```bash
-python -m lyra
+lyra start
 ```
 
 Expected output:

@@ -60,7 +60,7 @@ flowchart TD
 | Feature | Detail |
 |---------|--------|
 | **LLM** | LlmProvider protocol: Claude CLI + Anthropic SDK drivers · smart routing (complexity-based model selection) · Ollama (Phase 2) |
-| **Agents** | Stateless singleton · isolated per-scope pools · TOML config per agent · N agents × N bots via `lyra.toml` |
+| **Agents** | Stateless singleton · isolated per-scope pools · TOML config per agent · N agents × N bots via `config.toml` |
 | **Memory** | 5 levels: working (L0) → session → episodic → semantic (SQLite + FTS5 + fastembed, ✅ Phase 1) → procedural |
 
 ### Security & Voice
@@ -85,7 +85,10 @@ DISCORD_TOKEN=your-discord-bot-token
 EOF
 
 # 3. Run
-python -m lyra
+lyra start
+
+# Or see all available commands
+lyra --help
 ```
 
 > See [QUICKSTART.md](docs/QUICKSTART.md) for the full setup — bot creation, agent TOML, environment variables, and sending your first message.
@@ -115,7 +118,7 @@ All configuration is via `.env` (copy `.env.example` to get started). Key variab
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `ANTHROPIC_API_KEY` | ✅ (SDK driver) | Anthropic API key (not needed for Claude CLI driver) |
-| `LYRA_CONFIG` | optional | Path to `lyra.toml` — default: `lyra.toml` |
+| `LYRA_CONFIG` | optional | Path to `config.toml` — default: `config.toml` |
 
 **Voice (optional)**
 
@@ -124,7 +127,7 @@ All configuration is via `.env` (copy `.env.example` to get started). Key variab
 | `STT_MODEL_SIZE` | `small` | Whisper model size (`small`, `medium`, `large-v3-turbo`) |
 | `STT_DEVICE` | `auto` | `cpu`, `cuda`, or `auto` |
 
-Agent behaviour (tools, model, system prompt) is configured per-agent in `src/lyra/agents/<name>.toml`.
+Agent behaviour (tools, model, system prompt) is configured per-agent in `src/lyra/agents/<name>.toml` (project-level) or `~/.lyra/agents/<name>.toml` (user-level, takes precedence).
 See [QUICKSTART.md](docs/QUICKSTART.md) for the full walkthrough.
 
 ## Operations (Makefile)

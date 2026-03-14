@@ -218,11 +218,16 @@ source ~/.bashrc
 
 # Install all dependencies (runtime + dev)
 uv sync --all-extras
+
+# Activate the virtual environment (or add .venv/bin to your PATH)
+source ~/lyra/.venv/bin/activate
+# Alternative: add to ~/.bashrc → export PATH="$HOME/lyra/.venv/bin:$PATH"
 ```
 
 Verify:
 ```bash
 uv run python -c "from lyra.core.hub import Hub; print('Hub OK')"
+lyra --version
 ```
 
 ---
@@ -345,7 +350,7 @@ All tests should pass. They use mocks — no tokens or network required.
 
 ```bash
 cd ~/lyra
-uv run python -m lyra
+lyra start
 ```
 
 You should see:

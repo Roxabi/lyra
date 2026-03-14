@@ -5,6 +5,7 @@ Starts Telegram + Discord adapters in one event loop.
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import hmac
 import logging
@@ -697,6 +698,7 @@ async def _bootstrap_legacy(  # noqa: C901, PLR0915 — startup wiring: each ada
     circuit_registry: CircuitRegistry,
     admin_user_ids: set[str],
     *,
+    adapter: str = "all",
     _stop: asyncio.Event | None = None,
 ) -> None:
     """Wire hub + adapters for the legacy single-bot schema and run until stop.
@@ -717,11 +719,19 @@ async def _bootstrap_legacy(  # noqa: C901, PLR0915 — startup wiring: each ada
     await auth_store_legacy.seed_from_config(raw_config, "discord")
 
     try:
-        tg_auth = AuthMiddleware.from_config(
-            raw_config, "telegram", store=auth_store_legacy
+        tg_auth = (
+            None
+            if adapter == "discord"
+            else AuthMiddleware.from_config(
+                raw_config, "telegram", store=auth_store_legacy
+            )
         )
-        dc_auth = AuthMiddleware.from_config(
-            raw_config, "discord", store=auth_store_legacy
+        dc_auth = (
+            None
+            if adapter == "telegram"
+            else AuthMiddleware.from_config(
+                raw_config, "discord", store=auth_store_legacy
+            )
         )
     except ValueError as exc:
         sys.exit(str(exc))
@@ -962,7 +972,27 @@ async def _bootstrap_legacy(  # noqa: C901, PLR0915 — startup wiring: each ada
     log.info("Lyra stopped.")
 
 
-async def _main(*, _stop: asyncio.Event | None = None) -> None:
+def _parse_args(args: list[str] | None = None) -> argparse.Namespace:
+    """Parse daemon startup arguments."""
+    parser = argparse.ArgumentParser(
+        description="Lyra daemon — start Telegram/Discord adapters",
+        add_help=True,
+    )
+    parser.add_argument(
+        "--adapter",
+        choices=["telegram", "discord", "all"],
+        default="all",
+        help=(
+            "Which adapter(s) to start. "
+            "'telegram' starts only Telegram adapters, "
+            "'discord' starts only Discord adapters, "
+            "'all' starts both (default)."
+        ),
+    )
+    return parser.parse_args(args)
+
+
+async def _main(*, adapter: str = "all", _stop: asyncio.Event | None = None) -> None:
     """Wire hub + adapters and run until stop event fires.
 
     The optional _stop parameter is for testing: pass a pre-set Event to exit
@@ -990,7 +1020,28 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
         tg_multi_cfg, dc_multi_cfg = load_multibot_config(raw_config)
     except ValueError as exc:
         sys.exit(str(exc))
+
+    # Apply adapter filter BEFORE bootstrap — guard evaluates post-filter state
+    original_tg_count = len(tg_multi_cfg.bots)
+    original_dc_count = len(dc_multi_cfg.bots)
+    if adapter == "telegram":
+        dc_multi_cfg = DiscordMultiConfig(bots=[])
+    elif adapter == "discord":
+        tg_multi_cfg = TelegramMultiConfig(bots=[])
+
     use_multibot = bool(tg_multi_cfg.bots or dc_multi_cfg.bots)
+
+    # Guard: adapter flag specified but no matching bots in config
+    if not use_multibot and adapter != "all":
+        requested_count = (
+            original_tg_count if adapter == "telegram" else original_dc_count
+        )
+        if requested_count == 0:
+            sys.exit(
+                f"--adapter {adapter} specified but no [[{adapter}.bots]] entries found"
+                " in config.toml — add at least one bot under [[{adapter}.bots]]"
+                " or omit --adapter to start all configured adapters"
+            )
     if use_multibot:
         await _bootstrap_multibot(
             raw_config,
@@ -1002,7 +1053,7 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
         )
     else:
         await _bootstrap_legacy(
-            raw_config, circuit_registry, admin_user_ids, _stop=_stop
+            raw_config, circuit_registry, admin_user_ids, adapter=adapter, _stop=_stop
         )
 
 
@@ -1033,7 +1084,8 @@ def _setup_logging() -> None:
 
 def main() -> None:
     _setup_logging()
-    asyncio.run(_main())
+    parsed = _parse_args()
+    asyncio.run(_main(adapter=parsed.adapter))
 
 
 if __name__ == "__main__":

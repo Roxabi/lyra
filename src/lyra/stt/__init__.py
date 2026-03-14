@@ -26,9 +26,7 @@ class STTConfig:
 
 
 def load_stt_config() -> STTConfig:
-    model_size = os.environ.get("STT_MODEL_SIZE")
-    if not model_size:
-        raise RuntimeError("STT_MODEL_SIZE not set — add it to .env")
+    model_size = os.environ.get("STT_MODEL_SIZE", "large-v3-turbo")
     return STTConfig(model_size=model_size)
 
 

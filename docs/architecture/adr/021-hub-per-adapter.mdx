@@ -1,0 +1,157 @@
+---
+title: "ADR-021: Hub-Per-Adapter Process Model"
+description: Each adapter process embeds its own Hub instance and agent pool rather than sharing a single hub across adapters or using IPC
+---
+
+## Status
+
+Accepted
+
+## Context
+
+Lyra currently runs as a single `python -m lyra` process. The Telegram adapter,
+Discord adapter, Hub, and all agent pools share one asyncio event loop and one
+supervisor entry. This worked well at phase 1a scale (one or two adapters,
+personal use), but as adapters grow — voice channels, new platforms — two
+operational concerns emerge:
+
+1. **Independent restartability.** A crash or deploy in the Discord adapter
+   should not tear down an active Telegram session. With a shared process there
+   is no isolation boundary.
+2. **Independent configuration.** Each adapter may need different concurrency
+   limits, model configs, or lifecycle hooks. Sharing one event loop makes these
+   hard to tune in isolation.
+
+Phase 1b tail work is nearly complete. The code-level separation of adapter,
+hub, and pool layers already exists (ADR-002, ADR-017). This decision is an
+infrastructure split — it does not change hub logic, routing keys, or pool
+semantics.
+
+Three process models were considered:
+
+### Option A: Hub embedded per adapter (one Hub per process)
+
+Each adapter process (`lyra_telegram`, `lyra_discord`) instantiates its own
+`Hub` and agent pool. No IPC between processes. The `--adapter` CLI flag
+controls which adapters start within a process.
+
+- **Pros:** No new dependencies. Minimal diff — `_bootstrap_multibot()` gains
+  an adapter filter; supervisor gets two entries instead of one.
+  `python -m lyra --adapter all` preserves single-process dev mode.
+- **Cons:** Cross-platform in-process state sharing is permanently eliminated.
+  Hub logic is duplicated in memory (one `Hub` per adapter process).
+
+### Option B: Hub as a service (shared hub, thin adapter clients)
+
+One `lyra_hub` process runs the Hub and agent pools. Adapter processes
+(`lyra_telegram`, `lyra_discord`) are thin HTTP/WS clients that speak to the
+hub over a Unix socket via a defined adapter↔hub protocol.
+
+- **Pros:** Hub is a single source of truth. Cross-platform bridging is
+  architecturally straightforward.
+- **Cons:** Requires designing and implementing a bidirectional adapter↔hub
+  protocol (request/response + push notifications). FastAPI is already in the
+  stack, but the protocol work is non-trivial. Not warranted while phase 1b tail
+  is still in flight.
+
+### Option C: Redis streams (message bus)
+
+Adapters and hubs communicate via Redis pub/sub or streams. Each component is
+fully decoupled.
+
+- **Pros:** Standard distributed systems pattern. Scales horizontally.
+- **Cons:** Adds Redis as a dependency. Overkill for personal-scale deployments
+  with 1–5 users. Introduces operational complexity (Redis persistence, health
+  checks, connection pooling) with no benefit at current scale.
+
+## Decision
+
+**Option A** — Hub embedded per adapter.
+
+Each adapter process embeds its own `Hub` instance and agent pool. No IPC
+protocol is introduced between processes. The `--adapter` flag on
+`python -m lyra` determines which adapters start in a given process:
+
+```
+python -m lyra --adapter telegram   # lyra_telegram supervisor entry
+python -m lyra --adapter discord    # lyra_discord supervisor entry
+python -m lyra --adapter all        # monolithic dev mode (unchanged)
+```
+
+SQLite (`~/.lyra/auth.db`) is shared across adapter processes in WAL mode.
+Write paths are adapter-isolated by design (each adapter writes only its own
+session and auth rows), so WAL-mode concurrent reads with isolated writers
+requires no additional coordination.
+
+The implementation touch points are narrow: `_bootstrap_multibot()` gains an
+adapter filter, and two supervisor entries replace one. No hub logic changes.
+
+## Consequences
+
+### Positive
+
+- Telegram and Discord can be restarted independently via supervisord without
+  affecting each other.
+- Minimal code change: the adapter filter in `_bootstrap_multibot()` plus new
+  supervisor confs.
+- No new runtime dependencies.
+- `python -m lyra --adapter all` preserves the monolithic single-process dev
+  and test mode without any behavioral change.
+- Each adapter process can be configured with independent resource limits in
+  `supervisord.conf`.
+
+### Negative
+
+- **Cross-platform in-process state sharing is permanently eliminated.** A
+  future feature that bridges a Telegram session with Discord (e.g., forwarding
+  messages across platforms) cannot use in-process shared state. It would
+  require either a shared backing store (e.g., a `sessions` table in SQLite) or
+  a migration to Option B (hub-as-a-service with Unix socket IPC).
+- **Hub logic is duplicated in memory.** Each adapter process holds one `Hub`
+  instance and one agent pool registry. At 32 GB RAM with 2–3 adapters this is
+  acceptable. It becomes a concern at N > 5 adapters where idle memory
+  duplication may matter.
+- **Two separate agent pool registries.** Agent pools are already keyed by
+  `(platform, bot_id, scope_id)` and no cross-platform pool sharing exists
+  today. Separate registries per process is therefore not a functional
+  regression, but it is a permanent divergence from a future unified view of
+  active pools.
+
+### Neutral
+
+- supervisord, `make lyra`, and the production deploy path require only additive
+  changes (new conf entries, new `make` targets). Existing targets are
+  unaffected.
+- The routing key scheme (ADR-001) and Hub dispatch contracts (ADR-002) are
+  unchanged.
+
+## Upgrade Path to Option B
+
+When cross-platform bridging or N > 3 adapters is needed, the migration path
+is defined:
+
+1. Extract `Hub` + agent pool into a standalone `lyra_hub` process.
+2. Expose an internal FastAPI app on a Unix socket (FastAPI is already a
+   dependency, used for Telegram webhooks).
+3. Replace the embedded `Hub` call in each adapter with an HTTP client to the
+   Unix socket endpoint.
+4. Adapter push notifications (hub → adapter, e.g., proactive messages) use a
+   long-poll or WebSocket sub-endpoint on the same socket.
+
+This is a named future issue, not a blocker. Option A is the correct choice
+while phase 1b tail is in progress and cross-platform bridging is not yet
+specified.
+
+## Alternatives Rejected
+
+**Option B (Hub as a service):** Architecturally cleaner for cross-platform
+scenarios but requires designing a bidirectional adapter↔hub protocol before
+any adapter split can ship. The protocol design is non-trivial: it must handle
+both request/response (adapter sends message → hub routes → agent replies) and
+push (hub initiates proactive message → adapter delivers). Deferred — the
+protocol design is a separate issue, not a phase 1b deliverable.
+
+**Option C (Redis streams):** Adds Redis as a hard runtime dependency. Adds
+operational complexity (persistence mode, health checks, reconnect logic) for a
+deployment that currently runs on a single machine for 1–5 users. The
+complexity cost far exceeds the benefit at this scale.

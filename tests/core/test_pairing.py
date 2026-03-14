@@ -405,6 +405,12 @@ class TestGrantAfterPairing:
         found = await pm.revoke_session("nobody")
         assert found is False
 
+    async def test_revoke_session_returns_false_when_no_auth_store(self) -> None:
+        """revoke_session() returns False when no auth_store is configured."""
+        pm = await make_pm(auth_store=None)
+        found = await pm.revoke_session(_USER_ID)
+        assert found is False
+
 
 # ---------------------------------------------------------------------------
 # TestRateLimiting

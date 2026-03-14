@@ -7,6 +7,7 @@ ModuleNotFoundError until lyra.core.auth_store is implemented.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncGenerator
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -21,10 +22,24 @@ from lyra.core.auth_store import AuthStore
 
 
 async def make_store(tmp_path: Path) -> AuthStore:
-    """Create and connect a real AuthStore backed by a tmp file DB."""
+    """Create and connect a real AuthStore backed by a tmp file DB.
+
+    Prefer the ``auth_store`` pytest fixture for new tests — it provides
+    automatic teardown via ``yield`` + ``await store.close()``.
+    """
     store = AuthStore(db_path=str(tmp_path / "grants.db"))
     await store.connect()
     return store
+
+
+@pytest.fixture
+async def auth_store(tmp_path: Path) -> AsyncGenerator[AuthStore, None]:
+    """Fixture-based AuthStore with automatic teardown. Prefer over make_store."""
+    store = await make_store(tmp_path)
+    try:
+        yield store
+    finally:
+        await store.close()
 
 
 # ---------------------------------------------------------------------------

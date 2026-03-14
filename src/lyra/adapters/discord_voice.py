@@ -26,7 +26,12 @@ class VoiceDependencyError(Exception):
 
 
 class VoiceAlreadyActiveError(Exception):
-    """Raised when join() is called for a guild that already has an active session."""
+    """Raised when join() is called for a guild that already has an active session.
+
+    Attributes:
+        guild_id: Public API — Slice C (voice commands) reads this to surface
+            "Already in a voice channel." to the user.
+    """
 
     def __init__(self, guild_id: str) -> None:
         super().__init__(f"Voice session already active for guild {guild_id!r}")
@@ -84,7 +89,9 @@ class PCMQueueSource(discord.AudioSource):
     push() / push_eof() are called from the asyncio event loop.
     queue.Queue provides the required thread-safety without additional locking.
 
-    maxsize=0: put_nowait() never raises queue.Full.
+    maxsize=0: put_nowait() never raises queue.Full. The queue is intentionally
+    unbounded — push rate is bounded by TTS output, not by a tight loop, so
+    memory growth in normal operation is negligible.
     read() returns exactly 3840 bytes (20 ms frame) or b"" to signal EOF.
     On queue.Empty (timeout), returns 3840 null bytes (silence) to keep
     VoiceClient alive while waiting for audio.
@@ -118,6 +125,7 @@ class PCMQueueSource(discord.AudioSource):
     def read(self) -> bytes:
         """Return the next 3840-byte frame, b"\\x00"*3840 on underrun, or b"" on EOF."""
         try:
+            # 5× frame interval (20 ms); drains fast on leave()
             item = self._q.get(timeout=0.1)
         except queue.Empty:
             return b"\x00" * _FRAME_SIZE  # silence frame — keeps VoiceClient alive
@@ -138,7 +146,12 @@ class VoiceSession:
     source: PCMQueueSource = field(default_factory=PCMQueueSource)
 
     def is_active(self) -> bool:
-        """Return True if the VoiceClient is still connected."""
+        """Return True if the VoiceClient is still connected.
+
+        Note: may transiently return True during a network partition before
+        discord.py detects the disconnect. Callers (e.g. Slice B) should not
+        treat True as a hard liveness guarantee.
+        """
         return self.voice_client.is_connected()
 
 

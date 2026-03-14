@@ -229,7 +229,11 @@ class DiscordAdapter(discord.Client):
         await super().close()
 
     async def on_ready(self) -> None:
-        """Cache bot user and compile mention regex on login."""
+        """Cache bot user and compile mention regex on login.
+
+        Must complete before guild events (e.g. on_voice_state_update) can be
+        handled safely — Discord guarantees on_ready fires first.
+        """
         self._bot_user = self.user
         if self.user is not None:
             self._mention_re = re.compile(rf"<@!?{self.user.id}>")
@@ -255,6 +259,7 @@ class DiscordAdapter(discord.Client):
         bot_user = self._bot_user
         if bot_user is None or member.id != bot_user.id or after.channel is not None:
             return
+        # member.guild is always set for voice state events (guild-only, no DM voice).
         guild_id = str(member.guild.id)
         self._vsm.invalidate(guild_id)
 

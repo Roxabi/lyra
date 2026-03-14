@@ -318,13 +318,14 @@ async def test_backpressure_sends_ack_when_bus_full() -> None:
     adapter._bot_user = bot_user
 
     discord_msg = SimpleNamespace(
-        guild=SimpleNamespace(id=111),
+        guild=None,  # DM — bypasses group-chat filter added in 9f9072d
         channel=SimpleNamespace(id=333, send=AsyncMock()),
         author=SimpleNamespace(id=42, name="Alice", display_name="Alice", bot=False),
         content="hello",
         created_at=datetime.now(timezone.utc),
         id=555,
         mentions=[],
+        attachments=[],
         reply=AsyncMock(),
     )
 
@@ -703,13 +704,14 @@ async def test_discord_msg_manager_injection_backpressure_ack() -> None:
 
     reply_mock = AsyncMock()
     discord_msg = SimpleNamespace(
-        guild=SimpleNamespace(id=111),
+        guild=None,  # DM — bypasses group-chat filter added in 9f9072d
         channel=SimpleNamespace(id=333, send=AsyncMock()),
         author=SimpleNamespace(id=42, name="Alice", display_name="Alice", bot=False),
         content="hello",
         created_at=datetime.now(timezone.utc),
         id=555,
         mentions=[],
+        attachments=[],
         reply=reply_mock,
     )
 
@@ -1430,7 +1432,12 @@ class TestDiscordAttachments:
 
 
 def _make_discord_msg_ns(user_id: int = 42, roles: list | None = None) -> object:
-    """Build a minimal discord-like message SimpleNamespace."""
+    """Build a minimal discord-like DM message SimpleNamespace.
+
+    Uses guild=None (DM) so messages pass the group-chat filter introduced
+    in 9f9072d. Tests that specifically need guild context should set guild
+    directly on the returned namespace.
+    """
     author_kwargs: dict = {
         "id": user_id,
         "name": "Alice",
@@ -1440,7 +1447,7 @@ def _make_discord_msg_ns(user_id: int = 42, roles: list | None = None) -> object
     if roles is not None:
         author_kwargs["roles"] = [SimpleNamespace(id=r) for r in roles]
     return SimpleNamespace(
-        guild=SimpleNamespace(id=111),
+        guild=None,  # DM context — passes group-chat filter
         channel=SimpleNamespace(id=333, send=AsyncMock()),
         author=SimpleNamespace(**author_kwargs),
         content="hello",
@@ -1635,7 +1642,8 @@ async def test_start_typing_creates_background_task() -> None:
         hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
     )
     mock_channel = AsyncMock()
-    mock_channel.trigger_typing = AsyncMock()
+    typing_ctx = AsyncMock(__aenter__=AsyncMock(), __aexit__=AsyncMock())
+    mock_channel.typing = MagicMock(return_value=typing_ctx)
     adapter.get_channel = MagicMock(return_value=mock_channel)
 
     adapter._start_typing(333)
@@ -1805,11 +1813,12 @@ async def test_on_message_does_not_cancel_typing_when_message_queued() -> None:
     adapter._bot_user = SimpleNamespace(id=999, bot=True)
 
     mock_channel = AsyncMock()
-    mock_channel.trigger_typing = AsyncMock()
+    typing_ctx = AsyncMock(__aenter__=AsyncMock(), __aexit__=AsyncMock())
+    mock_channel.typing = MagicMock(return_value=typing_ctx)
     adapter.get_channel = MagicMock(return_value=mock_channel)
 
     discord_msg = SimpleNamespace(
-        guild=SimpleNamespace(id=111),
+        guild=None,  # DM — bypasses group-chat filter added in 9f9072d
         channel=SimpleNamespace(id=333, send=AsyncMock()),
         author=SimpleNamespace(id=42, name="Alice", display_name="Alice", bot=False),
         content="hello",

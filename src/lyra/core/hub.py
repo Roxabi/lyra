@@ -880,18 +880,28 @@ class Hub:
             voice: str | None = None
 
             if self._prefs_store is not None:
-                prefs = await self._prefs_store.get_prefs(msg.user_id)
-                # Language resolution
-                if prefs.tts_language != "detected":
-                    lang = prefs.tts_language          # explicit user override
-                elif msg.language is not None:
-                    lang = msg.language                # Whisper-detected
-                # else lang=None → TTSService.self._language (agent/global fallback)
+                try:
+                    prefs = await self._prefs_store.get_prefs(msg.user_id)
+                except Exception:
+                    log.warning(
+                        "PrefsStore.get_prefs() failed for user %s — "
+                        "falling back to detected language",
+                        msg.user_id,
+                        exc_info=True,
+                    )
+                    lang = msg.language
+                else:
+                    # Language resolution
+                    if prefs.tts_language != "detected":
+                        lang = prefs.tts_language          # explicit user override
+                    elif msg.language is not None:
+                        lang = msg.language                # Whisper-detected
+                    # else lang=None → TTSService.self._language (agent/global fallback)
 
-                # Voice resolution
-                if prefs.tts_voice != "agent_default":
-                    voice = prefs.tts_voice            # explicit user override
-                # else voice=None → TTSService.self._voice
+                    # Voice resolution
+                    if prefs.tts_voice != "agent_default":
+                        voice = prefs.tts_voice            # explicit user override
+                    # else voice=None → TTSService.self._voice
             else:
                 # No PrefsStore — pass detected language directly (S1 behavior)
                 lang = msg.language

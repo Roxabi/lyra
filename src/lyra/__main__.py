@@ -35,7 +35,14 @@ from lyra.config import (
     load_multibot_config,
 )
 from lyra.core.admin import set_admin_user_ids
-from lyra.core.agent import Agent, AgentBase, SmartRoutingConfig, load_agent_config
+from lyra.core.agent import (
+    Agent,
+    AgentBase,
+    AgentSTTConfig,
+    AgentTTSConfig,
+    SmartRoutingConfig,
+    load_agent_config,
+)
 from lyra.core.auth import AuthMiddleware
 from lyra.core.auth_store import AuthStore
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
@@ -51,8 +58,8 @@ from lyra.errors import KeyringError, MissingCredentialsError
 from lyra.llm.base import LlmProvider
 from lyra.llm.registry import ProviderRegistry
 from lyra.llm.smart_routing import SmartRoutingDecorator
-from lyra.stt import STTService, load_stt_config
-from lyra.tts import TTSService, load_tts_config
+from lyra.stt import STTConfig, STTService, load_stt_config
+from lyra.tts import TTSConfig, TTSService, load_tts_config
 
 log = logging.getLogger(__name__)
 
@@ -347,6 +354,52 @@ def create_health_app(hub: Hub) -> FastAPI:
     return app
 
 
+def apply_agent_tts_overlay(
+    agent_tts: AgentTTSConfig | None,
+    tts_cfg: TTSConfig,
+) -> TTSConfig:
+    """Overlay non-None fields from AgentTTSConfig onto TTSConfig.
+
+    None fields in agent_tts are skipped — voicecli global defaults remain in effect.
+    Returns an updated TTSConfig (via dataclasses.replace).
+    """
+    if agent_tts is None:
+        return tts_cfg
+    a = agent_tts
+    if a.engine is not None:
+        tts_cfg = dataclasses.replace(tts_cfg, engine=a.engine)
+    if a.voice is not None:
+        tts_cfg = dataclasses.replace(tts_cfg, voice=a.voice)
+    if a.language is not None:
+        tts_cfg = dataclasses.replace(tts_cfg, language=a.language)
+    return tts_cfg
+
+
+def apply_agent_stt_overlay(
+    agent_stt: AgentSTTConfig | None,
+    stt_cfg: STTConfig,
+) -> STTConfig:
+    """Overlay non-None fields from AgentSTTConfig onto STTConfig.
+
+    None fields in agent_stt are skipped — voicecli global defaults remain in effect.
+    Returns an updated STTConfig (via dataclasses.replace).
+    """
+    if agent_stt is None:
+        return stt_cfg
+    a = agent_stt
+    if a.language_detection_threshold is not None:
+        stt_cfg = dataclasses.replace(
+            stt_cfg, language_detection_threshold=a.language_detection_threshold
+        )
+    if a.language_detection_segments is not None:
+        stt_cfg = dataclasses.replace(
+            stt_cfg, language_detection_segments=a.language_detection_segments
+        )
+    if a.language_fallback is not None:
+        stt_cfg = dataclasses.replace(stt_cfg, language_fallback=a.language_fallback)
+    return stt_cfg
+
+
 def _resolve_agents(  # noqa: PLR0913
     agent_configs: dict[str, Agent],
     cli_pool: CliPool | None,
@@ -517,24 +570,8 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
     stt_service: STTService | None = None
     if os.environ.get("STT_MODEL_SIZE"):
         try:
-            stt_cfg = load_stt_config()
-            # Overlay agent [stt] config
-            if first_agent_config.stt is not None:
-                a = first_agent_config.stt
-                if a.language_detection_threshold is not None:
-                    stt_cfg = dataclasses.replace(
-                        stt_cfg,
-                        language_detection_threshold=a.language_detection_threshold,
-                    )
-                if a.language_detection_segments is not None:
-                    stt_cfg = dataclasses.replace(
-                        stt_cfg,
-                        language_detection_segments=a.language_detection_segments,
-                    )
-                if a.language_fallback is not None:
-                    stt_cfg = dataclasses.replace(
-                        stt_cfg, language_fallback=a.language_fallback
-                    )
+            # Env vars set baseline; agent TOML overlays on top
+            stt_cfg = apply_agent_stt_overlay(first_agent_config.stt, load_stt_config())
             stt_service = STTService(stt_cfg)
             log.info("STT enabled: model=%s (via voiceCLI)", stt_cfg.model_size)
         except ValueError as exc:
@@ -542,16 +579,20 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
 
     tts_service: TTSService | None = None
     if stt_service is not None and os.environ.get("LYRA_VOICE_RESPONSES", "1") != "0":
-        tts_cfg = load_tts_config()
-        # Overlay agent [tts] config
-        if first_agent_config.tts is not None:
-            a = first_agent_config.tts
-            if a.engine is not None:
-                tts_cfg = dataclasses.replace(tts_cfg, engine=a.engine)
-            if a.voice is not None:
-                tts_cfg = dataclasses.replace(tts_cfg, voice=a.voice)
-            if a.language is not None:
-                tts_cfg = dataclasses.replace(tts_cfg, language=a.language)
+        # Env vars set baseline; agent TOML overlays on top (first agent alphabetically)
+        tts_cfg = apply_agent_tts_overlay(first_agent_config.tts, load_tts_config())
+        # Warn if multiple agents define conflicting [tts] sections
+        _agents_with_tts = [
+            n for n, cfg in agent_configs.items() if cfg.tts is not None
+        ]
+        if len(_agents_with_tts) > 1:
+            log.warning(
+                "Multiple agents define [tts] config: %s — "
+                "using %r (first alphabetically). "
+                "Other agents' [tts] settings are ignored.",
+                _agents_with_tts,
+                first_agent_name,
+            )
         tts_service = TTSService(tts_cfg)
         log.info(
             "TTS voice responses enabled: engine=%s voice=%s",
@@ -747,6 +788,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
         await pm.close()
     await cred_store.close()
     await auth_store.close()
+    await prefs_store.close()
     if cli_pool is not None:
         await cli_pool.stop()
     log.info("Lyra stopped.")

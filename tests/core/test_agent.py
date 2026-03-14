@@ -893,3 +893,99 @@ class TestAgentExtractionMethods:
         from lyra.core.agent import AgentBase
 
         assert hasattr(AgentBase, "_extraction_llm_call")  # FAILS
+
+
+# ---------------------------------------------------------------------------
+# SC-7/SC-8 — apply_agent_tts_overlay / apply_agent_stt_overlay helpers
+# ---------------------------------------------------------------------------
+
+
+class TestApplyAgentTTSOverlay:
+    """SC-7 — apply_agent_tts_overlay merges AgentTTSConfig into TTSConfig."""
+
+    def test_none_agent_tts_returns_tts_cfg_unchanged(self):
+        from lyra.__main__ import apply_agent_tts_overlay
+        from lyra.tts import TTSConfig
+
+        tts_cfg = TTSConfig(engine="qwen", voice="Aria", language="en")
+        result = apply_agent_tts_overlay(None, tts_cfg)
+        assert result is tts_cfg
+
+    def test_non_none_fields_overwrite(self):
+        from lyra.__main__ import apply_agent_tts_overlay
+        from lyra.core.agent import AgentTTSConfig
+        from lyra.tts import TTSConfig
+
+        tts_cfg = TTSConfig(engine="qwen", voice="default", language="en")
+        agent_tts = AgentTTSConfig(voice="Ono_Anna", language="fr")
+        result = apply_agent_tts_overlay(agent_tts, tts_cfg)
+        assert result.voice == "Ono_Anna"
+        assert result.language == "fr"
+        assert result.engine == "qwen"  # unchanged — None in agent_tts
+
+    def test_none_fields_leave_tts_cfg_unchanged(self):
+        from lyra.__main__ import apply_agent_tts_overlay
+        from lyra.core.agent import AgentTTSConfig
+        from lyra.tts import TTSConfig
+
+        tts_cfg = TTSConfig(engine="chatterbox", voice="Nova", language="en")
+        agent_tts = AgentTTSConfig()  # all fields None
+        result = apply_agent_tts_overlay(agent_tts, tts_cfg)
+        assert result.engine == "chatterbox"
+        assert result.voice == "Nova"
+        assert result.language == "en"
+
+    def test_returns_new_config_not_mutates(self):
+        from lyra.__main__ import apply_agent_tts_overlay
+        from lyra.core.agent import AgentTTSConfig
+        from lyra.tts import TTSConfig
+
+        tts_cfg = TTSConfig(engine="qwen", voice="default", language="en")
+        agent_tts = AgentTTSConfig(engine="qwen-fast")
+        result = apply_agent_tts_overlay(agent_tts, tts_cfg)
+        assert result is not tts_cfg
+        assert tts_cfg.engine == "qwen"  # original unmodified
+
+
+class TestApplyAgentSTTOverlay:
+    """SC-8 — apply_agent_stt_overlay merges AgentSTTConfig into STTConfig."""
+
+    def test_none_agent_stt_returns_stt_cfg_unchanged(self):
+        from lyra.__main__ import apply_agent_stt_overlay
+        from lyra.stt import STTConfig
+
+        stt_cfg = STTConfig(model_size="large-v3-turbo")
+        result = apply_agent_stt_overlay(None, stt_cfg)
+        assert result is stt_cfg
+
+    def test_non_none_fields_overwrite(self):
+        from lyra.__main__ import apply_agent_stt_overlay
+        from lyra.core.agent import AgentSTTConfig
+        from lyra.stt import STTConfig
+
+        stt_cfg = STTConfig(model_size="large-v3-turbo")
+        agent_stt = AgentSTTConfig(
+            language_detection_threshold=0.9,
+            language_fallback="en",
+        )
+        result = apply_agent_stt_overlay(agent_stt, stt_cfg)
+        assert result.language_detection_threshold == 0.9
+        assert result.language_fallback == "en"
+        assert result.language_detection_segments is None  # unchanged
+
+    def test_none_fields_leave_stt_cfg_unchanged(self):
+        from lyra.__main__ import apply_agent_stt_overlay
+        from lyra.core.agent import AgentSTTConfig
+        from lyra.stt import STTConfig
+
+        stt_cfg = STTConfig(
+            model_size="large-v3-turbo",
+            language_detection_threshold=0.8,
+            language_detection_segments=3,
+            language_fallback="fr",
+        )
+        agent_stt = AgentSTTConfig()  # all fields None
+        result = apply_agent_stt_overlay(agent_stt, stt_cfg)
+        assert result.language_detection_threshold == 0.8
+        assert result.language_detection_segments == 3
+        assert result.language_fallback == "fr"

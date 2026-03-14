@@ -5,6 +5,7 @@ description = "Lyra by Roxabi — Personal AI agent engine"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "roxabi-vault",
+    "cryptography>=42.0",
     "pydantic>=2.12.5",
     # Adapters
     "aiogram>=3.26",       # Telegram — asyncio-native, tracks Bot API same-day

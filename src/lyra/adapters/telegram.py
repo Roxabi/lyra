@@ -24,9 +24,9 @@ from lyra.adapters._shared import (
     _PartialAudioError,
     buffer_audio_chunks,
     chunk_text,
-    get_msg,
     parse_reply_to_id,
     push_to_hub_guarded,
+    resolve_msg,
     sanitize_filename,
     truncate_caption,
 )
@@ -365,7 +365,9 @@ class TelegramAdapter:
 
     def _msg(self, key: str, fallback: str) -> str:
         """Return a localised message string, falling back when no manager."""
-        return get_msg(self._msg_manager, key, "telegram", fallback)
+        return resolve_msg(
+            self._msg_manager, key, platform="telegram", fallback=fallback
+        )
 
     def _start_typing(self, chat_id: int) -> None:
         """Start (or restart) the typing indicator background task for chat_id."""

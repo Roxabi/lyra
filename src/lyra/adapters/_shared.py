@@ -214,7 +214,9 @@ def chunk_text(
     """Split *text* into chunks of at most *max_len* characters.
 
     If *escape_fn* is provided it is applied to the entire text before
-    chunking (e.g. MarkdownV2 escaping). Returns [] for empty text.
+    chunking (e.g. MarkdownV2 escaping), so *max_len* applies to the
+    post-escape length. Callers must account for any expansion the escape
+    function introduces. Returns [] for empty text.
 
     Raises ValueError if *max_len* is not positive.
     """
@@ -227,8 +229,8 @@ def chunk_text(
     return [text[i : i + max_len] for i in range(0, len(text), max_len)]
 
 
-def get_msg(
-    manager: MessageManager | None, key: str, platform: str, fallback: str
+def resolve_msg(
+    manager: MessageManager | None, key: str, *, platform: str, fallback: str
 ) -> str:
     """Return a localised message string, falling back when no manager."""
     return manager.get(key, platform=platform) if manager is not None else fallback

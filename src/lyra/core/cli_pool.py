@@ -72,6 +72,9 @@ def _find_project_root() -> Path:
 # cwd for the claude subprocess — lyra project root
 _LYRA_ROOT = _find_project_root()
 
+# Claude CLI session files live at ~/.claude/projects/<cwd-slug>/<session_id>.jsonl
+_CLAUDE_PROJECTS = Path.home() / ".claude" / "projects"
+
 
 @dataclass
 class _ProcessEntry:
@@ -210,8 +213,23 @@ class CliPool:
         self._cwd_overrides[pool_id] = cwd
         log.info("[pool:%s] workspace switched to %s", pool_id, cwd)
 
+    def _session_file_exists(self, session_id: str) -> bool:
+        """Return True if a Claude session JSONL file exists for this session_id."""
+        return any(_CLAUDE_PROJECTS.glob(f"*/{session_id}.jsonl"))
+
     async def resume_and_reset(self, pool_id: str, session_id: str) -> None:
-        """Kill process; next _spawn() will use --resume <session_id> (one-shot)."""
+        """Kill process; next _spawn() will use --resume <session_id> (one-shot).
+
+        No-op if the session file has been pruned from disk (Tier-2 fallback).
+        """
+        if not self._session_file_exists(session_id):
+            log.info(
+                "[pool:%s] resume_and_reset: session %r file not found on disk"
+                " — skipping (Tier-2 fallback)",
+                pool_id,
+                session_id,
+            )
+            return
         await self._kill(pool_id)
         self._resume_session_ids[pool_id] = session_id
         log.info(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -39,8 +40,8 @@ class ContextResolver:
                     if row is None:
                         return None
                     return ResolvedSession(session_id=row[0], pool_id=row[1])
-        except Exception:
-            log.debug(
+        except (sqlite3.Error, OSError):
+            log.warning(
                 "ContextResolver.resolve failed for reply_to_id=%r",
                 reply_to_id,
                 exc_info=True,

@@ -73,8 +73,15 @@ def _patch_all(monkeypatch: pytest.MonkeyPatch) -> list[Hub]:
     monkeypatch.setattr(
         AuthMiddleware,
         "from_config",
-        classmethod(lambda cls, raw, section: next(_auth_results)),
+        classmethod(lambda cls, raw, section, store=None: next(_auth_results)),
     )
+    from unittest.mock import AsyncMock
+
+    _fake_auth_store = MagicMock()
+    _fake_auth_store.connect = AsyncMock()
+    _fake_auth_store.seed_from_config = AsyncMock()
+    _fake_auth_store.close = AsyncMock()
+    monkeypatch.setattr(main_mod, "AuthStore", lambda **kwargs: _fake_auth_store)
     monkeypatch.setattr(
         main_mod,
         "load_telegram_config",

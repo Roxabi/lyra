@@ -917,3 +917,114 @@ class TestPoolEventBusIntegration:
 
         # AgentCompleted must NOT be present for a failed run
         assert AgentCompleted not in types, "AgentCompleted must not appear on failure"
+
+# S1 — Pool identity / session fields (issue #83)
+#
+# RED phase: these tests FAIL until Pool gains session_id, user_id, medium,
+# message_count, session_start, _system_prompt, _turn_logger and append().
+# ---------------------------------------------------------------------------
+
+
+class TestPoolIdentity:
+    """Pool must carry per-session identity metadata (S1)."""
+
+    def test_pool_has_session_id(self, pool: Pool) -> None:
+        """Pool.session_id must be a UUID4 string (36 chars with dashes)."""
+        assert isinstance(pool.session_id, str) and len(pool.session_id) == 36
+
+    def test_pool_identity_defaults(self, pool: Pool) -> None:
+        """user_id, medium and message_count default to empty/zero on creation."""
+        assert pool.user_id == "" and pool.medium == "" and pool.message_count == 0
+
+    def test_pool_session_start_is_utc(self, pool: Pool) -> None:
+        """session_start must be timezone-aware (UTC)."""
+
+        assert pool.session_start.tzinfo is not None
+
+    def test_pool_system_prompt_default(self, pool: Pool) -> None:
+        """_system_prompt defaults to empty string before any message."""
+        assert pool._system_prompt == ""
+
+    def test_pool_turn_logger_default(self, pool: Pool) -> None:
+        """_turn_logger defaults to None — no logger wired by default."""
+        assert pool._turn_logger is None
+
+
+def _make_inbound(
+    user_id: str = "u1", platform: str = "telegram", text: str = "hello"
+) -> InboundMessage:
+    """Build a minimal InboundMessage for S1 tests."""
+    return InboundMessage(
+        id="s1-msg",
+        platform=platform,
+        bot_id="main",
+        scope_id="chat:1",
+        user_id=user_id,
+        user_name="Test",
+        is_mention=False,
+        text=text,
+        text_raw=text,
+        timestamp=datetime.now(timezone.utc),
+        platform_meta={
+            "chat_id": 1,
+            "topic_id": None,
+            "message_id": None,
+            "is_group": False,
+        },
+        trust_level=TrustLevel.TRUSTED,
+    )
+
+
+class TestPoolAppend:
+    """Pool.append() must update session identity fields (S1)."""
+
+    def test_append_promotes_user_id_once(self, pool: Pool) -> None:
+        """First append sets user_id; subsequent appends with different user_id
+        must NOT overwrite it (first-writer-wins semantics)."""
+        msg1 = _make_inbound(user_id="u1", platform="telegram")
+        pool.append(msg1)
+        assert pool.user_id == "u1" and pool.message_count == 1
+
+        msg2 = _make_inbound(user_id="u2", platform="discord")
+        pool.append(msg2)
+        assert pool.user_id == "u1"  # not overwritten
+
+    def test_append_increments_message_count(self, pool: Pool) -> None:
+        """message_count increments once per append call."""
+        pool.append(_make_inbound())
+        pool.append(_make_inbound())
+        assert pool.message_count == 2
+
+    def test_append_sets_medium_from_platform(self, pool: Pool) -> None:
+        """First append captures medium (platform string) from the message."""
+        pool.append(_make_inbound(platform="telegram"))
+        assert pool.medium == "telegram"
+
+    def test_append_calls_turn_logger_no_error(self, pool: Pool) -> None:
+        """When _turn_logger is set, append() must not raise any error."""
+        calls: list = []
+
+        async def fake_logger(sid: str, m: object) -> None:
+            calls.append((sid, m))
+
+        pool._turn_logger = fake_logger
+        pool.append(_make_inbound())
+        # turn_logger may be called via create_task; at minimum no sync error
+        assert pool.message_count == 1
+
+
+class TestPoolSnapshot:
+    """Pool.snapshot() must return a SessionSnapshot (S1)."""
+
+    def test_snapshot_returns_session_snapshot(self, pool: Pool) -> None:
+        """snapshot() returns a SessionSnapshot with correct identity fields."""
+        from lyra.core.memory import SessionSnapshot
+
+        pool.append(_make_inbound(user_id="u1", platform="telegram"))
+        snap = pool.snapshot("lyra")
+        assert isinstance(snap, SessionSnapshot)
+        assert snap.session_id == pool.session_id
+        assert snap.user_id == "u1"
+        assert snap.medium == "telegram"
+        assert snap.message_count == 1
+        assert snap.session_end >= snap.session_start

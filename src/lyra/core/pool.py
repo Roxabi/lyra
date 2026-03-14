@@ -5,13 +5,16 @@ import collections.abc
 import contextlib
 import logging
 import time
+import uuid
 from collections import deque
 from collections.abc import AsyncIterator, Awaitable, Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from .agent import AgentBase
+    from .memory import SessionSnapshot
 
 from .debouncer import DEFAULT_DEBOUNCE_MS, MessageDebouncer
 from .message import GENERIC_ERROR_REPLY, InboundMessage, OutboundMessage, Response
@@ -82,6 +85,16 @@ class Pool:
         self._inbox: asyncio.Queue[InboundMessage] = asyncio.Queue()
         self._current_task: asyncio.Task | None = None
         self._last_active: float = time.monotonic()
+        # S1 — session identity fields (issue #83)
+        self.session_id: str = str(uuid.uuid4())
+        self.user_id: str = ""
+        self.medium: str = ""
+        self.session_start: datetime = datetime.now(UTC)
+        self.message_count: int = 0
+        self._system_prompt: str = ""
+        self._turn_logger: Callable[[str, InboundMessage], Awaitable[None]] | None = (
+            None
+        )
 
     @property
     def debounce_ms(self) -> int:
@@ -346,6 +359,10 @@ class Pool:
         - async generator function (yields directly)
         - regular async def returning AsyncIterator or Response
         """
+        self.append(msg)  # S1 — track identity and message count
+        _ensure_fn = getattr(agent, "_ensure_system_prompt", None)
+        if _ensure_fn is not None:
+            await _ensure_fn(self)  # S3 — cache system prompt
 
         async def _intermediate_cb(turn_text: str) -> None:
             await self._safe_dispatch(
@@ -372,6 +389,10 @@ class Pool:
         else:
             self._ctx.record_circuit_success()
             await self._ctx.dispatch_response(msg, result)
+
+        _compact_fn = getattr(agent, "compact", None)
+        if _compact_fn is not None:
+            await _compact_fn(self)  # S5 — check compaction threshold after each turn
 
     async def _safe_dispatch(self, msg: InboundMessage, response: Response) -> None:
         try:
@@ -409,3 +430,32 @@ class Pool:
         self.sdk_history.extend(new_messages)
         while len(self.sdk_history) > self.max_sdk_history:
             self.sdk_history.popleft()
+
+    # S1 — session identity mutators (issue #83)
+
+    def append(self, msg: InboundMessage) -> None:
+        """Called from _process_one. Promotes session identity and tracks count."""
+        if self.user_id == "":
+            self.user_id = msg.user_id
+            # msg.platform is a str at runtime (platform.value already resolved)
+            self.medium = str(msg.platform)
+        self.message_count += 1
+        if self._turn_logger is not None:
+            try:
+                asyncio.create_task(self._turn_logger(self.session_id, msg))  # type: ignore[arg-type]
+            except RuntimeError:
+                pass  # no running event loop (e.g. sync test context)
+
+    def snapshot(self, agent_namespace: str) -> "SessionSnapshot":
+        from .memory import SessionSnapshot
+
+        return SessionSnapshot(
+            session_id=self.session_id,
+            user_id=self.user_id,
+            medium=self.medium,
+            agent_namespace=agent_namespace,
+            session_start=self.session_start,
+            session_end=datetime.now(UTC),
+            message_count=self.message_count,
+            source_turns=len(self.sdk_history),
+        )

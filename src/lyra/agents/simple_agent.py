@@ -201,7 +201,7 @@ class SimpleAgent(AgentBase):
             pool.pool_id,
             text,
             model_cfg,
-            self.config.system_prompt,
+            pool._system_prompt or self.config.system_prompt,
             on_intermediate=cb,
         )
 

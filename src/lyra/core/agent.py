@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 import os
 import re
+import sys
 import tomllib
 from abc import ABC, abstractmethod
+from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -15,6 +19,8 @@ if TYPE_CHECKING:
 
     from lyra.stt import STTService
     from lyra.tts import TTSService
+
+    from .memory import MemoryManager, SessionSnapshot
 
 from .circuit_breaker import CircuitRegistry
 from .command_router import CommandConfig, CommandRouter
@@ -59,6 +65,12 @@ _PERSONAS_DIR = _VAULT_DIR / "personas"
 _WORKSPACE_BUILTIN_CONFLICTS = frozenset(
     {"help", "circuit", "routing", "stop", "config", "clear", "new"}
 )
+
+# S5 — compaction constants (issue #83)
+MODEL_CONTEXT_TOKENS = 200_000
+COMPACT_THRESHOLD = int(0.8 * MODEL_CONTEXT_TOKENS)
+COMPACT_TAIL = 10
+COMPACT_HISTORY_THRESHOLD = 50  # also compact if sdk_history has this many entries
 
 
 @dataclass(frozen=True)
@@ -533,6 +545,9 @@ class AgentBase(ABC):
         self._persona_path: Path | None = None
         self._persona_mtime: float = 0.0
         self._update_persona_tracking()
+        # S3 — memory DI (issue #83); injected by Hub.register_agent()
+        self._memory: "MemoryManager | None" = None
+        self._task_registry: set | None = None
 
     def _update_persona_tracking(self) -> None:
         """Resolve and track persona vault file for hot-reload."""
@@ -702,6 +717,150 @@ class AgentBase(ABC):
         except Exception:
             log.error("TTS synthesis failed for /voice command", exc_info=True)
             return Response(content="Sorry, I couldn't generate audio.")
+
+    # S3 — system prompt caching (issue #83)
+
+    async def _ensure_system_prompt(self, pool: "Pool") -> None:
+        """Populate pool._system_prompt on first turn. No-op if cached or no memory."""
+        if pool._system_prompt:
+            return
+        if self._memory is None:
+            pool._system_prompt = self.config.system_prompt
+            return
+        pool._system_prompt = await self.build_system_prompt(pool)
+        pool.max_sdk_history = sys.maxsize  # compact owns truncation
+
+    async def build_system_prompt(self, pool: "Pool") -> str:
+        """Fetch identity anchor + recall block; seed anchor from TOML on first boot."""
+        assert self._memory is not None
+        ns = self.config.memory_namespace
+        anchor = await self._memory.get_identity_anchor(ns)
+        if anchor is None:
+            anchor = self.config.system_prompt
+            await self._memory.save_identity_anchor(ns, anchor)
+        first_msg = pool.history[-1].text if pool.history else ""
+        memory_block = await self._memory.recall(
+            pool.user_id, ns, first_msg=first_msg, token_budget=700
+        )
+        prefs_block = await self._memory._fetch_preferences(
+            pool.user_id, ns, token_budget=300
+        )
+        parts = [
+            p for p in [anchor, memory_block, prefs_block] if p and isinstance(p, str)
+        ]
+        return "\n\n".join(parts)
+
+    # S4 — session flush (issue #83)
+
+    async def flush_session(self, pool: "Pool", reason: str = "end") -> None:
+        """Write final session summary to L3. No-op if no memory or no user."""
+        if self._memory is None or pool.user_id == "":
+            return
+        snap = pool.snapshot(self.config.memory_namespace)
+        summary = await self._summarize_session(pool)
+        await self._memory.upsert_session(snap, summary, status="final")
+        await self._memory.upsert_contact(
+            snap.user_id, snap.medium, snap.agent_namespace
+        )
+        if snap.source_turns >= 3:
+            self._schedule_extraction(snap, summary, self._task_registry)
+
+    async def _summarize_session(self, pool: "Pool") -> str:
+        """Generate session summary. Base: simple truncation. Override for LLM."""
+        turns = list(pool.sdk_history)[-20:]
+        text = "\n".join(str(t.get("content", "")) for t in turns)
+        return f"Session summary ({pool.message_count} messages): {text[:500]}"
+
+    def _schedule_extraction(
+        self,
+        snap: "SessionSnapshot",
+        summary: str,
+        task_registry: set | None = None,
+    ) -> None:
+        """Schedule background concept + preference extraction tasks."""
+        for coro in [
+            self._run_concept_extraction(snap, summary),
+            self._run_preference_extraction(snap, summary),
+        ]:
+            task = asyncio.create_task(coro)
+            if task_registry is not None:
+                task_registry.add(task)
+                task.add_done_callback(task_registry.discard)
+
+    # S5 — compaction (issue #83)
+
+    async def compact(self, pool: "Pool") -> None:
+        """Summarize and truncate pool history when approaching context limit."""
+        if self._memory is None:
+            return
+        token_est = sum(len(str(t.get("content", ""))) // 4 for t in pool.sdk_history)
+        # Also trigger compaction when sdk_history has many entries (each entry
+        # carries metadata overhead that adds up regardless of content size).
+        history_len = (
+            len(pool.sdk_history) if hasattr(pool.sdk_history, "__len__") else 0
+        )
+        if token_est <= COMPACT_THRESHOLD and history_len < COMPACT_HISTORY_THRESHOLD:
+            return
+        summary = await self._summarize_session(pool)
+        snap = pool.snapshot(self.config.memory_namespace)
+        await self._memory.upsert_session(snap, summary, status="partial")
+        tail = list(pool.sdk_history)[-COMPACT_TAIL:]
+        pool.sdk_history = deque([{"role": "system", "content": summary}] + tail)
+
+    # S7 — concept + preference extraction (issue #83)
+
+    async def _extraction_llm_call(self, prompt: str) -> str:
+        """LLM call for extraction. Base: no-op. Overridden by concrete agents."""
+        return "[]"
+
+    async def _run_concept_extraction(
+        self, snap: "SessionSnapshot", summary: str
+    ) -> None:
+        try:
+            prompt = (
+                f"Extract concepts from this session summary as JSON array.\n"
+                f'Each item: {{"name": str, "category": str, "content": str, '
+                f'"relations": [], "confidence": float}}\n'
+                f"Categories: technology|project|decision|fact|entity\n"
+                f"Min confidence: 0.7. Return [] if nothing worth extracting.\n\n"
+                f"{summary}"
+            )
+            raw = await self._extraction_llm_call(prompt)
+            concepts = json.loads(raw)
+            if self._memory is not None:
+                for concept in concepts:
+                    if concept.get("confidence", 0) >= 0.7:
+                        await self._memory.upsert_concept(snap, concept)
+        except Exception:
+            log.warning(
+                "concept extraction failed for session %s",
+                snap.session_id,
+                exc_info=True,
+            )
+
+    async def _run_preference_extraction(
+        self, snap: "SessionSnapshot", summary: str
+    ) -> None:
+        try:
+            prompt = (
+                "Extract explicit user preferences from this session summary"
+                " as JSON array.\n"
+                f'Each item: {{"name": str, "domain": str, "strength": float, '
+                f'"source": str, "content": str}}\n'
+                f"Domains: communication|technical|workflow\n"
+                f"Only explicit stated preferences. Return [] if none.\n\n{summary}"
+            )
+            raw = await self._extraction_llm_call(prompt)
+            prefs = json.loads(raw)
+            if self._memory is not None:
+                for pref in prefs:
+                    await self._memory.upsert_preference(snap, pref)
+        except Exception:
+            log.warning(
+                "preference extraction failed for session %s",
+                snap.session_id,
+                exc_info=True,
+            )
 
     def is_backend_alive(self, _pool_id: str) -> bool:
         """Return True if the backend process for this pool is alive.

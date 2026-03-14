@@ -15,12 +15,11 @@ bot_app = typer.Typer(
 )
 
 
-def _open_credential_store() -> CredentialStore:
-    vault = Path.home() / ".lyra"
+async def _make_store(vault: Path) -> CredentialStore:
     vault.mkdir(parents=True, exist_ok=True)
-    keyring = asyncio.run(LyraKeyring.load_or_create(vault / "keyring.key"))
+    keyring = await LyraKeyring.load_or_create(vault / "keyring.key")
     store = CredentialStore(db_path=vault / "auth.db", keyring=keyring)
-    asyncio.run(store.connect())
+    await store.connect()
     return store
 
 
@@ -39,32 +38,47 @@ def bot_add(
             f"✗ Unknown platform '{platform}'. Use: telegram or discord", err=True
         )
         raise typer.Exit(1)
-    store = _open_credential_store()
+    asyncio.run(_bot_add_async(platform, bot_id, token, webhook_secret))
+
+
+async def _bot_add_async(
+    platform: str,
+    bot_id: str,
+    token: str,
+    webhook_secret: Optional[str],
+) -> None:
+    vault = Path.home() / ".lyra"
+    store = await _make_store(vault)
     try:
-        if asyncio.run(store.exists(platform, bot_id)):
+        if await store.exists(platform, bot_id):
             typer.confirm(
                 f"Credentials already exist for {platform}/{bot_id}. Overwrite?",
                 abort=True,
             )
-        asyncio.run(store.set(platform, bot_id, token, webhook_secret))
+        await store.set(platform, bot_id, token, webhook_secret)
         typer.echo(f"✓ Credentials stored for {platform}/{bot_id}")
     finally:
-        asyncio.run(store.close())
+        await store.close()
 
 
 @bot_app.command("list")
 def bot_list() -> None:
     """List all stored bot credentials (tokens masked)."""
-    store = _open_credential_store()
+    asyncio.run(_bot_list_async())
+
+
+async def _bot_list_async() -> None:
+    vault = Path.home() / ".lyra"
+    store = await _make_store(vault)
     try:
-        rows = asyncio.run(store.list_all())
+        rows = await store.list_all()
         if not rows:
             typer.echo("No credentials stored. Run lyra bot add to get started.")
             return
         typer.echo(f"{'PLATFORM':<12} {'BOT ID':<20} {'TOKEN':<20} UPDATED")
         typer.echo("-" * 70)
         for row in rows:
-            raw_token = asyncio.run(store.get(row.platform, row.bot_id))
+            raw_token = await store.get(row.platform, row.bot_id)
             if raw_token:
                 masked = f"***...{raw_token[-4:]}"
             else:
@@ -73,7 +87,7 @@ def bot_list() -> None:
                 f"{row.platform:<12} {row.bot_id:<20} {masked:<20} {row.updated_at}"
             )
     finally:
-        asyncio.run(store.close())
+        await store.close()
 
 
 @bot_app.command("remove")
@@ -83,12 +97,17 @@ def bot_remove(
 ) -> None:
     """Remove stored bot credentials."""
     typer.confirm(f"Remove credentials for {platform}/{bot_id}?", abort=True)
-    store = _open_credential_store()
+    asyncio.run(_bot_remove_async(platform, bot_id))
+
+
+async def _bot_remove_async(platform: str, bot_id: str) -> None:
+    vault = Path.home() / ".lyra"
+    store = await _make_store(vault)
     try:
-        deleted = asyncio.run(store.delete(platform, bot_id))
+        deleted = await store.delete(platform, bot_id)
         if deleted:
             typer.echo(f"✓ Removed credentials for {platform}/{bot_id}")
         else:
             typer.echo(f"✗ Not found for {platform}/{bot_id}")
     finally:
-        asyncio.run(store.close())
+        await store.close()

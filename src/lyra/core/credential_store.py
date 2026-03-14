@@ -32,8 +32,8 @@ CREATE TABLE IF NOT EXISTS bot_secrets (
 class BotSecretRow:
     platform: str
     bot_id: str
-    token: str
-    webhook_secret: str | None
+    encrypted_token: str
+    encrypted_webhook_secret: str | None
     updated_at: str
 
 
@@ -63,13 +63,24 @@ class LyraKeyring:
 
     @staticmethod
     def _generate_atomic(key_path: Path) -> bytes:
-        """Generate a new Fernet key and write it atomically with 0o600 permissions."""
+        """Generate a new Fernet key and write it atomically with 0o600 permissions.
+
+        Writes to a temporary file first, then renames — ensures that a partial
+        write on disk-full never leaves a corrupted key file at key_path.
+        """
         key = Fernet.generate_key()
-        fd = os.open(str(key_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        tmp_path = key_path.with_suffix(".tmp")
+        success = False
+        fd = os.open(str(tmp_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         try:
             os.write(fd, key)
+            os.fsync(fd)
+            success = True
         finally:
             os.close(fd)
+            if not success:
+                tmp_path.unlink(missing_ok=True)
+        os.rename(str(tmp_path), str(key_path))
         return key
 
 
@@ -206,8 +217,8 @@ class CredentialStore:
             BotSecretRow(
                 platform=r[0],
                 bot_id=r[1],
-                token=r[2],
-                webhook_secret=r[3],
+                encrypted_token=r[2],
+                encrypted_webhook_secret=r[3],
                 updated_at=r[4],
             )
             for r in rows

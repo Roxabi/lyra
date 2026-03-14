@@ -26,6 +26,7 @@ async def auth_store(tmp_path: Path) -> AsyncGenerator[AuthStore, None]:
     yield store
     await store.close()
 
+
 # ---------------------------------------------------------------------------
 # TestTrustLevel
 # ---------------------------------------------------------------------------
@@ -69,15 +70,11 @@ class TestAuthMiddleware:
         auth = AuthMiddleware(store=None, role_map={}, default=TrustLevel.BLOCKED)
         assert auth.check(None) == TrustLevel.BLOCKED
 
-    async def test_user_map_returns_mapped_level(
-        self, auth_store: AuthStore
-    ) -> None:
+    async def test_user_map_returns_mapped_level(self, auth_store: AuthStore) -> None:
         await auth_store.upsert(
             "alice", TrustLevel.OWNER, None, "config", "config.toml"
         )
-        auth = AuthMiddleware(
-            store=auth_store, role_map={}, default=TrustLevel.BLOCKED
-        )
+        auth = AuthMiddleware(store=auth_store, role_map={}, default=TrustLevel.BLOCKED)
         assert auth.check("alice") == TrustLevel.OWNER
 
     async def test_user_map_precedence_over_role_map(
@@ -145,9 +142,7 @@ class TestFromConfig:
         base.update(overrides)
         return {"auth": {section: base}}
 
-    async def test_valid_config_parses_correctly(
-        self, auth_store: AuthStore
-    ) -> None:
+    async def test_valid_config_parses_correctly(self, auth_store: AuthStore) -> None:
         raw = self._make_raw("telegram")
         await auth_store.seed_from_config(raw, "telegram")
         auth = AuthMiddleware.from_config(raw, "telegram", store=auth_store)
@@ -175,9 +170,7 @@ class TestFromConfig:
         with pytest.raises(ValueError):
             AuthMiddleware.from_config(raw, "telegram")
 
-    async def test_owner_users_get_owner_level(
-        self, auth_store: AuthStore
-    ) -> None:
+    async def test_owner_users_get_owner_level(self, auth_store: AuthStore) -> None:
         raw = {
             "auth": {"telegram": {"owner_users": ["7377831990"], "default": "blocked"}}
         }
@@ -186,9 +179,7 @@ class TestFromConfig:
         assert auth is not None
         assert auth.check("7377831990") == TrustLevel.OWNER
 
-    async def test_trusted_users_get_trusted_level(
-        self, auth_store: AuthStore
-    ) -> None:
+    async def test_trusted_users_get_trusted_level(self, auth_store: AuthStore) -> None:
         raw = {"auth": {"telegram": {"trusted_users": ["9999"], "default": "blocked"}}}
         await auth_store.seed_from_config(raw, "telegram")
         auth = AuthMiddleware.from_config(raw, "telegram", store=auth_store)
@@ -278,9 +269,7 @@ class TestFromBotConfig:
             "trusted1", TrustLevel.TRUSTED, None, "config", "config.toml"
         )
         # Act
-        auth = AuthMiddleware.from_bot_config(
-            raw, "telegram", "lyra", store=auth_store
-        )
+        auth = AuthMiddleware.from_bot_config(raw, "telegram", "lyra", store=auth_store)
         # Assert
         assert auth is not None
         assert auth.check("owner1") == TrustLevel.OWNER
@@ -357,9 +346,7 @@ class TestAuthMiddlewareWithStore:
             }
         }
 
-    async def test_seeded_owner_user_returns_owner(
-        self, auth_store: AuthStore
-    ) -> None:
+    async def test_seeded_owner_user_returns_owner(self, auth_store: AuthStore) -> None:
         await auth_store.upsert(
             "owner-uid", TrustLevel.OWNER, None, "config", "config.toml"
         )
@@ -394,9 +381,7 @@ class TestAuthMiddlewareWithStore:
         self, auth_store: AuthStore
     ) -> None:
         """public_commands bypass: /join returns PUBLIC for non-blocked users."""
-        auth = AuthMiddleware(
-            store=auth_store, role_map={}, default=TrustLevel.PUBLIC
-        )
+        auth = AuthMiddleware(store=auth_store, role_map={}, default=TrustLevel.PUBLIC)
         result = auth.check("unknown-user", command="/join")
         assert result == TrustLevel.PUBLIC
 

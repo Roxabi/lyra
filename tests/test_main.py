@@ -220,9 +220,7 @@ class TestGracefulShutdown:
         await main_mod._main(_stop=stop)
         await trigger_task  # ensure no lingering tasks
 
-    async def test_auth_store_boot_order(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_auth_store_boot_order(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """SC10 (S5): connect() and seed_from_config() called before from_config().
 
         Boot constraint: cache must be warm before middleware reads from it.
@@ -231,8 +229,8 @@ class TestGracefulShutdown:
 
         _, fake_store = _patch_all(monkeypatch)
         fake_store.connect.side_effect = lambda: call_log.append("connect")
-        fake_store.seed_from_config.side_effect = (
-            lambda raw, section: call_log.append(f"seed:{section}")
+        fake_store.seed_from_config.side_effect = lambda raw, section: call_log.append(
+            f"seed:{section}"
         )
         # Re-patch from_config to record when it is called relative to connect/seed
         from_config_calls: list[str] = []
@@ -241,8 +239,7 @@ class TestGracefulShutdown:
             "from_config",
             classmethod(
                 lambda cls, raw, section, store=None: (
-                    from_config_calls.append(section)
-                    or MagicMock()
+                    from_config_calls.append(section) or MagicMock()
                 )
             ),
         )

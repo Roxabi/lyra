@@ -290,9 +290,7 @@ class TestAuthStoreUpsertRevoke:
     async def test_revoke_removes_from_db(self, tmp_path: Path) -> None:
         store = await make_store(tmp_path)
         try:
-            await store.upsert(
-                "grace", TrustLevel.OWNER, None, "config", "config.toml"
-            )
+            await store.upsert("grace", TrustLevel.OWNER, None, "config", "config.toml")
             await store.revoke("grace")
             assert store._db is not None
             async with store._db.execute(

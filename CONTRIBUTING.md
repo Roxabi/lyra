@@ -1,5 +1,27 @@
 # Contributing
 
+## Dev environment setup
+
+```bash
+# 1. Clone and install dependencies
+git clone https://github.com/Roxabi/lyra.git
+cd lyra
+uv sync
+
+# 2. Configure environment
+cp .env.example .env
+# Fill in TELEGRAM_TOKEN, DISCORD_TOKEN, ANTHROPIC_API_KEY (see README Configuration)
+
+# 3. Install pre-commit hooks (runs ruff on every commit)
+uv run pre-commit install
+
+# 4. Run the test suite to verify your setup
+uv run pytest
+```
+
+> [!NOTE]
+> Python 3.12+ and [uv](https://docs.astral.sh/uv/) are required. Install uv with `curl -LsSf https://astral.sh/uv/install.sh | sh`.
+
 ## Workflow
 
 All development goes through the `staging` branch. `main` is the stable release branch.

@@ -46,15 +46,27 @@ flowchart TD
 
 ## Features
 
+### Channels & Routing
+
 | Feature | Detail |
 |---------|--------|
 | **Channels** | Telegram (aiogram v3 · polling + webhook) · Discord (discord.py v2 · gateway) |
 | **Routing** | Typed `RoutingKey(platform, bot_id, scope_id)` · wildcard `*` per channel · scope = chat / thread / channel |
 | **Concurrency** | Sequential per scope (`asyncio.Task`) · parallel across scopes and platforms — zero config |
 | **Backpressure** | Bounded queue (100) → immediate ack + blocking `await put()` |
+
+### AI & Agents
+
+| Feature | Detail |
+|---------|--------|
 | **LLM** | LlmProvider protocol: Claude CLI + Anthropic SDK drivers · smart routing (complexity-based model selection) · Ollama (Phase 2) |
 | **Agents** | Stateless singleton · isolated per-scope pools · TOML config per agent · N agents × N bots via `lyra.toml` |
 | **Memory** | 5 levels: working (L0) → session → episodic → semantic (SQLite + FTS5 + fastembed, ✅ Phase 1) → procedural |
+
+### Security & Voice
+
+| Feature | Detail |
+|---------|--------|
 | **Auth** | AuthMiddleware + TrustLevel per adapter (owner/trusted/public/blocked) · RoutingContext outbound verification |
 | **Voice** | STT via voicecli library (faster-whisper `large-v3-turbo` + personal vocab · InboundAudioBus → STTService) · TTS via voicecli (Phase 2) |
 | **Security** | Prompt injection guard · sandboxed skills · least-privilege tool permissions · hmac webhook verification |
@@ -77,6 +89,43 @@ python -m lyra
 ```
 
 > See [QUICKSTART.md](docs/QUICKSTART.md) for the full setup — bot creation, agent TOML, environment variables, and sending your first message.
+
+## Configuration
+
+All configuration is via `.env` (copy `.env.example` to get started). Key variables:
+
+**Telegram**
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `TELEGRAM_TOKEN` | ✅ | Bot token from [@BotFather](https://t.me/BotFather) |
+| `TELEGRAM_BOT_USERNAME` | ✅ | Bot username (e.g. `lyra_bot`) |
+| `TELEGRAM_WEBHOOK_SECRET` | ✅ | Any random string — used to verify webhook payloads |
+| `TELEGRAM_ADMIN_CHAT_ID` | optional | Chat ID that receives owner-level trust |
+
+**Discord**
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DISCORD_TOKEN` | ✅ | Bot token from Discord Developer Portal |
+| `DISCORD_AUTO_THREAD` | optional | Auto-create threads for replies (`true`/`false`) |
+
+**LLM & Config**
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `ANTHROPIC_API_KEY` | ✅ (SDK driver) | Anthropic API key (not needed for Claude CLI driver) |
+| `LYRA_CONFIG` | optional | Path to `lyra.toml` — default: `lyra.toml` |
+
+**Voice (optional)**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `STT_MODEL_SIZE` | `small` | Whisper model size (`small`, `medium`, `large-v3-turbo`) |
+| `STT_DEVICE` | `auto` | `cpu`, `cuda`, or `auto` |
+
+Agent behaviour (tools, model, system prompt) is configured per-agent in `src/lyra/agents/<name>.toml`.
+See [QUICKSTART.md](docs/QUICKSTART.md) for the full walkthrough.
 
 ## Operations (Makefile)
 
@@ -167,6 +216,10 @@ docs/
 | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production service management on Machine 1 (supervisord, logs, firewall) |
 | [ADRs](docs/architecture/adr/) | 18 architecture decision records with full rationale |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Branching model, commit conventions, adding adapters and agents |
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) — branching model, commit conventions, adding adapters and agents.
 
 ## License
 

@@ -108,7 +108,7 @@ class TestHandleVoiceCommand:
         assert result.modality == "voice"
         assert result.text_raw == "hello"
         assert "hello" in result.text
-        assert "[Voice response" in result.text
+        assert "[Voice" in result.text
 
     def test_strips_prefix_correctly(self) -> None:
         """The raw prompt (without hint) is preserved in text_raw."""

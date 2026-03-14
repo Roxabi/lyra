@@ -105,6 +105,9 @@ class SlowAgent:
     def is_backend_alive(self, pool_id: str) -> bool:
         return True
 
+    async def reset_backend(self, pool_id: str) -> None:
+        pass
+
     async def process(
         self,
         msg: InboundMessage,

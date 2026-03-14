@@ -90,6 +90,11 @@ class MockAdapter:
     ) -> None:
         pass
 
+    async def render_voice_stream(
+        self, chunks: object, inbound: InboundMessage
+    ) -> None:
+        pass
+
     async def render_attachment(self, msg: object, inbound: InboundMessage) -> None:
         pass
 
@@ -566,6 +571,67 @@ class TestDispatchAudioStream:
 
         await hub.dispatch_audio_stream(msg, chunks())
         assert hub._last_processed_at is not None
+
+
+# ---------------------------------------------------------------------------
+# #256 — dispatch_voice_stream
+# ---------------------------------------------------------------------------
+
+
+class TestDispatchVoiceStream:
+    async def test_dispatch_voice_stream_routes_to_dispatcher(self) -> None:
+        # Arrange
+        hub = Hub()
+        adapter = MagicMock()
+        hub.register_adapter(Platform.DISCORD, "main", adapter)
+        dispatcher = MagicMock()
+        dispatcher.enqueue_voice_stream = MagicMock()
+        hub.register_outbound_dispatcher(Platform.DISCORD, "main", dispatcher)
+        msg = make_inbound_message(platform="discord", bot_id="main")
+
+        async def chunks() -> AsyncIterator[OutboundAudioChunk]:
+            yield OutboundAudioChunk(
+                chunk_bytes=b"pcm", session_id="s1", chunk_index=0, is_final=True
+            )
+
+        c = chunks()
+        await hub.dispatch_voice_stream(msg, c)
+        dispatcher.enqueue_voice_stream.assert_called_once_with(msg, c)
+        assert hub._last_processed_at is not None
+
+    async def test_dispatch_voice_stream_fallback_direct(self) -> None:
+        # Arrange — no dispatcher, adapter registered
+        hub = Hub()
+        adapter = MagicMock()
+        adapter.render_voice_stream = AsyncMock()
+        hub.register_adapter(Platform.DISCORD, "main", adapter)
+        msg = make_inbound_message(platform="discord", bot_id="main")
+
+        async def chunks() -> AsyncIterator[OutboundAudioChunk]:
+            yield OutboundAudioChunk(
+                chunk_bytes=b"pcm", session_id="s1", chunk_index=0, is_final=True
+            )
+
+        c = chunks()
+        await hub.dispatch_voice_stream(msg, c)
+        adapter.render_voice_stream.assert_awaited_once()
+        call_args = adapter.render_voice_stream.call_args[0]
+        # chunks first, then msg (same convention as dispatch_audio_stream)
+        assert call_args[0] is c
+        assert call_args[1] is msg
+
+    async def test_dispatch_voice_stream_raises_if_no_adapter(self) -> None:
+        # Arrange — no dispatcher, no adapter
+        hub = Hub()
+        msg = make_inbound_message(platform="discord", bot_id="ghost")
+
+        async def chunks() -> AsyncIterator[OutboundAudioChunk]:
+            yield OutboundAudioChunk(
+                chunk_bytes=b"pcm", session_id="s1", chunk_index=0, is_final=True
+            )
+
+        with pytest.raises(KeyError):
+            await hub.dispatch_voice_stream(msg, chunks())
 
 
 # ---------------------------------------------------------------------------

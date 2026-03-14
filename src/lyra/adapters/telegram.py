@@ -1092,3 +1092,17 @@ class TelegramAdapter:
         if assembled is None:
             return
         await self.render_audio(assembled, inbound)
+
+    async def render_voice_stream(
+        self,
+        chunks: AsyncIterator[OutboundAudioChunk],
+        inbound: InboundMessage,
+    ) -> None:
+        """Not supported on Telegram — drain iterator and log a warning."""
+        log.warning(
+            "render_voice_stream() is not supported on Telegram (msg id=%s) — "
+            "use render_audio_stream() instead; draining iterator",
+            inbound.id,
+        )
+        async for _ in chunks:
+            pass

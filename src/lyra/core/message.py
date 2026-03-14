@@ -83,6 +83,8 @@ class InboundMessage:
     thread_id: str | None = None
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     locale: str | None = None
+    # Whisper-detected spoken language (e.g. "fr") — distinct from locale
+    language: str | None = None
     # Deprecated: use trust_level (TrustLevel) for authorization.
     # Removal tracked separately.
     trust: Literal["user", "system"] = "user"

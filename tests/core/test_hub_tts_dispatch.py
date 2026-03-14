@@ -8,7 +8,9 @@ with an audio field set.
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from lyra.core.hub import Action, Hub, MessagePipeline, PipelineResult
 from lyra.core.message import InboundMessage, OutboundAudio, Response
@@ -131,3 +133,133 @@ class TestHubRunAudioDispatch:
             await _run_hub_one_msg(hub, msg)
 
         hub.dispatch_response.assert_awaited_once_with(msg, response)
+
+
+# ---------------------------------------------------------------------------
+# S4 — T18: Hub accepts prefs_store=None
+# S5 — T22-T25: Pref resolution in _synthesize_and_dispatch_audio
+# ---------------------------------------------------------------------------
+
+
+def _make_msg_with_language(language: str | None) -> InboundMessage:
+    """Build an InboundMessage with a specific language field."""
+    base = make_inbound_message(platform="telegram", bot_id="main", user_id="tg:user:1")
+    # Return a new instance with language set via dataclasses.replace
+    import dataclasses
+
+    return dataclasses.replace(base, language=language)
+
+
+def _make_mock_prefs_store(tts_language: str, tts_voice: str = "agent_default"):
+    """Return a mock PrefsStore that returns fixed UserPrefs."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    mock_store = MagicMock()
+
+    class _FakePrefs:
+        def __init__(self):
+            self.tts_language = tts_language
+            self.tts_voice = tts_voice
+
+    mock_store.get_prefs = AsyncMock(return_value=_FakePrefs())
+    return mock_store
+
+
+class TestHubPrefsStoreInit:
+    """T18 — Hub.__init__ must accept prefs_store keyword argument."""
+
+    def test_hub_accepts_prefs_store_none(self):
+        """Hub(prefs_store=None) must not raise TypeError."""
+        hub = Hub(prefs_store=None)
+        assert hub._prefs_store is None
+
+    def test_hub_stores_prefs_store_when_provided(self):
+        """Hub stores the injected prefs_store on self._prefs_store."""
+        mock_store = MagicMock()
+        hub = Hub(prefs_store=mock_store)
+        assert hub._prefs_store is mock_store
+
+
+class TestHubPrefResolution:
+    """T22-T25 — _synthesize_and_dispatch_audio resolves language from prefs."""
+
+    @pytest.mark.asyncio
+    async def test_explicit_pref_overrides_detected_language(self):
+        """Explicit tts_language='en' beats msg.language='fr'."""
+        mock_tts = MagicMock()
+        mock_tts.synthesize = AsyncMock(
+            return_value=MagicMock(
+                audio_bytes=b"data", mime_type="audio/ogg", duration_ms=None
+            )
+        )
+        prefs_store = _make_mock_prefs_store(tts_language="en")
+        hub = Hub(tts=mock_tts, prefs_store=prefs_store)
+        hub.dispatch_audio = AsyncMock()
+
+        msg = _make_msg_with_language("fr")
+        await hub._synthesize_and_dispatch_audio(msg, "reply")
+
+        mock_tts.synthesize.assert_awaited_once()
+        call_kwargs = mock_tts.synthesize.call_args.kwargs
+        assert call_kwargs.get("language") == "en"
+
+    @pytest.mark.asyncio
+    async def test_detected_mode_uses_msg_language(self):
+        """tts_language='detected' + msg.language='fr' → language='fr' forwarded."""
+        mock_tts = MagicMock()
+        mock_tts.synthesize = AsyncMock(
+            return_value=MagicMock(
+                audio_bytes=b"data", mime_type="audio/ogg", duration_ms=None
+            )
+        )
+        prefs_store = _make_mock_prefs_store(tts_language="detected")
+        hub = Hub(tts=mock_tts, prefs_store=prefs_store)
+        hub.dispatch_audio = AsyncMock()
+
+        msg = _make_msg_with_language("fr")
+        await hub._synthesize_and_dispatch_audio(msg, "reply")
+
+        mock_tts.synthesize.assert_awaited_once()
+        call_kwargs = mock_tts.synthesize.call_args.kwargs
+        assert call_kwargs.get("language") == "fr"
+
+    @pytest.mark.asyncio
+    async def test_none_language_falls_through(self):
+        """tts_language='detected' + msg.language=None → language=None forwarded."""
+        mock_tts = MagicMock()
+        mock_tts.synthesize = AsyncMock(
+            return_value=MagicMock(
+                audio_bytes=b"data", mime_type="audio/ogg", duration_ms=None
+            )
+        )
+        prefs_store = _make_mock_prefs_store(tts_language="detected")
+        hub = Hub(tts=mock_tts, prefs_store=prefs_store)
+        hub.dispatch_audio = AsyncMock()
+
+        msg = _make_msg_with_language(None)
+        await hub._synthesize_and_dispatch_audio(msg, "reply")
+
+        mock_tts.synthesize.assert_awaited_once()
+        call_kwargs = mock_tts.synthesize.call_args.kwargs
+        assert call_kwargs.get("language") is None
+
+    @pytest.mark.asyncio
+    async def test_sentinel_detected_not_forwarded(self):
+        """The sentinel 'detected' must never reach synthesize() as a language value."""
+        mock_tts = MagicMock()
+        mock_tts.synthesize = AsyncMock(
+            return_value=MagicMock(
+                audio_bytes=b"data", mime_type="audio/ogg", duration_ms=None
+            )
+        )
+        prefs_store = _make_mock_prefs_store(tts_language="detected")
+        hub = Hub(tts=mock_tts, prefs_store=prefs_store)
+        hub.dispatch_audio = AsyncMock()
+
+        msg = _make_msg_with_language("fr")
+        await hub._synthesize_and_dispatch_audio(msg, "reply")
+
+        mock_tts.synthesize.assert_awaited_once()
+        call_kwargs = mock_tts.synthesize.call_args.kwargs
+        assert call_kwargs.get("language") != "detected"
+        assert call_kwargs.get("voice") != "agent_default"

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import dataclasses
 import hmac
 import logging
 import os
@@ -45,6 +46,7 @@ from lyra.core.message import Platform
 from lyra.core.messages import MessageManager
 from lyra.core.outbound_dispatcher import OutboundDispatcher
 from lyra.core.pairing import PairingConfig, PairingManager, set_pairing_manager
+from lyra.core.prefs_store import PrefsStore
 from lyra.errors import KeyringError, MissingCredentialsError
 from lyra.llm.base import LlmProvider
 from lyra.llm.registry import ProviderRegistry
@@ -516,6 +518,23 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
     if os.environ.get("STT_MODEL_SIZE"):
         try:
             stt_cfg = load_stt_config()
+            # Overlay agent [stt] config
+            if first_agent_config.stt is not None:
+                a = first_agent_config.stt
+                if a.language_detection_threshold is not None:
+                    stt_cfg = dataclasses.replace(
+                        stt_cfg,
+                        language_detection_threshold=a.language_detection_threshold,
+                    )
+                if a.language_detection_segments is not None:
+                    stt_cfg = dataclasses.replace(
+                        stt_cfg,
+                        language_detection_segments=a.language_detection_segments,
+                    )
+                if a.language_fallback is not None:
+                    stt_cfg = dataclasses.replace(
+                        stt_cfg, language_fallback=a.language_fallback
+                    )
             stt_service = STTService(stt_cfg)
             log.info("STT enabled: model=%s (via voiceCLI)", stt_cfg.model_size)
         except ValueError as exc:
@@ -524,6 +543,15 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
     tts_service: TTSService | None = None
     if stt_service is not None and os.environ.get("LYRA_VOICE_RESPONSES", "1") != "0":
         tts_cfg = load_tts_config()
+        # Overlay agent [tts] config
+        if first_agent_config.tts is not None:
+            a = first_agent_config.tts
+            if a.engine is not None:
+                tts_cfg = dataclasses.replace(tts_cfg, engine=a.engine)
+            if a.voice is not None:
+                tts_cfg = dataclasses.replace(tts_cfg, voice=a.voice)
+            if a.language is not None:
+                tts_cfg = dataclasses.replace(tts_cfg, language=a.language)
         tts_service = TTSService(tts_cfg)
         log.info(
             "TTS voice responses enabled: engine=%s voice=%s",
@@ -533,6 +561,9 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
 
     from lyra.core.debouncer import DEFAULT_DEBOUNCE_MS
 
+    prefs_store = PrefsStore(db_path=vault_dir_mb / "auth.db")
+    await prefs_store.connect()
+
     hub = Hub(
         circuit_registry=circuit_registry,
         msg_manager=msg_manager,
@@ -540,6 +571,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
         stt=stt_service,
         tts=tts_service,
         debounce_ms=DEFAULT_DEBOUNCE_MS,
+        prefs_store=prefs_store,
     )
 
     # Build cli_pool if any agent needs it (uses pre-loaded configs)

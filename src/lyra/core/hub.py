@@ -41,6 +41,7 @@ if TYPE_CHECKING:
     from ..tts import TTSService
     from .memory import MemoryManager
     from .pairing import PairingManager
+    from .prefs_store import PrefsStore
 
 log = logging.getLogger(__name__)
 
@@ -175,11 +176,12 @@ class Hub:
         pool_ttl: float = POOL_TTL,
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
-        pairing_manager: PairingManager | None = None,
-        stt: STTService | None = None,
-        tts: TTSService | None = None,
+        pairing_manager: "PairingManager | None" = None,
+        stt: "STTService | None" = None,
+        tts: "TTSService | None" = None,
         debounce_ms: int = 0,
         context_resolver: ContextResolver | None = None,
+        prefs_store: "PrefsStore | None" = None,
     ) -> None:
         self._bus_size = bus_size
         self.inbound_bus: InboundBus = InboundBus()
@@ -214,6 +216,8 @@ class Hub:
         # S2 — memory layer (issue #83)
         self._memory: "MemoryManager | None" = None
         self._memory_tasks: set[asyncio.Task] = set()
+        # S4 — user preference store (issue #42)
+        self._prefs_store: "PrefsStore | None" = prefs_store
 
     @property
     def bus(self) -> asyncio.Queue[InboundMessage]:
@@ -770,6 +774,7 @@ class Hub:
             platform_meta=audio.platform_meta,
             routing=audio.routing,
             modality="voice",
+            language=result.language,  # propagate Whisper-detected language
         )
         try:
             self.inbound_bus.put(platform_enum, msg)
@@ -855,12 +860,43 @@ class Hub:
     ) -> None:
         """Synthesize TTS audio for a voice response and dispatch it.
 
+        Language resolution (priority: explicit user pref > detected > None):
+        - prefs.tts_language != "detected" → use explicit value
+        - prefs.tts_language == "detected" and msg.language is not None → detected
+        - else → None (TTSService uses self._language / voicecli global)
+
+        Voice resolution:
+        - prefs.tts_voice != "agent_default" → use explicit value
+        - else → None (TTSService uses self._voice / agent or global default)
+
+        Sentinels "detected" and "agent_default" are never forwarded to synthesize().
+
         Runs as a background task after dispatch_response() enqueues the text.
         Errors are logged and swallowed — audio failure must never crash the hub.
         """
         assert self._tts is not None  # caller guarantees this
         try:
-            result = await self._tts.synthesize(text)
+            lang: str | None = None
+            voice: str | None = None
+
+            if self._prefs_store is not None:
+                prefs = await self._prefs_store.get_prefs(msg.user_id)
+                # Language resolution
+                if prefs.tts_language != "detected":
+                    lang = prefs.tts_language          # explicit user override
+                elif msg.language is not None:
+                    lang = msg.language                # Whisper-detected
+                # else lang=None → TTSService.self._language (agent/global fallback)
+
+                # Voice resolution
+                if prefs.tts_voice != "agent_default":
+                    voice = prefs.tts_voice            # explicit user override
+                # else voice=None → TTSService.self._voice
+            else:
+                # No PrefsStore — pass detected language directly (S1 behavior)
+                lang = msg.language
+
+            result = await self._tts.synthesize(text, language=lang, voice=voice)
             audio = OutboundAudio(
                 audio_bytes=result.audio_bytes,
                 mime_type=result.mime_type,

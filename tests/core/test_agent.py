@@ -518,6 +518,108 @@ system = "You are a plain bot."
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# S2 — T08/T09: AgentTTSConfig, AgentSTTConfig, [tts]/[stt] TOML sections
+# ---------------------------------------------------------------------------
+
+
+class TestAgentTTSConfig:
+    """T08 — AgentTTSConfig dataclass must exist with all-optional fields."""
+
+    def test_agent_tts_config_all_optional(self):
+        from lyra.core.agent import AgentTTSConfig
+
+        cfg = AgentTTSConfig()
+        assert cfg.engine is None
+        assert cfg.voice is None
+        assert cfg.language is None
+        assert cfg.accent is None
+
+    def test_agent_stt_config_all_optional(self):
+        from lyra.core.agent import AgentSTTConfig
+
+        cfg = AgentSTTConfig()
+        assert cfg.language_detection_threshold is None
+        assert cfg.language_detection_segments is None
+        assert cfg.language_fallback is None
+
+
+class TestLoadAgentConfigTTSSTT:
+    """T09 — load_agent_config parses [tts]/[stt] TOML sections."""
+
+    def test_load_agent_config_parses_tts_section(self, tmp_path: Path, monkeypatch):
+        """[tts] section in agent TOML is parsed into AgentTTSConfig."""
+        toml_content = """
+[agent]
+name = "x"
+
+[model]
+backend = "claude-cli"
+model = "test-model"
+max_turns = 5
+
+[tts]
+engine = "qwen-fast"
+voice = "Ono_Anna"
+language = "French"
+"""
+        (tmp_path / "x.toml").write_text(toml_content)
+        monkeypatch.chdir(tmp_path)
+        from lyra.core.agent import load_agent_config
+
+        agent = load_agent_config("x", agents_dir=tmp_path)
+        assert agent.tts is not None
+        assert agent.tts.engine == "qwen-fast"
+        assert agent.tts.voice == "Ono_Anna"
+        assert agent.tts.language == "French"
+
+    def test_load_agent_config_parses_stt_section(self, tmp_path: Path, monkeypatch):
+        """[stt] section in agent TOML is parsed into AgentSTTConfig."""
+        toml_content = """
+[agent]
+name = "x"
+
+[model]
+backend = "claude-cli"
+model = "test-model"
+max_turns = 5
+
+[stt]
+language_detection_threshold = 0.9
+language_fallback = "en"
+"""
+        (tmp_path / "x.toml").write_text(toml_content)
+        monkeypatch.chdir(tmp_path)
+        from lyra.core.agent import load_agent_config
+
+        agent = load_agent_config("x", agents_dir=tmp_path)
+        assert agent.stt is not None
+        assert agent.stt.language_detection_threshold == 0.9
+        assert agent.stt.language_fallback == "en"
+        assert agent.stt.language_detection_segments is None
+
+    def test_load_agent_config_missing_tts_stt_sections(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """Agent without [tts]/[stt] sections -> .tts and .stt are None."""
+        toml_content = """
+[agent]
+name = "x"
+
+[model]
+backend = "claude-cli"
+model = "test-model"
+max_turns = 5
+"""
+        (tmp_path / "x.toml").write_text(toml_content)
+        monkeypatch.chdir(tmp_path)
+        from lyra.core.agent import load_agent_config
+
+        agent = load_agent_config("x", agents_dir=tmp_path)
+        assert agent.tts is None
+        assert agent.stt is None
+
+
 class TestAgentMemoryInjection:
     """AgentBase must accept and store a MemoryManager via DI (S3)."""
 

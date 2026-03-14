@@ -38,6 +38,7 @@ from .pool import Pool
 
 if TYPE_CHECKING:
     from ..stt import STTService
+    from .memory import MemoryManager
     from .pairing import PairingManager
 
 log = logging.getLogger(__name__)
@@ -206,6 +207,9 @@ class Hub:
         from .event_bus import EventBus, set_event_bus
         self._event_bus: EventBus = EventBus()
         set_event_bus(self._event_bus)
+        # S2 — memory layer (issue #83)
+        self._memory: "MemoryManager | None" = None
+        self._memory_tasks: set[asyncio.Task] = set()
 
     @property
     def bus(self) -> asyncio.Queue[InboundMessage]:
@@ -224,10 +228,26 @@ class Hub:
     def register_agent(self, agent: AgentBase) -> None:
         """Register an agent implementation by name."""
         self.agent_registry[agent.name] = agent
+        # S2/S4 — inject memory + wire task registry (issue #83)
+        if self._memory is not None and hasattr(agent, "_memory"):
+            agent._memory = self._memory
+        if hasattr(agent, "_task_registry"):
+            agent._task_registry = self._memory_tasks
         # Wire debounce_ms live-update callback if the agent has a command router.
         router = getattr(agent, "command_router", None)
         if router is not None and hasattr(router, "_on_debounce_change"):
             router._on_debounce_change = self.set_debounce_ms
+
+    def set_memory(self, manager: "MemoryManager") -> None:
+        """Set the MemoryManager and inject into all registered agents.
+
+        Call this after constructing Hub and before processing messages.
+        If called after register_agent(), already-registered agents are updated.
+        """
+        self._memory = manager
+        for agent in self.agent_registry.values():
+            if hasattr(agent, "_memory"):
+                agent._memory = manager
 
     def register_adapter(
         self, platform: Platform, bot_id: str, adapter: ChannelAdapter
@@ -358,10 +378,40 @@ class Hub:
             if pool.is_idle and (now - pool.last_active) > self._pool_ttl
         ]
         for pid in stale:
-            del self.pools[pid]
+            pool = self.pools.pop(pid)
+            if pool.user_id:  # skip zero-message pools
+                agent = self.agent_registry.get(pool.agent_name)
+                if agent is not None and hasattr(agent, "flush_session"):
+                    task = asyncio.create_task(agent.flush_session(pool, "idle"))
+                    self._memory_tasks.add(task)
+                    task.add_done_callback(self._memory_tasks.discard)
         if stale:
             log.info("evicted %d stale pool(s)", len(stale))
             log.debug("evicted pool IDs: %s", stale)
+
+    async def flush_pool(self, pool_id: str, reason: str = "end") -> None:
+        """Called by adapter on explicit disconnect. Awaits flush directly."""
+        pool = self.pools.pop(pool_id, None)
+        if pool is None:
+            return
+        agent = self.agent_registry.get(pool.agent_name)
+        if agent is not None and pool.user_id and hasattr(agent, "flush_session"):
+            await agent.flush_session(pool, reason)
+
+    async def shutdown(self) -> None:
+        """Flush all live pools, drain pending memory tasks, close memory DB."""
+        # Flush all live pools before shutdown
+        for pool_id in list(self.pools.keys()):
+            pool = self.pools.pop(pool_id, None)
+            if pool is not None and pool.user_id:
+                agent = self.agent_registry.get(pool.agent_name)
+                if agent is not None and hasattr(agent, "flush_session"):
+                    await agent.flush_session(pool, "shutdown")
+        # Drain pending memory tasks (extraction)
+        if self._memory_tasks:
+            await asyncio.gather(*self._memory_tasks, return_exceptions=True)
+        if self._memory is not None:
+            await self._memory.close()
 
     # ------------------------------------------------------------------
     # PoolContext protocol implementation

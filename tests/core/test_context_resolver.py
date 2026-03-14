@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import aiosqlite
 import pytest
+
 from lyra.core.context_resolver import (  # type: ignore[import]
     ContextResolver,
     ResolvedSession,

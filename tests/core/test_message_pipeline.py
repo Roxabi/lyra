@@ -6,10 +6,9 @@ import asyncio
 import dataclasses
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.core.context_resolver import ResolvedSession  # type: ignore[import]
-
 from lyra.core.agent import Agent, AgentBase
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
+from lyra.core.context_resolver import ResolvedSession  # type: ignore[import]
 from lyra.core.hub import (
     Action,
     Hub,

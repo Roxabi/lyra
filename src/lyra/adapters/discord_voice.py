@@ -239,12 +239,16 @@ class VoiceSessionManager:
                 "Already streaming to guild %s — concurrent stream dropped", guild_id
             )
             return
+        # Fresh source per stream: avoids stale None sentinels from prior streams.
+        session.source = PCMQueueSource()
         session.voice_client.play(session.source)
-        async for chunk in chunks:
-            session.source.push(chunk.chunk_bytes)
-            if chunk.is_final:
-                session.source.push_eof()
-        session.source.push_eof()  # safety net: idempotent, extra sentinel harmless
+        try:
+            async for chunk in chunks:
+                session.source.push(chunk.chunk_bytes)
+                if chunk.is_final:
+                    session.source.push_eof()
+        finally:
+            session.source.push_eof()  # safety net: idempotent, extra sentinel harmless
         if session.mode == VoiceMode.TRANSIENT:
             await self.leave(guild_id)
 

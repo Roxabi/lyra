@@ -345,19 +345,24 @@ class TestVSMStream:
     async def test_stream_calls_play_and_drains_chunks(self) -> None:
         # Arrange
         vsm = _make_vsm()
-        session, vc, source = _make_voice_session(is_playing=False)
+        session, vc, _ = _make_voice_session(is_playing=False)
         vsm._sessions["1"] = session
+        new_source = MagicMock(spec=PCMQueueSource)
 
         async def chunks() -> AsyncIterator[OutboundAudioChunk]:
             yield _make_chunk(is_final=False)
             yield _make_chunk(is_final=False)
 
-        # Act
-        await vsm.stream("1", chunks())
+        # Act — patch PCMQueueSource so stream() assigns the mock as the fresh source
+        with patch(
+            "lyra.adapters.discord_voice.PCMQueueSource", return_value=new_source
+        ):
+            await vsm.stream("1", chunks())
 
         # Assert
         vc.play.assert_called_once()
-        assert source.push.call_count == 2
+        assert new_source.push.call_count == 2
+        new_source.push.assert_any_call(b"pcm-data")
 
     @pytest.mark.asyncio
     async def test_stream_no_session_logs_warning(
@@ -400,35 +405,46 @@ class TestVSMStream:
     async def test_stream_is_final_calls_push_eof(self) -> None:
         # Arrange
         vsm = _make_vsm()
-        session, vc, source = _make_voice_session(is_playing=False)
+        session, vc, _ = _make_voice_session(is_playing=False)
         vsm._sessions["1"] = session
+        new_source = MagicMock(spec=PCMQueueSource)
 
         async def chunks() -> AsyncIterator[OutboundAudioChunk]:
             yield _make_chunk(is_final=False)
             yield _make_chunk(is_final=True)
 
-        # Act
-        await vsm.stream("1", chunks())
+        # Act — patch PCMQueueSource so stream() assigns the mock as the fresh source
+        with patch(
+            "lyra.adapters.discord_voice.PCMQueueSource", return_value=new_source
+        ):
+            await vsm.stream("1", chunks())
 
         # Assert — push_eof called when is_final chunk received
-        source.push_eof.assert_called()
+        new_source.push_eof.assert_called()
 
     @pytest.mark.asyncio
     async def test_stream_safety_net_push_eof_always_called(self) -> None:
-        # Arrange — no chunk has is_final=True; loop exhausts normally
+        # Arrange — PERSISTENT so leave() doesn't add a second push_eof call;
+        # no chunk has is_final=True, so only the finally safety net fires.
         vsm = _make_vsm()
-        session, vc, source = _make_voice_session(is_playing=False)
+        session, vc, _ = _make_voice_session(
+            mode=VoiceMode.PERSISTENT, is_playing=False
+        )
         vsm._sessions["1"] = session
+        new_source = MagicMock(spec=PCMQueueSource)
 
         async def chunks() -> AsyncIterator[OutboundAudioChunk]:
             yield _make_chunk(is_final=False)
             yield _make_chunk(is_final=False)
 
-        # Act
-        await vsm.stream("1", chunks())
+        # Act — patch PCMQueueSource so stream() assigns the mock as the fresh source
+        with patch(
+            "lyra.adapters.discord_voice.PCMQueueSource", return_value=new_source
+        ):
+            await vsm.stream("1", chunks())
 
-        # Assert — safety net: push_eof still called after iterator exhausted
-        source.push_eof.assert_called()
+        # Assert — safety net: exactly one push_eof call (no is_final chunk received)
+        new_source.push_eof.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_stream_transient_autoleave(self) -> None:

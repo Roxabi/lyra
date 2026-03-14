@@ -201,7 +201,9 @@ class OutboundDispatcher:
                 # "send": check payload (OutboundMessage) routing.
                 # "streaming": check outbound routing if provided.
                 # "audio"/"audio_stream"/"attachment": use msg (InboundMessage) routing.
-                # "voice_stream": synthesize from msg when routing absent.
+                # "voice_stream": synthesize from msg when routing absent — TTS callers
+                #     may omit explicit routing; synthesizing ensures the routing check
+                #     validates platform+bot_id without requiring callers to set it.
                 if kind == "send":
                     _routing = getattr(payload, "routing", None) or msg.routing
                 elif kind == "voice_stream":
@@ -259,6 +261,10 @@ class OutboundDispatcher:
                         ant_cb = self._circuit_registry.get("anthropic")
                         if ant_cb is not None:
                             ant_cb.record_failure()
+                    # Drain iterator to prevent generator leaks on delivery failure
+                    if kind in ("streaming", "audio_stream", "voice_stream"):
+                        async for _ in payload:
+                            pass
                     if not isinstance(exc, Exception):
                         raise  # re-raise CancelledError / KeyboardInterrupt
                     log.exception(

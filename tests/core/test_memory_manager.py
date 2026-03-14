@@ -254,9 +254,11 @@ async def test_upsert_concept_no_duplicate(mm, make_snap):
     await mm.upsert_concept(snap, data)
 
     db = mm._db._db_or_raise()
+    # Concepts are stored under the user-scoped namespace (agent_namespace:user_id).
+    concept_ns = f"{snap.agent_namespace}:{snap.user_id}"
     async with db.execute(
         "SELECT COUNT(*) FROM entries WHERE type='concept' AND namespace=?",
-        (snap.agent_namespace,),
+        (concept_ns,),
     ) as cur:
         row = await cur.fetchone()
     assert row[0] == 1  # no duplicate inserted
@@ -277,9 +279,11 @@ async def test_upsert_concept_increments_mention_count(mm, make_snap):
     await mm.upsert_concept(snap, data)
 
     db = mm._db._db_or_raise()
+    # Concepts are stored under the user-scoped namespace (agent_namespace:user_id).
+    concept_ns = f"{snap.agent_namespace}:{snap.user_id}"
     async with db.execute(
         "SELECT metadata FROM entries WHERE type='concept' AND namespace=?",
-        (snap.agent_namespace,),
+        (concept_ns,),
     ) as cur:
         row = await cur.fetchone()
     meta = json.loads(row[0])
@@ -300,9 +304,11 @@ async def test_upsert_concept_provenance_set(mm, make_snap):
     await mm.upsert_concept(snap, data)
 
     db = mm._db._db_or_raise()
+    # Concepts are stored under the user-scoped namespace (agent_namespace:user_id).
+    concept_ns = f"{snap.agent_namespace}:{snap.user_id}"
     async with db.execute(
         "SELECT metadata FROM entries WHERE type='concept' AND namespace=?",
-        (snap.agent_namespace,),
+        (concept_ns,),
     ) as cur:
         row = await cur.fetchone()
     meta = json.loads(row[0])

@@ -252,13 +252,11 @@ class MemoryManager:
         user_sessions = [dict(zip(col_names, r)) for r in rows]
         concepts: list[dict] = []
         if first_msg:
-            raw = await self._db.search(first_msg, namespace, limit=8)
-            concepts = [
-                e
-                for e in raw
-                if e.get("type") == "concept"
-                and json.loads(e.get("metadata", "{}")).get("user_id") == user_id
-            ]
+            # Concepts are stored under a user-scoped namespace (namespace:user_id)
+            # so FTS queries are isolated at the DB level (spec S6).
+            concept_namespace = f"{namespace}:{user_id}"
+            raw = await self._db.search(first_msg, concept_namespace, limit=8)
+            concepts = [e for e in raw if e.get("type") == "concept"]
         fresh_entries, stale_entries = [], []
         for e in user_sessions + concepts:
             if self._is_stale(e):
@@ -324,7 +322,7 @@ class MemoryManager:
             " WHERE type='concept' AND namespace=?"
             " AND json_extract(metadata,'$.name')=?"
             " AND json_extract(metadata,'$.user_id')=?",
-            (snap.agent_namespace, name, snap.user_id),
+            (f"{snap.agent_namespace}:{snap.user_id}", name, snap.user_id),
         ) as cur:
             row = await cur.fetchone()
 
@@ -376,7 +374,7 @@ class MemoryManager:
                 content=data["content"],
                 type="concept",
                 title=name,
-                namespace=snap.agent_namespace,
+                namespace=f"{snap.agent_namespace}:{snap.user_id}",
                 metadata=meta,
             )
         await db.commit()

@@ -748,7 +748,9 @@ class TestAgentCompact:
             async def process(self, msg, pool, *, on_intermediate=None):  # type: ignore[override]
                 pass
 
-        agent = ConcreteAgent(config)
+        # Use a small compact_context_tokens so 5 entries of 100 chars each
+        # (~125 tokens) exceed the 80-token threshold (0.8 * 100).
+        agent = ConcreteAgent(config, compact_context_tokens=100)
         mock_mm = AsyncMock()
         mock_mm.upsert_session = AsyncMock()
         agent._memory = mock_mm
@@ -756,9 +758,9 @@ class TestAgentCompact:
         pool = MagicMock()
         pool.user_id = "u1"
         pool.message_count = 200  # high — above threshold
-        pool.sdk_history = [{"role": "user", "content": "x"} for _ in range(100)]
+        pool.sdk_history = [{"role": "user", "content": "x" * 100} for _ in range(5)]
 
-        await agent.compact(pool)  # FAILS: method doesn't exist yet
+        await agent.compact(pool)
 
         # Should have written a partial compaction record
         mock_mm.upsert_session.assert_awaited()

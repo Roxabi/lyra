@@ -235,7 +235,7 @@ class TestList:
         if smart_routing_enabled:
             sr_block = "\n[agent.smart_routing]\nenabled = true\n"
         content = (
-            f'[agent]\nmemory_namespace = "{name}"\n'
+            f'[agent]\nname = "{name}"\nmemory_namespace = "{name}"\n'
             f"{sr_block}\n"
             f'[model]\nbackend = "{backend}"\nmodel = "{model}"\n'
             f"\n[prompt]\nsystem = \"You are {name}.\"\n"

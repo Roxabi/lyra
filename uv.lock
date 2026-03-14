@@ -974,7 +974,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "roxabi-vault", git = "https://github.com/Roxabi/roxabi-vault.git?branch=staging" },
     { name = "tomli-w", specifier = ">=1.0" },
-    { name = "typer", specifier = ">=0.12" },
+    { name = "typer", specifier = ">=0.14" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34" },
     { name = "voicecli", git = "https://github.com/Roxabi/voiceCLI.git?branch=staging" },
 ]

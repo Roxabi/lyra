@@ -1585,45 +1585,42 @@ class TestDiscordAuth:
 
 
 @pytest.mark.asyncio
-async def test_discord_typing_worker_fires_trigger_typing_immediately() -> None:
-    """_discord_typing_worker calls trigger_typing() on the first iteration."""
+async def test_discord_typing_worker_uses_typing_context_manager() -> None:
+    """_discord_typing_worker enters channel.typing() and exits cleanly on cancel."""
     import asyncio
 
     from lyra.adapters.discord import _discord_typing_worker
 
     mock_channel = AsyncMock()
-    mock_channel.trigger_typing = AsyncMock()
+    typing_ctx = AsyncMock(__aenter__=AsyncMock(), __aexit__=AsyncMock())
+    mock_channel.typing = MagicMock(return_value=typing_ctx)
 
     async def resolve(_channel_id: int) -> AsyncMock:
         return mock_channel
 
     task = asyncio.create_task(
-        _discord_typing_worker(resolve, channel_id=123, interval=10.0)
+        _discord_typing_worker(resolve, channel_id=123)
     )
-    await asyncio.sleep(0)  # yield to let the worker run once
+    await asyncio.sleep(0)  # yield to let the worker enter the context manager
     task.cancel()
     try:
         await task
     except asyncio.CancelledError:
         pass
 
-    mock_channel.trigger_typing.assert_awaited_once()
+    mock_channel.typing.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_discord_typing_worker_stops_after_3_failures() -> None:
-    """_discord_typing_worker exits after 3 consecutive trigger_typing() failures."""
+async def test_discord_typing_worker_handles_exception_gracefully() -> None:
+    """_discord_typing_worker logs and exits cleanly when channel resolution fails."""
     from lyra.adapters.discord import _discord_typing_worker
 
-    mock_channel = AsyncMock()
-    mock_channel.trigger_typing = AsyncMock(side_effect=Exception("rate limited"))
+    async def resolve(_channel_id: int) -> None:
+        raise Exception("channel not found")
 
-    async def resolve(_channel_id: int) -> AsyncMock:
-        return mock_channel
-
-    await _discord_typing_worker(resolve, channel_id=123, interval=0.001)
-
-    assert mock_channel.trigger_typing.await_count == 3
+    # Should not raise
+    await _discord_typing_worker(resolve, channel_id=123)
 
 
 @pytest.mark.asyncio

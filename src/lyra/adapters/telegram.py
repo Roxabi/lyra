@@ -703,6 +703,12 @@ class TelegramAdapter:
             return
 
         hub_msg = self.normalize(msg, trust_level=trust)
+
+        # In group chats, only respond when directly mentioned.
+        # In private chats, always respond.
+        if hub_msg.platform_meta.get("is_group") and not hub_msg.is_mention:
+            return
+
         log.info(
             "message_received",
             extra={
@@ -716,10 +722,10 @@ class TelegramAdapter:
         # {"ok": True} (HTTP 200). Never raise here or Telegram will retry
         # the update indefinitely.
         self._start_typing(msg.chat.id)
-        try:
-            await self._push_to_hub(hub_msg)
-        finally:
-            self._cancel_typing(msg.chat.id)
+        await self._push_to_hub(
+            hub_msg,
+            on_drop=lambda: self._cancel_typing(msg.chat.id),
+        )
 
     def _render_text(self, text: str) -> list[str]:
         """Escape MarkdownV2 special characters and split into <=4096-char chunks."""

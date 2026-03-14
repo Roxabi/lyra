@@ -90,35 +90,21 @@ _AUDIO_MIME_TYPES = frozenset(
 async def _discord_typing_worker(
     resolve_channel: Callable,
     channel_id: int,
-    interval: float = 8.0,
 ) -> None:
-    """Continuously refresh Discord typing indicator for channel_id.
+    """Hold Discord typing indicator for channel_id until cancelled.
 
-    Calls trigger_typing() immediately, then repeats every *interval* seconds
-    until cancelled. Discord expires the indicator after ~10s so the interval
-    default is 8.0s (2s buffer).
-
-    Stops automatically after 3 consecutive trigger_typing() failures.
+    Uses channel.typing() context manager (discord.py 2.x) which sends the
+    indicator immediately and refreshes it automatically. Exits cleanly on
+    CancelledError so _cancel_typing() stops it without errors.
     """
-    consecutive_failures = 0
-    while True:
-        try:
-            channel = await resolve_channel(channel_id)
-            await channel.trigger_typing()
-            consecutive_failures = 0
-        except Exception as exc:
-            consecutive_failures += 1
-            log.debug(
-                "discord typing worker: %s (failure %d/3)", exc, consecutive_failures
-            )
-            if consecutive_failures >= 3:
-                log.warning(
-                    "discord typing worker for channel %d:"
-                    " stopping after 3 consecutive failures",
-                    channel_id,
-                )
-                break
-        await asyncio.sleep(interval)
+    try:
+        channel = await resolve_channel(channel_id)
+        async with channel.typing():
+            await asyncio.sleep(float("inf"))  # hold until cancelled
+    except asyncio.CancelledError:
+        pass
+    except Exception as exc:
+        log.debug("discord typing worker for channel %d: %s", channel_id, exc)
 
 
 def _extract_attachments(raw_attachments: list[Any]) -> list[Attachment]:
@@ -505,14 +491,14 @@ class DiscordAdapter(discord.Client):
         # Pre-detect mention (needed for auto-thread decision)
         _is_mention = self._bot_user is not None and self._bot_user in message.mentions
 
-        # Only respond when:
-        #   - directly mentioned (any context), OR
-        #   - in a thread this bot owns (created or claimed via first mention)
+        # In DMs (no guild), always respond.
+        # In servers: only respond when directly mentioned or in an owned thread.
+        _is_dm = message.guild is None
         _in_owned_thread = (
             isinstance(message.channel, discord.Thread)
             and message.channel.id in self._owned_threads
         )
-        if not _is_mention and not _in_owned_thread:
+        if not _is_dm and not _is_mention and not _in_owned_thread:
             return
 
         # Auto-thread creation BEFORE normalize() (frozen dataclass)

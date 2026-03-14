@@ -1,0 +1,643 @@
+---
+title: "Plan: VoiceSessionManager — guild lifecycle, PCMQueueSource, startup checks"
+issue: 255
+spec: artifacts/specs/255-voice-session-manager-spec.mdx
+complexity: 3/10
+tier: F-lite
+generated: 2026-03-14
+---
+
+## Summary
+
+Create `src/lyra/adapters/discord_voice.py` with all voice session infrastructure (data classes, `PCMQueueSource`, `VoiceSessionManager`, exceptions), add the `on_voice_state_update` hook to `DiscordAdapter`, and cover everything with unit tests. Foundational slice for #185-B (streaming) and #185-C (commands).
+
+## Architecture
+
+```mermaid
+flowchart TD
+    subgraph discord_voice.py
+        VM[VoiceMode\nTRANSIENT / PERSISTENT]
+        VS[VoiceSession dataclass\nguild_id, voice_client, channel_id\nmode, source, is_active()]
+        PQS[PCMQueueSource\nqueue.Queue + _buf\npush / push_eof / read]
+        VSM[VoiceSessionManager\n_sessions dict, _deps_checked\njoin / leave / invalidate / get]
+        VDE[VoiceDependencyError]
+        VAE[VoiceAlreadyActiveError]
+        CHK[_check_voice_deps\nlibopus + ffmpeg + discord.voice_client]
+    end
+
+    subgraph discord.py [discord.py MODIFIED]
+        DA[DiscordAdapter\n+ _vsm: VoiceSessionManager]
+        VSU[on_voice_state_update\nfilter bot+disconnect → invalidate]
+    end
+
+    subgraph pyproject.toml [pyproject.toml MODIFIED]
+        DEP[discord.py voice extra]
+    end
+
+    VSM --> VS
+    VS --> VM
+    VS --> PQS
+    VSM ..> VDE
+    VSM ..> VAE
+    VSM --> CHK
+    DA --> VSM
+    VSU --> VSM
+
+    style discord_voice.py fill:#fef3c7
+    style discord.py fill:#dbeafe
+```
+
+```mermaid
+flowchart LR
+    subgraph discord_voice.py
+        PQS_push["PCMQueueSource.push()\n_buf += chunk; enqueue 3840B frames"]
+        PQS_eof["PCMQueueSource.push_eof()\nflush _buf + pad; enqueue None sentinel"]
+        PQS_read["PCMQueueSource.read()\nblocking get(timeout=0.1)\nbytes→return / None→b\"\" / Empty→silence"]
+        VSM_join["VSM.join(guild,channel,mode)\ndep check → connect → store session"]
+        VSM_leave["VSM.leave(guild_id)\npush_eof → disconnect → remove"]
+        VSM_inv["VSM.invalidate(guild_id)\nremove only, no disconnect"]
+        VSM_get["VSM.get(guild_id)\nreturn session or None"]
+    end
+
+    subgraph tests/adapters/test_discord_voice.py
+        T1["test_pcm_reframing\ntest_silence_frame\ntest_eof_sentinel"]
+        T2["test_dep_error_libopus\ntest_dep_error_ffmpeg"]
+        T3["test_join_stores_session\ntest_join_duplicate_raises\ntest_leave_disconnects\ntest_invalidate_no_disconnect"]
+        T4["test_vsupdate_bot_disconnect\ntest_vsupdate_bot_move\ntest_vsupdate_other_disconnect\ntest_vsupdate_other_move"]
+    end
+
+    PQS_push --> T1
+    PQS_eof --> T1
+    PQS_read --> T1
+    VSM_join --> T2
+    VSM_join --> T3
+    VSM_leave --> T3
+    VSM_inv --> T3
+    VSM_get --> T3
+    VSM_inv --> T4
+```
+
+## Agents
+
+| Agent | Tasks | Files |
+|-------|-------|-------|
+| backend-dev | MT-1 through MT-5 | `discord_voice.py`, `discord.py`, `pyproject.toml` |
+| tester | MT-T1 through MT-T4 | `tests/adapters/test_discord_voice.py` |
+
+## Reference Patterns
+
+- `tests/adapters/test_discord_audio.py` — `SimpleNamespace` mock pattern, `_make_adapter()` helper
+- `src/lyra/adapters/discord.py:155` — `DiscordAdapter.__init__` DI constructor, instance attr naming (`_vsm`)
+- `src/lyra/adapters/discord.py:228` — `on_ready()` initialization pattern for new sub-systems
+
+## Consistency Report
+
+| | Count |
+|-|-------|
+| Success criteria covered | 12/12 |
+| Breadboard affordances traced | 13/13 |
+| Untraced tasks | 0 |
+| Exemptions | 0 |
+
+---
+
+## Micro-Tasks
+
+---
+
+### V1 — Data types + PCMQueueSource
+
+---
+
+**MT-1** [backend-dev] [P: N] · Difficulty: 3 · ~8 min · Phase: RED · Slice V1 · SC-4, SC-6, SC-7
+
+**Description:** Create `src/lyra/adapters/discord_voice.py` with `VoiceMode`, `VoiceSession`, and `PCMQueueSource`.
+
+**File:** `src/lyra/adapters/discord_voice.py` *(create)*
+
+**Code shape:**
+```python
+"""Voice session management for DiscordAdapter (issue #255)."""
+from __future__ import annotations
+
+import enum
+import queue
+import shutil
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+import discord
+
+if TYPE_CHECKING:
+    pass
+
+_FRAME_SIZE = 3840  # 20 ms × 48 kHz × 2 ch × 2 bytes
+
+class VoiceMode(enum.Enum):
+    TRANSIENT = "transient"
+    PERSISTENT = "persistent"
+
+@dataclass
+class VoiceSession:
+    guild_id: str
+    voice_client: discord.VoiceClient
+    channel_id: int
+    mode: VoiceMode
+    source: "PCMQueueSource" = field(default_factory=lambda: PCMQueueSource())
+
+    def is_active(self) -> bool:
+        return self.voice_client.is_connected()
+
+class PCMQueueSource(discord.AudioSource):
+    def __init__(self) -> None:
+        self._q: queue.Queue[bytes | None] = queue.Queue(maxsize=0)
+        self._buf: bytes = b""
+
+    def push(self, chunk: bytes) -> None:
+        self._buf += chunk
+        while len(self._buf) >= _FRAME_SIZE:
+            self._q.put_nowait(self._buf[:_FRAME_SIZE])
+            self._buf = self._buf[_FRAME_SIZE:]
+
+    def push_eof(self) -> None:
+        if self._buf:
+            self._q.put_nowait(self._buf.ljust(_FRAME_SIZE, b"\x00"))
+            self._buf = b""
+        self._q.put_nowait(None)
+
+    def read(self) -> bytes:
+        try:
+            item = self._q.get(timeout=0.1)
+        except queue.Empty:
+            return b"\x00" * _FRAME_SIZE  # silence frame while waiting
+        if item is None:
+            return b""
+        return item
+
+    def is_opus(self) -> bool:
+        return False
+```
+
+**Verify:** `uv run python -c "from lyra.adapters.discord_voice import VoiceMode, VoiceSession, PCMQueueSource; print('ok')"`
+
+**Expected output:** `ok`
+
+---
+
+**MT-T1** [tester] [P: N] · Difficulty: 2 · ~5 min · Phase: GREEN · Slice V1 · SC-4, SC-5, SC-6
+
+**Description:** Write `tests/adapters/test_discord_voice.py` — PCMQueueSource tests: re-framing, silence frame, EOF sentinel.
+
+**File:** `tests/adapters/test_discord_voice.py` *(create)*
+
+**Code shape:**
+```python
+"""Tests for discord_voice.py — Slice V1: PCMQueueSource."""
+from __future__ import annotations
+import pytest
+from lyra.adapters.discord_voice import PCMQueueSource, VoiceMode, VoiceSession
+
+_FRAME = 3840
+
+class TestPCMQueueSource:
+    def test_exact_frame(self) -> None:
+        src = PCMQueueSource()
+        src.push(b"x" * _FRAME)
+        src.push_eof()
+        assert src.read() == b"x" * _FRAME
+        assert src.read() == b""
+
+    def test_reframing_multi(self) -> None:
+        src = PCMQueueSource()
+        src.push(b"a" * (_FRAME * 2 + 100))
+        src.push_eof()
+        frames = []
+        while True:
+            f = src.read()
+            if f == b"":
+                break
+            frames.append(f)
+        assert len(frames) == 3
+        assert all(len(f) == _FRAME for f in frames)
+        assert frames[-1] == b"a" * 100 + b"\x00" * (_FRAME - 100)
+
+    def test_silence_frame_on_empty_queue(self) -> None:
+        src = PCMQueueSource()
+        silence = src.read()
+        assert silence == b"\x00" * _FRAME
+
+    def test_eof_after_push_eof(self) -> None:
+        src = PCMQueueSource()
+        src.push_eof()
+        assert src.read() == b""
+
+    def test_is_opus_false(self) -> None:
+        assert PCMQueueSource().is_opus() is False
+```
+
+**Verify:** `uv run pytest tests/adapters/test_discord_voice.py::TestPCMQueueSource -v`
+
+**Expected output:** `5 passed`
+
+---
+
+### RED-GATE V1→V2
+
+All V1 tests must pass before proceeding.
+
+---
+
+### V2 — Exception types + startup check
+
+---
+
+**MT-2** [backend-dev] [P: N] · Difficulty: 2 · ~3 min · Phase: RED · Slice V2 · SC-8, SC-9
+
+**Description:** Add `VoiceDependencyError`, `VoiceAlreadyActiveError`, and `_check_voice_deps()` to `discord_voice.py`.
+
+**File:** `src/lyra/adapters/discord_voice.py` *(extend)*
+
+**Code shape:**
+```python
+class VoiceDependencyError(Exception):
+    """Raised when a required voice system dependency is missing."""
+
+class VoiceAlreadyActiveError(Exception):
+    """Raised when join() is called for a guild that already has an active session."""
+    def __init__(self, guild_id: str) -> None:
+        super().__init__(f"Voice session already active for guild {guild_id!r}")
+        self.guild_id = guild_id
+
+_deps_checked = False
+
+def _check_voice_deps() -> None:
+    """Verify libopus, ffmpeg, and discord.py[voice] are available. Lazy, runs once."""
+    global _deps_checked
+    if _deps_checked:
+        return
+    try:
+        import discord.voice_client  # noqa: F401
+    except ImportError as exc:
+        raise VoiceDependencyError(
+            "discord.py[voice] not installed — run: pip install discord.py[voice]"
+        ) from exc
+    try:
+        discord.opus.load_opus()
+    except Exception:
+        if not discord.opus.is_loaded():
+            raise VoiceDependencyError(
+                "libopus not found — install libopus-dev (Ubuntu) or libopus (macOS)"
+            )
+    if shutil.which("ffmpeg") is None:
+        raise VoiceDependencyError(
+            "ffmpeg not found — install ffmpeg (apt install ffmpeg)"
+        )
+    _deps_checked = True
+```
+
+**Verify:** `uv run python -c "from lyra.adapters.discord_voice import VoiceDependencyError, VoiceAlreadyActiveError; print('ok')"`
+
+**Expected output:** `ok`
+
+---
+
+**MT-T2** [tester] [P: N] · Difficulty: 2 · ~4 min · Phase: GREEN · Slice V2 · SC-8, SC-9
+
+**Description:** Add `TestVoiceDeps` class to test file — mock missing libopus/ffmpeg, verify `VoiceDependencyError` with correct message substrings.
+
+**File:** `tests/adapters/test_discord_voice.py` *(extend)*
+
+**Code shape:**
+```python
+from unittest.mock import patch, MagicMock
+from lyra.adapters import discord_voice as dv_module
+from lyra.adapters.discord_voice import VoiceDependencyError, _check_voice_deps
+
+class TestVoiceDeps:
+    def setup_method(self) -> None:
+        dv_module._deps_checked = False  # reset between tests
+
+    def test_missing_libopus(self) -> None:
+        with (
+            patch("discord.opus.load_opus", side_effect=Exception("not found")),
+            patch("discord.opus.is_loaded", return_value=False),
+            patch("shutil.which", return_value="/usr/bin/ffmpeg"),
+        ):
+            with pytest.raises(VoiceDependencyError, match="libopus"):
+                _check_voice_deps()
+
+    def test_missing_ffmpeg(self) -> None:
+        with (
+            patch("discord.opus.load_opus"),
+            patch("discord.opus.is_loaded", return_value=True),
+            patch("shutil.which", return_value=None),
+        ):
+            with pytest.raises(VoiceDependencyError, match="ffmpeg"):
+                _check_voice_deps()
+
+    def test_passes_when_deps_present(self) -> None:
+        with (
+            patch("discord.opus.load_opus"),
+            patch("discord.opus.is_loaded", return_value=True),
+            patch("shutil.which", return_value="/usr/bin/ffmpeg"),
+        ):
+            _check_voice_deps()  # no exception
+            assert dv_module._deps_checked is True
+```
+
+**Verify:** `uv run pytest tests/adapters/test_discord_voice.py::TestVoiceDeps -v`
+
+**Expected output:** `3 passed`
+
+---
+
+### RED-GATE V2→V3
+
+All V2 tests must pass before proceeding.
+
+---
+
+### V3 — VoiceSessionManager
+
+---
+
+**MT-3** [backend-dev] [P: N] · Difficulty: 3 · ~8 min · Phase: RED · Slice V3 · SC-1, SC-2, SC-3
+
+**Description:** Add `VoiceSessionManager` class to `discord_voice.py`.
+
+**File:** `src/lyra/adapters/discord_voice.py` *(extend)*
+
+**Code shape:**
+```python
+import logging
+log = logging.getLogger(__name__)
+
+class VoiceSessionManager:
+    """Manages per-guild Discord voice sessions."""
+
+    def __init__(self, client: discord.Client) -> None:
+        self._client = client
+        self._sessions: dict[str, VoiceSession] = {}
+
+    async def join(
+        self,
+        guild: discord.Guild,
+        channel: discord.VoiceChannel,
+        mode: VoiceMode,
+    ) -> VoiceSession:
+        guild_id = str(guild.id)
+        if guild_id in self._sessions:
+            raise VoiceAlreadyActiveError(guild_id)
+        _check_voice_deps()
+        source = PCMQueueSource()
+        voice_client = await channel.connect()
+        session = VoiceSession(
+            guild_id=guild_id,
+            voice_client=voice_client,
+            channel_id=channel.id,
+            mode=mode,
+            source=source,
+        )
+        self._sessions[guild_id] = session
+        log.info("Voice session joined: guild=%s channel=%s mode=%s", guild_id, channel.id, mode)
+        return session
+
+    async def leave(self, guild_id: str) -> None:
+        session = self._sessions.get(guild_id)
+        if session is None:
+            return
+        session.source.push_eof()
+        await session.voice_client.disconnect()
+        del self._sessions[guild_id]
+        log.info("Voice session left: guild=%s", guild_id)
+
+    def invalidate(self, guild_id: str) -> None:
+        self._sessions.pop(guild_id, None)
+        log.info("Voice session invalidated: guild=%s", guild_id)
+
+    def get(self, guild_id: str) -> VoiceSession | None:
+        return self._sessions.get(guild_id)
+```
+
+**Verify:** `uv run python -c "from lyra.adapters.discord_voice import VoiceSessionManager; print('ok')"`
+
+**Expected output:** `ok`
+
+---
+
+**MT-T3** [tester] [P: N] · Difficulty: 3 · ~6 min · Phase: GREEN · Slice V3 · SC-1, SC-2, SC-3
+
+**Description:** Add `TestVoiceSessionManager` to test file — join/leave/invalidate/get with mocked VoiceClient.
+
+**File:** `tests/adapters/test_discord_voice.py` *(extend)*
+
+**Code shape:**
+```python
+from unittest.mock import AsyncMock, MagicMock, patch
+from lyra.adapters.discord_voice import (
+    VoiceAlreadyActiveError, VoiceSessionManager, VoiceMode,
+)
+
+def _make_vsm() -> VoiceSessionManager:
+    client = MagicMock()
+    return VoiceSessionManager(client=client)
+
+def _make_guild(guild_id: int = 1) -> MagicMock:
+    g = MagicMock()
+    g.id = guild_id
+    return g
+
+def _make_channel(guild_id: int = 1) -> MagicMock:
+    ch = MagicMock()
+    ch.id = 100
+    vc = AsyncMock()
+    vc.is_connected.return_value = True
+    ch.connect = AsyncMock(return_value=vc)
+    return ch, vc
+
+class TestVoiceSessionManager:
+    @pytest.mark.asyncio
+    async def test_join_stores_session(self) -> None:
+        vsm = _make_vsm()
+        guild = _make_guild()
+        channel, _ = _make_channel()
+        with patch("lyra.adapters.discord_voice._check_voice_deps"):
+            session = await vsm.join(guild, channel, VoiceMode.TRANSIENT)
+        assert vsm.get("1") is session
+
+    @pytest.mark.asyncio
+    async def test_join_duplicate_raises(self) -> None:
+        vsm = _make_vsm()
+        guild = _make_guild()
+        channel, _ = _make_channel()
+        with patch("lyra.adapters.discord_voice._check_voice_deps"):
+            await vsm.join(guild, channel, VoiceMode.TRANSIENT)
+            with pytest.raises(VoiceAlreadyActiveError):
+                await vsm.join(guild, channel, VoiceMode.TRANSIENT)
+
+    @pytest.mark.asyncio
+    async def test_leave_disconnects_and_removes(self) -> None:
+        vsm = _make_vsm()
+        guild = _make_guild()
+        channel, vc = _make_channel()
+        with patch("lyra.adapters.discord_voice._check_voice_deps"):
+            await vsm.join(guild, channel, VoiceMode.TRANSIENT)
+        await vsm.leave("1")
+        vc.disconnect.assert_called_once()
+        assert vsm.get("1") is None
+
+    @pytest.mark.asyncio
+    async def test_leave_no_session_is_noop(self) -> None:
+        vsm = _make_vsm()
+        await vsm.leave("999")  # no error
+
+    def test_invalidate_removes_without_disconnect(self) -> None:
+        vsm = _make_vsm()
+        # inject a session manually
+        vc = MagicMock()
+        from lyra.adapters.discord_voice import PCMQueueSource, VoiceSession
+        vsm._sessions["1"] = VoiceSession(
+            guild_id="1", voice_client=vc, channel_id=100,
+            mode=VoiceMode.PERSISTENT, source=PCMQueueSource(),
+        )
+        vsm.invalidate("1")
+        vc.disconnect.assert_not_called()
+        assert vsm.get("1") is None
+```
+
+**Verify:** `uv run pytest tests/adapters/test_discord_voice.py::TestVoiceSessionManager -v`
+
+**Expected output:** `5 passed`
+
+---
+
+### RED-GATE V3→V4
+
+All V3 tests must pass before proceeding.
+
+---
+
+### V4 — DiscordAdapter hook + pyproject.toml
+
+---
+
+**MT-4** [backend-dev] [P: N] · Difficulty: 2 · ~5 min · Phase: RED · Slice V4 · SC-10, SC-11
+
+**Description:** Add `VoiceSessionManager` to `DiscordAdapter.__init__`, initialize in `on_ready`, and add `on_voice_state_update` hook. Also update `pyproject.toml`.
+
+**File:** `src/lyra/adapters/discord.py` *(modify)*
+
+**Code shape — `__init__` addition** (after `self._owned_threads`):
+```python
+from lyra.adapters.discord_voice import VoiceSessionManager  # top-of-file import
+
+# in __init__, after self._owned_threads:
+self._vsm: VoiceSessionManager = VoiceSessionManager(client=self)
+```
+
+**Code shape — new method** (after `on_ready`):
+```python
+async def on_voice_state_update(
+    self,
+    member: Any,
+    before: discord.VoiceState,
+    after: discord.VoiceState,
+) -> None:
+    """Invalidate stale voice session when the bot is forcibly disconnected."""
+    bot_user = self._bot_user
+    if bot_user is None or member.id != bot_user.id or after.channel is not None:
+        return
+    guild_id = str(member.guild.id)
+    self._vsm.invalidate(guild_id)
+```
+
+**File:** `pyproject.toml` *(modify)*
+
+```toml
+"discord.py[voice]>=2.4",  # replace "discord.py>=2.4"
+```
+
+**Verify:** `uv run python -c "from lyra.adapters.discord import DiscordAdapter; print('ok')"`
+
+**Expected output:** `ok`
+
+---
+
+**MT-T4** [tester] [P: N] · Difficulty: 2 · ~5 min · Phase: GREEN · Slice V4 · SC-10, SC-12
+
+**Description:** Add `TestOnVoiceStateUpdate` to test file — four cases verifying filter logic and regression guard for existing audio tests.
+
+**File:** `tests/adapters/test_discord_voice.py` *(extend)*
+
+**Code shape:**
+```python
+from unittest.mock import AsyncMock, MagicMock, patch
+from lyra.adapters.discord import DiscordAdapter
+from tests.adapters.conftest import make_dc_adapter
+
+class TestOnVoiceStateUpdate:
+    def _make_member(self, bot_id: int, member_id: int, guild_id: int) -> MagicMock:
+        m = MagicMock()
+        m.id = member_id
+        m.guild.id = guild_id
+        return m
+
+    def _make_adapter_with_bot(self) -> DiscordAdapter:
+        adapter = make_dc_adapter()
+        bot_user = MagicMock()
+        bot_user.id = 999
+        adapter._bot_user = bot_user
+        return adapter
+
+    @pytest.mark.asyncio
+    async def test_bot_disconnect_calls_invalidate(self) -> None:
+        adapter = self._make_adapter_with_bot()
+        adapter._vsm.invalidate = MagicMock()
+        member = self._make_member(bot_id=999, member_id=999, guild_id=1)
+        after = MagicMock(channel=None)
+        await adapter.on_voice_state_update(member, MagicMock(), after)
+        adapter._vsm.invalidate.assert_called_once_with("1")
+
+    @pytest.mark.asyncio
+    async def test_bot_move_does_not_invalidate(self) -> None:
+        adapter = self._make_adapter_with_bot()
+        adapter._vsm.invalidate = MagicMock()
+        member = self._make_member(bot_id=999, member_id=999, guild_id=1)
+        after = MagicMock(channel=MagicMock())  # still in a channel
+        await adapter.on_voice_state_update(member, MagicMock(), after)
+        adapter._vsm.invalidate.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_other_member_disconnect_does_not_invalidate(self) -> None:
+        adapter = self._make_adapter_with_bot()
+        adapter._vsm.invalidate = MagicMock()
+        member = self._make_member(bot_id=999, member_id=42, guild_id=1)
+        after = MagicMock(channel=None)
+        await adapter.on_voice_state_update(member, MagicMock(), after)
+        adapter._vsm.invalidate.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_other_member_move_does_not_invalidate(self) -> None:
+        adapter = self._make_adapter_with_bot()
+        adapter._vsm.invalidate = MagicMock()
+        member = self._make_member(bot_id=999, member_id=42, guild_id=1)
+        after = MagicMock(channel=MagicMock())
+        await adapter.on_voice_state_update(member, MagicMock(), after)
+        adapter._vsm.invalidate.assert_not_called()
+```
+
+**Verify:** `uv run pytest tests/adapters/test_discord_voice.py -v`
+
+**Expected output:** All tests pass. `uv run pytest tests/adapters/ -v` — existing tests unmodified.
+
+---
+
+### MT-5 [backend-dev] [P: Y] · Difficulty: 1 · ~1 min · Phase: GREEN · SC-11
+
+**Description:** Replace `discord.py>=2.4` with `discord.py[voice]>=2.4` in `pyproject.toml` dependencies.
+
+**File:** `pyproject.toml` *(modify)*
+
+**Verify:** `grep 'discord.py\[voice\]' pyproject.toml`
+
+**Expected output:** Line with `discord.py[voice]>=2.4`

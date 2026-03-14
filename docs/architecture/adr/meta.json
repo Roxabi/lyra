@@ -19,6 +19,7 @@
     "016-llm-provider-protocol-and-driver-registry",
     "017-coupling-hotspots-and-decoupling-strategy",
     "018-intermediate-turns-typing-indicator-and-provider-protocol-evolution",
-    "019-multi-bot-startup-resource-sharing-policy"
+    "019-multi-bot-startup-resource-sharing-policy",
+    "020-cli-entry-point-dispatch-strategy"
   ]
 }

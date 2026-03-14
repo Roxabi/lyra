@@ -1,0 +1,130 @@
+---
+title: "ADR-020: CLI Entry Point Dispatch Strategy for Agent Sub-commands"
+description: How to expose lyra agent create|list|validate without coupling daemon startup to CLI dispatch
+---
+
+## Status
+
+Proposed
+
+## Context
+
+Issue #242 adds `lyra agent create | list | validate` CLI sub-commands via Typer.
+The spec proposes modifying `__main__.py`'s `main()` to inspect `sys.argv[1]` and
+delegate to `lyra.cli:agent_app` when the first argument is `"agent"`, falling
+through to server startup otherwise.
+
+The stated rationale is preserving backward compatibility with `make lyra` /
+supervisord without touching `pyproject.toml`. However:
+
+- `pyproject.toml` currently has **no** `[project.scripts]` entry. There is nothing
+  to break.
+- supervisord and `make lyra` invoke `python -m lyra` via the module path, not a
+  named script entry. A new `lyra-agent` entry would not affect them.
+- `__main__.py` is already ~800 lines of async server bootstrap. Adding argv
+  inspection couples two unrelated concerns: daemon lifecycle and developer tooling.
+- The project's Python-first paradigm (`docs/ARCHITECTURE.md`) explicitly states:
+  "A CLI entrypoint — thin shell over the library (`cli.py`), installed via
+  `[project.scripts]`. The CLI adds zero logic."
+
+This decision is cross-cutting: it affects `__main__.py` (modified vs untouched),
+`pyproject.toml` (scripts entry added or not), and the canonical invocation
+documented in success criteria and user-facing docs.
+
+## Options Considered
+
+### Option A: Separate `[project.scripts]` entry (dedicated entrypoint)
+
+Add to `pyproject.toml`:
+
+```toml
+[project.scripts]
+lyra-agent = "lyra.cli:agent_app_entrypoint"
+```
+
+`cli.py` exposes `agent_app_entrypoint()` — a one-liner that calls
+`agent_app()`. `__main__.py` is untouched. Users invoke:
+
+```
+uv run lyra-agent create
+uv run lyra-agent list
+uv run lyra-agent validate my_agent
+```
+
+- **Pros:** Follows the established Python-first pattern. `__main__.py` stays
+  single-purpose (daemon). `cli.py` is independently importable and testable
+  without patching `sys.argv`. No coupling between daemon startup and CLI dispatch.
+  Consistent with `voicecli` / `imagecli` entrypoint convention in the project.
+- **Cons:** Invocation differs slightly from the spec's `python -m lyra agent`
+  form. Requires `uv tool install .` or `uv run lyra-agent` rather than
+  `python -m lyra agent`. Minor doc update needed.
+
+### Option B: `sys.argv` inspection in `__main__.py`
+
+Modify `main()` to check `sys.argv` before calling `_setup_logging()` and
+`asyncio.run(_main())`:
+
+```python
+def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "agent":
+        from lyra.cli import agent_app
+        agent_app(sys.argv[2:], standalone_mode=True)
+        return
+    _setup_logging()
+    asyncio.run(_main())
+```
+
+Users invoke `uv run python -m lyra agent create`.
+
+- **Pros:** Single binary entry, muscle memory consistency with `python -m lyra`.
+  No new script name to document.
+- **Cons:** Couples daemon entrypoint to CLI dispatch. Fragile: any future flag
+  whose value is `"agent"` will misroute. Testing requires `sys.argv` patching.
+  Violates the "CLI adds zero logic" rule — `main()` now contains dispatch logic.
+  `__main__.py` grows a second responsibility.
+
+### Option C: `sys.argv` inspection with guard before logging (mitigation of B)
+
+Same as Option B but the guard is placed before `_setup_logging()`, so the async
+event loop is never started for CLI invocations. Reduces the coupling surface
+slightly (no asyncio side effects) but the structural concern remains.
+
+- **Pros:** Slightly cleaner than B — no event loop for CLI.
+- **Cons:** Still couples two concerns. Still requires `sys.argv` patching in tests.
+
+## Decision
+
+**Option A** — dedicated `[project.scripts]` entry.
+
+This is the only option consistent with the established Python-first paradigm and
+the existing `voicecli` / `imagecli` project conventions. The invocation difference
+(`lyra-agent` vs `python -m lyra agent`) is cosmetic; the developer audience for
+these commands is the maintainer, not end users.
+
+`__main__.py` is untouched. `cli.py` is the sole home of CLI logic. The dispatch
+is handled by Typer's own `app()` call, not by hand-rolled `sys.argv` inspection.
+
+## Consequences
+
+### Positive
+
+- `__main__.py` remains single-purpose: daemon bootstrap.
+- `cli.py` is independently testable without subprocess invocation or `sys.argv`
+  patching.
+- Consistent with `voicecli` / `imagecli` entrypoint conventions across the monorepo.
+- Future CLI sub-commands (e.g., `lyra-agent edit`, `lyra-agent export`) extend
+  `cli.py` without touching the daemon path.
+
+### Negative
+
+- Invocation is `uv run lyra-agent create` rather than
+  `uv run python -m lyra agent create`. The spec's success criteria and next-steps
+  output must be updated to reflect this.
+- Requires `uv sync` / `uv tool install .` after the `pyproject.toml` change, as
+  with any new script entry.
+
+### Neutral
+
+- supervisord, `make lyra`, and the production deploy path are unaffected.
+- The no-regression success criterion (`python -m lyra` with no extra args still
+  starts the server) remains valid and testable.

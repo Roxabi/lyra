@@ -606,3 +606,163 @@ class TestRenderVoiceStream:
         # Assert — vsm.stream not called, WARNING logged
         adapter._vsm.stream.assert_not_awaited()
         assert any(r.levelno >= logging.WARNING for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# #257 — DiscordAdapter._handle_voice_command()
+# ---------------------------------------------------------------------------
+
+
+def _make_message(
+    content: str,
+    guild_id: int = 1,
+    author_voice_channel: MagicMock | None = MagicMock(),
+) -> MagicMock:
+    """Build a minimal discord.Message mock for voice command tests."""
+    msg = MagicMock()
+    msg.id = 9001
+    msg.content = content
+    msg.reply = AsyncMock()
+
+    guild = MagicMock()
+    guild.id = guild_id
+    msg.guild = guild
+
+    voice_state = MagicMock()
+    voice_state.channel = author_voice_channel
+    msg.author = MagicMock()
+    msg.author.voice = voice_state
+
+    return msg
+
+
+class TestHandleVoiceCommand:
+    @pytest.mark.asyncio
+    async def test_join_transient_calls_vsm_join(self) -> None:
+        hub = MagicMock()
+        adapter = DiscordAdapter(hub=hub, bot_id="main")
+        join_mock = AsyncMock()
+        adapter._vsm.join = join_mock
+        voice_ch = MagicMock()
+        msg = _make_message("!join", author_voice_channel=voice_ch)
+
+        result = await adapter._handle_voice_command(msg)
+
+        assert result is True
+        join_mock.assert_awaited_once_with(msg.guild, voice_ch, VoiceMode.TRANSIENT)
+
+    @pytest.mark.asyncio
+    async def test_join_stay_calls_vsm_join_persistent(self) -> None:
+        hub = MagicMock()
+        adapter = DiscordAdapter(hub=hub, bot_id="main")
+        join_mock = AsyncMock()
+        adapter._vsm.join = join_mock
+        voice_ch = MagicMock()
+        msg = _make_message("!join stay", author_voice_channel=voice_ch)
+
+        result = await adapter._handle_voice_command(msg)
+
+        assert result is True
+        join_mock.assert_awaited_once_with(msg.guild, voice_ch, VoiceMode.PERSISTENT)
+
+    @pytest.mark.asyncio
+    async def test_leave_calls_vsm_leave(self) -> None:
+        hub = MagicMock()
+        adapter = DiscordAdapter(hub=hub, bot_id="main")
+        leave_mock = AsyncMock()
+        adapter._vsm.leave = leave_mock
+        msg = _make_message("!leave")
+
+        result = await adapter._handle_voice_command(msg)
+
+        assert result is True
+        leave_mock.assert_awaited_once_with(str(msg.guild.id))
+
+    @pytest.mark.asyncio
+    async def test_non_voice_command_returns_false(self) -> None:
+        hub = MagicMock()
+        adapter = DiscordAdapter(hub=hub, bot_id="main")
+        join_mock = AsyncMock()
+        leave_mock = AsyncMock()
+        adapter._vsm.join = join_mock
+        adapter._vsm.leave = leave_mock
+        msg = _make_message("hello world")
+
+        result = await adapter._handle_voice_command(msg)
+
+        assert result is False
+        join_mock.assert_not_awaited()
+        leave_mock.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_join_user_not_in_voice_channel_replies_error(self) -> None:
+        hub = MagicMock()
+        adapter = DiscordAdapter(hub=hub, bot_id="main")
+        join_mock = AsyncMock()
+        adapter._vsm.join = join_mock
+        msg = _make_message("!join", author_voice_channel=None)
+
+        result = await adapter._handle_voice_command(msg)
+
+        assert result is True
+        join_mock.assert_not_awaited()
+        msg.reply.assert_awaited_once_with("Join a voice channel first.")
+
+    @pytest.mark.asyncio
+    async def test_join_user_no_voice_state_replies_error(self) -> None:
+        hub = MagicMock()
+        adapter = DiscordAdapter(hub=hub, bot_id="main")
+        join_mock = AsyncMock()
+        adapter._vsm.join = join_mock
+        msg = _make_message("!join")
+        msg.author.voice = None  # no voice attribute at all
+
+        result = await adapter._handle_voice_command(msg)
+
+        assert result is True
+        join_mock.assert_not_awaited()
+        msg.reply.assert_awaited_once_with("Join a voice channel first.")
+
+    @pytest.mark.asyncio
+    async def test_join_already_active_replies_error(self) -> None:
+        hub = MagicMock()
+        adapter = DiscordAdapter(hub=hub, bot_id="main")
+        join_mock = AsyncMock(side_effect=VoiceAlreadyActiveError("1"))
+        adapter._vsm.join = join_mock
+        voice_ch = MagicMock()
+        msg = _make_message("!join", author_voice_channel=voice_ch)
+
+        result = await adapter._handle_voice_command(msg)
+
+        assert result is True
+        msg.reply.assert_awaited_once_with("Already in a voice channel.")
+
+    @pytest.mark.asyncio
+    async def test_join_dependency_error_logs_and_returns_true(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        hub = MagicMock()
+        adapter = DiscordAdapter(hub=hub, bot_id="main")
+        join_mock = AsyncMock(side_effect=VoiceDependencyError("libopus missing"))
+        adapter._vsm.join = join_mock
+        voice_ch = MagicMock()
+        msg = _make_message("!join", author_voice_channel=voice_ch)
+
+        with caplog.at_level(logging.ERROR):
+            result = await adapter._handle_voice_command(msg)
+
+        assert result is True
+        assert any("libopus missing" in r.message for r in caplog.records)
+        msg.reply.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_other_command_returns_false(self) -> None:
+        hub = MagicMock()
+        adapter = DiscordAdapter(hub=hub, bot_id="main")
+        join_mock = AsyncMock()
+        adapter._vsm.join = join_mock
+        msg = _make_message("!help")
+
+        result = await adapter._handle_voice_command(msg)
+
+        assert result is False

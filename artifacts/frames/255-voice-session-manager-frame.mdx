@@ -1,0 +1,46 @@
+---
+title: "feat(adapters): VoiceSessionManager — guild lifecycle, PCMQueueSource, startup checks"
+issue: 255
+status: approved
+tier: F-lite
+date: 2026-03-14
+---
+
+## Problem
+
+Lyra's Discord adapter has no mechanism to manage voice channel sessions or stream PCM audio. Without `VoiceSessionManager`, the higher-level streaming slices (#185-B, #185-C) have nothing to attach to: no session store, no audio source, and no way to handle forced disconnects gracefully.
+
+This is **Slice A** of the live audio streaming sub-epic (#185) — the foundational plumbing that every subsequent slice depends on. Until it lands, voice streaming cannot be implemented or tested end-to-end.
+
+## Who
+
+- **Primary:** Internal system — `DiscordAdapter` and Hub, which call `VoiceSessionManager` to manage voice lifecycle
+- **Secondary:** Plugin/agent authors producing `OutboundAudioChunk` objects that will eventually flow through `PCMQueueSource`
+
+## Constraints
+
+- `discord.py` `VoiceClient` must be connected before audio can be played
+- `PCMQueueSource.read()` is called from a non-async `threading.Thread` by the VoiceClient — must use `queue.Queue` (stdlib, thread-safe), not `asyncio.Queue`
+- `read()` must return exactly **3840 bytes** per frame (20 ms of 48 kHz stereo 16-bit PCM) or `b""` for EOF — TTS chunks are not aligned, so internal re-framing is required
+- `libopus` and `ffmpeg` must be present at runtime — verified on first join via `VoiceDependencyError`
+- Blocked by: nothing. Required before: #185-B (streaming), #185-C (commands)
+- Spec already approved: `artifacts/specs/185-live-audio-streaming-spec.mdx` (Slice A)
+
+## Out of Scope
+
+- Streaming audio into the queue (`VSM.stream()`) — that is Slice B (#185-B)
+- Voice commands (`!join`, `!leave`) — that is Slice C (#185-C)
+- Inbound audio capture / listen mode — deferred to a future issue
+- Telegram voice chat — deferred
+- Multi-user audio mixing or simultaneous speaker handling
+
+## Complexity
+
+**Tier: F-lite** — Single adapter file (`discord_voice.py`), well-specified scope with an approved spec, but `PCMQueueSource` re-framing logic and thread-safety constraints add non-trivial implementation surface.
+
+Signals:
+- Files touched: ~2 (`discord_voice.py` + test file)
+- Technical risk: `AudioSource` subclass with byte re-framing buffer, new pattern in this codebase
+- Architectural impact: New classes within a single adapter module, no cross-domain changes
+- Unknowns: 0 — acceptance criteria and data model fully defined in spec
+- Domain breadth: 1 (Discord adapter)

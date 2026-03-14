@@ -1022,12 +1022,26 @@ async def _main(*, adapter: str = "all", _stop: asyncio.Event | None = None) -> 
         sys.exit(str(exc))
 
     # Apply adapter filter BEFORE bootstrap — guard evaluates post-filter state
+    original_tg_count = len(tg_multi_cfg.bots)
+    original_dc_count = len(dc_multi_cfg.bots)
     if adapter == "telegram":
         dc_multi_cfg = DiscordMultiConfig(bots=[])
     elif adapter == "discord":
         tg_multi_cfg = TelegramMultiConfig(bots=[])
 
     use_multibot = bool(tg_multi_cfg.bots or dc_multi_cfg.bots)
+
+    # Guard: adapter flag specified but no matching bots in config
+    if not use_multibot and adapter != "all":
+        requested_count = (
+            original_tg_count if adapter == "telegram" else original_dc_count
+        )
+        if requested_count == 0:
+            sys.exit(
+                f"--adapter {adapter} specified but no [[{adapter}.bots]] entries found"
+                " in config.toml — add at least one bot under [[{adapter}.bots]]"
+                " or omit --adapter to start all configured adapters"
+            )
     if use_multibot:
         await _bootstrap_multibot(
             raw_config,

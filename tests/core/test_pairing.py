@@ -1,29 +1,30 @@
-"""Tests for the unified pairing system (issue #103).
+"""Tests for the unified pairing system (issue #103 + #245 S3).
 
-Covers all 13 ACs across three test domains:
+Covers test domains:
   - Core PairingManager (TestPairingConfig, TestGenerateCode, TestValidateCode,
-    TestIsPaired, TestRateLimiting)
+    TestGrantAfterPairing, TestRateLimiting)
   - Plugin handlers (TestCmdInvite, TestCmdJoin, TestCmdUnpair)
-  - Hub pairing gate (TestHubGate)
+
+Note: TestHubGate removed — trust is now resolved at adapter level via AuthStore
+(see #245 S4). TestIsPaired replaced by TestGrantAfterPairing.
 """
 
 from __future__ import annotations
 
-import asyncio
 import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
-from lyra.core.agent import Agent
 from lyra.core.auth import TrustLevel
-from lyra.core.hub import Hub, _is_group_message
+
+# This import will fail until S1 is implemented — expected in RED phase.
+from lyra.core.auth_store import AuthStore
 from lyra.core.message import (
     InboundMessage,
-    OutboundMessage,
     Platform,
-    Response,
 )
 from lyra.core.pairing import (
     PairingConfig,
@@ -42,18 +43,24 @@ from lyra.plugins.pairing.handlers import cmd_invite, cmd_join, cmd_unpair
 _ADMIN_ID = "admin-user-1"
 _USER_ID = "regular-user-1"
 
-# Track PairingManagers created in tests for cleanup
+# Track PairingManagers and AuthStores created in tests for cleanup
 _open_managers: list[PairingManager] = []
+_open_stores: list[AuthStore] = []
 
 
 @pytest.fixture(autouse=True)
-async def _cleanup_pairing_state():
-    """Reset module-level global and close all PairingManagers after each test."""
+async def _cleanup_pairing_state(tmp_path: Path):
+    """Reset module-level global and close all PairingManagers/AuthStores after each test."""  # noqa: E501
+    # Store tmp_path on the fixture so make_pm can use it
+    _cleanup_pairing_state.tmp_path = tmp_path  # type: ignore[attr-defined]
     yield
     set_pairing_manager(None)
     for pm in _open_managers:
         await pm.close()
     _open_managers.clear()
+    for store in _open_stores:
+        await store.close()
+    _open_stores.clear()
 
 
 def make_message(  # noqa: PLR0913 — test factory with optional overrides
@@ -99,6 +106,14 @@ def make_message(  # noqa: PLR0913 — test factory with optional overrides
     )
 
 
+async def make_auth_store(db_path: str = ":memory:") -> AuthStore:
+    """Build and connect a real AuthStore."""
+    store = AuthStore(db_path=db_path)
+    await store.connect()
+    _open_stores.append(store)
+    return store
+
+
 async def make_pm(  # noqa: PLR0913 — test factory with optional overrides
     enabled: bool = True,
     admin_user_ids: set[str] | None = None,
@@ -107,8 +122,15 @@ async def make_pm(  # noqa: PLR0913 — test factory with optional overrides
     rate_limit_window: int = 300,
     session_max_age_days: int = 30,
     ttl_seconds: int = 3600,
+    auth_store: AuthStore | None = None,
 ) -> PairingManager:
-    """Build and connect a PairingManager backed by an in-memory SQLite DB."""
+    """Build and connect a PairingManager backed by an in-memory SQLite DB.
+
+    If auth_store is not provided, a new in-memory AuthStore is created.
+    """
+    if auth_store is None:
+        auth_store = await make_auth_store()
+
     config = PairingConfig(
         enabled=enabled,
         max_pending=max_pending,
@@ -121,6 +143,7 @@ async def make_pm(  # noqa: PLR0913 — test factory with optional overrides
         config=config,
         db_path=":memory:",
         admin_user_ids=admin_user_ids or {_ADMIN_ID},
+        auth_store=auth_store,
     )
     await pm.connect()
     _open_managers.append(pm)
@@ -244,13 +267,14 @@ class TestValidateCode:
     """validate_code() — AC2."""
 
     async def test_valid_code_returns_true_and_creates_session(self) -> None:
-        pm = await make_pm()
+        store = await make_auth_store()
+        pm = await make_pm(auth_store=store)
         code = await pm.generate_code(_ADMIN_ID)
         success, msg = await pm.validate_code(code, _USER_ID)
         assert success is True
         assert "paired" in msg.lower()
-        # Session must exist
-        assert await pm.is_paired(_USER_ID)
+        # Grant must exist in AuthStore (replaces is_paired check)
+        assert store.check(_USER_ID) == TrustLevel.TRUSTED
 
     async def test_invalid_code_returns_false(self) -> None:
         pm = await make_pm()
@@ -286,98 +310,81 @@ class TestValidateCode:
         assert row is None, "Used code should be deleted"
 
     async def test_already_paired_user_gets_session_replaced(self) -> None:
-        pm = await make_pm()
+        store = await make_auth_store()
+        pm = await make_pm(auth_store=store)
         code1 = await pm.generate_code(_ADMIN_ID)
         await pm.validate_code(code1, _USER_ID)
 
-        # Get original expiry
-        assert pm._db is not None
-        async with pm._db.execute(
-            "SELECT expires_at FROM paired_sessions WHERE identity_key = ?",
-            (_USER_ID,),
-        ) as cur:
-            row1 = await cur.fetchone()
-        original_expires = row1[0] if row1 else None
+        # Grant must exist after first pairing
+        assert store.check(_USER_ID) == TrustLevel.TRUSTED
 
-        # Pair again with a second code
+        # Pair again with a second code — should succeed (upsert)
         code2 = await pm.generate_code(_ADMIN_ID)
         success, _ = await pm.validate_code(code2, _USER_ID)
         assert success is True
 
-        async with pm._db.execute(
-            "SELECT expires_at FROM paired_sessions WHERE identity_key = ?",
-            (_USER_ID,),
-        ) as cur:
-            row2 = await cur.fetchone()
-        new_expires = row2[0] if row2 else None
-
-        # Only one row should exist (UNIQUE constraint)
-        async with pm._db.execute(
-            "SELECT COUNT(*) FROM paired_sessions WHERE identity_key = ?",
+        # Only one grant row should exist (UNIQUE constraint on identity_key)
+        assert store._db is not None
+        async with store._db.execute(
+            "SELECT COUNT(*) FROM grants WHERE identity_key = ?",
             (_USER_ID,),
         ) as cur:
             count_row = await cur.fetchone()
         assert count_row is not None and count_row[0] == 1
 
-        # Expiry should be refreshed (new >= original)
-        assert new_expires >= original_expires  # type: ignore[operator]
+        # User should still be TRUSTED
+        assert store.check(_USER_ID) == TrustLevel.TRUSTED
 
 
 # ---------------------------------------------------------------------------
-# TestIsPaired
+# TestGrantAfterPairing (replaces TestIsPaired — #245 S3)
 # ---------------------------------------------------------------------------
 
 
-class TestIsPaired:
-    """is_paired() — AC3, AC11."""
+class TestGrantAfterPairing:
+    """After validate_code() succeeds, AuthStore grants TRUSTED.
+    After revoke_session(), AuthStore.check() returns default.
 
-    async def test_paired_user_returns_true(self) -> None:
-        pm = await make_pm()
+    is_paired() is removed in S3 — trust is now read from AuthStore.
+    """
+
+    async def test_validate_code_grants_trusted_in_auth_store(self) -> None:
+        store = await make_auth_store()
+        pm = await make_pm(auth_store=store)
         code = await pm.generate_code(_ADMIN_ID)
-        await pm.validate_code(code, _USER_ID)
-        assert await pm.is_paired(_USER_ID) is True
+        success, _ = await pm.validate_code(code, _USER_ID)
+        assert success is True
+        assert store.check(_USER_ID) == TrustLevel.TRUSTED
 
-    async def test_unpaired_user_returns_false(self) -> None:
-        pm = await make_pm()
-        assert await pm.is_paired("unknown-user") is False
-
-    async def test_expired_session_deleted_and_returns_false(self) -> None:
-        pm = await make_pm()
-        code = await pm.generate_code(_ADMIN_ID)
-        await pm.validate_code(code, _USER_ID)
-        # Manually expire the session
-        assert pm._db is not None
-        past = (datetime.now(timezone.utc) - timedelta(seconds=10)).isoformat()
-        await pm._db.execute(
-            "UPDATE paired_sessions SET expires_at = ? WHERE identity_key = ?",
-            (past, _USER_ID),
-        )
-        await pm._db.commit()
-        # is_paired should lazily delete and return False
-        result = await pm.is_paired(_USER_ID)
-        assert result is False
-        # Session row should be gone
-        async with pm._db.execute(
-            "SELECT id FROM paired_sessions WHERE identity_key = ?", (_USER_ID,)
-        ) as cur:
-            row = await cur.fetchone()
-        assert row is None, "Expired session should be lazily deleted"
-
-    async def test_admin_bypass_always_returns_true(self) -> None:
-        pm = await make_pm()
-        # Admin is not paired via code — should still return True
-        assert await pm.is_paired(_ADMIN_ID) is True
+    async def test_unpaired_user_returns_default_from_store(self) -> None:
+        store = await make_auth_store()
+        # "unknown-user" was never paired — should return PUBLIC (store default)
+        assert store.check("unknown-user") == TrustLevel.PUBLIC
 
     async def test_revoke_session_returns_true_when_found(self) -> None:
-        pm = await make_pm()
+        store = await make_auth_store()
+        pm = await make_pm(auth_store=store)
         code = await pm.generate_code(_ADMIN_ID)
         await pm.validate_code(code, _USER_ID)
         found = await pm.revoke_session(_USER_ID)
         assert found is True
-        assert await pm.is_paired(_USER_ID) is False
+
+    async def test_revoke_session_after_pairing_store_returns_default(self) -> None:
+        """revoke_session() → auth_store.check() returns PUBLIC (default)."""
+        store = await make_auth_store()
+        pm = await make_pm(auth_store=store)
+        code = await pm.generate_code(_ADMIN_ID)
+        await pm.validate_code(code, _USER_ID)
+        # Confirm TRUSTED first
+        assert store.check(_USER_ID) == TrustLevel.TRUSTED
+        # Revoke
+        await pm.revoke_session(_USER_ID)
+        # Must be back to default
+        assert store.check(_USER_ID) == TrustLevel.PUBLIC
 
     async def test_revoke_session_returns_false_when_not_found(self) -> None:
-        pm = await make_pm()
+        store = await make_auth_store()
+        pm = await make_pm(auth_store=store)
         found = await pm.revoke_session("nobody")
         assert found is False
 
@@ -395,6 +402,7 @@ class TestRateLimiting:
             config=PairingConfig(rate_limit_attempts=5, rate_limit_window=300),
             db_path=":memory:",
             admin_user_ids=set(),
+            auth_store=None,
         )
         for _ in range(4):
             assert pm.check_rate_limit(_USER_ID) is True
@@ -405,6 +413,7 @@ class TestRateLimiting:
             config=PairingConfig(rate_limit_attempts=3, rate_limit_window=300),
             db_path=":memory:",
             admin_user_ids=set(),
+            auth_store=None,
         )
         for _ in range(3):
             pm.record_failed_attempt(_USER_ID)
@@ -415,6 +424,7 @@ class TestRateLimiting:
             config=PairingConfig(rate_limit_attempts=3, rate_limit_window=1),
             db_path=":memory:",
             admin_user_ids=set(),
+            auth_store=None,
         )
         # Fill the window
         for _ in range(3):
@@ -490,14 +500,16 @@ class TestCmdJoin:
     """cmd_join handler — AC6, AC9."""
 
     async def test_valid_code_creates_session(self) -> None:
-        pm = await make_pm()
+        store = await make_auth_store()
+        pm = await make_pm(auth_store=store)
         set_pairing_manager(pm)
         code = await pm.generate_code(_ADMIN_ID)
         msg = make_message(content=f"/join {code}", user_id=_USER_ID)
         pool = Pool(pool_id="test", agent_name="test", ctx=MagicMock())
         response = await cmd_join(msg, pool, [code])
         assert "paired" in response.content.lower()
-        assert await pm.is_paired(_USER_ID)
+        # is_paired() removed — check AuthStore grant instead
+        assert store.check(_USER_ID) == TrustLevel.TRUSTED
 
     async def test_invalid_code_returns_error(self) -> None:
         pm = await make_pm()
@@ -559,7 +571,8 @@ class TestCmdUnpair:
         assert "admin-only" in response.content.lower()
 
     async def test_unpair_success(self) -> None:
-        pm = await make_pm()
+        store = await make_auth_store()
+        pm = await make_pm(auth_store=store)
         set_pairing_manager(pm)
         # Pair the user first
         code = await pm.generate_code(_ADMIN_ID)
@@ -568,7 +581,8 @@ class TestCmdUnpair:
         pool = Pool(pool_id="test", agent_name="test", ctx=MagicMock())
         response = await cmd_unpair(msg, pool, [_USER_ID])
         assert "revoked" in response.content.lower()
-        assert not await pm.is_paired(_USER_ID)
+        # is_paired() removed — check AuthStore grant instead
+        assert store.check(_USER_ID) == TrustLevel.PUBLIC
 
     async def test_unpair_not_found(self) -> None:
         pm = await make_pm()
@@ -595,254 +609,8 @@ class TestCmdUnpair:
         assert "not enabled" in response.content.lower()
 
 
-# ---------------------------------------------------------------------------
-# TestHubGate
-# ---------------------------------------------------------------------------
+# TestHubGate removed — hub pairing gate is removed in S4.
+# Trust is now fully resolved at adapter level via AuthStore (see #245 S4).
 
-
-class TestHubGate:
-    """Hub pairing gate — AC8, AC11, AC12."""
-
-    def _make_hub(self, pm: PairingManager) -> Hub:
-        hub = Hub(pairing_manager=pm)
-        config = Agent(name="lyra", system_prompt="", memory_namespace="lyra")
-
-        from lyra.core.agent import AgentBase
-
-        class NullAgent(AgentBase):
-            async def process(
-                self, msg: InboundMessage, pool: Pool, *, on_intermediate=None
-            ) -> Response:
-                return Response(content="ok")
-
-        agent = NullAgent(config)
-        hub.register_agent(agent)
-        return hub
-
-    def _make_capturing_adapter(self) -> tuple[object, list[OutboundMessage]]:
-        """Return (adapter, captured_responses) pair."""
-        captured: list[OutboundMessage] = []
-
-        class CapturingAdapter:
-            async def send(
-                self, original_msg: InboundMessage, outbound: OutboundMessage
-            ) -> None:
-                captured.append(outbound)
-
-            async def send_streaming(
-                self, original_msg: InboundMessage, chunks: object
-            ) -> None:
-                pass
-
-        return CapturingAdapter(), captured
-
-    async def _run_hub_once(self, hub: Hub, msg: InboundMessage) -> None:
-        """Put a message on the bus and run the hub for one iteration."""
-        await hub.bus.put(msg)
-        try:
-            await asyncio.wait_for(hub.run(), timeout=0.3)
-        except asyncio.TimeoutError:
-            pass
-
-    async def test_unpaired_dm_gets_rejection(self) -> None:
-        pm = await make_pm(enabled=True)
-        hub = self._make_hub(pm)
-        adapter, captured = self._make_capturing_adapter()
-        hub.register_adapter(Platform.TELEGRAM, "main", adapter)  # type: ignore[arg-type]
-        hub.register_binding(Platform.TELEGRAM, "main", "*", "lyra", "telegram:main:*")
-
-        msg = make_message(content="hello", user_id=_USER_ID, is_group=False)
-        await self._run_hub_once(hub, msg)
-
-        assert len(captured) == 1
-        assert "not paired" in str(captured[0].content).lower()
-
-    async def test_unpaired_group_message_silently_dropped(self) -> None:
-        pm = await make_pm(enabled=True)
-        hub = self._make_hub(pm)
-        adapter, captured = self._make_capturing_adapter()
-        hub.register_adapter(Platform.TELEGRAM, "main", adapter)  # type: ignore[arg-type]
-        hub.register_binding(Platform.TELEGRAM, "main", "*", "lyra", "telegram:main:*")
-
-        msg = make_message(content="hello", user_id=_USER_ID, is_group=True)
-        await self._run_hub_once(hub, msg)
-
-        # No response sent for group messages from unpaired users
-        assert len(captured) == 0
-
-    async def test_join_command_passes_gate(self) -> None:
-        pm = await make_pm(enabled=True)
-        hub = self._make_hub(pm)
-        adapter, captured = self._make_capturing_adapter()
-        hub.register_adapter(Platform.TELEGRAM, "main", adapter)  # type: ignore[arg-type]
-        hub.register_binding(Platform.TELEGRAM, "main", "*", "lyra", "telegram:main:*")
-
-        code = await pm.generate_code(_ADMIN_ID)
-        # Set pairing manager so the plugin handler works
-        set_pairing_manager(pm)
-
-        msg = make_message(content=f"/join {code}", user_id=_USER_ID)
-        await self._run_hub_once(hub, msg)
-
-        # The /join command was routed (possibly via agent since no router on NullAgent)
-        # The key assertion: no "not paired" rejection was sent
-        assert len(captured) >= 1, "expected a response, not a silent drop"
-        for resp in captured:
-            assert "not paired" not in str(resp.content).lower()
-
-    async def test_admin_bypasses_gate(self) -> None:
-        pm = await make_pm(enabled=True)
-        hub = self._make_hub(pm)
-        adapter, captured = self._make_capturing_adapter()
-        hub.register_adapter(Platform.TELEGRAM, "main", adapter)  # type: ignore[arg-type]
-        hub.register_binding(Platform.TELEGRAM, "main", "*", "lyra", "telegram:main:*")
-
-        # Admin user sends a plain message — should NOT be blocked
-        msg = make_message(content="hello admin", user_id=_ADMIN_ID)
-        await self._run_hub_once(hub, msg)
-
-        # Should have a response (agent processed it) — not a rejection
-        assert len(captured) >= 1, "admin should not be blocked"
-        for resp in captured:
-            assert "not paired" not in str(resp.content).lower()
-
-    async def test_gate_inactive_when_disabled(self) -> None:
-        pm = await make_pm(enabled=False)
-        hub = self._make_hub(pm)
-        adapter, captured = self._make_capturing_adapter()
-        hub.register_adapter(Platform.TELEGRAM, "main", adapter)  # type: ignore[arg-type]
-        hub.register_binding(Platform.TELEGRAM, "main", "*", "lyra", "telegram:main:*")
-
-        # Unpaired user — gate should be off
-        msg = make_message(content="hello", user_id=_USER_ID)
-        await self._run_hub_once(hub, msg)
-
-        # No rejection since gate is disabled
-        assert len(captured) >= 1, "gate should be inactive"
-        for resp in captured:
-            assert "not paired" not in str(resp.content).lower()
-
-    async def test_expired_session_rejected(self) -> None:
-        pm = await make_pm(enabled=True)
-        hub = self._make_hub(pm)
-        adapter, captured = self._make_capturing_adapter()
-        hub.register_adapter(Platform.TELEGRAM, "main", adapter)  # type: ignore[arg-type]
-        hub.register_binding(Platform.TELEGRAM, "main", "*", "lyra", "telegram:main:*")
-
-        # Pair the user, then expire the session
-        code = await pm.generate_code(_ADMIN_ID)
-        await pm.validate_code(code, _USER_ID)
-        assert pm._db is not None
-        past = (datetime.now(timezone.utc) - timedelta(seconds=10)).isoformat()
-        await pm._db.execute(
-            "UPDATE paired_sessions SET expires_at = ? WHERE identity_key = ?",
-            (past, _USER_ID),
-        )
-        await pm._db.commit()
-
-        msg = make_message(content="hello", user_id=_USER_ID)
-        await self._run_hub_once(hub, msg)
-
-        assert len(captured) == 1
-        assert "not paired" in str(captured[0].content).lower()
-
-    async def test_discord_unpaired_dm_rejected(self) -> None:
-        pm = await make_pm(enabled=True)
-        hub = self._make_hub(pm)
-        adapter, captured = self._make_capturing_adapter()
-        hub.register_adapter(Platform.DISCORD, "main", adapter)  # type: ignore[arg-type]
-        hub.register_binding(Platform.DISCORD, "main", "*", "lyra", "discord:main:*")
-
-        # Discord DM: guild_id=None
-        msg = make_message(
-            content="hello",
-            user_id=_USER_ID,
-            platform=Platform.DISCORD,
-            guild_id=None,
-        )
-        await self._run_hub_once(hub, msg)
-
-        assert len(captured) == 1
-        assert "not paired" in str(captured[0].content).lower()
-
-    async def test_pairing_gate_logs_dispatch_failure(
-        self,
-        caplog: pytest.LogCaptureFixture,
-    ) -> None:
-        """Pairing rejection dispatch failure is logged, not silently swallowed."""
-        pm = await make_pm(enabled=True)
-        hub = self._make_hub(pm)
-
-        class FailingAdapter:
-            async def send(
-                self, original_msg: InboundMessage, outbound: OutboundMessage
-            ) -> None:
-                raise RuntimeError("adapter send failed")
-
-            async def send_streaming(
-                self, original_msg: InboundMessage, chunks: object
-            ) -> None:
-                pass
-
-        hub.register_adapter(Platform.TELEGRAM, "main", FailingAdapter())  # type: ignore[arg-type]
-        hub.register_binding(Platform.TELEGRAM, "main", "*", "lyra", "telegram:main:*")
-
-        msg = make_message(content="hello", user_id=_USER_ID, is_group=False)
-        await hub.bus.put(msg)
-
-        import logging
-
-        with caplog.at_level(logging.ERROR, logger="lyra.core.hub"):
-            try:
-                await asyncio.wait_for(hub.run(), timeout=0.3)
-            except asyncio.TimeoutError:
-                pass
-
-        assert any(
-            "dispatch_response failed for pairing rejection" in record.getMessage()
-            for record in caplog.records
-        ), f"Expected pairing rejection log, got: {[r.message for r in caplog.records]}"
-
-    async def test_discord_unpaired_guild_silently_dropped(self) -> None:
-        pm = await make_pm(enabled=True)
-        hub = self._make_hub(pm)
-        adapter, captured = self._make_capturing_adapter()
-        hub.register_adapter(Platform.DISCORD, "main", adapter)  # type: ignore[arg-type]
-        hub.register_binding(Platform.DISCORD, "main", "*", "lyra", "discord:main:*")
-
-        # Discord guild message: guild_id != None
-        msg = make_message(
-            content="hello",
-            user_id=_USER_ID,
-            platform=Platform.DISCORD,
-            guild_id=12345,
-        )
-        await self._run_hub_once(hub, msg)
-
-        # Silently dropped
-        assert len(captured) == 0
-
-
-# ---------------------------------------------------------------------------
-# TestIsGroupMessage (helper)
-# ---------------------------------------------------------------------------
-
-
-class TestIsGroupMessage:
-    """_is_group_message() helper — used by the hub gate."""
-
-    def test_telegram_group(self) -> None:
-        msg = make_message(is_group=True)
-        assert _is_group_message(msg) is True
-
-    def test_telegram_dm(self) -> None:
-        msg = make_message(is_group=False)
-        assert _is_group_message(msg) is False
-
-    def test_discord_guild(self) -> None:
-        msg = make_message(platform=Platform.DISCORD, guild_id=12345)
-        assert _is_group_message(msg) is True
-
-    def test_discord_dm(self) -> None:
-        msg = make_message(platform=Platform.DISCORD, guild_id=None)
-        assert _is_group_message(msg) is False
+# TestIsGroupMessage removed — _is_group_message helper was only used by the
+# pairing gate which is removed in S4.

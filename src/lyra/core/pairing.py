@@ -1,7 +1,7 @@
 """Unified pairing system for Telegram and Discord (issue #103).
 
 Provides invite-code-based access control via PairingManager + PairingConfig.
-Handlers live in lyra.plugins.pairing; hub gate lives in lyra.core.hub.
+Handlers live in lyra.plugins.pairing; hub pairing gate removed in #245.
 """
 
 from __future__ import annotations
@@ -14,8 +14,14 @@ from collections import deque
 from dataclasses import dataclass, fields
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import aiosqlite
+
+if TYPE_CHECKING:
+    from lyra.core.auth_store import AuthStore
+
+from lyra.core.trust import TrustLevel
 
 log = logging.getLogger(__name__)
 
@@ -40,16 +46,6 @@ CREATE TABLE IF NOT EXISTS pairing_codes (
     expires_at TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     attempt_count INTEGER NOT NULL DEFAULT 0
-)
-"""
-
-_CREATE_PAIRED_SESSIONS = """
-CREATE TABLE IF NOT EXISTS paired_sessions (
-    id INTEGER PRIMARY KEY,
-    identity_key TEXT NOT NULL UNIQUE,
-    paired_by_code_hash TEXT NOT NULL,
-    paired_at TEXT NOT NULL DEFAULT (datetime('now')),
-    expires_at TEXT NOT NULL
 )
 """
 
@@ -84,19 +80,25 @@ class PairingConfig:
 
 
 class PairingManager:
-    """Manages pairing codes and paired sessions using aiosqlite."""
+    """Manages pairing codes using aiosqlite.
+
+    On successful code validation, grants are written to AuthStore instead of
+    the former paired_sessions table (removed in #245).
+    """
 
     def __init__(
         self,
         config: PairingConfig,
         db_path: str | Path,
         admin_user_ids: set[str],
+        auth_store: AuthStore | None = None,
     ) -> None:
         self.config = config
         self._db_path = str(db_path)
         self._admin_user_ids = admin_user_ids
+        self._auth_store = auth_store
         self._db: aiosqlite.Connection | None = None
-        # In-memory sliding window: identity_key → deque of failure timestamps
+        # In-memory sliding window: identity_key -> deque of failure timestamps
         self._rate_timestamps: dict[str, deque[float]] = {}
 
     def _require_db(self) -> aiosqlite.Connection:
@@ -106,11 +108,10 @@ class PairingManager:
         return self._db
 
     async def connect(self) -> None:
-        """Open aiosqlite connection and create tables."""
+        """Open aiosqlite connection and create pairing_codes table."""
         self._db = await aiosqlite.connect(self._db_path)
         await self._db.execute("PRAGMA journal_mode=WAL")
         await self._db.execute(_CREATE_PAIRING_CODES)
-        await self._db.execute(_CREATE_PAIRED_SESSIONS)
         await self._db.commit()
         log.info("PairingManager connected (db=%s)", self._db_path)
 
@@ -173,10 +174,10 @@ class PairingManager:
     # ------------------------------------------------------------------
 
     async def validate_code(self, code: str, identity_key: str) -> tuple[bool, str]:
-        """Validate a pairing code and create a session if valid.
+        """Validate a pairing code and grant TRUSTED access if valid.
 
-        Returns (success, message). On success, creates/replaces session and
-        deletes the used code.
+        Returns (success, message). On success, upserts a TRUSTED grant into
+        AuthStore and deletes the used code.
         """
         db = self._require_db()
         code_hash = _sha256(code)
@@ -187,7 +188,7 @@ class PairingManager:
         await db.execute("BEGIN IMMEDIATE")
         try:
             # Increment attempt counter before checking existence so every
-            # probe — hit or miss — is counted toward the per-code limit.
+            # probe -- hit or miss -- is counted toward the per-code limit.
             await db.execute(
                 "UPDATE pairing_codes SET attempt_count = attempt_count + 1 "
                 "WHERE code_hash = ?",
@@ -230,17 +231,6 @@ class PairingManager:
 
             session_expires_at = now + timedelta(days=self.config.session_max_age_days)
 
-            # Upsert session (replace if already paired — extends expiry)
-            await db.execute(
-                "INSERT INTO paired_sessions "
-                "(identity_key, paired_by_code_hash, expires_at) "
-                "VALUES (?, ?, ?) "
-                "ON CONFLICT(identity_key) DO UPDATE SET "
-                "paired_by_code_hash = excluded.paired_by_code_hash, "
-                "paired_at = datetime('now'), "
-                "expires_at = excluded.expires_at",
-                (identity_key, code_hash, session_expires_at.isoformat()),
-            )
             # Delete the used code
             await db.execute(
                 "DELETE FROM pairing_codes WHERE code_hash = ?", (code_hash,)
@@ -249,7 +239,26 @@ class PairingManager:
         except BaseException:
             await db.execute("ROLLBACK")
             raise
-        log.info("Paired %s (session expires %s)", identity_key, session_expires_at)
+
+        # Upsert TRUSTED grant into AuthStore (outside the IMMEDIATE transaction)
+        if self._auth_store is not None:
+            await self._auth_store.upsert(
+                identity_key,
+                TrustLevel.TRUSTED,
+                session_expires_at,
+                granted_by="invite",
+                source=code_hash,
+            )
+            log.info(
+                "Paired %s via AuthStore (session expires %s)",
+                identity_key,
+                session_expires_at,
+            )
+        else:
+            log.warning(
+                "validate_code: no auth_store configured, grant not persisted for %s",
+                identity_key,
+            )
         return True, "Successfully paired."
 
     # ------------------------------------------------------------------
@@ -260,62 +269,11 @@ class PairingManager:
         """Return True if the identity_key belongs to an admin user."""
         return identity_key in self._admin_user_ids
 
-    async def is_paired(self, identity_key: str) -> bool:
-        """Return True if user has a valid (non-expired) session.
-
-        Admin users always return True. Expired sessions are lazily deleted.
-        """
-        if identity_key in self._admin_user_ids:
-            return True
-
-        db = self._require_db()
-
-        async with db.execute(
-            "SELECT expires_at FROM paired_sessions WHERE identity_key = ?",
-            (identity_key,),
-        ) as cursor:
-            row = await cursor.fetchone()
-
-        if row is None:
-            return False
-
-        expires_at_iso = row[0]
-        expires_at = datetime.fromisoformat(expires_at_iso)
-        if expires_at.tzinfo is None:
-            expires_at = expires_at.replace(tzinfo=timezone.utc)
-
-        if _utc_now() > expires_at:
-            # Lazy cleanup: delete expired session
-            await db.execute(
-                "DELETE FROM paired_sessions WHERE identity_key = ?",
-                (identity_key,),
-            )
-            await db.commit()
-            log.debug("Lazily deleted expired session for %s", identity_key)
-            return False
-
-        return True
-
     async def revoke_session(self, identity_key: str) -> bool:
-        """Delete a paired session. Returns True if it existed."""
-        db = self._require_db()
-
-        async with db.execute(
-            "SELECT id FROM paired_sessions WHERE identity_key = ?",
-            (identity_key,),
-        ) as cursor:
-            row = await cursor.fetchone()
-
-        if row is None:
-            return False
-
-        await db.execute(
-            "DELETE FROM paired_sessions WHERE identity_key = ?",
-            (identity_key,),
-        )
-        await db.commit()
-        log.info("Revoked session for %s", identity_key)
-        return True
+        """Revoke a user's grant. Returns True if it existed."""
+        if self._auth_store is not None:
+            return await self._auth_store.revoke(identity_key)
+        return False
 
     # ------------------------------------------------------------------
     # Rate limiting (in-memory sliding window)
@@ -325,7 +283,7 @@ class PairingManager:
         """Return True if the user is under the rate limit.
 
         Prunes timestamps outside the sliding window before checking.
-        Does NOT record the attempt — call record_failed_attempt() separately.
+        Does NOT record the attempt -- call record_failed_attempt() separately.
         """
         now = time.monotonic()
         window_start = now - self.config.rate_limit_window

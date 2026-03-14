@@ -1,13 +1,13 @@
 # Lyra — Prioritized Roadmap
 
 > Living document. Updated as decisions are made.
-> Last updated: 2026-03-13
+> Last updated: 2026-03-14
 
 ---
 
 ## Current focus
 
-**Phase 1b tail — closing out the agent core**: #139 ✅, #123 ✅, #134 ✅, #135 ✅, #80 ✅, #151 ✅, #152 ✅ all shipped. Remaining: memory integration (#83), hub command sessions (#99).
+**Phase 1b tail — closing out the agent core**: #139 ✅, #123 ✅, #134 ✅, #135 ✅, #80 ✅, #151 ✅, #152 ✅, #83 ✅ all shipped. Remaining: hub command sessions (#99).
 
 ---
 
@@ -38,15 +38,15 @@
 | #135 | Runtime agent config — `!config` live tuning without restart | S | ✅ Done |
 | #151 | AuthMiddleware + TrustLevel per adapter | M | ✅ Done |
 | #152 | RoutingContext + outbound verification | M | ✅ Done |
-| #83 | Lyra agent integration — identity anchor, session lifecycle, L0 compaction | L | Ready — **next** |
-| #99 | Hub command sessions — /add, /explain, /summarize, /search | L | Blocked by #83 |
+| #83 | Lyra agent integration — identity anchor, session lifecycle, L0 compaction | L | ✅ Done |
+| #99 | Hub command sessions — /add, /explain, /summarize, /search | L | Ready — **next** |
 | #136 | Multi-bot registry upgrade — per-bot-id routing + multi-token config | M | Blocked by #83 + #79 — do last |
 
-**Critical path**: #83 → #99
+**Critical path**: #99
 
 **Dependencies**:
-- #83 unblocks: #99, #67, #128
-- #83 + #79 both needed before: #136 (multi-bot registry)
+- #83 ✅ unblocked: #99, #67, #128
+- #83 ✅ + #79 both needed before: #136 (multi-bot registry)
 
 ---
 
@@ -96,6 +96,7 @@
 | #215 | Resolve symlink in plugin_loader before exec_module |
 | #217 | OutboundDispatcher.enqueue_attachment() with CB ownership |
 | #220 | Extract ProviderError to replace AnthropicAPIError in core |
+| #83 | Memory agent integration — Pool identity, MemoryManager, identity anchor, session flush, compaction, cross-session recall, concept/preference extraction |
 
 ---
 
@@ -118,7 +119,7 @@
 
 | # | Issue | Priority | Status |
 |---|-------|----------|--------|
-| #83 | Lyra agent integration — identity anchor, L0 compaction | P1 | Open (Phase 1b tail) |
+| #83 | Lyra agent integration — identity anchor, L0 compaction | P1 | ✅ Done |
 | #128 | Import 2ndBrain session history → episodic memory L3 | P2 | Open — blocked by #83 |
 | #67 | Session persistence — JSONL conversation history | P2 | Open |
 | #71 | Memory SLM — episodic-to-semantic promotion | P3 | Frozen |

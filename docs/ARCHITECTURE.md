@@ -1,7 +1,7 @@
 # Lyra — Architecture & Decisions
 
 > Living document. Updated as decisions are made.
-> Last updated: 2026-03-13 (Phase 1b tail completions: message normalization #139, LlmProvider #123, auth #151, routing #152, smart routing #134, runtime config #135, STT #80, audio/attachment bus, PoolContext #204, TTL eviction #205, typing indicator redesign #229, show_intermediate + on_intermediate callback, /clear session reset, is_backend_alive, SimpleAgent runtime_config wiring)
+> Last updated: 2026-03-14 (Phase 1b tail completions: message normalization #139, LlmProvider #123, auth #151, routing #152, smart routing #134, runtime config #135, STT #80, audio/attachment bus, PoolContext #204, TTL eviction #205, typing indicator redesign #229, show_intermediate + on_intermediate callback, /clear session reset, is_backend_alive, SimpleAgent runtime_config wiring, memory integration #83)
 
 ---
 
@@ -223,7 +223,8 @@ See [MULTI-BOT.md](MULTI-BOT.md) for the full configuration reference and step-b
 ### Discussion Pools
 
 One pool per conversation scope. Contains:
-- Conversation history (automatically compacted)
+- Conversation history (automatically compacted via `compact()` at 80% of context window)
+- Session identity: `session_id` (UUID), `user_id`, `medium`, `session_start`, `message_count`
 - Session state (multi-turn commands)
 - Assigned agent
 - `asyncio.Task` (`_process_loop`) — sequential within scope, parallel across scopes
@@ -233,7 +234,7 @@ One pool per conversation scope. Contains:
 **Model: stateless singleton.** An agent is an immutable config (prompt, permissions, namespace). All mutable state lives in the Pool. No race condition since the agent never writes to `self.*`.
 
 Each agent owns (immutable):
-- Its own system prompt / persona
+- Its own system prompt / persona (seeded as `IDENTITY_ANCHOR` in L3 on first boot; loaded from L3 on subsequent boots)
 - Isolated memory namespace in SQLite
 - Declared skill permissions
 - Dedicated file workspace
@@ -249,6 +250,12 @@ class Agent:
         # pool contains all mutable state (history, session)
         ...
 ```
+
+**Memory wiring** (#83): `Hub.set_memory(manager)` injects a `MemoryManager` into all registered agents. `MemoryManager` wraps `AsyncMemoryDB` (roxabi-vault) and exposes:
+- `recall(user_id, ns, first_msg, token_budget)` — freshness-aware cross-session context (`[MEMORY]` + `[PREFERENCES]` blocks)
+- `upsert_session(snap, summary)` — flush session summary to L3 after eviction
+- `upsert_concept()` / `upsert_preference()` — background extraction tasks
+- `compact()` — writes partial L3 snapshot + truncates context to a 10-turn tail when the window hits 80% of `COMPACT_THRESHOLD` (200k tokens)
 
 Multiple agents run simultaneously on different pools. A single agent (e.g., `lyra`) serves multiple pools without duplication.
 
@@ -266,9 +273,13 @@ Multiple agents run simultaneously on different pools. A single agent (e.g., `ly
 | 3 | **Semantic** | SQLite + FTS5/BM25 + fastembed + sqlite-vec | Permanent | ✅ Built (#78/#81/#82) |
 | 4 | **Procedural** | Learned skills, memorized patterns, preferences | Permanent | Deferred (Phase 3) |
 
-### Level 0 — Working memory
+### Level 0 — Working memory ✅
 - Active context window, volatile, managed by the LLM
-- Automatically compacted when the window approaches its limit (L0 compaction: #83)
+- `AgentBase.compact()` triggers when `sdk_history` exceeds 80% of `COMPACT_THRESHOLD` (200k tokens):
+  1. Calls `_summarize_session()` → LLM summary of conversation so far
+  2. Writes partial L3 snapshot via `MemoryManager.upsert_session(..., status="partial")`
+  3. Replaces `sdk_history` with `[summary_turn] + last 10 turns` in-place
+- `AgentBase.flush_session()` runs on pool eviction / explicit disconnect → full L3 write + background concept/preference extraction
 
 ### Level 1 — Session memory *(Phase 2)*
 - Multi-turn session state per pool (`asyncio.Task` per scope)
@@ -416,7 +427,8 @@ client = AsyncOpenAI(
 - **`is_backend_alive()`** ✅ — `Agent` and `CliPool` expose `is_backend_alive(pool_id)` / `is_alive(pool_id)`. On timeout, `Pool` checks liveness and logs an error if the backend process died.
 - **SimpleAgent `runtime_config` wiring** ✅ — `_build_router_kwargs()` injects `runtime_config_holder` and `runtime_config_path`, making `/config` functional on the `claude-cli` backend.
 - **`[model].cwd` and `[workspaces]`** ✅ — `ModelConfig.cwd` sets a fixed working directory for the Claude subprocess for a given agent. `[workspaces]` in agent TOML registers named directory shortcuts; each key becomes a `/keyname` slash command that stores a per-pool cwd override in `CliPool._cwd_overrides`. Switching workspace clears pool history and kills/respawns the Claude subprocess with the new cwd.
-- **Reduced Phase 1 memory scope** — Level 0 (working, L0 compaction in #83) + Level 3 (semantic, shipped #78/#81/#82). Levels 1, 2, 4 added when the real need arises.
+- **Reduced Phase 1 memory scope** — Level 0 (working, L0 compaction ✅ #83) + Level 3 (semantic ✅ #78/#81/#82). Levels 1, 2, 4 added when the real need arises.
+- **Memory agent integration** (#83 ✅) — `MemoryManager` wired into Pool identity fields, AgentBase lifecycle (`build_system_prompt`, `compact`, `flush_session`, `_schedule_extraction`), and Hub (`set_memory`, `_memory_tasks`, shutdown drain). Identity anchor seeded in L3 on first boot. FTS isolated per user via `namespace:user_id` sub-namespace. 7 slices delivered: Pool identity, MemoryManager infra, identity anchor, session flush, compaction, cross-session recall, concept/preference extraction.
 
 ### External tool integration
 
@@ -440,7 +452,7 @@ client = AsyncOpenAI(
 
 What is built in Phase 1 / 1b:
 - Hub: per-channel queues + bindings + pools + adapter registry (#112 epic ✅)
-- Memory level 0 (working, L0 compaction in #83) + level 3 (semantic ✅: #78/#81/#82)
+- Memory level 0 (working, L0 compaction ✅ #83) + level 3 (semantic ✅: #78/#81/#82)
 - Telegram + Discord adapters (✅)
 - LLM: Claude CLI subprocess (✅), Anthropic SDK driver (#76 ✅), LlmProvider protocol (#123 ✅), smart routing (#134 ✅)
 - Agent identity + persona (#75 ✅), runtime config (#135 ✅)
@@ -453,7 +465,6 @@ What is built in Phase 1 / 1b:
 - UX: typing indicator redesign (#229 ✅), intermediate turns (`show_intermediate`) ✅, `/clear` session reset ✅
 
 **Remaining Phase 1b tail**:
-- #83 (agent integration — identity anchor, session lifecycle, L0 compaction)
 - #99 (hub command sessions — /add, /explain, /summarize, /search)
 
 What is **explicitly excluded from Phase 1**:
@@ -507,8 +518,8 @@ class CognitiveFrame:
 
 Phase 1b tail is nearly complete. The bus, auth, routing, LLM, voice, and DX layers are all shipped.
 
-**Remaining critical path**: #83 (agent integration) → #99 (hub command sessions)
+**Remaining critical path**: #99 (hub command sessions)
 
-**All independent items shipped**: #135 (runtime config ✅), #134 (smart routing ✅), #80 (voice STT ✅), #139 (message normalization ✅), #123 (LlmProvider ✅), #151 (auth ✅), #152 (routing ✅)
+**All independent items shipped**: #135 (runtime config ✅), #134 (smart routing ✅), #80 (voice STT ✅), #139 (message normalization ✅), #123 (LlmProvider ✅), #151 (auth ✅), #152 (routing ✅), #83 (memory integration ✅)
 
 See [ROADMAP.md](ROADMAP.md) for the full backlog and priorities.

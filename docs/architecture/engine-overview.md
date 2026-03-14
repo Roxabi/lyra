@@ -1,6 +1,6 @@
 # Lyra Engine — Architecture Overview
 
-> ⚠️ **Partially stale** — This document was written early in the project and uses old class names (`Message` → `InboundMessage`, `Bus` → `InboundBus`/`OutboundDispatcher`). For the current architecture, see [ARCHITECTURE.md](../ARCHITECTURE.md).
+> ⚠️ **Partially stale** — This document was written early in the project and uses old class names (`Message` → `InboundMessage`, `Bus` → `InboundBus`/`OutboundDispatcher`). The memory section (§10) uses an early L1–L5 scheme that differs from the current 5-level model (see §10 note). For the current architecture, see [ARCHITECTURE.md](../ARCHITECTURE.md).
 >
 > Recap complet de l'architecture cible. Dernière mise à jour : 2026-03-12.
 > Diagramme interactif : `docs/architecture-visual-explainer.html`
@@ -204,18 +204,21 @@ Chaque wrapper gère : subprocess, CWD, env vars, parsing stdout/stderr.
 
 ## 10. Système de mémoire — 5 niveaux
 
-| Niveau | Nom | Stockage | TTL | Scope |
-|--------|-----|----------|-----|-------|
-| L1 | Working Memory | Python dict in-process | Single request | Turn courant |
-| L2 | Session Memory | asyncio store (keyed by session_id) | Session lifetime | Session |
-| L3 | Episodic Memory | Markdown daté `~/.lyra/memory/episodic/{user_id}/YYYY-MM-DD/` | Permanent | Per user |
-| L4 | Semantic Memory | SQLite + BM25 + sqlite-vec `~/.lyra/memory/semantic.db` | Permanent | Global (filtré user_id) |
-| L5 | Procedural Memory | YAML/TOML + Python `skills/` | Permanent (codebase) | Agent capabilities |
+> ⚠️ **Stale** — schéma de niveaux révisé. Voir [ARCHITECTURE.md → Memory Layer](../ARCHITECTURE.md#memory-layer-5-levels) pour le modèle courant.
 
-**Memory Manager :**
-- Lecture sémantique (L4) à chaque tour agent
-- Écriture épisodique (L3) en fin de session
-- L1 + L2 purgés en fin de session
+| Niveau | Nom | Stockage | TTL | Scope | Statut |
+|--------|-----|----------|-----|-------|--------|
+| L0 | Working Memory | `pool.sdk_history` (in-process list) | Session | Par pool | ✅ Shipped (#83) |
+| L1 | Session Memory | asyncio store (keyed by `session_id`) | Session | Par pool | Phase 2 |
+| L2 | Episodic Memory | Markdown daté | Permanent | Par user | Phase 2 |
+| L3 | Semantic Memory | SQLite + FTS5/BM25 + sqlite-vec (roxabi-vault) | Permanent | Par namespace | ✅ Shipped (#78/#81/#82/#83) |
+| L4 | Procedural Memory | SQLite, extracted via LLM | Permanent | Par user | Phase 3 |
+
+**MemoryManager (src/lyra/core/memory.py, #83) :**
+- `recall(user_id, namespace, first_msg, token_budget)` → blocs `[MEMORY]` + `[PREFERENCES]` injectés dans le system prompt
+- `upsert_session(snap, summary)` → flush L3 en fin de session ou compaction
+- `upsert_concept()` / `upsert_preference()` → extraction background post-session
+- Compaction L0 : `compact()` déclenché à 80% de 200k tokens → résumé LLM + tail 10 turns
 
 ---
 
@@ -227,10 +230,10 @@ User (Telegram)
   → Bus.inbound.put(msg)
   → Router.dispatch() → pool_id
   → AgentPool.acquire_lock()
-  → MemoryManager.retrieve(user_id, session_id) → context
+  → MemoryManager.recall(user_id, namespace, first_msg) → [MEMORY]/[PREFERENCES] context
   → ComplexityEstimator → LLMConfig
-  → AnthropicWrapper.complete(prompt + context) → text
-  → MemoryManager.write(L1, L2)
+  → AnthropicWrapper.complete(system_prompt + context) → text
+  → (on eviction) MemoryManager.upsert_session() + _schedule_extraction()
   → Response(type="text", routing=RoutingContext)
   → Bus.outbound.put(response)
   → TelegramAdapter.format() → sendMessage

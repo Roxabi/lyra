@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import lyra.adapters.discord_voice as dv_module
-from lyra.adapters.discord import DiscordAdapter
+from lyra.adapters.discord import _ALLOW_ALL, DiscordAdapter
 from lyra.adapters.discord_voice import (
     PCMQueueSource,
     VoiceAlreadyActiveError,
@@ -19,6 +19,7 @@ from lyra.adapters.discord_voice import (
     VoiceSessionManager,
     _check_voice_deps,
 )
+from lyra.core.auth import TrustLevel
 from lyra.core.message import InboundMessage, OutboundAudioChunk
 
 _FRAME = 3840
@@ -648,7 +649,7 @@ class TestHandleVoiceCommand:
         msg = _make_message("!join", author_voice_channel=voice_ch)
 
         # Act
-        result = await adapter._handle_voice_command(msg)
+        result = await adapter._handle_voice_command(msg, TrustLevel.TRUSTED)
 
         # Assert
         assert result is True
@@ -665,7 +666,7 @@ class TestHandleVoiceCommand:
         msg = _make_message("/join", author_voice_channel=voice_ch)
 
         # Act
-        result = await adapter._handle_voice_command(msg)
+        result = await adapter._handle_voice_command(msg, TrustLevel.TRUSTED)
 
         # Assert
         assert result is True
@@ -682,7 +683,42 @@ class TestHandleVoiceCommand:
         msg = _make_message("!join stay", author_voice_channel=voice_ch)
 
         # Act
-        result = await adapter._handle_voice_command(msg)
+        result = await adapter._handle_voice_command(msg, TrustLevel.TRUSTED)
+
+        # Assert
+        assert result is True
+        join_mock.assert_awaited_once_with(msg.guild, voice_ch, VoiceMode.PERSISTENT)
+
+    @pytest.mark.asyncio
+    async def test_join_stay_case_insensitive_is_persistent(self) -> None:
+        # Arrange — "!join STAY" (uppercase) must map to PERSISTENT
+        hub = MagicMock()
+        adapter = DiscordAdapter(hub=hub, bot_id="main")
+        join_mock = AsyncMock()
+        adapter._vsm.join = join_mock
+        voice_ch = MagicMock()
+        msg = _make_message("!join STAY", author_voice_channel=voice_ch)
+
+        # Act
+        result = await adapter._handle_voice_command(msg, TrustLevel.TRUSTED)
+
+        # Assert
+        assert result is True
+        join_mock.assert_awaited_once_with(msg.guild, voice_ch, VoiceMode.PERSISTENT)
+
+    @pytest.mark.asyncio
+    async def test_join_stay_with_extra_args_is_persistent(self) -> None:
+        # Arrange — "!join stay please" should still be PERSISTENT
+        # (prefix match on first token)
+        hub = MagicMock()
+        adapter = DiscordAdapter(hub=hub, bot_id="main")
+        join_mock = AsyncMock()
+        adapter._vsm.join = join_mock
+        voice_ch = MagicMock()
+        msg = _make_message("!join stay please", author_voice_channel=voice_ch)
+
+        # Act
+        result = await adapter._handle_voice_command(msg, TrustLevel.TRUSTED)
 
         # Assert
         assert result is True
@@ -699,7 +735,7 @@ class TestHandleVoiceCommand:
         msg = _make_message("!leave")
 
         # Act
-        result = await adapter._handle_voice_command(msg)
+        result = await adapter._handle_voice_command(msg, TrustLevel.TRUSTED)
 
         # Assert
         assert result is True
@@ -717,7 +753,7 @@ class TestHandleVoiceCommand:
         msg = _make_message("!leave")
 
         # Act
-        result = await adapter._handle_voice_command(msg)
+        result = await adapter._handle_voice_command(msg, TrustLevel.TRUSTED)
 
         # Assert
         assert result is True
@@ -736,7 +772,7 @@ class TestHandleVoiceCommand:
         msg = _make_message("hello world")
 
         # Act
-        result = await adapter._handle_voice_command(msg)
+        result = await adapter._handle_voice_command(msg, TrustLevel.TRUSTED)
 
         # Assert
         assert result is False
@@ -753,7 +789,7 @@ class TestHandleVoiceCommand:
         msg = _make_message("!join", author_voice_channel=None)
 
         # Act
-        result = await adapter._handle_voice_command(msg)
+        result = await adapter._handle_voice_command(msg, TrustLevel.TRUSTED)
 
         # Assert
         assert result is True
@@ -771,7 +807,7 @@ class TestHandleVoiceCommand:
         msg.author.voice = None  # no voice attribute at all
 
         # Act
-        result = await adapter._handle_voice_command(msg)
+        result = await adapter._handle_voice_command(msg, TrustLevel.TRUSTED)
 
         # Assert
         assert result is True
@@ -789,7 +825,7 @@ class TestHandleVoiceCommand:
         msg = _make_message("!join", author_voice_channel=voice_ch)
 
         # Act
-        result = await adapter._handle_voice_command(msg)
+        result = await adapter._handle_voice_command(msg, TrustLevel.TRUSTED)
 
         # Assert
         assert result is True
@@ -810,7 +846,7 @@ class TestHandleVoiceCommand:
 
         # Act
         with caplog.at_level(logging.WARNING):
-            result = await adapter._handle_voice_command(msg)
+            result = await adapter._handle_voice_command(msg, TrustLevel.TRUSTED)
 
         # Assert
         assert result is True
@@ -830,7 +866,7 @@ class TestHandleVoiceCommand:
 
         # Act
         with caplog.at_level(logging.ERROR):
-            result = await adapter._handle_voice_command(msg)
+            result = await adapter._handle_voice_command(msg, TrustLevel.TRUSTED)
 
         # Assert
         assert result is True
@@ -847,7 +883,37 @@ class TestHandleVoiceCommand:
         msg = _make_message("!help")
 
         # Act
-        result = await adapter._handle_voice_command(msg)
+        result = await adapter._handle_voice_command(msg, TrustLevel.TRUSTED)
 
         # Assert
         assert result is False
+
+
+class TestOnMessageVoiceCommandWiring:
+    @pytest.mark.asyncio
+    async def test_voice_command_in_guild_skips_hub_push(self) -> None:
+        # Arrange — !join in a guild text channel should NOT reach hub.inbound_bus
+        hub = MagicMock()
+        hub.inbound_bus = MagicMock()
+        hub.inbound_bus.put_nowait = MagicMock()
+        adapter = DiscordAdapter(hub=hub, bot_id="main")
+        adapter._auth = _ALLOW_ALL  # permit the message
+        # Mock _handle_voice_command to return True (simulates voice command handled)
+        adapter._handle_voice_command = AsyncMock(return_value=True)
+
+        # Build a minimal guild message mock
+        message = MagicMock()
+        message.author.bot = False
+        message.author.id = 42
+        message.author.roles = []
+        message.guild = MagicMock()
+        message.attachments = []
+        message.content = "!join"
+        # not a Thread, not ForumChannel, not VoiceChannel
+        message.channel = MagicMock(spec=[])
+
+        # Act
+        await adapter.on_message(message)
+
+        # Assert — hub inbound bus was NOT called
+        hub.inbound_bus.put_nowait.assert_not_called()

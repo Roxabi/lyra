@@ -285,6 +285,11 @@ class DiscordAdapter(discord.Client):
 
     async def _handle_leave_command(self, message: Any, guild_id: str) -> None:
         """Execute !leave: disconnect if active, reply with outcome."""
+        log.info(
+            "voice_cmd cmd=leave user=%s guild=%s",
+            getattr(message.author, "id", "?"),
+            guild_id,
+        )
         if self._vsm.get(guild_id) is None:
             await self._reply_safe(
                 message, "I'm not in a voice channel.", label="not-in-channel"
@@ -294,7 +299,11 @@ class DiscordAdapter(discord.Client):
             await self._reply_safe(message, "Left the voice channel.", label="leave")
 
     async def _handle_join_command(
-        self, message: Any, guild: Any, args: str
+        self,
+        message: Any,
+        guild: Any,
+        args: str,
+        trust: TrustLevel = TrustLevel.TRUSTED,
     ) -> None:
         """Execute !join / !join stay: connect to user's voice channel."""
         voice_state = getattr(message.author, "voice", None)
@@ -308,6 +317,13 @@ class DiscordAdapter(discord.Client):
             if args.strip().lower().split()[:1] == ["stay"]
             else VoiceMode.TRANSIENT
         )
+        if mode == VoiceMode.PERSISTENT and trust < TrustLevel.TRUSTED:
+            await self._reply_safe(
+                message,
+                "Persistent mode requires elevated permissions.",
+                label="persistent-denied",
+            )
+            mode = VoiceMode.TRANSIENT
         try:
             await self._vsm.join(guild, voice_state.channel, mode)
         except VoiceAlreadyActiveError:
@@ -320,7 +336,9 @@ class DiscordAdapter(discord.Client):
                 message, "Voice is not available right now.", label="voice-unavailable"
             )
 
-    async def _handle_voice_command(self, message: Any) -> bool:
+    async def _handle_voice_command(
+        self, message: Any, trust: TrustLevel = TrustLevel.TRUSTED
+    ) -> bool:
         """Detect and handle !join / !join stay / !leave voice commands.
 
         Returns True if a voice command was handled (caller should return early).
@@ -334,9 +352,16 @@ class DiscordAdapter(discord.Client):
         guild = message.guild
         guild_id = str(guild.id)
         if cmd.name == "leave":
+            if trust < TrustLevel.TRUSTED:
+                await self._reply_safe(
+                    message,
+                    "You don't have permission to use this command.",
+                    label="leave-denied",
+                )
+                return True
             await self._handle_leave_command(message, guild_id)
         else:
-            await self._handle_join_command(message, guild, cmd.args)
+            await self._handle_join_command(message, guild, cmd.args, trust=trust)
         return True
 
     def normalize_audio(
@@ -589,7 +614,7 @@ class DiscordAdapter(discord.Client):
         # work from any text channel without requiring a bot mention.
         # Guild guard: voice channels are guild-only; skip in DMs.
         if message.guild is not None:
-            if await self._handle_voice_command(message):
+            if await self._handle_voice_command(message, trust):
                 return
 
         # Pre-detect mention (needed for auto-thread decision)

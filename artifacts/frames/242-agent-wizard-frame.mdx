@@ -1,0 +1,44 @@
+---
+title: "feat(cli): agent wizard — interactive step-by-step agent creation"
+issue: 242
+status: approved
+tier: F-lite
+date: 2026-03-14
+---
+
+## Problem
+
+Creating a new Lyra agent today requires four manual steps: copy `lyra_default.toml`, hand-edit `[agent]` / `[model]` / `[prompt]` / `[agent.smart_routing]`, add `[[telegram.bots]]` or `[[discord.bots]]` entries to `lyra.toml`, then add tokens to `.env`. There is no guided flow, no validation at creation time, and no discovery of available options (backends, personas, tools, smart-routing constraints).
+
+This creates friction whenever a new bot is bootstrapped — especially for options like `high_complexity_commands` and `history_size` that are not surfaced in the default TOML, and for constraints like `smart_routing` only working with `backend = "anthropic-sdk"` that are easy to violate silently.
+
+## Who
+
+- **Primary:** Developer/maintainer (Mickael) bootstrapping a new Lyra agent from scratch
+- **Secondary:** Future contributors adding agents to the stack, who lack institutional knowledge of the TOML schema and constraints
+
+## Constraints
+
+- **CLI library:** Typer (adds one explicit dependency; fits existing Python/uv stack)
+- **TOML schema:** Output must conform to existing agent TOML structure (`lyra_default.toml` as canonical reference)
+- **smart_routing constraint:** Wizard must enforce and warn that `smart_routing` requires `backend = "anthropic-sdk"`
+- **Entry point:** `__main__.py` or a dedicated `cli.py` module
+- **No runtime coupling:** Wizard writes files only; does not start, reload, or register agents at runtime
+
+## Out of Scope
+
+- Live agent hot-reload or runtime config changes (`!config` command — tracked in #135)
+- Managing Telegram/Discord bot tokens beyond printing `.env` next-steps hints
+- TOML editing or deletion of existing agents
+- TUI/GUI — text prompts only (Typer's `typer.prompt`)
+- Auto-adding the `[[telegram.bots]]` / `[[discord.bots]]` entries to `lyra.toml` (printed as next-steps only)
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (CLI + TOML codegen), no new architectural patterns or cross-domain unknowns.
+
+Signals observed:
+- All sub-commands touch one domain (CLI → TOML files)
+- No new infrastructure or service layer
+- Constraint logic is well-defined (`smart_routing` ↔ `anthropic-sdk`)
+- Typer is the only new dependency

@@ -29,6 +29,7 @@ from .events import (
 log = logging.getLogger(__name__)
 
 MAX_SIZE = 1000
+MAX_SUBSCRIBERS = 32
 
 
 class EventBus:
@@ -77,6 +78,11 @@ class EventBus:
         Registers a new bounded queue for this subscriber. The queue is
         removed when the generator is closed or cancelled.
         """
+        if len(self._subscribers) >= MAX_SUBSCRIBERS:
+            raise RuntimeError(
+                f"EventBus: subscriber limit ({MAX_SUBSCRIBERS}) reached — "
+                "check for abandoned subscribe() generators."
+            )
         queue: asyncio.Queue[MonitoringEvent] = asyncio.Queue(maxsize=MAX_SIZE)
         self._subscribers.append(queue)
         try:
@@ -138,7 +144,8 @@ class EventAggregator:
     def _state_key(self, event: MonitoringEvent) -> str:
         """Return the composite state key for the given event."""
         if isinstance(event, (AgentFailed, AgentCompleted, AgentIdle, AgentStarted)):
-            return f"pool:{event.agent_id}"
+            # Key by pool_id (per conversation), not agent_id (shared across pools)
+            return f"pool:{event.pool_id}"
         if isinstance(event, CircuitStateChanged):
             return f"circuit:{event.platform}"
         if isinstance(event, (QueueDepthExceeded, QueueDepthNormal)):

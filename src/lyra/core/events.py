@@ -11,7 +11,8 @@ class MonitoringEvent:
 
 @dataclass(frozen=True)
 class AgentEvent(MonitoringEvent):
-    agent_id: str = ""
+    agent_id: str = ""  # agent name (e.g. "lyra")
+    pool_id: str = ""   # routing key: "platform:bot:scope" — unique per conversation
 
 
 @dataclass(frozen=True)

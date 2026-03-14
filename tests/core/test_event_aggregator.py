@@ -26,7 +26,8 @@ def reset_bus():
 class TestEventAggregatorStateKey:
     def test_state_key_agent_event(self):
         agg = EventAggregator(bus=EventBus())
-        assert agg._state_key(AgentFailed(agent_id="abc")) == "pool:abc"
+        key = agg._state_key(AgentFailed(agent_id="lyra", pool_id="tg:bot:123"))
+        assert key == "pool:tg:bot:123"
 
     def test_state_key_circuit_event(self):
         agg = EventAggregator(bus=EventBus())

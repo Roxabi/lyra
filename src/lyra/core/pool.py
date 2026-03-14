@@ -270,7 +270,13 @@ class Pool:
         _start = time.monotonic()
         _cancelled = False
         if bus := get_event_bus():
-            bus.emit(AgentStarted(agent_id=self.pool_id, scope_id=msg.scope_id))
+            bus.emit(
+                AgentStarted(
+                    agent_id=self.agent_name,
+                    pool_id=self.pool_id,
+                    scope_id=msg.scope_id,
+                )
+            )
         try:
             await asyncio.wait_for(
                 self._process_one(msg, agent), timeout=self._turn_timeout
@@ -278,7 +284,8 @@ class Pool:
             if bus := get_event_bus():
                 bus.emit(
                     AgentCompleted(
-                        agent_id=self.pool_id,
+                        agent_id=self.agent_name,
+                        pool_id=self.pool_id,
                         duration_ms=(time.monotonic() - _start) * 1000,
                     )
                 )
@@ -297,7 +304,11 @@ class Pool:
             _reply = self._msg("timeout", "Your request timed out. Please try again.")
             await self._safe_dispatch(msg, Response(content=_reply))
             if bus := get_event_bus():
-                bus.emit(AgentFailed(agent_id=self.pool_id, error="timeout"))
+                bus.emit(
+                    AgentFailed(
+                        agent_id=self.agent_name, pool_id=self.pool_id, error="timeout"
+                    )
+                )
         except asyncio.CancelledError:
             # Distinguish /stop cancellation (from pool.cancel()) vs
             # debounce cancel-in-flight.  Cancel-in-flight catches this
@@ -310,12 +321,22 @@ class Pool:
             await self._safe_dispatch(msg, Response(content=_reply))
             self._ctx.record_circuit_failure(exc)
             if bus := get_event_bus():
-                bus.emit(AgentFailed(agent_id=self.pool_id, error=str(exc)))
+                bus.emit(
+                    AgentFailed(
+                        agent_id=self.agent_name,
+                        pool_id=self.pool_id,
+                        error=str(exc)[:200],
+                    )
+                )
         finally:
             if not _cancelled:
                 if bus := get_event_bus():
                     bus.emit(
-                        AgentIdle(agent_id=self.pool_id, finished_at=time.monotonic())
+                        AgentIdle(
+                            agent_id=self.agent_name,
+                            pool_id=self.pool_id,
+                            finished_at=time.monotonic(),
+                        )
                     )
 
     async def _process_one(self, msg: InboundMessage, agent: "AgentBase") -> None:

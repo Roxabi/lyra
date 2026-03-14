@@ -527,6 +527,13 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
     tts_section = data.get("tts")
     agent_tts: AgentTTSConfig | None = None
     if tts_section is not None:
+        _tts_int_fields = ("segment_gap", "crossfade", "chunk_size")
+        for _field in _tts_int_fields:
+            _val = tts_section.get(_field)
+            if _val is not None and not isinstance(_val, int):
+                raise TypeError(
+                    f"[tts].{_field} must be an integer, got {type(_val).__name__!r}"
+                )
         agent_tts = AgentTTSConfig(
             engine=tts_section.get("engine"),
             voice=tts_section.get("voice"),
@@ -545,6 +552,13 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
     stt_section = data.get("stt")
     agent_stt: AgentSTTConfig | None = None
     if stt_section is not None:
+        _stt_int_fields = ("language_detection_segments",)
+        for _field in _stt_int_fields:
+            _val = stt_section.get(_field)
+            if _val is not None and not isinstance(_val, int):
+                raise TypeError(
+                    f"[stt].{_field} must be an integer, got {type(_val).__name__!r}"
+                )
         agent_stt = AgentSTTConfig(
             language_detection_threshold=stt_section.get("language_detection_threshold"),
             language_detection_segments=stt_section.get("language_detection_segments"),

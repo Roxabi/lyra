@@ -70,9 +70,9 @@ _ALLOW_ALL = AuthMiddleware(user_map={}, role_map={}, default=TrustLevel.PUBLIC)
 _MARKDOWNV2_SPECIAL = re.compile(r"([_*\[\]()~`>#\+\-=|{}.!\\])")
 
 
-def _make_send_kwargs(chat_id: int, text: str, reply_to: int | None) -> dict:
+def _make_send_kwargs(chat_id: int, text: str, reply_to: int | None) -> dict[str, Any]:
     """Build bot.send_message kwargs, adding reply_to_message_id when set."""
-    kwargs: dict = {"chat_id": chat_id, "text": text}
+    kwargs: dict[str, Any] = {"chat_id": chat_id, "text": text}
     if reply_to is not None:
         kwargs["reply_to_message_id"] = reply_to
     return kwargs

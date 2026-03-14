@@ -187,6 +187,64 @@ class TestMainAdapterFiltering:
             "dc_multi_cfg.bots should be preserved when adapter='discord'"
         )
 
+    async def test_all_preserves_both_bot_lists(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--adapter all (default): both tg and dc bot lists pass through unchanged."""
+        # Arrange
+        from lyra.config import DiscordBotConfig, TelegramBotConfig
+
+        tg_bot = TelegramBotConfig(
+            bot_id="tg1",
+            token="fake-tg-token",
+            bot_username="lyra_bot",
+            webhook_secret="fake-secret",
+        )
+        dc_bot = DiscordBotConfig(bot_id="dc1", token="fake-dc-token")
+
+        captured_dc_cfg: list[DiscordMultiConfig] = []
+        captured_tg_cfg: list[TelegramMultiConfig] = []
+
+        async def fake_bootstrap_multibot(
+            raw_config,
+            circuit_registry,
+            admin_user_ids,
+            tg_multi_cfg,
+            dc_multi_cfg,
+            *,
+            _stop=None,
+        ):
+            captured_tg_cfg.append(tg_multi_cfg)
+            captured_dc_cfg.append(dc_multi_cfg)
+
+        monkeypatch.setattr(main_mod, "load_dotenv", lambda: None)
+        monkeypatch.setattr(main_mod, "_load_raw_config", lambda: {})
+        monkeypatch.setattr(
+            main_mod,
+            "load_multibot_config",
+            lambda raw: (
+                TelegramMultiConfig(bots=[tg_bot]),
+                DiscordMultiConfig(bots=[dc_bot]),
+            ),
+        )
+        monkeypatch.setattr(main_mod, "_bootstrap_multibot", fake_bootstrap_multibot)
+
+        stop = asyncio.Event()
+        stop.set()
+
+        # Act
+        await main_mod._main(adapter="all", _stop=stop)  # type: ignore[call-arg]
+
+        # Assert: both lists preserved unchanged
+        assert len(captured_tg_cfg) == 1
+        assert len(captured_tg_cfg[0].bots) == 1, (
+            "tg_multi_cfg.bots should be preserved when adapter='all'"
+        )
+        assert len(captured_dc_cfg) == 1
+        assert len(captured_dc_cfg[0].bots) == 1, (
+            "dc_multi_cfg.bots should be preserved when adapter='all'"
+        )
+
 
 # ---------------------------------------------------------------------------
 # T3 — _bootstrap_legacy: adapter="telegram" skips Discord from_config
@@ -194,7 +252,14 @@ class TestMainAdapterFiltering:
 
 
 class TestBootstrapLegacyAdapterParam:
-    """Test that _bootstrap_legacy respects the adapter parameter."""
+    """Test that _bootstrap_legacy respects the adapter parameter.
+
+    Heavy mocking is expected here: _bootstrap_legacy is a PLR0915 startup wiring
+    function that initialises Hub, OutboundDispatcher, CliPool, uvicorn.Server, and
+    several helper services. The mock depth is intentional — the assertion targets only
+    the AuthMiddleware.from_config call-pattern at the top of the function, before any
+    of the downstream wiring runs.
+    """
 
     async def test_telegram_adapter_skips_discord_auth(  # noqa: PLR0915
         self, monkeypatch: pytest.MonkeyPatch

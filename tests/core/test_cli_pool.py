@@ -536,6 +536,72 @@ class TestCliPoolSpawnCwd:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# T3.4 — CliPool.resume_and_reset() — reply-to-resume (#244)
+# ---------------------------------------------------------------------------
+
+
+class TestCliPoolResumeAndReset:
+    """CliPool.resume_and_reset() stores session_id for next spawn (T3.4, SC-5)."""
+
+    async def test_resume_and_reset_sets_session_id(self) -> None:
+        """After resume_and_reset(), session stored and process killed."""
+        # Arrange
+        pool = CliPool()
+        proc = make_fake_proc([])
+        # Pre-populate a live entry so _kill has something to terminate
+        entry = _ProcessEntry(
+            proc=proc, pool_id="pool:tg:chat:1", model_config=DEFAULT_MODEL
+        )
+        pool._entries["pool:tg:chat:1"] = entry
+
+        _SESS = "abcdef01-2345-6789-abcd-ef0123456789"
+
+        # Act — patch _session_file_exists to simulate a live session file
+        with patch.object(pool, "_session_file_exists", return_value=True):
+            await pool.resume_and_reset("pool:tg:chat:1", _SESS)  # type: ignore[attr-defined]
+
+        # Assert — session stored for next spawn AND process killed
+        assert pool._resume_session_ids.get("pool:tg:chat:1") == _SESS  # type: ignore[attr-defined]
+        assert "pool:tg:chat:1" not in pool._entries
+
+    async def test_resume_and_reset_skips_when_session_file_missing(self) -> None:
+        """If session file is gone from disk, resume_and_reset is a no-op (Tier-2)."""
+        # Arrange
+        pool = CliPool()
+        proc = make_fake_proc([])
+        entry = _ProcessEntry(
+            proc=proc, pool_id="pool:tg:chat:1", model_config=DEFAULT_MODEL
+        )
+        pool._entries["pool:tg:chat:1"] = entry
+
+        # Act — session file does not exist on disk
+        with patch.object(pool, "_session_file_exists", return_value=False):
+            await pool.resume_and_reset("pool:tg:chat:1", "sess-pruned")  # type: ignore[attr-defined]
+
+        # Assert — no kill, no resume intent stored
+        assert "pool:tg:chat:1" in pool._entries
+        assert pool._resume_session_ids.get("pool:tg:chat:1") is None  # type: ignore[attr-defined]
+
+    async def test_spawn_consumes_resume_session_id_and_passes_to_cmd(self) -> None:
+        """_spawn() pops _resume_session_ids and passes --resume to CLI (one-shot)."""
+        # Arrange
+        pool = CliPool()
+        pool._resume_session_ids["pool:resume:1"] = "sess-abc"  # type: ignore[attr-defined]
+        proc = make_fake_proc([INIT_LINE, ASSISTANT_LINE, RESULT_LINE])
+
+        # Act — patch subprocess so no real process is started
+        with patch(_PATCH_TARGET, new=AsyncMock(return_value=proc)) as mock_spawn:
+            await pool.send("pool:resume:1", "hello", DEFAULT_MODEL)
+
+        # Assert — --resume flag present in spawned command
+        cmd_args = list(mock_spawn.call_args[0])
+        assert "--resume" in cmd_args
+        assert cmd_args[cmd_args.index("--resume") + 1] == "sess-abc"
+        # Assert — one-shot: intent consumed after spawn
+        assert pool._resume_session_ids.get("pool:resume:1") is None  # type: ignore[attr-defined]
+
+
 class TestCliPoolSwitchCwd:
     async def test_switch_cwd_stores_override(self, tmp_path: Path) -> None:
         pool = CliPool()

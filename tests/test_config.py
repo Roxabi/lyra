@@ -1,4 +1,8 @@
-"""Unit tests for multi-bot config parsing functions in lyra.config (issue #231)."""
+"""Unit tests for multi-bot config parsing functions in lyra.config (issue #231).
+
+Credentials (token, webhook_secret) are no longer stored in config dataclasses
+— they are resolved at bootstrap time from CredentialStore (#262).
+"""
 
 from __future__ import annotations
 
@@ -73,13 +77,7 @@ class TestParseTelegramBots:
     def test_happy_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # Arrange — unset the username env var so the fallback "lyra_bot" is used
         monkeypatch.delenv("TELEGRAM_BOT_USERNAME", raising=False)
-        raw = self._raw(
-            {
-                "bot_id": "lyra",
-                "token": "tok123",
-                "webhook_secret": "secret456",
-            }
-        )
+        raw = self._raw({"bot_id": "lyra"})
         # Act
         bots = _parse_telegram_bots(raw)
         # Assert
@@ -87,55 +85,48 @@ class TestParseTelegramBots:
         bot = bots[0]
         assert isinstance(bot, TelegramBotConfig)
         assert bot.bot_id == "lyra"
-        assert bot.token == "tok123"
-        assert bot.webhook_secret == "secret456"
+        assert bot.bot_username == "lyra_bot"
+        assert bot.agent == "lyra_default"
 
-    def test_empty_token_raises(self) -> None:
-        # Empty token is a fatal misconfiguration — raises ValueError
-        raw = self._raw({"bot_id": "lyra", "token": "", "webhook_secret": "s"})
-        with pytest.raises(ValueError, match="lyra"):
-            _parse_telegram_bots(raw)
-
-    def test_env_token_resolution(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # Arrange
-        monkeypatch.setenv("TG_TOKEN", "resolved_token")
-        monkeypatch.delenv("TELEGRAM_BOT_USERNAME", raising=False)
-        raw = self._raw(
-            {
-                "bot_id": "lyra",
-                "token": "env:TG_TOKEN",
-                "webhook_secret": "secret",
-            }
-        )
+    def test_bot_username_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Arrange — set the username env var
+        monkeypatch.setenv("TELEGRAM_BOT_USERNAME", "mybot")
+        raw = self._raw({"bot_id": "lyra"})
         # Act
         bots = _parse_telegram_bots(raw)
         # Assert
-        assert len(bots) == 1
-        assert bots[0].token == "resolved_token"
+        assert bots[0].bot_username == "mybot"
 
-    def test_missing_webhook_secret_raises(
+    def test_bot_username_explicit_in_config(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Arrange — valid token, no webhook_secret
+        # Arrange — explicit bot_username in entry overrides env var
         monkeypatch.delenv("TELEGRAM_BOT_USERNAME", raising=False)
-        raw = self._raw({"bot_id": "lyra", "token": "tok123"})
-        # Act — empty webhook_secret must hard-fail at startup
-        with pytest.raises(ValueError, match="webhook_secret is empty"):
-            _parse_telegram_bots(raw)
+        raw = self._raw({"bot_id": "lyra", "bot_username": "explicit_bot"})
+        # Act
+        bots = _parse_telegram_bots(raw)
+        # Assert
+        assert bots[0].bot_username == "explicit_bot"
 
     def test_two_bots_returned(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # Arrange
         monkeypatch.delenv("TELEGRAM_BOT_USERNAME", raising=False)
-        raw = self._raw(
-            {"bot_id": "alpha", "token": "tokA", "webhook_secret": "secA"},
-            {"bot_id": "beta", "token": "tokB", "webhook_secret": "secB"},
-        )
+        raw = self._raw({"bot_id": "alpha"}, {"bot_id": "beta"})
         # Act
         bots = _parse_telegram_bots(raw)
         # Assert
         assert len(bots) == 2
         assert bots[0].bot_id == "alpha"
         assert bots[1].bot_id == "beta"
+
+    def test_custom_agent(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Arrange
+        monkeypatch.delenv("TELEGRAM_BOT_USERNAME", raising=False)
+        raw = self._raw({"bot_id": "lyra", "agent": "my_agent"})
+        # Act
+        bots = _parse_telegram_bots(raw)
+        # Assert
+        assert bots[0].agent == "my_agent"
 
     def test_empty_bots_list(self) -> None:
         # Arrange — no telegram.bots key at all
@@ -157,7 +148,7 @@ class TestParseDiscordBots:
 
     def test_happy_path(self) -> None:
         # Arrange
-        raw = self._raw({"bot_id": "lyra", "token": "dc_tok"})
+        raw = self._raw({"bot_id": "lyra"})
         # Act
         bots = _parse_discord_bots(raw)
         # Assert
@@ -165,23 +156,29 @@ class TestParseDiscordBots:
         bot = bots[0]
         assert isinstance(bot, DiscordBotConfig)
         assert bot.bot_id == "lyra"
-        assert bot.token == "dc_tok"
         assert bot.auto_thread is True  # default
-
-    def test_empty_token_raises(self) -> None:
-        # Empty token is a fatal misconfiguration — raises ValueError
-        raw = self._raw({"bot_id": "lyra", "token": ""})
-        with pytest.raises(ValueError, match="lyra"):
-            _parse_discord_bots(raw)
 
     def test_auto_thread_false(self) -> None:
         # Arrange
-        raw = self._raw({"bot_id": "lyra", "token": "dc_tok", "auto_thread": False})
+        raw = self._raw({"bot_id": "lyra", "auto_thread": False})
         # Act
         bots = _parse_discord_bots(raw)
         # Assert
         assert len(bots) == 1
         assert bots[0].auto_thread is False
+
+    def test_custom_agent(self) -> None:
+        # Arrange
+        raw = self._raw({"bot_id": "lyra", "agent": "my_agent"})
+        # Act
+        bots = _parse_discord_bots(raw)
+        # Assert
+        assert bots[0].agent == "my_agent"
+
+    def test_empty_bots_list(self) -> None:
+        raw: dict = {}
+        bots = _parse_discord_bots(raw)
+        assert bots == []
 
 
 # ---------------------------------------------------------------------------
@@ -202,11 +199,7 @@ class TestLoadMultibotConfig:
     def test_multibot_new_style(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # Arrange
         monkeypatch.delenv("TELEGRAM_BOT_USERNAME", raising=False)
-        raw = {
-            "telegram": {
-                "bots": [{"bot_id": "lyra", "token": "tok", "webhook_secret": "sec"}]
-            }
-        }
+        raw = {"telegram": {"bots": [{"bot_id": "lyra"}]}}
         # Act
         tg, dc = load_multibot_config(raw)
         # Assert
@@ -215,9 +208,8 @@ class TestLoadMultibotConfig:
         assert dc.bots == []
 
     def test_legacy_telegram_fallback(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # Arrange — no [telegram] section, but [auth.telegram] present + env var set
-        monkeypatch.setenv("TELEGRAM_TOKEN", "legacy_tok")
-        monkeypatch.delenv("TELEGRAM_WEBHOOK_SECRET", raising=False)
+        # Arrange — no [telegram] section, but [auth.telegram] present.
+        # The legacy fallback synthesizes a bot_id="main" entry regardless of env vars.
         monkeypatch.delenv("TELEGRAM_BOT_USERNAME", raising=False)
         raw = {"auth": {"telegram": {"default": "blocked"}}}
         # Act
@@ -226,20 +218,10 @@ class TestLoadMultibotConfig:
         assert len(tg.bots) == 1
         bot = tg.bots[0]
         assert bot.bot_id == "main"
-        assert bot.token == "legacy_tok"
-
-    def test_legacy_telegram_no_token(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # Arrange — legacy config present but env var not set
-        monkeypatch.delenv("TELEGRAM_TOKEN", raising=False)
-        raw = {"auth": {"telegram": {"default": "blocked"}}}
-        # Act
-        tg, _ = load_multibot_config(raw)
-        # Assert
-        assert tg.bots == []
+        assert bot.bot_username == "lyra_bot"
 
     def test_legacy_discord_fallback(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # Arrange
-        monkeypatch.setenv("DISCORD_TOKEN", "dc_legacy_tok")
         monkeypatch.delenv("DISCORD_AUTO_THREAD", raising=False)
         raw = {"auth": {"discord": {"default": "blocked"}}}
         # Act
@@ -248,14 +230,12 @@ class TestLoadMultibotConfig:
         assert len(dc.bots) == 1
         bot = dc.bots[0]
         assert bot.bot_id == "main"
-        assert bot.token == "dc_legacy_tok"
         assert bot.auto_thread is True  # default when env var not set
 
     def test_legacy_discord_auto_thread_parsing(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # Arrange — DISCORD_AUTO_THREAD=false disables threading
-        monkeypatch.setenv("DISCORD_TOKEN", "dc_tok")
         monkeypatch.setenv("DISCORD_AUTO_THREAD", "false")
         raw = {"auth": {"discord": {"default": "blocked"}}}
         # Act
@@ -266,14 +246,9 @@ class TestLoadMultibotConfig:
 
     def test_new_style_wins_over_legacy(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # Arrange — both [[telegram.bots]] AND [auth.telegram] present
-        monkeypatch.setenv("TELEGRAM_TOKEN", "legacy_tok")
         monkeypatch.delenv("TELEGRAM_BOT_USERNAME", raising=False)
         raw = {
-            "telegram": {
-                "bots": [
-                    {"bot_id": "new_bot", "token": "new_tok", "webhook_secret": "s"}
-                ]
-            },
+            "telegram": {"bots": [{"bot_id": "new_bot"}]},
             "auth": {"telegram": {"default": "blocked"}},
         }
         # Act
@@ -281,4 +256,3 @@ class TestLoadMultibotConfig:
         # Assert — only the new-style bot is present; no legacy "main" bot synthesized
         assert len(tg.bots) == 1
         assert tg.bots[0].bot_id == "new_bot"
-        assert tg.bots[0].token == "new_tok"

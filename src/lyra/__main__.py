@@ -23,9 +23,8 @@ import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException
 
-from lyra.adapters.discord import DiscordAdapter, load_discord_config
+from lyra.adapters.discord import DiscordAdapter
 from lyra.adapters.telegram import TelegramAdapter
-from lyra.adapters.telegram import load_config as load_telegram_config
 from lyra.agents.simple_agent import SimpleAgent
 from lyra.config import (
     DiscordBotConfig,
@@ -40,11 +39,13 @@ from lyra.core.auth import AuthMiddleware
 from lyra.core.auth_store import AuthStore
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.cli_pool import CliPool
+from lyra.core.credential_store import CredentialStore, LyraKeyring
 from lyra.core.hub import Hub, RoutingKey
 from lyra.core.message import Platform
 from lyra.core.messages import MessageManager
 from lyra.core.outbound_dispatcher import OutboundDispatcher
 from lyra.core.pairing import PairingConfig, PairingManager, set_pairing_manager
+from lyra.errors import MissingCredentialsError
 from lyra.llm.base import LlmProvider
 from lyra.llm.registry import ProviderRegistry
 from lyra.llm.smart_routing import SmartRoutingDecorator
@@ -420,6 +421,12 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
     vault_dir_mb.mkdir(parents=True, exist_ok=True)
     auth_store = AuthStore(db_path=vault_dir_mb / "auth.db")
     await auth_store.connect()
+    keyring_mb = await LyraKeyring.load_or_create(vault_dir_mb / "keyring.key")
+    cred_store = CredentialStore(
+        db_path=vault_dir_mb / "auth.db",
+        keyring=keyring_mb,
+    )
+    await cred_store.connect()
 
     # Seed per-bot owner/trusted users as permanent grants
     auth_block: dict = raw_config.get("auth", {})
@@ -549,12 +556,16 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
     tg_adapters: list[TelegramAdapter] = []
     tg_dispatchers: list[OutboundDispatcher] = []
     for bot_cfg, auth in tg_bot_auths:
+        tg_creds = await cred_store.get_full("telegram", bot_cfg.bot_id)
+        if tg_creds is None:
+            raise MissingCredentialsError("telegram", bot_cfg.bot_id)
+        tg_token, tg_webhook_secret = tg_creds
         adapter = TelegramAdapter(
             bot_id=bot_cfg.bot_id,
-            token=bot_cfg.token,
+            token=tg_token,
             hub=hub,
             bot_username=bot_cfg.bot_username,
-            webhook_secret=bot_cfg.webhook_secret,
+            webhook_secret=tg_webhook_secret or "",
             circuit_registry=circuit_registry,
             msg_manager=msg_manager,
             auth=auth,
@@ -585,9 +596,13 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
         )
 
     # Wire Discord adapters
-    dc_adapters: list[tuple[DiscordAdapter, DiscordBotConfig]] = []
+    dc_adapters: list[tuple[DiscordAdapter, DiscordBotConfig, str]] = []
     dc_dispatchers: list[OutboundDispatcher] = []
     for bot_cfg, auth in dc_bot_auths:
+        dc_creds = await cred_store.get_full("discord", bot_cfg.bot_id)
+        if dc_creds is None:
+            raise MissingCredentialsError("discord", bot_cfg.bot_id)
+        dc_token, _ = dc_creds
         adapter = DiscordAdapter(
             hub=hub,
             bot_id=bot_cfg.bot_id,
@@ -613,7 +628,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
             bot_id=bot_cfg.bot_id,
         )
         hub.register_outbound_dispatcher(Platform.DISCORD, bot_cfg.bot_id, dispatcher)
-        dc_adapters.append((adapter, bot_cfg))
+        dc_adapters.append((adapter, bot_cfg, dc_token))
         dc_dispatchers.append(dispatcher)
         log.info(
             "Registered Discord bot bot_id=%r agent=%r",
@@ -654,16 +669,16 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
                 name=f"telegram:{tg_adapter._bot_id}",
             )
         )
-    for dc_adapter, dc_bot_cfg in dc_adapters:
+    for dc_adapter, dc_bot_cfg, dc_token in dc_adapters:
         tasks.append(
             asyncio.create_task(
-                dc_adapter.start(dc_bot_cfg.token),
+                dc_adapter.start(dc_token),
                 name=f"discord:{dc_bot_cfg.bot_id}",
             )
         )
 
     tg_active = [f"telegram:{a._bot_id}" for a in tg_adapters]
-    dc_active = [f"discord:{c.bot_id}" for _, c in dc_adapters]
+    dc_active = [f"discord:{c.bot_id}" for _, c, _ in dc_adapters]
     active = tg_active + dc_active
     log.info(
         "Lyra started — adapters: %s, health on :%d.",
@@ -683,10 +698,11 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
         await d.stop()
     for d in dc_dispatchers:
         await d.stop()
-    for dc_adapter, _ in dc_adapters:
+    for dc_adapter, _, _dc_tok in dc_adapters:
         await dc_adapter.close()
     if pm is not None:
         await pm.close()
+    await cred_store.close()
     await auth_store.close()
     if cli_pool is not None:
         await cli_pool.stop()
@@ -715,6 +731,12 @@ async def _bootstrap_legacy(  # noqa: C901, PLR0915 — startup wiring: each ada
     vault_dir_lg.mkdir(parents=True, exist_ok=True)
     auth_store_legacy = AuthStore(db_path=vault_dir_lg / "auth.db")
     await auth_store_legacy.connect()
+    keyring_lg = await LyraKeyring.load_or_create(vault_dir_lg / "keyring.key")
+    cred_store_legacy = CredentialStore(
+        db_path=vault_dir_lg / "auth.db",
+        keyring=keyring_lg,
+    )
+    await cred_store_legacy.connect()
     await auth_store_legacy.seed_from_config(raw_config, "telegram")
     await auth_store_legacy.seed_from_config(raw_config, "discord")
 
@@ -742,10 +764,30 @@ async def _bootstrap_legacy(  # noqa: C901, PLR0915 — startup wiring: each ada
             " [auth.discord] to config.toml"
         )
 
-    # Config loaders call sys.exit() on missing required env vars — only load
-    # configs for adapters that have an auth section configured.
-    tg_cfg = load_telegram_config() if tg_auth is not None else None
-    dc_cfg = load_discord_config() if dc_auth is not None else None
+    # Resolve credentials from CredentialStore (bot_id="main" for legacy path).
+    # Non-credential config (bot_username, auto_thread) is read from env vars.
+    tg_token_lg: str | None = None
+    tg_webhook_secret_lg: str | None = None
+    tg_bot_username_lg: str = os.environ.get("TELEGRAM_BOT_USERNAME", "lyra_bot")
+    if tg_auth is not None:
+        tg_creds_lg = await cred_store_legacy.get_full("telegram", "main")
+        if tg_creds_lg is None:
+            raise MissingCredentialsError("telegram", "main")
+        tg_token_lg, tg_webhook_secret_lg = tg_creds_lg
+
+    dc_token_lg: str | None = None
+    dc_auto_thread_lg: bool = True
+    if dc_auth is not None:
+        dc_creds_lg = await cred_store_legacy.get_full("discord", "main")
+        if dc_creds_lg is None:
+            raise MissingCredentialsError("discord", "main")
+        dc_token_lg, _ = dc_creds_lg
+        auto_thread_str_lg = os.environ.get("DISCORD_AUTO_THREAD", "").strip().lower()
+        dc_auto_thread_lg = (
+            auto_thread_str_lg in {"1", "true", "yes", "on"}
+            if auto_thread_str_lg
+            else True
+        )
 
     agent_config = load_agent_config(
         "lyra_default",
@@ -842,13 +884,13 @@ async def _bootstrap_legacy(  # noqa: C901, PLR0915 — startup wiring: each ada
     tg_adapter: TelegramAdapter | None = None
     dc_adapter: DiscordAdapter | None = None
 
-    if tg_auth is not None and tg_cfg is not None:
+    if tg_auth is not None and tg_token_lg is not None:
         tg_adapter = TelegramAdapter(
             bot_id="main",
-            token=tg_cfg.token,
+            token=tg_token_lg,
             hub=hub,
-            bot_username=tg_cfg.bot_username,
-            webhook_secret=tg_cfg.webhook_secret,
+            bot_username=tg_bot_username_lg,
+            webhook_secret=tg_webhook_secret_lg or "",
             circuit_registry=circuit_registry,
             msg_manager=msg_manager,
             auth=tg_auth,
@@ -859,13 +901,13 @@ async def _bootstrap_legacy(  # noqa: C901, PLR0915 — startup wiring: each ada
             Platform.TELEGRAM, "main", "*", agent.name, tg_key.to_pool_id()
         )
 
-    if dc_auth is not None and dc_cfg is not None:
+    if dc_auth is not None and dc_token_lg is not None:
         dc_adapter = DiscordAdapter(
             hub=hub,
             bot_id="main",
             circuit_registry=circuit_registry,
             msg_manager=msg_manager,
-            auto_thread=dc_cfg.auto_thread,
+            auto_thread=dc_auto_thread_lg,
             auth=dc_auth,
         )
         hub.register_adapter(Platform.DISCORD, "main", dc_adapter)
@@ -937,9 +979,9 @@ async def _bootstrap_legacy(  # noqa: C901, PLR0915 — startup wiring: each ada
                 name="telegram",
             )
         )
-    if dc_adapter is not None and dc_cfg is not None:
+    if dc_adapter is not None and dc_token_lg is not None:
         tasks.append(
-            asyncio.create_task(dc_adapter.start(dc_cfg.token), name="discord")
+            asyncio.create_task(dc_adapter.start(dc_token_lg), name="discord")
         )
 
     task_names = {t.get_name() for t in tasks}
@@ -966,6 +1008,7 @@ async def _bootstrap_legacy(  # noqa: C901, PLR0915 — startup wiring: each ada
         await dc_adapter.close()
     if pm_legacy is not None:
         await pm_legacy.close()
+    await cred_store_legacy.close()
     await auth_store_legacy.close()
     if cli_pool_legacy is not None:
         await cli_pool_legacy.stop()

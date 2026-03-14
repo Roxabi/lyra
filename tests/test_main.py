@@ -88,15 +88,20 @@ def _patch_all(
     _fake_auth_store.seed_from_config = AsyncMock()
     _fake_auth_store.close = AsyncMock()
     monkeypatch.setattr(main_mod, "AuthStore", lambda **kwargs: _fake_auth_store)
+
+    _fake_keyring = MagicMock()
+    _fake_keyring.key = b"fake-key-32-bytes-for-fernet-key"
+    _fake_cred_store = MagicMock()
+    _fake_cred_store.connect = AsyncMock()
+    _fake_cred_store.close = AsyncMock()
+    _fake_cred_store.get_full = AsyncMock(return_value=("fake-token", "fake-secret"))
     monkeypatch.setattr(
         main_mod,
-        "load_telegram_config",
-        lambda: MagicMock(token="t", webhook_secret="s", bot_username="b"),
+        "LyraKeyring",
+        MagicMock(load_or_create=AsyncMock(return_value=_fake_keyring)),
     )
     monkeypatch.setattr(
-        main_mod,
-        "load_discord_config",
-        lambda: MagicMock(token="d"),
+        main_mod, "CredentialStore", lambda **kwargs: _fake_cred_store
     )
     monkeypatch.setattr(
         main_mod,
@@ -327,27 +332,41 @@ class TestAgentFactory:
 # ---------------------------------------------------------------------------
 
 
+def _patch_auth_config_test(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Shared setup for TestAuthConfig tests: mock auth/credential stores."""
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr(main_mod, "load_dotenv", lambda: None)
+
+    _fake_auth_store = MagicMock()
+    _fake_auth_store.connect = AsyncMock()
+    _fake_auth_store.seed_from_config = AsyncMock()
+    _fake_auth_store.close = AsyncMock()
+    monkeypatch.setattr(main_mod, "AuthStore", lambda **kwargs: _fake_auth_store)
+
+    _fake_keyring = MagicMock()
+    _fake_keyring.key = b"fake-key-32-bytes-for-fernet-key"
+    _fake_cred_store = MagicMock()
+    _fake_cred_store.connect = AsyncMock()
+    _fake_cred_store.close = AsyncMock()
+    _fake_cred_store.get_full = AsyncMock(return_value=("fake-token", "fake-secret"))
+    monkeypatch.setattr(
+        main_mod,
+        "LyraKeyring",
+        MagicMock(load_or_create=AsyncMock(return_value=_fake_keyring)),
+    )
+    monkeypatch.setattr(
+        main_mod, "CredentialStore", lambda **kwargs: _fake_cred_store
+    )
+
+
 class TestAuthConfig:
     async def test_missing_telegram_section_exits(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Missing [auth.telegram] causes SystemExit when _main() runs."""
-        monkeypatch.setattr(main_mod, "load_dotenv", lambda: None)
-        monkeypatch.setattr(
-            main_mod,
-            "load_telegram_config",
-            lambda: MagicMock(token="t", webhook_secret="s", bot_username="b"),
-        )
-        monkeypatch.setattr(
-            main_mod,
-            "load_discord_config",
-            lambda: MagicMock(token="d"),
-        )
-        monkeypatch.setattr(
-            main_mod,
-            "_load_raw_config",
-            lambda: {},
-        )
+        _patch_auth_config_test(monkeypatch)
+        monkeypatch.setattr(main_mod, "_load_raw_config", lambda: {})
         stop = asyncio.Event()
         stop.set()
         with pytest.raises(SystemExit, match="auth.telegram"):
@@ -356,22 +375,19 @@ class TestAuthConfig:
     async def test_discord_section_optional_when_telegram_present(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Missing [auth.discord] is allowed when [auth.telegram] is configured."""
-        monkeypatch.setattr(main_mod, "load_dotenv", lambda: None)
-        monkeypatch.setattr(
-            main_mod,
-            "load_telegram_config",
-            lambda: MagicMock(token="t", webhook_secret="s", bot_username="b"),
-        )
-        monkeypatch.setattr(
-            main_mod,
-            "load_discord_config",
-            lambda: MagicMock(token="d"),
-        )
+        """Missing discord auth is allowed when telegram is configured."""
+        _patch_auth_config_test(monkeypatch)
+        # Use the multi-bot format (telegram_bots) since load_multibot_config
+        # now routes through _bootstrap_multibot even for legacy-style configs.
         monkeypatch.setattr(
             main_mod,
             "_load_raw_config",
-            lambda: {"auth": {"telegram": {"default": "public"}}},
+            lambda: {
+                "telegram": {"bots": [{"bot_id": "main"}]},
+                "auth": {
+                    "telegram_bots": [{"bot_id": "main", "default": "public"}]
+                },
+            },
         )
         # Sentinel: if we reach load_agent_config, auth validation passed.
         monkeypatch.setattr(
@@ -385,26 +401,20 @@ class TestAuthConfig:
             await main_mod._main(_stop=stop)
 
     async def test_invalid_default_exits(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Invalid default in [auth.telegram] causes SystemExit when _main() runs."""
-        monkeypatch.setattr(main_mod, "load_dotenv", lambda: None)
-        monkeypatch.setattr(
-            main_mod,
-            "load_telegram_config",
-            lambda: MagicMock(token="t", webhook_secret="s", bot_username="b"),
-        )
-        monkeypatch.setattr(
-            main_mod,
-            "load_discord_config",
-            lambda: MagicMock(token="d"),
-        )
+        """Invalid default in auth config causes SystemExit when _main() runs."""
+        _patch_auth_config_test(monkeypatch)
+        # Use the multi-bot format (telegram_bots) since load_multibot_config
+        # routes through _bootstrap_multibot.
         monkeypatch.setattr(
             main_mod,
             "_load_raw_config",
             lambda: {
+                "telegram": {"bots": [{"bot_id": "main"}]},
                 "auth": {
-                    "telegram": {"default": "invalid_level"},
-                    "discord": {"default": "public"},
-                }
+                    "telegram_bots": [
+                        {"bot_id": "main", "default": "invalid_level"}
+                    ],
+                },
             },
         )
         stop = asyncio.Event()

@@ -153,6 +153,29 @@ class CredentialStore:
             return None
         return fernet.decrypt(row[0].encode()).decode()
 
+    async def get_full(
+        self, platform: str, bot_id: str
+    ) -> tuple[str, str | None] | None:
+        """Return (decrypted_token, decrypted_webhook_secret_or_None).
+
+        Returns None if no entry exists for the given platform/bot_id.
+        """
+        fernet = self._require_fernet()
+        db = self._require_db()
+        async with db.execute(
+            "SELECT token, webhook_secret"
+            " FROM bot_secrets WHERE platform=? AND bot_id=?",
+            (platform, bot_id),
+        ) as cursor:
+            row = await cursor.fetchone()
+        if row is None:
+            return None
+        token = fernet.decrypt(row[0].encode()).decode()
+        webhook_secret = (
+            fernet.decrypt(row[1].encode()).decode() if row[1] is not None else None
+        )
+        return token, webhook_secret
+
     async def exists(self, platform: str, bot_id: str) -> bool:
         db = self._require_db()
         async with db.execute(

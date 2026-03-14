@@ -1,0 +1,94 @@
+"""lyra bot — CLI commands for managing encrypted bot credentials."""
+
+from __future__ import annotations
+
+import asyncio
+from pathlib import Path
+from typing import Optional
+
+import typer
+
+from lyra.core.credential_store import CredentialStore, LyraKeyring
+
+bot_app = typer.Typer(
+    name="bot", help="Manage bot credentials stored in ~/.lyra/auth.db."
+)
+
+
+def _open_credential_store() -> CredentialStore:
+    vault = Path.home() / ".lyra"
+    vault.mkdir(parents=True, exist_ok=True)
+    keyring = asyncio.run(LyraKeyring.load_or_create(vault / "keyring.key"))
+    store = CredentialStore(db_path=vault / "auth.db", keyring=keyring)
+    asyncio.run(store.connect())
+    return store
+
+
+@bot_app.command("add")
+def bot_add(
+    platform: str = typer.Option(..., help="Platform: telegram or discord"),
+    bot_id: str = typer.Option(..., help="Bot ID as defined in config.toml"),
+    token: str = typer.Option(..., help="Bot token"),
+    webhook_secret: Optional[str] = typer.Option(
+        None, help="Webhook secret (Telegram only)"
+    ),
+) -> None:
+    """Store encrypted bot credentials in ~/.lyra/auth.db."""
+    if platform not in ("telegram", "discord"):
+        typer.echo(
+            f"✗ Unknown platform '{platform}'. Use: telegram or discord", err=True
+        )
+        raise typer.Exit(1)
+    store = _open_credential_store()
+    try:
+        if asyncio.run(store.exists(platform, bot_id)):
+            typer.confirm(
+                f"Credentials already exist for {platform}/{bot_id}. Overwrite?",
+                abort=True,
+            )
+        asyncio.run(store.set(platform, bot_id, token, webhook_secret))
+        typer.echo(f"✓ Credentials stored for {platform}/{bot_id}")
+    finally:
+        asyncio.run(store.close())
+
+
+@bot_app.command("list")
+def bot_list() -> None:
+    """List all stored bot credentials (tokens masked)."""
+    store = _open_credential_store()
+    try:
+        rows = asyncio.run(store.list_all())
+        if not rows:
+            typer.echo("No credentials stored. Run lyra bot add to get started.")
+            return
+        typer.echo(f"{'PLATFORM':<12} {'BOT ID':<20} {'TOKEN':<20} UPDATED")
+        typer.echo("-" * 70)
+        for row in rows:
+            raw_token = asyncio.run(store.get(row.platform, row.bot_id))
+            if raw_token:
+                masked = f"***...{raw_token[-4:]}"
+            else:
+                masked = "***"
+            typer.echo(
+                f"{row.platform:<12} {row.bot_id:<20} {masked:<20} {row.updated_at}"
+            )
+    finally:
+        asyncio.run(store.close())
+
+
+@bot_app.command("remove")
+def bot_remove(
+    platform: str = typer.Option(...),
+    bot_id: str = typer.Option(...),
+) -> None:
+    """Remove stored bot credentials."""
+    typer.confirm(f"Remove credentials for {platform}/{bot_id}?", abort=True)
+    store = _open_credential_store()
+    try:
+        deleted = asyncio.run(store.delete(platform, bot_id))
+        if deleted:
+            typer.echo(f"✓ Removed credentials for {platform}/{bot_id}")
+        else:
+            typer.echo(f"✗ Not found for {platform}/{bot_id}")
+    finally:
+        asyncio.run(store.close())

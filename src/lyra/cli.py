@@ -28,6 +28,7 @@ import click
 import tomli_w
 import typer
 
+from lyra.cli_bot import bot_app
 from lyra.core.agent import (
     _SYSTEM_AGENTS_DIR,
     _USER_AGENTS_DIR,
@@ -58,6 +59,7 @@ config_app = typer.Typer(name="config", help="Manage instance config (config.tom
 
 lyra_app.add_typer(agent_app, name="agent")
 lyra_app.add_typer(config_app, name="config")
+lyra_app.add_typer(bot_app, name="bot")
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -411,7 +413,7 @@ def config_validate(
     errors: list[str] = []
     for section in ("telegram", "discord"):
         for bot in raw.get(section, {}).get("bots", []):
-            for field in ("token", "webhook_secret", "bot_username"):
+            for field in ("bot_username",):
                 val = bot.get(field, "")
                 if isinstance(val, str) and val.startswith("env:"):
                     env_var = val[4:]

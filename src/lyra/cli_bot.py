@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 from typing import Optional
 
 import typer
 
 from lyra.core.credential_store import CredentialStore, LyraKeyring
+
+
+def _vault_dir() -> Path:
+    return Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra")))
+
 
 bot_app = typer.Typer(
     name="bot", help="Manage bot credentials stored in ~/.lyra/auth.db."
@@ -17,7 +23,7 @@ bot_app = typer.Typer(
 
 async def _make_store(vault: Path) -> CredentialStore:
     vault.mkdir(parents=True, exist_ok=True)
-    keyring = await LyraKeyring.load_or_create(vault / "keyring.key")
+    keyring = LyraKeyring.load_or_create(vault / "keyring.key")
     store = CredentialStore(db_path=vault / "auth.db", keyring=keyring)
     await store.connect()
     return store
@@ -27,9 +33,9 @@ async def _make_store(vault: Path) -> CredentialStore:
 def bot_add(
     platform: str = typer.Option(..., help="Platform: telegram or discord"),
     bot_id: str = typer.Option(..., help="Bot ID as defined in config.toml"),
-    token: str = typer.Option(..., help="Bot token"),
+    token: str = typer.Option(..., help="Bot token", hide_input=True, prompt=True),
     webhook_secret: Optional[str] = typer.Option(
-        None, help="Webhook secret (Telegram only)"
+        None, help="Webhook secret (Telegram only)", hide_input=True
     ),
 ) -> None:
     """Store encrypted bot credentials in ~/.lyra/auth.db."""
@@ -47,7 +53,7 @@ async def _bot_add_async(
     token: str,
     webhook_secret: Optional[str],
 ) -> None:
-    vault = Path.home() / ".lyra"
+    vault = _vault_dir()
     store = await _make_store(vault)
     try:
         if await store.exists(platform, bot_id):
@@ -68,7 +74,7 @@ def bot_list() -> None:
 
 
 async def _bot_list_async() -> None:
-    vault = Path.home() / ".lyra"
+    vault = _vault_dir()
     store = await _make_store(vault)
     try:
         rows = await store.list_all()
@@ -101,7 +107,7 @@ def bot_remove(
 
 
 async def _bot_remove_async(platform: str, bot_id: str) -> None:
-    vault = Path.home() / ".lyra"
+    vault = _vault_dir()
     store = await _make_store(vault)
     try:
         deleted = await store.delete(platform, bot_id)

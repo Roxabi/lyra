@@ -29,7 +29,7 @@ async def make_store(tmp_path: Path) -> CredentialStore:
     automatic teardown via ``yield`` + ``await store.close()``.
     """
     key_path = tmp_path / "lyra.key"
-    keyring = await LyraKeyring.load_or_create(key_path)
+    keyring = LyraKeyring.load_or_create(key_path)
     store = CredentialStore(db_path=str(tmp_path / "credentials.db"), keyring=keyring)
     await store.connect()
     return store
@@ -76,7 +76,7 @@ class TestCredentialStoreRoundtrip:
         # Arrange
         db_path = str(tmp_path / "credentials.db")
         key_path = tmp_path / "lyra.key"
-        keyring = await LyraKeyring.load_or_create(key_path)
+        keyring = LyraKeyring.load_or_create(key_path)
         store = CredentialStore(db_path=db_path, keyring=keyring)
         await store.connect()
         try:
@@ -251,7 +251,7 @@ class TestLyraKeyring:
         key_path = tmp_path / "lyra.key"
 
         # Act
-        await LyraKeyring.load_or_create(key_path)
+        LyraKeyring.load_or_create(key_path)
 
         # Assert — file must exist with 0o600 permissions
         assert key_path.exists(), "load_or_create() must create the key file"
@@ -273,10 +273,10 @@ class TestLyraKeyring:
     async def test_keyring_load_existing(self, tmp_path: Path) -> None:
         # Arrange
         key_path = tmp_path / "lyra.key"
-        keyring1 = await LyraKeyring.load_or_create(key_path)
+        keyring1 = LyraKeyring.load_or_create(key_path)
 
         # Act — second call must load the same key, not regenerate it
-        keyring2 = await LyraKeyring.load_or_create(key_path)
+        keyring2 = LyraKeyring.load_or_create(key_path)
 
         # Assert
         assert keyring1.key == keyring2.key, (
@@ -288,13 +288,13 @@ class TestLyraKeyring:
     ) -> None:
         # Arrange — create the key file first, then make it unreadable
         key_path = tmp_path / "lyra.key"
-        await LyraKeyring.load_or_create(key_path)
+        LyraKeyring.load_or_create(key_path)
         key_path.chmod(0o000)
 
         try:
             # Act + Assert
             with pytest.raises(KeyringError):
-                await LyraKeyring.load_or_create(key_path)
+                LyraKeyring.load_or_create(key_path)
         finally:
             # Restore permissions so tmp_path cleanup can delete the file
             key_path.chmod(0o600)

@@ -45,7 +45,7 @@ from lyra.core.message import Platform
 from lyra.core.messages import MessageManager
 from lyra.core.outbound_dispatcher import OutboundDispatcher
 from lyra.core.pairing import PairingConfig, PairingManager, set_pairing_manager
-from lyra.errors import MissingCredentialsError
+from lyra.errors import KeyringError, MissingCredentialsError
 from lyra.llm.base import LlmProvider
 from lyra.llm.registry import ProviderRegistry
 from lyra.llm.smart_routing import SmartRoutingDecorator
@@ -421,7 +421,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
     vault_dir_mb.mkdir(parents=True, exist_ok=True)
     auth_store = AuthStore(db_path=vault_dir_mb / "auth.db")
     await auth_store.connect()
-    keyring_mb = await LyraKeyring.load_or_create(vault_dir_mb / "keyring.key")
+    keyring_mb = LyraKeyring.load_or_create(vault_dir_mb / "keyring.key")
     cred_store = CredentialStore(
         db_path=vault_dir_mb / "auth.db",
         keyring=keyring_mb,
@@ -731,7 +731,7 @@ async def _bootstrap_legacy(  # noqa: C901, PLR0915 — startup wiring: each ada
     vault_dir_lg.mkdir(parents=True, exist_ok=True)
     auth_store_legacy = AuthStore(db_path=vault_dir_lg / "auth.db")
     await auth_store_legacy.connect()
-    keyring_lg = await LyraKeyring.load_or_create(vault_dir_lg / "keyring.key")
+    keyring_lg = LyraKeyring.load_or_create(vault_dir_lg / "keyring.key")
     cred_store_legacy = CredentialStore(
         db_path=vault_dir_lg / "auth.db",
         keyring=keyring_lg,
@@ -980,9 +980,7 @@ async def _bootstrap_legacy(  # noqa: C901, PLR0915 — startup wiring: each ada
             )
         )
     if dc_adapter is not None and dc_token_lg is not None:
-        tasks.append(
-            asyncio.create_task(dc_adapter.start(dc_token_lg), name="discord")
-        )
+        tasks.append(asyncio.create_task(dc_adapter.start(dc_token_lg), name="discord"))
 
     task_names = {t.get_name() for t in tasks}
     active = [name for name in ("telegram", "discord") if name in task_names]
@@ -1085,19 +1083,26 @@ async def _main(*, adapter: str = "all", _stop: asyncio.Event | None = None) -> 
                 " in config.toml — add at least one bot under [[{adapter}.bots]]"
                 " or omit --adapter to start all configured adapters"
             )
-    if use_multibot:
-        await _bootstrap_multibot(
-            raw_config,
-            circuit_registry,
-            admin_user_ids,
-            tg_multi_cfg,
-            dc_multi_cfg,
-            _stop=_stop,
-        )
-    else:
-        await _bootstrap_legacy(
-            raw_config, circuit_registry, admin_user_ids, adapter=adapter, _stop=_stop
-        )
+    try:
+        if use_multibot:
+            await _bootstrap_multibot(
+                raw_config,
+                circuit_registry,
+                admin_user_ids,
+                tg_multi_cfg,
+                dc_multi_cfg,
+                _stop=_stop,
+            )
+        else:
+            await _bootstrap_legacy(
+                raw_config,
+                circuit_registry,
+                admin_user_ids,
+                adapter=adapter,
+                _stop=_stop,
+            )
+    except (MissingCredentialsError, KeyringError) as exc:
+        sys.exit(str(exc))
 
 
 def _setup_logging() -> None:

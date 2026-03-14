@@ -87,7 +87,7 @@ def _make_fake_stores(
     monkeypatch.setattr(
         main_mod,
         "LyraKeyring",
-        MagicMock(load_or_create=AsyncMock(return_value=fake_keyring)),
+        MagicMock(load_or_create=MagicMock(return_value=fake_keyring)),
     )
     monkeypatch.setattr(main_mod, "CredentialStore", lambda **kwargs: fake_cred_store)
     return fake_keyring, fake_cred_store
@@ -116,9 +116,7 @@ def _patch_common(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
             model_config=ModelConfig(backend="claude-cli"),
         ),
     )
-    monkeypatch.setattr(
-        main_mod, "TelegramAdapter", lambda **kwargs: _FakeTgAdapter()
-    )
+    monkeypatch.setattr(main_mod, "TelegramAdapter", lambda **kwargs: _FakeTgAdapter())
     monkeypatch.setattr(
         main_mod,
         "DiscordAdapter",
@@ -158,9 +156,7 @@ class TestMissingCredentials:
             "_load_raw_config",
             lambda: {
                 "telegram": {"bots": [{"bot_id": "main"}]},
-                "auth": {
-                    "telegram_bots": [{"bot_id": "main", "default": "public"}]
-                },
+                "auth": {"telegram_bots": [{"bot_id": "main", "default": "public"}]},
             },
         )
         # Patch from_bot_config so auth validation passes
@@ -173,12 +169,12 @@ class TestMissingCredentials:
         stop = asyncio.Event()
         stop.set()
 
-        # Act + Assert
-        with pytest.raises(MissingCredentialsError) as exc_info:
+        # Act + Assert — MissingCredentialsError is caught and converted to SystemExit
+        with pytest.raises(SystemExit) as exc_info:
             await main_mod._main(_stop=stop)
 
-        assert exc_info.value.platform == "telegram"
-        assert exc_info.value.bot_id == "main"
+        assert "telegram" in str(exc_info.value.code)
+        assert "main" in str(exc_info.value.code)
 
     async def test_missing_discord_credentials_raises(
         self, monkeypatch: pytest.MonkeyPatch
@@ -195,9 +191,7 @@ class TestMissingCredentials:
             "_load_raw_config",
             lambda: {
                 "discord": {"bots": [{"bot_id": "main"}]},
-                "auth": {
-                    "discord_bots": [{"bot_id": "main", "default": "public"}]
-                },
+                "auth": {"discord_bots": [{"bot_id": "main", "default": "public"}]},
             },
         )
         monkeypatch.setattr(
@@ -209,12 +203,12 @@ class TestMissingCredentials:
         stop = asyncio.Event()
         stop.set()
 
-        # Act + Assert
-        with pytest.raises(MissingCredentialsError) as exc_info:
+        # Act + Assert — MissingCredentialsError is caught and converted to SystemExit
+        with pytest.raises(SystemExit) as exc_info:
             await main_mod._main(_stop=stop)
 
-        assert exc_info.value.platform == "discord"
-        assert exc_info.value.bot_id == "main"
+        assert "discord" in str(exc_info.value.code)
+        assert "main" in str(exc_info.value.code)
 
     async def test_missing_credentials_error_message_contains_hint(
         self, monkeypatch: pytest.MonkeyPatch
@@ -271,9 +265,7 @@ class TestCredentialResolution:
             "_load_raw_config",
             lambda: {
                 "telegram": {"bots": [{"bot_id": "main"}]},
-                "auth": {
-                    "telegram_bots": [{"bot_id": "main", "default": "public"}]
-                },
+                "auth": {"telegram_bots": [{"bot_id": "main", "default": "public"}]},
             },
         )
         monkeypatch.setattr(
@@ -337,9 +329,7 @@ class TestCredentialResolution:
             "_load_raw_config",
             lambda: {
                 "discord": {"bots": [{"bot_id": "main"}]},
-                "auth": {
-                    "discord_bots": [{"bot_id": "main", "default": "public"}]
-                },
+                "auth": {"discord_bots": [{"bot_id": "main", "default": "public"}]},
             },
         )
         monkeypatch.setattr(
@@ -429,7 +419,7 @@ class TestCredentialResolution:
         monkeypatch.setattr(
             main_mod,
             "LyraKeyring",
-            MagicMock(load_or_create=AsyncMock(return_value=fake_keyring)),
+            MagicMock(load_or_create=MagicMock(return_value=fake_keyring)),
         )
         monkeypatch.setattr(
             main_mod, "CredentialStore", lambda **kwargs: fake_cred_store
@@ -440,9 +430,7 @@ class TestCredentialResolution:
             "_load_raw_config",
             lambda: {
                 "telegram": {"bots": [{"bot_id": "main"}]},
-                "auth": {
-                    "telegram_bots": [{"bot_id": "main", "default": "public"}]
-                },
+                "auth": {"telegram_bots": [{"bot_id": "main", "default": "public"}]},
             },
         )
         monkeypatch.setattr(

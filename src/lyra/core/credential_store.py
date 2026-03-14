@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import binascii
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,7 +46,7 @@ class LyraKeyring:
         self.key = key
 
     @classmethod
-    async def load_or_create(cls, key_path: Path) -> LyraKeyring:
+    def load_or_create(cls, key_path: Path) -> LyraKeyring:
         """Load existing key or atomically create a new one.
 
         Returns a LyraKeyring instance with the loaded/created key.
@@ -56,6 +57,12 @@ class LyraKeyring:
             except PermissionError as e:
                 raise KeyringError(
                     str(key_path), "not readable — check permissions"
+                ) from e
+            try:
+                Fernet(key)  # validate key format
+            except (ValueError, binascii.Error) as e:
+                raise KeyringError(
+                    str(key_path), "invalid key format — file may be corrupted"
                 ) from e
             return cls(key_path, key)
         key = cls._generate_atomic(key_path)

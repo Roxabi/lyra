@@ -38,7 +38,7 @@ async def _setup_store(
     subsequent asyncio.run() calls (CLI commands) start with a clean slate.
     """
     key_path = tmp_path / "keyring.key"
-    keyring = await LyraKeyring.load_or_create(key_path)
+    keyring = LyraKeyring.load_or_create(key_path)
     store = CredentialStore(db_path=str(tmp_path / "auth.db"), keyring=keyring)
     await store.connect()
     try:
@@ -58,7 +58,7 @@ def _patch_vault(tmp_path: Path):
 
     async def _side_effect(vault: Path) -> CredentialStore:
         key_path = tmp_path / "keyring.key"
-        keyring = await LyraKeyring.load_or_create(key_path)
+        keyring = LyraKeyring.load_or_create(key_path)
         store = CredentialStore(db_path=str(tmp_path / "auth.db"), keyring=keyring)
         await store.connect()
         return store
@@ -70,7 +70,7 @@ def _patch_vault(tmp_path: Path):
 async def _fresh_read(tmp_path: Path, platform: str, bot_id: str) -> str | None:
     """Open a fresh store and return the decrypted token, then close."""
     key_path = tmp_path / "keyring.key"
-    keyring = await LyraKeyring.load_or_create(key_path)
+    keyring = LyraKeyring.load_or_create(key_path)
     store = CredentialStore(db_path=str(tmp_path / "auth.db"), keyring=keyring)
     await store.connect()
     try:
@@ -84,7 +84,7 @@ async def _fresh_get_full(
 ) -> tuple[str, str | None] | None:
     """Open a fresh store and return (token, webhook_secret), then close."""
     key_path = tmp_path / "keyring.key"
-    keyring = await LyraKeyring.load_or_create(key_path)
+    keyring = LyraKeyring.load_or_create(key_path)
     store = CredentialStore(db_path=str(tmp_path / "auth.db"), keyring=keyring)
     await store.connect()
     try:
@@ -99,9 +99,7 @@ def _assert_ok(result: object, *, label: str = "") -> None:
 
     r: Result = result  # type: ignore[assignment]
     prefix = f"[{label}] " if label else ""
-    assert r.exit_code == 0, (
-        f"{prefix}Expected exit 0, got {r.exit_code}:\n{r.output}"
-    )
+    assert r.exit_code == 0, f"{prefix}Expected exit 0, got {r.exit_code}:\n{r.output}"
 
 
 # ---------------------------------------------------------------------------
@@ -121,9 +119,12 @@ class TestBotAdd:
                 bot_app,
                 [
                     "add",
-                    "--platform", "telegram",
-                    "--bot-id", "test",
-                    "--token", "abc123",
+                    "--platform",
+                    "telegram",
+                    "--bot-id",
+                    "test",
+                    "--token",
+                    "abc123",
                 ],
             )
 
@@ -133,23 +134,22 @@ class TestBotAdd:
         token = asyncio.run(_fresh_read(tmp_path, "telegram", "test"))
         assert token == "abc123"
 
-    def test_bot_add_overwrite_confirmed_stores_new_token(
-        self, tmp_path: Path
-    ) -> None:
+    def test_bot_add_overwrite_confirmed_stores_new_token(self, tmp_path: Path) -> None:
         """When credential exists and user confirms, new token is stored."""
         asyncio.run(_setup_store(tmp_path, [("telegram", "test", "old-token", None)]))
 
         with _patch_vault(tmp_path):
-            with patch(
-                "lyra.cli_bot.typer.confirm", return_value=True
-            ) as mock_confirm:
+            with patch("lyra.cli_bot.typer.confirm", return_value=True) as mock_confirm:
                 result = runner.invoke(
                     bot_app,
                     [
                         "add",
-                        "--platform", "telegram",
-                        "--bot-id", "test",
-                        "--token", "new-token",
+                        "--platform",
+                        "telegram",
+                        "--bot-id",
+                        "test",
+                        "--token",
+                        "new-token",
                     ],
                 )
 
@@ -158,25 +158,24 @@ class TestBotAdd:
         stored = asyncio.run(_fresh_read(tmp_path, "telegram", "test"))
         assert stored == "new-token"
 
-    def test_bot_add_overwrite_aborted_keeps_old_token(
-        self, tmp_path: Path
-    ) -> None:
+    def test_bot_add_overwrite_aborted_keeps_old_token(self, tmp_path: Path) -> None:
         """When credential exists and user aborts confirm, old token is kept."""
         asyncio.run(_setup_store(tmp_path, [("telegram", "test", "old-token", None)]))
 
         import typer as _typer
 
         with _patch_vault(tmp_path):
-            with patch(
-                "lyra.cli_bot.typer.confirm", side_effect=_typer.Abort()
-            ):
+            with patch("lyra.cli_bot.typer.confirm", side_effect=_typer.Abort()):
                 result = runner.invoke(
                     bot_app,
                     [
                         "add",
-                        "--platform", "telegram",
-                        "--bot-id", "test",
-                        "--token", "new-token",
+                        "--platform",
+                        "telegram",
+                        "--bot-id",
+                        "test",
+                        "--token",
+                        "new-token",
                     ],
                 )
 
@@ -192,9 +191,12 @@ class TestBotAdd:
                 bot_app,
                 [
                     "add",
-                    "--platform", "slack",
-                    "--bot-id", "test",
-                    "--token", "abc",
+                    "--platform",
+                    "slack",
+                    "--bot-id",
+                    "test",
+                    "--token",
+                    "abc",
                 ],
             )
 
@@ -210,10 +212,14 @@ class TestBotAdd:
                 bot_app,
                 [
                     "add",
-                    "--platform", "telegram",
-                    "--bot-id", "main",
-                    "--token", "tok123",
-                    "--webhook-secret", "mysecret",
+                    "--platform",
+                    "telegram",
+                    "--bot-id",
+                    "main",
+                    "--token",
+                    "tok123",
+                    "--webhook-secret",
+                    "mysecret",
                 ],
             )
 
@@ -301,9 +307,7 @@ class TestBotRemove:
 
     def test_bot_remove_existing(self, tmp_path: Path) -> None:
         """Removing an existing credential exits 0 and prints 'Removed'."""
-        asyncio.run(
-            _setup_store(tmp_path, [("telegram", "main", "some-token", None)])
-        )
+        asyncio.run(_setup_store(tmp_path, [("telegram", "main", "some-token", None)]))
 
         with _patch_vault(tmp_path):
             with patch("lyra.cli_bot.typer.confirm", return_value=True):
@@ -334,9 +338,7 @@ class TestBotRemove:
 
     def test_bot_remove_aborted_keeps_credential(self, tmp_path: Path) -> None:
         """When user aborts the confirm prompt, credential is not deleted."""
-        asyncio.run(
-            _setup_store(tmp_path, [("telegram", "main", "keep-me", None)])
-        )
+        asyncio.run(_setup_store(tmp_path, [("telegram", "main", "keep-me", None)]))
 
         import typer as _typer
 
@@ -355,9 +357,7 @@ class TestBotRemove:
         self, tmp_path: Path
     ) -> None:
         """The confirm prompt message includes the platform and bot_id."""
-        asyncio.run(
-            _setup_store(tmp_path, [("discord", "prod-bot", "dc-token", None)])
-        )
+        asyncio.run(_setup_store(tmp_path, [("discord", "prod-bot", "dc-token", None)]))
 
         prompt_messages: list[str] = []
 
@@ -366,15 +366,15 @@ class TestBotRemove:
             return True
 
         with _patch_vault(tmp_path):
-            with patch(
-                "lyra.cli_bot.typer.confirm", side_effect=_recording_confirm
-            ):
+            with patch("lyra.cli_bot.typer.confirm", side_effect=_recording_confirm):
                 runner.invoke(
                     bot_app,
                     [
                         "remove",
-                        "--platform", "discord",
-                        "--bot-id", "prod-bot",
+                        "--platform",
+                        "discord",
+                        "--bot-id",
+                        "prod-bot",
                     ],
                 )
 

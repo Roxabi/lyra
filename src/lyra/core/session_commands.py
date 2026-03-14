@@ -103,6 +103,8 @@ async def cmd_add(
     except ScrapeFailed as exc:
         if exc.reason == "not_available":
             scraped = f"[scraping unavailable] {url}"
+        elif exc.reason == "timeout":
+            scraped = f"[scrape timed out] {url}"
         else:
             scraped = f"[scrape failed] {url}"
 
@@ -111,7 +113,7 @@ async def cmd_add(
     try:
         result = await driver.complete(
             "session:add",
-            scraped,
+            "",  # ignored when messages is provided
             model_cfg,
             ADD_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": scraped}],
@@ -158,6 +160,8 @@ async def cmd_explain(
     except ScrapeFailed as exc:
         if exc.reason == "not_available":
             scraped = f"[scraping unavailable] {url}"
+        elif exc.reason == "timeout":
+            scraped = f"[scrape timed out] {url}"
         else:
             scraped = f"[scrape failed] {url}"
 
@@ -165,7 +169,7 @@ async def cmd_explain(
     try:
         result = await driver.complete(
             "session:explain",
-            scraped,
+            "",  # ignored when messages is provided
             model_cfg,
             EXPLAIN_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": scraped}],
@@ -197,6 +201,8 @@ async def cmd_summarize(
     except ScrapeFailed as exc:
         if exc.reason == "not_available":
             scraped = f"[scraping unavailable] {url}"
+        elif exc.reason == "timeout":
+            scraped = f"[scrape timed out] {url}"
         else:
             scraped = f"[scrape failed] {url}"
 
@@ -204,7 +210,7 @@ async def cmd_summarize(
     try:
         result = await driver.complete(
             "session:summarize",
-            scraped,
+            "",  # ignored when messages is provided
             model_cfg,
             SUMMARIZE_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": scraped}],

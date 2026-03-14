@@ -94,9 +94,10 @@ class TestCmdAdd:
 
         assert isinstance(response, Response)
         driver.complete.assert_called_once()
-        # Fallback text was passed — not "scraped content"
+        # Fallback text was passed via messages — not "scraped content"
         call_kwargs = driver.complete.call_args
-        content = call_kwargs.args[1]  # positional text arg
+        messages = call_kwargs.kwargs["messages"]
+        content = messages[0]["content"]
         assert "[scraping unavailable]" in content
 
     @pytest.mark.asyncio
@@ -137,8 +138,8 @@ class TestCmdAdd:
             await cmd_add(msg, driver, ["https://example.com"], 60.0)
 
         driver.complete.assert_called_once()
-        call_content = driver.complete.call_args.args[1]
-        assert "[scrape failed]" in call_content
+        messages = driver.complete.call_args.kwargs["messages"]
+        assert "[scrape failed]" in messages[0]["content"]
 
 
 class TestCmdExplain:
@@ -227,21 +228,6 @@ class TestCmdSummarize:
         system_prompt = call_args.args[3]
         assert system_prompt == SUMMARIZE_SYSTEM_PROMPT
 
-    @pytest.mark.asyncio
-    async def test_pool_history_not_touched(self) -> None:
-        """Session commands do not access or modify any pool object."""
-        driver = make_driver("bullets")
-        msg = make_message()
-        pool_mock = MagicMock()
-
-        with patch(
-            "lyra.core.session_commands.scrape_url",
-            new=AsyncMock(return_value="content"),
-        ):
-            # cmd_summarize does not accept a pool arg; passing none here
-            await cmd_summarize(msg, driver, ["https://example.com"], 60.0)
-
-        # pool_mock should never have been touched
-        pool_mock.sdk_history.assert_not_called() if hasattr(
-            pool_mock.sdk_history, "assert_not_called"
-        ) else None
+    # AC-7 (pool history isolation) is covered by the integration test
+    # tests/core/test_command_sessions.py::TestPoolHistoryUnchanged which pre-seeds
+    # a real pool and asserts sdk_history and history are unchanged after the command.

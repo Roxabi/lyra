@@ -62,7 +62,21 @@ _VAULT_DIR = Path(
 _PERSONAS_DIR = _VAULT_DIR / "personas"
 
 _WORKSPACE_BUILTIN_CONFLICTS = frozenset(
-    {"help", "circuit", "routing", "stop", "config", "clear", "new"}
+    {
+        "help",
+        "circuit",
+        "routing",
+        "stop",
+        "config",
+        "clear",
+        "new",
+        # Session command names — a workspace with these names would silently
+        # conflict with the session command registered in _register_session_commands().
+        "add",
+        "explain",
+        "summarize",
+        "search",
+    }
 )
 
 # S5 — compaction constants (issue #83)

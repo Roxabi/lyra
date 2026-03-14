@@ -32,13 +32,14 @@ async def scrape_url(url: str, timeout: float = 30.0) -> str:
         asyncio.TimeoutError — if the subprocess takes longer than timeout.
     """
     try:
-        proc = await asyncio.wait_for(
-            asyncio.create_subprocess_exec(
-                "web-intel:scrape", url, stdout=PIPE, stderr=PIPE
-            ),
-            timeout=timeout,
+        proc = await asyncio.create_subprocess_exec(
+            "web-intel:scrape", url, stdout=PIPE, stderr=PIPE
         )
-        stdout, _ = await proc.communicate()
+        try:
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        except asyncio.TimeoutError:
+            proc.kill()
+            raise ScrapeFailed("timeout")
         if proc.returncode != 0:
             raise ScrapeFailed("subprocess_error")
         return stdout.decode()
@@ -64,11 +65,12 @@ async def vault_add(
     if tags:
         args += ["--tags", ",".join(tags)]
     try:
-        proc = await asyncio.wait_for(
-            asyncio.create_subprocess_exec(*args, stdout=PIPE, stderr=PIPE),
-            timeout=timeout,
-        )
-        await proc.communicate()
+        proc = await asyncio.create_subprocess_exec(*args, stdout=PIPE, stderr=PIPE)
+        try:
+            await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        except asyncio.TimeoutError:
+            proc.kill()
+            raise VaultWriteFailed("timeout")
         if proc.returncode != 0:
             raise VaultWriteFailed("subprocess_error")
     except FileNotFoundError:
@@ -82,13 +84,14 @@ async def vault_search(query: str, timeout: float = 30.0) -> str:
     no results — search failure is not fatal.
     """
     try:
-        proc = await asyncio.wait_for(
-            asyncio.create_subprocess_exec(
-                "vault", "search", query, stdout=PIPE, stderr=PIPE
-            ),
-            timeout=timeout,
+        proc = await asyncio.create_subprocess_exec(
+            "vault", "search", query, stdout=PIPE, stderr=PIPE
         )
-        stdout, _ = await proc.communicate()
+        try:
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        except asyncio.TimeoutError:
+            proc.kill()
+            return "vault search timed out."
         if proc.returncode != 0:
             return "Search returned no results."
         return stdout.decode()

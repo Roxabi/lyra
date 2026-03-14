@@ -264,13 +264,13 @@ DISCORD_TOKEN=your-discord-bot-token
 
 ---
 
-## Step 9b — Create lyra.toml (auth config)
+## Step 9b — Create config.toml (auth config)
 
-`lyra.toml` is required to start Lyra with networked adapters. It is gitignored — never committed.
+`config.toml` is required to start Lyra with networked adapters. It is gitignored — never committed.
 
 ```bash
-cp lyra.toml.example lyra.toml
-nano lyra.toml
+cp config.toml.example config.toml
+nano config.toml
 ```
 
 Fill in your user IDs. Lyra supports two config schemas — single-bot (simple) and multi-bot:
@@ -320,7 +320,7 @@ default = "blocked"
 owner_users = [YOUR_DISCORD_ID]
 ```
 
-See `lyra.toml.example` for a full multi-bot example with multiple bots.
+See `config.toml.example` for a full multi-bot example with multiple bots.
 
 > **Note:** `owner_users` in each adapter section are automatically granted admin privileges. You do not need to duplicate them in `[admin].user_ids`.
 

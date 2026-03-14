@@ -62,7 +62,7 @@ async def on_event(self, raw_event) -> Message | None:
 ### Config
 
 ```toml
-# lyra.toml (gitignored — copy from lyra.toml.example)
+# config.toml (gitignored — copy from config.toml.example)
 [auth.telegram]
 owner_users   = [123456789]    # numeric — get from @userinfobot on Telegram
 trusted_users = []

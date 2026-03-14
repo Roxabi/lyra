@@ -1605,9 +1605,7 @@ async def test_discord_typing_worker_uses_typing_context_manager() -> None:
     async def resolve(_channel_id: int) -> AsyncMock:
         return mock_channel
 
-    task = asyncio.create_task(
-        _discord_typing_worker(resolve, channel_id=123)
-    )
+    task = asyncio.create_task(_discord_typing_worker(resolve, channel_id=123))
     await asyncio.sleep(0)  # yield to let the worker enter the context manager
     task.cancel()
     try:

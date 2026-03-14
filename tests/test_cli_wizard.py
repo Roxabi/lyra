@@ -1,8 +1,11 @@
 """Tests for lyra-agent CLI wizard (create / list / validate)."""
+
 from __future__ import annotations
 
 import tomllib
 from pathlib import Path
+
+import pytest
 
 # These imports will fail until cli.py exists — that's expected for RED phase
 from click.testing import Result
@@ -19,7 +22,10 @@ runner = CliRunner()
 
 
 def _invoke_create(agents_dir: Path, input_str: str) -> Result:
-    """Invoke `lyra-agent create --agents-dir <dir>` with the given stdin input."""
+    """Invoke `lyra-agent create --agents-dir <dir>` with the given stdin input.
+
+    Passing --agents-dir bypasses the interactive location prompt.
+    """
     return runner.invoke(
         app, ["create", "--agents-dir", str(agents_dir)], input=input_str
     )
@@ -32,9 +38,7 @@ def _invoke_list(agents_dir: Path) -> Result:
 
 def _invoke_validate(agents_dir: Path, name: str) -> Result:
     """Invoke `lyra-agent validate <name> --agents-dir <dir>`."""
-    return runner.invoke(
-        app, ["validate", name, "--agents-dir", str(agents_dir)]
-    )
+    return runner.invoke(app, ["validate", name, "--agents-dir", str(agents_dir)])
 
 
 # Default answers for the happy-path wizard prompts.
@@ -51,17 +55,17 @@ def _invoke_validate(agents_dir: Path, name: str) -> Result:
 #  10. Plugins (blank → none)
 _HAPPY_PATH_INPUT = "\n".join(
     [
-        "myagent",            # name
-        "claude-cli",         # backend
+        "myagent",  # name
+        "claude-cli",  # backend
         "claude-sonnet-4-5",  # model
-        "",                   # cwd — blank (skip)
-        "",                   # max_turns — blank (default)
-        "",                   # tools — blank (none)
-        "",                   # persona — blank (none)
-        "N",                  # show_intermediate
-        "N",                  # smart_routing enabled
-        "",                   # plugins — blank (none)
-        "",                   # trailing newline guard
+        "",  # cwd — blank (skip)
+        "",  # max_turns — blank (default)
+        "",  # tools — blank (none)
+        "",  # persona — blank (none)
+        "N",  # show_intermediate
+        "N",  # smart_routing enabled
+        "",  # plugins — blank (none)
+        "",  # trailing newline guard
     ]
 )
 
@@ -98,10 +102,7 @@ class TestCreate:
 
         # Assert
         assert result.exit_code != 0
-        assert (
-            "invalid" in result.output.lower()
-            or "error" in result.output.lower()
-        )
+        assert "invalid" in result.output.lower() or "error" in result.output.lower()
 
         # Assert — no TOML file was created
         assert not any(tmp_path.glob("*.toml"))
@@ -137,13 +138,13 @@ class TestCreate:
                 "newagent",
                 "claude-cli",
                 "claude-sonnet-4-5",
-                "",   # cwd
-                "",   # max_turns
-                "",   # tools
-                "",   # persona
+                "",  # cwd
+                "",  # max_turns
+                "",  # tools
+                "",  # persona
                 "N",  # show_intermediate
                 "N",  # smart_routing
-                "",   # plugins
+                "",  # plugins
                 "",
             ]
         )
@@ -160,19 +161,21 @@ class TestCreate:
 
     def test_invalid_max_turns_rejected(self, tmp_path: Path) -> None:
         """Non-numeric max_turns should be rejected gracefully (no traceback)."""
-        bad_input = "\n".join([
-            "validagent",    # name
-            "claude-cli",    # backend
-            "claude-sonnet-4-5",  # model
-            "",              # cwd
-            "abc",           # max_turns — invalid
-            "",              # tools
-            "",              # persona
-            "N",             # show_intermediate
-            "N",             # smart_routing
-            "",              # plugins
-            "",
-        ])
+        bad_input = "\n".join(
+            [
+                "validagent",  # name
+                "claude-cli",  # backend
+                "claude-sonnet-4-5",  # model
+                "",  # cwd
+                "abc",  # max_turns — invalid
+                "",  # tools
+                "",  # persona
+                "N",  # show_intermediate
+                "N",  # smart_routing
+                "",  # plugins
+                "",
+            ]
+        )
         result = _invoke_create(tmp_path, bad_input)
         # Should not produce a Python traceback
         assert "traceback" not in result.output.lower()
@@ -183,16 +186,16 @@ class TestCreate:
         # Arrange — user answers Y to smart routing but backend is claude-cli
         sr_input = "\n".join(
             [
-                "sragent",            # name
-                "claude-cli",         # backend (SR not supported)
+                "sragent",  # name
+                "claude-cli",  # backend (SR not supported)
                 "claude-sonnet-4-5",  # model
-                "",                   # cwd
-                "",                   # max_turns
-                "",                   # tools
-                "",                   # persona
-                "N",                  # show_intermediate
-                "Y",                  # smart_routing — user says YES
-                "",                   # plugins
+                "",  # cwd
+                "",  # max_turns
+                "",  # tools
+                "",  # persona
+                "N",  # show_intermediate
+                "Y",  # smart_routing — user says YES
+                "",  # plugins
                 "",
             ]
         )
@@ -219,6 +222,67 @@ class TestCreate:
             or "smart_routing" in result.output.lower()
         )
 
+    def test_location_prompt_user(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Choosing 'u' at the location prompt writes to the user agents dir."""
+        import lyra.cli as cli_mod
+
+        user_dir = tmp_path / "user_agents"
+        monkeypatch.setattr(cli_mod, "_USER_AGENTS_DIR", user_dir)
+        monkeypatch.setattr(cli_mod, "_SYSTEM_AGENTS_DIR", tmp_path / "system_agents")
+
+        # No --agents-dir → location prompt appears; answer 'u'
+        input_str = "\n".join(
+            [
+                "myagent",  # name
+                "u",  # location: user
+                "claude-cli",  # backend
+                "claude-sonnet-4-5",
+                "",  # cwd
+                "",  # max_turns
+                "",  # tools
+                "",  # persona
+                "N",  # show_intermediate
+                "N",  # smart_routing
+                "",  # plugins
+                "",
+            ]
+        )
+        result = runner.invoke(app, ["create"], input=input_str)
+        assert result.exit_code == 0, result.output
+        assert (user_dir / "myagent.toml").exists()
+
+    def test_location_prompt_system(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Choosing 's' at the location prompt writes to the system agents dir."""
+        import lyra.cli as cli_mod
+
+        system_dir = tmp_path / "system_agents"
+        monkeypatch.setattr(cli_mod, "_USER_AGENTS_DIR", tmp_path / "user_agents")
+        monkeypatch.setattr(cli_mod, "_SYSTEM_AGENTS_DIR", system_dir)
+
+        input_str = "\n".join(
+            [
+                "sysagent",
+                "s",  # location: system
+                "claude-cli",
+                "claude-sonnet-4-5",
+                "",
+                "",
+                "",
+                "",
+                "N",
+                "N",
+                "",
+                "",
+            ]
+        )
+        result = runner.invoke(app, ["create"], input=input_str)
+        assert result.exit_code == 0, result.output
+        assert (system_dir / "sysagent.toml").exists()
+
 
 class TestList:
     """Tests for `lyra-agent list`."""
@@ -238,7 +302,7 @@ class TestList:
             f'[agent]\nname = "{name}"\nmemory_namespace = "{name}"\n'
             f"{sr_block}\n"
             f'[model]\nbackend = "{backend}"\nmodel = "{model}"\n'
-            f"\n[prompt]\nsystem = \"You are {name}.\"\n"
+            f'\n[prompt]\nsystem = "You are {name}."\n'
         )
         (agents_dir / f"{name}.toml").write_text(content)
 
@@ -268,6 +332,33 @@ class TestList:
         # Assert
         assert result.exit_code == 0, result.output
 
+    def test_lists_both_dirs(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Without --agents-dir, lists user agents then non-overridden system agents."""
+        import lyra.cli as cli_mod
+
+        user_dir = tmp_path / "user"
+        system_dir = tmp_path / "system"
+        user_dir.mkdir()
+        system_dir.mkdir()
+
+        monkeypatch.setattr(cli_mod, "_USER_AGENTS_DIR", user_dir)
+        monkeypatch.setattr(cli_mod, "_SYSTEM_AGENTS_DIR", system_dir)
+
+        # user has "alpha"; system has "alpha" (overridden) and "beta"
+        self._write_agent_toml(user_dir, "alpha")
+        self._write_agent_toml(system_dir, "alpha")
+        self._write_agent_toml(system_dir, "beta")
+
+        result = runner.invoke(app, ["list"])
+        assert result.exit_code == 0, result.output
+        # alpha appears once (user wins), beta appears from system
+        assert result.output.count("alpha") == 1
+        assert "beta" in result.output
+        assert "user" in result.output
+        assert "system" in result.output
+
     def test_absent_dir_exits_zero(self, tmp_path: Path) -> None:
         """Non-existent agents dir exits 0 (prints headers only or empty message)."""
         # Arrange — point to a dir that doesn't exist
@@ -288,7 +379,7 @@ class TestValidate:
         (agents_dir / f"{name}.toml").write_text(
             f'[agent]\nmemory_namespace = "{name}"\n\n'
             '[model]\nbackend = "claude-cli"\nmodel = "claude-sonnet-4-5"\n\n'
-            "[prompt]\nsystem = \"You are a valid agent.\"\n"
+            '[prompt]\nsystem = "You are a valid agent."\n'
         )
 
     def test_valid_agent_exits_zero(self, tmp_path: Path) -> None:
@@ -313,7 +404,7 @@ class TestValidate:
             f'[agent]\nmemory_namespace = "{name}"\n\n'
             "[agent.smart_routing]\nenabled = true\n\n"
             '[model]\nbackend = "claude-cli"\nmodel = "claude-sonnet-4-5"\n\n'
-            "[prompt]\nsystem = \"I have a mismatch.\"\n"
+            '[prompt]\nsystem = "I have a mismatch."\n'
         )
 
         # Act
@@ -323,8 +414,7 @@ class TestValidate:
         assert result.exit_code == 0, result.output
         # Assert — warning is present in output
         assert (
-            "warn" in result.output.lower()
-            or "smart_routing" in result.output.lower()
+            "warn" in result.output.lower() or "smart_routing" in result.output.lower()
         )
 
     def test_nonexistent_exits_nonzero(self, tmp_path: Path) -> None:
@@ -334,18 +424,13 @@ class TestValidate:
 
         # Assert
         assert result.exit_code != 0
-        assert (
-            "not found" in result.output.lower()
-            or "ghost" in result.output.lower()
-        )
+        assert "not found" in result.output.lower() or "ghost" in result.output.lower()
 
     def test_invalid_toml_exits_nonzero(self, tmp_path: Path) -> None:
         """Invalid TOML syntax exits non-zero with error message."""
         # Arrange — write a file with broken TOML
         name = "badtoml"
-        (tmp_path / f"{name}.toml").write_text(
-            "[agent\nthis is not valid toml ===\n"
-        )
+        (tmp_path / f"{name}.toml").write_text("[agent\nthis is not valid toml ===\n")
 
         # Act
         result = _invoke_validate(tmp_path, name)

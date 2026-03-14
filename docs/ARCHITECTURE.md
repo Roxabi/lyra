@@ -196,7 +196,7 @@ Every inbound message carries a 3-tuple routing key. Scope is extracted by the a
 | Discord | Thread | `thread:{thread_id}` |
 | Discord | Channel | `channel:{channel_id}` |
 
-`bot_id` is the string defined in `lyra.toml` (e.g., `"lyra"`, `"aryl"`). A unique Pool is created for every unique `(platform, bot_id, scope_id)` combination — two bots talking to the same user in the same channel each have completely isolated conversation history and session state.
+`bot_id` is the string defined in `config.toml` (e.g., `"lyra"`, `"aryl"`). A unique Pool is created for every unique `(platform, bot_id, scope_id)` combination — two bots talking to the same user in the same channel each have completely isolated conversation history and session state.
 
 **Per-agent vs shared resources**
 

@@ -67,7 +67,7 @@ Running multiple bots requires no changes to the supervisor configuration — al
 
 ### Environment variables
 
-Add one set of variables per additional bot. The variable names are arbitrary; reference them in `lyra.toml` with the `env:` prefix.
+Add one set of variables per additional bot. The variable names are arbitrary; reference them in `config.toml` with the `env:` prefix.
 
 ```bash
 # Second bot — Telegram
@@ -96,10 +96,10 @@ All bots share a single process and a single `CliPool` (Claude CLI subprocess po
 
 ### Supervisor: no changes needed
 
-The `lyra` supervisor program starts `python -m lyra`, which reads `lyra.toml` and starts all configured bots. Adding bots to `lyra.toml` takes effect on the next restart.
+The `lyra` supervisor program starts `python -m lyra`, which reads `config.toml` and starts all configured bots. Adding bots to `config.toml` takes effect on the next restart.
 
 ```bash
-# Restart after updating lyra.toml or .env
+# Restart after updating config.toml or .env
 make lyra reload
 ```
 

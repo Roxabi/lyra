@@ -31,6 +31,7 @@ Never push without request. Never force/hard/amend. Hook fail → fix + NEW comm
 | File | Role |
 |------|------|
 | `docs/ARCHITECTURE.md` | Architecture + technical decisions |
+| `docs/CONFIGURATION.md` | All config files, their purpose, load order, and system vs instance split |
 | `docs/ROADMAP.md` | Roadmap and priorities |
 | `docs/GETTING-STARTED.md` | Machine 1 setup guide |
 | `artifacts/` | Frames, specs, plans, analyses, explorations (dev-core) |

@@ -15,7 +15,7 @@ Typical use case: `lyra_default` (Claude Sonnet, developer-facing) and `aryl_def
 
 ---
 
-## lyra.toml: single-bot vs multi-bot
+## config.toml: single-bot vs multi-bot
 
 ### Single-bot (legacy, still works)
 
@@ -212,7 +212,7 @@ In polling mode (the only mode currently supported), aiogram routes updates to t
 The routing key is a 3-tuple: `RoutingKey(platform, bot_id, scope_id)`.
 
 - `platform` — `"telegram"` or `"discord"`
-- `bot_id` — the string from `lyra.toml` (`"lyra"`, `"aryl"`, etc.)
+- `bot_id` — the string from `config.toml` (`"lyra"`, `"aryl"`, etc.)
 - `scope_id` — the conversation scope extracted by the adapter:
   - Telegram DM / group: `chat:{chat_id}`
   - Telegram forum topic: `chat:{chat_id}:topic:{topic_id}`
@@ -258,7 +258,7 @@ The `CliPool` is the Claude CLI subprocess pool. It is shared across all agents 
    ARYL_DISCORD_TOKEN=MTIz...
    ```
 
-4. **Add a `[[telegram.bots]]` entry** in `lyra.toml`
+4. **Add a `[[telegram.bots]]` entry** in `config.toml`
    ```toml
    [[telegram.bots]]
    bot_id = "aryl"
@@ -267,7 +267,7 @@ The `CliPool` is the Claude CLI subprocess pool. It is shared across all agents 
    agent = "aryl_default"
    ```
 
-5. **Add a `[[discord.bots]]` entry** in `lyra.toml`
+5. **Add a `[[discord.bots]]` entry** in `config.toml`
    ```toml
    [[discord.bots]]
    bot_id = "aryl"
@@ -276,7 +276,7 @@ The `CliPool` is the Claude CLI subprocess pool. It is shared across all agents 
    agent = "aryl_default"
    ```
 
-6. **Add auth entries** in `lyra.toml` — one per platform
+6. **Add auth entries** in `config.toml` — one per platform
    ```toml
    [[auth.telegram_bots]]
    bot_id = "aryl"
@@ -325,7 +325,7 @@ make lyra logs
 If the line is missing, the bot was skipped at startup — see below.
 
 **Bot silently absent from startup**
-Check that `[[auth.telegram_bots]]` / `[[auth.discord_bots]]` entry exists in `lyra.toml` with a `bot_id` that exactly matches the corresponding `[[telegram.bots]]` / `[[discord.bots]]` entry. A bot with no matching auth entry is silently skipped.
+Check that `[[auth.telegram_bots]]` / `[[auth.discord_bots]]` entry exists in `config.toml` with a `bot_id` that exactly matches the corresponding `[[telegram.bots]]` / `[[discord.bots]]` entry. A bot with no matching auth entry is silently skipped.
 
 **Wrong bot responding**
 Check that each bot's `[[telegram.bots]]` / `[[discord.bots]]` `bot_id` values are unique per platform. Two bots with the same `bot_id` will conflict.

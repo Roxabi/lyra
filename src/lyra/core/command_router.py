@@ -59,9 +59,7 @@ class CommandRouter:
         "/folder": CommandConfig(
             builtin=True, description="Switch working directory: /folder ~/projects/foo"
         ),
-        "/cd": CommandConfig(
-            builtin=True, description="Alias for /folder"
-        ),
+        "/cd": CommandConfig(builtin=True, description="Alias for /folder"),
     }
 
     def __init__(  # noqa: PLR0913 — DI constructor, each arg is a required dependency

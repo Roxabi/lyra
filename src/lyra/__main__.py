@@ -56,12 +56,12 @@ _ADMIN_ID_PATTERN = re.compile(r"^(tg|dc):user:\d+$")
 
 
 def _load_raw_config(config_path: str | None = None) -> dict:
-    """Open and parse lyra.toml once; return the raw dict.
+    """Open and parse config.toml once; return the raw dict.
 
-    Resolution order: $LYRA_CONFIG env var → 'lyra.toml' in cwd → empty dict.
+    Resolution order: $LYRA_CONFIG env var → 'config.toml' in cwd → empty dict.
     """
     raw: dict = {}
-    path = config_path or os.environ.get("LYRA_CONFIG", "lyra.toml")
+    path = config_path or os.environ.get("LYRA_CONFIG", "config.toml")
     try:
         with open(path, "rb") as f:
             raw = tomllib.load(f)
@@ -69,6 +69,24 @@ def _load_raw_config(config_path: str | None = None) -> dict:
     except FileNotFoundError:
         log.info("No config file at %s — using defaults", path)
     return raw
+
+
+def _build_agent_overrides(raw: dict, name: str) -> dict:
+    """Build instance-level overrides for an agent from config.toml.
+
+    Merges [defaults] with [agents.<name>], with agent-specific values winning.
+    Provides machine-specific fallbacks for cwd, persona, and workspaces that
+    are not versioned in agents/*.toml.
+    """
+    defaults: dict = raw.get("defaults", {})
+    agent_specific: dict = raw.get("agents", {}).get(name, {})
+    merged = {**defaults, **agent_specific}
+    # workspaces need a deep merge: defaults provide base, agent-specific keys win
+    ws_defaults = defaults.get("workspaces", {})
+    ws_agent = agent_specific.get("workspaces", {})
+    if ws_defaults or ws_agent:
+        merged["workspaces"] = {**ws_defaults, **ws_agent}
+    return merged
 
 
 def _load_circuit_config(
@@ -96,7 +114,7 @@ def _load_circuit_config(
         if not _ADMIN_ID_PATTERN.match(aid):
             log.warning(
                 "Admin ID %r does not match expected format "
-                "(tg|dc):user:<digits> — verify lyra.toml [admin].user_ids",
+                "(tg|dc):user:<digits> — verify config.toml [admin].user_ids",
                 aid,
             )
     return registry, admin_ids
@@ -388,7 +406,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
 ) -> None:
     """Wire hub + adapters for the multi-bot configuration schema and run until stop.
 
-    Handles [[telegram.bots]] / [[discord.bots]] arrays from lyra.toml.
+    Handles [[telegram.bots]] / [[discord.bots]] arrays from config.toml.
     Each bot is wired individually with its own AuthMiddleware, OutboundDispatcher,
     and adapter.
     """
@@ -427,7 +445,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
         sys.exit(
             "No adapters configured — add at least one [[telegram.bots]] or"
             " [[discord.bots]] entry with a matching [[auth.telegram_bots]] or"
-            " [[auth.discord_bots]] section to lyra.toml"
+            " [[auth.discord_bots]] section to config.toml"
         )
 
     # Collect unique agent names referenced across all bot configs
@@ -440,7 +458,10 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
     # Load all agent configs once — used for cli_pool detection, smart routing,
     # msg_manager language, and agent creation. Avoids duplicate I/O and TOCTOU.
     agent_configs: dict[str, Agent] = {
-        n: load_agent_config(n) for n in sorted(agent_names)
+        n: load_agent_config(
+            n, instance_overrides=_build_agent_overrides(raw_config, n)
+        )
+        for n in sorted(agent_names)
     }
     first_agent_name = next(iter(sorted(agent_names)))
     first_agent_config = agent_configs[first_agent_name]
@@ -662,7 +683,7 @@ async def _bootstrap_legacy(  # noqa: C901, PLR0915 — startup wiring: each ada
 ) -> None:
     """Wire hub + adapters for the legacy single-bot schema and run until stop.
 
-    Handles [auth.telegram] / [auth.discord] flat sections from lyra.toml.
+    Handles [auth.telegram] / [auth.discord] flat sections from config.toml.
     Behavior is identical to the original single-bot implementation.
     """
     # ------------------------------------------------------------------
@@ -679,7 +700,7 @@ async def _bootstrap_legacy(  # noqa: C901, PLR0915 — startup wiring: each ada
     if tg_auth is None and dc_auth is None:
         sys.exit(
             "No adapters configured — add at least one of [auth.telegram] or"
-            " [auth.discord] to lyra.toml"
+            " [auth.discord] to config.toml"
         )
 
     # Config loaders call sys.exit() on missing required env vars — only load
@@ -687,7 +708,10 @@ async def _bootstrap_legacy(  # noqa: C901, PLR0915 — startup wiring: each ada
     tg_cfg = load_telegram_config() if tg_auth is not None else None
     dc_cfg = load_discord_config() if dc_auth is not None else None
 
-    agent_config = load_agent_config("lyra_default")
+    agent_config = load_agent_config(
+        "lyra_default",
+        instance_overrides=_build_agent_overrides(raw_config, "lyra_default"),
+    )
     log.info(
         "Agent loaded: name=%s model=%s backend=%s",
         agent_config.name,
@@ -916,7 +940,7 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
     immediately after setup without registering signal handlers.
 
     Supports two configuration schemas:
-      - New multi-bot: [[telegram.bots]] / [[discord.bots]] arrays in lyra.toml.
+      - New multi-bot: [[telegram.bots]] / [[discord.bots]] arrays in config.toml.
       - Legacy single-bot: [auth.telegram] / [auth.discord] flat sections
         (backward compat).
 

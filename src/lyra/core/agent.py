@@ -25,10 +25,28 @@ from .pool import Pool
 
 log = logging.getLogger(__name__)
 
-# Default agents config directory: src/lyra/agents/
-_AGENTS_DIR = Path(__file__).resolve().parent.parent / "agents"
-AGENTS_DIR = _AGENTS_DIR  # public alias
+# Agent config directories — resolution order: user → system
+_USER_AGENTS_DIR = Path.home() / ".lyra" / "agents"
+_SYSTEM_AGENTS_DIR = Path(__file__).resolve().parent.parent / "agents"
+_AGENTS_DIR = _SYSTEM_AGENTS_DIR  # backward-compat alias (tests import this)
+AGENTS_DIR = _SYSTEM_AGENTS_DIR  # public alias (system defaults)
 _PLUGINS_DIR = Path(__file__).resolve().parent.parent / "plugins"
+
+
+def _find_agent_dir(name: str, agents_dir: Path | None) -> Path:
+    """Resolve the directory that owns <name>.toml.
+
+    Resolution order:
+        1. Explicit agents_dir (tests / overrides)
+        2. ~/.lyra/agents/   — user-level config (gitignored, machine-specific)
+        3. src/lyra/agents/  — system defaults (versioned)
+    """
+    if agents_dir is not None:
+        return agents_dir
+    if (_USER_AGENTS_DIR / f"{name}.toml").exists():
+        return _USER_AGENTS_DIR
+    return _SYSTEM_AGENTS_DIR
+
 
 _VALID_BACKENDS: frozenset[str] = frozenset({"claude-cli", "ollama", "anthropic-sdk"})
 _MAX_PROMPT_BYTES = 64 * 1024  # 64 KB
@@ -264,11 +282,19 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
     name: str,
     agents_dir: Path | None = None,
     personas_dir: Path | None = None,
+    instance_overrides: dict | None = None,
 ) -> Agent:
-    """Load an Agent from a TOML config file.
+    """Load an Agent from a TOML config file, merged with instance-level overrides.
 
     Looks for <agents_dir>/<name>.toml.
-    Falls back to _AGENTS_DIR if agents_dir is not specified.
+    Falls back to ~/.lyra/agents/ then src/lyra/agents/ if agents_dir is not specified.
+
+    instance_overrides comes from config.toml [defaults] merged with
+    [agents.<name>], built by _build_agent_overrides() in __main__.
+    It provides machine-specific fallbacks for cwd, persona, and workspaces.
+
+    Resolution order (highest to lowest priority):
+        agents/<name>.toml value → instance_overrides → hardcoded default
 
     TOML structure:
         [agent]
@@ -285,7 +311,7 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
         [prompt]
         system = "..."             # optional: overrides persona composition
     """
-    directory = agents_dir or _AGENTS_DIR
+    directory = _find_agent_dir(name, agents_dir)
 
     # Primary gate: only safe characters allowed in agent names
     if not re.match(r"^[a-zA-Z0-9_-]+$", name):
@@ -302,6 +328,7 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
     with path.open("rb") as f:
         data = tomllib.load(f)
 
+    overrides = instance_overrides or {}
     agent_section = data.get("agent", {})
 
     # Validate declared name matches the filename stem (if declared)
@@ -329,7 +356,7 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
         )
 
     cwd: Path | None = None
-    raw_cwd = model_section.get("cwd")
+    raw_cwd = model_section.get("cwd") or overrides.get("cwd")
     if raw_cwd is not None:
         resolved = Path(raw_cwd).expanduser().resolve()
         if not resolved.is_dir():
@@ -349,8 +376,8 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
         cwd=cwd,
     )
 
-    # Persona loading
-    persona_name = agent_section.get("persona")
+    # Persona loading — agent toml wins, then instance_overrides, then None
+    persona_name = agent_section.get("persona") or overrides.get("persona")
     persona: PersonaConfig | None = None
     if persona_name:
         persona = load_persona(persona_name, personas_dir)
@@ -411,7 +438,11 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
             high_complexity_commands=tuple(hcc),
         )
 
-    workspaces_section = data.get("workspaces", {})
+    # Workspaces: merge overrides (lower priority) with agent toml (wins per key)
+    workspaces_section = {
+        **overrides.get("workspaces", {}),
+        **data.get("workspaces", {}),
+    }
     workspaces: dict[str, Path] = {}
     for key, raw_path in workspaces_section.items():
         if not re.match(r"^[a-zA-Z0-9_-]+$", key):
@@ -467,9 +498,11 @@ class AgentBase(ABC):
         stt: "STTService | None" = None,
         tts: "TTSService | None" = None,
         smart_routing_decorator: Any | None = None,
+        instance_overrides: dict | None = None,
     ) -> None:
+        self._instance_overrides: dict = instance_overrides or {}
         self.config = config
-        self._agents_dir = agents_dir or _AGENTS_DIR
+        self._agents_dir = _find_agent_dir(config.name, agents_dir)
         self._config_path = self._agents_dir / f"{config.name}.toml"
         self._last_mtime: float = (
             self._config_path.stat().st_mtime if self._config_path.exists() else 0.0
@@ -579,7 +612,11 @@ class AgentBase(ABC):
 
         if config_changed or persona_changed:
             try:
-                new_config = load_agent_config(self.config.name, self._agents_dir)
+                new_config = load_agent_config(
+                    self.config.name,
+                    self._agents_dir,
+                    instance_overrides=self._instance_overrides,
+                )
                 if new_config != self.config:
                     log.info(
                         "Hot-reloaded config for agent %r (model: %s -> %s)",

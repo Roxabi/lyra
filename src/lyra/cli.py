@@ -1,22 +1,29 @@
 """lyra-agent CLI — create / list / validate agent TOML configs."""
+
 from __future__ import annotations
 
 import re
 import tomllib
 from pathlib import Path
+from typing import Optional
 
 import click
 import tomli_w
 import typer
 
-from lyra.core.agent import AGENTS_DIR, load_agent_config
+from lyra.core.agent import (
+    _SYSTEM_AGENTS_DIR,
+    _USER_AGENTS_DIR,
+    AGENTS_DIR,
+    load_agent_config,
+)
 
 app = typer.Typer(name="lyra-agent", help="Manage Lyra agent configurations.")
 
 _DEFAULT_TOOLS = ["Read", "Grep", "Glob", "WebFetch", "WebSearch"]
 
-_AGENTS_DIR_OPT = typer.Option(
-    AGENTS_DIR, help="Directory where agent TOMLs live."
+_AGENTS_DIR_OPT: Optional[Path] = typer.Option(
+    None, help="Directory where agent TOMLs live (skips location prompt)."
 )
 
 
@@ -33,6 +40,16 @@ def _parse_tools(raw: str) -> list[str]:
     if stripped.lower() == "default":
         return list(_DEFAULT_TOOLS)
     return [t.strip() for t in stripped.split(",") if t.strip()]
+
+
+def _prompt_location() -> Path:
+    """Ask where to save the new agent TOML: user or system."""
+    typer.echo("  [u] user   — ~/.lyra/agents/      (personal, gitignored)")
+    typer.echo(f"  [s] system — {AGENTS_DIR}  (versioned)")
+    choice = typer.prompt("Save to", default="u", show_default=True)
+    if choice.lower().startswith("s"):
+        return _SYSTEM_AGENTS_DIR
+    return _USER_AGENTS_DIR
 
 
 def _prompt_sr_subconfig(
@@ -54,9 +71,7 @@ def _prompt_sr_subconfig(
     # anthropic-sdk: ask sub-prompts
     history: int = typer.prompt("SR history size", default=50, type=int)
 
-    high_raw = typer.prompt(
-        "SR high-complexity commands (blank = none)", default=""
-    )
+    high_raw = typer.prompt("SR high-complexity commands (blank = none)", default="")
     high_cmds = [c.strip() for c in high_raw.split(",") if c.strip()]
 
     sr_models: dict[str, str] = {}
@@ -129,50 +144,51 @@ def _build_toml(  # noqa: PLR0913 — one arg per config key, intentional
 
 @app.command()  # noqa: C901
 def create(
-    agents_dir: Path = _AGENTS_DIR_OPT,
+    agents_dir: Optional[Path] = _AGENTS_DIR_OPT,
 ) -> None:
     """Interactively create a new agent TOML configuration."""
     # 1. Agent name
     name = typer.prompt("Agent name")
     if not re.match(r"^[a-zA-Z0-9_-]+$", name):
-        typer.echo(
-            f"Error: invalid agent name {name!r} — only [a-zA-Z0-9_-] allowed"
-        )
+        typer.echo(f"Error: invalid agent name {name!r} — only [a-zA-Z0-9_-] allowed")
         raise typer.Exit(1)
 
-    agents_dir.mkdir(parents=True, exist_ok=True)
+    # 2. Location — ask only when --agents-dir was not explicitly provided
+    target_dir: Path = agents_dir if agents_dir is not None else _prompt_location()
 
-    toml_path = agents_dir / f"{name}.toml"
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    toml_path = target_dir / f"{name}.toml"
     if toml_path.exists():
         typer.echo(f"Error: agent {name!r} already exists at {toml_path}")
         raise typer.Exit(1)
 
-    # 2. Backend
+    # 3. Backend
     backend = typer.prompt(
         "Backend",
         type=click.Choice(["claude-cli", "anthropic-sdk"]),
     )
-    # 3. Model
+    # 4. Model
     model = typer.prompt("Model", default="claude-sonnet-4-5")
-    # 4. Working directory (blank = omit)
-    cwd_raw = typer.prompt("Working directory (blank to skip)", default="")
-    # 5. Max turns
+    # 5. Working directory (blank = omit — falls back to config.toml [defaults].cwd)
+    cwd_raw = typer.prompt(
+        "Working directory (blank = inherit from config.toml [defaults])", default=""
+    )
+    # 6. Max turns
     max_turns: int = typer.prompt("Max turns", default=10, type=int)
-    # 6. Tools
+    # 7. Tools
     tools_raw = typer.prompt(
         'Tools (blank=none, "default"=standard, or comma-separated)', default=""
     )
     tools = _parse_tools(tools_raw)
-    # 7. Persona name (blank = omit)
+    # 8. Persona name (blank = omit)
     persona_raw = typer.prompt("Persona name (blank to skip)", default="")
-    # 8. Show intermediate turns?
+    # 9. Show intermediate turns?
     show_intermediate = typer.confirm("Show intermediate turns?", default=False)
-    # 9. Smart routing
+    # 10. Smart routing
     sr_enabled, sr_history, sr_high_cmds, sr_models = _prompt_sr_subconfig(backend)
-    # 10. Plugins
-    plugins_raw = typer.prompt(
-        "Plugins (blank = none, or comma-separated)", default=""
-    )
+    # 11. Plugins
+    plugins_raw = typer.prompt("Plugins (blank = none, or comma-separated)", default="")
     plugins = [p.strip() for p in plugins_raw.split(",") if p.strip()]
 
     toml_content = _build_toml(
@@ -195,8 +211,8 @@ def create(
     typer.echo(f"Created {toml_path}")
     typer.echo("")
     typer.echo("Next steps:")
-    typer.echo(f"  lyra-agent validate {name} --agents-dir {agents_dir}")
-    typer.echo(f"  lyra-agent list --agents-dir {agents_dir}")
+    typer.echo(f"  lyra-agent validate {name}")
+    typer.echo("  lyra-agent list")
 
 
 # ---------------------------------------------------------------------------
@@ -206,34 +222,58 @@ def create(
 
 @app.command(name="list")
 def list_agents(
-    agents_dir: Path = _AGENTS_DIR_OPT,
+    agents_dir: Optional[Path] = _AGENTS_DIR_OPT,
 ) -> None:
-    """List all configured agents."""
+    """List all configured agents (user and system, or --agents-dir)."""
     header = (
-        f"{'NAME':<16} {'BACKEND':<16} {'MODEL':<34} {'SMART ROUTING'}"
+        f"{'NAME':<16} {'BACKEND':<16} {'MODEL':<34} {'SMART ROUTING':<14} {'SOURCE'}"
     )
     typer.echo(header)
 
-    if not agents_dir.exists():
+    if agents_dir is not None:
+        # Explicit dir: list only that dir (backward compat / tests)
+        _list_from_dir(agents_dir, source_label=None)
         return
 
-    for toml_file in sorted(agents_dir.glob("*.toml")):
+    # Default: show user agents first, then system agents not overridden by user
+    user_names: set[str] = set()
+    if _USER_AGENTS_DIR.exists():
+        user_names = _list_from_dir(_USER_AGENTS_DIR, source_label="user")
+
+    if _SYSTEM_AGENTS_DIR.exists():
+        _list_from_dir(_SYSTEM_AGENTS_DIR, source_label="system", skip=user_names)
+
+
+def _list_from_dir(
+    directory: Path,
+    source_label: str | None,
+    skip: set[str] | None = None,
+) -> set[str]:
+    """Print agent rows from a directory. Returns the set of names printed."""
+    printed: set[str] = set()
+    if not directory.exists():
+        return printed
+
+    for toml_file in sorted(directory.glob("*.toml")):
         agent_name = toml_file.stem
+        if skip and agent_name in skip:
+            continue
         try:
-            cfg = load_agent_config(agent_name, agents_dir=agents_dir)
+            cfg = load_agent_config(agent_name, agents_dir=directory)
         except Exception as e:
             typer.echo(f"  [warn] skipped {toml_file.name}: {e}", err=True)
             continue
 
         sr_status = (
-            "enabled"
-            if cfg.smart_routing and cfg.smart_routing.enabled
-            else "disabled"
+            "enabled" if cfg.smart_routing and cfg.smart_routing.enabled else "disabled"
         )
+        source = f"  {source_label}" if source_label else ""
         typer.echo(
             f"{cfg.name:<16} {cfg.model_config.backend:<16} "
-            f"{cfg.model_config.model:<34} {sr_status}"
+            f"{cfg.model_config.model:<34} {sr_status:<14}{source}"
         )
+        printed.add(agent_name)
+    return printed
 
 
 # ---------------------------------------------------------------------------
@@ -244,7 +284,7 @@ def list_agents(
 @app.command()
 def validate(
     name: str = typer.Argument(..., help="Agent name to validate."),
-    agents_dir: Path = _AGENTS_DIR_OPT,
+    agents_dir: Optional[Path] = _AGENTS_DIR_OPT,
 ) -> None:
     """Validate an agent TOML configuration against the schema."""
     try:

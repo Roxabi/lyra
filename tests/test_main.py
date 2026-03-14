@@ -322,7 +322,7 @@ class TestAuthConfig:
         monkeypatch.setattr(
             main_mod,
             "load_agent_config",
-            lambda name: (_ for _ in ()).throw(SystemExit("past_auth")),
+            lambda name, **kw: (_ for _ in ()).throw(SystemExit("past_auth")),
         )
         stop = asyncio.Event()
         stop.set()

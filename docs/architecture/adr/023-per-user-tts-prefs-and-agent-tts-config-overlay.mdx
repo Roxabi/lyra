@@ -1,0 +1,85 @@
+---
+title: "ADR-023: Per-User TTS Preferences and Agent TTS Config Overlay"
+description: Documents the design trade-offs for PrefsStore, AgentTTSConfig startup overlay, and the resource-sharing implications for TTSService across agents.
+---
+
+## Status
+
+Proposed
+
+## Context
+
+PR #267 (issue #42) adds two related features:
+
+1. **Per-user TTS preferences** — a `PrefsStore` + `UserPrefs` value object lets individual users override TTS language and voice at runtime. The Hub reads `prefs_store.get_prefs(msg.user_id)` inside `_synthesize_and_dispatch_audio` to resolve the effective language and voice for each voice response.
+
+2. **Agent TOML TTS config overlay** — a new `AgentTTSConfig` dataclass is parsed from each agent's TOML and applied at startup in `__main__.py` to override the process-level `TTSConfig` (sourced from `TTS_*` env vars). Because all agents share one `TTSService`, the overlay is taken from `first_agent_config` — the alphabetically-first agent.
+
+These two features expose three architectural concerns:
+
+- **Multi-agent TTSService sharing**: the overlay mechanism silently applies one agent's TTS config to all agents, mirroring the smart-routing/i18n silent-override pattern documented in ADR-019.
+- **PrefsStore lifecycle**: `PrefsStore.connect()` is called at startup but `PrefsStore.close()` is absent from the graceful shutdown path in `__main__.py`.
+- **`language` field placement**: `InboundMessage.language: str | None` is added as a detected-language hint produced by STT; it threads through the hub into the TTS resolution chain without being part of the canonical `InboundMessage` identity (routing key, trust, scope).
+
+The design space at the time of this decision:
+
+- Single TTSService per process is correct at current scale (one TTS engine, shared GPU resource).
+- `PrefsStore` is a new application-layer service (user preferences = application concern, not domain).
+- The resolution chain (user prefs → detected language → agent default) is the correct priority order.
+
+---
+
+## Options Considered
+
+### Option A: First-agent overlay (current PR implementation)
+
+One `TTSService` is created per process. At startup, `AgentTTSConfig` from `first_agent_config` (alphabetically sorted) is applied to the single `TTSConfig` before `TTSService` is instantiated.
+
+- **Pros:** Simple — zero per-agent TTS instances; matches the single-GPU, single-engine constraint.
+- **Cons:** Same silent-override risk as ADR-019 Option A: a second agent with a different `[tts]` TOML section will have its config silently ignored. Lexicographic ordering is fragile as an implicit config mechanism.
+
+### Option B: Per-call language/voice override on TTSService.synthesize()
+
+`TTSService` remains a process-scoped singleton. `synthesize()` is extended to accept optional `language` and `voice` kwargs that override the service defaults for that call. The Hub resolution chain passes the resolved values per-call.
+
+- **Pros:** Each agent can declare its own TTS defaults in TOML and they are honoured per call. No startup ordering fragility. Matches the per-call override model already used for user prefs.
+- **Cons:** `AgentTTSConfig` must be threaded from agent config down into `Hub._synthesize_and_dispatch_audio` — requires passing the agent name or config reference into the hub dispatch path. Slightly more complexity.
+
+### Option C: Per-agent TTSService
+
+One `TTSService` per agent, each initialised with that agent's `AgentTTSConfig`.
+
+- **Pros:** Perfect isolation; no shared state.
+- **Cons:** Multiple TTS engine instances on a single GPU is wasteful and risks VRAM contention. Incorrect for a shared hardware resource.
+
+---
+
+## Decision
+
+**Adopt Option B** for the per-call override model. Option A is acceptable as an **initial implementation** under the same conditions as ADR-019: exactly one agent is deployed, a follow-up issue is filed before a second agent with a different `[tts]` config is deployed, and a startup warning is logged when `len(agent_names) > 1` and any two agents have differing `AgentTTSConfig` values.
+
+Option C is rejected: TTSService is a hardware resource, not an agent-configuration resource.
+
+**PrefsStore lifecycle:** `prefs_store.close()` must be called in the graceful shutdown path alongside `pm.close()`, `cred_store.close()`, and `auth_store.close()`.
+
+**`InboundMessage.language` placement:** The field is acceptable as an optional hint field on `InboundMessage`. It must never be used for routing or trust decisions — only for TTS resolution. A comment to that effect should be added to the field definition.
+
+---
+
+## Consequences
+
+### Positive
+
+- Per-user TTS preferences are resolved at the correct layer (hub, not adapter).
+- The resolution chain (user prefs → STT-detected language → agent default → service default) is explicit and auditable.
+- `PrefsStore` is correctly placed in the application layer (hub DI), not in the domain or infrastructure.
+
+### Negative
+
+- Until Option B is fully implemented, multi-agent deployments silently apply the first agent's TTS config to all agents.
+- `prefs_store.close()` must be added to the shutdown path — a missing resource cleanup that risks connection leaks on graceful stop.
+
+### Neutral
+
+- `InboundMessage.language` adds a new optional field to the frozen dataclass; adapters that do not detect language leave it as `None` with no behaviour change.
+- `AgentTTSConfig` and `AgentSTTConfig` on `Agent` are config-only fields; they do not affect pool routing, trust, or the stateless-singleton agent contract.

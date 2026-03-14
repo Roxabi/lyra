@@ -42,7 +42,7 @@ explicit = true
 override-dependencies = [
     "torch>=2.7",
     "torchaudio>=2.7",
-    "transformers>=4.57.3",
+    "transformers>=4.57.3,<5",
     "numpy>=1.26",
 ]
 

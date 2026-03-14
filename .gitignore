@@ -10,6 +10,9 @@ coverage.xml
 .venv/
 *.sqlite
 *.sqlite-journal
+*.db
+*.db-shm
+*.db-wal
 .ruff_cache/
 .claude/stack.yml
 .claude/worktrees/

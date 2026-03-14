@@ -63,6 +63,24 @@ from lyra.tts import TTSConfig, TTSService, load_tts_config
 
 log = logging.getLogger(__name__)
 
+
+def _log_task_failure(task: asyncio.Task) -> None:  # type: ignore[type-arg]
+    """Done callback — logs adapter task failures (e.g. Discord LoginFailure)."""
+    if task.cancelled():
+        return
+    try:
+        exc = task.exception()
+    except asyncio.CancelledError:
+        return
+    if exc is not None:
+        log.error(
+            "Adapter task '%s' exited with error: %s",
+            task.get_name(),
+            exc,
+            exc_info=exc,
+        )
+
+
 _CB_DEFAULTS: dict[str, int] = {"failure_threshold": 5, "recovery_timeout": 60}
 _CB_SERVICES = ("anthropic", "telegram", "discord", "hub")
 _ADMIN_ID_PATTERN = re.compile(r"^(tg|dc):user:\d+$")
@@ -754,12 +772,12 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
             )
         )
     for dc_adapter, dc_bot_cfg, dc_token in dc_adapters:
-        tasks.append(
-            asyncio.create_task(
-                dc_adapter.start(dc_token),
-                name=f"discord:{dc_bot_cfg.bot_id}",
-            )
+        _dc_task = asyncio.create_task(
+            dc_adapter.start(dc_token),
+            name=f"discord:{dc_bot_cfg.bot_id}",
         )
+        _dc_task.add_done_callback(_log_task_failure)
+        tasks.append(_dc_task)
 
     tg_active = [f"telegram:{a._bot_id}" for a in tg_adapters]
     dc_active = [f"discord:{c.bot_id}" for _, c, _ in dc_adapters]
@@ -1067,7 +1085,9 @@ async def _bootstrap_legacy(  # noqa: C901, PLR0915 — startup wiring: each ada
             )
         )
     if dc_adapter is not None and dc_token_lg is not None:
-        tasks.append(asyncio.create_task(dc_adapter.start(dc_token_lg), name="discord"))
+        _dc_task_lg = asyncio.create_task(dc_adapter.start(dc_token_lg), name="discord")
+        _dc_task_lg.add_done_callback(_log_task_failure)
+        tasks.append(_dc_task_lg)
 
     task_names = {t.get_name() for t in tasks}
     active = [name for name in ("telegram", "discord") if name in task_names]

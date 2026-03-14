@@ -176,28 +176,6 @@ class TestPipelineGuardStages:
         result = await pipeline.process(msg)
         assert result.action == Action.DROP
 
-    async def test_pairing_gate_drops_unpaired_user(
-        self,
-    ) -> None:
-        """Pairing gate drops messages from unpaired users."""
-        from lyra.core.pairing import PairingConfig, PairingManager
-
-        config = PairingConfig(enabled=True)
-        pm = PairingManager(
-            config=config,
-            db_path=":memory:",
-            admin_user_ids={"admin"},
-        )
-        await pm.connect()
-        try:
-            hub = _make_hub(pairing_manager=pm)
-            pipeline = MessagePipeline(hub)
-            msg = make_inbound_message(user_id="unpaired-user")
-            result = await pipeline.process(msg)
-            assert result.action == Action.DROP
-        finally:
-            await pm.close()
-
     async def test_no_adapter_registered_drops(self) -> None:
         """Adapter miss in terminal stage produces DROP."""
         hub = Hub()
@@ -343,3 +321,25 @@ class TestPipelineIntegration:
 
         assert len(submitted) == 1
         assert submitted[0] is msg
+
+
+# ---------------------------------------------------------------------------
+# SC8 — Hub/Pipeline gate removal assertions (#245)
+# ---------------------------------------------------------------------------
+
+
+class TestGateMethodsRemoved:
+    """SC8: _pairing_gate_drop and _pairing_gate must not exist after #245."""
+
+    def test_hub_pairing_gate_drop_removed(self) -> None:
+        """Hub._pairing_gate_drop() must not exist (removed in #245, S4)."""
+        assert not hasattr(Hub, "_pairing_gate_drop"), (
+            "Hub._pairing_gate_drop must be removed — auth is resolved at adapter level"
+        )
+
+    def test_pipeline_pairing_gate_removed(self) -> None:
+        """MessagePipeline._pairing_gate() must not exist (removed in #245, S4)."""
+        assert not hasattr(MessagePipeline, "_pairing_gate"), (
+            "MessagePipeline._pairing_gate must be removed"
+            " — auth is resolved at adapter level"
+        )

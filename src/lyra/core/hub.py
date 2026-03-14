@@ -729,31 +729,6 @@ class Hub:
     # Run loop
     # ------------------------------------------------------------------
 
-    async def _pairing_gate_drop(
-        self,
-        msg: InboundMessage,
-        router: Any,
-        key: RoutingKey,
-    ) -> bool:
-        """Return True if the message should be dropped by the pairing gate."""
-        if not (self._pairing_manager and self._pairing_manager.config.enabled):
-            return False
-        _cmd_name = router.get_command_name(msg) if router is not None else None
-        if _cmd_name == "/join":
-            return False
-        paired = await self._pairing_manager.is_paired(msg.user_id)
-        if paired:
-            return False
-        if _is_group_message(msg):
-            log.debug("unpaired user %s in group — message dropped", key)
-            return True
-        rejection = Response(content="You are not paired. Use /join <CODE> to pair.")
-        try:
-            await self.dispatch_response(msg, rejection)
-        except Exception:
-            log.exception("dispatch_response failed for pairing rejection: %s", key)
-        return True
-
     async def _circuit_breaker_drop(self, msg: InboundMessage) -> bool:
         """Return True if the circuit is open and a fast-fail reply was sent."""
         if self.circuit_registry is None:
@@ -876,10 +851,6 @@ class MessagePipeline:
         if cmd_ctx is not None:
             msg = dataclasses.replace(msg, command=cmd_ctx)
 
-        result = await self._pairing_gate(msg, router, key)
-        if result is not None:
-            return result
-
         if router and router.is_command(msg):
             return await self._dispatch_command(
                 msg,
@@ -948,16 +919,6 @@ class MessagePipeline:
                 key,
             )
         return agent
-
-    async def _pairing_gate(
-        self,
-        msg: InboundMessage,
-        router: Any,
-        key: RoutingKey,
-    ) -> PipelineResult | None:
-        if await self._hub._pairing_gate_drop(msg, router, key):
-            return _DROP
-        return None
 
     # -- terminal stages ---
 
@@ -1032,10 +993,4 @@ def _mime_to_ext(mime_type: str) -> str:
     return _MAP.get(mime_type, ".ogg")
 
 
-def _is_group_message(msg: InboundMessage) -> bool:
-    """Return True if the message originated from a group/guild channel."""
-    if msg.platform == Platform.TELEGRAM.value:
-        return bool(msg.platform_meta.get("is_group", False))
-    if msg.platform == Platform.DISCORD.value:
-        return msg.platform_meta.get("guild_id") is not None
-    return False
+

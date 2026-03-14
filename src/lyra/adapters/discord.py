@@ -51,10 +51,10 @@ log = logging.getLogger(__name__)
 DISCORD_MAX_LENGTH = 2000  # Discord API message length limit
 
 # Sentinel used when no AuthMiddleware is provided — denies all traffic by default.
-_DENY_ALL = AuthMiddleware(user_map={}, role_map={}, default=TrustLevel.BLOCKED)
+_DENY_ALL = AuthMiddleware(store=None, role_map={}, default=TrustLevel.BLOCKED)
 
 # Permissive sentinel for use in tests — allows all traffic as PUBLIC.
-_ALLOW_ALL = AuthMiddleware(user_map={}, role_map={}, default=TrustLevel.PUBLIC)
+_ALLOW_ALL = AuthMiddleware(store=None, role_map={}, default=TrustLevel.PUBLIC)
 
 
 _AUTO_THREAD_TRUE = frozenset({"1", "true", "yes", "on"})

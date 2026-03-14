@@ -64,10 +64,10 @@ _ATTACHMENT_EXTS = ATTACHMENT_EXTS_BASE | frozenset(
 TELEGRAM_MAX_LENGTH = 4096  # Telegram Bot API text message limit
 
 # Sentinel used when no AuthMiddleware is provided — denies all traffic by default.
-_DENY_ALL = AuthMiddleware(user_map={}, role_map={}, default=TrustLevel.BLOCKED)
+_DENY_ALL = AuthMiddleware(store=None, role_map={}, default=TrustLevel.BLOCKED)
 
 # Permissive sentinel for use in tests — allows all traffic as PUBLIC.
-_ALLOW_ALL = AuthMiddleware(user_map={}, role_map={}, default=TrustLevel.PUBLIC)
+_ALLOW_ALL = AuthMiddleware(store=None, role_map={}, default=TrustLevel.PUBLIC)
 _MARKDOWNV2_SPECIAL = re.compile(r"([_*\[\]()~`>#\+\-=|{}.!\\])")
 
 
@@ -594,7 +594,7 @@ class TelegramAdapter:
         if not msg.from_user or getattr(msg.from_user, "is_bot", False):
             return
 
-        uid = str(msg.from_user.id)
+        uid = f"tg:user:{msg.from_user.id}"
         trust = self._auth.check(uid)
         if trust == TrustLevel.BLOCKED:
             log.info("auth_reject user=%s channel=telegram", uid)

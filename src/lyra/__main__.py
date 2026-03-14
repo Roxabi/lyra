@@ -36,6 +36,7 @@ from lyra.config import (
 from lyra.core.admin import set_admin_user_ids
 from lyra.core.agent import Agent, AgentBase, SmartRoutingConfig, load_agent_config
 from lyra.core.auth import AuthMiddleware
+from lyra.core.auth_store import AuthStore
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.cli_pool import CliPool
 from lyra.core.hub import Hub, RoutingKey
@@ -414,13 +415,27 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
     # ------------------------------------------------------------------
     # Multi-bot path: validate auth per bot, collect unique agent names.
     # ------------------------------------------------------------------
+    vault_dir_mb = Path.home() / ".lyra"
+    vault_dir_mb.mkdir(parents=True, exist_ok=True)
+    auth_store = AuthStore(db_path=vault_dir_mb / "auth.db")
+    await auth_store.connect()
+
+    # Seed per-bot owner/trusted users as permanent grants
+    auth_block: dict = raw_config.get("auth", {})
+    for entry in auth_block.get("telegram_bots", []):
+        synthetic = {"auth": {"telegram": entry}}
+        await auth_store.seed_from_config(synthetic, "telegram")
+    for entry in auth_block.get("discord_bots", []):
+        synthetic = {"auth": {"discord": entry}}
+        await auth_store.seed_from_config(synthetic, "discord")
+
     tg_bot_auths: list[tuple[TelegramBotConfig, AuthMiddleware]] = []
     dc_bot_auths: list[tuple[DiscordBotConfig, AuthMiddleware]] = []
 
     try:
         for bot_cfg in tg_multi_cfg.bots:
             auth = AuthMiddleware.from_bot_config(
-                raw_config, "telegram", bot_cfg.bot_id
+                raw_config, "telegram", bot_cfg.bot_id, store=auth_store
             )
             if auth is None:
                 log.warning(
@@ -431,7 +446,9 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
             tg_bot_auths.append((bot_cfg, auth))
 
         for bot_cfg in dc_multi_cfg.bots:
-            auth = AuthMiddleware.from_bot_config(raw_config, "discord", bot_cfg.bot_id)
+            auth = AuthMiddleware.from_bot_config(
+                raw_config, "discord", bot_cfg.bot_id, store=auth_store
+            )
             if auth is None:
                 log.warning(
                     "discord bot_id=%r has no auth config — skipping",
@@ -478,12 +495,11 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
         )
     pm: PairingManager | None = None
     if pairing_config.enabled:
-        vault_dir = Path.home() / ".lyra"
-        vault_dir.mkdir(parents=True, exist_ok=True)
         pm = PairingManager(
             config=pairing_config,
-            db_path=vault_dir / "pairing.db",
+            db_path=vault_dir_mb / "pairing.db",
             admin_user_ids=admin_user_ids,
+            auth_store=auth_store,
         )
         await pm.connect()
         set_pairing_manager(pm)
@@ -670,6 +686,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
         await dc_adapter.close()
     if pm is not None:
         await pm.close()
+    await auth_store.close()
     if cli_pool is not None:
         await cli_pool.stop()
     log.info("Lyra stopped.")
@@ -692,9 +709,20 @@ async def _bootstrap_legacy(  # noqa: C901, PLR0915 — startup wiring: each ada
     # Runs when no [[telegram.bots]] / [[discord.bots]] arrays are found.
     # Behavior is identical to the original single-bot implementation.
     # ------------------------------------------------------------------
+    vault_dir_lg = Path.home() / ".lyra"
+    vault_dir_lg.mkdir(parents=True, exist_ok=True)
+    auth_store_legacy = AuthStore(db_path=vault_dir_lg / "auth.db")
+    await auth_store_legacy.connect()
+    await auth_store_legacy.seed_from_config(raw_config, "telegram")
+    await auth_store_legacy.seed_from_config(raw_config, "discord")
+
     try:
-        tg_auth = AuthMiddleware.from_config(raw_config, "telegram")
-        dc_auth = AuthMiddleware.from_config(raw_config, "discord")
+        tg_auth = AuthMiddleware.from_config(
+            raw_config, "telegram", store=auth_store_legacy
+        )
+        dc_auth = AuthMiddleware.from_config(
+            raw_config, "discord", store=auth_store_legacy
+        )
     except ValueError as exc:
         sys.exit(str(exc))
 
@@ -730,12 +758,11 @@ async def _bootstrap_legacy(  # noqa: C901, PLR0915 — startup wiring: each ada
         )
     pm_legacy: PairingManager | None = None
     if pairing_config.enabled:
-        vault_dir = Path.home() / ".lyra"
-        vault_dir.mkdir(parents=True, exist_ok=True)
         pm_legacy = PairingManager(
             config=pairing_config,
-            db_path=vault_dir / "pairing.db",
+            db_path=vault_dir_lg / "pairing.db",
             admin_user_ids=admin_user_ids,
+            auth_store=auth_store_legacy,
         )
         await pm_legacy.connect()
         set_pairing_manager(pm_legacy)
@@ -929,6 +956,7 @@ async def _bootstrap_legacy(  # noqa: C901, PLR0915 — startup wiring: each ada
         await dc_adapter.close()
     if pm_legacy is not None:
         await pm_legacy.close()
+    await auth_store_legacy.close()
     if cli_pool_legacy is not None:
         await cli_pool_legacy.stop()
     log.info("Lyra stopped.")

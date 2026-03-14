@@ -449,9 +449,7 @@ class TelegramAdapter:
         message_id = getattr(raw, "message_id", None)
         reply_to_message = getattr(raw, "reply_to_message", None)
         reply_to_id = (
-            str(reply_to_message.message_id)
-            if reply_to_message is not None
-            else None
+            str(reply_to_message.message_id) if reply_to_message is not None else None
         )
         platform_meta = {
             "chat_id": chat_id,

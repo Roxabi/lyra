@@ -183,7 +183,11 @@ class OutboundDispatcher:
                 if kind == "streaming":
                     _, msg, payload, outbound = item
                 elif kind in (
-                    "send", "audio", "audio_stream", "voice_stream", "attachment"
+                    "send",
+                    "audio",
+                    "audio_stream",
+                    "voice_stream",
+                    "attachment",
                 ):
                     _, msg, payload = item
                     outbound = None

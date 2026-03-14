@@ -558,3 +558,109 @@ class TestOutboundDispatcherAudioStream:
             assert ant_cb._failure_count >= 1
         finally:
             await dispatcher.stop()
+
+
+# ---------------------------------------------------------------------------
+# #256: OutboundDispatcher.enqueue_voice_stream() — TTS→VoiceClient pipe
+# ---------------------------------------------------------------------------
+
+
+class TestOutboundDispatcherVoiceStream:
+    async def test_enqueue_voice_stream_delivers_via_adapter(self) -> None:
+        # Arrange
+        adapter = MagicMock()
+        adapter.render_voice_stream = AsyncMock()
+        dispatcher = OutboundDispatcher(platform_name="telegram", adapter=adapter)
+        await dispatcher.start()
+        try:
+            inbound = _make_msg()
+
+            async def chunks() -> AsyncIterator[OutboundAudioChunk]:
+                yield OutboundAudioChunk(
+                    chunk_bytes=b"pcm",
+                    session_id="s1",
+                    chunk_index=0,
+                    is_final=True,
+                )
+
+            it = chunks()
+            dispatcher.enqueue_voice_stream(inbound, it)
+            await asyncio.sleep(0.05)
+
+            # Assert — render_voice_stream(chunks, inbound) — chunks first
+            adapter.render_voice_stream.assert_awaited_once()
+            call_args = adapter.render_voice_stream.call_args[0]
+            assert call_args[0] is it
+            assert call_args[1] is inbound
+
+        finally:
+            await dispatcher.stop()
+
+    async def test_voice_stream_circuit_open_drains_iterator(self) -> None:
+        # Arrange — circuit open → iterator must be drained, render NOT called
+        adapter = MagicMock()
+        adapter.render_voice_stream = AsyncMock()
+        cb = CircuitBreaker(name="telegram", failure_threshold=1)
+        cb.record_failure()
+        assert cb.is_open()
+        dispatcher = OutboundDispatcher(
+            platform_name="telegram", adapter=adapter, circuit=cb
+        )
+        await dispatcher.start()
+        try:
+            inbound = _make_msg()
+            drained: list[int] = []
+
+            async def chunks() -> AsyncIterator[OutboundAudioChunk]:
+                for i in range(3):
+                    drained.append(i)
+                    yield OutboundAudioChunk(
+                        chunk_bytes=b"x",
+                        session_id="s1",
+                        chunk_index=i,
+                        is_final=(i == 2),
+                    )
+
+            dispatcher.enqueue_voice_stream(inbound, chunks())
+            await asyncio.sleep(0.05)
+
+            # Assert
+            adapter.render_voice_stream.assert_not_awaited()
+            assert len(drained) == 3  # iterator fully consumed (no generator leak)
+
+        finally:
+            await dispatcher.stop()
+
+    async def test_voice_stream_routing_mismatch_drains_iterator(self) -> None:
+        # Arrange — dispatcher is "discord", message routing is "telegram"
+        adapter = MagicMock()
+        adapter.render_voice_stream = AsyncMock()
+
+        dispatcher = OutboundDispatcher(
+            platform_name="discord", adapter=adapter, bot_id="main"
+        )
+        await dispatcher.start()
+        try:
+            # Build a message whose routing points to telegram — mismatch
+            inbound = _make_msg()  # platform="telegram"
+            drained: list[int] = []
+
+            async def chunks() -> AsyncIterator[OutboundAudioChunk]:
+                for i in range(2):
+                    drained.append(i)
+                    yield OutboundAudioChunk(
+                        chunk_bytes=b"x",
+                        session_id="s1",
+                        chunk_index=i,
+                        is_final=(i == 1),
+                    )
+
+            dispatcher.enqueue_voice_stream(inbound, chunks())
+            await asyncio.sleep(0.05)
+
+            # Assert — iterator drained, render not called
+            adapter.render_voice_stream.assert_not_awaited()
+            assert len(drained) == 2
+
+        finally:
+            await dispatcher.stop()

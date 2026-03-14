@@ -530,7 +530,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
             tg_key.to_pool_id(),
         )
         dispatcher = OutboundDispatcher(
-            platform_name=f"telegram:{bot_cfg.bot_id}",
+            platform_name="telegram",
             adapter=adapter,
             circuit=circuit_registry.get("telegram"),
             circuit_registry=circuit_registry,
@@ -567,7 +567,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
             dc_key.to_pool_id(),
         )
         dispatcher = OutboundDispatcher(
-            platform_name=f"discord:{bot_cfg.bot_id}",
+            platform_name="discord",
             adapter=adapter,
             circuit=circuit_registry.get("discord"),
             circuit_registry=circuit_registry,

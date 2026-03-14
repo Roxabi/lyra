@@ -202,6 +202,8 @@ class DiscordAdapter(discord.Client):
         self._bot_user: Any = None
         # Compiled once in on_ready (requires bot user ID). None until then.
         self._mention_re: re.Pattern[str] | None = None
+        # Thread IDs created by or claimed by this bot — only this bot responds there.
+        self._owned_threads: set[int] = set()
 
     def _msg(self, key: str, fallback: str) -> str:
         """Return a localised message string, falling back when no manager."""
@@ -503,6 +505,16 @@ class DiscordAdapter(discord.Client):
         # Pre-detect mention (needed for auto-thread decision)
         _is_mention = self._bot_user is not None and self._bot_user in message.mentions
 
+        # Only respond when:
+        #   - directly mentioned (any context), OR
+        #   - in a thread this bot owns (created or claimed via first mention)
+        _in_owned_thread = (
+            isinstance(message.channel, discord.Thread)
+            and message.channel.id in self._owned_threads
+        )
+        if not _is_mention and not _in_owned_thread:
+            return
+
         # Auto-thread creation BEFORE normalize() (frozen dataclass)
         resolved_thread_id: int | None = None
         resolved_channel_id: int = message.channel.id
@@ -520,11 +532,16 @@ class DiscordAdapter(discord.Client):
                     )[:100].strip()
                 )
                 resolved_thread_id = thread.id
+                self._owned_threads.add(thread.id)
             except Exception:
                 log.exception(
                     "Failed to create Discord thread for message id=%s",
                     message.id,
                 )
+
+        # Claim an existing thread when directly mentioned inside it.
+        if _is_mention and isinstance(message.channel, discord.Thread):
+            self._owned_threads.add(message.channel.id)
 
         try:
             hub_msg = self.normalize(

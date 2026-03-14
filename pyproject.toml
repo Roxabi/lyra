@@ -8,7 +8,7 @@ dependencies = [
     "pydantic>=2.12.5",
     # Adapters
     "aiogram>=3.26",       # Telegram — asyncio-native, tracks Bot API same-day
-    "discord.py>=2.4",     # Discord — gateway WebSocket, on_message events
+    "discord.py[voice]>=2.4",  # Discord — gateway WebSocket + voice support
     # HTTP (webhook server for Telegram + inter-machine calls)
     "fastapi>=0.115",
     "uvicorn[standard]>=0.34",

@@ -991,6 +991,3 @@ def _mime_to_ext(mime_type: str) -> str:
         "audio/webm": ".webm",
     }
     return _MAP.get(mime_type, ".ogg")
-
-
-

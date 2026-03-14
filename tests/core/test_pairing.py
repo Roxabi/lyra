@@ -383,6 +383,7 @@ class TestGrantAfterPairing:
     async def test_validate_code_grant_has_correct_expiry(self) -> None:
         """Grant written to AuthStore must expire ~session_max_age_days from now."""
         from datetime import timezone as _tz
+
         store = await make_auth_store()
         pm = await make_pm(auth_store=store)
         code = await pm.generate_code(_ADMIN_ID)

@@ -474,6 +474,28 @@ wheels = [
 ]
 
 [[package]]
+name = "davey"
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e3/1c/c083fd977688f0a5afadd51a4e9abbaf967be92700f5336a79469ffd9251/davey-0.1.0.tar.gz", hash = "sha256:4a0acd4ae1bd54c25bc2171b17745593bd15b25ffb5351fffb191f5902467f4d", size = 60422, upload-time = "2025-09-08T20:36:11.53Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/18/b1/a8021fa24ba97d4e29bf27bc0f22b11401f83ecec47e15b0cdf9f7f99e2b/davey-0.1.0-cp312-cp312-macosx_10_12_x86_64.whl", hash = "sha256:18240a471429f2234aa3a32780163859944a179d13af29750ff3896c06c3f76f", size = 734192, upload-time = "2025-09-08T20:35:05.823Z" },
+    { url = "https://files.pythonhosted.org/packages/77/ba/2867e3489200eb94e89dc08a80eed5bc3121cf0b08221fdc390b46de97fe/davey-0.1.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:73fa3e3276716ea1a1779a93a2ff7f40c50f9d039b097b66a7fd62c99a9a7d3e", size = 687819, upload-time = "2025-09-08T20:34:54.625Z" },
+    { url = "https://files.pythonhosted.org/packages/45/7b/ac00cb3e7b75e9297bf2365fe587be88002c029d8d41345de7f8aa1468c5/davey-0.1.0-cp312-cp312-manylinux_2_12_i686.manylinux2010_i686.whl", hash = "sha256:4a85f8781b1729e3e651976346f18d6de4be6b7c7bef9c0d6bfb86cc214548ad", size = 823869, upload-time = "2025-09-08T20:34:30.011Z" },
+    { url = "https://files.pythonhosted.org/packages/b5/6a/758d1c31cebde3d35005d99d3d5e6e868ebbfc01ebb97b9701790b498b1d/davey-0.1.0-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:7ffb07d6597710b7bb5dc9e638b93188e52406e153edf0bc263982a0dea550f1", size = 757244, upload-time = "2025-09-08T20:33:35.976Z" },
+    { url = "https://files.pythonhosted.org/packages/5c/1d/23dbb4ad597c1cc276de61a8c2554b4d51324e4a44a625eafd875d567582/davey-0.1.0-cp312-cp312-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:5af2e8f21b6dc0d9266eb4ad0bc52fd16665a8d7ed45431fb2220f6c4ed56f2e", size = 718683, upload-time = "2025-09-08T20:33:48.845Z" },
+    { url = "https://files.pythonhosted.org/packages/55/82/fb3e3885d2531d52290b55c8da5dbdc7f324510076ba22bffa2016b5d130/davey-0.1.0-cp312-cp312-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:60fecd73bc1bb16575f07b3300b8037ad801c82eb974cf53a2fcdfcc1a06a15c", size = 819865, upload-time = "2025-09-08T20:34:02.258Z" },
+    { url = "https://files.pythonhosted.org/packages/0b/17/49789f38d0fb05342658186fe4d8f7099b4343ef12e2214cd02621c3b732/davey-0.1.0-cp312-cp312-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:708c063ad21c68cd35a8d90659e99f462a6443efd66feedd7f7e3e81c0ab7d9a", size = 759658, upload-time = "2025-09-08T20:34:15.718Z" },
+    { url = "https://files.pythonhosted.org/packages/65/31/6b8bef1f603ea60d6b3893ecc193b2dd832258bdb4b06754d81922689e6b/davey-0.1.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:86a762a14669e2b6df7991d47cd4f203091f7cbdce23a36d34f732725e91ea0e", size = 799169, upload-time = "2025-09-08T20:34:40.428Z" },
+    { url = "https://files.pythonhosted.org/packages/32/24/abc8c2515d6957f69e40ca371f129f2d1863c24f7e6c42b14182af676cdc/davey-0.1.0-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:b2c5c1bcf066aae909869b7453889ce375bea70fe866014bcff448e903722b73", size = 937848, upload-time = "2025-09-08T20:35:12.449Z" },
+    { url = "https://files.pythonhosted.org/packages/87/73/5ceea29f2522e2d1da7516de601d252525450714a5516d28ec5d4fd3398d/davey-0.1.0-cp312-cp312-musllinux_1_2_armv7l.whl", hash = "sha256:274af6137360060a08062ca9a7723493b979608b478487c42c59971acf96260f", size = 984242, upload-time = "2025-09-08T20:35:27.718Z" },
+    { url = "https://files.pythonhosted.org/packages/60/78/cce9bd431758daac7990fb75c019c4c03bc54481546c37846d8d327bc2be/davey-0.1.0-cp312-cp312-musllinux_1_2_i686.whl", hash = "sha256:87419b2f634ebd9a31d27f7cf0457e853bab303b44460ae6a5abeb303ad8752f", size = 973954, upload-time = "2025-09-08T20:35:41.74Z" },
+    { url = "https://files.pythonhosted.org/packages/e9/d9/edf32c655d7d46f6813e266f6baeb493bda461dc9e89dd97c12542224201/davey-0.1.0-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:9b19f56ca3e8fbc83fd7233d62b9312a16132f716420cab5452e457c1f0958cd", size = 968812, upload-time = "2025-09-08T20:35:58.707Z" },
+    { url = "https://files.pythonhosted.org/packages/0f/de/5e296c9befdd329694c9d5fd422add96818d36e718c005916fcd510838b7/davey-0.1.0-cp312-cp312-win32.whl", hash = "sha256:fedfdb5414442c0c50e330122b32545a643af761df92e35fc205f40fd3db5e3d", size = 695008, upload-time = "2025-09-08T20:36:22.04Z" },
+    { url = "https://files.pythonhosted.org/packages/4b/64/9144052d481526b2dd888efa744caee93bfecf9b6afcc64100729fa51717/davey-0.1.0-cp312-cp312-win_amd64.whl", hash = "sha256:2260616e988026668ae37384122254d6a8ef233489e0a0515397ead5bc67e091", size = 751491, upload-time = "2025-09-08T20:36:15.148Z" },
+]
+
+[[package]]
 name = "decorator"
 version = "5.2.1"
 source = { registry = "https://pypi.org/simple" }
@@ -532,6 +554,12 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/3b/6e/8c6ceba65e2c832fd00906bbfa3801c3a175eafc3039b47a7f587978e01f/discord_py-2.7.0.tar.gz", hash = "sha256:b40a36fd09232c958cef0640c7830f3cdc9b1d476e63355b91728576ac7dd1ba", size = 1106358, upload-time = "2026-02-27T18:53:17.074Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ba/92/eb023fe59414e179e17e3b20d4708da5248714c2832b4af55b8c0386bedd/discord_py-2.7.0-py3-none-any.whl", hash = "sha256:6abe8392d8127213b02ef714be41f843dd053775500bb2e7c596abb77e802b9b", size = 1227558, upload-time = "2026-02-27T18:53:15.381Z" },
+]
+
+[package.optional-dependencies]
+voice = [
+    { name = "davey" },
+    { name = "pynacl" },
 ]
 
 [[package]]
@@ -1004,7 +1032,7 @@ source = { editable = "." }
 dependencies = [
     { name = "aiogram" },
     { name = "anthropic" },
-    { name = "discord-py" },
+    { name = "discord-py", extra = ["voice"] },
     { name = "fastapi" },
     { name = "httpx" },
     { name = "pydantic" },
@@ -1032,7 +1060,7 @@ dev = [
 requires-dist = [
     { name = "aiogram", specifier = ">=3.26" },
     { name = "anthropic", specifier = ">=0.49" },
-    { name = "discord-py", specifier = ">=2.4" },
+    { name = "discord-py", extras = ["voice"], specifier = ">=2.4" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "httpx", extras = ["asyncio"], specifier = ">=0.28" },
     { name = "pydantic", specifier = ">=2.12.5" },
@@ -1777,6 +1805,26 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/ad/32/2a8e213fd744459a03864af7cf4c6142ee061fc915757c8152d147b16015/pykakasi-2.3.0.tar.gz", hash = "sha256:fa052a8e63f59fb8d6569abbe719a8c9f9daf15ed27a67a56ab1705f0f67b0a1", size = 21752447, upload-time = "2024-06-24T04:57:31.233Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/0f/e8/11644fe823e05c583b330e9fb81e3e8fc5d079036512a8300fc157be349d/pykakasi-2.3.0-py3-none-any.whl", hash = "sha256:26d21b090048ff45c6a4d8e962426b7951767216008ec30358e8a9d74af77f29", size = 2395003, upload-time = "2024-06-24T04:57:18.101Z" },
+]
+
+[[package]]
+name = "pynacl"
+version = "1.5.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cffi" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a7/22/27582568be639dfe22ddb3902225f91f2f17ceff88ce80e4db396c8986da/PyNaCl-1.5.0.tar.gz", hash = "sha256:8ac7448f09ab85811607bdd21ec2464495ac8b7c66d146bf545b0f08fb9220ba", size = 3392854, upload-time = "2022-01-07T22:05:41.134Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ce/75/0b8ede18506041c0bf23ac4d8e2971b4161cd6ce630b177d0a08eb0d8857/PyNaCl-1.5.0-cp36-abi3-macosx_10_10_universal2.whl", hash = "sha256:401002a4aaa07c9414132aaed7f6836ff98f59277a234704ff66878c2ee4a0d1", size = 349920, upload-time = "2022-01-07T22:05:49.156Z" },
+    { url = "https://files.pythonhosted.org/packages/59/bb/fddf10acd09637327a97ef89d2a9d621328850a72f1fdc8c08bdf72e385f/PyNaCl-1.5.0-cp36-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.manylinux_2_24_aarch64.whl", hash = "sha256:52cb72a79269189d4e0dc537556f4740f7f0a9ec41c1322598799b0bdad4ef92", size = 601722, upload-time = "2022-01-07T22:05:50.989Z" },
+    { url = "https://files.pythonhosted.org/packages/5d/70/87a065c37cca41a75f2ce113a5a2c2aa7533be648b184ade58971b5f7ccc/PyNaCl-1.5.0-cp36-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:a36d4a9dda1f19ce6e03c9a784a2921a4b726b02e1c736600ca9c22029474394", size = 680087, upload-time = "2022-01-07T22:05:52.539Z" },
+    { url = "https://files.pythonhosted.org/packages/ee/87/f1bb6a595f14a327e8285b9eb54d41fef76c585a0edef0a45f6fc95de125/PyNaCl-1.5.0-cp36-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.manylinux_2_24_x86_64.whl", hash = "sha256:0c84947a22519e013607c9be43706dd42513f9e6ae5d39d3613ca1e142fba44d", size = 856678, upload-time = "2022-01-07T22:05:54.251Z" },
+    { url = "https://files.pythonhosted.org/packages/66/28/ca86676b69bf9f90e710571b67450508484388bfce09acf8a46f0b8c785f/PyNaCl-1.5.0-cp36-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:06b8f6fa7f5de8d5d2f7573fe8c863c051225a27b61e6860fd047b1775807858", size = 1133660, upload-time = "2022-01-07T22:05:56.056Z" },
+    { url = "https://files.pythonhosted.org/packages/3d/85/c262db650e86812585e2bc59e497a8f59948a005325a11bbbc9ecd3fe26b/PyNaCl-1.5.0-cp36-abi3-musllinux_1_1_aarch64.whl", hash = "sha256:a422368fc821589c228f4c49438a368831cb5bbc0eab5ebe1d7fac9dded6567b", size = 663824, upload-time = "2022-01-07T22:05:57.434Z" },
+    { url = "https://files.pythonhosted.org/packages/fd/1a/cc308a884bd299b651f1633acb978e8596c71c33ca85e9dc9fa33a5399b9/PyNaCl-1.5.0-cp36-abi3-musllinux_1_1_x86_64.whl", hash = "sha256:61f642bf2378713e2c2e1de73444a3778e5f0a38be6fee0fe532fe30060282ff", size = 1117912, upload-time = "2022-01-07T22:05:58.665Z" },
+    { url = "https://files.pythonhosted.org/packages/25/2d/b7df6ddb0c2a33afdb358f8af6ea3b8c4d1196ca45497dd37a56f0c122be/PyNaCl-1.5.0-cp36-abi3-win32.whl", hash = "sha256:e46dae94e34b085175f8abb3b0aaa7da40767865ac82c928eeb9e57e1ea8a543", size = 204624, upload-time = "2022-01-07T22:06:00.085Z" },
+    { url = "https://files.pythonhosted.org/packages/5e/22/d3db169895faaf3e2eda892f005f433a62db2decbcfbc2f61e6517adfa87/PyNaCl-1.5.0-cp36-abi3-win_amd64.whl", hash = "sha256:20f42270d27e1b6a29f54032090b972d97f0a1b0948cc52392041ef7831fee93", size = 212141, upload-time = "2022-01-07T22:06:01.861Z" },
 ]
 
 [[package]]

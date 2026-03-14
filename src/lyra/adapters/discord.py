@@ -27,6 +27,7 @@ from lyra.adapters._shared import (
     sanitize_filename,
     truncate_caption,
 )
+from lyra.adapters.discord_voice import VoiceSessionManager
 from lyra.core.auth import AuthMiddleware, TrustLevel
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
@@ -192,6 +193,7 @@ class DiscordAdapter(discord.Client):
         self._mention_re: re.Pattern[str] | None = None
         # Thread IDs created by or claimed by this bot — only this bot responds there.
         self._owned_threads: set[int] = set()
+        self._vsm: VoiceSessionManager = VoiceSessionManager(client=self)
 
     def _msg(self, key: str, fallback: str) -> str:
         """Return a localised message string, falling back when no manager."""
@@ -241,6 +243,19 @@ class DiscordAdapter(discord.Client):
                 "guild message content will be empty. "
                 "Enable 'Message Content Intent' in the Developer Portal."
             )
+
+    async def on_voice_state_update(
+        self,
+        member: Any,
+        before: discord.VoiceState,
+        after: discord.VoiceState,
+    ) -> None:
+        """Invalidate stale voice session when the bot is forcibly disconnected."""
+        bot_user = self._bot_user
+        if bot_user is None or member.id != bot_user.id or after.channel is not None:
+            return
+        guild_id = str(member.guild.id)
+        self._vsm.invalidate(guild_id)
 
     def normalize_audio(
         self,

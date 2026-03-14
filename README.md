@@ -37,7 +37,8 @@ flowchart TD
     HUB -->|"discord · main · thread:888"| P2["Pool<br/>asyncio.Task"]
     P1 --> AGENT["Agent<br/>stateless singleton"]
     P2 --> AGENT
-    AGENT --> LLM["LLM<br/>LlmProvider<br/>Claude CLI + SDK"]
+    AGENT -->|"/add · /explain<br/>/summarize · /search<br/>bare URL"| SC["SessionCommand<br/>scrape → LLM → vault"]
+    AGENT -->|"normal chat"| LLM["LLM<br/>LlmProvider<br/>Claude CLI + SDK"]
     P1 --> TGO["tg_outbound<br/>OutboundDispatcher"]
     P2 --> DCO["dc_outbound<br/>OutboundDispatcher"]
     TGO --> TG
@@ -62,6 +63,7 @@ flowchart TD
 | **LLM** | LlmProvider protocol: Claude CLI + Anthropic SDK drivers · smart routing (complexity-based model selection) · Ollama (Phase 2) |
 | **Agents** | Stateless singleton · isolated per-scope pools · TOML config per agent · N agents × N bots via `config.toml` |
 | **Memory** | 5 levels: working (L0 compaction ✅) → session → episodic → semantic (SQLite + FTS5 + fastembed ✅) → procedural · cross-session recall via `[MEMORY]`/`[PREFERENCES]` blocks |
+| **Session commands** | `/add <url>` (scrape → LLM → vault) · `/explain <url>` · `/summarize <url>` · `/search <query>` · bare URL auto-rewrite → `/add` |
 
 ### Security & Voice
 
@@ -148,6 +150,23 @@ lyra --version
 
 **Telegram-only or Discord-only**: simply omit `[[telegram.bots]]` or `[[discord.bots]]` from `config.toml`. Lyra starts with whichever adapters are configured — a missing platform logs a warning and is skipped.
 
+### In-chat commands
+
+Send these directly in Telegram or Discord:
+
+| Command | Description |
+|---------|-------------|
+| `/add <url>` | Scrape URL → LLM summary → save to vault |
+| `/explain <url>` | Scrape URL → plain-language explanation |
+| `/summarize <url>` | Scrape URL → bullet-point summary |
+| `/search <query>` | Full-text search over vault |
+| `<url>` (bare) | Auto-rewritten to `/add <url>` |
+| `/clear` | Reset conversation history |
+| `/voice <text>` | Generate speech (`voicecli` required) |
+| `/help` | List all available commands |
+
+> See [COMMANDS.md](docs/COMMANDS.md) for the full command reference, workspace commands, and how to add plugins.
+
 ## Operations (Makefile)
 
 Machine connection is configured in `.env` (see `.env.example`):
@@ -190,7 +209,9 @@ src/lyra/
     inbound_bus.py         — InboundBus (per-platform queues + staging)
     inbound_audio_bus.py   — InboundAudioBus (per-platform bounded audio queues)
     outbound_dispatcher.py — OutboundDispatcher (per-platform outbound + CB + audio/attachment)
-    command_router.py      — CommandRouter (builtins + plugin commands)
+    command_router.py      — CommandRouter (builtins + plugin + session commands)
+    session_commands.py    — /add, /explain, /summarize handlers (scrape → LLM → vault)
+    session_helpers.py     — scrape_url, vault_add, vault_search async subprocess wrappers
     circuit_breaker.py     — CircuitBreaker + CircuitRegistry
     pairing.py             — PairingManager (cross-platform identity linking)
     plugin_loader.py       — PluginLoader (TOML manifest + dynamic import)
@@ -214,7 +235,7 @@ src/lyra/
     smart_routing.py      — complexity-based model selection
     decorators.py         — LLM call decorators
   stt/                    — STTService + STTConfig (faster-whisper)
-  plugins/                — Plugin handlers (echo, pairing)
+  plugins/                — Plugin handlers (echo, pairing, search)
   monitoring/             — Health checks (two-tier /health) + escalation
   errors.py               — ProviderError + shared error types
 tests/
@@ -239,7 +260,7 @@ docs/
 | [COMMANDS.md](docs/COMMANDS.md) | Command router — slash commands, external tool integration pattern |
 | [GETTING-STARTED.md](docs/GETTING-STARTED.md) | Machine 1 (Ubuntu Server) hardware setup |
 | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production service management on Machine 1 (supervisord, logs, firewall) |
-| [ADRs](docs/architecture/adr/) | 18 architecture decision records with full rationale |
+| [ADRs](docs/architecture/adr/) | 22 architecture decision records with full rationale |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Branching model, commit conventions, adding adapters and agents |
 
 ## Contributing

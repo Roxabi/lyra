@@ -7,7 +7,7 @@
 
 ## Current focus
 
-**Phase 1b tail — closing out the agent core**: #139 ✅, #123 ✅, #134 ✅, #135 ✅, #80 ✅, #151 ✅, #152 ✅, #83 ✅ all shipped. Remaining: hub command sessions (#99).
+**Phase 1b complete.** All items shipped: #139 ✅, #123 ✅, #134 ✅, #135 ✅, #80 ✅, #151 ✅, #152 ✅, #83 ✅, #99 ✅. Next: Phase 2 (#60) or #136 (multi-bot registry, blocked by #79).
 
 ---
 
@@ -17,7 +17,7 @@
 |-------|------|--------|---------|
 | **0** | #101 | ✅ Done | Bot core parity: pairing, circuit breaker, TOML templates, plugin system |
 | **1** | — | ✅ Done | Hub: asyncio bus, adapters (Telegram/Discord), SimpleAgent, command router |
-| **1b** | #73 | 🔄 Tail | Agent core: persona ✅, SDK agent ✅, parity audit ✅, memory foundation ✅, hub refactor ✅ |
+| **1b** | #73 | ✅ Done | Agent core: persona ✅, SDK agent ✅, parity audit ✅, memory foundation ✅, hub refactor ✅, command sessions ✅ |
 | **Voice** | #74 | 🔓 Unblocked | TTS + STT integration — unblocked since #76 shipped |
 | **2** | #60 | Planned | NATS introduction + Machine 2 coordination |
 | **3** | #61 | Frozen | Atomic SLMs + cognitive pipeline |
@@ -39,10 +39,10 @@
 | #151 | AuthMiddleware + TrustLevel per adapter | M | ✅ Done |
 | #152 | RoutingContext + outbound verification | M | ✅ Done |
 | #83 | Lyra agent integration — identity anchor, session lifecycle, L0 compaction | L | ✅ Done |
-| #99 | Hub command sessions — /add, /explain, /summarize, /search | L | Ready — **next** |
+| #99 | Hub command sessions — /add, /explain, /summarize, /search | L | ✅ Done |
 | #136 | Multi-bot registry upgrade — per-bot-id routing + multi-token config | M | Blocked by #83 + #79 — do last |
 
-**Critical path**: #99
+**Critical path**: #136 (blocked by #79)
 
 **Dependencies**:
 - #83 ✅ unblocked: #99, #67, #128

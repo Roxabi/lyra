@@ -1,7 +1,7 @@
 # Lyra — Architecture & Decisions
 
 > Living document. Updated as decisions are made.
-> Last updated: 2026-03-14 (Phase 1b tail completions: message normalization #139, LlmProvider #123, auth #151, routing #152, smart routing #134, runtime config #135, STT #80, audio/attachment bus, PoolContext #204, TTL eviction #205, typing indicator redesign #229, show_intermediate + on_intermediate callback, /clear session reset, is_backend_alive, SimpleAgent runtime_config wiring, memory integration #83)
+> Last updated: 2026-03-14 (Phase 1b tail completions: message normalization #139, LlmProvider #123, auth #151, routing #152, smart routing #134, runtime config #135, STT #80, audio/attachment bus, PoolContext #204, TTL eviction #205, typing indicator redesign #229, show_intermediate + on_intermediate callback, /clear session reset, is_backend_alive, SimpleAgent runtime_config wiring, memory integration #83, hub command sessions #99)
 
 ---
 
@@ -429,6 +429,7 @@ client = AsyncOpenAI(
 - **`[model].cwd` and `[workspaces]`** ✅ — `ModelConfig.cwd` sets a fixed working directory for the Claude subprocess for a given agent. `[workspaces]` in agent TOML registers named directory shortcuts; each key becomes a `/keyname` slash command that stores a per-pool cwd override in `CliPool._cwd_overrides`. Switching workspace clears pool history and kills/respawns the Claude subprocess with the new cwd.
 - **Reduced Phase 1 memory scope** — Level 0 (working, L0 compaction ✅ #83) + Level 3 (semantic ✅ #78/#81/#82). Levels 1, 2, 4 added when the real need arises.
 - **Memory agent integration** (#83 ✅) — `MemoryManager` wired into Pool identity fields, AgentBase lifecycle (`build_system_prompt`, `compact`, `flush_session`, `_schedule_extraction`), and Hub (`set_memory`, `_memory_tasks`, shutdown drain). Identity anchor seeded in L3 on first boot. FTS isolated per user via `namespace:user_id` sub-namespace. 7 slices delivered: Pool identity, MemoryManager infra, identity anchor, session flush, compaction, cross-session recall, concept/preference extraction.
+- **Hub command sessions** (#99 ✅) — Session command layer: `SessionCommandHandler` protocol, `SessionCommandEntry` registry in `CommandRouter`. `/add` (scrape → LLM summary → vault write), `/explain` (scrape → LLM plain-language explanation), `/summarize` (scrape → LLM bullet points), `/search` (vault FTS). Bare URL messages auto-rewritten to `/add <url>`. Scraping via `web-intel:scrape` subprocess; vault via `vault` CLI. `session_helpers.py` provides `scrape_url`, `vault_add`, `vault_search` async wrappers. `session_commands.py` contains the four command handlers. `AnthropicAgent` wired with a session driver for isolated LLM calls (no pool history pollution). `plugins/search/` plugin implements `/search`.
 
 ### External tool integration
 
@@ -463,9 +464,9 @@ What is built in Phase 1 / 1b:
 - DX: complexity/size limits (#196 ✅), pytest-cov + coverage gate (#211 ✅)
 - Security: hmac.compare_digest (#212 ✅), two-tier /health (#207 ✅), symlink plugin_loader fix (#215 ✅)
 - UX: typing indicator redesign (#229 ✅), intermediate turns (`show_intermediate`) ✅, `/clear` session reset ✅
+- Hub command sessions (#99 ✅): `/add`, `/explain`, `/summarize`, `/search` — session command layer with isolated LLM calls, scrape + vault integration, bare URL auto-rewrite
 
-**Remaining Phase 1b tail**:
-- #99 (hub command sessions — /add, /explain, /summarize, /search)
+**Phase 1b tail: complete.** All items shipped.
 
 What is **explicitly excluded from Phase 1**:
 - Memory levels 1 (session), 2 (episodic), 4 (procedural) — added when the real need arises
@@ -514,12 +515,12 @@ class CognitiveFrame:
 
 **Cognitive flow**: message → routing SLM → memory SLM → planner SLM → skills → LLM (if needed) → NER SLM → memory update.
 
-## Current Status (Phase 1b tail)
+## Current Status
 
-Phase 1b tail is nearly complete. The bus, auth, routing, LLM, voice, and DX layers are all shipped.
+**Phase 1b complete.** All items shipped.
 
-**Remaining critical path**: #99 (hub command sessions)
+**Shipped**: #135 (runtime config ✅), #134 (smart routing ✅), #80 (voice STT ✅), #139 (message normalization ✅), #123 (LlmProvider ✅), #151 (auth ✅), #152 (routing ✅), #83 (memory integration ✅), #99 (hub command sessions ✅)
 
-**All independent items shipped**: #135 (runtime config ✅), #134 (smart routing ✅), #80 (voice STT ✅), #139 (message normalization ✅), #123 (LlmProvider ✅), #151 (auth ✅), #152 (routing ✅), #83 (memory integration ✅)
+**Next**: Phase 2 (#60) — NATS introduction + Machine 2 coordination, or #136 (multi-bot registry upgrade, blocked by #79).
 
 See [ROADMAP.md](ROADMAP.md) for the full backlog and priorities.

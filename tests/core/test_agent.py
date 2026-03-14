@@ -217,7 +217,16 @@ system = "test"
         agent = load_agent_config("tildeagent", agents_dir=tmp_path)
         assert agent.model_config.cwd == subdir.resolve()
 
-    def test_cwd_nonexistent_raises(self, tmp_path: Path) -> None:
+    def test_cwd_nonexistent_warns_and_ignores(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Non-existent cwd is logged as a warning and silently ignored (cwd=None).
+
+        Raising at load time would break CI environments where machine-specific
+        paths (e.g. ~/projects) are not present.
+        """
+        import logging
+
         toml_content = """
 [model]
 cwd = "/nonexistent/path/xyz"
@@ -226,8 +235,10 @@ cwd = "/nonexistent/path/xyz"
 system = "test"
 """
         (tmp_path / "badcwd.toml").write_text(toml_content)
-        with pytest.raises(ValueError, match="not a directory"):
-            load_agent_config("badcwd", agents_dir=tmp_path)
+        with caplog.at_level(logging.WARNING, logger="lyra.core.agent"):
+            cfg = load_agent_config("badcwd", agents_dir=tmp_path)
+        assert cfg.model_config.cwd is None
+        assert any("not a directory" in r.message for r in caplog.records)
 
     def test_workspaces_parsed(self, tmp_path: Path) -> None:
         project_dir = tmp_path / "myproject"

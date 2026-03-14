@@ -331,10 +331,13 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
     if raw_cwd is not None:
         resolved = Path(raw_cwd).expanduser().resolve()
         if not resolved.is_dir():
-            raise ValueError(
-                f"[model].cwd {raw_cwd!r} for agent {name!r} is not a directory"
+            log.warning(
+                "Agent %r: [model].cwd %r is not a directory — ignored",
+                name,
+                raw_cwd,
             )
-        cwd = resolved
+        else:
+            cwd = resolved
 
     model_cfg = ModelConfig(
         backend=backend,

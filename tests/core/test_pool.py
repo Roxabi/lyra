@@ -622,6 +622,45 @@ class FailingStreamingAgent:
         return _gen()
 
 
+# ---------------------------------------------------------------------------
+# T3.4 — Pool.resume_session() — reply-to-resume (#244)
+# ---------------------------------------------------------------------------
+
+
+class TestPoolResumeSession:
+    """Pool.resume_session() delegates to _session_resume_fn (T3.4, SC-4)."""
+
+    @pytest.mark.asyncio
+    async def test_resume_session_calls_fn(self) -> None:
+        """resume_session() calls _session_resume_fn with the given session_id."""
+        # Arrange
+        ctx = _make_ctx_mock()
+        pool = Pool("p1", "agent", ctx=ctx)
+        called_with: list[str] = []
+
+        async def _fake_resume(sid: str) -> None:
+            called_with.append(sid)
+
+        pool._session_resume_fn = _fake_resume  # type: ignore[attr-defined]
+
+        # Act
+        await pool.resume_session("sess-xyz")  # type: ignore[attr-defined]
+
+        # Assert
+        assert called_with == ["sess-xyz"]
+
+    @pytest.mark.asyncio
+    async def test_resume_session_noop_when_fn_none(self) -> None:
+        """resume_session() is a no-op when _session_resume_fn is None (SDK pools)."""
+        # Arrange
+        ctx = _make_ctx_mock()
+        pool = Pool("p1", "agent", ctx=ctx)
+        # _session_resume_fn is None by default
+
+        # Act / Assert — must not raise
+        await pool.resume_session("sess-xyz")  # type: ignore[attr-defined]
+
+
 class TestPoolStreaming:
     """Pool._process_one() async-generator (streaming) branch (S4-*)."""
 

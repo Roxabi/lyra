@@ -536,6 +536,32 @@ class TestCliPoolSpawnCwd:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# T3.4 — CliPool.resume_and_reset() — reply-to-resume (#244)
+# ---------------------------------------------------------------------------
+
+
+class TestCliPoolResumeAndReset:
+    """CliPool.resume_and_reset() stores session_id for next spawn (T3.4, SC-5)."""
+
+    async def test_resume_and_reset_sets_session_id(self) -> None:
+        """After resume_and_reset(), _resume_session_ids[pool_id] is set."""
+        # Arrange
+        pool = CliPool()
+        proc = make_fake_proc([])
+        # Pre-populate a live entry so _kill has something to terminate
+        entry = _ProcessEntry(
+            proc=proc, pool_id="pool:tg:chat:1", model_config=DEFAULT_MODEL
+        )
+        pool._entries["pool:tg:chat:1"] = entry
+
+        # Act
+        await pool.resume_and_reset("pool:tg:chat:1", "sess-abc")  # type: ignore[attr-defined]
+
+        # Assert
+        assert pool._resume_session_ids.get("pool:tg:chat:1") == "sess-abc"  # type: ignore[attr-defined]
+
+
 class TestCliPoolSwitchCwd:
     async def test_switch_cwd_stores_override(self, tmp_path: Path) -> None:
         pool = CliPool()

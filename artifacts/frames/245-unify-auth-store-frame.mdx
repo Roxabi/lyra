@@ -1,0 +1,49 @@
+---
+title: "refactor(auth): unify authorization into a single AuthStore"
+issue: 245
+status: approved
+tier: F-lite
+date: 2026-03-14
+---
+
+## Problem
+
+Auth is currently split across two independent systems that share no state and overlap conceptually:
+
+| System | Mechanism | Check point | Storage |
+|--------|-----------|-------------|---------|
+| `config.toml` (auth) | `AuthMiddleware` → `TrustLevel` | Adapter level | In-memory dict |
+| Pairing plugin | `PairingManager.is_paired()` | Hub level | SQLite `paired_sessions` |
+
+This creates silent contradictions: a paired user can still be BLOCKED at the adapter if absent from `config.toml`; a trusted user (config) can be blocked in groups if not paired. There are two separate mental models for the same concept ("is this user allowed?"), pairing TTL and `TrustLevel` are not composable, and config changes require a process restart.
+
+## Who
+
+- **Primary:** Lyra maintainer (Mickael) — needs a single, coherent place to reason about auth decisions
+- **Secondary:** Telegram/Discord users interacting with Lyra — affected by grant inconsistencies today
+
+## Constraints
+
+- Must reuse `TrustLevel` as the common grant type (no new enum)
+- Persistence via SQLite (already used by pairing) — no new dependency
+- Boot path must seed `config.toml` static grants into the store (no restart required for runtime changes)
+- `paired_sessions` table replaced by `grants` table — migration handled in boot
+- `_pairing_gate_drop` logic in hub removed — auth fully delegated to adapter level post-refactor
+
+## Out of Scope
+
+- New `TrustLevel` values beyond existing enum
+- Multi-instance / distributed auth (single-process only)
+- UI or Telegram command changes beyond `/invite` + `/join` writing to `AuthStore`
+- Audit logging or grant history
+
+## Complexity
+
+**Tier: F-lite** — Clear single-domain refactor with well-defined boundaries; new SQLite schema but no new architectural patterns.
+
+Signals observed:
+- Single domain (auth)
+- 5 files touched: `auth.py`, `pairing.py`, `hub.py`, `telegram.py`, `discord.py`
+- New `AuthStore` class but straightforward SQLite layer
+- Complexity score 7 in issue (moderate, not complex)
+- No cross-domain unknowns

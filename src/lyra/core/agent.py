@@ -85,6 +85,7 @@ class SmartRoutingConfig:
     enabled: bool = False
     routing_table: dict[Complexity, str] = field(default_factory=dict)
     history_size: int = 50
+    high_complexity_commands: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -401,10 +402,12 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
                         "only [a-zA-Z0-9_.:-] characters allowed"
                     )
                 routing_table[level] = model_id
+        hcc = sr_section.get("high_complexity_commands", [])
         smart_routing = SmartRoutingConfig(
             enabled=bool(sr_section.get("enabled", False)),
             routing_table=routing_table,
             history_size=int(sr_section.get("history_size", 50)),
+            high_complexity_commands=tuple(hcc),
         )
 
     workspaces_section = data.get("workspaces", {})

@@ -3,9 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from lyra.core.trust import TrustLevel
+
+if TYPE_CHECKING:
+    from lyra.core.command_parser import CommandContext
 
 # Shared user-facing fallback for unhandled agent or dispatch errors.
 GENERIC_ERROR_REPLY = "Something went wrong. Please try again."
@@ -85,6 +88,7 @@ class InboundMessage:
     trust: Literal["user", "system"] = "user"
     platform_meta: dict = field(default_factory=dict)
     routing: RoutingContext | None = None
+    command: CommandContext | None = None
 
 
 @dataclass(frozen=True)

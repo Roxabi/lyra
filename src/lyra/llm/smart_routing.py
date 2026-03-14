@@ -15,10 +15,13 @@ import time
 from collections import deque
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from lyra.core.agent import Complexity, ModelConfig, SmartRoutingConfig
 from lyra.llm.base import LlmProvider, LlmResult
+
+if TYPE_CHECKING:
+    from lyra.core.message import InboundMessage
 
 log = logging.getLogger(__name__)
 
@@ -93,6 +96,76 @@ class ComplexityClassifier:
 
 
 # ---------------------------------------------------------------------------
+# Multi-signal ComplexityEstimator
+# ---------------------------------------------------------------------------
+
+
+class ComplexityEstimator:
+    """Multi-signal complexity estimator.
+
+    Signals (additive score):
+      COMPLEX text heuristic → +2
+      MODERATE text heuristic → +1
+      len(attachments) > 0 → +1
+      command_name in high_complexity_commands → +2
+      turn_count > 20 → +2  (stacks: counts as both >10 and >20)
+      turn_count > 10 → +1
+
+    Score → Complexity: 0=TRIVIAL, 1=SIMPLE, 2-3=MODERATE, 4+=COMPLEX
+    """
+
+    def __init__(
+        self,
+        text_classifier: ComplexityClassifier | None = None,
+        high_complexity_commands: tuple[str, ...] = (),
+    ) -> None:
+        self._text_classifier = text_classifier or ComplexityClassifier()
+        self._high_complexity_commands = high_complexity_commands
+
+    def estimate(
+        self,
+        text: str,
+        attachments: list,
+        command_name: str | None,
+        turn_count: int,
+    ) -> tuple[Complexity, str]:
+        text_complexity, text_reason = self._text_classifier.classify(text)
+        score = 0
+        signals: list[str] = []
+
+        if text_complexity == Complexity.COMPLEX:
+            score += 2
+            signals.append(f"text:{text_reason}")
+        elif text_complexity == Complexity.MODERATE:
+            score += 1
+            signals.append(f"text:{text_reason}")
+
+        if attachments:
+            score += 1
+            signals.append("attachment +1")
+
+        if command_name is not None and command_name in self._high_complexity_commands:
+            score += 2
+            signals.append(f"command:{command_name} +2")
+
+        if turn_count > 20:
+            score += 2
+            signals.append(f"turns:{turn_count} +2")
+        elif turn_count > 10:
+            score += 1
+            signals.append(f"turns:{turn_count} +1")
+
+        reason = ", ".join(signals) if signals else "no signals"
+        if score == 0:
+            return Complexity.TRIVIAL, reason
+        if score == 1:
+            return Complexity.SIMPLE, reason
+        if score <= 3:
+            return Complexity.MODERATE, reason
+        return Complexity.COMPLEX, reason
+
+
+# ---------------------------------------------------------------------------
 # SmartRoutingDecorator
 # ---------------------------------------------------------------------------
 
@@ -114,6 +187,10 @@ class SmartRoutingDecorator:
         self._inner = inner
         self._config = config
         self._classifier = classifier or ComplexityClassifier()
+        self._estimator = ComplexityEstimator(
+            text_classifier=self._classifier,
+            high_complexity_commands=getattr(config, "high_complexity_commands", ()),
+        )
         self._history: deque[RoutingDecision] = deque(maxlen=config.history_size)
         self.capabilities: dict[str, Any] = inner.capabilities
 
@@ -131,6 +208,7 @@ class SmartRoutingDecorator:
         *,
         messages: list[dict] | None = None,
         on_intermediate: Callable[[str], Awaitable[None]] | None = None,
+        msg: InboundMessage | None = None,
     ) -> LlmResult:
         if not self._config.enabled:
             return await self._inner.complete(
@@ -149,7 +227,17 @@ class SmartRoutingDecorator:
         reason = "default"
 
         try:
-            complexity, reason = self._classifier.classify(text)
+            if msg is not None:
+                turn_count = len(messages) if messages else 0
+                attachments = list(msg.attachments)
+                command_name = msg.command.name if msg.command else None
+                complexity, reason = self._estimator.estimate(
+                    text, attachments, command_name, turn_count
+                )
+            else:
+                # backward compat: text-only classification
+                complexity, reason = self._classifier.classify(text)
+
             target_model = self._config.routing_table.get(complexity, original_model)
             if target_model != original_model:
                 routed_cfg = dataclasses.replace(model_cfg, model=target_model)

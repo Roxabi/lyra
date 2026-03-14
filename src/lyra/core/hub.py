@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import enum
 import logging
 import os
@@ -16,6 +17,7 @@ from lyra.errors import ProviderError
 
 from .agent import AgentBase
 from .circuit_breaker import CircuitRegistry
+from .command_parser import CommandParser
 from .inbound_audio_bus import InboundAudioBus
 from .inbound_bus import InboundBus
 from .message import (
@@ -38,6 +40,8 @@ if TYPE_CHECKING:
     from .pairing import PairingManager
 
 log = logging.getLogger(__name__)
+
+_command_parser = CommandParser()
 
 
 class ChannelAdapter(Protocol):
@@ -867,6 +871,11 @@ class MessagePipeline:
         )
         router = getattr(agent, "command_router", None)
 
+        # Parse command prefix and attach CommandContext to the message
+        cmd_ctx = _command_parser.parse(msg.text)
+        if cmd_ctx is not None:
+            msg = dataclasses.replace(msg, command=cmd_ctx)
+
         result = await self._pairing_gate(msg, router, key)
         if result is not None:
             return result
@@ -973,6 +982,12 @@ class MessagePipeline:
                 else GENERIC_ERROR_REPLY
             )
             response = Response(content=_content)
+            return PipelineResult(action=Action.COMMAND_HANDLED, response=response)
+
+        if response is None:
+            # !-prefixed command not found — fall through to pool submission
+            return await self._submit_to_pool(msg, pool, key)
+
         return PipelineResult(
             action=Action.COMMAND_HANDLED,
             response=response,

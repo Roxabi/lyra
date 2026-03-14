@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -25,9 +24,6 @@ if TYPE_CHECKING:
     from lyra.llm.smart_routing import SmartRoutingDecorator
 
 log = logging.getLogger(__name__)
-
-# Matches a message that starts with "/" followed by at least one word character.
-_COMMAND_RE = re.compile(r"^/\w")
 
 
 @dataclass(frozen=True)
@@ -117,18 +113,18 @@ class CommandRouter:
     # ------------------------------------------------------------------
 
     def is_command(self, msg: InboundMessage) -> bool:
-        """Return True if the message starts with '/' followed by a word char."""
-        return bool(_COMMAND_RE.match(msg.text))
+        """Return True if the message has a parsed CommandContext attached."""
+        return msg.command is not None
 
     def get_command_name(self, msg: InboundMessage) -> str | None:
-        """Extract the slash-command name (e.g. '/join') or None if not a command.
+        """Return the full command name (e.g. '/join') or None if not a command.
 
-        Single source of truth for command-name parsing, used by the hub pairing
-        gate and by dispatch().
+        Reads the pre-parsed CommandContext attached by the Hub pipeline.
+        Single source of truth for command-name resolution.
         """
-        if not _COMMAND_RE.match(msg.text):
+        if msg.command is None:
             return None
-        return msg.text.split(maxsplit=1)[0].lower()
+        return f"{msg.command.prefix}{msg.command.name}"
 
     # ------------------------------------------------------------------
     # Dispatch
@@ -156,11 +152,20 @@ class CommandRouter:
             )
         return None
 
-    async def dispatch(self, msg: InboundMessage, pool: Pool | None = None) -> Response:
-        """Parse the command name + args and route to the appropriate handler."""
-        parts = msg.text.split()
-        command_name = parts[0].lower()
-        args = parts[1:]
+    async def dispatch(  # noqa: C901 — command routing has inherent branching complexity
+        self, msg: InboundMessage, pool: Pool | None = None
+    ) -> Response | None:
+        """Route the pre-parsed command to the appropriate handler.
+
+        Reads command name and args from msg.command (set by Hub pipeline).
+        Returns None (sentinel) for !-prefixed unknown commands so the Hub
+        can fall through to pool submission.
+        """
+        if msg.command is None:
+            raise ValueError("dispatch() called on non-command message")
+
+        command_name = f"{msg.command.prefix}{msg.command.name}"
+        args = msg.command.args.split() if msg.command.args else []
 
         # /clear and /new need async session reset — handle before _dispatch_builtin
         if command_name in ("/clear", "/new"):
@@ -184,6 +189,9 @@ class CommandRouter:
         )
         handler = plugin_handlers.get(command_name)
         if handler is None:
+            if msg.command.prefix == "!":
+                # !-prefixed unknown command — sentinel: fall through to pool
+                return None
             _fallback = (
                 f"Unknown command: {command_name}. Type /help for available commands."
             )

@@ -1,4 +1,4 @@
-"""Tests for the command router (issue #66, updated #106).
+"""Tests for the command router (issue #66, updated #106, #99).
 
 Tests the plugin-based CommandRouter: PluginLoader integration, dispatch,
 built-in /help, hot-reload, and hub passthrough behaviour.
@@ -12,6 +12,8 @@ Covers:
   Slice 4 — /circuit command (SC-15, TestCircuitCommandAdminCheck,
              TestCircuitCommandOpenState, TestCircuitCommandNoRegistry)
   Slice 5 — TOML plugins config parsing (TestPluginsConfigFromToml)
+  Issue #99 — Bare URL detection (TestBareUrlDetection)
+  Issue #99 — Session command registry (TestSessionCommands)
 """
 
 from __future__ import annotations
@@ -1322,3 +1324,223 @@ class TestBangPrefixFallthrough:
         # Assert — agent.process() called via pool (not "Unknown command" response)
         assert len(process_calls) == 1
         assert process_calls[0].text == "!unknown_xyz"
+
+
+# ---------------------------------------------------------------------------
+# Issue #99 — Bare URL detection (T1)
+# ---------------------------------------------------------------------------
+
+
+class TestBareUrlDetection:
+    """prepare() rewrites bare URLs to /add; is_command() detects them."""
+
+    def test_https_url_is_detected(self, tmp_path: Path) -> None:
+        router = make_router(tmp_path)
+        msg = make_message(content="https://example.com/article")
+        assert router.is_command(msg) is True
+
+    def test_http_url_is_detected(self, tmp_path: Path) -> None:
+        router = make_router(tmp_path)
+        msg = make_message(content="http://example.com")
+        assert router.is_command(msg) is True
+
+    def test_prepare_returns_add_command(self, tmp_path: Path) -> None:
+        router = make_router(tmp_path)
+        msg = make_message(content="https://example.com/page")
+        prepared = router.prepare(msg)
+        assert prepared.command is not None
+        assert prepared.command.name == "add"
+        assert prepared.command.prefix == "/"
+
+    def test_prepare_sets_url_as_args(self, tmp_path: Path) -> None:
+        router = make_router(tmp_path)
+        url = "https://example.com/page"
+        msg = make_message(content=url)
+        prepared = router.prepare(msg)
+        assert prepared.command is not None
+        assert prepared.command.args == url
+
+    def test_url_with_surrounding_text_not_rewritten(self, tmp_path: Path) -> None:
+        router = make_router(tmp_path)
+        msg = make_message(content="check this https://example.com")
+        # msg.command is None (no slash prefix) and not a bare URL
+        prepared = router.prepare(msg)
+        assert prepared.command is None
+
+    def test_url_with_surrounding_text_is_not_command(self, tmp_path: Path) -> None:
+        router = make_router(tmp_path)
+        msg = make_message(content="check this https://example.com")
+        assert router.is_command(msg) is False
+
+    def test_regular_command_unaffected_by_prepare(self, tmp_path: Path) -> None:
+        router = make_router(tmp_path)
+        msg = make_message(content="/help")
+        prepared = router.prepare(msg)
+        assert prepared.command is not None
+        assert prepared.command.name == "help"
+
+    def test_get_command_name_returns_add_for_bare_url(self, tmp_path: Path) -> None:
+        router = make_router(tmp_path)
+        msg = make_message(content="https://example.com")
+        prepared = router.prepare(msg)
+        assert router.get_command_name(prepared) == "/add"
+
+    def test_plain_text_not_detected_as_command(self, tmp_path: Path) -> None:
+        router = make_router(tmp_path)
+        msg = make_message(content="hello world")
+        assert router.is_command(msg) is False
+
+    @pytest.mark.asyncio
+    async def test_dispatch_bare_url_routes_to_add_session(
+        self, tmp_path: Path
+    ) -> None:
+        """dispatch() with a bare URL calls the /add session handler."""
+        from unittest.mock import AsyncMock
+
+        router = make_router(tmp_path)
+        handler = AsyncMock(return_value=Response(content="added"))
+        router.register_session_command("add", handler)
+        # Provide a mock session driver so the session path is taken
+        from unittest.mock import MagicMock as MM
+
+        router._session_driver = MM()
+
+        msg = make_message(content="https://example.com/test")
+        pool = MagicMock(spec=Pool)
+        response = await router.dispatch(msg, pool=pool)
+        assert response is not None
+        assert response.content == "added"
+        handler.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Issue #99 — Session command registry (T2)
+# ---------------------------------------------------------------------------
+
+
+class TestSessionCommands:
+    """SessionCommandEntry registration, dispatch, timeout, and help listing."""
+
+    def _make_router_with_session(
+        self,
+        tmp_path: Path,
+        driver: object = None,
+        handler_response: str = "session result",
+    ):
+        from unittest.mock import AsyncMock, MagicMock
+
+        router = make_router(tmp_path)
+        router._session_driver = driver or MagicMock()
+
+        async_handler = AsyncMock(return_value=Response(content=handler_response))
+        router.register_session_command(
+            "mysession",
+            async_handler,
+            description="My session command",
+            timeout=30.0,
+        )
+        return router, async_handler
+
+    @pytest.mark.asyncio
+    async def test_session_command_dispatched(self, tmp_path: Path) -> None:
+        router, handler = self._make_router_with_session(tmp_path)
+        msg = make_message(content="/mysession arg1")
+        pool = MagicMock(spec=Pool)
+        response = await router.dispatch(msg, pool=pool)
+        assert response is not None
+        assert response.content == "session result"
+        handler.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_session_command_none_driver_returns_degradation(
+        self, tmp_path: Path
+    ) -> None:
+        router = make_router(tmp_path)
+        router._session_driver = None
+
+        from unittest.mock import AsyncMock
+
+        async_handler = AsyncMock(return_value=Response(content="never"))
+        router.register_session_command("nosession", async_handler)
+
+        msg = make_message(content="/nosession")
+        pool = MagicMock(spec=Pool)
+        response = await router.dispatch(msg, pool=pool)
+        assert response is not None
+        assert (
+            "anthropic-sdk" in response.content.lower()
+            or "session" in response.content.lower()
+        )
+        handler = async_handler
+        handler.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_session_command_timeout_returns_timeout_message(
+        self, tmp_path: Path
+    ) -> None:
+        import asyncio as _asyncio
+
+        router = make_router(tmp_path)
+        router._session_driver = MagicMock()
+
+        async def slow_handler(msg, driver, args, timeout):
+            await _asyncio.sleep(10)
+            return Response(content="never")
+
+        router.register_session_command("slow", slow_handler, timeout=0.01)
+
+        msg = make_message(content="/slow")
+        pool = MagicMock(spec=Pool)
+        response = await router.dispatch(msg, pool=pool)
+        assert response is not None
+        assert "timed out" in response.content.lower()
+
+    def test_register_conflict_with_builtin_raises(self, tmp_path: Path) -> None:
+        from unittest.mock import AsyncMock
+
+        router = make_router(tmp_path)
+        handler = AsyncMock(return_value=Response(content="x"))
+        with pytest.raises(ValueError, match="clashes with a builtin"):
+            router.register_session_command("help", handler)
+
+    def test_register_conflict_with_plugin_raises(self, tmp_path: Path) -> None:
+        from unittest.mock import AsyncMock
+
+        router = make_router(tmp_path)  # has echo plugin
+        handler = AsyncMock(return_value=Response(content="x"))
+        with pytest.raises(ValueError, match="clashes with a plugin"):
+            router.register_session_command("echo", handler)
+
+    def test_help_includes_session_commands_section(self, tmp_path: Path) -> None:
+        from unittest.mock import AsyncMock
+
+        router = make_router(tmp_path)
+        handler = AsyncMock(return_value=Response(content="x"))
+        router.register_session_command(
+            "mything", handler, description="Does the thing"
+        )
+        response = router._help()
+        assert "Session commands:" in response.content
+        assert "/mything" in response.content
+        assert "Does the thing" in response.content
+
+    def test_session_args_passed_to_handler(self, tmp_path: Path) -> None:
+        import asyncio as _asyncio
+        from unittest.mock import MagicMock
+
+        received_args: list[list[str]] = []
+
+        async def capturing_handler(msg, driver, args, timeout):
+            received_args.append(args)
+            return Response(content="ok")
+
+        router = make_router(tmp_path)
+        router._session_driver = MagicMock()
+        router.register_session_command("capture", capturing_handler)
+
+        msg = make_message(content="/capture foo bar")
+        pool = MagicMock(spec=Pool)
+
+        _asyncio.get_event_loop().run_until_complete(router.dispatch(msg, pool=pool))
+
+        assert received_args == [["foo", "bar"]]

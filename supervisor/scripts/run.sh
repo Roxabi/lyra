@@ -4,4 +4,4 @@
 set -a
 [ -f "$HOME/projects/lyra/.env" ] && source "$HOME/projects/lyra/.env"
 set +a
-exec "$HOME/projects/lyra/.venv/bin/python" -m lyra
+exec "$HOME/projects/lyra/.venv/bin/python" -m lyra "$@"

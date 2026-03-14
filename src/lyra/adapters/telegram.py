@@ -70,7 +70,7 @@ _ALLOW_ALL = AuthMiddleware(user_map={}, role_map={}, default=TrustLevel.PUBLIC)
 _MARKDOWNV2_SPECIAL = re.compile(r"([_*\[\]()~`>#\+\-=|{}.!\\])")
 
 
-def _send_message_kwargs(chat_id: int, text: str, reply_to: int | None) -> dict:
+def _make_send_kwargs(chat_id: int, text: str, reply_to: int | None) -> dict:
     """Build bot.send_message kwargs, adding reply_to_message_id when set."""
     kwargs: dict = {"chat_id": chat_id, "text": text}
     if reply_to is not None:
@@ -621,7 +621,7 @@ class TelegramAdapter:
                     "That audio file is too large to process.",
                 )
                 await self.bot.send_message(
-                    **_send_message_kwargs(msg.chat.id, _text, msg.message_id)
+                    **_make_send_kwargs(msg.chat.id, _text, msg.message_id)
                 )
             except Exception:
                 log.warning(
@@ -651,7 +651,7 @@ class TelegramAdapter:
 
             async def _send_bp(text: str) -> None:
                 await self.bot.send_message(
-                    **_send_message_kwargs(msg.chat.id, text, msg.message_id)
+                    **_make_send_kwargs(msg.chat.id, text, msg.message_id)
                 )
 
             await push_to_hub_guarded(

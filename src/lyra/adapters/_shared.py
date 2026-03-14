@@ -12,6 +12,7 @@ import os
 import re
 from collections.abc import AsyncIterator, Awaitable, Callable
 from io import BytesIO
+from typing import TYPE_CHECKING
 
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
@@ -21,6 +22,9 @@ from lyra.core.message import (
     OutboundAudioChunk,
     Platform,
 )
+
+if TYPE_CHECKING:
+    from lyra.core.messages import MessageManager
 
 log = logging.getLogger(__name__)
 
@@ -223,9 +227,11 @@ def chunk_text(
     return [text[i : i + max_len] for i in range(0, len(text), max_len)]
 
 
-def get_msg(manager: object, key: str, platform: str, fallback: str) -> str:
+def get_msg(
+    manager: MessageManager | None, key: str, platform: str, fallback: str
+) -> str:
     """Return a localised message string, falling back when no manager."""
-    return manager.get(key, platform=platform) if manager is not None else fallback  # type: ignore[attr-defined]
+    return manager.get(key, platform=platform) if manager is not None else fallback
 
 
 def parse_reply_to_id(reply_to_id: str | None) -> int | None:

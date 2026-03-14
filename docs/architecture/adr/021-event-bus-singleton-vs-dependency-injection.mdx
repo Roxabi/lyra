@@ -1,0 +1,109 @@
+---
+title: "ADR-021: EventBus Singleton vs Dependency Injection for Monitoring Emission"
+description: Documents the decision to use a module-level singleton for EventBus access in emitters (Pool, CircuitBreaker, InboundBus) rather than injecting the bus through the existing dependency graph.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+PR #260 (issue #44) introduces a 2-layer event-driven monitoring system: `lyra.core.events`
+(typed frozen dataclasses) and `lyra.core.event_bus` (`EventBus` fan-out + `EventAggregator`
+dedup state machine). Three existing modules — `pool.py`, `circuit_breaker.py`, and
+`inbound_bus.py` — need to emit monitoring events without coupling to the EventBus lifecycle.
+
+Two structural options exist for giving emitters access to the EventBus:
+
+1. **Module singleton** (`get_event_bus()` / `set_event_bus()` in `event_bus.py`). Emitters
+   call `get_event_bus()` and guard with `if bus := get_event_bus():`. Hub sets the singleton
+   in `__init__`. The bus is optional from the emitter's perspective.
+
+2. **Dependency injection** through existing injection points: Pool already receives a
+   `PoolContext` (ADR-017 Hotspot 1 resolution); CircuitBreaker could receive a bus reference
+   at construction time; InboundBus could receive one in `__init__`.
+
+The monitoring path was explicitly classified as optional telemetry, not control flow.
+Emitters must remain functional when no bus is registered (early startup, tests without bus).
+
+## Options Considered
+
+### Option A: Module-level singleton (`get_event_bus` / `set_event_bus`)
+
+The singleton lives in `event_bus.py`. Hub calls `set_event_bus(self._event_bus)` in
+`__init__`. Emitters call `get_event_bus()` with a walrus-guard on every emit site.
+
+- **Pros:**
+  - Zero change to PoolContext, CircuitBreaker, or InboundBus constructor signatures.
+  - Emitters treat the bus as optional: `if bus := get_event_bus()` is a no-op when the
+    singleton is None (early startup, unit tests without a bus).
+  - CircuitBreaker and InboundBus have no existing DI mechanism; adding one solely for
+    telemetry would create noise in their APIs.
+  - Consistent with the existing pattern in `lyra.core.runtime_config` (module-level state).
+- **Cons:**
+  - Re-introduces process-global state that ADR-017 set out to remove from core modules.
+  - Tests must use a `set_event_bus(None)` fixture to prevent state bleed between tests.
+  - Import order matters: the singleton is None until Hub sets it; emitters before Hub
+    startup silently drop events (acceptable, but implicit).
+
+### Option B: Dependency injection through existing injection points
+
+Bus is injected into `PoolContext` (for Pool), added to `CircuitBreaker.__init__`, and added
+to `InboundBus.__init__`. All callers that construct these objects pass the bus.
+
+- **Pros:**
+  - Aligns with the dependency rule: modules declare their dependencies explicitly.
+  - No global state; bus lifecycle is tied to the object that holds it.
+  - Easier to test individual components with a mock bus without touching global state.
+- **Cons:**
+  - `PoolContext` protocol update required (ADR-017 decoupling work already in progress).
+  - CircuitBreaker is currently a pure-logic class with no async or I/O dependencies;
+    adding a bus reference makes it stateful in a new dimension.
+  - InboundBus would need a bus reference before Hub is constructed — creating a
+    construction-order dependency between two previously independent objects.
+  - Hub creates CircuitBreaker instances in application config (`__main__.py`), not in Hub
+    itself; injecting the bus there would require threading the bus through the startup
+    sequence before Hub is constructed.
+
+## Decision
+
+Option A (module singleton) is accepted for this tier (F-lite) with the following
+mitigations to manage the coupling risk:
+
+1. **Emitters treat the bus as optional telemetry.** Every emit site uses
+   `if bus := get_event_bus(): bus.emit(...)`. Emitters never block, raise, or change
+   behavior based on bus presence.
+2. **Tests use an explicit `set_event_bus(None)` autouse fixture** to reset state between
+   test runs. This is documented in `tests/core/test_event_bus.py`.
+3. **The singleton is set exactly once**, in `Hub.__init__`, and cleared on hub teardown.
+   No other module calls `set_event_bus`.
+4. **emit() iterates a snapshot copy of `_subscribers`** (`list(self._subscribers)`) to
+   prevent `RuntimeError: list changed size during iteration` when a subscriber is cancelled
+   and removed from the list mid-iteration. This is required because `subscribe()` removes
+   its queue in a `finally` block that can run concurrently with an in-progress `emit()`.
+
+The DI approach (Option B) is the preferred long-term direction and should be revisited if
+a second EventBus consumer is added that is not reachable through Hub (e.g., an adapter that
+needs to emit events before Hub starts).
+
+## Consequences
+
+### Positive
+
+- No change to PoolContext, CircuitBreaker, or InboundBus public APIs.
+- Emitters remain independently testable with `set_event_bus(None)`.
+- Monitoring is transparently off when no bus is registered, without affecting correctness.
+
+### Negative
+
+- Module-level mutable state is re-introduced after ADR-017 worked to remove it.
+- Test isolation requires an explicit autouse fixture; forgetting it causes subtle
+  cross-test pollution.
+
+### Neutral
+
+- The singleton pattern is already present in `lyra.core.runtime_config`; this is a
+  consistent application of that pattern rather than a new one.
+- If the codebase grows to multiple Hub instances in a single process (currently not
+  planned), the singleton would need to become instance-scoped or be replaced with DI.

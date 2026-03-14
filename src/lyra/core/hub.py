@@ -203,6 +203,9 @@ class Hub:
         # Health monitoring timestamps (SC-3, issue #111)
         self._start_time: float = time.monotonic()
         self._last_processed_at: float | None = None
+        from .event_bus import EventBus, set_event_bus
+        self._event_bus: EventBus = EventBus()
+        set_event_bus(self._event_bus)
 
     @property
     def bus(self) -> asyncio.Queue[InboundMessage]:
@@ -789,56 +792,72 @@ class Hub:
             log.exception("dispatch_response failed for fast-fail reply: %s", exc)
         return True
 
+    async def _dispatch_pipeline_result(
+        self, msg: InboundMessage, result: PipelineResult
+    ) -> None:
+        """Dispatch a pipeline result: send command response or submit to pool."""
+        if result.action == Action.COMMAND_HANDLED:
+            if result.response and (
+                result.response.content or result.response.audio
+            ):
+                if result.response.audio:
+                    try:
+                        await self.dispatch_audio(
+                            msg,
+                            result.response.audio,
+                        )
+                    except Exception as exc:
+                        log.exception(
+                            "dispatch_audio() failed: %s",
+                            exc,
+                        )
+                if result.response.content:
+                    try:
+                        await self.dispatch_response(
+                            msg,
+                            result.response,
+                        )
+                    except Exception as exc:
+                        log.exception(
+                            "dispatch_response() failed: %s",
+                            exc,
+                        )
+            else:
+                log.debug(
+                    "command returned empty response"
+                    " for msg id=%s — skipping dispatch",
+                    msg.id,
+                )
+        elif result.action == Action.SUBMIT_TO_POOL and result.pool:
+            result.pool.submit(msg)
+
     async def run(self) -> None:
         """Hub bus consumer loop. Runs until cancelled."""
+        from .event_bus import EventAggregator
+        aggregator = EventAggregator(self._event_bus)
+        agg_task = asyncio.create_task(aggregator.run(), name="event-aggregator")
         pipeline = MessagePipeline(self)
-        while True:
-            msg = await self.inbound_bus.get()
-            try:
+        try:
+            while True:
+                msg = await self.inbound_bus.get()
                 try:
-                    result = await pipeline.process(msg)
-                except Exception:
-                    log.exception(
-                        "pipeline.process() failed for msg id=%s",
-                        msg.id,
-                    )
-                    continue
-                if result.action == Action.COMMAND_HANDLED:
-                    if result.response and (
-                        result.response.content or result.response.audio
-                    ):
-                        if result.response.audio:
-                            try:
-                                await self.dispatch_audio(
-                                    msg,
-                                    result.response.audio,
-                                )
-                            except Exception as exc:
-                                log.exception(
-                                    "dispatch_audio() failed: %s",
-                                    exc,
-                                )
-                        if result.response.content:
-                            try:
-                                await self.dispatch_response(
-                                    msg,
-                                    result.response,
-                                )
-                            except Exception as exc:
-                                log.exception(
-                                    "dispatch_response() failed: %s",
-                                    exc,
-                                )
-                    else:
-                        log.debug(
-                            "command returned empty response"
-                            " for msg id=%s — skipping dispatch",
+                    try:
+                        result = await pipeline.process(msg)
+                    except Exception:
+                        log.exception(
+                            "pipeline.process() failed for msg id=%s",
                             msg.id,
                         )
-                elif result.action == Action.SUBMIT_TO_POOL and result.pool:
-                    result.pool.submit(msg)
-            finally:
-                self.inbound_bus.task_done()
+                        continue
+                    await self._dispatch_pipeline_result(msg, result)
+                finally:
+                    self.inbound_bus.task_done()
+        finally:
+            agg_task.cancel()
+            try:
+                await agg_task
+            except asyncio.CancelledError:
+                pass
 
 
 class MessagePipeline:

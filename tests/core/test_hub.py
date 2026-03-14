@@ -1665,3 +1665,35 @@ class TestPoolTTLEviction:
         pool.submit(msg)
         assert pool.last_active >= t0
         pool.cancel()
+
+
+class TestHubEventAggregatorLifecycle:
+    """Hub starts EventAggregator task and cancels it on shutdown (SC-12)."""
+
+    @pytest.mark.asyncio
+    async def test_hub_starts_and_cancels_aggregator_on_shutdown(self):
+        """hub.run() starts EventAggregator; hub cancellation cleans it up."""
+        from lyra.core.event_bus import get_event_bus, set_event_bus
+
+        set_event_bus(None)
+        hub = Hub()  # use minimal constructor — look at existing test fixtures
+        assert get_event_bus() is not None  # EventBus set in __init__
+
+        # Run hub briefly then cancel
+        task = asyncio.create_task(hub.run())
+        await asyncio.sleep(0.05)  # let aggregator start
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        # Aggregator task should have been cancelled and is no longer running
+        all_tasks = asyncio.all_tasks()
+        agg_tasks = [t for t in all_tasks if t.get_name() == "event-aggregator"]
+        assert len(agg_tasks) == 0, (
+            "event-aggregator task should have been cancelled and cleaned up"
+        )
+
+        # No unhandled exceptions — if we get here, cleanup was clean
+        set_event_bus(None)

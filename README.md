@@ -61,7 +61,7 @@ flowchart TD
 |---------|--------|
 | **LLM** | LlmProvider protocol: Claude CLI + Anthropic SDK drivers · smart routing (complexity-based model selection) · Ollama (Phase 2) |
 | **Agents** | Stateless singleton · isolated per-scope pools · TOML config per agent · N agents × N bots via `config.toml` |
-| **Memory** | 5 levels: working (L0) → session → episodic → semantic (SQLite + FTS5 + fastembed, ✅ Phase 1) → procedural |
+| **Memory** | 5 levels: working (L0 compaction ✅) → session → episodic → semantic (SQLite + FTS5 + fastembed ✅) → procedural · cross-session recall via `[MEMORY]`/`[PREFERENCES]` blocks |
 
 ### Security & Voice
 
@@ -124,7 +124,7 @@ All configuration is via `.env` (copy `.env.example` to get started). Key variab
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `STT_MODEL_SIZE` | `small` | Whisper model size (`small`, `medium`, `large-v3-turbo`) |
+| `STT_MODEL_SIZE` | `large-v3-turbo` | Whisper model size (`small`, `medium`, `large-v3-turbo`) |
 | `STT_DEVICE` | `auto` | `cpu`, `cuda`, or `auto` |
 
 Agent behaviour (tools, model, system prompt) is configured per-agent in `src/lyra/agents/<name>.toml` (project-level) or `~/.lyra/agents/<name>.toml` (user-level, takes precedence).
@@ -160,8 +160,9 @@ src/lyra/
   core/
     message.py             — InboundMessage, OutboundMessage, RoutingKey, Platform, Response
     hub.py                 — Hub (bus + adapter registry + bindings + TTL eviction)
-    pool.py                — Pool (history + asyncio.Task per scope + PoolContext protocol)
-    agent.py               — AgentBase, Agent config, ModelConfig
+    pool.py                — Pool (history + session identity fields + asyncio.Task per scope)
+    agent.py               — AgentBase (compact, flush_session, build_system_prompt), Agent config
+    memory.py              — MemoryManager (recall, upsert_session, concept/preference extraction)
     auth.py                — AuthMiddleware (per-adapter trust verification)
     trust.py               — TrustLevel enum (owner/trusted/public/blocked)
     cli_pool.py            — Claude CLI subprocess pool

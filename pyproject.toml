@@ -23,7 +23,8 @@ dependencies = [
 ]
 
 [project.scripts]
-lyra-agent = "lyra.cli:main"
+lyra = "lyra.cli:lyra_main"
+lyra-agent = "lyra.cli:agent_main"
 
 [project.optional-dependencies]
 

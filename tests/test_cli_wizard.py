@@ -11,7 +11,7 @@ import pytest
 from click.testing import Result
 from typer.testing import CliRunner
 
-from lyra.cli import app  # type: ignore[import-not-found]
+from lyra.cli import agent_app as app  # type: ignore[import-not-found]
 from lyra.core.agent import load_agent_config
 
 # ---------------------------------------------------------------------------

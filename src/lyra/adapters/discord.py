@@ -27,9 +27,15 @@ from lyra.adapters._shared import (
     sanitize_filename,
     truncate_caption,
 )
-from lyra.adapters.discord_voice import VoiceSessionManager
+from lyra.adapters.discord_voice import (
+    VoiceAlreadyActiveError,
+    VoiceDependencyError,
+    VoiceMode,
+    VoiceSessionManager,
+)
 from lyra.core.auth import AuthMiddleware, TrustLevel
 from lyra.core.circuit_breaker import CircuitRegistry
+from lyra.core.command_parser import CommandParser
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
     Attachment,
@@ -50,6 +56,8 @@ _ATTACHMENT_EXTS = ATTACHMENT_EXTS_BASE
 log = logging.getLogger(__name__)
 
 DISCORD_MAX_LENGTH = 2000  # Discord API message length limit
+
+_command_parser = CommandParser()
 
 # Sentinel used when no AuthMiddleware is provided — denies all traffic by default.
 _DENY_ALL = AuthMiddleware(store=None, role_map={}, default=TrustLevel.BLOCKED)
@@ -262,6 +270,99 @@ class DiscordAdapter(discord.Client):
         # member.guild is always set for voice state events (guild-only, no DM voice).
         guild_id = str(member.guild.id)
         self._vsm.invalidate(guild_id)
+
+    async def _reply_safe(self, message: Any, text: str, *, label: str) -> None:
+        """Send a reply, logging a warning on failure."""
+        try:
+            await message.reply(text)
+        except Exception as exc:
+            log.warning(
+                "Failed to send %s reply for message_id=%s: %s",
+                label,
+                message.id,
+                exc,
+            )
+
+    async def _handle_leave_command(self, message: Any, guild_id: str) -> None:
+        """Execute !leave: disconnect if active, reply with outcome."""
+        log.info(
+            "voice_cmd cmd=leave user=%s guild=%s",
+            getattr(message.author, "id", "?"),
+            guild_id,
+        )
+        if self._vsm.get(guild_id) is None:
+            await self._reply_safe(
+                message, "I'm not in a voice channel.", label="not-in-channel"
+            )
+        else:
+            await self._vsm.leave(guild_id)
+            await self._reply_safe(message, "Left the voice channel.", label="leave")
+
+    async def _handle_join_command(
+        self,
+        message: Any,
+        guild: Any,
+        args: str,
+        trust: TrustLevel = TrustLevel.TRUSTED,
+    ) -> None:
+        """Execute !join / !join stay: connect to user's voice channel."""
+        voice_state = getattr(message.author, "voice", None)
+        if voice_state is None or voice_state.channel is None:
+            await self._reply_safe(
+                message, "Join a voice channel first.", label="not-in-voice"
+            )
+            return
+        mode = (
+            VoiceMode.PERSISTENT
+            if args.strip().lower().split()[:1] == ["stay"]
+            else VoiceMode.TRANSIENT
+        )
+        if mode == VoiceMode.PERSISTENT and trust < TrustLevel.TRUSTED:
+            await self._reply_safe(
+                message,
+                "Persistent mode requires elevated permissions.",
+                label="persistent-denied",
+            )
+            mode = VoiceMode.TRANSIENT
+        try:
+            await self._vsm.join(guild, voice_state.channel, mode)
+        except VoiceAlreadyActiveError:
+            await self._reply_safe(
+                message, "Already in a voice channel.", label="already-active"
+            )
+        except VoiceDependencyError as exc:
+            log.error("Voice dependency error on join: %s", exc)
+            await self._reply_safe(
+                message, "Voice is not available right now.", label="voice-unavailable"
+            )
+
+    async def _handle_voice_command(
+        self, message: Any, trust: TrustLevel = TrustLevel.TRUSTED
+    ) -> bool:
+        """Detect and handle !join / !join stay / !leave voice commands.
+
+        Returns True if a voice command was handled (caller should return early).
+        Returns False if the message is not a voice command.
+        Both ! and / prefixes are accepted (CommandParser handles both).
+        Voice commands are guild-only; callers must not invoke for DMs.
+        """
+        cmd = _command_parser.parse(message.content.strip())
+        if cmd is None or cmd.name not in ("join", "leave"):
+            return False
+        guild = message.guild
+        guild_id = str(guild.id)
+        if cmd.name == "leave":
+            if trust < TrustLevel.TRUSTED:
+                await self._reply_safe(
+                    message,
+                    "You don't have permission to use this command.",
+                    label="leave-denied",
+                )
+                return True
+            await self._handle_leave_command(message, guild_id)
+        else:
+            await self._handle_join_command(message, guild, cmd.args, trust=trust)
+        return True
 
     def normalize_audio(
         self,
@@ -508,6 +609,13 @@ class DiscordAdapter(discord.Client):
                 get_msg=self._msg,
             )
             return  # audio messages handled separately; skip text path
+
+        # Voice command dispatch — runs before mention/DM filter so !join / !leave
+        # work from any text channel without requiring a bot mention.
+        # Guild guard: voice channels are guild-only; skip in DMs.
+        if message.guild is not None:
+            if await self._handle_voice_command(message, trust):
+                return
 
         # Pre-detect mention (needed for auto-thread decision)
         _is_mention = self._bot_user is not None and self._bot_user in message.mentions

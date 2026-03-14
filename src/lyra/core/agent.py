@@ -670,6 +670,14 @@ class AgentBase(ABC):
         """
         return True
 
+    async def reset_backend(self, _pool_id: str) -> None:
+        """Kill and reset the backend process for this pool.
+
+        Called by the pool on turn timeout to discard a potentially stuck
+        process.  Subclasses backed by persistent processes should override
+        this; the default no-op is correct for SDK-backed agents.
+        """
+
     @abstractmethod
     async def process(
         self,

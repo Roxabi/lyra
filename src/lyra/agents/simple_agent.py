@@ -86,6 +86,12 @@ class SimpleAgent(AgentBase):
         """Delegate to the LlmProvider's liveness check."""
         return self._provider.is_alive(pool_id)
 
+    async def reset_backend(self, pool_id: str) -> None:
+        """Kill the backend process so the next turn gets a fresh one."""
+        reset_fn = getattr(self._provider, "reset", None)
+        if reset_fn is not None:
+            await reset_fn(pool_id)
+
     def _build_router_kwargs(self) -> dict[str, object]:
         return {
             "runtime_config_holder": self._runtime_config_holder,

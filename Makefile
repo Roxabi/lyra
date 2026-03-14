@@ -25,8 +25,13 @@ define ensure_hub
 	fi
 endef
 
-MACHINE1 := $(or $(shell grep '^MACHINE1_HOST=' .env 2>/dev/null | cut -d= -f2),mickael@192.168.1.16)
-MACHINE1_DIR := $(or $(shell grep '^MACHINE1_DIR=' .env 2>/dev/null | cut -d= -f2),~/projects/lyra)
+MACHINE1 := $(shell grep '^MACHINE1_HOST=' .env 2>/dev/null | cut -d= -f2)
+MACHINE1_DIR := $(shell grep '^MACHINE1_DIR=' .env 2>/dev/null | cut -d= -f2)
+
+define require_machine1
+	@[ -n "$(MACHINE1)" ] || { echo "Error: MACHINE1_HOST not set in .env"; exit 1; }
+	@[ -n "$(MACHINE1_DIR)" ] || { echo "Error: MACHINE1_DIR not set in .env"; exit 1; }
+endef
 
 .PHONY: lyra register deploy remote test lint typecheck format
 
@@ -72,10 +77,12 @@ register:
 	@echo "Done. Run 'make lyra' to start."
 
 deploy:
+	$(require_machine1)
 	@echo "Deploying to Machine 1 ($(MACHINE1))..."
 	@ssh $(MACHINE1) "cd $(MACHINE1_DIR) && bash scripts/deploy.sh"
 
 remote:
+	$(require_machine1)
 	@ssh $(MACHINE1) "cd $(MACHINE1_DIR) && make lyra $(REMOTE_CMD)"
 
 test:

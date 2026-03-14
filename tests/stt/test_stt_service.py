@@ -20,7 +20,7 @@ from lyra.stt import (
 
 
 def test_config_default_model():
-    cfg = STTConfig()
+    cfg = STTConfig(model_size="large-v3-turbo")
     assert cfg.model_size == "large-v3-turbo"
 
 
@@ -92,7 +92,7 @@ def _make_vc_result(text="Hello world", language: str | None = "en", segments=No
 
 @pytest.mark.asyncio
 async def test_transcribe_returns_transcription_result():
-    svc = STTService(STTConfig())
+    svc = STTService(STTConfig(model_size="large-v3-turbo"))
 
     with (
         patch("voicecli.config.load_vocab", return_value=[]),
@@ -112,7 +112,7 @@ async def test_transcribe_returns_transcription_result():
 
 @pytest.mark.asyncio
 async def test_transcribe_passes_vocab_as_prompt():
-    svc = STTService(STTConfig())
+    svc = STTService(STTConfig(model_size="large-v3-turbo"))
 
     with (
         patch("voicecli.config.load_vocab", return_value=["Lyra", "Roxabi"]),
@@ -129,7 +129,7 @@ async def test_transcribe_passes_vocab_as_prompt():
 
 @pytest.mark.asyncio
 async def test_transcribe_none_language_becomes_unknown():
-    svc = STTService(STTConfig())
+    svc = STTService(STTConfig(model_size="large-v3-turbo"))
 
     with (
         patch("voicecli.config.load_vocab", return_value=[]),
@@ -146,7 +146,7 @@ async def test_transcribe_none_language_becomes_unknown():
 
 @pytest.mark.asyncio
 async def test_transcribe_empty_segments_duration_zero():
-    svc = STTService(STTConfig())
+    svc = STTService(STTConfig(model_size="large-v3-turbo"))
 
     with (
         patch("voicecli.config.load_vocab", return_value=[]),
@@ -163,7 +163,7 @@ async def test_transcribe_empty_segments_duration_zero():
 
 @pytest.mark.asyncio
 async def test_transcribe_propagates_error():
-    svc = STTService(STTConfig())
+    svc = STTService(STTConfig(model_size="large-v3-turbo"))
 
     with (
         patch("voicecli.config.load_vocab", return_value=[]),

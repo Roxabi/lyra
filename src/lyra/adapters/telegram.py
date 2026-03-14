@@ -599,12 +599,11 @@ class TelegramAdapter:
         if not msg.from_user or getattr(msg.from_user, "is_bot", False):
             return
 
-        uid = f"tg:user:{msg.from_user.id}"
+        uid = str(msg.from_user.id)
         trust = self._auth.check(uid)
         if trust == TrustLevel.BLOCKED:
             log.info("auth_reject user=%s channel=telegram", uid)
             return
-        # TODO(#140): pass trust to normalize_audio() when audio bus is wired
 
         voice = msg.voice or msg.audio or getattr(msg, "video_note", None)
         if voice is None:

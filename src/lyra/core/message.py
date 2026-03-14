@@ -89,6 +89,7 @@ class InboundMessage:
     platform_meta: dict = field(default_factory=dict)
     routing: RoutingContext | None = None
     command: CommandContext | None = None
+    modality: Literal["text", "voice"] | None = None
 
 
 @dataclass(frozen=True)

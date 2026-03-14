@@ -38,6 +38,7 @@ from .pool import Pool
 
 if TYPE_CHECKING:
     from ..stt import STTService
+    from ..tts import TTSService
     from .memory import MemoryManager
     from .pairing import PairingManager
 
@@ -176,6 +177,7 @@ class Hub:
         msg_manager: MessageManager | None = None,
         pairing_manager: PairingManager | None = None,
         stt: STTService | None = None,
+        tts: TTSService | None = None,
         debounce_ms: int = 0,
         context_resolver: ContextResolver | None = None,
     ) -> None:
@@ -192,6 +194,7 @@ class Hub:
         self._pairing_manager = pairing_manager
         self._context_resolver = context_resolver
         self._stt: STTService | None = stt
+        self._tts: TTSService | None = tts
         self._rate_limit = rate_limit
         self._rate_window = rate_window
         self._pool_ttl = pool_ttl
@@ -503,16 +506,31 @@ class Hub:
         if dispatcher is not None:
             dispatcher.enqueue(msg, outbound)
             self._last_processed_at = time.monotonic()
-            return
-        # Fallback: direct adapter call (backward compat / no dispatcher registered)
-        adapter = self.adapter_registry.get((platform, msg.bot_id))
-        if adapter is None:
-            raise KeyError(
-                f"No adapter registered for ({msg.platform!r}, {msg.bot_id!r}). "
-                "Call register_adapter() before dispatching responses."
-            )
-        await adapter.send(msg, outbound)
-        self._last_processed_at = time.monotonic()
+        else:
+            # Fallback: direct adapter call (backward compat / no dispatcher registered)
+            adapter = self.adapter_registry.get((platform, msg.bot_id))
+            if adapter is None:
+                raise KeyError(
+                    f"No adapter registered for ({msg.platform!r}, {msg.bot_id!r}). "
+                    "Call register_adapter() before dispatching responses."
+                )
+            await adapter.send(msg, outbound)
+            self._last_processed_at = time.monotonic()
+
+        # /voice command: dispatch audio carried in Response.audio (pool path)
+        if isinstance(response, Response) and response.audio:
+            await self.dispatch_audio(msg, response.audio)
+
+        # Voice modality: synthesize TTS audio in background after text is dispatched
+        if msg.modality == "voice" and self._tts is not None:
+            text = outbound.to_text().strip()
+            if text:
+                task = asyncio.create_task(
+                    self._synthesize_and_dispatch_audio(msg, text),
+                    name=f"tts:{msg.id}",
+                )
+                self._memory_tasks.add(task)
+                task.add_done_callback(self._memory_tasks.discard)
 
     async def dispatch_streaming(
         self,
@@ -527,7 +545,20 @@ class Hub:
 
         When *outbound* is provided it is forwarded to the adapter so the
         platform message ID can be recorded in ``outbound.metadata``.
+
+        Voice modality: accumulates the full stream then delegates to
+        dispatch_response() which handles both text and TTS dispatch.
         """
+        # Voice modality: accumulate full stream, dispatch text + schedule TTS
+        if msg.modality == "voice" and self._tts is not None:
+            text_parts: list[str] = []
+            async for chunk in chunks:
+                text_parts.append(chunk)
+            full_text = "".join(text_parts)
+            if full_text.strip():
+                await self.dispatch_response(msg, Response(content=full_text))
+            return
+
         if (
             outbound is not None
             and outbound.routing is None
@@ -737,6 +768,7 @@ class Hub:
             trust=audio.trust,
             platform_meta=audio.platform_meta,
             routing=audio.routing,
+            modality="voice",
         )
         try:
             self.inbound_bus.put(platform_enum, msg)
@@ -816,6 +848,34 @@ class Hub:
             routing=audio.routing,
         )
         await self.dispatch_response(synthetic, Response(content=content))
+
+    async def _synthesize_and_dispatch_audio(
+        self, msg: InboundMessage, text: str
+    ) -> None:
+        """Synthesize TTS audio for a voice response and dispatch it.
+
+        Runs as a background task after dispatch_response() enqueues the text.
+        Errors are logged and swallowed — audio failure must never crash the hub.
+        """
+        assert self._tts is not None  # caller guarantees this
+        try:
+            result = await self._tts.synthesize(text)
+            audio = OutboundAudio(
+                audio_bytes=result.audio_bytes,
+                mime_type=result.mime_type,
+                duration_ms=result.duration_ms,
+            )
+            await self.dispatch_audio(msg, audio)
+            log.info(
+                "Voice TTS dispatched: %d bytes for msg id=%s",
+                len(result.audio_bytes),
+                msg.id,
+            )
+        except Exception:
+            log.exception(
+                "TTS synthesis failed for voice response — audio not sent (msg id=%s)",
+                msg.id,
+            )
 
     # ------------------------------------------------------------------
     # Run loop

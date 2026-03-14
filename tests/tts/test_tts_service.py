@@ -71,56 +71,66 @@ def _write_minimal_wav(path: str, duration_ms: int = 500) -> None:
         wf.writeframes(b"\x00\x00" * num_samples)
 
 
-def _make_generate_result(wav_path: str) -> MagicMock:
-    """Return a mock voiceCLI generate result with a .wav_path attribute."""
+def _make_chunked_result(chunk_wav_paths: list[str]) -> MagicMock:
+    """Return a mock voiceCLI TTSResult in chunked mode (chunk_paths set)."""
     result = MagicMock()
-    result.wav_path = Path(wav_path)
+    result.wav_path = Path(chunk_wav_paths[0]).with_suffix(".done")  # sentinel
+    result.mp3_path = None
+    result.chunk_paths = [Path(p) for p in chunk_wav_paths]
     return result
 
 
 @pytest.mark.asyncio
 async def test_synthesize_returns_synthesis_result():
-    """synthesize() returns SynthesisResult with audio_bytes, mime_type, duration_ms."""
+    """synthesize() returns SynthesisResult with MP3 audio_bytes and audio/mpeg mime."""
     svc = TTSService(TTSConfig())
 
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
         wav_path = tmp.name
+    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_mp3:
+        mp3_path = tmp_mp3.name
 
     _write_minimal_wav(wav_path, duration_ms=500)
-    expected_bytes = Path(wav_path).read_bytes()
+    expected_bytes = b"fakemp3data"
+    Path(mp3_path).write_bytes(expected_bytes)
 
     async def fake_generate(text, **kwargs):
         _write_minimal_wav(wav_path, duration_ms=500)
-        return _make_generate_result(wav_path)
+        return _make_chunked_result([wav_path])
 
     with patch("voicecli.generate_async", new=AsyncMock(side_effect=fake_generate)):
-        result = await svc.synthesize("Hello world")
+        with patch("voicecli.utils.wav_to_mp3", return_value=Path(mp3_path)):
+            result = await svc.synthesize("Hello world")
 
     assert isinstance(result, SynthesisResult)
     assert result.audio_bytes == expected_bytes
-    assert result.mime_type == "audio/wav"
-    assert result.duration_ms is not None
-    assert result.duration_ms > 0
+    assert result.mime_type == "audio/mpeg"
+    assert result.duration_ms is None  # MP3 duration not read
 
 
 @pytest.mark.asyncio
 async def test_synthesize_cleans_up_temp_file_on_success():
-    """synthesize() deletes the WAV file returned by voicecli after success."""
+    """synthesize() deletes temp WAV chunk and MP3 files after success."""
     svc = TTSService(TTSConfig())
 
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
         wav_path = tmp.name
+    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_mp3:
+        mp3_path = tmp_mp3.name
 
     _write_minimal_wav(wav_path, duration_ms=200)
+    Path(mp3_path).write_bytes(b"fakemp3")
 
     async def fake_generate(text, **kwargs):
         _write_minimal_wav(wav_path, duration_ms=200)
-        return _make_generate_result(wav_path)
+        return _make_chunked_result([wav_path])
 
     with patch("voicecli.generate_async", new=AsyncMock(side_effect=fake_generate)):
-        await svc.synthesize("Cleanup test")
+        with patch("voicecli.utils.wav_to_mp3", return_value=Path(mp3_path)):
+            await svc.synthesize("Cleanup test")
 
     assert not os.path.exists(wav_path), "WAV file must be deleted after synthesis"
+    assert not os.path.exists(mp3_path), "MP3 file must be deleted after synthesis"
 
 
 @pytest.mark.asyncio

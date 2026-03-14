@@ -521,6 +521,16 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
         except ValueError as exc:
             raise SystemExit(f"Invalid STT configuration: {exc}") from exc
 
+    tts_service: TTSService | None = None
+    if stt_service is not None and os.environ.get("LYRA_VOICE_RESPONSES", "1") != "0":
+        tts_cfg = load_tts_config()
+        tts_service = TTSService(tts_cfg)
+        log.info(
+            "TTS voice responses enabled: engine=%s voice=%s",
+            tts_cfg.engine or "default",
+            tts_cfg.voice or "default",
+        )
+
     from lyra.core.debouncer import DEFAULT_DEBOUNCE_MS
 
     hub = Hub(
@@ -528,6 +538,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
         msg_manager=msg_manager,
         pairing_manager=pm,
         stt=stt_service,
+        tts=tts_service,
         debounce_ms=DEFAULT_DEBOUNCE_MS,
     )
 
@@ -828,12 +839,13 @@ async def _bootstrap_legacy(  # noqa: C901, PLR0915 — startup wiring: each ada
         except ValueError as exc:
             raise SystemExit(f"Invalid STT configuration: {exc}") from exc
 
-    tts_service: TTSService | None = None
-    tts_cfg = load_tts_config()
-    if tts_cfg.engine or tts_cfg.voice or tts_cfg.language:
-        tts_service = TTSService(tts_cfg)
+    tts_service_legacy: TTSService | None = None
+    _voice_responses_on = os.environ.get("LYRA_VOICE_RESPONSES", "1") != "0"
+    if stt_service_legacy is not None and _voice_responses_on:
+        tts_cfg = load_tts_config()
+        tts_service_legacy = TTSService(tts_cfg)
         log.info(
-            "TTS enabled: engine=%s voice=%s (via voiceCLI)",
+            "TTS voice responses enabled: engine=%s voice=%s",
             tts_cfg.engine or "default",
             tts_cfg.voice or "default",
         )
@@ -845,6 +857,7 @@ async def _bootstrap_legacy(  # noqa: C901, PLR0915 — startup wiring: each ada
         msg_manager=msg_manager,
         pairing_manager=pm_legacy,
         stt=stt_service_legacy,
+        tts=tts_service_legacy,
         debounce_ms=DEFAULT_DEBOUNCE_MS,
     )
 
@@ -875,7 +888,7 @@ async def _bootstrap_legacy(  # noqa: C901, PLR0915 — startup wiring: each ada
         admin_user_ids=admin_user_ids,
         msg_manager=msg_manager,
         stt=stt_service_legacy,
-        tts=tts_service,
+        tts=tts_service_legacy,
         provider_registry=provider_registry,
         smart_routing_decorator=smart_routing_decorator,
     )

@@ -1,0 +1,64 @@
+---
+title: "Hub command sessions — /add, /explain, /summarize, /search with dedicated task routing"
+issue: 99
+status: approved
+tier: F-lite
+date: 2026-03-14
+---
+
+## Problem
+
+Lyra's command router dispatches `/` commands to plugins — stateless handlers that return a `Response` synchronously. This is appropriate for short-lived operations like `/svc status` or `/help`, but breaks down for content-heavy commands like `/add <url>`, `/explain`, and `/summarize` that require: (1) fetching and parsing external URLs, (2) running an LLM pass over the fetched content, and (3) writing results to vault.
+
+None of these can be done statelessly. Today there is no pattern in the hub for a command to spawn an isolated LLM request that runs once, returns a result, and discards itself. Commands either bypass the agent entirely (plugin handlers) or submit to the main conversation pool (which pollutes conversation history with task artifacts that don't belong there).
+
+Additionally, bare URLs sent by the user are treated as free-text and routed to the main agent — there is no automatic "/add"-like behavior, forcing the user to prefix every URL manually.
+
+The trigger: identified during the #77 feature parity audit as "Hub command sessions — /add, /search, /explain, /summarize".
+
+## Who
+
+- **Primary:** Mickael — saves URLs to vault daily via Telegram, needs `/add <url>` and `/search` as first-class commands
+- **Secondary:** Any Lyra user — the command session pattern is channel-agnostic (Telegram + Discord)
+
+## Decisions
+
+The following design decisions are accepted and must be carried into the spec without reopening:
+
+**Session model: request-response (ephemeral).** A command session is not a persistent `Pool`. It is a single LLM call (using `AnthropicSdkDriver`) that runs, returns a result, and discards itself. No pool is created, no history is retained. If the user replies to the response, a new session starts fresh (continuation on demand, not persistent state).
+
+**Routing ownership: CommandRouter.** The `CommandRouter` is the canonical dispatch path. New "session commands" (`/add`, `/explain`, `/summarize`) are registered as a new handler type in the router — distinct from both builtins and plugin commands. The hub's `run()` loop does not need to know about session commands; it sees the router return a `Response` as it always does.
+
+**Bare URL detection: `is_command()` in CommandRouter.** A message containing a single bare URL (no other text, no `/` prefix) is treated as an implicit `/add <url>`. `CommandRouter.is_command()` is extended to detect this pattern and rewrite the message as an `/add` dispatch. This keeps URL routing centralized in the command layer, not scattered across adapters or plugins.
+
+**`/search`: standard plugin command.** The initial search call is a stateless vault FTS query — no LLM, no session. It is implemented as a plugin (like `svc`). If the user replies to the search result, a continuation session can be triggered via the standard request-response pattern above.
+
+## Constraints
+
+- **Request-response only** — no persistent pools for command sessions; ephemeral LLM calls via `AnthropicSdkDriver` directly
+- **CommandRouter ownership** — session command dispatch lives in `CommandRouter`, not `Hub.run()`; hub.run() must see a `Response` back, same as today
+- **No history pollution** — command sessions must not write to the calling pool's `sdk_history` or `history`
+- **web-intel:scrape dependency** — `/add`, `/explain`, `/summarize` all require URL fetching; must use the `web-intel:scrape` CLI tool (roxabi-plugins); if not available on PATH, degrade gracefully
+- **vault dependency** — `/add` writes to vault; requires `vault` CLI on PATH or equivalent; degrade gracefully if absent
+- **`AnthropicSdkDriver` required** — session commands need direct API access for model selection and isolated context; `claude-cli` backend does not support ephemeral single-shot calls
+- **Timeout** — session commands must time out (configurable, default 60s); response returned to user on timeout
+- **Single-agent assumption** — multi-agent command conflict resolution is out of scope (same constraint as #66)
+
+## Out of Scope
+
+- Persistent command sessions (pool-based, stateful across turns) — deferred
+- Continuation sessions triggered by reply-to (smart reply threading) — a follow-up issue; for now, a reply to a command response goes to the main agent
+- `/search` with LLM ranking or synthesis — the initial call is vault FTS only; any LLM follow-up is a continuation handled by the main agent
+- Per-command model selection in TOML — the session always uses the agent's configured SDK model; per-command overrides are deferred
+- Cost tracking per session command — deferred to a broader cost tracking issue
+- Wiring vault and web-intel as native SDK tools — they are invoked via CLI subprocess inside the session handler; native tool schema is a separate concern
+
+## Complexity
+
+**Tier: F-lite** — Extends the existing `CommandRouter` dispatch path with a new handler type. Uses `AnthropicSdkDriver` which already exists. The main unknowns are: how to structure the ephemeral LLM call without Pool, and how `is_command()` URL detection interacts with the existing `CommandParser` pipeline.
+
+Signals:
+- ~6-10 files: `command_router.py`, new `session_handler.py` (or inline), `command_router` tests, `hub.py` (minor wiring if any), agent TOML config, plugin manifest for `/search`
+- Two domains: command routing + LLM execution (but LLM path is already solved by `AnthropicSdkDriver`)
+- One clear unknown: session handler structure (no Pool — needs a thin wrapper or direct driver call)
+- No new architectural patterns beyond what #76, #83, #112 already established

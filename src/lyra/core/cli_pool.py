@@ -110,6 +110,7 @@ class CliPool:
         self._entries: dict[str, _ProcessEntry] = {}
         self._reaper_task: asyncio.Task[None] | None = None
         self._cwd_overrides: dict[str, Path] = {}
+        self._resume_session_ids: dict[str, str] = {}
 
     async def start(self) -> None:
         """Start the idle reaper background task."""
@@ -209,6 +210,16 @@ class CliPool:
         self._cwd_overrides[pool_id] = cwd
         log.info("[pool:%s] workspace switched to %s", pool_id, cwd)
 
+    async def resume_and_reset(self, pool_id: str, session_id: str) -> None:
+        """Kill process; next _spawn() will use --resume <session_id> (one-shot)."""
+        await self._kill(pool_id)
+        self._resume_session_ids[pool_id] = session_id
+        log.info(
+            "[pool:%s] resume_and_reset: will resume session %s on next spawn",
+            pool_id,
+            session_id,
+        )
+
     # -------------------------------------------------------------------------
     # Internal
     # -------------------------------------------------------------------------
@@ -243,7 +254,12 @@ class CliPool:
         self, pool_id: str, model_config: ModelConfig, system_prompt: str = ""
     ) -> _ProcessEntry | None:
         spawn_cwd = self._cwd_overrides.get(pool_id) or model_config.cwd or _LYRA_ROOT
-        cmd = self._build_cmd(model_config, system_prompt=system_prompt)
+        resume_session_id = self._resume_session_ids.pop(pool_id, None)
+        cmd = self._build_cmd(
+            model_config,
+            session_id=resume_session_id,
+            system_prompt=system_prompt,
+        )
         log.info(
             "[pool:%s] spawning: backend=%s model=%s cwd=%s",
             pool_id,

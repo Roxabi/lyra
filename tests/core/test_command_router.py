@@ -831,7 +831,7 @@ def make_config_msg(
             "is_group": False,
         },
         trust_level=TrustLevel.TRUSTED,
-        command=_parser.parse(content),
+        command=_parser.parse(content),  # type: ignore[call-arg]  # field added in #153
     )
 
 

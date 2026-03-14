@@ -79,7 +79,7 @@ def _make_admin_msg(
         text=text,
         text_raw=text,
         trust_level=TrustLevel.TRUSTED,
-        command=_cmd_parser.parse(text),
+        command=_cmd_parser.parse(text),  # type: ignore[call-arg]  # field added in #153
     )
 
 
@@ -648,7 +648,7 @@ class TestSmartRoutingDecoratorWithMsg:
             text_raw="/analyze",
             trust_level=TrustLevel.OWNER,
             timestamp=datetime.now(timezone.utc),
-            command=cmd,
+            command=cmd,  # type: ignore[call-arg]  # field added in #153
         )
         inner = _make_inner()
         config = SmartRoutingConfig(
@@ -660,7 +660,7 @@ class TestSmartRoutingDecoratorWithMsg:
                 Complexity.COMPLEX: "claude-opus-4-6",
             },
             history_size=50,
-            high_complexity_commands=("analyze",),
+            high_complexity_commands=("analyze",),  # type: ignore[call-arg]  # field added in #153
         )
         decorator = SmartRoutingDecorator(inner, config)
 

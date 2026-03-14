@@ -230,7 +230,11 @@ class SmartRoutingDecorator:
             if msg is not None:
                 turn_count = len(messages) if messages else 0
                 attachments = list(msg.attachments)
-                command_name = msg.command.name if msg.command else None
+                command_name = (
+                    msg.command.name
+                    if msg.command and msg.command.prefix == "/"
+                    else None
+                )
                 complexity, reason = self._estimator.estimate(
                     text, attachments, command_name, turn_count
                 )

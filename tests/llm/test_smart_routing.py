@@ -677,3 +677,54 @@ class TestSmartRoutingDecoratorWithMsg:
         # Assert — reason must contain the command signal that fired
         decision = decorator.history[-1]
         assert "command:analyze" in decision.reason
+
+    @pytest.mark.asyncio
+    async def test_bang_command_does_not_trigger_high_complexity(self) -> None:
+        """!-prefixed commands must not match high_complexity_commands (SEC-1)."""
+        # Arrange — "analyze" is in high_complexity_commands, but !analyze uses ! prefix
+        from datetime import datetime, timezone
+
+        from lyra.core.command_parser import CommandContext
+
+        bang_cmd = CommandContext(prefix="!", name="analyze", args="", raw="!analyze")
+        msg = InboundMessage(
+            id="3",
+            platform="telegram",
+            bot_id="bot",
+            scope_id="scope",
+            user_id="user",
+            user_name="Test",
+            is_mention=False,
+            text="!analyze",
+            text_raw="!analyze",
+            trust_level=TrustLevel.OWNER,
+            timestamp=datetime.now(timezone.utc),
+            command=bang_cmd,  # type: ignore[call-arg]
+        )
+        inner = _make_inner()
+        config = SmartRoutingConfig(
+            enabled=True,
+            routing_table={
+                Complexity.TRIVIAL: "claude-haiku-4-5-20251001",
+                Complexity.SIMPLE: "claude-haiku-4-5-20251001",
+                Complexity.MODERATE: "claude-sonnet-4-6",
+                Complexity.COMPLEX: "claude-opus-4-6",
+            },
+            history_size=50,
+            high_complexity_commands=("analyze",),  # type: ignore[call-arg]
+        )
+        decorator = SmartRoutingDecorator(inner, config)
+
+        # Act
+        await decorator.complete(  # type: ignore[call-arg]
+            "pool1",
+            "!analyze",
+            make_model_cfg(),
+            "system",
+            messages=[],
+            msg=msg,
+        )
+
+        # Assert — !analyze must NOT trigger the command:analyze signal
+        decision = decorator.history[-1]
+        assert "command:analyze" not in decision.reason

@@ -1271,3 +1271,54 @@ class TestBangPrefixFallthrough:
         # Assert — slash unknown: returns a Response (not None)
         assert result is not None
         assert hasattr(result, "content")
+
+    @pytest.mark.asyncio
+    async def test_unknown_bang_command_falls_through_to_pool_in_hub(
+        self, tmp_path: Path
+    ) -> None:
+        """Hub integration: !unknown_xyz → dispatch() returns None sentinel →
+        _dispatch_command() calls _submit_to_pool() → agent.process() reached."""
+        # Arrange — full hub with a capturing agent that has a command router
+        process_calls: list[InboundMessage] = []
+
+        class CapturingAgent(AgentBase):
+            async def process(
+                self, msg: InboundMessage, pool: Pool, *, on_intermediate=None
+            ) -> Response:
+                process_calls.append(msg)
+                return Response(content="agent reply")
+
+        hub = Hub()
+        config = Agent(name="lyra", system_prompt="", memory_namespace="lyra")
+        agent = CapturingAgent(config)
+        # Attach a router that knows /echo but has no !-prefixed commands
+        agent.command_router = make_router(tmp_path)
+        hub.register_agent(agent)
+
+        class SilentAdapter:
+            async def send(
+                self, original_msg: InboundMessage, outbound: OutboundMessage
+            ) -> None:
+                pass
+
+            async def send_streaming(
+                self, original_msg: InboundMessage, chunks: object
+            ) -> None:
+                pass
+
+        hub.register_adapter(Platform.TELEGRAM, "main", SilentAdapter())  # type: ignore[arg-type]
+        hub.register_binding(
+            Platform.TELEGRAM, "main", "chat:42", "lyra", "telegram:main:chat:42"
+        )
+
+        # Act — send !unknown_xyz; hub parses CommandContext internally
+        await hub.bus.put(make_message(content="!unknown_xyz"))
+
+        try:
+            await asyncio.wait_for(hub.run(), timeout=0.3)
+        except asyncio.TimeoutError:
+            pass
+
+        # Assert — agent.process() called via pool (not "Unknown command" response)
+        assert len(process_calls) == 1
+        assert process_calls[0].text == "!unknown_xyz"

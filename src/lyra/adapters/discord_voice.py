@@ -7,9 +7,12 @@ import enum
 import logging
 import queue
 import shutil
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 
 import discord
+
+from lyra.core.message import OutboundAudioChunk
 
 log = logging.getLogger(__name__)
 
@@ -214,6 +217,40 @@ class VoiceSessionManager:
         await session.voice_client.disconnect()
         del self._sessions[guild_id]
         log.info("Voice session left: guild=%s", guild_id)
+
+    async def stream(
+        self,
+        guild_id: str,
+        chunks: AsyncIterator[OutboundAudioChunk],
+    ) -> None:
+        """Drain TTS chunks into the active voice session's PCMQueueSource.
+
+        Starts VoiceClient.play() if not already playing.
+        push_eof() is called unconditionally after the loop as a safety net
+        for non-conforming producers. Extra sentinels are harmless (idempotent).
+        Auto-leaves if mode is TRANSIENT.
+        """
+        session = self._sessions.get(guild_id)
+        if session is None:
+            log.warning("No active voice session for guild %s", guild_id)
+            return
+        if session.voice_client.is_playing():
+            log.warning(
+                "Already streaming to guild %s — concurrent stream dropped", guild_id
+            )
+            return
+        # Fresh source per stream: avoids stale None sentinels from prior streams.
+        session.source = PCMQueueSource()
+        session.voice_client.play(session.source)
+        try:
+            async for chunk in chunks:
+                session.source.push(chunk.chunk_bytes)
+                if chunk.is_final:
+                    session.source.push_eof()
+        finally:
+            session.source.push_eof()  # safety net: idempotent, extra sentinel harmless
+        if session.mode == VoiceMode.TRANSIENT:
+            await self.leave(guild_id)
 
     def invalidate(self, guild_id: str) -> None:
         """Remove the session without disconnecting (VoiceClient already stale)."""

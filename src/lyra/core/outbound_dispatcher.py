@@ -134,6 +134,18 @@ class OutboundDispatcher:
         """
         self._queue.put_nowait(("audio_stream", inbound, chunks))
 
+    def enqueue_voice_stream(
+        self,
+        inbound: InboundMessage,
+        chunks: AsyncIterator[OutboundAudioChunk],
+    ) -> None:
+        """Enqueue a voice stream for delivery via render_voice_stream().
+
+        Fire-and-forget. The worker drains the iterator.
+        maxsize=0: put_nowait() never raises queue.Full.
+        """
+        self._queue.put_nowait(("voice_stream", inbound, chunks))
+
     def enqueue_attachment(
         self, inbound: InboundMessage, attachment: OutboundAttachment
     ) -> None:
@@ -170,7 +182,13 @@ class OutboundDispatcher:
                 kind = item[0]
                 if kind == "streaming":
                     _, msg, payload, outbound = item
-                elif kind in ("send", "audio", "audio_stream", "attachment"):
+                elif kind in (
+                    "send",
+                    "audio",
+                    "audio_stream",
+                    "voice_stream",
+                    "attachment",
+                ):
                     _, msg, payload = item
                     outbound = None
                 else:
@@ -183,14 +201,23 @@ class OutboundDispatcher:
                 # "send": check payload (OutboundMessage) routing.
                 # "streaming": check outbound routing if provided.
                 # "audio"/"audio_stream"/"attachment": use msg (InboundMessage) routing.
+                # "voice_stream": synthesize from msg when routing absent — TTS callers
+                #     may omit explicit routing; synthesizing ensures the routing check
+                #     validates platform+bot_id without requiring callers to set it.
                 if kind == "send":
                     _routing = getattr(payload, "routing", None) or msg.routing
+                elif kind == "voice_stream":
+                    _routing = msg.routing or RoutingContext(
+                        platform=msg.platform,
+                        bot_id=msg.bot_id,
+                        scope_id=msg.scope_id,
+                    )
                 elif kind in ("audio", "audio_stream", "attachment"):
                     _routing = msg.routing
                 else:
                     _routing = outbound.routing if outbound is not None else msg.routing
                 if not self._verify_routing(_routing):
-                    if kind in ("streaming", "audio_stream"):
+                    if kind in ("streaming", "audio_stream", "voice_stream"):
                         async for _ in payload:
                             pass
                     continue
@@ -202,7 +229,7 @@ class OutboundDispatcher:
                         kind,
                     )
                     # Drain streaming iterator to prevent generator leaks
-                    if kind in ("streaming", "audio_stream"):
+                    if kind in ("streaming", "audio_stream", "voice_stream"):
                         async for _ in payload:
                             pass
                     if outbound is not None:
@@ -216,6 +243,8 @@ class OutboundDispatcher:
                         await self._adapter.render_audio(payload, msg)
                     elif kind == "audio_stream":
                         await self._adapter.render_audio_stream(payload, msg)
+                    elif kind == "voice_stream":
+                        await self._adapter.render_voice_stream(payload, msg)
                     elif kind == "attachment":
                         await self._adapter.render_attachment(payload, msg)
                     else:
@@ -232,6 +261,10 @@ class OutboundDispatcher:
                         ant_cb = self._circuit_registry.get("anthropic")
                         if ant_cb is not None:
                             ant_cb.record_failure()
+                    # Drain iterator to prevent generator leaks on delivery failure
+                    if kind in ("streaming", "audio_stream", "voice_stream"):
+                        async for _ in payload:
+                            pass
                     if not isinstance(exc, Exception):
                         raise  # re-raise CancelledError / KeyboardInterrupt
                     log.exception(

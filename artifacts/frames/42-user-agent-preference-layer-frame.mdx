@@ -1,0 +1,44 @@
+---
+title: "feat: user + agent preference layer — language, voice, style"
+issue: 42
+status: approved
+tier: F-lite
+date: 2026-03-14
+---
+
+## Problem
+
+Lyra has no preference layer: every TTS call uses a language fixed at init time from an env var, STT detection parameters are hardcoded and never passed through, and `InboundMessage.language` is silently dropped even though Whisper already detects it. Users receive TTS responses in a fixed language regardless of what language they spoke.
+
+The fix requires two coordinated layers: (1) per-user preferences stored in `auth.db` (language, voice override) and (2) per-agent defaults in `agents/<agent>.toml` (engine, voice, language, STT thresholds). These layers must be wired end-to-end: STT → language propagation → TTS synthesis.
+
+Five concrete gaps must be closed: propagate `result.language` in `hub.py`, pass STT detection params from agent config, accept a per-call language override in `TTSService.synthesize()`, add a `user_prefs` table to `auth.db`, and add `[tts]`/`[stt]` sections to the agent TOML schema and loader.
+
+## Who
+
+- **Primary:** Lyra users (Telegram + Discord) who speak French or switch languages — they currently always receive TTS in a fixed language.
+- **Secondary:** Agent configuration — each agent can define its own voice/engine/language defaults, reducing reliance on global voicecli.toml defaults.
+
+## Constraints
+
+- `user_prefs` must live in the existing `auth.db` (SQLite); no new database.
+- `[tts]` / `[stt]` TOML fields must be optional and fall back to voicecli global config when absent.
+- `tts_language = "detected"` (default) means use the Whisper-detected language per call; explicit values (`fr`, `en`, …) override detection.
+- Text input has no language detection for now (future: `langdetect`).
+- TTS engine selection (`qwen`, `qwen-fast`, `chatterbox`, `chatterbox-turbo`) is per-agent only — not per-user.
+
+## Out of Scope
+
+- Text-input language detection via `langdetect` — future follow-up.
+- Voice style hot-swap via chat command — future follow-up.
+- Per-user TTS engine selection (engine is agent-level only).
+
+## Complexity
+
+**Tier: F-lite** — well-scoped single-domain change (backend/config); all gaps are identified, no unknowns, ≤8 files affected, no new architectural patterns.
+
+Signals observed:
+- 5 concrete, named gaps with exact file + line references
+- Single domain: backend config pipeline (STT → hub → TTS)
+- No new external dependencies
+- Out of scope explicitly bounded in issue

@@ -160,6 +160,63 @@ async def test_synthesize_cleans_up_temp_file_on_failure():
 
 
 # ---------------------------------------------------------------------------
+# S1 — T02: synthesize() language/voice params
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_synthesize_passes_language_to_generate():
+    """synthesize(language=...) forwards language kwarg to generate_async."""
+    svc = TTSService(TTSConfig())
+    captured: dict = {}
+
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+        wav_path = tmp.name
+    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_mp3:
+        mp3_path = tmp_mp3.name
+
+    _write_minimal_wav(wav_path)
+    Path(mp3_path).write_bytes(b"fakemp3")
+
+    async def fake_gen(text, **kwargs):
+        captured.update(kwargs)
+        _write_minimal_wav(wav_path)
+        return _make_chunked_result([wav_path])
+
+    with patch("voicecli.generate_async", new=AsyncMock(side_effect=fake_gen)):
+        with patch("voicecli.utils.wav_to_mp3", return_value=Path(mp3_path)):
+            await svc.synthesize("Hello", language="fr")
+
+    assert captured.get("language") == "fr"
+
+
+@pytest.mark.asyncio
+async def test_synthesize_language_none_uses_init_value():
+    """synthesize() with language=None uses the TTSConfig.language from init."""
+    svc = TTSService(TTSConfig(language="English"))
+    captured: dict = {}
+
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+        wav_path = tmp.name
+    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_mp3:
+        mp3_path = tmp_mp3.name
+
+    _write_minimal_wav(wav_path)
+    Path(mp3_path).write_bytes(b"fakemp3")
+
+    async def fake_gen(text, **kwargs):
+        captured.update(kwargs)
+        _write_minimal_wav(wav_path)
+        return _make_chunked_result([wav_path])
+
+    with patch("voicecli.generate_async", new=AsyncMock(side_effect=fake_gen)):
+        with patch("voicecli.utils.wav_to_mp3", return_value=Path(mp3_path)):
+            await svc.synthesize("Hello")  # no language override
+
+    assert captured.get("language") == "English"
+
+
+# ---------------------------------------------------------------------------
 # _wav_duration_ms() — utility
 # ---------------------------------------------------------------------------
 

@@ -518,6 +518,108 @@ system = "You are a plain bot."
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# S2 — T08/T09: AgentTTSConfig, AgentSTTConfig, [tts]/[stt] TOML sections
+# ---------------------------------------------------------------------------
+
+
+class TestAgentTTSConfig:
+    """T08 — AgentTTSConfig dataclass must exist with all-optional fields."""
+
+    def test_agent_tts_config_all_optional(self):
+        from lyra.core.agent import AgentTTSConfig
+
+        cfg = AgentTTSConfig()
+        assert cfg.engine is None
+        assert cfg.voice is None
+        assert cfg.language is None
+        assert cfg.accent is None
+
+    def test_agent_stt_config_all_optional(self):
+        from lyra.core.agent import AgentSTTConfig
+
+        cfg = AgentSTTConfig()
+        assert cfg.language_detection_threshold is None
+        assert cfg.language_detection_segments is None
+        assert cfg.language_fallback is None
+
+
+class TestLoadAgentConfigTTSSTT:
+    """T09 — load_agent_config parses [tts]/[stt] TOML sections."""
+
+    def test_load_agent_config_parses_tts_section(self, tmp_path: Path, monkeypatch):
+        """[tts] section in agent TOML is parsed into AgentTTSConfig."""
+        toml_content = """
+[agent]
+name = "x"
+
+[model]
+backend = "claude-cli"
+model = "test-model"
+max_turns = 5
+
+[tts]
+engine = "qwen-fast"
+voice = "Ono_Anna"
+language = "French"
+"""
+        (tmp_path / "x.toml").write_text(toml_content)
+        monkeypatch.chdir(tmp_path)
+        from lyra.core.agent import load_agent_config
+
+        agent = load_agent_config("x", agents_dir=tmp_path)
+        assert agent.tts is not None
+        assert agent.tts.engine == "qwen-fast"
+        assert agent.tts.voice == "Ono_Anna"
+        assert agent.tts.language == "French"
+
+    def test_load_agent_config_parses_stt_section(self, tmp_path: Path, monkeypatch):
+        """[stt] section in agent TOML is parsed into AgentSTTConfig."""
+        toml_content = """
+[agent]
+name = "x"
+
+[model]
+backend = "claude-cli"
+model = "test-model"
+max_turns = 5
+
+[stt]
+language_detection_threshold = 0.9
+language_fallback = "en"
+"""
+        (tmp_path / "x.toml").write_text(toml_content)
+        monkeypatch.chdir(tmp_path)
+        from lyra.core.agent import load_agent_config
+
+        agent = load_agent_config("x", agents_dir=tmp_path)
+        assert agent.stt is not None
+        assert agent.stt.language_detection_threshold == 0.9
+        assert agent.stt.language_fallback == "en"
+        assert agent.stt.language_detection_segments is None
+
+    def test_load_agent_config_missing_tts_stt_sections(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """Agent without [tts]/[stt] sections -> .tts and .stt are None."""
+        toml_content = """
+[agent]
+name = "x"
+
+[model]
+backend = "claude-cli"
+model = "test-model"
+max_turns = 5
+"""
+        (tmp_path / "x.toml").write_text(toml_content)
+        monkeypatch.chdir(tmp_path)
+        from lyra.core.agent import load_agent_config
+
+        agent = load_agent_config("x", agents_dir=tmp_path)
+        assert agent.tts is None
+        assert agent.stt is None
+
+
 class TestAgentMemoryInjection:
     """AgentBase must accept and store a MemoryManager via DI (S3)."""
 
@@ -791,3 +893,99 @@ class TestAgentExtractionMethods:
         from lyra.core.agent import AgentBase
 
         assert hasattr(AgentBase, "_extraction_llm_call")  # FAILS
+
+
+# ---------------------------------------------------------------------------
+# SC-7/SC-8 — apply_agent_tts_overlay / apply_agent_stt_overlay helpers
+# ---------------------------------------------------------------------------
+
+
+class TestApplyAgentTTSOverlay:
+    """SC-7 — apply_agent_tts_overlay merges AgentTTSConfig into TTSConfig."""
+
+    def test_none_agent_tts_returns_tts_cfg_unchanged(self):
+        from lyra.__main__ import apply_agent_tts_overlay
+        from lyra.tts import TTSConfig
+
+        tts_cfg = TTSConfig(engine="qwen", voice="Aria", language="en")
+        result = apply_agent_tts_overlay(None, tts_cfg)
+        assert result is tts_cfg
+
+    def test_non_none_fields_overwrite(self):
+        from lyra.__main__ import apply_agent_tts_overlay
+        from lyra.core.agent import AgentTTSConfig
+        from lyra.tts import TTSConfig
+
+        tts_cfg = TTSConfig(engine="qwen", voice="default", language="en")
+        agent_tts = AgentTTSConfig(voice="Ono_Anna", language="fr")
+        result = apply_agent_tts_overlay(agent_tts, tts_cfg)
+        assert result.voice == "Ono_Anna"
+        assert result.language == "fr"
+        assert result.engine == "qwen"  # unchanged — None in agent_tts
+
+    def test_none_fields_leave_tts_cfg_unchanged(self):
+        from lyra.__main__ import apply_agent_tts_overlay
+        from lyra.core.agent import AgentTTSConfig
+        from lyra.tts import TTSConfig
+
+        tts_cfg = TTSConfig(engine="chatterbox", voice="Nova", language="en")
+        agent_tts = AgentTTSConfig()  # all fields None
+        result = apply_agent_tts_overlay(agent_tts, tts_cfg)
+        assert result.engine == "chatterbox"
+        assert result.voice == "Nova"
+        assert result.language == "en"
+
+    def test_returns_new_config_not_mutates(self):
+        from lyra.__main__ import apply_agent_tts_overlay
+        from lyra.core.agent import AgentTTSConfig
+        from lyra.tts import TTSConfig
+
+        tts_cfg = TTSConfig(engine="qwen", voice="default", language="en")
+        agent_tts = AgentTTSConfig(engine="qwen-fast")
+        result = apply_agent_tts_overlay(agent_tts, tts_cfg)
+        assert result is not tts_cfg
+        assert tts_cfg.engine == "qwen"  # original unmodified
+
+
+class TestApplyAgentSTTOverlay:
+    """SC-8 — apply_agent_stt_overlay merges AgentSTTConfig into STTConfig."""
+
+    def test_none_agent_stt_returns_stt_cfg_unchanged(self):
+        from lyra.__main__ import apply_agent_stt_overlay
+        from lyra.stt import STTConfig
+
+        stt_cfg = STTConfig(model_size="large-v3-turbo")
+        result = apply_agent_stt_overlay(None, stt_cfg)
+        assert result is stt_cfg
+
+    def test_non_none_fields_overwrite(self):
+        from lyra.__main__ import apply_agent_stt_overlay
+        from lyra.core.agent import AgentSTTConfig
+        from lyra.stt import STTConfig
+
+        stt_cfg = STTConfig(model_size="large-v3-turbo")
+        agent_stt = AgentSTTConfig(
+            language_detection_threshold=0.9,
+            language_fallback="en",
+        )
+        result = apply_agent_stt_overlay(agent_stt, stt_cfg)
+        assert result.language_detection_threshold == 0.9
+        assert result.language_fallback == "en"
+        assert result.language_detection_segments is None  # unchanged
+
+    def test_none_fields_leave_stt_cfg_unchanged(self):
+        from lyra.__main__ import apply_agent_stt_overlay
+        from lyra.core.agent import AgentSTTConfig
+        from lyra.stt import STTConfig
+
+        stt_cfg = STTConfig(
+            model_size="large-v3-turbo",
+            language_detection_threshold=0.8,
+            language_detection_segments=3,
+            language_fallback="fr",
+        )
+        agent_stt = AgentSTTConfig()  # all fields None
+        result = apply_agent_stt_overlay(agent_stt, stt_cfg)
+        assert result.language_detection_threshold == 0.8
+        assert result.language_detection_segments == 3
+        assert result.language_fallback == "fr"

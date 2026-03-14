@@ -222,6 +222,91 @@ class TestAudioLoopNoise:
             await hub.inbound_audio_bus.stop()
 
 
+# ---------------------------------------------------------------------------
+# S1 — T01/T03: InboundMessage.language field + _process_audio_item propagation
+# ---------------------------------------------------------------------------
+
+
+class TestInboundMessageLanguageField:
+    """T01 — InboundMessage must carry an optional language field."""
+
+    def test_inbound_message_has_language_field(self):
+
+        from lyra.core.message import InboundMessage
+        from lyra.core.trust import TrustLevel
+
+        msg = InboundMessage(
+            id="1",
+            platform="telegram",
+            bot_id="main",
+            scope_id="chat:1",
+            user_id="tg:user:1",
+            user_name="Alice",
+            is_mention=False,
+            text="hello",
+            text_raw="hello",
+            trust_level=TrustLevel.TRUSTED,
+            language="fr",
+        )
+        assert msg.language == "fr"
+
+    def test_inbound_message_language_defaults_none(self):
+        from lyra.core.message import InboundMessage
+        from lyra.core.trust import TrustLevel
+
+        msg = InboundMessage(
+            id="1",
+            platform="telegram",
+            bot_id="main",
+            scope_id="chat:1",
+            user_id="tg:user:1",
+            user_name="Alice",
+            is_mention=False,
+            text="hello",
+            text_raw="hello",
+            trust_level=TrustLevel.TRUSTED,
+        )
+        assert msg.language is None
+
+
+class TestProcessAudioItemPropagatesLanguage:
+    """T03 — _process_audio_item propagates STT result.language to InboundMessage."""
+
+    @pytest.mark.asyncio()
+    async def test_process_audio_item_propagates_language(self):
+        """STT returns language='fr' → enqueued InboundMessage.language == 'fr'."""
+        stt = FakeSTT(text="bonjour")
+
+        # Patch FakeSTT.transcribe to return language="fr"
+        original_transcribe = stt.transcribe
+
+        async def transcribe_with_lang(path):
+            result = await original_transcribe(path)
+            return FakeTranscription(text=result.text, language="fr")
+
+        stt.transcribe = transcribe_with_lang
+
+        hub = Hub(stt=stt)  # type: ignore[arg-type]
+        hub.inbound_bus.register(Platform.TELEGRAM, maxsize=10)
+        hub.inbound_audio_bus.register(Platform.TELEGRAM, maxsize=10)
+
+        audio = _make_audio()
+        hub.inbound_audio_bus.put(Platform.TELEGRAM, audio)
+
+        await hub.inbound_bus.start()
+        await hub.inbound_audio_bus.start()
+        task = asyncio.create_task(hub._audio_loop())
+        try:
+            msg: InboundMessage = await asyncio.wait_for(
+                hub.inbound_bus._staging.get(), timeout=2.0
+            )
+            assert msg.language == "fr"
+        finally:
+            task.cancel()
+            await hub.inbound_audio_bus.stop()
+            await hub.inbound_bus.stop()
+
+
 class TestAudioLoopTaskDone:
     """Verify task_done() is called on the audio bus after processing."""
 

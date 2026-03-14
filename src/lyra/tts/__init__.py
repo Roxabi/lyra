@@ -88,7 +88,14 @@ class TTSService:
             self._voice,
         )
 
-    async def synthesize(self, text: str) -> SynthesisResult:
+    async def synthesize(
+        self, text: str, *, language: str | None = None, voice: str | None = None
+    ) -> SynthesisResult:
+        """Synthesize text to speech.
+
+        language and voice override the instance defaults (self._language, self._voice)
+        when non-None. None falls back to the instance value from TTSConfig.
+        """
         from voicecli import generate_async
 
         tmp_fd, tmp_str = tempfile.mkstemp(suffix=".wav")
@@ -101,8 +108,8 @@ class TTSService:
                 text,
                 output=tmp_path,
                 engine=self._engine,
-                voice=self._voice,
-                language=self._language,
+                voice=voice if voice is not None else self._voice,
+                language=language if language is not None else self._language,
                 chunked=True,  # always chunk for long-text reliability
                 mp3=False,     # merge chunks manually, then convert once
             )

@@ -95,7 +95,82 @@ User → hello    → Telegram → Hub → (not a command) → Agent (LLM) → R
 | `/echo <text>` | Echo back the message (test) | — (plugin) |
 | `/voice <text>` | Generate speech | `voicecli` |
 | `/image <prompt>` | Generate image prompt | — (prompt-only) |
+| `/add <url>` | Scrape URL → LLM summary → save to vault | `web-intel:scrape`, `vault` |
+| `/explain <url>` | Scrape URL → plain-language explanation | `web-intel:scrape` |
+| `/summarize <url>` | Scrape URL → bullet-point summary | `web-intel:scrape` |
+| `/search <query>` | Full-text search over vault | `vault` (plugin) |
+| `<url>` (bare) | Auto-rewritten to `/add <url>` | — |
 | `/<workspace>` | Switch working directory (dynamic) | — (TOML-defined) |
+
+---
+
+## Session Commands
+
+Session commands (`/add`, `/explain`, `/summarize`) make an isolated LLM call per invocation. They never read or write the pool conversation history — they are stateless with respect to the active session.
+
+### `/add <url>` — Save to vault
+
+```
+/add https://example.com/article
+```
+
+Pipeline: **scrape** (`web-intel:scrape`) → **LLM summary** (title, paragraph summary, 3-5 tags) → **vault write** (`vault add`).
+
+Returns the title + summary. If scraping or vault CLI is unavailable, still returns the summary with a note.
+
+### `/explain <url>` — Plain-language explanation
+
+```
+/explain https://example.com/paper
+```
+
+Pipeline: **scrape** → **LLM explanation** (plain language, suitable for chat). No vault write.
+
+### `/summarize <url>` — Bullet-point summary
+
+```
+/summarize https://example.com/doc
+```
+
+Pipeline: **scrape** → **LLM 3-5 bullet points**. No vault write.
+
+### Bare URL auto-rewrite
+
+Sending a bare URL (no slash command prefix) is automatically rewritten to `/add <url>`:
+
+```
+https://example.com/article   →   /add https://example.com/article
+```
+
+The detection uses `CommandRouter._BARE_URL_RE` (`^https?://\S+$`).
+
+### `/search <query>` — Vault full-text search
+
+```
+/search asyncio event loop
+```
+
+Runs `vault search <query>` and returns matching results. Stateless — no LLM call.
+
+### CLI dependencies
+
+| Command | Requires | Graceful fallback |
+|---------|----------|------------------|
+| `/add` | `web-intel:scrape`, `vault` | LLM runs on URL string if scrape fails; vault error noted in response |
+| `/explain` | `web-intel:scrape` | Explanation runs on URL string if scrape unavailable |
+| `/summarize` | `web-intel:scrape` | Summary runs on URL string if scrape unavailable |
+| `/search` | `vault` | Returns `"vault CLI not available."` — not fatal |
+
+### How it works internally
+
+Session commands use `SessionCommandHandler` protocol (defined in `CommandRouter`) and are registered in `CommandRouter._session_commands`. The `AnthropicAgent` passes its LLM driver to the handler — LLM calls use an isolated `pool_id` (`"session:<command>"`) that never touches the real pool history.
+
+```python
+class SessionCommandHandler(Protocol):
+    async def __call__(
+        self, msg: InboundMessage, driver: LlmProvider, args: list[str], timeout: float
+    ) -> Response: ...
+```
 
 ---
 
@@ -290,12 +365,13 @@ async def cmd_mycmd(args: list[str], msg: InboundMessage) -> Response:
 See also: [ADR-010 — External tool integration](architecture/adr/010-external-tool-integration-pattern.mdx)
 
 ```
-Built-in commands          Plugin commands             CLI-backed commands
-───────────────────        ────────────────────        ─────────────────────
-/help   → _help()          /echo  → cmd_echo()         /voice → voicecli
-/stop   → pool.cancel()    /invite → cmd_invite()
-/clear  → _cmd_clear()     /join   → cmd_join()
-/config → _cmd_config()    /svc    → cmd_svc()
+Built-in commands          Plugin commands             CLI-backed commands        Session commands (LLM)
+───────────────────        ────────────────────        ─────────────────────      ──────────────────────
+/help   → _help()          /echo  → cmd_echo()         /voice → voicecli          /add     → cmd_add()
+/stop   → pool.cancel()    /invite → cmd_invite()                                 /explain → cmd_explain()
+/clear  → _cmd_clear()     /join   → cmd_join()                                   /summarize→cmd_summarize()
+/config → _cmd_config()    /svc    → cmd_svc()                                    /search  → cmd_search()
+                           /search → cmd_search()
 ```
 
 Two access paths for the same tools:

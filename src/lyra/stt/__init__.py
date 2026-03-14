@@ -23,6 +23,9 @@ class TranscriptionResult:
 @dataclass
 class STTConfig:
     model_size: str
+    language_detection_threshold: float | None = None
+    language_detection_segments: int | None = None
+    language_fallback: str | None = None
 
 
 def load_stt_config() -> STTConfig:
@@ -41,6 +44,9 @@ class STTService:
 
     def __init__(self, config: STTConfig) -> None:
         self._model = config.model_size
+        self._detection_threshold = config.language_detection_threshold
+        self._detection_segments = config.language_detection_segments
+        self._detection_fallback = config.language_fallback
         log.debug("STTService init: model=%s (via voiceCLI)", self._model)
 
     async def transcribe(self, path: Path | str) -> TranscriptionResult:
@@ -52,9 +58,14 @@ class STTService:
             from voicecli.transcribe import transcribe as _transcribe
 
             initial_prompt = vocab_to_prompt(load_vocab())
-            vc_result = _transcribe(
-                Path(path), model=self._model, initial_prompt=initial_prompt
-            )
+            kwargs: dict = dict(model=self._model, initial_prompt=initial_prompt)
+            if self._detection_threshold is not None:
+                kwargs["language_detection_threshold"] = self._detection_threshold
+            if self._detection_segments is not None:
+                kwargs["language_detection_segments"] = self._detection_segments
+            if self._detection_fallback is not None:
+                kwargs["language_fallback"] = self._detection_fallback
+            vc_result = _transcribe(Path(path), **kwargs)
 
             duration = (
                 max((seg["end"] for seg in vc_result.segments), default=0.0)

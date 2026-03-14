@@ -175,3 +175,80 @@ async def test_transcribe_propagates_error():
     ):
         with pytest.raises(RuntimeError, match="model load failed"):
             await svc.transcribe("/tmp/fake.ogg")
+
+
+# ---------------------------------------------------------------------------
+# S3 — T13: STTConfig detection fields and _transcribe_sync forwarding
+# ---------------------------------------------------------------------------
+
+
+def test_stt_config_has_detection_fields():
+    """STTConfig gains three optional language detection parameters."""
+    cfg = STTConfig(model_size="large-v3-turbo")
+    assert cfg.language_detection_threshold is None
+    assert cfg.language_detection_segments is None
+    assert cfg.language_fallback is None
+
+
+def test_stt_config_accepts_detection_fields():
+    """All three detection params can be set."""
+    cfg = STTConfig(
+        model_size="large-v3-turbo",
+        language_detection_threshold=0.90,
+        language_detection_segments=3,
+        language_fallback="en",
+    )
+    assert cfg.language_detection_threshold == 0.90
+    assert cfg.language_detection_segments == 3
+    assert cfg.language_fallback == "en"
+
+
+def test_transcribe_sync_passes_detection_threshold():
+    """_transcribe_sync passes non-None detection params to _transcribe()."""
+    cfg = STTConfig(
+        model_size="large-v3-turbo",
+        language_detection_threshold=0.90,
+        language_fallback="en",
+    )
+    svc = STTService(cfg)
+
+    captured_kwargs: dict = {}
+
+    def fake_transcribe(path, **kwargs):
+        captured_kwargs.update(kwargs)
+        return _make_vc_result(text="bonjour", language="fr")
+
+    with (
+        patch("voicecli.config.load_vocab", return_value=[]),
+        patch("voicecli.config.vocab_to_prompt", return_value=""),
+        patch("voicecli.transcribe.transcribe", side_effect=fake_transcribe),
+    ):
+        svc._transcribe_sync("/fake/path.ogg")
+
+    assert captured_kwargs.get("language_detection_threshold") == 0.90
+    assert captured_kwargs.get("language_fallback") == "en"
+    # None value → not passed at all
+    assert "language_detection_segments" not in captured_kwargs
+
+
+def test_transcribe_sync_no_detection_params_when_none():
+    """_transcribe_sync does not pass detection params when all are None."""
+    cfg = STTConfig(model_size="large-v3-turbo")
+    svc = STTService(cfg)
+
+    captured_kwargs: dict = {}
+
+    def fake_transcribe(path, **kwargs):
+        captured_kwargs.update(kwargs)
+        return _make_vc_result(text="hello", language="en")
+
+    with (
+        patch("voicecli.config.load_vocab", return_value=[]),
+        patch("voicecli.config.vocab_to_prompt", return_value=""),
+        patch("voicecli.transcribe.transcribe", side_effect=fake_transcribe),
+    ):
+        svc._transcribe_sync("/fake/path.ogg")
+
+    assert "language_detection_threshold" not in captured_kwargs
+    assert "language_detection_segments" not in captured_kwargs
+    assert "language_fallback" not in captured_kwargs

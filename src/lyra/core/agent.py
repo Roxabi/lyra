@@ -169,6 +169,40 @@ class PersonaConfig:
     voice: VoiceConfig = field(default_factory=VoiceConfig)
 
 
+@dataclass(frozen=True)
+class AgentTTSConfig:
+    """Per-agent TTS defaults parsed from [tts] section in agent TOML.
+
+    All fields optional — None means use voicecli global defaults.
+    Merged into TTSConfig at startup in __main__.py.
+    """
+
+    engine: str | None = None
+    voice: str | None = None
+    language: str | None = None
+    accent: str | None = None
+    personality: str | None = None
+    speed: str | None = None
+    emotion: str | None = None
+    segment_gap: int | None = None
+    crossfade: int | None = None
+    chunked: bool | None = None
+    chunk_size: int | None = None
+
+
+@dataclass(frozen=True)
+class AgentSTTConfig:
+    """Per-agent STT detection params parsed from [stt] section in agent TOML.
+
+    All fields optional — None means use voicecli global defaults.
+    Merged into STTConfig at startup in __main__.py.
+    """
+
+    language_detection_threshold: float | None = None
+    language_detection_segments: int | None = None
+    language_fallback: str | None = None
+
+
 @dataclass
 class Agent:
     """Configuration record for an agent. Mutable for hot-reload."""
@@ -185,6 +219,8 @@ class Agent:
     smart_routing: SmartRoutingConfig | None = None
     show_intermediate: bool = False  # show ⏳-prefixed intermediate turns to the user
     workspaces: dict[str, Path] = field(default_factory=dict)
+    tts: AgentTTSConfig | None = None
+    stt: AgentSTTConfig | None = None
 
 
 def load_persona(name: str, personas_dir: Path | None = None) -> PersonaConfig:
@@ -487,6 +523,48 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
             )
         workspaces[key] = resolved
 
+    # Parse [tts] section
+    tts_section = data.get("tts")
+    agent_tts: AgentTTSConfig | None = None
+    if tts_section is not None:
+        _tts_int_fields = ("segment_gap", "crossfade", "chunk_size")
+        for _field in _tts_int_fields:
+            _val = tts_section.get(_field)
+            if _val is not None and not isinstance(_val, int):
+                raise TypeError(
+                    f"[tts].{_field} must be an integer, got {type(_val).__name__!r}"
+                )
+        agent_tts = AgentTTSConfig(
+            engine=tts_section.get("engine"),
+            voice=tts_section.get("voice"),
+            language=tts_section.get("language"),
+            accent=tts_section.get("accent"),
+            personality=tts_section.get("personality"),
+            speed=tts_section.get("speed"),
+            emotion=tts_section.get("emotion"),
+            segment_gap=tts_section.get("segment_gap"),
+            crossfade=tts_section.get("crossfade"),
+            chunked=tts_section.get("chunked"),
+            chunk_size=tts_section.get("chunk_size"),
+        )
+
+    # Parse [stt] section
+    stt_section = data.get("stt")
+    agent_stt: AgentSTTConfig | None = None
+    if stt_section is not None:
+        _stt_int_fields = ("language_detection_segments",)
+        for _field in _stt_int_fields:
+            _val = stt_section.get(_field)
+            if _val is not None and not isinstance(_val, int):
+                raise TypeError(
+                    f"[stt].{_field} must be an integer, got {type(_val).__name__!r}"
+                )
+        agent_stt = AgentSTTConfig(
+            language_detection_threshold=stt_section.get("language_detection_threshold"),
+            language_detection_segments=stt_section.get("language_detection_segments"),
+            language_fallback=stt_section.get("language_fallback"),
+        )
+
     return Agent(
         name=name,
         system_prompt=system_prompt,
@@ -500,6 +578,8 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
         smart_routing=smart_routing,
         show_intermediate=bool(agent_section.get("show_intermediate", False)),
         workspaces=workspaces,
+        tts=agent_tts,
+        stt=agent_stt,
     )
 
 

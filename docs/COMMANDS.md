@@ -71,12 +71,66 @@ projects = "~/projects"
 
 ## Overview
 
-Lyra intercepts messages starting with `/` before they reach the LLM agent. Commands are routed to built-in handlers or plugins — fast, deterministic, zero token cost.
+Lyra intercepts messages starting with `/` or `!` before they reach the LLM agent. Commands are routed to built-in handlers or plugins — fast, deterministic, zero token cost.
 
 ```
-User → /echo hi → Telegram → Hub → CommandRouter → builtin → Response → Telegram → User
-User → hello    → Telegram → Hub → (not a command) → Agent (LLM) → Response → Telegram → User
+User → /echo hi  → Telegram → Hub → CommandRouter → builtin   → Response → Telegram → User
+User → hello     → Telegram → Hub → (not a command) → Agent (LLM) → Response → Telegram → User
+User → !unknown  → Telegram → Hub → CommandRouter → no handler → Agent (LLM) → Response → Telegram → User
 ```
+
+### The two prefixes: `/` vs `!`
+
+| Prefix | Known command | Unknown command |
+|--------|---------------|-----------------|
+| `/`    | Dispatched to handler | Returns "Unknown command" error |
+| `!`    | Dispatched to handler | **Falls through to LLM** |
+
+`!` is a "soft command" prefix. Use it when you want command-like syntax but are OK with the LLM receiving it if no handler matches. It is not a separate command system — it shares the same registry. Only the error behavior differs.
+
+### Platform-native command menus
+
+Lyra does **not** register commands with Telegram's `setMyCommands()` or Discord's `app_commands` tree. All command handling is application-level text parsing. This means:
+
+- No autocomplete menu appears in either platform's native UI
+- The same command set works identically across Telegram and Discord
+- Plugins hot-reload without resyncing a Discord command tree
+
+To add native Telegram autocomplete, call `bot.set_my_commands([BotCommand(...)])` at startup — it's cosmetic only, the routing stays the same.
+
+### Full routing order
+
+```
+Incoming message
+  │
+  ├─ Adapter pre-routing (Discord only)
+  │    └─ !join / !leave → voice channel join/leave (guild-only, before mention filter)
+  │
+  ├─ CommandParser: detect / or ! prefix → CommandContext
+  │
+  ├─ CommandRouter.dispatch():
+  │    1. Bare URL? → rewrite to /add <url>
+  │    2. Builtin?  → /help, /clear, /new, /stop, /config, /circuit, /routing, /folder, /cd
+  │    3. Workspace? → /<key> from agent TOML [workspaces]
+  │    4. Session?  → /add, /explain, /summarize, /search (isolated LLM calls)
+  │    5. Plugin?   → any [[commands]] from enabled plugin.toml files
+  │    6. Passthrough? → registered commands that skip dispatch, go to LLM (e.g. /voice)
+  │    7. ! prefix + unknown → return None → fall through to LLM
+  │    8. / prefix + unknown → return "Unknown command" error
+  │
+  └─ _submit_to_pool() → LLM agent (if no command matched, or fallthrough)
+```
+
+### Where should a new command go?
+
+| Scenario | Layer |
+|----------|-------|
+| Affects session/bot state (clear history, change workspace) | Hub builtin |
+| Isolated LLM task that must not pollute chat history | Session command |
+| Feature that can be toggled per-agent | Plugin |
+| Needs LLM reasoning but user wants `/`-like entry syntax | Passthrough (register in `agent.py`) |
+| Discord voice channel control (guild-only, stateful) | Adapter-level pre-routing |
+| Everything else | Plain text → LLM |
 
 ---
 

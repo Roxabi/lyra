@@ -106,6 +106,14 @@ def _patch_common(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     fake_auth_store.close = AsyncMock()
     monkeypatch.setattr(main_mod, "AuthStore", lambda **kwargs: fake_auth_store)
 
+    fake_agent_store = MagicMock()
+    fake_agent_store.connect = AsyncMock()
+    fake_agent_store.close = AsyncMock()
+    fake_agent_store.get_bot_agent = MagicMock(return_value=None)
+    fake_agent_store.get = MagicMock(return_value=None)
+    fake_agent_store.set_bot_agent = AsyncMock()
+    monkeypatch.setattr(main_mod, "AgentStore", lambda **kwargs: fake_agent_store)
+
     monkeypatch.setattr(
         main_mod,
         "load_agent_config",

@@ -41,8 +41,10 @@ from lyra.core.agent import (
     AgentSTTConfig,
     AgentTTSConfig,
     SmartRoutingConfig,
+    _agent_row_to_config,
     load_agent_config,
 )
+from lyra.core.agent_store import AgentStore
 from lyra.core.auth import AuthMiddleware
 from lyra.core.auth_store import AuthStore
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
@@ -474,6 +476,84 @@ def _resolve_agents(  # noqa: PLR0913
     return agents
 
 
+async def _resolve_bot_agent_map(
+    agent_store: AgentStore,
+    tg_bots: "list[TelegramBotConfig]",
+    dc_bots: "list[DiscordBotConfig]",
+) -> "dict[tuple[str, str], str]":
+    """Resolve (platform, bot_id) → agent_name for all configured bots.
+
+    Resolution order per bot:
+      1. bot_agent_map DB row (agent_store.get_bot_agent)
+      2. bot_cfg.agent from TOML — auto-seeds bot_agent_map in DB
+      3. Neither → log error, skip (bot not included in result)
+
+    Bots whose resolved agent name is not found in the agents table are also
+    logged and skipped (adapter cannot be wired without a valid agent row).
+
+    Returns dict mapping (platform, bot_id) → agent_name for bots that can
+    be safely wired.
+    """
+    result: dict[tuple[str, str], str] = {}
+
+    all_bots: list[tuple[str, str, str | None]] = []
+    for bot_cfg in tg_bots:
+        toml_agent = getattr(bot_cfg, "agent", None)
+        all_bots.append(("telegram", bot_cfg.bot_id, toml_agent))
+    for bot_cfg in dc_bots:
+        toml_agent = getattr(bot_cfg, "agent", None)
+        all_bots.append(("discord", bot_cfg.bot_id, toml_agent))
+
+    for platform, bot_id, toml_agent in all_bots:
+        # 1. Check DB cache (bot_agent_map table)
+        db_agent_name = agent_store.get_bot_agent(platform, bot_id)
+
+        if db_agent_name is not None:
+            # DB row found — validate the referenced agent exists in agents table.
+            # A stale bot_agent_map row (agent deleted) is a configuration error.
+            if agent_store.get(db_agent_name) is None:
+                log.error(
+                    "bot_agent_map: agent %r for (%r, %r) not found in"
+                    " agents table — skipping adapter",
+                    db_agent_name,
+                    platform,
+                    bot_id,
+                )
+                continue
+            result[(platform, bot_id)] = db_agent_name
+        elif toml_agent:
+            # 2. No DB row — fall back to TOML bot_cfg.agent, seed bot_agent_map.
+            log.info(
+                "bot_agent_map: no DB row for (%r, %r) — "
+                "seeding from TOML agent=%r",
+                platform,
+                bot_id,
+                toml_agent,
+            )
+            try:
+                await agent_store.set_bot_agent(platform, bot_id, toml_agent)
+            except Exception as exc:  # noqa: BLE001
+                log.warning(
+                    "bot_agent_map: failed to seed (%r, %r) → %r: %s",
+                    platform,
+                    bot_id,
+                    toml_agent,
+                    exc,
+                )
+            result[(platform, bot_id)] = toml_agent
+        else:
+            # 3. No DB row, no TOML agent — skip
+            log.error(
+                "bot_agent_map: no DB row and no TOML agent for"
+                " (%r, %r) — skipping adapter",
+                platform,
+                bot_id,
+            )
+            continue
+
+    return result
+
+
 async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each adapter/service requires sequential conditional setup
     raw_config: dict,
     circuit_registry: CircuitRegistry,
@@ -502,6 +582,8 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
         keyring=keyring_mb,
     )
     await cred_store.connect()
+    agent_store = AgentStore(db_path=vault_dir_mb / "auth.db")
+    await agent_store.connect()
 
     # Seed per-bot owner/trusted users as permanent grants
     auth_block: dict = raw_config.get("auth", {})
@@ -549,22 +631,35 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
             " [[auth.discord_bots]] section to config.toml"
         )
 
-    # Collect unique agent names referenced across all bot configs
-    agent_names: set[str] = set()
-    for bot_cfg, _ in tg_bot_auths:
-        agent_names.add(bot_cfg.agent)
-    for bot_cfg, _ in dc_bot_auths:
-        agent_names.add(bot_cfg.agent)
+    # Resolve (platform, bot_id) → agent_name: DB cache first, TOML fallback + seed.
+    bot_agent_map = await _resolve_bot_agent_map(
+        agent_store, tg_multi_cfg.bots, dc_multi_cfg.bots
+    )
+    agent_names: set[str] = set(bot_agent_map.values())
 
-    # Load all agent configs once — used for cli_pool detection, smart routing,
-    # msg_manager language, and agent creation. Avoids duplicate I/O and TOCTOU.
-    agent_configs: dict[str, Agent] = {
-        n: load_agent_config(
-            n, instance_overrides=_build_agent_overrides(raw_config, n)
+    # Load all agent configs once (DB-first, TOML fallback for pre-migration compat).
+    # Used for cli_pool detection, smart routing, msg_manager language, and creation.
+    agent_configs: dict[str, Agent] = {}
+    for n in sorted(agent_names):
+        row = agent_store.get(n)
+        if row is not None:
+            agent_configs[n] = _agent_row_to_config(
+                row, instance_overrides=_build_agent_overrides(raw_config, n)
+            )
+        else:
+            # Agent not in DB — fall back to TOML file (pre-migration compatibility)
+            try:
+                agent_configs[n] = load_agent_config(
+                    n, instance_overrides=_build_agent_overrides(raw_config, n)
+                )
+            except Exception as exc:  # noqa: BLE001
+                log.error("Failed to load agent %r: %s — skipping", n, exc)
+    if not agent_configs:
+        sys.exit(
+            "No agent configs could be loaded — run 'lyra agent init' to seed the"
+            " agents table, or ensure agents/*.toml files exist"
         )
-        for n in sorted(agent_names)
-    }
-    first_agent_name = next(iter(sorted(agent_names)))
+    first_agent_name = next(iter(sorted(agent_configs)))
     first_agent_config = agent_configs[first_agent_name]
 
     # Use the first agent's language for messages (all agents share one msg_manager)
@@ -661,6 +756,13 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
     tg_adapters: list[TelegramAdapter] = []
     tg_dispatchers: list[OutboundDispatcher] = []
     for bot_cfg, auth in tg_bot_auths:
+        resolved_agent = bot_agent_map.get(("telegram", bot_cfg.bot_id))
+        if resolved_agent is None:
+            log.warning(
+                "telegram bot_id=%r not in bot_agent_map — skipping adapter",
+                bot_cfg.bot_id,
+            )
+            continue
         tg_creds = await cred_store.get_full("telegram", bot_cfg.bot_id)
         if tg_creds is None:
             raise MissingCredentialsError("telegram", bot_cfg.bot_id)
@@ -681,7 +783,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
             Platform.TELEGRAM,
             bot_cfg.bot_id,
             "*",
-            bot_cfg.agent,
+            resolved_agent,
             tg_key.to_pool_id(),
         )
         dispatcher = OutboundDispatcher(
@@ -697,13 +799,20 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
         log.info(
             "Registered Telegram bot bot_id=%r agent=%r",
             bot_cfg.bot_id,
-            bot_cfg.agent,
+            resolved_agent,
         )
 
     # Wire Discord adapters
     dc_adapters: list[tuple[DiscordAdapter, DiscordBotConfig, str]] = []
     dc_dispatchers: list[OutboundDispatcher] = []
     for bot_cfg, auth in dc_bot_auths:
+        resolved_agent = bot_agent_map.get(("discord", bot_cfg.bot_id))
+        if resolved_agent is None:
+            log.warning(
+                "discord bot_id=%r not in bot_agent_map — skipping adapter",
+                bot_cfg.bot_id,
+            )
+            continue
         dc_creds = await cred_store.get_full("discord", bot_cfg.bot_id)
         if dc_creds is None:
             raise MissingCredentialsError("discord", bot_cfg.bot_id)
@@ -722,7 +831,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
             Platform.DISCORD,
             bot_cfg.bot_id,
             "*",
-            bot_cfg.agent,
+            resolved_agent,
             dc_key.to_pool_id(),
         )
         dispatcher = OutboundDispatcher(
@@ -738,7 +847,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
         log.info(
             "Registered Discord bot bot_id=%r agent=%r",
             bot_cfg.bot_id,
-            bot_cfg.agent,
+            resolved_agent,
         )
 
     # Start buses and dispatchers
@@ -809,6 +918,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
         await pm.close()
     await cred_store.close()
     await auth_store.close()
+    await agent_store.close()
     await prefs_store.close()
     if cli_pool is not None:
         await cli_pool.stop()

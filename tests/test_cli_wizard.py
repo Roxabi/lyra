@@ -226,7 +226,7 @@ class TestCreate:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Choosing 'u' at the location prompt writes to the user agents dir."""
-        import lyra.cli as cli_mod
+        import lyra.cli_agent as cli_mod
 
         user_dir = tmp_path / "user_agents"
         monkeypatch.setattr(cli_mod, "_USER_AGENTS_DIR", user_dir)
@@ -257,7 +257,7 @@ class TestCreate:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Choosing 's' at the location prompt writes to the system agents dir."""
-        import lyra.cli as cli_mod
+        import lyra.cli_agent as cli_mod
 
         system_dir = tmp_path / "system_agents"
         monkeypatch.setattr(cli_mod, "_USER_AGENTS_DIR", tmp_path / "user_agents")
@@ -332,32 +332,17 @@ class TestList:
         # Assert
         assert result.exit_code == 0, result.output
 
-    def test_lists_both_dirs(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    def test_lists_dir_with_agents_dir_flag(
+        self, tmp_path: Path
     ) -> None:
-        """Without --agents-dir, lists user agents then non-overridden system agents."""
-        import lyra.cli as cli_mod
+        """--agents-dir lists agents from the given TOML directory."""
+        self._write_agent_toml(tmp_path, "alpha")
+        self._write_agent_toml(tmp_path, "beta")
 
-        user_dir = tmp_path / "user"
-        system_dir = tmp_path / "system"
-        user_dir.mkdir()
-        system_dir.mkdir()
-
-        monkeypatch.setattr(cli_mod, "_USER_AGENTS_DIR", user_dir)
-        monkeypatch.setattr(cli_mod, "_SYSTEM_AGENTS_DIR", system_dir)
-
-        # user has "alpha"; system has "alpha" (overridden) and "beta"
-        self._write_agent_toml(user_dir, "alpha")
-        self._write_agent_toml(system_dir, "alpha")
-        self._write_agent_toml(system_dir, "beta")
-
-        result = runner.invoke(app, ["list"])
+        result = runner.invoke(app, ["list", "--agents-dir", str(tmp_path)])
         assert result.exit_code == 0, result.output
-        # alpha appears once (user wins), beta appears from system
-        assert result.output.count("alpha") == 1
+        assert "alpha" in result.output
         assert "beta" in result.output
-        assert "user" in result.output
-        assert "system" in result.output
 
     def test_absent_dir_exits_zero(self, tmp_path: Path) -> None:
         """Non-existent agents dir exits 0 (prints headers only or empty message)."""

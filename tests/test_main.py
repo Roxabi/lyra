@@ -89,6 +89,14 @@ def _patch_all(
     _fake_auth_store.close = AsyncMock()
     monkeypatch.setattr(main_mod, "AuthStore", lambda **kwargs: _fake_auth_store)
 
+    _fake_agent_store = MagicMock()
+    _fake_agent_store.connect = AsyncMock()
+    _fake_agent_store.close = AsyncMock()
+    _fake_agent_store.get_bot_agent = MagicMock(return_value=None)
+    _fake_agent_store.get = MagicMock(return_value=None)
+    _fake_agent_store.set_bot_agent = AsyncMock()
+    monkeypatch.setattr(main_mod, "AgentStore", lambda **kwargs: _fake_agent_store)
+
     _fake_keyring = MagicMock()
     _fake_keyring.key = b"fake-key-32-bytes-for-fernet-key"
     _fake_cred_store = MagicMock()
@@ -349,6 +357,14 @@ def _patch_auth_config_test(monkeypatch: pytest.MonkeyPatch) -> None:
     _fake_auth_store.seed_from_config = AsyncMock()
     _fake_auth_store.close = AsyncMock()
     monkeypatch.setattr(main_mod, "AuthStore", lambda **kwargs: _fake_auth_store)
+
+    _fake_agent_store = MagicMock()
+    _fake_agent_store.connect = AsyncMock()
+    _fake_agent_store.close = AsyncMock()
+    _fake_agent_store.get_bot_agent = MagicMock(return_value=None)
+    _fake_agent_store.get = MagicMock(return_value=None)
+    _fake_agent_store.set_bot_agent = AsyncMock()
+    monkeypatch.setattr(main_mod, "AgentStore", lambda **kwargs: _fake_agent_store)
 
     _fake_keyring = MagicMock()
     _fake_keyring.key = b"fake-key-32-bytes-for-fernet-key"

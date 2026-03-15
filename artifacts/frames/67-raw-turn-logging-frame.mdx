@@ -1,0 +1,47 @@
+---
+title: "feat: raw turn logging + conversation audit trail (L1)"
+issue: 67
+status: approved
+tier: F-lite
+date: 2026-03-15
+---
+
+## Problem
+
+Lyra has no turn-level persistence. Every conversation turn lives in `Pool.history` (in-memory) and `Pool.sdk_history` (50-turn sliding window, AnthropicAgent only) — both are lost on restart. Platform message IDs (`reply_message_id` from Telegram/Discord) are captured in `response.metadata` but discarded immediately after `dispatch_response()`. Python logs record routing metadata and errors only — never message content.
+
+The result: no audit trail, no replay capability, and no stable source for future memory consolidation. If Lyra crashes mid-conversation, everything is gone.
+
+This issue adds **Level 1 (raw turn logging)** — every conversation turn persisted verbatim to SQLite, with platform cross-references, before any summarisation or compaction occurs. It is the missing foundation that makes L0→L3 compaction (#83) meaningful, and will feed the future L1→L2 episodic pipeline (#71).
+
+## Who
+
+- **Primary:** Lyra system internals — the `Pool` class logs turns automatically, with no user-visible change.
+- **Secondary:** Developer/admin — a basic query (`last N turns for pool X`) enables debugging session continuity and inspecting exact exchanges. Future: L1→L2 consolidation pipeline (#71) reads from this table.
+
+## Constraints
+
+- **#83 must be merged first** — `Pool.append()`, `session_id`, and `user_id` fields required. #83 is closed (✅), so #67 is unblocked.
+- **SQLite only** — same `vault.db` as roxabi-memory. New `conversation_turns` table via v3 migration. No new infrastructure.
+- **aiosqlite** — async-compatible. No new dependencies.
+- **reply_message_id capture** — must be read from `response.metadata` before `Response` object is discarded in `dispatch_response()`.
+- **Session rotation** — new `session_id` (UUID) generated when `Pool` is created; persisted per turn.
+
+## Out of Scope
+
+- Session summaries / L3 compaction — handled by #83
+- Full-text search over turns — deferred to L2 episodic consolidation (#71)
+- Archival, compression, gzip — SQLite WAL handles storage efficiently; deferred
+- Multi-device session sharing — deferred
+- User-facing query UI — admin/debug only for now
+
+## Complexity
+
+**Tier: F-lite** — Clear scope, single backend domain (Pool + SQLite), no new architectural patterns. Schema is defined in the issue. No unknowns after #83 merged.
+
+Signals:
+- Single domain: memory/persistence backend
+- Schema already specified in issue body
+- ≤5 files affected (Pool, roxabi-memory schema migration, platform adapters for reply_message_id)
+- No new async patterns beyond existing aiosqlite usage
+- M size label

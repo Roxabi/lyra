@@ -527,7 +527,10 @@ class Hub:
             await self.dispatch_audio(msg, response.audio)
 
         # Voice modality: synthesize TTS audio in background after text is dispatched
-        if msg.modality == "voice" and self._tts is not None:
+        _should_speak = msg.modality == "voice" or (
+            isinstance(response, Response) and response.speak
+        )
+        if _should_speak and self._tts is not None:
             text = outbound.to_text().strip()
             if text:
                 task = asyncio.create_task(
@@ -911,6 +914,7 @@ class Hub:
                 audio_bytes=result.audio_bytes,
                 mime_type=result.mime_type,
                 duration_ms=result.duration_ms,
+                waveform_b64=result.waveform_b64,
             )
             await self.dispatch_audio(msg, audio)
             log.info(

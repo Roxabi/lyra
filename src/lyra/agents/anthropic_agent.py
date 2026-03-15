@@ -208,5 +208,10 @@ class AnthropicAgent(AgentBase):
         self, msg: InboundMessage, pool: Pool, *, on_intermediate=None
     ) -> Response:
         """Rewrite /voice commands as voice-modality LLM requests, then process."""
-        msg = self._handle_voice_command(msg) or msg
-        return await self._process_llm(msg, pool, on_intermediate=on_intermediate)
+        _voice_rewritten = self._handle_voice_command(msg)
+        if _voice_rewritten is not None:
+            msg = _voice_rewritten
+        response = await self._process_llm(msg, pool, on_intermediate=on_intermediate)
+        if msg.modality == "voice":
+            response.speak = True
+        return response

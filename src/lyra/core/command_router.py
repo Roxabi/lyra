@@ -119,6 +119,7 @@ class CommandRouter:
         self._workspaces: dict[str, Path] = workspaces or {}
         self._session_driver: LlmProvider | None = session_driver
         self._session_handlers: dict[str, SessionCommandEntry] = {}
+        self._passthroughs: set[str] = set()
         # Register workspace commands as builtins
         for ws_name in self._workspaces:
             cmd = f"/{ws_name}"
@@ -161,6 +162,10 @@ class CommandRouter:
         if msg.command is None:
             return None
         return f"{msg.command.prefix}{msg.command.name}"
+
+    def register_passthrough(self, name: str) -> None:
+        """Mark a command as agent-handled — dispatch() returns None."""
+        self._passthroughs.add(f"/{name}")
 
     def register_session_command(
         self,
@@ -275,8 +280,9 @@ class CommandRouter:
         handler = plugin_handlers.get(command_name)
         if handler is None:
             if msg.command.prefix == "!":
-                # !-prefixed unknown command — sentinel: fall through to pool
-                return None
+                return None  # !-prefixed unknown command: fall through to pool
+            if command_name in self._passthroughs:
+                return None  # agent-handled — fall through to pool
             _fallback = (
                 f"Unknown command: {command_name}. Type /help for available commands."
             )

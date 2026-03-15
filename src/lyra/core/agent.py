@@ -637,6 +637,8 @@ class AgentBase(ABC):
             **self._build_router_kwargs(),
         )
         self._register_session_commands()
+        if self._tts is not None:
+            self.command_router.register_passthrough("voice")
         self._persona_path: Path | None = None
         self._persona_mtime: float = 0.0
         self._update_persona_tracking()

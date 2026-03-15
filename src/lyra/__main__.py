@@ -425,6 +425,7 @@ def _resolve_agents(  # noqa: PLR0913
     admin_user_ids: set[str],
     msg_manager: MessageManager,
     stt_service: STTService | None,
+    tts_service: TTSService | None = None,
 ) -> dict[str, AgentBase]:
     """Create all uniquely named agents referenced by bot configs.
 
@@ -465,6 +466,7 @@ def _resolve_agents(  # noqa: PLR0913
             admin_user_ids=admin_user_ids,
             msg_manager=msg_manager,
             stt=stt_service,
+            tts=tts_service,
             provider_registry=per_agent_registry,
             smart_routing_decorator=per_agent_routing,
         )
@@ -650,6 +652,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
         admin_user_ids,
         msg_manager,
         stt_service,
+        tts_service,
     )
     for ag in all_agents.values():
         hub.register_agent(ag)

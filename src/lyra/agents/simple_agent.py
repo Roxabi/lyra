@@ -140,7 +140,9 @@ class SimpleAgent(AgentBase):
         self._maybe_register_resume(pool)
 
         # /voice pre-router: rewrite as voice-modality LLM request
-        msg = self._handle_voice_command(msg) or msg
+        _voice_rewritten = self._handle_voice_command(msg)
+        if _voice_rewritten is not None:
+            msg = _voice_rewritten
 
         # Handle audio messages — attachments with type="audio"
         audio_attachment = next((a for a in msg.attachments if a.type == "audio"), None)
@@ -240,4 +242,4 @@ class SimpleAgent(AgentBase):
                 pool.pool_id,
             )
 
-        return Response(content=reply, metadata=meta)
+        return Response(content=reply, metadata=meta, speak=(msg.modality == "voice"))

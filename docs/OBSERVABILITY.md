@@ -2,8 +2,8 @@
 
 ## Overview
 
-Lyra uses **plaintext rotating file logs** as the primary observability mechanism.
-There is no distributed tracing framework (no OpenTelemetry), no structured JSON logs, and no database audit trail today.
+Lyra uses **plaintext rotating file logs** as the primary observability mechanism, complemented by a **raw turn store** (SQLite audit trail) for conversation persistence.
+There is no distributed tracing framework (no OpenTelemetry) and no structured JSON logs.
 The `pool_id` is the de-facto correlation key to reconstruct a request's lifecycle across log lines.
 
 ---
@@ -55,7 +55,35 @@ The following events are emitted (at INFO unless noted) for each inbound message
 | Cancel-in-flight | `lyra.core.pool` (DEBUG) | New message while LLM processing |
 | Circuit breaker | `lyra.core.event_bus` (WARNING) | State transition old→new |
 
-**What is NOT logged:** message content, full prompts/responses (only char/token counts).
+**What is NOT logged in file logs:** message content, full prompts/responses (only char/token counts). For full content capture, see the Turn Store below.
+
+---
+
+## Turn Store (L1 — Raw Turn Logging)
+
+> Shipped in #67 (L1 memory layer).
+
+The `TurnStore` (`src/lyra/core/turn_store.py`) persists every user and assistant turn to a dedicated **`~/.lyra/turns.db`** SQLite database (separate from roxabi-vault to avoid write contention). This provides a complete audit trail with message content, platform IDs, and session context.
+
+| Column | Purpose |
+|--------|---------|
+| `pool_id` | Links to the pool (conversation scope) |
+| `session_id` | Groups turns within a session |
+| `role` | `"user"` or `"assistant"` |
+| `platform` | `"telegram"`, `"discord"`, etc. |
+| `user_id` | Canonical sender ID |
+| `content` | Full message text |
+| `message_id` | Platform-specific message ID |
+| `reply_message_id` | Platform-specific replied-to message ID |
+| `timestamp` | ISO 8601 UTC |
+| `metadata` | JSON blob for extensibility |
+
+**Write path:** `Pool.process()` calls `TurnStore.log_turn()` for each inbound and outbound message. Writes are fire-and-forget (`asyncio.create_task`) — a failed write logs a warning but never blocks message processing.
+
+**Query interface:**
+- `get_session_turns(session_id)` — all turns for a session, ordered by timestamp
+- `get_pool_turns(pool_id, limit)` — recent turns for a pool
+- `get_user_turns(user_id, limit)` — recent turns across all pools for a user
 
 ---
 
@@ -101,6 +129,5 @@ Config keys (in `config.toml` under `[monitoring]`):
 |-----|---------|
 | No end-to-end trace IDs | — |
 | No structured/JSON logs | — |
-| No message content capture | — |
-| No persistent audit trail | Persistent JSONL session logs — #67 (Phase 2) |
+| No message content capture in file logs | Captured in Turn Store (L1, #67 ✅) |
 | No OpenTelemetry integration | — |

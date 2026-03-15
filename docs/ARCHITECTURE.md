@@ -1,7 +1,7 @@
 # Lyra — Architecture & Decisions
 
 > Living document. Updated as decisions are made.
-> Last updated: 2026-03-14 (Phase 1b tail completions: message normalization #139, LlmProvider #123, auth #151, routing #152, smart routing #134, runtime config #135, STT #80, audio/attachment bus, PoolContext #204, TTL eviction #205, typing indicator redesign #229, show_intermediate + on_intermediate callback, /clear session reset, is_backend_alive, SimpleAgent runtime_config wiring, memory integration #83, hub command sessions #99)
+> Last updated: 2026-03-15 (Phase 1b tail completions: message normalization #139, LlmProvider #123, auth #151, routing #152, smart routing #134, runtime config #135, STT #80, audio/attachment bus, PoolContext #204, TTL eviction #205, typing indicator redesign #229, show_intermediate + on_intermediate callback, /clear session reset, is_backend_alive, SimpleAgent runtime_config wiring, memory integration #83, hub command sessions #99, AgentStore #268, raw turn logging #67, retryable LlmResult #276)
 
 ---
 
@@ -268,7 +268,7 @@ Multiple agents run simultaneously on different pools. A single agent (e.g., `ly
 | Level | Name | Nature | Lifetime | Phase 1 Status |
 |-------|------|--------|----------|----------------|
 | 0 | **Working memory** | Active context window (current messages) | Volatile | ✅ Built — L0 compaction in #83 |
-| 1 | **Session memory** | Multi-turn session state per pool | Session duration | Deferred (Phase 2) |
+| 1 | **Session memory** | Raw turn logging (TurnStore) + session state | Session duration | ✅ Built — raw turn logging in #67 |
 | 2 | **Episodic** | Dated Markdown, immutable, human-auditable | Permanent | Deferred (Phase 2) |
 | 3 | **Semantic** | SQLite + FTS5/BM25 + fastembed + sqlite-vec | Permanent | ✅ Built (#78/#81/#82) |
 | 4 | **Procedural** | Learned skills, memorized patterns, preferences | Permanent | Deferred (Phase 3) |
@@ -281,10 +281,12 @@ Multiple agents run simultaneously on different pools. A single agent (e.g., `ly
   3. Replaces `sdk_history` with `[summary_turn] + last 10 turns` in-place
 - `AgentBase.flush_session()` runs on pool eviction / explicit disconnect → full L3 write + background concept/preference extraction
 
-### Level 1 — Session memory *(Phase 2)*
-- Multi-turn session state per pool (`asyncio.Task` per scope)
-- Ongoing commands, conversation context
-- Configurable timeout, cleaned up on disconnect
+### Level 1 — Session memory ✅
+- **TurnStore** (`src/lyra/core/turn_store.py`) — raw turn logging to `~/.lyra/turns.db` (SQLite)
+- Every user and assistant turn persisted with `pool_id`, `session_id`, `role`, `content`, platform message IDs
+- Separate DB from roxabi-vault to avoid write contention
+- Fire-and-forget writes via `asyncio.create_task` — never blocks message processing
+- Query interface: `get_session_turns()`, `get_pool_turns()`, `get_user_turns()`
 
 ### Level 2 — Episodic *(Phase 2)*
 - Dated Markdown files (`memory/YYYY-MM-DD.md`)
@@ -345,7 +347,7 @@ See `docs/architecture/adr/010-external-tool-integration-pattern.mdx` for full r
 ## Features
 
 - **24/7 Autonomy**: embedded scheduler (no external cron), temporal triggers and webhooks
-- **In-memory session state**: multi-turn context per pool, configurable timeout (persistent JSONL logs = #67, Phase 2)
+- **In-memory session state**: multi-turn context per pool, configurable timeout · raw turn logging to SQLite (TurnStore, #67 ✅)
 - **Auto compaction**: summary of old turns → semantic memory (virtuous loop)
 - **Multi-channel**: Telegram first, Discord without touching the core
 - **Multi-agent**: routing via bindings, isolated workspaces
@@ -429,6 +431,9 @@ client = AsyncOpenAI(
 - **`[model].cwd` and `[workspaces]`** ✅ — `ModelConfig.cwd` sets a fixed working directory for the Claude subprocess for a given agent. `[workspaces]` in agent TOML registers named directory shortcuts; each key becomes a `/keyname` slash command that stores a per-pool cwd override in `CliPool._cwd_overrides`. Switching workspace clears pool history and kills/respawns the Claude subprocess with the new cwd.
 - **Reduced Phase 1 memory scope** — Level 0 (working, L0 compaction ✅ #83) + Level 3 (semantic ✅ #78/#81/#82). Levels 1, 2, 4 added when the real need arises.
 - **Memory agent integration** (#83 ✅) — `MemoryManager` wired into Pool identity fields, AgentBase lifecycle (`build_system_prompt`, `compact`, `flush_session`, `_schedule_extraction`), and Hub (`set_memory`, `_memory_tasks`, shutdown drain). Identity anchor seeded in L3 on first boot. FTS isolated per user via `namespace:user_id` sub-namespace. 7 slices delivered: Pool identity, MemoryManager infra, identity anchor, session flush, compaction, cross-session recall, concept/preference extraction.
+- **AgentStore** (#268 ✅) — SQLite-backed agent registry (`~/.lyra/auth.db`). TOML files are seed sources only — imported via `lyra agent init`. Runtime reads from DB. CLI: `init`, `list`, `show`, `edit`, `validate`, `assign`, `unassign`, `delete`. In-memory cache warmed at `connect()` — no per-message file I/O. See ADR-024.
+- **Raw turn logging** (#67 ✅) — `TurnStore` (`src/lyra/core/turn_store.py`) persists every user + assistant turn to `~/.lyra/turns.db` (SQLite, separate from vault). Fire-and-forget writes via `asyncio.create_task`. Query: `get_session_turns()`, `get_pool_turns()`, `get_user_turns()`. This is the L1 memory layer.
+- **Retryable LlmResult** (#276 ✅) — `LlmResult` carries a `retryable: bool` flag. Non-retryable errors (auth failures, invalid requests) skip the retry/backoff loop in decorators.
 - **Hub command sessions** (#99 ✅) — Session command layer: `SessionCommandHandler` protocol, `SessionCommandEntry` registry in `CommandRouter`. `/add` (scrape → LLM summary → vault write), `/explain` (scrape → LLM plain-language explanation), `/summarize` (scrape → LLM bullet points), `/search` (vault FTS). Bare URL messages auto-rewritten to `/add <url>`. Scraping via `web-intel:scrape` subprocess; vault via `vault` CLI. `session_helpers.py` provides `scrape_url`, `vault_add`, `vault_search` async wrappers. `session_commands.py` contains the four command handlers. `AnthropicAgent` wired with a session driver for isolated LLM calls (no pool history pollution). `plugins/search/` plugin implements `/search`.
 
 ### External tool integration
@@ -439,7 +444,7 @@ client = AsyncOpenAI(
 
 - **Machine 2 / local LLM** — OllamaDriver in #123 will add the driver; NATS worker for Machine 2 is Phase 2 (#51). Circuit breaker for remote LLM: #23.
 - **Machine 1 VRAM under load** — Measure with `nvidia-smi` before planning Phase 2 SLMs.
-- **Memory levels 1, 2, 4** — Session memory (L1), episodic Markdown logs (L2), procedural seeds (L4) deferred. Add when real need arises.
+- **Memory levels 2, 4** — Episodic Markdown logs (L2), procedural seeds (L4) deferred. Add when real need arises. (L1 raw turn logging shipped in #67.)
 
 ### Technical constraints (not decisions, facts)
 
@@ -465,11 +470,14 @@ What is built in Phase 1 / 1b:
 - Security: hmac.compare_digest (#212 ✅), two-tier /health (#207 ✅), symlink plugin_loader fix (#215 ✅)
 - UX: typing indicator redesign (#229 ✅), intermediate turns (`show_intermediate`) ✅, `/clear` session reset ✅
 - Hub command sessions (#99 ✅): `/add`, `/explain`, `/summarize`, `/search` — session command layer with isolated LLM calls, scrape + vault integration, bare URL auto-rewrite
+- AgentStore (#268 ✅): SQLite-backed agent registry (`~/.lyra/auth.db`), CLI overhaul (`init`, `list`, `show`, `edit`, `validate`, `assign`, `delete`)
+- Raw turn logging (#67 ✅): TurnStore — L1 memory layer, conversation audit trail to `~/.lyra/turns.db`
+- Retryable LlmResult (#276 ✅): non-retryable errors skip retry/backoff loop
 
 **Phase 1b tail: complete.** All items shipped.
 
 What is **explicitly excluded from Phase 1**:
-- Memory levels 1 (session), 2 (episodic), 4 (procedural) — added when the real need arises
+- Memory levels 2 (episodic), 4 (procedural) — added when the real need arises (L1 raw turn logging shipped in #67)
 - Atomic SLMs (Phase 3)
 - Cognitive meta-language between SLMs
 - Knowledge graph (optional level 4)
@@ -519,7 +527,7 @@ class CognitiveFrame:
 
 **Phase 1b complete.** All items shipped.
 
-**Shipped**: #135 (runtime config ✅), #134 (smart routing ✅), #80 (voice STT ✅), #139 (message normalization ✅), #123 (LlmProvider ✅), #151 (auth ✅), #152 (routing ✅), #83 (memory integration ✅), #99 (hub command sessions ✅), voice TTS ✅ (OGG/Opus · waveform · Discord voice bubble · /voice routes through LLM)
+**Shipped**: #135 (runtime config ✅), #134 (smart routing ✅), #80 (voice STT ✅), #139 (message normalization ✅), #123 (LlmProvider ✅), #151 (auth ✅), #152 (routing ✅), #83 (memory integration ✅), #99 (hub command sessions ✅), voice TTS ✅ (OGG/Opus · waveform · Discord voice bubble · /voice routes through LLM), #268 (AgentStore — SQLite-backed agent registry ✅), #67 (raw turn logging — TurnStore L1 ✅), #276 (retryable flag on LlmResult ✅)
 
 **Next**: Phase 2 (#60) — NATS introduction + Machine 2 coordination, or #136 (multi-bot registry upgrade, blocked by #79).
 

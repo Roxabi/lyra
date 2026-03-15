@@ -61,7 +61,7 @@ flowchart TD
 | Feature | Detail |
 |---------|--------|
 | **LLM** | LlmProvider protocol: Claude CLI + Anthropic SDK drivers · smart routing (complexity-based model selection) · Ollama (Phase 2) |
-| **Agents** | Stateless singleton · isolated per-scope pools · TOML config per agent · N agents × N bots via `config.toml` |
+| **Agents** | Stateless singleton · isolated per-scope pools · AgentStore (SQLite) · TOML seeds · N agents × N bots via `config.toml` |
 | **Memory** | 5 levels: working (L0 compaction ✅) → session → episodic → semantic (SQLite + FTS5 + fastembed ✅) → procedural · cross-session recall via `[MEMORY]`/`[PREFERENCES]` blocks |
 | **Session commands** | `/add <url>` (scrape → LLM → vault) · `/explain <url>` · `/summarize <url>` · `/search <query>` · bare URL auto-rewrite → `/add` |
 
@@ -133,16 +133,22 @@ All configuration is via `.env` (copy `.env.example` to get started). Key variab
 | `STT_MODEL_SIZE` | `large-v3-turbo` | Whisper model size (`small`, `medium`, `large-v3-turbo`) |
 | `STT_DEVICE` | `auto` | `cpu`, `cuda`, or `auto` |
 
-Agent behaviour (tools, model, system prompt) is configured per-agent in `src/lyra/agents/<name>.toml` (project-level) or `~/.lyra/agents/<name>.toml` (user-level, takes precedence).
+Agent behaviour (tools, model, system prompt) is managed via **AgentStore** (`~/.lyra/auth.db`, SQLite). TOML files in `src/lyra/agents/` are seed sources — import them with `lyra agent init`. Use `lyra agent edit` to modify agents at runtime without touching TOML.
 See [QUICKSTART.md](docs/QUICKSTART.md) for the full walkthrough.
 
 ## CLI reference
 
 ```bash
 lyra start                        # start all configured adapters
+lyra agent init                   # seed DB from TOML files (first-time setup)
+lyra agent init --force           # overwrite existing DB rows with TOML
+lyra agent list                   # list all agents in DB (name, backend, model, assigned bots)
+lyra agent show <name>            # full config for one agent
+lyra agent edit <name>            # edit an agent interactively in DB
+lyra agent validate <name>        # validate agent schema + constraints
+lyra agent assign <name> --platform telegram --bot <bot_id>
+lyra agent delete <name>          # refuses if bot still assigned
 lyra agent create                 # interactive wizard — create a new agent TOML
-lyra agent list                   # list all agents (user + system, with backend/model)
-lyra agent validate <name>        # validate agent TOML schema
 lyra config show                  # display parsed config.toml
 lyra config validate              # check tokens + env vars are set
 lyra --version
@@ -202,6 +208,8 @@ src/lyra/
     hub.py                 — Hub (bus + adapter registry + bindings + TTL eviction)
     pool.py                — Pool (history + session identity fields + asyncio.Task per scope)
     agent.py               — AgentBase (compact, flush_session, build_system_prompt), Agent config
+    agent_store.py         — AgentStore (SQLite-backed agent registry, ~/.lyra/auth.db)
+    turn_store.py          — TurnStore (raw turn logging to ~/.lyra/turns.db, L1 memory)
     memory.py              — MemoryManager (recall, upsert_session, concept/preference extraction)
     auth.py                — AuthMiddleware (per-adapter trust verification)
     trust.py               — TrustLevel enum (owner/trusted/public/blocked)
@@ -226,9 +234,9 @@ src/lyra/
   agents/
     simple_agent.py       — Claude CLI agent implementation
     anthropic_agent.py    — Anthropic SDK agent implementation
-    lyra_default.toml     — default agent config (model, tools, system prompt)
+    lyra_default.toml     — default agent seed (model, tools, system prompt)
   llm/
-    base.py               — LlmProvider protocol
+    base.py               — LlmProvider protocol, LlmResult (with retryable flag)
     drivers/cli.py        — ClaudeCliDriver
     drivers/sdk.py        — AnthropicSdkDriver
     registry.py           — driver registry
@@ -246,7 +254,7 @@ docs/
   ROADMAP.md        — priorities and scope
   QUICKSTART.md     — developer setup guide
   vision.md         — design principles and constraints
-  architecture/adr/ — architecture decision records (22 ADRs)
+  architecture/adr/ — architecture decision records (24 ADRs)
 ```
 
 ## Documentation
@@ -260,7 +268,7 @@ docs/
 | [COMMANDS.md](docs/COMMANDS.md) | Command router — slash commands, external tool integration pattern |
 | [GETTING-STARTED.md](docs/GETTING-STARTED.md) | Machine 1 (Ubuntu Server) hardware setup |
 | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production service management on Machine 1 (supervisord, logs, firewall) |
-| [ADRs](docs/architecture/adr/) | 22 architecture decision records with full rationale |
+| [ADRs](docs/architecture/adr/) | 24 architecture decision records with full rationale |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Branching model, commit conventions, adding adapters and agents |
 
 ## Contributing

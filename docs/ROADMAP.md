@@ -1,13 +1,13 @@
 # Lyra — Prioritized Roadmap
 
 > Living document. Updated as decisions are made.
-> Last updated: 2026-03-14
+> Last updated: 2026-03-15
 
 ---
 
 ## Current focus
 
-**Phase 1b complete.** All items shipped: #139 ✅, #123 ✅, #134 ✅, #135 ✅, #80 ✅, #151 ✅, #152 ✅, #83 ✅, #99 ✅. Next: Phase 2 (#60) or #136 (multi-bot registry, blocked by #79).
+**Phase 1b complete.** All items shipped: #139 ✅, #123 ✅, #134 ✅, #135 ✅, #80 ✅, #151 ✅, #152 ✅, #83 ✅, #99 ✅, #268 ✅ (AgentStore), #67 ✅ (raw turn logging), #276 ✅ (retryable LlmResult). Next: Phase 2 (#60) or #136 (multi-bot registry, blocked by #79).
 
 ---
 
@@ -121,7 +121,7 @@
 |---|-------|----------|--------|
 | #83 | Lyra agent integration — identity anchor, L0 compaction | P1 | ✅ Done |
 | #128 | Import 2ndBrain session history → episodic memory L3 | P2 | Open — blocked by #83 |
-| #67 | Session persistence — JSONL conversation history | P2 | Open |
+| #67 | Raw turn logging — TurnStore (L1 memory layer) | P2 | ✅ Done |
 | #71 | Memory SLM — episodic-to-semantic promotion | P3 | Frozen |
 | #72 | Memory Phase 2 — Level 4 procedural seeds | P3 | Frozen |
 

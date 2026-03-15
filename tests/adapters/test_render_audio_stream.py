@@ -15,10 +15,10 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
-from io import BytesIO
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from aiogram.types import BufferedInputFile
 
 from lyra.core.auth import TrustLevel
 from lyra.core.message import (
@@ -104,8 +104,8 @@ async def test_tg_multi_chunk_buffers_and_sends_once() -> None:
     adapter.bot.send_voice.assert_awaited_once()
     kwargs = adapter.bot.send_voice.call_args.kwargs
     voice_data = kwargs["voice"]
-    assert isinstance(voice_data, BytesIO)
-    assert voice_data.read() == b"chunk0chunk1chunk2"
+    assert isinstance(voice_data, BufferedInputFile)
+    assert voice_data.data == b"chunk0chunk1chunk2"
 
 
 @pytest.mark.asyncio
@@ -153,8 +153,8 @@ async def test_tg_error_mid_stream_sends_partial_then_raises(caplog) -> None:
     adapter.bot.send_voice.assert_awaited_once()
     kwargs = adapter.bot.send_voice.call_args.kwargs
     voice_data = kwargs["voice"]
-    assert isinstance(voice_data, BytesIO)
-    assert voice_data.read() == b"partial1partial2"
+    assert isinstance(voice_data, BufferedInputFile)
+    assert voice_data.data == b"partial1partial2"
     assert "Audio stream interrupted" in caplog.text
 
 
@@ -177,18 +177,15 @@ async def test_tg_wrong_platform_no_send() -> None:
 async def test_dc_single_chunk_sends_file() -> None:
     adapter = make_dc_adapter()
     channel = mock_channel()
-    ref_msg = AsyncMock()
-    ref_msg.reply = AsyncMock()
-    channel.fetch_message = AsyncMock(return_value=ref_msg)
     inbound = make_dc_msg()
 
     with patch.object(adapter, "get_channel", return_value=channel):
         await adapter.render_audio_stream(_single_chunk(), inbound)
 
-    ref_msg.reply.assert_awaited_once()
+    channel.send.assert_awaited_once()
     import discord as _discord
 
-    call_kwargs = ref_msg.reply.call_args.kwargs
+    call_kwargs = channel.send.call_args.kwargs
     assert isinstance(call_kwargs["file"], _discord.File)
     # Verify file content
     assert call_kwargs["file"].fp.read() == b"OGG_DATA"
@@ -198,16 +195,13 @@ async def test_dc_single_chunk_sends_file() -> None:
 async def test_dc_multi_chunk_buffers_and_sends_once() -> None:
     adapter = make_dc_adapter()
     channel = mock_channel()
-    ref_msg = AsyncMock()
-    ref_msg.reply = AsyncMock()
-    channel.fetch_message = AsyncMock(return_value=ref_msg)
     inbound = make_dc_msg()
 
     with patch.object(adapter, "get_channel", return_value=channel):
         await adapter.render_audio_stream(_multi_chunk(), inbound)
 
-    ref_msg.reply.assert_awaited_once()
-    call_kwargs = ref_msg.reply.call_args.kwargs
+    channel.send.assert_awaited_once()
+    call_kwargs = channel.send.call_args.kwargs
     assert call_kwargs["content"] == "final caption"
     # Verify buffered bytes
     assert call_kwargs["file"].fp.read() == b"chunk0chunk1chunk2"
@@ -229,9 +223,6 @@ async def test_dc_empty_stream_no_send() -> None:
 async def test_dc_error_mid_stream_sends_partial_then_raises(caplog) -> None:
     adapter = make_dc_adapter()
     channel = mock_channel()
-    ref_msg = AsyncMock()
-    ref_msg.reply = AsyncMock()
-    channel.fetch_message = AsyncMock(return_value=ref_msg)
     inbound = make_dc_msg()
 
     with caplog.at_level(logging.WARNING):
@@ -239,9 +230,9 @@ async def test_dc_error_mid_stream_sends_partial_then_raises(caplog) -> None:
             with patch.object(adapter, "get_channel", return_value=channel):
                 await adapter.render_audio_stream(_error_stream(), inbound)
 
-    ref_msg.reply.assert_awaited_once()
+    channel.send.assert_awaited_once()
     # Verify partial bytes
-    call_kwargs = ref_msg.reply.call_args.kwargs
+    call_kwargs = channel.send.call_args.kwargs
     assert call_kwargs["file"].fp.read() == b"partial1partial2"
     assert "Audio stream interrupted" in caplog.text
 

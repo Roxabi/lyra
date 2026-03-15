@@ -89,6 +89,14 @@ def _patch_all(
     _fake_auth_store.close = AsyncMock()
     monkeypatch.setattr(main_mod, "AuthStore", lambda **kwargs: _fake_auth_store)
 
+    _fake_agent_store = MagicMock()
+    _fake_agent_store.connect = AsyncMock()
+    _fake_agent_store.close = AsyncMock()
+    _fake_agent_store.get_bot_agent = MagicMock(return_value=None)
+    _fake_agent_store.get = MagicMock(return_value=None)
+    _fake_agent_store.set_bot_agent = AsyncMock()
+    monkeypatch.setattr(main_mod, "AgentStore", lambda **kwargs: _fake_agent_store)
+
     _fake_keyring = MagicMock()
     _fake_keyring.key = b"fake-key-32-bytes-for-fernet-key"
     _fake_cred_store = MagicMock()
@@ -100,9 +108,7 @@ def _patch_all(
         "LyraKeyring",
         MagicMock(load_or_create=AsyncMock(return_value=_fake_keyring)),
     )
-    monkeypatch.setattr(
-        main_mod, "CredentialStore", lambda **kwargs: _fake_cred_store
-    )
+    monkeypatch.setattr(main_mod, "CredentialStore", lambda **kwargs: _fake_cred_store)
     monkeypatch.setattr(
         main_mod,
         "load_agent_config",
@@ -350,6 +356,21 @@ def _patch_auth_config_test(monkeypatch: pytest.MonkeyPatch) -> None:
     _fake_auth_store.close = AsyncMock()
     monkeypatch.setattr(main_mod, "AuthStore", lambda **kwargs: _fake_auth_store)
 
+    _fake_agent_store = MagicMock()
+    _fake_agent_store.connect = AsyncMock()
+    _fake_agent_store.close = AsyncMock()
+    _fake_agent_store.get_bot_agent = MagicMock(return_value=None)
+    _fake_agent_store.get = MagicMock(return_value=None)
+    _fake_agent_store.set_bot_agent = AsyncMock()
+    monkeypatch.setattr(main_mod, "AgentStore", lambda **kwargs: _fake_agent_store)
+    # Bypass _resolve_bot_agent_map so tests can focus on auth validation without
+    # hitting the agent-existence check added in Fix 1.
+    monkeypatch.setattr(
+        main_mod,
+        "_resolve_bot_agent_map",
+        AsyncMock(return_value={("telegram", "main"): "lyra_default"}),
+    )
+
     _fake_keyring = MagicMock()
     _fake_keyring.key = b"fake-key-32-bytes-for-fernet-key"
     _fake_cred_store = MagicMock()
@@ -361,9 +382,7 @@ def _patch_auth_config_test(monkeypatch: pytest.MonkeyPatch) -> None:
         "LyraKeyring",
         MagicMock(load_or_create=AsyncMock(return_value=_fake_keyring)),
     )
-    monkeypatch.setattr(
-        main_mod, "CredentialStore", lambda **kwargs: _fake_cred_store
-    )
+    monkeypatch.setattr(main_mod, "CredentialStore", lambda **kwargs: _fake_cred_store)
 
 
 class TestAuthConfig:
@@ -390,9 +409,7 @@ class TestAuthConfig:
             "_load_raw_config",
             lambda: {
                 "telegram": {"bots": [{"bot_id": "main"}]},
-                "auth": {
-                    "telegram_bots": [{"bot_id": "main", "default": "public"}]
-                },
+                "auth": {"telegram_bots": [{"bot_id": "main", "default": "public"}]},
             },
         )
         # Sentinel: if we reach load_agent_config, auth validation passed.
@@ -417,9 +434,7 @@ class TestAuthConfig:
             lambda: {
                 "telegram": {"bots": [{"bot_id": "main"}]},
                 "auth": {
-                    "telegram_bots": [
-                        {"bot_id": "main", "default": "invalid_level"}
-                    ],
+                    "telegram_bots": [{"bot_id": "main", "default": "invalid_level"}],
                 },
             },
         )

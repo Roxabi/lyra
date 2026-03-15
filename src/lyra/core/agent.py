@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from lyra.stt import STTService
     from lyra.tts import TTSService
 
+    from .agent_store import AgentRow
     from .memory import MemoryManager, SessionSnapshot
 
 from .circuit_breaker import CircuitRegistry
@@ -560,7 +561,9 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
                     f"[stt].{_field} must be an integer, got {type(_val).__name__!r}"
                 )
         agent_stt = AgentSTTConfig(
-            language_detection_threshold=stt_section.get("language_detection_threshold"),
+            language_detection_threshold=stt_section.get(
+                "language_detection_threshold"
+            ),
             language_detection_segments=stt_section.get("language_detection_segments"),
             language_fallback=stt_section.get("language_fallback"),
         )
@@ -580,6 +583,133 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
         workspaces=workspaces,
         tts=agent_tts,
         stt=agent_stt,
+    )
+
+
+def agent_row_to_config(  # noqa: C901 — mirrors load_agent_config() branching; each branch handles one optional field
+    row: "AgentRow",
+    instance_overrides: dict | None = None,
+) -> "Agent":
+    """Convert an AgentRow (from AgentStore cache) into an Agent config dataclass.
+
+    Mirrors load_agent_config() logic but reads from AgentRow instead of TOML.
+    Machine-local instance_overrides are applied with the same priority as in
+    load_agent_config(): TOML/DB value wins, overrides fill gaps.
+    """
+    overrides: dict = instance_overrides or {}
+
+    # Parse JSON columns
+    tools: list[str] = json.loads(row.tools_json) if row.tools_json else []
+    plugins: list[str] = json.loads(row.plugins_json) if row.plugins_json else []
+
+    # Resolve cwd: DB row wins, then instance_overrides, then None
+    cwd: Path | None = None
+    raw_cwd = row.cwd or overrides.get("cwd")
+    if raw_cwd is not None:
+        resolved = Path(raw_cwd).expanduser().resolve()
+        if not resolved.is_dir():
+            log.warning(
+                "Agent %r: cwd %r is not a directory — ignored",
+                row.name,
+                raw_cwd,
+            )
+        else:
+            cwd = resolved
+
+    model_cfg = ModelConfig(
+        backend=row.backend,
+        model=row.model,
+        max_turns=row.max_turns,
+        tools=tuple(tools),
+        cwd=cwd,
+    )
+
+    # Persona: DB row wins, then instance_overrides
+    persona_name = row.persona or overrides.get("persona")
+    persona: PersonaConfig | None = None
+    if persona_name:
+        try:
+            persona = load_persona(persona_name)
+        except Exception as exc:  # noqa: BLE001
+            log.warning(
+                "Agent %r: failed to load persona %r — %s",
+                row.name,
+                persona_name,
+                exc,
+            )
+
+    # System prompt from persona (no [prompt].system in DB rows)
+    system_prompt = ""
+    if persona:
+        system_prompt = compose_system_prompt(persona)
+
+    # Smart routing
+    smart_routing: SmartRoutingConfig | None = None
+    if row.smart_routing_json is not None:
+        sr_data: dict = json.loads(row.smart_routing_json)
+        sr_models = sr_data.get("models", {})
+        routing_table: dict[Complexity, str] = {}
+        for level in Complexity:
+            model_id = sr_models.get(level.value)
+            if model_id:
+                routing_table[level] = model_id
+        hcc = sr_data.get("high_complexity_commands", [])
+        smart_routing = SmartRoutingConfig(
+            enabled=bool(sr_data.get("enabled", False)),
+            routing_table=routing_table,
+            history_size=int(sr_data.get("history_size", 50)),
+            high_complexity_commands=tuple(hcc),
+        )
+
+    # Workspaces: instance_overrides provide base, DB row has no workspaces column
+    # (workspaces are machine-local, not stored in DB)
+    workspaces_raw: dict = overrides.get("workspaces", {})
+    workspaces: dict[str, Path] = {}
+    for key, raw_path in workspaces_raw.items():
+        if not re.match(r"^[a-zA-Z0-9_-]+$", key):
+            log.warning(
+                "Agent %r: invalid workspace name %r — skipping",
+                row.name,
+                key,
+            )
+            continue
+        if key in _WORKSPACE_BUILTIN_CONFLICTS:
+            log.warning(
+                "Agent %r: workspace key %r clashes with built-in"
+                " command /%s — skipping",
+                row.name,
+                key,
+                key,
+            )
+            continue
+        resolved_ws = Path(raw_path).expanduser().resolve()
+        if not resolved_ws.is_dir():
+            log.warning(
+                "Agent %r: workspace %r path %r is not a directory — skipping",
+                row.name,
+                key,
+                raw_path,
+            )
+            continue
+        workspaces[key] = resolved_ws
+
+    memory_namespace = row.memory_namespace or row.name
+
+    return Agent(
+        name=row.name,
+        system_prompt=system_prompt,
+        memory_namespace=memory_namespace,
+        model_config=model_cfg,
+        permissions=(),
+        commands={},
+        plugins_enabled=tuple(plugins),
+        persona=persona,
+        i18n_language="en",
+        smart_routing=smart_routing,
+        show_intermediate=row.show_intermediate,
+        workspaces=workspaces,
+        tts=None,
+        stt=None,
     )
 
 

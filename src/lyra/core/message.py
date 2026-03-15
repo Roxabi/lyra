@@ -130,6 +130,7 @@ class Response:
     routing: RoutingContext | None = None
     intermediate: bool = False  # True for ⏳ intermediate turns
     audio: "OutboundAudio | None" = None
+    speak: bool = False  # True → TTS the response (set by agent on /voice commands)
 
     def to_outbound(self) -> "OutboundMessage":
         """Convert to OutboundMessage for use with the typed dispatch path."""
@@ -149,6 +150,7 @@ class OutboundAudio:
     audio_bytes: bytes = field(repr=False)
     mime_type: str = "audio/ogg"  # e.g. "audio/ogg", "audio/mpeg"
     duration_ms: int | None = None
+    waveform_b64: str | None = None  # 256-byte amplitude array, base64
     caption: str | None = None
     reply_to_id: str | None = None  # platform message ID to reply to
 

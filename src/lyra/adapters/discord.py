@@ -68,6 +68,10 @@ _ALLOW_ALL = AuthMiddleware(store=None, role_map={}, default=TrustLevel.PUBLIC)
 
 _AUTO_THREAD_TRUE = frozenset({"1", "true", "yes", "on"})
 
+# Discord IS_VOICE_MESSAGE flag (bit 13)
+_VOICE_MESSAGE_FLAG = 8192
+
+
 # Accepted audio MIME types for inbound attachment detection.
 _AUDIO_MIME_TYPES = frozenset(
     {
@@ -767,16 +771,14 @@ class DiscordAdapter(discord.Client):
         view = self._render_buttons(outbound.buttons)
         last_idx = len(chunks) - 1
 
+        # Reply to original message when not in a thread (DMs + server channels)
+        reply_msg_id: int | None = (
+            original_msg.platform_meta.get("message_id") if thread_id is None else None
+        )
         for i, chunk in enumerate(chunks):
             chunk_view = view if (i == last_idx and view is not None) else None
-            if original_msg.is_mention and thread_id is None and i == 0:
-                msg_id: int | None = original_msg.platform_meta.get("message_id")
-                if msg_id is None:
-                    raise ValueError(
-                        "platform_meta missing required key"
-                        " 'message_id' for mention reply"
-                    )
-                msg_obj = messageable.get_partial_message(msg_id)  # type: ignore[attr-defined]
+            if i == 0 and reply_msg_id is not None:
+                msg_obj = messageable.get_partial_message(reply_msg_id)  # type: ignore[attr-defined]
                 if chunk_view is not None:
                     sent = await msg_obj.reply(chunk, view=chunk_view)
                 else:
@@ -892,12 +894,11 @@ class DiscordAdapter(discord.Client):
             raise stream_error
 
     async def render_audio(self, msg: OutboundAudio, inbound: InboundMessage) -> None:
-        """Send an OutboundAudio envelope as a Discord audio file attachment.
+        """Send an OutboundAudio envelope as a Discord voice message.
 
-        Sends audio_bytes as a discord.File attachment. caption (if set)
-        is passed as the message content alongside the attachment.
-        reply_to_id overrides the default reply target
-        (inbound.platform_meta["message_id"]).
+        Converts to OGG/Opus and sends with IS_VOICE_MESSAGE flag so Discord
+        renders a proper voice bubble with waveform and inline playback.
+        Falls back to regular file attachment if conversion fails.
         """
         if inbound.platform != Platform.DISCORD.value:
             log.error(
@@ -916,15 +917,6 @@ class DiscordAdapter(discord.Client):
 
         thread_id: int | None = inbound.platform_meta.get("thread_id")
         send_to_id = thread_id if thread_id is not None else channel_id
-        messageable = await self._resolve_channel(send_to_id)
-
-        # Derive filename from mime_type — whitelist to prevent crafted names.
-        raw_ext = msg.mime_type.split("/")[-1] if "/" in msg.mime_type else ""
-        ext = raw_ext if raw_ext in _AUDIO_EXTS else "bin"
-        filename = f"audio.{ext}"
-
-        audio_buf = BytesIO(msg.audio_bytes)
-        attachment = discord.File(fp=audio_buf, filename=filename)
 
         # Determine message to reply to
         message_id: int | None = inbound.platform_meta.get("message_id")
@@ -934,21 +926,59 @@ class DiscordAdapter(discord.Client):
 
         content = (msg.caption or "")[:DISCORD_MAX_LENGTH]
 
-        if reply_to_id is not None:
-            try:
-                ref_msg = await messageable.fetch_message(reply_to_id)  # type: ignore[attr-defined]
-                await ref_msg.reply(content=content or None, file=attachment)
-                return
-            except Exception:
-                log.warning(
-                    "render_audio: could not reply to message_id=%s, sending normally",
-                    reply_to_id,
-                )
+        # TTS already produces OGG/Opus with duration and waveform pre-computed
+        duration_secs = msg.duration_ms / 1000.0 if msg.duration_ms is not None else 0.0
+        waveform_b64 = msg.waveform_b64 or ""
 
-        # Construct a fresh discord.File — the previous BytesIO may have been
-        # partially consumed by the failed reply attempt above.
-        attachment = discord.File(fp=BytesIO(msg.audio_bytes), filename=filename)
-        await messageable.send(content=content or None, file=attachment)
+        payload: dict[str, Any] = {
+            "flags": _VOICE_MESSAGE_FLAG,
+            "attachments": [
+                {
+                    "id": "0",
+                    "filename": "voice.ogg",
+                    "duration_secs": duration_secs,
+                    "waveform": waveform_b64,
+                }
+            ],
+        }
+        if content:
+            payload["content"] = content
+        if reply_to_id is not None:
+            payload["message_reference"] = {"message_id": str(reply_to_id)}
+
+        voice_file = discord.File(fp=BytesIO(msg.audio_bytes), filename="voice.ogg")
+        form = [
+            {"name": "payload_json", "value": discord.utils._to_json(payload)},
+            {
+                "name": "files[0]",
+                "value": voice_file.fp,
+                "filename": "voice.ogg",
+                "content_type": "audio/ogg",
+            },
+        ]
+        route = discord.http.Route(  # type: ignore[attr-defined]
+            "POST", "/channels/{channel_id}/messages", channel_id=send_to_id
+        )
+        try:
+            await self.http.request(route, form=form, files=[voice_file])
+            log.info(
+                "render_audio: voice message sent (%d bytes OGG, %.1fs) for msg id=%s",
+                len(msg.audio_bytes),
+                duration_secs,
+                inbound.id,
+            )
+        except Exception:
+            log.warning(
+                "render_audio: voice message failed — falling back to file attachment",
+                exc_info=True,
+            )
+            messageable = await self._resolve_channel(send_to_id)
+            raw_ext = msg.mime_type.split("/")[-1] if "/" in msg.mime_type else ""
+            ext = raw_ext if raw_ext in _AUDIO_EXTS else "bin"
+            attachment = discord.File(
+                fp=BytesIO(msg.audio_bytes), filename=f"audio.{ext}"
+            )
+            await messageable.send(content=content or None, file=attachment)
 
     async def render_attachment(
         self, msg: OutboundAttachment, inbound: InboundMessage

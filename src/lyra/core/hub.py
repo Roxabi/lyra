@@ -778,6 +778,9 @@ class Hub:
             log.info("STT noise for audio %s — replied with stt_noise", audio.id)
             return
 
+        # Echo transcription back to user before agent processing
+        await self._dispatch_audio_reply(audio, f"\U0001f3a4 _{result.text}_")
+
         text = f"\U0001f3a4 [voice]: {result.text}"
         msg = InboundMessage(
             id=audio.id,

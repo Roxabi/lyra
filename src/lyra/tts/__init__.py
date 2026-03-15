@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import base64
 import logging
 import os
+import struct
+import subprocess
 import tempfile
 import wave
 from dataclasses import dataclass
@@ -17,6 +20,7 @@ class SynthesisResult:
     audio_bytes: bytes
     mime_type: str
     duration_ms: int | None  # None if WAV header unreadable
+    waveform_b64: str | None = None  # 256-byte amplitude array, base64
 
 
 @dataclass
@@ -41,6 +45,65 @@ def _wav_duration_ms(path: Path) -> int | None:
             return int(wf.getnframes() / wf.getframerate() * 1000)
     except Exception:
         return None
+
+
+def _wav_waveform_b64(wav_path: Path, num_samples: int = 256) -> str:
+    """Compute a 256-byte amplitude waveform from a WAV file (Discord voice message).
+
+    Uses stdlib wave to read raw PCM frames — no subprocess needed.
+    Returns base64-encoded bytes of num_samples amplitude values (0-255).
+    Falls back to a flat (silent) waveform on any error.
+    """
+    try:
+        with wave.open(str(wav_path), "rb") as wf:
+            n_channels = wf.getnchannels()
+            sampwidth = wf.getsampwidth()
+            n_frames = wf.getnframes()
+            raw = wf.readframes(n_frames)
+
+        if sampwidth == 1:
+            # 8-bit unsigned PCM
+            samples = [raw[i] - 128 for i in range(0, len(raw), n_channels)]
+            max_val = 128
+        elif sampwidth == 2:
+            # 16-bit signed PCM (most common)
+            samples = [
+                struct.unpack_from("<h", raw, i)[0]
+                for i in range(0, len(raw) - 1, 2 * n_channels)
+            ]
+            max_val = 32768
+        else:
+            return base64.b64encode(bytes(num_samples)).decode()
+
+        chunk = max(1, len(samples) // num_samples)
+        waveform = bytearray()
+        for i in range(num_samples):
+            sl = samples[i * chunk : i * chunk + chunk]
+            amp = sum(abs(x) for x in sl) // len(sl) if sl else 0
+            waveform.append(min(255, int(amp * 255 / max_val)))
+
+        return base64.b64encode(bytes(waveform)).decode()
+    except Exception:
+        log.warning("waveform computation failed — using flat waveform", exc_info=True)
+        return base64.b64encode(bytes(num_samples)).decode()
+
+
+def _wav_to_ogg(wav_path: Path) -> Path:
+    """Convert WAV to OGG/Opus (48 kHz, mono) using ffmpeg. Returns the OGG path."""
+    ogg_path = wav_path.with_suffix(".ogg")
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-i", str(wav_path),
+            "-c:a", "libopus",
+            "-ar", "48000",
+            "-ac", "1",
+            "-y", str(ogg_path),
+        ],
+        capture_output=True,
+        check=True,
+    )
+    return ogg_path
 
 
 def _merge_wav_chunks(chunk_paths: list[Path], output: Path) -> Path:
@@ -69,13 +132,36 @@ def _merge_wav_chunks(chunk_paths: list[Path], output: Path) -> Path:
     return merged_path
 
 
+# qwen_tts expects full language names, not ISO 639-1 codes
+_LANG_ISO_TO_QWEN: dict[str, str] = {
+    "zh": "chinese",
+    "en": "english",
+    "fr": "french",
+    "de": "german",
+    "it": "italian",
+    "ja": "japanese",
+    "ko": "korean",
+    "pt": "portuguese",
+    "ru": "russian",
+    "es": "spanish",
+}
+
+
+def _normalize_language(lang: str | None) -> str | None:
+    if lang is None:
+        return None
+    return _LANG_ISO_TO_QWEN.get(lang.lower(), lang)
+
+
 class TTSService:
     """Async TTS service delegating to voiceCLI (Qwen TTS, daemon-first / fallback).
 
     Always requests ``chunked=True`` so that long texts are split into safe-sized
     chunks by voiceCLI (avoids Qwen model crashes on large inputs).  All WAV
     chunks are merged via stdlib ``wave`` into a single file, then converted to
-    MP3 once.  All intermediate files are cleaned up after the bytes are read.
+    OGG/Opus once.  Duration and waveform are computed from the merged WAV
+    before conversion.  All intermediate files are cleaned up after the bytes
+    are read.
     """
 
     def __init__(self, config: TTSConfig) -> None:
@@ -95,61 +181,64 @@ class TTSService:
 
         language and voice override the instance defaults (self._language, self._voice)
         when non-None. None falls back to the instance value from TTSConfig.
+
+        Returns OGG/Opus audio with duration_ms and waveform_b64 populated.
         """
         from voicecli import generate_async
 
         tmp_fd, tmp_str = tempfile.mkstemp(suffix=".wav")
         os.close(tmp_fd)
         tmp_path = Path(tmp_str)
-        result = None
         extra_paths: list[Path] = []
         try:
+            effective_lang = language if language is not None else self._language
+            resolved_lang = _normalize_language(effective_lang)
             result = await generate_async(
                 text,
                 output=tmp_path,
                 engine=self._engine,
                 voice=voice if voice is not None else self._voice,
-                language=language if language is not None else self._language,
-                chunked=True,  # always chunk for long-text reliability
-                mp3=False,     # merge chunks manually, then convert once
+                language=resolved_lang,
+                chunked=True,  # always chunk — avoids Qwen crashes on large inputs
+                mp3=False,     # keep WAV; merge chunks then convert to OGG
             )
 
-            # chunked=True always returns chunk_paths; merge WAVs then convert.
+            # Resolve merged WAV path from chunk results
             if result.chunk_paths:
                 log.info(
-                    "TTS merging %d WAV chunks → single MP3",
+                    "TTS merging %d WAV chunks → single WAV",
                     len(result.chunk_paths),
                 )
                 extra_paths.extend(result.chunk_paths)
                 merged_wav = _merge_wav_chunks(result.chunk_paths, tmp_path)
                 extra_paths.append(merged_wav)
-                from voicecli.utils import wav_to_mp3
-                mp3_path = wav_to_mp3(merged_wav)
-                extra_paths.append(mp3_path)
-            elif result.mp3_path is not None and result.mp3_path.exists():
-                mp3_path = result.mp3_path
-                extra_paths.append(result.wav_path)  # clean up WAV too
-                extra_paths.append(mp3_path)
             else:
-                # Daemon didn't produce MP3 — convert manually
-                wav_path = result.wav_path
-                extra_paths.append(wav_path)
-                from voicecli.utils import wav_to_mp3
-                mp3_path = wav_to_mp3(wav_path)
-                extra_paths.append(mp3_path)
+                merged_wav = result.wav_path
+                extra_paths.append(merged_wav)
 
-            audio_bytes = mp3_path.read_bytes()
+            # Compute duration and waveform from WAV (before OGG conversion)
+            duration_ms = _wav_duration_ms(merged_wav)
+            waveform_b64 = _wav_waveform_b64(merged_wav)
+
+            # Convert merged WAV → OGG/Opus
+            ogg_path = _wav_to_ogg(merged_wav)
+            extra_paths.append(ogg_path)
+
+            audio_bytes = ogg_path.read_bytes()
             log.info(
-                "TTS synthesis complete: engine=%s voice=%s text_len=%d size=%d bytes",
+                "TTS synthesis complete: engine=%s voice=%s"
+                " text_len=%d size=%d bytes duration=%s ms",
                 self._engine or "default",
                 self._voice or "default",
                 len(text),
                 len(audio_bytes),
+                duration_ms,
             )
             return SynthesisResult(
                 audio_bytes=audio_bytes,
-                mime_type="audio/mpeg",
-                duration_ms=None,  # MP3 duration not read (no lightweight parser)
+                mime_type="audio/ogg",
+                duration_ms=duration_ms,
+                waveform_b64=waveform_b64,
             )
         except Exception:
             log.exception(

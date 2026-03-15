@@ -101,6 +101,9 @@ class TestAudioLoopTranscription:
         audio = _make_audio()
         hub.inbound_audio_bus.put(Platform.TELEGRAM, audio)
 
+        # Stub dispatch_response so the echo reply doesn't raise KeyError
+        hub.dispatch_response = lambda msg, resp: asyncio.sleep(0)  # type: ignore[assignment]
+
         await hub.inbound_bus.start()
         await hub.inbound_audio_bus.start()
         task = asyncio.create_task(hub._audio_loop())
@@ -290,6 +293,9 @@ class TestProcessAudioItemPropagatesLanguage:
         hub.inbound_bus.register(Platform.TELEGRAM, maxsize=10)
         hub.inbound_audio_bus.register(Platform.TELEGRAM, maxsize=10)
 
+        # Stub dispatch_response so the echo reply doesn't raise KeyError
+        hub.dispatch_response = lambda msg, resp: asyncio.sleep(0)  # type: ignore[assignment]
+
         audio = _make_audio()
         hub.inbound_audio_bus.put(Platform.TELEGRAM, audio)
 
@@ -315,6 +321,9 @@ class TestAudioLoopTaskDone:
         hub, _ = hub_with_stt
         audio = _make_audio()
         hub.inbound_audio_bus.put(Platform.TELEGRAM, audio)
+
+        # Stub dispatch_response so the echo reply doesn't raise KeyError
+        hub.dispatch_response = lambda msg, resp: asyncio.sleep(0)  # type: ignore[assignment]
 
         await hub.inbound_bus.start()
         await hub.inbound_audio_bus.start()

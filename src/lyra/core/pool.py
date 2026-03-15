@@ -151,26 +151,12 @@ class Pool:
         return result if result is not None else fallback
 
     async def _process_loop(self) -> None:  # noqa: C901 — debounce + cancel-in-flight adds inherent branches
-        """Consume inbox with debounce aggregation and cancel-in-flight.
-
-        1. Collect messages via the debouncer (aggregates rapid-fire typing).
-        2. Dispatch the merged message to the agent.
-        3. While the agent is processing, race against new inbox arrivals:
-           - Agent finishes first → done, loop back for more.
-           - New message arrives first → cancel agent, re-collect, re-merge,
-             and re-dispatch with the combined context.
-        """
+        """Consume inbox with debounce aggregation and cancel-in-flight."""
         _last_msg: InboundMessage | None = None
         try:
             while True:
-                # Exit when the inbox is empty — mirrors the original get_nowait()
-                # break.  submit() will create a fresh task if new messages arrive
-                # after this loop exits.
                 if self._inbox.empty():
                     break
-
-                # Phase 1: collect messages (non-blocking since inbox is non-empty,
-                # then debounces for rapid follow-ups)
                 buffer = await self._debouncer.collect(self._inbox)
 
                 agent = self._ctx.get_agent(self.agent_name)
@@ -209,16 +195,7 @@ class Pool:
         buffer: list[InboundMessage],
         agent: "AgentBase",
     ) -> InboundMessage:
-        """Run agent.process() but cancel and re-dispatch if new messages arrive.
-
-        Races the agent task against inbox.get(). If a new message wins,
-        the agent task is cancelled, the new message(s) are debounced and
-        merged with the existing buffer, and the agent is re-invoked with
-        the combined context.
-
-        Returns the latest merged InboundMessage (may differ from the input
-        if cancel-in-flight cycles extended the buffer).
-        """
+        """Run agent.process(), cancelling and re-dispatching if new messages arrive."""
         while True:
             agent_task = asyncio.create_task(
                 self._guarded_process_one(msg, agent),
@@ -356,12 +333,7 @@ class Pool:
                     )
 
     async def _process_one(self, msg: InboundMessage, agent: "AgentBase") -> None:
-        """Run agent.process and dispatch result. Records CB success.
-
-        Accepts both streaming patterns:
-        - async generator function (yields directly)
-        - regular async def returning AsyncIterator or Response
-        """
+        """Run agent.process and dispatch result (streaming or non-streaming)."""
         self.append(msg)  # S1 — track identity and message count
         _ensure_fn = getattr(agent, "_ensure_system_prompt", None)
         if _ensure_fn is not None:
@@ -389,30 +361,28 @@ class Pool:
             except BaseException as exc:
                 self._ctx.record_circuit_failure(exc)
                 raise
+            # L1 — streaming turn marker; TODO(#67): capture full content.
+            self._log_turn_async(
+                role="assistant",
+                platform=self.medium or str(msg.platform),
+                user_id=self.user_id or msg.user_id,
+                content="",
+            )
         else:
             self._ctx.record_circuit_success()
             await self._ctx.dispatch_response(msg, result)
             # L1 — log assistant turn (issue #67); fire-and-forget
-            if self._turn_store is not None and isinstance(result, Response):
+            if isinstance(result, Response):
                 _reply_msg_id = result.metadata.get("reply_message_id")
-                try:
-                    asyncio.create_task(
-                        self._turn_store.log_turn(
-                            pool_id=self.pool_id,
-                            session_id=self.session_id,
-                            role="assistant",
-                            platform=self.medium or str(msg.platform),
-                            user_id=self.user_id or msg.user_id,
-                            content=result.content,
-                            reply_message_id=(
-                                str(_reply_msg_id)
-                                if _reply_msg_id is not None
-                                else None
-                            ),
-                        )
-                    )
-                except RuntimeError:
-                    pass  # no running event loop (e.g. sync test context)
+                self._log_turn_async(
+                    role="assistant",
+                    platform=self.medium or str(msg.platform),
+                    user_id=self.user_id or msg.user_id,
+                    content=result.content,
+                    reply_message_id=(
+                        str(_reply_msg_id) if _reply_msg_id is not None else None
+                    ),
+                )
 
         _compact_fn = getattr(agent, "compact", None)
         if _compact_fn is not None:
@@ -469,21 +439,51 @@ class Pool:
                 asyncio.create_task(self._turn_logger(self.session_id, msg))  # type: ignore[arg-type]
             except RuntimeError:
                 pass  # no running event loop (e.g. sync test context)
-        if self._turn_store is not None:
-            try:
-                asyncio.create_task(
-                    self._turn_store.log_turn(
-                        pool_id=self.pool_id,
-                        session_id=self.session_id,
-                        role="user",
-                        platform=str(msg.platform),
-                        user_id=msg.user_id,
-                        content=msg.text,
-                        message_id=msg.id,
-                    )
+        self._log_turn_async(
+            role="user",
+            platform=str(msg.platform),
+            user_id=msg.user_id,
+            content=msg.text,
+            message_id=msg.id,
+        )
+
+    def _log_turn_async(  # noqa: PLR0913
+        self,
+        *,
+        role: str,
+        platform: str,
+        user_id: str,
+        content: str,
+        message_id: str | None = None,
+        reply_message_id: str | None = None,
+    ) -> None:
+        """Fire-and-forget turn logging via TurnStore; no-op if not connected."""
+        if self._turn_store is None:
+            return
+        try:
+            task = asyncio.create_task(
+                self._turn_store.log_turn(
+                    pool_id=self.pool_id,
+                    session_id=self.session_id,
+                    role=role,
+                    platform=platform,
+                    user_id=user_id,
+                    content=content,
+                    message_id=message_id,
+                    reply_message_id=reply_message_id,
                 )
-            except RuntimeError:
-                pass  # no running event loop (e.g. sync test context)
+            )
+
+            def _cb(t: asyncio.Task) -> None:
+                if not t.cancelled() and t.exception():
+                    log.error(
+                        "turn_store write failed (pool=%s role=%s): %s",
+                        self.pool_id, role, t.exception(),
+                    )
+
+            task.add_done_callback(_cb)
+        except RuntimeError:
+            pass  # no running event loop (e.g. sync test context)
 
     def snapshot(self, agent_namespace: str) -> "SessionSnapshot":
         from .memory import SessionSnapshot

@@ -1,8 +1,9 @@
 """TurnStore — raw conversation turn logging (L1 memory layer, issue #67).
 
 Persists every turn (user + assistant) to the ``conversation_turns`` table
-in the shared roxabi-vault SQLite database. Provides an audit trail with
-platform message IDs, session context, and a basic query interface.
+in a dedicated ``turns.db`` SQLite database (separate from roxabi-vault to
+avoid write contention). Provides an audit trail with platform message IDs,
+session context, and a basic query interface.
 
 Schema: v3 migration — creates ``conversation_turns`` table if absent,
 then adds missing indices idempotently (safe to call on an existing DB).
@@ -14,14 +15,15 @@ import json
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Literal
 
 import aiosqlite
 
-if TYPE_CHECKING:
-    pass
-
 log = logging.getLogger(__name__)
+
+# Valid role values for conversation turns.
+Role = Literal["user", "assistant"]
+_VALID_ROLES: frozenset[str] = frozenset({"user", "assistant"})
 
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS conversation_turns (
@@ -61,6 +63,7 @@ SELECT id, pool_id, session_id, role, platform, user_id,
        content, message_id, reply_message_id, timestamp, metadata
 FROM   conversation_turns
 WHERE  pool_id = ?
+  AND  user_id = ?
 ORDER BY timestamp DESC
 LIMIT  ?
 """
@@ -83,16 +86,19 @@ _COLS = (
 class TurnStore:
     """Async SQLite-backed store for raw conversation turns (L1).
 
+    Uses a dedicated ``turns.db`` file separate from the main vault to avoid
+    write contention with MemoryManager's AsyncMemoryDB connection.
+
     Lifecycle::
 
-        store = TurnStore(vault_path)
+        store = TurnStore(vault_dir / "turns.db")
         await store.connect()
         ...
         await store.close()
     """
 
-    def __init__(self, vault_path: Path | str) -> None:
-        self._path = str(vault_path)
+    def __init__(self, db_path: Path | str) -> None:
+        self._path = str(db_path)
         self._db: aiosqlite.Connection | None = None
 
     async def connect(self) -> None:
@@ -139,14 +145,21 @@ class TurnStore:
         Args:
             pool_id: Pool identifier (scope key).
             session_id: UUID of the current session.
-            role: ``'user'`` or ``'assistant'``.
+            role: ``'user'`` or ``'assistant'`` — enforced by allowlist.
             platform: ``'telegram'``, ``'discord'``, ``'cli'``, etc.
             user_id: Platform-specific user identifier.
             content: Raw message text.
             message_id: Inbound platform message ID (user turns).
             reply_message_id: Outbound platform message ID (assistant turns).
             metadata: Optional JSON-serialisable extras.
+
+        Raises:
+            ValueError: If *role* is not ``'user'`` or ``'assistant'``.
         """
+        if role not in _VALID_ROLES:
+            raise ValueError(
+                f"invalid role {role!r} — must be one of {sorted(_VALID_ROLES)}"
+            )
         db = self._db_or_raise()
         ts = datetime.now(UTC).isoformat()
         meta_str = json.dumps(metadata or {})
@@ -175,17 +188,28 @@ class TurnStore:
                 role,
             )
 
-    async def get_turns(self, pool_id: str, limit: int = 50) -> list[dict]:
-        """Return the last *limit* turns for *pool_id*, newest first.
+    async def get_turns(
+        self, pool_id: str, user_id: str, limit: int = 50
+    ) -> list[dict]:
+        """Return the last *limit* turns for *pool_id* and *user_id*, newest first.
+
+        Both ``pool_id`` and ``user_id`` must match — prevents cross-user reads.
 
         Args:
             pool_id: Pool identifier to query.
+            user_id: Authenticated user identity — must match the turn owner.
             limit: Maximum number of turns to return (default 50).
 
         Returns:
             List of dicts with keys matching the ``conversation_turns`` columns.
+            The ``metadata`` value is deserialized from JSON.
         """
         db = self._db_or_raise()
-        async with db.execute(_SELECT_BY_POOL, (pool_id, limit)) as cur:
+        async with db.execute(_SELECT_BY_POOL, (pool_id, user_id, limit)) as cur:
             rows = await cur.fetchall()
-        return [dict(zip(_COLS, row)) for row in rows]
+        result = []
+        for row in rows:
+            d = dict(zip(_COLS, row))
+            d["metadata"] = json.loads(d["metadata"] or "{}")
+            result.append(d)
+        return result

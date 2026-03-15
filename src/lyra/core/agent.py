@@ -697,7 +697,7 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — mirrors load_agent_config() 
 
     # Deserialize tts_json → AgentTTSConfig
     agent_tts: AgentTTSConfig | None = None
-    if row.tts_json is not None:
+    if row.tts_json:
         tts_data: dict = json.loads(row.tts_json)
         agent_tts = AgentTTSConfig(
             engine=tts_data.get("engine"),
@@ -715,7 +715,7 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — mirrors load_agent_config() 
 
     # Deserialize stt_json → AgentSTTConfig
     agent_stt: AgentSTTConfig | None = None
-    if row.stt_json is not None:
+    if row.stt_json:
         stt_data: dict = json.loads(row.stt_json)
         agent_stt = AgentSTTConfig(
             language_detection_threshold=stt_data.get("language_detection_threshold"),

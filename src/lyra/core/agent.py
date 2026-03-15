@@ -561,7 +561,9 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
                     f"[stt].{_field} must be an integer, got {type(_val).__name__!r}"
                 )
         agent_stt = AgentSTTConfig(
-            language_detection_threshold=stt_section.get("language_detection_threshold"),
+            language_detection_threshold=stt_section.get(
+                "language_detection_threshold"
+            ),
             language_detection_segments=stt_section.get("language_detection_segments"),
             language_fallback=stt_section.get("language_fallback"),
         )
@@ -584,7 +586,7 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
     )
 
 
-def _agent_row_to_config(  # noqa: C901 — mirrors load_agent_config() branching; each branch handles one optional field
+def agent_row_to_config(  # noqa: C901 — mirrors load_agent_config() branching; each branch handles one optional field
     row: "AgentRow",
     instance_overrides: dict | None = None,
 ) -> "Agent":

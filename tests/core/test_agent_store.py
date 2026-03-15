@@ -150,9 +150,7 @@ class TestAgentCRUD:
         # Assert
         assert agent_store.get("to-delete") is None
 
-    async def test_delete_raises_if_bot_assigned(
-        self, agent_store: AgentStore
-    ) -> None:
+    async def test_delete_raises_if_bot_assigned(self, agent_store: AgentStore) -> None:
         # Arrange
         await agent_store.upsert(_make_agent_row("assigned-agent"))
         await agent_store.set_bot_agent("telegram", "bot-123", "assigned-agent")
@@ -357,3 +355,159 @@ show_intermediate = false
             assert count == 0
         finally:
             await store.close()
+
+    async def test_seed_name_from_model_section(self, tmp_path: Path) -> None:
+        # Arrange — TOML has [model].name but no [agent].name
+        store = await make_store(tmp_path)
+        try:
+            toml_file = tmp_path / "model-named.toml"
+            toml_file.write_text(
+                """
+[model]
+name = "model-named-agent"
+backend = "anthropic-sdk"
+model = "claude-3-5-haiku-20241022"
+max_turns = 5
+tools = []
+""",
+                encoding="utf-8",
+            )
+
+            # Act
+            count = await store.seed_from_toml(toml_file)
+
+            # Assert
+            assert count == 1
+            result = store.get("model-named-agent")
+            assert result is not None
+            assert result.name == "model-named-agent"
+        finally:
+            await store.close()
+
+    async def test_seed_skips_toml_without_name(self, tmp_path: Path) -> None:
+        # Arrange — TOML has [agent] section but no name key and no [model] section
+        store = await make_store(tmp_path)
+        try:
+            toml_file = tmp_path / "nameless.toml"
+            toml_file.write_text(
+                """
+[agent]
+backend = "anthropic-sdk"
+model = "claude-3-5-haiku-20241022"
+""",
+                encoding="utf-8",
+            )
+
+            # Act
+            count = await store.seed_from_toml(toml_file)
+
+            # Assert — no name found, must return 0 and not insert anything
+            assert count == 0
+            assert store.get_all() == []
+        finally:
+            await store.close()
+
+
+# ---------------------------------------------------------------------------
+# TestAgentStoreConnect — reconnect / cache warm
+# ---------------------------------------------------------------------------
+
+
+class TestAgentStoreReconnect:
+    """Cache warm-up on a fresh AgentStore instance against an existing DB."""
+
+    async def test_cache_warm_on_reconnect(self, tmp_path: Path) -> None:
+        # Arrange — seed a row using the first store instance, then close it
+        db_path = tmp_path / "auth.db"
+        store1 = AgentStore(db_path=str(db_path))
+        await store1.connect()
+        row = AgentRow(
+            name="reconnect-agent",
+            backend="anthropic-sdk",
+            model="claude-3-5-haiku-20241022",
+            source="db",
+        )
+        await store1.upsert(row)
+        await store1.close()
+
+        # Act — open a NEW store against the same DB and connect
+        store2 = AgentStore(db_path=str(db_path))
+        await store2.connect()
+        try:
+            result = store2.get("reconnect-agent")
+
+            # Assert — cache must have been warmed from DB
+            assert result is not None
+            assert result.name == "reconnect-agent"
+            assert result.backend == "anthropic-sdk"
+            assert result.model == "claude-3-5-haiku-20241022"
+        finally:
+            await store2.close()
+
+
+# ---------------------------------------------------------------------------
+# TestBotMap — additional tests
+# ---------------------------------------------------------------------------
+
+
+class TestBotMapExtra:
+    """Additional bot_agent_map tests: reassign and reconnect."""
+
+    async def test_set_bot_agent_reassigns(self, tmp_path: Path) -> None:
+        # Arrange
+        db_path = tmp_path / "auth.db"
+        store = AgentStore(db_path=str(db_path))
+        await store.connect()
+        try:
+            await store.upsert(
+                AgentRow(
+                    name="agent-a",
+                    backend="anthropic-sdk",
+                    model="claude-3-5-haiku-20241022",
+                    source="db",
+                )
+            )
+            await store.upsert(
+                AgentRow(
+                    name="agent-b",
+                    backend="anthropic-sdk",
+                    model="claude-3-5-haiku-20241022",
+                    source="db",
+                )
+            )
+
+            # Act — assign then reassign
+            await store.set_bot_agent("telegram", "b1", "agent-a")
+            await store.set_bot_agent("telegram", "b1", "agent-b")
+
+            # Assert — cache reflects the new assignment
+            assert store.get_bot_agent("telegram", "b1") == "agent-b"
+        finally:
+            await store.close()
+
+    async def test_bot_map_warm_on_reconnect(self, tmp_path: Path) -> None:
+        # Arrange — set mapping in store1, close it
+        db_path = tmp_path / "auth.db"
+        store1 = AgentStore(db_path=str(db_path))
+        await store1.connect()
+        await store1.upsert(
+            AgentRow(
+                name="mapped-agent",
+                backend="anthropic-sdk",
+                model="claude-3-5-haiku-20241022",
+                source="db",
+            )
+        )
+        await store1.set_bot_agent("telegram", "bot-reconnect", "mapped-agent")
+        await store1.close()
+
+        # Act — open fresh store against same DB
+        store2 = AgentStore(db_path=str(db_path))
+        await store2.connect()
+        try:
+            result = store2.get_bot_agent("telegram", "bot-reconnect")
+
+            # Assert — bot map was warmed from DB
+            assert result == "mapped-agent"
+        finally:
+            await store2.close()

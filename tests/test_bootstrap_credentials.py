@@ -113,6 +113,19 @@ def _patch_common(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     fake_agent_store.get = MagicMock(return_value=None)
     fake_agent_store.set_bot_agent = AsyncMock()
     monkeypatch.setattr(main_mod, "AgentStore", lambda **kwargs: fake_agent_store)
+    # Bypass _resolve_bot_agent_map so credential-resolution tests are not blocked
+    # by the agent-existence check added in Fix 1.  The side_effect builds the map
+    # directly from the bot lists so the correct (platform, bot_id) keys are returned
+    # regardless of which bot_id individual tests configure.
+    async def _fake_resolve(agent_store, tg_bots, dc_bots):  # noqa: ANN001
+        result = {}
+        for bot_cfg in tg_bots:
+            result[("telegram", bot_cfg.bot_id)] = "lyra_default"
+        for bot_cfg in dc_bots:
+            result[("discord", bot_cfg.bot_id)] = "lyra_default"
+        return result
+
+    monkeypatch.setattr(main_mod, "_resolve_bot_agent_map", _fake_resolve)
 
     monkeypatch.setattr(
         main_mod,

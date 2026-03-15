@@ -41,7 +41,7 @@ from lyra.core.agent import (
     AgentSTTConfig,
     AgentTTSConfig,
     SmartRoutingConfig,
-    _agent_row_to_config,
+    agent_row_to_config,
     load_agent_config,
 )
 from lyra.core.agent_store import AgentStore
@@ -522,6 +522,16 @@ async def _resolve_bot_agent_map(
                 continue
             result[(platform, bot_id)] = db_agent_name
         elif toml_agent:
+            # Check agent exists in DB before seeding the mapping
+            if agent_store.get(toml_agent) is None:
+                log.error(
+                    "bot_agent_map: TOML agent %r for (%r, %r) not found in agents DB "
+                    "— skipping adapter (run 'lyra agent init' to import TOMLs)",
+                    toml_agent,
+                    platform,
+                    bot_id,
+                )
+                continue
             # 2. No DB row — fall back to TOML bot_cfg.agent, seed bot_agent_map.
             log.info(
                 "bot_agent_map: no DB row for (%r, %r) — seeding from TOML agent=%r",
@@ -642,7 +652,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
     for n in sorted(agent_names):
         row = agent_store.get(n)
         if row is not None:
-            agent_configs[n] = _agent_row_to_config(
+            agent_configs[n] = agent_row_to_config(
                 row, instance_overrides=_build_agent_overrides(raw_config, n)
             )
         else:

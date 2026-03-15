@@ -19,8 +19,9 @@ class LlmResult:
     result: str = ""
     session_id: str = ""
     error: str = ""
-    warning: str = ""
     retryable: bool = True
+    warning: str = ""
+    user_message: str = ""
 
     @property
     def ok(self) -> bool:

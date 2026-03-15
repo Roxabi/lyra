@@ -1,0 +1,65 @@
+---
+title: Agent management in SQLite — config, bot↔agent map, prefs, runtime state
+issue: 268
+status: approved
+tier: F-full
+date: 2026-03-15
+---
+
+## Problem
+
+Agent configuration in Lyra is fully static: each agent lives in a TOML file
+(`src/lyra/agents/<name>.toml`) and bot↔agent associations are hardcoded in
+`config.toml`. This means:
+
+- **No runtime CRUD** — adding, editing, or deleting an agent requires a file
+  edit + restart.
+- **No dynamic reassignment** — changing which bot uses which agent requires
+  editing config.toml + restart.
+- **No programmatic access** — the wizard (`lyra agent create`) writes TOML
+  files that nothing can query without parsing files.
+- **No runtime state** — agent liveness, active pool count, last activity are
+  ephemeral and invisible.
+
+The rest of Lyra's persistent state (auth grants, bot credentials, user prefs)
+already lives in SQLite (`auth.db`). Agent management is the last holdout.
+
+## Who
+
+- **Primary:** Lyra runtime — Hub, Pool, CLI, agent wizard all need read/write
+  access to agent definitions.
+- **Secondary:** operators / admins who create, clone, or hot-update agents via
+  `lyra agent` CLI subcommands without restarting the hub.
+
+## Constraints
+
+- Must integrate with `auth.db` (shared WAL, same aiosqlite pattern as
+  `AuthStore`, `CredentialStore`, `PrefsStore`) **or** use a dedicated
+  `agents.db` if table count warrants separation — decision deferred to spec.
+- TOML files are **not deleted** — they become seed documents (read once on
+  first startup, DB is authoritative thereafter).
+- Pool/Hub must continue to call `get_agent(name)` synchronously from cache;
+  DB reads are async and happen only on startup / mutation.
+- No encryption required — agent config is not sensitive.
+- Must not break existing `lyra agent create/list/validate` wizard workflow.
+
+## Out of Scope
+
+- Encryption of agent fields.
+- Remote/multi-node agent config sync.
+- Plugin hot-reload triggered by DB change.
+- Agent versioning / rollback history.
+
+## Complexity
+
+**Tier: F-full** — New DB schema across 4 tables, migration logic from TOML,
+write-through cache in Hub, CLI CRUD commands, and integration with Pool/Hub
+wiring.
+
+Signals observed:
+- New patterns: DB-backed agent registry (no prior equivalent in codebase)
+- Multiple domains: core/agents, config, pool, hub, CLI
+- Migration path: TOML → DB seed on first boot
+- Touches: `config.py`, `hub.py`, `pool.py`, `agent_store.py` (new),
+  `cli/agent.py`, `agent_wizard.py`
+- Unknown: whether `agents.db` is separate or merged into `auth.db`

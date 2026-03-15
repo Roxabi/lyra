@@ -8,6 +8,7 @@ these tests are expected to fail (RED) until the implementation lands.
 from __future__ import annotations
 
 import asyncio
+import re
 from pathlib import Path
 
 import pytest
@@ -36,9 +37,10 @@ class TestAgentInitCommand:
         # Arrange / Act
         result = runner.invoke(agent_app, ["init", "--help"])
 
-        # Assert
+        # Assert — strip ANSI codes before checking (rich/typer may wrap each char)
+        plain = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
         assert result.exit_code == 0, result.output
-        assert "--force" in result.output
+        assert "--force" in plain
 
     def test_init_runs_with_empty_db(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

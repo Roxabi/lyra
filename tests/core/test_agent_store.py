@@ -511,3 +511,157 @@ class TestBotMapExtra:
             assert result == "mapped-agent"
         finally:
             await store2.close()
+
+
+# ---------------------------------------------------------------------------
+# TestTTSSTTColumns
+# ---------------------------------------------------------------------------
+
+
+class TestTTSSTTColumns:
+    """AgentRow tts_json / stt_json columns: upsert, warm cache, seed_from_toml."""
+
+    async def test_upsert_and_get_with_tts_stt(self, agent_store: AgentStore) -> None:
+        # Arrange
+        import json
+
+        tts_data = {"engine": "chatterbox", "voice": "en-US-1", "chunked": True}
+        stt_data = {"language_detection_threshold": 0.8, "language_fallback": "en"}
+        row = AgentRow(
+            name="tts-agent",
+            backend="anthropic-sdk",
+            model="claude-3-5-haiku-20241022",
+            tts_json=json.dumps(tts_data),
+            stt_json=json.dumps(stt_data),
+        )
+
+        # Act
+        await agent_store.upsert(row)
+        result = agent_store.get("tts-agent")
+
+        # Assert
+        assert result is not None
+        assert result.tts_json is not None
+        assert result.stt_json is not None
+        assert json.loads(result.tts_json) == tts_data
+        assert json.loads(result.stt_json) == stt_data
+
+    async def test_upsert_null_tts_stt(self, agent_store: AgentStore) -> None:
+        # Arrange — no tts_json / stt_json (nullable columns default to None)
+        row = _make_agent_row("no-tts-agent")
+
+        # Act
+        await agent_store.upsert(row)
+        result = agent_store.get("no-tts-agent")
+
+        # Assert
+        assert result is not None
+        assert result.tts_json is None
+        assert result.stt_json is None
+
+    async def test_tts_stt_warm_on_reconnect(self, tmp_path: Path) -> None:
+        # Arrange — write tts/stt row in store1, close it
+        import json
+
+        db_path = tmp_path / "auth.db"
+        store1 = AgentStore(db_path=str(db_path))
+        await store1.connect()
+        tts_data = {"voice": "en-GB-2"}
+        row = AgentRow(
+            name="reconnect-tts-agent",
+            backend="anthropic-sdk",
+            model="claude-3-5-haiku-20241022",
+            tts_json=json.dumps(tts_data),
+            stt_json=None,
+            source="db",
+        )
+        await store1.upsert(row)
+        await store1.close()
+
+        # Act — open fresh store against same DB
+        store2 = AgentStore(db_path=str(db_path))
+        await store2.connect()
+        try:
+            result = store2.get("reconnect-tts-agent")
+
+            # Assert — tts_json must survive round-trip through DB
+            assert result is not None
+            assert result.tts_json is not None
+            assert json.loads(result.tts_json) == tts_data
+            assert result.stt_json is None
+        finally:
+            await store2.close()
+
+    async def test_seed_from_toml_with_tts_stt(self, tmp_path: Path) -> None:
+        # Arrange — TOML with [tts] and [stt] sections
+        store = await make_store(tmp_path)
+        try:
+            toml_file = tmp_path / "tts-agent.toml"
+            toml_file.write_text(
+                """
+[agent]
+name = "tts-seeded-agent"
+backend = "anthropic-sdk"
+model = "claude-3-5-haiku-20241022"
+max_turns = 5
+
+[tts]
+engine = "chatterbox"
+voice = "en-US-1"
+chunked = true
+chunk_size = 200
+
+[stt]
+language_detection_threshold = 0.75
+language_fallback = "en"
+""",
+                encoding="utf-8",
+            )
+
+            # Act
+            count = await store.seed_from_toml(toml_file)
+
+            # Assert
+            import json
+
+            assert count == 1
+            result = store.get("tts-seeded-agent")
+            assert result is not None
+            assert result.tts_json is not None
+            assert result.stt_json is not None
+            tts = json.loads(result.tts_json)
+            stt = json.loads(result.stt_json)
+            assert tts["engine"] == "chatterbox"
+            assert tts["voice"] == "en-US-1"
+            assert tts["chunked"] is True
+            assert tts["chunk_size"] == 200
+            assert stt["language_detection_threshold"] == 0.75
+            assert stt["language_fallback"] == "en"
+        finally:
+            await store.close()
+
+    async def test_seed_from_toml_no_tts_stt_is_null(self, tmp_path: Path) -> None:
+        # Arrange — TOML without [tts] or [stt] sections
+        store = await make_store(tmp_path)
+        try:
+            toml_file = tmp_path / "plain-agent.toml"
+            toml_file.write_text(
+                """
+[agent]
+name = "plain-agent"
+backend = "anthropic-sdk"
+model = "claude-3-5-haiku-20241022"
+""",
+                encoding="utf-8",
+            )
+
+            # Act
+            await store.seed_from_toml(toml_file)
+            result = store.get("plain-agent")
+
+            # Assert — missing sections → NULL columns
+            assert result is not None
+            assert result.tts_json is None
+            assert result.stt_json is None
+        finally:
+            await store.close()

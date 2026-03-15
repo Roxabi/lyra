@@ -35,9 +35,19 @@ CREATE TABLE IF NOT EXISTS agents (
     cwd TEXT,
     source TEXT NOT NULL DEFAULT 'db',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    tts_json TEXT,
+    stt_json TEXT
 )
 """
+
+# Migration: add tts_json / stt_json to existing DBs that pre-date this change.
+# ALTER TABLE ADD COLUMN is a no-op-safe pattern in SQLite — the IF NOT EXISTS
+# guard is not supported in older SQLite versions, so we catch OperationalError.
+_MIGRATE_AGENTS_TTS_STT = [
+    "ALTER TABLE agents ADD COLUMN tts_json TEXT",
+    "ALTER TABLE agents ADD COLUMN stt_json TEXT",
+]
 
 _CREATE_BOT_AGENT_MAP = """
 CREATE TABLE IF NOT EXISTS bot_agent_map (
@@ -84,6 +94,8 @@ class AgentRow:
     plugins_json: str = "[]"
     memory_namespace: str | None = None
     cwd: str | None = None
+    tts_json: str | None = None
+    stt_json: str | None = None
     source: str = "db"
     created_at: str = field(default_factory=_utc_now_iso)
     updated_at: str = field(default_factory=_utc_now_iso)
@@ -148,6 +160,13 @@ class AgentStore:
             await self._db.execute(_CREATE_AGENTS)
             await self._db.execute(_CREATE_BOT_AGENT_MAP)
             await self._db.execute(_CREATE_AGENT_RUNTIME_STATE)
+            # Additive migrations — idempotent: ignore "duplicate column name" errors.
+            for stmt in _MIGRATE_AGENTS_TTS_STT:
+                try:
+                    await self._db.execute(stmt)
+                except aiosqlite.OperationalError as exc:
+                    if "duplicate column" not in str(exc).lower():
+                        raise
             await self._db.commit()
             await self._warm_cache()
         except Exception:
@@ -164,7 +183,8 @@ class AgentStore:
         async with db.execute(
             "SELECT name, backend, model, max_turns, tools_json, persona, "
             "show_intermediate, smart_routing_json, plugins_json, "
-            "memory_namespace, cwd, source, created_at, updated_at FROM agents"
+            "memory_namespace, cwd, source, created_at, updated_at, "
+            "tts_json, stt_json FROM agents"
         ) as cur:
             async for row in cur:
                 (
@@ -182,6 +202,8 @@ class AgentStore:
                     source,
                     created_at,
                     updated_at,
+                    tts_json,
+                    stt_json,
                 ) = row
                 self._agents[name] = AgentRow(
                     name=name,
@@ -195,6 +217,8 @@ class AgentStore:
                     plugins_json=plugins_json,
                     memory_namespace=memory_namespace,
                     cwd=cwd,
+                    tts_json=tts_json,
+                    stt_json=stt_json,
                     source=source,
                     created_at=created_at,
                     updated_at=updated_at,
@@ -252,8 +276,9 @@ class AgentStore:
             "INSERT INTO agents "
             "(name, backend, model, max_turns, tools_json, persona, "
             "show_intermediate, smart_routing_json, plugins_json, "
-            "memory_namespace, cwd, source, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "memory_namespace, cwd, source, created_at, updated_at, "
+            "tts_json, stt_json) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(name) DO UPDATE SET "
             "backend=excluded.backend, "
             "model=excluded.model, "
@@ -265,6 +290,8 @@ class AgentStore:
             "plugins_json=excluded.plugins_json, "
             "memory_namespace=excluded.memory_namespace, "
             "cwd=excluded.cwd, "
+            "tts_json=excluded.tts_json, "
+            "stt_json=excluded.stt_json, "
             "source=excluded.source, "
             "updated_at=?",
             (
@@ -282,6 +309,8 @@ class AgentStore:
                 row.source,
                 row.created_at,
                 now,
+                row.tts_json,
+                row.stt_json,
                 # ON CONFLICT updated_at value
                 now,
             ),
@@ -300,6 +329,8 @@ class AgentStore:
             plugins_json=row.plugins_json,
             memory_namespace=row.memory_namespace,
             cwd=row.cwd,
+            tts_json=row.tts_json,
+            stt_json=row.stt_json,
             source=row.source,
             created_at=row.created_at,
             updated_at=now,
@@ -443,6 +474,12 @@ class AgentStore:
         memory_namespace = agent_section.get("memory_namespace")
         cwd = model_section.get("cwd") or agent_section.get("cwd")
 
+        # Serialize [tts] and [stt] sections to JSON (None if section absent)
+        tts_section = data.get("tts")
+        tts_json = json.dumps(tts_section) if tts_section is not None else None
+        stt_section = data.get("stt")
+        stt_json = json.dumps(stt_section) if stt_section is not None else None
+
         row = AgentRow(
             name=name,
             backend=backend,
@@ -455,6 +492,8 @@ class AgentStore:
             plugins_json=plugins_json,
             memory_namespace=memory_namespace,
             cwd=cwd,
+            tts_json=tts_json,
+            stt_json=stt_json,
             source="toml-seed",
         )
         await self.upsert(row)

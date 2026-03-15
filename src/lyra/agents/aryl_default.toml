@@ -6,7 +6,7 @@ name = "aryl_default"
 memory_namespace = "aryl"
 permissions = []
 persona = "aryl_default"
-show_intermediate = false
+show_intermediate = true
 
 [model]
 backend = "claude-cli"
@@ -31,7 +31,7 @@ moderate = "claude-sonnet-4-6"
 complex  = "claude-opus-4-6"
 
 [plugins]
-enabled = ["echo"]
+enabled = ["echo", "search"]
 
 # [workspaces]
 # lyra     = "~/projects/lyra"

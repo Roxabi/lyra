@@ -57,21 +57,24 @@ ssh mickael@192.168.1.16
 - **Machine 1** (`roxabituwer`, `192.168.1.16`) — Hub, Ubuntu Server 24.04, RTX 3080, 24/7
 - **Machine 2** (`ROXABITOWER`) — AI Server, Windows + WSL2, RTX 5070Ti, on-demand
 
-## Agent TOML config
+## Agent management
 
-Key options in `src/lyra/agents/<agent>.toml`:
+Agents live in **`~/.lyra/auth.db`** (SQLite). TOML files in `src/lyra/agents/` are seed sources only — they must be imported into the DB via `lyra agent init` before startup uses them.
 
-```toml
-[model]
-cwd = "~/projects/lyra"   # fixed working directory for the Claude subprocess
-
-[workspaces]
-lyra     = "~/projects/lyra"
-projects = "~/projects"
+```bash
+lyra agent init           # seed DB from TOML files (first-time or after TOML edits)
+lyra agent init --force   # overwrite existing DB rows
+lyra agent list           # list all agents in DB
+lyra agent show <name>    # full config for one agent
+lyra agent edit <name>    # edit interactively in DB (no TOML needed)
+lyra agent validate <name>
+lyra agent assign <name> --platform telegram --bot <bot_id>
+lyra agent delete <name>  # refuses if bot still assigned
 ```
 
-- `[model].cwd` — sets the default cwd when spawning the Claude subprocess for this agent.
-- `[workspaces]` — each key becomes a `/<key>` slash command that overrides the cwd for the current pool (thread/conversation). See `docs/COMMANDS.md` for usage.
+- `cwd` is machine-specific → lives in `config.toml [defaults]`, NOT in agent TOML.
+- `workspaces` — each key becomes a `/<key>` slash command overriding cwd for the current pool. See `docs/COMMANDS.md`.
+- TOML edits → `lyra agent init --force` + restart to take effect.
 
 ## Conventions
 

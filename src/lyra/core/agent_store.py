@@ -143,12 +143,18 @@ class AgentStore:
         if self._db is not None:
             return  # already connected
         self._db = await aiosqlite.connect(self._db_path)
-        await self._db.execute("PRAGMA journal_mode=WAL")
-        await self._db.execute(_CREATE_AGENTS)
-        await self._db.execute(_CREATE_BOT_AGENT_MAP)
-        await self._db.execute(_CREATE_AGENT_RUNTIME_STATE)
-        await self._db.commit()
-        await self._warm_cache()
+        try:
+            await self._db.execute("PRAGMA journal_mode=WAL")
+            await self._db.execute(_CREATE_AGENTS)
+            await self._db.execute(_CREATE_BOT_AGENT_MAP)
+            await self._db.execute(_CREATE_AGENT_RUNTIME_STATE)
+            await self._db.commit()
+            await self._warm_cache()
+        except Exception:
+            log.exception("AgentStore.connect() setup failed; closing connection")
+            await self._db.close()
+            self._db = None
+            raise
         log.info("AgentStore connected (db=%s)", self._db_path)
 
     async def _warm_cache(self) -> None:

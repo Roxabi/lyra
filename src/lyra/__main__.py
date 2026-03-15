@@ -583,17 +583,20 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
     # ------------------------------------------------------------------
     vault_dir_mb = Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra")))
     vault_dir_mb.mkdir(parents=True, exist_ok=True)
-    auth_store = AuthStore(db_path=vault_dir_mb / "auth.db")
-    await auth_store.connect()
-    keyring_mb = LyraKeyring.load_or_create(vault_dir_mb / "keyring.key")
-    cred_store = CredentialStore(
-        db_path=vault_dir_mb / "auth.db",
-        keyring=keyring_mb,
-    )
-    await cred_store.connect()
-    agent_store = AgentStore(db_path=vault_dir_mb / "auth.db")
-    await agent_store.connect()
+    auth_store: AuthStore | None = None
+    cred_store: CredentialStore | None = None
+    agent_store: AgentStore | None = None
     try:
+        auth_store = AuthStore(db_path=vault_dir_mb / "auth.db")
+        await auth_store.connect()
+        keyring_mb = LyraKeyring.load_or_create(vault_dir_mb / "keyring.key")
+        cred_store = CredentialStore(
+            db_path=vault_dir_mb / "auth.db",
+            keyring=keyring_mb,
+        )
+        await cred_store.connect()
+        agent_store = AgentStore(db_path=vault_dir_mb / "auth.db")
+        await agent_store.connect()
         # Seed per-bot owner/trusted users as permanent grants
         auth_block: dict = raw_config.get("auth", {})
         for entry in auth_block.get("telegram_bots", []):
@@ -940,9 +943,12 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
             await cli_pool.stop()
         log.info("Lyra stopped.")
     finally:
-        await cred_store.close()
-        await auth_store.close()
-        await agent_store.close()
+        if cred_store is not None:
+            await cred_store.close()
+        if auth_store is not None:
+            await auth_store.close()
+        if agent_store is not None:
+            await agent_store.close()
 
 
 async def _bootstrap_legacy(  # noqa: C901, PLR0915 — startup wiring: each adapter/service requires sequential conditional setup

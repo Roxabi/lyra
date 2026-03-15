@@ -172,10 +172,8 @@ class CliPool:
                 model_config,
             )
 
-        # Inner liveness re-check: the outer check above is an optimistic fast-path.
-        # The reaper can pop this entry between the outer check and lock acquisition
-        # (cooperative multitasking — any `await` is a yield point). Re-checking
-        # inside the lock ensures we detect a process killed by the reaper.
+        # Re-check liveness inside lock (reaper may have killed
+        # between check and acquire)
         async with entry._lock:
             if not entry.is_alive():
                 return CliResult(error="Process died before send")
@@ -335,38 +333,54 @@ class CliPool:
         if proc.stdout is None:
             return CliResult(error="Process stdout is None")
 
-        timeout = self._default_timeout
+        idle_timeout = self._default_timeout  # resets on each event
+        max_idle_retries = 3
+        idle_retries = 0
         session_id: str | None = None
-        # Accumulate text across all assistant events (Finding #16: avoid overwrite)
-        result_parts: list[str] = []
+        result_parts: list[str] = []  # accumulate text across all assistant events
         assistant_turn_count = 0
-        # Buffer the current turn so we can send the *previous* turn as
-        # intermediate — the last turn is never dispatched as ⏳ because
-        # the result event arrives after it, avoiding duplication.
+        # Buffer current turn; previous turn sent as ⏳ intermediate
         pending_intermediate: str | None = None
 
         try:
-            loop = asyncio.get_running_loop()
-            deadline = loop.time() + timeout
             while True:
-                remaining = deadline - loop.time()
-                if remaining <= 0:
-                    log.warning(
-                        "[pool:%s] deadline exceeded (%ds)", entry.pool_id, timeout
-                    )
-                    return CliResult(error=f"Timeout after {timeout}s")
-
                 try:
                     raw = await asyncio.wait_for(
-                        proc.stdout.readline(), timeout=remaining
+                        proc.stdout.readline(), timeout=idle_timeout
                     )
                 except asyncio.TimeoutError:
-                    return CliResult(error=f"Timeout after {timeout}s")
+                    # No output for idle_timeout seconds — process may be stuck.
+                    if not entry.is_alive():
+                        log.warning(
+                            "[pool:%s] process died during idle wait", entry.pool_id
+                        )
+                        return CliResult(error="Process terminated unexpectedly")
+                    idle_retries += 1
+                    if idle_retries >= max_idle_retries:
+                        total_wait = idle_timeout * max_idle_retries
+                        log.error(
+                            "[pool:%s] Timeout: no output for %ds (%d retries)",
+                            entry.pool_id,
+                            total_wait,
+                            max_idle_retries,
+                        )
+                        return CliResult(
+                            error=f"Timeout: no output for {total_wait}s"
+                        )
+                    log.warning(
+                        "[pool:%s] no output for %ds — alive, waiting (%d/%d)",
+                        entry.pool_id,
+                        idle_timeout,
+                        idle_retries,
+                        max_idle_retries,
+                    )
+                    continue
 
                 if not raw:
                     log.warning("[pool:%s] stdout EOF (process died)", entry.pool_id)
                     return CliResult(error="Process terminated unexpectedly")
 
+                idle_retries = 0  # got data — reset timeout counter
                 line = raw.decode().strip()
                 if not line:
                     continue
@@ -381,10 +395,8 @@ class CliPool:
 
                 if msg_type == "system" and data.get("subtype") == "init":
                     session_id = data.get("session_id", "")
-                    log.debug(
-                        "[pool:%s] init: model=%s", entry.pool_id, data.get("model")
-                    )
-
+                    model = data.get("model")
+                    log.debug("[pool:%s] init: model=%s", entry.pool_id, model)
                 if msg_type == "assistant":
                     blocks = data.get("message", {}).get("content", [])
                     texts = [b["text"] for b in blocks if b.get("type") == "text"]
@@ -418,10 +430,6 @@ class CliPool:
                         session_id = data.get("session_id", "")
                     if session_id and entry.session_id != session_id:
                         entry.session_id = session_id
-
-                    # When intermediates were dispatched, pending_intermediate
-                    # holds the last turn (never sent as ⏳) — use it as the
-                    # final message to avoid repeating content.
                     if pending_intermediate is not None:
                         result_text = pending_intermediate
                     else:
@@ -452,9 +460,6 @@ class CliPool:
             return CliResult(error=f"Read error: {type(exc).__name__}")
 
     async def _kill(self, pool_id: str) -> None:
-        # _cwd_overrides cleared here; switch_cwd() sets it after _kill.
-        # _resume_session_ids NOT cleared — resume_and_reset() sets it after
-        # calling _kill (one-shot handoff; clearing here would break it).
         entry = self._entries.pop(pool_id, None)
         self._cwd_overrides.pop(pool_id, None)
         if entry is None:
@@ -476,9 +481,7 @@ class CliPool:
             try:
                 await asyncio.sleep(60)
                 now = time.time()
-                # Snapshot entries before awaiting _kill to avoid mutating
-                # _entries while iterating (cooperative-multitasking safety).
-                snapshot = list(self._entries.items())
+                snapshot = list(self._entries.items())  # snapshot before async _kill
                 to_kill = [
                     (pool_id, entry)
                     for pool_id, entry in snapshot

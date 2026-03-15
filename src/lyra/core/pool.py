@@ -22,7 +22,7 @@ from .message import GENERIC_ERROR_REPLY, InboundMessage, OutboundMessage, Respo
 
 log = logging.getLogger(__name__)
 
-TURN_TIMEOUT_DEFAULT = 60.0
+TURN_TIMEOUT_DEFAULT: float | None = None  # CliPool handles liveness
 SAFE_DISPATCH_TIMEOUT = 10.0
 
 
@@ -66,7 +66,7 @@ class Pool:
         pool_id: str,
         agent_name: str,
         ctx: PoolContext,
-        turn_timeout: float = TURN_TIMEOUT_DEFAULT,
+        turn_timeout: float | None = TURN_TIMEOUT_DEFAULT,
         debounce_ms: int = DEFAULT_DEBOUNCE_MS,
     ) -> None:
         self.pool_id = pool_id
@@ -86,18 +86,16 @@ class Pool:
         self._inbox: asyncio.Queue[InboundMessage] = asyncio.Queue()
         self._current_task: asyncio.Task | None = None
         self._last_active: float = time.monotonic()
-        # S1 — session identity fields (issue #83)
-        self.session_id: str = str(uuid.uuid4())
+        self.session_id: str = str(uuid.uuid4())  # S1 (issue #83)
         self.user_id: str = ""
         self.medium: str = ""
         self.session_start: datetime = datetime.now(UTC)
         self.message_count: int = 0
         self._system_prompt: str = ""
-        self._turn_logger: Callable[[str, InboundMessage], Awaitable[None]] | None = (
-            None
-        )
-        # L1 — raw turn logging (issue #67); wired by Hub.set_turn_store()
-        self._turn_store: "TurnStore | None" = None
+        self._turn_logger: (
+            Callable[[str, InboundMessage], Awaitable[None]] | None
+        ) = None
+        self._turn_store: "TurnStore | None" = None  # L1 (issue #67)
 
     @property
     def debounce_ms(self) -> int:
@@ -205,7 +203,7 @@ class Pool:
                 self._inbox.get(), name=f"inbox:{self.pool_id}"
             )
 
-            done, _pending = await asyncio.wait(
+            done, _ = await asyncio.wait(
                 {agent_task, inbox_waiter},
                 return_when=asyncio.FIRST_COMPLETED,
             )
@@ -251,7 +249,6 @@ class Pool:
             buffer.extend(await self._debouncer.drain_followups(self._inbox))
 
             msg = MessageDebouncer.merge(buffer)
-            # Loop to re-dispatch with combined context.
 
     async def _guarded_process_one(  # noqa: C901 — event emission branches add inherent complexity
         self, msg: InboundMessage, agent: "AgentBase"
@@ -271,9 +268,12 @@ class Pool:
                 )
             )
         try:
-            await asyncio.wait_for(
-                self._process_one(msg, agent), timeout=self._turn_timeout
-            )
+            if self._turn_timeout is not None:
+                await asyncio.wait_for(
+                    self._process_one(msg, agent), timeout=self._turn_timeout
+                )
+            else:
+                await self._process_one(msg, agent)
             if bus := get_event_bus():
                 bus.emit(
                     AgentCompleted(

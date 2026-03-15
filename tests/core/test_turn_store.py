@@ -154,6 +154,11 @@ class TestTurnStoreLogTurn:
         rows = await store.get_turns("pool:1", user_id="u", limit=3)
         assert len(rows) == 3
 
+    async def test_get_turns_limit_capped(self, store: TurnStore) -> None:
+        """get_turns silently caps limit at 500 — no error raised."""
+        rows = await store.get_turns("pool:none", user_id="u", limit=999_999)
+        assert rows == []  # empty pool, but no error from oversized limit
+
     async def test_get_turns_empty_pool(self, store: TurnStore) -> None:
         """get_turns returns [] for an unknown pool."""
         assert await store.get_turns("pool:unknown", user_id="u") == []

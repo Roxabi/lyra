@@ -193,6 +193,8 @@ class TurnStore:
     ) -> list[dict]:
         """Return the last *limit* turns for *pool_id* and *user_id*, newest first.
 
+        *limit* is silently capped at 500 to guard against runaway reads.
+
         Both ``pool_id`` and ``user_id`` must match — prevents cross-user reads.
 
         Args:
@@ -204,6 +206,7 @@ class TurnStore:
             List of dicts with keys matching the ``conversation_turns`` columns.
             The ``metadata`` value is deserialized from JSON.
         """
+        limit = min(limit, 500)  # guard against runaway reads
         db = self._db_or_raise()
         async with db.execute(_SELECT_BY_POOL, (pool_id, user_id, limit)) as cur:
             rows = await cur.fetchall()

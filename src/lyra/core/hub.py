@@ -42,6 +42,7 @@ if TYPE_CHECKING:
     from .memory import MemoryManager
     from .pairing import PairingManager
     from .prefs_store import PrefsStore
+    from .turn_store import TurnStore
 
 log = logging.getLogger(__name__)
 
@@ -216,6 +217,8 @@ class Hub:
         # S2 — memory layer (issue #83)
         self._memory: "MemoryManager | None" = None
         self._memory_tasks: set[asyncio.Task] = set()
+        # L1 — raw turn logging (issue #67)
+        self._turn_store: "TurnStore | None" = None
         # S4 — user preference store (issue #42)
         self._prefs_store: "PrefsStore | None" = prefs_store
 
@@ -256,6 +259,16 @@ class Hub:
         for agent in self.agent_registry.values():
             if hasattr(agent, "_memory"):
                 agent._memory = manager
+
+    def set_turn_store(self, store: "TurnStore") -> None:
+        """Set the TurnStore for L1 raw turn logging.
+
+        Wire this after calling ``await store.connect()`` and before
+        processing messages. Already-created pools are updated.
+        """
+        self._turn_store = store
+        for pool in self.pools.values():
+            pool._turn_store = store
 
     def register_adapter(
         self, platform: Platform, bot_id: str, adapter: ChannelAdapter
@@ -353,12 +366,15 @@ class Hub:
         """
         self._evict_stale_pools()
         if pool_id not in self.pools:
-            self.pools[pool_id] = Pool(
+            new_pool = Pool(
                 pool_id=pool_id,
                 agent_name=agent_name,
                 ctx=self,
                 debounce_ms=self._debounce_ms,
             )
+            if self._turn_store is not None:
+                new_pool._turn_store = self._turn_store
+            self.pools[pool_id] = new_pool
         pool = self.pools[pool_id]
         pool._touch()
         return pool
@@ -420,6 +436,8 @@ class Hub:
             await asyncio.gather(*self._memory_tasks, return_exceptions=True)
         if self._memory is not None:
             await self._memory.close()
+        if self._turn_store is not None:
+            await self._turn_store.close()
 
     # ------------------------------------------------------------------
     # PoolContext protocol implementation

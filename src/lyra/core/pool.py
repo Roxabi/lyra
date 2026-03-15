@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 if TYPE_CHECKING:
     from .agent import AgentBase
     from .memory import SessionSnapshot
+    from .turn_store import TurnStore
 
 from .debouncer import DEFAULT_DEBOUNCE_MS, MessageDebouncer
 from .message import GENERIC_ERROR_REPLY, InboundMessage, OutboundMessage, Response
@@ -95,6 +96,8 @@ class Pool:
         self._turn_logger: Callable[[str, InboundMessage], Awaitable[None]] | None = (
             None
         )
+        # L1 — raw turn logging (issue #67); wired by Hub.set_turn_store()
+        self._turn_store: "TurnStore | None" = None
 
     @property
     def debounce_ms(self) -> int:
@@ -389,6 +392,27 @@ class Pool:
         else:
             self._ctx.record_circuit_success()
             await self._ctx.dispatch_response(msg, result)
+            # L1 — log assistant turn (issue #67); fire-and-forget
+            if self._turn_store is not None and isinstance(result, Response):
+                _reply_msg_id = result.metadata.get("reply_message_id")
+                try:
+                    asyncio.create_task(
+                        self._turn_store.log_turn(
+                            pool_id=self.pool_id,
+                            session_id=self.session_id,
+                            role="assistant",
+                            platform=self.medium or str(msg.platform),
+                            user_id=self.user_id or msg.user_id,
+                            content=result.content,
+                            reply_message_id=(
+                                str(_reply_msg_id)
+                                if _reply_msg_id is not None
+                                else None
+                            ),
+                        )
+                    )
+                except RuntimeError:
+                    pass  # no running event loop (e.g. sync test context)
 
         _compact_fn = getattr(agent, "compact", None)
         if _compact_fn is not None:
@@ -443,6 +467,21 @@ class Pool:
         if self._turn_logger is not None:
             try:
                 asyncio.create_task(self._turn_logger(self.session_id, msg))  # type: ignore[arg-type]
+            except RuntimeError:
+                pass  # no running event loop (e.g. sync test context)
+        if self._turn_store is not None:
+            try:
+                asyncio.create_task(
+                    self._turn_store.log_turn(
+                        pool_id=self.pool_id,
+                        session_id=self.session_id,
+                        role="user",
+                        platform=str(msg.platform),
+                        user_id=msg.user_id,
+                        content=msg.text,
+                        message_id=msg.id,
+                    )
+                )
             except RuntimeError:
                 pass  # no running event loop (e.g. sync test context)
 

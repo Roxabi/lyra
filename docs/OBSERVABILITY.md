@@ -51,7 +51,7 @@ The following events are emitted (at INFO unless noted) for each inbound message
 | Agent dispatch | `lyra.agents.anthropic_agent` | `[agent:lyra][pool:telegram:main:chat:123] response: 156 chars` |
 | LLM call (SDK) | `lyra.llm.drivers.sdk` | `SDK stream [pool:...]: in=45 out=87 tokens` |
 | Retry/backoff | `lyra.llm.decorators` | Retry attempt N, backoff delay |
-| Timeout / cancel | `lyra.core.pool` (WARNING) | `pool ...: turn timeout after 60s — killing backend` |
+| Timeout / cancel | `lyra.core.cli_pool` (WARNING/ERROR) | `pool ...: no output for Ns — alive, waiting (1/3)` or `Timeout: no output for Ns` |
 | Cancel-in-flight | `lyra.core.pool` (DEBUG) | New message while LLM processing |
 | Circuit breaker | `lyra.core.event_bus` (WARNING) | State transition old→new |
 

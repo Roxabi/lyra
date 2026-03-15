@@ -151,6 +151,7 @@ class AgentStore:
             await self._db.commit()
             await self._warm_cache()
         except Exception:
+            log.exception("AgentStore.connect() setup failed; closing connection")
             await self._db.close()
             self._db = None
             raise

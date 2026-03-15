@@ -989,3 +989,86 @@ class TestApplyAgentSTTOverlay:
         assert result.language_detection_threshold == 0.8
         assert result.language_detection_segments == 3
         assert result.language_fallback == "fr"
+
+
+class TestAgentRowToConfigTTSSTT:
+    """agent_row_to_config() must deserialize tts_json / stt_json into typed config."""
+
+    def _make_row(self, tts_json=None, stt_json=None):
+        from lyra.core.agent_store import AgentRow
+
+        return AgentRow(
+            name="row-agent",
+            backend="anthropic-sdk",
+            model="claude-3-5-haiku-20241022",
+            tts_json=tts_json,
+            stt_json=stt_json,
+        )
+
+    def test_null_tts_stt_produces_none(self):
+        from lyra.core.agent import agent_row_to_config
+
+        row = self._make_row(tts_json=None, stt_json=None)
+        agent = agent_row_to_config(row)
+        assert agent.tts is None
+        assert agent.stt is None
+
+    def test_tts_json_deserializes_to_agent_tts_config(self):
+        import json
+
+        from lyra.core.agent import AgentTTSConfig, agent_row_to_config
+
+        tts_data = {
+            "engine": "chatterbox",
+            "voice": "en-US-1",
+            "chunked": True,
+            "chunk_size": 200,
+        }
+        row = self._make_row(tts_json=json.dumps(tts_data), stt_json=None)
+        agent = agent_row_to_config(row)
+
+        assert agent.tts is not None
+        assert isinstance(agent.tts, AgentTTSConfig)
+        assert agent.tts.engine == "chatterbox"
+        assert agent.tts.voice == "en-US-1"
+        assert agent.tts.chunked is True
+        assert agent.tts.chunk_size == 200
+        assert agent.stt is None
+
+    def test_stt_json_deserializes_to_agent_stt_config(self):
+        import json
+
+        from lyra.core.agent import AgentSTTConfig, agent_row_to_config
+
+        stt_data = {
+            "language_detection_threshold": 0.75,
+            "language_detection_segments": 3,
+            "language_fallback": "en",
+        }
+        row = self._make_row(tts_json=None, stt_json=json.dumps(stt_data))
+        agent = agent_row_to_config(row)
+
+        assert agent.stt is not None
+        assert isinstance(agent.stt, AgentSTTConfig)
+        assert agent.stt.language_detection_threshold == 0.75
+        assert agent.stt.language_detection_segments == 3
+        assert agent.stt.language_fallback == "en"
+        assert agent.tts is None
+
+    def test_both_tts_and_stt_json_deserialized(self):
+        import json
+
+        from lyra.core.agent import AgentSTTConfig, AgentTTSConfig, agent_row_to_config
+
+        tts_data = {"engine": "chatterbox", "voice": "en-GB-2"}
+        stt_data = {"language_fallback": "fr"}
+        row = self._make_row(
+            tts_json=json.dumps(tts_data), stt_json=json.dumps(stt_data)
+        )
+        agent = agent_row_to_config(row)
+
+        assert isinstance(agent.tts, AgentTTSConfig)
+        assert agent.tts.engine == "chatterbox"
+        assert agent.tts.voice == "en-GB-2"
+        assert isinstance(agent.stt, AgentSTTConfig)
+        assert agent.stt.language_fallback == "fr"

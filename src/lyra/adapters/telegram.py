@@ -796,12 +796,15 @@ class TelegramAdapter:
         keyboard = self._render_buttons(outbound.buttons)
         last_idx = len(chunks) - 1
 
+        reply_to: int | None = original_msg.platform_meta.get("message_id")
         for i, chunk in enumerate(chunks):
             kwargs: dict = {
                 "chat_id": chat_id,
                 "text": chunk,
                 "parse_mode": "MarkdownV2",
             }
+            if i == 0 and reply_to is not None:
+                kwargs["reply_to_message_id"] = reply_to
             if i == last_idx and keyboard is not None:
                 kwargs["reply_markup"] = keyboard
             sent = await self.bot.send_message(**kwargs)
@@ -842,9 +845,12 @@ class TelegramAdapter:
 
         # Send placeholder
         _placeholder_text = self._msg("stream_placeholder", "\u2026")
+        reply_to: int | None = original_msg.platform_meta.get("message_id")
         try:
             placeholder = await self.bot.send_message(
-                chat_id=chat_id, text=_placeholder_text
+                chat_id=chat_id,
+                text=_placeholder_text,
+                **( {"reply_to_message_id": reply_to} if reply_to is not None else {}),
             )
             if outbound is not None:
                 outbound.metadata["reply_message_id"] = placeholder.message_id
@@ -991,11 +997,16 @@ class TelegramAdapter:
         if duration_sec is not None:
             kwargs["duration"] = duration_sec
 
+        from aiogram.types import BufferedInputFile
+
+        filename = audio_buf.name
+        input_file = BufferedInputFile(audio_buf.read(), filename=filename)
+
         if use_audio_method:
-            kwargs["audio"] = audio_buf
+            kwargs["audio"] = input_file
             await self.bot.send_audio(**kwargs)
         else:
-            kwargs["voice"] = audio_buf
+            kwargs["voice"] = input_file
             await self.bot.send_voice(**kwargs)
 
     async def render_attachment(

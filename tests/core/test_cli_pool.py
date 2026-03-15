@@ -449,16 +449,23 @@ class TestOnIntermediateException:
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
         """Exception in on_intermediate is caught; CliResult is still returned ok."""
-        # on_intermediate is only triggered for assistant_turn_count >= 2,
-        # so we need at least 2 assistant lines followed by a result line.
+        # Intermediates are buffered: the callback fires when flushing the
+        # *previous* pending turn on arrival of a new one, so we need at
+        # least 3 assistant turns for the flush to happen.
         second_assistant = _ndjson(
             {
                 "type": "assistant",
                 "message": {"content": [{"type": "text", "text": "Second turn"}]},
             }
         )
+        third_assistant = _ndjson(
+            {
+                "type": "assistant",
+                "message": {"content": [{"type": "text", "text": "Third turn"}]},
+            }
+        )
         proc = make_fake_proc(
-            [INIT_LINE, ASSISTANT_LINE, second_assistant, RESULT_LINE]
+            [INIT_LINE, ASSISTANT_LINE, second_assistant, third_assistant, RESULT_LINE]
         )
         pool = CliPool()
 

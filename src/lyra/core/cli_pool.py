@@ -1,15 +1,7 @@
-"""
-Persistent Claude CLI process pool for Lyra agents.
+"""Persistent Claude CLI process pool for Lyra agents.
 
 One long-running `claude --input-format stream-json` process per pool_id.
 Sends messages via stdin NDJSON, reads responses via stdout NDJSON.
-Avoids the ~12s Node.js startup overhead on every message after the first.
-
-Adapted from 2ndBrain/telegram_bot/core/claude_pool.py.
-Key differences vs ClaudePool:
-- Keyed by pool_id: str (not chat_id: int)
-- Model config comes from ModelConfig (per-agent TOML), not per-send call
-- No session persistence (added later when memory layer is ready)
 """
 
 from __future__ import annotations
@@ -348,6 +340,10 @@ class CliPool:
         # Accumulate text across all assistant events (Finding #16: avoid overwrite)
         result_parts: list[str] = []
         assistant_turn_count = 0
+        # Buffer the current turn so we can send the *previous* turn as
+        # intermediate — the last turn is never dispatched as ⏳ because
+        # the result event arrives after it, avoiding duplication.
+        pending_intermediate: str | None = None
 
         try:
             loop = asyncio.get_running_loop()
@@ -395,23 +391,27 @@ class CliPool:
                     result_parts.extend(texts)
                     assistant_turn_count += 1
                     if on_intermediate and texts and assistant_turn_count >= 2:
-                        combined = "\n\n".join(texts)
-                        try:
-                            await asyncio.wait_for(
-                                on_intermediate(combined), timeout=5.0
-                            )
-                        except asyncio.TimeoutError:
-                            log.warning(
-                                "[pool:%s] on_intermediate callback timed out"
-                                " (>5s) — dropping",
-                                entry.pool_id,
-                            )
-                        except Exception:
-                            log.warning(
-                                "[pool:%s] on_intermediate callback failed",
-                                entry.pool_id,
-                                exc_info=True,
-                            )
+                        # Flush the *previous* buffered turn as ⏳ before
+                        # buffering the current one.
+                        if pending_intermediate is not None:
+                            try:
+                                await asyncio.wait_for(
+                                    on_intermediate(pending_intermediate),
+                                    timeout=5.0,
+                                )
+                            except asyncio.TimeoutError:
+                                log.warning(
+                                    "[pool:%s] on_intermediate callback timed"
+                                    " out (>5s) — dropping",
+                                    entry.pool_id,
+                                )
+                            except Exception:
+                                log.warning(
+                                    "[pool:%s] on_intermediate callback failed",
+                                    entry.pool_id,
+                                    exc_info=True,
+                                )
+                        pending_intermediate = "\n\n".join(texts)
 
                 if msg_type == "result":
                     if not session_id:
@@ -419,9 +419,13 @@ class CliPool:
                     if session_id and entry.session_id != session_id:
                         entry.session_id = session_id
 
-                    # Use result event text if present, else fall back to
-                    # accumulated assistant parts (Finding #16)
-                    result_text = data.get("result") or "\n\n".join(result_parts)
+                    # When intermediates were dispatched, pending_intermediate
+                    # holds the last turn (never sent as ⏳) — use it as the
+                    # final message to avoid repeating content.
+                    if pending_intermediate is not None:
+                        result_text = pending_intermediate
+                    else:
+                        result_text = data.get("result") or "\n\n".join(result_parts)
                     log.info(
                         "[pool:%s] response: %d chars, %dms",
                         entry.pool_id,

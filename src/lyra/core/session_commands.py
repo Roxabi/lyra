@@ -123,7 +123,8 @@ async def cmd_add(
         return Response(content="Failed to summarize the URL. Please try again.")
 
     if not result.ok:
-        return Response(content=f"LLM error: {result.error}")
+        err_msg = result.user_message or "An error occurred. Please try again."
+        return Response(content=err_msg)
 
     llm_text = result.result
     title = _parse_title(llm_text, url)
@@ -179,7 +180,8 @@ async def cmd_explain(
         return Response(content="Failed to explain the URL. Please try again.")
 
     if not result.ok:
-        return Response(content=f"LLM error: {result.error}")
+        err_msg = result.user_message or "An error occurred. Please try again."
+        return Response(content=err_msg)
 
     return Response(content=result.result)
 
@@ -220,6 +222,7 @@ async def cmd_summarize(
         return Response(content="Failed to summarize the URL. Please try again.")
 
     if not result.ok:
-        return Response(content=f"LLM error: {result.error}")
+        err_msg = result.user_message or "An error occurred. Please try again."
+        return Response(content=err_msg)
 
     return Response(content=result.result)

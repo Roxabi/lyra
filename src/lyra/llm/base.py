@@ -9,10 +9,19 @@ from lyra.core.agent import ModelConfig
 
 @dataclass
 class LlmResult:
+    """Result returned by an LlmProvider.complete() call.
+
+    Set ``retryable=False`` for errors that must not be retried
+    (e.g. open circuit, invalid credentials, quota exhausted).
+    Defaults to True so transient failures are retried automatically.
+    """
+
     result: str = ""
     session_id: str = ""
     error: str = ""
+    retryable: bool = True
     warning: str = ""
+    user_message: str = ""
 
     @property
     def ok(self) -> bool:

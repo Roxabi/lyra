@@ -12,13 +12,16 @@ Lyra uses two types of configuration files with distinct responsibilities:
 | File | Type | Versioned | Purpose |
 |------|------|-----------|---------|
 | `config.toml` | Instance config | No | Deployment wiring: bots, tokens, auth, defaults |
-| `~/.lyra/agents/<name>.toml` | User config | No | Agent override: wins over system default |
-| `src/lyra/agents/<name>.toml` | System data | Yes | Agent definition: model, tools, routing |
+| `~/.lyra/auth.db` | Runtime DB | No | Agent registry (SQLite, written by `lyra agent` CLI) |
+| `~/.lyra/agents/<name>.toml` | Seed source | No | Agent seed: imported into DB by `lyra agent init` |
+| `src/lyra/agents/<name>.toml` | Seed source | Yes | Agent seed: system defaults, imported into DB |
 | `src/lyra/plugins/<name>/plugin.toml` | System data | Yes | Plugin manifest: commands, handlers |
 | `src/lyra/config/messages.toml` | System data | Yes | i18n strings |
 | `pyproject.toml` | System data | Yes | Package metadata, dependencies, tool config |
 
 **Rule:** if a value is machine-specific, personal, or secret → `config.toml`. Everything else → versioned.
+
+**Agent rule:** TOML files define what agents *should be*. The DB holds what they *are* at runtime. Startup reads from the DB only — TOML changes require `lyra agent init` (or `--force`) to take effect.
 
 ---
 
@@ -97,19 +100,48 @@ At least one platform must be configured. A missing platform logs a warning and 
 
 ---
 
-## Agent definitions — `~/.lyra/agents/` and `src/lyra/agents/`
+## Agent definitions — SQLite DB + TOML seeds
 
-Agent TOML files are resolved in this order:
+Agents are stored in **`~/.lyra/auth.db`** (SQLite). This is the runtime source of truth — startup reads agents from the DB only.
 
+TOML files (`src/lyra/agents/<name>.toml`, `~/.lyra/agents/<name>.toml`) are **seed sources**: they define the initial state and are imported into the DB via `lyra agent init`. After import, edits to TOML files have no effect until re-imported.
+
+### CLI workflow
+
+```bash
+# First-time setup: seed DB from TOML files
+lyra agent init
+
+# Force re-import (overwrites existing DB rows)
+lyra agent init --force
+
+# Create a new agent interactively (writes TOML, then reminds you to init)
+lyra agent create
+
+# List all agents in DB (name, backend, model, status, source, assigned bots)
+lyra agent list
+
+# Show full config for one agent
+lyra agent show lyra_default
+
+# Edit an agent in DB interactively (blank input = keep current value)
+lyra agent edit lyra_default
+
+# Validate an agent (schema + constraint checks)
+lyra agent validate lyra_default
+
+# Delete an agent (refuses if any bot is still assigned)
+lyra agent unassign --platform telegram --bot lyra
+lyra agent delete lyra_default
+
+# Assign / unassign a bot
+lyra agent assign lyra_default --platform telegram --bot lyra
+lyra agent unassign --platform telegram --bot lyra
 ```
-~/.lyra/agents/<name>.toml     ← user-level (gitignored, machine-specific, wins)
-    ↓ fallback
-src/lyra/agents/<name>.toml    ← system defaults (versioned, ships with code)
-```
 
-Place a file in `~/.lyra/agents/` to override a system agent entirely, or to define a personal agent that isn't versioned. The system defaults in `src/lyra/agents/` are used when no user-level file exists.
+### TOML format (seed files)
 
-One file per agent. Defines the agent's behavior — no machine-specific values in the versioned files.
+One file per agent. System defaults live in `src/lyra/agents/` (versioned). Personal overrides live in `~/.lyra/agents/` (gitignored, wins over system defaults at `init` time).
 
 ```toml
 [agent]
@@ -124,9 +156,9 @@ show_intermediate = false
 backend = "claude-cli"            # "claude-cli" | "anthropic-sdk" | "ollama"
 model = "claude-sonnet-4-6"
 max_turns = 10
-# cwd and workspaces are NOT set here — they come from config.toml [defaults]
 tools = ["Read", "Grep", "Glob", "WebFetch", "WebSearch"]
 # Bash and Write omitted intentionally — prevents prompt injection → RCE
+# cwd is NOT set here — machine-specific, lives in config.toml [defaults]
 
 [agent.smart_routing]             # requires backend = "anthropic-sdk"
 enabled = false
@@ -143,7 +175,9 @@ enabled = ["echo"]
 
 **What belongs here:** model, tools allowlist, smart routing tiers, plugin list, persona name, memory namespace.
 
-**What does NOT belong here:** `cwd`, `workspaces` — these are machine-specific and live in `config.toml [defaults]`.
+**What does NOT belong here:** `cwd`, `workspaces` — machine-specific, live in `config.toml [defaults]`.
+
+> **Note:** `lyra agent create` currently writes a TOML file and prompts you to run `lyra agent init`. A future sprint will make `create` write directly to the DB.
 
 ---
 
@@ -179,12 +213,18 @@ startup
         ├── parse [defaults] → machine-wide fallbacks
         ├── resolve env:VAR_NAME references
         ├── parse [[telegram.bots]] / [[discord.bots]]
-        └── for each bot → core/agent.py: load agent TOML
-              ├── try ~/.lyra/agents/<name>.toml → fallback src/lyra/agents/<name>.toml
-              ├── merge with [defaults] (cwd, persona, workspaces)
-              ├── build ModelConfig, SmartRoutingConfig
-              ├── load persona from vault (if set)
-              └── compose system prompt → frozen Agent dataclass
+        └── AgentStore.connect() → open ~/.lyra/auth.db, warm in-memory cache
+              └── for each bot → resolve agent from DB
+                    ├── bot_agent_map DB row (highest priority)
+                    │     └── if missing → fall back to config.toml bot.agent
+                    │           └── auto-seeds bot_agent_map row in DB
+                    └── agent row loaded from agents table
+                          ├── merge with config.toml [defaults] (cwd, persona, workspaces)
+                          ├── build ModelConfig, SmartRoutingConfig
+                          ├── load persona from vault (if set)
+                          └── compose system prompt → frozen Agent dataclass
 ```
 
-`config.toml` is loaded once at startup. Agent definitions support hot-reload: the loader checks file mtime on each message and reloads if changed.
+`config.toml` is loaded once at startup. Agent DB rows are loaded into cache at connect time and served synchronously — no per-message file I/O.
+
+> **Important:** TOML file changes do NOT take effect at runtime. Run `lyra agent init --force` and restart to pick up TOML edits. Use `lyra agent edit` to change a running agent without touching TOML.

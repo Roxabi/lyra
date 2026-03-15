@@ -70,7 +70,7 @@ flowchart TD
 | Feature | Detail |
 |---------|--------|
 | **Auth** | AuthMiddleware + TrustLevel per adapter (owner/trusted/public/blocked) · RoutingContext outbound verification |
-| **Voice** | STT via voicecli library (faster-whisper `large-v3-turbo` + personal vocab · InboundAudioBus → STTService) · TTS via voicecli (Phase 2) |
+| **Voice** | STT via voicecli library (faster-whisper `large-v3-turbo` + personal vocab · InboundAudioBus → STTService) · TTS via voicecli (Qwen-fast) — OGG/Opus · waveform · Discord voice bubble |
 | **Security** | Prompt injection guard · sandboxed skills · least-privilege tool permissions · hmac webhook verification |
 
 ## Quick start
@@ -162,7 +162,7 @@ Send these directly in Telegram or Discord:
 | `/search <query>` | Full-text search over vault |
 | `<url>` (bare) | Auto-rewritten to `/add <url>` |
 | `/clear` | Reset conversation history |
-| `/voice <text>` | Generate speech (`voicecli` required) |
+| `/voice <text>` | Send voice reply — prompt routes through LLM then TTS (`voicecli`) |
 | `/help` | List all available commands |
 
 > See [COMMANDS.md](docs/COMMANDS.md) for the full command reference, workspace commands, and how to add plugins.

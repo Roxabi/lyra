@@ -93,7 +93,7 @@ User → hello    → Telegram → Hub → (not a command) → Agent (LLM) → R
 | `/clear` | Clear conversation history | — (builtin) |
 | `/new` | Start a new session (alias for /clear) | — (builtin) |
 | `/echo <text>` | Echo back the message (test) | — (plugin) |
-| `/voice <text>` | Generate speech | `voicecli` |
+| `/voice <text>` | Send voice reply — routes through LLM then TTS (OGG/Opus) | `voicecli` |
 | `/image <prompt>` | Generate image prompt | — (prompt-only) |
 | `/add <url>` | Scrape URL → LLM summary → save to vault | `web-intel:scrape`, `vault` |
 | `/explain <url>` | Scrape URL → plain-language explanation | `web-intel:scrape` |
@@ -265,9 +265,11 @@ Lyra: Unknown command: /pizza
 
 ```
 You:  /voice Generate a long podcast intro
-Lyra: ⚠ Command timed out after 30s.
+Lyra: ⚠ Command timed out.
       Try a shorter request or run manually.
 ```
+
+> Timeout depends on LLM response time plus TTS synthesis duration — there is no fixed limit.
 
 ---
 
@@ -374,6 +376,6 @@ Built-in commands          Plugin commands             CLI-backed commands      
                            /search → cmd_search()
 ```
 
-Two access paths for the same tools:
-1. **Command router** (user types `/voice`) → direct CLI subprocess, no LLM
-2. **Agent with Bash tool** (user asks "say hello") → LLM decides to call voicecli
+Two access paths for voice:
+1. **`/voice` command** (user types `/voice <text>`) → registered as passthrough in CommandRouter → rewritten with `modality="voice"` → pool/agent → LLM generates reply → TTS synthesizes to OGG/Opus → sent as native voice message (`IS_VOICE_MESSAGE` on Discord, `send_voice` on Telegram). `Response.speak=True` signals the hub to trigger TTS. It is NOT a direct CLI subprocess.
+2. **Agent with Bash tool** (user asks "say hello") → LLM decides to call voicecli directly

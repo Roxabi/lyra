@@ -368,7 +368,7 @@ See `docs/architecture/adr/010-external-tool-integration-pattern.mdx` for full r
 | SQLite async | aiosqlite |
 | BM25 | FTS5 (built-in SQLite) |
 | Vector search | sqlite-vec + fastembed ONNX |
-| TTS | voicecli (Qwen-fast) — Phase 2 |
+| TTS | voicecli (Qwen-fast) · OGG/Opus output · waveform · Discord voice bubble ✅ |
 | STT | voicecli library (faster-whisper, `large-v3-turbo`) |
 | Embeddings | fastembed ONNX (nomic-embed-text) + sqlite-vec |
 | Process mgmt | supervisord + systemd |
@@ -459,7 +459,7 @@ What is built in Phase 1 / 1b:
 - Agent identity + persona (#75 ✅), runtime config (#135 ✅)
 - Message normalization (#139 ✅): InboundMessage, OutboundMessage, InboundAudio, OutboundAudioChunk, OutboundAttachment
 - Auth: AuthMiddleware + TrustLevel (#151 ✅), RoutingContext + outbound verification (#152 ✅)
-- Voice: STTService + STTConfig (#80 ✅), InboundAudioBus, audio consumer loop
+- Voice: STTService + STTConfig (#80 ✅), InboundAudioBus, audio consumer loop · TTS shipped: OGG/Opus (ffmpeg libopus, 48kHz mono), `SynthesisResult` with `duration_ms` + `waveform_b64` (256-byte amplitude array), language ISO→Qwen normalization, Discord `IS_VOICE_MESSAGE` (8192) flag for native voice bubble
 - Hub hardening: PoolContext protocol (#204 ✅), TTL eviction (#205 ✅), async I/O audio loop (#203 ✅)
 - DX: complexity/size limits (#196 ✅), pytest-cov + coverage gate (#211 ✅)
 - Security: hmac.compare_digest (#212 ✅), two-tier /health (#207 ✅), symlink plugin_loader fix (#215 ✅)
@@ -519,7 +519,7 @@ class CognitiveFrame:
 
 **Phase 1b complete.** All items shipped.
 
-**Shipped**: #135 (runtime config ✅), #134 (smart routing ✅), #80 (voice STT ✅), #139 (message normalization ✅), #123 (LlmProvider ✅), #151 (auth ✅), #152 (routing ✅), #83 (memory integration ✅), #99 (hub command sessions ✅)
+**Shipped**: #135 (runtime config ✅), #134 (smart routing ✅), #80 (voice STT ✅), #139 (message normalization ✅), #123 (LlmProvider ✅), #151 (auth ✅), #152 (routing ✅), #83 (memory integration ✅), #99 (hub command sessions ✅), voice TTS ✅ (OGG/Opus · waveform · Discord voice bubble · /voice routes through LLM)
 
 **Next**: Phase 2 (#60) — NATS introduction + Machine 2 coordination, or #136 (multi-bot registry upgrade, blocked by #79).
 

@@ -9,7 +9,10 @@ resolution-markers = [
 
 [manifest]
 overrides = [
+    { name = "ml-dtypes", specifier = ">=0.5" },
     { name = "numpy", specifier = ">=1.26" },
+    { name = "onnx", specifier = ">=1.20" },
+    { name = "pandas", specifier = ">=2.2" },
     { name = "torch", specifier = ">=2.7" },
     { name = "torchaudio", specifier = ">=2.7" },
     { name = "transformers", specifier = ">=4.57.3,<5" },

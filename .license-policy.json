@@ -35,7 +35,8 @@
     "s3tokenizer",
     "soxr",
     "transformers",
-    "voicecli"
+    "voicecli",
+    "pyromark"
   ],
   "overrides": {}
 }

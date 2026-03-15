@@ -1,5 +1,5 @@
 ---
-title: Agent management in SQLite — config, bot↔agent map, prefs, runtime state
+title: Agent management in SQLite — config, bot↔agent map, prefs, runtime state + CLI overhaul
 issue: 268
 status: approved
 tier: F-full
@@ -21,15 +21,20 @@ Agent configuration in Lyra is fully static: each agent lives in a TOML file
 - **No runtime state** — agent liveness, active pool count, last activity are
   ephemeral and invisible.
 
+The `lyra agent` CLI is equally limited: it only wraps TOML file I/O and has
+no concept of DB state, initialization, assignment, or live update. Commands
+like `edit`, `delete`, `assign`, `init` (seed DB from existing TOMLs) don't
+exist yet.
+
 The rest of Lyra's persistent state (auth grants, bot credentials, user prefs)
 already lives in SQLite (`auth.db`). Agent management is the last holdout.
 
 ## Who
 
-- **Primary:** Lyra runtime — Hub, Pool, CLI, agent wizard all need read/write
-  access to agent definitions.
-- **Secondary:** operators / admins who create, clone, or hot-update agents via
-  `lyra agent` CLI subcommands without restarting the hub.
+- **Primary:** Lyra runtime — Hub, Pool, CLI all need read/write access to
+  agent definitions via `AgentStore`.
+- **Secondary:** operators / admins who init, create, edit, delete, or reassign
+  agents at runtime via `lyra agent` subcommands without restarting the hub.
 
 ## Constraints
 
@@ -37,11 +42,26 @@ already lives in SQLite (`auth.db`). Agent management is the last holdout.
   `AuthStore`, `CredentialStore`, `PrefsStore`) **or** use a dedicated
   `agents.db` if table count warrants separation — decision deferred to spec.
 - TOML files are **not deleted** — they become seed documents (read once on
-  first startup, DB is authoritative thereafter).
+  first startup via `lyra agent init`, DB is authoritative thereafter).
 - Pool/Hub must continue to call `get_agent(name)` synchronously from cache;
   DB reads are async and happen only on startup / mutation.
 - No encryption required — agent config is not sensitive.
-- Must not break existing `lyra agent create/list/validate` wizard workflow.
+- `lyra agent create` wizard UX must be preserved (interactive prompts), but
+  output goes to DB instead of a TOML file.
+
+## CLI surface — current vs target
+
+| Command | Current | Target |
+|---------|---------|--------|
+| `lyra agent create` | wizard → writes TOML file | wizard → inserts into DB |
+| `lyra agent list` | reads all TOML files | reads from DB (+ source column: db/toml-only) |
+| `lyra agent validate` | parses TOML + schema check | validates DB row + runtime constraints |
+| `lyra agent init` | ✗ missing | seeds DB from existing TOML files (one-time migration) |
+| `lyra agent show <name>` | ✗ missing | prints full agent config from DB |
+| `lyra agent edit <name>` | ✗ missing | interactive update of a DB row |
+| `lyra agent delete <name>` | ✗ missing | removes agent from DB (guard: refuse if bots assigned) |
+| `lyra agent assign <name> --bot <id>` | ✗ missing | sets bot↔agent mapping in DB |
+| `lyra agent unassign --bot <id>` | ✗ missing | removes a bot↔agent mapping |
 
 ## Out of Scope
 
@@ -52,14 +72,13 @@ already lives in SQLite (`auth.db`). Agent management is the last holdout.
 
 ## Complexity
 
-**Tier: F-full** — New DB schema across 4 tables, migration logic from TOML,
-write-through cache in Hub, CLI CRUD commands, and integration with Pool/Hub
+**Tier: F-full** — New DB schema across 4 tables, TOML seed migration,
+write-through cache in Hub, full CLI CRUD overhaul (9 commands), and Pool/Hub
 wiring.
 
 Signals observed:
 - New patterns: DB-backed agent registry (no prior equivalent in codebase)
 - Multiple domains: core/agents, config, pool, hub, CLI
-- Migration path: TOML → DB seed on first boot
-- Touches: `config.py`, `hub.py`, `pool.py`, `agent_store.py` (new),
-  `cli/agent.py`, `agent_wizard.py`
+- Migration path: TOML → DB seed via `lyra agent init`
+- Touches: `config.py`, `hub.py`, `pool.py`, `agent_store.py` (new), `cli.py`
 - Unknown: whether `agents.db` is separate or merged into `auth.db`

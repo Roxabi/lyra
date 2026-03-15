@@ -103,6 +103,23 @@ class TestRetryDecorator:
         assert result.result == "second try"
         assert inner.complete.call_count == 2
 
+    async def test_retry_stops_on_non_retryable_error(self) -> None:
+        """retryable=False → inner called exactly once; no sleep; error returned."""
+        # Arrange
+        non_retryable = LlmResult(error="circuit open", retryable=False)
+        inner = _make_inner([non_retryable])
+        decorator = RetryDecorator(inner, max_retries=3, backoff_base=0.0)
+
+        # Act
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            result = await _complete(decorator)
+
+        # Assert
+        assert result.ok is False
+        assert result.retryable is False
+        assert inner.complete.call_count == 1
+        mock_sleep.assert_not_called()
+
     async def test_retry_exponential_backoff(self) -> None:
         """Sleep called with base * 2^k between retry attempts (base=1.0)."""
         # Arrange — 3 errors so 3 sleeps happen (after attempt 0, 1, 2)
@@ -147,6 +164,7 @@ class TestCircuitBreakerDecorator:
         # Assert
         assert result.ok is False
         assert result.error != ""
+        assert result.retryable is False
         inner.complete.assert_not_called()
 
     async def test_cb_records_success(self) -> None:

@@ -13,6 +13,7 @@ class LlmResult:
     session_id: str = ""
     error: str = ""
     warning: str = ""
+    retryable: bool = True
 
     @property
     def ok(self) -> bool:

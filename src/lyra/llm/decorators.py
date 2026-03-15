@@ -55,6 +55,14 @@ class RetryDecorator:
             )
             if result.ok:
                 return result
+            if not result.retryable:
+                log.warning(
+                    "LlmProvider error (attempt %d/%d): %s — non-retryable, aborting",
+                    attempt + 1,
+                    total_attempts,
+                    result.error,
+                )
+                return result
             if attempt < self._max_retries:
                 delay = self._backoff_base * (2**attempt)
                 log.warning(
@@ -104,9 +112,8 @@ class CircuitBreakerDecorator:
         if self._cb.is_open():
             status = self._cb.get_status()
             retry_after = status.retry_after or 0.0
-            return LlmResult(
-                error=f"Circuit '{self._cb.name}' is open. Retry in {retry_after:.0f}s."
-            )
+            msg = f"Circuit '{self._cb.name}' is open. Retry in {retry_after:.0f}s."
+            return LlmResult(error=msg, retryable=False)
         result = await self._inner.complete(
             pool_id,
             text,

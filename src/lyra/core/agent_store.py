@@ -33,11 +33,11 @@ CREATE TABLE IF NOT EXISTS agents (
     plugins_json TEXT NOT NULL DEFAULT '[]',
     memory_namespace TEXT,
     cwd TEXT,
-    tts_json TEXT,
-    stt_json TEXT,
     source TEXT NOT NULL DEFAULT 'db',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    tts_json TEXT,
+    stt_json TEXT
 )
 """
 
@@ -183,8 +183,8 @@ class AgentStore:
         async with db.execute(
             "SELECT name, backend, model, max_turns, tools_json, persona, "
             "show_intermediate, smart_routing_json, plugins_json, "
-            "memory_namespace, cwd, tts_json, stt_json, "
-            "source, created_at, updated_at FROM agents"
+            "memory_namespace, cwd, source, created_at, updated_at, "
+            "tts_json, stt_json FROM agents"
         ) as cur:
             async for row in cur:
                 (
@@ -199,11 +199,11 @@ class AgentStore:
                     plugins_json,
                     memory_namespace,
                     cwd,
-                    tts_json,
-                    stt_json,
                     source,
                     created_at,
                     updated_at,
+                    tts_json,
+                    stt_json,
                 ) = row
                 self._agents[name] = AgentRow(
                     name=name,
@@ -276,8 +276,8 @@ class AgentStore:
             "INSERT INTO agents "
             "(name, backend, model, max_turns, tools_json, persona, "
             "show_intermediate, smart_routing_json, plugins_json, "
-            "memory_namespace, cwd, tts_json, stt_json, "
-            "source, created_at, updated_at) "
+            "memory_namespace, cwd, source, created_at, updated_at, "
+            "tts_json, stt_json) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(name) DO UPDATE SET "
             "backend=excluded.backend, "
@@ -306,11 +306,11 @@ class AgentStore:
                 row.plugins_json,
                 row.memory_namespace,
                 row.cwd,
-                row.tts_json,
-                row.stt_json,
                 row.source,
                 row.created_at,
                 now,
+                row.tts_json,
+                row.stt_json,
                 # ON CONFLICT updated_at value
                 now,
             ),

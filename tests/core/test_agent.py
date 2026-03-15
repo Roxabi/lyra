@@ -1072,3 +1072,20 @@ class TestAgentRowToConfigTTSSTT:
         assert agent.tts.voice == "en-GB-2"
         assert isinstance(agent.stt, AgentSTTConfig)
         assert agent.stt.language_fallback == "fr"
+
+    def test_empty_string_tts_json_returns_none(self):
+        from lyra.core.agent import agent_row_to_config
+
+        row = self._make_row(tts_json="", stt_json="")
+        agent = agent_row_to_config(row)
+        assert agent.tts is None
+        assert agent.stt is None
+
+    def test_malformed_tts_json_raises(self):
+        import json
+
+        from lyra.core.agent import agent_row_to_config
+
+        row = self._make_row(tts_json="not valid json")
+        with pytest.raises(json.JSONDecodeError):
+            agent_row_to_config(row)

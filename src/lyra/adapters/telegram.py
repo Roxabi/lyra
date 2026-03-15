@@ -70,6 +70,20 @@ _DENY_ALL = AuthMiddleware(store=None, role_map={}, default=TrustLevel.BLOCKED)
 _ALLOW_ALL = AuthMiddleware(store=None, role_map={}, default=TrustLevel.PUBLIC)
 _MARKDOWNV2_SPECIAL = re.compile(r"([_*\[\]()~`>#\+\-=|{}.!\\])")
 
+# Markdown → MarkdownV2 converter (preserves bold, italic, code, etc.)
+try:
+    from telegramify_markdown import markdownify as _md_to_mdv2
+
+    def _convert_markdown(text: str) -> str:
+        """Convert standard Markdown to Telegram MarkdownV2."""
+        return _md_to_mdv2(text)
+
+except ImportError:  # pragma: no cover — fallback if dependency missing
+    log.warning("telegramify-markdown not installed; Telegram formatting disabled")
+
+    def _convert_markdown(text: str) -> str:  # type: ignore[misc]
+        return _MARKDOWNV2_SPECIAL.sub(r"\\\1", text)
+
 
 def _make_send_kwargs(chat_id: int, text: str, reply_to: int | None) -> dict[str, Any]:
     """Build bot.send_message kwargs, adding reply_to_message_id when set."""
@@ -750,11 +764,11 @@ class TelegramAdapter:
         )
 
     def _render_text(self, text: str) -> list[str]:
-        """Escape MarkdownV2 special characters and split into <=4096-char chunks."""
+        """Convert Markdown to MarkdownV2 and split into <=4096-char chunks."""
         return chunk_text(
             text,
             TELEGRAM_MAX_LENGTH,
-            escape_fn=lambda t: _MARKDOWNV2_SPECIAL.sub(r"\\\1", t),
+            escape_fn=_convert_markdown,
         )
 
     def _render_buttons(self, buttons: list) -> object | None:
@@ -892,13 +906,13 @@ class TelegramAdapter:
                 now = time.monotonic()
                 if now - last_edit >= 0.5:
                     accumulated = "".join(parts)
-                    _escaped = _MARKDOWNV2_SPECIAL.sub(
-                        r"\\\1", accumulated[:TELEGRAM_MAX_LENGTH]
+                    _converted = _convert_markdown(
+                        accumulated[:TELEGRAM_MAX_LENGTH]
                     )
                     await self.bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=placeholder.message_id,
-                        text=_escaped,
+                        text=_converted,
                         parse_mode="MarkdownV2",
                     )
                     last_edit = now

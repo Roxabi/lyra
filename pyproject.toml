@@ -23,6 +23,7 @@ dependencies = [
     "voicecli",
     "typer>=0.14",
     "tomli-w>=1.0",
+    "telegramify-markdown>=1.1.0",
 ]
 
 [project.scripts]

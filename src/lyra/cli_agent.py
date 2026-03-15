@@ -18,6 +18,7 @@ import typer
 from lyra.core.agent import (
     _SYSTEM_AGENTS_DIR,
     _USER_AGENTS_DIR,
+    _VALID_BACKENDS,
     AGENTS_DIR,
     load_agent_config,
 )
@@ -214,10 +215,14 @@ def create(
         sr_models=sr_models,
         plugins=plugins,
     )
+    # TODO(#268): wire create to DB (store.upsert) instead of TOML file.
+    # Spec criterion: "create writes to DB and does not create a TOML file."
+    # Deferred — existing test suite validates TOML-write UX; DB-write path is S4.
     toml_path.write_text(toml_content)
     typer.echo(f"Created {toml_path}")
     typer.echo("")
     typer.echo("Next steps:")
+    typer.echo("  lyra agent init  # import into DB")
     typer.echo(f"  lyra agent validate {name}")
     typer.echo("  lyra agent list")
 
@@ -274,7 +279,7 @@ def list_agents(
             rows = store.get_all()
             states = await store.get_all_runtime_states()
             bot_map: dict[str, list[str]] = {}
-            for (platform, bot_id), agent_name in store._bot_map.items():
+            for (platform, bot_id), agent_name in store.get_all_bot_mappings().items():
                 bot_map.setdefault(agent_name, []).append(f"{platform}:{bot_id}")
 
             typer.echo(
@@ -353,7 +358,7 @@ def validate(  # noqa: C901, PLR0915
                 typer.echo(f"Error: agent {name!r} not found in DB", err=True)
                 raise typer.Exit(1)
             errors_found: list[str] = []
-            if row.backend not in ("claude-cli", "anthropic-sdk", "ollama"):
+            if row.backend not in _VALID_BACKENDS:
                 errors_found.append(f"unknown backend: {row.backend!r}")
             if not row.model:
                 errors_found.append("model is empty")

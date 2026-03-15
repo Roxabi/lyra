@@ -524,8 +524,7 @@ async def _resolve_bot_agent_map(
         elif toml_agent:
             # 2. No DB row — fall back to TOML bot_cfg.agent, seed bot_agent_map.
             log.info(
-                "bot_agent_map: no DB row for (%r, %r) — "
-                "seeding from TOML agent=%r",
+                "bot_agent_map: no DB row for (%r, %r) — seeding from TOML agent=%r",
                 platform,
                 bot_id,
                 toml_agent,
@@ -572,7 +571,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
     # ------------------------------------------------------------------
     # Multi-bot path: validate auth per bot, collect unique agent names.
     # ------------------------------------------------------------------
-    vault_dir_mb = Path.home() / ".lyra"
+    vault_dir_mb = Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra")))
     vault_dir_mb.mkdir(parents=True, exist_ok=True)
     auth_store = AuthStore(db_path=vault_dir_mb / "auth.db")
     await auth_store.connect()
@@ -943,7 +942,7 @@ async def _bootstrap_legacy(  # noqa: C901, PLR0915 — startup wiring: each ada
     # Runs when no [[telegram.bots]] / [[discord.bots]] arrays are found.
     # Behavior is identical to the original single-bot implementation.
     # ------------------------------------------------------------------
-    vault_dir_lg = Path.home() / ".lyra"
+    vault_dir_lg = Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra")))
     vault_dir_lg.mkdir(parents=True, exist_ok=True)
     auth_store_legacy = AuthStore(db_path=vault_dir_lg / "auth.db")
     await auth_store_legacy.connect()

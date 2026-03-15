@@ -10,6 +10,8 @@ dependencies = [
     # Adapters
     "aiogram>=3.26",       # Telegram — asyncio-native, tracks Bot API same-day
     "discord.py[voice]>=2.4",  # Discord — gateway WebSocket + voice support (voice extra pulls pynacl + davey for crypto; keep updated)
+    # TODO(#271): CVE-2025-69277 — pynacl 1.5.0 needs upgrade to >=1.6.2 once discord.py
+    # relaxes its pynacl<1.6 Windows constraint.
     # HTTP (webhook server for Telegram + inter-machine calls)
     "fastapi>=0.115",
     "uvicorn[standard]>=0.34",

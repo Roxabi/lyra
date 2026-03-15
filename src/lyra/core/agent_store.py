@@ -202,10 +202,12 @@ class AgentStore:
                 self._bot_map[(platform, bot_id)] = agent_name
 
     async def close(self) -> None:
-        """Close the database connection."""
+        """Close the database connection and clear caches."""
         if self._db is not None:
             await self._db.close()
             self._db = None
+            self._agents.clear()
+            self._bot_map.clear()
             log.info("AgentStore closed")
 
     # ------------------------------------------------------------------
@@ -226,6 +228,11 @@ class AgentStore:
         """Return agent_name for (platform, bot_id), or None."""
         self._require_db()
         return self._bot_map.get((platform, bot_id))
+
+    def get_all_bot_mappings(self) -> dict[tuple[str, str], str]:
+        """Return a snapshot of all (platform, bot_id) → agent_name mappings."""
+        self._require_db()
+        return dict(self._bot_map)
 
     # ------------------------------------------------------------------
     # Async writes
@@ -309,9 +316,7 @@ class AgentStore:
         await db.commit()
         self._agents.pop(name, None)
 
-    async def set_bot_agent(
-        self, platform: str, bot_id: str, agent_name: str
-    ) -> None:
+    async def set_bot_agent(self, platform: str, bot_id: str, agent_name: str) -> None:
         """Upsert a bot → agent mapping."""
         db = self._require_db()
         now = _utc_now_iso()
@@ -363,6 +368,11 @@ class AgentStore:
         self, agent_name: str, status: str, pool_count: int = 0
     ) -> None:
         """Upsert runtime state for an agent."""
+        _valid_statuses = {"idle", "active", "error"}
+        if status not in _valid_statuses:
+            raise ValueError(
+                f"invalid status {status!r} — must be one of {sorted(_valid_statuses)}"
+            )
         db = self._require_db()
         now = _utc_now_iso()
         await db.execute(
@@ -405,20 +415,27 @@ class AgentStore:
         if not force and name in self._agents:
             return 0
 
-        backend = agent_section.get("backend", "anthropic-sdk")
-        model = (
-            agent_section.get("model")
-            or model_section.get("model", "claude-3-5-haiku-20241022")
+        # Fields may live under [model] (wizard-generated) or [agent] (legacy).
+        backend = model_section.get("backend") or agent_section.get(
+            "backend", "anthropic-sdk"
         )
-        max_turns = agent_section.get("max_turns", 10)
-        tools_json = json.dumps(agent_section.get("tools", []))
+        model = model_section.get("model") or agent_section.get(
+            "model", "claude-3-5-haiku-20241022"
+        )
+        max_turns = model_section.get("max_turns") or agent_section.get("max_turns", 10)
+        tools_json = json.dumps(
+            model_section.get("tools") or agent_section.get("tools", [])
+        )
         persona = agent_section.get("persona")
         show_intermediate = agent_section.get("show_intermediate", False)
         smart_routing = agent_section.get("smart_routing")
         smart_routing_json = json.dumps(smart_routing) if smart_routing else None
-        plugins_json = json.dumps(agent_section.get("plugins", []))
+        # plugins may live under [plugins].enabled (wizard) or [agent].plugins (legacy)
+        plugins_json = json.dumps(
+            data.get("plugins", {}).get("enabled") or agent_section.get("plugins", [])
+        )
         memory_namespace = agent_section.get("memory_namespace")
-        cwd = agent_section.get("cwd") or model_section.get("cwd")
+        cwd = model_section.get("cwd") or agent_section.get("cwd")
 
         row = AgentRow(
             name=name,

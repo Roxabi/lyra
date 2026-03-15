@@ -56,6 +56,7 @@ from lyra.core.messages import MessageManager
 from lyra.core.outbound_dispatcher import OutboundDispatcher
 from lyra.core.pairing import PairingConfig, PairingManager, set_pairing_manager
 from lyra.core.prefs_store import PrefsStore
+from lyra.core.turn_store import TurnStore
 from lyra.errors import KeyringError, MissingCredentialsError
 from lyra.llm.base import LlmProvider
 from lyra.llm.registry import ProviderRegistry
@@ -586,6 +587,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
     auth_store: AuthStore | None = None
     cred_store: CredentialStore | None = None
     agent_store: AgentStore | None = None
+    turn_store_mb: TurnStore | None = None
     try:
         auth_store = AuthStore(db_path=vault_dir_mb / "auth.db")
         await auth_store.connect()
@@ -597,6 +599,8 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
         await cred_store.connect()
         agent_store = AgentStore(db_path=vault_dir_mb / "auth.db")
         await agent_store.connect()
+        turn_store_mb = TurnStore(db_path=vault_dir_mb / "turns.db")
+        await turn_store_mb.connect()
         # Seed per-bot owner/trusted users as permanent grants
         auth_block: dict = raw_config.get("auth", {})
         for entry in auth_block.get("telegram_bots", []):
@@ -744,6 +748,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
             debounce_ms=DEFAULT_DEBOUNCE_MS,
             prefs_store=prefs_store,
         )
+        hub.set_turn_store(turn_store_mb)
 
         # Build cli_pool if any agent needs it (uses pre-loaded configs)
         cli_pool: CliPool | None = None
@@ -938,6 +943,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
         await cred_store.close()
         await auth_store.close()
         await agent_store.close()
+        await turn_store_mb.close()
         await prefs_store.close()
         if cli_pool is not None:
             await cli_pool.stop()
@@ -949,6 +955,9 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
             await auth_store.close()
         if agent_store is not None:
             await agent_store.close()
+        if turn_store_mb is not None:
+            await turn_store_mb.close()
+
 
 
 async def _bootstrap_legacy(  # noqa: C901, PLR0915 — startup wiring: each adapter/service requires sequential conditional setup
@@ -979,6 +988,8 @@ async def _bootstrap_legacy(  # noqa: C901, PLR0915 — startup wiring: each ada
         keyring=keyring_lg,
     )
     await cred_store_legacy.connect()
+    turn_store_lg = TurnStore(db_path=vault_dir_lg / "turns.db")
+    await turn_store_lg.connect()
     await auth_store_legacy.seed_from_config(raw_config, "telegram")
     await auth_store_legacy.seed_from_config(raw_config, "discord")
 
@@ -1091,6 +1102,7 @@ async def _bootstrap_legacy(  # noqa: C901, PLR0915 — startup wiring: each ada
         tts=tts_service_legacy,
         debounce_ms=DEFAULT_DEBOUNCE_MS,
     )
+    hub.set_turn_store(turn_store_lg)
 
     cli_pool_legacy: CliPool | None = None
     if agent_config.model_config.backend == "claude-cli":
@@ -1254,6 +1266,7 @@ async def _bootstrap_legacy(  # noqa: C901, PLR0915 — startup wiring: each ada
         await pm_legacy.close()
     await cred_store_legacy.close()
     await auth_store_legacy.close()
+    await turn_store_lg.close()
     if cli_pool_legacy is not None:
         await cli_pool_legacy.stop()
     log.info("Lyra stopped.")

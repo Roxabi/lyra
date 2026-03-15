@@ -55,6 +55,23 @@ async def _complete(
 
 
 # ---------------------------------------------------------------------------
+# LlmResult
+# ---------------------------------------------------------------------------
+
+
+class TestLlmResult:
+    def test_retryable_defaults_to_true(self) -> None:
+        """LlmResult.retryable is True by default (transient-error contract)."""
+        assert LlmResult().retryable is True
+        assert LlmResult(error="any error").retryable is True
+
+    def test_retryable_can_be_set_false(self) -> None:
+        """LlmResult.retryable=False is preserved (permanent-error contract)."""
+        result = LlmResult(error="fatal", retryable=False)
+        assert result.retryable is False
+
+
+# ---------------------------------------------------------------------------
 # RetryDecorator
 # ---------------------------------------------------------------------------
 
@@ -117,8 +134,29 @@ class TestRetryDecorator:
         # Assert
         assert result.ok is False
         assert result.retryable is False
+        assert result.error == "circuit open"
         assert inner.complete.call_count == 1
         mock_sleep.assert_not_called()
+
+    async def test_retry_stops_on_non_retryable_error_mid_sequence(self) -> None:
+        """retryable=False on attempt 1 → inner called twice; sleep once; aborts."""
+        # Arrange — first result is retryable, second is not
+        inner = _make_inner([
+            make_error_result("transient"),
+            LlmResult(error="fatal", retryable=False),
+        ])
+        decorator = RetryDecorator(inner, max_retries=3, backoff_base=0.0)
+
+        # Act
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            result = await _complete(decorator)
+
+        # Assert — retried once, then aborted on non-retryable result
+        assert result.ok is False
+        assert result.retryable is False
+        assert result.error == "fatal"
+        assert inner.complete.call_count == 2
+        assert mock_sleep.call_count == 1
 
     async def test_retry_exponential_backoff(self) -> None:
         """Sleep called with base * 2^k between retry attempts (base=1.0)."""
@@ -218,3 +256,45 @@ class TestCircuitBreakerDecorator:
         # Assert — result ok, circuit still closed, no exception
         assert result.ok is True
         assert real_cb.is_open() is False
+
+
+# ---------------------------------------------------------------------------
+# Integration: RetryDecorator(CircuitBreakerDecorator(driver))
+# ---------------------------------------------------------------------------
+
+
+class TestRetryCircuitBreakerIntegration:
+    """Verify that Retry(CB(driver)) does not burn retries against an open circuit.
+
+    This is the scenario identified in PR #170 review finding #8:
+    if stacking is reversed (Retry outer, CB inner), the retryable=False flag
+    on the open-circuit result must cause RetryDecorator to abort immediately.
+    """
+
+    async def test_retry_does_not_burn_attempts_against_open_circuit(self) -> None:
+        """Retry(CB(driver)) — open circuit → driver never called, no sleep."""
+        # Arrange — real CircuitBreaker forced open
+        cb = MagicMock(spec=CircuitBreaker)
+        cb.name = "openai"
+        cb.is_open.return_value = True
+        cb.get_status.return_value = MagicMock(retry_after=60.0)
+
+        driver = _make_inner([make_ok_result()])
+        cb_decorator = CircuitBreakerDecorator(driver, cb)
+        retry_decorator = RetryDecorator(cb_decorator, max_retries=3, backoff_base=0.0)
+
+        # Act
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            result = await retry_decorator.complete(
+                pool_id="p1",
+                text="hi",
+                model_cfg=make_model_cfg(),
+                system_prompt="",
+            )
+
+        # Assert — non-retryable circuit-open error propagates; driver untouched
+        assert result.ok is False
+        assert result.retryable is False
+        assert "openai" in result.error
+        driver.complete.assert_not_called()
+        mock_sleep.assert_not_called()

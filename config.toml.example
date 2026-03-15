@@ -1,86 +1,84 @@
-# config.toml.example — copy to config.toml and fill in your values
-# config.toml is gitignored — never commit it (it contains your user IDs and secrets)
-# See .env.example for environment variables (tokens, secrets)
+# config.toml.example — copy to config.toml and fill in your values.
+# config.toml is gitignored — never commit it.
 #
-# Multi-bot schema (preferred): use [[telegram.bots]] / [[discord.bots]] arrays.
-# Legacy schema (backward compat): use [auth.telegram] / [auth.discord] flat
-# sections — Lyra will synthesize a single bot_id="main" from env vars.
-# Both schemas require at least one adapter configured, or Lyra exits.
-
-# ---------------------------------------------------------------------------
-# Machine-wide defaults — fallbacks for all agent definitions
-# ---------------------------------------------------------------------------
-# Values here are used when an agent's .toml does not specify them.
-# Resolution order: agents/<name>.toml → [defaults] → hardcoded fallback
+# ----------------------------------------------------------------------------
+# What lives here vs in the DB (~/.lyra/auth.db)
+# ----------------------------------------------------------------------------
+#
+# config.toml is the bootstrap file — only what cannot live in the DB yet:
+#   - [defaults]           machine-specific paths
+#   - [admin]              admin user IDs
+#   - [[*.bots]]           which bots exist and their adapter settings
+#   - [[auth.*_bots]]      default trust level + initial owner/trusted grants
+#
+# Everything else is managed in the DB and does NOT belong here:
+#   - Bot tokens / webhook secrets  → `lyra bot add`
+#   - Agent ↔ bot assignments       → `lyra agent assign`
+#                                      (TOML agent= is a one-time fallback
+#                                       if the DB has no mapping yet)
+#   - Agent config (prompt, TTS…)   → `lyra agent init` (seeds from TOML)
+#   - Per-user trust grants         → `lyra auth grant`
+#
+# ----------------------------------------------------------------------------
 
 [defaults]
-cwd = "~/projects"                      # default working directory for agent subprocesses
-# persona = "lyra_default"             # fallback persona (agents usually set their own)
-# workspaces.lyra     = "~/projects/lyra"
-# workspaces.projects = "~/projects"
-
-# ---------------------------------------------------------------------------
-# Admin
-# ---------------------------------------------------------------------------
+cwd = "~/projects"                      # working directory for agent subprocesses
+# workspaces.lyra     = "~/projects/lyra"   # adds /lyra slash command
+# workspaces.projects = "~/projects"        # adds /projects slash command
 
 [admin]
 # User IDs allowed to run admin commands (/invite, /unpair, etc.)
 # Format: "tg:user:<numeric_id>" or "dc:user:<numeric_snowflake>"
-# Get Telegram ID: message @userinfobot on Telegram
-# Get Discord ID: Settings → Advanced → Developer Mode → right-click username → Copy User ID
+# Get Telegram ID: message @userinfobot   Get Discord ID: Settings → Advanced → Developer Mode
 user_ids = [
     # "tg:user:123456789",
     # "dc:user:123456789012345678",
 ]
 
-# ---------------------------------------------------------------------------
-# Multi-bot schema (preferred for new deployments)
-# ---------------------------------------------------------------------------
-# Each [[telegram.bots]] / [[discord.bots]] entry defines one bot instance.
-# token / webhook_secret / bot_username support "env:VAR_NAME" to read from
-# the environment (recommended — keeps secrets out of this file).
+# ----------------------------------------------------------------------------
+# Telegram bots — one [[telegram.bots]] + [[auth.telegram_bots]] per bot
+# ----------------------------------------------------------------------------
 
 [[telegram.bots]]
-bot_id = "lyra"
-token = "env:TELEGRAM_TOKEN"
-bot_username = "env:TELEGRAM_BOT_USERNAME"
-webhook_secret = "env:TELEGRAM_WEBHOOK_SECRET"
-agent = "lyra_default"
+bot_id = "lyra"                         # must match the bot_id used in `lyra bot add`
+# bot_username = "MyLyraBot"            # optional — used in help text (default: "lyra_bot")
+# agent = "lyra_default"               # fallback if DB has no bot→agent mapping yet
 
 [[auth.telegram_bots]]
 bot_id = "lyra"
-# Trust level for unknown users: "blocked" | "trusted" | "owner"
-# "blocked" = only owner_users can interact (recommended for personal bots)
-default = "blocked"
-owner_users = []        # numeric Telegram user IDs
-trusted_users = []      # numeric Telegram user IDs (can interact, cannot admin)
+default = "blocked"                     # "blocked" | "trusted" | "owner"
+owner_users = []                        # numeric Telegram IDs — seeded into DB on startup
+# trusted_users = []                    # numeric Telegram IDs with trusted (non-admin) access
+
+# Add more bots by repeating the pair above:
+# [[telegram.bots]]
+# bot_id = "aryl"
+#
+# [[auth.telegram_bots]]
+# bot_id = "aryl"
+# default = "blocked"
+# owner_users = []
+
+# ----------------------------------------------------------------------------
+# Discord bots — one [[discord.bots]] + [[auth.discord_bots]] per bot
+# ----------------------------------------------------------------------------
 
 [[discord.bots]]
-bot_id = "lyra"
-token = "env:DISCORD_TOKEN"
-auto_thread = true
-agent = "lyra_default"
+bot_id = "lyra"                         # must match the bot_id used in `lyra bot add`
+# auto_thread = true                    # optional — thread per conversation (default: true)
+# agent = "lyra_default"               # fallback if DB has no bot→agent mapping yet
 
 [[auth.discord_bots]]
 bot_id = "lyra"
-# Trust level for unknown users: "blocked" | "trusted" | "owner"
-default = "blocked"
-owner_users = []        # numeric Discord user snowflake IDs
-trusted_roles = []      # numeric Discord role snowflake IDs (trusted access)
+default = "blocked"                     # "blocked" | "trusted" | "owner"
+owner_users = []                        # numeric Discord snowflake IDs — seeded into DB on startup
+# trusted_roles = []                    # numeric Discord role snowflake IDs with trusted access
 
-# ---------------------------------------------------------------------------
-# Legacy schema (backward compat — single bot per platform via env vars)
-# ---------------------------------------------------------------------------
-# Uncomment the sections below and remove the [[*.bots]] arrays above if you
-# prefer the old flat configuration. Lyra will use bot_id="main" and read
-# TELEGRAM_TOKEN / DISCORD_TOKEN directly from the environment.
-
-# [auth.telegram]
+# Add more bots by repeating the pair above:
+# [[discord.bots]]
+# bot_id = "aryl"
+#
+# [[auth.discord_bots]]
+# bot_id = "aryl"
 # default = "blocked"
 # owner_users = []
-# trusted_users = []
-
-# [auth.discord]
-# default = "blocked"
-# owner_users = []
-# trusted_roles = []

@@ -586,7 +586,7 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
     )
 
 
-def agent_row_to_config(  # noqa: C901 — mirrors load_agent_config() branching; each branch handles one optional field
+def agent_row_to_config(  # noqa: C901, PLR0915 — mirrors load_agent_config() branching; each branch handles one optional field
     row: "AgentRow",
     instance_overrides: dict | None = None,
 ) -> "Agent":
@@ -695,6 +695,34 @@ def agent_row_to_config(  # noqa: C901 — mirrors load_agent_config() branching
 
     memory_namespace = row.memory_namespace or row.name
 
+    # Deserialize tts_json → AgentTTSConfig
+    agent_tts: AgentTTSConfig | None = None
+    if row.tts_json:
+        tts_data: dict = json.loads(row.tts_json)
+        agent_tts = AgentTTSConfig(
+            engine=tts_data.get("engine"),
+            voice=tts_data.get("voice"),
+            language=tts_data.get("language"),
+            accent=tts_data.get("accent"),
+            personality=tts_data.get("personality"),
+            speed=tts_data.get("speed"),
+            emotion=tts_data.get("emotion"),
+            segment_gap=tts_data.get("segment_gap"),
+            crossfade=tts_data.get("crossfade"),
+            chunked=tts_data.get("chunked"),
+            chunk_size=tts_data.get("chunk_size"),
+        )
+
+    # Deserialize stt_json → AgentSTTConfig
+    agent_stt: AgentSTTConfig | None = None
+    if row.stt_json:
+        stt_data: dict = json.loads(row.stt_json)
+        agent_stt = AgentSTTConfig(
+            language_detection_threshold=stt_data.get("language_detection_threshold"),
+            language_detection_segments=stt_data.get("language_detection_segments"),
+            language_fallback=stt_data.get("language_fallback"),
+        )
+
     return Agent(
         name=row.name,
         system_prompt=system_prompt,
@@ -708,8 +736,8 @@ def agent_row_to_config(  # noqa: C901 — mirrors load_agent_config() branching
         smart_routing=smart_routing,
         show_intermediate=row.show_intermediate,
         workspaces=workspaces,
-        tts=None,
-        stt=None,
+        tts=agent_tts,
+        stt=agent_stt,
     )
 
 

@@ -796,7 +796,11 @@ class TelegramAdapter:
         keyboard = self._render_buttons(outbound.buttons)
         last_idx = len(chunks) - 1
 
-        reply_to: int | None = original_msg.platform_meta.get("message_id")
+        reply_to: int | None = (
+            original_msg.platform_meta.get("message_id")
+            if original_msg.is_mention
+            else None
+        )
         for i, chunk in enumerate(chunks):
             kwargs: dict = {
                 "chat_id": chat_id,

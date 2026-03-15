@@ -771,9 +771,11 @@ class DiscordAdapter(discord.Client):
         view = self._render_buttons(outbound.buttons)
         last_idx = len(chunks) - 1
 
-        # Reply to original message when not in a thread (DMs + server channels)
+        # Reply to original message only on @mention (not in threads)
         reply_msg_id: int | None = (
-            original_msg.platform_meta.get("message_id") if thread_id is None else None
+            original_msg.platform_meta.get("message_id")
+            if thread_id is None and original_msg.is_mention
+            else None
         )
         for i, chunk in enumerate(chunks):
             chunk_view = view if (i == last_idx and view is not None) else None

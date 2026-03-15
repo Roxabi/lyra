@@ -82,55 +82,55 @@ def _make_chunked_result(chunk_wav_paths: list[str]) -> MagicMock:
 
 @pytest.mark.asyncio
 async def test_synthesize_returns_synthesis_result():
-    """synthesize() returns SynthesisResult with MP3 audio_bytes and audio/mpeg mime."""
+    """synthesize() returns SynthesisResult with OGG audio_bytes and audio/ogg mime."""
     svc = TTSService(TTSConfig())
 
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
         wav_path = tmp.name
-    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_mp3:
-        mp3_path = tmp_mp3.name
+    with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp_ogg:
+        ogg_path = tmp_ogg.name
 
     _write_minimal_wav(wav_path, duration_ms=500)
-    expected_bytes = b"fakemp3data"
-    Path(mp3_path).write_bytes(expected_bytes)
+    expected_bytes = b"fakeoggdata"
+    Path(ogg_path).write_bytes(expected_bytes)
 
     async def fake_generate(text, **kwargs):
         _write_minimal_wav(wav_path, duration_ms=500)
         return _make_chunked_result([wav_path])
 
     with patch("voicecli.generate_async", new=AsyncMock(side_effect=fake_generate)):
-        with patch("voicecli.utils.wav_to_mp3", return_value=Path(mp3_path)):
+        with patch("lyra.tts._wav_to_ogg", return_value=Path(ogg_path)):
             result = await svc.synthesize("Hello world")
 
     assert isinstance(result, SynthesisResult)
     assert result.audio_bytes == expected_bytes
-    assert result.mime_type == "audio/mpeg"
-    assert result.duration_ms is None  # MP3 duration not read
+    assert result.mime_type == "audio/ogg"
+    assert result.duration_ms is not None  # computed from WAV before OGG conversion
 
 
 @pytest.mark.asyncio
 async def test_synthesize_cleans_up_temp_file_on_success():
-    """synthesize() deletes temp WAV chunk and MP3 files after success."""
+    """synthesize() deletes temp WAV chunk and OGG files after success."""
     svc = TTSService(TTSConfig())
 
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
         wav_path = tmp.name
-    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_mp3:
-        mp3_path = tmp_mp3.name
+    with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp_ogg:
+        ogg_path = tmp_ogg.name
 
     _write_minimal_wav(wav_path, duration_ms=200)
-    Path(mp3_path).write_bytes(b"fakemp3")
+    Path(ogg_path).write_bytes(b"fakeogg")
 
     async def fake_generate(text, **kwargs):
         _write_minimal_wav(wav_path, duration_ms=200)
         return _make_chunked_result([wav_path])
 
     with patch("voicecli.generate_async", new=AsyncMock(side_effect=fake_generate)):
-        with patch("voicecli.utils.wav_to_mp3", return_value=Path(mp3_path)):
+        with patch("lyra.tts._wav_to_ogg", return_value=Path(ogg_path)):
             await svc.synthesize("Cleanup test")
 
     assert not os.path.exists(wav_path), "WAV file must be deleted after synthesis"
-    assert not os.path.exists(mp3_path), "MP3 file must be deleted after synthesis"
+    assert not os.path.exists(ogg_path), "OGG file must be deleted after synthesis"
 
 
 @pytest.mark.asyncio
@@ -172,11 +172,11 @@ async def test_synthesize_passes_language_to_generate():
 
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
         wav_path = tmp.name
-    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_mp3:
-        mp3_path = tmp_mp3.name
+    with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp_ogg:
+        ogg_path = tmp_ogg.name
 
     _write_minimal_wav(wav_path)
-    Path(mp3_path).write_bytes(b"fakemp3")
+    Path(ogg_path).write_bytes(b"fakeogg")
 
     async def fake_gen(text, **kwargs):
         captured.update(kwargs)
@@ -184,10 +184,10 @@ async def test_synthesize_passes_language_to_generate():
         return _make_chunked_result([wav_path])
 
     with patch("voicecli.generate_async", new=AsyncMock(side_effect=fake_gen)):
-        with patch("voicecli.utils.wav_to_mp3", return_value=Path(mp3_path)):
+        with patch("lyra.tts._wav_to_ogg", return_value=Path(ogg_path)):
             await svc.synthesize("Hello", language="fr")
 
-    assert captured.get("language") == "fr"
+    assert captured.get("language") == "french"  # ISO code normalized to full name
 
 
 @pytest.mark.asyncio
@@ -198,11 +198,11 @@ async def test_synthesize_language_none_uses_init_value():
 
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
         wav_path = tmp.name
-    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_mp3:
-        mp3_path = tmp_mp3.name
+    with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp_ogg:
+        ogg_path = tmp_ogg.name
 
     _write_minimal_wav(wav_path)
-    Path(mp3_path).write_bytes(b"fakemp3")
+    Path(ogg_path).write_bytes(b"fakeogg")
 
     async def fake_gen(text, **kwargs):
         captured.update(kwargs)
@@ -210,7 +210,7 @@ async def test_synthesize_language_none_uses_init_value():
         return _make_chunked_result([wav_path])
 
     with patch("voicecli.generate_async", new=AsyncMock(side_effect=fake_gen)):
-        with patch("voicecli.utils.wav_to_mp3", return_value=Path(mp3_path)):
+        with patch("lyra.tts._wav_to_ogg", return_value=Path(ogg_path)):
             await svc.synthesize("Hello")  # no language override
 
     assert captured.get("language") == "English"

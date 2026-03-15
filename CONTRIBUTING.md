@@ -111,9 +111,9 @@ hub.register_binding(Platform.SIGNAL, "main", "*", "lyra", ...)
 
 ## Adding an agent
 
-An agent is a stateless singleton defined by a TOML config. It processes messages via `agent.process(msg, pool) -> Response`.
+An agent is a stateless singleton defined by a TOML seed file and stored in the AgentStore (SQLite at `~/.lyra/auth.db`).
 
-**1. Create a TOML config** in `src/lyra/agents/my_agent.toml`:
+**1. Create a TOML seed** in `src/lyra/agents/my_agent.toml`:
 
 ```toml
 [agent]
@@ -123,7 +123,7 @@ permissions = []
 
 [model]
 backend = "claude-cli"
-model = "claude-sonnet-4-5"
+model = "claude-sonnet-4-6"
 max_turns = 10
 tools = ["Read", "Grep", "Glob"]
 
@@ -131,18 +131,26 @@ tools = ["Read", "Grep", "Glob"]
 system = """You are ..."""
 ```
 
-**2. Load and register in `__main__.py`**:
+**2. Import into the AgentStore**:
 
-```python
-my_config = load_agent_config("my_agent")
-my_agent = SimpleAgent(my_config, cli_pool)
-hub.register_agent(my_agent)
+```bash
+lyra agent init          # imports all TOML seeds into the DB
+lyra agent list          # verify it appears
 ```
 
-**3. Add a binding** so the hub routes messages to it:
+**3. Wire a bot to the agent** in `config.toml`:
 
-```python
-hub.register_binding(Platform.TELEGRAM, "main", "tg:user:123456", "my_agent", pool_id)
+```toml
+[[telegram.bots]]
+bot_id = "my_bot"
+token = "env:MY_BOT_TOKEN"
+agent = "my_agent"
+```
+
+**4. Assign the bot** (if not auto-assigned at startup):
+
+```bash
+lyra agent assign my_agent --platform telegram --bot my_bot
 ```
 
 For a custom agent class (beyond `SimpleAgent`), subclass `AgentBase` from `src/lyra/core/agent.py` and implement `process()`.

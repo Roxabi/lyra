@@ -7,6 +7,7 @@
 ![uv](https://img.shields.io/badge/uv-package%20manager-DE5FE9)
 ![version](https://img.shields.io/badge/version-0.1.0-22c55e)
 ![asyncio](https://img.shields.io/badge/concurrency-asyncio-0ea5e9)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
 Lyra runs 24/7 on your own hardware, connects Telegram and Discord to specialized AI agents, and routes every conversation through isolated per-scope pools. No cloud lock-in. No subscription. Your data stays on your machines.
 
@@ -203,59 +204,19 @@ MACHINE1_DIR=~/projects/lyra
 
 ```
 src/lyra/
-  core/
-    message.py             — InboundMessage, OutboundMessage, RoutingKey, Platform, Response
-    hub.py                 — Hub (bus + adapter registry + bindings + TTL eviction)
-    pool.py                — Pool (history + session identity fields + asyncio.Task per scope)
-    agent.py               — AgentBase (compact, flush_session, build_system_prompt), Agent config
-    agent_store.py         — AgentStore (SQLite-backed agent registry, ~/.lyra/auth.db)
-    turn_store.py          — TurnStore (raw turn logging to ~/.lyra/turns.db, L1 memory)
-    memory.py              — MemoryManager (recall, upsert_session, concept/preference extraction)
-    auth.py                — AuthMiddleware (per-adapter trust verification)
-    trust.py               — TrustLevel enum (owner/trusted/public/blocked)
-    cli_pool.py            — Claude CLI subprocess pool
-    inbound_bus.py         — InboundBus (per-platform queues + staging)
-    inbound_audio_bus.py   — InboundAudioBus (per-platform bounded audio queues)
-    outbound_dispatcher.py — OutboundDispatcher (per-platform outbound + CB + audio/attachment)
-    command_router.py      — CommandRouter (builtins + plugin + session commands)
-    session_commands.py    — /add, /explain, /summarize handlers (scrape → LLM → vault)
-    session_helpers.py     — scrape_url, vault_add, vault_search async subprocess wrappers
-    circuit_breaker.py     — CircuitBreaker + CircuitRegistry
-    pairing.py             — PairingManager (cross-platform identity linking)
-    plugin_loader.py       — PluginLoader (TOML manifest + dynamic import)
-    debouncer.py           — Debouncer (typing-aware message aggregation)
-    runtime_config.py      — RuntimeConfig (mutable agent overlay via !config)
-    messages.py            — MessageManager (i18n-ready message templates)
-  adapters/
-    _shared.py      — shared adapter helpers (normalization, render functions)
-    telegram.py     — aiogram v3 adapter (polling + webhook)
-    discord.py      — discord.py v2 gateway adapter
-    cli.py          — CLI adapter (stdin/stdout)
-  agents/
-    simple_agent.py       — Claude CLI agent implementation
-    anthropic_agent.py    — Anthropic SDK agent implementation
-    lyra_default.toml     — default agent seed (model, tools, system prompt)
-  llm/
-    base.py               — LlmProvider protocol, LlmResult (with retryable flag)
-    drivers/cli.py        — ClaudeCliDriver
-    drivers/sdk.py        — AnthropicSdkDriver
-    registry.py           — driver registry
-    smart_routing.py      — complexity-based model selection
-    decorators.py         — LLM call decorators
-  stt/                    — STTService + STTConfig (faster-whisper)
-  plugins/                — Plugin handlers (echo, pairing, search)
-  monitoring/             — Health checks (two-tier /health) + escalation
-  errors.py               — ProviderError + shared error types
-tests/
-  core/             — unit + integration tests (pytest-asyncio, pytest-cov)
-  adapters/         — adapter tests (streaming, voice, normalization)
-docs/
-  ARCHITECTURE.md   — full technical spec and decisions
-  ROADMAP.md        — priorities and scope
-  QUICKSTART.md     — developer setup guide
-  vision.md         — design principles and constraints
-  architecture/adr/ — architecture decision records (24 ADRs)
+  core/       — hub, pool, agent, message, memory, auth, bus, command router
+  adapters/   — channel adapters (Telegram, Discord, CLI)
+  agents/     — agent implementations + TOML seed configs
+  llm/        — LlmProvider protocol, drivers (CLI, SDK), smart routing
+  stt/        — STTService (faster-whisper)
+  tts/        — TTS pipeline (voicecli, OGG/Opus)
+  plugins/    — plugin handlers (echo, pairing, search)
+  monitoring/ — health checks + escalation
+tests/        — pytest-asyncio + pytest-cov (core, adapters, llm, cli)
+docs/         — ARCHITECTURE.md, ROADMAP.md, QUICKSTART.md, 24 ADRs
 ```
+
+> See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full file-by-file breakdown.
 
 ## Documentation
 

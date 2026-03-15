@@ -1,0 +1,122 @@
+---
+title: "ADR-024: AgentStore SQLite Design — Cache Strategy, CLI Async Pattern, and DB Path Resolution"
+description: Documents the architectural decisions made for the SQLite-backed AgentStore introduced in issue #268, covering write-through cache consistency, CLI asyncio.run() pattern, vault path resolution, and the two-tier read model.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+Issue #268 introduced `AgentStore`, a SQLite-backed registry for agent configurations, following
+the established `AuthStore` / `CredentialStore` / `PrefsStore` pattern in the codebase. Three
+new tables — `agents`, `bot_agent_map`, `agent_runtime_state` — are added to `auth.db`.
+
+During PR #269 review, four design decisions were identified that warrant explicit recording:
+
+1. How write-through cache consistency is handled under process failure.
+2. Whether `asyncio.run()` is the right dispatch mechanism for CLI commands.
+3. How the vault directory path is resolved across the CLI and hub bootstrap.
+4. Whether `agent_runtime_state` should be cached in memory like the other two tables.
+
+## Options Considered
+
+### Option A: DB-first, cache-second write ordering (current implementation)
+
+`upsert()` and write operations execute `db.execute()` → `db.commit()` → update in-memory
+cache. If the process dies between `commit()` and the dict update, the DB has the new row but
+the cache holds the old value until the next `connect()` / `_warm_cache()`.
+
+- **Pros:** Guarantees DB is always at least as fresh as the cache. Cache never contains data
+  that was never persisted. Consistent with `AuthStore` ordering.
+- **Cons:** A crash in the narrow window between commit and cache update leaves cache stale.
+  Stale state resolves on next startup (hub restarts clean); CLI processes are short-lived so
+  the risk window is negligible.
+
+### Option B: Cache-first, then commit
+
+Update in-memory cache before `db.commit()`. If `commit()` fails, roll back cache manually.
+
+- **Pros:** Cache is never behind DB for the success path.
+- **Cons:** Requires manual rollback logic. If `commit()` succeeds but the rollback guard has
+  already run, state diverges permanently. More complex and more failure modes than Option A.
+
+### Option C: `asyncio.run()` per CLI command (current implementation)
+
+Each CLI command defines an inner `async def _run()` and invokes it with `asyncio.run()`.
+
+- **Pros:** Simple. No event loop management. Matches the established pattern in other Lyra
+  CLI commands. Correct for a process with no pre-existing event loop.
+- **Cons:** Raises `RuntimeError("This event loop is already running")` if called from within
+  a running loop (e.g., a FastAPI route handler or an `asyncio`-based test runner). Not a
+  problem today; a trap for future callers.
+
+### Option D: Shared `_resolve_vault_dir()` utility for DB path resolution
+
+Extract a single function in `lyra.core.paths` (or equivalent) that reads `LYRA_VAULT_DIR`
+with a default of `~/.lyra`. All stores (AgentStore, AuthStore, CredentialStore, PrefsStore)
+call this utility rather than each hardcoding the path independently.
+
+- **Pros:** Single source of truth for the vault location. Operators can redirect the DB with
+  `LYRA_VAULT_DIR`; both CLI and hub honour it. Eliminates split-brain risk.
+- **Cons:** Requires touching `__main__.py` and all four store instantiation sites.
+
+### Option E: Uncached `agent_runtime_state` (current implementation)
+
+`agent_runtime_state` has no in-memory cache. Every `get_all_runtime_states()` call issues a
+DB query. Writes (`set_runtime_state()`) also go directly to DB.
+
+- **Pros:** Correct for a write-heavy, monitoring-only table. Avoids cache invalidation
+  complexity. CLI reads always reflect current state.
+- **Cons:** Creates a two-tier read model within a single class: sync cache reads for
+  `agents` / `bot_map`, async DB reads for `runtime_state`. Inconsistency requires
+  documentation to avoid confusion.
+
+## Decision
+
+**Write ordering (Finding-1, Finding-5):** Retain Option A (DB-first, cache-second). The
+failure window is negligible for a personal agent engine that restarts cleanly. `close()` must
+clear `self._agents` and `self._bot_map` in addition to setting `self._db = None`, so that
+post-close `get()` calls raise via `_require_db()` rather than returning stale cache data.
+
+**CLI async dispatch (Finding-3):** Retain Option C (`asyncio.run()`). The commands are
+CLI-only entry points; the pattern is intentional and consistent with the rest of the codebase.
+A module-level comment documents that these commands must not be invoked from within a running
+event loop.
+
+**Vault path resolution (Finding-4):** Adopt Option D as a required fix before merge. The
+split-brain risk — CLI writes to `LYRA_VAULT_DIR/auth.db`, hub reads from `~/.lyra/auth.db`
+— is a correctness issue. A shared `_resolve_vault_dir()` helper is the minimum required
+change.
+
+**Runtime state caching (Finding-7):** Retain Option E (uncached). The two-tier model is
+intentional and should be documented in `AgentStore`'s class docstring.
+
+## Consequences
+
+### Positive
+
+- Write-through cache pattern is consistent with `AuthStore`, reducing cognitive load for
+  contributors already familiar with that class.
+- `asyncio.run()` keeps CLI commands self-contained and easy to test in isolation with a
+  subprocess.
+- Uncached `agent_runtime_state` avoids invalidation complexity for a monitoring-only table.
+- Shared `_resolve_vault_dir()` eliminates an operator footgun.
+
+### Negative
+
+- `close()` clearing the cache means a reconnect is required to resume reads; callers must
+  not reuse a closed store. This matches the spec but is a constraint callers must honour.
+- The two-tier read model (sync cache vs async DB) within one class increases API surface
+  irregularity. Future contributors must read the docstring to understand which methods are
+  sync and which are async.
+
+### Neutral
+
+- `_agent_row_to_config()` in `agent.py` uses `TYPE_CHECKING`-only import of `AgentRow` to
+  avoid a runtime circular dependency between `agent.py` and `agent_store.py`. This is an
+  established Python pattern and carries no runtime cost.
+- `agent_runtime_state` does not participate in hub routing decisions today. If a future
+  feature needs sync access to runtime state (e.g., load-aware routing), a cache will be
+  needed at that time.

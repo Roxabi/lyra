@@ -236,7 +236,8 @@ async def test_send_calls_bot_send_message() -> None:
     await adapter.send(original_msg, outbound)
 
     bot.send_message.assert_awaited_once_with(
-        chat_id=123, text="reply", parse_mode="MarkdownV2"
+        chat_id=123, text="reply", parse_mode="MarkdownV2",
+        reply_to_message_id=99,
     )
 
 
@@ -481,7 +482,8 @@ async def test_send_stores_reply_message_id_in_metadata() -> None:
 
     # Assert
     bot.send_message.assert_awaited_once_with(
-        chat_id=123, text="reply", parse_mode="MarkdownV2"
+        chat_id=123, text="reply", parse_mode="MarkdownV2",
+        reply_to_message_id=777,
     )
     assert outbound.metadata["reply_message_id"] == 888
 

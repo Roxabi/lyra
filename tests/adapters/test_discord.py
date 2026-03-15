@@ -237,8 +237,8 @@ async def test_send_reply_on_mention() -> None:
 
 
 @pytest.mark.asyncio
-async def test_send_channel_on_no_mention() -> None:
-    """send() calls channel.send(text) when is_mention=False."""
+async def test_send_reply_on_no_mention() -> None:
+    """send() still replies to the trigger message even when is_mention=False."""
     from lyra.adapters.discord import DiscordAdapter
     from lyra.core.message import InboundMessage, OutboundMessage
 
@@ -247,8 +247,10 @@ async def test_send_channel_on_no_mention() -> None:
         hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
     )
 
+    mock_message = AsyncMock()
+    mock_message.reply = AsyncMock()
     mock_channel = AsyncMock()
-    mock_channel.send = AsyncMock()
+    mock_channel.get_partial_message = MagicMock(return_value=mock_message)
     _attach_typing_cm(mock_channel)
     adapter.get_channel = MagicMock(return_value=mock_channel)
 
@@ -275,7 +277,8 @@ async def test_send_channel_on_no_mention() -> None:
 
     await adapter.send(hub_msg, OutboundMessage.from_text("hi"))
 
-    mock_channel.send.assert_awaited_once_with("hi")
+    mock_channel.get_partial_message.assert_called_once_with(555)
+    mock_message.reply.assert_awaited_once_with("hi")
 
 
 # ---------------------------------------------------------------------------
@@ -639,7 +642,10 @@ async def test_send_skips_when_discord_circuit_open() -> None:
         circuit_registry=registry,
     )
 
+    mock_message = AsyncMock()
+    mock_message.reply = AsyncMock()
     mock_channel = AsyncMock()
+    mock_channel.get_partial_message = MagicMock(return_value=mock_message)
     mock_channel.send = AsyncMock()
     _attach_typing_cm(mock_channel)
     adapter.get_channel = MagicMock(return_value=mock_channel)
@@ -668,8 +674,8 @@ async def test_send_skips_when_discord_circuit_open() -> None:
     # Act
     await adapter.send(hub_msg, OutboundMessage.from_text("hi"))
 
-    # Assert — CB is open but adapter still calls channel.send (CB check in dispatcher)
-    mock_channel.send.assert_awaited_once()
+    # Assert — CB is open but adapter still delivers (CB check in dispatcher)
+    mock_message.reply.assert_awaited_once_with("hi")
 
 
 # ---------------------------------------------------------------------------
@@ -730,7 +736,7 @@ async def test_discord_msg_manager_injection_backpressure_ack() -> None:
 
 @pytest.mark.asyncio
 async def test_send_stores_reply_message_id_channel_send() -> None:
-    """send() via channel.send() stores sent message id in outbound.metadata."""
+    """send() via msg.reply() stores sent message id in metadata."""
     from lyra.adapters.discord import DiscordAdapter
     from lyra.core.message import InboundMessage, OutboundMessage
 
@@ -741,8 +747,10 @@ async def test_send_stores_reply_message_id_channel_send() -> None:
     )
 
     sent_msg = SimpleNamespace(id=888)
+    mock_message = AsyncMock()
+    mock_message.reply = AsyncMock(return_value=sent_msg)
     mock_channel = AsyncMock()
-    mock_channel.send = AsyncMock(return_value=sent_msg)
+    mock_channel.get_partial_message = MagicMock(return_value=mock_message)
     _attach_typing_cm(mock_channel)
     adapter.get_channel = MagicMock(return_value=mock_channel)
 
@@ -772,7 +780,8 @@ async def test_send_stores_reply_message_id_channel_send() -> None:
     await adapter.send(hub_msg, outbound)
 
     # Assert
-    mock_channel.send.assert_awaited_once_with("hi")
+    mock_channel.get_partial_message.assert_called_once_with(555)
+    mock_message.reply.assert_awaited_once_with("hi")
     assert outbound.metadata["reply_message_id"] == 888
 
 
@@ -849,8 +858,10 @@ async def test_send_no_reply_message_id_on_failure() -> None:
         hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
     )
 
+    mock_message = AsyncMock()
+    mock_message.reply = AsyncMock(side_effect=Exception("network error"))
     mock_channel = AsyncMock()
-    mock_channel.send = AsyncMock(side_effect=Exception("network error"))
+    mock_channel.get_partial_message = MagicMock(return_value=mock_message)
     _attach_typing_cm(mock_channel)
     adapter.get_channel = MagicMock(return_value=mock_channel)
 
@@ -1163,13 +1174,15 @@ class TestDiscordOutboundMessage:
 
     @pytest.mark.asyncio
     async def test_send_accepts_outbound_message(self) -> None:
-        """adapter.send(msg, OutboundMessage.from_text("hello")) calls channel.send."""
+        """adapter.send(msg, OutboundMessage.from_text("hello")) replies to trigger."""
         # Arrange
         adapter = _make_discord_adapter()
 
         sent_mock = SimpleNamespace(id=88)
+        mock_message = AsyncMock()
+        mock_message.reply = AsyncMock(return_value=sent_mock)
         mock_channel = AsyncMock()
-        mock_channel.send = AsyncMock(return_value=sent_mock)
+        mock_channel.get_partial_message = MagicMock(return_value=mock_message)
         _attach_typing_cm(mock_channel)
         adapter.get_channel = MagicMock(return_value=mock_channel)
 
@@ -1180,7 +1193,7 @@ class TestDiscordOutboundMessage:
         await adapter.send(original_msg, outbound)
 
         # Assert
-        mock_channel.send.assert_awaited()
+        mock_message.reply.assert_awaited()
 
     def test_render_text_empty_returns_no_chunks(self) -> None:
         """_render_text("") returns [] — no empty-string chunk to send to the API."""
@@ -1230,18 +1243,26 @@ class TestDiscordOutboundMessage:
 
     @pytest.mark.asyncio
     async def test_buttons_only_on_last_chunk(self) -> None:
-        """Sending OutboundMessage with long content + buttons: first channel.send
-        call has no view (or view=None), second (last) call has view set."""
+        """Sending OutboundMessage with long content + buttons: first chunk is
+        a reply (no view), second (last) chunk uses channel.send with view."""
         # Arrange
         adapter = _make_discord_adapter()
 
-        calls: list[dict] = []
+        reply_calls: list[dict] = []
+        send_calls: list[dict] = []
+
+        async def capture_reply(*args, **kwargs):  # type: ignore[return]
+            reply_calls.append(dict(kwargs))
+            return SimpleNamespace(id=len(reply_calls))
 
         async def capture_send(*args, **kwargs):  # type: ignore[return]
-            calls.append(dict(kwargs))
-            return SimpleNamespace(id=len(calls))
+            send_calls.append(dict(kwargs))
+            return SimpleNamespace(id=100 + len(send_calls))
 
+        mock_message = AsyncMock()
+        mock_message.reply = capture_reply
         mock_channel = AsyncMock()
+        mock_channel.get_partial_message = MagicMock(return_value=mock_message)
         mock_channel.send = capture_send
         _attach_typing_cm(mock_channel)
         adapter.get_channel = MagicMock(return_value=mock_channel)
@@ -1255,12 +1276,11 @@ class TestDiscordOutboundMessage:
         # Act
         await adapter.send(original_msg, outbound)
 
-        # Assert — two send calls made (2500 chars → 2 chunks of ≤ 2000)
-        assert len(calls) == 2, f"Expected 2 channel.send calls, got {len(calls)}"
-        # First chunk: no view, or view is None
-        assert calls[0].get("view") is None or "view" not in calls[0]
-        # Last chunk: view is set (truthy)
-        assert calls[1].get("view") is not None
+        # Assert — first chunk via reply (no view), second via send (with view)
+        assert len(reply_calls) == 1, f"Expected 1 reply call, got {len(reply_calls)}"
+        assert reply_calls[0].get("view") is None or "view" not in reply_calls[0]
+        assert len(send_calls) == 1, f"Expected 1 send call, got {len(send_calls)}"
+        assert send_calls[0].get("view") is not None
 
     @pytest.mark.asyncio
     async def test_reply_message_id_stored_in_metadata(self) -> None:
@@ -1269,8 +1289,10 @@ class TestDiscordOutboundMessage:
         adapter = _make_discord_adapter()
 
         sent_mock = SimpleNamespace(id=7654)
+        mock_message = AsyncMock()
+        mock_message.reply = AsyncMock(return_value=sent_mock)
         mock_channel = AsyncMock()
-        mock_channel.send = AsyncMock(return_value=sent_mock)
+        mock_channel.get_partial_message = MagicMock(return_value=mock_message)
         _attach_typing_cm(mock_channel)
         adapter.get_channel = MagicMock(return_value=mock_channel)
 
@@ -1689,8 +1711,10 @@ async def test_send_cancels_typing_task_at_start() -> None:
         hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
     )
 
+    mock_message = AsyncMock()
+    mock_message.reply = AsyncMock(return_value=AsyncMock(id=999))
     mock_channel = AsyncMock()
-    mock_channel.send = AsyncMock(return_value=AsyncMock(id=999))
+    mock_channel.get_partial_message = MagicMock(return_value=mock_message)
     adapter.get_channel = MagicMock(return_value=mock_channel)
 
     hub_msg = InboundMessage(
@@ -1743,7 +1767,10 @@ async def test_send_streaming_cancels_typing_task_at_start() -> None:
     mock_placeholder.id = 888
     mock_placeholder.edit = AsyncMock()
 
+    mock_message = AsyncMock()
+    mock_message.reply = AsyncMock(return_value=mock_placeholder)
     mock_channel = AsyncMock()
+    mock_channel.get_partial_message = MagicMock(return_value=mock_message)
     mock_channel.send = AsyncMock(return_value=mock_placeholder)
     adapter.get_channel = MagicMock(return_value=mock_channel)
 

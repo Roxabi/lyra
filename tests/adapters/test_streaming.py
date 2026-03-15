@@ -210,7 +210,11 @@ class TestDiscordStreaming:
         mock_placeholder = AsyncMock()
         mock_placeholder.edit = AsyncMock()
 
+        mock_message = AsyncMock()
+        mock_message.reply = AsyncMock(return_value=mock_placeholder)
+
         mock_channel = MagicMock()
+        mock_channel.get_partial_message = MagicMock(return_value=mock_message)
         mock_channel.send = AsyncMock(return_value=mock_placeholder)
 
         adapter.get_channel = MagicMock(return_value=mock_channel)
@@ -222,7 +226,9 @@ class TestDiscordStreaming:
 
         await adapter.send_streaming(msg, quick_chunks())
 
-        channel.send.assert_awaited_once_with("\u2026")
+        # Placeholder sent as reply to trigger message
+        mock_msg = channel.get_partial_message.return_value
+        mock_msg.reply.assert_awaited_once_with("\u2026")
         last_edit = placeholder.edit.call_args
         assert last_edit.kwargs["content"] == "Hello world!"
 

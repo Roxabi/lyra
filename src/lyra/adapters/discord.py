@@ -771,12 +771,8 @@ class DiscordAdapter(discord.Client):
         view = self._render_buttons(outbound.buttons)
         last_idx = len(chunks) - 1
 
-        # Reply to original message only on @mention (not in threads)
-        reply_msg_id: int | None = (
-            original_msg.platform_meta.get("message_id")
-            if thread_id is None and original_msg.is_mention
-            else None
-        )
+        # Always reply to the message that triggered the response
+        reply_msg_id: int | None = original_msg.platform_meta.get("message_id")
         for i, chunk in enumerate(chunks):
             chunk_view = view if (i == last_idx and view is not None) else None
             if i == 0 and reply_msg_id is not None:
@@ -836,8 +832,13 @@ class DiscordAdapter(discord.Client):
 
         # Send placeholder
         _placeholder_text = self._msg("stream_placeholder", "\u2026")
+        reply_msg_id: int | None = original_msg.platform_meta.get("message_id")
         try:
-            placeholder = await messageable.send(_placeholder_text)
+            if reply_msg_id is not None:
+                msg_obj = messageable.get_partial_message(reply_msg_id)  # type: ignore[attr-defined]
+                placeholder = await msg_obj.reply(_placeholder_text)
+            else:
+                placeholder = await messageable.send(_placeholder_text)
             if outbound is not None:
                 outbound.metadata["reply_message_id"] = placeholder.id
         except Exception:

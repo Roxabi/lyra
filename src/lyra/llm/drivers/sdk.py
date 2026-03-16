@@ -12,6 +12,12 @@ if TYPE_CHECKING:
 import anthropic
 
 from lyra.core.agent import ModelConfig
+from lyra.errors import (
+    ProviderApiError,
+    ProviderAuthError,
+    ProviderError,
+    ProviderRateLimitError,
+)
 from lyra.llm.base import LlmResult
 
 log = logging.getLogger(__name__)
@@ -37,7 +43,7 @@ class AnthropicSdkDriver:
     def __init__(self, api_key: str) -> None:
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
 
-    async def complete(  # noqa: C901, PLR0913 — tool-use loop with per-error-type handling; extracting would obscure the protocol flow
+    async def complete(  # noqa: C901, PLR0913, PLR0915 — tool-use loop with per-error-type handling; extracting would obscure the protocol flow
         self,
         pool_id: str,
         text: str,
@@ -132,20 +138,39 @@ class AnthropicSdkDriver:
 
             return LlmResult(result=accumulated_text)
 
-        except anthropic.AuthenticationError:
-            log.debug("AnthropicSdkDriver auth error [pool:%s]", pool_id, exc_info=True)
-            return LlmResult(error="provider_auth_error")
-        except anthropic.RateLimitError:
-            log.debug("AnthropicSdkDriver rate limit [pool:%s]", pool_id, exc_info=True)
-            return LlmResult(error="provider_rate_limit")
-        except anthropic.APIError:
+        except anthropic.AuthenticationError as exc:
+            _code = getattr(exc, "status_code", 401)
+            log.error(
+                "AnthropicSdkDriver auth error [pool:%s] status=%s",
+                pool_id, _code,
+            )
+            raise ProviderAuthError(
+                str(exc), status_code=_code, provider="anthropic"
+            ) from exc
+        except anthropic.RateLimitError as exc:
+            _code = getattr(exc, "status_code", 429)
+            log.warning(
+                "AnthropicSdkDriver rate limit [pool:%s] status=%s",
+                pool_id, _code,
+            )
+            raise ProviderRateLimitError(
+                str(exc), status_code=_code, provider="anthropic"
+            ) from exc
+        except anthropic.APIError as exc:
             log.debug("AnthropicSdkDriver API error [pool:%s]", pool_id, exc_info=True)
-            return LlmResult(error="provider_api_error")
-        except Exception:
+            _code = getattr(exc, "status_code", None)
+            raise ProviderApiError(
+                str(exc), status_code=_code, provider="anthropic"
+            ) from exc
+        except ProviderError:
+            raise  # already wrapped
+        except Exception as exc:
             log.debug(
                 "AnthropicSdkDriver unexpected error [pool:%s]", pool_id, exc_info=True
             )
-            return LlmResult(error="provider_error")
+            raise ProviderError(
+                str(exc), provider="anthropic", retryable=True
+            ) from exc
 
     def is_alive(self, pool_id: str) -> bool:
         return True  # SDK backend is always reachable (no persistent process)

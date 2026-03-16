@@ -311,32 +311,6 @@ class TestOutboundDispatcherAudio:
         finally:
             await dispatcher.stop()
 
-    async def test_provider_error_records_anthropic_cb(self) -> None:
-        from lyra.core.circuit_breaker import CircuitRegistry
-        from lyra.errors import ProviderError
-
-        adapter = MagicMock()
-        adapter.render_audio = AsyncMock(side_effect=ProviderError("rate limited"))
-        platform_cb = CircuitBreaker(name="telegram", failure_threshold=5)
-        registry = CircuitRegistry()
-        ant_cb = CircuitBreaker(name="anthropic", failure_threshold=5)
-        registry.register(ant_cb)
-        dispatcher = OutboundDispatcher(
-            platform_name="telegram",
-            adapter=adapter,
-            circuit=platform_cb,
-            circuit_registry=registry,
-        )
-        await dispatcher.start()
-        try:
-            inbound = _make_msg()
-            audio = OutboundAudio(audio_bytes=b"fake-ogg", mime_type="audio/ogg")
-            dispatcher.enqueue_audio(inbound, audio)
-            await asyncio.sleep(0.05)
-            assert platform_cb._failure_count >= 1
-            assert ant_cb._failure_count >= 1
-        finally:
-            await dispatcher.stop()
 
 
 # ---------------------------------------------------------------------------
@@ -403,32 +377,6 @@ class TestOutboundDispatcherAttachment:
         finally:
             await dispatcher.stop()
 
-    async def test_provider_error_records_anthropic_cb(self) -> None:
-        from lyra.core.circuit_breaker import CircuitRegistry
-        from lyra.errors import ProviderError
-
-        adapter = MagicMock()
-        adapter.render_attachment = AsyncMock(side_effect=ProviderError("rate limited"))
-        platform_cb = CircuitBreaker(name="telegram", failure_threshold=5)
-        registry = CircuitRegistry()
-        ant_cb = CircuitBreaker(name="anthropic", failure_threshold=5)
-        registry.register(ant_cb)
-        dispatcher = OutboundDispatcher(
-            platform_name="telegram",
-            adapter=adapter,
-            circuit=platform_cb,
-            circuit_registry=registry,
-        )
-        await dispatcher.start()
-        try:
-            inbound = _make_msg()
-            attachment = _make_attachment()
-            dispatcher.enqueue_attachment(inbound, attachment)
-            await asyncio.sleep(0.05)
-            assert platform_cb._failure_count >= 1
-            assert ant_cb._failure_count >= 1
-        finally:
-            await dispatcher.stop()
 
 
 # ---------------------------------------------------------------------------
@@ -522,42 +470,6 @@ class TestOutboundDispatcherAudioStream:
         finally:
             await dispatcher.stop()
 
-    async def test_provider_error_records_anthropic_cb(self) -> None:
-        from lyra.core.circuit_breaker import CircuitRegistry
-        from lyra.errors import ProviderError
-
-        adapter = MagicMock()
-        adapter.render_audio_stream = AsyncMock(
-            side_effect=ProviderError("rate limited")
-        )
-        platform_cb = CircuitBreaker(name="telegram", failure_threshold=5)
-        registry = CircuitRegistry()
-        ant_cb = CircuitBreaker(name="anthropic", failure_threshold=5)
-        registry.register(ant_cb)
-        dispatcher = OutboundDispatcher(
-            platform_name="telegram",
-            adapter=adapter,
-            circuit=platform_cb,
-            circuit_registry=registry,
-        )
-        await dispatcher.start()
-        try:
-            inbound = _make_msg()
-
-            async def chunks() -> AsyncIterator[OutboundAudioChunk]:
-                yield OutboundAudioChunk(
-                    chunk_bytes=b"data",
-                    session_id="s1",
-                    chunk_index=0,
-                    is_final=True,
-                )
-
-            dispatcher.enqueue_audio_stream(inbound, chunks())
-            await asyncio.sleep(0.05)
-            assert platform_cb._failure_count >= 1
-            assert ant_cb._failure_count >= 1
-        finally:
-            await dispatcher.stop()
 
 
 # ---------------------------------------------------------------------------

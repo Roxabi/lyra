@@ -10,6 +10,68 @@ class ProviderError(Exception):
     without importing any SDK-specific exception.
     """
 
+    def __init__(
+        self,
+        message: str = "",
+        *,
+        status_code: int | None = None,
+        provider: str = "",
+        retryable: bool = True,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.provider = provider
+        self.retryable = retryable
+
+
+class ProviderAuthError(ProviderError):
+    """Authentication or authorization failure (non-retryable)."""
+
+    def __init__(
+        self,
+        message: str = "authentication failed",
+        *,
+        status_code: int | None = None,
+        provider: str = "",
+    ) -> None:
+        super().__init__(
+            message, status_code=status_code, provider=provider, retryable=False
+        )
+
+
+class ProviderRateLimitError(ProviderError):
+    """Rate-limit / quota exceeded (retryable after back-off)."""
+
+    def __init__(
+        self,
+        message: str = "rate limited",
+        *,
+        status_code: int | None = None,
+        provider: str = "",
+    ) -> None:
+        super().__init__(
+            message, status_code=status_code, provider=provider, retryable=True
+        )
+
+
+class ProviderApiError(ProviderError):
+    """Generic API error from the provider (non-retryable by default)."""
+
+    def __init__(
+        self,
+        message: str = "",
+        *,
+        status_code: int | None = None,
+        provider: str = "",
+        retryable: bool = False,
+    ) -> None:
+        super().__init__(
+            message,
+            status_code=status_code,
+            provider=provider,
+            retryable=retryable,
+        )
+
 
 class MissingCredentialsError(Exception):
     def __init__(self, platform: str, bot_id: str) -> None:

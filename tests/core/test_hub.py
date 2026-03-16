@@ -1796,3 +1796,40 @@ class TestHubEvictFlushTask:
         """Hub must expose a shutdown() coroutine method (S4)."""
         hub = Hub()
         assert hasattr(hub, "shutdown")  # FAILS until shutdown() is added
+
+
+# ---------------------------------------------------------------------------
+# SC-10 — record_circuit_failure records anthropic CB for ProviderError subclasses
+# ---------------------------------------------------------------------------
+
+
+class TestRecordCircuitFailure:
+    def test_provider_error_subclass_records_anthropic_cb(self) -> None:
+        """ProviderAuthError (subclass) trips both hub and anthropic CBs."""
+        from lyra.errors import ProviderAuthError
+
+        hub_cb = CircuitBreaker("hub", failure_threshold=5)
+        ant_cb = CircuitBreaker("anthropic", failure_threshold=5)
+        registry = CircuitRegistry()
+        registry.register(hub_cb)
+        registry.register(ant_cb)
+        hub = Hub(circuit_registry=registry)
+
+        hub.record_circuit_failure(ProviderAuthError("bad key", status_code=401))
+
+        assert hub_cb._failure_count == 1
+        assert ant_cb._failure_count == 1
+
+    def test_runtime_error_does_not_record_anthropic_cb(self) -> None:
+        """Plain RuntimeError trips hub CB only, not anthropic CB."""
+        hub_cb = CircuitBreaker("hub", failure_threshold=5)
+        ant_cb = CircuitBreaker("anthropic", failure_threshold=5)
+        registry = CircuitRegistry()
+        registry.register(hub_cb)
+        registry.register(ant_cb)
+        hub = Hub(circuit_registry=registry)
+
+        hub.record_circuit_failure(RuntimeError("boom"))
+
+        assert hub_cb._failure_count == 1
+        assert ant_cb._failure_count == 0

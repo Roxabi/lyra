@@ -84,9 +84,12 @@ class TestAnthropicSdkDriverComplete:
         assert result.ok is True
         assert result.error == ""
 
-    async def test_complete_error_on_api_exception(self) -> None:
-        """anthropic.APIError raised → LlmResult.ok == False, error set."""
+    async def test_complete_raises_provider_api_error_on_api_exception(self) -> None:
+        """anthropic.APIError raised → ProviderApiError propagated."""
         import anthropic
+        import pytest
+
+        from lyra.errors import ProviderApiError
 
         # Arrange
         driver = make_driver()
@@ -105,17 +108,96 @@ class TestAnthropicSdkDriverComplete:
         driver._client = MagicMock()
         driver._client.messages.stream = MagicMock(return_value=stream_ctx)
 
-        # Act
-        result = await driver.complete(
-            pool_id="p1",
-            text="hi",
-            model_cfg=model_cfg,
-            system_prompt="",
-        )
+        # Act + Assert
+        with pytest.raises(ProviderApiError) as exc_info:
+            await driver.complete(
+                pool_id="p1",
+                text="hi",
+                model_cfg=model_cfg,
+                system_prompt="",
+            )
+        assert exc_info.value.provider == "anthropic"
+        assert exc_info.value.retryable is False
+        assert exc_info.value.status_code is None
 
-        # Assert
-        assert result.ok is False
-        assert result.error != ""
+    async def test_complete_raises_provider_auth_error(self) -> None:
+        """anthropic.AuthenticationError → ProviderAuthError (non-retryable)."""
+        import anthropic
+        import pytest
+
+        from lyra.errors import ProviderAuthError
+
+        driver = make_driver()
+        model_cfg = make_model_cfg()
+
+        stream_ctx = AsyncMock()
+        stream_ctx.__aenter__ = AsyncMock(
+            side_effect=anthropic.AuthenticationError(
+                message="invalid key",
+                response=MagicMock(status_code=401),
+                body=None,
+            )
+        )
+        stream_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        driver._client = MagicMock()
+        driver._client.messages.stream = MagicMock(return_value=stream_ctx)
+
+        with pytest.raises(ProviderAuthError) as exc_info:
+            await driver.complete("p1", "hi", model_cfg, "")
+        assert exc_info.value.retryable is False
+        assert exc_info.value.status_code == 401
+        assert exc_info.value.provider == "anthropic"
+
+    async def test_complete_raises_provider_rate_limit_error(self) -> None:
+        """anthropic.RateLimitError → ProviderRateLimitError (retryable)."""
+        import anthropic
+        import pytest
+
+        from lyra.errors import ProviderRateLimitError
+
+        driver = make_driver()
+        model_cfg = make_model_cfg()
+
+        stream_ctx = AsyncMock()
+        stream_ctx.__aenter__ = AsyncMock(
+            side_effect=anthropic.RateLimitError(
+                message="rate limited",
+                response=MagicMock(status_code=429),
+                body=None,
+            )
+        )
+        stream_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        driver._client = MagicMock()
+        driver._client.messages.stream = MagicMock(return_value=stream_ctx)
+
+        with pytest.raises(ProviderRateLimitError) as exc_info:
+            await driver.complete("p1", "hi", model_cfg, "")
+        assert exc_info.value.retryable is True
+        assert exc_info.value.status_code == 429
+        assert exc_info.value.provider == "anthropic"
+
+    async def test_complete_raises_provider_error_on_unexpected_exception(self) -> None:
+        """Unexpected exception → ProviderError (generic, retryable)."""
+        import pytest
+
+        from lyra.errors import ProviderError
+
+        driver = make_driver()
+        model_cfg = make_model_cfg()
+
+        stream_ctx = AsyncMock()
+        stream_ctx.__aenter__ = AsyncMock(side_effect=RuntimeError("boom"))
+        stream_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        driver._client = MagicMock()
+        driver._client.messages.stream = MagicMock(return_value=stream_ctx)
+
+        with pytest.raises(ProviderError) as exc_info:
+            await driver.complete("p1", "hi", model_cfg, "")
+        assert exc_info.value.provider == "anthropic"
+        assert exc_info.value.retryable is True
 
 
 # ---------------------------------------------------------------------------

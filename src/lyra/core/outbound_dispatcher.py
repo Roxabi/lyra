@@ -17,8 +17,6 @@ import time
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
 
-from lyra.errors import ProviderError
-
 from .circuit_breaker import CircuitBreaker, CircuitRegistry
 from .message import (
     InboundMessage,
@@ -389,13 +387,6 @@ class OutboundDispatcher:
                     exc = _last_exc
                     if self._circuit is not None:
                         self._circuit.record_failure()
-                    # Record provider CB failure for LLM provider errors
-                    if isinstance(exc, ProviderError) and (
-                        self._circuit_registry is not None
-                    ):
-                        ant_cb = self._circuit_registry.get("anthropic")
-                        if ant_cb is not None:
-                            ant_cb.record_failure()
                     # Drain iterator to prevent generator leaks on delivery failure
                     if kind in ("streaming", "audio_stream", "voice_stream"):
                         async for _ in payload:

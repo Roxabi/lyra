@@ -1,7 +1,7 @@
 """Processing engine extracted from Pool (issue #300).
 
-Owns the cancel-in-flight loop, guarded execution, timeout handling,
-and dispatch logic.  Pool retains session state and public API.
+Owns cancel-in-flight loop, guarded execution, timeout handling, and
+dispatch logic.  Pool retains session state and public API.
 """
 
 from __future__ import annotations
@@ -118,14 +118,9 @@ class PoolProcessor:
                 if inbox_waiter in done and not inbox_waiter.cancelled():
                     try:
                         pool._inbox.put_nowait(inbox_waiter.result())
-                    except asyncio.QueueFull:
+                    except (asyncio.QueueFull, Exception):
                         log.warning(
-                            "pool %s: inbox full, message lost in race",
-                            pool.pool_id,
-                        )
-                    except Exception:
-                        log.warning(
-                            "pool %s: unexpected error in inbox race",
+                            "pool %s: message lost in inbox race",
                             pool.pool_id,
                             exc_info=True,
                         )

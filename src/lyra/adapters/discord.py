@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from lyra.core.hub import Hub
 
 from lyra.adapters import discord_audio  # noqa: I001
+from lyra.adapters import discord_audio_outbound
 from lyra.adapters._shared import ATTACHMENT_EXTS_BASE, resolve_msg
 from lyra.adapters.discord_inbound import handle_message
 from lyra.adapters.discord_normalize import normalize as _normalize_impl
@@ -23,8 +24,8 @@ from lyra.adapters.discord_outbound import (
     send_streaming as _send_streaming_impl,
 )
 from lyra.adapters.discord_threads import restore_hot_threads
-from lyra.adapters.discord_voice import (
-    VoiceSessionManager,
+from lyra.adapters.discord_voice import VoiceSessionManager
+from lyra.adapters.discord_voice_commands import (
     handle_voice_command as _handle_voice_command_impl,
 )
 from lyra.core.auth import AuthMiddleware
@@ -252,7 +253,7 @@ class DiscordAdapter(discord.Client):
 
     async def render_audio(self, msg: OutboundAudio, inbound: InboundMessage) -> None:
         """Send an OutboundAudio envelope as a Discord voice message."""
-        await discord_audio.render_audio(
+        await discord_audio_outbound.render_audio(
             msg,
             inbound,
             bot_id=self._bot_id,
@@ -264,7 +265,7 @@ class DiscordAdapter(discord.Client):
         self, msg: OutboundAttachment, inbound: InboundMessage
     ) -> None:
         """Send an OutboundAttachment envelope as a Discord file attachment."""
-        await discord_audio.render_attachment(
+        await discord_audio_outbound.render_attachment(
             msg,
             inbound,
             resolve_channel=self._resolve_channel,
@@ -277,7 +278,9 @@ class DiscordAdapter(discord.Client):
         inbound: InboundMessage,
     ) -> None:
         """Buffer streamed audio chunks and send as a single Discord file attachment."""
-        await discord_audio.render_audio_stream(chunks, inbound, self.render_audio)
+        await discord_audio_outbound.render_audio_stream(
+            chunks, inbound, self.render_audio
+        )
 
     async def render_voice_stream(
         self,
@@ -285,7 +288,7 @@ class DiscordAdapter(discord.Client):
         inbound: InboundMessage,
     ) -> None:
         """Route TTS stream to the active Discord voice session for this guild."""
-        await discord_audio.render_voice_stream(chunks, inbound, self._vsm)
+        await discord_audio_outbound.render_voice_stream(chunks, inbound, self._vsm)
 
     async def _resolve_channel(self, channel_id: int) -> discord.abc.Messageable:
         """Get channel from cache or fetch from network."""

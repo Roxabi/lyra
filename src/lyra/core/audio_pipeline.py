@@ -216,19 +216,9 @@ class AudioPipeline:
     ) -> None:
         """Synthesize TTS audio for a voice response and dispatch it.
 
-        Language resolution (priority: explicit user pref > detected > None):
-        - prefs.tts_language != "detected" → use explicit value
-        - prefs.tts_language == "detected" and msg.language is not None → detected
-        - else → None (TTSService uses self._language / voicecli global)
-
-        Voice resolution:
-        - prefs.tts_voice != "agent_default" → use explicit value
-        - else → None (TTSService uses self._voice / agent or global default)
-
-        Sentinels "detected" and "agent_default" are never forwarded to synthesize().
-
-        Runs as a background task after dispatch_response() enqueues the text.
-        Errors are logged and swallowed — audio failure must never crash the hub.
+        Language/voice resolution uses PrefsStore when available; sentinels
+        "detected" and "agent_default" are never forwarded to synthesize().
+        Errors are logged and swallowed — audio failure must not crash the hub.
         """
         assert self._hub._tts is not None  # caller guarantees this
         try:

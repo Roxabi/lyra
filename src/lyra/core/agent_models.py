@@ -38,6 +38,56 @@ class AgentRow:
     created_at: str = field(default_factory=_utc_now_iso)
     updated_at: str = field(default_factory=_utc_now_iso)
 
+    @classmethod
+    def from_db_row(cls, row: tuple) -> "AgentRow":  # type: ignore[type-arg]
+        """Construct an AgentRow from a raw aiosqlite SELECT tuple (21 columns)."""
+        (
+            name,
+            backend,
+            model,
+            max_turns,
+            tools_json,
+            persona,
+            show_intermediate,
+            smart_routing_json,
+            plugins_json,
+            memory_namespace,
+            cwd,
+            source,
+            created_at,
+            updated_at,
+            tts_json,
+            stt_json,
+            skip_permissions,
+            permissions_json,
+            workspaces_json,
+            i18n_language,
+            commands_json,
+        ) = row
+        return cls(
+            name=name,
+            backend=backend,
+            model=model,
+            max_turns=max_turns,
+            tools_json=tools_json,
+            persona=persona,
+            show_intermediate=bool(show_intermediate),
+            smart_routing_json=smart_routing_json,
+            plugins_json=plugins_json,
+            memory_namespace=memory_namespace,
+            cwd=cwd,
+            tts_json=tts_json,
+            stt_json=stt_json,
+            skip_permissions=bool(skip_permissions),
+            permissions_json=permissions_json or "[]",
+            workspaces_json=workspaces_json,
+            i18n_language=i18n_language or "en",
+            commands_json=commands_json,
+            source=source,
+            created_at=created_at,
+            updated_at=updated_at,
+        )
+
 
 @dataclass
 class BotAgentMapRow:

@@ -13,6 +13,8 @@ from .agent_schema import (
     _CREATE_AGENTS,
     _CREATE_BOT_AGENT_MAP,
     _MIGRATE_AGENTS,
+    _SELECT_AGENTS,
+    _UPSERT_AGENT,
 )
 from .agent_seeder import seed_from_toml as _seed_from_toml
 
@@ -78,61 +80,10 @@ class AgentStore:
         """Load agents and bot_agent_map into in-memory cache."""
         db = self._require_db()
         self._agents.clear()
-        async with db.execute(
-            "SELECT name, backend, model, max_turns, tools_json, persona, "
-            "show_intermediate, smart_routing_json, plugins_json, "
-            "memory_namespace, cwd, source, created_at, updated_at, "
-            "tts_json, stt_json, skip_permissions, "
-            "permissions_json, workspaces_json, i18n_language, commands_json "
-            "FROM agents"
-        ) as cur:
+        async with db.execute(_SELECT_AGENTS) as cur:
             async for row in cur:
-                (
-                    name,
-                    backend,
-                    model,
-                    max_turns,
-                    tools_json,
-                    persona,
-                    show_intermediate,
-                    smart_routing_json,
-                    plugins_json,
-                    memory_namespace,
-                    cwd,
-                    source,
-                    created_at,
-                    updated_at,
-                    tts_json,
-                    stt_json,
-                    skip_permissions,
-                    permissions_json,
-                    workspaces_json,
-                    i18n_language,
-                    commands_json,
-                ) = row
-                self._agents[name] = AgentRow(
-                    name=name,
-                    backend=backend,
-                    model=model,
-                    max_turns=max_turns,
-                    tools_json=tools_json,
-                    persona=persona,
-                    show_intermediate=bool(show_intermediate),
-                    smart_routing_json=smart_routing_json,
-                    plugins_json=plugins_json,
-                    memory_namespace=memory_namespace,
-                    cwd=cwd,
-                    tts_json=tts_json,
-                    stt_json=stt_json,
-                    skip_permissions=bool(skip_permissions),
-                    permissions_json=permissions_json or "[]",
-                    workspaces_json=workspaces_json,
-                    i18n_language=i18n_language or "en",
-                    commands_json=commands_json,
-                    source=source,
-                    created_at=created_at,
-                    updated_at=updated_at,
-                )
+                agent = AgentRow.from_db_row(tuple(row))
+                self._agents[agent.name] = agent
         self._bot_map.clear()
         async with db.execute(
             "SELECT platform, bot_id, agent_name FROM bot_agent_map"
@@ -183,33 +134,7 @@ class AgentStore:
         db = self._require_db()
         now = _utc_now_iso()
         await db.execute(
-            "INSERT INTO agents "
-            "(name, backend, model, max_turns, tools_json, persona, "
-            "show_intermediate, smart_routing_json, plugins_json, "
-            "memory_namespace, cwd, source, created_at, updated_at, "
-            "tts_json, stt_json, skip_permissions, "
-            "permissions_json, workspaces_json, i18n_language, commands_json) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
-            "ON CONFLICT(name) DO UPDATE SET "
-            "backend=excluded.backend, "
-            "model=excluded.model, "
-            "max_turns=excluded.max_turns, "
-            "tools_json=excluded.tools_json, "
-            "persona=excluded.persona, "
-            "show_intermediate=excluded.show_intermediate, "
-            "smart_routing_json=excluded.smart_routing_json, "
-            "plugins_json=excluded.plugins_json, "
-            "memory_namespace=excluded.memory_namespace, "
-            "cwd=excluded.cwd, "
-            "tts_json=excluded.tts_json, "
-            "stt_json=excluded.stt_json, "
-            "skip_permissions=excluded.skip_permissions, "
-            "permissions_json=excluded.permissions_json, "
-            "workspaces_json=excluded.workspaces_json, "
-            "i18n_language=excluded.i18n_language, "
-            "commands_json=excluded.commands_json, "
-            "source=excluded.source, "
-            "updated_at=?",
+            _UPSERT_AGENT,
             (
                 row.name,
                 row.backend,
@@ -237,7 +162,6 @@ class AgentStore:
             ),
         )
         await db.commit()
-        # Update cache
         self._agents[row.name] = AgentRow(
             name=row.name,
             backend=row.backend,

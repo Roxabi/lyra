@@ -1,4 +1,4 @@
-"""SQL DDL constants for the agent store tables."""
+"""SQL DDL and DML constants for the agent store tables."""
 
 from __future__ import annotations
 
@@ -7,6 +7,8 @@ __all__ = [
     "_MIGRATE_AGENTS",
     "_CREATE_BOT_AGENT_MAP",
     "_CREATE_AGENT_RUNTIME_STATE",
+    "_SELECT_AGENTS",
+    "_UPSERT_AGENT",
 ]
 
 _CREATE_AGENTS = """
@@ -65,3 +67,39 @@ CREATE TABLE IF NOT EXISTS agent_runtime_state (
     status TEXT NOT NULL DEFAULT 'idle'
 )
 """
+
+# Column list shared by SELECT and INSERT to keep them in sync.
+_AGENT_COLUMNS = (
+    "name, backend, model, max_turns, tools_json, persona, "
+    "show_intermediate, smart_routing_json, plugins_json, "
+    "memory_namespace, cwd, source, created_at, updated_at, "
+    "tts_json, stt_json, skip_permissions, "
+    "permissions_json, workspaces_json, i18n_language, commands_json"
+)
+
+_SELECT_AGENTS = f"SELECT {_AGENT_COLUMNS} FROM agents"
+
+_UPSERT_AGENT = (
+    f"INSERT INTO agents ({_AGENT_COLUMNS}) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+    "ON CONFLICT(name) DO UPDATE SET "
+    "backend=excluded.backend, "
+    "model=excluded.model, "
+    "max_turns=excluded.max_turns, "
+    "tools_json=excluded.tools_json, "
+    "persona=excluded.persona, "
+    "show_intermediate=excluded.show_intermediate, "
+    "smart_routing_json=excluded.smart_routing_json, "
+    "plugins_json=excluded.plugins_json, "
+    "memory_namespace=excluded.memory_namespace, "
+    "cwd=excluded.cwd, "
+    "tts_json=excluded.tts_json, "
+    "stt_json=excluded.stt_json, "
+    "skip_permissions=excluded.skip_permissions, "
+    "permissions_json=excluded.permissions_json, "
+    "workspaces_json=excluded.workspaces_json, "
+    "i18n_language=excluded.i18n_language, "
+    "commands_json=excluded.commands_json, "
+    "source=excluded.source, "
+    "updated_at=?"
+)

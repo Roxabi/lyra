@@ -10,8 +10,8 @@ from typing import TYPE_CHECKING, Any
 
 import discord
 
-from lyra.adapters import discord_audio
 from lyra.adapters._shared import AUDIO_MIME_TYPES, push_to_hub_guarded
+from lyra.adapters.discord_audio import handle_audio as _handle_audio
 from lyra.adapters.discord_formatting import make_thread_name
 from lyra.adapters.discord_threads import (
     persist_thread_claim,
@@ -217,128 +217,6 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
         hub_msg,
         source_message=message,
         on_drop=lambda: adapter._cancel_typing(send_to_id),
-    )
-
-
-async def _handle_audio(  # noqa: C901 — audio gate mirrors text gate with independent branches
-    adapter: "DiscordAdapter",
-    message: Any,
-    audio_attachment: Any,
-    trust: TrustLevel,
-) -> None:
-    """Handle an inbound audio attachment."""
-    user_id = f"dc:user:{message.author.id}"
-    log.info(
-        "audio_received",
-        extra={
-            "platform": "discord",
-            "user_id": user_id,
-            "message_id": message.id,
-        },
-    )
-    # Pre-download size check (matches Telegram's _download_audio guard)
-    att_size = getattr(audio_attachment, "size", None)
-    if att_size is None or att_size > adapter._max_audio_bytes:
-        log.warning(
-            "Audio attachment rejected: %d bytes exceeds %d byte limit (message_id=%s)",
-            att_size,
-            adapter._max_audio_bytes,
-            message.id,
-        )
-        try:
-            await message.reply(
-                adapter._msg(
-                    "audio_too_large",
-                    "That audio file is too large to process.",
-                )
-            )
-        except Exception:
-            log.warning(
-                "Failed to send audio-too-large reply for message_id=%s",
-                message.id,
-            )
-        return
-
-    try:
-        audio_bytes = await audio_attachment.read()
-    except Exception:
-        log.exception(
-            "Failed to download audio attachment for message_id=%s",
-            message.id,
-        )
-        return
-
-    # Magic-byte check: client-supplied content_type is untrusted.
-    if not discord_audio.is_valid_audio_magic(audio_bytes):
-        log.warning(
-            "Audio attachment rejected: magic bytes do not match any known"
-            " audio format (message_id=%s)",
-            message.id,
-        )
-        try:
-            await message.reply(
-                adapter._msg(
-                    "audio_invalid_format",
-                    "That file does not appear to be a valid audio file.",
-                )
-            )
-        except Exception:
-            log.warning(
-                "Failed to send invalid-format reply for message_id=%s",
-                message.id,
-            )
-        return
-
-    # Gate: only process audio in DMs, direct mentions, or owned threads.
-    _audio_is_dm = message.guild is None
-    _audio_is_thread = isinstance(message.channel, discord.Thread)
-    _audio_in_owned_thread = (
-        _audio_is_thread and message.channel.id in adapter._owned_threads
-    )
-    _audio_is_mention = (
-        adapter._bot_user is not None and adapter._bot_user in message.mentions
-    )
-    # Cold-path lazy check (same as text path).
-    if (
-        not _audio_is_dm
-        and not _audio_is_mention
-        and not _audio_in_owned_thread
-        and _audio_is_thread
-        and adapter._thread_store is not None
-    ):
-        try:
-            if await adapter._thread_store.is_owned(
-                str(message.channel.id), adapter._bot_id
-            ):
-                adapter._owned_threads.add(message.channel.id)
-                _audio_in_owned_thread = True
-        except Exception:
-            log.warning(
-                "ThreadStore: lazy is_owned (audio) failed for thread_id=%s",
-                message.channel.id,
-            )
-    if not _audio_is_dm and not _audio_is_mention and not _audio_in_owned_thread:  # noqa: E501
-        return
-
-    hub_audio = adapter.normalize_audio(
-        message,
-        audio_bytes=audio_bytes,
-        mime_type=getattr(audio_attachment, "content_type", "audio/ogg"),
-        trust_level=trust,
-    )
-
-    async def _send_bp(text: str) -> None:
-        await message.reply(text)
-
-    adapter._start_typing(message.channel.id)
-    await push_to_hub_guarded(
-        inbound_bus=adapter._hub.inbound_audio_bus,
-        platform=Platform.DISCORD,
-        msg=hub_audio,
-        circuit_registry=adapter._circuit_registry,
-        on_drop=lambda: adapter._cancel_typing(message.channel.id),
-        send_backpressure=_send_bp,
-        get_msg=adapter._msg,
     )
 
 

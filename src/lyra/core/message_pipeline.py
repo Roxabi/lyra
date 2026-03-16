@@ -209,19 +209,13 @@ class MessagePipeline:
     ) -> None:
         """Attempt session resume before pool.submit(). No-op on any failure.
 
-        Two resume paths (in priority order):
-        1. Reply-to-resume: message replies to a known assistant turn — look up
-           the session via ContextResolver and resume it.
-        2. Thread-session-resume: Discord thread with a stored session_id from
-           a previous conversation — resume via platform_meta["thread_session_id"].
+        Two resume paths (priority order):
+        1. Reply-to-resume — message replies to a known assistant turn.
+        2. Thread-session-resume — Discord thread with a stored session_id.
 
-        # Note: pool._session_resume_fn is wired lazily by
-        # SimpleAgent._maybe_register_resume on the first process() call.
-        # If called before any process(), resume_session() is a no-op
-        # (fn is None). In practice, pools exist only after agent processing
-        # begins.
+        pool._session_resume_fn is wired lazily by SimpleAgent on first process().
         """
-        # Path 1: reply-to-resume (existing logic — Telegram and Discord).
+        # Path 1: reply-to-resume (Telegram and Discord).
         if msg.reply_to_id is not None:
             resolver = self._hub._context_resolver
             if resolver is not None:
@@ -234,9 +228,8 @@ class MessagePipeline:
                             resolved.pool_id,
                             pool_id,
                         )
-                    # TODO(post-#67): replace with user_id ownership check once
-                    # conversation_turns stores user_id. For now, restrict resume to
-                    # private chats to prevent cross-user session access in groups.
+                    # TODO(post-#67): restrict to private chats until
+                    # user_id ownership check is in place.
                     elif msg.platform_meta.get("is_group"):
                         log.info(
                             "reply-to-resume: group chat"
@@ -263,14 +256,13 @@ class MessagePipeline:
         if thread_session_id is not None:
             if not pool.is_idle:
                 log.info(
-                    "thread-session-resume: pool %r busy"
-                    " — skipping resume of session %r",
+                    "thread-session-resume: pool %r busy — skipping %r",
                     pool_id,
                     thread_session_id,
                 )
                 return
             log.info(
-                "thread-session-resume: resuming session %r for pool %r",
+                "thread-session-resume: resuming %r for pool %r",
                 thread_session_id,
                 pool_id,
             )
@@ -291,9 +283,7 @@ class MessagePipeline:
             return _DROP
         if await self._hub.circuit_breaker_drop(msg):
             return _DROP
-        # Register session persistence callback if provided by the adapter (write-side
-        # fix for Discord threads). Only set once — guards against repeated messages
-        # in the same thread overwriting the callback unnecessarily.
+        # Register session persistence callback once (Discord thread write-side fix).
         _update_fn = msg.platform_meta.get("_session_update_fn")
         if _update_fn is not None and pool._observer._session_update_fn is None:
             pool._observer.register_session_update_fn(_update_fn)
@@ -301,11 +291,7 @@ class MessagePipeline:
             await self._resolve_context(msg, pool, pool.pool_id)
         except Exception:
             log.warning(
-                "reply-to-resume: _resolve_context failed"
-                " — continuing with active session",
+                "_resolve_context failed — continuing with active session",
                 exc_info=True,
             )
-        return PipelineResult(
-            action=Action.SUBMIT_TO_POOL,
-            pool=pool,
-        )
+        return PipelineResult(action=Action.SUBMIT_TO_POOL, pool=pool)

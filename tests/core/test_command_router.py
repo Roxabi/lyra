@@ -1093,22 +1093,70 @@ def make_workspace_router(tmp_path: Path, workspaces: dict[str, Path]) -> Comman
 class TestWorkspaceCommands:
     """Workspace slash commands switch cwd, clear history, re-submit args."""
 
-    def test_workspace_commands_appear_in_builtins(self, tmp_path: Path) -> None:
-        """Workspace names are registered in _builtins."""
+    def test_workspace_builtin_registered(self, tmp_path: Path) -> None:
+        """/workspace is registered as a builtin."""
         ws_dir = tmp_path / "myws"
         ws_dir.mkdir()
         router = make_workspace_router(tmp_path, {"myws": ws_dir})
-        assert "/myws" in router._builtins
+        assert "/workspace" in router._builtins
+
+    def test_individual_workspace_names_not_registered_as_builtins(
+        self, tmp_path: Path
+    ) -> None:
+        """Workspace names are NOT individually registered as builtins."""
+        ws_dir = tmp_path / "myws"
+        ws_dir.mkdir()
+        router = make_workspace_router(tmp_path, {"myws": ws_dir})
+        assert "/myws" not in router._builtins
+
+    @pytest.mark.asyncio
+    async def test_workspace_ls_returns_list(self, tmp_path: Path) -> None:
+        """/workspace ls returns the list of configured workspaces."""
+        ws_dir = tmp_path / "proj"
+        ws_dir.mkdir()
+        router = make_workspace_router(tmp_path, {"proj": ws_dir})
+        msg = make_message(content="/workspace ls")
+
+        response = await router.dispatch(msg)
+
+        assert isinstance(response, Response)
+        assert "proj" in response.content
+
+    @pytest.mark.asyncio
+    async def test_workspace_list_alias(self, tmp_path: Path) -> None:
+        """/workspace list is an alias for /workspace ls."""
+        ws_dir = tmp_path / "proj"
+        ws_dir.mkdir()
+        router = make_workspace_router(tmp_path, {"proj": ws_dir})
+        msg = make_message(content="/workspace list")
+
+        response = await router.dispatch(msg)
+
+        assert isinstance(response, Response)
+        assert "proj" in response.content
+
+    @pytest.mark.asyncio
+    async def test_workspace_no_args_returns_list(self, tmp_path: Path) -> None:
+        """/workspace with no args returns the list of workspaces."""
+        ws_dir = tmp_path / "proj"
+        ws_dir.mkdir()
+        router = make_workspace_router(tmp_path, {"proj": ws_dir})
+        msg = make_message(content="/workspace")
+
+        response = await router.dispatch(msg)
+
+        assert isinstance(response, Response)
+        assert "proj" in response.content
 
     @pytest.mark.asyncio
     async def test_workspace_dispatch_returns_context_response(
         self, tmp_path: Path
     ) -> None:
-        """Dispatching a workspace command returns 'Context: <path>'."""
+        """Dispatching /workspace <name> switches cwd and returns confirmation."""
         ws_dir = tmp_path / "proj"
         ws_dir.mkdir()
         router = make_workspace_router(tmp_path, {"proj": ws_dir})
-        msg = make_message(content="/proj")
+        msg = make_message(content="/workspace proj")
 
         switch_called_with: list[Path] = []
 
@@ -1129,11 +1177,11 @@ class TestWorkspaceCommands:
     async def test_workspace_dispatch_resubmits_remaining_args(
         self, tmp_path: Path
     ) -> None:
-        """Remaining args after workspace command are re-submitted via pool.submit."""
+        """Remaining text after /workspace <name> is re-submitted via pool.submit."""
         ws_dir = tmp_path / "proj"
         ws_dir.mkdir()
         router = make_workspace_router(tmp_path, {"proj": ws_dir})
-        msg = make_message(content="/proj what's the last commit?")
+        msg = make_message(content="/workspace proj what's the last commit?")
 
         async def _fake_switch(cwd: Path) -> None:
             pass
@@ -1153,11 +1201,11 @@ class TestWorkspaceCommands:
     async def test_workspace_dispatch_no_pool_still_returns_context(
         self, tmp_path: Path
     ) -> None:
-        """Without a pool, workspace command still returns 'Context: ...'."""
+        """Without a pool, /workspace <name> still returns confirmation."""
         ws_dir = tmp_path / "solo"
         ws_dir.mkdir()
         router = make_workspace_router(tmp_path, {"solo": ws_dir})
-        msg = make_message(content="/solo")
+        msg = make_message(content="/workspace solo")
 
         response = await router.dispatch(msg, pool=None)
 
@@ -1165,18 +1213,19 @@ class TestWorkspaceCommands:
         assert "Workspace: solo" in response.content
 
     @pytest.mark.asyncio
-    async def test_unknown_command_not_treated_as_workspace(
-        self, tmp_path: Path
-    ) -> None:
-        """Commands not in workspaces dict fall through to unknown-command handling."""
+    async def test_unknown_workspace_name_returns_error(self, tmp_path: Path) -> None:
+        """/workspace <unknown> returns an error listing available names."""
         ws_dir = tmp_path / "myws"
         ws_dir.mkdir()
         router = make_workspace_router(tmp_path, {"myws": ws_dir})
-        msg = make_message(content="/otherws")
+        msg = make_message(content="/workspace otherws")
 
         response = await router.dispatch(msg)
 
-        assert "unknown command" in response.content.lower()  # type: ignore[union-attr]
+        assert isinstance(response, Response)
+        assert response.content is not None
+        assert "unknown workspace" in response.content.lower()
+        assert "myws" in response.content
 
 
 # ---------------------------------------------------------------------------

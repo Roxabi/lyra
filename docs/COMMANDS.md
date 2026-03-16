@@ -111,7 +111,7 @@ Incoming message
   ├─ CommandRouter.dispatch():
   │    1. Bare URL? → rewrite to /add <url>
   │    2. Builtin?  → /help, /clear, /new, /stop, /config, /circuit, /routing, /folder, /cd
-  │    3. Workspace? → /<key> from agent TOML [workspaces]
+  │    3. /workspace → list (ls/list/no-arg) or switch to named workspace
   │    4. Session?  → /add, /explain, /summarize, /search (isolated LLM calls)
   │    5. Plugin?   → any [[commands]] from enabled plugin.toml files
   │    6. Passthrough? → registered commands that skip dispatch, go to LLM (e.g. /voice)
@@ -154,7 +154,8 @@ Incoming message
 | `/summarize <url>` | Scrape URL → bullet-point summary | `web-intel:scrape` |
 | `/search <query>` | Full-text search over vault | `vault` (plugin) |
 | `<url>` (bare) | Auto-rewritten to `/add <url>` | — |
-| `/<workspace>` | Switch working directory (dynamic) | — (TOML-defined) |
+| `/workspace <name> [question]` | Switch working directory to named workspace | — (builtin) |
+| `/workspace ls` | List configured workspaces | — (builtin) |
 
 ---
 
@@ -249,12 +250,17 @@ roxabi-vault = "~/.roxabi-vault"
 ### Usage
 
 ```
-Syntax: /<workspace>
-        /<workspace> <question>
+Syntax: /workspace <name>
+        /workspace <name> <question>
+        /workspace ls
+        /workspace list
+        /workspace
 ```
 
-- `/lyra` — sets the workspace to `~/projects/lyra`, responds with a context confirmation
-- `/lyra what's the last commit?` — sets the workspace, then forwards the question to Claude with `cwd=~/projects/lyra`
+- `/workspace lyra` — sets the workspace to `~/projects/lyra`, responds with a context confirmation
+- `/workspace lyra what's the last commit?` — sets the workspace, then forwards the question to Claude with `cwd=~/projects/lyra`
+- `/workspace ls` — lists all configured workspaces with their paths
+- `/workspace` — same as `/workspace ls`
 
 The cwd override persists for the pool (thread/conversation) lifetime. `/clear` respawns the process but keeps the same workspace. Use another workspace command to switch.
 
@@ -423,11 +429,11 @@ See also: [ADR-010 — External tool integration](architecture/adr/010-external-
 ```
 Built-in commands          Plugin commands             CLI-backed commands        Session commands (LLM)
 ───────────────────        ────────────────────        ─────────────────────      ──────────────────────
-/help   → _help()          /echo  → cmd_echo()         /voice → voicecli          /add     → cmd_add()
-/stop   → pool.cancel()    /invite → cmd_invite()                                 /explain → cmd_explain()
-/clear  → _cmd_clear()     /join   → cmd_join()                                   /summarize→cmd_summarize()
-/config → _cmd_config()    /svc    → cmd_svc()                                    /search  → cmd_search()
-                           /search → cmd_search()
+/help      → _help()       /echo  → cmd_echo()         /voice → voicecli          /add     → cmd_add()
+/stop      → pool.cancel() /invite → cmd_invite()                                 /explain → cmd_explain()
+/clear     → _cmd_clear()  /join   → cmd_join()                                   /summarize→cmd_summarize()
+/config    → _cmd_config() /svc    → cmd_svc()                                    /search  → cmd_search()
+/workspace → _cmd_workspace()                          /search → cmd_search()
 ```
 
 Two access paths for voice:

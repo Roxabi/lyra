@@ -87,6 +87,10 @@ class CommandRouter:
             builtin=True, description="Switch working directory: /folder ~/projects/foo"
         ),
         "/cd": CommandConfig(builtin=True, description="Alias for /folder"),
+        "/workspace": CommandConfig(
+            builtin=True,
+            description="Switch workspace: /workspace <name> [question] | ls",
+        ),
     }
 
     def __init__(  # noqa: PLR0913 — DI constructor, each arg is a required dependency
@@ -120,14 +124,6 @@ class CommandRouter:
         self._session_driver: LlmProvider | None = session_driver
         self._session_handlers: dict[str, SessionCommandEntry] = {}
         self._passthroughs: set[str] = set()
-        # Register workspace commands as builtins
-        for ws_name in self._workspaces:
-            cmd = f"/{ws_name}"
-            if cmd not in self._builtins:
-                self._builtins[cmd] = CommandConfig(
-                    builtin=True,
-                    description=f"Switch to workspace: {self._workspaces[ws_name]}",
-                )
         # Guard: raise early if any loaded plugin command clashes with a builtin.
         plugin_handlers = plugin_loader.get_commands(enabled_plugins)
         conflicts = set(plugin_handlers) & set(self._builtins)
@@ -261,10 +257,8 @@ class CommandRouter:
         if command_name in ("/folder", "/cd"):
             return await self._cmd_folder(msg, args, pool)
 
-        # Workspace switching — async because pool.switch_workspace() is async
-        ws_key = command_name.lstrip("/")
-        if ws_key in self._workspaces:
-            return await self._cmd_workspace(msg, command_name, ws_key, pool)
+        if command_name == "/workspace":  # list or switch workspaces, admin-only
+            return await self._cmd_workspace(msg, args, pool)
 
         builtin_response = self._dispatch_builtin(command_name, args, msg, pool)
         if builtin_response is not None:
@@ -452,23 +446,29 @@ class CommandRouter:
         return Response(content=f"Reset: {key} = (default). Saved.")
 
     async def _cmd_workspace(
-        self, msg: InboundMessage, command_name: str, ws_key: str, pool: Pool | None
+        self, msg: InboundMessage, args: list[str], pool: Pool | None
     ) -> Response:
         if not self._admin_user_ids or msg.user_id not in self._admin_user_ids:
             return Response(content="This command is admin-only.")
+        if not args or args[0] in ("ls", "list"):
+            if not self._workspaces:
+                return Response(content="No workspaces configured.")
+            pairs = sorted(self._workspaces.items())
+            rows = "\n".join(f"  {n} → {p}" for n, p in pairs)
+            return Response(content=f"Workspaces:\n{rows}")
+        ws_key = args[0]
+        if ws_key not in self._workspaces:
+            avail = ", ".join(sorted(self._workspaces)) or "none"
+            return Response(content=f"Unknown workspace: {ws_key}. Available: {avail}")
         cwd = self._workspaces[ws_key]
         if pool is None:
             return Response(content=f"Workspace: {ws_key}")
         await pool.switch_workspace(cwd)
-        remaining = msg.text[len(command_name) :].lstrip()
+        prefix = f"/workspace {ws_key}"
+        remaining = msg.text[len(prefix) :].lstrip()
         if remaining:
-            raw_remaining = (
-                msg.text_raw[len(command_name) :].lstrip()
-                if msg.text_raw
-                else remaining
-            )
-            followup = replace(msg, text=remaining, text_raw=raw_remaining)
-            pool.submit(followup)
+            rr = msg.text_raw[len(prefix) :].lstrip() if msg.text_raw else remaining
+            pool.submit(replace(msg, text=remaining, text_raw=rr))
         return Response(content=f"Workspace: {ws_key}")
 
     async def _cmd_folder(

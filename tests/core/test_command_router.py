@@ -319,7 +319,7 @@ class TestDispatchRoutesToPlugin:
         msg = make_message(content="/echo hi")
 
         # Act / Assert
-        with pytest.raises(TypeError, match="requires a real Pool"):
+        with pytest.raises(TypeError, match="requires a Pool"):
             await router.dispatch(msg, pool=None)
 
 
@@ -1568,7 +1568,15 @@ class TestSessionCommands:
         router.register_session_command(
             "mything", handler, description="Does the thing"
         )
-        response = router._help()
+        from lyra.core.builtin_commands import help_command
+
+        response = help_command(
+            router._builtins,
+            router._session_handlers,
+            router._plugin_loader,
+            router._enabled_plugins,
+            router._msg_manager,
+        )
         assert "Session commands:" in response.content
         assert "/mything" in response.content
         assert "Does the thing" in response.content

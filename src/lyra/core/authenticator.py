@@ -114,7 +114,7 @@ class Authenticator:
         roles: Sequence[str] = (),
         command: str | None = None,
     ) -> TrustLevel:
-        """Backward-compat alias for resolve(). Returns TrustLevel only."""
+        """Backward-compat method. Returns TrustLevel only. Prefer resolve() for new code."""  # noqa: E501
         return self._resolve_trust(user_id, roles, command)
 
     def resolve(
@@ -271,4 +271,6 @@ class Authenticator:
 _DENY_ALL = Authenticator(store=None, role_map={}, default=TrustLevel.BLOCKED)
 
 # Sentinel: allows all traffic as PUBLIC (for tests and permissive contexts).
+# Note: resolve() always returns is_admin=False. For admin identity in tests,
+# construct Authenticator directly with admin_user_ids or use trust=OWNER.
 _ALLOW_ALL = Authenticator(store=None, role_map={}, default=TrustLevel.PUBLIC)

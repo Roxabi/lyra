@@ -1275,6 +1275,33 @@ class TestTelegramAuth:
         assert msg.trust_level == TrustLevel.PUBLIC
         assert msg.is_admin is False
 
+    @pytest.mark.asyncio
+    async def test_integration_blocked_user_rejected_by_real_guard(self) -> None:
+        """Integration: real Authenticator + real GuardChain rejects BLOCKED user."""
+        from unittest.mock import patch
+
+        from lyra.adapters.telegram import TelegramAdapter
+        from lyra.core.authenticator import Authenticator
+        from lyra.core.guard import BlockedGuard, GuardChain
+        from lyra.core.trust import TrustLevel
+
+        store = MagicMock()
+        store.check.return_value = TrustLevel.BLOCKED
+        auth = Authenticator(store=store, role_map={}, default=TrustLevel.BLOCKED)
+        guard_chain = GuardChain([BlockedGuard()])
+
+        hub = MagicMock()
+        hub.inbound_bus = MagicMock()
+        adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub, auth=auth)
+        # Inject real guard chain
+        adapter._guard_chain = guard_chain
+
+        with patch.object(adapter, "normalize") as mock_norm:
+            await adapter._on_message(_make_aiogram_msg())
+
+        mock_norm.assert_not_called()
+        hub.inbound_bus.put.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # T1.4 — Unit tests for _typing_loop

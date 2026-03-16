@@ -11,6 +11,8 @@ Usage (legacy):
 
 Preferred:
     if not msg.is_admin: ...        # when InboundMessage is available
+
+Removal tracked in #315.
 """
 
 from __future__ import annotations

@@ -1663,6 +1663,36 @@ class TestDiscordAuth:
         _platform, msg = hub.inbound_bus.put.call_args[0]
         assert msg.is_admin is True
 
+    @pytest.mark.asyncio
+    async def test_integration_blocked_user_rejected_by_real_guard(self) -> None:
+        """Integration: real Authenticator + real GuardChain rejects BLOCKED user."""
+        from unittest.mock import patch
+
+        from lyra.adapters.discord import DiscordAdapter
+        from lyra.core.authenticator import Authenticator
+        from lyra.core.guard import BlockedGuard, GuardChain
+        from lyra.core.trust import TrustLevel
+
+        store = MagicMock()
+        store.check.return_value = TrustLevel.BLOCKED
+        auth = Authenticator(store=store, role_map={}, default=TrustLevel.BLOCKED)
+        guard_chain = GuardChain([BlockedGuard()])
+
+        hub = MagicMock()
+        hub.inbound_bus = MagicMock()
+        adapter = DiscordAdapter(
+            hub=hub, bot_id="main", intents=discord.Intents.none(), auth=auth
+        )
+        adapter._bot_user = SimpleNamespace(id=999, bot=True)
+        # Inject real guard chain
+        adapter._guard_chain = guard_chain
+
+        with patch.object(adapter, "normalize") as mock_norm:
+            await adapter.on_message(_make_discord_msg_ns())
+
+        mock_norm.assert_not_called()
+        hub.inbound_bus.put.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # T2 (typing indicator) — two-phase design: start on receipt, cancel on send

@@ -12,6 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from . import builtin_commands, workspace_commands
 from .command_parser import CommandContext
 from .message import InboundMessage, Response
 from .plugin_loader import AsyncHandler, PluginLoader
@@ -173,8 +174,6 @@ class CommandRouter:
     def _dispatch_builtin(
         self, command_name: str, args: list[str], msg: InboundMessage, pool: Pool | None
     ) -> Response | None:
-        from . import builtin_commands
-
         if command_name == "/help":
             return builtin_commands.help_command(
                 self._builtins,
@@ -235,8 +234,6 @@ class CommandRouter:
         self, msg: InboundMessage, pool: Pool | None = None
     ) -> Response | None:
         """Route pre-parsed command. Returns None for !-prefixed unknowns."""
-        from . import workspace_commands
-
         msg = self.prepare(msg)
         if msg.command is None:
             raise ValueError("dispatch() called on non-command message")

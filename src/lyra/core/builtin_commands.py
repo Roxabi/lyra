@@ -15,15 +15,12 @@ from .message import InboundMessage, Response
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from lyra.llm.smart_routing import SmartRoutingDecorator
+
     from .circuit_breaker import CircuitRegistry
     from .messages import MessageManager
     from .plugin_loader import PluginLoader
     from .runtime_config import RuntimeConfigHolder
-
-    try:
-        from lyra.llm.smart_routing import SmartRoutingDecorator
-    except ImportError:  # pragma: no cover
-        pass
 
 
 def help_command(

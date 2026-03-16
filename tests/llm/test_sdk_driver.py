@@ -117,6 +117,8 @@ class TestAnthropicSdkDriverComplete:
                 system_prompt="",
             )
         assert exc_info.value.provider == "anthropic"
+        assert exc_info.value.retryable is False
+        assert exc_info.value.status_code is None
 
     async def test_complete_raises_provider_auth_error(self) -> None:
         """anthropic.AuthenticationError → ProviderAuthError (non-retryable)."""
@@ -145,6 +147,7 @@ class TestAnthropicSdkDriverComplete:
             await driver.complete("p1", "hi", model_cfg, "")
         assert exc_info.value.retryable is False
         assert exc_info.value.status_code == 401
+        assert exc_info.value.provider == "anthropic"
 
     async def test_complete_raises_provider_rate_limit_error(self) -> None:
         """anthropic.RateLimitError → ProviderRateLimitError (retryable)."""
@@ -173,6 +176,7 @@ class TestAnthropicSdkDriverComplete:
             await driver.complete("p1", "hi", model_cfg, "")
         assert exc_info.value.retryable is True
         assert exc_info.value.status_code == 429
+        assert exc_info.value.provider == "anthropic"
 
     async def test_complete_raises_provider_error_on_unexpected_exception(self) -> None:
         """Unexpected exception → ProviderError (generic, retryable)."""

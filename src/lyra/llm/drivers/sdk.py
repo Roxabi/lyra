@@ -139,14 +139,20 @@ class AnthropicSdkDriver:
             return LlmResult(result=accumulated_text)
 
         except anthropic.AuthenticationError as exc:
-            log.debug("AnthropicSdkDriver auth error [pool:%s]", pool_id, exc_info=True)
             _code = getattr(exc, "status_code", 401)
+            log.error(
+                "AnthropicSdkDriver auth error [pool:%s] status=%s",
+                pool_id, _code,
+            )
             raise ProviderAuthError(
                 str(exc), status_code=_code, provider="anthropic"
             ) from exc
         except anthropic.RateLimitError as exc:
-            log.debug("AnthropicSdkDriver rate limit [pool:%s]", pool_id, exc_info=True)
             _code = getattr(exc, "status_code", 429)
+            log.warning(
+                "AnthropicSdkDriver rate limit [pool:%s] status=%s",
+                pool_id, _code,
+            )
             raise ProviderRateLimitError(
                 str(exc), status_code=_code, provider="anthropic"
             ) from exc

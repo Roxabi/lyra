@@ -28,20 +28,49 @@ class ProviderAuthError(ProviderError):
     """Authentication or authorization failure (non-retryable)."""
 
     def __init__(
-        self, message: str = "authentication failed", **kwargs: object
+        self,
+        message: str = "authentication failed",
+        *,
+        status_code: int | None = None,
+        provider: str = "",
     ) -> None:
-        super().__init__(message, retryable=False, **kwargs)  # type: ignore[arg-type]
+        super().__init__(
+            message, status_code=status_code, provider=provider, retryable=False
+        )
 
 
 class ProviderRateLimitError(ProviderError):
     """Rate-limit / quota exceeded (retryable after back-off)."""
 
-    def __init__(self, message: str = "rate limited", **kwargs: object) -> None:
-        super().__init__(message, retryable=True, **kwargs)  # type: ignore[arg-type]
+    def __init__(
+        self,
+        message: str = "rate limited",
+        *,
+        status_code: int | None = None,
+        provider: str = "",
+    ) -> None:
+        super().__init__(
+            message, status_code=status_code, provider=provider, retryable=True
+        )
 
 
 class ProviderApiError(ProviderError):
-    """Generic API error from the provider."""
+    """Generic API error from the provider (non-retryable by default)."""
+
+    def __init__(
+        self,
+        message: str = "",
+        *,
+        status_code: int | None = None,
+        provider: str = "",
+        retryable: bool = False,
+    ) -> None:
+        super().__init__(
+            message,
+            status_code=status_code,
+            provider=provider,
+            retryable=retryable,
+        )
 
 
 class MissingCredentialsError(Exception):

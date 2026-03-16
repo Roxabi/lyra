@@ -771,11 +771,12 @@ class DiscordAdapter(discord.Client):
         view = self._render_buttons(outbound.buttons)
         last_idx = len(chunks) - 1
 
-        # Always reply to the message that triggered the response
+        # Skip reply-to in threads — thread context makes it redundant.
         reply_msg_id: int | None = original_msg.platform_meta.get("message_id")
+        should_reply = reply_msg_id is not None and thread_id is None
         for i, chunk in enumerate(chunks):
             chunk_view = view if (i == last_idx and view is not None) else None
-            if i == 0 and reply_msg_id is not None:
+            if i == 0 and should_reply:
                 msg_obj = messageable.get_partial_message(reply_msg_id)  # type: ignore[attr-defined]
                 if chunk_view is not None:
                     sent = await msg_obj.reply(chunk, view=chunk_view)
@@ -833,8 +834,9 @@ class DiscordAdapter(discord.Client):
         # Send placeholder
         _placeholder_text = self._msg("stream_placeholder", "\u2026")
         reply_msg_id: int | None = original_msg.platform_meta.get("message_id")
+        should_reply = reply_msg_id is not None and thread_id is None
         try:
-            if reply_msg_id is not None:
+            if should_reply:
                 msg_obj = messageable.get_partial_message(reply_msg_id)  # type: ignore[attr-defined]
                 placeholder = await msg_obj.reply(_placeholder_text)
             else:
@@ -924,7 +926,7 @@ class DiscordAdapter(discord.Client):
         # Determine message to reply to
         message_id: int | None = inbound.platform_meta.get("message_id")
         reply_to_id = parse_reply_to_id(msg.reply_to_id)
-        if reply_to_id is None:
+        if reply_to_id is None and thread_id is None:
             reply_to_id = message_id
 
         content = (msg.caption or "")[:DISCORD_MAX_LENGTH]
@@ -1028,7 +1030,7 @@ class DiscordAdapter(discord.Client):
         # Determine reply target
         message_id: int | None = inbound.platform_meta.get("message_id")
         reply_to_id = parse_reply_to_id(msg.reply_to_id)
-        if reply_to_id is None:
+        if reply_to_id is None and thread_id is None:
             reply_to_id = message_id
 
         content = truncate_caption(msg.caption, DISCORD_MAX_LENGTH) or ""

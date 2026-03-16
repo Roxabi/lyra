@@ -1,0 +1,43 @@
+---
+title: "feat(adapters): native platform commands — Telegram setMyCommands + Discord app_commands"
+issue: 291
+status: approved
+tier: F-lite
+date: 2026-03-17
+---
+
+## Problem
+
+Les deux adapters exposent des commandes aux utilisateurs (Telegram `/start`, Discord `!join`, etc.) mais ne les enregistrent pas auprès des plateformes natives. Résultat : aucune auto-complétion, aucune description visible, et une UX dégradée — l'utilisateur doit deviner les commandes existantes.
+
+Pour Telegram, `setMyCommands()` n'est jamais appelé, donc le menu `/` natif reste vide. Pour Discord, les commandes sont des préfixes texte (`!join`) alors que la plateforme supporte nativement les slash commands avec paramètres typés, descriptions et validation côté client.
+
+C'est un problème de polish UX qui se remarque immédiatement dès qu'un utilisateur découvre le bot.
+
+## Who
+
+- **Primary:** Utilisateurs Telegram et Discord qui interagissent avec Lyra via les commandes natives de leur plateforme.
+- **Secondary:** Développeurs ajoutant de nouvelles commandes — ils bénéficieront d'un registre unifié comme source de vérité.
+
+## Constraints
+
+- Telegram : `setMyCommands()` doit être appelé une seule fois (pas à chaque startup). Hook dans `lyra agent init` ou une commande `lyra setup commands` dédiée.
+- Discord : l'enregistrement des app_commands est requis au connect (contrainte de la lib). Migration des commandes `!join`, `!leave`, `!voice` existantes sans régression.
+- Pas de dépendance externe nouvelle — python-telegram-bot et discord.py supportent déjà ces APIs.
+- Fichiers touchés : `src/lyra/adapters/telegram.py`, `src/lyra/adapters/discord.py`, `src/lyra/cli/` ou init flow.
+
+## Out of Scope
+
+- Telegram inline mode
+- Discord modals
+- ReplyKeyboardMarkup
+- Commandes dynamiques (rechargement à chaud sans restart)
+
+## Complexity
+
+**Tier: F-lite** — Scope clair et bien borné sur 2 adapters existants, patterns connus (setMyCommands / app_commands tree), pas de nouvelle architecture transverse.
+
+Signaux observés :
+- Label M → F-lite
+- κ = 5 (files: 3-4, risk: connu, arch: 2 modules, unknowns: shared registry optionnel)
+- Pas de nouveau pattern architectural, pas d'impact hub/bus

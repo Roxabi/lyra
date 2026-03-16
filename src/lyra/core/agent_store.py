@@ -14,6 +14,7 @@ from .agent_schema import (
     _CREATE_BOT_AGENT_MAP,
     _MIGRATE_AGENTS,
 )
+from .agent_seeder import seed_from_toml as _seed_from_toml
 
 log = logging.getLogger(__name__)
 
@@ -354,6 +355,4 @@ class AgentStore:
 
     async def seed_from_toml(self, path: Path, *, force: bool = False) -> int:
         """Import agent from TOML. Delegates to :func:`agent_seeder.seed_from_toml`."""
-        from .agent_seeder import seed_from_toml
-
-        return await seed_from_toml(self, path, force=force)
+        return await _seed_from_toml(self, path, force=force)

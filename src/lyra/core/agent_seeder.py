@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import tomllib
 from pathlib import Path
+from typing import Protocol
 
 from .agent_models import AgentRow
 
@@ -13,17 +15,23 @@ log = logging.getLogger(__name__)
 
 __all__ = ["seed_from_toml"]
 
+_VALID_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+
+
+class AgentStoreProtocol(Protocol):
+    """Structural interface for the subset of AgentStore used by the seeder."""
+
+    def get(self, name: str) -> AgentRow | None: ...
+    async def upsert(self, row: AgentRow) -> None: ...
+
 
 async def seed_from_toml(
-    store: object,
+    store: AgentStoreProtocol,
     path: Path,
     *,
     force: bool = False,
 ) -> int:
     """Import agent from TOML into *store*. Returns 1 if imported, 0 if skipped/error.
-
-    *store* must expose ``get(name) -> AgentRow | None`` and
-    ``async upsert(row: AgentRow) -> None`` (i.e. an :class:`AgentStore`).
 
     Skips if agent already exists in the store cache (unless *force* is True).
     """
@@ -31,10 +39,10 @@ async def seed_from_toml(
     if row is None:
         return 0
 
-    if not force and store.get(row.name) is not None:  # type: ignore[union-attr]
+    if not force and store.get(row.name) is not None:
         return 0
 
-    await store.upsert(row)  # type: ignore[union-attr]
+    await store.upsert(row)
     return 1
 
 
@@ -53,6 +61,9 @@ def parse_toml(path: Path) -> AgentRow | None:
     name = agent_section.get("name") or model_section.get("name")
     if not name:
         log.warning("seed_from_toml: no [agent].name in %s — skipped", path)
+        return None
+    if not _VALID_NAME_RE.match(name):
+        log.warning("seed_from_toml: invalid agent name %r in %s — skipped", name, path)
         return None
 
     # Fields may live under [model] (wizard-generated) or [agent] (legacy).

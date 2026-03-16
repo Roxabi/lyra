@@ -1122,7 +1122,9 @@ class DiscordAdapter(discord.Client):
         should_reply = reply_msg_id is not None and thread_id is None
         for i, chunk in enumerate(chunks):
             chunk_view = view if (i == last_idx and view is not None) else None
-            if i == 0 and should_reply:
+            if should_reply:
+                # All chunks reply to the original message so every part is
+                # visually anchored to the user's message, not just the first.
                 msg_obj = messageable.get_partial_message(reply_msg_id)  # type: ignore[attr-defined]
                 if chunk_view is not None:
                     sent = await msg_obj.reply(chunk, view=chunk_view)

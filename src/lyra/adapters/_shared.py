@@ -213,6 +213,10 @@ def chunk_text(
 ) -> list[str]:
     """Split *text* into chunks of at most *max_len* characters.
 
+    Splits at the latest natural boundary before the limit (in order of
+    preference): paragraph break, newline, sentence end (`. ` / `! ` / `? `),
+    word boundary.  Falls back to a hard cut only if no boundary is found.
+
     If *escape_fn* is provided it is applied to the entire text before
     chunking (e.g. MarkdownV2 escaping), so *max_len* applies to the
     post-escape length. Callers must account for any expansion the escape
@@ -226,7 +230,26 @@ def chunk_text(
         text = escape_fn(text)
     if not text:
         return []
-    return [text[i : i + max_len] for i in range(0, len(text), max_len)]
+    if len(text) <= max_len:
+        return [text]
+
+    chunks: list[str] = []
+    while len(text) > max_len:
+        window = text[:max_len]
+        # Priority order: paragraph > newline > sentence end > word boundary
+        cut = -1
+        for sep in ("\n\n", "\n", ". ", "! ", "? ", " "):
+            idx = window.rfind(sep)
+            if idx > 0:
+                cut = idx + len(sep)
+                break
+        if cut <= 0:
+            cut = max_len  # hard cut as last resort
+        chunks.append(text[:cut].rstrip())
+        text = text[cut:].lstrip()
+    if text:
+        chunks.append(text)
+    return chunks
 
 
 def resolve_msg(

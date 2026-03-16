@@ -357,7 +357,7 @@ class TestPoolTimeout:
         msg = make_msg()
 
         # Act
-        with caplog.at_level(logging.ERROR, logger="lyra.core.pool"):
+        with caplog.at_level(logging.ERROR, logger="lyra.core.pool_processor"):
             fast_pool.submit(msg)
             await _drain(fast_pool, timeout=2.0)
 
@@ -375,7 +375,7 @@ class TestPoolTimeout:
         ctx_mock._agents["test_agent"] = agent
         msg = make_msg()
 
-        with caplog.at_level(logging.ERROR, logger="lyra.core.pool"):
+        with caplog.at_level(logging.ERROR, logger="lyra.core.pool_processor"):
             fast_pool.submit(msg)
             await _drain(fast_pool, timeout=2.0)
 
@@ -773,7 +773,7 @@ class TestPoolUnknownAgentDrain:
         pool._inbox.put_nowait(msg2)
 
         # Start the processing loop directly and let it run
-        task = asyncio.create_task(pool._process_loop())
+        task = asyncio.create_task(pool._processor.process_loop())
         await asyncio.sleep(0.1)
 
         # dispatch_response should never be called — no agent found

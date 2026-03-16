@@ -684,6 +684,12 @@ class DiscordAdapter(discord.Client):
 
         _display_name = getattr(raw.author, "display_name", None)
         attachments = _extract_attachments(getattr(raw, "attachments", None) or [])
+        _reference = getattr(raw, "reference", None)
+        reply_to_id: str | None = (
+            str(_reference.message_id)
+            if _reference is not None and _reference.message_id is not None
+            else None
+        )
         platform_meta = {
             "guild_id": raw.guild.id if raw.guild else None,
             "channel_id": resolved_channel_id,
@@ -718,6 +724,7 @@ class DiscordAdapter(discord.Client):
             trust_level=trust_level,
             platform_meta=platform_meta,
             routing=routing,
+            reply_to_id=reply_to_id,
         )
 
     async def on_message(self, message: Any) -> None:  # noqa: C901, PLR0915 — gateway dispatch: each message type branch is independent

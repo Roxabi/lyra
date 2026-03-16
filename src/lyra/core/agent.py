@@ -37,6 +37,7 @@ from .agent_config import (  # noqa: F401
     _find_agent_dir,
 )
 from .agent_loader import agent_row_to_config, load_agent_config  # noqa: F401
+from .agent_plugins import PluginReloadManager
 from .auth import TrustLevel
 from .circuit_breaker import CircuitRegistry
 from .command_router import CommandConfig, CommandRouter  # noqa: F401
@@ -95,27 +96,15 @@ class AgentBase(ABC, SessionManager):
         self._circuit_registry = circuit_registry
         self._admin_user_ids = admin_user_ids
         self._msg_manager = msg_manager
-        # Subclasses must invoke self._stt when msg.type == MessageType.AUDIO.
-        # Temp file cleanup (AudioContent.url) must live in a finally block in
-        # process() — the agent owns it, not STTService. See ADR-013.
-        self._stt = stt
-        # Subclasses invoke self._tts when /voice command detected in process().
+        self._stt = stt   # ADR-013: agent owns temp file cleanup
         self._tts = tts
         self._smart_routing_decorator = smart_routing_decorator
         self._plugins_dir = plugins_dir or _PLUGINS_DIR
         self._plugin_loader = PluginLoader(self._plugins_dir)
-        self._effective_plugins = self._init_plugins()
-        self._plugin_mtimes: dict[str, float] = self._record_plugin_mtimes()
-        self.command_router: CommandRouter = CommandRouter(
-            self._plugin_loader,
-            self._effective_plugins,
-            circuit_registry=circuit_registry,
-            admin_user_ids=admin_user_ids,
-            msg_manager=msg_manager,
-            smart_routing_decorator=smart_routing_decorator,
-            **self._build_router_kwargs(),
+        self._plugin_mgr = PluginReloadManager(
+            config, self._plugin_loader, self._plugins_dir
         )
-        self._register_session_commands()
+        self._rebuild_command_router()
         if self._tts is not None:
             self.command_router.register_passthrough("voice")
         self._persona_path: Path | None = None
@@ -142,43 +131,26 @@ class AgentBase(ABC, SessionManager):
         except Exception:
             pass
 
-    def _init_plugins(self) -> list[str]:
-        """Load plugins and return the effective enabled list.
+    # -- Backward-compatible accessors (plugin state owned by _plugin_mgr) --
 
-        Only plugins that load successfully are included in the returned list.
-        If a plugin has enabled=false in its manifest, load() raises ValueError
-        and the plugin is skipped — this enforces SC-9 regardless of agent config.
-        """
-        if self.config.plugins_enabled:
-            names = list(self.config.plugins_enabled)
-        else:
-            # default-open: load all manifest.enabled=True plugins discovered in
-            # plugins_dir. Security assumption: plugins_dir is a trusted directory
-            # controlled by the operator. Do not point plugins_dir at a
-            # world-writable or network-accessible path.
-            manifests = self._plugin_loader.discover()
-            names = [m.name for m in manifests if m.enabled]
-        effective: list[str] = []
-        for name in names:
-            try:
-                self._plugin_loader.load(name)
-                effective.append(name)
-            except ValueError as exc:
-                log.warning("Skipping plugin %r: %s", name, exc)
-            except Exception:  # noqa: BLE001  # resilient: don't let one bad plugin block startup
-                log.warning("Failed to load plugin %r", name, exc_info=True)
-        return effective
+    @property
+    def _effective_plugins(self) -> list[str]:  # noqa: D401
+        return self._plugin_mgr.effective_plugins
+
+    @_effective_plugins.setter
+    def _effective_plugins(self, value: list[str]) -> None:
+        self._plugin_mgr.effective_plugins = value
+
+    @property
+    def _plugin_mtimes(self) -> dict[str, float]:  # noqa: D401
+        return self._plugin_mgr.plugin_mtimes
+
+    @_plugin_mtimes.setter
+    def _plugin_mtimes(self, value: dict[str, float]) -> None:
+        self._plugin_mgr.plugin_mtimes = value
 
     def _record_plugin_mtimes(self) -> dict[str, float]:
-        """Record current mtime for each loaded plugin's handlers.py."""
-        mtimes: dict[str, float] = {}
-        for name in self._effective_plugins:
-            handlers_path = self._plugins_dir / name / "handlers.py"
-            try:
-                mtimes[name] = handlers_path.stat().st_mtime
-            except OSError:
-                pass
-        return mtimes
+        return self._plugin_mgr._record_plugin_mtimes()
 
     @property
     def name(self) -> str:
@@ -216,74 +188,38 @@ class AgentBase(ABC, SessionManager):
                         new_config.model_config.model,
                     )
                     self.config = new_config
-                    self.command_router = CommandRouter(
-                        self._plugin_loader,
-                        self._effective_plugins,
-                        circuit_registry=self._circuit_registry,
-                        admin_user_ids=self._admin_user_ids,
-                        msg_manager=self._msg_manager,
-                        smart_routing_decorator=self._smart_routing_decorator,
-                        **self._build_router_kwargs(),
-                    )
-                    self._register_session_commands()
+                    self._rebuild_command_router()
                 self._last_mtime = mtime
                 self._update_persona_tracking()
             except Exception as exc:
                 log.warning("Failed to reload config for %r: %s", self.config.name, exc)
 
-        self._reload_plugins()
+        if self._plugin_mgr.reload_plugins():
+            self._rebuild_command_router()
 
-    def _reload_plugins(self) -> None:
-        plugins_changed = False
-        for name in list(self._plugin_mtimes):
-            handlers_path = self._plugins_dir / name / "handlers.py"
-            try:
-                new_mtime = handlers_path.stat().st_mtime
-            except OSError:
-                continue
-            if new_mtime > self._plugin_mtimes[name]:
-                try:
-                    self._plugin_loader.reload(name)
-                    self._plugin_mtimes[name] = new_mtime
-                    plugins_changed = True
-                    log.info("Hot-reloaded plugin %r", name)
-                except Exception:  # noqa: BLE001  # resilient: don't let hot-reload crash the agent
-                    log.warning("Failed to reload plugin %r", name, exc_info=True)
-        if plugins_changed:
-            self.command_router = CommandRouter(
-                self._plugin_loader,
-                self._effective_plugins,
-                circuit_registry=self._circuit_registry,
-                admin_user_ids=self._admin_user_ids,
-                msg_manager=self._msg_manager,
-                smart_routing_decorator=self._smart_routing_decorator,
-                **self._build_router_kwargs(),
-            )
-            self._register_session_commands()
+    def _rebuild_command_router(self) -> None:
+        self.command_router = CommandRouter(
+            self._plugin_loader,
+            self._plugin_mgr.effective_plugins,
+            circuit_registry=self._circuit_registry,
+            admin_user_ids=self._admin_user_ids,
+            msg_manager=self._msg_manager,
+            smart_routing_decorator=self._smart_routing_decorator,
+            **self._build_router_kwargs(),
+        )
+        self._register_session_commands()
 
     def _build_router_kwargs(self) -> dict:
         """Hook for subclasses to inject extra CommandRouter constructor kwargs."""
         return {}
 
     def _register_session_commands(self) -> None:
-        """Hook for subclasses to register session commands after router (re)build.
-
-        Called after CommandRouter construction in __init__, _maybe_reload, and
-        _reload_plugins. Base implementation is a no-op; override in concrete
-        agents that support session commands.
-        """
+        """Hook for subclasses — called after CommandRouter (re)build."""
 
     def _handle_voice_command(self, msg: "InboundMessage") -> "InboundMessage | None":
-        """Rewrite a /voice command as a voice-modality LLM request.
-
-        Pre-router called at the top of each agent's process(). If the message
-        starts with "/voice <prompt>", strips the prefix, injects a spoken-language
-        hint, sets modality="voice", and returns the rewritten message so the normal
-        LLM pipeline runs. The hub's dispatch_response() will auto-TTS the reply.
+        """Rewrite /voice <prompt> as a voice-modality LLM request.
 
         Returns None when the message is not a /voice command (fall-through).
-        TTS must be configured (self._tts is not None) for this to activate.
-        Voice commands require at least TrustLevel.TRUSTED.
         """
         if self._tts is None:
             return None
@@ -291,7 +227,6 @@ class AgentBase(ABC, SessionManager):
         _VOICE_PREFIX = "/voice "
         if not stripped.lower().startswith(_VOICE_PREFIX):
             return None
-        # Trust gate: /voice is expensive (LLM + TTS). Require TRUSTED or above.
         if msg.trust_level not in (TrustLevel.TRUSTED, TrustLevel.OWNER):
             return None
         prompt = stripped[len(_VOICE_PREFIX) :].strip()
@@ -299,7 +234,6 @@ class AgentBase(ABC, SessionManager):
             return None
         import dataclasses
 
-        # Prepend spoken-language hint so LLM avoids markdown in audio replies
         _hint = "[Voice \u2014 reply in natural spoken language, no markdown]"
         voice_hint = f"{_hint}\n{prompt}"
         return dataclasses.replace(
@@ -309,20 +243,18 @@ class AgentBase(ABC, SessionManager):
     # S3 — system prompt caching (issue #83)
 
     async def _ensure_system_prompt(self, pool: "Pool") -> None:
-        """Populate pool._system_prompt on first turn. No-op if cached or no memory."""
+        """Populate pool._system_prompt on first turn."""
         if pool._system_prompt:
             return
         if self._memory is None:
             pool._system_prompt = self.config.system_prompt
             return
         pool._system_prompt = await self.build_system_prompt(pool)
-        # Disable the deque cap — compact() owns truncation when memory is wired.
-        # This side effect is intentional: Pool.__init__ sets max_sdk_history=50,
-        # but with memory active, compaction handles history reduction instead.
+        # compact() owns truncation when memory is wired, so disable deque cap.
         pool.max_sdk_history = sys.maxsize
 
     async def build_system_prompt(self, pool: "Pool") -> str:
-        """Fetch identity anchor + recall block; seed anchor from TOML on first boot."""
+        """Fetch identity anchor + recall block; seed from TOML on first boot."""
         if self._memory is None:
             raise RuntimeError(
                 "build_system_prompt() called without memory wired"
@@ -349,20 +281,11 @@ class AgentBase(ABC, SessionManager):
         return "\n\n".join(parts)
 
     def is_backend_alive(self, _pool_id: str) -> bool:
-        """Return True if the backend process for this pool is alive.
-
-        Subclasses backed by persistent processes (e.g. SimpleAgent with
-        claude-cli) should override this to check the actual process state.
-        """
+        """Return True if the backend process for this pool is alive."""
         return True
 
     async def reset_backend(self, _pool_id: str) -> None:
-        """Kill and reset the backend process for this pool.
-
-        Called by the pool on turn timeout to discard a potentially stuck
-        process.  Subclasses backed by persistent processes should override
-        this; the default no-op is correct for SDK-backed agents.
-        """
+        """Kill and reset the backend process (no-op for SDK agents)."""
 
     @abstractmethod
     async def process(

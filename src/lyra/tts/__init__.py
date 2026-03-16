@@ -94,11 +94,16 @@ def _wav_to_ogg(wav_path: Path) -> Path:
     subprocess.run(
         [
             "ffmpeg",
-            "-i", str(wav_path),
-            "-c:a", "libopus",
-            "-ar", "48000",
-            "-ac", "1",
-            "-y", str(ogg_path),
+            "-i",
+            str(wav_path),
+            "-c:a",
+            "libopus",
+            "-ar",
+            "48000",
+            "-ac",
+            "1",
+            "-y",
+            str(ogg_path),
         ],
         capture_output=True,
         check=True,
@@ -200,7 +205,7 @@ class TTSService:
                 voice=voice if voice is not None else self._voice,
                 language=resolved_lang,
                 chunked=True,  # always chunk — avoids Qwen crashes on large inputs
-                mp3=False,     # keep WAV; merge chunks then convert to OGG
+                mp3=False,  # keep WAV; merge chunks then convert to OGG
             )
 
             # Resolve merged WAV path from chunk results

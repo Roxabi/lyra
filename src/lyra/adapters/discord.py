@@ -118,6 +118,38 @@ _AUDIO_MIME_TYPES = frozenset(
 )
 
 
+def _is_valid_audio_magic(data: bytes) -> bool:
+    """Return True if *data* starts with a recognised audio file signature.
+
+    Checks magic bytes for common audio containers. The client-supplied
+    content_type is untrusted, so this provides a server-side format gate.
+    """
+    if len(data) < 4:  # noqa: PLR2004 — smallest magic header is 4 bytes
+        return False
+    # OGG / Opus / Vorbis
+    if data[:4] == b"OggS":
+        return True
+    # WEBM (also used for Opus in browsers / Discord voice)
+    if data[:4] == b"\x1aE\xdf\xa3":
+        return True
+    # RIFF (WAV, WebP — WAV is audio/wav)
+    if data[:4] == b"RIFF":
+        return True
+    # FLAC
+    if data[:4] == b"fLaC":
+        return True
+    # MP3 — ID3 tag header
+    if data[:3] == b"ID3":
+        return True
+    # MP3 — raw sync word (0xff + 0xfb/0xf3/0xf2)
+    if data[0] == 0xFF and data[1] in (0xFB, 0xF3, 0xF2, 0xFA, 0xF2):
+        return True
+    # M4A / MP4 — "ftyp" at offset 4
+    if len(data) >= 8 and data[4:8] == b"ftyp":  # noqa: PLR2004
+        return True
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Typing indicator — two-phase design (mirrors TelegramAdapter pattern)
 #
@@ -140,18 +172,51 @@ async def _discord_typing_worker(
 ) -> None:
     """Hold Discord typing indicator for channel_id until cancelled.
 
-    Uses channel.typing() context manager (discord.py 2.x) which sends the
-    indicator immediately and refreshes it automatically. Exits cleanly on
-    CancelledError so _cancel_typing() stops it without errors.
+    Sends trigger_typing() every 9 s (Discord expires after ~10 s).
+    Uses a manual loop instead of channel.typing() to control the refresh
+    interval — the built-in context manager refreshes every 5 s, which
+    hammers the API when several conversations run in parallel and triggers
+    429s on the /typing route.
     """
     try:
         channel = await resolve_channel(channel_id)
-        async with channel.typing():
-            await asyncio.sleep(float("inf"))  # hold until cancelled
+        while True:
+            await channel.trigger_typing()
+            await asyncio.sleep(9)
     except asyncio.CancelledError:
         pass
     except Exception as exc:
         log.debug("discord typing worker for channel %d: %s", channel_id, exc)
+
+
+async def _discord_send_with_retry(
+    coro_fn: Callable[[], Any],
+    *,
+    label: str,
+    max_attempts: int = 3,
+) -> None:
+    """Call *coro_fn()* and retry with exponential backoff on failure.
+
+    Delays: 1 s, 2 s, 4 s … between attempts.  Logs a warning on each
+    transient failure and an error if all attempts are exhausted.
+    """
+    for attempt in range(max_attempts):
+        try:
+            await coro_fn()
+            return
+        except Exception:
+            if attempt == max_attempts - 1:
+                log.exception("%s failed after %d attempts", label, max_attempts)
+                return
+            delay = 2**attempt  # 1 s, 2 s, 4 s …
+            log.warning(
+                "%s failed (attempt %d/%d), retrying in %d s",
+                label,
+                attempt + 1,
+                max_attempts,
+                delay,
+            )
+            await asyncio.sleep(delay)
 
 
 _MENTION_RE = re.compile(r"<@!?\d+>")
@@ -256,6 +321,7 @@ class DiscordAdapter(discord.Client):
         # Populated from ThreadStore on on_ready; persisted on claim/create.
         self._owned_threads: set[int] = set()
         self._thread_store: ThreadStore | None = thread_store
+        self._thread_sessions: dict[str, tuple[str, str]] = {}
         self._vsm: VoiceSessionManager = VoiceSessionManager()
 
     def _msg(self, key: str, fallback: str) -> str:
@@ -390,6 +456,7 @@ class DiscordAdapter(discord.Client):
                 session_id=session_id,
                 pool_id=pool_id,
             )
+            self._thread_sessions[str(thread_id)] = (session_id, pool_id)
             log.debug(
                 "ThreadStore: persisted session_id=%s pool_id=%s for thread_id=%s",
                 session_id,
@@ -488,7 +555,7 @@ class DiscordAdapter(discord.Client):
         audio_bytes: bytes,
         mime_type: str,
         *,
-        trust_level: TrustLevel = TrustLevel.TRUSTED,
+        trust_level: TrustLevel,
     ) -> InboundAudio:
         """Build an InboundAudio envelope from a Discord audio message.
 
@@ -707,10 +774,33 @@ class DiscordAdapter(discord.Client):
                 )
                 return
 
+            # Magic-byte check: client-supplied content_type is untrusted.
+            # Reject bytes that don't match any known audio format signature.
+            if not _is_valid_audio_magic(audio_bytes):
+                log.warning(
+                    "Audio attachment rejected: magic bytes do not match any known"
+                    " audio format (message_id=%s)",
+                    message.id,
+                )
+                try:
+                    await message.reply(
+                        self._msg(
+                            "audio_invalid_format",
+                            "That file does not appear to be a valid audio file.",
+                        )
+                    )
+                except Exception:
+                    log.warning(
+                        "Failed to send invalid-format reply for message_id=%s",
+                        message.id,
+                    )
+                return
+
             hub_audio = self.normalize_audio(
                 message,
                 audio_bytes=audio_bytes,
                 mime_type=getattr(audio_attachment, "content_type", "audio/ogg"),
+                trust_level=trust,
             )
 
             async def _send_bp(text: str) -> None:
@@ -796,27 +886,32 @@ class DiscordAdapter(discord.Client):
         _stored_session_id: str | None = None
         _stored_pool_id: str | None = None
         if _in_owned_thread and self._thread_store is not None:
-            try:
-                (
-                    _stored_session_id,
-                    _stored_pool_id,
-                ) = await self._thread_store.get_session(
-                    thread_id=str(message.channel.id),
-                    bot_id=self._bot_id,
-                )
-                if _stored_session_id is not None:
-                    log.debug(
-                        "ThreadStore: retrieved session_id=%s pool_id=%s"
-                        " for thread_id=%s",
+            _thread_id_str = str(message.channel.id)
+            _cached = self._thread_sessions.get(_thread_id_str)
+            if _cached is not None:
+                _stored_session_id, _stored_pool_id = _cached
+            else:
+                try:
+                    (
                         _stored_session_id,
                         _stored_pool_id,
+                    ) = await self._thread_store.get_session(
+                        thread_id=_thread_id_str,
+                        bot_id=self._bot_id,
+                    )
+                    if _stored_session_id is not None:
+                        log.debug(
+                            "ThreadStore: retrieved session_id=%s pool_id=%s"
+                            " for thread_id=%s",
+                            _stored_session_id,
+                            _stored_pool_id,
+                            message.channel.id,
+                        )
+                except Exception:
+                    log.exception(
+                        "ThreadStore: failed to retrieve session for thread_id=%s",
                         message.channel.id,
                     )
-            except Exception:
-                log.exception(
-                    "ThreadStore: failed to retrieve session for thread_id=%s",
-                    message.channel.id,
-                )
 
         try:
             hub_msg = self.normalize(
@@ -1054,17 +1149,19 @@ class DiscordAdapter(discord.Client):
         # Final edit with complete text (always runs, even after error).
         # If accumulated exceeds the limit, edit the placeholder with the first
         # chunk and send any overflow chunks as follow-up messages.
+        # Both operations retry with exponential backoff so a transient 429
+        # or network hiccup does not leave the user with a truncated message.
         if accumulated:
             final_chunks = self._render_text(accumulated)
-            try:
-                await placeholder.edit(content=final_chunks[0])
-            except Exception:
-                log.exception("Final edit failed")
+            await _discord_send_with_retry(
+                lambda: placeholder.edit(content=final_chunks[0]),
+                label="Final edit",
+            )
             for extra_chunk in final_chunks[1:]:
-                try:
-                    await messageable.send(extra_chunk)
-                except Exception:
-                    log.exception("Failed to send overflow chunk")
+                await _discord_send_with_retry(
+                    lambda c=extra_chunk: messageable.send(c),
+                    label="Overflow chunk",
+                )
 
         # Cancel typing after final content is confirmed (streaming done).
         self._cancel_typing(send_to_id)

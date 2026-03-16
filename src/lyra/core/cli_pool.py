@@ -7,40 +7,17 @@ Sends messages via stdin NDJSON, reads responses via stdout NDJSON.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
-import re
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from .agent import ModelConfig
+from .cli_protocol import _SESSION_ID_RE, CliResult, send_and_read
 
 log = logging.getLogger(__name__)
-
-_SESSION_ID_RE = re.compile(r"^[0-9a-f-]{8,64}$")
-
-
-@dataclass
-class CliResult:
-    """Result from a CliPool.send() call.
-
-    Exactly one of `result` or `error` will be set (not both).
-    `warning` is set when the response was truncated (e.g. max_turns reached).
-    `session_id` is always present on success.
-    """
-
-    result: str = ""
-    session_id: str = ""
-    error: str = ""
-    warning: str = ""
-
-    @property
-    def ok(self) -> bool:
-        return not self.error
-
 
 # Explicit env allowlist — never forward secrets to the claude subprocess
 _SAFE_ENV_KEYS = {
@@ -178,7 +155,13 @@ class CliPool:
             if not entry.is_alive():
                 return CliResult(error="Process died before send")
             try:
-                result = await self._send_and_read(entry, message, on_intermediate)
+                result = await send_and_read(
+                    entry,
+                    message,
+                    pool_id,
+                    on_intermediate=on_intermediate,
+                    default_timeout=self._default_timeout,
+                )
                 if not result.ok and "Timeout" in result.error:
                     await self._kill(pool_id)
                     return result
@@ -216,15 +199,27 @@ class CliPool:
         No-op on invalid session_id format or pruned session file (Tier-2).
         """
         if not _SESSION_ID_RE.match(session_id):
-            log.warning("[pool:%s] resume_and_reset: invalid session_id %r — skipping", pool_id, session_id)  # noqa: E501
+            log.warning(
+                "[pool:%s] resume_and_reset: invalid session_id %r — skipping",
+                pool_id,
+                session_id,
+            )  # noqa: E501
             return
         if not self._session_file_exists(session_id):
-            log.info("[pool:%s] resume_and_reset: session %r not on disk — skipping (Tier-2)", pool_id, session_id)  # noqa: E501
+            log.info(
+                "[pool:%s] resume_and_reset: session %r not on disk — skipping (Tier-2)",  # noqa: E501
+                pool_id,
+                session_id,
+            )
             return
         # is_idle verified by caller; race window is sub-millisecond.
         await self._kill(pool_id)
         self._resume_session_ids[pool_id] = session_id
-        log.info("[pool:%s] resume_and_reset: will resume %s on next spawn", pool_id, session_id)  # noqa: E501
+        log.info(
+            "[pool:%s] resume_and_reset: will resume %s on next spawn",
+            pool_id,
+            session_id,
+        )  # noqa: E501
 
     # -------------------------------------------------------------------------
     # Internal
@@ -300,166 +295,6 @@ class CliPool:
         self._entries[pool_id] = entry
         log.info("[pool:%s] spawned (PID=%d)", pool_id, proc.pid)
         return entry
-
-    async def _send_and_read(
-        self,
-        entry: _ProcessEntry,
-        message: str,
-        on_intermediate: Callable[[str], Awaitable[None]] | None = None,
-    ) -> CliResult:
-        proc = entry.proc
-        if proc.stdin is None:
-            return CliResult(error="Process stdin is None")
-
-        payload = {
-            "type": "user",
-            "message": {"role": "user", "content": message},
-            "session_id": entry.session_id or "",
-            "parent_tool_use_id": None,
-        }
-        proc.stdin.write((json.dumps(payload) + "\n").encode())
-        try:
-            await asyncio.wait_for(proc.stdin.drain(), timeout=10)
-        except asyncio.TimeoutError:
-            await self._kill(entry.pool_id)
-            return CliResult(error="Timeout writing to subprocess stdin")
-
-        return await self._read_until_result(entry, on_intermediate)
-
-    async def _read_until_result(  # noqa: C901, PLR0915 — protocol dispatch: each JSON event type requires its own branch
-        self,
-        entry: _ProcessEntry,
-        on_intermediate: Callable[[str], Awaitable[None]] | None = None,
-    ) -> CliResult:
-        proc = entry.proc
-        if proc.stdout is None:
-            return CliResult(error="Process stdout is None")
-
-        idle_timeout = self._default_timeout  # resets on each event
-        max_idle_retries = 3
-        idle_retries = 0
-        session_id: str | None = None
-        result_parts: list[str] = []  # accumulate text across all assistant events
-        assistant_turn_count = 0
-        # Buffer current turn; previous turn sent as ⏳ intermediate
-        pending_intermediate: str | None = None
-
-        try:
-            while True:
-                try:
-                    raw = await asyncio.wait_for(
-                        proc.stdout.readline(), timeout=idle_timeout
-                    )
-                except asyncio.TimeoutError:
-                    # No output for idle_timeout seconds — process may be stuck.
-                    if not entry.is_alive():
-                        log.warning(
-                            "[pool:%s] process died during idle wait", entry.pool_id
-                        )
-                        return CliResult(error="Process terminated unexpectedly")
-                    idle_retries += 1
-                    if idle_retries >= max_idle_retries:
-                        total_wait = idle_timeout * max_idle_retries
-                        log.error(
-                            "[pool:%s] Timeout: no output for %ds (%d retries)",
-                            entry.pool_id,
-                            total_wait,
-                            max_idle_retries,
-                        )
-                        return CliResult(
-                            error=f"Timeout: no output for {total_wait}s"
-                        )
-                    log.warning(
-                        "[pool:%s] no output for %ds — alive, waiting (%d/%d)",
-                        entry.pool_id,
-                        idle_timeout,
-                        idle_retries,
-                        max_idle_retries,
-                    )
-                    continue
-
-                if not raw:
-                    log.warning("[pool:%s] stdout EOF (process died)", entry.pool_id)
-                    return CliResult(error="Process terminated unexpectedly")
-
-                idle_retries = 0  # got data — reset timeout counter
-                line = raw.decode().strip()
-                if not line:
-                    continue
-
-                try:
-                    data = json.loads(line)
-                except json.JSONDecodeError:
-                    log.debug("[pool:%s] non-JSON: %s", entry.pool_id, line[:100])
-                    continue
-
-                msg_type = data.get("type", "")
-
-                if msg_type == "system" and data.get("subtype") == "init":
-                    session_id = data.get("session_id", "")
-                    model = data.get("model")
-                    log.debug("[pool:%s] init: model=%s", entry.pool_id, model)
-                if msg_type == "assistant":
-                    blocks = data.get("message", {}).get("content", [])
-                    texts = [b["text"] for b in blocks if b.get("type") == "text"]
-                    result_parts.extend(texts)
-                    assistant_turn_count += 1
-                    if on_intermediate and texts and assistant_turn_count >= 2:
-                        # Flush the *previous* buffered turn as ⏳ before
-                        # buffering the current one.
-                        if pending_intermediate is not None:
-                            try:
-                                await asyncio.wait_for(
-                                    on_intermediate(pending_intermediate),
-                                    timeout=5.0,
-                                )
-                            except asyncio.TimeoutError:
-                                log.warning(
-                                    "[pool:%s] on_intermediate callback timed"
-                                    " out (>5s) — dropping",
-                                    entry.pool_id,
-                                )
-                            except Exception:
-                                log.warning(
-                                    "[pool:%s] on_intermediate callback failed",
-                                    entry.pool_id,
-                                    exc_info=True,
-                                )
-                        pending_intermediate = "\n\n".join(texts)
-
-                if msg_type == "result":
-                    if not session_id:
-                        session_id = data.get("session_id", "")
-                    if session_id and entry.session_id != session_id:
-                        entry.session_id = session_id
-                    if pending_intermediate is not None:
-                        result_text = pending_intermediate
-                    else:
-                        result_text = data.get("result") or "\n\n".join(result_parts)
-                    log.info(
-                        "[pool:%s] response: %d chars, %dms",
-                        entry.pool_id,
-                        len(result_text),
-                        data.get("duration_ms", 0),
-                    )
-
-                    if data.get("is_error", False):
-                        subtype = data.get("subtype", "")
-                        if subtype == "error_max_turns" and result_text:
-                            return CliResult(
-                                result=result_text,
-                                session_id=session_id or "",
-                                warning="Response truncated (max turns reached)",
-                            )
-                        return CliResult(
-                            error=result_text or "Unknown error from Claude"
-                        )
-
-                    return CliResult(result=result_text, session_id=session_id or "")
-
-        except Exception as exc:
-            log.exception("[pool:%s] read error: %s", entry.pool_id, exc)
-            return CliResult(error=f"Read error: {type(exc).__name__}")
 
     async def _kill(self, pool_id: str) -> None:
         entry = self._entries.pop(pool_id, None)

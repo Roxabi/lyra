@@ -302,7 +302,19 @@ class TelegramAdapter:
         self._circuit_registry = circuit_registry
         self._msg_manager = msg_manager
         self._auth: AuthMiddleware = auth
-        self._audio_tmp_dir: str | None = os.environ.get("LYRA_AUDIO_TMP") or None
+        _raw_tmp = os.environ.get("LYRA_AUDIO_TMP") or None
+        if _raw_tmp is not None:
+            _tmp_path = Path(_raw_tmp)
+            if not _tmp_path.is_dir():
+                raise RuntimeError(
+                    f"LYRA_AUDIO_TMP={_raw_tmp!r} does not exist or is not a directory"
+                )
+            if not os.access(_raw_tmp, os.W_OK):
+                raise RuntimeError(
+                    f"LYRA_AUDIO_TMP={_raw_tmp!r} is not writable by the current"
+                    " process"
+                )
+        self._audio_tmp_dir: str | None = _raw_tmp
         self._max_audio_bytes: int = int(
             os.environ.get("LYRA_MAX_AUDIO_BYTES", 5 * 1024 * 1024)
         )
@@ -504,7 +516,7 @@ class TelegramAdapter:
         audio_bytes: bytes,
         mime_type: str,
         *,
-        trust_level: TrustLevel = TrustLevel.TRUSTED,
+        trust_level: TrustLevel,
     ) -> InboundAudio:
         """Build an InboundAudio envelope from a Telegram voice/audio/video_note.
 
@@ -576,6 +588,8 @@ class TelegramAdapter:
         Returns (path, duration_seconds). Caller is responsible for cleanup.
         """
         file_ = await self.bot.get_file(file_id)
+        # Pre-download check: skip when file_size is None (Telegram sometimes omits
+        # it). The post-download check below always runs and catches that case.
         if file_.file_size is not None and file_.file_size > self._max_audio_bytes:
             log.warning(
                 "Audio file_id=%s rejected: %d bytes exceeds %d byte limit",
@@ -591,6 +605,7 @@ class TelegramAdapter:
         tmp_path = Path(tmp_str)
         try:
             await self.bot.download(file=file_id, destination=tmp_str)
+            # Post-download check: always enforced, covers the file_size=None case.
             actual_size = tmp_path.stat().st_size
             if actual_size > self._max_audio_bytes:
                 tmp_path.unlink(missing_ok=True)
@@ -671,7 +686,7 @@ class TelegramAdapter:
             tmp_path.unlink(missing_ok=True)
 
         hub_audio = self.normalize_audio(
-            msg, audio_bytes=audio_bytes, mime_type="audio/ogg"
+            msg, audio_bytes=audio_bytes, mime_type="audio/ogg", trust_level=trust
         )
 
         self._start_typing(msg.chat.id)
@@ -864,7 +879,7 @@ class TelegramAdapter:
             placeholder = await self.bot.send_message(
                 chat_id=chat_id,
                 text=_placeholder_text,
-                **( {"reply_to_message_id": reply_to} if reply_to is not None else {}),
+                **({"reply_to_message_id": reply_to} if reply_to is not None else {}),
             )
             if outbound is not None:
                 outbound.metadata["reply_message_id"] = placeholder.message_id
@@ -899,9 +914,7 @@ class TelegramAdapter:
                 now = time.monotonic()
                 if now - last_edit >= 0.5:
                     accumulated = "".join(parts)
-                    _converted = _convert_markdown(
-                        accumulated[:TELEGRAM_MAX_LENGTH]
-                    )
+                    _converted = _convert_markdown(accumulated[:TELEGRAM_MAX_LENGTH])
                     await self.bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=placeholder.message_id,

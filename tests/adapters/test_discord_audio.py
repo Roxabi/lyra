@@ -61,9 +61,13 @@ def _make_adapter() -> DiscordAdapter:
 
 def test_normalize_audio_attachment_fields() -> None:
     """normalize_audio returns InboundAudio with correct fields for audio attachment."""
+    from lyra.core.auth import TrustLevel
+
     adapter = _make_adapter()
     msg = _make_discord_msg(attachments=[_make_audio_attachment("audio/ogg")])
-    result = adapter.normalize_audio(msg, b"bytes", "audio/ogg")
+    result = adapter.normalize_audio(
+        msg, b"bytes", "audio/ogg", trust_level=TrustLevel.TRUSTED
+    )
     assert isinstance(result, InboundAudio)
     assert result.id.startswith("discord:dc:user:42:")
     assert result.scope_id == "channel:333"
@@ -79,17 +83,25 @@ def test_normalize_audio_attachment_fields() -> None:
 
 def test_normalize_audio_channel_scope_id() -> None:
     """Regular channel → scope_id='channel:<id>'."""
+    from lyra.core.auth import TrustLevel
+
     adapter = _make_adapter()
     msg = _make_discord_msg()
-    result = adapter.normalize_audio(msg, b"x", "audio/ogg")
+    result = adapter.normalize_audio(
+        msg, b"x", "audio/ogg", trust_level=TrustLevel.TRUSTED
+    )
     assert result.scope_id == "channel:333"
 
 
 def test_normalize_audio_thread_scope_id() -> None:
     """Thread channel → scope_id='thread:<id>'."""
+    from lyra.core.auth import TrustLevel
+
     adapter = _make_adapter()
     msg = _make_discord_msg(channel_type="thread", thread_id=555)
-    result = adapter.normalize_audio(msg, b"x", "audio/ogg")
+    result = adapter.normalize_audio(
+        msg, b"x", "audio/ogg", trust_level=TrustLevel.TRUSTED
+    )
     assert result.scope_id == "thread:555"
 
 
@@ -109,11 +121,13 @@ async def test_on_message_enqueues_audio_on_audio_bus() -> None:
         hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
     )
 
+    # Use a valid OGG magic header so the magic-byte check passes.
+    _OGG_MAGIC = b"OggS" + b"\x00" * 20
     attachment_obj = SimpleNamespace(
         content_type="audio/ogg",
         url="https://cdn.example/audio.ogg",
         size=1024,
-        read=AsyncMock(return_value=b"ogg_bytes"),
+        read=AsyncMock(return_value=_OGG_MAGIC),
     )
     msg = _make_discord_msg(attachments=[attachment_obj])
     msg.author.bot = False
@@ -201,10 +215,10 @@ async def test_on_message_does_not_call_normalize_audio_for_non_audio() -> None:
     called = False
     original = adapter.normalize_audio
 
-    def spy(m, ab, mt):
+    def spy(m, ab, mt, *, trust_level):
         nonlocal called
         called = True
-        return original(m, ab, mt)
+        return original(m, ab, mt, trust_level=trust_level)
 
     adapter.normalize_audio = spy  # type: ignore[method-assign]
 

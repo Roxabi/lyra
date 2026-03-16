@@ -5,123 +5,21 @@ from __future__ import annotations
 import json
 import logging
 import tomllib
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
 
 import aiosqlite
 
+from .agent_models import AgentRow, AgentRuntimeStateRow, BotAgentMapRow, _utc_now_iso
+from .agent_schema import (
+    _CREATE_AGENT_RUNTIME_STATE,
+    _CREATE_AGENTS,
+    _CREATE_BOT_AGENT_MAP,
+    _MIGRATE_AGENTS,
+)
+
 log = logging.getLogger(__name__)
 
 __all__ = ["AgentRow", "AgentStore", "AgentRuntimeStateRow", "BotAgentMapRow"]
-
-
-# ---------------------------------------------------------------------------
-# DDL
-# ---------------------------------------------------------------------------
-
-_CREATE_AGENTS = """
-CREATE TABLE IF NOT EXISTS agents (
-    name TEXT PRIMARY KEY,
-    backend TEXT NOT NULL,
-    model TEXT NOT NULL,
-    max_turns INTEGER NOT NULL DEFAULT 10,
-    tools_json TEXT NOT NULL DEFAULT '[]',
-    persona TEXT,
-    show_intermediate INTEGER NOT NULL DEFAULT 0,
-    smart_routing_json TEXT,
-    plugins_json TEXT NOT NULL DEFAULT '[]',
-    memory_namespace TEXT,
-    cwd TEXT,
-    source TEXT NOT NULL DEFAULT 'db',
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    tts_json TEXT,
-    stt_json TEXT,
-    skip_permissions INTEGER NOT NULL DEFAULT 0
-)
-"""
-
-# Additive migrations — ALTER TABLE ADD COLUMN is idempotent (OperationalError caught).
-_MIGRATE_AGENTS = [
-    "ALTER TABLE agents ADD COLUMN tts_json TEXT",
-    "ALTER TABLE agents ADD COLUMN stt_json TEXT",
-    "ALTER TABLE agents ADD COLUMN skip_permissions INTEGER NOT NULL DEFAULT 0",
-]
-
-_CREATE_BOT_AGENT_MAP = """
-CREATE TABLE IF NOT EXISTS bot_agent_map (
-    platform TEXT NOT NULL,
-    bot_id TEXT NOT NULL,
-    agent_name TEXT NOT NULL,
-    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    PRIMARY KEY (platform, bot_id)
-)
-"""
-
-_CREATE_AGENT_RUNTIME_STATE = """
-CREATE TABLE IF NOT EXISTS agent_runtime_state (
-    agent_name TEXT PRIMARY KEY,
-    last_active_at TEXT,
-    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    pool_count INTEGER NOT NULL DEFAULT 0,
-    status TEXT NOT NULL DEFAULT 'idle'
-)
-"""
-
-
-# ---------------------------------------------------------------------------
-# Dataclasses
-# ---------------------------------------------------------------------------
-
-
-def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-@dataclass
-class AgentRow:
-    """One row from the agents table."""
-
-    name: str
-    backend: str
-    model: str
-    max_turns: int = 10
-    tools_json: str = "[]"
-    persona: str | None = None
-    show_intermediate: bool = False
-    smart_routing_json: str | None = None
-    plugins_json: str = "[]"
-    memory_namespace: str | None = None
-    cwd: str | None = None
-    tts_json: str | None = None
-    stt_json: str | None = None
-    skip_permissions: bool = False
-    source: str = "db"
-    created_at: str = field(default_factory=_utc_now_iso)
-    updated_at: str = field(default_factory=_utc_now_iso)
-
-
-@dataclass
-class BotAgentMapRow:
-    """One row from the bot_agent_map table."""
-
-    platform: str
-    bot_id: str
-    agent_name: str
-    updated_at: str = field(default_factory=_utc_now_iso)
-
-
-@dataclass
-class AgentRuntimeStateRow:
-    """One row from the agent_runtime_state table."""
-
-    agent_name: str
-    last_active_at: str | None
-    updated_at: str
-    pool_count: int
-    status: str
-
 
 # ---------------------------------------------------------------------------
 # AgentStore
@@ -396,10 +294,13 @@ class AgentStore:
             "SELECT agent_name, last_active_at, updated_at, pool_count, status "
             "FROM agent_runtime_state"
         ) as cur:
-            async for (a, la, up, pc, st) in cur:
+            async for a, la, up, pc, st in cur:
                 result[a] = AgentRuntimeStateRow(
-                    agent_name=a, last_active_at=la, updated_at=up,
-                    pool_count=pc, status=st,
+                    agent_name=a,
+                    last_active_at=la,
+                    updated_at=up,
+                    pool_count=pc,
+                    status=st,
                 )
         return result
 

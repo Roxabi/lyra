@@ -65,7 +65,7 @@ class MockAdapter:
         raise NotImplementedError
 
     def normalize_audio(
-        self, raw: object, audio_bytes: bytes, mime_type: str
+        self, raw: object, audio_bytes: bytes, mime_type: str, *, trust_level: TrustLevel  # noqa: E501
     ) -> InboundAudio:
         raise NotImplementedError
 

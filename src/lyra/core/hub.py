@@ -58,8 +58,8 @@ class ChannelAdapter(Protocol):
     def normalize(self, raw: Any) -> InboundMessage: ...
 
     def normalize_audio(
-        self, raw: Any, audio_bytes: bytes, mime_type: str, *, trust_level: "TrustLevel"
-    ) -> "InboundAudio": ...
+        self, raw: Any, audio_bytes: bytes, mime_type: str, *, trust_level: TrustLevel
+    ) -> InboundAudio: ...
 
     async def send(
         self, original_msg: InboundMessage, outbound: OutboundMessage

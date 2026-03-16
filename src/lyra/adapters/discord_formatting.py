@@ -42,7 +42,7 @@ def _parse_md_table(match: re.Match[str]) -> str:
 _MENTION_RE = re.compile(r"<@!?\d+>")
 
 
-def _make_thread_name(content: str, fallback: str) -> str:
+def make_thread_name(content: str, fallback: str) -> str:
     """Derive a Discord thread name from a message.
 
     Takes the segment before the first ' — ' (em-dash), strips @mentions,
@@ -55,7 +55,7 @@ def _make_thread_name(content: str, fallback: str) -> str:
     return name[:100]
 
 
-def _extract_attachments(raw_attachments: list[Any]) -> list[Attachment]:
+def extract_attachments(raw_attachments: list[Any]) -> list[Attachment]:
     """Extract non-audio Attachment objects from Discord message.attachments."""
     result: list[Attachment] = []
     for a in raw_attachments:

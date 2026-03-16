@@ -24,8 +24,8 @@ from lyra.adapters._shared import (
     resolve_msg,
 )
 from lyra.adapters.discord_formatting import (
-    _extract_attachments,
-    _make_thread_name,
+    extract_attachments,
+    make_thread_name,
     render_buttons,
     render_text,
 )
@@ -433,7 +433,7 @@ class DiscordAdapter(discord.Client):
         )
 
         _display_name = getattr(raw.author, "display_name", None)
-        attachments = _extract_attachments(getattr(raw, "attachments", None) or [])
+        attachments = extract_attachments(getattr(raw, "attachments", None) or [])
         _reference = getattr(raw, "reference", None)
         reply_to_id: str | None = (
             str(_reference.message_id)
@@ -675,7 +675,7 @@ class DiscordAdapter(discord.Client):
         ):
             try:
                 thread = await message.create_thread(
-                    name=_make_thread_name(message.content, message.author.display_name)
+                    name=make_thread_name(message.content, message.author.display_name)
                 )
                 resolved_thread_id = thread.id
                 self._owned_threads.add(thread.id)

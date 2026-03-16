@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from io import BytesIO
 from typing import TYPE_CHECKING, Any
 
@@ -29,6 +29,7 @@ from lyra.core.message import (
 )
 
 if TYPE_CHECKING:
+    from lyra.adapters.discord_voice import VoiceSessionManager
     from lyra.core.auth import TrustLevel
 
 log = logging.getLogger(__name__)
@@ -61,7 +62,7 @@ def is_valid_audio_magic(data: bytes) -> bool:
     if data[:3] == b"ID3":
         return True
     # MP3 — raw sync word (0xff + 0xfb/0xf3/0xf2)
-    if data[0] == 0xFF and data[1] in (0xFB, 0xF3, 0xF2, 0xFA, 0xF2):
+    if data[0] == 0xFF and data[1] in (0xFB, 0xF3, 0xF2, 0xFA):
         return True
     # M4A / MP4 — "ftyp" at offset 4
     if len(data) >= 8 and data[4:8] == b"ftyp":  # noqa: PLR2004
@@ -293,7 +294,7 @@ async def render_attachment(
 async def render_audio_stream(
     chunks: AsyncIterator[OutboundAudioChunk],
     inbound: InboundMessage,
-    render_audio_fn: Any,
+    render_audio_fn: Callable[[OutboundAudio, InboundMessage], Awaitable[None]],
 ) -> None:
     """Buffer streamed audio chunks and send as a single Discord file attachment."""
     if inbound.platform != Platform.DISCORD.value:
@@ -316,7 +317,7 @@ async def render_audio_stream(
 async def render_voice_stream(
     chunks: AsyncIterator[OutboundAudioChunk],
     inbound: InboundMessage,
-    vsm: Any,
+    vsm: "VoiceSessionManager",
 ) -> None:
     """Route TTS stream to the active Discord voice session for this guild."""
     if inbound.platform != Platform.DISCORD.value:

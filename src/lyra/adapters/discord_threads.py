@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -81,8 +82,6 @@ async def restore_hot_threads(
     handled by a lazy DB lookup in on_message so the in-memory set doesn't
     grow unboundedly over time.
     """
-    from datetime import UTC, datetime, timedelta  # noqa: PLC0415
-
     hot_since = datetime.now(UTC) - timedelta(hours=hot_hours)
     thread_ids = await thread_store.get_thread_ids(bot_id, active_since=hot_since)
     owned = {int(tid) for tid in thread_ids}

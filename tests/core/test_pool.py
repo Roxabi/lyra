@@ -773,7 +773,7 @@ class TestPoolUnknownAgentDrain:
         pool._inbox.put_nowait(msg2)
 
         # Start the processing loop directly and let it run
-        task = asyncio.create_task(pool._process_loop())
+        task = asyncio.create_task(pool._processor.process_loop())
         await asyncio.sleep(0.1)
 
         # dispatch_response should never be called — no agent found

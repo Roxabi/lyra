@@ -300,7 +300,7 @@ class TestTurnStoreIntegrationWithPool:
         pool._turn_store = store
 
         msg = self._make_msg(user_id="u2")
-        await pool._process_one(msg, agent)
+        await pool._processor._process_one(msg, agent)
         await asyncio.sleep(0.05)
 
         rows = await store.get_turns("p:2", user_id="u2")

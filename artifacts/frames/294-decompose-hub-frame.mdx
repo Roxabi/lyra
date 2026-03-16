@@ -1,0 +1,43 @@
+---
+title: "refactor(core): decompose hub.py — extract MessagePipeline, AudioPipeline, PoolManager"
+issue: 294
+status: approved
+tier: F-lite
+date: 2026-03-16
+---
+
+## Problem
+
+`core/hub.py` is 1,366 lines — the largest core module. It mixes 5+ concerns: orchestration, audio pipeline, rate limiting, pool lifecycle, and message routing. This makes it hard to reason about, test in isolation, and extend without risk of regressions.
+
+The refactoring extracts three cohesive classes (`MessagePipeline`, `AudioPipeline`, `PoolManager`) into their own modules, slimming Hub to ~300 lines as a registry + coordinator. This is a child of the broader hub decomposition initiative (#293).
+
+## Who
+
+- **Primary:** Lyra developers — easier to navigate, test, and extend individual concerns
+- **Secondary:** CI pipeline — smaller modules = faster targeted test runs
+
+## Constraints
+
+- Must not change external behavior — pure refactoring, no feature changes
+- All existing tests must pass (`uv run pytest`)
+- All imports across the codebase must be updated
+- Linting must stay clean (`uv run ruff check .`)
+- Rate limiting stays in Hub (small, tightly coupled to circuit registry)
+
+## Out of Scope
+
+- New features or behavior changes
+- Refactoring rate limiting out of Hub (too tightly coupled)
+- Refactoring OutboundDispatcher or other modules
+- Performance optimizations
+
+## Complexity
+
+**Tier: F-lite** — Single domain (core), clear extraction boundaries already identified in the issue, no architectural unknowns.
+
+Signals:
+- All target methods are already grouped by concern in the existing code
+- `MessagePipeline` is already a nested class — nearly independent
+- No cross-domain impact (adapters, agents, dispatchers unchanged)
+- Well-defined acceptance criteria with LOC targets

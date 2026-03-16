@@ -36,7 +36,9 @@
     "soxr",
     "transformers",
     "voicecli",
-    "pyromark"
+    "pyromark",
+    "pocket-tts",
+    "sentencepiece"
   ],
   "overrides": {}
 }

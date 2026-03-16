@@ -111,6 +111,7 @@ class ModelConfig:
     # Changing cwd should not trigger the "model_config mismatch" warning
     # in CliPool.send() — that check is for backend/model/tools changes only.
     cwd: Path | None = field(default=None, compare=False)
+    skip_permissions: bool = False
 
 
 class Complexity(Enum):
@@ -435,6 +436,7 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
         max_turns=int(model_section.get("max_turns", 10)),
         tools=tuple(model_section.get("tools", [])),
         cwd=cwd,
+        skip_permissions=bool(model_section.get("skip_permissions", False)),
     )
 
     # Persona loading — agent toml wins, then instance_overrides, then None
@@ -622,6 +624,7 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — mirrors load_agent_config() 
         max_turns=row.max_turns,
         tools=tuple(tools),
         cwd=cwd,
+        skip_permissions=row.skip_permissions,
     )
 
     # Persona: DB row wins, then instance_overrides

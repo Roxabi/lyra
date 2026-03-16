@@ -37,16 +37,16 @@ CREATE TABLE IF NOT EXISTS agents (
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     tts_json TEXT,
-    stt_json TEXT
+    stt_json TEXT,
+    skip_permissions INTEGER NOT NULL DEFAULT 0
 )
 """
 
-# Migration: add tts_json / stt_json to existing DBs that pre-date this change.
-# ALTER TABLE ADD COLUMN is a no-op-safe pattern in SQLite — the IF NOT EXISTS
-# guard is not supported in older SQLite versions, so we catch OperationalError.
-_MIGRATE_AGENTS_TTS_STT = [
+# Additive migrations — ALTER TABLE ADD COLUMN is idempotent (OperationalError caught).
+_MIGRATE_AGENTS = [
     "ALTER TABLE agents ADD COLUMN tts_json TEXT",
     "ALTER TABLE agents ADD COLUMN stt_json TEXT",
+    "ALTER TABLE agents ADD COLUMN skip_permissions INTEGER NOT NULL DEFAULT 0",
 ]
 
 _CREATE_BOT_AGENT_MAP = """
@@ -96,6 +96,7 @@ class AgentRow:
     cwd: str | None = None
     tts_json: str | None = None
     stt_json: str | None = None
+    skip_permissions: bool = False
     source: str = "db"
     created_at: str = field(default_factory=_utc_now_iso)
     updated_at: str = field(default_factory=_utc_now_iso)
@@ -161,7 +162,7 @@ class AgentStore:
             await self._db.execute(_CREATE_BOT_AGENT_MAP)
             await self._db.execute(_CREATE_AGENT_RUNTIME_STATE)
             # Additive migrations — idempotent: ignore "duplicate column name" errors.
-            for stmt in _MIGRATE_AGENTS_TTS_STT:
+            for stmt in _MIGRATE_AGENTS:
                 try:
                     await self._db.execute(stmt)
                 except aiosqlite.OperationalError as exc:
@@ -184,7 +185,7 @@ class AgentStore:
             "SELECT name, backend, model, max_turns, tools_json, persona, "
             "show_intermediate, smart_routing_json, plugins_json, "
             "memory_namespace, cwd, source, created_at, updated_at, "
-            "tts_json, stt_json FROM agents"
+            "tts_json, stt_json, skip_permissions FROM agents"
         ) as cur:
             async for row in cur:
                 (
@@ -204,6 +205,7 @@ class AgentStore:
                     updated_at,
                     tts_json,
                     stt_json,
+                    skip_permissions,
                 ) = row
                 self._agents[name] = AgentRow(
                     name=name,
@@ -219,6 +221,7 @@ class AgentStore:
                     cwd=cwd,
                     tts_json=tts_json,
                     stt_json=stt_json,
+                    skip_permissions=bool(skip_permissions),
                     source=source,
                     created_at=created_at,
                     updated_at=updated_at,
@@ -277,8 +280,8 @@ class AgentStore:
             "(name, backend, model, max_turns, tools_json, persona, "
             "show_intermediate, smart_routing_json, plugins_json, "
             "memory_namespace, cwd, source, created_at, updated_at, "
-            "tts_json, stt_json) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "tts_json, stt_json, skip_permissions) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(name) DO UPDATE SET "
             "backend=excluded.backend, "
             "model=excluded.model, "
@@ -292,6 +295,7 @@ class AgentStore:
             "cwd=excluded.cwd, "
             "tts_json=excluded.tts_json, "
             "stt_json=excluded.stt_json, "
+            "skip_permissions=excluded.skip_permissions, "
             "source=excluded.source, "
             "updated_at=?",
             (
@@ -311,6 +315,7 @@ class AgentStore:
                 now,
                 row.tts_json,
                 row.stt_json,
+                1 if row.skip_permissions else 0,
                 # ON CONFLICT updated_at value
                 now,
             ),
@@ -331,6 +336,7 @@ class AgentStore:
             cwd=row.cwd,
             tts_json=row.tts_json,
             stt_json=row.stt_json,
+            skip_permissions=row.skip_permissions,
             source=row.source,
             created_at=row.created_at,
             updated_at=now,
@@ -390,14 +396,10 @@ class AgentStore:
             "SELECT agent_name, last_active_at, updated_at, pool_count, status "
             "FROM agent_runtime_state"
         ) as cur:
-            async for row in cur:
-                agent_name, last_active_at, updated_at, pool_count, status = row
-                result[agent_name] = AgentRuntimeStateRow(
-                    agent_name=agent_name,
-                    last_active_at=last_active_at,
-                    updated_at=updated_at,
-                    pool_count=pool_count,
-                    status=status,
+            async for (a, la, up, pc, st) in cur:
+                result[a] = AgentRuntimeStateRow(
+                    agent_name=a, last_active_at=la, updated_at=up,
+                    pool_count=pc, status=st,
                 )
         return result
 
@@ -429,10 +431,9 @@ class AgentStore:
     # ------------------------------------------------------------------
 
     async def seed_from_toml(self, path: Path, *, force: bool = False) -> int:
-        """Import an agent from a TOML file. Returns 1 if imported, 0 otherwise.
+        """Import agent from TOML. Returns 1 if imported, 0 if skipped/error.
 
-        If force=False and the agent already exists in cache, skip the import.
-        On parse error, log a warning and return 0.
+        Skips if agent already exists in cache (unless force=True).
         """
         try:
             with open(path, "rb") as f:
@@ -453,16 +454,13 @@ class AgentStore:
             return 0
 
         # Fields may live under [model] (wizard-generated) or [agent] (legacy).
-        backend = model_section.get("backend") or agent_section.get(
-            "backend", "anthropic-sdk"
-        )
-        model = model_section.get("model") or agent_section.get(
-            "model", "claude-3-5-haiku-20241022"
-        )
-        max_turns = model_section.get("max_turns") or agent_section.get("max_turns", 10)
-        tools_json = json.dumps(
-            model_section.get("tools") or agent_section.get("tools", [])
-        )
+        def _m(key: str, default=None):  # type: ignore[no-untyped-def]
+            return model_section.get(key) or agent_section.get(key, default)
+
+        backend = _m("backend", "anthropic-sdk")
+        model = _m("model", "claude-3-5-haiku-20241022")
+        max_turns = _m("max_turns", 10)
+        tools_json = json.dumps(_m("tools", []))
         persona = agent_section.get("persona")
         show_intermediate = agent_section.get("show_intermediate", False)
         smart_routing = agent_section.get("smart_routing")
@@ -472,7 +470,8 @@ class AgentStore:
             data.get("plugins", {}).get("enabled") or agent_section.get("plugins", [])
         )
         memory_namespace = agent_section.get("memory_namespace")
-        cwd = model_section.get("cwd") or agent_section.get("cwd")
+        cwd = _m("cwd")
+        skip_permissions = bool(_m("skip_permissions", False))
 
         # Serialize [tts] and [stt] sections to JSON (None if section absent)
         tts_section = data.get("tts")
@@ -494,6 +493,7 @@ class AgentStore:
             cwd=cwd,
             tts_json=tts_json,
             stt_json=stt_json,
+            skip_permissions=skip_permissions,
             source="toml-seed",
         )
         await self.upsert(row)

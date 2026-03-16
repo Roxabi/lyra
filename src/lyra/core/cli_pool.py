@@ -248,6 +248,8 @@ class CliPool:
             "--max-turns",
             str(model_config.max_turns),
         ]
+        if model_config.skip_permissions:
+            cmd.append("--dangerously-skip-permissions")
         if model_config.tools:
             cmd.extend(["--allowedTools", ",".join(model_config.tools)])
         if system_prompt:

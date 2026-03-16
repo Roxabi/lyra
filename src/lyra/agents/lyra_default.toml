@@ -18,6 +18,7 @@ max_turns = 10
 # tools: explicit allowlist — omits Bash and Write to prevent prompt injection → RCE
 # To disable all tools: tools = [] and ensure --allowedTools is passed (see cli_pool.py)
 tools = ["Read", "Grep", "Glob", "WebFetch", "WebSearch"]
+skip_permissions = true
 
 # [prompt]
 # system = "..."     # Optional: raw string overrides persona composition

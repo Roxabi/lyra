@@ -309,7 +309,7 @@ async def _bootstrap_legacy(  # noqa: C901, PLR0915 — startup wiring: each ada
 
     tasks = [
         asyncio.create_task(hub.run(), name="hub"),
-        asyncio.create_task(hub._audio_loop(), name="hub-audio"),
+        asyncio.create_task(hub._audio_pipeline.run(), name="hub-audio"),
         asyncio.create_task(health_server.serve(), name="health"),
     ]
     if tg_adapter is not None:

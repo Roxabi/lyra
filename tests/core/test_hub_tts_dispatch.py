@@ -193,7 +193,7 @@ class TestHubPrefResolution:
         hub.dispatch_audio = AsyncMock()
 
         msg = _make_msg_with_language("fr")
-        await hub._synthesize_and_dispatch_audio(msg, "reply")
+        await hub._audio_pipeline._synthesize_and_dispatch_audio(msg, "reply")
 
         mock_tts.synthesize.assert_awaited_once()
         call_kwargs = mock_tts.synthesize.call_args.kwargs
@@ -213,7 +213,7 @@ class TestHubPrefResolution:
         hub.dispatch_audio = AsyncMock()
 
         msg = _make_msg_with_language("fr")
-        await hub._synthesize_and_dispatch_audio(msg, "reply")
+        await hub._audio_pipeline._synthesize_and_dispatch_audio(msg, "reply")
 
         mock_tts.synthesize.assert_awaited_once()
         call_kwargs = mock_tts.synthesize.call_args.kwargs
@@ -233,7 +233,7 @@ class TestHubPrefResolution:
         hub.dispatch_audio = AsyncMock()
 
         msg = _make_msg_with_language(None)
-        await hub._synthesize_and_dispatch_audio(msg, "reply")
+        await hub._audio_pipeline._synthesize_and_dispatch_audio(msg, "reply")
 
         mock_tts.synthesize.assert_awaited_once()
         call_kwargs = mock_tts.synthesize.call_args.kwargs
@@ -253,7 +253,7 @@ class TestHubPrefResolution:
         hub.dispatch_audio = AsyncMock()
 
         msg = _make_msg_with_language("fr")
-        await hub._synthesize_and_dispatch_audio(msg, "reply")
+        await hub._audio_pipeline._synthesize_and_dispatch_audio(msg, "reply")
 
         mock_tts.synthesize.assert_awaited_once()
         call_kwargs = mock_tts.synthesize.call_args.kwargs
@@ -280,7 +280,7 @@ class TestHubPrefResolutionNonePrefsStore:
             platform="telegram", bot_id="main", user_id="tg:user:1"
         )
         msg = dataclasses.replace(base, language="fr")
-        await hub._synthesize_and_dispatch_audio(msg, "reply")
+        await hub._audio_pipeline._synthesize_and_dispatch_audio(msg, "reply")
 
         mock_tts.synthesize.assert_awaited_once()
         call_kwargs = mock_tts.synthesize.call_args.kwargs
@@ -302,7 +302,7 @@ class TestHubPrefResolutionNonePrefsStore:
             platform="telegram", bot_id="main", user_id="tg:user:1"
         )
         msg = dataclasses.replace(base, language=None)
-        await hub._synthesize_and_dispatch_audio(msg, "reply")
+        await hub._audio_pipeline._synthesize_and_dispatch_audio(msg, "reply")
 
         mock_tts.synthesize.assert_awaited_once()
         call_kwargs = mock_tts.synthesize.call_args.kwargs

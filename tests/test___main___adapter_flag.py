@@ -325,7 +325,8 @@ class TestBootstrapLegacyAdapterParam:
         fake_hub.inbound_audio_bus.start = AsyncMock()
         fake_hub.inbound_audio_bus.stop = AsyncMock()
         fake_hub.run = AsyncMock(side_effect=asyncio.CancelledError)
-        fake_hub._audio_loop = AsyncMock(side_effect=asyncio.CancelledError)
+        fake_hub._audio_pipeline = MagicMock()
+        fake_hub._audio_pipeline.run = AsyncMock(side_effect=asyncio.CancelledError)
         fake_hub.circuit_registry = None
         fake_hub._start_time = 0
         fake_hub._last_processed_at = None

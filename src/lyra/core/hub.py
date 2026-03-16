@@ -1,29 +1,23 @@
 from __future__ import annotations
 
 import asyncio
-import dataclasses
-import enum
 import logging
-import os
-import tempfile
 import time
 from collections import deque
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple, Protocol
 
 from lyra.errors import ProviderError
 
 from .agent import AgentBase
+from .audio_pipeline import AudioPipeline
 from .auth import TrustLevel
 from .circuit_breaker import CircuitRegistry
-from .command_parser import CommandParser
 from .context_resolver import ContextResolver
 from .inbound_audio_bus import InboundAudioBus
 from .inbound_bus import InboundBus
 from .message import (
-    GENERIC_ERROR_REPLY,
     InboundAudio,
     InboundMessage,
     OutboundAttachment,
@@ -33,9 +27,11 @@ from .message import (
     Platform,
     Response,
 )
+from .message_pipeline import Action, MessagePipeline, PipelineResult
 from .messages import MessageManager
 from .outbound_dispatcher import OutboundDispatcher
 from .pool import Pool
+from .pool_manager import PoolManager
 
 if TYPE_CHECKING:
     from ..stt import STTService
@@ -46,8 +42,6 @@ if TYPE_CHECKING:
     from .turn_store import TurnStore
 
 log = logging.getLogger(__name__)
-
-_command_parser = CommandParser()
 
 
 class ChannelAdapter(Protocol):
@@ -64,8 +58,8 @@ class ChannelAdapter(Protocol):
     def normalize(self, raw: Any) -> InboundMessage: ...
 
     def normalize_audio(
-        self, raw: Any, audio_bytes: bytes, mime_type: str, *, trust_level: TrustLevel
-    ) -> InboundAudio: ...
+        self, raw: Any, audio_bytes: bytes, mime_type: str, *, trust_level: "TrustLevel"
+    ) -> "InboundAudio": ...
 
     async def send(
         self, original_msg: InboundMessage, outbound: OutboundMessage
@@ -141,26 +135,6 @@ class Binding:
     pool_id: str
 
 
-class Action(enum.Enum):
-    """Terminal action for the message pipeline."""
-
-    DROP = "drop"
-    COMMAND_HANDLED = "command_handled"
-    SUBMIT_TO_POOL = "submit_to_pool"
-
-
-@dataclass(frozen=True)
-class PipelineResult:
-    """Immutable result from MessagePipeline.process()."""
-
-    action: Action
-    response: Response | None = None
-    pool: Pool | None = None
-
-
-_DROP = PipelineResult(action=Action.DROP)
-
-
 class Hub:
     """Central hub: InboundBus + OutboundDispatchers + adapter registry + pools."""
 
@@ -192,7 +166,6 @@ class Hub:
         self.adapter_registry: dict[tuple[Platform, str], ChannelAdapter] = {}
         self.agent_registry: dict[str, AgentBase] = {}
         self.bindings: dict[RoutingKey, Binding] = {}
-        self.pools: dict[str, Pool] = {}
         self.circuit_registry = circuit_registry
         self._msg_manager = msg_manager
         self._pairing_manager = pairing_manager
@@ -203,7 +176,6 @@ class Hub:
         self._rate_window = rate_window
         self._pool_ttl = pool_ttl
         self._debounce_ms = debounce_ms
-        self._last_eviction_check: float = 0.0
         # Sliding window: maps (platform.value, bot_id, user_id) → deque of timestamps.
         # Rate limiting is per-user (not per-scope) to prevent rate-limit bypass
         # by switching chats. Entries are removed when the deque empties.
@@ -222,6 +194,14 @@ class Hub:
         self._turn_store: "TurnStore | None" = None
         # S4 — user preference store (issue #42)
         self._prefs_store: "PrefsStore | None" = prefs_store
+        # Extracted subsystems
+        self._pool_manager = PoolManager(self)
+        self._audio_pipeline = AudioPipeline(self)
+
+    @property
+    def pools(self) -> dict[str, Pool]:
+        """Delegating property — PoolManager owns the dict."""
+        return self._pool_manager.pools
 
     @property
     def bus(self) -> asyncio.Queue[InboundMessage]:
@@ -356,89 +336,20 @@ class Hub:
         return None
 
     # ------------------------------------------------------------------
-    # Pools
+    # Pool delegation
     # ------------------------------------------------------------------
 
     def get_or_create_pool(self, pool_id: str, agent_name: str) -> Pool:
-        """Return existing pool or create a new one.
-
-        Lazily evicts idle pools that have exceeded the TTL on each call
-        to bound memory growth.
-        """
-        self._evict_stale_pools()
-        if pool_id not in self.pools:
-            new_pool = Pool(
-                pool_id=pool_id,
-                agent_name=agent_name,
-                ctx=self,
-                debounce_ms=self._debounce_ms,
-            )
-            if self._turn_store is not None:
-                new_pool._observer.register_turn_store(self._turn_store)
-            self.pools[pool_id] = new_pool
-        pool = self.pools[pool_id]
-        pool._touch()
-        return pool
-
-    def set_debounce_ms(self, ms: int) -> None:
-        """Update debounce window on all live pools and future pools."""
-        self._debounce_ms = ms
-        for pool in self.pools.values():
-            pool.debounce_ms = ms
-
-    def _evict_stale_pools(self) -> None:
-        """Remove idle pools whose last activity exceeds the TTL.
-
-        Throttled: skips the scan if less than TTL/10 has elapsed since the
-        last check, turning the common case (nothing to evict) into a single
-        float comparison.
-        """
-        now = time.monotonic()
-        if (now - self._last_eviction_check) < self._pool_ttl / 10:
-            return
-        self._last_eviction_check = now
-        stale = [
-            pid
-            for pid, pool in self.pools.items()
-            if pool.is_idle and (now - pool.last_active) > self._pool_ttl
-        ]
-        for pid in stale:
-            pool = self.pools.pop(pid)
-            if pool.user_id:  # skip zero-message pools
-                agent = self.agent_registry.get(pool.agent_name)
-                if agent is not None and hasattr(agent, "flush_session"):
-                    task = asyncio.create_task(agent.flush_session(pool, "idle"))
-                    self._memory_tasks.add(task)
-                    task.add_done_callback(self._memory_tasks.discard)
-        if stale:
-            log.info("evicted %d stale pool(s)", len(stale))
-            log.debug("evicted pool IDs: %s", stale)
+        """Delegate to PoolManager."""
+        return self._pool_manager.get_or_create_pool(pool_id, agent_name)
 
     async def flush_pool(self, pool_id: str, reason: str = "end") -> None:
-        """Called by adapter on explicit disconnect. Awaits flush directly."""
-        pool = self.pools.pop(pool_id, None)
-        if pool is None:
-            return
-        agent = self.agent_registry.get(pool.agent_name)
-        if agent is not None and pool.user_id and hasattr(agent, "flush_session"):
-            await agent.flush_session(pool, reason)
+        """Delegate to PoolManager."""
+        await self._pool_manager.flush_pool(pool_id, reason)
 
-    async def shutdown(self) -> None:
-        """Flush all live pools, drain pending memory tasks, close memory DB."""
-        # Flush all live pools before shutdown
-        for pool_id in list(self.pools.keys()):
-            pool = self.pools.pop(pool_id, None)
-            if pool is not None and pool.user_id:
-                agent = self.agent_registry.get(pool.agent_name)
-                if agent is not None and hasattr(agent, "flush_session"):
-                    await agent.flush_session(pool, "shutdown")
-        # Drain pending memory tasks (extraction)
-        if self._memory_tasks:
-            await asyncio.gather(*self._memory_tasks, return_exceptions=True)
-        if self._memory is not None:
-            await self._memory.close()
-        if self._turn_store is not None:
-            await self._turn_store.close()
+    def set_debounce_ms(self, ms: int) -> None:
+        """Delegate to PoolManager."""
+        self._pool_manager.set_debounce_ms(ms)
 
     # ------------------------------------------------------------------
     # PoolContext protocol implementation
@@ -499,16 +410,35 @@ class Hub:
         return False
 
     def _is_rate_limited(self, msg: InboundMessage) -> bool:
-        """Return True if this user has exceeded the per-window message limit.
-
-        Uses a sliding window: tracks timestamps of recent messages and drops
-        any that arrive after RATE_LIMIT messages within RATE_WINDOW seconds.
-        Inactive-user entries are cleaned up when their deque empties to prevent
-        unbounded dict growth.
-        """
+        """Return True if this user has exceeded the per-window message limit."""
         # str() normalizes platform: InboundMessage.platform is str, not Platform enum
         key = (str(msg.platform), msg.bot_id, msg.user_id)
         return self._is_rate_limited_by_key(key)
+
+    # ------------------------------------------------------------------
+    # Circuit breaker
+    # ------------------------------------------------------------------
+
+    async def circuit_breaker_drop(self, msg: InboundMessage) -> bool:
+        """Return True if the circuit is open and a fast-fail reply was sent."""
+        if self.circuit_registry is None:
+            return False
+        cb = self.circuit_registry.get("anthropic")
+        if cb is None or not cb.is_open():
+            return False
+        status = cb.get_status()
+        retry_secs = int(status.retry_after or 0)
+        _retry_str = str(retry_secs)
+        _unavail = (
+            self._msg_manager.get("unavailable", retry_secs=_retry_str)
+            if self._msg_manager
+            else f"Lyra is currently unavailable. Please try again in {retry_secs}s."
+        )
+        try:
+            await self.dispatch_response(msg, Response(content=_unavail))
+        except Exception as exc:
+            log.exception("dispatch_response failed for fast-fail reply: %s", exc)
+        return True
 
     # ------------------------------------------------------------------
     # Dispatch
@@ -559,7 +489,7 @@ class Hub:
             text = outbound.to_text().strip()
             if text:
                 task = asyncio.create_task(
-                    self._synthesize_and_dispatch_audio(msg, text),
+                    self._audio_pipeline._synthesize_and_dispatch_audio(msg, text),
                     name=f"tts:{msg.id}",
                 )
                 self._memory_tasks.add(task)
@@ -630,18 +560,13 @@ class Hub:
     async def dispatch_attachment(
         self, msg: InboundMessage, attachment: OutboundAttachment
     ) -> None:
-        """Send an attachment back via the originating adapter.
-
-        Routes through the OutboundDispatcher when one is registered (fire-and-forget).
-        Falls back to a direct adapter call when no dispatcher is registered.
-        """
+        """Send an attachment back via the originating adapter."""
         platform = Platform(msg.platform)
         dispatcher = self.outbound_dispatchers.get((platform, msg.bot_id))
         if dispatcher is not None:
             dispatcher.enqueue_attachment(msg, attachment)
             self._last_processed_at = time.monotonic()
             return
-        # Fallback: direct adapter call (backward compat / no dispatcher registered)
         adapter = self.adapter_registry.get((platform, msg.bot_id))
         if adapter is None:
             raise KeyError(
@@ -652,18 +577,13 @@ class Hub:
         self._last_processed_at = time.monotonic()
 
     async def dispatch_audio(self, msg: InboundMessage, audio: OutboundAudio) -> None:
-        """Send an audio voice note back via the originating adapter.
-
-        Routes through the OutboundDispatcher when one is registered (fire-and-forget).
-        Falls back to a direct adapter call when no dispatcher is registered.
-        """
+        """Send an audio voice note back via the originating adapter."""
         platform = Platform(msg.platform)
         dispatcher = self.outbound_dispatchers.get((platform, msg.bot_id))
         if dispatcher is not None:
             dispatcher.enqueue_audio(msg, audio)
             self._last_processed_at = time.monotonic()
             return
-        # Fallback: direct adapter call (backward compat / no dispatcher registered)
         adapter = self.adapter_registry.get((platform, msg.bot_id))
         if adapter is None:
             raise KeyError(
@@ -678,21 +598,13 @@ class Hub:
         msg: InboundMessage,
         chunks: AsyncIterator[OutboundAudioChunk],
     ) -> None:
-        """Stream audio chunks back via the originating adapter.
-
-        Routes through the OutboundDispatcher when one is registered (fire-and-forget).
-        Falls back to a direct adapter call when no dispatcher is registered.
-
-        Note: fallback path has no circuit breaker coverage; prefer a registered
-        dispatcher for production audio streaming.
-        """
+        """Stream audio chunks back via the originating adapter."""
         platform = Platform(msg.platform)
         dispatcher = self.outbound_dispatchers.get((platform, msg.bot_id))
         if dispatcher is not None:
             dispatcher.enqueue_audio_stream(msg, chunks)
             self._last_processed_at = time.monotonic()
             return
-        # Fallback: direct adapter call (backward compat / no dispatcher registered)
         adapter = self.adapter_registry.get((platform, msg.bot_id))
         if adapter is None:
             raise KeyError(
@@ -707,11 +619,7 @@ class Hub:
         msg: InboundMessage,
         chunks: AsyncIterator[OutboundAudioChunk],
     ) -> None:
-        """Stream TTS audio to an active Discord voice session.
-
-        Routes through the OutboundDispatcher when one is registered (fire-and-forget).
-        Falls back to a direct adapter call when no dispatcher is registered.
-        """
+        """Stream TTS audio to an active Discord voice session."""
         platform = Platform(msg.platform)
         dispatcher = self.outbound_dispatchers.get((platform, msg.bot_id))
         if dispatcher is not None:
@@ -728,296 +636,8 @@ class Hub:
         self._last_processed_at = time.monotonic()
 
     # ------------------------------------------------------------------
-    # Audio consumer loop
-    # ------------------------------------------------------------------
-
-    async def _process_audio_item(self, audio: InboundAudio) -> None:
-        from ..stt import is_whisper_noise
-
-        try:
-            platform_enum = Platform(audio.platform)
-        except ValueError:
-            log.warning(
-                "unknown platform %r in audio id=%s — audio dropped",
-                audio.platform,
-                audio.id,
-            )
-            return
-        key = RoutingKey(platform_enum, audio.bot_id, audio.scope_id)
-
-        if audio.trust_level == TrustLevel.BLOCKED:
-            log.warning("audio %s has trust_level=BLOCKED — dropped", audio.id)
-            return
-
-        # Per-user rate limit — mirrors the text pipeline check.
-        _rate_key = (str(audio.platform), audio.bot_id, audio.user_id)
-        if self._is_rate_limited_by_key(_rate_key):
-            log.warning(
-                "audio rate limit exceeded for %s — audio %s dropped", key, audio.id
-            )
-            _rl_content = (
-                self._msg_manager.get("rate_limited")
-                if self._msg_manager
-                else "You are sending messages too fast. Please slow down."
-            )
-            await self._dispatch_audio_reply(audio, _rl_content)
-            return
-
-        if self._stt is None:
-            _content = (
-                self._msg_manager.get("stt_unsupported")
-                if self._msg_manager
-                else "Voice messages are not supported — STT is not configured."
-            )
-            await self._dispatch_audio_reply(audio, _content)
-            log.warning("STT not configured — audio %s dropped", audio.id)
-            return
-
-        tmp = Path(
-            await asyncio.to_thread(
-                self._write_temp_audio,
-                audio.audio_bytes,
-                _mime_to_ext(audio.mime_type),
-            )
-        )
-        try:
-            result = await self._stt.transcribe(tmp)
-        finally:
-            tmp.unlink(missing_ok=True)
-
-        if is_whisper_noise(result.text):
-            _content = (
-                self._msg_manager.get("stt_noise")
-                if self._msg_manager
-                else "I couldn't make out your voice message, please try again."
-            )
-            await self._dispatch_audio_reply(audio, _content)
-            log.info("STT noise for audio %s — replied with stt_noise", audio.id)
-            return
-
-        # Sanitize transcript: cap length and block slash-command injection.
-        _MAX_TRANSCRIPT = 2000
-        transcript = result.text[:_MAX_TRANSCRIPT]
-        if transcript.lstrip().startswith("/"):
-            log.warning(
-                "audio %s: transcript starts with '/' — dropping to prevent"
-                " slash-command injection",
-                audio.id,
-            )
-            _content = (
-                self._msg_manager.get("stt_invalid")
-                if self._msg_manager
-                else "I couldn't process that voice message."
-            )
-            await self._dispatch_audio_reply(audio, _content)
-            return
-
-        # Echo transcription back to user before agent processing.
-        # reply=False: transcript is informational, no need to quote/mention.
-        _echo = transcript[:_MAX_TRANSCRIPT]
-        await self._dispatch_audio_reply(audio, f"\U0001f3a4 _{_echo}_", reply=False)
-
-        text = f"\U0001f3a4 [voice]: {transcript}"
-        msg = InboundMessage(
-            id=audio.id,
-            platform=audio.platform,
-            bot_id=audio.bot_id,
-            scope_id=audio.scope_id,
-            user_id=audio.user_id,
-            user_name=audio.user_name,
-            is_mention=audio.is_mention,
-            text=transcript,
-            text_raw=text,
-            timestamp=audio.timestamp,
-            trust_level=audio.trust_level,
-            trust=audio.trust,
-            platform_meta=audio.platform_meta,
-            routing=audio.routing,
-            modality="voice",
-            language=result.language,  # propagate Whisper-detected language
-        )
-        try:
-            self.inbound_bus.put(platform_enum, msg)
-        except asyncio.QueueFull:
-            log.warning("inbound bus full — transcribed audio %s dropped", audio.id)
-            return
-        log.info(
-            "Audio %s transcribed (%s, %.1fs) → re-enqueued as text on %s",
-            audio.id,
-            result.language,
-            result.duration_seconds,
-            key,
-        )
-
-    async def _audio_loop(self) -> None:
-        """Drain InboundAudioBus, transcribe via STT, re-enqueue as InboundMessage.
-
-        When STT is not configured, sends an ``stt_unsupported`` reply and drops
-        the audio envelope. When transcription fails, sends an ``stt_failed``
-        reply. When the transcription is noise, sends an ``stt_noise`` reply.
-
-        Runs until cancelled.
-        """
-        while True:
-            audio: InboundAudio = await self.inbound_audio_bus.get()
-            try:
-                await self._process_audio_item(audio)
-            except Exception:
-                log.exception("audio_loop failed for audio id=%s", audio.id)
-                _content = (
-                    self._msg_manager.get("stt_failed")
-                    if self._msg_manager
-                    else "Sorry, I couldn't transcribe your voice message."
-                )
-                try:
-                    await self._dispatch_audio_reply(audio, _content)
-                except Exception:
-                    log.exception(
-                        "dispatch_audio_reply failed for audio id=%s", audio.id
-                    )
-            finally:
-                self.inbound_audio_bus.task_done()
-
-    @staticmethod
-    def _write_temp_audio(data: bytes, suffix: str) -> str:
-        """Write *data* to a temp file (blocking I/O, run via to_thread)."""
-        fd, path = tempfile.mkstemp(suffix=suffix)
-        try:
-            os.write(fd, data)
-        except BaseException:
-            os.close(fd)
-            Path(path).unlink(missing_ok=True)
-            raise
-        os.close(fd)
-        return path
-
-    async def _dispatch_audio_reply(
-        self, audio: InboundAudio, content: str, *, reply: bool = True
-    ) -> None:
-        """Send an error/info reply for an audio envelope.
-
-        Constructs a synthetic InboundMessage from the audio envelope so
-        dispatch_response() can route the reply back to the originating adapter.
-
-        When reply=False, message_id is stripped from platform_meta so the
-        message is sent as a plain message without quoting/mentioning the user
-        (used for the transcript echo which is informational, not a reply).
-        """
-        meta = audio.platform_meta
-        if not reply:
-            meta = {k: v for k, v in meta.items() if k != "message_id"}
-        synthetic = InboundMessage(
-            id=audio.id,
-            platform=audio.platform,
-            bot_id=audio.bot_id,
-            scope_id=audio.scope_id,
-            user_id=audio.user_id,
-            user_name=audio.user_name,
-            is_mention=False,
-            text="",
-            text_raw="",
-            timestamp=audio.timestamp,
-            trust_level=audio.trust_level,
-            trust=audio.trust,
-            platform_meta=meta,
-            routing=audio.routing,
-        )
-        await self.dispatch_response(synthetic, Response(content=content))
-
-    async def _synthesize_and_dispatch_audio(
-        self, msg: InboundMessage, text: str
-    ) -> None:
-        """Synthesize TTS audio for a voice response and dispatch it.
-
-        Language resolution (priority: explicit user pref > detected > None):
-        - prefs.tts_language != "detected" → use explicit value
-        - prefs.tts_language == "detected" and msg.language is not None → detected
-        - else → None (TTSService uses self._language / voicecli global)
-
-        Voice resolution:
-        - prefs.tts_voice != "agent_default" → use explicit value
-        - else → None (TTSService uses self._voice / agent or global default)
-
-        Sentinels "detected" and "agent_default" are never forwarded to synthesize().
-
-        Runs as a background task after dispatch_response() enqueues the text.
-        Errors are logged and swallowed — audio failure must never crash the hub.
-        """
-        assert self._tts is not None  # caller guarantees this
-        try:
-            lang: str | None = None
-            voice: str | None = None
-
-            if self._prefs_store is not None:
-                try:
-                    prefs = await self._prefs_store.get_prefs(msg.user_id)
-                except Exception:
-                    log.warning(
-                        "PrefsStore.get_prefs() failed for user %s — "
-                        "falling back to detected language",
-                        msg.user_id,
-                        exc_info=True,
-                    )
-                    lang = msg.language
-                else:
-                    # Language resolution
-                    if prefs.tts_language != "detected":
-                        lang = prefs.tts_language  # explicit user override
-                    elif msg.language is not None:
-                        lang = msg.language  # Whisper-detected
-                    # else lang=None → TTSService.self._language (agent/global fallback)
-
-                    # Voice resolution
-                    if prefs.tts_voice != "agent_default":
-                        voice = prefs.tts_voice  # explicit user override
-                    # else voice=None → TTSService.self._voice
-            else:
-                # No PrefsStore — pass detected language directly (S1 behavior)
-                lang = msg.language
-
-            result = await self._tts.synthesize(text, language=lang, voice=voice)
-            audio = OutboundAudio(
-                audio_bytes=result.audio_bytes,
-                mime_type=result.mime_type,
-                duration_ms=result.duration_ms,
-                waveform_b64=result.waveform_b64,
-            )
-            await self.dispatch_audio(msg, audio)
-            log.info(
-                "Voice TTS dispatched: %d bytes for msg id=%s",
-                len(result.audio_bytes),
-                msg.id,
-            )
-        except Exception:
-            log.exception(
-                "TTS synthesis failed for voice response — audio not sent (msg id=%s)",
-                msg.id,
-            )
-
-    # ------------------------------------------------------------------
     # Run loop
     # ------------------------------------------------------------------
-
-    async def _circuit_breaker_drop(self, msg: InboundMessage) -> bool:
-        """Return True if the circuit is open and a fast-fail reply was sent."""
-        if self.circuit_registry is None:
-            return False
-        cb = self.circuit_registry.get("anthropic")
-        if cb is None or not cb.is_open():
-            return False
-        status = cb.get_status()
-        retry_secs = int(status.retry_after or 0)
-        _retry_str = str(retry_secs)
-        _unavail = (
-            self._msg_manager.get("unavailable", retry_secs=_retry_str)
-            if self._msg_manager
-            else f"Lyra is currently unavailable. Please try again in {retry_secs}s."
-        )
-        try:
-            await self.dispatch_response(msg, Response(content=_unavail))
-        except Exception as exc:
-            log.exception("dispatch_response failed for fast-fail reply: %s", exc)
-        return True
 
     async def _dispatch_pipeline_result(
         self, msg: InboundMessage, result: PipelineResult
@@ -1084,283 +704,14 @@ class Hub:
             except asyncio.CancelledError:
                 pass
 
-
-class MessagePipeline:
-    """Fail-fast message routing pipeline extracted from Hub.run().
-
-    Each guard stage returns ``PipelineResult`` to stop processing or
-    ``None`` to continue to the next stage. Terminal stages always
-    return a ``PipelineResult``.
-    """
-
-    def __init__(self, hub: Hub) -> None:
-        self._hub = hub
-
-    async def process(
-        self,
-        msg: InboundMessage,
-    ) -> PipelineResult:
-        """Route *msg* through the pipeline stages."""
-        result = self._validate_platform(msg)
-        if result is not None:
-            return result
-
-        key = RoutingKey(
-            Platform(msg.platform),
-            msg.bot_id,
-            msg.scope_id,
-        )
-
-        result = self._check_rate_limit(msg, key)
-        if result is not None:
-            return result
-
-        binding = self._resolve_binding(msg, key)
-        if binding is None:
-            return _DROP
-
-        agent = self._lookup_agent(binding, key)
-        if agent is None:
-            return _DROP
-
-        pool = self._hub.get_or_create_pool(
-            binding.pool_id,
-            binding.agent_name,
-        )
-        router = getattr(agent, "command_router", None)
-
-        # Parse command prefix and attach CommandContext to the message
-        cmd_ctx = _command_parser.parse(msg.text)
-        if cmd_ctx is not None:
-            msg = dataclasses.replace(msg, command=cmd_ctx)
-
-        # Rewrite bare URLs to /add before command detection (issue #99)
-        if router and hasattr(router, "prepare"):
-            msg = router.prepare(msg)
-
-        if router and router.is_command(msg):
-            return await self._dispatch_command(
-                msg,
-                router,
-                pool,
-                key,
-            )
-
-        return await self._submit_to_pool(msg, pool, key)
-
-    # -- guard stages (return None to continue) ---
-
-    def _validate_platform(
-        self,
-        msg: InboundMessage,
-    ) -> PipelineResult | None:
-        try:
-            Platform(msg.platform)
-        except ValueError:
-            log.warning(
-                "unknown platform %r in msg id=%s — message dropped",
-                msg.platform,
-                msg.id,
-            )
-            return _DROP
-        return None
-
-    def _check_rate_limit(
-        self,
-        msg: InboundMessage,
-        key: RoutingKey,
-    ) -> PipelineResult | None:
-        if self._hub._is_rate_limited(msg):
-            log.warning(
-                "rate limit exceeded for %s — message dropped",
-                key,
-            )
-            return _DROP
-        return None
-
-    def _resolve_binding(
-        self,
-        msg: InboundMessage,
-        key: RoutingKey,
-    ) -> Binding | None:
-        """Return resolved binding, or None (with log) to drop."""
-        binding = self._hub.resolve_binding(msg)
-        if binding is None:
-            log.warning(
-                "unmatched routing key %s — message dropped",
-                key,
-            )
-        return binding
-
-    def _lookup_agent(
-        self,
-        binding: Binding,
-        key: RoutingKey,
-    ) -> AgentBase | None:
-        """Return agent, or None (with log) to drop."""
-        agent = self._hub.agent_registry.get(binding.agent_name)
-        if agent is None:
-            log.warning(
-                "no agent registered for %r (routing %s) — message dropped",
-                binding.agent_name,
-                key,
-            )
-        return agent
-
-    # -- terminal stages ---
-
-    async def _dispatch_command(
-        self,
-        msg: InboundMessage,
-        router: Any,
-        pool: Pool,
-        key: RoutingKey,
-    ) -> PipelineResult:
-        try:
-            response = await router.dispatch(msg, pool)
-        except Exception as exc:
-            log.exception(
-                "command dispatch failed for %s: %s",
-                key,
-                exc,
-            )
-            _content = (
-                self._hub._msg_manager.get("generic")
-                if self._hub._msg_manager
-                else GENERIC_ERROR_REPLY
-            )
-            response = Response(content=_content)
-            return PipelineResult(action=Action.COMMAND_HANDLED, response=response)
-
-        if response is None:
-            # !-prefixed command not found — fall through to pool submission
-            return await self._submit_to_pool(msg, pool, key)
-
-        return PipelineResult(
-            action=Action.COMMAND_HANDLED,
-            response=response,
-        )
-
-    async def _resolve_context(
-        self, msg: InboundMessage, pool: Pool, pool_id: str
-    ) -> None:
-        """Attempt session resume before pool.submit(). No-op on any failure.
-
-        Two resume paths (in priority order):
-        1. Reply-to-resume: message replies to a known assistant turn — look up
-           the session via ContextResolver and resume it.
-        2. Thread-session-resume: Discord thread with a stored session_id from
-           a previous conversation — resume via platform_meta["thread_session_id"].
-
-        # Note: pool._session_resume_fn is wired lazily by
-        # SimpleAgent._maybe_register_resume on the first process() call.
-        # If called before any process(), resume_session() is a no-op
-        # (fn is None). In practice, pools exist only after agent processing
-        # begins.
-        """
-        # Path 1: reply-to-resume (existing logic — Telegram and Discord).
-        if msg.reply_to_id is not None:
-            resolver = self._hub._context_resolver
-            if resolver is not None:
-                resolved = await resolver.resolve(msg.reply_to_id)
-                if resolved is not None:
-                    if resolved.pool_id != pool_id:
-                        log.info(
-                            "reply-to-resume: cross-pool mismatch"
-                            " (resolved=%r current=%r) — skipping",
-                            resolved.pool_id,
-                            pool_id,
-                        )
-                    # TODO(post-#67): replace with user_id ownership check once
-                    # conversation_turns stores user_id. For now, restrict resume to
-                    # private chats to prevent cross-user session access in groups.
-                    elif msg.platform_meta.get("is_group"):
-                        log.info(
-                            "reply-to-resume: group chat"
-                            " — skipping resume (cross-user risk)",
-                        )
-                    elif not pool.is_idle:
-                        log.info(
-                            "reply-to-resume: pool %r busy"
-                            " — skipping resume of session %r",
-                            pool_id,
-                            resolved.session_id,
-                        )
-                    else:
-                        log.info(
-                            "reply-to-resume: resuming session %r for pool %r",
-                            resolved.session_id,
-                            pool_id,
-                        )
-                        await pool.resume_session(resolved.session_id)
-                        return  # reply-to-resume took priority; skip thread resume
-
-        # Path 2: thread-session-resume (Discord owned threads across restarts).
-        thread_session_id: str | None = msg.platform_meta.get("thread_session_id")
-        if thread_session_id is not None:
-            if not pool.is_idle:
-                log.info(
-                    "thread-session-resume: pool %r busy"
-                    " — skipping resume of session %r",
-                    pool_id,
-                    thread_session_id,
-                )
-                return
-            log.info(
-                "thread-session-resume: resuming session %r for pool %r",
-                thread_session_id,
-                pool_id,
-            )
-            await pool.resume_session(thread_session_id)
-
-    async def _submit_to_pool(
-        self,
-        msg: InboundMessage,
-        pool: Pool,
-        key: RoutingKey,
-    ) -> PipelineResult:
-        if (key.platform, msg.bot_id) not in self._hub.adapter_registry:
-            log.error(
-                "no adapter registered for (%s, %s) — response dropped",
-                msg.platform,
-                msg.bot_id,
-            )
-            return _DROP
-        if await self._hub._circuit_breaker_drop(msg):
-            return _DROP
-        # Register session persistence callback if provided by the adapter (write-side
-        # fix for Discord threads). Only set once — guards against repeated messages
-        # in the same thread overwriting the callback unnecessarily.
-        _update_fn = msg.platform_meta.get("_session_update_fn")
-        if _update_fn is not None and pool._observer._session_update_fn is None:
-            pool._observer.register_session_update_fn(_update_fn)
-        try:
-            await self._resolve_context(msg, pool, pool.pool_id)
-        except Exception:
-            log.warning(
-                "reply-to-resume: _resolve_context failed"
-                " — continuing with active session",
-                exc_info=True,
-            )
-        return PipelineResult(
-            action=Action.SUBMIT_TO_POOL,
-            pool=pool,
-        )
-
-
-# ---------------------------------------------------------------------------
-# Module-level helpers for the pairing gate
-# ---------------------------------------------------------------------------
-
-
-def _mime_to_ext(mime_type: str) -> str:
-    """Map common audio MIME types to file extensions for STT temp files."""
-    _MAP = {
-        "audio/ogg": ".ogg",
-        "audio/mpeg": ".mp3",
-        "audio/mp4": ".m4a",
-        "audio/wav": ".wav",
-        "audio/x-wav": ".wav",
-        "audio/webm": ".webm",
-    }
-    return _MAP.get(mime_type, ".ogg")
+    async def shutdown(self) -> None:
+        """Flush all live pools, drain pending memory tasks, close memory DB."""
+        for pool_id in list(self._pool_manager.pools.keys()):
+            await self._pool_manager.flush_pool(pool_id, "shutdown")
+        # Drain pending memory tasks (extraction)
+        if self._memory_tasks:
+            await asyncio.gather(*self._memory_tasks, return_exceptions=True)
+        if self._memory is not None:
+            await self._memory.close()
+        if self._turn_store is not None:
+            await self._turn_store.close()

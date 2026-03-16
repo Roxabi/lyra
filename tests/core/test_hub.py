@@ -1582,7 +1582,7 @@ class TestPoolTTLEviction:
     @staticmethod
     def _force_eviction_eligible(hub: Hub) -> None:
         """Reset throttle so the next get_or_create_pool triggers eviction."""
-        hub._last_eviction_check = 0.0
+        hub._pool_manager._last_eviction_check = 0.0
 
     def test_stale_idle_pool_evicted(self) -> None:
         """An idle pool past TTL is removed on next get_or_create_pool call."""
@@ -1786,7 +1786,7 @@ class TestHubEvictFlushTask:
         pool.user_id = "u1"  # type: ignore[attr-defined]
 
         # Trigger eviction scan
-        hub._evict_stale_pools()  # type: ignore[attr-defined]
+        hub._pool_manager._evict_stale_pools()  # type: ignore[attr-defined]
 
         # FAILS until eviction creates a flush task
         assert len(hub._memory_tasks) >= 0  # relaxed — just check no exception

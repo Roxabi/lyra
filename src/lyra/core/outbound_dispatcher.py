@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
 
@@ -32,6 +33,59 @@ if TYPE_CHECKING:
     from lyra.core.hub import ChannelAdapter
 
 log = logging.getLogger(__name__)
+
+_SEND_ERROR_MSG = "⚠️ I encountered an error sending my response. Please try again."
+_CIRCUIT_OPEN_MSG = "⚠️ I'm temporarily unavailable. Please try again in a moment."
+_CIRCUIT_NOTIFY_DEBOUNCE = 60.0  # seconds between circuit-open notifications per chat
+
+
+def _is_transient_error(exc: BaseException) -> bool:
+    """Return True if *exc* is a transient network/server error worth retrying.
+
+    Identifies transient errors by exception class name and module to avoid
+    hard imports of aiogram or discord.py at import time (those packages may
+    not be installed in all environments).
+
+    Retryable: network errors, 5xx server errors, rate-limit (429).
+    Not retryable: 4xx client errors (bad token, chat not found, forbidden).
+    """
+    cls = type(exc)
+    module = cls.__module__ or ""
+    name = cls.__name__
+
+    # asyncio / stdlib transients
+    if isinstance(exc, (asyncio.TimeoutError, TimeoutError, ConnectionError)):
+        return True
+
+    # aiohttp transients (used by both aiogram and discord.py internally)
+    if module.startswith("aiohttp"):
+        return True
+
+    # aiogram: TelegramNetworkError is transient; TelegramAPIError subclasses
+    # with status >= 500 are transient; 4xx (bad token, chat not found) are not.
+    if module.startswith("aiogram"):
+        if "NetworkError" in name or "ServerError" in name:
+            return True
+        # TelegramRetryAfter → rate limit → retryable
+        if "RetryAfter" in name:
+            return True
+        # For generic TelegramAPIError, check status code attribute
+        status = getattr(exc, "status_code", None) or getattr(exc, "status", None)
+        if status is not None and isinstance(status, int):
+            return status == 429 or status >= 500
+        return False
+
+    # discord.py: HTTPException with status >= 500 or 429 is transient
+    if module.startswith("discord"):
+        if "GatewayNotFound" in name or "ConnectionClosed" in name:
+            return True
+        status = getattr(exc, "status", None)
+        if status is not None and isinstance(status, int):
+            return status == 429 or status >= 500
+        return False
+
+    return False
+
 
 # Queue item: (kind, msg, payload) for send;
 # (kind, msg, chunks, outbound) for streaming; (kind, inbound, audio) for audio;
@@ -69,6 +123,8 @@ class OutboundDispatcher:
         self._circuit_registry = circuit_registry
         self._queue: asyncio.Queue[_ITEM] = asyncio.Queue()
         self._worker: asyncio.Task[None] | None = None
+        # Per-chat last circuit-open notification timestamp for debouncing (Fix 3)
+        self._circuit_notify_ts: dict[str, float] = {}
 
     def _verify_routing(self, routing: RoutingContext | None) -> bool:
         """Verify RoutingContext matches this dispatcher's platform + bot_id.
@@ -174,6 +230,39 @@ class OutboundDispatcher:
         """Return the number of pending items in the outbound queue."""
         return self._queue.qsize()
 
+    async def _try_notify_user(self, msg: InboundMessage, text: str) -> None:
+        """Send a short plaintext notification directly, bypassing the queue.
+
+        Attempts a bare platform send without retry. Any failure is logged and
+        swallowed so the caller's error path is never disrupted.
+        """
+        try:
+            if self._platform_name == "telegram":
+                chat_id: int | None = msg.platform_meta.get("chat_id")
+                if chat_id is None:
+                    return
+                await self._adapter.bot.send_message(chat_id=chat_id, text=text)  # type: ignore[attr-defined]
+            elif self._platform_name == "discord":
+                thread_id: int | None = msg.platform_meta.get("thread_id")
+                channel_id: int | None = msg.platform_meta.get("channel_id")
+                send_to_id = thread_id if thread_id is not None else channel_id
+                if send_to_id is None:
+                    return
+                channel = await self._adapter._resolve_channel(send_to_id)  # type: ignore[attr-defined]
+                await channel.send(text)
+            else:
+                log.debug(
+                    "OutboundDispatcher[%s]: _try_notify_user not implemented"
+                    " for this platform",
+                    self._platform_name,
+                )
+        except Exception as notify_exc:
+            log.warning(
+                "OutboundDispatcher[%s]: failed to send user notification: %s",
+                self._platform_name,
+                notify_exc,
+            )
+
     async def _worker_loop(self) -> None:  # noqa: C901, PLR0915 — outbound dispatch with circuit-breaker, routing verification, kind branching, and error classification
         """Consume the outbound queue indefinitely."""
         while True:
@@ -234,24 +323,70 @@ class OutboundDispatcher:
                             pass
                     if outbound is not None:
                         outbound.metadata["reply_message_id"] = None
+                    # Fix 3: notify user once per chat per debounce window
+                    scope_key = msg.scope_id or msg.id
+                    now = time.monotonic()
+                    last_ts = self._circuit_notify_ts.get(scope_key, 0.0)
+                    if now - last_ts >= _CIRCUIT_NOTIFY_DEBOUNCE:
+                        self._circuit_notify_ts[scope_key] = now
+                        await self._try_notify_user(msg, _CIRCUIT_OPEN_MSG)
                     continue
 
-                try:
-                    if kind == "send":
-                        await self._adapter.send(msg, payload)
-                    elif kind == "audio":
-                        await self._adapter.render_audio(payload, msg)
-                    elif kind == "audio_stream":
-                        await self._adapter.render_audio_stream(payload, msg)
-                    elif kind == "voice_stream":
-                        await self._adapter.render_voice_stream(payload, msg)
-                    elif kind == "attachment":
-                        await self._adapter.render_attachment(payload, msg)
-                    else:
-                        await self._adapter.send_streaming(msg, payload, outbound)
-                    if self._circuit is not None:
-                        self._circuit.record_success()
-                except BaseException as exc:
+                # Fix 1: retry loop with exponential backoff for transient errors
+                _backoff_delays = (1.0, 2.0, 4.0)
+                _last_exc: Exception | None = None
+                _attempt = 0
+                while _attempt <= len(_backoff_delays):
+                    try:
+                        if kind == "send":
+                            await self._adapter.send(msg, payload)
+                        elif kind == "audio":
+                            await self._adapter.render_audio(payload, msg)
+                        elif kind == "audio_stream":
+                            await self._adapter.render_audio_stream(payload, msg)
+                        elif kind == "voice_stream":
+                            await self._adapter.render_voice_stream(payload, msg)
+                        elif kind == "attachment":
+                            await self._adapter.render_attachment(payload, msg)
+                        else:
+                            await self._adapter.send_streaming(msg, payload, outbound)
+                        if self._circuit is not None:
+                            self._circuit.record_success()
+                        _last_exc = None
+                        break  # success
+                    except BaseException as exc:
+                        if not isinstance(exc, Exception):
+                            # Re-raise CancelledError / KeyboardInterrupt immediately
+                            if self._circuit is not None:
+                                self._circuit.record_failure()
+                            raise
+                        is_transient = _is_transient_error(exc)
+                        retry_possible = (
+                            is_transient
+                            and _attempt < len(_backoff_delays)
+                            and kind in ("send", "streaming")
+                        )
+                        if retry_possible:
+                            delay = _backoff_delays[_attempt]
+                            log.warning(
+                                "OutboundDispatcher[%s] delivery attempt %d failed"
+                                " (kind=%s, transient), retrying in %.0fs: %s",
+                                self._platform_name,
+                                _attempt + 1,
+                                kind,
+                                delay,
+                                exc,
+                            )
+                            _last_exc = exc
+                            _attempt += 1
+                            await asyncio.sleep(delay)
+                        else:
+                            _last_exc = exc
+                            _attempt = len(_backoff_delays) + 1  # exit loop
+                            break
+
+                if _last_exc is not None:
+                    exc = _last_exc
                     if self._circuit is not None:
                         self._circuit.record_failure()
                     # Record provider CB failure for LLM provider errors
@@ -265,13 +400,15 @@ class OutboundDispatcher:
                     if kind in ("streaming", "audio_stream", "voice_stream"):
                         async for _ in payload:
                             pass
-                    if not isinstance(exc, Exception):
-                        raise  # re-raise CancelledError / KeyboardInterrupt
-                    log.exception(
+                    log.error(
                         "OutboundDispatcher[%s] delivery failed (kind=%s): %s",
                         self._platform_name,
                         kind,
                         exc,
+                        exc_info=exc,
                     )
+                    # Fix 1: send user notification after all retries exhausted
+                    if kind in ("send", "streaming"):
+                        await self._try_notify_user(msg, _SEND_ERROR_MSG)
             finally:
                 self._queue.task_done()

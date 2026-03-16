@@ -860,7 +860,6 @@ class DiscordAdapter(discord.Client):
         send_to_id: int = thread_id if thread_id is not None else channel_id
         messageable = await self._resolve_channel(send_to_id)
 
-        self._cancel_typing(send_to_id)
         text = outbound.to_text()
         chunks = self._render_text(text)
         view = self._render_buttons(outbound.buttons)
@@ -884,6 +883,7 @@ class DiscordAdapter(discord.Client):
                     sent = await messageable.send(chunk)
             if i == last_idx:
                 outbound.metadata["reply_message_id"] = sent.id
+        self._cancel_typing(send_to_id)
         log.debug(
             "stored reply_message_id=%s for msg_id=%s",
             outbound.metadata.get("reply_message_id"),
@@ -920,10 +920,6 @@ class DiscordAdapter(discord.Client):
         send_to_id: int = thread_id if thread_id is not None else channel_id
         messageable = await self._resolve_channel(send_to_id)
 
-        # The typing task was started by _start_typing() in on_message() on receipt.
-        # Cancel it now — the placeholder message is the first visible content.
-        # _cancel_typing is a no-op if the task was already done or never started.
-        self._cancel_typing(send_to_id)
         parts: list[str] = []
 
         # Send placeholder
@@ -988,6 +984,9 @@ class DiscordAdapter(discord.Client):
                     await messageable.send(extra_chunk)
                 except Exception:
                     log.exception("Failed to send overflow chunk")
+
+        # Cancel typing after final content is confirmed (streaming done).
+        self._cancel_typing(send_to_id)
 
         # Re-raise stream error so OutboundDispatcher can record CB failure
         if stream_error is not None:

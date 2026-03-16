@@ -803,7 +803,6 @@ class TelegramAdapter:
         if chat_id is None:
             raise ValueError("platform_meta missing required key 'chat_id' for send()")
 
-        self._cancel_typing(chat_id)
         # Flatten content parts to plain text, escape and chunk
         text = outbound.to_text()
         chunks = self._render_text(text)
@@ -824,6 +823,7 @@ class TelegramAdapter:
             sent = await self.bot.send_message(**kwargs)
             if i == last_idx:
                 outbound.metadata["reply_message_id"] = sent.message_id
+        self._cancel_typing(chat_id)
 
     async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: edit/chunk/finalize branches are inherently sequential
         self,
@@ -891,9 +891,6 @@ class TelegramAdapter:
                 outbound.metadata["reply_message_id"] = fallback_msg.message_id
             return
 
-        # Placeholder sent — first content is visible, stop typing indicator.
-        self._cancel_typing(chat_id)
-
         last_edit = time.monotonic()
         stream_error: Exception | None = None
         try:
@@ -948,6 +945,9 @@ class TelegramAdapter:
                     )
                 except Exception:
                     log.exception("Failed to send overflow chunk")
+
+        # Cancel typing after final content is confirmed (streaming done).
+        self._cancel_typing(chat_id)
 
         # Re-raise stream error so OutboundDispatcher can record CB failure
         if stream_error is not None:

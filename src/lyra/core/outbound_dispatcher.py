@@ -1,11 +1,7 @@
 """OutboundDispatcher — per-platform outbound queue with circuit breaker ownership.
 
-Each platform adapter gets its own OutboundDispatcher. The dispatcher owns the
-platform circuit breaker check: adapter.send() and adapter.send_streaming() no
-longer check or record the platform CB — the dispatcher worker loop is the single
-owner.
-
-A secondary asyncio.Task drains the outbound queue, checks the circuit breaker,
+Each platform adapter gets its own OutboundDispatcher that owns the platform
+circuit breaker check. A background asyncio.Task drains the queue, checks the CB,
 calls the adapter, and records success/failure.
 """
 
@@ -26,69 +22,19 @@ from .message import (
     OutboundMessage,
     RoutingContext,
 )
+from .outbound_errors import (
+    _CIRCUIT_NOTIFY_DEBOUNCE,
+    _CIRCUIT_OPEN_MSG,
+    _ITEM,
+    _SEND_ERROR_MSG,
+    _is_transient_error,
+    try_notify_user,
+)
 
 if TYPE_CHECKING:
     from lyra.core.hub import ChannelAdapter
 
 log = logging.getLogger(__name__)
-
-_SEND_ERROR_MSG = "⚠️ I encountered an error sending my response. Please try again."
-_CIRCUIT_OPEN_MSG = "⚠️ I'm temporarily unavailable. Please try again in a moment."
-_CIRCUIT_NOTIFY_DEBOUNCE = 60.0  # seconds between circuit-open notifications per chat
-
-
-def _is_transient_error(exc: BaseException) -> bool:
-    """Return True if *exc* is a transient network/server error worth retrying.
-
-    Identifies transient errors by exception class name and module to avoid
-    hard imports of aiogram or discord.py at import time (those packages may
-    not be installed in all environments).
-
-    Retryable: network errors, 5xx server errors, rate-limit (429).
-    Not retryable: 4xx client errors (bad token, chat not found, forbidden).
-    """
-    cls = type(exc)
-    module = cls.__module__ or ""
-    name = cls.__name__
-
-    # asyncio / stdlib transients
-    if isinstance(exc, (asyncio.TimeoutError, TimeoutError, ConnectionError)):
-        return True
-
-    # aiohttp transients (used by both aiogram and discord.py internally)
-    if module.startswith("aiohttp"):
-        return True
-
-    # aiogram: TelegramNetworkError is transient; TelegramAPIError subclasses
-    # with status >= 500 are transient; 4xx (bad token, chat not found) are not.
-    if module.startswith("aiogram"):
-        if "NetworkError" in name or "ServerError" in name:
-            return True
-        # TelegramRetryAfter → rate limit → retryable
-        if "RetryAfter" in name:
-            return True
-        # For generic TelegramAPIError, check status code attribute
-        status = getattr(exc, "status_code", None) or getattr(exc, "status", None)
-        if status is not None and isinstance(status, int):
-            return status == 429 or status >= 500
-        return False
-
-    # discord.py: HTTPException with status >= 500 or 429 is transient
-    if module.startswith("discord"):
-        if "GatewayNotFound" in name or "ConnectionClosed" in name:
-            return True
-        status = getattr(exc, "status", None)
-        if status is not None and isinstance(status, int):
-            return status == 429 or status >= 500
-        return False
-
-    return False
-
-
-# Queue item: (kind, msg, payload) for send;
-# (kind, msg, chunks, outbound) for streaming; (kind, inbound, audio) for audio;
-# (kind, inbound, attachment) for attachment; (kind, inbound, chunks) for audio_stream
-_ITEM = tuple
 
 
 class OutboundDispatcher:
@@ -149,10 +95,7 @@ class OutboundDispatcher:
         return True
 
     def enqueue(self, msg: InboundMessage, response: OutboundMessage) -> None:
-        """Enqueue a non-streaming response for delivery.
-
-        Fire-and-forget: returns immediately. The worker task delivers asynchronously.
-        """
+        """Enqueue a non-streaming response for delivery (fire-and-forget)."""
         self._queue.put_nowait(("send", msg, response))
 
     def enqueue_streaming(
@@ -161,19 +104,11 @@ class OutboundDispatcher:
         chunks: AsyncIterator[str],
         outbound: OutboundMessage | None = None,
     ) -> None:
-        """Enqueue a streaming response for delivery.
-
-        Fire-and-forget: returns immediately. The worker task consumes the
-        iterator and calls adapter.send_streaming() asynchronously.
-        """
+        """Enqueue a streaming response for delivery (fire-and-forget)."""
         self._queue.put_nowait(("streaming", msg, chunks, outbound))
 
     def enqueue_audio(self, inbound: InboundMessage, audio: OutboundAudio) -> None:
-        """Enqueue an audio response for delivery.
-
-        Fire-and-forget: returns immediately. The worker task calls
-        adapter.render_audio() asynchronously with CB ownership.
-        """
+        """Enqueue an audio response for delivery (fire-and-forget)."""
         self._queue.put_nowait(("audio", inbound, audio))
 
     def enqueue_audio_stream(
@@ -181,11 +116,7 @@ class OutboundDispatcher:
         inbound: InboundMessage,
         chunks: AsyncIterator[OutboundAudioChunk],
     ) -> None:
-        """Enqueue a streaming audio response for delivery.
-
-        Fire-and-forget: returns immediately. The worker task calls
-        adapter.render_audio_stream() asynchronously with CB ownership.
-        """
+        """Enqueue a streaming audio response for delivery (fire-and-forget)."""
         self._queue.put_nowait(("audio_stream", inbound, chunks))
 
     def enqueue_voice_stream(
@@ -193,21 +124,13 @@ class OutboundDispatcher:
         inbound: InboundMessage,
         chunks: AsyncIterator[OutboundAudioChunk],
     ) -> None:
-        """Enqueue a voice stream for delivery via render_voice_stream().
-
-        Fire-and-forget. The worker drains the iterator.
-        maxsize=0: put_nowait() never raises queue.Full.
-        """
+        """Enqueue a voice stream for delivery (fire-and-forget)."""
         self._queue.put_nowait(("voice_stream", inbound, chunks))
 
     def enqueue_attachment(
         self, inbound: InboundMessage, attachment: OutboundAttachment
     ) -> None:
-        """Enqueue an attachment for delivery.
-
-        Fire-and-forget: returns immediately. The worker task calls
-        adapter.render_attachment() asynchronously with CB ownership.
-        """
+        """Enqueue an attachment for delivery (fire-and-forget)."""
         self._queue.put_nowait(("attachment", inbound, attachment))
 
     async def start(self) -> None:
@@ -229,37 +152,8 @@ class OutboundDispatcher:
         return self._queue.qsize()
 
     async def _try_notify_user(self, msg: InboundMessage, text: str) -> None:
-        """Send a short plaintext notification directly, bypassing the queue.
-
-        Attempts a bare platform send without retry. Any failure is logged and
-        swallowed so the caller's error path is never disrupted.
-        """
-        try:
-            if self._platform_name == "telegram":
-                chat_id: int | None = msg.platform_meta.get("chat_id")
-                if chat_id is None:
-                    return
-                await self._adapter.bot.send_message(chat_id=chat_id, text=text)  # type: ignore[attr-defined]
-            elif self._platform_name == "discord":
-                thread_id: int | None = msg.platform_meta.get("thread_id")
-                channel_id: int | None = msg.platform_meta.get("channel_id")
-                send_to_id = thread_id if thread_id is not None else channel_id
-                if send_to_id is None:
-                    return
-                channel = await self._adapter._resolve_channel(send_to_id)  # type: ignore[attr-defined]
-                await channel.send(text)
-            else:
-                log.debug(
-                    "OutboundDispatcher[%s]: _try_notify_user not implemented"
-                    " for this platform",
-                    self._platform_name,
-                )
-        except Exception as notify_exc:
-            log.warning(
-                "OutboundDispatcher[%s]: failed to send user notification: %s",
-                self._platform_name,
-                notify_exc,
-            )
+        """Delegate to module-level helper in outbound_errors."""
+        await try_notify_user(self._platform_name, self._adapter, msg, text)
 
     async def _worker_loop(self) -> None:  # noqa: C901, PLR0915 — outbound dispatch with circuit-breaker, routing verification, kind branching, and error classification
         """Consume the outbound queue indefinitely."""

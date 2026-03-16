@@ -226,11 +226,12 @@ class TestCreate:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Choosing 'u' at the location prompt writes to the user agents dir."""
-        import lyra.cli_agent as cli_mod
+        import lyra.cli_agent_create as create_mod
 
         user_dir = tmp_path / "user_agents"
-        monkeypatch.setattr(cli_mod, "_USER_AGENTS_DIR", user_dir)
-        monkeypatch.setattr(cli_mod, "_SYSTEM_AGENTS_DIR", tmp_path / "system_agents")
+        monkeypatch.setattr(create_mod, "_USER_AGENTS_DIR", user_dir)
+        sys_dir = tmp_path / "system_agents"
+        monkeypatch.setattr(create_mod, "_SYSTEM_AGENTS_DIR", sys_dir)
 
         # No --agents-dir → location prompt appears; answer 'u'
         input_str = "\n".join(
@@ -257,11 +258,11 @@ class TestCreate:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Choosing 's' at the location prompt writes to the system agents dir."""
-        import lyra.cli_agent as cli_mod
+        import lyra.cli_agent_create as create_mod
 
         system_dir = tmp_path / "system_agents"
-        monkeypatch.setattr(cli_mod, "_USER_AGENTS_DIR", tmp_path / "user_agents")
-        monkeypatch.setattr(cli_mod, "_SYSTEM_AGENTS_DIR", system_dir)
+        monkeypatch.setattr(create_mod, "_USER_AGENTS_DIR", tmp_path / "user_agents")
+        monkeypatch.setattr(create_mod, "_SYSTEM_AGENTS_DIR", system_dir)
 
         input_str = "\n".join(
             [

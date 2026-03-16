@@ -11,6 +11,8 @@ import lyra.__main__ as main_mod
 import lyra.bootstrap.agent_factory as agent_factory_mod
 import lyra.bootstrap.legacy as legacy_mod
 import lyra.bootstrap.multibot as multibot_mod
+import lyra.bootstrap.multibot_stores as stores_mod
+import lyra.bootstrap.multibot_wiring as wiring_mod
 from lyra.core.agent import Agent, ModelConfig
 from lyra.core.auth import AuthMiddleware
 from lyra.core.hub import Hub
@@ -90,7 +92,7 @@ def _patch_all(
     _fake_auth_store.connect = AsyncMock()
     _fake_auth_store.seed_from_config = AsyncMock()
     _fake_auth_store.close = AsyncMock()
-    monkeypatch.setattr(multibot_mod, "AuthStore", lambda **kwargs: _fake_auth_store)
+    monkeypatch.setattr(stores_mod, "AuthStore", lambda **kwargs: _fake_auth_store)
 
     _fake_agent_row = MagicMock()
     _fake_agent_row.name = "lyra_default"
@@ -100,7 +102,7 @@ def _patch_all(
     _fake_agent_store.get_bot_agent = MagicMock(return_value="lyra_default")
     _fake_agent_store.get = MagicMock(return_value=_fake_agent_row)
     _fake_agent_store.set_bot_agent = AsyncMock()
-    monkeypatch.setattr(multibot_mod, "AgentStore", lambda **kwargs: _fake_agent_store)
+    monkeypatch.setattr(stores_mod, "AgentStore", lambda **kwargs: _fake_agent_store)
 
     _fake_keyring = MagicMock()
     _fake_keyring.key = b"fake-key-32-bytes-for-fernet-key"
@@ -109,12 +111,12 @@ def _patch_all(
     _fake_cred_store.close = AsyncMock()
     _fake_cred_store.get_full = AsyncMock(return_value=("fake-token", "fake-secret"))
     monkeypatch.setattr(
-        multibot_mod,
+        stores_mod,
         "LyraKeyring",
         MagicMock(load_or_create=AsyncMock(return_value=_fake_keyring)),
     )
     monkeypatch.setattr(
-        multibot_mod, "CredentialStore", lambda **kwargs: _fake_cred_store
+        stores_mod, "CredentialStore", lambda **kwargs: _fake_cred_store
     )
     monkeypatch.setattr(
         multibot_mod,
@@ -130,10 +132,10 @@ def _patch_all(
         main_mod, "TelegramAdapter", lambda **kwargs: _FakeTgAdapter(**kwargs)
     )
     monkeypatch.setattr(
-        multibot_mod, "TelegramAdapter", lambda **kwargs: _FakeTgAdapter(**kwargs)
+        wiring_mod, "TelegramAdapter", lambda **kwargs: _FakeTgAdapter(**kwargs)
     )
     monkeypatch.setattr(main_mod, "DiscordAdapter", CapturingDcAdapter)
-    monkeypatch.setattr(multibot_mod, "DiscordAdapter", CapturingDcAdapter)
+    monkeypatch.setattr(wiring_mod, "DiscordAdapter", CapturingDcAdapter)
     # Use port 0 so the OS picks a free ephemeral port — avoids conflicts with
     # running services (e.g. Lyra already bound to 8443).
     monkeypatch.setenv("LYRA_HEALTH_PORT", "0")
@@ -365,7 +367,7 @@ def _patch_auth_config_test(monkeypatch: pytest.MonkeyPatch) -> None:
     _fake_auth_store.connect = AsyncMock()
     _fake_auth_store.seed_from_config = AsyncMock()
     _fake_auth_store.close = AsyncMock()
-    monkeypatch.setattr(multibot_mod, "AuthStore", lambda **kwargs: _fake_auth_store)
+    monkeypatch.setattr(stores_mod, "AuthStore", lambda **kwargs: _fake_auth_store)
 
     _fake_agent_store = MagicMock()
     _fake_agent_store.connect = AsyncMock()
@@ -373,7 +375,7 @@ def _patch_auth_config_test(monkeypatch: pytest.MonkeyPatch) -> None:
     _fake_agent_store.get_bot_agent = MagicMock(return_value=None)
     _fake_agent_store.get = MagicMock(return_value=None)
     _fake_agent_store.set_bot_agent = AsyncMock()
-    monkeypatch.setattr(multibot_mod, "AgentStore", lambda **kwargs: _fake_agent_store)
+    monkeypatch.setattr(stores_mod, "AgentStore", lambda **kwargs: _fake_agent_store)
     # Bypass _resolve_bot_agent_map so tests can focus on auth validation without
     # hitting the agent-existence check added in Fix 1.
     monkeypatch.setattr(
@@ -389,12 +391,12 @@ def _patch_auth_config_test(monkeypatch: pytest.MonkeyPatch) -> None:
     _fake_cred_store.close = AsyncMock()
     _fake_cred_store.get_full = AsyncMock(return_value=("fake-token", "fake-secret"))
     monkeypatch.setattr(
-        multibot_mod,
+        stores_mod,
         "LyraKeyring",
         MagicMock(load_or_create=AsyncMock(return_value=_fake_keyring)),
     )
     monkeypatch.setattr(
-        multibot_mod, "CredentialStore", lambda **kwargs: _fake_cred_store
+        stores_mod, "CredentialStore", lambda **kwargs: _fake_cred_store
     )
 
 

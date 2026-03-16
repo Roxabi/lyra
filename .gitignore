@@ -19,3 +19,5 @@ coverage.xml
 src/lyra/agents/lyra_runtime.toml
 lyra.toml
 config.toml
+
+node_modules/

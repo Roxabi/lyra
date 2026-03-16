@@ -1,7 +1,6 @@
-"""Command router for Lyra hub (issue #66, updated #106, #99).
+"""Command router — dispatch slash commands to builtins, session handlers, or plugins.
 
-Routes slash commands to plugin handlers or builtins. Issue #99 adds session
-command handlers (async, isolated LLM call) and bare URL → /add rewrite.
+Builtin implementations live in builtin_commands.py and workspace_commands.py (#298).
 """
 
 from __future__ import annotations
@@ -11,20 +10,23 @@ import logging
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, replace
-from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from .circuit_breaker import CircuitRegistry
+from . import builtin_commands, workspace_commands
 from .command_parser import CommandContext
 from .message import InboundMessage, Response
-from .messages import MessageManager
 from .plugin_loader import AsyncHandler, PluginLoader
 from .pool import Pool
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from lyra.core.runtime_config import RuntimeConfigHolder
     from lyra.llm.base import LlmProvider
     from lyra.llm.smart_routing import SmartRoutingDecorator
+
+    from .circuit_breaker import CircuitRegistry
+    from .messages import MessageManager
 
 log = logging.getLogger(__name__)
 
@@ -66,31 +68,19 @@ class CommandRouter:
     _BARE_URL_RE: re.Pattern[str] = re.compile(r"^https?://\S+$")
 
     _DEFAULT_BUILTINS: dict[str, CommandConfig] = {
-        "/help": CommandConfig(builtin=True, description="List available commands"),
-        "/circuit": CommandConfig(
-            builtin=True, description="Show circuit breaker status (admin-only)"
-        ),
-        "/routing": CommandConfig(
-            builtin=True, description="Show smart routing decisions (admin-only)"
-        ),
-        "/stop": CommandConfig(
-            builtin=True, description="Cancel the current processing turn"
-        ),
-        "/config": CommandConfig(
-            builtin=True, description="Show/set runtime config (admin-only)"
-        ),
-        "/clear": CommandConfig(builtin=True, description="Clear conversation history"),
-        "/new": CommandConfig(
-            builtin=True, description="Start a new session (alias for /clear)"
-        ),
-        "/folder": CommandConfig(
-            builtin=True, description="Switch working directory: /folder ~/projects/foo"
-        ),
-        "/cd": CommandConfig(builtin=True, description="Alias for /folder"),
-        "/workspace": CommandConfig(
-            builtin=True,
-            description="Switch workspace: /workspace <name> [question] | ls",
-        ),
+        f"/{name}": CommandConfig(builtin=True, description=desc)
+        for name, desc in [
+            ("help", "List available commands"),
+            ("circuit", "Show circuit breaker status (admin-only)"),
+            ("routing", "Show smart routing decisions (admin-only)"),
+            ("stop", "Cancel the current processing turn"),
+            ("config", "Show/set runtime config (admin-only)"),
+            ("clear", "Clear conversation history"),
+            ("new", "Start a new session (alias for /clear)"),
+            ("folder", "Switch working directory: /folder ~/projects/foo"),
+            ("cd", "Alias for /folder"),
+            ("workspace", "Switch workspace: /workspace <name> [question] | ls"),
+        ]
     }
 
     def __init__(  # noqa: PLR0913 — DI constructor, each arg is a required dependency
@@ -133,8 +123,6 @@ class CommandRouter:
                 "Rename the plugin command or remove the builtin."
             )
 
-    # --- Detection ---
-
     def _rewrite_bare_url(self, msg: InboundMessage) -> InboundMessage:
         """Attach a synthetic /add CommandContext for a bare URL message."""
         url = msg.text.strip()
@@ -173,39 +161,48 @@ class CommandRouter:
         """Register session command; name has no leading slash. Raises on clash."""
         cmd = f"/{name}"
         if cmd in self._builtins:
-            raise ValueError(
-                f"Session command {cmd!r} clashes with a builtin command. "
-                "Rename the session command."
-            )
+            raise ValueError(f"Session command {cmd!r} clashes with a builtin.")
         plugin_handlers = self._plugin_loader.get_commands(self._enabled_plugins)
         if cmd in plugin_handlers:
-            raise ValueError(
-                f"Session command {cmd!r} clashes with a plugin command. "
-                "Rename the session command."
-            )
+            raise ValueError(f"Session command {cmd!r} clashes with a plugin.")
         self._session_handlers[cmd] = SessionCommandEntry(
             handler=handler,
             description=description,
             timeout=timeout,
         )
 
-    # --- Dispatch ---
-
     def _dispatch_builtin(
         self, command_name: str, args: list[str], msg: InboundMessage, pool: Pool | None
     ) -> Response | None:
         if command_name == "/help":
-            return self._help()
+            return builtin_commands.help_command(
+                self._builtins,
+                self._session_handlers,
+                self._plugin_loader,
+                self._enabled_plugins,
+                self._msg_manager,
+            )
         if command_name == "/circuit":
-            return self._circuit_status(msg)
+            return builtin_commands.circuit_status(
+                msg, self._admin_user_ids, self._circuit_registry
+            )
         if command_name == "/routing":
-            return self._routing_status(msg)
+            return builtin_commands.routing_status(
+                msg, self._admin_user_ids, self._smart_routing
+            )
         if command_name == "/stop":
             if pool is not None:
                 pool.cancel()
             return Response(content="")
         if command_name == "/config":
-            return self._cmd_config(msg, args)
+            return builtin_commands.config_command(
+                msg,
+                args,
+                self._admin_user_ids,
+                self._runtime_config_holder,
+                self._runtime_config_path,
+                self._on_debounce_change,
+            )
         builtin = self._builtins.get(command_name)
         if builtin and builtin.builtin:
             return Response(
@@ -236,35 +233,29 @@ class CommandRouter:
     async def dispatch(  # noqa: C901 — command routing has inherent branching complexity
         self, msg: InboundMessage, pool: Pool | None = None
     ) -> Response | None:
-        """Route the pre-parsed command to the appropriate handler.
-
-        Calls prepare() first; returns None (sentinel) for !-prefixed unknowns.
-        """
-        # Rewrite bare URLs to /add if not already a command
+        """Route pre-parsed command. Returns None for !-prefixed unknowns."""
         msg = self.prepare(msg)
-
         if msg.command is None:
             raise ValueError("dispatch() called on non-command message")
 
         command_name = f"{msg.command.prefix}{msg.command.name}"
         args = msg.command.args.split() if msg.command.args else []
 
-        # /clear and /new need async session reset — handle before _dispatch_builtin
         if command_name in ("/clear", "/new"):
-            return await self._cmd_clear(pool)
-
-        # /folder and /cd — dynamic cwd switch, admin-only
+            return await workspace_commands.cmd_clear(pool)
         if command_name in ("/folder", "/cd"):
-            return await self._cmd_folder(msg, args, pool)
-
-        if command_name == "/workspace":  # list or switch workspaces, admin-only
-            return await self._cmd_workspace(msg, args, pool)
+            return await workspace_commands.cmd_folder(
+                msg, args, pool, self._admin_user_ids
+            )
+        if command_name == "/workspace":
+            return await workspace_commands.cmd_workspace(
+                msg, args, pool, self._admin_user_ids, self._workspaces
+            )
 
         builtin_response = self._dispatch_builtin(command_name, args, msg, pool)
         if builtin_response is not None:
             return builtin_response
 
-        # Session commands — checked before plugin handlers
         if command_name in self._session_handlers:
             return await self._dispatch_session(command_name, args, msg, pool)
 
@@ -273,12 +264,11 @@ class CommandRouter:
         )
         handler = plugin_handlers.get(command_name)
         if handler is None:
-            if msg.command.prefix == "!":
-                return None  # !-prefixed unknown command: fall through to pool
-            if command_name in self._passthroughs:
-                return None  # agent-handled — fall through to pool
+            if msg.command.prefix == "!" or command_name in self._passthroughs:
+                return None
             _fallback = (
-                f"Unknown command: {command_name}. Type /help for available commands."
+                f"Unknown command: {command_name}. "
+                "Type /help for available commands."
             )
             _reply_text = (
                 self._msg_manager.get("unknown_command", command_name=command_name)
@@ -289,212 +279,17 @@ class CommandRouter:
 
         if pool is None:
             raise TypeError(
-                f"Plugin command '{command_name}' requires a real Pool instance. "
-                "Pass pool=<Pool> when calling dispatch() for plugin commands."
+                f"Plugin command '{command_name}' requires a Pool instance."
             )
         timeout = self._plugin_loader.get_timeout(command_name, self._enabled_plugins)
         try:
             return await asyncio.wait_for(handler(msg, pool, args), timeout=timeout)
         except TimeoutError:
             log.warning(
-                "Plugin command %s timed out after %.1fs", command_name, timeout
+                "Plugin command %s timed out after %.1fs",
+                command_name, timeout,
             )
             return Response(
-                content=f"Command {command_name} timed out after {timeout:.0f}s."
+                content=f"Command {command_name} timed out "
+                f"after {timeout:.0f}s."
             )
-
-    # --- Builtins ---
-
-    def _help(self) -> Response:
-        """Return a listing of all available commands."""
-        header = (
-            self._msg_manager.get("help_header")
-            if self._msg_manager
-            else "Available commands:"
-        )
-        lines: list[str] = [header]
-        # Builtins
-        for cmd_name, cfg in sorted(self._builtins.items()):
-            desc = cfg.description or "(no description)"
-            lines.append(f"  {cmd_name} — {desc}")
-        # Session commands
-        if self._session_handlers:
-            lines.append("Session commands:")
-            for cmd_name, entry in sorted(self._session_handlers.items()):
-                desc = entry.description or "(no description)"
-                lines.append(f"  {cmd_name} — {desc}")
-        # Plugin commands
-        plugin_handlers = self._plugin_loader.get_commands(self._enabled_plugins)
-        for cmd_name in sorted(plugin_handlers):
-            if cmd_name not in self._builtins:
-                lines.append(f"  {cmd_name} — (plugin command)")
-        return Response(content="\n".join(lines))
-
-    def _circuit_status(self, msg: InboundMessage) -> Response:
-        sender_id = msg.user_id
-        if not self._admin_user_ids or sender_id not in self._admin_user_ids:
-            return Response(content="This command is admin-only.")
-        if self._circuit_registry is None:
-            return Response(content="Circuit breaker not configured.")
-        all_status = self._circuit_registry.get_all_status()
-        lines = ["Circuit Status", "─" * 38]
-        for name, status in sorted(all_status.items()):
-            if status.retry_after is not None:
-                state_str = f"OPEN       retry in {int(status.retry_after)}s"
-            else:
-                state_str = f"{status.state.value.upper():<10} (ok)"
-            lines.append(f"  {name:<12} {state_str}")
-        lines.append("─" * 38)
-        return Response(content="\n".join(lines))
-
-    def _routing_status(self, msg: InboundMessage) -> Response:
-        if not self._admin_user_ids or msg.user_id not in self._admin_user_ids:
-            return Response(content="This command is admin-only.")
-        if self._smart_routing is None:
-            return Response(content="Smart routing not configured.")
-        history = self._smart_routing.history
-        if not history:
-            return Response(content="No routing decisions yet.")
-        lines = ["Smart Routing — Recent Decisions", "─" * 60]
-        for decision in reversed(history):
-            from datetime import datetime, timezone
-
-            ts = datetime.fromtimestamp(decision.timestamp, tz=timezone.utc)
-            ts_str = ts.strftime("%H:%M:%S")
-            lines.append(
-                f"  {ts_str}  {decision.complexity.value:<8}  "
-                f"{decision.routed_model:<30}  {decision.message_preview}"
-            )
-        lines.append("─" * 60)
-        lines.append(f"  Showing {len(history)} decisions")
-        return Response(content="\n".join(lines))
-
-    def _cmd_config(self, msg: InboundMessage, args: list[str]) -> Response:
-        if not self._admin_user_ids or msg.user_id not in self._admin_user_ids:
-            return Response(content="This command is admin-only.")
-        if self._runtime_config_holder is None:
-            return Response(content="Runtime config not available for this backend.")
-        if not args:
-            return self._cmd_config_show()
-        if args[0] == "reset":
-            return self._cmd_config_reset(args[1:])
-        return self._cmd_config_set(args)
-
-    def _cmd_config_show(self) -> Response:
-        holder = self._runtime_config_holder
-        assert holder is not None
-        rc = holder.value
-        lines = ["Runtime Config", "─" * 35]
-        lines.append(f"  {'style':<20} {rc.style}")
-        lines.append(f"  {'language':<20} {rc.language}")
-        lines.append(f"  {'temperature':<20} {rc.temperature}")
-        lines.append(f"  {'model':<20} {rc.model or '(persona default)'}")
-        lines.append(f"  {'max_steps':<20} {rc.max_steps or '(model default)'}")
-        extra = rc.extra_instructions or "(none)"
-        lines.append(f"  {'extra_instructions':<20} {extra}")
-        lines.append(f"  {'debounce_ms':<20} {rc.debounce_ms}")
-        lines.append("─" * 35)
-        return Response(content="\n".join(lines))
-
-    def _cmd_config_set(self, args: list[str]) -> Response:
-        from lyra.core.agent import _AGENTS_DIR
-        from lyra.core.runtime_config import set_param
-
-        holder = self._runtime_config_holder
-        assert holder is not None
-        rc = holder.value
-        updates: list[str] = []
-        for token in args:
-            if "=" not in token:
-                return Response(content=f"Invalid format: {token!r}. Use key=value.")
-            key, _, value = token.partition("=")
-            try:
-                rc = set_param(rc, key.strip(), value.strip())
-                updates.append(f"{key.strip()} = {value.strip()}")
-            except ValueError as exc:
-                return Response(content=str(exc))
-        runtime_file = self._runtime_config_path or (_AGENTS_DIR / "lyra_runtime.toml")
-        rc.save(runtime_file)
-        old_rc = holder.value
-        holder.value = rc
-        # Propagate debounce_ms changes to Hub's live pools.
-        if rc.debounce_ms != old_rc.debounce_ms and self._on_debounce_change:
-            self._on_debounce_change(rc.debounce_ms)
-        summary = f"Updated: {', '.join(updates)}\nSaved to {runtime_file.name}"
-        return Response(content=summary)
-
-    def _cmd_config_reset(self, args: list[str]) -> Response:
-        from lyra.core.agent import _AGENTS_DIR
-        from lyra.core.runtime_config import RuntimeConfig
-
-        holder = self._runtime_config_holder
-        assert holder is not None
-        runtime_file = self._runtime_config_path or (_AGENTS_DIR / "lyra_runtime.toml")
-        if not args:
-            holder.value = RuntimeConfig()
-            try:
-                runtime_file.unlink(missing_ok=True)
-            except OSError:
-                pass
-            return Response(content="Runtime config reset to defaults.")
-        key = args[0]
-        try:
-            holder.value = RuntimeConfig.reset(holder.value, key)
-        except ValueError as exc:
-            return Response(content=str(exc))
-        holder.value.save(runtime_file)
-        return Response(content=f"Reset: {key} = (default). Saved.")
-
-    async def _cmd_workspace(
-        self, msg: InboundMessage, args: list[str], pool: Pool | None
-    ) -> Response:
-        if not self._admin_user_ids or msg.user_id not in self._admin_user_ids:
-            return Response(content="This command is admin-only.")
-        if not args or args[0] in ("ls", "list"):
-            if not self._workspaces:
-                return Response(content="No workspaces configured.")
-            pairs = sorted(self._workspaces.items())
-            rows = "\n".join(f"  {n} → {p}" for n, p in pairs)
-            return Response(content=f"Workspaces:\n{rows}")
-        ws_key = args[0]
-        if ws_key not in self._workspaces:
-            avail = ", ".join(sorted(self._workspaces)) or "none"
-            return Response(content=f"Unknown workspace: {ws_key}. Available: {avail}")
-        cwd = self._workspaces[ws_key]
-        if pool is None:
-            return Response(content=f"Workspace: {ws_key}")
-        await pool.switch_workspace(cwd)
-        prefix = f"/workspace {ws_key}"
-        remaining = msg.text[len(prefix) :].lstrip()
-        if remaining:
-            rr = msg.text_raw[len(prefix) :].lstrip() if msg.text_raw else remaining
-            pool.submit(replace(msg, text=remaining, text_raw=rr))
-        return Response(content=f"Workspace: {ws_key}")
-
-    async def _cmd_folder(
-        self, msg: InboundMessage, args: list[str], pool: Pool | None
-    ) -> Response:
-        if not self._admin_user_ids or msg.user_id not in self._admin_user_ids:
-            return Response(content="This command is admin-only.")
-        if not args:
-            return Response(content="Usage: /folder <path>")
-        raw_path = Path(args[0]).expanduser().resolve()
-        if not raw_path.is_dir():
-            return Response(content=f"Not a directory: {args[0]}")
-        if pool is None:
-            return Response(content=f"cwd: {raw_path}")
-        await pool.switch_workspace(raw_path)
-        command_name = msg.text.split()[0]
-        remaining = msg.text[len(command_name) + len(args[0]) + 1 :].lstrip()
-        if remaining:
-            followup = replace(msg, text=remaining, text_raw=remaining)
-            pool.submit(followup)
-        return Response(content=f"cwd → {raw_path}")
-
-    async def _cmd_clear(self, pool: Pool | None) -> Response:
-        if pool is None:
-            return Response(content="No active session to clear.")
-        pool.sdk_history.clear()
-        pool.history.clear()
-        await pool.reset_session()
-        return Response(content="Conversation history cleared. Starting fresh.")

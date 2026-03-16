@@ -13,8 +13,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.core.hub import Action, Hub, MessagePipeline, PipelineResult
+from lyra.core.hub import Hub
 from lyra.core.message import InboundMessage, OutboundAudio, Response
+from lyra.core.message_pipeline import Action, MessagePipeline, PipelineResult
 from tests.core.conftest import make_inbound_message
 
 # ---------------------------------------------------------------------------
@@ -138,7 +139,7 @@ class TestHubRunAudioDispatch:
 
 # ---------------------------------------------------------------------------
 # S4 — T18: Hub accepts prefs_store=None
-# S5 — T22-T25: Pref resolution in _synthesize_and_dispatch_audio
+# S5 — T22-T25: Pref resolution in synthesize_and_dispatch_audio
 # ---------------------------------------------------------------------------
 
 
@@ -177,7 +178,7 @@ class TestHubPrefsStoreInit:
 
 
 class TestHubPrefResolution:
-    """T22-T25 — _synthesize_and_dispatch_audio resolves language from prefs."""
+    """T22-T25 — synthesize_and_dispatch_audio resolves language from prefs."""
 
     @pytest.mark.asyncio
     async def test_explicit_pref_overrides_detected_language(self):
@@ -193,7 +194,7 @@ class TestHubPrefResolution:
         hub.dispatch_audio = AsyncMock()
 
         msg = _make_msg_with_language("fr")
-        await hub._synthesize_and_dispatch_audio(msg, "reply")
+        await hub._audio_pipeline.synthesize_and_dispatch_audio(msg, "reply")
 
         mock_tts.synthesize.assert_awaited_once()
         call_kwargs = mock_tts.synthesize.call_args.kwargs
@@ -213,7 +214,7 @@ class TestHubPrefResolution:
         hub.dispatch_audio = AsyncMock()
 
         msg = _make_msg_with_language("fr")
-        await hub._synthesize_and_dispatch_audio(msg, "reply")
+        await hub._audio_pipeline.synthesize_and_dispatch_audio(msg, "reply")
 
         mock_tts.synthesize.assert_awaited_once()
         call_kwargs = mock_tts.synthesize.call_args.kwargs
@@ -233,7 +234,7 @@ class TestHubPrefResolution:
         hub.dispatch_audio = AsyncMock()
 
         msg = _make_msg_with_language(None)
-        await hub._synthesize_and_dispatch_audio(msg, "reply")
+        await hub._audio_pipeline.synthesize_and_dispatch_audio(msg, "reply")
 
         mock_tts.synthesize.assert_awaited_once()
         call_kwargs = mock_tts.synthesize.call_args.kwargs
@@ -253,7 +254,7 @@ class TestHubPrefResolution:
         hub.dispatch_audio = AsyncMock()
 
         msg = _make_msg_with_language("fr")
-        await hub._synthesize_and_dispatch_audio(msg, "reply")
+        await hub._audio_pipeline.synthesize_and_dispatch_audio(msg, "reply")
 
         mock_tts.synthesize.assert_awaited_once()
         call_kwargs = mock_tts.synthesize.call_args.kwargs
@@ -280,7 +281,7 @@ class TestHubPrefResolutionNonePrefsStore:
             platform="telegram", bot_id="main", user_id="tg:user:1"
         )
         msg = dataclasses.replace(base, language="fr")
-        await hub._synthesize_and_dispatch_audio(msg, "reply")
+        await hub._audio_pipeline.synthesize_and_dispatch_audio(msg, "reply")
 
         mock_tts.synthesize.assert_awaited_once()
         call_kwargs = mock_tts.synthesize.call_args.kwargs
@@ -302,7 +303,7 @@ class TestHubPrefResolutionNonePrefsStore:
             platform="telegram", bot_id="main", user_id="tg:user:1"
         )
         msg = dataclasses.replace(base, language=None)
-        await hub._synthesize_and_dispatch_audio(msg, "reply")
+        await hub._audio_pipeline.synthesize_and_dispatch_audio(msg, "reply")
 
         mock_tts.synthesize.assert_awaited_once()
         call_kwargs = mock_tts.synthesize.call_args.kwargs

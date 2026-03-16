@@ -9,17 +9,14 @@ from unittest.mock import AsyncMock, MagicMock
 from lyra.core.agent import Agent, AgentBase
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.context_resolver import ResolvedSession  # type: ignore[import]
-from lyra.core.hub import (
-    Action,
-    Hub,
-    MessagePipeline,
-)
+from lyra.core.hub import Hub
 from lyra.core.message import (
     InboundMessage,
     OutboundMessage,
     Platform,
     Response,
 )
+from lyra.core.message_pipeline import Action, MessagePipeline
 from lyra.core.pool import Pool
 from tests.core.conftest import make_inbound_message
 

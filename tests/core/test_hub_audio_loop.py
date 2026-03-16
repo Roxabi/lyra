@@ -106,7 +106,7 @@ class TestAudioLoopTranscription:
 
         await hub.inbound_bus.start()
         await hub.inbound_audio_bus.start()
-        task = asyncio.create_task(hub._audio_loop())
+        task = asyncio.create_task(hub._audio_pipeline.run())
         try:
             # Wait for the message to appear on the inbound bus staging queue
             msg: InboundMessage = await asyncio.wait_for(
@@ -144,7 +144,7 @@ class TestAudioLoopNoSTT:
         hub.dispatch_response = capture_dispatch  # type: ignore[assignment]
 
         await hub.inbound_audio_bus.start()
-        task = asyncio.create_task(hub._audio_loop())
+        task = asyncio.create_task(hub._audio_pipeline.run())
         try:
             await asyncio.wait_for(done.wait(), timeout=2.0)
             assert len(dispatched) == 1
@@ -179,7 +179,7 @@ class TestAudioLoopSTTFailure:
         hub.dispatch_response = capture_dispatch  # type: ignore[assignment]
 
         await hub.inbound_audio_bus.start()
-        task = asyncio.create_task(hub._audio_loop())
+        task = asyncio.create_task(hub._audio_pipeline.run())
         try:
             await asyncio.wait_for(done.wait(), timeout=2.0)
             assert len(dispatched) == 1
@@ -214,7 +214,7 @@ class TestAudioLoopNoise:
         hub.dispatch_response = capture_dispatch  # type: ignore[assignment]
 
         await hub.inbound_audio_bus.start()
-        task = asyncio.create_task(hub._audio_loop())
+        task = asyncio.create_task(hub._audio_pipeline.run())
         try:
             await asyncio.wait_for(done.wait(), timeout=2.0)
             assert len(dispatched) == 1
@@ -301,7 +301,7 @@ class TestProcessAudioItemPropagatesLanguage:
 
         await hub.inbound_bus.start()
         await hub.inbound_audio_bus.start()
-        task = asyncio.create_task(hub._audio_loop())
+        task = asyncio.create_task(hub._audio_pipeline.run())
         try:
             msg: InboundMessage = await asyncio.wait_for(
                 hub.inbound_bus._staging.get(), timeout=2.0
@@ -327,7 +327,7 @@ class TestAudioLoopTaskDone:
 
         await hub.inbound_bus.start()
         await hub.inbound_audio_bus.start()
-        task = asyncio.create_task(hub._audio_loop())
+        task = asyncio.create_task(hub._audio_pipeline.run())
         try:
             # Wait for re-enqueued message
             await asyncio.wait_for(hub.inbound_bus._staging.get(), timeout=2.0)

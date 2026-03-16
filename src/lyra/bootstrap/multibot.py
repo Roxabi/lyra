@@ -395,7 +395,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
 
         tasks = [
             asyncio.create_task(hub.run(), name="hub"),
-            asyncio.create_task(hub._audio_loop(), name="hub-audio"),
+            asyncio.create_task(hub._audio_pipeline.run(), name="hub-audio"),
             asyncio.create_task(health_server.serve(), name="health"),
         ]
         for tg_adapter in tg_adapters:

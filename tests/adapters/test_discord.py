@@ -1196,47 +1196,44 @@ class TestDiscordOutboundMessage:
         mock_message.reply.assert_awaited()
 
     def test_render_text_empty_returns_no_chunks(self) -> None:
-        """_render_text("") returns [] — no empty-string chunk to send to the API."""
-        # Arrange
-        adapter = _make_discord_adapter()
+        """render_text("") returns [] — no empty-string chunk to send to the API."""
+        from lyra.adapters.discord_formatting import render_text
 
         # Act
-        chunks = adapter._render_text("")  # type: ignore[attr-defined]
+        chunks = render_text("")
 
         # Assert
         assert chunks == []
 
     def test_render_text_chunks_at_2000(self) -> None:
-        """_render_text("x" * 2500) returns 2 chunks, each ≤ 2000 characters."""
-        # Arrange
-        adapter = _make_discord_adapter()
+        """render_text("x" * 2500) returns 2 chunks, each ≤ 2000 characters."""
+        from lyra.adapters.discord_formatting import render_text
+
         text = "x" * 2500
 
         # Act
-        chunks = adapter._render_text(text)  # type: ignore[attr-defined]
+        chunks = render_text(text)
 
         # Assert
         assert len(chunks) == 2
         assert all(len(c) <= 2000 for c in chunks)
 
     def test_render_buttons_none_when_empty(self) -> None:
-        """_render_buttons([]) returns None."""
-        # Arrange
-        adapter = _make_discord_adapter()
+        """render_buttons([]) returns None."""
+        from lyra.adapters.discord_formatting import render_buttons
 
         # Act
-        result = adapter._render_buttons([])  # type: ignore[attr-defined]
+        result = render_buttons([])
 
         # Assert
         assert result is None
 
     def test_render_buttons_returns_view(self) -> None:
-        """_render_buttons([Button("Yes","yes")]) returns a discord.ui.View."""
-        # Arrange
-        adapter = _make_discord_adapter()
+        """render_buttons([Button("Yes","yes")]) returns a discord.ui.View."""
+        from lyra.adapters.discord_formatting import render_buttons
 
         # Act
-        result = adapter._render_buttons([Button("Yes", "yes")])  # type: ignore[attr-defined]
+        result = render_buttons([Button("Yes", "yes")])
 
         # Assert
         assert isinstance(result, discord.ui.View)

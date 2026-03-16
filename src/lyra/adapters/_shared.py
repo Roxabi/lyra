@@ -131,6 +131,22 @@ ATTACHMENT_EXTS_BASE = frozenset(
     }
 )
 
+# Discord API message length limit — used by discord_formatting and discord_audio.
+DISCORD_MAX_LENGTH = 2000
+
+# Accepted audio MIME types for inbound attachment detection.
+AUDIO_MIME_TYPES = frozenset(
+    {
+        "audio/ogg",
+        "audio/mpeg",
+        "audio/mp4",
+        "audio/opus",
+        "audio/wav",
+        "audio/flac",
+        "audio/aac",
+    }
+)
+
 
 # Allowed file extensions for outbound audio filenames (whitelist).
 _AUDIO_EXTS = frozenset({"ogg", "mp3", "mp4", "mpeg", "opus", "wav", "flac", "aac"})

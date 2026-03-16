@@ -1,0 +1,99 @@
+"""Text formatting and UI helpers for DiscordAdapter."""
+
+from __future__ import annotations
+
+import re
+from typing import Any
+
+import discord
+from tabulate import tabulate
+
+from lyra.adapters._shared import AUDIO_MIME_TYPES, chunk_text
+from lyra.core.message import Attachment
+
+_TABLE_RE = re.compile(
+    r"(?m)"
+    r"(?:^\|.+\|\s*\n)"  # header row
+    r"(?:^\|[\s\-:|]+\|\s*\n)"  # separator row  (--|:--:|--:  etc.)
+    r"(?:^\|.+\|[ \t]*\n?)+",  # one or more data rows
+)
+
+
+def _parse_md_table(match: re.Match[str]) -> str:
+    """Convert a Markdown pipe table match to a tabulate ``simple`` code block."""
+    lines = [ln for ln in match.group(0).splitlines() if ln.strip()]
+    if len(lines) < 3:  # noqa: PLR2004 — need header + sep + ≥1 data row
+        return match.group(0)
+
+    def _row(line: str) -> list[str]:
+        parts = line.split("|")
+        if parts and parts[0].strip() == "":
+            parts = parts[1:]
+        if parts and parts[-1].strip() == "":
+            parts = parts[:-1]
+        return [c.strip() for c in parts]
+
+    headers = _row(lines[0])
+    # lines[1] is the separator row — skip it
+    data = [_row(ln) for ln in lines[2:]]
+    return f"```\n{tabulate(data, headers=headers, tablefmt='simple')}\n```"
+
+
+_MENTION_RE = re.compile(r"<@!?\d+>")
+
+
+def make_thread_name(content: str, fallback: str) -> str:
+    """Derive a Discord thread name from a message.
+
+    Takes the segment before the first ' — ' (em-dash), strips @mentions,
+    collapses whitespace, and falls back to *fallback* when the result is empty.
+    The return value is always ≤ 100 characters (Discord limit).
+    """
+    segment = content.split(" — ", 1)[0] if " — " in content else content
+    clean = _MENTION_RE.sub("", segment).strip()
+    name = " ".join(clean.split()) or fallback
+    return name[:100]
+
+
+def extract_attachments(raw_attachments: list[Any]) -> list[Attachment]:
+    """Extract non-audio Attachment objects from Discord message.attachments."""
+    result: list[Attachment] = []
+    for a in raw_attachments:
+        ct = getattr(a, "content_type", None) or ""
+        if ct in AUDIO_MIME_TYPES:
+            continue
+        if ct.startswith("image/"):
+            att_type = "image"
+        elif ct.startswith("video/"):
+            att_type = "video"
+        else:
+            att_type = "file"
+        result.append(
+            Attachment(
+                type=att_type,
+                url_or_path_or_bytes=a.url,
+                mime_type=ct or "application/octet-stream",
+                filename=getattr(a, "filename", None),
+            )
+        )
+    return result
+
+
+def render_text(text: str, max_length: int = 2000) -> list[str]:
+    """Split text into ≤max_length-char chunks.
+
+    Markdown pipe tables are converted to tabulate code blocks first,
+    since Discord does not render pipe-syntax tables.
+    """
+    text = _TABLE_RE.sub(_parse_md_table, text)
+    return chunk_text(text, max_length)
+
+
+def render_buttons(buttons: list) -> discord.ui.View | None:
+    """Convert list[Button] to discord.ui.View, or None if empty."""
+    if not buttons:
+        return None
+    view = discord.ui.View()
+    for b in buttons:
+        view.add_item(discord.ui.Button(label=b.text, custom_id=b.callback_data))
+    return view

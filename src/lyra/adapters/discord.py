@@ -8,26 +8,32 @@ import re
 import time
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
-from io import BytesIO
 from typing import TYPE_CHECKING, Any, cast
 
 import discord
-from tabulate import tabulate
 
 if TYPE_CHECKING:
     from lyra.core.hub import Hub
 
+from lyra.adapters import discord_audio
 from lyra.adapters._shared import (
-    _AUDIO_EXTS,
     ATTACHMENT_EXTS_BASE,
-    _PartialAudioError,
-    buffer_audio_chunks,
-    chunk_text,
-    parse_reply_to_id,
+    AUDIO_MIME_TYPES,
+    DISCORD_MAX_LENGTH,
     push_to_hub_guarded,
     resolve_msg,
-    sanitize_filename,
-    truncate_caption,
+)
+from lyra.adapters.discord_formatting import (
+    extract_attachments,
+    make_thread_name,
+    render_buttons,
+    render_text,
+)
+from lyra.adapters.discord_threads import (
+    persist_thread_claim,
+    persist_thread_session,
+    restore_hot_threads,
+    retrieve_thread_session,
 )
 from lyra.adapters.discord_voice import (
     VoiceAlreadyActiveError,
@@ -40,7 +46,6 @@ from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.command_parser import CommandParser
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
-    Attachment,
     InboundAudio,
     InboundMessage,
     OutboundAttachment,
@@ -58,37 +63,6 @@ _ATTACHMENT_EXTS = ATTACHMENT_EXTS_BASE
 
 log = logging.getLogger(__name__)
 
-DISCORD_MAX_LENGTH = 2000  # Discord API message length limit
-
-# Matches a full Markdown pipe table (header + separator + 1+ data rows).
-_TABLE_RE = re.compile(
-    r"(?m)"
-    r"(?:^\|.+\|\s*\n)"  # header row
-    r"(?:^\|[\s\-:|]+\|\s*\n)"  # separator row  (--|:--:|--:  etc.)
-    r"(?:^\|.+\|[ \t]*\n?)+",  # one or more data rows
-)
-
-
-def _parse_md_table(match: re.Match[str]) -> str:
-    """Convert a Markdown pipe table match to a tabulate ``simple`` code block."""
-    lines = [ln for ln in match.group(0).splitlines() if ln.strip()]
-    if len(lines) < 3:  # noqa: PLR2004 — need header + sep + ≥1 data row
-        return match.group(0)
-
-    def _row(line: str) -> list[str]:
-        parts = line.split("|")
-        if parts and parts[0].strip() == "":
-            parts = parts[1:]
-        if parts and parts[-1].strip() == "":
-            parts = parts[:-1]
-        return [c.strip() for c in parts]
-
-    headers = _row(lines[0])
-    # lines[1] is the separator row — skip it
-    data = [_row(ln) for ln in lines[2:]]
-    return f"```\n{tabulate(data, headers=headers, tablefmt='simple')}\n```"
-
-
 _command_parser = CommandParser()
 
 # Sentinel used when no AuthMiddleware is provided — denies all traffic by default.
@@ -100,87 +74,19 @@ _ALLOW_ALL = AuthMiddleware(store=None, role_map={}, default=TrustLevel.PUBLIC)
 
 _AUTO_THREAD_TRUE = frozenset({"1", "true", "yes", "on"})
 
-# Discord IS_VOICE_MESSAGE flag (bit 13)
-_VOICE_MESSAGE_FLAG = 8192
 
-
-# Accepted audio MIME types for inbound attachment detection.
-_AUDIO_MIME_TYPES = frozenset(
-    {
-        "audio/ogg",
-        "audio/mpeg",
-        "audio/mp4",
-        "audio/opus",
-        "audio/wav",
-        "audio/flac",
-        "audio/aac",
-    }
-)
-
-
-def _is_valid_audio_magic(data: bytes) -> bool:
-    """Return True if *data* starts with a recognised audio file signature.
-
-    Checks magic bytes for common audio containers. The client-supplied
-    content_type is untrusted, so this provides a server-side format gate.
-    """
-    if len(data) < 4:  # noqa: PLR2004 — smallest magic header is 4 bytes
-        return False
-    # OGG / Opus / Vorbis
-    if data[:4] == b"OggS":
-        return True
-    # WEBM (also used for Opus in browsers / Discord voice)
-    if data[:4] == b"\x1aE\xdf\xa3":
-        return True
-    # RIFF (WAV, WebP — WAV is audio/wav)
-    if data[:4] == b"RIFF":
-        return True
-    # FLAC
-    if data[:4] == b"fLaC":
-        return True
-    # MP3 — ID3 tag header
-    if data[:3] == b"ID3":
-        return True
-    # MP3 — raw sync word (0xff + 0xfb/0xf3/0xf2)
-    if data[0] == 0xFF and data[1] in (0xFB, 0xF3, 0xF2, 0xFA, 0xF2):
-        return True
-    # M4A / MP4 — "ftyp" at offset 4
-    if len(data) >= 8 and data[4:8] == b"ftyp":  # noqa: PLR2004
-        return True
-    return False
-
-
-# ---------------------------------------------------------------------------
-# Typing indicator — two-phase design (mirrors TelegramAdapter pattern)
-#
-# Phase 1 (message receipt): _start_typing() creates a _discord_typing_worker
-#   Task that fires trigger_typing() every 8s (Discord expires after ~10s).
-#   Starts immediately when on_message() receives a message, before any
-#   processing begins.
-#
-# Phase 2 (response send): _cancel_typing() stops the task. For both send()
-#   and send_streaming() this happens at the top of each method, right before
-#   the response is written. This replaces the old `async with channel.typing()`
-#   wrapper which only covered the send phase, not the backend processing phase.
-#
-# Drop safety: if the message is dropped (circuit open or QueueFull), on_drop
-#   calls _cancel_typing() so the indicator doesn't spin indefinitely.
-# ---------------------------------------------------------------------------
 async def _discord_typing_worker(
     resolve_channel: Callable,
     channel_id: int,
 ) -> None:
     """Hold Discord typing indicator for channel_id until cancelled.
 
-    Sends trigger_typing() every 9 s (Discord expires after ~10 s).
-    Uses a manual loop instead of channel.typing() to control the refresh
-    interval — the built-in context manager refreshes every 5 s, which
-    hammers the API when several conversations run in parallel and triggers
-    429s on the /typing route.
+    Sends trigger_typing() every 9 s (Discord expires after ~10 s). Uses a
+    manual loop instead of channel.typing() to avoid the built-in 5 s refresh
+    which triggers 429s when many conversations run in parallel.
     """
     try:
-        # Retry resolving the channel: newly-created threads may not be cached
-        # immediately after creation, so allow up to 3 attempts with backoff.
+        # Retry: newly-created threads may not be cached immediately.
         channel = None
         for _attempt in range(3):
             try:
@@ -206,11 +112,7 @@ async def _discord_send_with_retry(
     label: str,
     max_attempts: int = 3,
 ) -> None:
-    """Call *coro_fn()* and retry with exponential backoff on failure.
-
-    Delays: 1 s, 2 s, 4 s … between attempts.  Logs a warning on each
-    transient failure and an error if all attempts are exhausted.
-    """
+    """Call *coro_fn()* and retry with exponential backoff (1 s, 2 s, 4 s …)."""
     for attempt in range(max_attempts):
         try:
             await coro_fn()
@@ -228,46 +130,6 @@ async def _discord_send_with_retry(
                 delay,
             )
             await asyncio.sleep(delay)
-
-
-_MENTION_RE = re.compile(r"<@!?\d+>")
-
-
-def _make_thread_name(content: str, fallback: str) -> str:
-    """Derive a Discord thread name from a message.
-
-    Takes the segment before the first ' — ' (em-dash), strips @mentions,
-    collapses whitespace, and falls back to *fallback* when the result is empty.
-    The return value is always ≤ 100 characters (Discord limit).
-    """
-    segment = content.split(" — ", 1)[0] if " — " in content else content
-    clean = _MENTION_RE.sub("", segment).strip()
-    name = " ".join(clean.split()) or fallback
-    return name[:100]
-
-
-def _extract_attachments(raw_attachments: list[Any]) -> list[Attachment]:
-    """Extract non-audio Attachment objects from Discord message.attachments."""
-    result: list[Attachment] = []
-    for a in raw_attachments:
-        ct = getattr(a, "content_type", None) or ""
-        if ct in _AUDIO_MIME_TYPES:
-            continue
-        if ct.startswith("image/"):
-            att_type = "image"
-        elif ct.startswith("video/"):
-            att_type = "video"
-        else:
-            att_type = "file"
-        result.append(
-            Attachment(
-                type=att_type,
-                url_or_path_or_bytes=a.url,
-                mime_type=ct or "application/octet-stream",
-                filename=getattr(a, "filename", None),
-            )
-        )
-    return result
 
 
 @dataclass(frozen=True)
@@ -326,13 +188,9 @@ class DiscordAdapter(discord.Client):
             os.environ.get("LYRA_MAX_AUDIO_BYTES", 5 * 1024 * 1024)
         )
         self._typing_tasks: dict[int, asyncio.Task[None]] = {}
-        # Set on on_ready; None until login completes. Tests set directly.
-        self._bot_user: Any = None
-        # Compiled once in on_ready (requires bot user ID). None until then.
-        self._mention_re: re.Pattern[str] | None = None
-        # Thread IDs created by or claimed by this bot — only this bot responds there.
-        # Populated from ThreadStore on on_ready; persisted on claim/create.
-        self._owned_threads: set[int] = set()
+        self._bot_user: Any = None  # set on on_ready; None until login
+        self._mention_re: re.Pattern[str] | None = None  # compiled on on_ready
+        self._owned_threads: set[int] = set()  # populated from ThreadStore on on_ready
         self._thread_store: ThreadStore | None = thread_store
         self._thread_sessions: dict[str, tuple[str, str]] = {}
         self._vsm: VoiceSessionManager = VoiceSessionManager()
@@ -371,11 +229,7 @@ class DiscordAdapter(discord.Client):
         await super().close()
 
     async def on_ready(self) -> None:
-        """Cache bot user and compile mention regex on login.
-
-        Must complete before guild events (e.g. on_voice_state_update) can be
-        handled safely — Discord guarantees on_ready fires first.
-        """
+        """Cache bot user and compile mention regex on login."""
         self._bot_user = self.user
         if self.user is not None:
             self._mention_re = re.compile(rf"<@!?{self.user.id}>")
@@ -390,24 +244,11 @@ class DiscordAdapter(discord.Client):
                 "guild message content will be empty. "
                 "Enable 'Message Content Intent' in the Developer Portal."
             )
-        # Restore recently active owned threads (hot set) on startup.
-        # Only threads updated in the last 36 h are pre-loaded into memory;
-        # older threads are handled by a lazy DB lookup in on_message so the
-        # in-memory set doesn't grow unboundedly over time.
+        # Restore hot threads from ThreadStore on startup.
         if self._thread_store is not None:
             try:
-                from datetime import UTC, datetime, timedelta
-
-                hot_since = datetime.now(UTC) - timedelta(hours=self._thread_hot_hours)
-                thread_ids = await self._thread_store.get_thread_ids(
-                    self._bot_id, active_since=hot_since
-                )
-                self._owned_threads = {int(tid) for tid in thread_ids}
-                log.info(
-                    "ThreadStore: restored %d hot thread(s) (< %d h) for bot_id=%r",
-                    len(self._owned_threads),
-                    self._thread_hot_hours,
-                    self._bot_id,
+                self._owned_threads = await restore_hot_threads(
+                    self._thread_store, self._bot_id, self._thread_hot_hours
                 )
             except Exception:
                 log.exception("ThreadStore: failed to restore owned threads")
@@ -436,58 +277,6 @@ class DiscordAdapter(discord.Client):
                 label,
                 message.id,
                 exc,
-            )
-
-    async def _persist_thread_claim(
-        self,
-        thread_id: int,
-        channel_id: int,
-        guild_id: int | None,
-    ) -> None:
-        """Persist thread ownership to ThreadStore (fire-and-forget)."""
-        if self._thread_store is None:
-            return
-        try:
-            await self._thread_store.claim(
-                thread_id=str(thread_id),
-                bot_id=self._bot_id,
-                channel_id=str(channel_id),
-                guild_id=str(guild_id) if guild_id is not None else None,
-            )
-            log.debug(
-                "ThreadStore: claimed thread_id=%s for bot_id=%r",
-                thread_id,
-                self._bot_id,
-            )
-        except Exception:
-            log.exception(
-                "ThreadStore: failed to persist claim for thread_id=%s", thread_id
-            )
-
-    async def _persist_thread_session(
-        self, msg: "InboundMessage", session_id: str, pool_id: str
-    ) -> None:
-        """Persist session_id and pool_id for a thread after a successful turn."""
-        thread_id: int | None = msg.platform_meta.get("thread_id")
-        if thread_id is None or self._thread_store is None:
-            return
-        try:
-            await self._thread_store.update_session(
-                thread_id=str(thread_id),
-                bot_id=self._bot_id,
-                session_id=session_id,
-                pool_id=pool_id,
-            )
-            self._thread_sessions[str(thread_id)] = (session_id, pool_id)
-            log.debug(
-                "ThreadStore: persisted session_id=%s pool_id=%s for thread_id=%s",
-                session_id,
-                pool_id,
-                thread_id,
-            )
-        except Exception:
-            log.exception(
-                "ThreadStore: failed to persist session for thread_id=%s", thread_id
             )
 
     async def _handle_leave_command(self, message: Any, guild_id: str) -> None:
@@ -579,46 +368,13 @@ class DiscordAdapter(discord.Client):
         *,
         trust_level: TrustLevel,
     ) -> InboundAudio:
-        """Build an InboundAudio envelope from a Discord audio message.
-
-        Security: trust is always 'user'. Bot messages are filtered by
-        on_message().
-        """
-        is_thread = isinstance(raw.channel, discord.Thread)
-        scope_id = (
-            f"thread:{raw.channel.id}" if is_thread else f"channel:{raw.channel.id}"
-        )
-        user_id = f"dc:user:{raw.author.id}"
-        timestamp = raw.created_at
-        platform_meta = {
-            "guild_id": raw.guild.id if raw.guild else None,
-            "channel_id": raw.channel.id,
-            "message_id": raw.id,
-        }
-        routing = RoutingContext(
-            platform=Platform.DISCORD.value,
+        """Build an InboundAudio envelope from a Discord audio message."""
+        return discord_audio.normalize_audio(
+            raw,
+            audio_bytes,
+            mime_type,
             bot_id=self._bot_id,
-            scope_id=scope_id,
-            thread_id=str(raw.channel.id) if is_thread else None,
-            reply_to_message_id=str(raw.id),
-            platform_meta=dict(platform_meta),
-        )
-        return InboundAudio(
-            id=f"discord:{user_id}:{int(timestamp.timestamp())}:{raw.id}",
-            platform=Platform.DISCORD.value,
-            bot_id=self._bot_id,
-            scope_id=scope_id,
-            user_id=user_id,
-            audio_bytes=audio_bytes,
-            mime_type=mime_type,
-            duration_ms=None,
-            file_id=None,
-            timestamp=timestamp,
-            user_name=(getattr(raw.author, "display_name", None) or raw.author.name),
-            is_mention=False,
             trust_level=trust_level,
-            platform_meta=platform_meta,
-            routing=routing,
         )
 
     def normalize(
@@ -629,13 +385,7 @@ class DiscordAdapter(discord.Client):
         channel_id: int | None = None,
         trust_level: TrustLevel = TrustLevel.TRUSTED,
     ) -> InboundMessage:
-        """Convert a discord.py Message (or SimpleNamespace) to InboundMessage.
-
-        thread_id and channel_id can be pre-resolved by on_message() after
-        auto-thread creation. platform_meta["message_id"] is always raw.id
-        (original message, never thread.id).
-        Security: trust='user' always.
-        """
+        """Convert a discord.py Message (or SimpleNamespace) to InboundMessage."""
         is_mention = self._bot_user is not None and self._bot_user in raw.mentions
 
         # Strip @mention prefix so content reaches the agent clean
@@ -683,7 +433,7 @@ class DiscordAdapter(discord.Client):
         )
 
         _display_name = getattr(raw.author, "display_name", None)
-        attachments = _extract_attachments(getattr(raw, "attachments", None) or [])
+        attachments = extract_attachments(getattr(raw, "attachments", None) or [])
         _reference = getattr(raw, "reference", None)
         reply_to_id: str | None = (
             str(_reference.message_id)
@@ -756,7 +506,7 @@ class DiscordAdapter(discord.Client):
             (
                 a
                 for a in (getattr(message, "attachments", None) or [])
-                if getattr(a, "content_type", "") in _AUDIO_MIME_TYPES
+                if getattr(a, "content_type", "") in AUDIO_MIME_TYPES
             ),
             None,
         )
@@ -804,8 +554,7 @@ class DiscordAdapter(discord.Client):
                 return
 
             # Magic-byte check: client-supplied content_type is untrusted.
-            # Reject bytes that don't match any known audio format signature.
-            if not _is_valid_audio_magic(audio_bytes):
+            if not discord_audio.is_valid_audio_magic(audio_bytes):
                 log.warning(
                     "Audio attachment rejected: magic bytes do not match any known"
                     " audio format (message_id=%s)",
@@ -825,10 +574,7 @@ class DiscordAdapter(discord.Client):
                     )
                 return
 
-            # Apply the same gate as the text path: only process audio in DMs,
-            # direct mentions, or threads owned by this bot instance.  Without
-            # this check, all bot instances in the same server would each
-            # transcribe and respond to every voice message.
+            # Gate: only process audio in DMs, direct mentions, or owned threads.
             _audio_is_dm = message.guild is None
             _audio_is_thread = isinstance(message.channel, discord.Thread)
             _audio_in_owned_thread = (
@@ -881,9 +627,7 @@ class DiscordAdapter(discord.Client):
             )
             return  # audio messages handled separately; skip text path
 
-        # Voice command dispatch — runs before mention/DM filter so !join / !leave
-        # work from any text channel without requiring a bot mention.
-        # Guild guard: voice channels are guild-only; skip in DMs.
+        # Voice command dispatch — guild-only; runs before mention/DM filter.
         if message.guild is not None:
             if await self._handle_voice_command(message, trust):
                 return
@@ -897,8 +641,7 @@ class DiscordAdapter(discord.Client):
         _is_thread = isinstance(message.channel, discord.Thread)
         _in_owned_thread = _is_thread and message.channel.id in self._owned_threads
 
-        # Cold-path lazy check: thread not in the hot set but may still be owned
-        # (active > 36 h ago).  Query the DB once; on hit, warm the cache back up.
+        # Cold-path lazy check: thread not in hot set, query DB and warm cache on hit.
         if (
             not _is_dm
             and not _is_mention
@@ -932,14 +675,16 @@ class DiscordAdapter(discord.Client):
         ):
             try:
                 thread = await message.create_thread(
-                    name=_make_thread_name(message.content, message.author.display_name)
+                    name=make_thread_name(message.content, message.author.display_name)
                 )
                 resolved_thread_id = thread.id
                 self._owned_threads.add(thread.id)
                 if self._thread_store is not None:
                     asyncio.ensure_future(
-                        self._persist_thread_claim(
+                        persist_thread_claim(
+                            self._thread_store,
                             thread_id=thread.id,
+                            bot_id=self._bot_id,
                             channel_id=message.channel.id,
                             guild_id=getattr(message.guild, "id", None),
                         )
@@ -955,8 +700,10 @@ class DiscordAdapter(discord.Client):
             self._owned_threads.add(message.channel.id)
             if self._thread_store is not None:
                 asyncio.ensure_future(
-                    self._persist_thread_claim(
+                    persist_thread_claim(
+                        self._thread_store,
                         thread_id=message.channel.id,
+                        bot_id=self._bot_id,
                         channel_id=getattr(
                             message.channel, "parent_id", message.channel.id
                         ),
@@ -969,32 +716,18 @@ class DiscordAdapter(discord.Client):
         _stored_session_id: str | None = None
         _stored_pool_id: str | None = None
         if _in_owned_thread and self._thread_store is not None:
-            _thread_id_str = str(message.channel.id)
-            _cached = self._thread_sessions.get(_thread_id_str)
-            if _cached is not None:
-                _stored_session_id, _stored_pool_id = _cached
-            else:
-                try:
-                    (
-                        _stored_session_id,
-                        _stored_pool_id,
-                    ) = await self._thread_store.get_session(
-                        thread_id=_thread_id_str,
-                        bot_id=self._bot_id,
-                    )
-                    if _stored_session_id is not None:
-                        log.debug(
-                            "ThreadStore: retrieved session_id=%s pool_id=%s"
-                            " for thread_id=%s",
-                            _stored_session_id,
-                            _stored_pool_id,
-                            message.channel.id,
-                        )
-                except Exception:
-                    log.exception(
-                        "ThreadStore: failed to retrieve session for thread_id=%s",
-                        message.channel.id,
-                    )
+            try:
+                _stored_session_id, _stored_pool_id = await retrieve_thread_session(
+                    self._thread_store,
+                    thread_id=str(message.channel.id),
+                    bot_id=self._bot_id,
+                    cache=self._thread_sessions,
+                )
+            except Exception:
+                log.exception(
+                    "ThreadStore: failed to retrieve session for thread_id=%s",
+                    message.channel.id,
+                )
 
         try:
             hub_msg = self.normalize(
@@ -1007,15 +740,22 @@ class DiscordAdapter(discord.Client):
             log.exception("Failed to normalize discord message id=%s", message.id)
             return
 
-        # Inject stored session and write-side persistence callback into platform_meta
-        # so the hub pipeline can resume the session and register the update function
-        # after binding resolution.
+        # Inject stored session + persistence callback into platform_meta.
         _meta_updates: dict = {}
         if _stored_session_id is not None:
             _meta_updates["thread_session_id"] = _stored_session_id
         _has_thread_id = hub_msg.platform_meta.get("thread_id") is not None
         if _has_thread_id and self._thread_store is not None:
-            _meta_updates["_session_update_fn"] = self._persist_thread_session
+            _ts, _bid, _cache = self._thread_store, self._bot_id, self._thread_sessions
+
+            async def _session_update_fn(
+                msg: InboundMessage, session_id: str, pool_id: str
+            ) -> None:
+                await persist_thread_session(
+                    _ts, msg, session_id, pool_id, _bid, _cache
+                )
+
+            _meta_updates["_session_update_fn"] = _session_update_fn
         if _meta_updates:
             hub_msg = dataclasses.replace(
                 hub_msg,
@@ -1077,32 +817,10 @@ class DiscordAdapter(discord.Client):
             channel = await self.fetch_channel(channel_id)
         return cast(discord.abc.Messageable, channel)
 
-    def _render_text(self, text: str) -> list[str]:
-        """Split text into <=2000-char chunks (Discord limit).
-
-        Markdown pipe tables are converted to tabulate code blocks first,
-        since Discord does not render pipe-syntax tables.
-        """
-        text = _TABLE_RE.sub(_parse_md_table, text)
-        return chunk_text(text, DISCORD_MAX_LENGTH)
-
-    def _render_buttons(self, buttons: list) -> discord.ui.View | None:
-        """Convert list[Button] to discord.ui.View, or None if empty."""
-        if not buttons:
-            return None
-        view = discord.ui.View()
-        for b in buttons:
-            view.add_item(discord.ui.Button(label=b.text, custom_id=b.callback_data))
-        return view
-
     async def send(  # noqa: C901 — attachment loop adds branches
         self, original_msg: InboundMessage, outbound: OutboundMessage
     ) -> None:
-        """Send response back to Discord.
-
-        Circuit breaker checks and recording are handled by
-        OutboundDispatcher, not here.
-        """
+        """Send response back to Discord."""
         if original_msg.platform != Platform.DISCORD.value:
             log.error(
                 "send() called with non-discord message id=%s",
@@ -1120,8 +838,8 @@ class DiscordAdapter(discord.Client):
         messageable = await self._resolve_channel(send_to_id)
 
         text = outbound.to_text()
-        chunks = self._render_text(text)
-        view = self._render_buttons(outbound.buttons)
+        chunks = render_text(text, DISCORD_MAX_LENGTH)
+        view = render_buttons(outbound.buttons)
         last_idx = len(chunks) - 1
 
         # Skip reply-to in threads — thread context makes it redundant.
@@ -1130,8 +848,6 @@ class DiscordAdapter(discord.Client):
         for i, chunk in enumerate(chunks):
             chunk_view = view if (i == last_idx and view is not None) else None
             if should_reply:
-                # All chunks reply to the original message so every part is
-                # visually anchored to the user's message, not just the first.
                 msg_obj = messageable.get_partial_message(reply_msg_id)  # type: ignore[attr-defined]
                 if chunk_view is not None:
                     sent = await msg_obj.reply(chunk, view=chunk_view)
@@ -1157,14 +873,7 @@ class DiscordAdapter(discord.Client):
         chunks: AsyncIterator[str],
         outbound: OutboundMessage | None = None,
     ) -> None:
-        """Stream response with edit-in-place, debounced at ~1s.
-
-        Circuit breaker checks and recording are handled by
-        OutboundDispatcher, not here.
-
-        When *outbound* is provided, ``outbound.metadata["reply_message_id"]``
-        is set to the placeholder message ID after it is sent.
-        """
+        """Stream response with edit-in-place, debounced at ~1s."""
         if original_msg.platform != Platform.DISCORD.value:
             log.error(
                 "send_streaming() called with non-discord message id=%s",
@@ -1231,13 +940,9 @@ class DiscordAdapter(discord.Client):
             else:
                 accumulated = self._msg("generic", GENERIC_ERROR_REPLY)
 
-        # Final edit with complete text (always runs, even after error).
-        # If accumulated exceeds the limit, edit the placeholder with the first
-        # chunk and send any overflow chunks as follow-up messages.
-        # Both operations retry with exponential backoff so a transient 429
-        # or network hiccup does not leave the user with a truncated message.
+        # Final edit (always runs): edit placeholder with first chunk, send overflow.
         if accumulated:
-            final_chunks = self._render_text(accumulated)
+            final_chunks = render_text(accumulated, DISCORD_MAX_LENGTH)
             await _discord_send_with_retry(
                 lambda: placeholder.edit(content=final_chunks[0]),
                 label="Final edit",
@@ -1256,157 +961,25 @@ class DiscordAdapter(discord.Client):
             raise stream_error
 
     async def render_audio(self, msg: OutboundAudio, inbound: InboundMessage) -> None:
-        """Send an OutboundAudio envelope as a Discord voice message.
-
-        Converts to OGG/Opus and sends with IS_VOICE_MESSAGE flag so Discord
-        renders a proper voice bubble with waveform and inline playback.
-        Falls back to regular file attachment if conversion fails.
-        """
-        if inbound.platform != Platform.DISCORD.value:
-            log.error(
-                "render_audio() called with non-discord message id=%s",
-                inbound.id,
-            )
-            return
-
-        channel_id: int | None = inbound.platform_meta.get("channel_id")
-        if channel_id is None:
-            log.error(
-                "render_audio: platform_meta missing 'channel_id' for msg id=%s",
-                inbound.id,
-            )
-            return
-
-        thread_id: int | None = inbound.platform_meta.get("thread_id")
-        send_to_id = thread_id if thread_id is not None else channel_id
-
-        # Determine message to reply to
-        message_id: int | None = inbound.platform_meta.get("message_id")
-        reply_to_id = parse_reply_to_id(msg.reply_to_id)
-        if reply_to_id is None and thread_id is None:
-            reply_to_id = message_id
-
-        content = (msg.caption or "")[:DISCORD_MAX_LENGTH]
-
-        # TTS already produces OGG/Opus with duration and waveform pre-computed
-        duration_secs = msg.duration_ms / 1000.0 if msg.duration_ms is not None else 0.0
-        waveform_b64 = msg.waveform_b64 or ""
-
-        payload: dict[str, Any] = {
-            "flags": _VOICE_MESSAGE_FLAG,
-            "attachments": [
-                {
-                    "id": "0",
-                    "filename": "voice.ogg",
-                    "duration_secs": duration_secs,
-                    "waveform": waveform_b64,
-                }
-            ],
-        }
-        if content:
-            payload["content"] = content
-        if reply_to_id is not None:
-            payload["message_reference"] = {"message_id": str(reply_to_id)}
-
-        voice_file = discord.File(fp=BytesIO(msg.audio_bytes), filename="voice.ogg")
-        form = [
-            {"name": "payload_json", "value": discord.utils._to_json(payload)},
-            {
-                "name": "files[0]",
-                "value": voice_file.fp,
-                "filename": "voice.ogg",
-                "content_type": "audio/ogg",
-            },
-        ]
-        route = discord.http.Route(  # type: ignore[attr-defined]
-            "POST", "/channels/{channel_id}/messages", channel_id=send_to_id
+        """Send an OutboundAudio envelope as a Discord voice message."""
+        await discord_audio.render_audio(
+            msg,
+            inbound,
+            bot_id=self._bot_id,
+            resolve_channel=self._resolve_channel,
+            http=self.http,
         )
-        try:
-            await self.http.request(route, form=form, files=[voice_file])
-            log.info(
-                "render_audio: voice message sent (%d bytes OGG, %.1fs) for msg id=%s",
-                len(msg.audio_bytes),
-                duration_secs,
-                inbound.id,
-            )
-        except Exception:
-            log.warning(
-                "render_audio: voice message failed — falling back to file attachment",
-                exc_info=True,
-            )
-            messageable = await self._resolve_channel(send_to_id)
-            raw_ext = msg.mime_type.split("/")[-1] if "/" in msg.mime_type else ""
-            ext = raw_ext if raw_ext in _AUDIO_EXTS else "bin"
-            attachment = discord.File(
-                fp=BytesIO(msg.audio_bytes), filename=f"audio.{ext}"
-            )
-            await messageable.send(content=content or None, file=attachment)
 
     async def render_attachment(
         self, msg: OutboundAttachment, inbound: InboundMessage
     ) -> None:
-        """Send an OutboundAttachment envelope as a Discord file attachment.
-
-        Wraps data in discord.File and sends via messageable.send() or msg.reply().
-        Caption (if set) is passed as message content. Reply and thread routing
-        follow the same pattern as render_audio.
-        """
-        if inbound.platform != Platform.DISCORD.value:
-            log.error(
-                "render_attachment() called with non-discord message id=%s",
-                inbound.id,
-            )
-            return
-
-        channel_id: int | None = inbound.platform_meta.get("channel_id")
-        if channel_id is None:
-            log.error(
-                "render_attachment: platform_meta missing 'channel_id' for msg id=%s",
-                inbound.id,
-            )
-            return
-
-        thread_id: int | None = inbound.platform_meta.get("thread_id")
-        send_to_id = thread_id if thread_id is not None else channel_id
-        messageable = await self._resolve_channel(send_to_id)
-
-        # Derive filename: sanitize explicit name or derive from mime_type.
-        if msg.filename:
-            filename = sanitize_filename(
-                msg.filename,
-                _ATTACHMENT_EXTS,
-            )
-        else:
-            raw_ext = msg.mime_type.split("/")[-1] if "/" in msg.mime_type else ""
-            ext = raw_ext if raw_ext in _ATTACHMENT_EXTS else "bin"
-            filename = f"attachment.{ext}"
-
-        buf = BytesIO(msg.data)
-        file_obj = discord.File(fp=buf, filename=filename)
-
-        # Determine reply target
-        message_id: int | None = inbound.platform_meta.get("message_id")
-        reply_to_id = parse_reply_to_id(msg.reply_to_id)
-        if reply_to_id is None and thread_id is None:
-            reply_to_id = message_id
-
-        content = truncate_caption(msg.caption, DISCORD_MAX_LENGTH) or ""
-
-        if reply_to_id is not None:
-            try:
-                ref_msg = await messageable.fetch_message(reply_to_id)  # type: ignore[attr-defined]
-                await ref_msg.reply(content=content or None, file=file_obj)
-                return
-            except Exception:
-                log.warning(
-                    "render_attachment: could not reply to"
-                    " message_id=%s, sending normally",
-                    reply_to_id,
-                )
-
-        # Fallback: construct fresh discord.File (previous BytesIO may be consumed).
-        file_obj = discord.File(fp=BytesIO(msg.data), filename=filename)
-        await messageable.send(content=content or None, file=file_obj)
+        """Send an OutboundAttachment envelope as a Discord file attachment."""
+        await discord_audio.render_attachment(
+            msg,
+            inbound,
+            resolve_channel=self._resolve_channel,
+            attachment_exts=_ATTACHMENT_EXTS,
+        )
 
     async def render_audio_stream(
         self,
@@ -1414,21 +987,7 @@ class DiscordAdapter(discord.Client):
         inbound: InboundMessage,
     ) -> None:
         """Buffer streamed audio chunks and send as a single Discord file attachment."""
-        if inbound.platform != Platform.DISCORD.value:
-            log.error(
-                "render_audio_stream() called with non-discord message id=%s",
-                inbound.id,
-            )
-            return
-
-        try:
-            assembled = await buffer_audio_chunks(chunks)
-        except _PartialAudioError as e:
-            await self.render_audio(e.audio, inbound)
-            raise e.cause from e
-        if assembled is None:
-            return
-        await self.render_audio(assembled, inbound)
+        await discord_audio.render_audio_stream(chunks, inbound, self.render_audio)
 
     async def render_voice_stream(
         self,
@@ -1436,17 +995,4 @@ class DiscordAdapter(discord.Client):
         inbound: InboundMessage,
     ) -> None:
         """Route TTS stream to the active Discord voice session for this guild."""
-        if inbound.platform != Platform.DISCORD.value:
-            log.warning(
-                "render_voice_stream() called with non-discord message id=%s",
-                inbound.id,
-            )
-            return
-        guild_id = inbound.platform_meta.get("guild_id")
-        if guild_id is None:
-            log.warning(
-                "render_voice_stream: platform_meta missing 'guild_id' for msg id=%s",
-                inbound.id,
-            )
-            return
-        await self._vsm.stream(str(guild_id), chunks)
+        await discord_audio.render_voice_stream(chunks, inbound, self._vsm)

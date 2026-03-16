@@ -23,8 +23,23 @@ from .agent_config import (
     SmartRoutingConfig,
     _find_agent_dir,
 )
+from .persona import compose_system_prompt, load_persona
 
 log = logging.getLogger(__name__)
+
+
+def _validate_backend_model(backend: str, model: str, agent_name: str) -> None:
+    """Shared validation for backend and model values (TOML + DB paths)."""
+    if backend not in _VALID_BACKENDS:
+        raise ValueError(
+            f"Invalid backend {backend!r} for agent {agent_name!r}: "
+            f"must be one of {sorted(_VALID_BACKENDS)}"
+        )
+    if not re.match(r"^[a-zA-Z0-9_.:-]+$", model):
+        raise ValueError(
+            f"Invalid model {model!r} for agent {agent_name!r}: "
+            "only [a-zA-Z0-9_.:-] characters allowed"
+        )
 
 
 def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many independent TOML sections and validation branches
@@ -60,14 +75,14 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
         [prompt]
         system = "..."             # optional: overrides persona composition
     """
-    from .command_router import CommandConfig
-    from .persona import compose_system_prompt, load_persona
+    from .command_router import CommandConfig  # local: avoids cycle with command_router
 
-    directory = _find_agent_dir(name, agents_dir)
-
-    # Primary gate: only safe characters allowed in agent names
+    # Primary gate: only safe characters allowed in agent names.
+    # Must fire before _find_agent_dir to avoid FS probes on unsanitised input.
     if not re.match(r"^[a-zA-Z0-9_-]+$", name):
         raise ValueError(f"Invalid agent name {name!r}: only [a-zA-Z0-9_-] allowed")
+
+    directory = _find_agent_dir(name, agents_dir)
 
     path = directory / f"{name}.toml"
     # Secondary gate (defence-in-depth): guard against symlinks or edge cases
@@ -94,18 +109,8 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
     prompt_section = data.get("prompt", {})
 
     backend = model_section.get("backend", "claude-cli")
-    if backend not in _VALID_BACKENDS:
-        raise ValueError(
-            f"Invalid backend {backend!r} for agent {name!r}: "
-            f"must be one of {sorted(_VALID_BACKENDS)}"
-        )
-
     model = model_section.get("model", "claude-sonnet-4-5")
-    if not re.match(r"^[a-zA-Z0-9_.:-]+$", model):
-        raise ValueError(
-            f"Invalid model {model!r} for agent {name!r}: "
-            "only [a-zA-Z0-9_.:-] characters allowed"
-        )
+    _validate_backend_model(backend, model, name)
 
     cwd: Path | None = None
     raw_cwd = model_section.get("cwd") or overrides.get("cwd")
@@ -288,8 +293,6 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — mirrors load_agent_config() 
     Machine-local instance_overrides are applied with the same priority as in
     load_agent_config(): TOML/DB value wins, overrides fill gaps.
     """
-    from .persona import compose_system_prompt, load_persona
-
     overrides: dict = instance_overrides or {}
 
     # Parse JSON columns
@@ -309,6 +312,8 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — mirrors load_agent_config() 
             )
         else:
             cwd = resolved
+
+    _validate_backend_model(row.backend, row.model, row.name)
 
     model_cfg = ModelConfig(
         backend=row.backend,

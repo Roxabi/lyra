@@ -212,6 +212,15 @@ class CliPool:
                 session_id,
             )
             return
+        # If the live process already holds this session, skip kill+respawn.
+        entry = self._entries.get(pool_id)
+        if entry is not None and entry.is_alive() and entry.session_id == session_id:
+            log.debug(
+                "[pool:%s] resume_and_reset: process already on session %s — no-op",
+                pool_id,
+                session_id,
+            )
+            return
         # is_idle verified by caller; race window is sub-millisecond.
         await self._kill(pool_id)
         self._resume_session_ids[pool_id] = session_id

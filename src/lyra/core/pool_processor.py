@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from .message import InboundMessage
     from .pool import Pool
 
+from .debouncer import MessageDebouncer
 from .message import GENERIC_ERROR_REPLY, Response
 
 log = logging.getLogger(__name__)
@@ -30,6 +31,8 @@ class PoolProcessor:
 
     Encapsulates the debounce → cancel-in-flight → guarded-execute → dispatch
     pipeline.  Holds no session state — reads everything from the owning Pool.
+
+    Internal to Pool — do not instantiate directly.
     """
 
     def __init__(self, pool: Pool) -> None:
@@ -64,8 +67,6 @@ class PoolProcessor:
                             break
                     break
 
-                from .debouncer import MessageDebouncer
-
                 # Phase 2: process with cancel-in-flight
                 msg = MessageDebouncer.merge(buffer)
                 _last_msg = msg
@@ -93,8 +94,6 @@ class PoolProcessor:
     ) -> InboundMessage:
         """Run agent.process(), cancelling and re-dispatching if new messages arrive."""
         pool = self._pool
-
-        from .debouncer import MessageDebouncer
 
         while True:
             agent_task = asyncio.create_task(

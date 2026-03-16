@@ -357,7 +357,7 @@ class TestPoolTimeout:
         msg = make_msg()
 
         # Act
-        with caplog.at_level(logging.ERROR, logger="lyra.core.pool"):
+        with caplog.at_level(logging.ERROR, logger="lyra.core.pool_processor"):
             fast_pool.submit(msg)
             await _drain(fast_pool, timeout=2.0)
 
@@ -375,7 +375,7 @@ class TestPoolTimeout:
         ctx_mock._agents["test_agent"] = agent
         msg = make_msg()
 
-        with caplog.at_level(logging.ERROR, logger="lyra.core.pool"):
+        with caplog.at_level(logging.ERROR, logger="lyra.core.pool_processor"):
             fast_pool.submit(msg)
             await _drain(fast_pool, timeout=2.0)
 

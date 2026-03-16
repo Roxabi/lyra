@@ -1,0 +1,44 @@
+---
+title: "refactor(core): decompose agent.py — extract AgentConfig, Persona, SessionLifecycle"
+issue: 295
+status: approved
+tier: F-lite
+date: 2026-03-16
+---
+
+## Problem
+
+`core/agent.py` is 1,218 lines — a kitchen sink mixing four distinct concerns: config parsing (420 LOC), persona loading (120 LOC), session lifecycle (200 LOC), and the AgentBase ABC (450 LOC). This makes the file hard to navigate, review, and test in isolation. Changes to one concern risk unintended side effects on others, and the cognitive load of working in a single monolithic file slows development on the core module.
+
+Parent issue #293 tracks the broader agent core cleanup; this is the first concrete extraction step.
+
+## Who
+
+- **Primary:** Developers working on the core agent module — every change to config, persona, or session logic requires reading through 1,200+ lines.
+- **Secondary:** Contributors and reviewers who need to understand agent internals.
+
+## Constraints
+
+- Must not change any public API or runtime behavior — pure structural refactor
+- All existing tests (`uv run pytest`) must pass without modification
+- Linting (`uv run ruff check .`) must remain clean
+- All imports across the codebase must be updated to new module paths
+- Parent issue #293 may have follow-up extractions that depend on this decomposition
+
+## Out of Scope
+
+- Changing AgentBase's interface or method signatures
+- Refactoring logic within the extracted modules (move only, don't rewrite)
+- Adding new tests (existing coverage is sufficient for a move-only refactor)
+- Other #293 sub-tasks (plugin extraction, backend lifecycle, etc.)
+
+## Complexity
+
+**Tier: F-lite** — Single domain (core), well-defined 4-step extraction with clear boundaries. No new architecture, no unknowns. The issue body already maps every function to its target module.
+
+Signals observed:
+- Single domain: `src/lyra/core/`
+- Clear scope: 4 files to create, 1 file to slim down
+- No new patterns: just moving existing code into new modules
+- No external dependencies or API changes
+- Size label: `size:F-lite`

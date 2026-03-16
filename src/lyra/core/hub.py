@@ -812,9 +812,10 @@ class Hub:
             await self._dispatch_audio_reply(audio, _content)
             return
 
-        # Echo transcription back to user before agent processing
+        # Echo transcription back to user before agent processing.
+        # reply=False: transcript is informational, no need to quote/mention.
         _echo = transcript[:_MAX_TRANSCRIPT]
-        await self._dispatch_audio_reply(audio, f"\U0001f3a4 _{_echo}_")
+        await self._dispatch_audio_reply(audio, f"\U0001f3a4 _{_echo}_", reply=False)
 
         text = f"\U0001f3a4 [voice]: {transcript}"
         msg = InboundMessage(
@@ -890,12 +891,21 @@ class Hub:
         os.close(fd)
         return path
 
-    async def _dispatch_audio_reply(self, audio: InboundAudio, content: str) -> None:
+    async def _dispatch_audio_reply(
+        self, audio: InboundAudio, content: str, *, reply: bool = True
+    ) -> None:
         """Send an error/info reply for an audio envelope.
 
         Constructs a synthetic InboundMessage from the audio envelope so
         dispatch_response() can route the reply back to the originating adapter.
+
+        When reply=False, message_id is stripped from platform_meta so the
+        message is sent as a plain message without quoting/mentioning the user
+        (used for the transcript echo which is informational, not a reply).
         """
+        meta = audio.platform_meta
+        if not reply:
+            meta = {k: v for k, v in meta.items() if k != "message_id"}
         synthetic = InboundMessage(
             id=audio.id,
             platform=audio.platform,
@@ -909,7 +919,7 @@ class Hub:
             timestamp=audio.timestamp,
             trust_level=audio.trust_level,
             trust=audio.trust,
-            platform_meta=audio.platform_meta,
+            platform_meta=meta,
             routing=audio.routing,
         )
         await self.dispatch_response(synthetic, Response(content=content))

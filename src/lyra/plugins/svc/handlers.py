@@ -6,7 +6,6 @@ import asyncio
 import logging
 from pathlib import Path
 
-from lyra.core.admin import is_admin
 from lyra.core.message import InboundMessage, Response
 from lyra.core.pool import Pool
 
@@ -52,7 +51,7 @@ def _build_cmd(action: str, args: list[str]) -> list[str] | Response:
 
 async def cmd_svc(msg: InboundMessage, pool: Pool, args: list[str]) -> Response:
     """Manage supervisor services. Admin-only."""
-    if not is_admin(msg.user_id):
+    if not msg.is_admin:
         return Response(content="This command is admin-only.")
 
     if not args:

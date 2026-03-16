@@ -17,10 +17,9 @@ async def cmd_folder(
     msg: InboundMessage,
     args: list[str],
     pool: Pool | None,
-    admin_user_ids: set[str],
 ) -> Response:
     """Switch working directory (admin-only)."""
-    if denied := require_admin(msg, admin_user_ids):
+    if denied := require_admin(msg):
         return denied
     if not args:
         return Response(content="Usage: /folder <path>")
@@ -42,11 +41,10 @@ async def cmd_workspace(
     msg: InboundMessage,
     args: list[str],
     pool: Pool | None,
-    admin_user_ids: set[str],
     workspaces: dict[str, Path],
 ) -> Response:
     """List or switch workspaces (admin-only)."""
-    if denied := require_admin(msg, admin_user_ids):
+    if denied := require_admin(msg):
         return denied
     if not args or args[0] in ("ls", "list"):
         if not workspaces:

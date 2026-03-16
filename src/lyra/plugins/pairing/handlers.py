@@ -24,7 +24,7 @@ async def cmd_invite(msg: InboundMessage, pool: Pool, args: list[str]) -> Respon
     if pm is None or not pm.config.enabled:
         return Response(content=_NOT_ENABLED)
 
-    if not pm.is_admin(msg.user_id):
+    if not msg.is_admin:
         return Response(content=_ADMIN_ONLY)
 
     try:
@@ -68,7 +68,7 @@ async def cmd_unpair(msg: InboundMessage, pool: Pool, args: list[str]) -> Respon
     if pm is None or not pm.config.enabled:
         return Response(content=_NOT_ENABLED)
 
-    if not pm.is_admin(msg.user_id):
+    if not msg.is_admin:
         return Response(content=_ADMIN_ONLY)
 
     if not args:

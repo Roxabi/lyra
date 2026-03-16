@@ -25,16 +25,24 @@ if TYPE_CHECKING:
 
 def require_admin(
     msg: InboundMessage,
-    admin_user_ids: set[str],
+    admin_user_ids: set[str] | None = None,
 ) -> "Response | None":
     """Return a denied Response if the user is not an admin, else None.
 
+    Reads ``msg.is_admin`` when *admin_user_ids* is None (preferred).
+    Falls back to explicit set check for backward compat during migration.
+
     Usage::
 
-        if (denied := require_admin(msg, admin_user_ids)):
+        if (denied := require_admin(msg)):
             return denied
     """
-    if not admin_user_ids or msg.user_id not in admin_user_ids:
+    if admin_user_ids is not None:
+        # Legacy path — backward compat for callers still threading the set
+        if not admin_user_ids or msg.user_id not in admin_user_ids:
+            return Response(content="This command is admin-only.")
+        return None
+    if not msg.is_admin:
         return Response(content="This command is admin-only.")
     return None
 
@@ -66,11 +74,10 @@ def help_command(
 
 def circuit_status(
     msg: InboundMessage,
-    admin_user_ids: set[str],
     circuit_registry: "CircuitRegistry | None",
 ) -> Response:
     """Show circuit breaker status (admin-only)."""
-    if denied := require_admin(msg, admin_user_ids):
+    if denied := require_admin(msg):
         return denied
     if circuit_registry is None:
         return Response(content="Circuit breaker not configured.")
@@ -88,11 +95,10 @@ def circuit_status(
 
 def routing_status(
     msg: InboundMessage,
-    admin_user_ids: set[str],
     smart_routing: "SmartRoutingDecorator | None",
 ) -> Response:
     """Show smart routing decisions (admin-only)."""
-    if denied := require_admin(msg, admin_user_ids):
+    if denied := require_admin(msg):
         return denied
     if smart_routing is None:
         return Response(content="Smart routing not configured.")
@@ -115,13 +121,12 @@ def routing_status(
 def config_command(  # noqa: PLR0913 — mirrors original DI surface
     msg: InboundMessage,
     args: list[str],
-    admin_user_ids: set[str],
     runtime_config_holder: "RuntimeConfigHolder | None",
     runtime_config_path: Path | None,
     on_debounce_change: "Callable[[int], None] | None",
 ) -> Response:
     """Dispatch /config show/set/reset."""
-    if denied := require_admin(msg, admin_user_ids):
+    if denied := require_admin(msg):
         return denied
     if runtime_config_holder is None:
         return Response(content="Runtime config not available for this backend.")

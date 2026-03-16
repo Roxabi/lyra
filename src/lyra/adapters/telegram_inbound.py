@@ -11,7 +11,6 @@ from lyra.adapters.telegram_audio import _download_audio
 from lyra.adapters.telegram_formatting import _make_send_kwargs
 from lyra.adapters.telegram_normalize import _make_scope_id, normalize_audio
 from lyra.core.message import InboundMessage, Platform
-from lyra.core.trust import TrustLevel
 
 if TYPE_CHECKING:
     from lyra.adapters.telegram import TelegramAdapter
@@ -59,12 +58,14 @@ async def handle_message(adapter: TelegramAdapter, msg: Any) -> None:
         return
 
     user_id = str(msg.from_user.id)
-    trust = adapter._auth.check(user_id)
-    if trust == TrustLevel.BLOCKED:
+    identity = adapter._auth.resolve(user_id)
+    if adapter._guard_chain.run(identity):
         log.info("auth_reject user=%s channel=telegram", user_id)
         return
 
-    hub_msg = adapter.normalize(msg, trust_level=trust)
+    hub_msg = adapter.normalize(
+        msg, trust_level=identity.trust_level, is_admin=identity.is_admin
+    )
 
     # In group chats, only respond when directly mentioned.
     # In private chats, always respond.
@@ -101,8 +102,8 @@ async def handle_voice_message(adapter: TelegramAdapter, msg: Any) -> None:
         return
 
     uid = str(msg.from_user.id)
-    trust = adapter._auth.check(uid)
-    if trust == TrustLevel.BLOCKED:
+    identity = adapter._auth.resolve(uid)
+    if adapter._guard_chain.run(identity):
         log.info("auth_reject user=%s channel=telegram", uid)
         return
 
@@ -160,7 +161,10 @@ async def handle_voice_message(adapter: TelegramAdapter, msg: Any) -> None:
         tmp_path.unlink(missing_ok=True)
 
     hub_audio = normalize_audio(
-        adapter, msg, audio_bytes=audio_bytes, mime_type="audio/ogg", trust_level=trust
+        adapter, msg,
+        audio_bytes=audio_bytes,
+        mime_type="audio/ogg",
+        trust_level=identity.trust_level,
     )
 
     adapter._start_typing(chat_id)

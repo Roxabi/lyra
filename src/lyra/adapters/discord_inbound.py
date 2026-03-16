@@ -19,7 +19,6 @@ from lyra.adapters.discord_threads import (
     retrieve_thread_session,
 )
 from lyra.core.message import InboundMessage, Platform
-from lyra.core.trust import TrustLevel
 
 if TYPE_CHECKING:
     from lyra.adapters.discord import DiscordAdapter
@@ -44,10 +43,11 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
         if hasattr(message.author, "roles")
         else []
     )
-    trust = adapter._auth.check(_raw_uid, roles=roles)
-    if trust == TrustLevel.BLOCKED:
+    identity = adapter._auth.resolve(_raw_uid, roles=roles)
+    if adapter._guard_chain.run(identity):
         log.info("auth_reject user=%s channel=discord", f"dc:user:{message.author.id}")
         return
+    trust = identity.trust_level
 
     # Audio attachment detection
     audio_attachment = next(
@@ -172,6 +172,7 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
             thread_id=resolved_thread_id,
             channel_id=resolved_channel_id,
             trust_level=trust,
+            is_admin=identity.is_admin,
         )
     except Exception:
         log.exception("Failed to normalize discord message id=%s", message.id)

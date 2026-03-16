@@ -1136,10 +1136,16 @@ class TestTelegramAuth:
 
         from lyra.adapters.telegram import TelegramAdapter
         from lyra.core.auth import AuthMiddleware
+        from lyra.core.identity import Identity
         from lyra.core.trust import TrustLevel
 
         auth = MagicMock(spec=AuthMiddleware)
         auth.check.return_value = TrustLevel.BLOCKED
+        auth.resolve.return_value = Identity(
+            user_id="tg:user:42",
+            trust_level=TrustLevel.BLOCKED,
+            is_admin=False,
+        )
 
         hub = MagicMock()
         hub.inbound_bus = MagicMock()
@@ -1158,10 +1164,16 @@ class TestTelegramAuth:
         """TRUSTED user: message produced with correct trust_level."""
         from lyra.adapters.telegram import TelegramAdapter
         from lyra.core.auth import AuthMiddleware
+        from lyra.core.identity import Identity
         from lyra.core.trust import TrustLevel
 
         auth = MagicMock(spec=AuthMiddleware)
         auth.check.return_value = TrustLevel.TRUSTED
+        auth.resolve.return_value = Identity(
+            user_id="tg:user:42",
+            trust_level=TrustLevel.TRUSTED,
+            is_admin=False,
+        )
 
         hub = MagicMock()
         hub.inbound_bus = MagicMock()
@@ -1182,10 +1194,16 @@ class TestTelegramAuth:
 
         from lyra.adapters.telegram import TelegramAdapter
         from lyra.core.auth import AuthMiddleware
+        from lyra.core.identity import Identity
         from lyra.core.trust import TrustLevel
 
         auth = MagicMock(spec=AuthMiddleware)
         auth.check.return_value = TrustLevel.BLOCKED
+        auth.resolve.return_value = Identity(
+            user_id="tg:user:42",
+            trust_level=TrustLevel.BLOCKED,
+            is_admin=False,
+        )
 
         hub = MagicMock()
         bot = AsyncMock()
@@ -1205,10 +1223,16 @@ class TestTelegramAuth:
         """PUBLIC user: message reaches bus with trust_level=TrustLevel.PUBLIC."""
         from lyra.adapters.telegram import TelegramAdapter
         from lyra.core.auth import AuthMiddleware
+        from lyra.core.identity import Identity
         from lyra.core.trust import TrustLevel
 
         auth = MagicMock(spec=AuthMiddleware)
         auth.check.return_value = TrustLevel.PUBLIC
+        auth.resolve.return_value = Identity(
+            user_id="tg:user:42",
+            trust_level=TrustLevel.PUBLIC,
+            is_admin=False,
+        )
 
         hub = MagicMock()
         hub.inbound_bus = MagicMock()

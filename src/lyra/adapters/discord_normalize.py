@@ -22,13 +22,14 @@ if TYPE_CHECKING:
 log = logging.getLogger("lyra.adapters.discord")
 
 
-def normalize(
+def normalize(  # noqa: PLR0913 — all kwargs are platform-specific routing context
     adapter: "DiscordAdapter",
     raw: Any,
     *,
     thread_id: int | None = None,
     channel_id: int | None = None,
     trust_level: TrustLevel = TrustLevel.TRUSTED,
+    is_admin: bool = False,
 ) -> InboundMessage:
     """Convert a discord.py Message (or SimpleNamespace) to InboundMessage."""
     is_mention = adapter._bot_user is not None and adapter._bot_user in raw.mentions
@@ -113,6 +114,7 @@ def normalize(
         timestamp=timestamp,
         trust="user",
         trust_level=trust_level,
+        is_admin=is_admin,
         platform_meta=platform_meta,
         routing=routing,
         reply_to_id=reply_to_id,

@@ -30,6 +30,7 @@ from lyra.adapters.discord_voice_commands import (
 )
 from lyra.core.auth import _ALLOW_ALL, _DENY_ALL, AuthMiddleware  # noqa: F401 — re-exported for tests and external callers
 from lyra.core.circuit_breaker import CircuitRegistry
+from lyra.core.guard import BlockedGuard, GuardChain
 from lyra.core.trust import TrustLevel
 from lyra.core.message import (
     InboundAudio,
@@ -103,6 +104,7 @@ class DiscordAdapter(discord.Client):
         self._auto_thread = auto_thread
         self._thread_hot_hours = thread_hot_hours
         self._auth: AuthMiddleware = auth
+        self._guard_chain: GuardChain = GuardChain([BlockedGuard()])
         self._max_audio_bytes: int = int(
             os.environ.get("LYRA_MAX_AUDIO_BYTES", 5 * 1024 * 1024)
         )
@@ -211,6 +213,7 @@ class DiscordAdapter(discord.Client):
         thread_id: int | None = None,
         channel_id: int | None = None,
         trust_level: TrustLevel = TrustLevel.TRUSTED,
+        is_admin: bool = False,
     ) -> InboundMessage:
         """Convert a discord.py Message (or SimpleNamespace) to InboundMessage."""
         return _normalize_impl(
@@ -219,6 +222,7 @@ class DiscordAdapter(discord.Client):
             thread_id=thread_id,
             channel_id=channel_id,
             trust_level=trust_level,
+            is_admin=is_admin,
         )
 
     async def on_message(self, message: Any) -> None:

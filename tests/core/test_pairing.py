@@ -69,6 +69,8 @@ def make_message(  # noqa: PLR0913 — test factory with optional overrides
     user_id: str = _USER_ID,
     is_group: bool = False,
     guild_id: int | None = None,
+    *,
+    is_admin: bool = False,
 ) -> InboundMessage:
     """Build a minimal InboundMessage for testing."""
     if platform == Platform.DISCORD:
@@ -102,6 +104,7 @@ def make_message(  # noqa: PLR0913 — test factory with optional overrides
         timestamp=datetime.now(timezone.utc),
         platform_meta=meta,
         trust_level=TrustLevel.TRUSTED,
+        is_admin=is_admin,
     )
 
 
@@ -515,7 +518,7 @@ class TestCmdInvite:
     async def test_admin_gets_code(self) -> None:
         pm = await make_pm()
         set_pairing_manager(pm)
-        msg = make_message(content="/invite", user_id=_ADMIN_ID)
+        msg = make_message(content="/invite", user_id=_ADMIN_ID, is_admin=True)
         pool = Pool(pool_id="test", agent_name="test", ctx=MagicMock())
         response = await cmd_invite(msg, pool, [])
         assert "Pairing code:" in response.content
@@ -525,7 +528,7 @@ class TestCmdInvite:
         set_pairing_manager(pm)
         # Fill max_pending
         await pm.generate_code(_ADMIN_ID)
-        msg = make_message(content="/invite", user_id=_ADMIN_ID)
+        msg = make_message(content="/invite", user_id=_ADMIN_ID, is_admin=True)
         pool = Pool(pool_id="test", agent_name="test", ctx=MagicMock())
         response = await cmd_invite(msg, pool, [])
         assert "max pending" in response.content.lower()
@@ -533,14 +536,14 @@ class TestCmdInvite:
     async def test_returns_not_enabled_when_disabled(self) -> None:
         pm = await make_pm(enabled=False)
         set_pairing_manager(pm)
-        msg = make_message(content="/invite", user_id=_ADMIN_ID)
+        msg = make_message(content="/invite", user_id=_ADMIN_ID, is_admin=True)
         pool = Pool(pool_id="test", agent_name="test", ctx=MagicMock())
         response = await cmd_invite(msg, pool, [])
         assert "not enabled" in response.content.lower()
 
     async def test_returns_not_enabled_when_no_manager(self) -> None:
         set_pairing_manager(None)
-        msg = make_message(content="/invite", user_id=_ADMIN_ID)
+        msg = make_message(content="/invite", user_id=_ADMIN_ID, is_admin=True)
         pool = Pool(pool_id="test", agent_name="test", ctx=MagicMock())
         response = await cmd_invite(msg, pool, [])
         assert "not enabled" in response.content.lower()
@@ -632,7 +635,9 @@ class TestCmdUnpair:
         # Pair the user first
         code = await pm.generate_code(_ADMIN_ID)
         await pm.validate_code(code, _USER_ID)
-        msg = make_message(content=f"/unpair {_USER_ID}", user_id=_ADMIN_ID)
+        msg = make_message(
+            content=f"/unpair {_USER_ID}", user_id=_ADMIN_ID, is_admin=True
+        )
         pool = Pool(pool_id="test", agent_name="test", ctx=MagicMock())
         response = await cmd_unpair(msg, pool, [_USER_ID])
         assert "revoked" in response.content.lower()
@@ -642,7 +647,7 @@ class TestCmdUnpair:
     async def test_unpair_not_found(self) -> None:
         pm = await make_pm()
         set_pairing_manager(pm)
-        msg = make_message(content="/unpair nobody", user_id=_ADMIN_ID)
+        msg = make_message(content="/unpair nobody", user_id=_ADMIN_ID, is_admin=True)
         pool = Pool(pool_id="test", agent_name="test", ctx=MagicMock())
         response = await cmd_unpair(msg, pool, ["nobody"])
         assert "no paired session found" in response.content.lower()
@@ -650,7 +655,7 @@ class TestCmdUnpair:
     async def test_unpair_no_args_returns_usage(self) -> None:
         pm = await make_pm()
         set_pairing_manager(pm)
-        msg = make_message(content="/unpair", user_id=_ADMIN_ID)
+        msg = make_message(content="/unpair", user_id=_ADMIN_ID, is_admin=True)
         pool = Pool(pool_id="test", agent_name="test", ctx=MagicMock())
         response = await cmd_unpair(msg, pool, [])
         assert "usage" in response.content.lower()
@@ -658,7 +663,7 @@ class TestCmdUnpair:
     async def test_returns_not_enabled_when_disabled(self) -> None:
         pm = await make_pm(enabled=False)
         set_pairing_manager(pm)
-        msg = make_message(content="/unpair", user_id=_ADMIN_ID)
+        msg = make_message(content="/unpair", user_id=_ADMIN_ID, is_admin=True)
         pool = Pool(pool_id="test", agent_name="test", ctx=MagicMock())
         response = await cmd_unpair(msg, pool, [])
         assert "not enabled" in response.content.lower()

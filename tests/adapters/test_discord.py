@@ -1273,11 +1273,11 @@ class TestDiscordOutboundMessage:
         # Act
         await adapter.send(original_msg, outbound)
 
-        # Assert — first chunk via reply (no view), second via send (with view)
-        assert len(reply_calls) == 1, f"Expected 1 reply call, got {len(reply_calls)}"
-        assert reply_calls[0].get("view") is None or "view" not in reply_calls[0]
-        assert len(send_calls) == 1, f"Expected 1 send call, got {len(send_calls)}"
-        assert send_calls[0].get("view") is not None
+        # Assert — both chunks via reply (should_reply=True), view only on last
+        assert len(reply_calls) == 2, f"Expected 2 reply calls, got {len(reply_calls)}"
+        assert "view" not in reply_calls[0], "First chunk should have no view"
+        assert reply_calls[1].get("view") is not None, "Last chunk should have view"
+        assert len(send_calls) == 0, f"Expected 0 send calls, got {len(send_calls)}"
 
     @pytest.mark.asyncio
     async def test_reply_message_id_stored_in_metadata(self) -> None:

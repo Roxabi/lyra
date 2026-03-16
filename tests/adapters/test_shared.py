@@ -36,4 +36,6 @@ class TestChunkText:
         assert chunk_text("", 10, escape_fn=str.upper) == []
 
     def test_no_escape_fn(self) -> None:
-        assert chunk_text("hello world", 5) == ["hello", " worl", "d"]
+        # chunk_text splits at word boundaries, so "hello world" splits at the
+        # space — each chunk is rstrip'd/lstrip'd, yielding two clean words.
+        assert chunk_text("hello world", 5) == ["hello", "world"]

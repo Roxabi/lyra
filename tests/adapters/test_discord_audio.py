@@ -131,6 +131,9 @@ async def test_on_message_enqueues_audio_on_audio_bus() -> None:
     )
     msg = _make_discord_msg(attachments=[attachment_obj])
     msg.author.bot = False
+    # Simulate a DM so the audio gate (not-DM, not-mention, not-owned-thread)
+    # does not skip enqueue.
+    msg.guild = None
 
     await adapter.on_message(msg)
 

@@ -81,16 +81,44 @@ class ThreadStore:
     # Reads
     # ------------------------------------------------------------------
 
-    async def get_thread_ids(self, bot_id: str) -> list[str]:
-        """Return all thread_ids owned by bot_id."""
+    async def get_thread_ids(
+        self,
+        bot_id: str,
+        active_since: datetime | None = None,
+    ) -> list[str]:
+        """Return thread_ids owned by bot_id.
+
+        If active_since is provided, only return threads whose updated_at
+        is >= that datetime (UTC).  Use this to load a hot set on startup
+        instead of restoring every thread ever created.
+        """
         db = self._require_db()
         rows: list[str] = []
-        async with db.execute(
-            "SELECT thread_id FROM discord_threads WHERE bot_id = ?", (bot_id,)
-        ) as cur:
-            async for row in cur:
-                rows.append(row[0])
+        if active_since is not None:
+            since_iso = active_since.isoformat()
+            async with db.execute(
+                "SELECT thread_id FROM discord_threads "
+                "WHERE bot_id = ? AND updated_at >= ?",
+                (bot_id, since_iso),
+            ) as cur:
+                async for row in cur:
+                    rows.append(row[0])
+        else:
+            async with db.execute(
+                "SELECT thread_id FROM discord_threads WHERE bot_id = ?", (bot_id,)
+            ) as cur:
+                async for row in cur:
+                    rows.append(row[0])
         return rows
+
+    async def is_owned(self, thread_id: str, bot_id: str) -> bool:
+        """Return True if bot_id owns thread_id (cold-path lazy check)."""
+        db = self._require_db()
+        async with db.execute(
+            "SELECT 1 FROM discord_threads WHERE thread_id = ? AND bot_id = ? LIMIT 1",
+            (thread_id, bot_id),
+        ) as cur:
+            return await cur.fetchone() is not None
 
     async def get_session(
         self, thread_id: str, bot_id: str

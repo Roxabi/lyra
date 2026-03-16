@@ -179,7 +179,18 @@ async def _discord_typing_worker(
     429s on the /typing route.
     """
     try:
-        channel = await resolve_channel(channel_id)
+        # Retry resolving the channel: newly-created threads may not be cached
+        # immediately after creation, so allow up to 3 attempts with backoff.
+        channel = None
+        for _attempt in range(3):
+            try:
+                channel = await resolve_channel(channel_id)
+                break
+            except Exception:
+                if _attempt == 2:
+                    raise
+                await asyncio.sleep(1.0 * (2**_attempt))
+        assert channel is not None  # guaranteed by the loop above
         while True:
             await channel.trigger_typing()
             await asyncio.sleep(9)
@@ -296,6 +307,7 @@ class DiscordAdapter(discord.Client):
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
         auto_thread: bool = True,
+        thread_hot_hours: int = 36,
         auth: AuthMiddleware = _DENY_ALL,
         thread_store: ThreadStore | None = None,
     ) -> None:
@@ -308,6 +320,7 @@ class DiscordAdapter(discord.Client):
         self._circuit_registry = circuit_registry
         self._msg_manager = msg_manager
         self._auto_thread = auto_thread
+        self._thread_hot_hours = thread_hot_hours
         self._auth: AuthMiddleware = auth
         self._max_audio_bytes: int = int(
             os.environ.get("LYRA_MAX_AUDIO_BYTES", 5 * 1024 * 1024)
@@ -377,14 +390,23 @@ class DiscordAdapter(discord.Client):
                 "guild message content will be empty. "
                 "Enable 'Message Content Intent' in the Developer Portal."
             )
-        # Restore owned threads from persistent store across restarts.
+        # Restore recently active owned threads (hot set) on startup.
+        # Only threads updated in the last 36 h are pre-loaded into memory;
+        # older threads are handled by a lazy DB lookup in on_message so the
+        # in-memory set doesn't grow unboundedly over time.
         if self._thread_store is not None:
             try:
-                thread_ids = await self._thread_store.get_thread_ids(self._bot_id)
+                from datetime import UTC, datetime, timedelta
+
+                hot_since = datetime.now(UTC) - timedelta(hours=self._thread_hot_hours)
+                thread_ids = await self._thread_store.get_thread_ids(
+                    self._bot_id, active_since=hot_since
+                )
                 self._owned_threads = {int(tid) for tid in thread_ids}
                 log.info(
-                    "ThreadStore: restored %d owned thread(s) for bot_id=%r",
+                    "ThreadStore: restored %d hot thread(s) (< %d h) for bot_id=%r",
                     len(self._owned_threads),
+                    self._thread_hot_hours,
                     self._bot_id,
                 )
             except Exception:
@@ -796,6 +818,40 @@ class DiscordAdapter(discord.Client):
                     )
                 return
 
+            # Apply the same gate as the text path: only process audio in DMs,
+            # direct mentions, or threads owned by this bot instance.  Without
+            # this check, all bot instances in the same server would each
+            # transcribe and respond to every voice message.
+            _audio_is_dm = message.guild is None
+            _audio_is_thread = isinstance(message.channel, discord.Thread)
+            _audio_in_owned_thread = (
+                _audio_is_thread and message.channel.id in self._owned_threads
+            )
+            _audio_is_mention = (
+                self._bot_user is not None and self._bot_user in message.mentions
+            )
+            # Cold-path lazy check (same as text path).
+            if (
+                not _audio_is_dm
+                and not _audio_is_mention
+                and not _audio_in_owned_thread
+                and _audio_is_thread
+                and self._thread_store is not None
+            ):
+                try:
+                    if await self._thread_store.is_owned(
+                        str(message.channel.id), self._bot_id
+                    ):
+                        self._owned_threads.add(message.channel.id)
+                        _audio_in_owned_thread = True
+                except Exception:
+                    log.warning(
+                        "ThreadStore: lazy is_owned (audio) failed for thread_id=%s",
+                        message.channel.id,
+                    )
+            if not _audio_is_dm and not _audio_is_mention and not _audio_in_owned_thread:  # noqa: E501
+                return
+
             hub_audio = self.normalize_audio(
                 message,
                 audio_bytes=audio_bytes,
@@ -831,10 +887,30 @@ class DiscordAdapter(discord.Client):
         # In DMs (no guild), always respond.
         # In servers: only respond when directly mentioned or in an owned thread.
         _is_dm = message.guild is None
-        _in_owned_thread = (
-            isinstance(message.channel, discord.Thread)
-            and message.channel.id in self._owned_threads
-        )
+        _is_thread = isinstance(message.channel, discord.Thread)
+        _in_owned_thread = _is_thread and message.channel.id in self._owned_threads
+
+        # Cold-path lazy check: thread not in the hot set but may still be owned
+        # (active > 36 h ago).  Query the DB once; on hit, warm the cache back up.
+        if (
+            not _is_dm
+            and not _is_mention
+            and not _in_owned_thread
+            and _is_thread
+            and self._thread_store is not None
+        ):
+            try:
+                if await self._thread_store.is_owned(
+                    str(message.channel.id), self._bot_id
+                ):
+                    self._owned_threads.add(message.channel.id)
+                    _in_owned_thread = True
+            except Exception:
+                log.warning(
+                    "ThreadStore: lazy is_owned check failed for thread_id=%s",
+                    message.channel.id,
+                )
+
         if not _is_dm and not _is_mention and not _in_owned_thread:
             return
 

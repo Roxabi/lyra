@@ -11,6 +11,7 @@ from io import BytesIO
 from typing import TYPE_CHECKING, Any, cast
 
 import discord
+from tabulate import tabulate
 
 if TYPE_CHECKING:
     from lyra.core.hub import Hub
@@ -57,6 +58,35 @@ _ATTACHMENT_EXTS = ATTACHMENT_EXTS_BASE
 log = logging.getLogger(__name__)
 
 DISCORD_MAX_LENGTH = 2000  # Discord API message length limit
+
+# Matches a full Markdown pipe table (header + separator + 1+ data rows).
+_TABLE_RE = re.compile(
+    r"(?m)"
+    r"(?:^\|.+\|\s*\n)"          # header row
+    r"(?:^\|[\s\-:|]+\|\s*\n)"   # separator row  (--|:--:|--:  etc.)
+    r"(?:^\|.+\|[ \t]*\n?)+",    # one or more data rows
+)
+
+
+def _parse_md_table(match: re.Match[str]) -> str:
+    """Convert a Markdown pipe table match to a tabulate ``simple`` code block."""
+    lines = [ln for ln in match.group(0).splitlines() if ln.strip()]
+    if len(lines) < 3:  # noqa: PLR2004 — need header + sep + ≥1 data row
+        return match.group(0)
+
+    def _row(line: str) -> list[str]:
+        parts = line.split("|")
+        if parts and parts[0].strip() == "":
+            parts = parts[1:]
+        if parts and parts[-1].strip() == "":
+            parts = parts[:-1]
+        return [c.strip() for c in parts]
+
+    headers = _row(lines[0])
+    # lines[1] is the separator row — skip it
+    data = [_row(ln) for ln in lines[2:]]
+    return f"```\n{tabulate(data, headers=headers, tablefmt='simple')}\n```"
+
 
 _command_parser = CommandParser()
 
@@ -789,7 +819,12 @@ class DiscordAdapter(discord.Client):
         return cast(discord.abc.Messageable, channel)
 
     def _render_text(self, text: str) -> list[str]:
-        """Split text into <=2000-char chunks (Discord limit)."""
+        """Split text into <=2000-char chunks (Discord limit).
+
+        Markdown pipe tables are converted to tabulate code blocks first,
+        since Discord does not render pipe-syntax tables.
+        """
+        text = _TABLE_RE.sub(_parse_md_table, text)
         return chunk_text(text, DISCORD_MAX_LENGTH)
 
     def _render_buttons(self, buttons: list) -> discord.ui.View | None:

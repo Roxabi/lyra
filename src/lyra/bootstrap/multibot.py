@@ -339,6 +339,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring: each a
                 circuit_registry=circuit_registry,
                 msg_manager=msg_manager,
                 auto_thread=bot_cfg.auto_thread,
+                thread_hot_hours=bot_cfg.thread_hot_hours,
                 auth=auth,
                 thread_store=thread_store_mb,
             )

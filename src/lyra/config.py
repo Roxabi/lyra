@@ -82,6 +82,7 @@ class DiscordBotConfig:
     bot_id: str
     auto_thread: bool = True
     agent: str = "lyra_default"
+    thread_hot_hours: int = 36
 
 
 @dataclass
@@ -147,12 +148,14 @@ def _parse_discord_bots(raw: dict[str, Any]) -> list[DiscordBotConfig]:
         bot_id: str = entry.get("bot_id", "main")
         auto_thread: bool = entry.get("auto_thread", True)
         agent: str = entry.get("agent", "lyra_default")
+        thread_hot_hours: int = int(entry.get("thread_hot_hours", 36))
 
         bots.append(
             DiscordBotConfig(
                 bot_id=bot_id,
                 auto_thread=auto_thread,
                 agent=agent,
+                thread_hot_hours=thread_hot_hours,
             )
         )
     return bots

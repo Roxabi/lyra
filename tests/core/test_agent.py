@@ -235,7 +235,7 @@ cwd = "/nonexistent/path/xyz"
 system = "test"
 """
         (tmp_path / "badcwd.toml").write_text(toml_content)
-        with caplog.at_level(logging.WARNING, logger="lyra.core.agent"):
+        with caplog.at_level(logging.WARNING, logger="lyra.core.agent_loader"):
             cfg = load_agent_config("badcwd", agents_dir=tmp_path)
         assert cfg.model_config.cwd is None
         assert any("not a directory" in r.message for r in caplog.records)

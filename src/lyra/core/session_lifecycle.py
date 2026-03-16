@@ -6,6 +6,7 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from .agent_config import Agent
     from .memory import MemoryManager, SessionSnapshot
     from .pool import Pool
 
@@ -17,11 +18,16 @@ COMPACT_TAIL = 10
 
 
 class SessionManager:
-    """Mixin owning session flush, compaction, and extraction."""
+    """Mixin owning session flush, compaction, and extraction.
 
-    _memory: MemoryManager | None
-    _task_registry: set | None
-    _compact_context_tokens: int
+    Designed for use as a mixin with ``AgentBase`` only.
+    Attribute stubs below are satisfied by ``AgentBase.__init__``.
+    """
+
+    config: Agent
+    _memory: MemoryManager | None = None
+    _task_registry: set | None = None
+    _compact_context_tokens: int = MODEL_CONTEXT_TOKENS
 
     # S4 — session flush (issue #83)
 
@@ -29,7 +35,7 @@ class SessionManager:
         """Write final session summary to L3. No-op if no memory or no user."""
         if self._memory is None or pool.user_id == "":
             return
-        snap = pool.snapshot(self.config.memory_namespace)  # type: ignore[attr-defined]
+        snap = pool.snapshot(self.config.memory_namespace)
         summary = await self._summarize_session(pool)
         await self._memory.upsert_session(snap, summary, status="final")
         await self._memory.upsert_contact(
@@ -77,7 +83,7 @@ class SessionManager:
         if token_est <= int(0.8 * self._compact_context_tokens):
             return
         summary = await self._summarize_session(pool)
-        snap = pool.snapshot(self.config.memory_namespace)  # type: ignore[attr-defined]
+        snap = pool.snapshot(self.config.memory_namespace)
         await self._memory.upsert_session(snap, summary, status="partial")
         tail = list(pool.sdk_history)[-COMPACT_TAIL:]
         pool.sdk_history.clear()

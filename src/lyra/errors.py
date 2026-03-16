@@ -10,6 +10,39 @@ class ProviderError(Exception):
     without importing any SDK-specific exception.
     """
 
+    def __init__(
+        self,
+        message: str = "",
+        *,
+        status_code: int | None = None,
+        provider: str = "",
+        retryable: bool = True,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.provider = provider
+        self.retryable = retryable
+
+
+class ProviderAuthError(ProviderError):
+    """Authentication or authorization failure (non-retryable)."""
+
+    def __init__(
+        self, message: str = "authentication failed", **kwargs: object
+    ) -> None:
+        super().__init__(message, retryable=False, **kwargs)  # type: ignore[arg-type]
+
+
+class ProviderRateLimitError(ProviderError):
+    """Rate-limit / quota exceeded (retryable after back-off)."""
+
+    def __init__(self, message: str = "rate limited", **kwargs: object) -> None:
+        super().__init__(message, retryable=True, **kwargs)  # type: ignore[arg-type]
+
+
+class ProviderApiError(ProviderError):
+    """Generic API error from the provider."""
+
 
 class MissingCredentialsError(Exception):
     def __init__(self, platform: str, bot_id: str) -> None:

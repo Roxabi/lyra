@@ -35,7 +35,7 @@ async def seed_from_toml(
 
     Skips if agent already exists in the store cache (unless *force* is True).
     """
-    row = parse_toml(path)
+    row = _parse_toml(path)
     if row is None:
         return 0
 
@@ -46,12 +46,12 @@ async def seed_from_toml(
     return 1
 
 
-def parse_toml(path: Path) -> AgentRow | None:
+def _parse_toml(path: Path) -> AgentRow | None:
     """Parse an agent TOML file and return an :class:`AgentRow`, or *None* on error."""
     try:
         with open(path, "rb") as f:
             data = tomllib.load(f)
-    except Exception as exc:  # noqa: BLE001
+    except (tomllib.TOMLDecodeError, OSError) as exc:
         log.warning("seed_from_toml: failed to parse %s: %s", path, exc)
         return None
 

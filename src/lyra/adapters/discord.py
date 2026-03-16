@@ -49,6 +49,7 @@ from lyra.core.message import (
     RoutingContext,
 )
 from lyra.core.messages import MessageManager
+from lyra.core.thread_store import ThreadStore
 
 # Discord: same base extensions, no platform-specific additions needed.
 _ATTACHMENT_EXTS = ATTACHMENT_EXTS_BASE
@@ -184,6 +185,7 @@ class DiscordAdapter(discord.Client):
         msg_manager: MessageManager | None = None,
         auto_thread: bool = True,
         auth: AuthMiddleware = _DENY_ALL,
+        thread_store: ThreadStore | None = None,
     ) -> None:
         if intents is None:
             intents = discord.Intents.default()
@@ -204,7 +206,9 @@ class DiscordAdapter(discord.Client):
         # Compiled once in on_ready (requires bot user ID). None until then.
         self._mention_re: re.Pattern[str] | None = None
         # Thread IDs created by or claimed by this bot — only this bot responds there.
+        # Populated from ThreadStore on on_ready; persisted on claim/create.
         self._owned_threads: set[int] = set()
+        self._thread_store: ThreadStore | None = thread_store
         self._vsm: VoiceSessionManager = VoiceSessionManager()
 
     def _msg(self, key: str, fallback: str) -> str:
@@ -260,6 +264,18 @@ class DiscordAdapter(discord.Client):
                 "guild message content will be empty. "
                 "Enable 'Message Content Intent' in the Developer Portal."
             )
+        # Restore owned threads from persistent store across restarts.
+        if self._thread_store is not None:
+            try:
+                thread_ids = await self._thread_store.get_thread_ids(self._bot_id)
+                self._owned_threads = {int(tid) for tid in thread_ids}
+                log.info(
+                    "ThreadStore: restored %d owned thread(s) for bot_id=%r",
+                    len(self._owned_threads),
+                    self._bot_id,
+                )
+            except Exception:
+                log.exception("ThreadStore: failed to restore owned threads")
 
     async def on_voice_state_update(
         self,
@@ -285,6 +301,32 @@ class DiscordAdapter(discord.Client):
                 label,
                 message.id,
                 exc,
+            )
+
+    async def _persist_thread_claim(
+        self,
+        thread_id: int,
+        channel_id: int,
+        guild_id: int | None,
+    ) -> None:
+        """Persist thread ownership to ThreadStore (fire-and-forget)."""
+        if self._thread_store is None:
+            return
+        try:
+            await self._thread_store.claim(
+                thread_id=str(thread_id),
+                bot_id=self._bot_id,
+                channel_id=str(channel_id),
+                guild_id=str(guild_id) if guild_id is not None else None,
+            )
+            log.debug(
+                "ThreadStore: claimed thread_id=%s for bot_id=%r",
+                thread_id,
+                self._bot_id,
+            )
+        except Exception:
+            log.exception(
+                "ThreadStore: failed to persist claim for thread_id=%s", thread_id
             )
 
     async def _handle_leave_command(self, message: Any, guild_id: str) -> None:
@@ -652,6 +694,14 @@ class DiscordAdapter(discord.Client):
                 )
                 resolved_thread_id = thread.id
                 self._owned_threads.add(thread.id)
+                if self._thread_store is not None:
+                    asyncio.ensure_future(
+                        self._persist_thread_claim(
+                            thread_id=thread.id,
+                            channel_id=message.channel.id,
+                            guild_id=getattr(message.guild, "id", None),
+                        )
+                    )
             except Exception:
                 log.exception(
                     "Failed to create Discord thread for message id=%s",
@@ -661,6 +711,16 @@ class DiscordAdapter(discord.Client):
         # Claim an existing thread when directly mentioned inside it.
         if _is_mention and isinstance(message.channel, discord.Thread):
             self._owned_threads.add(message.channel.id)
+            if self._thread_store is not None:
+                asyncio.ensure_future(
+                    self._persist_thread_claim(
+                        thread_id=message.channel.id,
+                        channel_id=getattr(
+                            message.channel, "parent_id", message.channel.id
+                        ),
+                        guild_id=getattr(message.guild, "id", None),
+                    )
+                )
 
         try:
             hub_msg = self.normalize(

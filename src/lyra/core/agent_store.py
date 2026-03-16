@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import json
 import logging
-import tomllib
 from pathlib import Path
 
 import aiosqlite
@@ -351,91 +349,11 @@ class AgentStore:
         await db.commit()
 
     # ------------------------------------------------------------------
-    # TOML seeding
+    # TOML seeding (delegated to agent_seeder)
     # ------------------------------------------------------------------
 
     async def seed_from_toml(self, path: Path, *, force: bool = False) -> int:
-        """Import agent from TOML. Returns 1 if imported, 0 if skipped/error.
+        """Import agent from TOML. Delegates to :func:`agent_seeder.seed_from_toml`."""
+        from .agent_seeder import seed_from_toml
 
-        Skips if agent already exists in cache (unless force=True).
-        """
-        try:
-            with open(path, "rb") as f:
-                data = tomllib.load(f)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("seed_from_toml: failed to parse %s: %s", path, exc)
-            return 0
-
-        agent_section = data.get("agent", {})
-        model_section = data.get("model", {})
-
-        name = agent_section.get("name") or model_section.get("name")
-        if not name:
-            log.warning("seed_from_toml: no [agent].name in %s — skipped", path)
-            return 0
-
-        if not force and name in self._agents:
-            return 0
-
-        # Fields may live under [model] (wizard-generated) or [agent] (legacy).
-        def _m(key: str, default=None):  # type: ignore[no-untyped-def]
-            return model_section.get(key) or agent_section.get(key, default)
-
-        backend = _m("backend", "anthropic-sdk")
-        model = _m("model", "claude-3-5-haiku-20241022")
-        max_turns = _m("max_turns", 10)
-        tools_json = json.dumps(_m("tools", []))
-        persona = agent_section.get("persona")
-        show_intermediate = agent_section.get("show_intermediate", False)
-        smart_routing = agent_section.get("smart_routing")
-        smart_routing_json = json.dumps(smart_routing) if smart_routing else None
-        # plugins may live under [plugins].enabled (wizard) or [agent].plugins (legacy)
-        plugins_json = json.dumps(
-            data.get("plugins", {}).get("enabled") or agent_section.get("plugins", [])
-        )
-        memory_namespace = agent_section.get("memory_namespace")
-        cwd = _m("cwd")
-        skip_permissions = bool(_m("skip_permissions", False))
-
-        # Serialize [tts] and [stt] sections to JSON (None if section absent)
-        tts_section = data.get("tts")
-        tts_json = json.dumps(tts_section) if tts_section is not None else None
-        stt_section = data.get("stt")
-        stt_json = json.dumps(stt_section) if stt_section is not None else None
-
-        # New fields: permissions, workspaces, i18n, commands
-        permissions_json = json.dumps(agent_section.get("permissions", []))
-        workspaces_section = data.get("workspaces")
-        workspaces_json = (
-            json.dumps(workspaces_section) if workspaces_section is not None else None
-        )
-        i18n_section = data.get("i18n", {})
-        i18n_language = i18n_section.get("default_language", "en")
-        commands_section = data.get("commands")
-        commands_json = (
-            json.dumps(commands_section) if commands_section is not None else None
-        )
-
-        row = AgentRow(
-            name=name,
-            backend=backend,
-            model=model,
-            max_turns=max_turns,
-            tools_json=tools_json,
-            persona=persona,
-            show_intermediate=show_intermediate,
-            smart_routing_json=smart_routing_json,
-            plugins_json=plugins_json,
-            memory_namespace=memory_namespace,
-            cwd=cwd,
-            tts_json=tts_json,
-            stt_json=stt_json,
-            skip_permissions=skip_permissions,
-            permissions_json=permissions_json,
-            workspaces_json=workspaces_json,
-            i18n_language=i18n_language,
-            commands_json=commands_json,
-            source="toml-seed",
-        )
-        await self.upsert(row)
-        return 1
+        return await seed_from_toml(self, path, force=force)

@@ -904,7 +904,7 @@ class TestApplyAgentTTSOverlay:
     """SC-7 — apply_agent_tts_overlay merges AgentTTSConfig into TTSConfig."""
 
     def test_none_agent_tts_returns_tts_cfg_unchanged(self):
-        from lyra.__main__ import apply_agent_tts_overlay
+        from lyra.bootstrap.agent_factory import apply_agent_tts_overlay
         from lyra.tts import TTSConfig
 
         tts_cfg = TTSConfig(engine="qwen", voice="Aria", language="en")
@@ -912,7 +912,7 @@ class TestApplyAgentTTSOverlay:
         assert result is tts_cfg
 
     def test_non_none_fields_overwrite(self):
-        from lyra.__main__ import apply_agent_tts_overlay
+        from lyra.bootstrap.agent_factory import apply_agent_tts_overlay
         from lyra.core.agent import AgentTTSConfig
         from lyra.tts import TTSConfig
 
@@ -924,7 +924,7 @@ class TestApplyAgentTTSOverlay:
         assert result.engine == "qwen"  # unchanged — None in agent_tts
 
     def test_none_fields_leave_tts_cfg_unchanged(self):
-        from lyra.__main__ import apply_agent_tts_overlay
+        from lyra.bootstrap.agent_factory import apply_agent_tts_overlay
         from lyra.core.agent import AgentTTSConfig
         from lyra.tts import TTSConfig
 
@@ -936,7 +936,7 @@ class TestApplyAgentTTSOverlay:
         assert result.language == "en"
 
     def test_returns_new_config_not_mutates(self):
-        from lyra.__main__ import apply_agent_tts_overlay
+        from lyra.bootstrap.agent_factory import apply_agent_tts_overlay
         from lyra.core.agent import AgentTTSConfig
         from lyra.tts import TTSConfig
 
@@ -951,7 +951,7 @@ class TestApplyAgentSTTOverlay:
     """SC-8 — apply_agent_stt_overlay merges AgentSTTConfig into STTConfig."""
 
     def test_none_agent_stt_returns_stt_cfg_unchanged(self):
-        from lyra.__main__ import apply_agent_stt_overlay
+        from lyra.bootstrap.agent_factory import apply_agent_stt_overlay
         from lyra.stt import STTConfig
 
         stt_cfg = STTConfig(model_size="large-v3-turbo")
@@ -959,7 +959,7 @@ class TestApplyAgentSTTOverlay:
         assert result is stt_cfg
 
     def test_non_none_fields_overwrite(self):
-        from lyra.__main__ import apply_agent_stt_overlay
+        from lyra.bootstrap.agent_factory import apply_agent_stt_overlay
         from lyra.core.agent import AgentSTTConfig
         from lyra.stt import STTConfig
 
@@ -974,7 +974,7 @@ class TestApplyAgentSTTOverlay:
         assert result.language_detection_segments is None  # unchanged
 
     def test_none_fields_leave_stt_cfg_unchanged(self):
-        from lyra.__main__ import apply_agent_stt_overlay
+        from lyra.bootstrap.agent_factory import apply_agent_stt_overlay
         from lyra.core.agent import AgentSTTConfig
         from lyra.stt import STTConfig
 

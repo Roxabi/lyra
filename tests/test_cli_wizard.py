@@ -332,9 +332,7 @@ class TestList:
         # Assert
         assert result.exit_code == 0, result.output
 
-    def test_lists_dir_with_agents_dir_flag(
-        self, tmp_path: Path
-    ) -> None:
+    def test_lists_dir_with_agents_dir_flag(self, tmp_path: Path) -> None:
         """--agents-dir lists agents from the given TOML directory."""
         self._write_agent_toml(tmp_path, "alpha")
         self._write_agent_toml(tmp_path, "beta")

@@ -8,6 +8,9 @@ from unittest.mock import MagicMock
 import pytest
 
 import lyra.__main__ as main_mod
+import lyra.bootstrap.agent_factory as agent_factory_mod
+import lyra.bootstrap.legacy as legacy_mod
+import lyra.bootstrap.multibot as multibot_mod
 from lyra.core.agent import Agent, ModelConfig
 from lyra.core.auth import AuthMiddleware
 from lyra.core.hub import Hub
@@ -87,15 +90,17 @@ def _patch_all(
     _fake_auth_store.connect = AsyncMock()
     _fake_auth_store.seed_from_config = AsyncMock()
     _fake_auth_store.close = AsyncMock()
-    monkeypatch.setattr(main_mod, "AuthStore", lambda **kwargs: _fake_auth_store)
+    monkeypatch.setattr(multibot_mod, "AuthStore", lambda **kwargs: _fake_auth_store)
 
+    _fake_agent_row = MagicMock()
+    _fake_agent_row.name = "lyra_default"
     _fake_agent_store = MagicMock()
     _fake_agent_store.connect = AsyncMock()
     _fake_agent_store.close = AsyncMock()
-    _fake_agent_store.get_bot_agent = MagicMock(return_value=None)
-    _fake_agent_store.get = MagicMock(return_value=None)
+    _fake_agent_store.get_bot_agent = MagicMock(return_value="lyra_default")
+    _fake_agent_store.get = MagicMock(return_value=_fake_agent_row)
     _fake_agent_store.set_bot_agent = AsyncMock()
-    monkeypatch.setattr(main_mod, "AgentStore", lambda **kwargs: _fake_agent_store)
+    monkeypatch.setattr(multibot_mod, "AgentStore", lambda **kwargs: _fake_agent_store)
 
     _fake_keyring = MagicMock()
     _fake_keyring.key = b"fake-key-32-bytes-for-fernet-key"
@@ -104,16 +109,18 @@ def _patch_all(
     _fake_cred_store.close = AsyncMock()
     _fake_cred_store.get_full = AsyncMock(return_value=("fake-token", "fake-secret"))
     monkeypatch.setattr(
-        main_mod,
+        multibot_mod,
         "LyraKeyring",
         MagicMock(load_or_create=AsyncMock(return_value=_fake_keyring)),
     )
-    monkeypatch.setattr(main_mod, "CredentialStore", lambda **kwargs: _fake_cred_store)
     monkeypatch.setattr(
-        main_mod,
-        "load_agent_config",
-        lambda name, **kw: Agent(
-            name=name,
+        multibot_mod, "CredentialStore", lambda **kwargs: _fake_cred_store
+    )
+    monkeypatch.setattr(
+        multibot_mod,
+        "agent_row_to_config",
+        lambda row, **kw: Agent(
+            name=row.name,
             system_prompt="test",
             memory_namespace="test",
             model_config=ModelConfig(backend="claude-cli"),
@@ -122,7 +129,11 @@ def _patch_all(
     monkeypatch.setattr(
         main_mod, "TelegramAdapter", lambda **kwargs: _FakeTgAdapter(**kwargs)
     )
+    monkeypatch.setattr(
+        multibot_mod, "TelegramAdapter", lambda **kwargs: _FakeTgAdapter(**kwargs)
+    )
     monkeypatch.setattr(main_mod, "DiscordAdapter", CapturingDcAdapter)
+    monkeypatch.setattr(multibot_mod, "DiscordAdapter", CapturingDcAdapter)
     # Use port 0 so the OS picks a free ephemeral port — avoids conflicts with
     # running services (e.g. Lyra already bound to 8443).
     monkeypatch.setenv("LYRA_HEALTH_PORT", "0")
@@ -295,7 +306,7 @@ class TestAgentFactory:
             model_config=ModelConfig(backend="claude-cli"),
         )
         cli_pool = MagicMock()
-        agent = main_mod._create_agent(config, cli_pool)
+        agent = agent_factory_mod._create_agent(config, cli_pool)
         assert isinstance(agent, SimpleAgent)
 
     def test_sdk_backend_creates_anthropic_agent(
@@ -311,7 +322,7 @@ class TestAgentFactory:
             memory_namespace="test",
             model_config=ModelConfig(backend="anthropic-sdk"),
         )
-        agent = main_mod._create_agent(config, None)
+        agent = agent_factory_mod._create_agent(config, None)
         assert isinstance(agent, AnthropicAgent)
 
     def test_unknown_backend_raises(self) -> None:
@@ -324,7 +335,7 @@ class TestAgentFactory:
             model_config=ModelConfig(backend="unknown"),
         )
         with pytest.raises(ValueError, match="Unknown backend"):
-            main_mod._create_agent(config, None)
+            agent_factory_mod._create_agent(config, None)
 
     def test_cli_backend_without_pool_raises(self) -> None:
         from lyra.core.agent import Agent, ModelConfig
@@ -336,7 +347,7 @@ class TestAgentFactory:
             model_config=ModelConfig(backend="claude-cli"),
         )
         with pytest.raises(RuntimeError, match="CliPool required"):
-            main_mod._create_agent(config, None)
+            agent_factory_mod._create_agent(config, None)
 
 
 # ---------------------------------------------------------------------------
@@ -354,7 +365,7 @@ def _patch_auth_config_test(monkeypatch: pytest.MonkeyPatch) -> None:
     _fake_auth_store.connect = AsyncMock()
     _fake_auth_store.seed_from_config = AsyncMock()
     _fake_auth_store.close = AsyncMock()
-    monkeypatch.setattr(main_mod, "AuthStore", lambda **kwargs: _fake_auth_store)
+    monkeypatch.setattr(multibot_mod, "AuthStore", lambda **kwargs: _fake_auth_store)
 
     _fake_agent_store = MagicMock()
     _fake_agent_store.connect = AsyncMock()
@@ -362,11 +373,11 @@ def _patch_auth_config_test(monkeypatch: pytest.MonkeyPatch) -> None:
     _fake_agent_store.get_bot_agent = MagicMock(return_value=None)
     _fake_agent_store.get = MagicMock(return_value=None)
     _fake_agent_store.set_bot_agent = AsyncMock()
-    monkeypatch.setattr(main_mod, "AgentStore", lambda **kwargs: _fake_agent_store)
+    monkeypatch.setattr(multibot_mod, "AgentStore", lambda **kwargs: _fake_agent_store)
     # Bypass _resolve_bot_agent_map so tests can focus on auth validation without
     # hitting the agent-existence check added in Fix 1.
     monkeypatch.setattr(
-        main_mod,
+        multibot_mod,
         "_resolve_bot_agent_map",
         AsyncMock(return_value={("telegram", "main"): "lyra_default"}),
     )
@@ -378,11 +389,13 @@ def _patch_auth_config_test(monkeypatch: pytest.MonkeyPatch) -> None:
     _fake_cred_store.close = AsyncMock()
     _fake_cred_store.get_full = AsyncMock(return_value=("fake-token", "fake-secret"))
     monkeypatch.setattr(
-        main_mod,
+        multibot_mod,
         "LyraKeyring",
         MagicMock(load_or_create=AsyncMock(return_value=_fake_keyring)),
     )
-    monkeypatch.setattr(main_mod, "CredentialStore", lambda **kwargs: _fake_cred_store)
+    monkeypatch.setattr(
+        multibot_mod, "CredentialStore", lambda **kwargs: _fake_cred_store
+    )
 
 
 class TestAuthConfig:
@@ -414,7 +427,12 @@ class TestAuthConfig:
         )
         # Sentinel: if we reach load_agent_config, auth validation passed.
         monkeypatch.setattr(
-            main_mod,
+            multibot_mod,
+            "load_agent_config",
+            lambda name, **kw: (_ for _ in ()).throw(SystemExit("past_auth")),
+        )
+        monkeypatch.setattr(
+            legacy_mod,
             "load_agent_config",
             lambda name, **kw: (_ for _ in ()).throw(SystemExit("past_auth")),
         )

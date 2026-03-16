@@ -19,9 +19,8 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
-from pathlib import Path
 
-import aiosqlite
+from .sqlite_base import SqliteStore
 
 log = logging.getLogger(__name__)
 
@@ -40,21 +39,12 @@ CREATE TABLE IF NOT EXISTS discord_threads (
 """
 
 
-class ThreadStore:
+class ThreadStore(SqliteStore):
     """SQLite-backed store for Discord thread ownership.
 
     One instance is shared across all Discord adapters; each adapter
     filters by its own ``bot_id``.
     """
-
-    def __init__(self, db_path: str | Path) -> None:
-        self._db_path = str(db_path)
-        self._db: aiosqlite.Connection | None = None
-
-    def _require_db(self) -> aiosqlite.Connection:
-        if self._db is None:
-            raise RuntimeError("call connect() first")
-        return self._db
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -62,20 +52,13 @@ class ThreadStore:
 
     async def connect(self) -> None:
         """Open connection, enable WAL, create table. Idempotent."""
-        if self._db is not None:
-            return
-        self._db = await aiosqlite.connect(self._db_path)
-        await self._db.execute("PRAGMA journal_mode=WAL")
-        await self._db.execute(_CREATE_TABLE)
-        await self._db.commit()
+        await self._open_db(ddl=[_CREATE_TABLE])
         log.info("ThreadStore connected (db=%s)", self._db_path)
 
     async def close(self) -> None:
         """Close DB connection."""
-        if self._db is not None:
-            await self._db.close()
-            self._db = None
-            log.info("ThreadStore closed")
+        await super().close()
+        log.info("ThreadStore closed")
 
     # ------------------------------------------------------------------
     # Reads

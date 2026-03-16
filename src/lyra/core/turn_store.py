@@ -14,10 +14,9 @@ from __future__ import annotations
 import json
 import logging
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Literal
 
-import aiosqlite
+from .sqlite_base import SqliteStore
 
 log = logging.getLogger(__name__)
 
@@ -83,7 +82,7 @@ _COLS = (
 )
 
 
-class TurnStore:
+class TurnStore(SqliteStore):
     """Async SQLite-backed store for raw conversation turns (L1).
 
     Uses a dedicated ``turns.db`` file separate from the main vault to avoid
@@ -97,32 +96,18 @@ class TurnStore:
         await store.close()
     """
 
-    def __init__(self, db_path: Path | str) -> None:
-        self._path = str(db_path)
-        self._db: aiosqlite.Connection | None = None
-
     async def connect(self) -> None:
         """Open the database connection and apply the v3 schema migration."""
-        self._db = await aiosqlite.connect(self._path)
-        await self._db.execute("PRAGMA journal_mode=WAL")
-        await self._db.execute("PRAGMA foreign_keys=ON")
-        await self._migrate()
-
-    async def _migrate(self) -> None:
-        """Create conversation_turns table and indices if they do not exist."""
-        db = self._db_or_raise()
+        await self._open_db()
+        db = self._require_db()
+        await db.execute("PRAGMA foreign_keys=ON")
         await db.execute(_CREATE_TABLE)
         await db.execute(_CREATE_IDX_SESSION)
         await db.execute(_CREATE_IDX_POOL)
         await db.commit()
 
-    async def close(self) -> None:
-        """Close the database connection."""
-        if self._db is not None:
-            await self._db.close()
-            self._db = None
-
-    def _db_or_raise(self) -> aiosqlite.Connection:
+    def _db_or_raise(self):
+        """Return the open connection or raise with TurnStore-specific message."""
         if self._db is None:
             raise RuntimeError("TurnStore not connected — call await connect() first")
         return self._db

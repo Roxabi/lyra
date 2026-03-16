@@ -14,6 +14,7 @@ from lyra.adapters._shared import (
     DISCORD_MAX_LENGTH,
     _PartialAudioError,
     buffer_audio_chunks,
+    mime_to_ext,
     parse_reply_to_id,
     sanitize_filename,
     truncate_caption,
@@ -122,8 +123,7 @@ async def render_audio(
             exc_info=True,
         )
         messageable = await resolve_channel(send_to_id)
-        raw_ext = msg.mime_type.split("/")[-1] if "/" in msg.mime_type else ""
-        ext = raw_ext if raw_ext in _AUDIO_EXTS else "bin"
+        ext = mime_to_ext(msg.mime_type, _AUDIO_EXTS)
         attachment = discord.File(fp=BytesIO(msg.audio_bytes), filename=f"audio.{ext}")
         await messageable.send(content=content or None, file=attachment)
 
@@ -167,8 +167,7 @@ async def render_attachment(
             attachment_exts,
         )
     else:
-        raw_ext = msg.mime_type.split("/")[-1] if "/" in msg.mime_type else ""
-        ext = raw_ext if raw_ext in attachment_exts else "bin"
+        ext = mime_to_ext(msg.mime_type, attachment_exts)
         filename = f"attachment.{ext}"
 
     buf = BytesIO(msg.data)

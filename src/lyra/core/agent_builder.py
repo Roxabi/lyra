@@ -3,15 +3,22 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from .agent_config import (
     _VALID_BACKENDS,
     _WORKSPACE_BUILTIN_CONFLICTS,
+    Agent,
     AgentSTTConfig,
     AgentTTSConfig,
     Complexity,
+    ModelConfig,
+    PersonaConfig,
     SmartRoutingConfig,
 )
+
+if TYPE_CHECKING:
+    from .command_router import CommandConfig
 
 log = logging.getLogger(__name__)
 
@@ -161,3 +168,48 @@ def _resolve_workspaces_lenient(
             continue
         workspaces[key] = resolved_ws
     return workspaces
+
+
+# ---------------------------------------------------------------------------
+# Final Agent assembly (shared by both TOML + DB loading paths)
+# ---------------------------------------------------------------------------
+
+
+def _assemble_agent(  # noqa: PLR0913 — one param per Agent field
+    *,
+    name: str,
+    system_prompt: str,
+    memory_namespace: str,
+    model_config: ModelConfig,
+    permissions: tuple[str, ...],
+    commands: dict[str, "CommandConfig"],
+    plugins_enabled: tuple[str, ...],
+    persona: PersonaConfig | None,
+    i18n_language: str,
+    smart_routing: SmartRoutingConfig | None,
+    show_intermediate: bool,
+    workspaces: dict[str, Path],
+    tts: AgentTTSConfig | None,
+    stt: AgentSTTConfig | None,
+) -> Agent:
+    """Instantiate an Agent from already-resolved fields.
+
+    Both TOML and DB loading paths call this for final construction,
+    eliminating the duplicated Agent(...) call.
+    """
+    return Agent(
+        name=name,
+        system_prompt=system_prompt,
+        memory_namespace=memory_namespace,
+        model_config=model_config,
+        permissions=permissions,
+        commands=commands,
+        plugins_enabled=plugins_enabled,
+        persona=persona,
+        i18n_language=i18n_language,
+        smart_routing=smart_routing,
+        show_intermediate=show_intermediate,
+        workspaces=workspaces,
+        tts=tts,
+        stt=stt,
+    )

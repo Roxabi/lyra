@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
+from .builtin_commands import require_admin
 from .message import InboundMessage, Response
 from .pool import Pool
 
@@ -19,8 +20,8 @@ async def cmd_folder(
     admin_user_ids: set[str],
 ) -> Response:
     """Switch working directory (admin-only)."""
-    if not admin_user_ids or msg.user_id not in admin_user_ids:
-        return Response(content="This command is admin-only.")
+    if denied := require_admin(msg, admin_user_ids):
+        return denied
     if not args:
         return Response(content="Usage: /folder <path>")
     raw_path = Path(args[0]).expanduser().resolve()
@@ -45,8 +46,8 @@ async def cmd_workspace(
     workspaces: dict[str, Path],
 ) -> Response:
     """List or switch workspaces (admin-only)."""
-    if not admin_user_ids or msg.user_id not in admin_user_ids:
-        return Response(content="This command is admin-only.")
+    if denied := require_admin(msg, admin_user_ids):
+        return denied
     if not args or args[0] in ("ls", "list"):
         if not workspaces:
             return Response(content="No workspaces configured.")

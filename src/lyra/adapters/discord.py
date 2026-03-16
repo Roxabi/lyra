@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 from lyra.adapters import discord_audio  # noqa: I001
 from lyra.adapters import discord_audio_outbound
-from lyra.adapters._shared import ATTACHMENT_EXTS_BASE, resolve_msg
+from lyra.adapters._shared import ATTACHMENT_EXTS_BASE, TypingTaskManager, resolve_msg
 from lyra.adapters.discord_inbound import handle_message
 from lyra.adapters.discord_normalize import normalize as _normalize_impl
 from lyra.adapters.discord_outbound import (
@@ -28,9 +28,9 @@ from lyra.adapters.discord_voice import VoiceSessionManager
 from lyra.adapters.discord_voice_commands import (
     handle_voice_command as _handle_voice_command_impl,
 )
-from lyra.core.auth import AuthMiddleware
-from lyra.core.trust import TrustLevel
+from lyra.core.auth import _ALLOW_ALL, _DENY_ALL, AuthMiddleware  # noqa: F401 — re-exported for tests and external callers
 from lyra.core.circuit_breaker import CircuitRegistry
+from lyra.core.trust import TrustLevel
 from lyra.core.message import (
     InboundAudio,
     InboundMessage,
@@ -46,12 +46,6 @@ from lyra.core.thread_store import ThreadStore
 _ATTACHMENT_EXTS = ATTACHMENT_EXTS_BASE
 
 log = logging.getLogger(__name__)
-
-# Sentinel used when no AuthMiddleware is provided — denies all traffic by default.
-_DENY_ALL = AuthMiddleware(store=None, role_map={}, default=TrustLevel.BLOCKED)
-
-# Permissive sentinel for use in tests — allows all traffic as PUBLIC.
-_ALLOW_ALL = AuthMiddleware(store=None, role_map={}, default=TrustLevel.PUBLIC)
 
 
 _AUTO_THREAD_TRUE = frozenset({"1", "true", "yes", "on"})
@@ -112,7 +106,7 @@ class DiscordAdapter(discord.Client):
         self._max_audio_bytes: int = int(
             os.environ.get("LYRA_MAX_AUDIO_BYTES", 5 * 1024 * 1024)
         )
-        self._typing_tasks: dict[int, asyncio.Task[None]] = {}
+        self._typing = TypingTaskManager()
         self._bot_user: Any = None  # set on on_ready; None until login
         self._mention_re: re.Pattern[str] | None = None  # compiled on on_ready
         self._owned_threads: set[int] = set()  # populated from ThreadStore on on_ready
@@ -126,30 +120,25 @@ class DiscordAdapter(discord.Client):
             self._msg_manager, key, platform="discord", fallback=fallback
         )
 
+    @property
+    def _typing_tasks(self) -> dict[int, asyncio.Task[None]]:
+        """Expose the internal task dict — used by tests and outbound submodules."""
+        return self._typing._tasks
+
     def _start_typing(self, send_to_id: int) -> None:
         """Start (or restart) the typing indicator background task for send_to_id."""
-        existing = self._typing_tasks.pop(send_to_id, None)
-        if existing and not existing.done():
-            existing.cancel()
-        self._typing_tasks[send_to_id] = asyncio.create_task(
-            _discord_typing_worker(self._resolve_channel, send_to_id),
-            name=f"typing:discord:{send_to_id}",
+        self._typing.start(
+            send_to_id,
+            lambda: _discord_typing_worker(self._resolve_channel, send_to_id),
         )
 
     def _cancel_typing(self, send_to_id: int) -> None:
         """Cancel and remove the typing indicator task for send_to_id."""
-        task = self._typing_tasks.pop(send_to_id, None)
-        if task and not task.done():
-            task.cancel()
+        self._typing.cancel(send_to_id)
 
     async def close(self) -> None:
         """Cancel pending typing tasks and drain voice sessions before closing."""
-        tasks = list(self._typing_tasks.values())
-        self._typing_tasks.clear()
-        for task in tasks:
-            task.cancel()
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+        await self._typing.cancel_all()
         await self._vsm.leave_all()
         await super().close()
 

@@ -16,12 +16,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import aiosqlite
-
 if TYPE_CHECKING:
     from lyra.core.auth_store import AuthStore
 
 from lyra.core.trust import TrustLevel
+
+from .sqlite_base import SqliteStore
 
 log = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ class PairingConfig:
 # ---------------------------------------------------------------------------
 
 
-class PairingManager:
+class PairingManager(SqliteStore):
     """Manages pairing codes using aiosqlite.
 
     On successful code validation, grants are written to AuthStore instead of
@@ -93,34 +93,22 @@ class PairingManager:
         admin_user_ids: set[str],
         auth_store: AuthStore | None = None,
     ) -> None:
+        super().__init__(db_path)
         self.config = config
-        self._db_path = str(db_path)
         self._admin_user_ids = admin_user_ids
         self._auth_store = auth_store
-        self._db: aiosqlite.Connection | None = None
         # In-memory sliding window: identity_key -> deque of failure timestamps
         self._rate_timestamps: dict[str, deque[float]] = {}
 
-    def _require_db(self) -> aiosqlite.Connection:
-        """Return the DB connection or raise if not connected."""
-        if self._db is None:
-            raise RuntimeError("call connect() first")
-        return self._db
-
     async def connect(self) -> None:
         """Open aiosqlite connection and create pairing_codes table."""
-        self._db = await aiosqlite.connect(self._db_path)
-        await self._db.execute("PRAGMA journal_mode=WAL")
-        await self._db.execute(_CREATE_PAIRING_CODES)
-        await self._db.commit()
+        await self._open_db(ddl=[_CREATE_PAIRING_CODES])
         log.info("PairingManager connected (db=%s)", self._db_path)
 
     async def close(self) -> None:
         """Close the database connection."""
-        if self._db is not None:
-            await self._db.close()
-            self._db = None
-            log.info("PairingManager closed")
+        await super().close()
+        log.info("PairingManager closed")
 
     # ------------------------------------------------------------------
     # Code generation

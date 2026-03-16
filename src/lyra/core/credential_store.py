@@ -7,10 +7,11 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-import aiosqlite
 from cryptography.fernet import Fernet
 
 from lyra.errors import KeyringError
+
+from .sqlite_base import SqliteStore
 
 __all__ = ["BotSecretRow", "CredentialStore", "LyraKeyring"]
 
@@ -91,7 +92,7 @@ class LyraKeyring:
         return key
 
 
-class CredentialStore:
+class CredentialStore(SqliteStore):
     """SQLite-backed store for encrypted bot credentials.
 
     Tokens are encrypted with Fernet symmetric encryption before storage,
@@ -99,31 +100,18 @@ class CredentialStore:
     """
 
     def __init__(self, db_path: str | Path, keyring: LyraKeyring) -> None:
-        self._db_path = str(db_path)
+        super().__init__(db_path)
         self._keyring = keyring
-        self._db: aiosqlite.Connection | None = None
         self._fernet: Fernet | None = None
 
     async def connect(self) -> None:
         """Open DB, enable WAL, create table, initialise Fernet cipher."""
-        if self._db is not None:
-            return
         self._fernet = Fernet(self._keyring.key)
-        self._db = await aiosqlite.connect(self._db_path)
-        await self._db.execute("PRAGMA journal_mode=WAL")
-        await self._db.execute(_CREATE_BOT_SECRETS)
-        await self._db.commit()
+        await self._open_db(ddl=[_CREATE_BOT_SECRETS])
 
     async def close(self) -> None:
-        if self._db is not None:
-            await self._db.close()
-            self._db = None
+        await super().close()
         self._fernet = None
-
-    def _require_db(self) -> aiosqlite.Connection:
-        if self._db is None:
-            raise RuntimeError("call connect() first")
-        return self._db
 
     def _require_fernet(self) -> Fernet:
         if self._fernet is None:

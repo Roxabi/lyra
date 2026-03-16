@@ -80,6 +80,54 @@ def _make_model_cfg(driver: "LlmProvider") -> ModelConfig:
     return ModelConfig(backend="anthropic-sdk", model=str(model))
 
 
+async def _scrape_with_fallback(url: str, timeout: float) -> str:
+    """Scrape *url*, returning a fallback string on any ScrapeFailed."""
+    try:
+        return await scrape_url(url, timeout=timeout)
+    except ScrapeFailed as exc:
+        if exc.reason == "not_available":
+            return f"[scraping unavailable] {url}"
+        if exc.reason == "timeout":
+            return f"[scrape timed out] {url}"
+        return f"[scrape failed] {url}"
+
+
+async def _llm_complete(
+    pool_id: str,
+    driver: "LlmProvider",
+    system_prompt: str,
+    content: str,
+    error_prefix: str,
+) -> tuple[str, None] | tuple[None, Response]:
+    """Call driver.complete(); return (llm_text, None) on success or
+    (None, error_response) on failure.
+
+    Callers should unpack as::
+
+        llm_text, err = await _llm_complete(...)
+        if err is not None:
+            return err
+    """
+    model_cfg = _make_model_cfg(driver)
+    try:
+        result = await driver.complete(
+            pool_id,
+            "",  # ignored when messages is provided
+            model_cfg,
+            system_prompt,
+            messages=[{"role": "user", "content": content}],
+        )
+    except Exception:
+        log.exception("%s: driver.complete() failed", pool_id)
+        return None, Response(content=f"{error_prefix} Please try again.")
+
+    if not result.ok:
+        err_msg = result.user_message or "An error occurred. Please try again."
+        return None, Response(content=err_msg)
+
+    return result.result, None
+
+
 # ---------------------------------------------------------------------------
 # Handlers
 # ---------------------------------------------------------------------------
@@ -97,36 +145,19 @@ async def cmd_add(
 
     url = args[0]
 
-    # Scrape
-    try:
-        scraped = await scrape_url(url, timeout=timeout / 3)
-    except ScrapeFailed as exc:
-        if exc.reason == "not_available":
-            scraped = f"[scraping unavailable] {url}"
-        elif exc.reason == "timeout":
-            scraped = f"[scrape timed out] {url}"
-        else:
-            scraped = f"[scrape failed] {url}"
+    scraped = await _scrape_with_fallback(url, timeout=timeout / 3)
 
-    # LLM summary
-    model_cfg = _make_model_cfg(driver)
-    try:
-        result = await driver.complete(
-            "session:add",
-            "",  # ignored when messages is provided
-            model_cfg,
-            ADD_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": scraped}],
-        )
-    except Exception:
-        log.exception("cmd_add: driver.complete() failed")
-        return Response(content="Failed to summarize the URL. Please try again.")
+    llm_text, err = await _llm_complete(
+        "session:add",
+        driver,
+        ADD_SYSTEM_PROMPT,
+        scraped,
+        "Failed to summarize the URL.",
+    )
+    if err is not None:
+        return err
+    assert llm_text is not None  # guaranteed by err check above
 
-    if not result.ok:
-        err_msg = result.user_message or "An error occurred. Please try again."
-        return Response(content=err_msg)
-
-    llm_text = result.result
     title = _parse_title(llm_text, url)
     tags = _parse_tags(llm_text)
 
@@ -156,34 +187,20 @@ async def cmd_explain(
 
     url = args[0]
 
-    try:
-        scraped = await scrape_url(url, timeout=timeout / 3)
-    except ScrapeFailed as exc:
-        if exc.reason == "not_available":
-            scraped = f"[scraping unavailable] {url}"
-        elif exc.reason == "timeout":
-            scraped = f"[scrape timed out] {url}"
-        else:
-            scraped = f"[scrape failed] {url}"
+    scraped = await _scrape_with_fallback(url, timeout=timeout / 3)
 
-    model_cfg = _make_model_cfg(driver)
-    try:
-        result = await driver.complete(
-            "session:explain",
-            "",  # ignored when messages is provided
-            model_cfg,
-            EXPLAIN_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": scraped}],
-        )
-    except Exception:
-        log.exception("cmd_explain: driver.complete() failed")
-        return Response(content="Failed to explain the URL. Please try again.")
+    llm_text, err = await _llm_complete(
+        "session:explain",
+        driver,
+        EXPLAIN_SYSTEM_PROMPT,
+        scraped,
+        "Failed to explain the URL.",
+    )
+    if err is not None:
+        return err
+    assert llm_text is not None  # guaranteed by err check above
 
-    if not result.ok:
-        err_msg = result.user_message or "An error occurred. Please try again."
-        return Response(content=err_msg)
-
-    return Response(content=result.result)
+    return Response(content=llm_text)
 
 
 async def cmd_summarize(
@@ -198,31 +215,17 @@ async def cmd_summarize(
 
     url = args[0]
 
-    try:
-        scraped = await scrape_url(url, timeout=timeout / 3)
-    except ScrapeFailed as exc:
-        if exc.reason == "not_available":
-            scraped = f"[scraping unavailable] {url}"
-        elif exc.reason == "timeout":
-            scraped = f"[scrape timed out] {url}"
-        else:
-            scraped = f"[scrape failed] {url}"
+    scraped = await _scrape_with_fallback(url, timeout=timeout / 3)
 
-    model_cfg = _make_model_cfg(driver)
-    try:
-        result = await driver.complete(
-            "session:summarize",
-            "",  # ignored when messages is provided
-            model_cfg,
-            SUMMARIZE_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": scraped}],
-        )
-    except Exception:
-        log.exception("cmd_summarize: driver.complete() failed")
-        return Response(content="Failed to summarize the URL. Please try again.")
+    llm_text, err = await _llm_complete(
+        "session:summarize",
+        driver,
+        SUMMARIZE_SYSTEM_PROMPT,
+        scraped,
+        "Failed to summarize the URL.",
+    )
+    if err is not None:
+        return err
+    assert llm_text is not None  # guaranteed by err check above
 
-    if not result.ok:
-        err_msg = result.user_message or "An error occurred. Please try again."
-        return Response(content=err_msg)
-
-    return Response(content=result.result)
+    return Response(content=llm_text)

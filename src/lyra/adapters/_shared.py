@@ -275,6 +275,61 @@ def resolve_msg(
     return manager.get(key, platform=platform) if manager is not None else fallback
 
 
+def mime_to_ext(
+    mime_type: str,
+    allowed: frozenset[str],
+    fallback: str = "bin",
+) -> str:
+    """Derive a file extension from *mime_type*, validated against *allowed*.
+
+    Splits on ``/`` and takes the right-hand part. Returns *fallback* if the
+    mime_type contains no ``/``, or if the derived extension is not in *allowed*.
+
+    Example::
+
+        mime_to_ext("audio/ogg", _AUDIO_EXTS)  # -> "ogg"
+        mime_to_ext("application/octet-stream", _AUDIO_EXTS)  # -> "bin"
+    """
+    raw_ext = mime_type.split("/")[-1] if "/" in mime_type else ""
+    return raw_ext if raw_ext in allowed else fallback
+
+
+class TypingTaskManager:
+    """Manages per-channel typing indicator background tasks.
+
+    Extracted from TelegramAdapter and DiscordAdapter to eliminate identical
+    task-management logic. Each adapter keeps its own typing coroutine factory;
+    this class only manages the task dict lifecycle.
+    """
+
+    def __init__(self) -> None:
+        self._tasks: dict[int, asyncio.Task] = {}
+
+    def start(self, chat_id: int, coro_factory: Callable[[], Awaitable[None]]) -> None:
+        """Cancel any existing task for *chat_id* and start a new one."""
+        existing = self._tasks.pop(chat_id, None)
+        if existing and not existing.done():
+            existing.cancel()
+        self._tasks[chat_id] = asyncio.create_task(
+            coro_factory(), name=f"typing:{chat_id}"  # type: ignore[arg-type]
+        )
+
+    def cancel(self, chat_id: int) -> None:
+        """Cancel and remove the typing task for *chat_id* (no-op if absent)."""
+        task = self._tasks.pop(chat_id, None)
+        if task and not task.done():
+            task.cancel()
+
+    async def cancel_all(self) -> None:
+        """Cancel all pending typing tasks and await their completion."""
+        tasks = list(self._tasks.values())
+        self._tasks.clear()
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+
 def parse_reply_to_id(reply_to_id: str | None) -> int | None:
     """Parse a string reply_to_id into an int, returning None on bad input."""
     if reply_to_id is None:

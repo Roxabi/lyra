@@ -17,6 +17,7 @@ from .agent_schema import (
     _UPSERT_AGENT,
 )
 from .agent_seeder import seed_from_toml as _seed_from_toml
+from .sqlite_base import SqliteStore
 
 log = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ __all__ = ["AgentRow", "AgentStore", "AgentRuntimeStateRow", "BotAgentMapRow"]
 # ---------------------------------------------------------------------------
 
 
-class AgentStore:
+class AgentStore(SqliteStore):
     """SQLite-backed agent configuration store with write-through in-memory cache.
 
     Sync reads (get / get_all / get_bot_agent) serve from cache and never block
@@ -36,15 +37,9 @@ class AgentStore:
     """
 
     def __init__(self, db_path: str | Path) -> None:
-        self._db_path = str(db_path)
-        self._db: aiosqlite.Connection | None = None
+        super().__init__(db_path)
         self._agents: dict[str, AgentRow] = {}
         self._bot_map: dict[tuple[str, str], str] = {}
-
-    def _require_db(self) -> aiosqlite.Connection:
-        if self._db is None:
-            raise RuntimeError("call connect() first")
-        return self._db
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -54,25 +49,23 @@ class AgentStore:
         """Open aiosqlite, enable WAL, create tables, warm cache. Idempotent."""
         if self._db is not None:
             return  # already connected
-        self._db = await aiosqlite.connect(self._db_path)
+        await self._open_db(
+            ddl=[_CREATE_AGENTS, _CREATE_BOT_AGENT_MAP, _CREATE_AGENT_RUNTIME_STATE]
+        )
         try:
-            await self._db.execute("PRAGMA journal_mode=WAL")
-            await self._db.execute(_CREATE_AGENTS)
-            await self._db.execute(_CREATE_BOT_AGENT_MAP)
-            await self._db.execute(_CREATE_AGENT_RUNTIME_STATE)
+            db = self._require_db()
             # Additive migrations — idempotent: ignore "duplicate column name" errors.
             for stmt in _MIGRATE_AGENTS:
                 try:
-                    await self._db.execute(stmt)
+                    await db.execute(stmt)
                 except aiosqlite.OperationalError as exc:
                     if "duplicate column" not in str(exc).lower():
                         raise
-            await self._db.commit()
+            await db.commit()
             await self._warm_cache()
         except Exception:
             log.exception("AgentStore.connect() setup failed; closing connection")
-            await self._db.close()
-            self._db = None
+            await self.close()
             raise
         log.info("AgentStore connected (db=%s)", self._db_path)
 
@@ -95,8 +88,7 @@ class AgentStore:
     async def close(self) -> None:
         """Close the database connection and clear caches."""
         if self._db is not None:
-            await self._db.close()
-            self._db = None
+            await super().close()
             self._agents.clear()
             self._bot_map.clear()
             log.info("AgentStore closed")

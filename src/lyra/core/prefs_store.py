@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from pathlib import Path
 
-import aiosqlite
+from .sqlite_base import SqliteStore
 
 log = logging.getLogger(__name__)
 
@@ -36,30 +35,16 @@ class UserPrefs:
     tts_voice: str = "agent_default"
 
 
-class PrefsStore:
+class PrefsStore(SqliteStore):
     """SQLite-backed user preference store (aiosqlite).
 
     Shares auth.db with AuthStore — each opens its own connection handle,
     which is safe under WAL mode. Manages the user_prefs table only.
     """
 
-    def __init__(self, db_path: str | Path) -> None:
-        self._db_path = str(db_path)
-        self._db: aiosqlite.Connection | None = None
-
-    def _require_db(self) -> aiosqlite.Connection:
-        if self._db is None:
-            raise RuntimeError("call connect() first")
-        return self._db
-
     async def connect(self) -> None:
         """Open aiosqlite, enable WAL, create user_prefs table."""
-        if self._db is not None:
-            return  # idempotent
-        self._db = await aiosqlite.connect(self._db_path)
-        await self._db.execute("PRAGMA journal_mode=WAL")
-        await self._db.execute(_CREATE_USER_PREFS)
-        await self._db.commit()
+        await self._open_db(ddl=[_CREATE_USER_PREFS])
         log.info("PrefsStore connected (db=%s)", self._db_path)
 
     async def get_prefs(self, user_id: str) -> UserPrefs:
@@ -88,7 +73,5 @@ class PrefsStore:
 
     async def close(self) -> None:
         """Close the database connection."""
-        if self._db is not None:
-            await self._db.close()
-            self._db = None
-            log.info("PrefsStore closed")
+        await super().close()
+        log.info("PrefsStore closed")

@@ -5,9 +5,11 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from .agent_config import Agent
     from .agent_models import AgentRow
 
 from .agent_builder import (
+    _assemble_agent,
     _build_commands_from_dict,
     _build_smart_routing_from_dict,
     _build_stt_from_dict,
@@ -18,7 +20,6 @@ from .agent_builder import (
     _validate_i18n_language,
 )
 from .agent_config import (
-    Agent,
     AgentSTTConfig,
     AgentTTSConfig,
     ModelConfig,
@@ -133,7 +134,7 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — each branch handles one opti
     # i18n language from DB
     i18n_language = _validate_i18n_language(row.i18n_language or "en", row.name)
 
-    return Agent(
+    return _assemble_agent(
         name=row.name,
         system_prompt=system_prompt,
         memory_namespace=memory_namespace,

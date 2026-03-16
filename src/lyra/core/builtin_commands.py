@@ -23,6 +23,22 @@ if TYPE_CHECKING:
     from .runtime_config import RuntimeConfigHolder
 
 
+def require_admin(
+    msg: InboundMessage,
+    admin_user_ids: set[str],
+) -> "Response | None":
+    """Return a denied Response if the user is not an admin, else None.
+
+    Usage::
+
+        if (denied := require_admin(msg, admin_user_ids)):
+            return denied
+    """
+    if not admin_user_ids or msg.user_id not in admin_user_ids:
+        return Response(content="This command is admin-only.")
+    return None
+
+
 def help_command(
     builtins: Mapping[str, object],
     session_handlers: Mapping[str, object],
@@ -54,8 +70,8 @@ def circuit_status(
     circuit_registry: "CircuitRegistry | None",
 ) -> Response:
     """Show circuit breaker status (admin-only)."""
-    if not admin_user_ids or msg.user_id not in admin_user_ids:
-        return Response(content="This command is admin-only.")
+    if denied := require_admin(msg, admin_user_ids):
+        return denied
     if circuit_registry is None:
         return Response(content="Circuit breaker not configured.")
     all_status = circuit_registry.get_all_status()
@@ -76,8 +92,8 @@ def routing_status(
     smart_routing: "SmartRoutingDecorator | None",
 ) -> Response:
     """Show smart routing decisions (admin-only)."""
-    if not admin_user_ids or msg.user_id not in admin_user_ids:
-        return Response(content="This command is admin-only.")
+    if denied := require_admin(msg, admin_user_ids):
+        return denied
     if smart_routing is None:
         return Response(content="Smart routing not configured.")
     history = smart_routing.history
@@ -105,8 +121,8 @@ def config_command(  # noqa: PLR0913 — mirrors original DI surface
     on_debounce_change: "Callable[[int], None] | None",
 ) -> Response:
     """Dispatch /config show/set/reset."""
-    if not admin_user_ids or msg.user_id not in admin_user_ids:
-        return Response(content="This command is admin-only.")
+    if denied := require_admin(msg, admin_user_ids):
+        return denied
     if runtime_config_holder is None:
         return Response(content="Runtime config not available for this backend.")
     if not args:

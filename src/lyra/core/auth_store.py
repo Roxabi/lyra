@@ -7,9 +7,9 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
-import aiosqlite
-
 from lyra.core.trust import TrustLevel
+
+from .sqlite_base import SqliteStore
 
 log = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-class AuthStore:
+class AuthStore(SqliteStore):
     """SQLite-backed authorization store with write-through in-memory cache.
 
     All user-level grants (pairing + config) are stored here as the single
@@ -44,24 +44,13 @@ class AuthStore:
     def __init__(
         self, db_path: str | Path, default: TrustLevel = TrustLevel.PUBLIC
     ) -> None:
-        self._db_path = str(db_path)
+        super().__init__(db_path)
         self._default = default
         self._cache: dict[str, tuple[TrustLevel, datetime | None]] = {}
-        self._db: aiosqlite.Connection | None = None
-
-    def _require_db(self) -> aiosqlite.Connection:
-        if self._db is None:
-            raise RuntimeError("call connect() first")
-        return self._db
 
     async def connect(self) -> None:
         """Open aiosqlite, enable WAL, create grants table, warm cache."""
-        if self._db is not None:
-            return  # already connected — idempotent
-        self._db = await aiosqlite.connect(self._db_path)
-        await self._db.execute("PRAGMA journal_mode=WAL")
-        await self._db.execute(_CREATE_GRANTS)
-        await self._db.commit()
+        await self._open_db(ddl=[_CREATE_GRANTS])
         await self._warm_cache()
         log.info("AuthStore connected (db=%s)", self._db_path)
 
@@ -190,7 +179,5 @@ class AuthStore:
 
     async def close(self) -> None:
         """Close the database connection."""
-        if self._db is not None:
-            await self._db.close()
-            self._db = None
-            log.info("AuthStore closed")
+        await super().close()
+        log.info("AuthStore closed")

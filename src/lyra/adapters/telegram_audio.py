@@ -14,6 +14,7 @@ from aiogram.types import BufferedInputFile
 from lyra.adapters._shared import (
     _PartialAudioError,
     buffer_audio_chunks,
+    mime_to_ext,
     parse_reply_to_id,
     sanitize_filename,
     truncate_caption,
@@ -147,8 +148,7 @@ async def render_attachment(
     if msg.filename:
         buf.name = sanitize_filename(msg.filename, _ATTACHMENT_EXTS)
     else:
-        raw_ext = msg.mime_type.split("/")[-1] if "/" in msg.mime_type else ""
-        ext = raw_ext if raw_ext in _ATTACHMENT_EXTS else "bin"
+        ext = mime_to_ext(msg.mime_type, _ATTACHMENT_EXTS)
         buf.name = f"attachment.{ext}"
 
     kwargs: dict[str, Any] = {"chat_id": chat_id}

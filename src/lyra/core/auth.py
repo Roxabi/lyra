@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-__all__ = ["AuthMiddleware"]
+__all__ = ["AuthMiddleware", "_ALLOW_ALL", "_DENY_ALL"]
 
 
 # Ordering used to pick the highest trust level among multiple role matches.
@@ -116,6 +116,54 @@ class AuthMiddleware:
         return self._default
 
     @classmethod
+    def _cli_sentinel(cls, store: AuthStore | None) -> "AuthMiddleware":
+        """Return a fixed OWNER middleware for the CLI section.
+
+        The CLI is always local/trusted -- no config required.
+        """
+        return cls(store=store, role_map={}, default=TrustLevel.OWNER)
+
+    @classmethod
+    def _build_from_section_cfg(
+        cls,
+        section_cfg: dict,
+        context_label: str,
+        store: AuthStore | None,
+    ) -> "AuthMiddleware":
+        """Validate *section_cfg* and build an AuthMiddleware instance.
+
+        Args:
+            section_cfg: A single auth section dict (from ``[auth.<section>]``
+                or a ``[[auth.<section>_bots]]`` entry).
+            context_label: Human-readable label used in error messages, e.g.
+                ``"[auth.telegram]"`` or ``"auth config for telegram bot_id='x'"``.
+            store: Optional pre-connected AuthStore (seeds applied by caller).
+
+        Returns:
+            A fully constructed AuthMiddleware.
+
+        Raises:
+            ValueError: If *section_cfg* contains an invalid ``default`` value.
+        """
+        raw_default: str = section_cfg.get("default", "")
+        try:
+            default = TrustLevel(raw_default)
+        except ValueError:
+            valid = ", ".join(t.value for t in TrustLevel)
+            raise ValueError(
+                f"Invalid default '{raw_default}' in {context_label}"
+                f" -- must be one of: {valid}"
+            )
+
+        # trusted_roles must contain Discord role snowflake IDs (numeric strings),
+        # not display names. Example: trusted_roles = ["123456789012345678"]
+        role_map: dict[str, TrustLevel] = {}
+        for role in section_cfg.get("trusted_roles", []):
+            role_map[str(role)] = TrustLevel.TRUSTED
+
+        return cls(store=store, role_map=role_map, default=default)
+
+    @classmethod
     def from_config(
         cls,
         raw: dict,
@@ -141,8 +189,7 @@ class AuthMiddleware:
 
         if section_cfg is None:
             if section == "cli":
-                # CLI is always local/trusted -- fixed OWNER, no config required.
-                return cls(store=None, role_map={}, default=TrustLevel.OWNER)
+                return cls._cli_sentinel(store=None)
             log.warning(
                 "Missing [auth.%s] in lyra.toml -- %s adapter will be disabled",
                 section,
@@ -150,24 +197,11 @@ class AuthMiddleware:
             )
             return None
 
-        # Validate default
-        raw_default: str = section_cfg.get("default", "")
-        try:
-            default = TrustLevel(raw_default)
-        except ValueError:
-            valid = ", ".join(t.value for t in TrustLevel)
-            raise ValueError(
-                f"Invalid default '{raw_default}' in [auth.{section}]"
-                f" -- must be one of: {valid}"
-            )
-
-        # trusted_roles must contain Discord role snowflake IDs (numeric strings),
-        # not display names. Example: trusted_roles = ["123456789012345678"]
-        role_map: dict[str, TrustLevel] = {}
-        for role in section_cfg.get("trusted_roles", []):
-            role_map[str(role)] = TrustLevel.TRUSTED
-
-        return cls(store=store, role_map=role_map, default=default)
+        return cls._build_from_section_cfg(
+            section_cfg,
+            context_label=f"[auth.{section}]",
+            store=store,
+        )
 
     @classmethod
     def from_bot_config(
@@ -210,7 +244,7 @@ class AuthMiddleware:
 
         if section_cfg is None:
             if section == "cli":
-                return cls(store=None, role_map={}, default=TrustLevel.OWNER)
+                return cls._cli_sentinel(store=None)
             log.warning(
                 "Missing [auth.%s] or [[auth.%s]] entry for bot_id=%r"
                 " -- %s adapter bot_id=%r will be disabled",
@@ -222,19 +256,15 @@ class AuthMiddleware:
             )
             return None
 
-        raw_default: str = section_cfg.get("default", "")
-        try:
-            default = TrustLevel(raw_default)
-        except ValueError:
-            valid = ", ".join(t.value for t in TrustLevel)
-            raise ValueError(
-                f"Invalid default '{raw_default}' in auth config"
-                f" for {section} bot_id={bot_id!r}"
-                f" -- must be one of: {valid}"
-            )
+        return cls._build_from_section_cfg(
+            section_cfg,
+            context_label=f"auth config for {section} bot_id={bot_id!r}",
+            store=store,
+        )
 
-        role_map: dict[str, TrustLevel] = {}
-        for role in section_cfg.get("trusted_roles", []):
-            role_map[str(role)] = TrustLevel.TRUSTED
 
-        return cls(store=store, role_map=role_map, default=default)
+# Sentinel: denies all traffic by default (safe default when no auth is configured).
+_DENY_ALL = AuthMiddleware(store=None, role_map={}, default=TrustLevel.BLOCKED)
+
+# Sentinel: allows all traffic as PUBLIC (for tests and permissive contexts).
+_ALLOW_ALL = AuthMiddleware(store=None, role_map={}, default=TrustLevel.PUBLIC)

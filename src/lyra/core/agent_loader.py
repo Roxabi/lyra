@@ -6,6 +6,7 @@ import tomllib
 from pathlib import Path
 
 from .agent_builder import (
+    _assemble_agent,
     _build_commands_from_dict,
     _build_smart_routing_from_dict,
     _build_stt_from_dict,
@@ -208,7 +209,7 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
                 )
         agent_stt = _build_stt_from_dict(stt_section)
 
-    return Agent(
+    return _assemble_agent(
         name=name,
         system_prompt=system_prompt,
         memory_namespace=agent_section.get("memory_namespace", name),

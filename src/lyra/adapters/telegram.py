@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from lyra.core.hub import Hub
 
 from lyra.adapters import telegram_audio  # noqa: I001
-from lyra.adapters._shared import resolve_msg
+from lyra.adapters._shared import TypingTaskManager, resolve_msg
 from lyra.adapters.telegram_formatting import (
     _render_buttons as _render_buttons_impl,
     _render_text as _render_text_impl,
@@ -34,9 +34,9 @@ from lyra.adapters.telegram_outbound import (
     send as _send_impl,
     send_streaming as _send_streaming_impl,
 )
-from lyra.core.auth import AuthMiddleware
-from lyra.core.trust import TrustLevel
+from lyra.core.auth import _ALLOW_ALL, _DENY_ALL, AuthMiddleware  # noqa: F401 — re-exported for tests and external callers
 from lyra.core.circuit_breaker import CircuitRegistry
+from lyra.core.trust import TrustLevel
 from lyra.core.message import (
     InboundAudio,
     InboundMessage,
@@ -48,9 +48,6 @@ from lyra.core.message import (
 from lyra.core.messages import MessageManager
 
 log = logging.getLogger(__name__)
-
-_DENY_ALL = AuthMiddleware(store=None, role_map={}, default=TrustLevel.BLOCKED)
-_ALLOW_ALL = AuthMiddleware(store=None, role_map={}, default=TrustLevel.PUBLIC)
 
 
 @dataclass(frozen=True)
@@ -128,7 +125,7 @@ class TelegramAdapter:
         self._max_audio_bytes: int = int(
             os.environ.get("LYRA_MAX_AUDIO_BYTES", 5 * 1024 * 1024)
         )
-        self._typing_tasks: dict[int, asyncio.Task] = {}
+        self._typing = TypingTaskManager()
         self._bot: Any = None
         self._dp: Any = None
 
@@ -197,26 +194,19 @@ class TelegramAdapter:
             self._msg_manager, key, platform="telegram", fallback=fallback
         )
 
+    @property
+    def _typing_tasks(self) -> dict[int, asyncio.Task]:
+        """Expose the internal task dict — used by tests and outbound submodules."""
+        return self._typing._tasks
+
     def _start_typing(self, chat_id: int) -> None:
-        existing = self._typing_tasks.pop(chat_id, None)
-        if existing and not existing.done():
-            existing.cancel()
-        self._typing_tasks[chat_id] = asyncio.create_task(
-            _typing_worker(self.bot, chat_id), name=f"typing:{chat_id}"
-        )
+        self._typing.start(chat_id, lambda: _typing_worker(self.bot, chat_id))
 
     def _cancel_typing(self, chat_id: int) -> None:
-        task = self._typing_tasks.pop(chat_id, None)
-        if task and not task.done():
-            task.cancel()
+        self._typing.cancel(chat_id)
 
     async def close(self) -> None:
-        tasks = list(self._typing_tasks.values())
-        self._typing_tasks.clear()
-        for task in tasks:
-            task.cancel()
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+        await self._typing.cancel_all()
 
     # --- Thin delegates to submodules ---
 

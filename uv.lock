@@ -2676,7 +2676,7 @@ wheels = [
 [[package]]
 name = "voicecli"
 version = "0.2.0"
-source = { git = "https://github.com/Roxabi/voiceCLI.git?branch=staging#2100d53b239230cce06d36a12d6508bdc3fa3423" }
+source = { git = "https://github.com/Roxabi/voiceCLI.git?branch=staging#10ce157b72557ba393d7abea4bc0a022407ac73f" }
 dependencies = [
     { name = "chatterbox-tts" },
     { name = "faster-qwen3-tts" },

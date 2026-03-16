@@ -21,3 +21,5 @@ lyra.toml
 config.toml
 
 node_modules/
+package.json
+package-lock.json

@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lyra — Logo & Brand Identity</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Questrial&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #060a14;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    overflow: hidden;
+    font-family: 'Questrial', 'Century Gothic', sans-serif;
+  }
+
+  .logo-container {
+    position: relative;
+    width: 520px;
+    height: 640px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .bg-particles {
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  svg.logo {
+    position: relative;
+    z-index: 1;
+  }
+
+  .wordmark {
+    position: relative;
+    z-index: 1;
+    margin-top: 28px;
+    font-size: 42px;
+    font-weight: 300;
+    letter-spacing: 0.30em;
+    background: linear-gradient(135deg, #b0c4de 0%, #eef4ff 35%, #00c8e0 65%, #f0a030 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    opacity: 0;
+    animation: wordmarkIn 0.8s ease-out 4.2s forwards;
+  }
+
+  .tagline {
+    position: relative;
+    z-index: 1;
+    margin-top: 10px;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    letter-spacing: 0.35em;
+    color: #5a7a9a;
+    text-transform: uppercase;
+    opacity: 0;
+    animation: fadeIn 1s ease-out 5s forwards;
+  }
+
+  @keyframes wordmarkIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Background ambient particles -->
+<svg class="bg-particles" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="bgParticle" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#00c8e0" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#00c8e0" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <g id="bgParticlesGroup"></g>
+</svg>
+
+<div class="logo-container">
+  <svg class="logo" viewBox="0 0 400 400" width="400" height="400" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <!-- Gradients -->
+      <linearGradient id="borderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%"   stop-color="#00c8e0"/>
+        <stop offset="50%"  stop-color="#f0a030"/>
+        <stop offset="100%" stop-color="#00c8e0" stop-opacity="0.6"/>
+      </linearGradient>
+
+      <linearGradient id="lyreGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%"   stop-color="#00c8e0"/>
+        <stop offset="100%" stop-color="#f0a030"/>
+      </linearGradient>
+
+      <linearGradient id="stringGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%"   stop-color="#00c8e0" stop-opacity="0.7"/>
+        <stop offset="100%" stop-color="#f0a030" stop-opacity="0.9"/>
+      </linearGradient>
+
+      <linearGradient id="armGradL" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%"   stop-color="#00c8e0"/>
+        <stop offset="100%" stop-color="#f0a030"/>
+      </linearGradient>
+
+      <linearGradient id="armGradR" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%"   stop-color="#00c8e0"/>
+        <stop offset="100%" stop-color="#f0a030"/>
+      </linearGradient>
+
+      <radialGradient id="hubGlow" cx="50%" cy="50%" r="50%">
+        <stop offset="0%"   stop-color="#f0a030" stop-opacity="0.5"/>
+        <stop offset="100%" stop-color="#f0a030" stop-opacity="0"/>
+      </radialGradient>
+
+      <radialGradient id="nodeGlowTeal" cx="50%" cy="50%" r="50%">
+        <stop offset="0%"   stop-color="#00c8e0" stop-opacity="0.6"/>
+        <stop offset="100%" stop-color="#00c8e0" stop-opacity="0"/>
+      </radialGradient>
+
+      <radialGradient id="nodeGlowAmber" cx="50%" cy="50%" r="50%">
+        <stop offset="0%"   stop-color="#f0a030" stop-opacity="0.5"/>
+        <stop offset="100%" stop-color="#f0a030" stop-opacity="0"/>
+      </radialGradient>
+
+      <!-- Glow filter -->
+      <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="3" result="blur"/>
+        <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+      </filter>
+
+      <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="6" result="blur"/>
+        <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+      </filter>
+
+      <!-- Clip for lyre reveal -->
+      <clipPath id="lyreReveal">
+        <rect x="100" y="60" width="200" height="0">
+          <animate attributeName="height" from="0" to="280" dur="1.2s" begin="1.8s" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1"/>
+        </rect>
+      </clipPath>
+    </defs>
+
+    <!-- === HEXAGON FRAME === -->
+    <g id="hexFrame">
+      <!-- Hex background -->
+      <polygon
+        points="200,38 342,120 342,280 200,362 58,280 58,120"
+        fill="#0c1525"
+        opacity="0"
+      >
+        <animate attributeName="opacity" from="0" to="1" dur="0.6s" begin="0.3s" fill="freeze"/>
+      </polygon>
+
+      <!-- Hex border (traced) -->
+      <polygon
+        points="200,38 342,120 342,280 200,362 58,280 58,120"
+        fill="none"
+        stroke="url(#borderGrad)"
+        stroke-width="2"
+        stroke-dasharray="1120"
+        stroke-dashoffset="1120"
+        stroke-linejoin="round"
+      >
+        <animate attributeName="stroke-dashoffset" from="1120" to="0" dur="1.5s" begin="0.5s" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1"/>
+      </polygon>
+
+      <!-- Subtle inner hex border -->
+      <polygon
+        points="200,44 336,123 336,277 200,356 64,277 64,123"
+        fill="none"
+        stroke="#00c8e0"
+        stroke-width="0.5"
+        stroke-opacity="0.15"
+        opacity="0"
+      >
+        <animate attributeName="opacity" from="0" to="1" dur="0.6s" begin="1.8s" fill="freeze"/>
+      </polygon>
+    </g>
+
+    <!-- === PIPELINE CONNECTORS === -->
+    <g id="connectors" opacity="0">
+      <animate attributeName="opacity" from="0" to="1" dur="0.5s" begin="3.6s" fill="freeze"/>
+
+      <!-- Left connector -->
+      <line x1="58" y1="200" x2="28" y2="200" stroke="#00c8e0" stroke-width="1" stroke-opacity="0.4"/>
+      <circle cx="24" cy="200" r="2.5" fill="#00c8e0" opacity="0.5"/>
+
+      <!-- Right connector -->
+      <line x1="342" y1="200" x2="372" y2="200" stroke="#f0a030" stroke-width="1" stroke-opacity="0.4"/>
+      <circle cx="376" cy="200" r="2.5" fill="#f0a030" opacity="0.5"/>
+
+      <!-- Top connector -->
+      <line x1="200" y1="38" x2="200" y2="14" stroke="#00c8e0" stroke-width="1" stroke-opacity="0.3"/>
+      <circle cx="200" cy="10" r="2" fill="#00c8e0" opacity="0.4"/>
+
+      <!-- Bottom connector -->
+      <line x1="200" y1="362" x2="200" y2="386" stroke="#f0a030" stroke-width="1" stroke-opacity="0.3"/>
+      <circle cx="200" cy="390" r="2" fill="#f0a030" opacity="0.4"/>
+    </g>
+
+    <!-- === LYRE MARK === -->
+    <g id="lyreMark" clip-path="url(#lyreReveal)">
+
+      <!-- === STRINGS (3 vertical lines from crossbar to base) === -->
+      <g id="strings" filter="url(#glow)">
+        <!-- Left string -->
+        <line x1="172" y1="145" x2="192" y2="300" stroke="url(#stringGrad)" stroke-width="1.2" opacity="0.6">
+          <animate attributeName="opacity" from="0" to="0.6" dur="0.4s" begin="2.8s" fill="freeze"/>
+        </line>
+        <!-- Center string -->
+        <line x1="200" y1="145" x2="200" y2="300" stroke="url(#stringGrad)" stroke-width="1.5" opacity="0.8">
+          <animate attributeName="opacity" from="0" to="0.8" dur="0.4s" begin="2.6s" fill="freeze"/>
+        </line>
+        <!-- Right string -->
+        <line x1="228" y1="145" x2="208" y2="300" stroke="url(#stringGrad)" stroke-width="1.2" opacity="0.6">
+          <animate attributeName="opacity" from="0" to="0.6" dur="0.4s" begin="2.8s" fill="freeze"/>
+        </line>
+      </g>
+
+      <!-- === LYRE ARMS (curved paths) === -->
+      <!-- Left arm: from base, curves up and outward to top-left -->
+      <path
+        d="M 200,310 C 180,280 130,220 125,155 C 120,110 140,80 165,80"
+        fill="none"
+        stroke="url(#armGradL)"
+        stroke-width="2.5"
+        stroke-linecap="round"
+        filter="url(#glow)"
+        stroke-dasharray="350"
+        stroke-dashoffset="350"
+      >
+        <animate attributeName="stroke-dashoffset" from="350" to="0" dur="1s" begin="2s" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1"/>
+      </path>
+
+      <!-- Right arm: from base, curves up and outward to top-right -->
+      <path
+        d="M 200,310 C 220,280 270,220 275,155 C 280,110 260,80 235,80"
+        fill="none"
+        stroke="url(#armGradR)"
+        stroke-width="2.5"
+        stroke-linecap="round"
+        filter="url(#glow)"
+        stroke-dasharray="350"
+        stroke-dashoffset="350"
+      >
+        <animate attributeName="stroke-dashoffset" from="350" to="0" dur="1s" begin="2s" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1"/>
+      </path>
+
+      <!-- === CROSSBAR === -->
+      <line x1="165" y1="80" x2="235" y2="80" stroke="#00c8e0" stroke-width="2" stroke-linecap="round" filter="url(#glow)"
+        stroke-dasharray="70" stroke-dashoffset="70">
+        <animate attributeName="stroke-dashoffset" from="70" to="0" dur="0.5s" begin="2.8s" fill="freeze"/>
+      </line>
+
+      <!-- === YOKE (horizontal bar connecting arms at mid height) === -->
+      <line x1="139" y1="145" x2="261" y2="145" stroke="#00c8e0" stroke-width="1.5" stroke-linecap="round" stroke-opacity="0.5" filter="url(#glow)"
+        stroke-dasharray="122" stroke-dashoffset="122">
+        <animate attributeName="stroke-dashoffset" from="122" to="0" dur="0.5s" begin="2.6s" fill="freeze"/>
+      </line>
+
+      <!-- === NODES === -->
+      <!-- Top crossbar nodes -->
+      <g id="topNodes">
+        <!-- Left horn node -->
+        <circle cx="165" cy="80" r="0" fill="#00c8e0" filter="url(#glow)">
+          <animate attributeName="r" from="0" to="4" dur="0.3s" begin="3s" fill="freeze" calcMode="spline" keySplines="0.5 1.8 0.5 1"/>
+        </circle>
+        <circle cx="165" cy="80" r="0" fill="#eef4ff">
+          <animate attributeName="r" from="0" to="1.5" dur="0.3s" begin="3s" fill="freeze"/>
+        </circle>
+
+        <!-- Right horn node -->
+        <circle cx="235" cy="80" r="0" fill="#00c8e0" filter="url(#glow)">
+          <animate attributeName="r" from="0" to="4" dur="0.3s" begin="3.1s" fill="freeze" calcMode="spline" keySplines="0.5 1.8 0.5 1"/>
+        </circle>
+        <circle cx="235" cy="80" r="0" fill="#eef4ff">
+          <animate attributeName="r" from="0" to="1.5" dur="0.3s" begin="3.1s" fill="freeze"/>
+        </circle>
+      </g>
+
+      <!-- Arm midpoint nodes -->
+      <g id="midNodes">
+        <!-- Left arm node -->
+        <circle cx="130" cy="145" r="0" fill="#1ab8cc" filter="url(#glow)">
+          <animate attributeName="r" from="0" to="3.5" dur="0.3s" begin="3.2s" fill="freeze" calcMode="spline" keySplines="0.5 1.8 0.5 1"/>
+        </circle>
+        <circle cx="130" cy="145" r="0" fill="#eef4ff">
+          <animate attributeName="r" from="0" to="1.2" dur="0.3s" begin="3.2s" fill="freeze"/>
+        </circle>
+
+        <!-- Right arm node -->
+        <circle cx="270" cy="145" r="0" fill="#1ab8cc" filter="url(#glow)">
+          <animate attributeName="r" from="0" to="3.5" dur="0.3s" begin="3.3s" fill="freeze" calcMode="spline" keySplines="0.5 1.8 0.5 1"/>
+        </circle>
+        <circle cx="270" cy="145" r="0" fill="#eef4ff">
+          <animate attributeName="r" from="0" to="1.2" dur="0.3s" begin="3.3s" fill="freeze"/>
+        </circle>
+      </g>
+
+      <!-- Lower arm nodes -->
+      <g id="lowerNodes">
+        <circle cx="148" cy="215" r="0" fill="#7aaa50" filter="url(#glow)">
+          <animate attributeName="r" from="0" to="3" dur="0.3s" begin="3.4s" fill="freeze"/>
+        </circle>
+        <circle cx="252" cy="215" r="0" fill="#7aaa50" filter="url(#glow)">
+          <animate attributeName="r" from="0" to="3" dur="0.3s" begin="3.4s" fill="freeze"/>
+        </circle>
+      </g>
+
+      <!-- === HUB NODE (convergence point at base) === -->
+      <g id="hubNode">
+        <!-- Glow disc -->
+        <circle cx="200" cy="310" r="0" fill="url(#hubGlow)">
+          <animate attributeName="r" from="0" to="28" dur="0.5s" begin="3.5s" fill="freeze"/>
+        </circle>
+        <!-- Main disc -->
+        <circle cx="200" cy="310" r="0" fill="#f0a030" filter="url(#softGlow)">
+          <animate attributeName="r" from="0" to="7" dur="0.4s" begin="3.5s" fill="freeze" calcMode="spline" keySplines="0.5 1.8 0.5 1"/>
+        </circle>
+        <!-- Center highlight -->
+        <circle cx="200" cy="310" r="0" fill="#fff8ee">
+          <animate attributeName="r" from="0" to="2.5" dur="0.4s" begin="3.5s" fill="freeze"/>
+        </circle>
+
+        <!-- Shockwave rings -->
+        <circle cx="200" cy="310" r="8" fill="none" stroke="#f0a030" stroke-width="1.5" opacity="0">
+          <animate attributeName="r" from="8" to="45" dur="0.8s" begin="3.7s" fill="freeze"/>
+          <animate attributeName="opacity" from="0.7" to="0" dur="0.8s" begin="3.7s" fill="freeze"/>
+        </circle>
+        <circle cx="200" cy="310" r="8" fill="none" stroke="#f0a030" stroke-width="1" opacity="0">
+          <animate attributeName="r" from="8" to="60" dur="1s" begin="3.8s" fill="freeze"/>
+          <animate attributeName="opacity" from="0.5" to="0" dur="1s" begin="3.8s" fill="freeze"/>
+        </circle>
+        <circle cx="200" cy="310" r="8" fill="none" stroke="#00c8e0" stroke-width="0.8" opacity="0">
+          <animate attributeName="r" from="8" to="80" dur="1.2s" begin="3.9s" fill="freeze"/>
+          <animate attributeName="opacity" from="0.3" to="0" dur="1.2s" begin="3.9s" fill="freeze"/>
+        </circle>
+      </g>
+    </g>
+
+    <!-- === IDLE ANIMATIONS (begin after intro) === -->
+    <g id="idleLayer">
+      <!-- Hub pulse -->
+      <circle cx="200" cy="310" r="8" fill="none" stroke="#f0a030" stroke-width="1" opacity="0">
+        <animate attributeName="r" from="8" to="35" dur="2.5s" begin="5s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" from="0.4" to="0" dur="2.5s" begin="5s" repeatCount="indefinite"/>
+      </circle>
+
+      <!-- Top node breathing -->
+      <circle cx="165" cy="80" r="4" fill="#00c8e0" opacity="0">
+        <animate attributeName="opacity" from="0.2" to="0.5" dur="2s" begin="5s" repeatCount="indefinite" values="0.2;0.5;0.2" keyTimes="0;0.5;1"/>
+      </circle>
+      <circle cx="235" cy="80" r="4" fill="#00c8e0" opacity="0">
+        <animate attributeName="opacity" from="0.2" to="0.5" dur="2s" begin="5.5s" repeatCount="indefinite" values="0.2;0.5;0.2" keyTimes="0;0.5;1"/>
+      </circle>
+
+      <!-- Data particles flowing down strings -->
+      <!-- Left string particle -->
+      <circle r="2" fill="#00c8e0" opacity="0" filter="url(#glow)">
+        <animateMotion path="M172,145 L192,300" dur="2s" begin="5s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0;0.8;0.8;0" keyTimes="0;0.1;0.8;1" dur="2s" begin="5s" repeatCount="indefinite"/>
+      </circle>
+      <!-- Center string particle -->
+      <circle r="2.5" fill="#00c8e0" opacity="0" filter="url(#glow)">
+        <animateMotion path="M200,145 L200,300" dur="1.8s" begin="5.3s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0;0.9;0.9;0" keyTimes="0;0.1;0.8;1" dur="1.8s" begin="5.3s" repeatCount="indefinite"/>
+      </circle>
+      <!-- Right string particle -->
+      <circle r="2" fill="#00c8e0" opacity="0" filter="url(#glow)">
+        <animateMotion path="M228,145 L208,300" dur="2.2s" begin="5.6s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0;0.8;0.8;0" keyTimes="0;0.1;0.8;1" dur="2.2s" begin="5.6s" repeatCount="indefinite"/>
+      </circle>
+
+      <!-- Data particles flowing down arms -->
+      <!-- Left arm particle -->
+      <circle r="1.8" fill="#00c8e0" opacity="0" filter="url(#glow)">
+        <animateMotion path="M165,80 C140,80 120,110 125,155 C130,220 180,280 200,310" dur="3s" begin="5.2s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0;0.7;0.7;0" keyTimes="0;0.1;0.85;1" dur="3s" begin="5.2s" repeatCount="indefinite"/>
+        <animate attributeName="fill" values="#00c8e0;#00c8e0;#f0a030" keyTimes="0;0.5;1" dur="3s" begin="5.2s" repeatCount="indefinite"/>
+      </circle>
+      <!-- Right arm particle -->
+      <circle r="1.8" fill="#00c8e0" opacity="0" filter="url(#glow)">
+        <animateMotion path="M235,80 C260,80 280,110 275,155 C270,220 220,280 200,310" dur="3s" begin="6.5s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0;0.7;0.7;0" keyTimes="0;0.1;0.85;1" dur="3s" begin="6.5s" repeatCount="indefinite"/>
+        <animate attributeName="fill" values="#00c8e0;#00c8e0;#f0a030" keyTimes="0;0.5;1" dur="3s" begin="6.5s" repeatCount="indefinite"/>
+      </circle>
+    </g>
+
+    <!-- Hex border glow idle -->
+    <polygon
+      points="200,38 342,120 342,280 200,362 58,280 58,120"
+      fill="none"
+      stroke="#00c8e0"
+      stroke-width="1"
+      stroke-linejoin="round"
+      opacity="0"
+    >
+      <animate attributeName="opacity" values="0;0.08;0.15;0.08;0" keyTimes="0;0.25;0.5;0.75;1" dur="4s" begin="5s" repeatCount="indefinite"/>
+    </polygon>
+  </svg>
+
+  <div class="wordmark">LYRA</div>
+  <div class="tagline">Personal AI Agent</div>
+</div>
+
+<script>
+// Background ambient particles
+(function() {
+  const svg = document.querySelector('.bg-particles');
+  const g = document.getElementById('bgParticlesGroup');
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  const count = 55;
+
+  for (let i = 0; i < count; i++) {
+    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    const x = Math.random() * w;
+    const startY = h + Math.random() * 200;
+    const r = 0.5 + Math.random() * 1.5;
+    const dur = 15 + Math.random() * 25;
+    const delay = Math.random() * dur;
+    const opacity = 0.05 + Math.random() * 0.15;
+    const color = Math.random() > 0.6 ? '#f0a030' : '#00c8e0';
+
+    circle.setAttribute('cx', x);
+    circle.setAttribute('cy', startY);
+    circle.setAttribute('r', r);
+    circle.setAttribute('fill', color);
+    circle.setAttribute('opacity', opacity);
+
+    const animY = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
+    animY.setAttribute('attributeName', 'cy');
+    animY.setAttribute('from', startY);
+    animY.setAttribute('to', -20);
+    animY.setAttribute('dur', dur + 's');
+    animY.setAttribute('begin', delay + 's');
+    animY.setAttribute('repeatCount', 'indefinite');
+
+    const animX = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
+    animX.setAttribute('attributeName', 'cx');
+    animX.setAttribute('values', `${x};${x + (Math.random() - 0.5) * 60};${x}`);
+    animX.setAttribute('dur', (dur * 0.7) + 's');
+    animX.setAttribute('begin', delay + 's');
+    animX.setAttribute('repeatCount', 'indefinite');
+
+    circle.appendChild(animY);
+    circle.appendChild(animX);
+    g.appendChild(circle);
+  }
+})();
+</script>
+</body>
+</html>

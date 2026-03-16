@@ -1,0 +1,177 @@
+{
+  "schema_version": "1.0",
+
+  "identity": {
+    "name": "Lyra",
+    "tagline": "Personal AI Agent",
+    "essence": "A personal AI agent engine — hub-and-spoke, multi-channel — that runs 24/7 on your own hardware"
+  },
+
+  "metaphor": {
+    "primary": "lyre",
+    "secondary": "constellation",
+    "narrative": "Many channels converge through strings into one hub intelligence, like a lyre producing harmony from many strings",
+    "shape_hint": "Stylised lyre with curved arms, crossbar, strings, and convergence hub at the base"
+  },
+
+  "personality": {
+    "tone": ["warm", "technical", "personal", "minimal"],
+    "not": ["corporate", "cold", "generic-AI", "flashy"]
+  },
+
+  "colors": {
+    "primary":    "#00c8e0",
+    "secondary":  "#f0a030",
+    "background": "#060a14",
+    "surface":    "#0c1525",
+    "highlight":  "#eef4ff",
+    "gradient_direction": "primary-to-secondary"
+  },
+
+  "typography": {
+    "wordmark_font": "Questrial, Century Gothic, sans-serif",
+    "wordmark_weight": 300,
+    "wordmark_tracking_em": 0.30,
+    "tagline_font": "Courier New, monospace",
+    "tagline_tracking_em": 0.35,
+    "google_font_import": "https://fonts.googleapis.com/css2?family=Questrial&display=swap"
+  },
+
+  "frame": {
+    "shape": "hexagon",
+    "border_width": 2,
+    "border_style": "gradient-traced",
+    "inner_border": true,
+    "connectors": {
+      "enabled": true,
+      "positions": ["left", "right", "top", "bottom"]
+    }
+  },
+
+  "mark": {
+    "type": "lyre",
+    "description": "Stylised lyre — two curved arms rising from a base hub, connected by a crossbar at top and yoke at mid-height, with three strings descending to the hub",
+    "elements": [
+      {
+        "id": "left-arm",
+        "type": "path",
+        "d": "M 200,310 C 180,280 130,220 125,155 C 120,110 140,80 165,80",
+        "stroke": "gradient",
+        "stroke_width": 2.5,
+        "fill": "none",
+        "animation": "trace",
+        "trace_duration": 1.0,
+        "trace_delay": 2.0
+      },
+      {
+        "id": "right-arm",
+        "type": "path",
+        "d": "M 200,310 C 220,280 270,220 275,155 C 280,110 260,80 235,80",
+        "stroke": "gradient",
+        "stroke_width": 2.5,
+        "fill": "none",
+        "animation": "trace",
+        "trace_duration": 1.0,
+        "trace_delay": 2.0
+      },
+      {
+        "id": "crossbar",
+        "type": "line",
+        "x1": 165, "y1": 80, "x2": 235, "y2": 80,
+        "stroke": "primary",
+        "stroke_width": 2,
+        "animation": "trace",
+        "trace_duration": 0.5,
+        "trace_delay": 2.8
+      },
+      {
+        "id": "yoke",
+        "type": "line",
+        "x1": 139, "y1": 145, "x2": 261, "y2": 145,
+        "stroke": "primary",
+        "stroke_width": 1.5,
+        "stroke_opacity": 0.5,
+        "animation": "trace",
+        "trace_duration": 0.5,
+        "trace_delay": 2.6
+      },
+      {
+        "id": "string-left",
+        "type": "line",
+        "x1": 172, "y1": 145, "x2": 192, "y2": 300,
+        "stroke": "gradient",
+        "stroke_width": 1.2,
+        "stroke_opacity": 0.6,
+        "animation": "trace",
+        "trace_duration": 0.4,
+        "trace_delay": 2.8
+      },
+      {
+        "id": "string-center",
+        "type": "line",
+        "x1": 200, "y1": 145, "x2": 200, "y2": 300,
+        "stroke": "gradient",
+        "stroke_width": 1.5,
+        "stroke_opacity": 0.8,
+        "animation": "trace",
+        "trace_duration": 0.4,
+        "trace_delay": 2.6
+      },
+      {
+        "id": "string-right",
+        "type": "line",
+        "x1": 228, "y1": 145, "x2": 208, "y2": 300,
+        "stroke": "gradient",
+        "stroke_width": 1.2,
+        "stroke_opacity": 0.6,
+        "animation": "trace",
+        "trace_duration": 0.4,
+        "trace_delay": 2.8
+      }
+    ],
+    "nodes": [
+      { "id": "horn-left",   "cx": 165, "cy": 80,  "r": 4,   "color": "primary",   "delay": 3.0 },
+      { "id": "horn-right",  "cx": 235, "cy": 80,  "r": 4,   "color": "primary",   "delay": 3.1 },
+      { "id": "yoke-left",   "cx": 130, "cy": 145, "r": 3.5, "color": "blend",     "delay": 3.2 },
+      { "id": "yoke-right",  "cx": 270, "cy": 145, "r": 3.5, "color": "blend",     "delay": 3.3 },
+      { "id": "lower-left",  "cx": 148, "cy": 215, "r": 3,   "color": "secondary", "delay": 3.4 },
+      { "id": "lower-right", "cx": 252, "cy": 215, "r": 3,   "color": "secondary", "delay": 3.4 }
+    ],
+    "hub": {
+      "cx": 200, "cy": 310,
+      "color": "secondary",
+      "glow_radius": 28,
+      "main_radius": 7,
+      "center_radius": 2.5,
+      "shockwave_rings": 3,
+      "delay": 3.5
+    }
+  },
+
+  "animation": {
+    "intro_duration_s": 5,
+    "sequence": [
+      { "step": "frame_bg",       "delay": 0.3, "duration": 0.6 },
+      { "step": "border_trace",   "delay": 0.5, "duration": 1.5 },
+      { "step": "inner_border",   "delay": 1.8, "duration": 0.6 },
+      { "step": "mark_elements",  "delay": 2.0 },
+      { "step": "nodes_spring",   "delay": 3.0 },
+      { "step": "hub_shockwave",  "delay": 3.5, "duration": 1.2 },
+      { "step": "connectors",     "delay": 3.6, "duration": 0.5 },
+      { "step": "wordmark",       "delay": 4.2, "duration": 0.8 },
+      { "step": "tagline",        "delay": 5.0, "duration": 1.0 }
+    ],
+    "idle": {
+      "hub_pulse":       { "enabled": true, "duration": 2.5 },
+      "node_breathing":  { "enabled": true, "duration": 2.0 },
+      "border_glow":     { "enabled": true, "duration": 4.0 },
+      "data_particles":  { "enabled": true, "count_per_path": 1 },
+      "bg_particles":    { "enabled": true, "count": 55, "direction": "up" }
+    }
+  },
+
+  "export": {
+    "gif": { "duration_s": 10, "fps": 20, "width": 520, "height": 680, "scale": 2 },
+    "variants": ["full", "icon-only", "monochrome"]
+  }
+}

@@ -86,6 +86,22 @@ class TestResolve:
         identity = auth.resolve("u1")
         assert identity.trust_level == TrustLevel.BLOCKED
 
+    def test_owner_retains_is_admin_on_public_command(self) -> None:
+        """OWNER user issuing a public command retains is_admin=True."""
+        store = MagicMock()
+        store.check.return_value = TrustLevel.OWNER
+        auth = Authenticator(
+            store=store,
+            role_map={},
+            default=TrustLevel.BLOCKED,
+            public_commands=["/join"],
+        )
+        identity = auth.resolve("u1", command="/join")
+        # trust_level is PUBLIC (public command bypass)
+        assert identity.trust_level == TrustLevel.PUBLIC
+        # but is_admin remains True (stored trust is OWNER)
+        assert identity.is_admin is True
+
 
 class TestCheckBackwardCompat:
     """check() still returns TrustLevel for backward compat."""

@@ -37,9 +37,9 @@ def require_admin(
         if (denied := require_admin(msg)):
             return denied
     """
-    if admin_user_ids is not None:
+    if admin_user_ids is not None and len(admin_user_ids) > 0:
         # Legacy path — backward compat for callers still threading the set
-        if not admin_user_ids or msg.user_id not in admin_user_ids:
+        if msg.user_id not in admin_user_ids:
             return Response(content="This command is admin-only.")
         return None
     if not msg.is_admin:

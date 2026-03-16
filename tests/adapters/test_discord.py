@@ -1631,6 +1631,37 @@ class TestDiscordAuth:
         hub.inbound_bus.put.assert_called_once()
         _platform, msg = hub.inbound_bus.put.call_args[0]
         assert msg.trust_level == TrustLevel.PUBLIC
+        assert msg.is_admin is False
+
+    @pytest.mark.asyncio
+    async def test_admin_user_has_is_admin_set(self) -> None:
+        """Admin user: message produced with is_admin=True."""
+        from lyra.adapters.discord import DiscordAdapter
+        from lyra.core.auth import AuthMiddleware
+        from lyra.core.identity import Identity
+        from lyra.core.trust import TrustLevel
+
+        auth = MagicMock(spec=AuthMiddleware)
+        auth.resolve.return_value = Identity(
+            user_id="dc:user:42",
+            trust_level=TrustLevel.TRUSTED,
+            is_admin=True,
+        )
+
+        hub = MagicMock()
+        hub.inbound_bus = MagicMock()
+        hub.inbound_bus.put = MagicMock()
+        adapter = DiscordAdapter(
+            hub=hub, bot_id="main", intents=discord.Intents.none(), auth=auth
+        )
+        adapter._bot_user = SimpleNamespace(id=999, bot=True)
+
+        msg_ns = _make_discord_msg_ns()
+        await adapter.on_message(msg_ns)
+
+        hub.inbound_bus.put.assert_called_once()
+        _platform, msg = hub.inbound_bus.put.call_args[0]
+        assert msg.is_admin is True
 
 
 # ---------------------------------------------------------------------------

@@ -1186,6 +1186,34 @@ class TestTelegramAuth:
         hub.inbound_bus.put.assert_called_once()
         _platform, msg = hub.inbound_bus.put.call_args[0]
         assert msg.trust_level == TrustLevel.TRUSTED
+        assert msg.is_admin is False
+
+    @pytest.mark.asyncio
+    async def test_admin_user_has_is_admin_set(self) -> None:
+        """Admin user: message produced with is_admin=True."""
+        from lyra.adapters.telegram import TelegramAdapter
+        from lyra.core.auth import AuthMiddleware
+        from lyra.core.identity import Identity
+        from lyra.core.trust import TrustLevel
+
+        auth = MagicMock(spec=AuthMiddleware)
+        auth.resolve.return_value = Identity(
+            user_id="tg:user:42",
+            trust_level=TrustLevel.TRUSTED,
+            is_admin=True,
+        )
+
+        hub = MagicMock()
+        hub.inbound_bus = MagicMock()
+        hub.inbound_bus.put = MagicMock()
+        adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub, auth=auth)
+        adapter.bot = AsyncMock()
+
+        await adapter._on_message(_make_aiogram_msg())
+
+        hub.inbound_bus.put.assert_called_once()
+        _platform, msg = hub.inbound_bus.put.call_args[0]
+        assert msg.is_admin is True
 
     @pytest.mark.asyncio
     async def test_voice_blocked_skips_normalize(self) -> None:
@@ -1245,6 +1273,7 @@ class TestTelegramAuth:
         hub.inbound_bus.put.assert_called_once()
         _platform, msg = hub.inbound_bus.put.call_args[0]
         assert msg.trust_level == TrustLevel.PUBLIC
+        assert msg.is_admin is False
 
 
 # ---------------------------------------------------------------------------

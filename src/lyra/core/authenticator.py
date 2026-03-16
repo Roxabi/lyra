@@ -135,9 +135,12 @@ class Authenticator:
         """
         trust = self._resolve_trust(user_id, roles, command)
         resolved_uid = user_id or ""
+        # is_admin uses stored trust (before command bypass), not resolved trust.
+        # An OWNER user issuing a public command retains is_admin=True.
+        stored_trust = self._store_level(user_id) if user_id else None
         is_admin = bool(
             user_id
-            and (user_id in self._admin_user_ids or trust == TrustLevel.OWNER)
+            and (user_id in self._admin_user_ids or stored_trust == TrustLevel.OWNER)
         )
         return Identity(user_id=resolved_uid, trust_level=trust, is_admin=is_admin)
 

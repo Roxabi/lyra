@@ -18,6 +18,8 @@ if TYPE_CHECKING:
 from lyra.adapters import discord_audio
 from lyra.adapters._shared import (
     ATTACHMENT_EXTS_BASE,
+    AUDIO_MIME_TYPES,
+    DISCORD_MAX_LENGTH,
     push_to_hub_guarded,
     resolve_msg,
 )
@@ -60,8 +62,6 @@ from lyra.core.thread_store import ThreadStore
 _ATTACHMENT_EXTS = ATTACHMENT_EXTS_BASE
 
 log = logging.getLogger(__name__)
-
-DISCORD_MAX_LENGTH = 2000  # Discord API message length limit
 
 _command_parser = CommandParser()
 
@@ -506,7 +506,7 @@ class DiscordAdapter(discord.Client):
             (
                 a
                 for a in (getattr(message, "attachments", None) or [])
-                if getattr(a, "content_type", "") in discord_audio._AUDIO_MIME_TYPES
+                if getattr(a, "content_type", "") in AUDIO_MIME_TYPES
             ),
             None,
         )
@@ -554,7 +554,7 @@ class DiscordAdapter(discord.Client):
                 return
 
             # Magic-byte check: client-supplied content_type is untrusted.
-            if not discord_audio._is_valid_audio_magic(audio_bytes):
+            if not discord_audio.is_valid_audio_magic(audio_bytes):
                 log.warning(
                     "Audio attachment rejected: magic bytes do not match any known"
                     " audio format (message_id=%s)",

@@ -8,7 +8,7 @@ from typing import Any
 import discord
 from tabulate import tabulate
 
-from lyra.adapters._shared import chunk_text
+from lyra.adapters._shared import AUDIO_MIME_TYPES, chunk_text
 from lyra.core.message import Attachment
 
 _TABLE_RE = re.compile(
@@ -57,12 +57,10 @@ def _make_thread_name(content: str, fallback: str) -> str:
 
 def _extract_attachments(raw_attachments: list[Any]) -> list[Attachment]:
     """Extract non-audio Attachment objects from Discord message.attachments."""
-    from lyra.adapters.discord_audio import _AUDIO_MIME_TYPES  # noqa: PLC0415
-
     result: list[Attachment] = []
     for a in raw_attachments:
         ct = getattr(a, "content_type", None) or ""
-        if ct in _AUDIO_MIME_TYPES:
+        if ct in AUDIO_MIME_TYPES:
             continue
         if ct.startswith("image/"):
             att_type = "image"

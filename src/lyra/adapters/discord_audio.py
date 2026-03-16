@@ -11,6 +11,7 @@ import discord
 
 from lyra.adapters._shared import (
     _AUDIO_EXTS,
+    DISCORD_MAX_LENGTH,
     _PartialAudioError,
     buffer_audio_chunks,
     parse_reply_to_id,
@@ -35,21 +36,8 @@ log = logging.getLogger(__name__)
 # Discord IS_VOICE_MESSAGE flag (bit 13)
 _VOICE_MESSAGE_FLAG = 8192
 
-# Accepted audio MIME types for inbound attachment detection.
-_AUDIO_MIME_TYPES = frozenset(
-    {
-        "audio/ogg",
-        "audio/mpeg",
-        "audio/mp4",
-        "audio/opus",
-        "audio/wav",
-        "audio/flac",
-        "audio/aac",
-    }
-)
 
-
-def _is_valid_audio_magic(data: bytes) -> bool:
+def is_valid_audio_magic(data: bytes) -> bool:
     """Return True if *data* starts with a recognised audio file signature.
 
     Checks magic bytes for common audio containers. The client-supplied
@@ -147,7 +135,6 @@ async def render_audio(
     Falls back to regular file attachment if conversion fails.
     """
     # Import here to avoid circular import at module level
-    from lyra.adapters.discord import DISCORD_MAX_LENGTH  # noqa: PLC0415
 
     if inbound.platform != Platform.DISCORD.value:
         log.error(
@@ -244,7 +231,6 @@ async def render_attachment(
     follow the same pattern as render_audio.
     """
     # Import here to avoid circular import at module level
-    from lyra.adapters.discord import DISCORD_MAX_LENGTH  # noqa: PLC0415
 
     if inbound.platform != Platform.DISCORD.value:
         log.error(

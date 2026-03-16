@@ -1,0 +1,135 @@
+---
+title: "ADR-026: Pool Callback Wiring — Eager at Pool Resolution vs Lazy at First Turn"
+description: Fix a temporal coupling bug where pool callbacks (resume, reset, switch_cwd) are wired too late to be useful on the first message after a daemon restart.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+`Pool` holds three nullable callbacks that delegate infrastructure operations to the
+underlying `LlmProvider`:
+
+| Callback | Invoked by |
+|---|---|
+| `_session_resume_fn` | `Pool.resume_session()` — called by `_resolve_context` before pool submission |
+| `_session_reset_fn` | `Pool.reset_session()` — called by the `/clear` command handler |
+| `_switch_workspace_fn` | `Pool.switch_workspace()` — called by the `/workspace` command handler |
+
+All three are initialised to `None` in `Pool.__init__` and wired lazily inside
+`SimpleAgent.process()` via `_maybe_register_reset()` and `_maybe_register_resume()`.
+The assumption was that `process()` would always run before any caller invoked a
+pool capability.
+
+That assumption broke when `MessagePipeline._resolve_context` was added. This stage
+calls `pool.resume_session(thread_session_id)` **before** `pool.submit(msg)` is
+called, and therefore before `process()` runs. On the first message arriving in a
+Discord thread after a daemon restart:
+
+1. `PoolManager.get_or_create_pool()` creates a fresh `Pool` with all callbacks `None`.
+2. `_resolve_context` calls `pool.resume_session(thread_session_id)` — no-op because
+   `_session_resume_fn is None`.
+3. `pool.submit(msg)` enqueues the message.
+4. `process()` runs, wires `_session_resume_fn` — too late.
+
+The result: the first message after restart starts a fresh Claude session instead of
+resuming the stored one. Subsequent messages resume correctly because `process()` has
+now wired the callback.
+
+`_session_reset_fn` and `_switch_workspace_fn` are triggered only by explicit user
+commands, so in practice a user will have already sent at least one ordinary message
+before issuing `/clear` or `/workspace`. This makes the lazy wiring accidentally safe
+for those two, but it is an unenforceable invariant — a slash command issued as the
+very first message in a fresh Discord thread would silently no-op.
+
+## Options Considered
+
+### Option A: Introduce `AgentBase.configure_pool(pool)` — call eagerly at pool resolution (recommended)
+
+Add a `configure_pool(pool: Pool) -> None` method to `AgentBase` (default: no-op).
+`SimpleAgent` overrides it to call `_maybe_register_reset` and
+`_maybe_register_resume`. `MessagePipeline._submit_to_pool` calls
+`agent.configure_pool(pool)` immediately after `get_or_create_pool()` returns, before
+`_resolve_context`.
+
+- **Pros:** `PoolManager` stays ignorant of provider internals. All callback-wiring
+  logic stays in `SimpleAgent`. Additive on `AgentBase` — other agents silently
+  ignore it. Fixes all three callbacks in one pass. `_maybe_register_*` guards remain
+  useful for idempotency.
+- **Cons:** Adds a new method to `AgentBase`. `MessagePipeline` must have access to
+  the agent at the point it calls `get_or_create_pool()`; it already resolves the
+  agent earlier in the pipeline so threading it to `_submit_to_pool` is a small
+  change.
+
+### Option B: Wire callbacks in `PoolManager.get_or_create_pool()`
+
+Pass the agent (or provider) into `get_or_create_pool()` and have it extract and bind
+the callbacks directly.
+
+- **Pros:** Pool is fully configured when it leaves the factory.
+- **Cons:** `PoolManager` would need to know about `SimpleAgent._provider` and use the
+  same `getattr` guards. This places capability-binding responsibility in a lifecycle
+  manager, violates separation of concerns, and widens `PoolManager`'s signature.
+
+### Option C: Queue the resume intent on the pool; honour it inside `process()`
+
+Store the desired session ID in a `_pending_resume_session_id` field on `Pool`.
+`process()` consumes it after wiring the callback.
+
+- **Pros:** No signature changes anywhere.
+- **Cons:** Adds deferred-side-effect state to `Pool`. The resume can be silently lost
+  if the pool is flushed or the task is cancelled. Breaks the explicit pipeline
+  contract that resume happens before submission.
+
+### Option D: Call `agent._maybe_register_resume(pool)` directly from `_resolve_context`
+
+`MessagePipeline` already holds a hub reference; it could reach the agent and call
+the wiring method before calling `pool.resume_session()`.
+
+- **Pros:** Minimal diff.
+- **Cons:** `MessagePipeline` (infrastructure routing) would invoke an internal method
+  on `SimpleAgent` (application layer), inverting the natural dependency direction.
+
+## Decision
+
+**Option A** is adopted.
+
+A `configure_pool(pool: Pool) -> None` hook is added to `AgentBase` (default no-op).
+`SimpleAgent` overrides it, calling `_maybe_register_reset(pool)` and
+`_maybe_register_resume(pool)`. `MessagePipeline._submit_to_pool` calls
+`agent.configure_pool(pool)` once, immediately after pool resolution and before
+`_resolve_context`.
+
+The `_maybe_register_*` guards (`if pool._session_resume_fn is None`) are preserved
+for idempotency — re-entry via repeated `process()` calls is still short-circuited at
+zero cost.
+
+The comment in `_resolve_context` that stated "wired lazily by SimpleAgent on first
+process()" is updated to reflect eager wiring at pool resolution time.
+
+## Consequences
+
+### Positive
+
+- The session-resume no-op on first post-restart message is eliminated.
+- All three callbacks (`reset`, `resume`, `switch_cwd`) are guaranteed present before
+  any pipeline stage can invoke a pool capability.
+- The fix is uniform — the same pattern that caused the bug for resume cannot recur
+  for reset or workspace switching.
+- `PoolManager` is not modified; its responsibility boundary is unchanged.
+
+### Negative
+
+- `AgentBase` gains a new lifecycle hook. Future agent implementations must be aware
+  that `configure_pool` may be called before any message is processed.
+- `MessagePipeline._submit_to_pool` must receive or look up the agent reference,
+  which was previously only needed by `_lookup_agent` earlier in the pipeline.
+
+### Neutral
+
+- The `_maybe_register_*` methods in `SimpleAgent` are not removed; they are simply
+  called from a different (earlier) call site. Their internal guards remain valid.
+- SDK-backed agents (if any are introduced) would override `configure_pool` with a
+  no-op or a different wiring strategy, with no impact on the pipeline.

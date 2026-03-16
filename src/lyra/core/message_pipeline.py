@@ -179,6 +179,11 @@ class MessagePipeline:
         pool: Pool,
         key: RoutingKey,
     ) -> PipelineResult:
+        # Wire provider callbacks before dispatch so commands (e.g. /clear) that
+        # call pool.reset_session() have a live _session_reset_fn.
+        _agent = self._hub.agent_registry.get(pool.agent_name)
+        if _agent is not None and hasattr(_agent, "configure_pool"):
+            _agent.configure_pool(pool)
         try:
             response = await router.dispatch(msg, pool)
         except Exception as exc:
@@ -287,6 +292,11 @@ class MessagePipeline:
         _update_fn = msg.platform_meta.get("_session_update_fn")
         if _update_fn is not None and pool._observer._session_update_fn is None:
             pool._observer.register_session_update_fn(_update_fn)
+        # Wire provider callbacks (reset/resume) before _resolve_context so that
+        # pool._session_resume_fn is available on the first message after restart.
+        _agent = self._hub.agent_registry.get(pool.agent_name)
+        if _agent is not None and hasattr(_agent, "configure_pool"):
+            _agent.configure_pool(pool)
         try:
             await self._resolve_context(msg, pool, pool.pool_id)
         except Exception:

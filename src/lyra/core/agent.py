@@ -257,6 +257,18 @@ class AgentBase(ABC, SessionManager):
     async def reset_backend(self, _pool_id: str) -> None:
         """Kill and reset the backend process (no-op for SDK agents)."""
 
+    def configure_pool(self, pool: "Pool") -> None:
+        """Wire agent callbacks onto *pool* before first use.
+
+        Called by the pipeline before _resolve_context / router.dispatch so
+        that pool._session_resume_fn (and reset/switch callbacks) are available
+        even on the very first message after a daemon restart, before
+        process() has ever been called.
+
+        Subclasses override this to register provider-specific callbacks.
+        The default implementation is a no-op so existing agents are unaffected.
+        """
+
     @abstractmethod
     async def process(
         self,

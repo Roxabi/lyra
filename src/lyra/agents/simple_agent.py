@@ -129,6 +129,16 @@ class SimpleAgent(AgentBase):
                 _pool_id = pool.pool_id
                 pool._session_resume_fn = lambda sid: resume_fn(_pool_id, sid)
 
+    def configure_pool(self, pool: Pool) -> None:
+        """Wire provider callbacks onto *pool* before first message is processed.
+
+        Moved out of process() so that pool._session_resume_fn is set before
+        _resolve_context() calls pool.resume_session() on the first message
+        after a daemon restart.
+        """
+        self._maybe_register_reset(pool)
+        self._maybe_register_resume(pool)
+
     async def process(  # noqa: C901
         self,
         msg: InboundMessage,
@@ -137,8 +147,6 @@ class SimpleAgent(AgentBase):
         on_intermediate: "Callable[[str], Awaitable[None]] | None" = None,
     ) -> Response:
         self._maybe_reload()
-        self._maybe_register_reset(pool)
-        self._maybe_register_resume(pool)
 
         # /voice pre-router: rewrite as voice-modality LLM request
         _voice_rewritten = self._handle_voice_command(msg)

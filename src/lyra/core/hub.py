@@ -420,7 +420,11 @@ class Hub:
     # ------------------------------------------------------------------
 
     async def circuit_breaker_drop(self, msg: InboundMessage) -> bool:
-        """Return True if the circuit is open and a fast-fail reply was sent."""
+        """Return True if the circuit is open and a fast-fail reply was sent.
+
+        Internal API — promoted from private for cross-module access by
+        MessagePipeline. Not part of the public Hub contract.
+        """
         if self.circuit_registry is None:
             return False
         cb = self.circuit_registry.get("anthropic")
@@ -489,7 +493,7 @@ class Hub:
             text = outbound.to_text().strip()
             if text:
                 task = asyncio.create_task(
-                    self._audio_pipeline._synthesize_and_dispatch_audio(msg, text),
+                    self._audio_pipeline.synthesize_and_dispatch_audio(msg, text),
                     name=f"tts:{msg.id}",
                 )
                 self._memory_tasks.add(task)
@@ -560,13 +564,18 @@ class Hub:
     async def dispatch_attachment(
         self, msg: InboundMessage, attachment: OutboundAttachment
     ) -> None:
-        """Send an attachment back via the originating adapter."""
+        """Send an attachment back via the originating adapter.
+
+        Routes through the OutboundDispatcher when one is registered (fire-and-forget).
+        Falls back to a direct adapter call when no dispatcher is registered.
+        """
         platform = Platform(msg.platform)
         dispatcher = self.outbound_dispatchers.get((platform, msg.bot_id))
         if dispatcher is not None:
             dispatcher.enqueue_attachment(msg, attachment)
             self._last_processed_at = time.monotonic()
             return
+        # Fallback: direct adapter call (backward compat / no dispatcher registered)
         adapter = self.adapter_registry.get((platform, msg.bot_id))
         if adapter is None:
             raise KeyError(
@@ -577,13 +586,18 @@ class Hub:
         self._last_processed_at = time.monotonic()
 
     async def dispatch_audio(self, msg: InboundMessage, audio: OutboundAudio) -> None:
-        """Send an audio voice note back via the originating adapter."""
+        """Send an audio voice note back via the originating adapter.
+
+        Routes through the OutboundDispatcher when one is registered (fire-and-forget).
+        Falls back to a direct adapter call when no dispatcher is registered.
+        """
         platform = Platform(msg.platform)
         dispatcher = self.outbound_dispatchers.get((platform, msg.bot_id))
         if dispatcher is not None:
             dispatcher.enqueue_audio(msg, audio)
             self._last_processed_at = time.monotonic()
             return
+        # Fallback: direct adapter call (backward compat / no dispatcher registered)
         adapter = self.adapter_registry.get((platform, msg.bot_id))
         if adapter is None:
             raise KeyError(
@@ -598,13 +612,18 @@ class Hub:
         msg: InboundMessage,
         chunks: AsyncIterator[OutboundAudioChunk],
     ) -> None:
-        """Stream audio chunks back via the originating adapter."""
+        """Stream audio chunks back via the originating adapter.
+
+        Routes through the OutboundDispatcher when one is registered (fire-and-forget).
+        Falls back to a direct adapter call when no dispatcher is registered.
+        """
         platform = Platform(msg.platform)
         dispatcher = self.outbound_dispatchers.get((platform, msg.bot_id))
         if dispatcher is not None:
             dispatcher.enqueue_audio_stream(msg, chunks)
             self._last_processed_at = time.monotonic()
             return
+        # Fallback: direct adapter call (backward compat / no dispatcher registered)
         adapter = self.adapter_registry.get((platform, msg.bot_id))
         if adapter is None:
             raise KeyError(
@@ -619,13 +638,18 @@ class Hub:
         msg: InboundMessage,
         chunks: AsyncIterator[OutboundAudioChunk],
     ) -> None:
-        """Stream TTS audio to an active Discord voice session."""
+        """Stream TTS audio to an active Discord voice session.
+
+        Routes through the OutboundDispatcher when one is registered (fire-and-forget).
+        Falls back to a direct adapter call when no dispatcher is registered.
+        """
         platform = Platform(msg.platform)
         dispatcher = self.outbound_dispatchers.get((platform, msg.bot_id))
         if dispatcher is not None:
             dispatcher.enqueue_voice_stream(msg, chunks)
             self._last_processed_at = time.monotonic()
             return
+        # Fallback: direct adapter call (backward compat / no dispatcher registered)
         adapter = self.adapter_registry.get((platform, msg.bot_id))
         if adapter is None:
             raise KeyError(

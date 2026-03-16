@@ -1577,7 +1577,7 @@ async def test_dispatch_response_accepts_legacy_response() -> None:
 
 
 class TestPoolTTLEviction:
-    """Hub._evict_stale_pools removes idle pools exceeding the TTL."""
+    """PoolManager._evict_stale_pools removes idle pools exceeding the TTL."""
 
     @staticmethod
     def _force_eviction_eligible(hub: Hub) -> None:
@@ -1780,16 +1780,23 @@ class TestHubEvictFlushTask:
         mock_mm = AsyncMock()
         hub._memory = mock_mm  # type: ignore[attr-defined]
 
+        # Register a mock agent with flush_session so eviction creates a task
+        mock_agent = MagicMock()
+        mock_agent.name = "agent"
+        mock_agent.flush_session = AsyncMock()
+        hub.register_agent(mock_agent)
+
         pool = hub.get_or_create_pool("p_flush", "agent")
         pool._last_active -= 5  # force stale
         # Simulate the pool having had a message (user_id is set)
         pool.user_id = "u1"  # type: ignore[attr-defined]
 
-        # Trigger eviction scan
+        # Reset throttle and trigger eviction scan
+        hub._pool_manager._last_eviction_check = 0.0
         hub._pool_manager._evict_stale_pools()  # type: ignore[attr-defined]
 
-        # FAILS until eviction creates a flush task
-        assert len(hub._memory_tasks) >= 0  # relaxed — just check no exception
+        # Eviction must schedule a flush task for the pool with messages
+        assert len(hub._memory_tasks) >= 1
 
     @pytest.mark.asyncio
     async def test_shutdown_has_shutdown_method(self) -> None:

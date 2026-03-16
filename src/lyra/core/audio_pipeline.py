@@ -211,7 +211,7 @@ class AudioPipeline:
         )
         await self._hub.dispatch_response(synthetic, Response(content=content))
 
-    async def _synthesize_and_dispatch_audio(
+    async def synthesize_and_dispatch_audio(
         self, msg: InboundMessage, text: str
     ) -> None:
         """Synthesize TTS audio for a voice response and dispatch it.

@@ -66,7 +66,10 @@ _cmd_parser = CommandParser()
 
 
 def _make_admin_msg(
-    text: str = "/routing", user_id: str = "tg:user:123"
+    text: str = "/routing",
+    user_id: str = "tg:user:123",
+    *,
+    is_admin: bool = True,
 ) -> InboundMessage:
     return InboundMessage(
         id="msg1",
@@ -79,6 +82,7 @@ def _make_admin_msg(
         text=text,
         text_raw=text,
         trust_level=TrustLevel.TRUSTED,
+        is_admin=is_admin,
         command=_cmd_parser.parse(text),  # type: ignore[call-arg]  # field added in #153
     )
 
@@ -354,7 +358,7 @@ class TestRoutingCommand:
         """Non-admin users get rejected."""
         # Arrange
         router = self._make_router(admin_ids={"tg:user:999"})
-        msg = _make_admin_msg("/routing")
+        msg = _make_admin_msg("/routing", is_admin=False)
 
         # Act
         resp = await router.dispatch(msg)

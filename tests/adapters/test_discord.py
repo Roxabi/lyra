@@ -1491,10 +1491,16 @@ class TestDiscordAuth:
 
         from lyra.adapters.discord import DiscordAdapter
         from lyra.core.auth import AuthMiddleware
+        from lyra.core.identity import Identity
         from lyra.core.trust import TrustLevel
 
         auth = MagicMock(spec=AuthMiddleware)
         auth.check.return_value = TrustLevel.BLOCKED
+        auth.resolve.return_value = Identity(
+            user_id="dc:user:42",
+            trust_level=TrustLevel.BLOCKED,
+            is_admin=False,
+        )
 
         hub = MagicMock()
         hub.inbound_bus = MagicMock()
@@ -1517,10 +1523,16 @@ class TestDiscordAuth:
         """User with a matching role: message produced with correct trust_level."""
         from lyra.adapters.discord import DiscordAdapter
         from lyra.core.auth import AuthMiddleware
+        from lyra.core.identity import Identity
         from lyra.core.trust import TrustLevel
 
         auth = MagicMock(spec=AuthMiddleware)
         auth.check.return_value = TrustLevel.TRUSTED
+        auth.resolve.return_value = Identity(
+            user_id="dc:user:42",
+            trust_level=TrustLevel.TRUSTED,
+            is_admin=False,
+        )
 
         hub = MagicMock()
         hub.inbound_bus = MagicMock()
@@ -1533,8 +1545,8 @@ class TestDiscordAuth:
         msg_ns = _make_discord_msg_ns(roles=["123456"])
         await adapter.on_message(msg_ns)
 
-        # Verify role snowflake IDs were passed to auth.check
-        call_kwargs = auth.check.call_args
+        # Verify role snowflake IDs were passed to auth.resolve
+        call_kwargs = auth.resolve.call_args
         assert call_kwargs is not None
         passed_roles = call_kwargs.kwargs.get("roles") or (
             call_kwargs.args[1] if len(call_kwargs.args) > 1 else []
@@ -1546,10 +1558,16 @@ class TestDiscordAuth:
         """DM message (no roles attribute): auth.check called with roles=[]."""
         from lyra.adapters.discord import DiscordAdapter
         from lyra.core.auth import AuthMiddleware
+        from lyra.core.identity import Identity
         from lyra.core.trust import TrustLevel
 
         auth = MagicMock(spec=AuthMiddleware)
         auth.check.return_value = TrustLevel.PUBLIC
+        auth.resolve.return_value = Identity(
+            user_id="dc:user:42",
+            trust_level=TrustLevel.PUBLIC,
+            is_admin=False,
+        )
 
         hub = MagicMock()
         hub.inbound_bus = MagicMock()
@@ -1576,7 +1594,7 @@ class TestDiscordAuth:
 
         await adapter.on_message(dm_msg)
 
-        call_kwargs = auth.check.call_args
+        call_kwargs = auth.resolve.call_args
         assert call_kwargs is not None
         passed_roles = call_kwargs.kwargs.get("roles") or (
             call_kwargs.args[1] if len(call_kwargs.args) > 1 else []
@@ -1588,10 +1606,16 @@ class TestDiscordAuth:
         """PUBLIC user: message reaches bus with trust_level=TrustLevel.PUBLIC."""
         from lyra.adapters.discord import DiscordAdapter
         from lyra.core.auth import AuthMiddleware
+        from lyra.core.identity import Identity
         from lyra.core.trust import TrustLevel
 
         auth = MagicMock(spec=AuthMiddleware)
         auth.check.return_value = TrustLevel.PUBLIC
+        auth.resolve.return_value = Identity(
+            user_id="dc:user:42",
+            trust_level=TrustLevel.PUBLIC,
+            is_admin=False,
+        )
 
         hub = MagicMock()
         hub.inbound_bus = MagicMock()
@@ -1607,6 +1631,67 @@ class TestDiscordAuth:
         hub.inbound_bus.put.assert_called_once()
         _platform, msg = hub.inbound_bus.put.call_args[0]
         assert msg.trust_level == TrustLevel.PUBLIC
+        assert msg.is_admin is False
+
+    @pytest.mark.asyncio
+    async def test_admin_user_has_is_admin_set(self) -> None:
+        """Admin user: message produced with is_admin=True."""
+        from lyra.adapters.discord import DiscordAdapter
+        from lyra.core.auth import AuthMiddleware
+        from lyra.core.identity import Identity
+        from lyra.core.trust import TrustLevel
+
+        auth = MagicMock(spec=AuthMiddleware)
+        auth.resolve.return_value = Identity(
+            user_id="dc:user:42",
+            trust_level=TrustLevel.TRUSTED,
+            is_admin=True,
+        )
+
+        hub = MagicMock()
+        hub.inbound_bus = MagicMock()
+        hub.inbound_bus.put = MagicMock()
+        adapter = DiscordAdapter(
+            hub=hub, bot_id="main", intents=discord.Intents.none(), auth=auth
+        )
+        adapter._bot_user = SimpleNamespace(id=999, bot=True)
+
+        msg_ns = _make_discord_msg_ns()
+        await adapter.on_message(msg_ns)
+
+        hub.inbound_bus.put.assert_called_once()
+        _platform, msg = hub.inbound_bus.put.call_args[0]
+        assert msg.is_admin is True
+
+    @pytest.mark.asyncio
+    async def test_integration_blocked_user_rejected_by_real_guard(self) -> None:
+        """Integration: real Authenticator + real GuardChain rejects BLOCKED user."""
+        from unittest.mock import patch
+
+        from lyra.adapters.discord import DiscordAdapter
+        from lyra.core.authenticator import Authenticator
+        from lyra.core.guard import BlockedGuard, GuardChain
+        from lyra.core.trust import TrustLevel
+
+        store = MagicMock()
+        store.check.return_value = TrustLevel.BLOCKED
+        auth = Authenticator(store=store, role_map={}, default=TrustLevel.BLOCKED)
+        guard_chain = GuardChain([BlockedGuard()])
+
+        hub = MagicMock()
+        hub.inbound_bus = MagicMock()
+        adapter = DiscordAdapter(
+            hub=hub, bot_id="main", intents=discord.Intents.none(), auth=auth
+        )
+        adapter._bot_user = SimpleNamespace(id=999, bot=True)
+        # Inject real guard chain
+        adapter._guard_chain = guard_chain
+
+        with patch.object(adapter, "normalize") as mock_norm:
+            await adapter.on_message(_make_discord_msg_ns())
+
+        mock_norm.assert_not_called()
+        hub.inbound_bus.put.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

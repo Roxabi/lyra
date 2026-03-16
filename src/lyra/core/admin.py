@@ -1,17 +1,18 @@
 """Module-level admin user IDs registry.
 
-Plugins and other components that need to verify admin status call
-is_admin() without needing to thread admin_user_ids through every layer.
+Deprecated: prefer ``msg.is_admin`` (set by Authenticator.resolve() during
+normalize). This module is kept for backward compat in code that does not
+have access to an InboundMessage (e.g. startup wiring).
 
-Usage:
+Usage (legacy):
     from lyra.core.admin import is_admin, set_admin_user_ids
+    set_admin_user_ids(admin_ids)   # at startup
+    if not is_admin(user_id): ...   # when no InboundMessage available
 
-    # At startup (in __main__.py):
-    set_admin_user_ids(admin_ids)
+Preferred:
+    if not msg.is_admin: ...        # when InboundMessage is available
 
-    # In a plugin handler:
-    if not is_admin(msg.user_id):
-        return Response(content="Admin-only.")
+Removal tracked in #315.
 """
 
 from __future__ import annotations

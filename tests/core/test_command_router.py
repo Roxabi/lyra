@@ -62,6 +62,8 @@ def make_message(
     platform: str = "telegram",
     bot_id: str = "main",
     user_id: str = "alice",
+    *,
+    is_admin: bool = False,
 ) -> InboundMessage:
     """Build a minimal InboundMessage for testing.
 
@@ -89,6 +91,7 @@ def make_message(
             "is_group": False,
         },
         trust_level=TrustLevel.TRUSTED,
+        is_admin=is_admin,
         command=cmd_ctx,  # type: ignore[call-arg]  # field added in #153
     )
 
@@ -512,7 +515,9 @@ def make_circuit_router(
     )
 
 
-def make_circuit_msg(user_id: str = "tg:user:42") -> InboundMessage:
+def make_circuit_msg(
+    user_id: str = "tg:user:42", *, is_admin: bool = False
+) -> InboundMessage:
     """Build a /circuit InboundMessage from a Telegram user."""
     _parser = CommandParser()
     return InboundMessage(
@@ -533,6 +538,7 @@ def make_circuit_msg(user_id: str = "tg:user:42") -> InboundMessage:
             "is_group": False,
         },
         trust_level=TrustLevel.TRUSTED,
+        is_admin=is_admin,
         command=_parser.parse("/circuit"),  # type: ignore[call-arg]  # field added in #153
     )
 
@@ -569,7 +575,7 @@ class TestCircuitCommandAdminCheck:
             registry.register(CircuitBreaker(name))
         admin_id = "tg:user:42"  # msg.user_id format — no platform prefix
         router = make_circuit_router(registry=registry, admin_ids={admin_id})
-        msg = make_circuit_msg(user_id="tg:user:42")
+        msg = make_circuit_msg(user_id="tg:user:42", is_admin=True)
 
         # Act
         response = await router.dispatch(msg)
@@ -613,7 +619,7 @@ class TestCircuitCommandOpenState:
         registry = make_registry_with_open("anthropic")
         admin_id = "tg:user:42"  # msg.user_id format — no platform prefix
         router = make_circuit_router(registry=registry, admin_ids={admin_id})
-        msg = make_circuit_msg(user_id="tg:user:42")
+        msg = make_circuit_msg(user_id="tg:user:42", is_admin=True)
 
         # Act
         response = await router.dispatch(msg)
@@ -632,7 +638,7 @@ class TestCircuitCommandNoRegistry:
         """No circuit_registry → 'Circuit breaker not configured.'"""
         # Arrange — admin is set but no registry provided
         router = make_circuit_router(registry=None, admin_ids={"tg:user:42"})
-        msg = make_circuit_msg(user_id="tg:user:42")
+        msg = make_circuit_msg(user_id="tg:user:42", is_admin=True)
 
         # Act
         response = await router.dispatch(msg)
@@ -811,7 +817,7 @@ def make_config_router(
 
 
 def make_config_msg(
-    user_id: str = "tg:user:42", content: str = "/config"
+    user_id: str = "tg:user:42", content: str = "/config", *, is_admin: bool = False
 ) -> InboundMessage:
     """Build a /config InboundMessage."""
     _parser = CommandParser()
@@ -833,6 +839,7 @@ def make_config_msg(
             "is_group": False,
         },
         trust_level=TrustLevel.TRUSTED,
+        is_admin=is_admin,
         command=_parser.parse(content),  # type: ignore[call-arg]  # field added in #153
     )
 
@@ -859,7 +866,7 @@ class TestConfigCommand:
         """Admin /config (no args) → table showing all 6 config fields."""
         # Arrange
         router = make_config_router(tmp_path, admin_ids={"tg:user:42"})
-        msg = make_config_msg(user_id="tg:user:42", content="/config")
+        msg = make_config_msg(user_id="tg:user:42", content="/config", is_admin=True)
 
         # Act
         response = await router.dispatch(msg)
@@ -881,7 +888,9 @@ class TestConfigCommand:
         # Arrange — monkeypatch _AGENTS_DIR so save() writes into tmp_path
         monkeypatch.setattr("lyra.core.agent_config._AGENTS_DIR", tmp_path)
         router = make_config_router(tmp_path, admin_ids={"tg:user:42"})
-        msg = make_config_msg(user_id="tg:user:42", content="/config style=detailed")
+        msg = make_config_msg(
+            user_id="tg:user:42", content="/config style=detailed", is_admin=True
+        )
 
         # Act
         response = await router.dispatch(msg)
@@ -896,7 +905,9 @@ class TestConfigCommand:
         """Admin /config foo=bar → 'Unknown config key'"""
         # Arrange
         router = make_config_router(tmp_path, admin_ids={"tg:user:42"})
-        msg = make_config_msg(user_id="tg:user:42", content="/config foo=bar")
+        msg = make_config_msg(
+            user_id="tg:user:42", content="/config foo=bar", is_admin=True
+        )
 
         # Act
         response = await router.dispatch(msg)
@@ -913,7 +924,9 @@ class TestConfigCommand:
         # Arrange
         monkeypatch.setattr("lyra.core.agent_config._AGENTS_DIR", tmp_path)
         router = make_config_router(tmp_path, admin_ids={"tg:user:42"})
-        msg = make_config_msg(user_id="tg:user:42", content="/config reset")
+        msg = make_config_msg(
+            user_id="tg:user:42", content="/config reset", is_admin=True
+        )
 
         # Act
         response = await router.dispatch(msg)
@@ -930,7 +943,9 @@ class TestConfigCommand:
         # Arrange
         monkeypatch.setattr("lyra.core.agent_config._AGENTS_DIR", tmp_path)
         router = make_config_router(tmp_path, admin_ids={"tg:user:42"})
-        msg = make_config_msg(user_id="tg:user:42", content="/config reset style")
+        msg = make_config_msg(
+            user_id="tg:user:42", content="/config reset style", is_admin=True
+        )
 
         # Act
         response = await router.dispatch(msg)
@@ -944,7 +959,9 @@ class TestConfigCommand:
         """Admin /config reset unknown_key → error with 'Unknown config key'"""
         # Arrange
         router = make_config_router(tmp_path, admin_ids={"tg:user:42"})
-        msg = make_config_msg(user_id="tg:user:42", content="/config reset unknown_key")
+        msg = make_config_msg(
+            user_id="tg:user:42", content="/config reset unknown_key", is_admin=True
+        )
 
         # Act
         response = await router.dispatch(msg)
@@ -960,7 +977,7 @@ class TestConfigCommand:
         router = make_config_router(
             tmp_path, admin_ids={"tg:user:42"}, with_holder=False
         )
-        msg = make_config_msg(user_id="tg:user:42", content="/config")
+        msg = make_config_msg(user_id="tg:user:42", content="/config", is_admin=True)
 
         # Act
         response = await router.dispatch(msg)
@@ -1115,7 +1132,7 @@ class TestWorkspaceCommands:
         ws_dir = tmp_path / "proj"
         ws_dir.mkdir()
         router = make_workspace_router(tmp_path, {"proj": ws_dir})
-        msg = make_message(content="/workspace ls")
+        msg = make_message(content="/workspace ls", is_admin=True)
 
         response = await router.dispatch(msg)
 
@@ -1128,7 +1145,7 @@ class TestWorkspaceCommands:
         ws_dir = tmp_path / "proj"
         ws_dir.mkdir()
         router = make_workspace_router(tmp_path, {"proj": ws_dir})
-        msg = make_message(content="/workspace list")
+        msg = make_message(content="/workspace list", is_admin=True)
 
         response = await router.dispatch(msg)
 
@@ -1141,7 +1158,7 @@ class TestWorkspaceCommands:
         ws_dir = tmp_path / "proj"
         ws_dir.mkdir()
         router = make_workspace_router(tmp_path, {"proj": ws_dir})
-        msg = make_message(content="/workspace")
+        msg = make_message(content="/workspace", is_admin=True)
 
         response = await router.dispatch(msg)
 
@@ -1156,7 +1173,7 @@ class TestWorkspaceCommands:
         ws_dir = tmp_path / "proj"
         ws_dir.mkdir()
         router = make_workspace_router(tmp_path, {"proj": ws_dir})
-        msg = make_message(content="/workspace proj")
+        msg = make_message(content="/workspace proj", is_admin=True)
 
         switch_called_with: list[Path] = []
 
@@ -1181,7 +1198,9 @@ class TestWorkspaceCommands:
         ws_dir = tmp_path / "proj"
         ws_dir.mkdir()
         router = make_workspace_router(tmp_path, {"proj": ws_dir})
-        msg = make_message(content="/workspace proj what's the last commit?")
+        msg = make_message(
+            content="/workspace proj what's the last commit?", is_admin=True
+        )
 
         async def _fake_switch(cwd: Path) -> None:
             pass
@@ -1205,7 +1224,7 @@ class TestWorkspaceCommands:
         ws_dir = tmp_path / "solo"
         ws_dir.mkdir()
         router = make_workspace_router(tmp_path, {"solo": ws_dir})
-        msg = make_message(content="/workspace solo")
+        msg = make_message(content="/workspace solo", is_admin=True)
 
         response = await router.dispatch(msg, pool=None)
 
@@ -1218,7 +1237,7 @@ class TestWorkspaceCommands:
         ws_dir = tmp_path / "myws"
         ws_dir.mkdir()
         router = make_workspace_router(tmp_path, {"myws": ws_dir})
-        msg = make_message(content="/workspace otherws")
+        msg = make_message(content="/workspace otherws", is_admin=True)
 
         response = await router.dispatch(msg)
 

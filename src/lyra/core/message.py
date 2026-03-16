@@ -78,6 +78,7 @@ class InboundMessage:
     text: str  # normalized plain text (markup stripped)
     text_raw: str  # original text with platform markup
     trust_level: TrustLevel
+    is_admin: bool = False
     attachments: list[Attachment] = field(default_factory=list)
     reply_to_id: str | None = None
     thread_id: str | None = None

@@ -184,11 +184,11 @@ class CommandRouter:
             )
         if command_name == "/circuit":
             return builtin_commands.circuit_status(
-                msg, self._admin_user_ids, self._circuit_registry
+                msg, self._circuit_registry
             )
         if command_name == "/routing":
             return builtin_commands.routing_status(
-                msg, self._admin_user_ids, self._smart_routing
+                msg, self._smart_routing
             )
         if command_name == "/stop":
             if pool is not None:
@@ -198,7 +198,6 @@ class CommandRouter:
             return builtin_commands.config_command(
                 msg,
                 args,
-                self._admin_user_ids,
                 self._runtime_config_holder,
                 self._runtime_config_path,
                 self._on_debounce_change,
@@ -244,12 +243,10 @@ class CommandRouter:
         if command_name in ("/clear", "/new"):
             return await workspace_commands.cmd_clear(pool)
         if command_name in ("/folder", "/cd"):
-            return await workspace_commands.cmd_folder(
-                msg, args, pool, self._admin_user_ids
-            )
+            return await workspace_commands.cmd_folder(msg, args, pool)
         if command_name == "/workspace":
             return await workspace_commands.cmd_workspace(
-                msg, args, pool, self._admin_user_ids, self._workspaces
+                msg, args, pool, self._workspaces
             )
 
         builtin_response = self._dispatch_builtin(command_name, args, msg, pool)

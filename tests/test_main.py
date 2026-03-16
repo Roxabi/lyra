@@ -81,11 +81,25 @@ def _patch_all(
     mock_tg_auth, mock_dc_auth = _make_mock_auth_pair()
     _auth_results = iter([mock_tg_auth, mock_dc_auth])
     monkeypatch.setattr(main_mod, "load_dotenv", lambda: None)
-    monkeypatch.setattr(
-        AuthMiddleware,
-        "from_config",
-        classmethod(lambda cls, raw, section, store=None: next(_auth_results)),
+    # Provide a synthetic config with bot entries so bootstrap finds adapters
+    _synthetic_config = {
+        "telegram": {"bots": [{"bot_id": "main"}]},
+        "discord": {"bots": [{"bot_id": "main"}]},
+        "auth": {
+            "telegram_bots": [{"bot_id": "main", "default": "public"}],
+            "discord_bots": [{"bot_id": "main", "default": "public"}],
+        },
+    }
+    monkeypatch.setattr(main_mod, "_load_raw_config", lambda: _synthetic_config)
+    _mock_auth_cls = MagicMock()
+    _mock_auth_cls.from_config = MagicMock(
+        side_effect=lambda *a, **kw: next(_auth_results)
     )
+    _bot_auth_results = iter([mock_tg_auth, mock_dc_auth])
+    _mock_auth_cls.from_bot_config = MagicMock(
+        side_effect=lambda *a, **kw: next(_bot_auth_results)
+    )
+    monkeypatch.setattr(multibot_mod, "AuthMiddleware", _mock_auth_cls)
     from unittest.mock import AsyncMock
 
     _fake_auth_store = MagicMock()

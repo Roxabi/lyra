@@ -35,7 +35,9 @@ from lyra.adapters.telegram_outbound import (
     send_streaming as _send_streaming_impl,
 )
 from lyra.core.auth import _ALLOW_ALL, _DENY_ALL, AuthMiddleware  # noqa: F401 — re-exported for tests and external callers
+from lyra.core.authenticator import Authenticator
 from lyra.core.circuit_breaker import CircuitRegistry
+from lyra.core.guard import BlockedGuard, GuardChain
 from lyra.core.trust import TrustLevel
 from lyra.core.message import (
     InboundAudio,
@@ -95,7 +97,7 @@ class TelegramAdapter:
         webhook_secret: str = "",
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
-        auth: AuthMiddleware = _DENY_ALL,
+        auth: Authenticator = _DENY_ALL,
     ) -> None:
         self._bot_id = bot_id
         self._token = token
@@ -108,7 +110,8 @@ class TelegramAdapter:
         self._hub: Hub = hub
         self._circuit_registry = circuit_registry
         self._msg_manager = msg_manager
-        self._auth: AuthMiddleware = auth
+        self._auth: Authenticator = auth
+        self._guard_chain: GuardChain = GuardChain([BlockedGuard()])
         _raw_tmp = os.environ.get("LYRA_AUDIO_TMP") or None
         if _raw_tmp is not None:
             _tmp_path = Path(_raw_tmp)
@@ -223,9 +226,13 @@ class TelegramAdapter:
         await handle_voice_message(self, msg)
 
     def normalize(
-        self, raw: Any, *, trust_level: TrustLevel = TrustLevel.TRUSTED
+        self,
+        raw: Any,
+        *,
+        trust_level: TrustLevel = TrustLevel.TRUSTED,
+        is_admin: bool = False,
     ) -> InboundMessage:
-        return _normalize_impl(self, raw, trust_level=trust_level)
+        return _normalize_impl(self, raw, trust_level=trust_level, is_admin=is_admin)
 
     def normalize_audio(
         self, raw: Any, audio_bytes: bytes, mime_type: str, *, trust_level: TrustLevel

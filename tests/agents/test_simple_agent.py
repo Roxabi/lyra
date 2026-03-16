@@ -6,13 +6,14 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 from lyra.agents.simple_agent import SimpleAgent
-from lyra.core.agent import Agent, ModelConfig
-from lyra.core.auth import TrustLevel
+from lyra.core.agent import Agent
+from lyra.core.agent_config import ModelConfig
 from lyra.core.message import (
     InboundMessage,
     Response,
 )
 from lyra.core.pool import Pool
+from lyra.core.trust import TrustLevel
 from lyra.llm.base import LlmResult
 
 # ---------------------------------------------------------------------------

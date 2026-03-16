@@ -25,7 +25,6 @@ from lyra.bootstrap.config import (
     _load_circuit_config,
     _load_raw_config,
 )
-from lyra.bootstrap.legacy import _bootstrap_legacy
 from lyra.bootstrap.multibot import _bootstrap_multibot
 from lyra.config import (
     DiscordMultiConfig,
@@ -67,17 +66,14 @@ async def _main(*, adapter: str = "all", _stop: asyncio.Event | None = None) -> 
     Supports two configuration schemas:
       - New multi-bot: [[telegram.bots]] / [[discord.bots]] arrays in config.toml.
       - Legacy single-bot: [auth.telegram] / [auth.discord] flat sections
-        (backward compat).
+        (backward compat -- synthesised into bot_id="main" by load_multibot_config).
 
-    When the new schema is detected (at least one bot list is non-empty), each bot is
-    wired individually with its own AuthMiddleware, OutboundDispatcher, and adapter.
-    When only the legacy schema is found, behavior is identical to the original
-    single-bot implementation.
+    Both schemas are handled by the same bootstrap path (_bootstrap_multibot).
     """
     load_dotenv()
     if not os.environ.get("LYRA_HEALTH_SECRET"):
         log.warning(
-            "LYRA_HEALTH_SECRET is not set — /health returns minimal response only"
+            "LYRA_HEALTH_SECRET is not set -- /health returns minimal response only"
         )
     raw_config = _load_raw_config()
     circuit_registry, admin_user_ids = _load_circuit_config(raw_config)
@@ -87,7 +83,7 @@ async def _main(*, adapter: str = "all", _stop: asyncio.Event | None = None) -> 
     except ValueError as exc:
         sys.exit(str(exc))
 
-    # Apply adapter filter BEFORE bootstrap — guard evaluates post-filter state
+    # Apply adapter filter BEFORE bootstrap -- guard evaluates post-filter state
     original_tg_count = len(tg_multi_cfg.bots)
     original_dc_count = len(dc_multi_cfg.bots)
     if adapter == "telegram":
@@ -95,37 +91,27 @@ async def _main(*, adapter: str = "all", _stop: asyncio.Event | None = None) -> 
     elif adapter == "discord":
         tg_multi_cfg = TelegramMultiConfig(bots=[])
 
-    use_multibot = bool(tg_multi_cfg.bots or dc_multi_cfg.bots)
-
     # Guard: adapter flag specified but no matching bots in config
-    if not use_multibot and adapter != "all":
+    if adapter != "all" and not (tg_multi_cfg.bots or dc_multi_cfg.bots):
         requested_count = (
             original_tg_count if adapter == "telegram" else original_dc_count
         )
         if requested_count == 0:
             sys.exit(
                 f"--adapter {adapter} specified but no [[{adapter}.bots]] entries found"
-                " in config.toml — add at least one bot under [[{adapter}.bots]]"
+                " in config.toml -- add at least one bot under [[{adapter}.bots]]"
                 " or omit --adapter to start all configured adapters"
             )
+
     try:
-        if use_multibot:
-            await _bootstrap_multibot(
-                raw_config,
-                circuit_registry,
-                admin_user_ids,
-                tg_multi_cfg,
-                dc_multi_cfg,
-                _stop=_stop,
-            )
-        else:
-            await _bootstrap_legacy(
-                raw_config,
-                circuit_registry,
-                admin_user_ids,
-                adapter=adapter,
-                _stop=_stop,
-            )
+        await _bootstrap_multibot(
+            raw_config,
+            circuit_registry,
+            admin_user_ids,
+            tg_multi_cfg,
+            dc_multi_cfg,
+            _stop=_stop,
+        )
     except (MissingCredentialsError, KeyringError) as exc:
         sys.exit(str(exc))
 

@@ -18,7 +18,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.auth import TrustLevel
 from lyra.core.message import (
     InboundAudio,
     InboundMessage,
@@ -27,6 +26,7 @@ from lyra.core.message import (
     Response,
     RoutingContext,
 )
+from lyra.core.trust import TrustLevel
 
 # ---------------------------------------------------------------------------
 # RoutingContext dataclass

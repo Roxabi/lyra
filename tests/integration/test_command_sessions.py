@@ -13,12 +13,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.core.auth import TrustLevel
 from lyra.core.command_parser import CommandParser
 from lyra.core.command_router import CommandRouter
 from lyra.core.message import InboundMessage, Response
 from lyra.core.plugin_loader import PluginLoader
 from lyra.core.pool import Pool
+from lyra.core.trust import TrustLevel
 from lyra.llm.base import LlmProvider, LlmResult
 
 # ---------------------------------------------------------------------------

@@ -29,7 +29,6 @@ from unittest.mock import MagicMock
 import pytest
 
 from lyra.core.agent import Agent, AgentBase, load_agent_config
-from lyra.core.auth import TrustLevel
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.command_parser import CommandParser
 from lyra.core.command_router import CommandConfig, CommandRouter
@@ -43,6 +42,7 @@ from lyra.core.message import (
 from lyra.core.messages import MessageManager
 from lyra.core.plugin_loader import PluginLoader
 from lyra.core.pool import Pool
+from lyra.core.trust import TrustLevel
 
 TOML_PATH = (
     Path(__file__).resolve().parent.parent.parent
@@ -879,7 +879,7 @@ class TestConfigCommand:
     ) -> None:
         """Admin /config style=detailed → sets param, returns 'Updated:...'"""
         # Arrange — monkeypatch _AGENTS_DIR so save() writes into tmp_path
-        monkeypatch.setattr("lyra.core.agent._AGENTS_DIR", tmp_path)
+        monkeypatch.setattr("lyra.core.agent_config._AGENTS_DIR", tmp_path)
         router = make_config_router(tmp_path, admin_ids={"tg:user:42"})
         msg = make_config_msg(user_id="tg:user:42", content="/config style=detailed")
 
@@ -911,7 +911,7 @@ class TestConfigCommand:
     ) -> None:
         """Admin /config reset → 'Runtime config reset to defaults.'"""
         # Arrange
-        monkeypatch.setattr("lyra.core.agent._AGENTS_DIR", tmp_path)
+        monkeypatch.setattr("lyra.core.agent_config._AGENTS_DIR", tmp_path)
         router = make_config_router(tmp_path, admin_ids={"tg:user:42"})
         msg = make_config_msg(user_id="tg:user:42", content="/config reset")
 
@@ -928,7 +928,7 @@ class TestConfigCommand:
     ) -> None:
         """Admin /config reset style → 'Reset: style = (default). Saved.'"""
         # Arrange
-        monkeypatch.setattr("lyra.core.agent._AGENTS_DIR", tmp_path)
+        monkeypatch.setattr("lyra.core.agent_config._AGENTS_DIR", tmp_path)
         router = make_config_router(tmp_path, admin_ids={"tg:user:42"})
         msg = make_config_msg(user_id="tg:user:42", content="/config reset style")
 

@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.agent import Complexity, ModelConfig, SmartRoutingConfig
+from lyra.core.agent_config import Complexity, ModelConfig, SmartRoutingConfig
 from lyra.core.command_parser import CommandParser
 from lyra.core.command_router import CommandRouter
 from lyra.core.message import Attachment, InboundMessage

@@ -4,7 +4,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
-from lyra.core.agent import ModelConfig
+from lyra.core.agent_config import ModelConfig
 
 
 @dataclass

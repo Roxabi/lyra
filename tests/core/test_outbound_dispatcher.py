@@ -7,7 +7,6 @@ from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.core.auth import TrustLevel
 from lyra.core.circuit_breaker import CircuitBreaker
 from lyra.core.message import (
     InboundMessage,
@@ -17,6 +16,7 @@ from lyra.core.message import (
     OutboundMessage,
 )
 from lyra.core.outbound_dispatcher import OutboundDispatcher
+from lyra.core.trust import TrustLevel
 
 
 def _make_msg() -> InboundMessage:
@@ -312,7 +312,6 @@ class TestOutboundDispatcherAudio:
             await dispatcher.stop()
 
 
-
 # ---------------------------------------------------------------------------
 # #217: OutboundDispatcher.enqueue_attachment() — CB ownership for render_attachment()
 # ---------------------------------------------------------------------------
@@ -376,7 +375,6 @@ class TestOutboundDispatcherAttachment:
             assert cb._failure_count >= 1
         finally:
             await dispatcher.stop()
-
 
 
 # ---------------------------------------------------------------------------
@@ -469,7 +467,6 @@ class TestOutboundDispatcherAudioStream:
 
         finally:
             await dispatcher.stop()
-
 
 
 # ---------------------------------------------------------------------------

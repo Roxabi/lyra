@@ -23,9 +23,12 @@ Usage::
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
 from enum import Enum
+
+log = logging.getLogger(__name__)
 
 
 class CircuitState(Enum):
@@ -96,8 +99,11 @@ class CircuitBreaker:
                 elapsed = time.monotonic() - self._opened_at
                 if elapsed >= self.recovery_timeout:
                     self._state = CircuitState.HALF_OPEN
-                    _emit_circuit(
-                        self.name, CircuitState.OPEN.value, CircuitState.HALF_OPEN.value
+                    log.warning(
+                        "circuit state change: name=%s %s -> %s",
+                        self.name,
+                        CircuitState.OPEN.value,
+                        CircuitState.HALF_OPEN.value,
                     )
                     # fall through to HALF_OPEN logic
                 else:
@@ -114,8 +120,11 @@ class CircuitBreaker:
         if self._state != CircuitState.HALF_OPEN:
             return  # no-op: only HALF_OPEN → CLOSED is a valid success transition
         self._state = CircuitState.CLOSED
-        _emit_circuit(
-            self.name, CircuitState.HALF_OPEN.value, CircuitState.CLOSED.value
+        log.info(
+            "circuit state change: name=%s %s -> %s",
+            self.name,
+            CircuitState.HALF_OPEN.value,
+            CircuitState.CLOSED.value,
         )
         self._failure_count = 0
         self._opened_at = None
@@ -138,15 +147,21 @@ class CircuitBreaker:
         if self._state == CircuitState.HALF_OPEN:
             self._state = CircuitState.OPEN
             self._opened_at = now
-            _emit_circuit(
-                self.name, CircuitState.HALF_OPEN.value, CircuitState.OPEN.value
+            log.warning(
+                "circuit state change: name=%s %s -> %s",
+                self.name,
+                CircuitState.HALF_OPEN.value,
+                CircuitState.OPEN.value,
             )
         elif self._state == CircuitState.CLOSED:
             if self._failure_count >= self.failure_threshold:
                 self._state = CircuitState.OPEN
                 self._opened_at = now
-                _emit_circuit(
-                    self.name, CircuitState.CLOSED.value, CircuitState.OPEN.value
+                log.warning(
+                    "circuit state change: name=%s %s -> %s",
+                    self.name,
+                    CircuitState.CLOSED.value,
+                    CircuitState.OPEN.value,
                 )
         elif self._state == CircuitState.OPEN:
             self._opened_at = now  # reset the recovery timer
@@ -172,15 +187,6 @@ class CircuitBreaker:
             failure_count=self._failure_count,
             retry_after=retry_after,
         )
-
-
-def _emit_circuit(name: str, old: str, new: str) -> None:
-    """Emit CircuitStateChanged if an EventBus is registered."""
-    from .event_bus import get_event_bus
-    from .events import CircuitStateChanged
-
-    if bus := get_event_bus():
-        bus.emit(CircuitStateChanged(platform=name, old_state=old, new_state=new))
 
 
 class CircuitRegistry:

@@ -9,10 +9,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.agent import Agent, ModelConfig
-from lyra.core.auth import TrustLevel
+from lyra.core.agent import Agent
+from lyra.core.agent_config import ModelConfig
 from lyra.core.message import InboundMessage
 from lyra.core.pool import Pool
+from lyra.core.trust import TrustLevel
 from lyra.llm.base import LlmResult
 
 # ---------------------------------------------------------------------------
@@ -260,7 +261,7 @@ class TestOverlayAppliedInProcess:
         """process() uses overlaid model and system including style + language."""
         # Arrange
         from lyra.agents.anthropic_agent import AnthropicAgent
-        from lyra.core.agent import ModelConfig
+        from lyra.core.agent_config import ModelConfig
         from lyra.core.runtime_config import RuntimeConfig
 
         config = make_config(system_prompt="Base prompt.")

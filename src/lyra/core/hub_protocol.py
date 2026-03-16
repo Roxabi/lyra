@@ -6,7 +6,6 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any, NamedTuple, Protocol
 
-from .auth import TrustLevel
 from .message import (
     InboundAudio,
     InboundMessage,
@@ -16,6 +15,7 @@ from .message import (
     OutboundMessage,
     Platform,
 )
+from .trust import TrustLevel
 
 
 class ChannelAdapter(Protocol):

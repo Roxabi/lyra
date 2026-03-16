@@ -14,7 +14,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .agent import ModelConfig
+from .agent_config import ModelConfig
 from .cli_protocol import _SESSION_ID_RE, CliResult, send_and_read
 
 log = logging.getLogger(__name__)

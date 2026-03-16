@@ -55,8 +55,10 @@ class MemoryManager:
         existing = await self.get_identity_anchor(namespace)
         if existing is None:
             await self._db.save_entry(
-                content=text, type="anchor",
-                title="IDENTITY_ANCHOR", namespace=namespace,
+                content=text,
+                type="anchor",
+                title="IDENTITY_ANCHOR",
+                namespace=namespace,
             )
         else:
             db = self._db._db_or_raise()
@@ -70,16 +72,22 @@ class MemoryManager:
     # -- Session + contact -------------------------------------------------
 
     async def upsert_session(
-        self, snap: SessionSnapshot, summary: str, status: str = "final",
+        self,
+        snap: SessionSnapshot,
+        summary: str,
+        status: str = "final",
     ) -> None:
         await self._db.upsert_session(
-            snap.session_id, summary,
-            user_id=snap.user_id, medium=snap.medium,
+            snap.session_id,
+            summary,
+            user_id=snap.user_id,
+            medium=snap.medium,
             agent_namespace=snap.agent_namespace,
             session_start=snap.session_start.isoformat(),
             session_end=snap.session_end.isoformat(),
             message_count=snap.message_count,
-            source_turns=snap.source_turns, status=status,
+            source_turns=snap.source_turns,
+            status=status,
         )
 
     async def upsert_contact(self, user_id: str, medium: str, namespace: str) -> None:
@@ -90,10 +98,13 @@ class MemoryManager:
             (user_id, namespace),
         ) as cur:
             row = await cur.fetchone()
-        meta = json.dumps({
-            "user_id": user_id, "medium": medium,
-            "last_seen": datetime.now(UTC).isoformat(),
-        })
+        meta = json.dumps(
+            {
+                "user_id": user_id,
+                "medium": medium,
+                "last_seen": datetime.now(UTC).isoformat(),
+            }
+        )
         if row:
             await db.execute(
                 "UPDATE entries SET metadata=?, updated_at=datetime('now') WHERE id=?",
@@ -101,9 +112,13 @@ class MemoryManager:
             )
         else:
             await self._db.save_entry(
-                content=user_id, type="contact", title=user_id,
-                namespace=namespace, metadata={
-                    "user_id": user_id, "medium": medium,
+                content=user_id,
+                type="contact",
+                title=user_id,
+                namespace=namespace,
+                metadata={
+                    "user_id": user_id,
+                    "medium": medium,
                     "last_seen": datetime.now(UTC).isoformat(),
                 },
             )
@@ -112,8 +127,11 @@ class MemoryManager:
     # -- Recall (cross-session) --------------------------------------------
 
     async def recall(
-        self, user_id: str, namespace: str,
-        first_msg: str = "", token_budget: int = 1000,
+        self,
+        user_id: str,
+        namespace: str,
+        first_msg: str = "",
+        token_budget: int = 1000,
     ) -> str:
         db = self._db._db_or_raise()
         async with db.execute(
@@ -127,8 +145,13 @@ class MemoryManager:
         ) as cur:
             rows = await cur.fetchall()
         col_names = [
-            "id", "type", "namespace", "metadata",
-            "content", "created_at", "updated_at",
+            "id",
+            "type",
+            "namespace",
+            "metadata",
+            "content",
+            "created_at",
+            "updated_at",
         ]
         user_sessions = [dict(zip(col_names, r)) for r in rows]
         concepts: list[dict] = []
@@ -150,7 +173,9 @@ class MemoryManager:
                 break
             lines.append(line)
         prefs_block = await self._fetch_preferences(
-            user_id, namespace, token_budget=min(300, token_budget),
+            user_id,
+            namespace,
+            token_budget=min(300, token_budget),
         )
         parts = ["[MEMORY]\n" + "\n".join(lines)] if lines else []
         if prefs_block:
@@ -158,11 +183,15 @@ class MemoryManager:
         return "\n\n".join(parts)
 
     async def _fetch_preferences(
-        self, user_id: str, namespace: str, token_budget: int = 300,
+        self,
+        user_id: str,
+        namespace: str,
+        token_budget: int = 300,
     ) -> str:
         raw = await self._db.search("preference", namespace, limit=10)
         prefs = [
-            e for e in raw
+            e
+            for e in raw
             if e.get("type") == "preference"
             and json.loads(e.get("metadata", "{}")).get("user_id") == user_id
         ]
@@ -184,8 +213,10 @@ class MemoryManager:
     async def upsert_concept(self, snap: SessionSnapshot, data: dict) -> None:
         name = data.get("name")
         if not name:
-            log.warning("upsert_concept: skipping entry with missing 'name': %r",
-                        list(data.keys()))
+            log.warning(
+                "upsert_concept: skipping entry with missing 'name': %r",
+                list(data.keys()),
+            )
             return
         db = self._db._db_or_raise()
         async with db.execute(
@@ -204,7 +235,8 @@ class MemoryManager:
             )
             if entry_stale:
                 new_meta = {
-                    **data, "user_id": snap.user_id,
+                    **data,
+                    "user_id": snap.user_id,
                     "source_session_id": snap.session_id,
                     "mention_count": 1,
                     "first_mentioned": now.isoformat(),
@@ -216,7 +248,8 @@ class MemoryManager:
                     r for r in data.get("relations", []) if r not in existing_relations
                 ]
                 new_meta = {
-                    **existing_meta, **data,
+                    **existing_meta,
+                    **data,
                     "user_id": snap.user_id,
                     "source_session_id": snap.session_id,
                     "relations": merged_relations,
@@ -230,22 +263,29 @@ class MemoryManager:
             )
         else:
             meta = {
-                **data, "user_id": snap.user_id,
-                "source_session_id": snap.session_id, "mention_count": 1,
+                **data,
+                "user_id": snap.user_id,
+                "source_session_id": snap.session_id,
+                "mention_count": 1,
                 "first_mentioned": now.isoformat(),
                 "last_mentioned": now.isoformat(),
             }
             await self._db.save_entry(
-                content=data["content"], type="concept", title=name,
-                namespace=f"{snap.agent_namespace}:{snap.user_id}", metadata=meta,
+                content=data["content"],
+                type="concept",
+                title=name,
+                namespace=f"{snap.agent_namespace}:{snap.user_id}",
+                metadata=meta,
             )
         await db.commit()
 
     async def upsert_preference(self, snap: SessionSnapshot, data: dict) -> None:
         name = data.get("name")
         if not name:
-            log.warning("upsert_preference: skipping entry with missing 'name': %r",
-                        list(data.keys()))
+            log.warning(
+                "upsert_preference: skipping entry with missing 'name': %r",
+                list(data.keys()),
+            )
             return
         db = self._db._db_or_raise()
         async with db.execute(
@@ -258,16 +298,21 @@ class MemoryManager:
             row = await cur.fetchone()
         if row:
             existing_meta = json.loads(row[1] or "{}")
-            entry_stale = is_stale({
-                "type": "preference", "metadata": row[1],
-                "updated_at": existing_meta.get("last_mentioned"),
-            })
+            entry_stale = is_stale(
+                {
+                    "type": "preference",
+                    "metadata": row[1],
+                    "updated_at": existing_meta.get("last_mentioned"),
+                }
+            )
             new_strength = (
-                data.get("strength", 0.5) if entry_stale
+                data.get("strength", 0.5)
+                if entry_stale
                 else min(1.0, existing_meta.get("strength", 0.5) + 0.1)
             )
             new_meta = {
-                **existing_meta, **data,
+                **existing_meta,
+                **data,
                 "user_id": snap.user_id,
                 "source_session_id": snap.session_id,
                 "strength": new_strength,
@@ -279,11 +324,15 @@ class MemoryManager:
             )
         else:
             meta = {
-                **data, "user_id": snap.user_id,
+                **data,
+                "user_id": snap.user_id,
                 "source_session_id": snap.session_id,
             }
             await self._db.save_entry(
-                content=data.get("content", name), type="preference",
-                title=name, namespace=snap.agent_namespace, metadata=meta,
+                content=data.get("content", name),
+                type="preference",
+                title=name,
+                namespace=snap.agent_namespace,
+                metadata=meta,
             )
         await db.commit()

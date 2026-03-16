@@ -1,24 +1,18 @@
-"""RED phase tests for the --adapter flag feature in __main__.py.
+"""Tests for the --adapter flag feature in __main__.py.
 
 Tests cover:
   - _parse_args(): argument parsing with valid and invalid adapter values
   - _main(): adapter filtering zeroes out the inactive platform's bot list
-  - _bootstrap_legacy(): adapter="telegram" skips Discord AuthMiddleware.from_config
-
-These tests FAIL intentionally until the implementation is added.
 """
 
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 import lyra.__main__ as main_mod
-import lyra.bootstrap.legacy as legacy_mod
 from lyra.config import DiscordMultiConfig, TelegramMultiConfig
-from lyra.core.auth import AuthMiddleware
 
 # ---------------------------------------------------------------------------
 # T1 — _parse_args: argument parsing
@@ -230,160 +224,4 @@ class TestMainAdapterFiltering:
         assert len(captured_dc_cfg) == 1
         assert len(captured_dc_cfg[0].bots) == 1, (
             "dc_multi_cfg.bots should be preserved when adapter='all'"
-        )
-
-
-# ---------------------------------------------------------------------------
-# T3 — _bootstrap_legacy: adapter="telegram" skips Discord from_config
-# ---------------------------------------------------------------------------
-
-
-class TestBootstrapLegacyAdapterParam:
-    """Test that _bootstrap_legacy respects the adapter parameter.
-
-    Heavy mocking is expected here: _bootstrap_legacy is a PLR0915 startup wiring
-    function that initialises Hub, OutboundDispatcher, CliPool, uvicorn.Server, and
-    several helper services. The mock depth is intentional — the assertion targets only
-    the AuthMiddleware.from_config call-pattern at the top of the function, before any
-    of the downstream wiring runs.
-    """
-
-    async def test_telegram_adapter_skips_discord_auth(  # noqa: PLR0915
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """adapter='telegram': from_config NOT called for discord."""
-        # Arrange
-        from_config_calls: list[str] = []
-
-        def fake_from_config(raw, section, store=None):
-            from_config_calls.append(section)
-            if section == "telegram":
-                return MagicMock()
-            return None
-
-        fake_auth_store = MagicMock()
-        fake_auth_store.connect = AsyncMock()
-        fake_auth_store.seed_from_config = AsyncMock()
-        fake_auth_store.close = AsyncMock()
-
-        fake_keyring = MagicMock()
-        fake_keyring.key = b"fake-key-32-bytes-for-fernet-key"
-
-        fake_cred_store = MagicMock()
-        fake_cred_store.connect = AsyncMock()
-        fake_cred_store.close = AsyncMock()
-        fake_cred_store.get_full = AsyncMock(return_value=("fake-token", "fake-secret"))
-
-        monkeypatch.setattr(legacy_mod, "AuthStore", lambda **kwargs: fake_auth_store)
-        monkeypatch.setattr(
-            legacy_mod,
-            "LyraKeyring",
-            MagicMock(load_or_create=AsyncMock(return_value=fake_keyring)),
-        )
-        monkeypatch.setattr(
-            legacy_mod,
-            "CredentialStore",
-            lambda **kwargs: fake_cred_store,
-        )
-        monkeypatch.setattr(
-            AuthMiddleware,
-            "from_config",
-            classmethod(
-                lambda cls, raw, section, store=None: fake_from_config(
-                    raw, section, store
-                )
-            ),
-        )
-        monkeypatch.setattr(
-            legacy_mod,
-            "load_agent_config",
-            lambda name, **kw: MagicMock(
-                name=name,
-                i18n_language="en",
-                model_config=MagicMock(backend="claude-cli"),
-                smart_routing=None,
-            ),
-        )
-
-        fake_tg_adapter = MagicMock()
-        fake_tg_adapter.dp = MagicMock()
-        fake_tg_adapter.dp.start_polling = AsyncMock(side_effect=asyncio.CancelledError)
-        fake_tg_adapter.bot = MagicMock()
-        fake_tg_adapter._bot_id = "main"
-
-        monkeypatch.setattr(
-            legacy_mod,
-            "TelegramAdapter",
-            lambda **kwargs: fake_tg_adapter,
-        )
-
-        fake_hub = MagicMock()
-        fake_hub.inbound_bus = MagicMock()
-        fake_hub.inbound_bus.start = AsyncMock()
-        fake_hub.inbound_bus.stop = AsyncMock()
-        fake_hub.inbound_audio_bus = MagicMock()
-        fake_hub.inbound_audio_bus.start = AsyncMock()
-        fake_hub.inbound_audio_bus.stop = AsyncMock()
-        fake_hub.run = AsyncMock(side_effect=asyncio.CancelledError)
-        fake_hub._audio_pipeline = MagicMock()
-        fake_hub._audio_pipeline.run = AsyncMock(side_effect=asyncio.CancelledError)
-        fake_hub.circuit_registry = None
-        fake_hub._start_time = 0
-        fake_hub._last_processed_at = None
-        monkeypatch.setattr(legacy_mod, "Hub", lambda **kwargs: fake_hub)
-
-        fake_dispatcher = MagicMock()
-        fake_dispatcher.start = AsyncMock()
-        fake_dispatcher.stop = AsyncMock()
-        monkeypatch.setattr(
-            legacy_mod, "OutboundDispatcher", lambda **kwargs: fake_dispatcher
-        )
-
-        fake_uvicorn_server = MagicMock()
-        fake_uvicorn_server.serve = AsyncMock(side_effect=asyncio.CancelledError)
-        monkeypatch.setattr(
-            legacy_mod.uvicorn, "Server", lambda config: fake_uvicorn_server
-        )
-
-        fake_cli_pool = MagicMock()
-        fake_cli_pool.start = AsyncMock()
-        fake_cli_pool.stop = AsyncMock()
-        monkeypatch.setattr(legacy_mod, "CliPool", lambda: fake_cli_pool)
-
-        monkeypatch.setattr(
-            legacy_mod,
-            "_build_provider_registry",
-            lambda *a, **kw: (MagicMock(), None),
-        )
-        monkeypatch.setattr(
-            legacy_mod,
-            "_create_agent",
-            lambda *a, **kw: MagicMock(name="lyra_default"),
-        )
-        monkeypatch.setattr(legacy_mod, "_load_messages", lambda **kw: MagicMock())
-        monkeypatch.setattr(
-            legacy_mod,
-            "_load_pairing_config",
-            lambda raw: MagicMock(enabled=False),
-        )
-
-        stop = asyncio.Event()
-        stop.set()
-
-        # Act
-        # type: ignore[call-arg] — adapter param doesn't exist yet (RED phase)
-        await legacy_mod._bootstrap_legacy(  # type: ignore[call-arg]
-            {},
-            MagicMock(),
-            set(),
-            adapter="telegram",
-            _stop=stop,  # type: ignore[call-arg]
-        )
-
-        # Assert: from_config was called for telegram but NOT for discord
-        assert "telegram" in from_config_calls, (
-            "AuthMiddleware.from_config should be called for 'telegram'"
-        )
-        assert "discord" not in from_config_calls, (
-            "from_config should NOT be called for 'discord' when adapter='telegram'"
         )

@@ -7,10 +7,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.core.auth import TrustLevel
 from lyra.core.message import InboundMessage, Response
 from lyra.core.session_commands import cmd_add, cmd_explain, cmd_summarize
 from lyra.core.session_helpers import ScrapeFailed, VaultWriteFailed
+from lyra.core.trust import TrustLevel
 from lyra.llm.base import LlmResult
 
 

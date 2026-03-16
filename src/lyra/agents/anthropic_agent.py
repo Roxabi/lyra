@@ -11,7 +11,8 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from lyra.core.agent import _AGENTS_DIR, Agent, AgentBase, ModelConfig
+from lyra.core.agent import Agent, AgentBase
+from lyra.core.agent_config import _AGENTS_DIR, ModelConfig
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import InboundMessage, Response
 from lyra.core.messages import MessageManager

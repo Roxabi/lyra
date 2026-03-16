@@ -155,24 +155,18 @@ class PoolProcessor:
     # Guarded execution (timeout + error handling + events)
     # ------------------------------------------------------------------
 
-    async def _guarded_process_one(  # noqa: C901 — event emission branches add inherent complexity
-        self, msg: InboundMessage, agent: AgentBase
-    ) -> None:
+    async def _guarded_process_one(self, msg: InboundMessage, agent: AgentBase) -> None:
         """Wrap _process_one with timeout and error handling."""
         pool = self._pool
-        from .event_bus import get_event_bus
-        from .events import AgentCompleted, AgentFailed, AgentIdle, AgentStarted
 
         _start = time.monotonic()
         _cancelled = False
-        if bus := get_event_bus():
-            bus.emit(
-                AgentStarted(
-                    agent_id=pool.agent_name,
-                    pool_id=pool.pool_id,
-                    scope_id=msg.scope_id,
-                )
-            )
+        log.info(
+            "agent started: agent=%s pool=%s scope=%s",
+            pool.agent_name,
+            pool.pool_id,
+            msg.scope_id,
+        )
         try:
             if pool._turn_timeout is not None:
                 await asyncio.wait_for(
@@ -180,14 +174,12 @@ class PoolProcessor:
                 )
             else:
                 await self._process_one(msg, agent)
-            if bus := get_event_bus():
-                bus.emit(
-                    AgentCompleted(
-                        agent_id=pool.agent_name,
-                        pool_id=pool.pool_id,
-                        duration_ms=(time.monotonic() - _start) * 1000,
-                    )
-                )
+            log.info(
+                "agent completed: agent=%s pool=%s duration_ms=%.0f",
+                pool.agent_name,
+                pool.pool_id,
+                (time.monotonic() - _start) * 1000,
+            )
         except asyncio.TimeoutError:
             log.warning(
                 "pool %s: turn timeout after %.0fs — killing backend",
@@ -202,12 +194,11 @@ class PoolProcessor:
             await agent.reset_backend(pool.pool_id)
             _reply = pool._msg("timeout", "Your request timed out. Please try again.")
             await self._safe_dispatch(msg, Response(content=_reply))
-            if bus := get_event_bus():
-                bus.emit(
-                    AgentFailed(
-                        agent_id=pool.agent_name, pool_id=pool.pool_id, error="timeout"
-                    )
-                )
+            log.warning(
+                "agent failed: agent=%s pool=%s error=timeout",
+                pool.agent_name,
+                pool.pool_id,
+            )
         except asyncio.CancelledError:
             _cancelled = True
             raise
@@ -216,24 +207,19 @@ class PoolProcessor:
             _reply = pool._msg("generic", GENERIC_ERROR_REPLY)
             await self._safe_dispatch(msg, Response(content=_reply))
             pool._ctx.record_circuit_failure(exc)
-            if bus := get_event_bus():
-                bus.emit(
-                    AgentFailed(
-                        agent_id=pool.agent_name,
-                        pool_id=pool.pool_id,
-                        error=str(exc)[:200],
-                    )
-                )
+            log.warning(
+                "agent failed: agent=%s pool=%s error=%s",
+                pool.agent_name,
+                pool.pool_id,
+                str(exc)[:200],
+            )
         finally:
             if not _cancelled:
-                if bus := get_event_bus():
-                    bus.emit(
-                        AgentIdle(
-                            agent_id=pool.agent_name,
-                            pool_id=pool.pool_id,
-                            finished_at=time.monotonic(),
-                        )
-                    )
+                log.info(
+                    "agent idle: agent=%s pool=%s",
+                    pool.agent_name,
+                    pool.pool_id,
+                )
 
     # ------------------------------------------------------------------
     # Single-turn execution

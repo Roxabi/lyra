@@ -16,7 +16,8 @@ from pathlib import Path
 
 import pytest
 
-from lyra.core.agent import Agent, ModelConfig
+from lyra.core.agent import Agent
+from lyra.core.agent_config import ModelConfig
 from lyra.core.runtime_config import (
     _STYLE_INSTRUCTIONS,
     RuntimeConfig,

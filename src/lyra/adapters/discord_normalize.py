@@ -9,12 +9,12 @@ from typing import TYPE_CHECKING, Any
 import discord
 
 from lyra.adapters.discord_formatting import extract_attachments
-from lyra.core.auth import TrustLevel
 from lyra.core.message import (
     InboundMessage,
     Platform,
     RoutingContext,
 )
+from lyra.core.trust import TrustLevel
 
 if TYPE_CHECKING:
     from lyra.adapters.discord import DiscordAdapter

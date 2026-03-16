@@ -31,7 +31,8 @@ from lyra.config import (
     TelegramBotConfig,
     TelegramMultiConfig,
 )
-from lyra.core.agent import Agent, agent_row_to_config, load_agent_config
+from lyra.core.agent import Agent
+from lyra.core.agent_loader import agent_row_to_config, load_agent_config
 from lyra.core.auth import AuthMiddleware
 from lyra.core.auth_store import AuthStore
 from lyra.core.circuit_breaker import CircuitRegistry
@@ -174,18 +175,33 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
 
         # Wire adapters via helpers
         tg_adapters, tg_dispatchers = await wire_telegram_adapters(
-            hub, tg_bot_auths, bot_agent_map,
-            stores.cred, circuit_registry, msg_manager,
+            hub,
+            tg_bot_auths,
+            bot_agent_map,
+            stores.cred,
+            circuit_registry,
+            msg_manager,
         )
         dc_adapters, dc_dispatchers = await wire_discord_adapters(
-            hub, dc_bot_auths, bot_agent_map,
-            stores.cred, circuit_registry, msg_manager, stores.thread,
+            hub,
+            dc_bot_auths,
+            bot_agent_map,
+            stores.cred,
+            circuit_registry,
+            msg_manager,
+            stores.thread,
         )
 
         # Start buses, dispatchers, health server, adapter tasks
         await run_lifecycle(
-            hub, tg_adapters, tg_dispatchers, dc_adapters, dc_dispatchers,
-            pm, cli_pool, _stop,
+            hub,
+            tg_adapters,
+            tg_dispatchers,
+            dc_adapters,
+            dc_dispatchers,
+            pm,
+            cli_pool,
+            _stop,
         )
 
 

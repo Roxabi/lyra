@@ -76,8 +76,12 @@ async def open_stores(vault_dir: Path) -> AsyncIterator[StoreBundle]:
         )
     finally:
         all_stores = (
-            cred_store, auth_store, agent_store,
-            turn_store, thread_store, prefs_store,
+            cred_store,
+            auth_store,
+            agent_store,
+            turn_store,
+            thread_store,
+            prefs_store,
         )
         for store in all_stores:
             if store is not None:

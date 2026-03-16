@@ -19,9 +19,9 @@ import discord
 import pytest
 
 from lyra.adapters.discord import _ALLOW_ALL
-from lyra.core.auth import TrustLevel
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.messages import MessageManager
+from lyra.core.trust import TrustLevel
 
 TOML_PATH = (
     Path(__file__).resolve().parent.parent.parent
@@ -1490,7 +1490,8 @@ class TestDiscordAuth:
         from unittest.mock import patch
 
         from lyra.adapters.discord import DiscordAdapter
-        from lyra.core.auth import AuthMiddleware, TrustLevel
+        from lyra.core.auth import AuthMiddleware
+        from lyra.core.trust import TrustLevel
 
         auth = MagicMock(spec=AuthMiddleware)
         auth.check.return_value = TrustLevel.BLOCKED
@@ -1515,7 +1516,8 @@ class TestDiscordAuth:
     async def test_role_match_returns_trust(self) -> None:
         """User with a matching role: message produced with correct trust_level."""
         from lyra.adapters.discord import DiscordAdapter
-        from lyra.core.auth import AuthMiddleware, TrustLevel
+        from lyra.core.auth import AuthMiddleware
+        from lyra.core.trust import TrustLevel
 
         auth = MagicMock(spec=AuthMiddleware)
         auth.check.return_value = TrustLevel.TRUSTED
@@ -1543,7 +1545,8 @@ class TestDiscordAuth:
     async def test_dm_fallback_user_id_only(self) -> None:
         """DM message (no roles attribute): auth.check called with roles=[]."""
         from lyra.adapters.discord import DiscordAdapter
-        from lyra.core.auth import AuthMiddleware, TrustLevel
+        from lyra.core.auth import AuthMiddleware
+        from lyra.core.trust import TrustLevel
 
         auth = MagicMock(spec=AuthMiddleware)
         auth.check.return_value = TrustLevel.PUBLIC
@@ -1584,7 +1587,8 @@ class TestDiscordAuth:
     async def test_public_user_message_forwarded(self) -> None:
         """PUBLIC user: message reaches bus with trust_level=TrustLevel.PUBLIC."""
         from lyra.adapters.discord import DiscordAdapter
-        from lyra.core.auth import AuthMiddleware, TrustLevel
+        from lyra.core.auth import AuthMiddleware
+        from lyra.core.trust import TrustLevel
 
         auth = MagicMock(spec=AuthMiddleware)
         auth.check.return_value = TrustLevel.PUBLIC

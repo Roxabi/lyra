@@ -18,8 +18,8 @@ from lyra.adapters.discord_threads import (
     persist_thread_session,
     retrieve_thread_session,
 )
-from lyra.core.auth import TrustLevel
 from lyra.core.message import InboundMessage, Platform
+from lyra.core.trust import TrustLevel
 
 if TYPE_CHECKING:
     from lyra.adapters.discord import DiscordAdapter

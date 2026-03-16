@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from lyra.core.auth import TrustLevel
 from lyra.core.message import (
     InboundMessage,
 )
+from lyra.core.trust import TrustLevel
 
 
 def make_inbound_message(

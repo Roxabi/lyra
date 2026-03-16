@@ -7,9 +7,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.core.auth import TrustLevel
 from lyra.core.message import InboundMessage, Response
 from lyra.core.pool import Pool
+from lyra.core.trust import TrustLevel
 from lyra.plugins.search.handlers import cmd_search
 
 

@@ -7,9 +7,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from lyra.core.auth import TrustLevel
 from lyra.core.inbound_audio_bus import InboundAudioBus
 from lyra.core.message import InboundAudio, Platform
+from lyra.core.trust import TrustLevel
 
 
 def _make_audio(platform: Platform = Platform.TELEGRAM) -> InboundAudio:

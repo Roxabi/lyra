@@ -9,7 +9,6 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .auth import TrustLevel
 from .message import (
     InboundAudio,
     InboundMessage,
@@ -17,6 +16,7 @@ from .message import (
     Platform,
     Response,
 )
+from .trust import TrustLevel
 
 if TYPE_CHECKING:
     from .hub import Hub

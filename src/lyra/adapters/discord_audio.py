@@ -30,7 +30,7 @@ from lyra.core.message import (
 
 if TYPE_CHECKING:
     from lyra.adapters.discord_voice import VoiceSessionManager
-    from lyra.core.auth import TrustLevel
+    from lyra.core.trust import TrustLevel
 
 log = logging.getLogger(__name__)
 
@@ -84,9 +84,7 @@ def normalize_audio(
     on_message().
     """
     is_thread = isinstance(raw.channel, discord.Thread)
-    scope_id = (
-        f"thread:{raw.channel.id}" if is_thread else f"channel:{raw.channel.id}"
-    )
+    scope_id = f"thread:{raw.channel.id}" if is_thread else f"channel:{raw.channel.id}"
     user_id = f"dc:user:{raw.author.id}"
     timestamp = raw.created_at
     platform_meta = {
@@ -212,9 +210,7 @@ async def render_audio(
         messageable = await resolve_channel(send_to_id)
         raw_ext = msg.mime_type.split("/")[-1] if "/" in msg.mime_type else ""
         ext = raw_ext if raw_ext in _AUDIO_EXTS else "bin"
-        attachment = discord.File(
-            fp=BytesIO(msg.audio_bytes), filename=f"audio.{ext}"
-        )
+        attachment = discord.File(fp=BytesIO(msg.audio_bytes), filename=f"audio.{ext}")
         await messageable.send(content=content or None, file=attachment)
 
 
@@ -281,8 +277,7 @@ async def render_attachment(
             return
         except Exception:
             log.warning(
-                "render_attachment: could not reply to"
-                " message_id=%s, sending normally",
+                "render_attachment: could not reply to message_id=%s, sending normally",
                 reply_to_id,
             )
 

@@ -6,7 +6,6 @@ import logging
 from datetime import timezone
 from typing import TYPE_CHECKING, Any
 
-from lyra.core.auth import TrustLevel
 from lyra.core.message import (
     Attachment,
     InboundAudio,
@@ -14,6 +13,7 @@ from lyra.core.message import (
     Platform,
     RoutingContext,
 )
+from lyra.core.trust import TrustLevel
 
 if TYPE_CHECKING:
     from lyra.adapters.telegram import TelegramAdapter
@@ -213,9 +213,7 @@ def normalize_audio(
         d = getattr(voice, "duration", None)
         if d is not None:
             duration_ms = int(d) * 1000
-    file_id: str | None = (
-        getattr(voice, "file_id", None) if voice is not None else None
-    )
+    file_id: str | None = getattr(voice, "file_id", None) if voice is not None else None
     timestamp = raw.date
     if timestamp.tzinfo is None:
         timestamp = timestamp.replace(tzinfo=timezone.utc)

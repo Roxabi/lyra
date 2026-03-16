@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.auth import TrustLevel
 from lyra.core.message import InboundMessage, OutboundMessage
+from lyra.core.trust import TrustLevel
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-__all__ = ["AuthMiddleware", "TrustLevel"]
+__all__ = ["AuthMiddleware"]
 
 
 # Ordering used to pick the highest trust level among multiple role matches.

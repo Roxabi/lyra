@@ -34,7 +34,8 @@ from lyra.adapters.telegram_outbound import (
     send as _send_impl,
     send_streaming as _send_streaming_impl,
 )
-from lyra.core.auth import AuthMiddleware, TrustLevel
+from lyra.core.auth import AuthMiddleware
+from lyra.core.trust import TrustLevel
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     InboundAudio,
@@ -249,7 +250,9 @@ class TelegramAdapter:
         await _send_impl(self, original_msg, outbound)
 
     async def send_streaming(
-        self, original_msg: InboundMessage, chunks: AsyncIterator[str],
+        self,
+        original_msg: InboundMessage,
+        chunks: AsyncIterator[str],
         outbound: OutboundMessage | None = None,
     ) -> None:
         await _send_streaming_impl(self, original_msg, chunks, outbound)

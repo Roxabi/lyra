@@ -9,11 +9,11 @@ import pytest
 
 import lyra.__main__ as main_mod
 import lyra.bootstrap.agent_factory as agent_factory_mod
-import lyra.bootstrap.legacy as legacy_mod
 import lyra.bootstrap.multibot as multibot_mod
 import lyra.bootstrap.multibot_stores as stores_mod
 import lyra.bootstrap.multibot_wiring as wiring_mod
-from lyra.core.agent import Agent, ModelConfig
+from lyra.core.agent import Agent
+from lyra.core.agent_config import ModelConfig
 from lyra.core.auth import AuthMiddleware
 from lyra.core.hub import Hub
 from lyra.core.message import Platform
@@ -299,7 +299,6 @@ class TestGracefulShutdown:
 class TestAgentFactory:
     def test_cli_backend_creates_simple_agent(self) -> None:
         from lyra.agents.simple_agent import SimpleAgent
-        from lyra.core.agent import Agent, ModelConfig
 
         config = Agent(
             name="test",
@@ -316,7 +315,6 @@ class TestAgentFactory:
     ) -> None:
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
         from lyra.agents.anthropic_agent import AnthropicAgent
-        from lyra.core.agent import Agent, ModelConfig
 
         config = Agent(
             name="test",
@@ -328,8 +326,6 @@ class TestAgentFactory:
         assert isinstance(agent, AnthropicAgent)
 
     def test_unknown_backend_raises(self) -> None:
-        from lyra.core.agent import Agent, ModelConfig
-
         config = Agent(
             name="test",
             system_prompt="",
@@ -340,8 +336,6 @@ class TestAgentFactory:
             agent_factory_mod._create_agent(config, None)
 
     def test_cli_backend_without_pool_raises(self) -> None:
-        from lyra.core.agent import Agent, ModelConfig
-
         config = Agent(
             name="test",
             system_prompt="",
@@ -404,11 +398,13 @@ class TestAuthConfig:
     async def test_missing_telegram_section_exits(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Missing [auth.telegram] causes SystemExit when _main() runs."""
+        """No bot config at all causes SystemExit when _main() runs."""
         _patch_auth_config_test(monkeypatch)
         monkeypatch.setattr(main_mod, "_load_raw_config", lambda: {})
         stop = asyncio.Event()
         stop.set()
+        # With no config, _bootstrap_multibot exits with "No adapters configured"
+        # which includes "auth.telegram_bots" — matches pattern "auth.telegram".
         with pytest.raises(SystemExit, match="auth.telegram"):
             await main_mod._main(_stop=stop)
 
@@ -430,11 +426,6 @@ class TestAuthConfig:
         # Sentinel: if we reach load_agent_config, auth validation passed.
         monkeypatch.setattr(
             multibot_mod,
-            "load_agent_config",
-            lambda name, **kw: (_ for _ in ()).throw(SystemExit("past_auth")),
-        )
-        monkeypatch.setattr(
-            legacy_mod,
             "load_agent_config",
             lambda name, **kw: (_ for _ in ()).throw(SystemExit("past_auth")),
         )

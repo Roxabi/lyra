@@ -230,9 +230,7 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: edit/ch
     accumulated = "".join(parts)
     if stream_error is not None:
         if accumulated:
-            accumulated += adapter._msg(
-                "stream_interrupted", " [response interrupted]"
-            )
+            accumulated += adapter._msg("stream_interrupted", " [response interrupted]")
         else:
             accumulated = adapter._msg("generic", GENERIC_ERROR_REPLY)
 

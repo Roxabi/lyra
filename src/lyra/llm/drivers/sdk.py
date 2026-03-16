@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 import anthropic
 
-from lyra.core.agent import ModelConfig
+from lyra.core.agent_config import ModelConfig
 from lyra.errors import (
     ProviderApiError,
     ProviderAuthError,
@@ -142,7 +142,8 @@ class AnthropicSdkDriver:
             _code = getattr(exc, "status_code", 401)
             log.error(
                 "AnthropicSdkDriver auth error [pool:%s] status=%s",
-                pool_id, _code,
+                pool_id,
+                _code,
             )
             raise ProviderAuthError(
                 str(exc), status_code=_code, provider="anthropic"
@@ -151,7 +152,8 @@ class AnthropicSdkDriver:
             _code = getattr(exc, "status_code", 429)
             log.warning(
                 "AnthropicSdkDriver rate limit [pool:%s] status=%s",
-                pool_id, _code,
+                pool_id,
+                _code,
             )
             raise ProviderRateLimitError(
                 str(exc), status_code=_code, provider="anthropic"
@@ -168,9 +170,7 @@ class AnthropicSdkDriver:
             log.debug(
                 "AnthropicSdkDriver unexpected error [pool:%s]", pool_id, exc_info=True
             )
-            raise ProviderError(
-                str(exc), provider="anthropic", retryable=True
-            ) from exc
+            raise ProviderError(str(exc), provider="anthropic", retryable=True) from exc
 
     def is_alive(self, pool_id: str) -> bool:
         return True  # SDK backend is always reachable (no persistent process)

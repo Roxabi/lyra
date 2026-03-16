@@ -8,10 +8,11 @@ from pathlib import Path
 
 import pytest
 
-from lyra.core.auth import AuthMiddleware, TrustLevel
+from lyra.core.auth import AuthMiddleware
 
 # This import will fail until S1 is implemented — expected in RED phase.
 from lyra.core.auth_store import AuthStore
+from lyra.core.trust import TrustLevel
 
 # ---------------------------------------------------------------------------
 # Fixtures

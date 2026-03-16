@@ -8,13 +8,13 @@ from datetime import datetime, timezone
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from lyra.core.auth import TrustLevel
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.hub import Hub
 from lyra.core.message import (
     InboundMessage,
     Platform,
 )
+from lyra.core.trust import TrustLevel
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -330,7 +330,8 @@ class TestConfigEndpoint:
 
         from lyra.agents.anthropic_agent import AnthropicAgent
         from lyra.bootstrap.health import create_health_app
-        from lyra.core.agent import Agent, ModelConfig
+        from lyra.core.agent import Agent
+        from lyra.core.agent_config import ModelConfig
         from lyra.core.runtime_config import RuntimeConfig
         from lyra.llm.base import LlmResult
 

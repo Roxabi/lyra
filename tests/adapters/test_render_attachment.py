@@ -22,11 +22,11 @@ import pytest
 from lyra.adapters._shared import sanitize_filename, truncate_caption
 from lyra.adapters.discord import DiscordAdapter
 from lyra.adapters.telegram import TelegramAdapter
-from lyra.core.auth import TrustLevel
 from lyra.core.message import (
     InboundMessage,
     OutboundAttachment,
 )
+from lyra.core.trust import TrustLevel
 
 # ---------------------------------------------------------------------------
 # Helpers

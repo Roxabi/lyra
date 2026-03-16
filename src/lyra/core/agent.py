@@ -15,48 +15,18 @@ if TYPE_CHECKING:
 
     from .memory import MemoryManager
 
-from .agent_config import (  # noqa: F401
-    _AGENTS_DIR,
-    _MAX_PROMPT_BYTES,
-    _SYSTEM_AGENTS_DIR,
-    _USER_AGENTS_DIR,
-    _VALID_BACKENDS,
-    _WORKSPACE_BUILTIN_CONFLICTS,
-    AGENTS_DIR,
-    Agent,
-    AgentSTTConfig,
-    AgentTTSConfig,
-    Complexity,
-    ExpertiseConfig,
-    IdentityConfig,
-    ModelConfig,
-    PersonaConfig,
-    PersonalityConfig,
-    SmartRoutingConfig,
-    VoiceConfig,
-    _find_agent_dir,
-)
-from .agent_loader import agent_row_to_config, load_agent_config  # noqa: F401
+from .agent_config import Agent, _find_agent_dir
+from .agent_loader import load_agent_config
 from .agent_plugins import PluginReloadManager
-from .auth import TrustLevel
 from .circuit_breaker import CircuitRegistry
-from .command_router import CommandConfig, CommandRouter  # noqa: F401
+from .command_router import CommandRouter
 from .message import InboundMessage, Response
 from .messages import MessageManager
-from .persona import (  # noqa: F401
-    _PERSONAS_DIR,
-    _VAULT_DIR,
-    compose_system_prompt,
-    load_persona,
-)
+from .persona import _PERSONAS_DIR
 from .plugin_loader import PluginLoader
 from .pool import Pool
-from .session_lifecycle import (  # noqa: F401
-    COMPACT_TAIL,
-    COMPACT_THRESHOLD,
-    MODEL_CONTEXT_TOKENS,
-    SessionManager,
-)
+from .session_lifecycle import MODEL_CONTEXT_TOKENS, SessionManager
+from .trust import TrustLevel
 
 log = logging.getLogger(__name__)
 
@@ -96,7 +66,7 @@ class AgentBase(ABC, SessionManager):
         self._circuit_registry = circuit_registry
         self._admin_user_ids = admin_user_ids
         self._msg_manager = msg_manager
-        self._stt = stt   # ADR-013: agent owns temp file cleanup
+        self._stt = stt  # ADR-013: agent owns temp file cleanup
         self._tts = tts
         self._smart_routing_decorator = smart_routing_decorator
         self._plugins_dir = plugins_dir or _PLUGINS_DIR

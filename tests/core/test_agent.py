@@ -6,17 +6,16 @@ from pathlib import Path
 
 import pytest
 
-from lyra.core.agent import (
+from lyra.core.agent_config import (
     ExpertiseConfig,
     IdentityConfig,
     ModelConfig,
     PersonaConfig,
     PersonalityConfig,
     VoiceConfig,
-    compose_system_prompt,
-    load_agent_config,
-    load_persona,
 )
+from lyra.core.agent_loader import load_agent_config
+from lyra.core.persona import compose_system_prompt, load_persona
 
 
 class TestModelConfig:
@@ -527,7 +526,7 @@ class TestAgentTTSConfig:
     """T08 — AgentTTSConfig dataclass must exist with all-optional fields."""
 
     def test_agent_tts_config_all_optional(self):
-        from lyra.core.agent import AgentTTSConfig
+        from lyra.core.agent_config import AgentTTSConfig
 
         cfg = AgentTTSConfig()
         assert cfg.engine is None
@@ -536,7 +535,7 @@ class TestAgentTTSConfig:
         assert cfg.accent is None
 
     def test_agent_stt_config_all_optional(self):
-        from lyra.core.agent import AgentSTTConfig
+        from lyra.core.agent_config import AgentSTTConfig
 
         cfg = AgentSTTConfig()
         assert cfg.language_detection_threshold is None
@@ -565,7 +564,7 @@ language = "French"
 """
         (tmp_path / "x.toml").write_text(toml_content)
         monkeypatch.chdir(tmp_path)
-        from lyra.core.agent import load_agent_config
+        from lyra.core.agent_loader import load_agent_config
 
         agent = load_agent_config("x", agents_dir=tmp_path)
         assert agent.tts is not None
@@ -590,7 +589,7 @@ language_fallback = "en"
 """
         (tmp_path / "x.toml").write_text(toml_content)
         monkeypatch.chdir(tmp_path)
-        from lyra.core.agent import load_agent_config
+        from lyra.core.agent_loader import load_agent_config
 
         agent = load_agent_config("x", agents_dir=tmp_path)
         assert agent.stt is not None
@@ -613,7 +612,7 @@ max_turns = 5
 """
         (tmp_path / "x.toml").write_text(toml_content)
         monkeypatch.chdir(tmp_path)
-        from lyra.core.agent import load_agent_config
+        from lyra.core.agent_loader import load_agent_config
 
         agent = load_agent_config("x", agents_dir=tmp_path)
         assert agent.tts is None
@@ -913,7 +912,7 @@ class TestApplyAgentTTSOverlay:
 
     def test_non_none_fields_overwrite(self):
         from lyra.bootstrap.agent_factory import apply_agent_tts_overlay
-        from lyra.core.agent import AgentTTSConfig
+        from lyra.core.agent_config import AgentTTSConfig
         from lyra.tts import TTSConfig
 
         tts_cfg = TTSConfig(engine="qwen", voice="default", language="en")
@@ -925,7 +924,7 @@ class TestApplyAgentTTSOverlay:
 
     def test_none_fields_leave_tts_cfg_unchanged(self):
         from lyra.bootstrap.agent_factory import apply_agent_tts_overlay
-        from lyra.core.agent import AgentTTSConfig
+        from lyra.core.agent_config import AgentTTSConfig
         from lyra.tts import TTSConfig
 
         tts_cfg = TTSConfig(engine="chatterbox", voice="Nova", language="en")
@@ -937,7 +936,7 @@ class TestApplyAgentTTSOverlay:
 
     def test_returns_new_config_not_mutates(self):
         from lyra.bootstrap.agent_factory import apply_agent_tts_overlay
-        from lyra.core.agent import AgentTTSConfig
+        from lyra.core.agent_config import AgentTTSConfig
         from lyra.tts import TTSConfig
 
         tts_cfg = TTSConfig(engine="qwen", voice="default", language="en")
@@ -960,7 +959,7 @@ class TestApplyAgentSTTOverlay:
 
     def test_non_none_fields_overwrite(self):
         from lyra.bootstrap.agent_factory import apply_agent_stt_overlay
-        from lyra.core.agent import AgentSTTConfig
+        from lyra.core.agent_config import AgentSTTConfig
         from lyra.stt import STTConfig
 
         stt_cfg = STTConfig(model_size="large-v3-turbo")
@@ -975,7 +974,7 @@ class TestApplyAgentSTTOverlay:
 
     def test_none_fields_leave_stt_cfg_unchanged(self):
         from lyra.bootstrap.agent_factory import apply_agent_stt_overlay
-        from lyra.core.agent import AgentSTTConfig
+        from lyra.core.agent_config import AgentSTTConfig
         from lyra.stt import STTConfig
 
         stt_cfg = STTConfig(
@@ -1006,7 +1005,7 @@ class TestAgentRowToConfigTTSSTT:
         )
 
     def test_null_tts_stt_produces_none(self):
-        from lyra.core.agent import agent_row_to_config
+        from lyra.core.agent_loader import agent_row_to_config
 
         row = self._make_row(tts_json=None, stt_json=None)
         agent = agent_row_to_config(row)
@@ -1016,7 +1015,8 @@ class TestAgentRowToConfigTTSSTT:
     def test_tts_json_deserializes_to_agent_tts_config(self):
         import json
 
-        from lyra.core.agent import AgentTTSConfig, agent_row_to_config
+        from lyra.core.agent_config import AgentTTSConfig
+        from lyra.core.agent_loader import agent_row_to_config
 
         tts_data = {
             "engine": "chatterbox",
@@ -1038,7 +1038,8 @@ class TestAgentRowToConfigTTSSTT:
     def test_stt_json_deserializes_to_agent_stt_config(self):
         import json
 
-        from lyra.core.agent import AgentSTTConfig, agent_row_to_config
+        from lyra.core.agent_config import AgentSTTConfig
+        from lyra.core.agent_loader import agent_row_to_config
 
         stt_data = {
             "language_detection_threshold": 0.75,
@@ -1058,7 +1059,8 @@ class TestAgentRowToConfigTTSSTT:
     def test_both_tts_and_stt_json_deserialized(self):
         import json
 
-        from lyra.core.agent import AgentSTTConfig, AgentTTSConfig, agent_row_to_config
+        from lyra.core.agent_config import AgentSTTConfig, AgentTTSConfig
+        from lyra.core.agent_loader import agent_row_to_config
 
         tts_data = {"engine": "chatterbox", "voice": "en-GB-2"}
         stt_data = {"language_fallback": "fr"}
@@ -1074,7 +1076,7 @@ class TestAgentRowToConfigTTSSTT:
         assert agent.stt.language_fallback == "fr"
 
     def test_empty_string_tts_json_returns_none(self):
-        from lyra.core.agent import agent_row_to_config
+        from lyra.core.agent_loader import agent_row_to_config
 
         row = self._make_row(tts_json="", stt_json="")
         agent = agent_row_to_config(row)
@@ -1084,7 +1086,7 @@ class TestAgentRowToConfigTTSSTT:
     def test_malformed_tts_json_raises(self):
         import json
 
-        from lyra.core.agent import agent_row_to_config
+        from lyra.core.agent_loader import agent_row_to_config
 
         row = self._make_row(tts_json="not valid json")
         with pytest.raises(json.JSONDecodeError):

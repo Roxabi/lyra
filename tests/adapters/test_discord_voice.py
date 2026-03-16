@@ -19,8 +19,8 @@ from lyra.adapters.discord_voice import (
     VoiceSessionManager,
     _check_voice_deps,
 )
-from lyra.core.auth import TrustLevel
 from lyra.core.message import InboundMessage, OutboundAudioChunk
+from lyra.core.trust import TrustLevel
 
 _FRAME = 3840
 
@@ -497,8 +497,8 @@ def _make_discord_inbound(
     """Build a minimal discord InboundMessage for render_voice_stream tests."""
     from datetime import datetime, timezone
 
-    from lyra.core.auth import TrustLevel
     from lyra.core.message import InboundMessage
+    from lyra.core.trust import TrustLevel
 
     meta = (
         platform_meta
@@ -554,8 +554,8 @@ class TestRenderVoiceStream:
         # Arrange — inbound platform is telegram, not discord
         from datetime import datetime, timezone
 
-        from lyra.core.auth import TrustLevel
         from lyra.core.message import InboundMessage
+        from lyra.core.trust import TrustLevel
 
         hub = MagicMock()
         adapter = DiscordAdapter(hub=hub, bot_id="main")

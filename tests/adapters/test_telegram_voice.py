@@ -208,7 +208,7 @@ def test_normalize_audio_voice_fields() -> None:
 
     adapter, _ = _make_adapter()
     msg = _make_voice_msg(file_id="F1", duration=3, chat_id=42, user_id=7)
-    from lyra.core.auth import TrustLevel
+    from lyra.core.trust import TrustLevel
 
     result = adapter.normalize_audio(
         msg, b"data", "audio/ogg", trust_level=TrustLevel.TRUSTED
@@ -234,7 +234,7 @@ def test_normalize_audio_audio_file_fields() -> None:
     msg = _make_voice_msg(file_id="AF1", duration=5, chat_id=99, user_id=8)
     msg.voice = None
     msg.audio = SimpleNamespace(file_id="AF1", duration=5, mime_type="audio/mpeg")
-    from lyra.core.auth import TrustLevel
+    from lyra.core.trust import TrustLevel
 
     result = adapter.normalize_audio(
         msg, b"bytes", "audio/mpeg", trust_level=TrustLevel.TRUSTED
@@ -247,7 +247,7 @@ def test_normalize_audio_audio_file_fields() -> None:
 
 def test_normalize_audio_private_chat_scope_id() -> None:
     """Private chat → scope_id='chat:<id>'."""
-    from lyra.core.auth import TrustLevel
+    from lyra.core.trust import TrustLevel
 
     adapter, _ = _make_adapter()
     msg = _make_voice_msg(chat_id=42, chat_type="private")
@@ -259,7 +259,7 @@ def test_normalize_audio_private_chat_scope_id() -> None:
 
 def test_normalize_audio_topic_chat_scope_id() -> None:
     """Topic chat → scope_id='chat:<id>:topic:<topic_id>'."""
-    from lyra.core.auth import TrustLevel
+    from lyra.core.trust import TrustLevel
 
     adapter, _ = _make_adapter()
     msg = _make_voice_msg(chat_id=42, topic_id=7, chat_type="supergroup")
@@ -282,7 +282,7 @@ def test_normalize_audio_video_note_fields() -> None:
     msg.audio = None
     msg.video_note = SimpleNamespace(file_id="VN123", duration=5)
 
-    from lyra.core.auth import TrustLevel
+    from lyra.core.trust import TrustLevel
 
     result = adapter.normalize_audio(
         msg, b"vid", "video/mp4", trust_level=TrustLevel.TRUSTED

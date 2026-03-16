@@ -1,0 +1,308 @@
+---
+title: "ADR-025: Simplification Audit — Complexity Hotspots and Reduction Strategy"
+description: Structured audit of unnecessary complexity, over-abstraction, and redundant patterns in the Lyra codebase, ranked by impact with concrete reduction recommendations.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+Phase 1b is complete. The codebase has grown from a clean skeleton to ~18k lines across ~110 files through a sequence of issue-driven decompositions, each individually justified (PLR0915 noqa suppressions are a consistent signal). Before Phase 2 begins, this audit examines where complexity now exceeds what the problem actually requires, so that reduction can be targeted before new work is layered on top.
+
+The audit scope is `src/lyra/` only. Style and formatting are excluded. The focus is architectural: what raises cognitive load, what layers add no value, what patterns are duplicated without necessity.
+
+---
+
+## Findings
+
+Findings are ordered from highest to lowest estimated maintenance impact.
+
+### F-1: Two parallel bootstrap paths doing the same thing
+
+**Files:** `bootstrap/legacy.py` (360 lines), `bootstrap/multibot.py` (275 lines), `bootstrap/multibot_wiring.py` (256 lines)
+
+`_bootstrap_legacy` and `_bootstrap_multibot` are nearly isomorphic. Both: open stores, build auth, resolve agents, create Hub, create CliPool, build providers, wire adapters, create dispatchers, start buses, run lifecycle, and tear down in the same order. The differences are:
+
+- Legacy hardcodes `bot_id="main"`, reads tokens from env vars, and opens stores manually inline.
+- Multibot reads bot arrays from config, opens stores via `open_stores()`, and has a `_build_bot_auths` helper.
+- Legacy has its own teardown block (350–360 lines); multibot's teardown is in `run_lifecycle` (256 lines). Both teardown blocks have the same ordering bug risk.
+
+The entire legacy path exists for backward compatibility with old `config.toml` flat auth sections. In practice, for a personal agent running 1–2 bots, this is purely historical. The legacy path introduces a maintenance surface where every fix or new feature must be applied twice, and divergence is already visible: `open_stores` context manager exists in multibot but not in legacy (which manually opens and closes four stores inline without `contextlib.AsyncExitStack`).
+
+**Recommendation:** Remove the legacy path. Migrate the single known `config.toml` to the multibot schema. The multibot schema already supports a single-bot case — it is not a "multi-bot only" feature. `_bootstrap_legacy` is 360 lines that can become 0.
+
+---
+
+### F-2: `InboundBus` and `InboundAudioBus` are structurally identical
+
+**Files:** `core/inbound_bus.py` (129 lines), `core/inbound_audio_bus.py` (109 lines)
+
+Both classes implement the exact same pattern: register per-platform bounded queues, spawn feeder tasks that drain into a staging queue, expose `put()`, `get()`, `task_done()`, `start()`, `stop()`, `qsize()`, `staging_qsize()`, `registered_platforms()`. The only differences are the message type (`InboundMessage` vs `InboundAudio`) and that `InboundBus` has depth-exceeded monitoring events (absent from `InboundAudioBus`).
+
+This is textbook type-parameterizable code. A generic `InboundBus[T]` with an optional depth monitor would eliminate 100+ lines and ensure that any future fix (e.g., the depth monitoring gap in `InboundAudioBus`) is applied once.
+
+**Recommendation:** Merge into a single generic `InboundBus[T]` class. Python generics with `typing.Generic[T]` and a concrete `asyncio.Queue[T]` work cleanly here. Instantiate as `InboundBus[InboundMessage]` and `InboundBus[InboundAudio]`, passing `depth_monitor=True` for the message bus.
+
+---
+
+### F-3: `hub_dispatch.py` is a proxy module that adds an indirection layer with no value
+
+**Files:** `core/hub.py` (300 lines), `core/hub_dispatch.py` (295 lines)
+
+`Hub` defines five `dispatch_*` methods whose full bodies are single-line delegations:
+
+```python
+async def dispatch_response(self, msg, response):
+    await hub_dispatch.dispatch_response(self, msg, response)
+```
+
+The module-level functions in `hub_dispatch.py` receive `hub: Hub` as their first argument and then access `hub.outbound_dispatchers`, `hub.adapter_registry`, `hub._last_processed_at`, `hub._tts`, `hub._audio_pipeline`, `hub._msg_manager`, `hub._memory_tasks` — essentially operating on the Hub's private state. This is the service-layer antipattern where a "helper module" has full access to the class it was extracted from, giving the appearance of decomposition without actually reducing coupling.
+
+The extraction was done to stay under the 300-line limit (ADR-related). That limit is a useful heuristic, but slicing a single class into `Class` + `class_dispatch.py` where the latter operates on the former's internals is not decomposition — it is the same class split across two files.
+
+**Recommendation:** Fold `hub_dispatch.py` back into `hub.py` as private methods, accept that the file exceeds 300 lines (it would be ~570 — still readable), or genuinely decompose by extracting a `DispatchContext` value object that encodes all dispatch-relevant state and is passed by value. The current proxy layer is the worst outcome: two files, same coupling.
+
+---
+
+### F-4: `Pool` has backward-compat shims that shadow real attributes on `PoolObserver`
+
+**File:** `core/pool.py` (235 lines), `core/pool_observer.py` (142 lines)
+
+`Pool` defines six `@property` / `@setter` pairs whose sole purpose is to proxy reads and writes through to `self._observer`:
+
+```python
+@property
+def _turn_store(self) -> TurnStore | None:
+    return self._observer._turn_store
+
+@_turn_store.setter
+def _turn_store(self, value: TurnStore | None) -> None:
+    self._observer._turn_store = value
+```
+
+The comment above these calls them "backward-compat shims" for "tests, hub.py that read/write these attributes". This means the shims exist because callers still access `pool._turn_store` directly rather than going through `pool._observer`. The fix for this is to update callers to use `pool._observer.register_turn_store(store)`, which already exists. The shims are masking an incomplete migration.
+
+**Recommendation:** Search all callers of `pool._turn_store`, `pool._turn_logger`, `pool._session_update_fn`, `pool._session_persisted`. Update them to use `PoolObserver` registration methods. Remove the shims. This makes the observer boundary real rather than cosmetic.
+
+---
+
+### F-5: `load_agent_config` and `agent_row_to_config` are the same function in two implementations
+
+**File:** `core/agent_loader.py` (486 lines)
+
+The two functions are not identical, but they implement identical logical sections in the same order:
+- resolve `cwd`
+- validate backend + model
+- build `ModelConfig`
+- load persona
+- compose system prompt
+- validate system prompt size
+- parse commands
+- parse plugins
+- parse i18n language
+- parse smart routing config
+- parse workspaces
+- parse `[tts]` / `[stt]` sections
+- validate permissions
+
+Each section has near-identical validation logic. Where `load_agent_config` raises `ValueError`, `agent_row_to_config` logs a warning and continues (reasonable difference for DB-sourced data). But the structural duplication is ~250 lines of near-identical code that must be kept in sync.
+
+The underlying cause: the `AgentRow` (DB flat struct) and TOML `dict` are two different serialization formats for the same domain object (`Agent`). There is no shared deserialization pipeline — each format has its own full pipeline.
+
+**Recommendation:** Extract a shared `_build_agent_from_parts(name, backend, model, cwd_raw, persona_name, ...)` function that accepts already-extracted scalar values. Both `load_agent_config` (TOML parsing) and `agent_row_to_config` (DB row unpacking) call it. The format-specific parsing (TOML dict access vs. JSON column decoding) stays in the respective functions, but the validation and object construction is unified.
+
+---
+
+### F-6: `TrustLevel` is defined in `trust.py` but re-exported from `auth.py`, splitting the import surface
+
+**Files:** `core/trust.py` (14 lines), `core/auth.py` (re-exports `TrustLevel`)
+
+`trust.py` is a 14-line file containing only the `TrustLevel` enum. `auth.py` imports `TrustLevel` from `trust.py` and re-exports it in its `__all__`. Callers are split: some import from `lyra.core.trust`, some import from `lyra.core.auth`. This creates two canonical import paths for the same symbol, which is a maintenance hazard (refactoring one path leaves the other stale).
+
+The split was created to avoid a circular import between `message.py` (which needs `TrustLevel`) and `auth.py` (which is larger and has more imports). That is a legitimate reason to have a separate file. But `auth.py` should not re-export `TrustLevel` at all — it should let callers import from `trust` directly. This would eliminate the ambiguity.
+
+**Recommendation:** Remove `TrustLevel` from `auth.__all__`. Update the 7 files that import `TrustLevel` from `auth` to import it from `trust` instead. This takes 7 small edits and eliminates the dual-path confusion permanently.
+
+---
+
+### F-7: The `dispatch_*` fan-out in `hub_dispatch.py` repeats the same dispatcher-lookup + fallback pattern five times
+
+**File:** `core/hub_dispatch.py` (295 lines)
+
+Every `dispatch_*` function (response, streaming, attachment, audio, audio_stream, voice_stream) has the same structure:
+
+```python
+platform = Platform(msg.platform)
+dispatcher = hub.outbound_dispatchers.get((platform, msg.bot_id))
+if dispatcher is not None:
+    dispatcher.enqueue_*(msg, payload)
+    hub._last_processed_at = time.monotonic()
+    return
+# Fallback: direct adapter call
+adapter = hub.adapter_registry.get((platform, msg.bot_id))
+if adapter is None:
+    raise KeyError(...)
+await adapter.render_*(payload, msg)
+hub._last_processed_at = time.monotonic()
+```
+
+This pattern is copy-pasted five times. If the lookup logic ever changes (e.g., a new registry, a new fallback), it must be updated in five places.
+
+**Recommendation:** Extract `_route_outbound(hub, msg, enqueue_fn, fallback_fn)` as a private helper that performs the dispatcher/adapter lookup, calls the appropriate function, and updates `_last_processed_at`. Each `dispatch_*` function becomes a one-liner wrapper. This also removes the risk of inconsistent `_last_processed_at` updates (currently `dispatch_streaming` for voice mode does not update it before returning).
+
+---
+
+### F-8: `session_commands.py` has three handlers with identical structure
+
+**File:** `core/session_commands.py` (229 lines)
+
+`cmd_add`, `cmd_explain`, and `cmd_summarize` all follow:
+1. Validate args
+2. `await scrape_url(url, timeout=timeout/3)` with identical error handling
+3. Build `model_cfg = _make_model_cfg(driver)`
+4. `await driver.complete(...)` with identical error handling
+5. Return `Response`
+
+The scrape error handling block is copy-pasted identically three times. The `driver.complete` error handling is copy-pasted three times.
+
+**Recommendation:** Extract `_scrape_with_fallback(url, timeout)` and `_llm_complete_with_fallback(driver, pool_id, system_prompt, content, timeout)` helpers. Each command becomes ~10 lines of pure intent.
+
+---
+
+### F-9: `PoolObserver` is injected as an internal implementation detail through Pool's public API
+
+**File:** `core/pool_processor.py` — accesses `pool._observer` directly in `_process_one`
+
+`PoolProcessor._process_one` calls `pool._observer.log_turn_async(...)` and `pool._observer.session_update_async(...)` directly. It also calls `pool.append(msg)`. The split between what goes through `pool.append()` (the public method) and what goes through `pool._observer` directly (the internal object) is arbitrary. Callers should interact with one surface.
+
+**Recommendation:** Add `pool.log_turn_async(...)` and `pool.session_update_async(...)` as delegates on `Pool`, removing all direct `pool._observer.*` access from `PoolProcessor`. This makes `PoolObserver` truly internal to `Pool`.
+
+---
+
+### F-10: The `EventBus` singleton pattern adds global state with no visible consumer
+
+**Files:** `core/event_bus.py` (222 lines), `core/events.py` (56 lines)
+
+The `EventBus` singleton (`_bus`, `get_event_bus()`, `set_event_bus()`) is set in `Hub.__init__` and consumed by `EventAggregator.run()` (spawned in `Hub.run()`). `PoolProcessor._guarded_process_one` calls `get_event_bus()` to emit `AgentStarted/Completed/Failed/Idle` events on every turn. The `EventAggregator` consumes them and logs state changes.
+
+The actual downstream effect of all this infrastructure is: log messages. `_trigger_monitoring_action` calls `log.info` or `log.warning`. There is no alerting, no PagerDuty, no SSE endpoint, no metrics endpoint. The event bus currently exists to add a deduplication layer in front of log calls.
+
+The module-level singleton also creates a hidden dependency: any code that calls `get_event_bus()` is implicitly coupled to Hub initialization order. Tests that don't wire up a Hub get `None` from `get_event_bus()`, guarded by `if bus := get_event_bus()` checks scattered through `PoolProcessor`.
+
+**Recommendation:** Remove the event bus and singleton until there is a real consumer beyond logging. Replace `_guarded_process_one` event emission with direct `log.info/warning` calls. This eliminates `event_bus.py` (222 lines), `events.py` (56 lines), the `if bus :=` pattern in `pool_processor.py`, and the EventAggregator task in `Hub.run()`. When a real monitoring consumer (SSE, metrics, alerting) is needed in Phase 2/3, reintroduce the bus with DI instead of a singleton.
+
+---
+
+### F-11: `agent.py` is a re-export hub that creates a wide implicit API surface
+
+**File:** `core/agent.py` (297 lines)
+
+`agent.py` imports from six other modules and re-exports 20+ symbols via `# noqa: F401` imports:
+
+```python
+from .agent_config import (  # noqa: F401
+    _AGENTS_DIR, _MAX_PROMPT_BYTES, _SYSTEM_AGENTS_DIR, _USER_AGENTS_DIR,
+    _VALID_BACKENDS, _WORKSPACE_BUILTIN_CONFLICTS, AGENTS_DIR, Agent,
+    AgentSTTConfig, AgentTTSConfig, Complexity, ExpertiseConfig, IdentityConfig,
+    ModelConfig, PersonaConfig, PersonalityConfig, SmartRoutingConfig,
+    VoiceConfig, _find_agent_dir,
+)
+from .agent_loader import agent_row_to_config, load_agent_config  # noqa: F401
+from .persona import ...  # noqa: F401
+from .session_lifecycle import ...  # noqa: F401
+```
+
+This turns `core/agent.py` into an implicit namespace that re-exports private symbols (names starting with `_`) from other modules. Callers importing from `lyra.core.agent` get access to `_AGENTS_DIR`, `_MAX_PROMPT_BYTES`, `_WORKSPACE_BUILTIN_CONFLICTS` — implementation details of `agent_config.py`. This widens the de-facto API beyond what is intended and makes it unclear which module owns a symbol.
+
+**Recommendation:** `AgentBase` (the abstract class) should live in `agent.py`. Everything else should be imported by callers directly from the module that owns it (`agent_config`, `agent_loader`, `persona`, `session_lifecycle`). Remove the re-export `# noqa: F401` bloc. Update callers to import from the canonical module. This is a grep-and-replace migration with no behavioral change.
+
+---
+
+### F-12: `bootstrap/agent_factory.py` builds `ProviderRegistry` per-agent but `CliPool` is shared
+
+**File:** `bootstrap/agent_factory.py` (320 lines)
+
+`_resolve_agents` builds a `per_agent_registry` and `per_agent_routing` for each agent independently. This is correct — each agent needs its own `SmartRoutingDecorator` to track routing history independently. However, `_build_provider_registry` also re-creates a `ClaudeCliDriver` pointing to the same shared `cli_pool` for each agent. The `CliPool` is shared (per architecture doc), but each agent gets a new wrapper around it, creating N `ClaudeCliDriver` instances that all write to the same underlying pool. This is harmless today but is a subtle conceptual inconsistency.
+
+More concretely: `_build_provider_registry` is called with the same `circuit_registry` and `cli_pool` for every agent, but the function rebuilds the entire decorator stack (RetryDecorator, CircuitBreakerDecorator, ProviderRegistry) for every call. For the anthropic-sdk path, this means N separate `RetryDecorator` and `CircuitBreakerDecorator` instances wrap the same `AnthropicSdkDriver`/`api_key` — except they are not the same driver instance, because `AnthropicSdkDriver(api_key)` is called fresh each time.
+
+**Recommendation:** Build the shared driver layer (CliDriver, SdkDriver, CircuitBreakerDecorator, RetryDecorator) once. Build per-agent decorators (SmartRoutingDecorator) per agent on top of the shared stack. The registry lookup should return a shared provider and the agent wraps it with its own routing config.
+
+---
+
+## Summary Table
+
+| # | Finding | Files affected | Estimated lines removed | Risk |
+|---|---------|---------------|------------------------|------|
+| F-1 | Remove legacy bootstrap path | `legacy.py`, `__main__.py` | ~360 | Medium (requires config migration) |
+| F-2 | Generic InboundBus | `inbound_bus.py`, `inbound_audio_bus.py` | ~100 | Low |
+| F-3 | Fold hub_dispatch back into hub | `hub.py`, `hub_dispatch.py` | ~50 (proxies) | Low |
+| F-4 | Remove Pool shims, complete observer migration | `pool.py`, callers | ~40 | Low |
+| F-5 | Shared agent config builder | `agent_loader.py` | ~150 | Low |
+| F-6 | Canonical TrustLevel import path | `trust.py`, `auth.py`, 7 callers | ~5 + clarity | Low |
+| F-7 | Extract `_route_outbound` helper | `hub_dispatch.py` | ~60 | Low |
+| F-8 | Session command helper functions | `session_commands.py` | ~50 | Low |
+| F-9 | Pool as single observer surface | `pool.py`, `pool_processor.py` | ~10 | Low |
+| F-10 | Remove EventBus until real consumer | `event_bus.py`, `events.py`, `pool_processor.py` | ~290 | Medium (monitoring regression is acceptable) |
+| F-11 | Remove re-export hub in agent.py | `agent.py`, callers | ~30 re-exports | Low |
+| F-12 | Single shared driver instance | `agent_factory.py` | Refactor only | Low |
+
+**Total estimated line reduction: ~1,100 lines** (~6% of current codebase), with architectural clarity gains that exceed the raw count.
+
+---
+
+## Options Considered
+
+### Option A: Targeted reductions (recommended)
+
+Apply F-1 through F-10 incrementally, starting with highest-impact and lowest-risk items. Each reduction is a self-contained change. Recommended order: F-6 (trivial) → F-8, F-9, F-4 (low risk, structural) → F-2, F-7 (patterns) → F-5 (logic consolidation) → F-3 (fold dispatch) → F-10 (remove event bus) → F-1 (remove legacy path, requires config migration).
+
+**Pros:** Each change is independently reviewable. No big-bang risk.
+**Cons:** Takes multiple PRs to realize the full gain.
+
+### Option B: Keep current structure, document complexity as acceptable
+
+Accept the current complexity as the cost of the decomposition strategy applied during Phase 1b (all files ≤ 300 lines). Apply no changes.
+
+**Pros:** Zero migration risk.
+**Cons:** The 300-line rule was applied as a mechanical constraint, producing proxy modules (`hub_dispatch.py`) and duplicate pipelines (`legacy.py`, `agent_loader.py`) that increase cognitive load without reducing coupling. The benefit was line-count compliance, not simplicity.
+
+### Option C: Full rewrite of bootstrap + dispatch
+
+Redesign bootstrap as a single `Startup` class that takes a configuration union type and executes a shared wiring sequence. Redesign dispatch as a typed union.
+
+**Pros:** Clean slate.
+**Cons:** High risk, large diff, no behavioral gain in Phase 1.
+
+---
+
+## Decision
+
+Option A. Apply targeted reductions in order, starting with the no-risk items (F-6, F-8, F-9, F-4) and progressing to the structural ones (F-2, F-7, F-5, F-3, F-10, F-1). Each reduction is tracked as a separate issue.
+
+F-1 (legacy path removal) requires verifying no production `config.toml` uses the flat `[auth.telegram]` / `[auth.discord]` schema before deletion. This is a pre-condition, not a blocker.
+
+F-10 (event bus removal) requires confirming no monitoring consumer exists or is planned for Phase 2. If Phase 2 introduces a metrics endpoint, the bus can be reintroduced with proper DI at that point.
+
+---
+
+## Consequences
+
+### Positive
+
+- Estimated ~1,100 lines removed from the maintenance surface.
+- Single bootstrap path eliminates the risk of divergence between legacy and multibot behaviors.
+- Generic `InboundBus[T]` and the `_route_outbound` helper make future transport additions (e.g., a third platform) cheaper.
+- Removing the event bus singleton eliminates the hidden Hub-initialization dependency in `PoolProcessor`.
+- Consolidating agent config construction eliminates the risk of TOML and DB paths diverging in validation logic.
+
+### Negative
+
+- F-1 (legacy path removal) requires a one-time `config.toml` migration. If the production config uses the legacy schema, the migration must happen before the code is deployed.
+- F-10 (event bus removal) loses the deduplication layer for monitoring events. If future monitoring needs it, it must be rebuilt — though with DI rather than a singleton.
+
+### Neutral
+
+- File count decreases. The 300-line per-file limit becomes softer: `hub.py` may exceed it after folding dispatch back in, but a well-organized 570-line file with clear sections is preferable to a 300-line file plus a proxy module.

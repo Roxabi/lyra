@@ -267,8 +267,7 @@ class CommandRouter:
             if msg.command.prefix == "!" or command_name in self._passthroughs:
                 return None
             _fallback = (
-                f"Unknown command: {command_name}. "
-                "Type /help for available commands."
+                f"Unknown command: {command_name}. Type /help for available commands."
             )
             _reply_text = (
                 self._msg_manager.get("unknown_command", command_name=command_name)
@@ -287,9 +286,9 @@ class CommandRouter:
         except TimeoutError:
             log.warning(
                 "Plugin command %s timed out after %.1fs",
-                command_name, timeout,
+                command_name,
+                timeout,
             )
             return Response(
-                content=f"Command {command_name} timed out "
-                f"after {timeout:.0f}s."
+                content=f"Command {command_name} timed out after {timeout:.0f}s."
             )

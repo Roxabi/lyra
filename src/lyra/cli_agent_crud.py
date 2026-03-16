@@ -1,4 +1,5 @@
 """lyra agent CRUD — init, list, show, validate, edit, delete, assign, unassign."""
+
 from __future__ import annotations
 
 import asyncio
@@ -10,12 +11,8 @@ from pathlib import Path
 import typer
 
 from lyra.cli_agent import _AGENTS_DIR_OPT, _connect_store, _list_from_dir, agent_app
-from lyra.core.agent import (
-    _SYSTEM_AGENTS_DIR,
-    _USER_AGENTS_DIR,
-    _VALID_BACKENDS,
-    load_agent_config,
-)
+from lyra.core.agent_config import _SYSTEM_AGENTS_DIR, _USER_AGENTS_DIR, _VALID_BACKENDS
+from lyra.core.agent_loader import load_agent_config
 
 
 @agent_app.command(name="init")
@@ -24,6 +21,7 @@ def init_agents(
     agents_dir: Path | None = _AGENTS_DIR_OPT,
 ) -> None:
     """Seed the agent DB from existing TOML files (one-time migration)."""
+
     async def _run() -> None:
         store = await _connect_store()
         try:
@@ -91,6 +89,7 @@ def list_agents(agents_dir: Path | None = _AGENTS_DIR_OPT) -> None:
 @agent_app.command(name="show")
 def show(name: str = typer.Argument(..., help="Agent name to show.")) -> None:
     """Print full config for one agent from DB."""
+
     async def _run() -> None:
         store = await _connect_store()
         try:
@@ -174,9 +173,7 @@ def validate(  # noqa: C901, PLR0915
                         if not isinstance(parsed, dict):
                             raise ValueError("not an object")
                     except Exception:
-                        errors_found.append(
-                            f"{fn} is not a valid JSON object: {val!r}"
-                        )
+                        errors_found.append(f"{fn} is not a valid JSON object: {val!r}")
             if errors_found:
                 for e in errors_found:
                     typer.echo(f"Error: {e}", err=True)
@@ -191,6 +188,7 @@ def validate(  # noqa: C901, PLR0915
 @agent_app.command(name="edit")
 def edit(name: str = typer.Argument(..., help="Agent name to edit.")) -> None:
     """Interactively edit an agent config in DB (blank = keep current value)."""
+
     async def _run() -> None:
         store = await _connect_store()
         try:
@@ -199,8 +197,14 @@ def edit(name: str = typer.Argument(..., help="Agent name to edit.")) -> None:
                 typer.echo(f"Error: agent {name!r} not found in DB", err=True)
                 raise typer.Exit(1)
             editable = [
-                "backend", "model", "max_turns", "persona",
-                "show_intermediate", "cwd", "memory_namespace", "i18n_language",
+                "backend",
+                "model",
+                "max_turns",
+                "persona",
+                "show_intermediate",
+                "cwd",
+                "memory_namespace",
+                "i18n_language",
             ]
             new_vals: dict = {}
             for field_name in editable:
@@ -213,7 +217,9 @@ def edit(name: str = typer.Argument(..., help="Agent name to edit.")) -> None:
                         new_vals[field_name] = int(val.strip())
                     elif field_name == "show_intermediate":
                         new_vals[field_name] = val.strip().lower() in (
-                            "true", "1", "yes",
+                            "true",
+                            "1",
+                            "yes",
                         )
                     else:
                         new_vals[field_name] = val.strip()
@@ -235,6 +241,7 @@ def delete_agent(
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation."),
 ) -> None:
     """Delete an agent from DB. Refuses if any bot is assigned to it."""
+
     async def _run() -> None:
         store = await _connect_store()
         try:
@@ -289,6 +296,7 @@ def unassign(
     ),
 ) -> None:
     """Remove a bot-agent mapping (no-op if mapping doesn't exist)."""
+
     async def _run() -> None:
         store = await _connect_store()
         try:

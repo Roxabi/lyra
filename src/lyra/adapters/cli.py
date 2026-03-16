@@ -10,8 +10,8 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from lyra.core.auth import TrustLevel
 from lyra.core.message import InboundMessage
+from lyra.core.trust import TrustLevel
 
 
 class CLIAdapter:

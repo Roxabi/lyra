@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.core.agent import ModelConfig
+from lyra.core.agent_config import ModelConfig
 from lyra.llm.drivers.sdk import (  # type: ignore[reportMissingImports]
     AnthropicSdkDriver,
 )

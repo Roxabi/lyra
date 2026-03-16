@@ -20,11 +20,11 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from aiogram.types import BufferedInputFile
 
-from lyra.core.auth import TrustLevel
 from lyra.core.message import (
     InboundMessage,
     OutboundAudioChunk,
 )
+from lyra.core.trust import TrustLevel
 
 from .conftest import (
     make_dc_adapter,

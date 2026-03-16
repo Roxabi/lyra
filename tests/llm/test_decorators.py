@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.core.agent import ModelConfig
+from lyra.core.agent_config import ModelConfig
 from lyra.core.circuit_breaker import CircuitBreaker
 from lyra.llm.base import LlmResult
 from lyra.llm.decorators import (  # type: ignore[reportMissingImports]

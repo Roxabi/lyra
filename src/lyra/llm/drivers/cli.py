@@ -6,7 +6,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
-from lyra.core.agent import ModelConfig
+from lyra.core.agent_config import ModelConfig
 from lyra.core.cli_pool import CliPool
 from lyra.llm.base import LlmResult
 

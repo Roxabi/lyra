@@ -16,10 +16,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.auth import TrustLevel
 from lyra.core.debouncer import MessageDebouncer
 from lyra.core.message import Attachment, InboundMessage, Response
 from lyra.core.pool import Pool
+from lyra.core.trust import TrustLevel
 
 # ---------------------------------------------------------------------------
 # Helpers / fixtures

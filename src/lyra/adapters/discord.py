@@ -27,7 +27,8 @@ from lyra.adapters.discord_voice import (
     VoiceSessionManager,
     handle_voice_command as _handle_voice_command_impl,
 )
-from lyra.core.auth import AuthMiddleware, TrustLevel
+from lyra.core.auth import AuthMiddleware
+from lyra.core.trust import TrustLevel
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     InboundAudio,

@@ -283,7 +283,7 @@ backend = "claude-cli"
 system = "You are a test assistant."
 """
         (tmp_path / "nolangage.toml").write_bytes(toml_content)
-        from lyra.core.agent import load_agent_config
+        from lyra.core.agent_loader import load_agent_config
 
         # Act
         cfg = load_agent_config("nolangage", agents_dir=tmp_path)
@@ -307,7 +307,7 @@ system = "Tu es un assistant de test."
 default_language = "fr"
 """
         (tmp_path / "frenchagent.toml").write_bytes(toml_content)
-        from lyra.core.agent import load_agent_config
+        from lyra.core.agent_loader import load_agent_config
 
         # Act
         cfg = load_agent_config("frenchagent", agents_dir=tmp_path)
@@ -325,7 +325,7 @@ system = "test"
 default_language = "en"
 """
         (tmp_path / "enagent.toml").write_bytes(toml_content)
-        from lyra.core.agent import load_agent_config
+        from lyra.core.agent_loader import load_agent_config
 
         # Act
         cfg = load_agent_config("enagent", agents_dir=tmp_path)
@@ -337,7 +337,7 @@ default_language = "en"
         # Arrange — load the real default agent config with fixture persona
         from pathlib import Path
 
-        from lyra.core.agent import load_agent_config
+        from lyra.core.agent_loader import load_agent_config
 
         fixtures_dir = Path(__file__).resolve().parent.parent / "fixtures" / "personas"
 

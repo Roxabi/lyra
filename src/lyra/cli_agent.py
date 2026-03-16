@@ -48,10 +48,12 @@ def _parse_tools(raw: str) -> list[str]:
 
 
 def _list_from_dir(
-    directory: Path, source_label: str | None, skip: set[str] | None = None,
+    directory: Path,
+    source_label: str | None,
+    skip: set[str] | None = None,
 ) -> set[str]:
     """Print agents from a TOML directory (used by list and potentially others)."""
-    from lyra.core.agent import load_agent_config
+    from lyra.core.agent_loader import load_agent_config
 
     printed: set[str] = set()
     if not directory.exists():

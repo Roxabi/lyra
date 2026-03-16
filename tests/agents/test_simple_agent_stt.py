@@ -21,14 +21,15 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.agents.simple_agent import SimpleAgent
-from lyra.core.agent import Agent, ModelConfig
-from lyra.core.auth import TrustLevel
+from lyra.core.agent import Agent
+from lyra.core.agent_config import ModelConfig
 from lyra.core.message import (
     Attachment,
     InboundMessage,
     Response,
 )
 from lyra.core.pool import Pool
+from lyra.core.trust import TrustLevel
 from lyra.llm.base import LlmResult
 from lyra.stt import STTService, TranscriptionResult
 

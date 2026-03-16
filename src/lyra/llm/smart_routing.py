@@ -17,7 +17,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from lyra.core.agent import Complexity, ModelConfig, SmartRoutingConfig
+from lyra.core.agent_config import Complexity, ModelConfig, SmartRoutingConfig
 from lyra.llm.base import LlmProvider, LlmResult
 
 if TYPE_CHECKING:

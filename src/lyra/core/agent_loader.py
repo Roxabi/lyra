@@ -28,6 +28,11 @@ from .persona import compose_system_prompt, load_persona
 log = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Shared sub-pipeline helpers (TOML + DB loading paths both use these)
+# ---------------------------------------------------------------------------
+
+
 def _validate_backend_model(backend: str, model: str, agent_name: str) -> None:
     """Shared validation for backend and model values (TOML + DB paths)."""
     if backend not in _VALID_BACKENDS:
@@ -40,6 +45,95 @@ def _validate_backend_model(backend: str, model: str, agent_name: str) -> None:
             f"Invalid model {model!r} for agent {agent_name!r}: "
             "only [a-zA-Z0-9_.:-] characters allowed"
         )
+
+
+def _resolve_cwd(raw_cwd: str | None, agent_name: str) -> Path | None:
+    """Resolve a raw cwd string to an absolute Path, or None if absent/invalid."""
+    if raw_cwd is None:
+        return None
+    resolved = Path(raw_cwd).expanduser().resolve()
+    if not resolved.is_dir():
+        log.warning(
+            "Agent %r: cwd %r is not a directory — ignored",
+            agent_name,
+            raw_cwd,
+        )
+        return None
+    return resolved
+
+
+def _validate_i18n_language(raw: str, agent_name: str) -> str:
+    """Return raw if it matches ^[a-z]{2,8}$, else warn and return 'en'."""
+    if re.match(r"^[a-z]{2,8}$", raw):
+        return raw
+    log.warning(
+        "Agent %r: invalid i18n_language %r — falling back to 'en'",
+        agent_name,
+        raw,
+    )
+    return "en"
+
+
+def _build_smart_routing_from_dict(sr_data: dict) -> SmartRoutingConfig:
+    """Build a SmartRoutingConfig from a parsed dict (shared by TOML + DB paths)."""
+    sr_models = sr_data.get("models", {})
+    routing_table: dict[Complexity, str] = {}
+    for level in Complexity:
+        model_id = sr_models.get(level.value)
+        if model_id:
+            routing_table[level] = model_id
+    hcc = sr_data.get("high_complexity_commands", [])
+    return SmartRoutingConfig(
+        enabled=bool(sr_data.get("enabled", False)),
+        routing_table=routing_table,
+        history_size=int(sr_data.get("history_size", 50)),
+        high_complexity_commands=tuple(hcc),
+    )
+
+
+def _build_tts_from_dict(tts_data: dict) -> AgentTTSConfig:
+    """Build an AgentTTSConfig from a parsed dict (shared by TOML + DB paths)."""
+    return AgentTTSConfig(
+        engine=tts_data.get("engine"),
+        voice=tts_data.get("voice"),
+        language=tts_data.get("language"),
+        accent=tts_data.get("accent"),
+        personality=tts_data.get("personality"),
+        speed=tts_data.get("speed"),
+        emotion=tts_data.get("emotion"),
+        segment_gap=tts_data.get("segment_gap"),
+        crossfade=tts_data.get("crossfade"),
+        chunked=bool(tts_data["chunked"]) if "chunked" in tts_data else None,
+        chunk_size=tts_data.get("chunk_size"),
+    )
+
+
+def _build_stt_from_dict(stt_data: dict) -> AgentSTTConfig:
+    """Build an AgentSTTConfig from a parsed dict (shared by TOML + DB paths)."""
+    return AgentSTTConfig(
+        language_detection_threshold=stt_data.get("language_detection_threshold"),
+        language_detection_segments=stt_data.get("language_detection_segments"),
+        language_fallback=stt_data.get("language_fallback"),
+    )
+
+
+def _build_commands_from_dict(commands_data: dict) -> dict:
+    """Build a commands dict from a parsed dict (shared by TOML + DB paths)."""
+    from .command_router import CommandConfig  # local: avoids cycle
+
+    commands = {}
+    for cmd_name, cmd_data in commands_data.items():
+        commands[cmd_name] = CommandConfig(
+            description=cmd_data.get("description", ""),
+            builtin=bool(cmd_data.get("builtin", False)),
+            timeout=float(cmd_data.get("timeout", 30.0)),
+        )
+    return commands
+
+
+# ---------------------------------------------------------------------------
+# Public loaders
+# ---------------------------------------------------------------------------
 
 
 def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many independent TOML sections and validation branches
@@ -58,7 +152,7 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
     It provides machine-specific fallbacks for cwd, persona, and workspaces.
 
     Resolution order (highest to lowest priority):
-        agents/<name>.toml value → instance_overrides → hardcoded default
+        agents/<name>.toml value -> instance_overrides -> hardcoded default
 
     TOML structure:
         [agent]
@@ -75,8 +169,6 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
         [prompt]
         system = "..."             # optional: overrides persona composition
     """
-    from .command_router import CommandConfig  # local: avoids cycle with command_router
-
     # Primary gate: only safe characters allowed in agent names.
     # Must fire before _find_agent_dir to avoid FS probes on unsanitised input.
     if not re.match(r"^[a-zA-Z0-9_-]+$", name):
@@ -112,18 +204,7 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
     model = model_section.get("model", "claude-sonnet-4-5")
     _validate_backend_model(backend, model, name)
 
-    cwd: Path | None = None
-    raw_cwd = model_section.get("cwd") or overrides.get("cwd")
-    if raw_cwd is not None:
-        resolved = Path(raw_cwd).expanduser().resolve()
-        if not resolved.is_dir():
-            log.warning(
-                "Agent %r: [model].cwd %r is not a directory — ignored",
-                name,
-                raw_cwd,
-            )
-        else:
-            cwd = resolved
+    cwd = _resolve_cwd(model_section.get("cwd") or overrides.get("cwd"), name)
 
     model_cfg = ModelConfig(
         backend=backend,
@@ -134,7 +215,7 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
         skip_permissions=bool(model_section.get("skip_permissions", False)),
     )
 
-    # Persona loading — agent toml wins, then instance_overrides, then None
+    # Persona loading: agent toml wins, then instance_overrides, then None
     persona_name = agent_section.get("persona") or overrides.get("persona")
     persona: PersonaConfig | None = None
     if persona_name:
@@ -151,58 +232,38 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
             f"limit ({len(encoded_prompt)} bytes)"
         )
 
-    commands_section = data.get("commands", {})
-    commands: dict[str, CommandConfig] = {}
-    for cmd_name, cmd_data in commands_section.items():
-        commands[cmd_name] = CommandConfig(
-            description=cmd_data.get("description", ""),
-            builtin=bool(cmd_data.get("builtin", False)),
-            timeout=float(cmd_data.get("timeout", 30.0)),
-        )
+    commands = _build_commands_from_dict(data.get("commands", {}))
 
     plugins_section = data.get("plugins", {})
     plugins_enabled: tuple[str, ...] = tuple(plugins_section.get("enabled", []))
 
-    i18n_section = data.get("i18n", {})
-    i18n_language: str = i18n_section.get("default_language", "en")
-    if not re.match(r"^[a-z]{2,8}$", i18n_language):
-        log.warning(
-            "Invalid i18n language %r in agent config — falling back to 'en'",
-            i18n_language,
-        )
-        i18n_language = "en"
+    i18n_language = _validate_i18n_language(
+        data.get("i18n", {}).get("default_language", "en"), name
+    )
 
     # Smart routing config (#134)
     smart_routing: SmartRoutingConfig | None = None
     sr_section = agent_section.get("smart_routing")
     if sr_section is not None:
+        # TOML path validates model format; DB path skips this (no raw strings)
         sr_models = sr_section.get("models", {})
-        routing_table: dict[Complexity, str] = {}
         for level in Complexity:
             model_id = sr_models.get(level.value)
-            if model_id:
-                if not re.match(r"^[a-zA-Z0-9_.:-]+$", model_id):
-                    raise ValueError(
-                        f"Invalid model {model_id!r} for smart_routing "
-                        f"level {level.value!r}: "
-                        "only [a-zA-Z0-9_.:-] characters allowed"
-                    )
-                routing_table[level] = model_id
-        hcc = sr_section.get("high_complexity_commands", [])
-        smart_routing = SmartRoutingConfig(
-            enabled=bool(sr_section.get("enabled", False)),
-            routing_table=routing_table,
-            history_size=int(sr_section.get("history_size", 50)),
-            high_complexity_commands=tuple(hcc),
-        )
+            if model_id and not re.match(r"^[a-zA-Z0-9_.:-]+$", model_id):
+                raise ValueError(
+                    f"Invalid model {model_id!r} for smart_routing "
+                    f"level {level.value!r}: "
+                    "only [a-zA-Z0-9_.:-] characters allowed"
+                )
+        smart_routing = _build_smart_routing_from_dict(sr_section)
 
     # Workspaces: merge overrides (lower priority) with agent toml (wins per key)
-    workspaces_section = {
+    workspaces_raw: dict = {
         **overrides.get("workspaces", {}),
         **data.get("workspaces", {}),
     }
     workspaces: dict[str, Path] = {}
-    for key, raw_path in workspaces_section.items():
+    for key, raw_path in workspaces_raw.items():
         if not re.match(r"^[a-zA-Z0-9_-]+$", key):
             raise ValueError(
                 f"Invalid workspace name {key!r} in agent {name!r}: "
@@ -222,8 +283,8 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
         workspaces[key] = resolved
 
     # Parse [tts] section
-    tts_section = data.get("tts")
     agent_tts: AgentTTSConfig | None = None
+    tts_section = data.get("tts")
     if tts_section is not None:
         _tts_int_fields = ("segment_gap", "crossfade", "chunk_size")
         for _field in _tts_int_fields:
@@ -232,23 +293,11 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
                 raise TypeError(
                     f"[tts].{_field} must be an integer, got {type(_val).__name__!r}"
                 )
-        agent_tts = AgentTTSConfig(
-            engine=tts_section.get("engine"),
-            voice=tts_section.get("voice"),
-            language=tts_section.get("language"),
-            accent=tts_section.get("accent"),
-            personality=tts_section.get("personality"),
-            speed=tts_section.get("speed"),
-            emotion=tts_section.get("emotion"),
-            segment_gap=tts_section.get("segment_gap"),
-            crossfade=tts_section.get("crossfade"),
-            chunked=tts_section.get("chunked"),
-            chunk_size=tts_section.get("chunk_size"),
-        )
+        agent_tts = _build_tts_from_dict(tts_section)
 
     # Parse [stt] section
-    stt_section = data.get("stt")
     agent_stt: AgentSTTConfig | None = None
+    stt_section = data.get("stt")
     if stt_section is not None:
         _stt_int_fields = ("language_detection_segments",)
         for _field in _stt_int_fields:
@@ -257,13 +306,7 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
                 raise TypeError(
                     f"[stt].{_field} must be an integer, got {type(_val).__name__!r}"
                 )
-        agent_stt = AgentSTTConfig(
-            language_detection_threshold=stt_section.get(
-                "language_detection_threshold"
-            ),
-            language_detection_segments=stt_section.get("language_detection_segments"),
-            language_fallback=stt_section.get("language_fallback"),
-        )
+        agent_stt = _build_stt_from_dict(stt_section)
 
     return Agent(
         name=name,
@@ -283,7 +326,7 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
     )
 
 
-def agent_row_to_config(  # noqa: C901, PLR0915 — mirrors load_agent_config() branching; each branch handles one optional field
+def agent_row_to_config(  # noqa: C901, PLR0915 — each branch handles one optional field
     row: "AgentRow",
     instance_overrides: dict | None = None,
 ) -> "Agent":
@@ -300,18 +343,7 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — mirrors load_agent_config() 
     plugins: list[str] = json.loads(row.plugins_json) if row.plugins_json else []
 
     # Resolve cwd: DB row wins, then instance_overrides, then None
-    cwd: Path | None = None
-    raw_cwd = row.cwd or overrides.get("cwd")
-    if raw_cwd is not None:
-        resolved = Path(raw_cwd).expanduser().resolve()
-        if not resolved.is_dir():
-            log.warning(
-                "Agent %r: cwd %r is not a directory — ignored",
-                row.name,
-                raw_cwd,
-            )
-        else:
-            cwd = resolved
+    cwd = _resolve_cwd(row.cwd or overrides.get("cwd"), row.name)
 
     _validate_backend_model(row.backend, row.model, row.name)
 
@@ -332,45 +364,30 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — mirrors load_agent_config() 
             persona = load_persona(persona_name)
         except Exception as exc:  # noqa: BLE001
             log.warning(
-                "Agent %r: failed to load persona %r — %s",
+                "Agent %r: failed to load persona %r -- %s",
                 row.name,
                 persona_name,
                 exc,
             )
 
     # System prompt from persona (no [prompt].system in DB rows)
-    system_prompt = ""
-    if persona:
-        system_prompt = compose_system_prompt(persona)
+    system_prompt = compose_system_prompt(persona) if persona else ""
 
     # Smart routing
     smart_routing: SmartRoutingConfig | None = None
     if row.smart_routing_json is not None:
-        sr_data: dict = json.loads(row.smart_routing_json)
-        sr_models = sr_data.get("models", {})
-        routing_table: dict[Complexity, str] = {}
-        for level in Complexity:
-            model_id = sr_models.get(level.value)
-            if model_id:
-                routing_table[level] = model_id
-        hcc = sr_data.get("high_complexity_commands", [])
-        smart_routing = SmartRoutingConfig(
-            enabled=bool(sr_data.get("enabled", False)),
-            routing_table=routing_table,
-            history_size=int(sr_data.get("history_size", 50)),
-            high_complexity_commands=tuple(hcc),
+        smart_routing = _build_smart_routing_from_dict(
+            json.loads(row.smart_routing_json)
         )
 
     # Workspaces: DB row wins per-key, instance_overrides fill gaps
-    db_workspaces: dict = (
-        json.loads(row.workspaces_json) if row.workspaces_json else {}
-    )
+    db_workspaces: dict = json.loads(row.workspaces_json) if row.workspaces_json else {}
     workspaces_raw: dict = {**overrides.get("workspaces", {}), **db_workspaces}
     workspaces: dict[str, Path] = {}
     for key, raw_path in workspaces_raw.items():
         if not re.match(r"^[a-zA-Z0-9_-]+$", key):
             log.warning(
-                "Agent %r: invalid workspace name %r — skipping",
+                "Agent %r: invalid workspace name %r -- skipping",
                 row.name,
                 key,
             )
@@ -378,7 +395,7 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — mirrors load_agent_config() 
         if key in _WORKSPACE_BUILTIN_CONFLICTS:
             log.warning(
                 "Agent %r: workspace key %r clashes with built-in"
-                " command /%s — skipping",
+                " command /%s -- skipping",
                 row.name,
                 key,
                 key,
@@ -387,7 +404,7 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — mirrors load_agent_config() 
         resolved_ws = Path(raw_path).expanduser().resolve()
         if not resolved_ws.is_dir():
             log.warning(
-                "Agent %r: workspace %r path %r is not a directory — skipping",
+                "Agent %r: workspace %r path %r is not a directory -- skipping",
                 row.name,
                 key,
                 raw_path,
@@ -397,7 +414,7 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — mirrors load_agent_config() 
 
     memory_namespace = row.memory_namespace or row.name
 
-    # Deserialize tts_json → AgentTTSConfig
+    # Deserialize tts_json -> AgentTTSConfig
     agent_tts: AgentTTSConfig | None = None
     if row.tts_json:
         tts_data: dict = json.loads(row.tts_json)
@@ -409,21 +426,9 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — mirrors load_agent_config() 
                 row.name,
                 _tts_extra,
             )
-        agent_tts = AgentTTSConfig(
-            engine=tts_data.get("engine"),
-            voice=tts_data.get("voice"),
-            language=tts_data.get("language"),
-            accent=tts_data.get("accent"),
-            personality=tts_data.get("personality"),
-            speed=tts_data.get("speed"),
-            emotion=tts_data.get("emotion"),
-            segment_gap=tts_data.get("segment_gap"),
-            crossfade=tts_data.get("crossfade"),
-            chunked=bool(tts_data["chunked"]) if "chunked" in tts_data else None,
-            chunk_size=tts_data.get("chunk_size"),
-        )
+        agent_tts = _build_tts_from_dict(tts_data)
 
-    # Deserialize stt_json → AgentSTTConfig
+    # Deserialize stt_json -> AgentSTTConfig
     agent_stt: AgentSTTConfig | None = None
     if row.stt_json:
         stt_data: dict = json.loads(row.stt_json)
@@ -435,11 +440,7 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — mirrors load_agent_config() 
                 row.name,
                 _stt_extra,
             )
-        agent_stt = AgentSTTConfig(
-            language_detection_threshold=stt_data.get("language_detection_threshold"),
-            language_detection_segments=stt_data.get("language_detection_segments"),
-            language_fallback=stt_data.get("language_fallback"),
-        )
+        agent_stt = _build_stt_from_dict(stt_data)
 
     # Permissions from DB
     permissions: tuple[str, ...] = tuple(
@@ -447,26 +448,14 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — mirrors load_agent_config() 
     )
 
     # Commands from DB
-    from .command_router import CommandConfig  # local: avoids cycle
-
-    commands: dict[str, CommandConfig] = {}
-    if row.commands_json:
-        for cmd_name, cmd_data in json.loads(row.commands_json).items():
-            commands[cmd_name] = CommandConfig(
-                description=cmd_data.get("description", ""),
-                builtin=bool(cmd_data.get("builtin", False)),
-                timeout=float(cmd_data.get("timeout", 30.0)),
-            )
+    commands = (
+        _build_commands_from_dict(json.loads(row.commands_json))
+        if row.commands_json
+        else {}
+    )
 
     # i18n language from DB
-    i18n_language = row.i18n_language or "en"
-    if not re.match(r"^[a-z]{2,8}$", i18n_language):
-        log.warning(
-            "Agent %r: invalid i18n_language %r — falling back to 'en'",
-            row.name,
-            i18n_language,
-        )
-        i18n_language = "en"
+    i18n_language = _validate_i18n_language(row.i18n_language or "en", row.name)
 
     return Agent(
         name=row.name,

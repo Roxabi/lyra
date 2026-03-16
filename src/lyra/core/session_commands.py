@@ -16,7 +16,7 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
-from lyra.core.agent import ModelConfig
+from lyra.core.agent_config import ModelConfig
 from lyra.core.message import InboundMessage, Response
 from lyra.core.session_helpers import (
     ScrapeFailed,

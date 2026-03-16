@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.core.agent import ModelConfig
+from lyra.core.agent_config import ModelConfig
 from lyra.core.cli_pool import CliPool, _ProcessEntry
 from lyra.core.cli_protocol import read_until_result
 

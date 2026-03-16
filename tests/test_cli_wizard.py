@@ -12,7 +12,7 @@ from click.testing import Result
 from typer.testing import CliRunner
 
 from lyra.cli import agent_app as app  # type: ignore[import-not-found]
-from lyra.core.agent import load_agent_config
+from lyra.core.agent_loader import load_agent_config
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -10,8 +10,8 @@ from lyra.adapters._shared import push_to_hub_guarded
 from lyra.adapters.telegram_audio import _download_audio
 from lyra.adapters.telegram_formatting import _make_send_kwargs
 from lyra.adapters.telegram_normalize import _make_scope_id, normalize_audio
-from lyra.core.auth import TrustLevel
 from lyra.core.message import InboundMessage, Platform
+from lyra.core.trust import TrustLevel
 
 if TYPE_CHECKING:
     from lyra.adapters.telegram import TelegramAdapter

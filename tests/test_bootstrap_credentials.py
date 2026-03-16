@@ -19,7 +19,8 @@ import lyra.__main__ as main_mod
 import lyra.bootstrap.multibot as multibot_mod
 import lyra.bootstrap.multibot_stores as stores_mod
 import lyra.bootstrap.multibot_wiring as wiring_mod
-from lyra.core.agent import Agent, ModelConfig
+from lyra.core.agent import Agent
+from lyra.core.agent_config import ModelConfig
 from lyra.core.auth import AuthMiddleware
 from lyra.core.hub import Hub
 from lyra.errors import MissingCredentialsError
@@ -92,9 +93,7 @@ def _make_fake_stores(
         "LyraKeyring",
         MagicMock(load_or_create=MagicMock(return_value=fake_keyring)),
     )
-    monkeypatch.setattr(
-        stores_mod, "CredentialStore", lambda **kwargs: fake_cred_store
-    )
+    monkeypatch.setattr(stores_mod, "CredentialStore", lambda **kwargs: fake_cred_store)
     return fake_keyring, fake_cred_store
 
 

@@ -31,9 +31,7 @@ def help_command(
     msg_manager: "MessageManager | None",
 ) -> Response:
     """Return a listing of all available commands."""
-    header = (
-        msg_manager.get("help_header") if msg_manager else "Available commands:"
-    )
+    header = msg_manager.get("help_header") if msg_manager else "Available commands:"
     lines: list[str] = [header]
     for cmd_name, cfg in sorted(builtins.items()):
         desc = getattr(cfg, "description", "") or "(no description)"
@@ -141,7 +139,7 @@ def _config_set(
     runtime_config_path: Path | None,
     on_debounce_change: "Callable[[int], None] | None",
 ) -> Response:
-    from lyra.core.agent import _AGENTS_DIR
+    from lyra.core.agent_config import _AGENTS_DIR
     from lyra.core.runtime_config import set_param
 
     rc = holder.value
@@ -170,7 +168,7 @@ def _config_reset(
     holder: "RuntimeConfigHolder",
     runtime_config_path: Path | None,
 ) -> Response:
-    from lyra.core.agent import _AGENTS_DIR
+    from lyra.core.agent_config import _AGENTS_DIR
     from lyra.core.runtime_config import RuntimeConfig
 
     runtime_file = runtime_config_path or (_AGENTS_DIR / "lyra_runtime.toml")

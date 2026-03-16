@@ -13,9 +13,9 @@ from typing import TYPE_CHECKING, Any
 
 import discord
 
-from lyra.core.auth import TrustLevel
 from lyra.core.command_parser import CommandParser
 from lyra.core.message import OutboundAudioChunk
+from lyra.core.trust import TrustLevel
 
 if TYPE_CHECKING:
     from lyra.adapters.discord import DiscordAdapter

@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from lyra.core.auth import TrustLevel
 from lyra.core.auth_store import AuthStore
+from lyra.core.trust import TrustLevel
 
 # ---------------------------------------------------------------------------
 # Helpers / fixtures

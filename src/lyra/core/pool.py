@@ -375,7 +375,7 @@ class Pool:
                         )
                     )
 
-    async def _process_one(self, msg: InboundMessage, agent: "AgentBase") -> None:
+    async def _process_one(self, msg: InboundMessage, agent: "AgentBase") -> None:  # noqa: C901 — session-id update adds one branch
         """Run agent.process and dispatch result (streaming or non-streaming)."""
         self.append(msg)  # S1 — track identity and message count
         _ensure_fn = getattr(agent, "_ensure_system_prompt", None)
@@ -414,6 +414,12 @@ class Pool:
             self._observer.session_update_async(msg)
         else:
             self._ctx.record_circuit_success()
+            # Update session_id with the real Claude CLI session UUID before
+            # persisting to ThreadStore — the initial value is a placeholder UUID.
+            if isinstance(result, Response):
+                _cli_session_id = result.metadata.get("session_id")
+                if _cli_session_id:
+                    self.session_id = _cli_session_id
             await self._ctx.dispatch_response(msg, result)
             # L1 — log assistant turn (issue #67); fire-and-forget
             if isinstance(result, Response):

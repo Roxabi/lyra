@@ -193,9 +193,16 @@ class EventAggregator:
     async def _trigger_monitoring_action(self, event: MonitoringEvent) -> None:
         """Trigger a monitoring action for a confirmed state change.
 
-        Currently logs a warning. Future: LLM alert, PagerDuty, etc.
+        Normal operational transitions (AgentStarted, AgentCompleted, AgentIdle,
+        QueueDepthNormal) are logged at INFO. Anomalies (AgentFailed,
+        CircuitStateChanged, QueueDepthExceeded) are logged at WARNING.
+        Future: LLM alert, PagerDuty, etc.
         """
-        log.warning("EventAggregator: state change detected — %r", event)
+        normal = (AgentStarted, AgentCompleted, AgentIdle, QueueDepthNormal)
+        if isinstance(event, normal):
+            log.info("EventAggregator: state change — %r", event)
+        else:
+            log.warning("EventAggregator: state change — %r", event)
 
 
 # ── Module-level singleton ────────────────────────────────────────────────────

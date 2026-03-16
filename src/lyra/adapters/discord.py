@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import logging
 import os
 import re
@@ -62,9 +63,9 @@ DISCORD_MAX_LENGTH = 2000  # Discord API message length limit
 # Matches a full Markdown pipe table (header + separator + 1+ data rows).
 _TABLE_RE = re.compile(
     r"(?m)"
-    r"(?:^\|.+\|\s*\n)"          # header row
-    r"(?:^\|[\s\-:|]+\|\s*\n)"   # separator row  (--|:--:|--:  etc.)
-    r"(?:^\|.+\|[ \t]*\n?)+",    # one or more data rows
+    r"(?:^\|.+\|\s*\n)"  # header row
+    r"(?:^\|[\s\-:|]+\|\s*\n)"  # separator row  (--|:--:|--:  etc.)
+    r"(?:^\|.+\|[ \t]*\n?)+",  # one or more data rows
 )
 
 
@@ -151,6 +152,22 @@ async def _discord_typing_worker(
         pass
     except Exception as exc:
         log.debug("discord typing worker for channel %d: %s", channel_id, exc)
+
+
+_MENTION_RE = re.compile(r"<@!?\d+>")
+
+
+def _make_thread_name(content: str, fallback: str) -> str:
+    """Derive a Discord thread name from a message.
+
+    Takes the segment before the first ' — ' (em-dash), strips @mentions,
+    collapses whitespace, and falls back to *fallback* when the result is empty.
+    The return value is always ≤ 100 characters (Discord limit).
+    """
+    segment = content.split(" — ", 1)[0] if " — " in content else content
+    clean = _MENTION_RE.sub("", segment).strip()
+    name = " ".join(clean.split()) or fallback
+    return name[:100]
 
 
 def _extract_attachments(raw_attachments: list[Any]) -> list[Attachment]:
@@ -357,6 +374,31 @@ class DiscordAdapter(discord.Client):
         except Exception:
             log.exception(
                 "ThreadStore: failed to persist claim for thread_id=%s", thread_id
+            )
+
+    async def _persist_thread_session(
+        self, msg: "InboundMessage", session_id: str, pool_id: str
+    ) -> None:
+        """Persist session_id and pool_id for a thread after a successful turn."""
+        thread_id: int | None = msg.platform_meta.get("thread_id")
+        if thread_id is None or self._thread_store is None:
+            return
+        try:
+            await self._thread_store.update_session(
+                thread_id=str(thread_id),
+                bot_id=self._bot_id,
+                session_id=session_id,
+                pool_id=pool_id,
+            )
+            log.debug(
+                "ThreadStore: persisted session_id=%s pool_id=%s for thread_id=%s",
+                session_id,
+                pool_id,
+                thread_id,
+            )
+        except Exception:
+            log.exception(
+                "ThreadStore: failed to persist session for thread_id=%s", thread_id
             )
 
     async def _handle_leave_command(self, message: Any, guild_id: str) -> None:
@@ -717,10 +759,7 @@ class DiscordAdapter(discord.Client):
         ):
             try:
                 thread = await message.create_thread(
-                    name=(
-                        f"Chat with {message.author.display_name}"
-                        f" ({str(message.author.id)[-4:]})"
-                    )[:100].strip()
+                    name=_make_thread_name(message.content, message.author.display_name)
                 )
                 resolved_thread_id = thread.id
                 self._owned_threads.add(thread.id)
@@ -752,6 +791,33 @@ class DiscordAdapter(discord.Client):
                     )
                 )
 
+        # Retrieve stored session for existing owned threads (read-side fix).
+        # New auto-threads have no prior session; skip get_session() for those.
+        _stored_session_id: str | None = None
+        _stored_pool_id: str | None = None
+        if _in_owned_thread and self._thread_store is not None:
+            try:
+                (
+                    _stored_session_id,
+                    _stored_pool_id,
+                ) = await self._thread_store.get_session(
+                    thread_id=str(message.channel.id),
+                    bot_id=self._bot_id,
+                )
+                if _stored_session_id is not None:
+                    log.debug(
+                        "ThreadStore: retrieved session_id=%s pool_id=%s"
+                        " for thread_id=%s",
+                        _stored_session_id,
+                        _stored_pool_id,
+                        message.channel.id,
+                    )
+            except Exception:
+                log.exception(
+                    "ThreadStore: failed to retrieve session for thread_id=%s",
+                    message.channel.id,
+                )
+
         try:
             hub_msg = self.normalize(
                 message,
@@ -762,6 +828,21 @@ class DiscordAdapter(discord.Client):
         except Exception:
             log.exception("Failed to normalize discord message id=%s", message.id)
             return
+
+        # Inject stored session and write-side persistence callback into platform_meta
+        # so the hub pipeline can resume the session and register the update function
+        # after binding resolution.
+        _meta_updates: dict = {}
+        if _stored_session_id is not None:
+            _meta_updates["thread_session_id"] = _stored_session_id
+        _has_thread_id = hub_msg.platform_meta.get("thread_id") is not None
+        if _has_thread_id and self._thread_store is not None:
+            _meta_updates["_session_update_fn"] = self._persist_thread_session
+        if _meta_updates:
+            hub_msg = dataclasses.replace(
+                hub_msg,
+                platform_meta={**hub_msg.platform_meta, **_meta_updates},
+            )
 
         log.info(
             "message_received",

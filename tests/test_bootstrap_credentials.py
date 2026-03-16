@@ -199,7 +199,7 @@ class TestMissingCredentials:
         monkeypatch.setattr(
             AuthMiddleware,
             "from_bot_config",
-            classmethod(lambda cls, raw, platform, bot_id, store=None: MagicMock()),
+            classmethod(lambda cls, raw, platform, bot_id, **kw: MagicMock()),
         )
 
         stop = asyncio.Event()
@@ -233,7 +233,7 @@ class TestMissingCredentials:
         monkeypatch.setattr(
             AuthMiddleware,
             "from_bot_config",
-            classmethod(lambda cls, raw, platform, bot_id, store=None: MagicMock()),
+            classmethod(lambda cls, raw, platform, bot_id, **kw: MagicMock()),
         )
 
         stop = asyncio.Event()
@@ -308,7 +308,7 @@ class TestCredentialResolution:
         monkeypatch.setattr(
             AuthMiddleware,
             "from_bot_config",
-            classmethod(lambda cls, raw, platform, bot_id, store=None: MagicMock()),
+            classmethod(lambda cls, raw, platform, bot_id, **kw: MagicMock()),
         )
 
         stop = asyncio.Event()
@@ -377,7 +377,7 @@ class TestCredentialResolution:
         monkeypatch.setattr(
             AuthMiddleware,
             "from_bot_config",
-            classmethod(lambda cls, raw, platform, bot_id, store=None: MagicMock()),
+            classmethod(lambda cls, raw, platform, bot_id, **kw: MagicMock()),
         )
 
         stop = asyncio.Event()
@@ -420,7 +420,7 @@ class TestCredentialResolution:
         monkeypatch.setattr(
             AuthMiddleware,
             "from_bot_config",
-            classmethod(lambda cls, raw, platform, bot_id, store=None: MagicMock()),
+            classmethod(lambda cls, raw, platform, bot_id, **kw: MagicMock()),
         )
 
         stop = asyncio.Event()
@@ -478,7 +478,7 @@ class TestCredentialResolution:
         monkeypatch.setattr(
             AuthMiddleware,
             "from_bot_config",
-            classmethod(lambda cls, raw, platform, bot_id, store=None: MagicMock()),
+            classmethod(lambda cls, raw, platform, bot_id, **kw: MagicMock()),
         )
 
         stop = asyncio.Event()

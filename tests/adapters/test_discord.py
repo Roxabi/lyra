@@ -1615,27 +1615,26 @@ class TestDiscordAuth:
 
 @pytest.mark.asyncio
 async def test_discord_typing_worker_uses_typing_context_manager() -> None:
-    """_discord_typing_worker enters channel.typing() and exits cleanly on cancel."""
+    """_discord_typing_worker calls trigger_typing() and exits cleanly on cancel."""
     import asyncio
 
     from lyra.adapters.discord import _discord_typing_worker
 
     mock_channel = AsyncMock()
-    typing_ctx = AsyncMock(__aenter__=AsyncMock(), __aexit__=AsyncMock())
-    mock_channel.typing = MagicMock(return_value=typing_ctx)
+    mock_channel.trigger_typing = AsyncMock()
 
     async def resolve(_channel_id: int) -> AsyncMock:
         return mock_channel
 
     task = asyncio.create_task(_discord_typing_worker(resolve, channel_id=123))
-    await asyncio.sleep(0)  # yield to let the worker enter the context manager
+    await asyncio.sleep(0)  # yield to let the worker call trigger_typing
     task.cancel()
     try:
         await task
     except asyncio.CancelledError:
         pass
 
-    mock_channel.typing.assert_called_once()
+    mock_channel.trigger_typing.assert_called_once()
 
 
 @pytest.mark.asyncio

@@ -16,7 +16,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import lyra.__main__ as main_mod
+import lyra.bootstrap.legacy as legacy_mod
 from lyra.config import DiscordMultiConfig, TelegramMultiConfig
+from lyra.core.auth import AuthMiddleware
 
 # ---------------------------------------------------------------------------
 # T1 — _parse_args: argument parsing
@@ -272,19 +274,19 @@ class TestBootstrapLegacyAdapterParam:
         fake_cred_store.close = AsyncMock()
         fake_cred_store.get_full = AsyncMock(return_value=("fake-token", "fake-secret"))
 
-        monkeypatch.setattr(main_mod, "AuthStore", lambda **kwargs: fake_auth_store)
+        monkeypatch.setattr(legacy_mod, "AuthStore", lambda **kwargs: fake_auth_store)
         monkeypatch.setattr(
-            main_mod,
+            legacy_mod,
             "LyraKeyring",
             MagicMock(load_or_create=AsyncMock(return_value=fake_keyring)),
         )
         monkeypatch.setattr(
-            main_mod,
+            legacy_mod,
             "CredentialStore",
             lambda **kwargs: fake_cred_store,
         )
         monkeypatch.setattr(
-            main_mod.AuthMiddleware,
+            AuthMiddleware,
             "from_config",
             classmethod(
                 lambda cls, raw, section, store=None: fake_from_config(
@@ -293,7 +295,7 @@ class TestBootstrapLegacyAdapterParam:
             ),
         )
         monkeypatch.setattr(
-            main_mod,
+            legacy_mod,
             "load_agent_config",
             lambda name, **kw: MagicMock(
                 name=name,
@@ -310,7 +312,7 @@ class TestBootstrapLegacyAdapterParam:
         fake_tg_adapter._bot_id = "main"
 
         monkeypatch.setattr(
-            main_mod,
+            legacy_mod,
             "TelegramAdapter",
             lambda **kwargs: fake_tg_adapter,
         )
@@ -327,39 +329,39 @@ class TestBootstrapLegacyAdapterParam:
         fake_hub.circuit_registry = None
         fake_hub._start_time = 0
         fake_hub._last_processed_at = None
-        monkeypatch.setattr(main_mod, "Hub", lambda **kwargs: fake_hub)
+        monkeypatch.setattr(legacy_mod, "Hub", lambda **kwargs: fake_hub)
 
         fake_dispatcher = MagicMock()
         fake_dispatcher.start = AsyncMock()
         fake_dispatcher.stop = AsyncMock()
         monkeypatch.setattr(
-            main_mod, "OutboundDispatcher", lambda **kwargs: fake_dispatcher
+            legacy_mod, "OutboundDispatcher", lambda **kwargs: fake_dispatcher
         )
 
         fake_uvicorn_server = MagicMock()
         fake_uvicorn_server.serve = AsyncMock(side_effect=asyncio.CancelledError)
         monkeypatch.setattr(
-            main_mod.uvicorn, "Server", lambda config: fake_uvicorn_server
+            legacy_mod.uvicorn, "Server", lambda config: fake_uvicorn_server
         )
 
         fake_cli_pool = MagicMock()
         fake_cli_pool.start = AsyncMock()
         fake_cli_pool.stop = AsyncMock()
-        monkeypatch.setattr(main_mod, "CliPool", lambda: fake_cli_pool)
+        monkeypatch.setattr(legacy_mod, "CliPool", lambda: fake_cli_pool)
 
         monkeypatch.setattr(
-            main_mod,
+            legacy_mod,
             "_build_provider_registry",
             lambda *a, **kw: (MagicMock(), None),
         )
         monkeypatch.setattr(
-            main_mod,
+            legacy_mod,
             "_create_agent",
             lambda *a, **kw: MagicMock(name="lyra_default"),
         )
-        monkeypatch.setattr(main_mod, "_load_messages", lambda **kw: MagicMock())
+        monkeypatch.setattr(legacy_mod, "_load_messages", lambda **kw: MagicMock())
         monkeypatch.setattr(
-            main_mod,
+            legacy_mod,
             "_load_pairing_config",
             lambda raw: MagicMock(enabled=False),
         )
@@ -369,7 +371,7 @@ class TestBootstrapLegacyAdapterParam:
 
         # Act
         # type: ignore[call-arg] — adapter param doesn't exist yet (RED phase)
-        await main_mod._bootstrap_legacy(  # type: ignore[call-arg]
+        await legacy_mod._bootstrap_legacy(  # type: ignore[call-arg]
             {},
             MagicMock(),
             set(),

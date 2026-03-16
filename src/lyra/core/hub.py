@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple, Protocol
 from lyra.errors import ProviderError
 
 from .agent import AgentBase
+from .auth import TrustLevel
 from .circuit_breaker import CircuitRegistry
 from .command_parser import CommandParser
 from .context_resolver import ContextResolver
@@ -63,7 +64,7 @@ class ChannelAdapter(Protocol):
     def normalize(self, raw: Any) -> InboundMessage: ...
 
     def normalize_audio(
-        self, raw: Any, audio_bytes: bytes, mime_type: str
+        self, raw: Any, audio_bytes: bytes, mime_type: str, *, trust_level: TrustLevel
     ) -> InboundAudio: ...
 
     async def send(
@@ -268,7 +269,7 @@ class Hub:
         """
         self._turn_store = store
         for pool in self.pools.values():
-            pool._turn_store = store
+            pool._observer.register_turn_store(store)
 
     def register_adapter(
         self, platform: Platform, bot_id: str, adapter: ChannelAdapter
@@ -373,7 +374,7 @@ class Hub:
                 debounce_ms=self._debounce_ms,
             )
             if self._turn_store is not None:
-                new_pool._turn_store = self._turn_store
+                new_pool._observer.register_turn_store(self._turn_store)
             self.pools[pool_id] = new_pool
         pool = self.pools[pool_id]
         pool._touch()
@@ -474,24 +475,18 @@ class Hub:
     # Rate limiting
     # ------------------------------------------------------------------
 
-    def _is_rate_limited(self, msg: InboundMessage) -> bool:
-        """Return True if this user has exceeded the per-window message limit.
+    def _is_rate_limited_by_key(self, key: tuple[str, str, str]) -> bool:
+        """Sliding-window rate check for an arbitrary (platform, bot_id, user_id) key.
 
-        Uses a sliding window: tracks timestamps of recent messages and drops
-        any that arrive after RATE_LIMIT messages within RATE_WINDOW seconds.
-        Inactive-user entries are cleaned up when their deque empties to prevent
-        unbounded dict growth.
+        Returns True when the user has exceeded the per-window limit.
+        Appends a timestamp and returns False otherwise.
         """
-        # str() normalizes platform: InboundMessage.platform is str, not Platform enum
-        key = (str(msg.platform), msg.bot_id, msg.user_id)
         now = time.monotonic()
         window_start = now - self._rate_window
         timestamps = self._rate_timestamps.get(key)
         if timestamps is not None:
-            # Evict timestamps outside the current window
             while timestamps and timestamps[0] < window_start:
                 timestamps.popleft()
-            # Empty deque → user has been inactive; clean up to bound dict size
             if not timestamps:
                 del self._rate_timestamps[key]
                 timestamps = None
@@ -502,6 +497,18 @@ class Hub:
             self._rate_timestamps[key] = timestamps
         timestamps.append(now)
         return False
+
+    def _is_rate_limited(self, msg: InboundMessage) -> bool:
+        """Return True if this user has exceeded the per-window message limit.
+
+        Uses a sliding window: tracks timestamps of recent messages and drops
+        any that arrive after RATE_LIMIT messages within RATE_WINDOW seconds.
+        Inactive-user entries are cleaned up when their deque empties to prevent
+        unbounded dict growth.
+        """
+        # str() normalizes platform: InboundMessage.platform is str, not Platform enum
+        key = (str(msg.platform), msg.bot_id, msg.user_id)
+        return self._is_rate_limited_by_key(key)
 
     # ------------------------------------------------------------------
     # Dispatch
@@ -738,12 +745,22 @@ class Hub:
             return
         key = RoutingKey(platform_enum, audio.bot_id, audio.scope_id)
 
-        if audio.trust != "user":
-            log.error(
-                "audio %s has trust=%r (expected 'user') — dropped",
-                audio.id,
-                audio.trust,
+        if audio.trust_level == TrustLevel.BLOCKED:
+            log.warning("audio %s has trust_level=BLOCKED — dropped", audio.id)
+            return
+
+        # Per-user rate limit — mirrors the text pipeline check.
+        _rate_key = (str(audio.platform), audio.bot_id, audio.user_id)
+        if self._is_rate_limited_by_key(_rate_key):
+            log.warning(
+                "audio rate limit exceeded for %s — audio %s dropped", key, audio.id
             )
+            _rl_content = (
+                self._msg_manager.get("rate_limited")
+                if self._msg_manager
+                else "You are sending messages too fast. Please slow down."
+            )
+            await self._dispatch_audio_reply(audio, _rl_content)
             return
 
         if self._stt is None:
@@ -778,10 +795,28 @@ class Hub:
             log.info("STT noise for audio %s — replied with stt_noise", audio.id)
             return
 
-        # Echo transcription back to user before agent processing
-        await self._dispatch_audio_reply(audio, f"\U0001f3a4 _{result.text}_")
+        # Sanitize transcript: cap length and block slash-command injection.
+        _MAX_TRANSCRIPT = 2000
+        transcript = result.text[:_MAX_TRANSCRIPT]
+        if transcript.lstrip().startswith("/"):
+            log.warning(
+                "audio %s: transcript starts with '/' — dropping to prevent"
+                " slash-command injection",
+                audio.id,
+            )
+            _content = (
+                self._msg_manager.get("stt_invalid")
+                if self._msg_manager
+                else "I couldn't process that voice message."
+            )
+            await self._dispatch_audio_reply(audio, _content)
+            return
 
-        text = f"\U0001f3a4 [voice]: {result.text}"
+        # Echo transcription back to user before agent processing
+        _echo = transcript[:_MAX_TRANSCRIPT]
+        await self._dispatch_audio_reply(audio, f"\U0001f3a4 _{_echo}_")
+
+        text = f"\U0001f3a4 [voice]: {transcript}"
         msg = InboundMessage(
             id=audio.id,
             platform=audio.platform,
@@ -790,7 +825,7 @@ class Hub:
             user_id=audio.user_id,
             user_name=audio.user_name,
             is_mention=audio.is_mention,
-            text=result.text,
+            text=transcript,
             text_raw=text,
             timestamp=audio.timestamp,
             trust_level=audio.trust_level,
@@ -917,14 +952,14 @@ class Hub:
                 else:
                     # Language resolution
                     if prefs.tts_language != "detected":
-                        lang = prefs.tts_language          # explicit user override
+                        lang = prefs.tts_language  # explicit user override
                     elif msg.language is not None:
-                        lang = msg.language                # Whisper-detected
+                        lang = msg.language  # Whisper-detected
                     # else lang=None → TTSService.self._language (agent/global fallback)
 
                     # Voice resolution
                     if prefs.tts_voice != "agent_default":
-                        voice = prefs.tts_voice            # explicit user override
+                        voice = prefs.tts_voice  # explicit user override
                     # else voice=None → TTSService.self._voice
             else:
                 # No PrefsStore — pass detected language directly (S1 behavior)
@@ -1199,7 +1234,13 @@ class MessagePipeline:
     async def _resolve_context(
         self, msg: InboundMessage, pool: Pool, pool_id: str
     ) -> None:
-        """Attempt reply-to-resume before pool.submit(). No-op on any failure.
+        """Attempt session resume before pool.submit(). No-op on any failure.
+
+        Two resume paths (in priority order):
+        1. Reply-to-resume: message replies to a known assistant turn — look up
+           the session via ContextResolver and resume it.
+        2. Thread-session-resume: Discord thread with a stored session_id from
+           a previous conversation — resume via platform_meta["thread_session_id"].
 
         # Note: pool._session_resume_fn is wired lazily by
         # SimpleAgent._maybe_register_resume on the first process() call.
@@ -1207,43 +1248,60 @@ class MessagePipeline:
         # (fn is None). In practice, pools exist only after agent processing
         # begins.
         """
-        if msg.reply_to_id is None:
-            return
-        resolver = self._hub._context_resolver
-        if resolver is None:
-            return
-        resolved = await resolver.resolve(msg.reply_to_id)
-        if resolved is None:
-            return
-        if resolved.pool_id != pool_id:
+        # Path 1: reply-to-resume (existing logic — Telegram and Discord).
+        if msg.reply_to_id is not None:
+            resolver = self._hub._context_resolver
+            if resolver is not None:
+                resolved = await resolver.resolve(msg.reply_to_id)
+                if resolved is not None:
+                    if resolved.pool_id != pool_id:
+                        log.info(
+                            "reply-to-resume: cross-pool mismatch"
+                            " (resolved=%r current=%r) — skipping",
+                            resolved.pool_id,
+                            pool_id,
+                        )
+                    # TODO(post-#67): replace with user_id ownership check once
+                    # conversation_turns stores user_id. For now, restrict resume to
+                    # private chats to prevent cross-user session access in groups.
+                    elif msg.platform_meta.get("is_group"):
+                        log.info(
+                            "reply-to-resume: group chat"
+                            " — skipping resume (cross-user risk)",
+                        )
+                    elif not pool.is_idle:
+                        log.info(
+                            "reply-to-resume: pool %r busy"
+                            " — skipping resume of session %r",
+                            pool_id,
+                            resolved.session_id,
+                        )
+                    else:
+                        log.info(
+                            "reply-to-resume: resuming session %r for pool %r",
+                            resolved.session_id,
+                            pool_id,
+                        )
+                        await pool.resume_session(resolved.session_id)
+                        return  # reply-to-resume took priority; skip thread resume
+
+        # Path 2: thread-session-resume (Discord owned threads across restarts).
+        thread_session_id: str | None = msg.platform_meta.get("thread_session_id")
+        if thread_session_id is not None:
+            if not pool.is_idle:
+                log.info(
+                    "thread-session-resume: pool %r busy"
+                    " — skipping resume of session %r",
+                    pool_id,
+                    thread_session_id,
+                )
+                return
             log.info(
-                "reply-to-resume: cross-pool mismatch"
-                " (resolved=%r current=%r) — skipping",
-                resolved.pool_id,
+                "thread-session-resume: resuming session %r for pool %r",
+                thread_session_id,
                 pool_id,
             )
-            return
-        # TODO(post-#67): replace with user_id ownership check once
-        # conversation_turns stores user_id. For now, restrict resume to
-        # private chats to prevent cross-user session access in group scopes.
-        if msg.platform_meta.get("is_group"):
-            log.info(
-                "reply-to-resume: group chat — skipping resume (cross-user risk)",
-            )
-            return
-        if not pool.is_idle:
-            log.info(
-                "reply-to-resume: pool %r busy — skipping resume of session %r",
-                pool_id,
-                resolved.session_id,
-            )
-            return
-        log.info(
-            "reply-to-resume: resuming session %r for pool %r",
-            resolved.session_id,
-            pool_id,
-        )
-        await pool.resume_session(resolved.session_id)
+            await pool.resume_session(thread_session_id)
 
     async def _submit_to_pool(
         self,
@@ -1260,6 +1318,12 @@ class MessagePipeline:
             return _DROP
         if await self._hub._circuit_breaker_drop(msg):
             return _DROP
+        # Register session persistence callback if provided by the adapter (write-side
+        # fix for Discord threads). Only set once — guards against repeated messages
+        # in the same thread overwriting the callback unnecessarily.
+        _update_fn = msg.platform_meta.get("_session_update_fn")
+        if _update_fn is not None and pool._observer._session_update_fn is None:
+            pool._observer.register_session_update_fn(_update_fn)
         try:
             await self._resolve_context(msg, pool, pool.pool_id)
         except Exception:

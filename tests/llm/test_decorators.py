@@ -141,10 +141,12 @@ class TestRetryDecorator:
     async def test_retry_stops_on_non_retryable_error_mid_sequence(self) -> None:
         """retryable=False on attempt 1 → inner called twice; sleep once; aborts."""
         # Arrange — first result is retryable, second is not
-        inner = _make_inner([
-            make_error_result("transient"),
-            LlmResult(error="fatal", retryable=False),
-        ])
+        inner = _make_inner(
+            [
+                make_error_result("transient"),
+                LlmResult(error="fatal", retryable=False),
+            ]
+        )
         decorator = RetryDecorator(inner, max_retries=3, backoff_base=0.0)
 
         # Act

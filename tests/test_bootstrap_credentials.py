@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import lyra.__main__ as main_mod
+import lyra.bootstrap.multibot as multibot_mod
 from lyra.core.agent import Agent, ModelConfig
 from lyra.core.auth import AuthMiddleware
 from lyra.core.hub import Hub
@@ -85,11 +86,13 @@ def _make_fake_stores(
     fake_cred_store.get_full = AsyncMock(side_effect=_get_full)
 
     monkeypatch.setattr(
-        main_mod,
+        multibot_mod,
         "LyraKeyring",
         MagicMock(load_or_create=MagicMock(return_value=fake_keyring)),
     )
-    monkeypatch.setattr(main_mod, "CredentialStore", lambda **kwargs: fake_cred_store)
+    monkeypatch.setattr(
+        multibot_mod, "CredentialStore", lambda **kwargs: fake_cred_store
+    )
     return fake_keyring, fake_cred_store
 
 
@@ -104,7 +107,7 @@ def _patch_common(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     fake_auth_store.connect = AsyncMock()
     fake_auth_store.seed_from_config = AsyncMock()
     fake_auth_store.close = AsyncMock()
-    monkeypatch.setattr(main_mod, "AuthStore", lambda **kwargs: fake_auth_store)
+    monkeypatch.setattr(multibot_mod, "AuthStore", lambda **kwargs: fake_auth_store)
 
     fake_agent_store = MagicMock()
     fake_agent_store.connect = AsyncMock()
@@ -112,11 +115,10 @@ def _patch_common(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     fake_agent_store.get_bot_agent = MagicMock(return_value=None)
     fake_agent_store.get = MagicMock(return_value=None)
     fake_agent_store.set_bot_agent = AsyncMock()
-    monkeypatch.setattr(main_mod, "AgentStore", lambda **kwargs: fake_agent_store)
+    monkeypatch.setattr(multibot_mod, "AgentStore", lambda **kwargs: fake_agent_store)
+
     # Bypass _resolve_bot_agent_map so credential-resolution tests are not blocked
-    # by the agent-existence check added in Fix 1.  The side_effect builds the map
-    # directly from the bot lists so the correct (platform, bot_id) keys are returned
-    # regardless of which bot_id individual tests configure.
+    # by the agent-existence check. Builds the map directly from bot lists.
     async def _fake_resolve(agent_store, tg_bots, dc_bots):  # noqa: ANN001
         result = {}
         for bot_cfg in tg_bots:
@@ -125,10 +127,10 @@ def _patch_common(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
             result[("discord", bot_cfg.bot_id)] = "lyra_default"
         return result
 
-    monkeypatch.setattr(main_mod, "_resolve_bot_agent_map", _fake_resolve)
+    monkeypatch.setattr(multibot_mod, "_resolve_bot_agent_map", _fake_resolve)
 
     monkeypatch.setattr(
-        main_mod,
+        multibot_mod,
         "load_agent_config",
         lambda name, **kw: Agent(
             name=name,
@@ -137,9 +139,21 @@ def _patch_common(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
             model_config=ModelConfig(backend="claude-cli"),
         ),
     )
-    monkeypatch.setattr(main_mod, "TelegramAdapter", lambda **kwargs: _FakeTgAdapter())
     monkeypatch.setattr(
-        main_mod,
+        multibot_mod,
+        "agent_row_to_config",
+        lambda row, **kw: Agent(
+            name=row.name if hasattr(row, "name") else "lyra_default",
+            system_prompt="test",
+            memory_namespace="test",
+            model_config=ModelConfig(backend="claude-cli"),
+        ),
+    )
+    monkeypatch.setattr(
+        multibot_mod, "TelegramAdapter", lambda **kwargs: _FakeTgAdapter()
+    )
+    monkeypatch.setattr(
+        multibot_mod,
         "DiscordAdapter",
         lambda **kwargs: _FakeDcAdapter(hub=MagicMock()),
     )
@@ -281,6 +295,7 @@ class TestCredentialResolution:
                 captured_kwargs.append(dict(kwargs))
 
         monkeypatch.setattr(main_mod, "TelegramAdapter", CapturingTgAdapter)
+        monkeypatch.setattr(multibot_mod, "TelegramAdapter", CapturingTgAdapter)
         monkeypatch.setattr(
             main_mod,
             "_load_raw_config",
@@ -342,6 +357,11 @@ class TestCredentialResolution:
 
         monkeypatch.setattr(
             main_mod,
+            "DiscordAdapter",
+            lambda hub, **kwargs: CapturingDcAdapter(hub=hub),
+        )
+        monkeypatch.setattr(
+            multibot_mod,
             "DiscordAdapter",
             lambda hub, **kwargs: CapturingDcAdapter(hub=hub),
         )
@@ -438,12 +458,12 @@ class TestCredentialResolution:
         fake_cred_store.get_full = AsyncMock(side_effect=_get_full)
 
         monkeypatch.setattr(
-            main_mod,
+            multibot_mod,
             "LyraKeyring",
             MagicMock(load_or_create=MagicMock(return_value=fake_keyring)),
         )
         monkeypatch.setattr(
-            main_mod, "CredentialStore", lambda **kwargs: fake_cred_store
+            multibot_mod, "CredentialStore", lambda **kwargs: fake_cred_store
         )
 
         monkeypatch.setattr(

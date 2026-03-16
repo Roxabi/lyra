@@ -49,7 +49,7 @@ class TestHealthUnauthenticated:
     ) -> None:
         """#207: Unauthenticated /health returns only {"ok": true}."""
         monkeypatch.delenv("LYRA_HEALTH_SECRET", raising=False)
-        from lyra.__main__ import create_health_app
+        from lyra.bootstrap.health import create_health_app
 
         app = create_health_app(hub)
         transport = ASGITransport(app=app)
@@ -64,7 +64,7 @@ class TestHealthUnauthenticated:
     ) -> None:
         """#207: Wrong Bearer token still returns minimal response."""
         monkeypatch.setenv("LYRA_HEALTH_SECRET", HEALTH_SECRET)
-        from lyra.__main__ import create_health_app
+        from lyra.bootstrap.health import create_health_app
 
         app = create_health_app(hub)
         transport = ASGITransport(app=app)
@@ -82,7 +82,7 @@ class TestHealthUnauthenticated:
     ) -> None:
         """#207: When LYRA_HEALTH_SECRET is unset, always minimal."""
         monkeypatch.delenv("LYRA_HEALTH_SECRET", raising=False)
-        from lyra.__main__ import create_health_app
+        from lyra.bootstrap.health import create_health_app
 
         app = create_health_app(hub)
         transport = ASGITransport(app=app)
@@ -99,7 +99,7 @@ class TestHealthUnauthenticated:
     ) -> None:
         """#207: LYRA_HEALTH_SECRET='' still returns minimal response."""
         monkeypatch.setenv("LYRA_HEALTH_SECRET", "")
-        from lyra.__main__ import create_health_app
+        from lyra.bootstrap.health import create_health_app
 
         app = create_health_app(hub)
         transport = ASGITransport(app=app)
@@ -122,7 +122,7 @@ class TestHealthEndpoint:
 
     async def test_health_returns_json(self, hub: Hub) -> None:
         """SC-2: /health returns JSON with expected keys."""
-        from lyra.__main__ import create_health_app
+        from lyra.bootstrap.health import create_health_app
 
         app = create_health_app(hub)
         transport = ASGITransport(app=app)
@@ -142,7 +142,7 @@ class TestHealthEndpoint:
 
     async def test_health_queue_size_reflects_staging(self, hub: Hub) -> None:
         """SC-2: queue_size reflects the staging queue depth."""
-        from lyra.__main__ import create_health_app
+        from lyra.bootstrap.health import create_health_app
 
         msg = InboundMessage(
             id="msg-health-1",
@@ -177,7 +177,7 @@ class TestHealthEndpoint:
         """S2-6: /health reports per-platform queue depths."""
         from unittest.mock import MagicMock
 
-        from lyra.__main__ import create_health_app
+        from lyra.bootstrap.health import create_health_app
         from lyra.core.outbound_dispatcher import OutboundDispatcher
 
         hub.register_adapter(Platform.TELEGRAM, "main", MagicMock())
@@ -219,7 +219,7 @@ class TestHealthEndpoint:
 
     async def test_health_uptime_positive(self, hub: Hub) -> None:
         """SC-2: uptime_s is a positive number."""
-        from lyra.__main__ import create_health_app
+        from lyra.bootstrap.health import create_health_app
 
         app = create_health_app(hub)
         transport = ASGITransport(app=app)
@@ -233,7 +233,7 @@ class TestHealthEndpoint:
         self, hub: Hub
     ) -> None:
         """SC-2: last_message_age_s is null when no messages have been processed."""
-        from lyra.__main__ import create_health_app
+        from lyra.bootstrap.health import create_health_app
 
         app = create_health_app(hub)
         transport = ASGITransport(app=app)
@@ -245,7 +245,7 @@ class TestHealthEndpoint:
 
     async def test_health_last_message_age_after_processing(self, hub: Hub) -> None:
         """SC-3: last_message_age_s reflects time since last processed message."""
-        from lyra.__main__ import create_health_app
+        from lyra.bootstrap.health import create_health_app
 
         hub._last_processed_at = time.monotonic()
 
@@ -260,7 +260,7 @@ class TestHealthEndpoint:
 
     async def test_health_circuits_all_closed(self, hub: Hub) -> None:
         """SC-2: circuits shows state for all registered circuits."""
-        from lyra.__main__ import create_health_app
+        from lyra.bootstrap.health import create_health_app
 
         app = create_health_app(hub)
         transport = ASGITransport(app=app)
@@ -278,7 +278,7 @@ class TestHealthEndpoint:
         self, hub: Hub, circuit_registry: CircuitRegistry
     ) -> None:
         """SC-2: circuits reflects open circuit state."""
-        from lyra.__main__ import create_health_app
+        from lyra.bootstrap.health import create_health_app
 
         cb = circuit_registry.get("anthropic")
         assert cb is not None
@@ -328,8 +328,8 @@ class TestConfigEndpoint:
         monkeypatch.setenv("LYRA_CONFIG_SECRET", "test-config-secret")
         from unittest.mock import AsyncMock, MagicMock
 
-        from lyra.__main__ import create_health_app
         from lyra.agents.anthropic_agent import AnthropicAgent
+        from lyra.bootstrap.health import create_health_app
         from lyra.core.agent import Agent, ModelConfig
         from lyra.core.runtime_config import RuntimeConfig
         from lyra.llm.base import LlmResult
@@ -390,7 +390,7 @@ class TestConfigEndpoint:
         """No agent (or non-AnthropicAgent) registered → 404."""
         # Arrange
         monkeypatch.setenv("LYRA_CONFIG_SECRET", "test-config-secret")
-        from lyra.__main__ import create_health_app
+        from lyra.bootstrap.health import create_health_app
 
         test_hub = Hub()
         app = create_health_app(test_hub)
@@ -410,7 +410,7 @@ class TestConfigEndpoint:
     ) -> None:
         """#207: /config without auth returns 401."""
         monkeypatch.setenv("LYRA_CONFIG_SECRET", "test-config-secret")
-        from lyra.__main__ import create_health_app
+        from lyra.bootstrap.health import create_health_app
 
         app = create_health_app(Hub())
         transport = ASGITransport(app=app)
@@ -424,7 +424,7 @@ class TestConfigEndpoint:
     ) -> None:
         """#207: /config with wrong token returns 401."""
         monkeypatch.setenv("LYRA_CONFIG_SECRET", "test-config-secret")
-        from lyra.__main__ import create_health_app
+        from lyra.bootstrap.health import create_health_app
 
         app = create_health_app(Hub())
         transport = ASGITransport(app=app)

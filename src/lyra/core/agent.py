@@ -19,9 +19,10 @@ if TYPE_CHECKING:
     from lyra.stt import STTService
     from lyra.tts import TTSService
 
-    from .agent_store import AgentRow
+    from .agent_models import AgentRow
     from .memory import MemoryManager, SessionSnapshot
 
+from .auth import TrustLevel
 from .circuit_breaker import CircuitRegistry
 from .command_router import CommandConfig, CommandRouter
 from .message import InboundMessage, Response
@@ -982,12 +983,16 @@ class AgentBase(ABC):
 
         Returns None when the message is not a /voice command (fall-through).
         TTS must be configured (self._tts is not None) for this to activate.
+        Voice commands require at least TrustLevel.TRUSTED.
         """
         if self._tts is None:
             return None
         stripped = msg.text.strip()
         _VOICE_PREFIX = "/voice "
         if not stripped.lower().startswith(_VOICE_PREFIX):
+            return None
+        # Trust gate: /voice is expensive (LLM + TTS). Require TRUSTED or above.
+        if msg.trust_level not in (TrustLevel.TRUSTED, TrustLevel.OWNER):
             return None
         prompt = stripped[len(_VOICE_PREFIX) :].strip()
         if not prompt:

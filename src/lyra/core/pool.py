@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
 from .debouncer import DEFAULT_DEBOUNCE_MS, MessageDebouncer
 from .message import GENERIC_ERROR_REPLY, InboundMessage, OutboundMessage, Response
+from .pool_observer import PoolObserver
 
 log = logging.getLogger(__name__)
 
@@ -71,9 +72,6 @@ class Pool:
     ) -> None:
         self.pool_id = pool_id
         self.agent_name = agent_name
-        # TODO: decide eviction strategy before adding memory layer:
-        #   option A: deque(maxlen=N) for sliding-window compaction
-        #   option B: Pool.append(msg) mutator with compaction callback (0→3 cascade)
         self.history: list[InboundMessage] = []
         self.sdk_history: deque[dict] = deque()
         self.max_sdk_history: int = 50
@@ -92,10 +90,55 @@ class Pool:
         self.session_start: datetime = datetime.now(UTC)
         self.message_count: int = 0
         self._system_prompt: str = ""
-        self._turn_logger: (
-            Callable[[str, InboundMessage], Awaitable[None]] | None
-        ) = None
-        self._turn_store: "TurnStore | None" = None  # L1 (issue #67)
+        self._observer = PoolObserver(
+            pool_id=pool_id,
+            session_id_fn=lambda: self.session_id,
+        )
+
+    # ------------------------------------------------------------------
+    # Backward-compat shims — delegate to observer so existing callers
+    # (tests, hub.py) that read/write these attributes keep working.
+    # ------------------------------------------------------------------
+
+    @property
+    def _turn_store(self) -> TurnStore | None:
+        return self._observer._turn_store
+
+    @_turn_store.setter
+    def _turn_store(self, value: TurnStore | None) -> None:
+        self._observer._turn_store = value
+
+    @property
+    def _turn_logger(
+        self,
+    ) -> Callable[[str, InboundMessage], Awaitable[None]] | None:
+        return self._observer._turn_logger
+
+    @_turn_logger.setter
+    def _turn_logger(
+        self, value: Callable[[str, InboundMessage], Awaitable[None]] | None
+    ) -> None:
+        self._observer._turn_logger = value
+
+    @property
+    def _session_update_fn(
+        self,
+    ) -> Callable[[InboundMessage, str, str], Awaitable[None]] | None:
+        return self._observer._session_update_fn
+
+    @_session_update_fn.setter
+    def _session_update_fn(
+        self, value: Callable[[InboundMessage, str, str], Awaitable[None]] | None
+    ) -> None:
+        self._observer._session_update_fn = value
+
+    @property
+    def _session_persisted(self) -> bool:
+        return self._observer._session_persisted
+
+    @_session_persisted.setter
+    def _session_persisted(self, value: bool) -> None:
+        self._observer._session_persisted = value
 
     @property
     def debounce_ms(self) -> int:
@@ -362,19 +405,20 @@ class Pool:
                 self._ctx.record_circuit_failure(exc)
                 raise
             # L1 — streaming turn marker; TODO(#67): capture full content.
-            self._log_turn_async(
+            self._observer.log_turn_async(
                 role="assistant",
                 platform=self.medium or str(msg.platform),
                 user_id=self.user_id or msg.user_id,
                 content="",
             )
+            self._observer.session_update_async(msg)
         else:
             self._ctx.record_circuit_success()
             await self._ctx.dispatch_response(msg, result)
             # L1 — log assistant turn (issue #67); fire-and-forget
             if isinstance(result, Response):
                 _reply_msg_id = result.metadata.get("reply_message_id")
-                self._log_turn_async(
+                self._observer.log_turn_async(
                     role="assistant",
                     platform=self.medium or str(msg.platform),
                     user_id=self.user_id or msg.user_id,
@@ -383,6 +427,7 @@ class Pool:
                         str(_reply_msg_id) if _reply_msg_id is not None else None
                     ),
                 )
+            self._observer.session_update_async(msg)
 
         _compact_fn = getattr(agent, "compact", None)
         if _compact_fn is not None:
@@ -398,21 +443,13 @@ class Pool:
             log.exception("_safe_dispatch failed for pool %s: %s", self.pool_id, exc)
 
     async def reset_session(self) -> None:
-        """Reset external session state (e.g. CLI session_id).
-
-        Called by /clear. Clears in-memory history then delegates to any
-        registered reset callback (e.g. ClaudeCliDriver killing its process).
-        """
+        """Reset session state; called by /clear. Delegates to reset callback if set."""
+        self._observer.reset_session_persisted()
         if self._session_reset_fn is not None:
             await self._session_reset_fn()
 
     async def switch_workspace(self, cwd: Path) -> None:
-        """Switch workspace cwd, kill process, clear history.
-
-        No-op for SDK-backed agents (where _switch_workspace_fn is None)
-        — cwd is a CLI concept and history should not be silently wiped
-        on SDK backends.
-        """
+        """Switch workspace cwd; no-op for SDK-backed agents (CLI concept only)."""
         if self._switch_workspace_fn is None:
             return
         self.sdk_history.clear()
@@ -431,59 +468,9 @@ class Pool:
         """Called from _process_one. Promotes session identity and tracks count."""
         if self.user_id == "":
             self.user_id = msg.user_id
-            # msg.platform is a str at runtime (platform.value already resolved)
             self.medium = str(msg.platform)
         self.message_count += 1
-        if self._turn_logger is not None:
-            try:
-                asyncio.create_task(self._turn_logger(self.session_id, msg))  # type: ignore[arg-type]
-            except RuntimeError:
-                pass  # no running event loop (e.g. sync test context)
-        self._log_turn_async(
-            role="user",
-            platform=str(msg.platform),
-            user_id=msg.user_id,
-            content=msg.text,
-            message_id=msg.id,
-        )
-
-    def _log_turn_async(  # noqa: PLR0913
-        self,
-        *,
-        role: str,
-        platform: str,
-        user_id: str,
-        content: str,
-        message_id: str | None = None,
-        reply_message_id: str | None = None,
-    ) -> None:
-        """Fire-and-forget turn logging via TurnStore; no-op if not connected."""
-        if self._turn_store is None:
-            return
-        try:
-            task = asyncio.create_task(
-                self._turn_store.log_turn(
-                    pool_id=self.pool_id,
-                    session_id=self.session_id,
-                    role=role,
-                    platform=platform,
-                    user_id=user_id,
-                    content=content,
-                    message_id=message_id,
-                    reply_message_id=reply_message_id,
-                )
-            )
-
-            def _cb(t: asyncio.Task) -> None:
-                if not t.cancelled() and t.exception():
-                    log.error(
-                        "turn_store write failed (pool=%s role=%s): %s",
-                        self.pool_id, role, t.exception(),
-                    )
-
-            task.add_done_callback(_cb)
-        except RuntimeError:
-            pass  # no running event loop (e.g. sync test context)
+        self._observer.append(msg, session_id=self.session_id)
 
     def snapshot(self, agent_namespace: str) -> "SessionSnapshot":
         from .memory import SessionSnapshot

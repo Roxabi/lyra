@@ -12,6 +12,7 @@ import pytest
 
 from lyra.core.agent import ModelConfig
 from lyra.core.cli_pool import CliPool, _ProcessEntry
+from lyra.core.cli_protocol import read_until_result
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -259,18 +260,16 @@ class TestReadUntilResult:
         # readline raises TimeoutError to simulate timeout
         proc.stdout.readline = AsyncMock(side_effect=asyncio.TimeoutError)
 
-        pool = CliPool(default_timeout=1)
         entry = self._make_entry_with_proc(proc)
-        result = await pool._read_until_result(entry)
+        result = await read_until_result(entry, pool_id="pool-test", default_timeout=1)
 
         assert not result.ok
         assert "Timeout" in result.error
 
     async def test_eof(self) -> None:
         proc = make_fake_proc([b""])  # immediate EOF
-        pool = CliPool()
         entry = self._make_entry_with_proc(proc)
-        result = await pool._read_until_result(entry)
+        result = await read_until_result(entry, pool_id="pool-test")
 
         assert not result.ok
         assert "terminated" in result.error.lower()
@@ -287,9 +286,8 @@ class TestReadUntilResult:
             }
         )
         proc = make_fake_proc([INIT_LINE, ASSISTANT_LINE, result_line])
-        pool = CliPool()
         entry = self._make_entry_with_proc(proc)
-        result = await pool._read_until_result(entry)
+        result = await read_until_result(entry, pool_id="pool-test")
 
         assert result.result is not None
         assert result.warning != ""
@@ -308,9 +306,8 @@ class TestReadUntilResult:
             }
         )
         proc = make_fake_proc([INIT_LINE, result_line])
-        pool = CliPool()
         entry = self._make_entry_with_proc(proc)
-        result = await pool._read_until_result(entry)
+        result = await read_until_result(entry, pool_id="pool-test")
 
         assert not result.ok
         assert result.result == ""
@@ -327,9 +324,8 @@ class TestReadUntilResult:
             }
         )
         proc = make_fake_proc([INIT_LINE, ASSISTANT_LINE, result_line])
-        pool = CliPool()
         entry = self._make_entry_with_proc(proc)
-        result = await pool._read_until_result(entry)
+        result = await read_until_result(entry, pool_id="pool-test")
 
         # The assistant block text "Hello from Claude" must be preserved
         assert result.result == "Hello from Claude"
@@ -467,15 +463,15 @@ class TestOnIntermediateException:
         proc = make_fake_proc(
             [INIT_LINE, ASSISTANT_LINE, second_assistant, third_assistant, RESULT_LINE]
         )
-        pool = CliPool()
 
         async def _raising_cb(text: str) -> None:
             raise RuntimeError("callback exploded")
 
         entry = _ProcessEntry(proc=proc, pool_id="pool-cb", model_config=DEFAULT_MODEL)
-
-        with caplog.at_level(logging.WARNING, logger="lyra.core.cli_pool"):
-            result = await pool._read_until_result(entry, on_intermediate=_raising_cb)
+        with caplog.at_level(logging.WARNING, logger="lyra.core.cli_protocol"):
+            result = await read_until_result(
+                entry, pool_id="pool-cb", on_intermediate=_raising_cb
+            )
 
         # Result must still be returned successfully
         assert result.ok

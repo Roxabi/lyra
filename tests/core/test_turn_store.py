@@ -124,12 +124,20 @@ class TestTurnStoreLogTurn:
     async def test_get_turns_scoped_to_pool(self, store: TurnStore) -> None:
         """get_turns returns only turns for the requested pool_id."""
         await store.log_turn(
-            pool_id="pool:A", session_id="s", role="user",
-            platform="telegram", user_id="u", content="A",
+            pool_id="pool:A",
+            session_id="s",
+            role="user",
+            platform="telegram",
+            user_id="u",
+            content="A",
         )
         await store.log_turn(
-            pool_id="pool:B", session_id="s", role="user",
-            platform="telegram", user_id="u", content="B",
+            pool_id="pool:B",
+            session_id="s",
+            role="user",
+            platform="telegram",
+            user_id="u",
+            content="B",
         )
         assert len(await store.get_turns("pool:A", user_id="u")) == 1
         assert len(await store.get_turns("pool:B", user_id="u")) == 1
@@ -137,8 +145,12 @@ class TestTurnStoreLogTurn:
     async def test_get_turns_scoped_to_user(self, store: TurnStore) -> None:
         """get_turns filters by user_id — cross-user reads return no rows."""
         await store.log_turn(
-            pool_id="pool:1", session_id="s", role="user",
-            platform="telegram", user_id="owner", content="private",
+            pool_id="pool:1",
+            session_id="s",
+            role="user",
+            platform="telegram",
+            user_id="owner",
+            content="private",
         )
         # Different user cannot read owner's turns via same pool_id.
         rows = await store.get_turns("pool:1", user_id="intruder")
@@ -148,8 +160,12 @@ class TestTurnStoreLogTurn:
         """get_turns(limit=N) returns at most N rows."""
         for _ in range(10):
             await store.log_turn(
-                pool_id="pool:1", session_id="s", role="user",
-                platform="cli", user_id="u", content="x",
+                pool_id="pool:1",
+                session_id="s",
+                role="user",
+                platform="cli",
+                user_id="u",
+                content="x",
             )
         rows = await store.get_turns("pool:1", user_id="u", limit=3)
         assert len(rows) == 3
@@ -166,8 +182,12 @@ class TestTurnStoreLogTurn:
     async def test_log_turn_with_metadata(self, store: TurnStore) -> None:
         """metadata dict is stored as JSON and deserialized on read."""
         await store.log_turn(
-            pool_id="p", session_id="s", role="user",
-            platform="telegram", user_id="u", content="hi",
+            pool_id="p",
+            session_id="s",
+            role="user",
+            platform="telegram",
+            user_id="u",
+            content="hi",
             metadata={"foo": "bar", "n": 42},
         )
         rows = await store.get_turns("p", user_id="u")
@@ -193,8 +213,12 @@ class TestTurnStoreErrors:
         """log_turn raises ValueError for an unrecognized role."""
         with pytest.raises(ValueError, match="invalid role"):
             await store.log_turn(
-                pool_id="p", session_id="s", role="system",
-                platform="telegram", user_id="u", content="hi",
+                pool_id="p",
+                session_id="s",
+                role="system",
+                platform="telegram",
+                user_id="u",
+                content="hi",
             )
 
 
@@ -295,12 +319,20 @@ class TestTurnStoreIntegrationWithPool:
 
         await asyncio.gather(
             store.log_turn(
-                pool_id="pool:A", session_id="s", role="user",
-                platform="telegram", user_id="uA", content="from A",
+                pool_id="pool:A",
+                session_id="s",
+                role="user",
+                platform="telegram",
+                user_id="uA",
+                content="from A",
             ),
             store.log_turn(
-                pool_id="pool:B", session_id="s", role="user",
-                platform="telegram", user_id="uB", content="from B",
+                pool_id="pool:B",
+                session_id="s",
+                role="user",
+                platform="telegram",
+                user_id="uB",
+                content="from B",
             ),
         )
 

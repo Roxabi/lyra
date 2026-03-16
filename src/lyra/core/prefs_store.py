@@ -1,4 +1,5 @@
 """User preference store — per-user TTS/STT settings stored in auth.db."""
+
 from __future__ import annotations
 
 import logging

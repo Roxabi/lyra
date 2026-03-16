@@ -361,9 +361,11 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — mirrors load_agent_config() 
             high_complexity_commands=tuple(hcc),
         )
 
-    # Workspaces: instance_overrides provide base, DB row has no workspaces column
-    # (workspaces are machine-local, not stored in DB)
-    workspaces_raw: dict = overrides.get("workspaces", {})
+    # Workspaces: DB row wins per-key, instance_overrides fill gaps
+    db_workspaces: dict = (
+        json.loads(row.workspaces_json) if row.workspaces_json else {}
+    )
+    workspaces_raw: dict = {**overrides.get("workspaces", {}), **db_workspaces}
     workspaces: dict[str, Path] = {}
     for key, raw_path in workspaces_raw.items():
         if not re.match(r"^[a-zA-Z0-9_-]+$", key):
@@ -439,16 +441,43 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — mirrors load_agent_config() 
             language_fallback=stt_data.get("language_fallback"),
         )
 
+    # Permissions from DB
+    permissions: tuple[str, ...] = tuple(
+        json.loads(row.permissions_json) if row.permissions_json else []
+    )
+
+    # Commands from DB
+    from .command_router import CommandConfig  # local: avoids cycle
+
+    commands: dict[str, CommandConfig] = {}
+    if row.commands_json:
+        for cmd_name, cmd_data in json.loads(row.commands_json).items():
+            commands[cmd_name] = CommandConfig(
+                description=cmd_data.get("description", ""),
+                builtin=bool(cmd_data.get("builtin", False)),
+                timeout=float(cmd_data.get("timeout", 30.0)),
+            )
+
+    # i18n language from DB
+    i18n_language = row.i18n_language or "en"
+    if not re.match(r"^[a-z]{2,8}$", i18n_language):
+        log.warning(
+            "Agent %r: invalid i18n_language %r — falling back to 'en'",
+            row.name,
+            i18n_language,
+        )
+        i18n_language = "en"
+
     return Agent(
         name=row.name,
         system_prompt=system_prompt,
         memory_namespace=memory_namespace,
         model_config=model_cfg,
-        permissions=(),
-        commands={},
+        permissions=permissions,
+        commands=commands,
         plugins_enabled=tuple(plugins),
         persona=persona,
-        i18n_language="en",
+        i18n_language=i18n_language,
         smart_routing=smart_routing,
         show_intermediate=row.show_intermediate,
         workspaces=workspaces,

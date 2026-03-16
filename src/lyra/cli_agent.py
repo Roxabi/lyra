@@ -375,7 +375,11 @@ def validate(  # noqa: C901, PLR0915
                     errors_found.append(
                         f"smart_routing_json is invalid JSON: {sr_val!r}"
                     )
-            for field_name in ("tools_json", "plugins_json"):
+            for field_name in (
+                "tools_json",
+                "plugins_json",
+                "permissions_json",
+            ):
                 val = getattr(row, field_name)
                 try:
                     parsed = _json.loads(val)
@@ -385,6 +389,17 @@ def validate(  # noqa: C901, PLR0915
                     errors_found.append(
                         f"{field_name} is not a valid JSON array: {val!r}"
                     )
+            for field_name in ("workspaces_json", "commands_json"):
+                val = getattr(row, field_name)
+                if val is not None:
+                    try:
+                        parsed = _json.loads(val)
+                        if not isinstance(parsed, dict):
+                            raise ValueError("not an object")
+                    except Exception:
+                        errors_found.append(
+                            f"{field_name} is not a valid JSON object: {val!r}"
+                        )
             if errors_found:
                 for e in errors_found:
                     typer.echo(f"Error: {e}", err=True)
@@ -415,6 +430,7 @@ def edit(name: str = typer.Argument(..., help="Agent name to edit.")) -> None:
                 "show_intermediate",
                 "cwd",
                 "memory_namespace",
+                "i18n_language",
             ]
             new_vals: dict = {}
             for field_name in editable_fields:

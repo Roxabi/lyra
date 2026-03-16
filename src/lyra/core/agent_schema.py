@@ -27,7 +27,11 @@ CREATE TABLE IF NOT EXISTS agents (
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     tts_json TEXT,
     stt_json TEXT,
-    skip_permissions INTEGER NOT NULL DEFAULT 0
+    skip_permissions INTEGER NOT NULL DEFAULT 0,
+    permissions_json TEXT NOT NULL DEFAULT '[]',
+    workspaces_json TEXT,
+    i18n_language TEXT NOT NULL DEFAULT 'en',
+    commands_json TEXT
 )
 """
 
@@ -36,6 +40,10 @@ _MIGRATE_AGENTS = [
     "ALTER TABLE agents ADD COLUMN tts_json TEXT",
     "ALTER TABLE agents ADD COLUMN stt_json TEXT",
     "ALTER TABLE agents ADD COLUMN skip_permissions INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE agents ADD COLUMN permissions_json TEXT NOT NULL DEFAULT '[]'",
+    "ALTER TABLE agents ADD COLUMN workspaces_json TEXT",
+    "ALTER TABLE agents ADD COLUMN i18n_language TEXT NOT NULL DEFAULT 'en'",
+    "ALTER TABLE agents ADD COLUMN commands_json TEXT",
 ]
 
 _CREATE_BOT_AGENT_MAP = """

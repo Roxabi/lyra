@@ -83,7 +83,9 @@ class AgentStore:
             "SELECT name, backend, model, max_turns, tools_json, persona, "
             "show_intermediate, smart_routing_json, plugins_json, "
             "memory_namespace, cwd, source, created_at, updated_at, "
-            "tts_json, stt_json, skip_permissions FROM agents"
+            "tts_json, stt_json, skip_permissions, "
+            "permissions_json, workspaces_json, i18n_language, commands_json "
+            "FROM agents"
         ) as cur:
             async for row in cur:
                 (
@@ -104,6 +106,10 @@ class AgentStore:
                     tts_json,
                     stt_json,
                     skip_permissions,
+                    permissions_json,
+                    workspaces_json,
+                    i18n_language,
+                    commands_json,
                 ) = row
                 self._agents[name] = AgentRow(
                     name=name,
@@ -120,6 +126,10 @@ class AgentStore:
                     tts_json=tts_json,
                     stt_json=stt_json,
                     skip_permissions=bool(skip_permissions),
+                    permissions_json=permissions_json or "[]",
+                    workspaces_json=workspaces_json,
+                    i18n_language=i18n_language or "en",
+                    commands_json=commands_json,
                     source=source,
                     created_at=created_at,
                     updated_at=updated_at,
@@ -178,8 +188,9 @@ class AgentStore:
             "(name, backend, model, max_turns, tools_json, persona, "
             "show_intermediate, smart_routing_json, plugins_json, "
             "memory_namespace, cwd, source, created_at, updated_at, "
-            "tts_json, stt_json, skip_permissions) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "tts_json, stt_json, skip_permissions, "
+            "permissions_json, workspaces_json, i18n_language, commands_json) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(name) DO UPDATE SET "
             "backend=excluded.backend, "
             "model=excluded.model, "
@@ -194,6 +205,10 @@ class AgentStore:
             "tts_json=excluded.tts_json, "
             "stt_json=excluded.stt_json, "
             "skip_permissions=excluded.skip_permissions, "
+            "permissions_json=excluded.permissions_json, "
+            "workspaces_json=excluded.workspaces_json, "
+            "i18n_language=excluded.i18n_language, "
+            "commands_json=excluded.commands_json, "
             "source=excluded.source, "
             "updated_at=?",
             (
@@ -214,6 +229,10 @@ class AgentStore:
                 row.tts_json,
                 row.stt_json,
                 1 if row.skip_permissions else 0,
+                row.permissions_json,
+                row.workspaces_json,
+                row.i18n_language,
+                row.commands_json,
                 # ON CONFLICT updated_at value
                 now,
             ),
@@ -235,6 +254,10 @@ class AgentStore:
             tts_json=row.tts_json,
             stt_json=row.stt_json,
             skip_permissions=row.skip_permissions,
+            permissions_json=row.permissions_json,
+            workspaces_json=row.workspaces_json,
+            i18n_language=row.i18n_language,
+            commands_json=row.commands_json,
             source=row.source,
             created_at=row.created_at,
             updated_at=now,
@@ -380,6 +403,19 @@ class AgentStore:
         stt_section = data.get("stt")
         stt_json = json.dumps(stt_section) if stt_section is not None else None
 
+        # New fields: permissions, workspaces, i18n, commands
+        permissions_json = json.dumps(agent_section.get("permissions", []))
+        workspaces_section = data.get("workspaces")
+        workspaces_json = (
+            json.dumps(workspaces_section) if workspaces_section is not None else None
+        )
+        i18n_section = data.get("i18n", {})
+        i18n_language = i18n_section.get("default_language", "en")
+        commands_section = data.get("commands")
+        commands_json = (
+            json.dumps(commands_section) if commands_section is not None else None
+        )
+
         row = AgentRow(
             name=name,
             backend=backend,
@@ -395,6 +431,10 @@ class AgentStore:
             tts_json=tts_json,
             stt_json=stt_json,
             skip_permissions=skip_permissions,
+            permissions_json=permissions_json,
+            workspaces_json=workspaces_json,
+            i18n_language=i18n_language,
+            commands_json=commands_json,
             source="toml-seed",
         )
         await self.upsert(row)

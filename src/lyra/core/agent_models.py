@@ -30,6 +30,10 @@ class AgentRow:
     tts_json: str | None = None
     stt_json: str | None = None
     skip_permissions: bool = False
+    permissions_json: str = "[]"
+    workspaces_json: str | None = None
+    i18n_language: str = "en"
+    commands_json: str | None = None
     source: str = "db"
     created_at: str = field(default_factory=_utc_now_iso)
     updated_at: str = field(default_factory=_utc_now_iso)

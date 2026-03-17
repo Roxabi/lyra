@@ -1,7 +1,7 @@
-"""Plugin reload manager for AgentBase (extracted from agent.py).
+"""Command reload manager for AgentBase (extracted from agent.py).
 
 Encapsulates plugin discovery, loading, mtime tracking, and hot-reload
-detection. AgentBase delegates all plugin lifecycle to this class.
+detection. AgentBase delegates all command lifecycle to this class.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .agent_config import Agent
-    from .plugin_loader import PluginLoader
+    from .command_loader import CommandLoader
 
 log = logging.getLogger(__name__)
 
@@ -26,18 +26,18 @@ def _file_sha256(path: Path) -> str:
         return ""
 
 
-class PluginReloadManager:
+class CommandReloadManager:
     """Owns plugin lifecycle: discovery, loading, mtime tracking, hot-reload."""
 
     def __init__(
-        self, config: Agent, plugin_loader: PluginLoader, plugins_dir: Path
+        self, config: Agent, command_loader: CommandLoader, plugins_dir: Path
     ) -> None:
         self._config = config
-        self._plugin_loader = plugin_loader
+        self._command_loader = command_loader
         self._plugins_dir = plugins_dir
-        self.effective_plugins: list[str] = self._init_plugins()
-        self.plugin_mtimes: dict[str, float] = self._record_plugin_mtimes()
-        self.plugin_hashes: dict[str, str] = self._record_plugin_hashes()
+        self.effective_commands: list[str] = self._init_plugins()
+        self.command_mtimes: dict[str, float] = self._record_command_mtimes()
+        self.command_hashes: dict[str, str] = self._record_command_hashes()
 
     def _init_plugins(self) -> list[str]:
         """Load plugins and return the effective enabled list.
@@ -46,30 +46,30 @@ class PluginReloadManager:
         If a plugin has enabled=false in its manifest, load() raises ValueError
         and the plugin is skipped -- this enforces SC-9 regardless of agent config.
         """
-        if self._config.plugins_enabled:
-            names = list(self._config.plugins_enabled)
+        if self._config.commands_enabled:
+            names = list(self._config.commands_enabled)
         else:
             # default-open: load all manifest.enabled=True plugins discovered in
             # plugins_dir. Security assumption: plugins_dir is a trusted directory
             # controlled by the operator. Do not point plugins_dir at a
             # world-writable or network-accessible path.
-            manifests = self._plugin_loader.discover()
+            manifests = self._command_loader.discover()
             names = [m.name for m in manifests if m.enabled]
         effective: list[str] = []
         for name in names:
             try:
-                self._plugin_loader.load(name)
+                self._command_loader.load(name)
                 effective.append(name)
             except ValueError as exc:
-                log.warning("Skipping plugin %r: %s", name, exc)
+                log.warning("Skipping command %r: %s", name, exc)
             except Exception:  # noqa: BLE001  # resilient: don't let one bad plugin block startup
-                log.warning("Failed to load plugin %r", name, exc_info=True)
+                log.warning("Failed to load command %r", name, exc_info=True)
         return effective
 
-    def _record_plugin_mtimes(self) -> dict[str, float]:
+    def _record_command_mtimes(self) -> dict[str, float]:
         """Record current mtime for each loaded plugin's handlers.py."""
         mtimes: dict[str, float] = {}
-        for name in self.effective_plugins:
+        for name in self.effective_commands:
             handlers_path = self._plugins_dir / name / "handlers.py"
             try:
                 mtimes[name] = handlers_path.stat().st_mtime
@@ -77,10 +77,10 @@ class PluginReloadManager:
                 pass
         return mtimes
 
-    def _record_plugin_hashes(self) -> dict[str, str]:
+    def _record_command_hashes(self) -> dict[str, str]:
         """Record SHA-256 hash of each loaded plugin's handlers.py."""
         hashes: dict[str, str] = {}
-        for name in self.effective_plugins:
+        for name in self.effective_commands:
             h = _file_sha256(self._plugins_dir / name / "handlers.py")
             if h:
                 hashes[name] = h
@@ -93,25 +93,25 @@ class PluginReloadManager:
         executing the reload. This prevents forged-mtime attacks (M-11).
         """
         changed = False
-        for name in list(self.plugin_mtimes):
+        for name in list(self.command_mtimes):
             handlers_path = self._plugins_dir / name / "handlers.py"
             try:
                 new_mtime = handlers_path.stat().st_mtime
             except OSError:
                 continue
-            if new_mtime <= self.plugin_mtimes[name]:
+            if new_mtime <= self.command_mtimes[name]:
                 continue
             new_hash = _file_sha256(handlers_path)
-            if not new_hash or new_hash == self.plugin_hashes.get(name):
+            if not new_hash or new_hash == self.command_hashes.get(name):
                 # mtime changed but content is identical — skip reload
-                self.plugin_mtimes[name] = new_mtime
+                self.command_mtimes[name] = new_mtime
                 continue
             try:
-                self._plugin_loader.reload(name)
-                self.plugin_mtimes[name] = new_mtime
-                self.plugin_hashes[name] = new_hash
+                self._command_loader.reload(name)
+                self.command_mtimes[name] = new_mtime
+                self.command_hashes[name] = new_hash
                 changed = True
-                log.info("Hot-reloaded plugin %r (hash changed)", name)
+                log.info("Hot-reloaded command %r (hash changed)", name)
             except Exception:  # noqa: BLE001  # resilient: don't let hot-reload crash the agent
-                log.warning("Failed to reload plugin %r", name, exc_info=True)
+                log.warning("Failed to reload command %r", name, exc_info=True)
         return changed

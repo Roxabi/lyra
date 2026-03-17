@@ -18,8 +18,8 @@ if TYPE_CHECKING:
     from lyra.llm.smart_routing import SmartRoutingDecorator
 
     from .circuit_breaker import CircuitRegistry
+    from .command_loader import CommandLoader
     from .messages import MessageManager
-    from .plugin_loader import PluginLoader
     from .runtime_config import RuntimeConfigHolder
 
 
@@ -41,25 +41,29 @@ def require_admin(msg: InboundMessage) -> "Response | None":
 def help_command(
     builtins: Mapping[str, object],
     session_handlers: Mapping[str, object],
-    plugin_loader: "PluginLoader",
+    command_loader: "CommandLoader",
     enabled_plugins: list[str],
     msg_manager: "MessageManager | None",
 ) -> Response:
-    """Return a listing of all available commands."""
+    """Return a listing of all available commands, grouped by section."""
     header = msg_manager.get("help_header") if msg_manager else "Available commands:"
     lines: list[str] = [header]
+    lines.append("Commands:")
     for cmd_name, cfg in sorted(builtins.items()):
         desc = getattr(cfg, "description", "") or "(no description)"
         lines.append(f"  {cmd_name} — {desc}")
     if session_handlers:
-        lines.append("Session commands:")
         for cmd_name, entry in sorted(session_handlers.items()):
             desc = getattr(entry, "description", "") or "(no description)"
             lines.append(f"  {cmd_name} — {desc}")
-    plugin_handlers = plugin_loader.get_commands(enabled_plugins)
-    for cmd_name in sorted(plugin_handlers):
-        if cmd_name not in builtins:
-            lines.append(f"  {cmd_name} — (plugin command)")
+    plugin_handlers = command_loader.get_commands(enabled_plugins)
+    plugin_cmds = [cmd for cmd in sorted(plugin_handlers) if cmd not in builtins]
+    if plugin_cmds:
+        lines.append("Commands:")
+        plugin_descs = command_loader.get_command_descriptions(enabled_plugins)
+        for cmd_name in plugin_cmds:
+            desc = plugin_descs.get(cmd_name, "(plugin command)")
+            lines.append(f"  {cmd_name} — {desc}")
     return Response(content="\n".join(lines))
 
 

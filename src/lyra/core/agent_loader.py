@@ -136,8 +136,10 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
 
     commands = _build_commands_from_dict(data.get("commands", {}))
 
+    # Reads [plugins].enabled — TOML key kept stable despite Python field rename
+    # to avoid collision with [commands] section (custom command metadata).
     plugins_section = data.get("plugins", {})
-    plugins_enabled: tuple[str, ...] = tuple(plugins_section.get("enabled", []))
+    commands_enabled: tuple[str, ...] = tuple(plugins_section.get("enabled", []))
 
     i18n_language = _validate_i18n_language(
         data.get("i18n", {}).get("default_language", "en"), name
@@ -210,6 +212,12 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
                 )
         agent_stt = _build_stt_from_dict(stt_section)
 
+    # Patterns: configurable rewrite rules (#345)
+    patterns_section = data.get("patterns", {})
+    patterns: dict[str, bool] = {
+        k: bool(v) for k, v in patterns_section.items()
+    }
+
     return _assemble_agent(
         name=name,
         system_prompt=system_prompt,
@@ -217,7 +225,7 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
         model_config=model_cfg,
         permissions=tuple(agent_section.get("permissions", [])),
         commands=commands,
-        plugins_enabled=plugins_enabled,
+        commands_enabled=commands_enabled,
         persona=persona,
         i18n_language=i18n_language,
         smart_routing=smart_routing,
@@ -225,4 +233,5 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
         workspaces=workspaces,
         tts=agent_tts,
         stt=agent_stt,
+        patterns=patterns,
     )

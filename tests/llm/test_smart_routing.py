@@ -8,10 +8,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.core.agent_config import Complexity, ModelConfig, SmartRoutingConfig
+from lyra.core.command_loader import CommandLoader
 from lyra.core.command_parser import CommandParser
 from lyra.core.command_router import CommandRouter
 from lyra.core.message import Attachment, InboundMessage
-from lyra.core.plugin_loader import PluginLoader
 from lyra.core.trust import TrustLevel
 from lyra.llm.base import LlmResult
 from lyra.llm.smart_routing import (
@@ -344,10 +344,10 @@ class TestRoutingCommand:
         *,
         decorator: SmartRoutingDecorator | None = None,
     ) -> CommandRouter:
-        loader = MagicMock(spec=PluginLoader)
+        loader = MagicMock(spec=CommandLoader)
         loader.get_commands.return_value = {}
         return CommandRouter(
-            plugin_loader=loader,
+            command_loader=loader,
             enabled_plugins=[],
             smart_routing_decorator=decorator,
         )

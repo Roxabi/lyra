@@ -30,6 +30,7 @@ import pytest
 
 from lyra.core.agent import Agent, AgentBase, load_agent_config
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
+from lyra.core.command_loader import CommandLoader
 from lyra.core.command_parser import CommandParser
 from lyra.core.command_router import CommandConfig, CommandRouter
 from lyra.core.hub import Hub
@@ -40,7 +41,6 @@ from lyra.core.message import (
     Response,
 )
 from lyra.core.messages import MessageManager
-from lyra.core.plugin_loader import PluginLoader
 from lyra.core.pool import Pool
 from lyra.core.trust import TrustLevel
 
@@ -119,13 +119,20 @@ def make_echo_plugin_dir(tmpdir: Path) -> Path:
     return tmpdir
 
 
-def make_router(tmp_path: Path, enabled: list[str] | None = None) -> CommandRouter:
+def make_router(
+    tmp_path: Path,
+    enabled: list[str] | None = None,
+    patterns: dict | None = None,
+) -> CommandRouter:
     """Build a CommandRouter with the echo plugin loaded."""
     plugins_dir = make_echo_plugin_dir(tmp_path)
-    loader = PluginLoader(plugins_dir)
+    loader = CommandLoader(plugins_dir)
     loader.load("echo")
     effective = enabled if enabled is not None else ["echo"]
-    return CommandRouter(plugin_loader=loader, enabled_plugins=effective)
+    _patterns = patterns if patterns is not None else {"bare_url": True}
+    return CommandRouter(
+        command_loader=loader, enabled_plugins=effective, patterns=_patterns
+    )
 
 
 def make_minimal_toml(extra: str = "") -> str:
@@ -356,15 +363,15 @@ class TestHotReloadUpdatesCommands:
         agent = ConcreteAgent(config, agents_dir=tmp_path, plugins_dir=plugins_dir)
 
         # Force-load echo into the agent's plugin_loader
-        agent._plugin_loader.load("echo")
+        agent._command_loader.load("echo")
         agent._effective_plugins = ["echo"]
         agent._plugin_mtimes = agent._record_plugin_mtimes()
         agent.command_router = CommandRouter(
-            agent._plugin_loader, agent._effective_plugins
+            agent._command_loader, agent._effective_plugins
         )
 
         # Verify initial state — /echo is reachable
-        plugin_cmds = agent._plugin_loader.get_commands(["echo"])
+        plugin_cmds = agent._command_loader.get_commands(["echo"])
         assert "/echo" in plugin_cmds
 
         # Act — touch handlers.py to simulate an mtime change, then reload
@@ -378,7 +385,7 @@ class TestHotReloadUpdatesCommands:
         agent._maybe_reload()
 
         # Assert — command_router was rebuilt and echo plugin commands are available
-        plugin_cmds_after = agent._plugin_loader.get_commands(["echo"])
+        plugin_cmds_after = agent._command_loader.get_commands(["echo"])
         assert "/echo" in plugin_cmds_after
 
 
@@ -500,9 +507,9 @@ def make_circuit_router(
 ) -> CommandRouter:
     """Build a CommandRouter with circuit_registry set."""
     plugins_dir = Path(tempfile.mkdtemp())
-    loader = PluginLoader(plugins_dir)
+    loader = CommandLoader(plugins_dir)
     return CommandRouter(
-        plugin_loader=loader,
+        command_loader=loader,
         enabled_plugins=[],
         circuit_registry=registry,
     )
@@ -643,7 +650,7 @@ class TestCircuitCommandNoRegistry:
 class TestPluginsConfigFromToml:
     """load_agent_config() parses the [plugins] TOML section."""
 
-    def test_plugins_enabled_from_toml(self, tmp_path: Path) -> None:
+    def test_commands_enabled_from_toml(self, tmp_path: Path) -> None:
         # Arrange — write a TOML with [plugins] enabled list
         toml_content = make_minimal_toml(
             extra=textwrap.dedent(
@@ -659,9 +666,9 @@ class TestPluginsConfigFromToml:
         agent = load_agent_config("test_agent", agents_dir=tmp_path)
 
         # Assert
-        assert agent.plugins_enabled == ("echo", "weather")
+        assert agent.commands_enabled == ("echo", "weather")
 
-    def test_plugins_enabled_defaults_to_empty(self, tmp_path: Path) -> None:
+    def test_commands_enabled_defaults_to_empty(self, tmp_path: Path) -> None:
         # Arrange — no [plugins] section at all
         toml_content = make_minimal_toml()
         (tmp_path / "test_agent.toml").write_text(toml_content)
@@ -670,7 +677,7 @@ class TestPluginsConfigFromToml:
         agent = load_agent_config("test_agent", agents_dir=tmp_path)
 
         # Assert — absent [plugins] section → empty tuple (default-open)
-        assert agent.plugins_enabled == ()
+        assert agent.commands_enabled == ()
 
     def test_command_config_still_parsed_for_builtins(self, tmp_path: Path) -> None:
         # Arrange — [commands] section is still supported for builtin overrides
@@ -711,8 +718,10 @@ class TestMsgManagerInjectionUnknownCommand:
         # Arrange
         mm = MessageManager(TOML_PATH)
         plugins_dir = Path(tempfile.mkdtemp())
-        loader = PluginLoader(plugins_dir)
-        router = CommandRouter(plugin_loader=loader, enabled_plugins=[], msg_manager=mm)
+        loader = CommandLoader(plugins_dir)
+        router = CommandRouter(
+            command_loader=loader, enabled_plugins=[], msg_manager=mm
+        )
         msg = make_message(content="/unknown_cmd")
 
         # Act
@@ -792,10 +801,10 @@ def make_config_router(
 
     plugins_dir = tmp_path / "plugins"
     plugins_dir.mkdir(exist_ok=True)
-    loader = PluginLoader(plugins_dir)
+    loader = CommandLoader(plugins_dir)
     holder = RuntimeConfigHolder(RuntimeConfig()) if with_holder else None
     return CommandRouter(
-        plugin_loader=loader,
+        command_loader=loader,
         enabled_plugins=[],
         runtime_config_holder=holder,
     )
@@ -1081,9 +1090,9 @@ def make_workspace_router(tmp_path: Path, workspaces: dict[str, Path]) -> Comman
     import tempfile as _tempfile
 
     plugins_dir = Path(_tempfile.mkdtemp())
-    loader = PluginLoader(plugins_dir)
+    loader = CommandLoader(plugins_dir)
     return CommandRouter(
-        plugin_loader=loader,
+        command_loader=loader,
         enabled_plugins=[],
         workspaces=workspaces,
     )
@@ -1463,6 +1472,60 @@ class TestBareUrlDetection:
         handler.assert_called_once()
 
 
+class TestBareUrlPatternsDisabled:
+    """patterns={"bare_url": False} disables bare URL rewriting (opt-in model)."""
+
+    def test_bare_url_is_not_detected_when_disabled(self, tmp_path: Path) -> None:
+        # Arrange — router with bare_url explicitly disabled
+        router = make_router(tmp_path, patterns={"bare_url": False})
+        msg = make_message(content="https://example.com/article")
+
+        # Act
+        result = router.is_command(msg)
+
+        # Assert — bare URL passthrough: is_command returns False
+        assert result is False
+
+    def test_prepare_returns_message_unchanged_when_disabled(
+        self, tmp_path: Path
+    ) -> None:
+        # Arrange
+        router = make_router(tmp_path, patterns={"bare_url": False})
+        url = "https://example.com/page"
+        msg = make_message(content=url)
+
+        # Act
+        prepared = router.prepare(msg)
+
+        # Assert — no CommandContext added; message passes through
+        assert prepared.command is None
+
+    def test_default_patterns_disables_bare_url(self, tmp_path: Path) -> None:
+        # Arrange — router with no patterns (empty dict = default-off)
+        plugins_dir = make_echo_plugin_dir(tmp_path)
+        loader = CommandLoader(plugins_dir)
+        loader.load("echo")
+        router = CommandRouter(command_loader=loader, enabled_plugins=["echo"])
+        msg = make_message(content="https://example.com")
+
+        # Act
+        result = router.is_command(msg)
+
+        # Assert — default is opt-in (False): bare URL not treated as command
+        assert result is False
+
+    def test_bare_url_enabled_explicitly(self, tmp_path: Path) -> None:
+        # Arrange — router with bare_url explicitly enabled
+        router = make_router(tmp_path, patterns={"bare_url": True})
+        msg = make_message(content="https://example.com")
+
+        # Act
+        result = router.is_command(msg)
+
+        # Assert — explicit opt-in: bare URL is a command
+        assert result is True
+
+
 # ---------------------------------------------------------------------------
 # Issue #99 — Session command registry (T2)
 # ---------------------------------------------------------------------------
@@ -1574,11 +1637,11 @@ class TestSessionCommands:
         response = help_command(
             router._builtins,
             router._session_handlers,
-            router._plugin_loader,
+            router._command_loader,
             router._enabled_plugins,
             router._msg_manager,
         )
-        assert "Session commands:" in response.content
+        assert "Commands:" in response.content
         assert "/mything" in response.content
         assert "Does the thing" in response.content
 

@@ -13,10 +13,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from lyra.core.command_loader import CommandLoader
 from lyra.core.command_parser import CommandParser
 from lyra.core.command_router import CommandRouter
 from lyra.core.message import InboundMessage, Response
-from lyra.core.plugin_loader import PluginLoader
 from lyra.core.pool import Pool
 from lyra.core.trust import TrustLevel
 from lyra.llm.base import LlmProvider, LlmResult
@@ -62,11 +62,12 @@ def make_router_with_session(
     from lyra.core.session_commands import cmd_add, cmd_explain, cmd_summarize
 
     # Minimal plugins dir (no real plugins needed for session command tests)
-    loader = PluginLoader(tmp_path)
+    loader = CommandLoader(tmp_path)
     router = CommandRouter(
-        plugin_loader=loader,
+        command_loader=loader,
         enabled_plugins=[],
         session_driver=driver,
+        patterns={"bare_url": True},
     )
     router.register_session_command(
         "add", cmd_add, description="Save URL", timeout=60.0
@@ -165,14 +166,14 @@ class TestSearchPlugin:
     async def test_search_uses_vault_search(self, tmp_path: Path) -> None:
         # Build a router with the real search plugin
         search_plugin_dir = (
-            Path(__file__).resolve().parent.parent.parent / "src" / "lyra" / "plugins"
+            Path(__file__).resolve().parent.parent.parent / "src" / "lyra" / "commands"
         )
-        loader = PluginLoader(search_plugin_dir)
+        loader = CommandLoader(search_plugin_dir)
         loader.load("search")
 
         driver = make_mock_driver()
         router = CommandRouter(
-            plugin_loader=loader,
+            command_loader=loader,
             enabled_plugins=["search"],
             session_driver=driver,
         )
@@ -256,7 +257,7 @@ class TestSessionTimeout:
 
     @pytest.mark.asyncio
     async def test_timeout_returns_timeout_message(self, tmp_path: Path) -> None:
-        loader = PluginLoader(tmp_path)
+        loader = CommandLoader(tmp_path)
         driver = make_mock_driver()
 
         async def slow_handler(msg, driver, args, timeout):  # noqa: ARG001
@@ -264,7 +265,7 @@ class TestSessionTimeout:
             return Response(content="never")
 
         router = CommandRouter(
-            plugin_loader=loader,
+            command_loader=loader,
             enabled_plugins=[],
             session_driver=driver,
         )

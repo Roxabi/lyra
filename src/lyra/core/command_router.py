@@ -13,9 +13,9 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from . import builtin_commands, workspace_commands
+from .command_loader import AsyncHandler, CommandLoader
 from .command_parser import CommandContext
 from .message import InboundMessage, Response
-from .plugin_loader import AsyncHandler, PluginLoader
 from .pool import Pool
 
 if TYPE_CHECKING:
@@ -85,7 +85,7 @@ class CommandRouter:
 
     def __init__(  # noqa: PLR0913 — DI constructor, each arg is a required dependency
         self,
-        plugin_loader: PluginLoader,
+        command_loader: CommandLoader,
         enabled_plugins: list[str],
         builtins: dict[str, CommandConfig] | None = None,
         circuit_registry: CircuitRegistry | None = None,
@@ -96,8 +96,9 @@ class CommandRouter:
         on_debounce_change: Callable[[int], None] | None = None,
         workspaces: dict[str, Path] | None = None,
         session_driver: "LlmProvider | None" = None,
+        patterns: dict[str, bool] | None = None,
     ) -> None:
-        self._plugin_loader = plugin_loader
+        self._command_loader = command_loader
         self._enabled_plugins = enabled_plugins
         self._builtins: dict[str, CommandConfig] = (
             builtins if builtins is not None else dict(self._DEFAULT_BUILTINS)
@@ -110,10 +111,11 @@ class CommandRouter:
         self._on_debounce_change = on_debounce_change
         self._workspaces: dict[str, Path] = workspaces or {}
         self._session_driver: LlmProvider | None = session_driver
+        self._patterns: dict[str, bool] = patterns or {}
         self._session_handlers: dict[str, SessionCommandEntry] = {}
         self._passthroughs: set[str] = set()
         # Guard: raise early if any loaded plugin command clashes with a builtin.
-        plugin_handlers = plugin_loader.get_commands(enabled_plugins)
+        plugin_handlers = command_loader.get_commands(enabled_plugins)
         conflicts = set(plugin_handlers) & set(self._builtins)
         if conflicts:
             raise ValueError(
@@ -148,7 +150,7 @@ class CommandRouter:
             result.append(
                 (name, cfg.description, self._is_admin_only(cfg.description))
             )
-        plugin_descs = self._plugin_loader.get_command_descriptions(
+        plugin_descs = self._command_loader.get_command_descriptions(
             self._enabled_plugins
         )
         for name, desc in plugin_descs.items():
@@ -162,16 +164,19 @@ class CommandRouter:
         return replace(msg, command=ctx)
 
     def prepare(self, msg: InboundMessage) -> InboundMessage:
-        """Rewrite bare URL messages to /add; return the (possibly new) message."""
+        """Rewrite bare URLs to /add when patterns.bare_url is True."""
         if msg.command is None and self._BARE_URL_RE.fullmatch(msg.text.strip()):
-            return self._rewrite_bare_url(msg)
+            if self._patterns.get("bare_url", False):
+                return self._rewrite_bare_url(msg)
         return msg
 
     def is_command(self, msg: InboundMessage) -> bool:
-        """Return True if msg carries a CommandContext or is a bare URL."""
+        """Return True if msg carries a CommandContext or is a rewritable bare URL."""
         if msg.command is not None:
             return True
-        return bool(self._BARE_URL_RE.fullmatch(msg.text.strip()))
+        if self._patterns.get("bare_url", False):
+            return bool(self._BARE_URL_RE.fullmatch(msg.text.strip()))
+        return False
 
     def get_command_name(self, msg: InboundMessage) -> str | None:
         """Return full command name (e.g. '/join') or None. Single source of truth."""
@@ -194,7 +199,7 @@ class CommandRouter:
         cmd = f"/{name}"
         if cmd in self._builtins:
             raise ValueError(f"Session command {cmd!r} clashes with a builtin.")
-        plugin_handlers = self._plugin_loader.get_commands(self._enabled_plugins)
+        plugin_handlers = self._command_loader.get_commands(self._enabled_plugins)
         if cmd in plugin_handlers:
             raise ValueError(f"Session command {cmd!r} clashes with a plugin.")
         self._session_handlers[cmd] = SessionCommandEntry(
@@ -210,7 +215,7 @@ class CommandRouter:
             return builtin_commands.help_command(
                 self._builtins,
                 self._session_handlers,
-                self._plugin_loader,
+                self._command_loader,
                 self._enabled_plugins,
                 self._msg_manager,
             )
@@ -284,7 +289,7 @@ class CommandRouter:
         if command_name in self._session_handlers:
             return await self._dispatch_session(command_name, args, msg, pool)
 
-        plugin_handlers: dict[str, AsyncHandler] = self._plugin_loader.get_commands(
+        plugin_handlers: dict[str, AsyncHandler] = self._command_loader.get_commands(
             self._enabled_plugins
         )
         handler = plugin_handlers.get(command_name)
@@ -305,7 +310,7 @@ class CommandRouter:
             raise TypeError(
                 f"Plugin command '{command_name}' requires a Pool instance."
             )
-        timeout = self._plugin_loader.get_timeout(command_name, self._enabled_plugins)
+        timeout = self._command_loader.get_timeout(command_name, self._enabled_plugins)
         try:
             return await asyncio.wait_for(handler(msg, pool, args), timeout=timeout)
         except TimeoutError:

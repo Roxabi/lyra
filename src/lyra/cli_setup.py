@@ -53,7 +53,7 @@ async def _register_telegram_bot(
 async def _register_bot(
     bot_cfg: dict[str, Any],
     raw: dict[str, Any],
-    plugin_loader: Any,
+    command_loader: Any,
     cred_store: Any,
     voice_commands: list,
 ) -> bool:
@@ -66,12 +66,22 @@ async def _register_bot(
 
     # Load plugins for this bot's agent
     agent_overrides = raw.get("agents", {}).get(agent_name, {})
-    enabled_plugins: list[str] = agent_overrides.get("plugins", {}).get(
-        "enabled", []
-    )
+    _commands_enabled = agent_overrides.get("commands", {}).get("enabled")
+    _plugins_enabled = agent_overrides.get("plugins", {}).get("enabled")
+    if _commands_enabled is not None:
+        enabled_plugins: list[str] = _commands_enabled
+    elif _plugins_enabled is not None:
+        log.debug(
+            "Agent %s: config.toml uses deprecated [plugins].enabled key;"
+            " rename to [commands].enabled",
+            agent_name,
+        )
+        enabled_plugins = _plugins_enabled
+    else:
+        enabled_plugins = []
     for plugin_name in enabled_plugins:
         try:
-            plugin_loader.load(plugin_name)
+            command_loader.load(plugin_name)
         except Exception:  # noqa: BLE001
             log.debug(
                 "Could not load plugin %s for agent %s",
@@ -81,7 +91,7 @@ async def _register_bot(
 
     # Collect command metadata (uses CommandRouter for admin detection)
     builtin_meta = list(CommandRouter.builtin_metadata())
-    plugin_descs = plugin_loader.get_command_descriptions(enabled_plugins)
+    plugin_descs = command_loader.get_command_descriptions(enabled_plugins)
     all_commands = collect_commands(builtin_meta, plugin_descs, voice_commands)
     public_commands = [cmd for cmd in all_commands if not cmd.admin_only]
 
@@ -113,8 +123,8 @@ async def _register_bot(
 async def _register_all(config_path: str) -> None:
     """For each Telegram bot: resolve token, collect commands, set_my_commands."""
     from lyra.adapters.discord_voice_commands import VOICE_COMMANDS
+    from lyra.core.command_loader import CommandLoader
     from lyra.core.credential_store import CredentialStore, LyraKeyring
-    from lyra.core.plugin_loader import PluginLoader
 
     try:
         with open(config_path, "rb") as f:
@@ -133,14 +143,14 @@ async def _register_all(config_path: str) -> None:
     cred_store = CredentialStore(lyra_dir / "auth.db", keyring)
     await cred_store.connect()
 
-    plugins_dir = Path(__file__).parent / "plugins"
-    plugin_loader = PluginLoader(plugins_dir)
+    commands_dir = Path(__file__).parent / "commands"
+    command_loader = CommandLoader(commands_dir)
 
     errors = 0
     try:
         for bot_cfg in tg_bots:
             had_error = await _register_bot(
-                bot_cfg, raw, plugin_loader, cred_store, VOICE_COMMANDS
+                bot_cfg, raw, command_loader, cred_store, VOICE_COMMANDS
             )
             if had_error:
                 errors += 1

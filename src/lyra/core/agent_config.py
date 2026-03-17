@@ -196,7 +196,7 @@ class Agent:
     model_config: ModelConfig = field(default_factory=ModelConfig)
     permissions: tuple[str, ...] = field(default=())
     commands: dict[str, CommandConfig] = field(default_factory=dict)
-    plugins_enabled: tuple[str, ...] = field(default=())  # empty = default-open
+    commands_enabled: tuple[str, ...] = field(default=())  # empty = default-open
     persona: PersonaConfig | None = None
     i18n_language: str = "en"
     smart_routing: SmartRoutingConfig | None = None
@@ -205,3 +205,4 @@ class Agent:
     tts: AgentTTSConfig | None = None  # deprecated — use voice.tts (PR1 compat)
     stt: AgentSTTConfig | None = None  # deprecated — use voice.stt (PR1 compat)
     voice: AgentVoiceConfig | None = None  # #343 — unified voice config
+    patterns: dict[str, bool] = field(default_factory=dict)  # #345 — rewrite rules

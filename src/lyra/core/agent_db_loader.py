@@ -171,6 +171,23 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — each branch handles one opti
         voice = AgentVoiceConfig(tts=voice.tts, stt=patched_stt)
         agent_stt = patched_stt
 
+    # Patterns: configurable rewrite rules (#345)
+    if row.patterns_json:
+        _patterns_raw = json.loads(row.patterns_json)
+        patterns: dict[str, bool] = (
+            {k: bool(v) for k, v in _patterns_raw.items()}
+            if isinstance(_patterns_raw, dict)
+            else {}
+        )
+        if not isinstance(_patterns_raw, dict):
+            log.warning(
+                "agent_row_to_config(%s): patterns_json is not a dict (%s) — ignored",
+                row.name,
+                type(_patterns_raw).__name__,
+            )
+    else:
+        patterns: dict[str, bool] = {}
+
     return _assemble_agent(
         name=row.name,
         system_prompt=system_prompt,
@@ -178,7 +195,7 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — each branch handles one opti
         model_config=model_cfg,
         permissions=permissions,
         commands=commands,
-        plugins_enabled=tuple(plugins),
+        commands_enabled=tuple(plugins),
         persona=persona,
         i18n_language=i18n_language,
         smart_routing=smart_routing,
@@ -187,4 +204,5 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — each branch handles one opti
         tts=agent_tts,
         stt=agent_stt,
         voice=voice,
+        patterns=patterns,
     )

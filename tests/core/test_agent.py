@@ -145,7 +145,7 @@ system = ""
         agent.name = "other"
         assert agent.name == "other"
 
-    def test_plugins_enabled_from_toml(self, tmp_path: Path) -> None:
+    def test_commands_enabled_from_toml(self, tmp_path: Path) -> None:
         # Arrange
         toml_content = """
 [prompt]
@@ -160,9 +160,9 @@ enabled = ["echo"]
         agent = load_agent_config("testagent", agents_dir=tmp_path)
 
         # Assert
-        assert agent.plugins_enabled == ("echo",)
+        assert agent.commands_enabled == ("echo",)
 
-    def test_plugins_enabled_defaults_to_empty(self, tmp_path: Path) -> None:
+    def test_commands_enabled_defaults_to_empty(self, tmp_path: Path) -> None:
         # Arrange — absent [plugins] section → empty list (default-open)
         toml_content = """
 [prompt]
@@ -174,7 +174,7 @@ system = "test"
         agent = load_agent_config("testagent", agents_dir=tmp_path)
 
         # Assert
-        assert agent.plugins_enabled == ()
+        assert agent.commands_enabled == ()
 
     def test_cwd_absent_defaults_to_none(self, tmp_path: Path) -> None:
         toml_content = """
@@ -1099,3 +1099,118 @@ cfg_weight = 0.3
         assert agent.tts.exaggeration == pytest.approx(0.7)
         assert agent.tts.cfg_weight == pytest.approx(0.3)
         assert agent.tts.engine is None  # not set — defaults preserved
+
+
+class TestPatternsParsedFromToml:
+    """load_agent_config() parses [patterns] TOML section into Agent.patterns."""
+
+    def test_patterns_bare_url_false_parsed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Arrange — TOML with [patterns] bare_url = false
+        toml_content = """
+[agent]
+name = "p"
+
+[model]
+backend = "claude-cli"
+model = "test-model"
+max_turns = 5
+
+[patterns]
+bare_url = false
+"""
+        (tmp_path / "p.toml").write_text(toml_content)
+        monkeypatch.chdir(tmp_path)
+        from lyra.core.agent_loader import load_agent_config
+
+        # Act
+        agent = load_agent_config("p", agents_dir=tmp_path)
+
+        # Assert
+        assert agent.patterns == {"bare_url": False}
+
+    def test_patterns_absent_defaults_to_empty(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Arrange — TOML with no [patterns] section
+        toml_content = """
+[agent]
+name = "q"
+
+[model]
+backend = "claude-cli"
+model = "test-model"
+max_turns = 5
+"""
+        (tmp_path / "q.toml").write_text(toml_content)
+        monkeypatch.chdir(tmp_path)
+        from lyra.core.agent_loader import load_agent_config
+
+        # Act
+        agent = load_agent_config("q", agents_dir=tmp_path)
+
+        # Assert
+        assert agent.patterns == {}
+
+
+class TestAgentRowToConfigPatterns:
+    """agent_row_to_config() deserialises patterns_json into Agent.patterns."""
+
+    def test_patterns_json_bare_url_false(self) -> None:
+        # Arrange
+        import json
+
+        from lyra.core.agent_loader import agent_row_to_config
+        from lyra.core.agent_models import AgentRow
+
+        row = AgentRow(
+            name="r",
+            backend="anthropic-sdk",
+            model="claude-3-5-haiku-20241022",
+            patterns_json=json.dumps({"bare_url": False}),
+        )
+
+        # Act
+        agent = agent_row_to_config(row)
+
+        # Assert
+        assert agent.patterns == {"bare_url": False}
+
+    def test_patterns_json_none_yields_empty(self) -> None:
+        # Arrange
+        from lyra.core.agent_loader import agent_row_to_config
+        from lyra.core.agent_models import AgentRow
+
+        row = AgentRow(
+            name="s",
+            backend="anthropic-sdk",
+            model="claude-3-5-haiku-20241022",
+            patterns_json=None,
+        )
+
+        # Act
+        agent = agent_row_to_config(row)
+
+        # Assert
+        assert agent.patterns == {}
+
+    def test_patterns_json_non_dict_yields_empty(self) -> None:
+        # Arrange — corrupted patterns_json (list instead of dict)
+        import json
+
+        from lyra.core.agent_loader import agent_row_to_config
+        from lyra.core.agent_models import AgentRow
+
+        row = AgentRow(
+            name="t",
+            backend="anthropic-sdk",
+            model="claude-3-5-haiku-20241022",
+            patterns_json=json.dumps(["bare_url"]),
+        )
+
+        # Act
+        agent = agent_row_to_config(row)
+
+        # Assert — falls back to empty dict, no exception
+        assert agent.patterns == {}

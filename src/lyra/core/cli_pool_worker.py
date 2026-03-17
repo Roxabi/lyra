@@ -23,15 +23,14 @@ log = logging.getLogger(__name__)
 # HOME is intentionally excluded (H-4): forwarding the real HOME lets agentic
 # tools browse ~/.claude/ if the subprocess is prompt-injected.  _spawn()
 # sets HOME to a dedicated restricted directory instead.
+# USER, LOGNAME, and SHELL are excluded and pinned to dummy values to prevent
+# username/shell oracle attacks after prompt injection.
 _SAFE_ENV_KEYS = {
     "PATH",
     "LANG",
     "LC_ALL",
     "LC_CTYPE",
     "TMPDIR",
-    "USER",
-    "LOGNAME",
-    "SHELL",
 }
 
 
@@ -145,6 +144,9 @@ class _CliPoolWorker:
         # browse ~/.claude/ or other user-home secrets if prompt-injected.
         _claude_home = Path(tempfile.mkdtemp(prefix="lyra_claude_home_"))
         env["HOME"] = str(_claude_home)
+        # Pin identity vars to dummy values — prevents username oracle
+        env["USER"] = "lyra"
+        env["LOGNAME"] = "lyra"
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,

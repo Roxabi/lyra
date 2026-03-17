@@ -140,7 +140,17 @@ async def wire_discord_adapters(  # noqa: PLR0913 — wiring requires all deps
                 "discord", bot_cfg.bot_id
             )
             raw_ids = bot_settings.get("watch_channels", [])
-            watch_channels = frozenset(int(ch) for ch in raw_ids)
+            valid_ids: list[int] = []
+            for ch in raw_ids:
+                try:
+                    valid_ids.append(int(ch))
+                except (ValueError, TypeError):
+                    log.warning(
+                        "watch_channels: invalid channel id %r for bot %r — skipping",
+                        ch,
+                        bot_cfg.bot_id,
+                    )
+            watch_channels = frozenset(valid_ids)
 
         adapter = DiscordAdapter(
             hub=hub,

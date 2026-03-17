@@ -298,6 +298,46 @@ class TestBotSettings:
         finally:
             await store2.close()
 
+    async def test_corrupt_settings_json_skipped_on_reconnect(
+        self, tmp_path: Path
+    ) -> None:
+        """Corrupt settings_json in DB is skipped with a warning; cache stays empty."""
+        import aiosqlite
+
+        db_path = tmp_path / "auth.db"
+        store1 = AgentStore(db_path=str(db_path))
+        await store1.connect()
+        await store1.upsert(_make_agent_row("corrupt-agent"))
+        await store1.set_bot_agent("discord", "bot-corrupt", "corrupt-agent")
+        await store1.close()
+
+        # Inject corrupt JSON directly into the DB
+        async with aiosqlite.connect(str(db_path)) as db:
+            await db.execute(
+                "UPDATE bot_agent_map SET settings_json=? "
+                "WHERE platform='discord' AND bot_id='bot-corrupt'",
+                ("{not valid json",),
+            )
+            await db.commit()
+
+        store2 = AgentStore(db_path=str(db_path))
+        await store2.connect()
+        try:
+            # Corrupt row is skipped — cache returns empty dict
+            result = store2.get_bot_settings("discord", "bot-corrupt")
+            assert result == {}
+        finally:
+            await store2.close()
+
+    async def test_set_bot_settings_raises_on_missing_row(
+        self, agent_store: AgentStore
+    ) -> None:
+        """set_bot_settings raises ValueError if the bot mapping row does not exist."""
+        with pytest.raises(ValueError, match="No bot_agent_map row"):
+            await agent_store.set_bot_settings(
+                "discord", "bot-nonexistent", {"watch_channels": [1]}
+            )
+
 
 # ---------------------------------------------------------------------------
 # TestRuntimeState

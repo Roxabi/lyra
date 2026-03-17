@@ -336,7 +336,12 @@ class AgentStore(SqliteStore):
         *,
         settings: dict | None = None,
     ) -> None:
-        """Upsert a bot → agent mapping with optional settings."""
+        """Upsert a bot → agent mapping with optional settings.
+
+        ``settings=None`` preserves the existing ``settings_json`` value in the
+        DB via COALESCE — it does **not** clear it.  Pass an explicit dict to
+        overwrite, or call :meth:`set_bot_settings` to update settings alone.
+        """
         db = self._require_db()
         now = _utc_now_iso()
         settings_raw = json.dumps(settings) if settings else None
@@ -363,11 +368,16 @@ class AgentStore(SqliteStore):
         db = self._require_db()
         now = _utc_now_iso()
         settings_raw = json.dumps(settings)
-        await db.execute(
+        cursor = await db.execute(
             "UPDATE bot_agent_map SET settings_json=?, updated_at=? "
             "WHERE platform=? AND bot_id=?",
             (settings_raw, now, platform, bot_id),
         )
+        if cursor.rowcount == 0:
+            raise ValueError(
+                f"No bot_agent_map row for platform={platform!r}, bot_id={bot_id!r}."
+                " Call set_bot_agent() first."
+            )
         await db.commit()
         self._bot_settings[(platform, bot_id)] = settings
 

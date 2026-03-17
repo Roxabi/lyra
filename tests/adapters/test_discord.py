@@ -1287,6 +1287,54 @@ class TestWatchChannels:
         hub.inbound_bus.put.assert_not_called()
 
     @pytest.mark.asyncio
+    @pytest.mark.asyncio
+    async def test_watch_channel_auto_thread_disabled(self) -> None:
+        """Watch channel + auto_thread=False: message processed, no thread created."""
+        from lyra.adapters.discord import DiscordAdapter
+
+        hub = MagicMock()
+        hub.inbound_bus = MagicMock()
+        hub.inbound_bus.put = MagicMock()
+
+        adapter = DiscordAdapter(
+            hub=hub,
+            bot_id="main",
+            intents=discord.Intents.none(),
+            auto_thread=False,
+            auth=_ALLOW_ALL,
+            watch_channels=frozenset({333}),
+        )
+        bot_user = SimpleNamespace(id=999, bot=True)
+        adapter._bot_user = bot_user
+
+        create_thread_mock = AsyncMock()
+
+        discord_msg = SimpleNamespace(
+            guild=SimpleNamespace(id=111),
+            channel=SimpleNamespace(
+                id=333,
+                send=AsyncMock(),
+                type=SimpleNamespace(name="text"),
+                create_thread=create_thread_mock,
+            ),
+            author=SimpleNamespace(
+                id=42, name="Alice", display_name="Alice", bot=False
+            ),
+            content="https://example.com/article",
+            created_at=datetime.now(timezone.utc),
+            id=555,
+            mentions=[],  # no mention
+            create_thread=create_thread_mock,
+        )
+
+        await adapter.on_message(discord_msg)
+
+        # Message still processed even though auto_thread=False
+        hub.inbound_bus.put.assert_called_once()
+        # No thread created
+        create_thread_mock.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_watch_channel_thread_followup_not_treated_as_watch(self) -> None:
         """Thread message uses owned-thread path, not watch channel."""
         from lyra.adapters.discord import DiscordAdapter

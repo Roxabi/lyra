@@ -133,7 +133,7 @@ def normalize(
 
     # is_mention is always False in private chats
     is_mention = False
-    if is_group and raw.entities:
+    if is_group and raw.entities and adapter._bot_username is not None:
         for entity in raw.entities:
             if entity.type == "mention":
                 slice_text = raw.text[entity.offset : entity.offset + entity.length]
@@ -146,6 +146,10 @@ def normalize(
     scope_id = _make_scope_id(chat_id, topic_id)
 
     text = raw.text or getattr(raw, "caption", None) or ""
+    # Strip @mention prefix so content reaches the agent clean (align with Discord)
+    if is_mention and adapter._bot_username is not None:
+        mention_tag = f"@{adapter._bot_username}"
+        text = text.replace(mention_tag, "").strip()
     timestamp = raw.date
     if timestamp.tzinfo is None:
         timestamp = timestamp.replace(tzinfo=timezone.utc)

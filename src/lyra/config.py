@@ -67,7 +67,6 @@ class TelegramBotConfig:
     """
 
     bot_id: str
-    bot_username: str
     agent: str = "lyra_default"
 
 
@@ -103,12 +102,10 @@ def _parse_telegram_bots(raw: dict[str, Any]) -> list[TelegramBotConfig]:
     """Parse [[telegram.bots]] array from raw config.
 
     Each entry requires: bot_id.
-    Optional: bot_username (default "lyra_bot"), agent (default "lyra_default").
+    Optional: agent (default "lyra_default").
 
     Credentials (token, webhook_secret) are resolved at bootstrap time from
     CredentialStore and are not read here.
-
-    Supports "env:VAR_NAME" syntax for bot_username.
     """
     tg_section: dict = raw.get("telegram", {})
     bots_raw: list[dict] = tg_section.get("bots", [])
@@ -116,15 +113,11 @@ def _parse_telegram_bots(raw: dict[str, Any]) -> list[TelegramBotConfig]:
     bots: list[TelegramBotConfig] = []
     for entry in bots_raw:
         bot_id: str = entry.get("bot_id", "main")
-        raw_username: str = entry.get("bot_username", "env:TELEGRAM_BOT_USERNAME")
         agent: str = entry.get("agent", "lyra_default")
-
-        bot_username = _resolve_value(raw_username) or "lyra_bot"
 
         bots.append(
             TelegramBotConfig(
                 bot_id=bot_id,
-                bot_username=bot_username,
                 agent=agent,
             )
         )
@@ -186,7 +179,6 @@ def load_multibot_config(
     # Credentials are NOT stored here — resolved at bootstrap from CredentialStore.
     tg_has_bots_key = "bots" in raw.get("telegram", {})
     if not tg_bots and not tg_has_bots_key and raw.get("auth", {}).get("telegram"):
-        bot_username = os.environ.get("TELEGRAM_BOT_USERNAME", "lyra_bot")
         log.info(
             "telegram: no [[telegram.bots]] found; "
             "falling back to legacy single-bot path (bot_id='main')"
@@ -194,7 +186,6 @@ def load_multibot_config(
         tg_bots = [
             TelegramBotConfig(
                 bot_id="main",
-                bot_username=bot_username,
                 agent="lyra_default",
             )
         ]

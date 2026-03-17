@@ -74,7 +74,7 @@ class TestMainAdapterFiltering:
         # Arrange
         from lyra.config import DiscordBotConfig, TelegramBotConfig
 
-        tg_bot = TelegramBotConfig(bot_id="tg1", bot_username="lyra_bot")
+        tg_bot = TelegramBotConfig(bot_id="tg1")
         dc_bot = DiscordBotConfig(bot_id="dc1")
 
         captured_dc_cfg: list[DiscordMultiConfig] = []
@@ -127,7 +127,7 @@ class TestMainAdapterFiltering:
         # Arrange
         from lyra.config import DiscordBotConfig, TelegramBotConfig
 
-        tg_bot = TelegramBotConfig(bot_id="tg1", bot_username="lyra_bot")
+        tg_bot = TelegramBotConfig(bot_id="tg1")
         dc_bot = DiscordBotConfig(bot_id="dc1")
 
         captured_dc_cfg: list[DiscordMultiConfig] = []
@@ -180,7 +180,7 @@ class TestMainAdapterFiltering:
         # Arrange
         from lyra.config import DiscordBotConfig, TelegramBotConfig
 
-        tg_bot = TelegramBotConfig(bot_id="tg1", bot_username="lyra_bot")
+        tg_bot = TelegramBotConfig(bot_id="tg1")
         dc_bot = DiscordBotConfig(bot_id="dc1")
 
         captured_dc_cfg: list[DiscordMultiConfig] = []

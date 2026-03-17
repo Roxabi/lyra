@@ -56,7 +56,6 @@ log = logging.getLogger(__name__)
 class TelegramConfig:
     token: str
     webhook_secret: str
-    bot_username: str
 
 
 def load_config() -> TelegramConfig:
@@ -67,8 +66,7 @@ def load_config() -> TelegramConfig:
     secret = os.environ.get("TELEGRAM_WEBHOOK_SECRET")
     if not secret:
         raise SystemExit("Missing required env var: TELEGRAM_WEBHOOK_SECRET")
-    bot_username = os.environ.get("TELEGRAM_BOT_USERNAME", "lyra_bot")
-    return TelegramConfig(token=token, webhook_secret=secret, bot_username=bot_username)
+    return TelegramConfig(token=token, webhook_secret=secret)
 
 
 def _make_verifier(secret: str):
@@ -93,7 +91,6 @@ class TelegramAdapter:
         bot_id: str,
         token: str,
         hub: Hub,
-        bot_username: str = "lyra_bot",
         webhook_secret: str = "",
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
@@ -106,7 +103,7 @@ class TelegramAdapter:
             log.warning(
                 "webhook_secret is empty — all webhook requests will be rejected"
             )
-        self._bot_username = bot_username
+        self._bot_username: str | None = None
         self._hub: Hub = hub
         self._circuit_registry = circuit_registry
         self._msg_manager = msg_manager
@@ -155,6 +152,20 @@ class TelegramAdapter:
     @bot.setter
     def bot(self, value: Any) -> None:
         self._bot = value
+
+    async def resolve_identity(self) -> None:
+        """Discover the bot's username via the Telegram API (getMe).
+
+        Must be called once after the bot is available — analogous to
+        Discord's ``on_ready()`` which populates ``_bot_user``.
+        """
+        me = await self.bot.get_me()
+        self._bot_username = me.username
+        log.info(
+            "resolve_identity: bot_id=%s username=@%s",
+            self._bot_id,
+            self._bot_username,
+        )
 
     @property
     def dp(self) -> Any:

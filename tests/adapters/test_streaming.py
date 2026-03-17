@@ -88,7 +88,6 @@ class TestTelegramStreaming:
             bot_id="main",
             token="fake-token",
             hub=hub,
-            bot_username="lyra_bot",
             webhook_secret="secret",
         )
         mock_bot = AsyncMock()

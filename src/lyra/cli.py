@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import asyncio
 import importlib.metadata
-import os
 import tomllib
 
 import typer
@@ -164,17 +163,6 @@ def config_validate(
     raw = _load_raw(config)
 
     errors: list[str] = []
-    for section in ("telegram", "discord"):
-        for bot in raw.get(section, {}).get("bots", []):
-            for field in ("bot_username",):
-                val = bot.get(field, "")
-                if isinstance(val, str) and val.startswith("env:"):
-                    env_var = val[4:]
-                    if not os.environ.get(env_var):
-                        errors.append(
-                            f"[{section}.bots] bot_id={bot.get('bot_id')!r}: "
-                            f"env var {env_var!r} is not set"
-                        )
 
     try:
         load_multibot_config(raw)

@@ -74,9 +74,8 @@ class TestParseTelegramBots:
     def _raw(self, *entries: dict) -> dict:
         return {"telegram": {"bots": list(entries)}}
 
-    def test_happy_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # Arrange — unset the username env var so the fallback "lyra_bot" is used
-        monkeypatch.delenv("TELEGRAM_BOT_USERNAME", raising=False)
+    def test_happy_path(self) -> None:
+        # Arrange
         raw = self._raw({"bot_id": "lyra"})
         # Act
         bots = _parse_telegram_bots(raw)
@@ -85,32 +84,10 @@ class TestParseTelegramBots:
         bot = bots[0]
         assert isinstance(bot, TelegramBotConfig)
         assert bot.bot_id == "lyra"
-        assert bot.bot_username == "lyra_bot"
         assert bot.agent == "lyra_default"
 
-    def test_bot_username_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # Arrange — set the username env var
-        monkeypatch.setenv("TELEGRAM_BOT_USERNAME", "mybot")
-        raw = self._raw({"bot_id": "lyra"})
-        # Act
-        bots = _parse_telegram_bots(raw)
-        # Assert
-        assert bots[0].bot_username == "mybot"
-
-    def test_bot_username_explicit_in_config(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        # Arrange — explicit bot_username in entry overrides env var
-        monkeypatch.delenv("TELEGRAM_BOT_USERNAME", raising=False)
-        raw = self._raw({"bot_id": "lyra", "bot_username": "explicit_bot"})
-        # Act
-        bots = _parse_telegram_bots(raw)
-        # Assert
-        assert bots[0].bot_username == "explicit_bot"
-
-    def test_two_bots_returned(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_two_bots_returned(self) -> None:
         # Arrange
-        monkeypatch.delenv("TELEGRAM_BOT_USERNAME", raising=False)
         raw = self._raw({"bot_id": "alpha"}, {"bot_id": "beta"})
         # Act
         bots = _parse_telegram_bots(raw)
@@ -119,9 +96,8 @@ class TestParseTelegramBots:
         assert bots[0].bot_id == "alpha"
         assert bots[1].bot_id == "beta"
 
-    def test_custom_agent(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_custom_agent(self) -> None:
         # Arrange
-        monkeypatch.delenv("TELEGRAM_BOT_USERNAME", raising=False)
         raw = self._raw({"bot_id": "lyra", "agent": "my_agent"})
         # Act
         bots = _parse_telegram_bots(raw)
@@ -196,9 +172,8 @@ class TestLoadMultibotConfig:
         assert tg.bots == []
         assert dc.bots == []
 
-    def test_multibot_new_style(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_multibot_new_style(self) -> None:
         # Arrange
-        monkeypatch.delenv("TELEGRAM_BOT_USERNAME", raising=False)
         raw = {"telegram": {"bots": [{"bot_id": "lyra"}]}}
         # Act
         tg, dc = load_multibot_config(raw)
@@ -207,10 +182,9 @@ class TestLoadMultibotConfig:
         assert tg.bots[0].bot_id == "lyra"
         assert dc.bots == []
 
-    def test_legacy_telegram_fallback(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_legacy_telegram_fallback(self) -> None:
         # Arrange — no [telegram] section, but [auth.telegram] present.
         # The legacy fallback synthesizes a bot_id="main" entry regardless of env vars.
-        monkeypatch.delenv("TELEGRAM_BOT_USERNAME", raising=False)
         raw = {"auth": {"telegram": {"default": "blocked"}}}
         # Act
         tg, _ = load_multibot_config(raw)
@@ -218,7 +192,6 @@ class TestLoadMultibotConfig:
         assert len(tg.bots) == 1
         bot = tg.bots[0]
         assert bot.bot_id == "main"
-        assert bot.bot_username == "lyra_bot"
 
     def test_legacy_discord_fallback(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # Arrange
@@ -244,9 +217,8 @@ class TestLoadMultibotConfig:
         assert len(dc.bots) == 1
         assert dc.bots[0].auto_thread is False
 
-    def test_new_style_wins_over_legacy(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_new_style_wins_over_legacy(self) -> None:
         # Arrange — both [[telegram.bots]] AND [auth.telegram] present
-        monkeypatch.delenv("TELEGRAM_BOT_USERNAME", raising=False)
         raw = {
             "telegram": {"bots": [{"bot_id": "new_bot"}]},
             "auth": {"telegram": {"default": "blocked"}},

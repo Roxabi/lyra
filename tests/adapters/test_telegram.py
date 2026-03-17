@@ -133,6 +133,7 @@ def test_is_mention_true_when_entity_at_offset_zero() -> None:
     adapter = TelegramAdapter(
         bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
     )
+    adapter._bot_username = "lyra_bot"  # simulate resolve_identity()
 
     entity = SimpleNamespace(type="mention", offset=0, length=9)  # "@lyra_bot"
     aiogram_msg = SimpleNamespace(
@@ -147,6 +148,7 @@ def test_is_mention_true_when_entity_at_offset_zero() -> None:
     msg = adapter.normalize(aiogram_msg)
 
     assert msg.is_mention is True
+    assert msg.text == "hello"  # @mention stripped
 
 
 # ---------------------------------------------------------------------------

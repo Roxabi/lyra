@@ -61,12 +61,12 @@ async def wire_telegram_adapters(  # noqa: PLR0913 — wiring requires all deps
             bot_id=bot_cfg.bot_id,
             token=tg_token,
             hub=hub,
-            bot_username=bot_cfg.bot_username,
             webhook_secret=tg_webhook_secret or "",
             circuit_registry=circuit_registry,
             msg_manager=msg_manager,
             auth=auth,
         )
+        await adapter.resolve_identity()
         hub.register_adapter(Platform.TELEGRAM, bot_cfg.bot_id, adapter)
 
         tg_key = RoutingKey(Platform.TELEGRAM, bot_cfg.bot_id, "*")

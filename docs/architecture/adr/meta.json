@@ -26,6 +26,7 @@
     "023-per-user-tts-prefs-and-agent-tts-config-overlay",
     "024-agent-store-sqlite-design-decisions",
     "026-pool-callback-wiring-eager-vs-lazy",
-    "027-300-line-cap-refactoring-plan"
+    "027-300-line-cap-refactoring-plan",
+    "028-token-level-streaming-path-shape"
   ]
 }

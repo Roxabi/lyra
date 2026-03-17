@@ -169,6 +169,7 @@ class _CliPoolWorker:
         while True:
             try:
                 await asyncio.sleep(60)
+                self._last_sweep_at = time.monotonic()  # type: ignore[attr-defined]
                 now = time.time()
                 snapshot = list(self._entries.items())  # type: ignore[attr-defined]  # snapshot before async _kill
                 to_kill = [
@@ -181,6 +182,18 @@ class _CliPoolWorker:
                     reason = "idle" if entry.is_alive() else "dead"
                     log.info("[pool:%s] reaping %s process", pool_id, reason)
                     await self._kill(pool_id)
+                    # Fire-and-forget notification for idle evictions
+                    if self._on_reap and reason == "idle":  # type: ignore[attr-defined]
+                        try:
+                            asyncio.ensure_future(
+                                self._on_reap(pool_id, reason)  # type: ignore[attr-defined]
+                            )
+                        except Exception:
+                            log.warning(
+                                "[pool:%s] on_reap failed",
+                                pool_id,
+                                exc_info=True,
+                            )
             except asyncio.CancelledError:
                 break
             except Exception as exc:

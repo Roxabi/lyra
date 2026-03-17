@@ -90,6 +90,16 @@ def _load_pairing_config(raw: dict) -> PairingConfig:
     return PairingConfig.from_dict(pairing_section)
 
 
+def _load_cli_pool_config(raw: dict) -> dict:
+    """Load [cli_pool] section from raw config dict. Missing keys → defaults."""
+    section: dict = raw.get("cli_pool", {})
+    return {
+        "idle_ttl": section.get("idle_ttl", 1200),
+        "default_timeout": section.get("default_timeout", 300),
+        "turn_timeout": section.get("turn_timeout"),
+    }
+
+
 def _load_messages(language: str = "en") -> MessageManager:
     """Load MessageManager.
 

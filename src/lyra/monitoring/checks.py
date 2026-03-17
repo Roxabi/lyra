@@ -147,6 +147,35 @@ def check_circuits(health_json: dict) -> CheckResult:
     )
 
 
+def check_reaper(health_json: dict) -> CheckResult:
+    """Check if the CLI pool reaper is alive and sweeping regularly."""
+    now = datetime.now(timezone.utc)
+    reaper_alive = health_json.get("reaper_alive", False)
+    sweep_age = health_json.get("reaper_last_sweep_age")
+
+    if not reaper_alive:
+        return CheckResult(
+            name="reaper",
+            passed=False,
+            detail="Reaper task not running",
+            timestamp=now,
+        )
+    if sweep_age is None:
+        return CheckResult(
+            name="reaper",
+            passed=True,
+            detail="Reaper alive, no sweep yet",
+            timestamp=now,
+        )
+    passed = sweep_age <= 120
+    return CheckResult(
+        name="reaper",
+        passed=passed,
+        detail=f"last_sweep_age={sweep_age:.0f}s, threshold=120s",
+        timestamp=now,
+    )
+
+
 def check_disk(path: str, min_free_gb: int) -> CheckResult:
     """Check if free disk space exceeds minimum threshold."""
     now = datetime.now(timezone.utc)
@@ -193,6 +222,10 @@ async def run_checks(config: MonitoringConfig) -> HealthReport:
 
         # Check 5: Circuit states
         checks.append(check_circuits(health_json))
+
+        # Check 6: Reaper health
+        if health_json.get("reaper_alive") is not None:
+            checks.append(check_reaper(health_json))
 
     # Check 6: Disk space (blocking → offload to thread)
     checks.append(

@@ -59,6 +59,18 @@ def create_health_app(hub: Hub) -> FastAPI:
             for (platform, _bot_id), dispatcher in hub.outbound_dispatchers.items()
         }
 
+        reaper_alive = False
+        reaper_last_sweep_age: float | None = None
+        if hub.cli_pool is not None:
+            reaper_alive = (
+                hub.cli_pool._reaper_task is not None
+                and not hub.cli_pool._reaper_task.done()
+            )
+            if hub.cli_pool._last_sweep_at is not None:
+                reaper_last_sweep_age = round(
+                    time.monotonic() - hub.cli_pool._last_sweep_at, 1
+                )
+
         return {
             "ok": True,
             "queue_size": hub.inbound_bus.staging_qsize(),
@@ -66,6 +78,8 @@ def create_health_app(hub: Hub) -> FastAPI:
             "last_message_age_s": last_message_age_s,
             "uptime_s": round(uptime_s, 1),
             "circuits": circuits,
+            "reaper_alive": reaper_alive,
+            "reaper_last_sweep_age": reaper_last_sweep_age,
         }
 
     @app.get("/config")

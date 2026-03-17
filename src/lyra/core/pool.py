@@ -60,13 +60,14 @@ class Pool:
     _session_resume_fn: Callable[[str], Awaitable[None]] | None
     _switch_workspace_fn: Callable[[Path], Awaitable[None]] | None
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         pool_id: str,
         agent_name: str,
         ctx: PoolContext,
         turn_timeout: float | None = TURN_TIMEOUT_DEFAULT,
         debounce_ms: int = DEFAULT_DEBOUNCE_MS,
+        turn_timeout_ceiling: float | None = None,
     ) -> None:
         self.pool_id = pool_id
         self.agent_name = agent_name
@@ -77,7 +78,23 @@ class Pool:
         self._session_resume_fn: Callable[[str], Awaitable[None]] | None = None
         self._switch_workspace_fn: Callable[[Path], Awaitable[None]] | None = None
         self._ctx = ctx
-        self._turn_timeout = turn_timeout
+        # Ceiling clamp: use ceiling as default, clamp agent override to ceiling
+        if turn_timeout is not None and turn_timeout_ceiling is not None:
+            if turn_timeout > turn_timeout_ceiling:
+                log.warning(
+                    "[pool:%s] turn_timeout %.0fs > ceiling %.0fs — clamped",
+                    pool_id,
+                    turn_timeout,
+                    turn_timeout_ceiling,
+                )
+                turn_timeout = turn_timeout_ceiling
+            self._turn_timeout = turn_timeout
+        elif turn_timeout is not None:
+            self._turn_timeout = turn_timeout
+        elif turn_timeout_ceiling is not None:
+            self._turn_timeout = turn_timeout_ceiling
+        else:
+            self._turn_timeout = None
         self._debouncer = MessageDebouncer(debounce_ms)
         self._inbox: asyncio.Queue[InboundMessage] = asyncio.Queue()
         self._current_task: asyncio.Task | None = None

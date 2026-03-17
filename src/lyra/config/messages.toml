@@ -39,3 +39,9 @@ stream_interrupted  = " [réponse interrompue]"
 backpressure_ack    = "Traitement de ta requête\u2026"
 stream_placeholder  = "\u2026"
 stream_interrupted  = " [réponse interrompue]"
+
+[notifications.en]
+idle_eviction       = "Session timed out after inactivity."
+
+[notifications.fr]
+idle_eviction       = "Session expirée après inactivité."

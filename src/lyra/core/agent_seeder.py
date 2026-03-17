@@ -85,6 +85,7 @@ def _parse_toml(path: Path) -> AgentRow | None:
     memory_namespace = agent_section.get("memory_namespace")
     cwd = _m("cwd")
     skip_permissions = bool(_m("skip_permissions", False))
+    streaming = bool(_m("streaming", False))
 
     # Serialize [tts] and [stt] sections to JSON (None if section absent)
     tts_section = data.get("tts")
@@ -120,6 +121,7 @@ def _parse_toml(path: Path) -> AgentRow | None:
         tts_json=tts_json,
         stt_json=stt_json,
         skip_permissions=skip_permissions,
+        streaming=streaming,
         permissions_json=permissions_json,
         workspaces_json=workspaces_json,
         i18n_language=i18n_language,

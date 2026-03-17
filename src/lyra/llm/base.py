@@ -44,3 +44,7 @@ class LlmProvider(Protocol):
     ) -> LlmResult: ...
 
     def is_alive(self, pool_id: str) -> bool: ...
+
+    # stream() is an optional duck-typed method — providers that support
+    # streaming implement it; SimpleAgent checks via hasattr().
+    # Not part of the protocol to avoid breaking existing providers.

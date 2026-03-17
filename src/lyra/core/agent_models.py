@@ -34,13 +34,14 @@ class AgentRow:
     workspaces_json: str | None = None
     i18n_language: str = "en"
     commands_json: str | None = None
+    streaming: bool = False
     source: str = "db"
     created_at: str = field(default_factory=_utc_now_iso)
     updated_at: str = field(default_factory=_utc_now_iso)
 
     @classmethod
     def from_db_row(cls, row: tuple) -> "AgentRow":  # type: ignore[type-arg]
-        """Construct an AgentRow from a raw aiosqlite SELECT tuple (21 columns)."""
+        """Construct an AgentRow from a raw aiosqlite SELECT tuple (22 columns)."""
         (
             name,
             backend,
@@ -63,6 +64,7 @@ class AgentRow:
             workspaces_json,
             i18n_language,
             commands_json,
+            streaming,
         ) = row
         return cls(
             name=name,
@@ -83,6 +85,7 @@ class AgentRow:
             workspaces_json=workspaces_json,
             i18n_language=i18n_language or "en",
             commands_json=commands_json,
+            streaming=bool(streaming),
             source=source,
             created_at=created_at,
             updated_at=updated_at,

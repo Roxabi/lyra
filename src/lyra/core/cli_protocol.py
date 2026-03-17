@@ -242,3 +242,196 @@ async def read_until_result(  # noqa: C901, PLR0915 — protocol dispatch: each 
     except Exception as exc:
         log.exception("[pool:%s] read error: %s", pool_id, exc)
         return CliResult(error=f"Read error: {type(exc).__name__}")
+
+
+class StreamingIterator:
+    """AsyncIterator wrapper that reads stream_event deltas from a CLI subprocess.
+
+    Exposes a ``session_id`` attribute for ``pool_processor`` to read after
+    the iterator is exhausted.  ``aclose()`` calls *pool_reset_fn* to kill the
+    subprocess on cancellation (prevents pipe buffer deadlock).
+    """
+
+    def __init__(  # noqa: PLR0913
+        self,
+        entry: object,
+        pool_id: str,
+        *,
+        pool_reset_fn: Callable[[], Awaitable[None]] | None = None,
+        default_timeout: float = 300,
+    ) -> None:
+        from .cli_pool import _ProcessEntry
+
+        assert isinstance(entry, _ProcessEntry)
+        self._entry = entry
+        self._pool_id = pool_id
+        self._pool_reset_fn = pool_reset_fn
+        self._default_timeout = default_timeout
+        self._idle_retries = 0
+        self._done = False
+        self.session_id: str | None = None
+        self.error: str | None = None
+
+    def __aiter__(self) -> "StreamingIterator":
+        return self
+
+    async def __anext__(self) -> str:  # noqa: C901, PLR0912, PLR0915 — protocol event dispatch
+        if self._done:
+            raise StopAsyncIteration
+
+        entry = self._entry
+        proc = entry.proc  # type: ignore[union-attr]
+        if proc.stdout is None:
+            self._done = True
+            raise StopAsyncIteration
+
+        while True:
+            try:
+                raw = await asyncio.wait_for(
+                    proc.stdout.readline(), timeout=self._default_timeout
+                )
+            except asyncio.TimeoutError:
+                if not entry.is_alive():  # type: ignore[union-attr]
+                    log.warning(
+                        "[pool:%s] process died during streaming idle wait",
+                        self._pool_id,
+                    )
+                    self._done = True
+                    raise StopAsyncIteration
+                self._idle_retries += 1
+                if self._idle_retries >= 3:
+                    log.error(
+                        "[pool:%s] streaming timeout: no output for %ds",
+                        self._pool_id,
+                        self._default_timeout * 3,
+                    )
+                    # Kill the alive-but-unresponsive subprocess before
+                    # marking done (otherwise aclose() skips cleanup).
+                    await self._cleanup()
+                    raise StopAsyncIteration
+                continue
+
+            if not raw:
+                log.warning("[pool:%s] stdout EOF during streaming", self._pool_id)
+                self._done = True
+                raise StopAsyncIteration
+
+            self._idle_retries = 0
+            line = raw.decode().strip()
+            if not line:
+                continue
+
+            try:
+                data = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            msg_type = data.get("type", "")
+
+            if msg_type == "system" and data.get("subtype") == "init":
+                self.session_id = data.get("session_id", "") or None
+                entry.session_id = self.session_id or entry.session_id  # type: ignore[union-attr]
+                log.debug(
+                    "[pool:%s] streaming init: session=%s",
+                    self._pool_id,
+                    self.session_id,
+                )
+
+            elif msg_type == "stream_event":
+                event_data = data.get("event", data)
+                event_type = event_data.get("type", "")
+                if event_type == "content_block_delta":
+                    delta = event_data.get("delta", {})
+                    if delta.get("type") == "text_delta":
+                        text = delta.get("text", "")
+                        if text:
+                            return text
+
+            elif msg_type == "result":
+                sid = data.get("session_id", "")
+                if sid:
+                    self.session_id = sid
+                    if entry.session_id != sid:  # type: ignore[union-attr]
+                        entry.session_id = sid  # type: ignore[union-attr]
+                if data.get("is_error", False):
+                    self.error = (
+                        data.get("result")
+                        or data.get("subtype")
+                        or "Unknown streaming error"
+                    )
+                    log.warning(
+                        "[pool:%s] streaming result is_error=True subtype=%s",
+                        self._pool_id,
+                        data.get("subtype", ""),
+                    )
+                log.info(
+                    "[pool:%s] streaming result: %dms",
+                    self._pool_id,
+                    data.get("duration_ms", 0),
+                )
+                self._done = True
+                raise StopAsyncIteration
+
+    async def _cleanup(self) -> None:
+        """Call pool_reset_fn and mark done. Safe to call multiple times."""
+        if not self._done and self._pool_reset_fn is not None:
+            try:
+                await self._pool_reset_fn()
+            except Exception:
+                log.warning(
+                    "[pool:%s] pool_reset_fn failed in streaming cleanup",
+                    self._pool_id,
+                    exc_info=True,
+                )
+        self._done = True
+
+    async def aclose(self) -> None:
+        """Clean up: kill subprocess if the stream was not fully consumed."""
+        await self._cleanup()
+
+
+async def send_and_read_stream(
+    entry: object,
+    message: str,
+    pool_id: str,
+    *,
+    pool_reset_fn: Callable[[], Awaitable[None]] | None = None,
+    default_timeout: float = 300,
+) -> StreamingIterator:
+    """Write *message* to stdin then return a StreamingIterator for text_delta chunks.
+
+    The returned iterator exposes a ``session_id`` attribute (``None`` until
+    ``system/init`` or ``result`` is parsed).  Call ``aclose()`` to kill the
+    subprocess on cancellation.
+    """
+    from .cli_pool import _ProcessEntry
+
+    assert isinstance(entry, _ProcessEntry)
+    proc = entry.proc
+
+    if proc.stdin is None:
+        it = StreamingIterator(entry, pool_id)
+        it._done = True
+        return it
+
+    payload = {
+        "type": "user",
+        "message": {"role": "user", "content": message},
+        "session_id": entry.session_id or "",
+        "parent_tool_use_id": None,
+    }
+    proc.stdin.write((json.dumps(payload) + "\n").encode())
+    try:
+        await asyncio.wait_for(proc.stdin.drain(), timeout=10)
+    except asyncio.TimeoutError:
+        log.error("[pool:%s] timeout writing stdin (streaming)", pool_id)
+        it = StreamingIterator(entry, pool_id, pool_reset_fn=pool_reset_fn)
+        await it._cleanup()
+        return it
+
+    return StreamingIterator(
+        entry,
+        pool_id,
+        pool_reset_fn=pool_reset_fn,
+        default_timeout=default_timeout,
+    )

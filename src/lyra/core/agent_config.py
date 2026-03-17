@@ -78,6 +78,7 @@ class ModelConfig:
     # in CliPool.send() — that check is for backend/model/tools changes only.
     cwd: Path | None = field(default=None, compare=False)
     skip_permissions: bool = False
+    streaming: bool = False
 
 
 class Complexity(Enum):

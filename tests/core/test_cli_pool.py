@@ -12,7 +12,7 @@ import pytest
 
 from lyra.core.agent_config import ModelConfig
 from lyra.core.cli_pool import CliPool, _ProcessEntry
-from lyra.core.cli_protocol import read_until_result
+from lyra.core.cli_protocol import StreamingIterator, read_until_result
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -781,3 +781,155 @@ class TestCliPoolLastSweepAt:
     def test_last_sweep_at_initially_none(self) -> None:
         pool = CliPool()
         assert pool._last_sweep_at is None
+
+
+# ---------------------------------------------------------------------------
+# TestCliPoolSendStreaming
+# ---------------------------------------------------------------------------
+
+# Streaming-specific NDJSON lines
+_STREAM_INIT_LINE = _ndjson(
+    {"type": "system", "subtype": "init", "session_id": "stream-sess-1"}
+)
+_TEXT_DELTA_LINE = _ndjson(
+    {
+        "type": "stream_event",
+        "event": {
+            "type": "content_block_delta",
+            "delta": {"type": "text_delta", "text": "Hello"},
+        },
+    }
+)
+_STREAM_RESULT_LINE = _ndjson(
+    {
+        "type": "result",
+        "session_id": "stream-sess-1",
+        "duration_ms": 75,
+        "is_error": False,
+    }
+)
+
+
+class TestCliPoolSendStreaming:
+    """CliPool.send_streaming() spawns process and returns a StreamingIterator."""
+
+    async def test_send_streaming_returns_iterator(self) -> None:
+        # Arrange
+        proc = make_fake_proc(
+            [_STREAM_INIT_LINE, _TEXT_DELTA_LINE, _STREAM_RESULT_LINE]
+        )
+        pool = CliPool()
+
+        with patch(_PATCH_TARGET, new=AsyncMock(return_value=proc)):
+            # Act
+            it = await pool.send_streaming("pool-s1", "hello", DEFAULT_MODEL)
+
+        # Assert
+        assert isinstance(it, StreamingIterator)
+
+    async def test_send_streaming_yields_text_chunks(self) -> None:
+        # Arrange
+        proc = make_fake_proc(
+            [_STREAM_INIT_LINE, _TEXT_DELTA_LINE, _STREAM_RESULT_LINE]
+        )
+        pool = CliPool()
+
+        with patch(_PATCH_TARGET, new=AsyncMock(return_value=proc)):
+            it = await pool.send_streaming("pool-s1", "hello", DEFAULT_MODEL)
+
+        # Act
+        chunks = [chunk async for chunk in it]
+
+        # Assert
+        assert chunks == ["Hello"]
+
+    async def test_send_streaming_spawn_failure_raises(self) -> None:
+        # Arrange — subprocess cannot be started
+        pool = CliPool()
+
+        with patch(
+            _PATCH_TARGET,
+            new=AsyncMock(side_effect=OSError("command not found")),
+        ):
+            # Act / Assert
+            with pytest.raises(RuntimeError, match="Failed to spawn"):
+                await pool.send_streaming("pool-s2", "hello", DEFAULT_MODEL)
+
+    async def test_send_streaming_increments_turn_count(self) -> None:
+        # Arrange
+        proc = make_fake_proc(
+            [_STREAM_INIT_LINE, _TEXT_DELTA_LINE, _STREAM_RESULT_LINE]
+        )
+        pool = CliPool()
+
+        with patch(_PATCH_TARGET, new=AsyncMock(return_value=proc)):
+            await pool.send_streaming("pool-s3", "hello", DEFAULT_MODEL)
+
+        # Assert
+        assert pool._entries["pool-s3"].turn_count == 1
+
+    async def test_send_streaming_respawns_on_system_prompt_change(self) -> None:
+        # Arrange — two sends with different system prompts
+        first_proc = make_fake_proc(
+            [_STREAM_INIT_LINE, _TEXT_DELTA_LINE, _STREAM_RESULT_LINE]
+        )
+        second_proc = make_fake_proc(
+            [_STREAM_INIT_LINE, _TEXT_DELTA_LINE, _STREAM_RESULT_LINE]
+        )
+        pool = CliPool()
+        spawn_mock = AsyncMock(side_effect=[first_proc, second_proc])
+
+        with patch(_PATCH_TARGET, new=spawn_mock):
+            it1 = await pool.send_streaming(
+                "pool-s4", "hi", DEFAULT_MODEL, system_prompt="A"
+            )
+            # Consume iterator to complete first turn
+            async for _ in it1:
+                pass
+            it2 = await pool.send_streaming(
+                "pool-s4", "hi", DEFAULT_MODEL, system_prompt="B"
+            )
+            async for _ in it2:
+                pass
+
+        # Assert — two spawns due to prompt change
+        assert spawn_mock.call_count == 2
+        first_proc.terminate.assert_called_once()
+
+    async def test_send_streaming_respawns_on_model_config_change(self) -> None:
+        # Arrange — streaming respawns on model_config mismatch (unlike send())
+        first_proc = make_fake_proc(
+            [_STREAM_INIT_LINE, _TEXT_DELTA_LINE, _STREAM_RESULT_LINE]
+        )
+        second_proc = make_fake_proc(
+            [_STREAM_INIT_LINE, _TEXT_DELTA_LINE, _STREAM_RESULT_LINE]
+        )
+        pool = CliPool()
+        spawn_mock = AsyncMock(side_effect=[first_proc, second_proc])
+        config_a = ModelConfig(model="claude-sonnet-4-5")
+        config_b = ModelConfig(model="claude-opus-4-5")
+
+        with patch(_PATCH_TARGET, new=spawn_mock):
+            it1 = await pool.send_streaming("pool-s5", "hi", config_a)
+            async for _ in it1:
+                pass
+            it2 = await pool.send_streaming("pool-s5", "hi", config_b)
+            async for _ in it2:
+                pass
+
+        # Assert — respawned because model changed
+        assert spawn_mock.call_count == 2
+
+    async def test_send_streaming_uses_reset_fn_on_aclose(self) -> None:
+        # Arrange
+        proc = make_fake_proc([_STREAM_INIT_LINE, _TEXT_DELTA_LINE])
+        pool = CliPool()
+
+        with patch(_PATCH_TARGET, new=AsyncMock(return_value=proc)):
+            it = await pool.send_streaming("pool-s6", "hello", DEFAULT_MODEL)
+
+        # Act — close the iterator early (simulates cancellation)
+        await it.aclose()
+
+        # Assert — pool entry was reset (killed)
+        assert "pool-s6" not in pool._entries

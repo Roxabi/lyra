@@ -149,6 +149,7 @@ class AgentStore(SqliteStore):
                 row.workspaces_json,
                 row.i18n_language,
                 row.commands_json,
+                1 if row.streaming else 0,
                 # ON CONFLICT updated_at value
                 now,
             ),
@@ -173,6 +174,7 @@ class AgentStore(SqliteStore):
             workspaces_json=row.workspaces_json,
             i18n_language=row.i18n_language,
             commands_json=row.commands_json,
+            streaming=row.streaming,
             source=row.source,
             created_at=row.created_at,
             updated_at=now,

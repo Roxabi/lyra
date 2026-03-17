@@ -280,13 +280,25 @@ class TestTurnStoreIntegrationWithPool:
 
     async def test_process_one_logs_assistant_turn(self) -> None:
         """_process_one() logs an assistant turn after dispatching a Response."""
-        from lyra.core.message import Response
+        from lyra.core.message import OutboundMessage, Response
         from lyra.core.pool import Pool
 
         store = TurnStore(":memory:")
         await store.connect()
 
         ctx = self._make_ctx()
+
+        # Simulate real dispatch: invoke _on_dispatched callback (#316).
+        async def _dispatch_with_callback(msg, response):
+            if isinstance(response, Response):
+                _cb = response.metadata.get("_on_dispatched")
+                if _cb is not None:
+                    outbound = OutboundMessage.from_text(response.content)
+                    outbound.metadata["reply_message_id"] = "bot_msg_42"
+                    _cb(outbound)
+
+        ctx.dispatch_response = AsyncMock(side_effect=_dispatch_with_callback)
+
         # Stub agent that returns a Response
         agent = MagicMock()
         agent.name = "stub"
@@ -309,6 +321,7 @@ class TestTurnStoreIntegrationWithPool:
         assert "assistant" in roles
         assistant_row = next(r for r in rows if r["role"] == "assistant")
         assert assistant_row["content"] == "hi there"
+        assert assistant_row["reply_message_id"] == "bot_msg_42"
 
         await store.close()
 

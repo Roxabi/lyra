@@ -315,13 +315,24 @@ class Hub:
             outbound = response
         else:
             outbound = response.to_outbound()
+            # Forward dispatch callback so deferred turn logging can capture
+            # reply_message_id after the adapter sends (#316).
+            _cb = response.metadata.get("_on_dispatched")
+            if _cb is not None:
+                outbound.metadata["_on_dispatched"] = _cb
         if outbound.routing is None and msg.routing is not None:
             outbound.routing = msg.routing
+
+        async def _fallback_and_notify(adapter: ChannelAdapter) -> None:
+            await adapter.send(msg, outbound)
+            _dispatched = outbound.metadata.pop("_on_dispatched", None)
+            if callable(_dispatched):
+                _dispatched(outbound)
 
         await self._route_outbound(
             msg,
             enqueue_fn=lambda d: d.enqueue(msg, outbound),
-            fallback_fn=lambda a: a.send(msg, outbound),
+            fallback_fn=_fallback_and_notify,
             resource="responses",
         )
 
@@ -343,7 +354,7 @@ class Hub:
                 self._memory_tasks.add(task)
                 task.add_done_callback(self._memory_tasks.discard)
 
-    async def dispatch_streaming(
+    async def dispatch_streaming(  # noqa: C901 — streaming protocol: voice/dispatcher/fallback branches + callback
         self,
         msg: InboundMessage,
         chunks: AsyncIterator[str],
@@ -368,6 +379,11 @@ class Hub:
             full_text = "".join(text_parts)
             if full_text.strip():
                 await self.dispatch_response(msg, Response(content=full_text))
+            # Invoke _on_dispatched so the turn is logged even on voice path (#316).
+            if outbound is not None:
+                _dispatched = outbound.metadata.pop("_on_dispatched", None)
+                if callable(_dispatched):
+                    _dispatched(outbound)
             return
 
         if (
@@ -404,6 +420,11 @@ class Hub:
             async for chunk in chunks:
                 text += chunk
             await adapter.send(msg, OutboundMessage.from_text(text))
+        # Invoke dispatch callback for fallback (non-queued) path (#316).
+        if outbound is not None:
+            _dispatched = outbound.metadata.pop("_on_dispatched", None)
+            if callable(_dispatched):
+                _dispatched(outbound)
         self._last_processed_at = time.monotonic()
 
     async def dispatch_attachment(

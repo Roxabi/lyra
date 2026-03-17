@@ -213,8 +213,12 @@ class OutboundDispatcher:
                     if kind in ("streaming", "audio_stream", "voice_stream"):
                         async for _ in payload:
                             pass
-                    if outbound is not None:
-                        outbound.metadata["reply_message_id"] = None
+                    _cb_out = payload if kind == "send" else outbound
+                    if _cb_out is not None:
+                        _cb_out.metadata["reply_message_id"] = None
+                        _cb = _cb_out.metadata.pop("_on_dispatched", None)
+                        if callable(_cb):
+                            _cb(_cb_out)
                     # Fix 3: notify user once per chat per debounce window
                     scope_key = msg.scope_id or msg.id
                     now = time.monotonic()
@@ -276,6 +280,14 @@ class OutboundDispatcher:
                             _last_exc = exc
                             _attempt = len(_backoff_delays) + 1  # exit loop
                             break
+
+                # Invoke dispatched callback after send (#316).
+                # "send" → payload is the OutboundMessage; else → outbound.
+                _out = payload if kind == "send" else outbound
+                if _out is not None:
+                    _dispatched = _out.metadata.pop("_on_dispatched", None)
+                    if callable(_dispatched):
+                        _dispatched(_out)
 
                 if _last_exc is not None:
                     exc = _last_exc

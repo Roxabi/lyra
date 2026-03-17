@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import shutil
 import tempfile
 import time
 from dataclasses import dataclass, field
@@ -58,6 +59,7 @@ class _ProcessEntry:
     model_config: ModelConfig
     system_prompt: str = ""
     session_id: str | None = None
+    home_dir: Path | None = None
     turn_count: int = 0
     last_activity: float = field(default_factory=time.time)
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
@@ -155,6 +157,7 @@ class _CliPoolWorker:
             )
         except Exception as exc:
             log.error("[pool:%s] failed to spawn: %s", pool_id, exc)
+            shutil.rmtree(_claude_home, ignore_errors=True)
             return None
 
         entry = _ProcessEntry(
@@ -162,6 +165,7 @@ class _CliPoolWorker:
             pool_id=pool_id,
             model_config=model_config,
             system_prompt=system_prompt,
+            home_dir=_claude_home,
         )
         self._entries[pool_id] = entry  # type: ignore[attr-defined]
         log.info("[pool:%s] spawned (PID=%d)", pool_id, proc.pid)
@@ -182,6 +186,8 @@ class _CliPoolWorker:
                     await entry.proc.wait()
             except ProcessLookupError:
                 pass
+        if entry.home_dir is not None:
+            shutil.rmtree(entry.home_dir, ignore_errors=True)
         log.debug("[pool:%s] killed", pool_id)
 
     async def _idle_reaper(self) -> None:

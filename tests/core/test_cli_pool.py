@@ -933,3 +933,71 @@ class TestCliPoolSendStreaming:
 
         # Assert — pool entry was reset (killed)
         assert "pool-s6" not in pool._entries
+
+
+# ---------------------------------------------------------------------------
+# TestCliPoolSpawnEnv — H-4 env hardening (#251)
+# ---------------------------------------------------------------------------
+
+
+class TestCliPoolSpawnEnv:
+    """Subprocess env allowlist and HOME hardening."""
+
+    async def test_spawn_sets_home_to_temp_dir(self) -> None:
+        """HOME env var should point to a lyra_claude_home_ temp dir, not real HOME."""
+        import os
+
+        proc = make_fake_proc([INIT_LINE, ASSISTANT_LINE, RESULT_LINE])
+        pool = CliPool()
+
+        with patch(_PATCH_TARGET, new=AsyncMock(return_value=proc)) as mock_spawn:
+            await pool.send("pool-env1", "hello", DEFAULT_MODEL)
+
+        _args, kwargs = mock_spawn.call_args
+        env = kwargs["env"]
+        assert "HOME" in env
+        assert env["HOME"] != os.environ.get("HOME", "")
+        assert "lyra_claude_home_" in env["HOME"]
+
+    async def test_spawn_excludes_secrets_from_env(self, monkeypatch) -> None:
+        """Keys outside _SAFE_ENV_KEYS must not appear in subprocess env."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-secret")
+        monkeypatch.setenv("TELEGRAM_TOKEN", "bot-token-secret")
+
+        proc = make_fake_proc([INIT_LINE, ASSISTANT_LINE, RESULT_LINE])
+        pool = CliPool()
+
+        with patch(_PATCH_TARGET, new=AsyncMock(return_value=proc)) as mock_spawn:
+            await pool.send("pool-env2", "hello", DEFAULT_MODEL)
+
+        _args, kwargs = mock_spawn.call_args
+        env = kwargs["env"]
+        assert "ANTHROPIC_API_KEY" not in env
+        assert "TELEGRAM_TOKEN" not in env
+
+    async def test_spawn_failure_cleans_up_temp_home(self) -> None:
+        """If create_subprocess_exec raises, the temp HOME dir is cleaned up."""
+        import os
+
+        pool = CliPool()
+        created_dirs: list[str] = []
+        _real_mkdtemp = __import__("tempfile").mkdtemp
+
+        def _tracking_mkdtemp(**kwargs):
+            d = _real_mkdtemp(**kwargs)
+            created_dirs.append(d)
+            return d
+
+        with (
+            patch(_PATCH_TARGET, side_effect=OSError("spawn failed")),
+            patch(
+                "lyra.core.cli_pool_worker.tempfile.mkdtemp",
+                side_effect=_tracking_mkdtemp,
+            ),
+        ):
+            result = await pool.send("pool-env3", "hello", DEFAULT_MODEL)
+
+        assert not result.ok
+        # Temp dir should have been cleaned up on failure
+        for d in created_dirs:
+            assert not os.path.exists(d), f"Temp dir {d} was not cleaned up"

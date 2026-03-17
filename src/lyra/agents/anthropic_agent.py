@@ -7,6 +7,7 @@ backend = "anthropic-sdk" in agent TOML config.
 
 from __future__ import annotations
 
+import html
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -137,7 +138,8 @@ class AnthropicAgent(AgentBase):
                         )
                     )
                     return Response(content=_noise_msg)
-                llm_text = f"<voice_transcript>{stt_result.text}</voice_transcript>"
+                _esc = html.escape(stt_result.text)
+                llm_text = f"<voice_transcript>{_esc}</voice_transcript>"
                 history_text = stt_result.text
             elif _audio is not None and self._stt is None:
                 if tmp_path is not None:
@@ -152,7 +154,8 @@ class AnthropicAgent(AgentBase):
                 )
             elif msg.modality == "voice":
                 # Pipeline-transcribed audio — wrap for prompt injection guard (H-8)
-                llm_text = f"<voice_transcript>{msg.text}</voice_transcript>"
+                _esc = html.escape(msg.text)
+                llm_text = f"<voice_transcript>{_esc}</voice_transcript>"
                 history_text = msg.text
             else:
                 llm_text = history_text = msg.text

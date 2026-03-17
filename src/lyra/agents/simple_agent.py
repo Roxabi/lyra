@@ -8,6 +8,7 @@ not hardcoded here.
 
 from __future__ import annotations
 
+import html
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -190,10 +191,11 @@ class SimpleAgent(AgentBase):
                         else "I couldn't make out your voice message, please try again."
                     )
                 )
-            text = f"<voice_transcript>{stt_result.text}</voice_transcript>"
+            _esc = html.escape(stt_result.text)
+            text = f"<voice_transcript>{_esc}</voice_transcript>"
         elif msg.modality == "voice":
             # Pipeline-transcribed audio — wrap for prompt injection guard (H-8)
-            text = f"<voice_transcript>{msg.text}</voice_transcript>"
+            text = f"<voice_transcript>{html.escape(msg.text)}</voice_transcript>"
         else:
             text = msg.text
 

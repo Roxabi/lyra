@@ -516,8 +516,8 @@ def _make_open_registry(service: str) -> CircuitRegistry:
 
 
 @pytest.mark.asyncio
-async def test_on_message_drops_silently_when_hub_circuit_open() -> None:
-    """SC-11: _on_message() drops silently (no bus.put) when circuits['hub'] is OPEN."""
+async def test_on_message_drops_and_notifies_when_hub_circuit_open() -> None:
+    """SC-11: drops (no bus.put) and notifies user when hub circuit is OPEN."""
     from lyra.adapters.telegram import TelegramAdapter
 
     # Arrange
@@ -529,6 +529,7 @@ async def test_on_message_drops_silently_when_hub_circuit_open() -> None:
 
     bot = AsyncMock()
     bot.get_me = AsyncMock(return_value=SimpleNamespace(username="lyra_bot"))
+    bot.send_message = AsyncMock()
 
     adapter = TelegramAdapter(
         bot_id="main",
@@ -552,8 +553,15 @@ async def test_on_message_drops_silently_when_hub_circuit_open() -> None:
     # Act
     await adapter._on_message(aiogram_msg)
 
-    # Assert — inbound_bus.put must NOT be called; message was silently dropped
+    # Assert — inbound_bus.put must NOT be called (message dropped)
     hub.inbound_bus.put.assert_not_called()
+    # Assert — user receives a circuit-open notification
+    bot.send_message.assert_called_once()
+    call_kwargs = bot.send_message.call_args
+    sent_text = (
+        call_kwargs.args[1] if call_kwargs.args else call_kwargs.kwargs.get("text", "")
+    )
+    assert "temporarily" in sent_text.lower() or "overloaded" in sent_text.lower()
 
 
 # ---------------------------------------------------------------------------

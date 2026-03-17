@@ -85,6 +85,11 @@ async def push_to_hub_guarded(  # noqa: PLR0913 — each arg is a distinct guard
             )
             if on_drop is not None:
                 on_drop()
+            text = get_msg(
+                "circuit_open_ack",
+                "I'm temporarily overloaded, please try again in a moment.",
+            )
+            await send_backpressure(text)
             return
 
     try:

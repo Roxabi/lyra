@@ -15,6 +15,7 @@ _FALLBACKS: dict[str, str] = {
     "unknown_command": "Unknown command. Type /help for available commands.",
     "help_header": "Available commands:",
     "backpressure_ack": "Processing your request\u2026",
+    "circuit_open_ack": "I'm temporarily overloaded, please try again in a moment.",
     "stream_placeholder": "\u2026",
     "stream_interrupted": " [response interrupted]",
     "timeout": "Your request timed out. Please try again.",

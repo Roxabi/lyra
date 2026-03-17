@@ -11,11 +11,13 @@ stt_failed        = "Sorry, I couldn't transcribe your voice message."
 
 [adapters.telegram.en]
 backpressure_ack    = "Processing your request\u2026"
+circuit_open_ack    = "I'm temporarily overloaded, please try again in a moment."
 stream_placeholder  = "\u2026"
 stream_interrupted  = " [response interrupted]"
 
 [adapters.discord.en]
 backpressure_ack    = "Processing your request\u2026"
+circuit_open_ack    = "I'm temporarily overloaded, please try again in a moment."
 stream_placeholder  = "\u2026"
 stream_interrupted  = " [response interrupted]"
 
@@ -32,11 +34,13 @@ stt_failed        = "Désolé, je n'ai pas pu transcrire ton message vocal."
 
 [adapters.telegram.fr]
 backpressure_ack    = "Traitement de ta requête\u2026"
+circuit_open_ack    = "Je suis temporairement surchargé, réessaie dans un instant."
 stream_placeholder  = "\u2026"
 stream_interrupted  = " [réponse interrompue]"
 
 [adapters.discord.fr]
 backpressure_ack    = "Traitement de ta requête\u2026"
+circuit_open_ack    = "Je suis temporairement surchargé, réessaie dans un instant."
 stream_placeholder  = "\u2026"
 stream_interrupted  = " [réponse interrompue]"
 

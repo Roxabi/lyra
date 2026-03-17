@@ -574,13 +574,19 @@ def _make_open_registry(service: str) -> CircuitRegistry:
 
 
 # ---------------------------------------------------------------------------
-# SC-11 (Discord) — on_message() drops silently when hub circuit is OPEN
+# SC-11 (Discord) — on_message() drops and notifies user when hub circuit is OPEN
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_on_message_drops_silently_when_hub_circuit_open() -> None:
-    """SC-11: on_message() drops silently (no bus.put) when circuits['hub'] is OPEN."""
+    """SC-11: on_message() drops (no bus.put) for guild messages that are not mentions.
+
+    Note: this test exercises the mention-filter path — the message never reaches
+    push_to_hub_guarded because non-mention guild messages are discarded first.
+    For the circuit-open notification path see
+    test_on_message_notifies_user_when_hub_circuit_open_dm below.
+    """
     from lyra.adapters.discord import DiscordAdapter
 
     # Arrange
@@ -614,8 +620,54 @@ async def test_on_message_drops_silently_when_hub_circuit_open() -> None:
     # Act
     await adapter.on_message(discord_msg)
 
-    # Assert — inbound_bus.put must NOT be called; message was silently dropped
+    # Assert — inbound_bus.put must NOT be called; message filtered before circuit check
     hub.inbound_bus.put.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_on_message_notifies_user_when_hub_circuit_open_dm() -> None:
+    """SC-11b: DM reaches push_to_hub_guarded; circuit-open drops and notifies user."""
+    from lyra.adapters.discord import DiscordAdapter
+
+    # Arrange — hub circuit is OPEN
+    registry = _make_open_registry("hub")
+
+    hub = MagicMock()
+    hub.inbound_bus = MagicMock()
+    hub.inbound_bus.put = MagicMock()
+
+    adapter = DiscordAdapter(
+        hub=hub,
+        bot_id="main",
+        intents=discord.Intents.none(),
+        circuit_registry=registry,
+        auth=_ALLOW_ALL,
+    )
+    adapter._bot_user = SimpleNamespace(id=999, bot=True)
+
+    reply_mock = AsyncMock()
+    # DM: guild=None → always processed, reaches push_to_hub_guarded
+    discord_msg = SimpleNamespace(
+        guild=None,
+        channel=SimpleNamespace(id=333, send=AsyncMock()),
+        author=SimpleNamespace(id=42, name="Alice", display_name="Alice", bot=False),
+        content="hello",
+        created_at=datetime.now(timezone.utc),
+        id=555,
+        mentions=[],
+        reply=reply_mock,
+        attachments=[],
+    )
+
+    # Act
+    await adapter.on_message(discord_msg)
+
+    # Assert — inbound_bus.put must NOT be called (message dropped)
+    hub.inbound_bus.put.assert_not_called()
+    # Assert — user receives a circuit-open notification via reply
+    reply_mock.assert_called_once()
+    sent_text = reply_mock.call_args.args[0]
+    assert "temporarily" in sent_text.lower() or "overloaded" in sent_text.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -1701,26 +1753,26 @@ class TestDiscordAuth:
 
 @pytest.mark.asyncio
 async def test_discord_typing_worker_uses_typing_context_manager() -> None:
-    """_discord_typing_worker calls trigger_typing() and exits cleanly on cancel."""
+    """_discord_typing_worker calls channel.typing() and exits cleanly on cancel."""
     import asyncio
 
     from lyra.adapters.discord import _discord_typing_worker
 
     mock_channel = AsyncMock()
-    mock_channel.trigger_typing = AsyncMock()
+    mock_channel.typing = AsyncMock()
 
     async def resolve(_channel_id: int) -> AsyncMock:
         return mock_channel
 
     task = asyncio.create_task(_discord_typing_worker(resolve, channel_id=123))
-    await asyncio.sleep(0)  # yield to let the worker call trigger_typing
+    await asyncio.sleep(0)  # yield to let the worker call typing()
     task.cancel()
     try:
         await task
     except asyncio.CancelledError:
         pass
 
-    mock_channel.trigger_typing.assert_called_once()
+    mock_channel.typing.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -1747,8 +1799,7 @@ async def test_start_typing_creates_background_task() -> None:
         hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
     )
     mock_channel = AsyncMock()
-    typing_ctx = AsyncMock(__aenter__=AsyncMock(), __aexit__=AsyncMock())
-    mock_channel.typing = MagicMock(return_value=typing_ctx)
+    mock_channel.typing = AsyncMock()
     adapter.get_channel = MagicMock(return_value=mock_channel)
 
     adapter._start_typing(333)
@@ -1773,7 +1824,7 @@ async def test_cancel_typing_cancels_task() -> None:
         hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
     )
     mock_channel = AsyncMock()
-    mock_channel.trigger_typing = AsyncMock()
+    mock_channel.typing = AsyncMock()
     adapter.get_channel = MagicMock(return_value=mock_channel)
 
     adapter._start_typing(333)
@@ -1923,8 +1974,7 @@ async def test_on_message_does_not_cancel_typing_when_message_queued() -> None:
     adapter._bot_user = SimpleNamespace(id=999, bot=True)
 
     mock_channel = AsyncMock()
-    typing_ctx = AsyncMock(__aenter__=AsyncMock(), __aexit__=AsyncMock())
-    mock_channel.typing = MagicMock(return_value=typing_ctx)
+    mock_channel.typing = AsyncMock()
     adapter.get_channel = MagicMock(return_value=mock_channel)
 
     discord_msg = SimpleNamespace(
@@ -1969,7 +2019,7 @@ async def test_on_message_cancels_typing_when_message_dropped_queue_full() -> No
     adapter._bot_user = SimpleNamespace(id=999, bot=True)
 
     mock_channel = AsyncMock()
-    mock_channel.trigger_typing = AsyncMock()
+    mock_channel.typing = AsyncMock()
     adapter.get_channel = MagicMock(return_value=mock_channel)
 
     discord_msg = SimpleNamespace(

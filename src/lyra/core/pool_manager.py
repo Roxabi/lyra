@@ -40,6 +40,8 @@ class PoolManager:
             )
             if self._hub._turn_store is not None:
                 new_pool._observer.register_turn_store(self._hub._turn_store)
+            if self._hub._message_index is not None:
+                new_pool._observer.register_message_index(self._hub._message_index)
             self.pools[pool_id] = new_pool
         pool = self.pools[pool_id]
         pool._touch()

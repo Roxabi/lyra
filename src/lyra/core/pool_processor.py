@@ -254,6 +254,14 @@ class PoolProcessor:
                         str(_reply_id) if _reply_id is not None else None
                     ),
                 )
+                # Index assistant turn for reply-to session routing (#341).
+                if pool._observer._message_index is not None and _reply_id is not None:
+                    pool._observer._fire_and_forget(
+                        pool._observer._message_index.upsert(
+                            pool.pool_id, str(_reply_id), pool.session_id, "assistant"
+                        ),
+                        f"message_index upsert failed (pool={pool.pool_id})",
+                    )
 
             _outbound.metadata["_on_dispatched"] = _log_streaming_turn
             try:
@@ -290,6 +298,20 @@ class PoolProcessor:
                             str(_reply_id) if _reply_id is not None else None
                         ),
                     )
+                    # Index assistant turn for reply-to session routing (#341).
+                    if (
+                        pool._observer._message_index is not None
+                        and _reply_id is not None
+                    ):
+                        pool._observer._fire_and_forget(
+                            pool._observer._message_index.upsert(
+                                pool.pool_id,
+                                str(_reply_id),
+                                pool.session_id,
+                                "assistant",
+                            ),
+                            f"message_index upsert failed (pool={pool.pool_id})",
+                        )
 
                 result.metadata["_on_dispatched"] = _log_turn
             await pool._ctx.dispatch_response(msg, result)

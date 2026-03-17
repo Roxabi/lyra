@@ -212,3 +212,65 @@ class TestAppend:
         obs = _make_observer()
         msg = make_inbound_message()
         obs.append(msg, session_id=_SESSION_ID)  # should not raise
+
+
+# ---------------------------------------------------------------------------
+# MessageIndex registration (#341)
+# ---------------------------------------------------------------------------
+
+
+class TestMessageIndexRegistration:
+    def test_register_message_index(self) -> None:
+        obs = _make_observer()
+        mi = MagicMock()
+        obs.register_message_index(mi)
+        assert obs._message_index is mi
+
+    def test_register_message_index_none_by_default(self) -> None:
+        obs = _make_observer()
+        assert obs._message_index is None
+
+
+# ---------------------------------------------------------------------------
+# MessageIndex population in append() (#341)
+# ---------------------------------------------------------------------------
+
+
+class TestMessageIndexPopulation:
+    async def test_append_indexes_user_turn(self) -> None:
+        """append() upserts user turn into MessageIndex."""
+        obs = _make_observer()
+        mi = MagicMock()
+        mi.upsert = AsyncMock(return_value=None)
+        obs.register_message_index(mi)
+
+        msg = make_inbound_message()
+        msg.platform_meta["message_id"] = 42  # Telegram int
+        obs.append(msg, session_id=_SESSION_ID)
+        await asyncio.sleep(0)
+
+        mi.upsert.assert_called_once_with(
+            _POOL_ID, "42", _SESSION_ID, "user"
+        )
+
+    async def test_append_skips_when_no_message_index(self) -> None:
+        """append() does not fail when no MessageIndex is registered."""
+        obs = _make_observer()
+        msg = make_inbound_message()
+        msg.platform_meta["message_id"] = 42
+        obs.append(msg, session_id=_SESSION_ID)  # should not raise
+
+    async def test_append_skips_when_no_message_id_in_meta(self) -> None:
+        """append() skips index when platform_meta has no message_id."""
+        obs = _make_observer()
+        mi = MagicMock()
+        mi.upsert = AsyncMock(return_value=None)
+        obs.register_message_index(mi)
+
+        msg = make_inbound_message()
+        # No message_id in platform_meta
+        msg.platform_meta.pop("message_id", None)
+        obs.append(msg, session_id=_SESSION_ID)
+        await asyncio.sleep(0)
+
+        mi.upsert.assert_not_called()

@@ -198,9 +198,11 @@ class Pool:
         """Resume a specific Claude session (CLI backend).
 
         No-op for SDK-backed pools.
+        Resets _session_persisted so the resumed session_id is persisted (#341).
         """
         if self._session_resume_fn is not None:
             await self._session_resume_fn(session_id)
+        self._observer.reset_session_persisted()
 
     def _msg(self, key: str, fallback: str) -> str:
         """Fetch a localised message, falling back to the given string."""

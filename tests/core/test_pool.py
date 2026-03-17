@@ -660,6 +660,17 @@ class TestPoolResumeSession:
         # Act / Assert — must not raise
         await pool.resume_session("sess-xyz")  # type: ignore[attr-defined]
 
+    @pytest.mark.asyncio
+    async def test_resume_session_resets_session_persisted(self) -> None:
+        """resume_session() resets _session_persisted (#341)."""
+        ctx = _make_ctx_mock()
+        pool = Pool("p1", "agent", ctx=ctx)
+        pool._observer._session_persisted = True  # simulate already persisted
+
+        await pool.resume_session("sess-new")  # type: ignore[attr-defined]
+
+        assert pool._observer._session_persisted is False
+
 
 class TestPoolStreaming:
     """Pool._process_one() async-generator (streaming) branch (S4-*)."""

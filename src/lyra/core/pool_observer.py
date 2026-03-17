@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .message import InboundMessage
+    from .message_index import MessageIndex
     from .turn_store import TurnStore
 
 log = logging.getLogger(__name__)
@@ -30,6 +31,7 @@ class PoolObserver:
         self._session_id_fn = session_id_fn
 
         self._turn_store: TurnStore | None = None
+        self._message_index: MessageIndex | None = None
         self._turn_logger: Callable[[str, InboundMessage], Awaitable[None]] | None = (
             None
         )
@@ -45,6 +47,10 @@ class PoolObserver:
     def register_turn_store(self, store: TurnStore) -> None:
         """Wire the TurnStore for L1 raw turn logging."""
         self._turn_store = store
+
+    def register_message_index(self, store: MessageIndex) -> None:
+        """Wire the MessageIndex for session routing on reply-to (#341)."""
+        self._message_index = store
 
     def register_turn_logger(
         self, fn: Callable[[str, InboundMessage], Awaitable[None]]
@@ -139,3 +145,13 @@ class PoolObserver:
             content=msg.text,
             message_id=msg.id,
         )
+        # Index user turn for reply-to session routing (#341).
+        if self._message_index is not None:
+            _msg_id = msg.platform_meta.get("message_id")
+            if _msg_id is not None:
+                self._fire_and_forget(
+                    self._message_index.upsert(
+                        self._pool_id, str(_msg_id), session_id, "user"
+                    ),
+                    f"message_index upsert failed (pool={self._pool_id} role=user)",
+                )

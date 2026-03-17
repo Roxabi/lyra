@@ -218,7 +218,7 @@ Runs `vault search <query>` and returns matching results. Stateless — no LLM c
 
 ### How it works internally
 
-Session commands use `SessionCommandHandler` protocol (defined in `CommandRouter`) and are registered in `CommandRouter._session_commands`. The `AnthropicAgent` passes its LLM driver to the handler — LLM calls use an isolated `pool_id` (`"session:<command>"`) that never touches the real pool history.
+Session commands use `SessionCommandHandler` protocol (defined in `session_commands.py`) and are registered in the `CommandRouter`. The `AnthropicAgent` passes its LLM driver to the handler — LLM calls use an isolated `pool_id` (`"session:<command>"`) that never touches the real pool history.
 
 ```python
 class SessionCommandHandler(Protocol):
@@ -366,7 +366,7 @@ Lyra: ⚠ Command timed out.
 
 ## Configuration
 
-Built-in commands are declared in `CommandRouter._DEFAULT_BUILTINS`. Plugin commands are declared in each plugin's `plugin.toml`:
+Built-in commands are implemented in `src/lyra/core/builtin_commands.py` and workspace commands in `src/lyra/core/workspace_commands.py`. Plugin commands are declared in each plugin's `plugin.toml`:
 
 ```toml
 # src/lyra/plugins/echo/plugin.toml
@@ -427,13 +427,16 @@ async def cmd_mycmd(args: list[str], msg: InboundMessage) -> Response:
 See also: [ADR-010 — External tool integration](architecture/adr/010-external-tool-integration-pattern.mdx)
 
 ```
-Built-in commands          Plugin commands             CLI-backed commands        Session commands (LLM)
-───────────────────        ────────────────────        ─────────────────────      ──────────────────────
-/help      → _help()       /echo  → cmd_echo()         /voice → voicecli          /add     → cmd_add()
-/stop      → pool.cancel() /invite → cmd_invite()                                 /explain → cmd_explain()
-/clear     → _cmd_clear()  /join   → cmd_join()                                   /summarize→cmd_summarize()
-/config    → _cmd_config() /svc    → cmd_svc()                                    /search  → cmd_search()
-/workspace → _cmd_workspace()                          /search → cmd_search()
+Built-in commands              Plugin commands             CLI-backed commands        Session commands (LLM)
+(builtin_commands.py)          ────────────────────        ─────────────────────      ──────────────────────
+/help      → _help()           /echo  → cmd_echo()         /voice → voicecli          /add     → cmd_add()
+/stop      → pool.cancel()     /invite → cmd_invite()                                 /explain → cmd_explain()
+/clear     → _cmd_clear()      /join   → cmd_join()                                   /summarize→cmd_summarize()
+/config    → _cmd_config()     /svc    → cmd_svc()                                    /search  → cmd_search()
+
+Workspace commands
+(workspace_commands.py)
+/workspace → _cmd_workspace()                              /search → cmd_search()
 ```
 
 Two access paths for voice:

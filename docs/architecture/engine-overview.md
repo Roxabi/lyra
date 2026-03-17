@@ -1,6 +1,6 @@
 # Lyra Engine — Architecture Overview
 
-> ⚠️ **Partially stale** — This document was written early in the project and uses old class names (`Message` → `InboundMessage`, `Bus` → `InboundBus`/`OutboundDispatcher`). The memory section (§10) uses an early L1–L5 scheme that differs from the current 5-level model (see §10 note). For the current architecture, see [ARCHITECTURE.md](../ARCHITECTURE.md).
+> ⚠️ **Largely stale** — This document was written early in the project and predates the Phase 1b architecture refactoring (2026-03-16/17). Key differences: old class names (`Message` → `InboundMessage`, `Bus` → `InboundBus`/`OutboundDispatcher`, `AuthMiddleware` → `Authenticator` + `GuardChain`), old memory levels (§10 uses early L1–L5 scheme vs current 5-level model), old module layout (monolithic files decomposed into ≤300 LOC modules), `EventBus` removed. For the current architecture, see [ARCHITECTURE.md](../ARCHITECTURE.md).
 >
 > Recap complet de l'architecture cible. Dernière mise à jour : 2026-03-12.
 > Diagramme interactif : `docs/architecture-visual-explainer.html`

@@ -1,7 +1,7 @@
 # Lyra — Architecture & Decisions
 
 > Living document. Updated as decisions are made.
-> Last updated: 2026-03-15 (Phase 1b tail completions: message normalization #139, LlmProvider #123, auth #151, routing #152, smart routing #134, runtime config #135, STT #80, audio/attachment bus, PoolContext #204, TTL eviction #205, typing indicator redesign #229, show_intermediate + on_intermediate callback, /clear session reset, is_backend_alive, SimpleAgent runtime_config wiring, memory integration #83, hub command sessions #99, AgentStore #268, raw turn logging #67, retryable LlmResult #276)
+> Last updated: 2026-03-17 (Phase 1b complete + architecture refactoring: module decomposition #294–#312, auth split #313/#314, deduplication, timeout hardening #317, session resumption #318)
 
 ---
 
@@ -131,6 +131,25 @@ Discord  ──▶ dc_inbound Queue ──┘         (bounded 100)        │
 ```
 
 **Adapter registry** (`dict[tuple[Platform, str], ChannelAdapter]`) — keyed by `(platform, bot_id)`. Multiple bots per platform are supported; each registers independently via `hub.register_adapter(Platform.TELEGRAM, bot_id, adapter)`. The OutboundDispatcher routes responses back to the originating channel.
+
+### Module Layout
+
+After the Phase 1b refactoring, every module is ≤300 LOC. Key decomposition:
+
+| Domain | Main module | Extracted modules |
+|--------|------------|-------------------|
+| **Hub** | `hub.py` | `message_pipeline.py`, `audio_pipeline.py`, `pool_manager.py`, `hub_rate_limit.py`, `hub_protocol.py` |
+| **Agent** | `agent.py` (AgentBase ABC) | `agent_config.py` (Agent dataclass), `agent_builder.py`, `agent_loader.py`, `agent_models.py`, `agent_plugins.py` |
+| **Pool** | `pool.py` | `pool_processor.py` (debounce/cancel/dispatch), `pool_manager.py` (lifecycle), `pool_observer.py` (turn logging) |
+| **Commands** | `command_router.py` | `builtin_commands.py`, `workspace_commands.py`, `session_commands.py` |
+| **Memory** | `memory.py` | `memory_freshness.py`, `memory_schema.py`, `memory_types.py` |
+| **Auth** | `auth.py` (config parsing) | `authenticator.py` (Authenticator), `guard.py` (GuardChain), `auth_store.py` |
+| **Agent Store** | `agent_store.py` | `agent_seeder.py` (TOML → DB import) |
+| **Outbound** | `outbound_dispatcher.py` | `outbound_errors.py` |
+| **Telegram** | `telegram.py` (adapter shell) | `telegram_inbound.py`, `telegram_outbound.py`, `telegram_normalize.py`, `telegram_audio.py`, `telegram_formatting.py` |
+| **Discord** | `discord.py` (adapter shell) | `discord_inbound.py`, `discord_outbound.py`, `discord_normalize.py`, `discord_audio.py`, `discord_audio_outbound.py`, `discord_formatting.py`, `discord_threads.py`, `discord_voice_commands.py` |
+| **Bootstrap** | `multibot.py` | `multibot_stores.py`, `multibot_wiring.py` |
+| **Shared** | `adapters/_shared.py` | Common adapter utilities (typing control, etc.) |
 
 ### The Bus
 
@@ -416,7 +435,7 @@ client = AsyncOpenAI(
 - **fastembed ONNX replaces sentence-transformers** (#82) — Non-blocking ONNX runtime, no `run_in_executor` needed. Hybrid BM25 (FTS5) + cosine (sqlite-vec).
 - **LLM circuit breaker** (#104) — Timeout + retry logic for Anthropic SDK calls. Graceful degradation on failure.
 - **LlmProvider protocol** (#123 ✅) — Multi-driver abstraction: `AnthropicSdkDriver`, `ClaudeCliDriver`. Smart routing (#134 ✅) selects model by complexity. OllamaDriver planned for Phase 2.
-- **AuthMiddleware + TrustLevel** (#151 ✅) — Per-adapter auth with trust levels (owner/trusted/public/blocked). Config-driven via TOML. Note: `[admin].user_ids` grants cross-platform admin commands to those users across ALL bots, whereas per-bot `owner_users` in `[[auth.telegram_bots]]` / `[[auth.discord_bots]]` sets the trust level for that specific bot only.
+- **Auth: Authenticator + GuardChain** (#151 ✅, refactored in #313/#314) — Per-adapter auth with trust levels (owner/trusted/public/blocked). Config-driven via TOML. Originally a monolithic `AuthMiddleware`; refactored into `Authenticator` (identity resolver in `authenticator.py`) and `GuardChain` (composable guard pipeline in `guard.py`). Note: `[admin].user_ids` grants cross-platform admin commands to those users across ALL bots, whereas per-bot `owner_users` in `[[auth.telegram_bots]]` / `[[auth.discord_bots]]` sets the trust level for that specific bot only.
 - **RoutingContext + outbound verification** (#152 ✅) — Every outbound response carries a RoutingContext; adapters verify channel + bot_id before sending.
 - **PoolContext protocol** (#204 ✅) — Decouples Pool from Hub via a protocol interface.
 - **TTL eviction for Hub.pools** (#205 ✅) — Prevents memory leak from stale pools.
@@ -464,7 +483,7 @@ What is built in Phase 1 / 1b:
 - LLM: Claude CLI subprocess (✅), Anthropic SDK driver (#76 ✅), LlmProvider protocol (#123 ✅), smart routing (#134 ✅)
 - Agent identity + persona (#75 ✅), runtime config (#135 ✅)
 - Message normalization (#139 ✅): InboundMessage, OutboundMessage, InboundAudio, OutboundAudioChunk, OutboundAttachment
-- Auth: AuthMiddleware + TrustLevel (#151 ✅), RoutingContext + outbound verification (#152 ✅)
+- Auth: Authenticator + GuardChain (#151 ✅, refactored #313/#314), RoutingContext + outbound verification (#152 ✅)
 - Voice: STTService + STTConfig (#80 ✅), InboundAudioBus, audio consumer loop · TTS shipped: OGG/Opus (ffmpeg libopus, 48kHz mono), `SynthesisResult` with `duration_ms` + `waveform_b64` (256-byte amplitude array), language ISO→Qwen normalization, Discord `IS_VOICE_MESSAGE` (8192) flag for native voice bubble
 - Hub hardening: PoolContext protocol (#204 ✅), TTL eviction (#205 ✅), async I/O audio loop (#203 ✅)
 - DX: complexity/size limits (#196 ✅), pytest-cov + coverage gate (#211 ✅)
@@ -476,6 +495,14 @@ What is built in Phase 1 / 1b:
 - Retryable LlmResult (#276 ✅): non-retryable errors skip retry/backoff loop
 
 **Phase 1b tail: complete.** All items shipped.
+
+**Post-Phase 1b: architecture refactoring shipped.**
+- Module decomposition (#294–#312): all core, adapter, and bootstrap modules decomposed to ≤300 LOC
+- Auth refactoring (#313/#314): `AuthMiddleware` → `Authenticator` + `GuardChain`
+- Deduplication: 8 cross-codebase patterns consolidated
+- Timeout hardening (#317): reaper process + timeout system hardened
+- Session resumption (#318): `session_id` + `reply_message_id` wired for resumption
+- Dead code removal: `event_bus.py`, `bootstrap/legacy.py` deleted
 
 What is **explicitly excluded from Phase 1**:
 - Memory levels 2 (episodic), 4 (procedural) — added when the real need arises (L1 raw turn logging shipped in #67)
@@ -526,9 +553,19 @@ class CognitiveFrame:
 
 ## Current Status
 
-**Phase 1b complete.** All items shipped.
+**Phase 1b complete. Architecture refactoring complete.**
 
-**Shipped**: #135 (runtime config ✅), #134 (smart routing ✅), #80 (voice STT ✅), #139 (message normalization ✅), #123 (LlmProvider ✅), #151 (auth ✅), #152 (routing ✅), #83 (memory integration ✅), #99 (hub command sessions ✅), voice TTS ✅ (OGG/Opus · waveform · Discord voice bubble · /voice routes through LLM), #268 (AgentStore — SQLite-backed agent registry ✅), #67 (raw turn logging — TurnStore L1 ✅), #276 (retryable flag on LlmResult ✅)
+**Phase 1b shipped**: #135 (runtime config ✅), #134 (smart routing ✅), #80 (voice STT ✅), #139 (message normalization ✅), #123 (LlmProvider ✅), #151 (auth ✅), #152 (routing ✅), #83 (memory integration ✅), #99 (hub command sessions ✅), voice TTS ✅ (OGG/Opus · waveform · Discord voice bubble · /voice routes through LLM), #268 (AgentStore — SQLite-backed agent registry ✅), #67 (raw turn logging — TurnStore L1 ✅), #276 (retryable flag on LlmResult ✅)
+
+**Architecture refactoring shipped** (2026-03-16/17):
+- Module decomposition: hub.py → `hub.py` + `message_pipeline.py` + `audio_pipeline.py` + `pool_manager.py` + `hub_rate_limit.py` + `hub_protocol.py` (#294–#312)
+- Adapter decomposition: `discord.py` → 8 focused modules (`discord_inbound.py`, `discord_outbound.py`, `discord_audio.py`, `discord_formatting.py`, etc.) (#296/#311); `telegram.py` → 5 focused modules (#297)
+- Core decomposition: `agent.py` → `agent.py` + `agent_builder.py` + `agent_config.py` + `agent_loader.py` + `agent_models.py` + `agent_plugins.py` (#295/#306); `pool.py` → `pool.py` + `pool_processor.py` (#300/#309); `command_router.py` → `command_router.py` + `builtin_commands.py` + `workspace_commands.py` (#298/#312); `memory.py` → `memory.py` + `memory_freshness.py` + `memory_schema.py` + `memory_types.py`; `agent_store.py` → `agent_store.py` + `agent_seeder.py` (#304/#308)
+- Auth split: `AuthMiddleware` → `Authenticator` (identity resolver) + `GuardChain` (composable guard pipeline) (#313/#314)
+- 8-pattern deduplication across adapters + core — shared adapter code in `adapters/_shared.py`
+- Removed dead abstractions: `event_bus.py` (EventBus pub/sub), `bootstrap/legacy.py`
+- **#317** — Harden timeout system and reaper process
+- **#318** — Wire `session_id` + `reply_message_id` for session resumption
 
 **Next**: Phase 2 (#60) — NATS introduction + Machine 2 coordination, or #136 (multi-bot registry upgrade, blocked by #79).
 

@@ -1,7 +1,7 @@
 # Lyra — End-to-End Happy Paths
 
 > Living document. Catalogs every happy-path scenario across the system.
-> Last updated: 2026-03-16
+> Last updated: 2026-03-17
 
 ---
 
@@ -31,30 +31,32 @@ Lyra has **26 distinct happy paths** organized into 7 categories. Each scenario 
 
 ```
 Adapter.on_message()
-  → authenticate (webhook secret / token)
+  → Authenticator.resolve(user_id) → TrustLevel
+  → GuardChain.check(msg) → pass/reject
   → normalize to InboundMessage (user_id, scope_id, text, trust_level)
   → InboundBus.put(platform, msg)
     → staging queue (bounded 500)
       → Hub.run() consumes
-        → rate limit check (20 msgs/user/60s)
+        → rate limit check (HubRateLimiter: 20 msgs/user/60s)
         → MessagePipeline.process()
           → CommandParser — not a command
           → resolve_binding(msg) → (agent, pool_id)
-          → get_or_create_pool(pool_id, agent_name)
+          → PoolManager.get_or_create_pool(pool_id, agent_name)
           → pool._inbox.put(msg)
-          → Agent.process(msg, pool)
-            → build system_prompt (identity + memory)
-            → LlmProvider.complete(pool_id, text, model_cfg, system_prompt)
-              → SmartRouting → CircuitBreaker → Retry → Driver
-            → LlmResult(result="...")
-          → Response(content="...")
+          → PoolProcessor.process(msg)
+            → Agent.process(msg, pool)
+              → build system_prompt (identity + memory)
+              → LlmProvider.complete(pool_id, text, model_cfg, system_prompt)
+                → SmartRouting → CircuitBreaker → Retry → Driver
+              → LlmResult(result="...")
+            → Response(content="...")
         → Hub.dispatch_response(msg, response)
           → OutboundDispatcher.enqueue(outbound)
             → Adapter.send(msg, outbound)
               → Telegram: bot.send_message(chat_id, text, reply_to)
               → Discord: message.reply(text) or channel.send(text)
             → capture reply_message_id
-        → TurnStore.log_turn() (fire-and-forget)
+        → PoolObserver.log_turn() (fire-and-forget)
 ```
 
 **Output:** Text reply in the conversation.
@@ -142,13 +144,15 @@ Adapter.on_message()
     → extracts prefix="/", name="help", args=remainder
     → attaches CommandContext to InboundMessage
   → router.is_command(msg) → True
-  → CommandRouter dispatches to builtin handler:
+  → CommandRouter dispatches to builtin handler (builtin_commands.py):
     → /help    → list available commands
     → /clear   → reset pool history + backend session (see 4.2)
     → /config  → show/set runtime config (agent parameters)
     → /stop    → cancel current processing task
     → /circuit → show circuit breaker status (admin-only)
     → /routing → show smart routing decisions (admin-only)
+  → or workspace handler (workspace_commands.py):
+    → /workspace → list/switch workspaces
   → handler returns Response(content="...")
   → PipelineResult(action=COMMAND_HANDLED)
   → Hub.dispatch_response(msg, response)
@@ -226,14 +230,14 @@ Adapter.on_message()
 
 ### 2.5 Workspace Switch
 
-**Trigger:** User sends `/folder ~/projects/foo` (CliPool agents only).
+**Trigger:** User sends `/folder ~/projects/foo` or `/workspace <name>` (CliPool agents only).
 
 **Flow:**
 
 ```
-[intake through CommandRouter]
-  → builtin /folder handler
-    → parse path argument: ~/projects/foo
+[intake through CommandRouter → workspace_commands.py]
+  → /folder or /workspace handler
+    → parse path/name argument: ~/projects/foo or workspace name
     → expanduser() → /home/user/projects/foo
     → pool._switch_workspace_fn(path)
       → CliPool._cwd_overrides[pool_id] = path
@@ -562,11 +566,12 @@ LlmProvider.complete() → CircuitBreaker wrapper
 
 ```
 Adapter.normalize()
-  → AuthMiddleware.check_trust(user_id, platform, bot_id)
+  → Authenticator.resolve(user_id, platform, bot_id)
     → check admin.user_ids (cross-bot admins) → OWNER
     → check [auth.telegram_bots[bot_id]].owner_users → OWNER
     → check blocked list → BLOCKED
     → fallback → default trust level (PUBLIC)
+  → GuardChain.check(msg) → Rejection | None
   → InboundMessage.trust_level = TrustLevel enum
   → downstream: CommandRouter checks trust_level for admin-only commands
     → /circuit, /routing, /config require OWNER or TRUSTED
@@ -704,7 +709,7 @@ After response generated:
 | 19 | Rate limiting | Sliding window 20/60s → DROP | 5.2 |
 | 20 | Bus backpressure | Queue full → ack → blocking await | 5.3 |
 | 21 | Circuit breaker | CLOSED → OPEN → HALF_OPEN → CLOSED | 5.4 |
-| 22 | Auth check | AuthMiddleware → TrustLevel enum | 6.1 |
+| 22 | Auth check | Authenticator + GuardChain → TrustLevel enum | 6.1 |
 | 23 | Multi-bot same channel | Per-bot pools + thread ownership | 6.2 |
 | 24 | Reply threading | ContextResolver → turns.db lookup | 6.3 |
 | 25 | Attachments | Adapter extract → Agent vision → render | 7.1 |

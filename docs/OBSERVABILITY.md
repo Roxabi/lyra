@@ -53,7 +53,7 @@ The following events are emitted (at INFO unless noted) for each inbound message
 | Retry/backoff | `lyra.llm.decorators` | Retry attempt N, backoff delay |
 | Timeout / cancel | `lyra.core.cli_pool` (WARNING/ERROR) | `pool ...: no output for Ns — alive, waiting (1/3)` or `Timeout: no output for Ns` |
 | Cancel-in-flight | `lyra.core.pool` (DEBUG) | New message while LLM processing |
-| Circuit breaker | `lyra.core.event_bus` (WARNING) | State transition old→new |
+| Circuit breaker | `lyra.core.circuit_breaker` (WARNING) | State transition old→new |
 
 **What is NOT logged in file logs:** message content, full prompts/responses (only char/token counts). For full content capture, see the Turn Store below.
 
@@ -87,10 +87,11 @@ The `TurnStore` (`src/lyra/core/turn_store.py`) persists every user and assistan
 
 ---
 
-## Event Bus
+## Monitoring Events
 
-An in-memory event bus (`src/lyra/core/event_bus.py`) emits typed events during processing.
-These are **not persisted** — they feed real-time subscribers (monitoring, future alerting).
+Typed event dataclasses are defined in `src/lyra/core/events.py`. These are used by the monitoring module for health diagnostics.
+
+> **Note:** The `EventBus` pub/sub mechanism (formerly in `event_bus.py`) was removed during the architecture refactoring. The event dataclasses remain as structured types for the monitoring system.
 
 | Event | Fields |
 |-------|--------|

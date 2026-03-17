@@ -309,7 +309,6 @@ The `CliPool` is the Claude CLI subprocess pool. It is shared across all agents 
 | `auth_bots` entry required per bot | A bot without a matching auth entry is silently skipped at startup — add `[[auth.telegram_bots]]` / `[[auth.discord_bots]]` entry or the bot will not start. The process exits only if ALL bots lack auth. |
 | `CliPool` is shared | All bots share the subprocess pool — heavy concurrent use increases subprocess contention |
 | Single process | All bots run in one Python process — a crash affects all bots |
-| TTS not available in multi-bot mode | The `_bootstrap_multibot` path does not initialize `TTSService`. Voice features require the legacy single-bot path. |
 
 ---
 

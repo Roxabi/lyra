@@ -10,7 +10,7 @@
 4 domaines à implémenter pour garantir qu'un utilisateur autorisé reçoit la bonne réponse, du bon agent, sur le bon canal, avec sa mémoire isolée.
 
 ```
-[Canal] → AuthMiddleware        (qui peut parler ?)
+[Canal] → Authenticator + GuardChain  (qui peut parler ?)
         → CommandParser          (quelle action ?)
         → Bus → Router           (quel agent / pool ?)
                 → ComplexityEstimator → LLMConfig   (quel modèle ?)
@@ -21,7 +21,7 @@
 
 ---
 
-## #auth — AuthMiddleware + TrustLevel
+## #auth — Authenticator + GuardChain + TrustLevel
 
 ### Problème
 
@@ -38,24 +38,37 @@ class TrustLevel(Enum):
     PUBLIC  = "public"   # accès limité (si activé)
     BLOCKED = "blocked"  # rejeté silencieusement
 
-class AuthMiddleware:
-    trust_map: dict[str, TrustLevel]  # user_id → TrustLevel
-    default: TrustLevel = TrustLevel.BLOCKED
+class Authenticator:
+    """Identity resolver — maps user_id to TrustLevel."""
 
-    async def check(self, raw_event) -> TrustLevel:
-        user_id = self.extract_user_id(raw_event)
-        return self.trust_map.get(user_id, self.default)
+    def resolve(self, user_id: str | None) -> TrustLevel:
+        if user_id is None:
+            return TrustLevel.BLOCKED
+        return self._store.check(user_id)  # checks owner, trusted, blocked lists
+
+class GuardChain:
+    """Runs guards sequentially, returning the first Rejection or None."""
+
+    async def check(self, msg) -> Rejection | None:
+        for guard in self._guards:
+            if rejection := await guard.check(msg):
+                return rejection
+        return None
 ```
 
 **Intégration dans chaque Adapter :**
 
 ```python
 async def on_event(self, raw_event) -> Message | None:
-    trust = await self.auth.check(raw_event)
+    user_id = self.extract_user_id(raw_event)
+    trust = self.authenticator.resolve(user_id)
     if trust == TrustLevel.BLOCKED:
         return None  # dropped — never reaches the Bus
     msg = self.normalize(raw_event)
     msg.trust_level = trust
+    rejection = await self.guard_chain.check(msg)
+    if rejection:
+        return None  # guard rejected
     return msg
 ```
 
@@ -76,14 +89,17 @@ default       = "blocked"
 
 At least one section must be present. A missing section logs a warning and disables that adapter — Lyra starts with the remaining adapter. Both missing → `SystemExit`.
 
-### Implementation — ✅ Shipped (#151)
+### Implementation — ✅ Shipped (#151, refactored #313/#314)
 
-- [x] `AuthMiddleware` in `src/lyra/core/auth.py`
+- [x] `Authenticator` (identity resolver) in `src/lyra/core/authenticator.py`
+- [x] `GuardChain` (composable guard pipeline) in `src/lyra/core/guard.py`
 - [x] `TrustLevel` enum in `src/lyra/core/trust.py`
-- [x] Config-driven trust_map (TOML)
+- [x] Config-driven trust_map (TOML), parsed in `src/lyra/core/auth.py`
 - [x] Integrated in TelegramAdapter + DiscordAdapter
 - [x] CLIAdapter (trust = OWNER by default)
 - [x] Rejection logging
+
+> **Refactored in #313/#314**: The original monolithic `AuthMiddleware` was split into `Authenticator` (resolves user identity → TrustLevel) and `GuardChain` (runs composable guards sequentially, returning the first Rejection or None).
 
 ### Admin access
 

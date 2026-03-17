@@ -1,13 +1,13 @@
 # Lyra — Prioritized Roadmap
 
 > Living document. Updated as decisions are made.
-> Last updated: 2026-03-15
+> Last updated: 2026-03-17
 
 ---
 
 ## Current focus
 
-**Phase 1b complete.** All items shipped: #139 ✅, #123 ✅, #134 ✅, #135 ✅, #80 ✅, #151 ✅, #152 ✅, #83 ✅, #99 ✅, #268 ✅ (AgentStore), #67 ✅ (raw turn logging), #276 ✅ (retryable LlmResult). Next: Phase 2 (#60) or #136 (multi-bot registry, blocked by #79).
+**Phase 1b complete. Architecture refactoring complete.** All Phase 1b items shipped + full module decomposition + hardening. Next: Phase 2 (#60) or #136 (multi-bot registry, blocked by #79).
 
 ---
 
@@ -17,7 +17,7 @@
 |-------|------|--------|---------|
 | **0** | #101 | ✅ Done | Bot core parity: pairing, circuit breaker, TOML templates, plugin system |
 | **1** | — | ✅ Done | Hub: asyncio bus, adapters (Telegram/Discord), SimpleAgent, command router |
-| **1b** | #73 | ✅ Done | Agent core: persona ✅, SDK agent ✅, parity audit ✅, memory foundation ✅, hub refactor ✅, command sessions ✅ |
+| **1b** | #73 | ✅ Done | Agent core: persona ✅, SDK agent ✅, parity audit ✅, memory foundation ✅, hub refactor ✅, command sessions ✅, architecture refactoring ✅ |
 | **Voice** | #74 | 🔓 Unblocked | TTS + STT integration — unblocked since #76 shipped |
 | **2** | #60 | Planned | NATS introduction + Machine 2 coordination |
 | **3** | #61 | Frozen | Atomic SLMs + cognitive pipeline |
@@ -26,9 +26,9 @@
 
 ---
 
-## Phase 1b tail (active)
+## Phase 1b tail (complete)
 
-> Core is done. Wrapping up CLI wrapper, memory integration, command sessions, and agent tunability.
+> All core features shipped. Architecture refactoring complete.
 
 | # | Issue | Size | Status |
 |---|-------|------|--------|
@@ -42,11 +42,28 @@
 | #99 | Hub command sessions — /add, /explain, /summarize, /search | L | ✅ Done |
 | #136 | Multi-bot registry upgrade — per-bot-id routing + multi-token config | M | Blocked by #83 + #79 — do last |
 
-**Critical path**: #136 (blocked by #79)
+**Remaining**: #136 (blocked by #79)
 
-**Dependencies**:
-- #83 ✅ unblocked: #99, #67, #128
-- #83 ✅ + #79 both needed before: #136 (multi-bot registry)
+---
+
+## Architecture refactoring (complete)
+
+> Module decomposition + hardening — shipped 2026-03-16/17.
+
+| # | Issue | Size | Status |
+|---|-------|------|--------|
+| #294 | Decompose hub.py — extract MessagePipeline, AudioPipeline, PoolManager | L | ✅ Done |
+| #295 | Decompose agent.py into focused modules | L | ✅ Done |
+| #296 | Decompose discord.py — extract formatting, audio, threads | L | ✅ Done |
+| #297 | Decompose telegram.py, multibot.py, cli_agent.py, memory.py | L | ✅ Done |
+| #298 | Decompose command_router.py — extract builtin + workspace commands | M | ✅ Done |
+| #300 | Extract PoolProcessor from pool.py | M | ✅ Done |
+| #304 | Decompose agent_store.py — extract TOML seeder | M | ✅ Done |
+| #313 | Split AuthMiddleware into Authenticator + GuardChain | M | ✅ Done |
+| — | Deduplicate 8 patterns across codebase | M | ✅ Done |
+| — | Simplify architecture — remove dead abstractions and duplication | M | ✅ Done |
+| #317 | Harden timeout system and reaper process | M | ✅ Done |
+| #318 | Wire session_id + reply_message_id for resumption | S | ✅ Done |
 
 ---
 

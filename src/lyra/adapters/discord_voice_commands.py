@@ -140,6 +140,17 @@ async def handle_voice_command(
     return True
 
 
+def _resolve_slash_trust(
+    adapter: "DiscordAdapter", user_id: str
+) -> TrustLevel:
+    """Resolve trust level for a slash command interaction user."""
+    identity = adapter._auth.resolve(user_id)
+    rejection = adapter._guard_chain.run(identity)
+    if rejection is not None:
+        return TrustLevel.BLOCKED
+    return identity.trust_level
+
+
 async def _handle_join_slash(
     interaction: Any,
     adapter: "DiscordAdapter",
@@ -153,13 +164,19 @@ async def _handle_join_slash(
             "This command can only be used in a server.", ephemeral=True
         )
         return
-    guild = interaction.guild
-    member = interaction.guild.get_member(interaction.user.id)
-    if member is None:
+    # Auth check — mirror the text-command auth flow
+    trust = _resolve_slash_trust(
+        adapter, str(interaction.user.id)
+    )
+    if trust == TrustLevel.BLOCKED:
         await interaction.response.send_message(
-            "Could not resolve your membership.", ephemeral=True
+            "You don't have permission to use this command.",
+            ephemeral=True,
         )
         return
+    guild = interaction.guild
+    # interaction.user is already a Member in guild context
+    member = interaction.user
     voice_state = member.voice
     if voice_state is None or voice_state.channel is None:
         await interaction.response.send_message(
@@ -173,6 +190,8 @@ async def _handle_join_slash(
         )
         return
     voice_mode = VoiceMode.PERSISTENT if mode == "stay" else VoiceMode.TRANSIENT
+    if voice_mode == VoiceMode.PERSISTENT and trust < TrustLevel.TRUSTED:
+        voice_mode = VoiceMode.TRANSIENT
     try:
         await adapter._vsm.join(guild, channel, voice_mode)
         label = "persistent" if voice_mode == VoiceMode.PERSISTENT else "transient"
@@ -216,7 +235,17 @@ def register_voice_app_commands(
     async def leave_slash(interaction: _discord.Interaction) -> None:
         if interaction.guild is None:
             await interaction.response.send_message(
-                "This command can only be used in a server.", ephemeral=True
+                "This command can only be used in a server.",
+                ephemeral=True,
+            )
+            return
+        trust = _resolve_slash_trust(
+            adapter, str(interaction.user.id)
+        )
+        if trust < TrustLevel.TRUSTED:
+            await interaction.response.send_message(
+                "You don't have permission to use this command.",
+                ephemeral=True,
             )
             return
         guild_id = str(interaction.guild.id)

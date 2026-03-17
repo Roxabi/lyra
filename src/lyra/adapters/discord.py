@@ -173,6 +173,18 @@ class DiscordAdapter(discord.Client):
                     exc_info=True,
                 )
 
+    async def on_guild_join(self, guild: discord.Guild) -> None:
+        """Sync app_commands tree when the bot joins a new guild."""
+        try:
+            await self.tree.sync(guild=guild)
+            log.info("Synced app_commands for new guild %s", guild.id)
+        except Exception:
+            log.warning(
+                "Failed to sync app_commands for new guild %s",
+                guild.id,
+                exc_info=True,
+            )
+
     async def on_voice_state_update(
         self,
         member: discord.Member,

@@ -1,7 +1,7 @@
 """Tests for AudioPipeline — covers uncovered branches from hub decomposition.
 
 Targets: trust-level exit, rate-limit branch, slash-command injection guard,
-transcript length cap, inbound bus full.
+transcript length cap, inbound bus full, per-agent TTS wiring.
 """
 
 from __future__ import annotations
@@ -9,9 +9,11 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from lyra.core.agent_config import AgentTTSConfig
 from lyra.core.hub import Hub
 from lyra.core.message import InboundAudio, InboundMessage, Platform, Response
 from lyra.core.trust import TrustLevel
@@ -113,6 +115,99 @@ class TestAudioPipelineTrustLevel:
             task.cancel()
             await hub.inbound_audio_bus.stop()
             await hub.inbound_bus.stop()
+
+
+# ---------------------------------------------------------------------------
+# Per-agent TTS wiring (#280)
+# ---------------------------------------------------------------------------
+
+
+class TestSynthesizeDispatchAgentTTS:
+    """synthesize_and_dispatch_audio forwards agent_tts to synthesize()."""
+
+    @pytest.mark.asyncio()
+    async def test_agent_tts_forwarded_to_synthesize(self):
+        """When agent_tts is passed, it reaches TTSService.synthesize()."""
+        from lyra.tts import SynthesisResult
+
+        agent_tts = AgentTTSConfig(
+            engine="agent_eng", voice="agent_vox"
+        )
+
+        mock_tts = MagicMock()
+        mock_tts.synthesize = AsyncMock(
+            return_value=SynthesisResult(
+                audio_bytes=b"fake",
+                mime_type="audio/ogg",
+                duration_ms=100,
+            )
+        )
+
+        hub = Hub(stt=FakeSTT())  # type: ignore[arg-type]
+        hub._tts = mock_tts
+        hub.dispatch_audio = AsyncMock()  # type: ignore[method-assign]
+
+        msg = InboundMessage(
+            id="msg-tts-1",
+            platform="telegram",
+            bot_id="main",
+            scope_id="chat:42",
+            user_id="alice",
+            user_name="Alice",
+            is_mention=False,
+            text="hello",
+            text_raw="hello",
+            timestamp=datetime.now(timezone.utc),
+            trust_level=TrustLevel.TRUSTED,
+        )
+
+        await hub._audio_pipeline.synthesize_and_dispatch_audio(
+            msg, "Hello world", agent_tts=agent_tts
+        )
+
+        mock_tts.synthesize.assert_awaited_once()
+        call_kwargs = mock_tts.synthesize.call_args
+        assert call_kwargs.kwargs.get("agent_tts") is agent_tts
+
+    @pytest.mark.asyncio()
+    async def test_agent_tts_none_no_regression(self):
+        """Without agent_tts, synthesize() is called without it."""
+        from lyra.tts import SynthesisResult
+
+        mock_tts = MagicMock()
+        mock_tts.synthesize = AsyncMock(
+            return_value=SynthesisResult(
+                audio_bytes=b"fake",
+                mime_type="audio/ogg",
+                duration_ms=100,
+            )
+        )
+
+        hub = Hub(stt=FakeSTT())  # type: ignore[arg-type]
+        hub._tts = mock_tts
+        hub.dispatch_audio = AsyncMock()  # type: ignore[method-assign]
+
+        msg = InboundMessage(
+            id="msg-tts-2",
+            platform="telegram",
+            bot_id="main",
+            scope_id="chat:42",
+            user_id="bob",
+            user_name="Bob",
+            is_mention=False,
+            text="hello",
+            text_raw="hello",
+            timestamp=datetime.now(timezone.utc),
+            trust_level=TrustLevel.TRUSTED,
+        )
+
+        await hub._audio_pipeline.synthesize_and_dispatch_audio(
+            msg, "Hello world"
+        )
+
+        mock_tts.synthesize.assert_awaited_once()
+        call_kwargs = mock_tts.synthesize.call_args
+        assert call_kwargs.kwargs.get("agent_tts") is None
 
 
 # ---------------------------------------------------------------------------

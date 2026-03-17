@@ -20,8 +20,8 @@ def apply_agent_tts_overlay(
 ) -> TTSConfig:
     """Overlay non-None fields from AgentTTSConfig onto TTSConfig.
 
-    None fields in agent_tts are skipped — voicecli global defaults remain in effect.
-    Returns an updated TTSConfig (via dataclasses.replace).
+    Kept as a utility for tests. No longer used at startup — per-agent TTS
+    config is now resolved per-call in TTSService.synthesize().
     """
     if agent_tts is None:
         return tts_cfg
@@ -74,29 +74,21 @@ def init_stt(first_agent_config: Agent) -> STTService | None:
 
 
 def init_tts(
-    first_agent_config: Agent,
     stt_service: STTService | None,
-    agent_configs: dict[str, Agent],
-    first_agent_name: str,
 ) -> TTSService | None:
-    """Initialise TTS service if STT is active and voice responses are enabled."""
+    """Initialise TTS service from global env-var defaults.
+
+    Per-agent TTS config is resolved at synthesis time via
+    Hub.dispatch_response() → resolve_binding() → agent.config.tts.
+    """
     voice_responses = os.environ.get("LYRA_VOICE_RESPONSES", "1") != "0"
     if stt_service is None or not voice_responses:
         return None
 
-    tts_cfg = apply_agent_tts_overlay(first_agent_config.tts, load_tts_config())
-    _agents_with_tts = [n for n, cfg in agent_configs.items() if cfg.tts is not None]
-    if len(_agents_with_tts) > 1:
-        log.warning(
-            "Multiple agents define [tts] config: %s — "
-            "using %r (first alphabetically). "
-            "Other agents' [tts] settings are ignored.",
-            _agents_with_tts,
-            first_agent_name,
-        )
+    tts_cfg = load_tts_config()
     tts_service = TTSService(tts_cfg)
     log.info(
-        "TTS voice responses enabled: engine=%s voice=%s",
+        "TTS voice responses enabled (global defaults): engine=%s voice=%s",
         tts_cfg.engine or "default",
         tts_cfg.voice or "default",
     )

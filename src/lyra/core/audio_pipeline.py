@@ -19,6 +19,8 @@ from .message import (
 from .trust import TrustLevel
 
 if TYPE_CHECKING:
+    from lyra.core.agent_config import AgentTTSConfig
+
     from .hub import Hub
 
 log = logging.getLogger(__name__)
@@ -212,12 +214,17 @@ class AudioPipeline:
         await self._hub.dispatch_response(synthetic, Response(content=content))
 
     async def synthesize_and_dispatch_audio(
-        self, msg: InboundMessage, text: str
+        self,
+        msg: InboundMessage,
+        text: str,
+        *,
+        agent_tts: "AgentTTSConfig | None" = None,
     ) -> None:
         """Synthesize TTS audio for a voice response and dispatch it.
 
         Language/voice resolution uses PrefsStore when available; sentinels
         "detected" and "agent_default" are never forwarded to synthesize().
+        ``agent_tts`` carries the per-agent TTS config (engine, voice, etc.).
         Errors are logged and swallowed — audio failure must not crash the hub.
         """
         assert self._hub._tts is not None  # caller guarantees this
@@ -242,17 +249,19 @@ class AudioPipeline:
                         lang = prefs.tts_language  # explicit user override
                     elif msg.language is not None:
                         lang = msg.language  # Whisper-detected
-                    # else lang=None → TTSService.self._language (agent/global fallback)
+                    # else lang=None → agent_tts or global fallback
 
                     # Voice resolution
                     if prefs.tts_voice != "agent_default":
                         voice = prefs.tts_voice  # explicit user override
-                    # else voice=None → TTSService.self._voice
+                    # else voice=None → agent_tts or global fallback
             else:
                 # No PrefsStore — pass detected language directly (S1 behavior)
                 lang = msg.language
 
-            result = await self._hub._tts.synthesize(text, language=lang, voice=voice)
+            result = await self._hub._tts.synthesize(
+                text, agent_tts=agent_tts, language=lang, voice=voice
+            )
             audio = OutboundAudio(
                 audio_bytes=result.audio_bytes,
                 mime_type=result.mime_type,

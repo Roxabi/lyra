@@ -20,6 +20,8 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
     from ..tts import TTSService
+    from .agent import AgentBase
+    from .agent_config import AgentTTSConfig
     from .audio_pipeline import AudioPipeline
     from .circuit_breaker import CircuitRegistry
     from .hub_protocol import ChannelAdapter
@@ -48,6 +50,23 @@ class HubOutboundMixin:
         _audio_pipeline: AudioPipeline
         _memory_tasks: set[asyncio.Task]
         _last_processed_at: float | None
+        agent_registry: dict[str, AgentBase]
+
+        def resolve_binding(
+            self, msg: InboundMessage
+        ) -> Any: ...  # returns Binding | None
+
+    def _resolve_agent_tts(
+        self, msg: "InboundMessage"
+    ) -> "AgentTTSConfig | None":
+        """Resolve per-agent TTS config from the message's binding."""
+        binding = self.resolve_binding(msg)
+        if binding is None:
+            return None
+        agent = self.agent_registry.get(binding.agent_name)
+        if agent is None:
+            return None
+        return agent.config.tts
 
     async def _route_outbound(
         self,
@@ -132,8 +151,11 @@ class HubOutboundMixin:
         if _should_speak and self._tts is not None:
             text = outbound.to_text().strip()
             if text:
+                agent_tts = self._resolve_agent_tts(msg)
                 task = asyncio.create_task(
-                    self._audio_pipeline.synthesize_and_dispatch_audio(msg, text),
+                    self._audio_pipeline.synthesize_and_dispatch_audio(
+                        msg, text, agent_tts=agent_tts
+                    ),
                     name=f"tts:{msg.id}",
                 )
                 self._memory_tasks.add(task)

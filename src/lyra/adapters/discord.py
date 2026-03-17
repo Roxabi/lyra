@@ -139,6 +139,14 @@ class DiscordAdapter(discord.Client):
         """Cancel and remove the typing indicator task for send_to_id."""
         self._typing.cancel(send_to_id)
 
+    def _cancel_typing_for(self, inbound: InboundMessage) -> None:
+        """Cancel the typing indicator for the channel/thread of *inbound*."""
+        channel_id: int | None = inbound.platform_meta.get("channel_id")
+        thread_id: int | None = inbound.platform_meta.get("thread_id")
+        send_to_id = thread_id if thread_id is not None else channel_id
+        if send_to_id is not None:
+            self._cancel_typing(send_to_id)
+
     async def close(self) -> None:
         """Cancel pending typing tasks and drain voice sessions before closing."""
         await self._typing.cancel_all()
@@ -254,6 +262,7 @@ class DiscordAdapter(discord.Client):
             resolve_channel=self._resolve_channel,
             http=self.http,
         )
+        self._cancel_typing_for(inbound)
 
     async def render_attachment(
         self, msg: OutboundAttachment, inbound: InboundMessage
@@ -265,6 +274,7 @@ class DiscordAdapter(discord.Client):
             resolve_channel=self._resolve_channel,
             attachment_exts=_ATTACHMENT_EXTS,
         )
+        self._cancel_typing_for(inbound)
 
     async def render_audio_stream(
         self,
@@ -275,6 +285,7 @@ class DiscordAdapter(discord.Client):
         await discord_audio_outbound.render_audio_stream(
             chunks, inbound, self.render_audio
         )
+        self._cancel_typing_for(inbound)
 
     async def render_voice_stream(
         self,
@@ -283,6 +294,7 @@ class DiscordAdapter(discord.Client):
     ) -> None:
         """Route TTS stream to the active Discord voice session for this guild."""
         await discord_audio_outbound.render_voice_stream(chunks, inbound, self._vsm)
+        self._cancel_typing_for(inbound)
 
     async def _resolve_channel(self, channel_id: int) -> discord.abc.Messageable:
         """Get channel from cache or fetch from network."""

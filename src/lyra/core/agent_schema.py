@@ -52,6 +52,8 @@ _MIGRATE_AGENTS = [
     "ALTER TABLE agents ADD COLUMN voice_json TEXT",
     "ALTER TABLE agents ADD COLUMN fallback_language TEXT NOT NULL DEFAULT 'en'",
     "ALTER TABLE agents ADD COLUMN patterns_json TEXT",
+    # #347 — per-bot settings (watch_channels etc.)
+    "ALTER TABLE bot_agent_map ADD COLUMN settings_json TEXT",
 ]
 
 _CREATE_BOT_AGENT_MAP = """
@@ -59,6 +61,7 @@ CREATE TABLE IF NOT EXISTS bot_agent_map (
     platform TEXT NOT NULL,
     bot_id TEXT NOT NULL,
     agent_name TEXT NOT NULL,
+    settings_json TEXT,
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (platform, bot_id)
 )

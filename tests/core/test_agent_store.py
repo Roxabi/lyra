@@ -216,6 +216,130 @@ class TestBotMap:
 
 
 # ---------------------------------------------------------------------------
+# TestBotSettings (#347 — watch channels)
+# ---------------------------------------------------------------------------
+
+
+class TestBotSettings:
+    """AgentStore bot settings: set_bot_settings / get_bot_settings."""
+
+    async def test_set_and_get_bot_settings(self, agent_store: AgentStore) -> None:
+        await agent_store.upsert(_make_agent_row("settings-agent"))
+        await agent_store.set_bot_agent("discord", "bot-s1", "settings-agent")
+
+        await agent_store.set_bot_settings(
+            "discord", "bot-s1", {"watch_channels": [111, 222]}
+        )
+
+        result = agent_store.get_bot_settings("discord", "bot-s1")
+        assert result == {"watch_channels": [111, 222]}
+
+    async def test_get_settings_default_empty(self, agent_store: AgentStore) -> None:
+        await agent_store.upsert(_make_agent_row("no-settings-agent"))
+        await agent_store.set_bot_agent("discord", "bot-s2", "no-settings-agent")
+
+        result = agent_store.get_bot_settings("discord", "bot-s2")
+        assert result == {}
+
+    async def test_set_bot_agent_with_settings(self, agent_store: AgentStore) -> None:
+        await agent_store.upsert(_make_agent_row("inline-agent"))
+
+        await agent_store.set_bot_agent(
+            "discord", "bot-s3", "inline-agent",
+            settings={"watch_channels": [333]},
+        )
+
+        result = agent_store.get_bot_settings("discord", "bot-s3")
+        assert result == {"watch_channels": [333]}
+
+    async def test_set_bot_agent_without_settings_preserves_existing(
+        self, agent_store: AgentStore
+    ) -> None:
+        await agent_store.upsert(_make_agent_row("preserve-agent"))
+        await agent_store.set_bot_agent(
+            "discord", "bot-s4", "preserve-agent",
+            settings={"watch_channels": [444]},
+        )
+
+        # Reassign agent without settings — COALESCE preserves existing
+        await agent_store.set_bot_agent("discord", "bot-s4", "preserve-agent")
+
+        result = agent_store.get_bot_settings("discord", "bot-s4")
+        assert result == {"watch_channels": [444]}
+
+    async def test_remove_bot_clears_settings(self, agent_store: AgentStore) -> None:
+        await agent_store.upsert(_make_agent_row("rm-settings-agent"))
+        await agent_store.set_bot_agent(
+            "discord", "bot-s5", "rm-settings-agent",
+            settings={"watch_channels": [555]},
+        )
+
+        await agent_store.remove_bot_agent("discord", "bot-s5")
+
+        result = agent_store.get_bot_settings("discord", "bot-s5")
+        assert result == {}
+
+    async def test_settings_warm_on_reconnect(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "auth.db"
+        store1 = AgentStore(db_path=str(db_path))
+        await store1.connect()
+        await store1.upsert(_make_agent_row("warm-agent"))
+        await store1.set_bot_agent(
+            "discord", "bot-warm", "warm-agent",
+            settings={"watch_channels": [666]},
+        )
+        await store1.close()
+
+        store2 = AgentStore(db_path=str(db_path))
+        await store2.connect()
+        try:
+            result = store2.get_bot_settings("discord", "bot-warm")
+            assert result == {"watch_channels": [666]}
+        finally:
+            await store2.close()
+
+    async def test_corrupt_settings_json_skipped_on_reconnect(
+        self, tmp_path: Path
+    ) -> None:
+        """Corrupt settings_json in DB is skipped with a warning; cache stays empty."""
+        import aiosqlite
+
+        db_path = tmp_path / "auth.db"
+        store1 = AgentStore(db_path=str(db_path))
+        await store1.connect()
+        await store1.upsert(_make_agent_row("corrupt-agent"))
+        await store1.set_bot_agent("discord", "bot-corrupt", "corrupt-agent")
+        await store1.close()
+
+        # Inject corrupt JSON directly into the DB
+        async with aiosqlite.connect(str(db_path)) as db:
+            await db.execute(
+                "UPDATE bot_agent_map SET settings_json=? "
+                "WHERE platform='discord' AND bot_id='bot-corrupt'",
+                ("{not valid json",),
+            )
+            await db.commit()
+
+        store2 = AgentStore(db_path=str(db_path))
+        await store2.connect()
+        try:
+            # Corrupt row is skipped — cache returns empty dict
+            result = store2.get_bot_settings("discord", "bot-corrupt")
+            assert result == {}
+        finally:
+            await store2.close()
+
+    async def test_set_bot_settings_raises_on_missing_row(
+        self, agent_store: AgentStore
+    ) -> None:
+        """set_bot_settings raises ValueError if the bot mapping row does not exist."""
+        with pytest.raises(ValueError, match="No bot_agent_map row"):
+            await agent_store.set_bot_settings(
+                "discord", "bot-nonexistent", {"watch_channels": [1]}
+            )
+
+
+# ---------------------------------------------------------------------------
 # TestRuntimeState
 # ---------------------------------------------------------------------------
 

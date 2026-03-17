@@ -199,6 +199,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
             circuit_registry,
             msg_manager,
             stores.thread,
+            agent_store=stores.agent,
         )
 
         # Start buses, dispatchers, health server, adapter tasks

@@ -75,6 +75,7 @@ class DiscordAdapter(discord.Client):
         thread_hot_hours: int = 36,
         auth: Authenticator = _DENY_ALL,
         thread_store: ThreadStore | None = None,
+        watch_channels: frozenset[int] = frozenset(),
     ) -> None:
         if intents is None:
             intents = discord.Intents.default()
@@ -98,6 +99,7 @@ class DiscordAdapter(discord.Client):
         self._mention_re: re.Pattern[str] | None = None  # compiled on on_ready
         self._owned_threads: set[int] = set()  # populated from ThreadStore on on_ready
         self._thread_store: ThreadStore | None = thread_store
+        self._watch_channels: frozenset[int] = watch_channels
         self._thread_sessions: dict[str, tuple[str, str]] = {}
         self._vsm: VoiceSessionManager = VoiceSessionManager()
 

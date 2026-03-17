@@ -49,9 +49,8 @@ _DROP = PipelineResult(action=Action.DROP)
 class MessagePipeline:
     """Fail-fast message routing pipeline extracted from Hub.run().
 
-    Each guard stage returns ``PipelineResult`` to stop processing or
-    ``None`` to continue to the next stage. Terminal stages always
-    return a ``PipelineResult``.
+    Each guard stage returns ``PipelineResult`` to stop processing or ``None``
+    to continue. Terminal stages always return a ``PipelineResult``.
     """
 
     def __init__(self, hub: Hub) -> None:
@@ -92,26 +91,18 @@ class MessagePipeline:
         )
         router = getattr(agent, "command_router", None)
 
-        # Parse command prefix and attach CommandContext to the message
         cmd_ctx = _command_parser.parse(msg.text)
         if cmd_ctx is not None:
             msg = dataclasses.replace(msg, command=cmd_ctx)
 
-        # Rewrite bare URLs to /add before command detection (issue #99)
+        # Rewrite bare URLs to /add before command detection (#99).
         if router and hasattr(router, "prepare"):
             msg = router.prepare(msg)
 
         if router and router.is_command(msg):
-            return await self._dispatch_command(
-                msg,
-                router,
-                pool,
-                key,
-            )
+            return await self._dispatch_command(msg, router, pool, key)
 
         return await self._submit_to_pool(msg, pool, key)
-
-    # -- guard stages (return None to continue) ---
 
     def _validate_platform(
         self,
@@ -146,7 +137,6 @@ class MessagePipeline:
         msg: InboundMessage,
         key: RoutingKey,
     ) -> Binding | None:
-        """Return resolved binding, or None (with log) to drop."""
         binding = self._hub.resolve_binding(msg)
         if binding is None:
             log.warning(
@@ -160,7 +150,6 @@ class MessagePipeline:
         binding: Binding,
         key: RoutingKey,
     ) -> AgentBase | None:
-        """Return agent, or None (with log) to drop."""
         agent = self._hub.agent_registry.get(binding.agent_name)
         if agent is None:
             log.warning(
@@ -170,8 +159,6 @@ class MessagePipeline:
             )
         return agent
 
-    # -- terminal stages ---
-
     async def _dispatch_command(
         self,
         msg: InboundMessage,
@@ -179,8 +166,7 @@ class MessagePipeline:
         pool: Pool,
         key: RoutingKey,
     ) -> PipelineResult:
-        # Wire provider callbacks before dispatch so commands (e.g. /clear) that
-        # call pool.reset_session() have a live _session_reset_fn.
+        # Wire callbacks before dispatch — /clear needs a live _session_reset_fn.
         _agent = self._hub.agent_registry.get(pool.agent_name)
         if _agent is not None and hasattr(_agent, "configure_pool"):
             _agent.configure_pool(pool)
@@ -200,8 +186,7 @@ class MessagePipeline:
             response = Response(content=_content)
             return PipelineResult(action=Action.COMMAND_HANDLED, response=response)
 
-        if response is None:
-            # !-prefixed command not found — fall through to pool submission
+        if response is None:  # !-prefixed command not found — fall through to pool
             return await self._submit_to_pool(msg, pool, key)
 
         return PipelineResult(
@@ -214,14 +199,9 @@ class MessagePipeline:
     ) -> None:
         """Attempt session resume before pool.submit(). No-op on any failure.
 
-        Three resume paths (priority order):
-        1. Reply-to-resume — message replies to a known assistant turn.
-        2. Thread-session-resume — Discord thread with a stored session_id.
-        3. Last-active-session — most recent session for this pool from TurnStore.
-
-        pool._session_resume_fn is wired lazily by SimpleAgent on first process().
+        Three paths (priority order): (1) reply-to-resume, (2) thread-session-resume,
+        (3) last-active-session from TurnStore.
         """
-        # Path 1: reply-to-resume (Telegram and Discord).
         if msg.reply_to_id is not None:
             resolver = self._hub._context_resolver
             if resolver is not None:
@@ -234,9 +214,9 @@ class MessagePipeline:
                             resolved.pool_id,
                             pool_id,
                         )
-                    # TODO(post-#67): restrict to private chats until
-                    # user_id ownership check is in place.
-                    elif msg.platform_meta.get("is_group"):
+                    elif msg.platform_meta.get(
+                        "is_group"
+                    ):  # TODO(post-#67): restrict to private chats
                         log.info(
                             "reply-to-resume: group chat"
                             " — skipping resume (cross-user risk)",
@@ -255,9 +235,8 @@ class MessagePipeline:
                             pool_id,
                         )
                         await pool.resume_session(resolved.session_id)
-                        return  # reply-to-resume took priority; skip other paths
+                        return
 
-        # Path 2: thread-session-resume (Discord owned threads across restarts).
         thread_session_id: str | None = msg.platform_meta.get("thread_session_id")
         if thread_session_id is not None:
             if not pool.is_idle:
@@ -273,12 +252,9 @@ class MessagePipeline:
                 pool_id,
             )
             await pool.resume_session(thread_session_id)
-            return  # thread-session-resume succeeded; skip Path 3
+            return
 
-        # Path 3: last-active-session (DMs / channel messages without threads).
-        # Query TurnStore for the most recent session in this pool (#316).
-        # Skip for group chats to prevent cross-user session takeover
-        # (same guard rationale as Path 1, line 238).
+        # Path 3: last-active-session — skip group chats (cross-user risk).
         if msg.platform_meta.get("is_group"):
             return
         if pool.is_idle and self._hub._turn_store is not None:
@@ -306,12 +282,11 @@ class MessagePipeline:
             return _DROP
         if await self._hub.circuit_breaker_drop(msg):
             return _DROP
-        # Register session persistence callback once (Discord thread write-side fix).
+        # Register session persistence callback once.
         _update_fn = msg.platform_meta.get("_session_update_fn")
         if _update_fn is not None and pool._observer._session_update_fn is None:
             pool._observer.register_session_update_fn(_update_fn)
-        # Wire provider callbacks (reset/resume) before _resolve_context so that
-        # pool._session_resume_fn is available on the first message after restart.
+        # Wire provider callbacks before _resolve_context (first message after restart).
         _agent = self._hub.agent_registry.get(pool.agent_name)
         if _agent is not None and hasattr(_agent, "configure_pool"):
             _agent.configure_pool(pool)

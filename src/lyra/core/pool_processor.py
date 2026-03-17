@@ -31,16 +31,11 @@ class PoolProcessor:
 
     Encapsulates the debounce → cancel-in-flight → guarded-execute → dispatch
     pipeline.  Holds no session state — reads everything from the owning Pool.
-
     Internal to Pool — do not instantiate directly.
     """
 
     def __init__(self, pool: Pool) -> None:
         self._pool = pool
-
-    # ------------------------------------------------------------------
-    # Main loop
-    # ------------------------------------------------------------------
 
     async def process_loop(self) -> None:  # noqa: C901 — debounce + cancel-in-flight adds inherent branches
         """Consume inbox with debounce aggregation and cancel-in-flight."""
@@ -81,10 +76,6 @@ class PoolProcessor:
             raise
         finally:
             pool._current_task = None
-
-    # ------------------------------------------------------------------
-    # Cancel-in-flight
-    # ------------------------------------------------------------------
 
     async def _process_with_cancel(
         self,
@@ -146,14 +137,9 @@ class PoolProcessor:
 
             msg = MessageDebouncer.merge(buffer)
 
-    # ------------------------------------------------------------------
-    # Guarded execution (timeout + error handling + events)
-    # ------------------------------------------------------------------
-
     async def _guarded_process_one(self, msg: InboundMessage, agent: AgentBase) -> None:
         """Wrap _process_one with timeout and error handling."""
         pool = self._pool
-
         _start = time.monotonic()
         _cancelled = False
         log.info(
@@ -216,14 +202,10 @@ class PoolProcessor:
                     pool.pool_id,
                 )
 
-    # ------------------------------------------------------------------
-    # Single-turn execution
-    # ------------------------------------------------------------------
-
     async def _process_one(self, msg: InboundMessage, agent: AgentBase) -> None:  # noqa: C901 — session-id update adds one branch
         """Run agent.process and dispatch result (streaming or non-streaming)."""
         pool = self._pool
-        pool.append(msg)  # S1 — track identity and message count
+        pool.append(msg)
         _ensure_fn = getattr(agent, "_ensure_system_prompt", None)
         if _ensure_fn is not None:
             await _ensure_fn(pool)  # S3 — cache system prompt
@@ -271,22 +253,19 @@ class PoolProcessor:
             except BaseException as exc:
                 pool._ctx.record_circuit_failure(exc)
                 raise
-            # Bug 1 (#316): update session_id from streaming iterator attribute
-            # (set by streaming agents after the stream completes).
+            # Update session_id from streaming iterator attribute (#316).
             _stream_sid = getattr(result, "session_id", None)
             if _stream_sid:
                 pool.session_id = _stream_sid
             pool._observer.session_update_async(msg)
         else:
             pool._ctx.record_circuit_success()
-            # Update session_id with the real Claude CLI session UUID before
-            # persisting to ThreadStore — the initial value is a placeholder UUID.
+            # Update session_id with the real Claude CLI session UUID (#316).
             if isinstance(result, Response):
                 _cli_session_id = result.metadata.get("session_id")
                 if _cli_session_id:
                     pool.session_id = _cli_session_id
-            # Bug 2 (#316): attach a deferred turn-logging callback so
-            # reply_message_id is captured after the adapter sends.
+            # Attach deferred turn-logging callback after adapter sends (#316).
             if isinstance(result, Response):
                 _content = result.content
 
@@ -309,10 +288,6 @@ class PoolProcessor:
         _compact_fn = getattr(agent, "compact", None)
         if _compact_fn is not None:
             await _compact_fn(pool)  # S5 — check compaction threshold after each turn
-
-    # ------------------------------------------------------------------
-    # Safe dispatch helper
-    # ------------------------------------------------------------------
 
     async def _safe_dispatch(self, msg: InboundMessage, response: Response) -> None:
         pool = self._pool

@@ -40,16 +40,7 @@ log = logging.getLogger(__name__)
 class OutboundDispatcher:
     """Queue-backed outbound worker that owns the platform circuit breaker.
 
-    Lifecycle:
-        dispatcher = OutboundDispatcher(
-            platform_name="telegram",
-            adapter=tg_adapter,
-            circuit=registry.get("telegram"),
-            circuit_registry=registry,  # for Anthropic CB recording
-        )
-        await dispatcher.start()
-        ...
-        await dispatcher.stop()
+    Create with platform_name/adapter/circuit, then call start()/stop().
     """
 
     def __init__(
@@ -71,11 +62,7 @@ class OutboundDispatcher:
         self._circuit_notify_ts: dict[str, float] = {}
 
     def _verify_routing(self, routing: RoutingContext | None) -> bool:
-        """Verify RoutingContext matches this dispatcher's platform + bot_id.
-
-        Returns True if routing is valid (or absent — backward compat).
-        Returns False and logs an error if there is a mismatch.
-        """
+        """True if routing matches this dispatcher (or is absent); False on mismatch."""
         if routing is None:
             return True
         if routing.platform != self._platform_name:

@@ -25,11 +25,9 @@ def init_agents(
     async def _run() -> None:
         store = await _connect_store()
         try:
-            dirs = (
-                [agents_dir] if agents_dir else [_USER_AGENTS_DIR, _SYSTEM_AGENTS_DIR]
-            )
+            sd = [agents_dir] if agents_dir else [_USER_AGENTS_DIR, _SYSTEM_AGENTS_DIR]
             imported = skipped = errors = 0
-            for d in dirs:
+            for d in sd:
                 if not d.exists():
                     continue
                 for toml_file in sorted(d.glob("*.toml")):
@@ -54,7 +52,7 @@ def init_agents(
 
 @agent_app.command(name="list")
 def list_agents(agents_dir: Path | None = _AGENTS_DIR_OPT) -> None:
-    """List all configured agents (from DB, or TOML files if --agents-dir given)."""
+    """List all configured agents (DB by default, or TOML files if --agents-dir)."""
     if agents_dir is not None:
         _list_from_dir(agents_dir, source_label=None)
         return
@@ -122,11 +120,10 @@ def validate(  # noqa: C901, PLR0915
             raise typer.Exit(1)
         typer.echo("Schema: OK")
         if cfg.smart_routing and cfg.smart_routing.enabled:
-            bk = cfg.model_config.backend
-            if bk != "anthropic-sdk":
+            if cfg.model_config.backend != "anthropic-sdk":
                 typer.echo(
-                    f"Warning: smart_routing.enabled=true but backend={bk!r}"
-                    " — smart routing will be ignored at runtime"
+                    f"Warning: smart_routing.enabled=true"
+                    f" but backend={cfg.model_config.backend!r} — will be ignored"
                 )
             else:
                 typer.echo("smart_routing: enabled (anthropic-sdk OK)")
@@ -154,14 +151,12 @@ def validate(  # noqa: C901, PLR0915
                         )
                 except Exception:
                     errors_found.append(
-                        f"smart_routing_json is invalid JSON: "
-                        f"{row.smart_routing_json!r}"
+                        f"smart_routing_json invalid JSON: {row.smart_routing_json!r}"
                     )
             for fn in ("tools_json", "plugins_json", "permissions_json"):
                 val = getattr(row, fn)
                 try:
-                    parsed = _json.loads(val)
-                    if not isinstance(parsed, list):
+                    if not isinstance(_json.loads(val), list):
                         raise ValueError("not a list")
                 except Exception:
                     errors_found.append(f"{fn} is not a valid JSON array: {val!r}")
@@ -169,8 +164,7 @@ def validate(  # noqa: C901, PLR0915
                 val = getattr(row, fn)
                 if val is not None:
                     try:
-                        parsed = _json.loads(val)
-                        if not isinstance(parsed, dict):
+                        if not isinstance(_json.loads(val), dict):
                             raise ValueError("not an object")
                     except Exception:
                         errors_found.append(f"{fn} is not a valid JSON object: {val!r}")
@@ -187,7 +181,7 @@ def validate(  # noqa: C901, PLR0915
 
 @agent_app.command(name="edit")
 def edit(name: str = typer.Argument(..., help="Agent name to edit.")) -> None:
-    """Interactively edit an agent config in DB (blank = keep current value)."""
+    """Edit an agent config interactively (blank input = keep current value)."""
 
     async def _run() -> None:
         store = await _connect_store()
@@ -212,17 +206,14 @@ def edit(name: str = typer.Argument(..., help="Agent name to edit.")) -> None:
                 val = typer.prompt(
                     f"  {field_name} (current: {current!r}, blank=keep)", default=""
                 )
-                if val.strip():
+                v = val.strip()
+                if v:
                     if field_name == "max_turns":
-                        new_vals[field_name] = int(val.strip())
+                        new_vals[field_name] = int(v)
                     elif field_name == "show_intermediate":
-                        new_vals[field_name] = val.strip().lower() in (
-                            "true",
-                            "1",
-                            "yes",
-                        )
+                        new_vals[field_name] = v.lower() in ("true", "1", "yes")
                     else:
-                        new_vals[field_name] = val.strip()
+                        new_vals[field_name] = v
             if not new_vals:
                 typer.echo("No changes.")
                 return
@@ -240,7 +231,7 @@ def delete_agent(
     name: str = typer.Argument(..., help="Agent name to delete."),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation."),
 ) -> None:
-    """Delete an agent from DB. Refuses if any bot is assigned to it."""
+    """Delete an agent from DB (refuses if a bot is still assigned)."""
 
     async def _run() -> None:
         store = await _connect_store()

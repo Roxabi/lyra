@@ -161,6 +161,16 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — each branch handles one opti
         row.fallback_language or row.i18n_language or "en", row.name
     )
 
+    # #343 — bridge fallback_language into STT language_fallback if not set
+    if voice and voice.stt.language_fallback is None and i18n_language:
+        import dataclasses
+
+        patched_stt = dataclasses.replace(
+            voice.stt, language_fallback=i18n_language
+        )
+        voice = AgentVoiceConfig(tts=voice.tts, stt=patched_stt)
+        agent_stt = patched_stt
+
     return _assemble_agent(
         name=row.name,
         system_prompt=system_prompt,

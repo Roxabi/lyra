@@ -73,7 +73,19 @@ class HubOutboundMixin:
         # #343 — prefer voice.tts, fall back to agent.tts for transition
         if agent.config.voice is not None:
             return agent.config.voice.tts
-        return agent.config.tts
+        return agent.config.tts  # PR3-remove: dual-read transition
+
+    def _resolve_agent_fallback_language(
+        self, msg: "InboundMessage"
+    ) -> str | None:
+        """Resolve per-agent fallback_language from the message's binding (#343)."""
+        binding = self.resolve_binding(msg)
+        if binding is None:
+            return None
+        agent = self.agent_registry.get(binding.agent_name)
+        if agent is None:
+            return None
+        return agent.config.i18n_language
 
     async def _route_outbound(
         self,
@@ -159,9 +171,13 @@ class HubOutboundMixin:
             text = outbound.to_text().strip()
             if text:
                 agent_tts = self._resolve_agent_tts(msg)
+                fallback_lang = self._resolve_agent_fallback_language(msg)
                 task = asyncio.create_task(
                     self._audio_pipeline.synthesize_and_dispatch_audio(
-                        msg, text, agent_tts=agent_tts
+                        msg,
+                        text,
+                        agent_tts=agent_tts,
+                        fallback_language=fallback_lang,
                     ),
                     name=f"tts:{msg.id}",
                 )

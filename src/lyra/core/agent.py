@@ -110,25 +110,19 @@ class AgentBase(ABC, SessionManager):
         Falls back silently if the agent_store is not injected (test mode)
         or if the DB is unavailable — the agent continues with cached config.
         """
-        if self._agent_store is None:
-            # No store injected (test mode or legacy path) — skip DB reload
-            if self._plugin_mgr.reload_plugins():
-                self._rebuild_command_router()
-            return
+        self._maybe_reload_config()
+        self._maybe_reload_plugins()
 
+    def _maybe_reload_config(self) -> None:
+        """Check DB for config changes and apply if found."""
+        if self._agent_store is None:
+            return
         try:
             row = self._agent_store.get(self.config.name)
         except Exception:
-            # DB unavailable — continue with cached config
-            if self._plugin_mgr.reload_plugins():
-                self._rebuild_command_router()
-            return
-
+            return  # DB unavailable — keep cached config
         if row is None or row.updated_at == self._last_db_updated_at:
-            if self._plugin_mgr.reload_plugins():
-                self._rebuild_command_router()
             return
-
         try:
             from .agent_db_loader import agent_row_to_config
 
@@ -146,6 +140,8 @@ class AgentBase(ABC, SessionManager):
         except Exception as exc:
             log.warning("Failed to reload config for %r: %s", self.config.name, exc)
 
+    def _maybe_reload_plugins(self) -> None:
+        """Check plugin files for changes and rebuild router if needed."""
         if self._plugin_mgr.reload_plugins():
             self._rebuild_command_router()
 

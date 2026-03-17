@@ -92,56 +92,75 @@ class AgentStore(SqliteStore):
         """One-time data migration (#343).
 
         Populate persona_json, voice_json, fallback_language from old columns.
-        Skips rows where persona_json is already non-NULL (idempotent).
+        Uses OR guard so agents needing either persona or voice migration are
+        picked up (idempotent — each column is only written when NULL).
         """
+        from .persona import load_persona
+
         async with db.execute(
             "SELECT name, persona, tts_json, stt_json, i18n_language "
-            "FROM agents WHERE persona_json IS NULL"
+            "FROM agents WHERE persona_json IS NULL OR voice_json IS NULL"
         ) as cur:
             rows = list(await cur.fetchall())
         if not rows:
             return
+        migrated = 0
         for name, persona_name, tts_raw, stt_raw, i18n_lang in rows:
-            # Persona: load file → serialize to JSON
+            sets: list[str] = []
+            vals: list[str | None] = []
+
+            # Persona: load file → serialize to JSON (includes all fields)
             persona_json_val: str | None = None
             if persona_name:
                 try:
-                    from .persona import load_persona
-
                     pc = load_persona(persona_name)
                     persona_json_val = json.dumps(
                         {
                             "identity": {
                                 "display_name": pc.identity.name,
                                 "tagline": pc.identity.tagline,
+                                "creator": pc.identity.creator,
                                 "role": pc.identity.role,
+                                "goal": pc.identity.goal,
                             },
                             "personality": {
                                 "traits": list(pc.personality.traits),
                                 "style": pc.personality.communication_style,
+                                "tone": pc.personality.tone,
                                 "humor": pc.personality.humor,
                             },
                             "expertise": {
                                 "areas": list(pc.expertise.areas),
-                                "instructions": list(pc.expertise.instructions),
+                                "instructions": list(
+                                    pc.expertise.instructions
+                                ),
                             },
                         }
                     )
                 except Exception:
                     log.warning(
-                        "_populate_343: persona %r for agent %r not found — "
-                        "using minimal fallback",
+                        "_populate_343: persona %r for agent %r "
+                        "not found — using minimal fallback",
                         persona_name,
                         name,
                     )
                     persona_json_val = json.dumps(
                         {"identity": {"display_name": name}}
                     )
+            sets.append("persona_json=COALESCE(persona_json, ?)")
+            vals.append(persona_json_val)
 
             # Voice: merge tts_json + stt_json → voice_json
             voice_json_val: str | None = None
-            tts_dict = json.loads(tts_raw) if tts_raw else None
-            stt_dict = json.loads(stt_raw) if stt_raw else None
+            try:
+                tts_dict = json.loads(tts_raw) if tts_raw else None
+                stt_dict = json.loads(stt_raw) if stt_raw else None
+            except json.JSONDecodeError:
+                log.warning(
+                    "_populate_343: corrupt tts/stt JSON for %r — skipping voice",
+                    name,
+                )
+                tts_dict = stt_dict = None
             if tts_dict or stt_dict:
                 merged: dict = {}
                 if tts_dict:
@@ -149,15 +168,22 @@ class AgentStore(SqliteStore):
                 if stt_dict:
                     merged["stt"] = stt_dict
                 voice_json_val = json.dumps(merged)
+            sets.append("voice_json=COALESCE(voice_json, ?)")
+            vals.append(voice_json_val)
 
+            # fallback_language
             fallback = i18n_lang or "en"
+            sets.append("fallback_language=?")
+            vals.append(fallback)
+
+            vals.append(name)  # WHERE clause
             await db.execute(
-                "UPDATE agents SET persona_json=?, voice_json=?, fallback_language=? "
-                "WHERE name=?",
-                (persona_json_val, voice_json_val, fallback, name),
+                f"UPDATE agents SET {', '.join(sets)} WHERE name=?",
+                tuple(vals),
             )
+            migrated += 1
         await db.commit()
-        log.info("_populate_343: migrated %d agent(s)", len(rows))
+        log.info("_populate_343: migrated %d agent(s)", migrated)
 
     async def close(self) -> None:
         """Close the database connection and clear caches."""
@@ -196,7 +222,12 @@ class AgentStore(SqliteStore):
     # ------------------------------------------------------------------
 
     async def upsert(self, row: AgentRow) -> None:
-        """Insert or update an agent row in DB and cache."""
+        """Insert or update an agent row in DB and cache.
+
+        Note: ``persona_json``, ``voice_json``, and ``patterns_json`` use
+        COALESCE in the ON CONFLICT clause — passing None for these fields
+        preserves the existing DB value rather than clearing it.
+        """
         db = self._require_db()
         now = _utc_now_iso()
         await db.execute(

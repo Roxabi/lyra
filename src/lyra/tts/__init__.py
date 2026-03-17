@@ -255,12 +255,14 @@ class TTSService:
         agent_tts: "AgentTTSConfig | None" = None,
         language: str | None = None,
         voice: str | None = None,
+        fallback_language: str | None = None,
     ) -> SynthesisResult:
         """Synthesize text to speech.
 
         Merge order (high → low priority):
         - ``language`` / ``voice`` user-pref overrides (sentinel-based)
         - ``agent_tts`` per-agent config fields
+        - ``fallback_language`` agent-level default (#343)
         - ``self._engine / self._voice / self._language`` global defaults
 
         Returns OGG/Opus audio with duration_ms and waveform_b64 populated.
@@ -279,6 +281,7 @@ class TTSService:
                 agent_tts=agent_tts,
                 language=language,
                 voice=voice,
+                fallback_language=fallback_language,
             )
             result = await generate_async(text, **gen_kwargs)
 

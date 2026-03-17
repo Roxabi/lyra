@@ -44,7 +44,8 @@ def init_stt(first_agent_config: Agent) -> STTService | None:
     if not os.environ.get("STT_MODEL_SIZE"):
         return None
     try:
-        # #343 — prefer voice.stt, fall back to agent.stt for transition
+        # #343 — prefer voice.stt, fall back to agent.stt
+        # PR3-remove: dual-read transition
         agent_stt = (
             first_agent_config.voice.stt
             if first_agent_config.voice

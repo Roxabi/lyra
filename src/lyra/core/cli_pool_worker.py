@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -17,10 +18,12 @@ from .agent_config import ModelConfig
 
 log = logging.getLogger(__name__)
 
-# Explicit env allowlist — never forward secrets to the claude subprocess
+# Explicit env allowlist — never forward secrets to the claude subprocess.
+# HOME is intentionally excluded (H-4): forwarding the real HOME lets agentic
+# tools browse ~/.claude/ if the subprocess is prompt-injected.  _spawn()
+# sets HOME to a dedicated restricted directory instead.
 _SAFE_ENV_KEYS = {
     "PATH",
-    "HOME",
     "LANG",
     "LC_ALL",
     "LC_CTYPE",
@@ -97,6 +100,11 @@ class _CliPoolWorker:
             cmd.append("--dangerously-skip-permissions")
         if model_config.tools:
             cmd.extend(["--allowedTools", ",".join(model_config.tools)])
+        # H-10: --system-prompt exposes the value in /proc/<pid>/cmdline.
+        # A proper fix requires Claude CLI to support --system-prompt-file or
+        # stdin-based system prompt delivery.  Until then, this is the only
+        # mechanism available.  The env allowlist (H-4) already prevents the
+        # subprocess from accessing sensitive directories.
         if system_prompt:
             cmd.extend(["--system-prompt", system_prompt])
         if session_id:
@@ -124,8 +132,19 @@ class _CliPoolWorker:
             model_config.model,
             spawn_cwd,
         )
-        log.debug("[pool:%s] cmd: %s", pool_id, " ".join(cmd))
+        # Redact system prompt from debug log to avoid log-file exposure
+        _redacted = [
+            "<redacted>" if i > 0 and cmd[i - 1] == "--system-prompt" else c
+            for i, c in enumerate(cmd)
+        ]
+        log.debug("[pool:%s] cmd: %s", pool_id, " ".join(_redacted))
         env = {k: v for k, v in os.environ.items() if k in _SAFE_ENV_KEYS}
+        # H-4: Set HOME to a dedicated temp dir so the subprocess cannot
+        # browse ~/.claude/ or other user-home secrets if prompt-injected.
+        _claude_home = Path(
+            tempfile.mkdtemp(prefix="lyra_claude_home_")
+        )
+        env["HOME"] = str(_claude_home)
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,

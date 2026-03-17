@@ -25,7 +25,8 @@ if TYPE_CHECKING:
 
 def require_admin(
     msg: InboundMessage,
-    admin_user_ids: set[str] | None = None,  # TODO: remove in #315 — all callers use 1-arg form  # noqa: E501
+    admin_user_ids: set[str]
+    | None = None,  # TODO: remove in #315 — all callers use 1-arg form  # noqa: E501
 ) -> "Response | None":
     """Return a denied Response if the user is not an admin, else None.
 

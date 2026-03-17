@@ -65,7 +65,9 @@ class TestResolve:
         store = MagicMock()
         store.check.return_value = TrustLevel.BLOCKED
         auth = Authenticator(
-            store=store, role_map={}, default=TrustLevel.BLOCKED,
+            store=store,
+            role_map={},
+            default=TrustLevel.BLOCKED,
             public_commands=["/join"],
         )
         identity = auth.resolve("u1", command="/join")
@@ -118,11 +120,13 @@ class TestFacade:
 
     def test_auth_middleware_is_authenticator(self) -> None:
         from lyra.core.auth import AuthMiddleware
+
         assert AuthMiddleware is Authenticator
 
     def test_sentinels_available(self) -> None:
         from lyra.core.auth import _ALLOW_ALL as facade_allow
         from lyra.core.auth import _DENY_ALL as facade_deny
+
         assert facade_allow is _ALLOW_ALL
         assert facade_deny is _DENY_ALL
 

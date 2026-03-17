@@ -74,7 +74,10 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
             await stores.auth.seed_from_config(synthetic, "discord")
 
         tg_bot_auths, dc_bot_auths = _build_bot_auths(
-            raw_config, tg_multi_cfg, dc_multi_cfg, stores.auth,
+            raw_config,
+            tg_multi_cfg,
+            dc_multi_cfg,
+            stores.auth,
             frozenset(admin_user_ids),
         )
         log.info("Authenticator: %d admin_user_id(s) configured", len(admin_user_ids))
@@ -224,7 +227,10 @@ def _build_bot_auths(
     try:
         for bot_cfg in tg_multi_cfg.bots:
             auth = AuthMiddleware.from_bot_config(
-                raw_config, "telegram", bot_cfg.bot_id, store=auth_store,
+                raw_config,
+                "telegram",
+                bot_cfg.bot_id,
+                store=auth_store,
                 admin_user_ids=admin_user_ids,
             )
             if auth is None:
@@ -237,7 +243,10 @@ def _build_bot_auths(
 
         for bot_cfg in dc_multi_cfg.bots:
             auth = AuthMiddleware.from_bot_config(
-                raw_config, "discord", bot_cfg.bot_id, store=auth_store,
+                raw_config,
+                "discord",
+                bot_cfg.bot_id,
+                store=auth_store,
                 admin_user_ids=admin_user_ids,
             )
             if auth is None:

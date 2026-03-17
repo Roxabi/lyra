@@ -183,13 +183,9 @@ class CommandRouter:
                 self._msg_manager,
             )
         if command_name == "/circuit":
-            return builtin_commands.circuit_status(
-                msg, self._circuit_registry
-            )
+            return builtin_commands.circuit_status(msg, self._circuit_registry)
         if command_name == "/routing":
-            return builtin_commands.routing_status(
-                msg, self._smart_routing
-            )
+            return builtin_commands.routing_status(msg, self._smart_routing)
         if command_name == "/stop":
             if pool is not None:
                 pool.cancel()

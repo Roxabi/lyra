@@ -162,7 +162,8 @@ async def handle_voice_message(adapter: TelegramAdapter, msg: Any) -> None:
 
     # is_admin not propagated to InboundAudio — InboundAudio.is_admin is deferred (see #315)  # noqa: E501
     hub_audio = normalize_audio(
-        adapter, msg,
+        adapter,
+        msg,
         audio_bytes=audio_bytes,
         mime_type="audio/ogg",
         trust_level=identity.trust_level,

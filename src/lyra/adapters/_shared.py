@@ -311,7 +311,8 @@ class TypingTaskManager:
         if existing and not existing.done():
             existing.cancel()
         self._tasks[chat_id] = asyncio.create_task(
-            coro_factory(), name=f"typing:{chat_id}"  # type: ignore[arg-type]
+            coro_factory(),  # type: ignore[arg-type]
+            name=f"typing:{chat_id}",
         )
 
     def cancel(self, chat_id: int) -> None:

@@ -15,7 +15,7 @@ Lyra uses two types of configuration files with distinct responsibilities:
 | `~/.lyra/auth.db` | Runtime DB | No | Agent registry (SQLite, written by `lyra agent` CLI) |
 | `~/.lyra/agents/<name>.toml` | Seed source | No | Agent seed: imported into DB by `lyra agent init` |
 | `src/lyra/agents/<name>.toml` | Seed source | Yes | Agent seed: system defaults, imported into DB |
-| `src/lyra/plugins/<name>/plugin.toml` | System data | Yes | Plugin manifest: commands, handlers |
+| `src/lyra/commands/<name>/plugin.toml` | System data | Yes | Plugin manifest: commands, handlers |
 | `src/lyra/config/messages.toml` | System data | Yes | i18n strings |
 | `pyproject.toml` | System data | Yes | Package metadata, dependencies, tool config |
 
@@ -177,11 +177,11 @@ enabled = ["echo"]
 
 **What does NOT belong here:** `cwd`, `workspaces` — machine-specific, live in `config.toml [defaults]`.
 
-> **Note:** `lyra agent create` currently writes a TOML file and prompts you to run `lyra agent init`. A future sprint will make `create` write directly to the DB.
+> **Note:** `lyra agent create` writes directly to the DB via `AgentStore.upsert()`. No TOML file is created and no `lyra agent init` step is required.
 
 ---
 
-## `src/lyra/plugins/<name>/plugin.toml` — Plugin manifest (versioned)
+## `src/lyra/commands/<name>/plugin.toml` — Plugin manifest (versioned)
 
 ```toml
 name = "echo"

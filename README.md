@@ -149,7 +149,7 @@ lyra agent edit <name>            # edit an agent interactively in DB
 lyra agent validate <name>        # validate agent schema + constraints
 lyra agent assign <name> --platform telegram --bot <bot_id>
 lyra agent delete <name>          # refuses if bot still assigned
-lyra agent create                 # interactive wizard — create a new agent TOML
+lyra agent create                 # create a new agent (writes directly to DB)
 lyra config show                  # display parsed config.toml
 lyra config validate              # check tokens + env vars are set
 lyra --version
@@ -210,7 +210,7 @@ src/lyra/
   llm/        — LlmProvider protocol, drivers (CLI, SDK), smart routing
   stt/        — STTService (faster-whisper)
   tts/        — TTS pipeline (voicecli, OGG/Opus)
-  plugins/    — plugin handlers (echo, pairing, search)
+  commands/   — command handlers (echo, pairing, search)
   monitoring/ — health checks + escalation
 tests/        — pytest-asyncio + pytest-cov (core, adapters, llm, cli)
 docs/         — ARCHITECTURE.md, ROADMAP.md, QUICKSTART.md, 24 ADRs

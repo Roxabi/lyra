@@ -171,7 +171,7 @@ Adapter.on_message()
 ```
 [intake through CommandRouter]
   → Router checks enabled_plugins
-    → PluginLoader loads plugin TOML: /echo → handler="cmd_echo"
+    → CommandLoader loads plugin TOML: /echo → handler="cmd_echo"
     → dynamic import: handlers.cmd_echo(msg, pool, args=["hello", "world"])
   → plugin handler processes and returns Response
   → dispatch_response()
@@ -692,7 +692,7 @@ After response generated:
 | 3 | Markdown formatting | telegramify_markdown / Discord native | 1.3 |
 | 4 | Typing indicator | send_chat_action loop / channel.typing() | 1.4 |
 | 5 | Builtin command | CommandParser → CommandRouter → handler | 2.1 |
-| 6 | Plugin command | PluginLoader → dynamic import → handler | 2.2 |
+| 6 | Plugin command | CommandLoader → dynamic import → handler | 2.2 |
 | 7 | Session command | Isolated pool → LLM → vault | 2.3 |
 | 8 | Bare URL rewrite | Regex → `/add` rewrite → session handler | 2.4 |
 | 9 | Workspace switch | `/folder` → CliPool cwd override → respawn | 2.5 |

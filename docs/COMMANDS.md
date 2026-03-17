@@ -32,7 +32,7 @@ source .venv/bin/activate
 
 | Command | Description |
 |---------|-------------|
-| `lyra agent create <name>` | Scaffold a new agent TOML |
+| `lyra agent create <name>` | Create a new agent (writes directly to DB) |
 | `lyra agent list` | List all discovered agents |
 | `lyra agent validate [<name>]` | Validate agent TOML config(s) |
 
@@ -376,7 +376,7 @@ Lyra: ⚠ Command timed out.
 Built-in commands are implemented in `src/lyra/core/builtin_commands.py` and workspace commands in `src/lyra/core/workspace_commands.py`. Plugin commands are declared in each plugin's `plugin.toml`:
 
 ```toml
-# src/lyra/plugins/echo/plugin.toml
+# src/lyra/commands/echo/plugin.toml
 
 [[commands]]
 name = "echo"

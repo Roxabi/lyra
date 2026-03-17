@@ -145,7 +145,7 @@ system = ""
         agent.name = "other"
         assert agent.name == "other"
 
-    def test_plugins_enabled_from_toml(self, tmp_path: Path) -> None:
+    def test_commands_enabled_from_toml(self, tmp_path: Path) -> None:
         # Arrange
         toml_content = """
 [prompt]
@@ -160,9 +160,9 @@ enabled = ["echo"]
         agent = load_agent_config("testagent", agents_dir=tmp_path)
 
         # Assert
-        assert agent.plugins_enabled == ("echo",)
+        assert agent.commands_enabled == ("echo",)
 
-    def test_plugins_enabled_defaults_to_empty(self, tmp_path: Path) -> None:
+    def test_commands_enabled_defaults_to_empty(self, tmp_path: Path) -> None:
         # Arrange — absent [plugins] section → empty list (default-open)
         toml_content = """
 [prompt]
@@ -174,7 +174,7 @@ system = "test"
         agent = load_agent_config("testagent", agents_dir=tmp_path)
 
         # Assert
-        assert agent.plugins_enabled == ()
+        assert agent.commands_enabled == ()
 
     def test_cwd_absent_defaults_to_none(self, tmp_path: Path) -> None:
         toml_content = """

@@ -1,6 +1,6 @@
-"""Plugin loader for Lyra hub (issue #106).
+"""Command loader for Lyra hub (issue #106).
 
-Discovers TOML manifests in the plugins directory, loads async Python handler
+Discovers TOML manifests in the commands directory, loads async Python handler
 modules, and provides command dispatch to CommandRouter.
 """
 
@@ -79,7 +79,7 @@ def _parse_manifest(data: dict) -> PluginManifest:
     )
 
 
-class PluginLoader:
+class CommandLoader:
     """Discovers and loads directory-based plugins with TOML manifests."""
 
     def __init__(self, plugins_dir: Path) -> None:
@@ -157,7 +157,7 @@ class PluginLoader:
             )
 
         spec = importlib.util.spec_from_file_location(
-            f"lyra.plugins.{name}.handlers", handlers_path
+            f"lyra.commands.{name}.handlers", handlers_path
         )
         if spec is None or spec.loader is None:
             raise ValueError(
@@ -165,7 +165,7 @@ class PluginLoader:
                 f"importlib spec is None for {handlers_path}"
             )
         module = importlib.util.module_from_spec(spec)
-        sys.modules[f"lyra.plugins.{name}.handlers"] = module
+        sys.modules[f"lyra.commands.{name}.handlers"] = module
         spec.loader.exec_module(module)  # type: ignore[union-attr]  # guarded by None check above
 
         handlers: dict[str, AsyncHandler] = {}
@@ -210,7 +210,7 @@ class PluginLoader:
                 f"Plugin '{name}': handlers.py resolves outside plugins directory"
             )
         spec = importlib.util.spec_from_file_location(
-            f"lyra.plugins.{name}.handlers", handlers_path
+            f"lyra.commands.{name}.handlers", handlers_path
         )
         if spec is None or spec.loader is None:
             raise ValueError(

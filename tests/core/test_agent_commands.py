@@ -1,4 +1,4 @@
-"""Tests for lyra.core.agent_plugins — PluginReloadManager hash verification."""
+"""Tests for lyra.core.agent_commands — CommandReloadManager hash verification."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from lyra.core.agent_plugins import PluginReloadManager, _file_sha256
+from lyra.core.agent_commands import CommandReloadManager, _file_sha256
 
 # ---------------------------------------------------------------------------
 # _file_sha256
@@ -35,7 +35,7 @@ class TestFileSha256:
 
 
 # ---------------------------------------------------------------------------
-# PluginReloadManager — forged mtime attack (M-11)
+# CommandReloadManager — forged mtime attack (M-11)
 # ---------------------------------------------------------------------------
 
 
@@ -56,7 +56,7 @@ def _make_plugin(plugins_dir: Path, name: str, code: str) -> Path:
     return handlers
 
 
-class TestPluginReloadHashVerification:
+class TestCommandReloadHashVerification:
     """M-11: forged mtime should NOT trigger reload; content change should."""
 
     def test_forged_mtime_does_not_reload(self, tmp_path: Path) -> None:
@@ -72,9 +72,9 @@ class TestPluginReloadHashVerification:
         loader.discover.return_value = []
         loader.load.return_value = None
         config = MagicMock()
-        config.plugins_enabled = ["echo"]
+        config.commands_enabled = ["echo"]
 
-        mgr = PluginReloadManager(config, loader, plugins_dir)
+        mgr = CommandReloadManager(config, loader, plugins_dir)
         loader.reload.reset_mock()
 
         # Advance mtime without changing content
@@ -101,9 +101,9 @@ class TestPluginReloadHashVerification:
         loader.discover.return_value = []
         loader.load.return_value = None
         config = MagicMock()
-        config.plugins_enabled = ["echo"]
+        config.commands_enabled = ["echo"]
 
-        mgr = PluginReloadManager(config, loader, plugins_dir)
+        mgr = CommandReloadManager(config, loader, plugins_dir)
         loader.reload.reset_mock()
 
         # Change content AND advance mtime

@@ -15,21 +15,21 @@ if TYPE_CHECKING:
     from .agent_store import AgentStore
     from .memory import MemoryManager
 
+from .agent_commands import CommandReloadManager
 from .agent_config import Agent, _find_agent_dir  # noqa: F401 — Agent re-exported
 from .agent_loader import load_agent_config  # noqa: F401 — re-export for tests
-from .agent_plugins import PluginReloadManager
 from .circuit_breaker import CircuitRegistry
+from .command_loader import CommandLoader
 from .command_router import CommandRouter
 from .message import InboundMessage, Response
 from .messages import MessageManager
-from .plugin_loader import PluginLoader
 from .pool import Pool
 from .session_lifecycle import MODEL_CONTEXT_TOKENS, SessionManager
 from .trust import TrustLevel
 
 log = logging.getLogger(__name__)
 
-_PLUGINS_DIR = Path(__file__).resolve().parent.parent / "plugins"
+_COMMANDS_DIR = Path(__file__).resolve().parent.parent / "commands"
 
 
 class AgentBase(ABC, SessionManager):
@@ -67,10 +67,10 @@ class AgentBase(ABC, SessionManager):
         self._stt = stt  # ADR-013: agent owns temp file cleanup
         self._tts = tts
         self._smart_routing_decorator = smart_routing_decorator
-        self._plugins_dir = plugins_dir or _PLUGINS_DIR
-        self._plugin_loader = PluginLoader(self._plugins_dir)
-        self._plugin_mgr = PluginReloadManager(
-            config, self._plugin_loader, self._plugins_dir
+        self._plugins_dir = plugins_dir or _COMMANDS_DIR
+        self._command_loader = CommandLoader(self._plugins_dir)
+        self._command_mgr = CommandReloadManager(
+            config, self._command_loader, self._plugins_dir
         )
         self._rebuild_command_router()
         if self._tts is not None:
@@ -79,26 +79,26 @@ class AgentBase(ABC, SessionManager):
         self._memory: "MemoryManager | None" = None
         self._task_registry: set | None = None
 
-    # -- Backward-compatible accessors (plugin state owned by _plugin_mgr) --
+    # -- Backward-compatible accessors (plugin state owned by _command_mgr) --
 
     @property
     def _effective_plugins(self) -> list[str]:  # noqa: D401
-        return self._plugin_mgr.effective_plugins
+        return self._command_mgr.effective_plugins
 
     @_effective_plugins.setter
     def _effective_plugins(self, value: list[str]) -> None:
-        self._plugin_mgr.effective_plugins = value
+        self._command_mgr.effective_plugins = value
 
     @property
     def _plugin_mtimes(self) -> dict[str, float]:  # noqa: D401
-        return self._plugin_mgr.plugin_mtimes
+        return self._command_mgr.plugin_mtimes
 
     @_plugin_mtimes.setter
     def _plugin_mtimes(self, value: dict[str, float]) -> None:
-        self._plugin_mgr.plugin_mtimes = value
+        self._command_mgr.plugin_mtimes = value
 
     def _record_plugin_mtimes(self) -> dict[str, float]:
-        return self._plugin_mgr._record_plugin_mtimes()
+        return self._command_mgr._record_plugin_mtimes()
 
     @property
     def name(self) -> str:
@@ -142,16 +142,17 @@ class AgentBase(ABC, SessionManager):
 
     def _maybe_reload_plugins(self) -> None:
         """Check plugin files for changes and rebuild router if needed."""
-        if self._plugin_mgr.reload_plugins():
+        if self._command_mgr.reload_plugins():
             self._rebuild_command_router()
 
     def _rebuild_command_router(self) -> None:
         self.command_router = CommandRouter(
-            self._plugin_loader,
-            self._plugin_mgr.effective_plugins,
+            self._command_loader,
+            self._command_mgr.effective_plugins,
             circuit_registry=self._circuit_registry,
             msg_manager=self._msg_manager,
             smart_routing_decorator=self._smart_routing_decorator,
+            patterns=self.config.patterns,
             **self._build_router_kwargs(),
         )
         self._register_session_commands()

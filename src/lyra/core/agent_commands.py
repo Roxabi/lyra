@@ -1,7 +1,7 @@
-"""Plugin reload manager for AgentBase (extracted from agent.py).
+"""Command reload manager for AgentBase (extracted from agent.py).
 
 Encapsulates plugin discovery, loading, mtime tracking, and hot-reload
-detection. AgentBase delegates all plugin lifecycle to this class.
+detection. AgentBase delegates all command lifecycle to this class.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .agent_config import Agent
-    from .plugin_loader import PluginLoader
+    from .command_loader import CommandLoader
 
 log = logging.getLogger(__name__)
 
@@ -26,14 +26,14 @@ def _file_sha256(path: Path) -> str:
         return ""
 
 
-class PluginReloadManager:
+class CommandReloadManager:
     """Owns plugin lifecycle: discovery, loading, mtime tracking, hot-reload."""
 
     def __init__(
-        self, config: Agent, plugin_loader: PluginLoader, plugins_dir: Path
+        self, config: Agent, command_loader: CommandLoader, plugins_dir: Path
     ) -> None:
         self._config = config
-        self._plugin_loader = plugin_loader
+        self._command_loader = command_loader
         self._plugins_dir = plugins_dir
         self.effective_plugins: list[str] = self._init_plugins()
         self.plugin_mtimes: dict[str, float] = self._record_plugin_mtimes()
@@ -46,19 +46,19 @@ class PluginReloadManager:
         If a plugin has enabled=false in its manifest, load() raises ValueError
         and the plugin is skipped -- this enforces SC-9 regardless of agent config.
         """
-        if self._config.plugins_enabled:
-            names = list(self._config.plugins_enabled)
+        if self._config.commands_enabled:
+            names = list(self._config.commands_enabled)
         else:
             # default-open: load all manifest.enabled=True plugins discovered in
             # plugins_dir. Security assumption: plugins_dir is a trusted directory
             # controlled by the operator. Do not point plugins_dir at a
             # world-writable or network-accessible path.
-            manifests = self._plugin_loader.discover()
+            manifests = self._command_loader.discover()
             names = [m.name for m in manifests if m.enabled]
         effective: list[str] = []
         for name in names:
             try:
-                self._plugin_loader.load(name)
+                self._command_loader.load(name)
                 effective.append(name)
             except ValueError as exc:
                 log.warning("Skipping plugin %r: %s", name, exc)
@@ -107,7 +107,7 @@ class PluginReloadManager:
                 self.plugin_mtimes[name] = new_mtime
                 continue
             try:
-                self._plugin_loader.reload(name)
+                self._command_loader.reload(name)
                 self.plugin_mtimes[name] = new_mtime
                 self.plugin_hashes[name] = new_hash
                 changed = True

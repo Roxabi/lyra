@@ -7,10 +7,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from lyra.commands.search.handlers import cmd_search
 from lyra.core.message import InboundMessage, Response
 from lyra.core.pool import Pool
 from lyra.core.trust import TrustLevel
-from lyra.plugins.search.handlers import cmd_search
 
 
 def make_message(text: str = "/search hello") -> InboundMessage:

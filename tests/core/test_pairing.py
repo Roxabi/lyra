@@ -18,6 +18,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from lyra.commands.pairing.handlers import cmd_invite, cmd_join, cmd_unpair
+
 # This import will fail until S1 is implemented — expected in RED phase.
 from lyra.core.auth_store import AuthStore
 from lyra.core.message import (
@@ -33,7 +35,6 @@ from lyra.core.pairing import (
 )
 from lyra.core.pool import Pool
 from lyra.core.trust import TrustLevel
-from lyra.plugins.pairing.handlers import cmd_invite, cmd_join, cmd_unpair
 
 # ---------------------------------------------------------------------------
 # Helpers / fixtures

@@ -188,7 +188,7 @@ def _assemble_agent(  # noqa: PLR0913 — one param per Agent field
     model_config: ModelConfig,
     permissions: tuple[str, ...],
     commands: dict[str, "CommandConfig"],
-    plugins_enabled: tuple[str, ...],
+    commands_enabled: tuple[str, ...],
     persona: PersonaConfig | None,
     i18n_language: str,
     smart_routing: SmartRoutingConfig | None,
@@ -197,6 +197,7 @@ def _assemble_agent(  # noqa: PLR0913 — one param per Agent field
     tts: AgentTTSConfig | None,
     stt: AgentSTTConfig | None,
     voice: "AgentVoiceConfig | None" = None,
+    patterns: dict[str, bool] | None = None,
 ) -> Agent:
     """Instantiate an Agent from already-resolved fields.
 
@@ -210,7 +211,7 @@ def _assemble_agent(  # noqa: PLR0913 — one param per Agent field
         model_config=model_config,
         permissions=permissions,
         commands=commands,
-        plugins_enabled=plugins_enabled,
+        commands_enabled=commands_enabled,
         persona=persona,
         i18n_language=i18n_language,
         smart_routing=smart_routing,
@@ -219,4 +220,5 @@ def _assemble_agent(  # noqa: PLR0913 — one param per Agent field
         tts=tts,
         stt=stt,
         voice=voice,
+        patterns=patterns or {},
     )

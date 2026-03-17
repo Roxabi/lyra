@@ -554,12 +554,12 @@ system = "test"
         )
 
         # Manually load echo plugin and wire it
-        agent._plugin_loader.load("echo")
+        agent._command_loader.load("echo")
         agent._effective_plugins = ["echo"]
         agent._plugin_mtimes = agent._record_plugin_mtimes()
-        agent._plugin_mgr.plugin_hashes = agent._plugin_mgr._record_plugin_hashes()
+        agent._command_mgr.plugin_hashes = agent._command_mgr._record_plugin_hashes()
         agent.command_router = CommandRouter(
-            agent._plugin_loader,
+            agent._command_loader,
             agent._effective_plugins,
             msg_manager=mm,
         )

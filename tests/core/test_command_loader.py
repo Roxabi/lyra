@@ -1,7 +1,4 @@
-"""Tests for lyra.core.plugin_loader (issue #106).
-
-RED phase — tests import from lyra.core.plugin_loader which may not exist yet.
-All tests are expected to FAIL until the backend-dev GREEN phase completes.
+"""Tests for lyra.core.command_loader (issue #106, renamed #345).
 
 Covers:
   TestDiscover         — discovery of plugin manifests from the filesystem
@@ -19,7 +16,7 @@ from types import ModuleType
 
 import pytest
 
-from lyra.core.plugin_loader import LoadedPlugin, PluginLoader, PluginManifest
+from lyra.core.command_loader import CommandLoader, LoadedPlugin, PluginManifest
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -64,7 +61,7 @@ class TestDiscover:
     def test_discover_finds_valid_plugin(self, tmp_path: Path) -> None:
         # Arrange
         make_plugin(tmp_path, "myplugin")
-        loader = PluginLoader(plugins_dir=tmp_path)
+        loader = CommandLoader(plugins_dir=tmp_path)
 
         # Act
         manifests = loader.discover()
@@ -76,7 +73,7 @@ class TestDiscover:
     def test_discover_skips_dir_without_toml(self, tmp_path: Path) -> None:
         # Arrange — a subdirectory with no plugin.toml
         (tmp_path / "notaplugin").mkdir()
-        loader = PluginLoader(plugins_dir=tmp_path)
+        loader = CommandLoader(plugins_dir=tmp_path)
 
         # Act
         manifests = loader.discover()
@@ -89,7 +86,7 @@ class TestDiscover:
         plugin_dir = tmp_path / "broken"
         plugin_dir.mkdir()
         (plugin_dir / "plugin.toml").write_text("name = [unclosed bracket\n")
-        loader = PluginLoader(plugins_dir=tmp_path)
+        loader = CommandLoader(plugins_dir=tmp_path)
 
         # Act + Assert — no exception raised; broken plugin silently skipped
         manifests = loader.discover()
@@ -106,7 +103,7 @@ class TestDiscover:
             'description = "test"\n'
             'handler = "fn"\n'
         )
-        loader = PluginLoader(plugins_dir=tmp_path)
+        loader = CommandLoader(plugins_dir=tmp_path)
 
         # Act + Assert — no exception raised; plugin without 'name' silently skipped
         manifests = loader.discover()
@@ -131,7 +128,7 @@ class TestDiscover:
         (plugin_dir / "handlers.py").write_text(
             "async def do_ping(msg, pool, args): return 'pong'\n"
         )
-        loader = PluginLoader(plugins_dir=tmp_path)
+        loader = CommandLoader(plugins_dir=tmp_path)
 
         # Act
         manifests = loader.discover()
@@ -154,7 +151,7 @@ class TestDiscover:
         # Arrange
         make_plugin(tmp_path, "alpha")
         make_plugin(tmp_path, "beta")
-        loader = PluginLoader(plugins_dir=tmp_path)
+        loader = CommandLoader(plugins_dir=tmp_path)
 
         # Act
         manifests = loader.discover()
@@ -167,7 +164,7 @@ class TestDiscover:
 
     def test_discover_empty_plugins_dir(self, tmp_path: Path) -> None:
         # Arrange — empty directory
-        loader = PluginLoader(plugins_dir=tmp_path)
+        loader = CommandLoader(plugins_dir=tmp_path)
 
         # Act
         manifests = loader.discover()
@@ -187,7 +184,7 @@ class TestLoad:
     def test_load_resolves_handler(self, tmp_path: Path) -> None:
         # Arrange
         make_plugin(tmp_path, "echoplugin", handler_name="do_echo", cmd_name="echo")
-        loader = PluginLoader(plugins_dir=tmp_path)
+        loader = CommandLoader(plugins_dir=tmp_path)
 
         # Act
         loaded = loader.load("echoplugin")
@@ -210,7 +207,7 @@ class TestLoad:
         (plugin_dir / "handlers.py").write_text(
             "async def some_other_fn(msg, pool, args): return 'ok'\n"
         )
-        loader = PluginLoader(plugins_dir=tmp_path)
+        loader = CommandLoader(plugins_dir=tmp_path)
 
         # Act + Assert
         with pytest.raises(ValueError, match="not found or not callable"):
@@ -228,7 +225,7 @@ class TestLoad:
             'handler = "MY_CONSTANT"\n'
         )
         (plugin_dir / "handlers.py").write_text('MY_CONSTANT = "not a function"\n')
-        loader = PluginLoader(plugins_dir=tmp_path)
+        loader = CommandLoader(plugins_dir=tmp_path)
 
         # Act + Assert
         with pytest.raises(ValueError, match="not found or not callable"):
@@ -237,7 +234,7 @@ class TestLoad:
     def test_load_populates_loaded_dict(self, tmp_path: Path) -> None:
         # Arrange
         make_plugin(tmp_path, "myplugin")
-        loader = PluginLoader(plugins_dir=tmp_path)
+        loader = CommandLoader(plugins_dir=tmp_path)
 
         # Act
         loader.load("myplugin")
@@ -249,7 +246,7 @@ class TestLoad:
     def test_load_returns_loaded_plugin_with_correct_name(self, tmp_path: Path) -> None:
         # Arrange
         make_plugin(tmp_path, "testplugin")
-        loader = PluginLoader(plugins_dir=tmp_path)
+        loader = CommandLoader(plugins_dir=tmp_path)
 
         # Act
         loaded = loader.load("testplugin")
@@ -263,7 +260,7 @@ class TestLoad:
     def test_load_handlers_dict_keyed_with_slash_prefix(self, tmp_path: Path) -> None:
         # Arrange
         make_plugin(tmp_path, "slashplugin", handler_name="run_cmd", cmd_name="run")
-        loader = PluginLoader(plugins_dir=tmp_path)
+        loader = CommandLoader(plugins_dir=tmp_path)
 
         # Act
         loaded = loader.load("slashplugin")
@@ -291,7 +288,7 @@ class TestLoad:
             'handler = "cmd_fn"\n'
         )
         (plugin_dir / "handlers.py").symlink_to(evil_dir / "handlers.py")
-        loader = PluginLoader(plugins_dir=tmp_path / "plugins")
+        loader = CommandLoader(plugins_dir=tmp_path / "plugins")
 
         # Act + Assert — symlink escape is detected and rejected
         with pytest.raises(ValueError, match="resolves outside plugins directory"):
@@ -316,7 +313,7 @@ class TestLoad:
         plugins = tmp_path / "plugins"
         plugins.mkdir()
         (plugins / "evil").symlink_to(outside)
-        loader = PluginLoader(plugins_dir=plugins)
+        loader = CommandLoader(plugins_dir=plugins)
 
         # Act + Assert — symlinked directory escapes plugins_dir
         with pytest.raises(ValueError, match="escapes plugins directory"):
@@ -341,7 +338,7 @@ class TestLoad:
         (plugin_dir / "handlers.py").write_text(
             "async def cmd_fn(msg, pool, args): return 'ok'\n"
         )
-        loader = PluginLoader(plugins_dir=tmp_path / "plugins")
+        loader = CommandLoader(plugins_dir=tmp_path / "plugins")
 
         # Act + Assert — symlinked plugin.toml is detected and rejected
         with pytest.raises(ValueError, match="resolves outside plugins directory"):
@@ -368,7 +365,7 @@ class TestLoad:
             'handler = "cmd_fn"\n'
         )
         (plugin_dir / "handlers.py").symlink_to(intermediate)
-        loader = PluginLoader(plugins_dir=plugins)
+        loader = CommandLoader(plugins_dir=plugins)
 
         # Act + Assert — nested symlink chain is fully resolved and rejected
         with pytest.raises(ValueError, match="resolves outside plugins directory"):
@@ -387,7 +384,7 @@ class TestLoad:
         )
         handlers = plugin_dir / "handlers.py"
         handlers.symlink_to(handlers)  # circular
-        loader = PluginLoader(plugins_dir=tmp_path)
+        loader = CommandLoader(plugins_dir=tmp_path)
 
         # Act + Assert — circular symlink raises RuntimeError (ELOOP) from .resolve()
         with pytest.raises((OSError, RuntimeError)):
@@ -407,7 +404,7 @@ class TestLoad:
         (plugin_dir / "handlers.py").write_text(
             "async def cmd_fn(msg, pool, args): return 'ok'\n"
         )
-        loader = PluginLoader(plugins_dir=tmp_path)
+        loader = CommandLoader(plugins_dir=tmp_path)
 
         # Act + Assert — mismatched name is detected
         with pytest.raises(ValueError, match="mismatched name"):
@@ -415,7 +412,7 @@ class TestLoad:
 
     def test_load_raises_for_unknown_plugin_name(self, tmp_path: Path) -> None:
         # Arrange — no plugin named "ghost" exists
-        loader = PluginLoader(plugins_dir=tmp_path)
+        loader = CommandLoader(plugins_dir=tmp_path)
 
         # Act + Assert
         with pytest.raises((ValueError, FileNotFoundError, KeyError)):
@@ -434,7 +431,7 @@ class TestGetCommands:
         # Arrange — two plugins: only "alpha" is in the enabled list
         make_plugin(tmp_path, "alpha", handler_name="alpha_fn", cmd_name="alpha")
         make_plugin(tmp_path, "beta", handler_name="beta_fn", cmd_name="beta")
-        loader = PluginLoader(plugins_dir=tmp_path)
+        loader = CommandLoader(plugins_dir=tmp_path)
         loader.load("alpha")
         loader.load("beta")
 
@@ -448,7 +445,7 @@ class TestGetCommands:
     def test_get_commands_empty_enabled(self, tmp_path: Path) -> None:
         # Arrange
         make_plugin(tmp_path, "myplugin")
-        loader = PluginLoader(plugins_dir=tmp_path)
+        loader = CommandLoader(plugins_dir=tmp_path)
         loader.load("myplugin")
 
         # Act
@@ -460,7 +457,7 @@ class TestGetCommands:
     def test_get_commands_slash_prefixed_keys(self, tmp_path: Path) -> None:
         # Arrange — command name "echo" in plugin
         make_plugin(tmp_path, "echoplugin", handler_name="do_echo", cmd_name="echo")
-        loader = PluginLoader(plugins_dir=tmp_path)
+        loader = CommandLoader(plugins_dir=tmp_path)
         loader.load("echoplugin")
 
         # Act
@@ -473,7 +470,7 @@ class TestGetCommands:
     def test_get_commands_all_handlers_are_callable(self, tmp_path: Path) -> None:
         # Arrange
         make_plugin(tmp_path, "myplugin", handler_name="handler_fn", cmd_name="go")
-        loader = PluginLoader(plugins_dir=tmp_path)
+        loader = CommandLoader(plugins_dir=tmp_path)
         loader.load("myplugin")
 
         # Act
@@ -488,7 +485,7 @@ class TestGetCommands:
         make_plugin(tmp_path, "p1", handler_name="fn1", cmd_name="cmd1")
         make_plugin(tmp_path, "p2", handler_name="fn2", cmd_name="cmd2")
         make_plugin(tmp_path, "p3", handler_name="fn3", cmd_name="cmd3")
-        loader = PluginLoader(plugins_dir=tmp_path)
+        loader = CommandLoader(plugins_dir=tmp_path)
         loader.load("p1")
         loader.load("p2")
         loader.load("p3")
@@ -504,7 +501,7 @@ class TestGetCommands:
     def test_get_commands_ignores_unloaded_enabled_names(self, tmp_path: Path) -> None:
         # Arrange — enabled list references a plugin that was never load()ed
         make_plugin(tmp_path, "loaded_plugin", handler_name="fn", cmd_name="run")
-        loader = PluginLoader(plugins_dir=tmp_path)
+        loader = CommandLoader(plugins_dir=tmp_path)
         loader.load("loaded_plugin")
 
         # Act — "ghost" is enabled but was never loaded
@@ -536,7 +533,7 @@ class TestReload:
         (plugin_dir / "handlers.py").write_text(
             "async def greet_fn(msg, pool, args): return 'original'\n"
         )
-        loader = PluginLoader(plugins_dir=tmp_path)
+        loader = CommandLoader(plugins_dir=tmp_path)
         loader.load("hotplugin")
 
         original_handler = loader._loaded["hotplugin"].handlers["/greet"]
@@ -562,7 +559,7 @@ class TestReload:
     def test_reload_unknown_plugin_calls_load(self, tmp_path: Path) -> None:
         # Arrange — plugin exists on disk but has never been loaded
         make_plugin(tmp_path, "freshplugin", handler_name="go_fn", cmd_name="go")
-        loader = PluginLoader(plugins_dir=tmp_path)
+        loader = CommandLoader(plugins_dir=tmp_path)
         assert "freshplugin" not in loader._loaded
 
         # Act — reload on an unloaded plugin (equivalent to load)
@@ -578,7 +575,7 @@ class TestReload:
         make_plugin(
             tmp_path, "stableplugin", handler_name="stable_fn", cmd_name="stable"
         )
-        loader = PluginLoader(plugins_dir=tmp_path)
+        loader = CommandLoader(plugins_dir=tmp_path)
         loader.load("stableplugin")
         original_manifest = loader._loaded["stableplugin"].manifest
 
@@ -596,7 +593,7 @@ class TestReload:
         plugins = tmp_path / "plugins"
         plugins.mkdir()
         make_plugin(plugins, "hotplugin", handler_name="cmd_fn", cmd_name="cmd")
-        loader = PluginLoader(plugins_dir=plugins)
+        loader = CommandLoader(plugins_dir=plugins)
         loader.load("hotplugin")
 
         evil_dir = tmp_path / "outside"
@@ -636,7 +633,7 @@ class TestPerAgentConfig:
         (plugin_dir / "handlers.py").write_text(
             "async def fn(msg, pool, args): return 'ok'\n"
         )
-        loader = PluginLoader(plugins_dir=tmp_path)
+        loader = CommandLoader(plugins_dir=tmp_path)
 
         # Act
         manifests = loader.discover()
@@ -661,7 +658,7 @@ class TestPerAgentConfig:
         (plugin_dir / "handlers.py").write_text(
             "async def fn(msg, pool, args): return 'ok'\n"
         )
-        loader = PluginLoader(plugins_dir=tmp_path)
+        loader = CommandLoader(plugins_dir=tmp_path)
 
         # Act
         manifests = loader.discover()
@@ -694,7 +691,7 @@ class TestPerAgentConfig:
         (plugin_dir / "handlers.py").write_text(
             "async def d_fn(msg, pool, args): return 'nope'\n"
         )
-        loader = PluginLoader(plugins_dir=tmp_path)
+        loader = CommandLoader(plugins_dir=tmp_path)
 
         # Act — simulate AgentBase default-open logic
         manifests = loader.discover()
@@ -710,7 +707,7 @@ class TestPerAgentConfig:
     def test_plugin_manifest_is_frozen(self, tmp_path: Path) -> None:
         # Arrange
         make_plugin(tmp_path, "frozenplugin")
-        loader = PluginLoader(plugins_dir=tmp_path)
+        loader = CommandLoader(plugins_dir=tmp_path)
 
         # Act
         manifests = loader.discover()

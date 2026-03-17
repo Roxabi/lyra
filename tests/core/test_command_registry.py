@@ -14,13 +14,13 @@ from pathlib import Path
 
 import pytest
 
+from lyra.core.command_loader import CommandLoader
 from lyra.core.command_registry import (
     CommandParam,
     PlatformCommand,
     collect_commands,
 )
 from lyra.core.command_router import CommandRouter
-from lyra.core.plugin_loader import PluginLoader
 
 # ---------------------------------------------------------------------------
 # collect_commands() unit tests
@@ -97,9 +97,9 @@ class TestCollectCommands:
 class TestCommandMetadata:
     @pytest.fixture()
     def router(self, tmp_path: Path) -> CommandRouter:
-        loader = PluginLoader(tmp_path / "plugins")
+        loader = CommandLoader(tmp_path / "plugins")
         return CommandRouter(
-            plugin_loader=loader,
+            command_loader=loader,
             enabled_plugins=[],
         )
 
@@ -139,10 +139,10 @@ class TestCommandMetadata:
                     return Response(content=" ".join(args))
             """)
         )
-        loader = PluginLoader(tmp_path / "plugins")
+        loader = CommandLoader(tmp_path / "plugins")
         loader.discover()
         loader.load("echo")
-        router = CommandRouter(plugin_loader=loader, enabled_plugins=["echo"])
+        router = CommandRouter(command_loader=loader, enabled_plugins=["echo"])
         meta = router.command_metadata()
         names = [m[0] for m in meta]
         assert "/echo" in names
@@ -173,13 +173,13 @@ class TestGetCommandDescriptions:
                     return Response(content="foo")
             """)
         )
-        loader = PluginLoader(tmp_path / "plugins")
+        loader = CommandLoader(tmp_path / "plugins")
         loader.discover()
         loader.load("test_plugin")
         result = loader.get_command_descriptions(["test_plugin"])
         assert result == {"/foo": "Foo command"}
 
     def test_empty_when_not_enabled(self, tmp_path: Path) -> None:
-        loader = PluginLoader(tmp_path / "plugins")
+        loader = CommandLoader(tmp_path / "plugins")
         result = loader.get_command_descriptions([])
         assert result == {}

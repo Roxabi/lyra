@@ -277,9 +277,13 @@ class MessagePipeline:
 
         # Path 3: last-active-session (DMs / channel messages without threads).
         # Query TurnStore for the most recent session in this pool (#316).
+        # Skip for group chats to prevent cross-user session takeover
+        # (same guard rationale as Path 1, line 238).
+        if msg.platform_meta.get("is_group"):
+            return
         if pool.is_idle and self._hub._turn_store is not None:
             last_sid = await self._hub._turn_store.get_last_session(pool_id)
-            if last_sid is not None:
+            if last_sid is not None and last_sid != pool.session_id:
                 log.info(
                     "last-session-resume: resuming %r for pool %r",
                     last_sid,

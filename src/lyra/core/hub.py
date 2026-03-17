@@ -326,7 +326,7 @@ class Hub:
         async def _fallback_and_notify(adapter: ChannelAdapter) -> None:
             await adapter.send(msg, outbound)
             _dispatched = outbound.metadata.pop("_on_dispatched", None)
-            if _dispatched is not None:
+            if callable(_dispatched):
                 _dispatched(outbound)
 
         await self._route_outbound(
@@ -379,6 +379,11 @@ class Hub:
             full_text = "".join(text_parts)
             if full_text.strip():
                 await self.dispatch_response(msg, Response(content=full_text))
+            # Invoke _on_dispatched so the turn is logged even on voice path (#316).
+            if outbound is not None:
+                _dispatched = outbound.metadata.pop("_on_dispatched", None)
+                if callable(_dispatched):
+                    _dispatched(outbound)
             return
 
         if (
@@ -418,7 +423,7 @@ class Hub:
         # Invoke dispatch callback for fallback (non-queued) path (#316).
         if outbound is not None:
             _dispatched = outbound.metadata.pop("_on_dispatched", None)
-            if _dispatched is not None:
+            if callable(_dispatched):
                 _dispatched(outbound)
         self._last_processed_at = time.monotonic()
 

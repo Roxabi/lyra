@@ -432,7 +432,10 @@ class TestHotReloadPreservesMsgManager:
         self, tmp_path: Path
     ) -> None:
         """msg_manager survives CommandRouter rebuild on config hot-reload."""
+        from unittest.mock import MagicMock
+
         from lyra.core.agent import AgentBase, load_agent_config
+        from lyra.core.agent_models import AgentRow
         from lyra.core.message import InboundMessage, Response
         from lyra.core.pool import Pool
 
@@ -459,30 +462,28 @@ system = "You are a test assistant."
 
         config = load_agent_config("reloadtest", agents_dir=tmp_path)
         mm = MessageManager(TOML_PATH)
+
+        # Mock agent_store to simulate DB-based hot-reload (#343)
+        mock_store = MagicMock()
+        changed_row = AgentRow(
+            name="reloadtest",
+            backend="claude-cli",
+            model="claude-sonnet-4-5",
+            updated_at="2026-01-01T00:00:01",
+        )
+        mock_store.get.return_value = changed_row
+
         agent = ConcreteAgent(
             config,
             agents_dir=tmp_path,
             msg_manager=mm,
+            agent_store=mock_store,
         )
 
         # Verify msg_manager is wired into command_router initially
         assert agent.command_router._msg_manager is mm
 
-        # Act — write a different system prompt so new_config != self.config,
-        # which triggers CommandRouter rebuild in _maybe_reload()
         old_cr = agent.command_router
-        toml_path.write_bytes(b"""
-[agent]
-memory_namespace = "test"
-
-[model]
-backend = "claude-cli"
-
-[prompt]
-system = "You are a test assistant (reloaded)."
-""")
-        agent._last_mtime = 0.0  # make agent think the file changed
-
         agent._maybe_reload()
 
         # Assert — command_router rebuilt (new object); msg_manager preserved

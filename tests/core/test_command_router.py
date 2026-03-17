@@ -375,11 +375,6 @@ class TestHotReloadUpdatesCommands:
         os.utime(handlers_path, (new_mtime, new_mtime))
         agent._plugin_mtimes["echo"] = new_mtime - 2  # make it appear stale
 
-        # Force config mtime to appear changed so _maybe_reload checks plugins
-        new_toml_mtime = toml_path.stat().st_mtime + 1
-        os.utime(toml_path, (new_toml_mtime, new_toml_mtime))
-        agent._last_mtime = new_toml_mtime - 2
-
         agent._maybe_reload()
 
         # Assert — command_router was rebuilt and echo plugin commands are available

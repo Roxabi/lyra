@@ -30,6 +30,7 @@ from lyra.stt import is_whisper_noise
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable
 
+    from lyra.core.agent_store import AgentStore
     from lyra.stt import STTService
     from lyra.tts import TTSService
 
@@ -63,6 +64,7 @@ class SimpleAgent(AgentBase):
         tts: "TTSService | None" = None,
         runtime_config: RuntimeConfig | None = None,
         agents_dir: Path | None = None,
+        agent_store: "AgentStore | None" = None,
     ) -> None:
         resolved_agents_dir = agents_dir or _AGENTS_DIR
         rc = (
@@ -72,6 +74,8 @@ class SimpleAgent(AgentBase):
         )
         self._runtime_config_holder = RuntimeConfigHolder(rc)
         self._runtime_config_path = resolved_agents_dir / "lyra_runtime.toml"
+        # MUST be set before super().__init__() — _register_session_commands needs it
+        self._provider = provider
         super().__init__(
             config,
             agents_dir=agents_dir,
@@ -79,8 +83,8 @@ class SimpleAgent(AgentBase):
             msg_manager=msg_manager,
             stt=stt,
             tts=tts,
+            agent_store=agent_store,
         )
-        self._provider = provider
 
     def is_backend_alive(self, pool_id: str) -> bool:
         """Delegate to the LlmProvider's liveness check."""
@@ -97,7 +101,31 @@ class SimpleAgent(AgentBase):
             "runtime_config_holder": self._runtime_config_holder,
             "runtime_config_path": self._runtime_config_path,
             "workspaces": self.config.workspaces,
+            "session_driver": self._provider,
         }
+
+    def _register_session_commands(self) -> None:
+        """Register /add, /explain, /summarize as session commands on the router."""
+        from lyra.core.session_commands import cmd_add, cmd_explain, cmd_summarize
+
+        self.command_router.register_session_command(
+            "add",
+            cmd_add,
+            description="Save a URL to the vault: /add <url>",
+            timeout=60.0,
+        )
+        self.command_router.register_session_command(
+            "explain",
+            cmd_explain,
+            description="Explain a URL in plain language: /explain <url>",
+            timeout=60.0,
+        )
+        self.command_router.register_session_command(
+            "summarize",
+            cmd_summarize,
+            description="Summarize a URL in bullet points: /summarize <url>",
+            timeout=60.0,
+        )
 
     def _maybe_register_reset(self, pool: Pool) -> None:
         """Register a session reset callback on the pool the first time we process.

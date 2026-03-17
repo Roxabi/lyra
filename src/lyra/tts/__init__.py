@@ -190,18 +190,21 @@ class TTSService:
         agent_tts: "AgentTTSConfig | None",
         language: str | None,
         voice: str | None,
+        fallback_language: str | None = None,
     ) -> dict:
-        """Merge user pref > agent_tts > global defaults into generate_async kwargs.
+        """Merge user pref > agent_tts > fallback_language > global defaults.
 
         ``chunked`` is always ``True`` (safety hardcode, never overridden).
         """
         a = agent_tts
 
-        # language: user pref > agent_tts > global
+        # language: user pref > agent_tts > fallback_language (#343) > global
         if language is not None:
             effective_lang = language
         elif a is not None and a.language is not None:
             effective_lang = a.language
+        elif fallback_language is not None:
+            effective_lang = fallback_language
         else:
             effective_lang = self._language
 
@@ -252,12 +255,14 @@ class TTSService:
         agent_tts: "AgentTTSConfig | None" = None,
         language: str | None = None,
         voice: str | None = None,
+        fallback_language: str | None = None,
     ) -> SynthesisResult:
         """Synthesize text to speech.
 
         Merge order (high → low priority):
         - ``language`` / ``voice`` user-pref overrides (sentinel-based)
         - ``agent_tts`` per-agent config fields
+        - ``fallback_language`` agent-level default (#343)
         - ``self._engine / self._voice / self._language`` global defaults
 
         Returns OGG/Opus audio with duration_ms and waveform_b64 populated.
@@ -276,6 +281,7 @@ class TTSService:
                 agent_tts=agent_tts,
                 language=language,
                 voice=voice,
+                fallback_language=fallback_language,
             )
             result = await generate_async(text, **gen_kwargs)
 

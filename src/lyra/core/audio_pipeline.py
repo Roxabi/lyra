@@ -219,12 +219,14 @@ class AudioPipeline:
         text: str,
         *,
         agent_tts: "AgentTTSConfig | None" = None,
+        fallback_language: str | None = None,
     ) -> None:
         """Synthesize TTS audio for a voice response and dispatch it.
 
         Language/voice resolution uses PrefsStore when available; sentinels
         "detected" and "agent_default" are never forwarded to synthesize().
         ``agent_tts`` carries the per-agent TTS config (engine, voice, etc.).
+        ``fallback_language`` is the agent-level language default (#343).
         Errors are logged and swallowed — audio failure must not crash the hub.
         """
         assert self._hub._tts is not None  # caller guarantees this
@@ -260,7 +262,11 @@ class AudioPipeline:
                 lang = msg.language
 
             result = await self._hub._tts.synthesize(
-                text, agent_tts=agent_tts, language=lang, voice=voice
+                text,
+                agent_tts=agent_tts,
+                language=lang,
+                voice=voice,
+                fallback_language=fallback_language,
             )
             audio = OutboundAudio(
                 audio_bytes=result.audio_bytes,

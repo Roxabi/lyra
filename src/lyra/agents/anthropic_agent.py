@@ -23,6 +23,7 @@ from lyra.llm.base import LlmProvider
 from lyra.stt import is_whisper_noise
 
 if TYPE_CHECKING:
+    from lyra.core.agent_store import AgentStore
     from lyra.stt import STTService
     from lyra.tts import TTSService
 
@@ -47,6 +48,7 @@ class AnthropicAgent(AgentBase):
         tts: "TTSService | None" = None,
         agents_dir: Path | None = None,
         smart_routing_decorator: object | None = None,
+        agent_store: "AgentStore | None" = None,
     ) -> None:
         resolved_agents_dir: Path = agents_dir or _AGENTS_DIR
         rc = (
@@ -65,6 +67,7 @@ class AnthropicAgent(AgentBase):
             stt=stt,
             tts=tts,
             smart_routing_decorator=smart_routing_decorator,
+            agent_store=agent_store,
         )
         # Note: _register_session_commands() is called by AgentBase.__init__ via
         # the hook. No explicit call needed here.

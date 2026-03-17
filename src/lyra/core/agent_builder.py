@@ -11,6 +11,7 @@ from .agent_config import (
     Agent,
     AgentSTTConfig,
     AgentTTSConfig,
+    AgentVoiceConfig,
     Complexity,
     ModelConfig,
     PersonaConfig,
@@ -195,6 +196,7 @@ def _assemble_agent(  # noqa: PLR0913 — one param per Agent field
     workspaces: dict[str, Path],
     tts: AgentTTSConfig | None,
     stt: AgentSTTConfig | None,
+    voice: "AgentVoiceConfig | None" = None,
 ) -> Agent:
     """Instantiate an Agent from already-resolved fields.
 
@@ -216,4 +218,5 @@ def _assemble_agent(  # noqa: PLR0913 — one param per Agent field
         workspaces=workspaces,
         tts=tts,
         stt=stt,
+        voice=voice,
     )

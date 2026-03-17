@@ -986,7 +986,9 @@ class TestAgentRowToConfigTTSSTT:
         assert agent.tts.voice == "en-US-1"
         assert agent.tts.chunked is True
         assert agent.tts.chunk_size == 200
-        assert agent.stt is None
+        # #343: stt gets a default AgentSTTConfig with fallback_language bridged
+        assert agent.stt is not None
+        assert agent.stt.language_fallback == "en"
 
     def test_stt_json_deserializes_to_agent_stt_config(self):
         import json

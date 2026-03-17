@@ -177,6 +177,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
             msg_manager,
             stt_service,
             tts_service,
+            agent_store=stores.agent,
         )
         for ag in all_agents.values():
             hub.register_agent(ag)

@@ -47,6 +47,11 @@ _MIGRATE_AGENTS = [
     "ALTER TABLE agents ADD COLUMN i18n_language TEXT NOT NULL DEFAULT 'en'",
     "ALTER TABLE agents ADD COLUMN commands_json TEXT",
     "ALTER TABLE agents ADD COLUMN streaming INTEGER NOT NULL DEFAULT 0",
+    # #343 — DB-first agent config: inline persona, merge voice, fallback_language
+    "ALTER TABLE agents ADD COLUMN persona_json TEXT",
+    "ALTER TABLE agents ADD COLUMN voice_json TEXT",
+    "ALTER TABLE agents ADD COLUMN fallback_language TEXT NOT NULL DEFAULT 'en'",
+    "ALTER TABLE agents ADD COLUMN patterns_json TEXT",
 ]
 
 _CREATE_BOT_AGENT_MAP = """
@@ -75,14 +80,15 @@ _AGENT_COLUMNS = (
     "show_intermediate, smart_routing_json, plugins_json, "
     "memory_namespace, cwd, source, created_at, updated_at, "
     "tts_json, stt_json, skip_permissions, "
-    "permissions_json, workspaces_json, i18n_language, commands_json, streaming"
+    "permissions_json, workspaces_json, i18n_language, commands_json, streaming, "
+    "persona_json, voice_json, fallback_language, patterns_json"
 )
 
 _SELECT_AGENTS = f"SELECT {_AGENT_COLUMNS} FROM agents"
 
 _UPSERT_AGENT = (
     f"INSERT INTO agents ({_AGENT_COLUMNS}) "
-    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+    f"VALUES ({', '.join(['?'] * 26)}) "
     "ON CONFLICT(name) DO UPDATE SET "
     "backend=excluded.backend, "
     "model=excluded.model, "
@@ -102,6 +108,10 @@ _UPSERT_AGENT = (
     "i18n_language=excluded.i18n_language, "
     "commands_json=excluded.commands_json, "
     "streaming=excluded.streaming, "
+    "persona_json=COALESCE(excluded.persona_json, agents.persona_json), "
+    "voice_json=COALESCE(excluded.voice_json, agents.voice_json), "
+    "fallback_language=excluded.fallback_language, "
+    "patterns_json=COALESCE(excluded.patterns_json, agents.patterns_json), "
     "source=excluded.source, "
     "updated_at=?"
 )

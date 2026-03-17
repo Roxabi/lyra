@@ -143,7 +143,7 @@ class AgentTTSConfig:
     """Per-agent TTS defaults parsed from [tts] section in agent TOML.
 
     All fields optional — None means use voicecli global defaults.
-    Merged into TTSConfig at startup in __main__.py.
+    Passed per-call to TTSService.synthesize() at voice generation time.
     """
 
     engine: str | None = None
@@ -157,6 +157,8 @@ class AgentTTSConfig:
     crossfade: int | None = None
     chunked: bool | None = None
     chunk_size: int | None = None
+    exaggeration: float | None = None
+    cfg_weight: float | None = None
 
 
 @dataclass(frozen=True)

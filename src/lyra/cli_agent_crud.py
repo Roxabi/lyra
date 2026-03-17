@@ -179,6 +179,61 @@ def validate(  # noqa: C901, PLR0915
     asyncio.run(_run())
 
 
+_TTS_EDIT_FIELDS = (
+    "engine",
+    "voice",
+    "language",
+    "accent",
+    "personality",
+    "speed",
+    "emotion",
+    "exaggeration",
+    "cfg_weight",
+)
+
+_TTS_FLOAT_FIELDS = {"exaggeration", "cfg_weight"}
+
+
+def _edit_tts_section(tts_data: dict | None) -> dict | None:
+    """Interactively edit TTS fields.  Returns updated dict or None."""
+    initialized = False
+    if tts_data is None:
+        init = typer.prompt(
+            "  Initialize TTS config for this agent? [y/N]", default="N"
+        )
+        if init.strip().lower() not in ("y", "yes"):
+            return None
+        tts_data = {}
+        initialized = True
+
+    typer.echo("  --- TTS config ---")
+    changed = False
+    for fname in _TTS_EDIT_FIELDS:
+        current = tts_data.get(fname)
+        val = typer.prompt(
+            f"  {fname} (current: {current!r}, blank=keep, '-'=clear)",
+            default="",
+        )
+        v = val.strip()
+        if not v:
+            continue
+        if v in ("-", "none"):
+            tts_data.pop(fname, None)
+            changed = True
+            continue
+        if fname in _TTS_FLOAT_FIELDS:
+            try:
+                tts_data[fname] = float(v)
+            except ValueError:
+                typer.echo(f"    Invalid float for {fname}: {v!r} — skipped")
+                continue
+        else:
+            tts_data[fname] = v
+        changed = True
+
+    return tts_data if (changed or initialized) else None
+
+
 @agent_app.command(name="edit")
 def edit(name: str = typer.Argument(..., help="Agent name to edit.")) -> None:
     """Edit an agent config interactively (blank input = keep current value)."""
@@ -214,6 +269,15 @@ def edit(name: str = typer.Argument(..., help="Agent name to edit.")) -> None:
                         new_vals[field_name] = v.lower() in ("true", "1", "yes")
                     else:
                         new_vals[field_name] = v
+
+            # TTS editing sub-section
+            existing_tts = (
+                _json.loads(row.tts_json) if row.tts_json else None
+            )
+            updated_tts = _edit_tts_section(existing_tts)
+            if updated_tts is not None:
+                new_vals["tts_json"] = _json.dumps(updated_tts)
+
             if not new_vals:
                 typer.echo("No changes.")
                 return

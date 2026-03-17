@@ -11,6 +11,10 @@ import tempfile
 import wave
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from lyra.core.agent_config import AgentTTSConfig
 
 log = logging.getLogger(__name__)
 
@@ -179,13 +183,82 @@ class TTSService:
             self._voice,
         )
 
+    def _build_generate_kwargs(
+        self,
+        output: Path,
+        *,
+        agent_tts: "AgentTTSConfig | None",
+        language: str | None,
+        voice: str | None,
+    ) -> dict:
+        """Merge user pref > agent_tts > global defaults into generate_async kwargs.
+
+        ``chunked`` is always ``True`` (safety hardcode, never overridden).
+        """
+        a = agent_tts
+
+        # language: user pref > agent_tts > global
+        if language is not None:
+            effective_lang = language
+        elif a is not None and a.language is not None:
+            effective_lang = a.language
+        else:
+            effective_lang = self._language
+
+        # voice: user pref > agent_tts > global
+        if voice is not None:
+            effective_voice = voice
+        elif a is not None and a.voice is not None:
+            effective_voice = a.voice
+        else:
+            effective_voice = self._voice
+
+        # engine: agent_tts > global (no user-pref layer)
+        effective_engine = (
+            a.engine if a is not None and a.engine is not None else self._engine
+        )
+
+        kwargs: dict = {
+            "output": output,
+            "engine": effective_engine,
+            "voice": effective_voice,
+            "language": _normalize_language(effective_lang),
+            "chunked": True,
+            "mp3": False,
+        }
+
+        if a is not None:
+            for field_name in (
+                "accent",
+                "personality",
+                "speed",
+                "emotion",
+                "exaggeration",
+                "cfg_weight",
+                "segment_gap",
+                "crossfade",
+                "chunk_size",
+            ):
+                val = getattr(a, field_name, None)
+                if val is not None:
+                    kwargs[field_name] = val
+
+        return kwargs
+
     async def synthesize(
-        self, text: str, *, language: str | None = None, voice: str | None = None
+        self,
+        text: str,
+        *,
+        agent_tts: "AgentTTSConfig | None" = None,
+        language: str | None = None,
+        voice: str | None = None,
     ) -> SynthesisResult:
         """Synthesize text to speech.
 
-        language and voice override the instance defaults (self._language, self._voice)
-        when non-None. None falls back to the instance value from TTSConfig.
+        Merge order (high → low priority):
+        - ``language`` / ``voice`` user-pref overrides (sentinel-based)
+        - ``agent_tts`` per-agent config fields
+        - ``self._engine / self._voice / self._language`` global defaults
 
         Returns OGG/Opus audio with duration_ms and waveform_b64 populated.
         """
@@ -196,17 +269,13 @@ class TTSService:
         tmp_path = Path(tmp_str)
         extra_paths: list[Path] = []
         try:
-            effective_lang = language if language is not None else self._language
-            resolved_lang = _normalize_language(effective_lang)
-            result = await generate_async(
-                text,
-                output=tmp_path,
-                engine=self._engine,
-                voice=voice if voice is not None else self._voice,
-                language=resolved_lang,
-                chunked=True,  # always chunk — avoids Qwen crashes on large inputs
-                mp3=False,  # keep WAV; merge chunks then convert to OGG
+            gen_kwargs = self._build_generate_kwargs(
+                tmp_path,
+                agent_tts=agent_tts,
+                language=language,
+                voice=voice,
             )
+            result = await generate_async(text, **gen_kwargs)
 
             # Resolve merged WAV path from chunk results
             if result.chunk_paths:
@@ -233,8 +302,8 @@ class TTSService:
             log.info(
                 "TTS synthesis complete: engine=%s voice=%s"
                 " text_len=%d size=%d bytes duration=%s ms",
-                self._engine or "default",
-                self._voice or "default",
+                gen_kwargs.get("engine") or "default",
+                gen_kwargs.get("voice") or "default",
                 len(text),
                 len(audio_bytes),
                 duration_ms,

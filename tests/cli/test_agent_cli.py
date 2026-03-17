@@ -225,12 +225,13 @@ class TestAgentUnassignCommand:
 # ---------------------------------------------------------------------------
 
 
-def _seed_agent(
+def _seed_agent(  # noqa: PLR0913
     db_path: Path,
     name: str = "testagent",
     backend: str = "claude-cli",
     model: str = "claude-sonnet-4-6",
     smart_routing_json: str | None = None,
+    tts_json: str | None = None,
 ) -> None:
     """Insert an AgentRow into a fresh (or existing) DB at db_path."""
 
@@ -243,6 +244,7 @@ def _seed_agent(
                 backend=backend,
                 model=model,
                 smart_routing_json=smart_routing_json,
+                tts_json=tts_json,
             )
         )
         await store.close()
@@ -280,8 +282,8 @@ class TestAgentEditCommand:
         monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
         _seed_agent(tmp_path / "auth.db", name="edit-nochange")
 
-        # Act — send 8 blank lines (one per editable field)
-        blank_inputs = "\n".join([""] * 8) + "\n"
+        # Act — send 8 blank lines (editable fields) + "N" for TTS init prompt
+        blank_inputs = "\n".join([""] * 8 + ["N"]) + "\n"
         result = runner.invoke(agent_app, ["edit", "edit-nochange"], input=blank_inputs)
 
         # Assert
@@ -299,8 +301,8 @@ class TestAgentEditCommand:
 
         # Act — fields: backend, model, max_turns, persona,
         # show_intermediate, cwd, memory_namespace, i18n_language (blank = keep current)
-        # Provide new model on 2nd prompt; leave all others blank
-        inputs = "\n".join(["", "claude-opus-4-6", "", "", "", "", "", ""]) + "\n"
+        # Provide new model on 2nd prompt; leave all others blank; "N" for TTS init
+        inputs = "\n".join(["", "claude-opus-4-6", "", "", "", "", "", "", "N"]) + "\n"
         result = runner.invoke(agent_app, ["edit", "edit-update"], input=inputs)
 
         # Assert — command succeeded
@@ -427,3 +429,160 @@ class TestAgentValidateDBPath:
 
         # Assert
         assert result.exit_code != 0, result.output
+
+
+# ---------------------------------------------------------------------------
+# TestAgentEditTTS — per-agent TTS config editing (issue #280)
+# ---------------------------------------------------------------------------
+
+
+class TestAgentEditTTS:
+    """Tests for TTS sub-section in `lyra agent edit <name>` (issue #280)."""
+
+    def test_edit_existing_tts_updates_voice(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """T1: edit with pre-existing tts_json updates voice field in DB."""
+        # Arrange
+        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        db_path = tmp_path / "auth.db"
+        _seed_agent(
+            db_path,
+            name="tts-update",
+            tts_json='{"engine":"qwen","voice":"mia"}',
+        )
+
+        # Act — 8 blank scalars, then TTS fields:
+        # engine=blank (keep), voice=new-voice, rest blank
+        # TTS field order: engine, voice, language, accent, personality,
+        #                  speed, emotion, exaggeration, cfg_weight
+        tts_inputs = "\n".join(["", "new-voice"] + [""] * 7)
+        inputs = "\n".join([""] * 8) + "\n" + tts_inputs + "\n"
+        result = runner.invoke(agent_app, ["edit", "tts-update"], input=inputs)
+
+        # Assert — command succeeded
+        assert result.exit_code == 0, result.output
+
+        # Verify tts_json in DB has updated voice
+        import json
+
+        async def _check() -> AgentRow | None:
+            store = AgentStore(db_path=db_path)
+            await store.connect()
+            row = store.get("tts-update")
+            await store.close()
+            return row
+
+        updated = asyncio.run(_check())
+        assert updated is not None
+        tts = json.loads(updated.tts_json)  # type: ignore[arg-type]
+        assert tts["voice"] == "new-voice"
+        assert tts["engine"] == "qwen"  # unchanged
+
+    def test_edit_no_tts_init_y_sets_engine(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """T2: edit with no tts_json, answer 'y' to init, provide engine value."""
+        # Arrange
+        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        db_path = tmp_path / "auth.db"
+        _seed_agent(db_path, name="tts-init")
+
+        # Act — 8 blank scalars, "y" for TTS init, engine="qwen", rest blank
+        # After "y", prompts are: engine, voice, language, accent, personality,
+        #                          speed, emotion, exaggeration, cfg_weight
+        tts_inputs = "\n".join(["qwen"] + [""] * 8)
+        inputs = "\n".join([""] * 8) + "\n" + "y\n" + tts_inputs + "\n"
+        result = runner.invoke(agent_app, ["edit", "tts-init"], input=inputs)
+
+        # Assert — command succeeded
+        assert result.exit_code == 0, result.output
+
+        # Verify tts_json in DB contains the engine
+        import json
+
+        async def _check() -> AgentRow | None:
+            store = AgentStore(db_path=db_path)
+            await store.connect()
+            row = store.get("tts-init")
+            await store.close()
+            return row
+
+        updated = asyncio.run(_check())
+        assert updated is not None
+        tts = json.loads(updated.tts_json)  # type: ignore[arg-type]
+        assert tts.get("engine") == "qwen"
+
+    def test_edit_tts_float_fields_stored_as_float(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """T3: exaggeration and cfg_weight inputs are stored as floats, not strings."""
+        # Arrange
+        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        db_path = tmp_path / "auth.db"
+        _seed_agent(db_path, name="tts-float")
+
+        # Act — 8 blank scalars, "y" for TTS init, blank engine/voice/language/accent/
+        #       personality/speed/emotion, exaggeration="0.6", cfg_weight="0.3"
+        tts_inputs = "\n".join([""] * 7 + ["0.6", "0.3"])
+        inputs = "\n".join([""] * 8) + "\n" + "y\n" + tts_inputs + "\n"
+        result = runner.invoke(agent_app, ["edit", "tts-float"], input=inputs)
+
+        # Assert
+        assert result.exit_code == 0, result.output
+
+        import json
+
+        async def _check() -> AgentRow | None:
+            store = AgentStore(db_path=db_path)
+            await store.connect()
+            row = store.get("tts-float")
+            await store.close()
+            return row
+
+        updated = asyncio.run(_check())
+        assert updated is not None
+        tts = json.loads(updated.tts_json)  # type: ignore[arg-type]
+        assert isinstance(tts["exaggeration"], float)
+        assert isinstance(tts["cfg_weight"], float)
+        assert tts["exaggeration"] == pytest.approx(0.6)
+        assert tts["cfg_weight"] == pytest.approx(0.3)
+
+    def test_edit_invalid_float_input_skipped(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """T8: invalid float input for exaggeration is skipped, field unchanged."""
+        # Arrange
+        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        db_path = tmp_path / "auth.db"
+        _seed_agent(
+            db_path,
+            name="tts-badfloat",
+            tts_json='{"engine":"qwen"}',
+        )
+
+        # Act — 8 blank scalars, TTS section (existing): engine=blank, voice=blank,
+        #       language=blank, accent=blank, personality=blank, speed=blank,
+        #       emotion=blank, exaggeration="notafloat", cfg_weight=blank
+        tts_inputs = "\n".join([""] * 7 + ["notafloat", ""])
+        inputs = "\n".join([""] * 8) + "\n" + tts_inputs + "\n"
+        result = runner.invoke(agent_app, ["edit", "tts-badfloat"], input=inputs)
+
+        # Assert — exits 0 (invalid float is skipped, not a fatal error)
+        assert result.exit_code == 0, result.output
+
+        # Verify tts_json exaggeration was NOT set
+        import json
+
+        async def _check() -> AgentRow | None:
+            store = AgentStore(db_path=db_path)
+            await store.connect()
+            row = store.get("tts-badfloat")
+            await store.close()
+            return row
+
+        updated = asyncio.run(_check())
+        assert updated is not None
+        # tts_json should not have gained an exaggeration field
+        tts = json.loads(updated.tts_json)  # type: ignore[arg-type]
+        assert "exaggeration" not in tts

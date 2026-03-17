@@ -138,9 +138,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
 
         # STT / TTS services
         stt_service = init_stt(first_agent_config)
-        tts_service = init_tts(
-            first_agent_config, stt_service, agent_configs, first_agent_name
-        )
+        tts_service = init_tts(stt_service)
 
         from lyra.core.debouncer import DEFAULT_DEBOUNCE_MS
 

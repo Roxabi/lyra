@@ -1,0 +1,96 @@
+---
+title: "ADR-028: Token-Level Streaming Path — Parallel Methods over Unified Path"
+description: Documents the decision to implement token-level CLI streaming as a separate parallel code path rather than modifying existing non-streaming methods, and specifies the edge-case contracts that the implementation must satisfy.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+Issue #320 adds token-level streaming from the Claude CLI subprocess to Telegram/Discord adapters. The Claude CLI already supports `--include-partial-messages` in `stream-json` mode, emitting `stream_event/content_block_delta` NDJSON lines. The downstream plumbing — `dispatch_streaming`, `enqueue_streaming`, adapter `send_streaming` — is fully implemented and ready.
+
+The work is concentrated in the CLI protocol layer (`cli_protocol.py`, `cli_pool.py`) and the driver/agent path (`cli.py`, `simple_agent.py`). Three shapes were evaluated in `artifacts/analyses/320-token-level-streaming-analysis.mdx`.
+
+An architectural review of that analysis identified four edge cases not addressed by the analysis document. This ADR records both the shape decision and the edge-case contracts that the spec must enforce.
+
+## Options Considered
+
+### Option A: Parallel streaming path (separate methods)
+
+Add dedicated streaming methods alongside existing non-streaming ones:
+
+- `cli_protocol.send_and_read_stream()` — async generator yielding `content_block_delta` text deltas
+- `CliPool.send_streaming()` — acquires lock, writes stdin, releases lock before returning generator
+- `ClaudeCliDriver.stream()` — returns `AsyncIterator[str]`
+- `SimpleAgent.process()` — returns `AsyncIterator[str]` when `ModelConfig.streaming == True`
+- `_build_cmd()` — adds `--include-partial-messages` when streaming is enabled
+
+- **Pros:** Non-streaming path is completely untouched — zero regression risk. Lock lifecycle is handled naturally (acquire → write stdin → release → return generator). Downstream `pool_processor.py:220` already routes `AsyncIterator` to `dispatch_streaming`. Easy to test each layer in isolation.
+- **Cons:** Some duplication between `send_and_read()` and `send_and_read_stream()` for session ID extraction and timeout handling.
+
+### Option B: Unified path with dual return type
+
+Modify existing methods to accept `streaming: bool` and return `CliResult | AsyncIterator[str]`:
+
+- `read_until_result(streaming=True)` returns `AsyncIterator[str]` instead of `CliResult`
+- `CliPool.send(streaming=True)` returns `CliResult | AsyncIterator[str]`
+
+- **Pros:** DRY — single code path.
+- **Cons:** Union return types break the `LlmProvider` protocol (currently `complete()` returns `LlmResult`). `read_until_result` is already 150 lines — adding streaming branches increases complexity. Critical locking lifecycle mismatch: `CliPool.send()` holds `entry._lock` for the full `await send_and_read()` — for streaming, the lock must be released before the iterator is consumed externally (the `OutboundDispatcher` drains the iterator in a background worker task after `enqueue_streaming()` returns). Making the lock a context that follows the generator is architecturally invasive.
+
+### Option C: Callback promotion via `on_intermediate`
+
+Repurpose `on_intermediate` to fire per-token rather than per-turn.
+
+- **Pros:** Minimal new API surface.
+- **Cons:** Semantic conflict — `on_intermediate` means "previous assistant turn", not "token chunk". Downstream expects `AsyncIterator[str]`; a callback-to-iterator bridge via `asyncio.Queue` adds complexity. Cannot compose with multi-turn intermediate turn display simultaneously.
+
+## Decision
+
+**Option A: parallel streaming path.**
+
+The downstream routing is already implemented for `AsyncIterator[str]`. The locking lifecycle mismatch in Option B is not a style concern — it is a structural incompatibility with how `OutboundDispatcher.enqueue_streaming()` hands off the iterator to a background worker. Option C breaks the `on_intermediate` abstraction that already ships.
+
+## Consequences
+
+### Positive
+
+- Non-streaming path is unchanged; existing tests remain valid with no modification.
+- Streaming is opt-in per agent via `ModelConfig.streaming: bool = False`.
+- `pool_processor.py` already routes `AsyncIterator` to `dispatch_streaming` — no changes needed downstream.
+
+### Negative
+
+- `send_and_read()` and `send_and_read_stream()` share logic for session ID extraction (`system/init` event) and idle-timeout retry. This duplication must be managed — extract shared helpers or accept the duplication as justified by the locking lifecycle difference.
+
+### Neutral
+
+- `LlmProvider` protocol gains a `stream()` method. It must be treated as a duck-typed capability (checked via `hasattr(provider, "stream")`) rather than a required protocol member — mirroring the existing `hasattr(adapter, "send_streaming")` pattern in `hub_outbound.py:182`. Adding it as a required protocol member would force `AnthropicSdkDriver` to implement a stub, which is acceptable but adds noise for a driver that will never stream via this path.
+
+## Edge-Case Contracts (required in the implementation spec)
+
+These four cases are not addressed by the analysis document and must be specified before implementation.
+
+### 1. Cancel-in-flight with a live streaming iterator
+
+`_process_with_cancel()` cancels `agent_task` when a new inbound message arrives. For streaming, `agent_task` wraps `_guarded_process_one → _process_one → dispatch_streaming`, which is mid-iteration when the cancel fires. The `asyncio.CancelledError` propagates into the generator. The subprocess stdout remains live; if no reader drains it, the OS pipe buffer fills and the subprocess blocks on `write()`. The idle reaper will not detect this until the next 60-second sweep; the next `send()` on the same pool will hit a 300s timeout.
+
+Required contract: `send_streaming()` (or the generator) must register an `aclose()` handler that calls `CliPool.reset(pool_id)` when the generator is closed before reaching the `result` event. This ensures the subprocess is killed promptly on cancel-in-flight rather than left blocked on a full pipe buffer.
+
+### 2. Session ID propagation from the exhausted generator
+
+`pool_processor.py:257` reads `session_id` as an attribute on the iterator after it is exhausted: `getattr(result, "session_id", None)`. The `session_id` is emitted in the `system/init` event (first line) and confirmed in the `result` event (last line).
+
+Required contract: the async generator object returned by `send_and_read_stream()` must expose a `session_id` attribute. The attribute is set when the `result` event is consumed. If the generator is cancelled before reaching `result`, `session_id` remains `None` and `pool.session_id` is not updated — this is acceptable and must be documented explicitly in the method docstring.
+
+### 3. Tool-use block deltas must be filtered
+
+The Claude CLI in `--include-partial-messages` mode emits `content_block_delta` events for both text deltas (`type: text_delta`) and tool-use input JSON fragments (`type: input_json_delta`). The existing `read_until_result()` filters by `b.get("type") == "text"` on `assistant` message content blocks. The streaming generator must apply an equivalent filter: only yield deltas where `delta["type"] == "text_delta"`. Tool-use input JSON fragments are not human-readable and must be silently discarded. Failing to filter them sends raw JSON fragments to Telegram/Discord.
+
+### 4. `--include-partial-messages` cannot be toggled on a live process
+
+The flag is a spawn-time CLI argument. An agent with `streaming=False` that has a live process will not emit `stream_event` lines even after `ModelConfig.streaming` is toggled to `True` via `/config`. The streaming generator would wait for `content_block_delta` events that never arrive, hitting the 300s idle timeout.
+
+Required contract: when `send_streaming()` is called for a `pool_id` that has a live process spawned without `--include-partial-messages`, the method must kill and respawn the process. In practice, `_build_cmd()` conditionally adds the flag based on `model_config.streaming`; `CliPool.send()` already respawns on `model_config` change (line 122 in `cli_pool.py`) via `model_config != entry.model_config`. Adding `streaming` to `ModelConfig` (with `compare=True`, unlike `cwd`) ensures the existing mismatch check triggers a respawn automatically. The spec must confirm `streaming` participates in `ModelConfig.__eq__`.

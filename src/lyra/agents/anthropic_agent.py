@@ -137,9 +137,7 @@ class AnthropicAgent(AgentBase):
                         )
                     )
                     return Response(content=_noise_msg)
-                llm_text = (
-                    f"<voice_transcript>{stt_result.text}</voice_transcript>"
-                )
+                llm_text = f"<voice_transcript>{stt_result.text}</voice_transcript>"
                 history_text = stt_result.text
             elif _audio is not None and self._stt is None:
                 if tmp_path is not None:

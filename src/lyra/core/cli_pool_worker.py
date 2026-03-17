@@ -141,9 +141,7 @@ class _CliPoolWorker:
         env = {k: v for k, v in os.environ.items() if k in _SAFE_ENV_KEYS}
         # H-4: Set HOME to a dedicated temp dir so the subprocess cannot
         # browse ~/.claude/ or other user-home secrets if prompt-injected.
-        _claude_home = Path(
-            tempfile.mkdtemp(prefix="lyra_claude_home_")
-        )
+        _claude_home = Path(tempfile.mkdtemp(prefix="lyra_claude_home_"))
         env["HOME"] = str(_claude_home)
         try:
             proc = await asyncio.create_subprocess_exec(

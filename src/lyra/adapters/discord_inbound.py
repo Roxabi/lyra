@@ -98,7 +98,15 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
                 message.channel.id,
             )
 
-    if not _is_dm and not _is_mention and not _in_owned_thread:
+    # Watch channel: process all messages in designated channels (no mention needed).
+    _is_watch_channel = (
+        not _is_dm
+        and not _is_thread
+        and message.channel.id in adapter._watch_channels
+    )
+
+    _should_process = _is_dm or _is_mention or _in_owned_thread or _is_watch_channel
+    if not _should_process:
         return
 
     # Auto-thread creation BEFORE normalize() (frozen dataclass)
@@ -106,7 +114,7 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
     resolved_channel_id: int = message.channel.id
     if (
         adapter._auto_thread
-        and _is_mention
+        and (_is_mention or _is_watch_channel)
         and not isinstance(message.channel, discord.Thread)
         and hasattr(message.channel, "create_thread")
     ):

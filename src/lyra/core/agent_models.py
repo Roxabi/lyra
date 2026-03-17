@@ -112,6 +112,7 @@ class BotAgentMapRow:
     platform: str
     bot_id: str
     agent_name: str
+    settings_json: str | None = None
     updated_at: str = field(default_factory=_utc_now_iso)
 
 

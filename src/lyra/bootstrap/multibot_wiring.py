@@ -13,6 +13,7 @@ from lyra.adapters.discord import DiscordAdapter
 from lyra.adapters.telegram import TelegramAdapter
 from lyra.bootstrap.health import create_health_app
 from lyra.config import DiscordBotConfig, TelegramBotConfig
+from lyra.core.agent_store import AgentStore
 from lyra.core.auth import AuthMiddleware
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.cli_pool import CliPool
@@ -106,6 +107,7 @@ async def wire_discord_adapters(  # noqa: PLR0913 — wiring requires all deps
     circuit_registry: CircuitRegistry,
     msg_manager: MessageManager,
     thread_store: ThreadStore,
+    agent_store: AgentStore | None = None,
 ) -> tuple[
     list[tuple[DiscordAdapter, DiscordBotConfig, str]],
     list[OutboundDispatcher],
@@ -132,6 +134,14 @@ async def wire_discord_adapters(  # noqa: PLR0913 — wiring requires all deps
             raise MissingCredentialsError("discord", bot_cfg.bot_id)
         dc_token, _ = dc_creds
 
+        watch_channels: frozenset[int] = frozenset()
+        if agent_store is not None:
+            bot_settings = agent_store.get_bot_settings(
+                "discord", bot_cfg.bot_id
+            )
+            raw_ids = bot_settings.get("watch_channels", [])
+            watch_channels = frozenset(int(ch) for ch in raw_ids)
+
         adapter = DiscordAdapter(
             hub=hub,
             bot_id=bot_cfg.bot_id,
@@ -141,6 +151,7 @@ async def wire_discord_adapters(  # noqa: PLR0913 — wiring requires all deps
             thread_hot_hours=bot_cfg.thread_hot_hours,
             auth=auth,
             thread_store=thread_store,
+            watch_channels=watch_channels,
         )
         hub.register_adapter(Platform.DISCORD, bot_cfg.bot_id, adapter)
 

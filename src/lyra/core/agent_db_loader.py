@@ -58,6 +58,7 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — each branch handles one opti
         tools=tuple(tools),
         cwd=cwd,
         skip_permissions=row.skip_permissions,
+        streaming=row.streaming,
     )
 
     # Persona: DB row wins, then instance_overrides

@@ -46,6 +46,7 @@ _MIGRATE_AGENTS = [
     "ALTER TABLE agents ADD COLUMN workspaces_json TEXT",
     "ALTER TABLE agents ADD COLUMN i18n_language TEXT NOT NULL DEFAULT 'en'",
     "ALTER TABLE agents ADD COLUMN commands_json TEXT",
+    "ALTER TABLE agents ADD COLUMN streaming INTEGER NOT NULL DEFAULT 0",
 ]
 
 _CREATE_BOT_AGENT_MAP = """
@@ -74,14 +75,14 @@ _AGENT_COLUMNS = (
     "show_intermediate, smart_routing_json, plugins_json, "
     "memory_namespace, cwd, source, created_at, updated_at, "
     "tts_json, stt_json, skip_permissions, "
-    "permissions_json, workspaces_json, i18n_language, commands_json"
+    "permissions_json, workspaces_json, i18n_language, commands_json, streaming"
 )
 
 _SELECT_AGENTS = f"SELECT {_AGENT_COLUMNS} FROM agents"
 
 _UPSERT_AGENT = (
     f"INSERT INTO agents ({_AGENT_COLUMNS}) "
-    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
     "ON CONFLICT(name) DO UPDATE SET "
     "backend=excluded.backend, "
     "model=excluded.model, "
@@ -100,6 +101,7 @@ _UPSERT_AGENT = (
     "workspaces_json=excluded.workspaces_json, "
     "i18n_language=excluded.i18n_language, "
     "commands_json=excluded.commands_json, "
+    "streaming=excluded.streaming, "
     "source=excluded.source, "
     "updated_at=?"
 )

@@ -20,7 +20,13 @@ from .cli_pool_worker import (
     _CliPoolWorker,
     _ProcessEntry,
 )
-from .cli_protocol import _SESSION_ID_RE, CliResult, send_and_read
+from .cli_protocol import (
+    _SESSION_ID_RE,
+    CliResult,
+    StreamingIterator,
+    send_and_read,
+    send_and_read_stream,
+)
 
 # Re-export private names that tests reference via `from lyra.core.cli_pool import …`
 __all__ = [
@@ -152,6 +158,64 @@ class CliPool(_CliPoolWorker):
                 log.exception("[pool:%s] send failed: %s", pool_id, exc)
                 await self._kill(pool_id)
                 return CliResult(error=f"Send failed: {type(exc).__name__}")
+
+    async def send_streaming(
+        self,
+        pool_id: str,
+        message: str,
+        model_config: ModelConfig,
+        system_prompt: str = "",
+    ) -> StreamingIterator:
+        """Send a message and return a streaming iterator for text_delta chunks.
+
+        Locking model: acquire entry._lock → write stdin → release lock →
+        return iterator.  The lock is released before the first chunk is
+        yielded so that concurrent reset() calls do not deadlock.
+        """
+        entry = self._entries.get(pool_id)
+
+        if entry is None or not entry.is_alive():
+            entry = await self._spawn(pool_id, model_config, system_prompt)
+            if entry is None:
+                raise RuntimeError("Failed to spawn Claude CLI process")
+        elif entry.system_prompt != system_prompt:
+            log.info(
+                "[pool:%s] system_prompt changed — respawning (streaming)",
+                pool_id,
+            )
+            await self._kill(pool_id)
+            entry = await self._spawn(pool_id, model_config, system_prompt)
+            if entry is None:
+                raise RuntimeError("Failed to respawn Claude CLI process")
+        elif entry.model_config != model_config:
+            log.info(
+                "[pool:%s] model_config mismatch — respawning (streaming)",
+                pool_id,
+            )
+            await self._kill(pool_id)
+            entry = await self._spawn(pool_id, model_config, system_prompt)
+            if entry is None:
+                raise RuntimeError("Failed to respawn Claude CLI process")
+
+        # Acquire lock, write stdin, release lock before returning iterator.
+        async with entry._lock:
+            if not entry.is_alive():
+                raise RuntimeError("Process died before streaming send")
+
+        _pool_id = pool_id
+
+        async def _reset() -> None:
+            await self.reset(_pool_id)
+
+        iterator = await send_and_read_stream(
+            entry,
+            message,
+            pool_id,
+            pool_reset_fn=_reset,
+            default_timeout=self._default_timeout,
+        )
+        entry.last_activity = time.time()
+        return iterator
 
     def is_alive(self, pool_id: str) -> bool:
         """Return True if a live process exists for pool_id."""

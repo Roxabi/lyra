@@ -304,6 +304,7 @@ class TestSimpleAgentAudioBranch:
 
         # Assert — file deleted despite exception
         assert not Path(tmp_path).exists()
+        assert isinstance(response, Response)
         assert response.metadata.get("error") is True
 
     async def test_audio_tmp_file_deleted_no_stt(self) -> None:
@@ -340,6 +341,7 @@ class TestSimpleAgentAudioBranch:
 
         # Assert — STT was never called
         cast(AsyncMock, stt.transcribe).assert_not_called()
+        assert isinstance(response, Response)
         assert response.content == "text response"
 
         # Assert — CLI was called with the literal text

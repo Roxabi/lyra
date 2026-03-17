@@ -146,6 +146,6 @@ class TestClaudeCliDriverComplete:
 
 class TestClaudeCliDriverCapabilities:
     def test_capabilities(self) -> None:
-        """Driver declares streaming=False and auth='oauth_only'."""
+        """Driver declares streaming=True and auth='oauth_only'."""
         driver, _ = make_driver(CliResult(result="ok"))
-        assert driver.capabilities == {"streaming": False, "auth": "oauth_only"}
+        assert driver.capabilities == {"streaming": True, "auth": "oauth_only"}

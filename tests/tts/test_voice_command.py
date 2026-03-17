@@ -266,6 +266,7 @@ class TestSimpleAgentVoiceCommand:
         result = await agent.process(msg, pool)
 
         tts.synthesize.assert_not_awaited()
+        assert isinstance(result, Response)
         assert result.audio is None
 
 

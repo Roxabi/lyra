@@ -27,7 +27,7 @@ from lyra.llm.base import LlmProvider
 from lyra.stt import is_whisper_noise
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
+    from collections.abc import AsyncIterator, Awaitable, Callable
 
     from lyra.stt import STTService
     from lyra.tts import TTSService
@@ -145,7 +145,7 @@ class SimpleAgent(AgentBase):
         pool: Pool,
         *,
         on_intermediate: "Callable[[str], Awaitable[None]] | None" = None,
-    ) -> Response:
+    ) -> "Response | AsyncIterator[str]":
         self._maybe_reload()
 
         # /voice pre-router: rewrite as voice-modality LLM request
@@ -202,6 +202,16 @@ class SimpleAgent(AgentBase):
             pool.pool_id,
             len(text),
         )
+
+        # Streaming path: return AsyncIterator directly for pool_processor routing
+        _stream_fn = getattr(self._provider, "stream", None)
+        if model_cfg.streaming and _stream_fn is not None:
+            return await _stream_fn(
+                pool.pool_id,
+                text,
+                model_cfg,
+                pool._system_prompt or self.config.system_prompt,
+            )
 
         # Use injected callback only if show_intermediate is enabled
         cb = on_intermediate if self.config.show_intermediate else None

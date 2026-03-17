@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
 
 from lyra.core.agent_config import ModelConfig
@@ -20,7 +20,7 @@ class ClaudeCliDriver:
     persistence and process lifecycle internally.
     """
 
-    capabilities: dict = {"streaming": False, "auth": "oauth_only"}
+    capabilities: dict = {"streaming": True, "auth": "oauth_only"}
 
     def __init__(self, pool: CliPool) -> None:
         self._pool = pool
@@ -55,4 +55,16 @@ class ClaudeCliDriver:
             session_id=cli_result.session_id,
             error=cli_result.error,
             warning=cli_result.warning,
+        )
+
+    async def stream(
+        self,
+        pool_id: str,
+        text: str,
+        model_cfg: ModelConfig,
+        system_prompt: str,
+    ) -> AsyncIterator[str]:
+        """Return a streaming iterator for text_delta chunks."""
+        return await self._pool.send_streaming(
+            pool_id, text, model_cfg, system_prompt
         )

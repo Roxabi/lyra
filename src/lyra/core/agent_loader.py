@@ -114,6 +114,7 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
         tools=tuple(model_section.get("tools", [])),
         cwd=cwd,
         skip_permissions=bool(model_section.get("skip_permissions", False)),
+        streaming=bool(model_section.get("streaming", False)),
     )
 
     # Persona loading: agent toml wins, then instance_overrides, then None

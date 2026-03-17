@@ -89,6 +89,7 @@ class TestSimpleAgentProcess:
         response = await agent.process(msg, pool)
 
         # Internal detail must NOT leak to the user
+        assert isinstance(response, Response)
         assert "boom" not in response.content
         assert response.content == "Something went wrong. Please try again."
         assert response.metadata.get("error") is True
@@ -104,6 +105,7 @@ class TestSimpleAgentProcess:
 
         response = await agent.process(msg, pool)
 
+        assert isinstance(response, Response)
         assert response.content == "Your request timed out. Please try again."
         assert response.metadata.get("error") is True
 
@@ -118,6 +120,7 @@ class TestSimpleAgentProcess:
 
         response = await agent.process(msg, pool)
 
+        assert isinstance(response, Response)
         assert response.content == "ok"
         assert response.metadata["warning"] == "truncated"
         assert response.metadata["session_id"] == "s1"

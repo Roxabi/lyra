@@ -6,12 +6,10 @@ Handlers live in lyra.plugins.pairing; hub pairing gate removed in #245.
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import secrets
 import time
 from collections import deque
-from dataclasses import dataclass, fields
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -21,57 +19,27 @@ if TYPE_CHECKING:
 
 from lyra.core.trust import TrustLevel
 
+from .pairing_config import (
+    _CREATE_PAIRING_CODES,
+    _MAX_CODE_ATTEMPTS,
+    PairingConfig,
+    PairingError,
+    _sha256,
+    _utc_now,
+)
 from .sqlite_base import SqliteStore
 
+# Re-export so existing `from lyra.core.pairing import PairingConfig/PairingError`
+# imports continue to work unchanged.
+__all__ = [
+    "PairingConfig",
+    "PairingError",
+    "PairingManager",
+    "get_pairing_manager",
+    "set_pairing_manager",
+]
+
 log = logging.getLogger(__name__)
-
-
-class PairingError(Exception):
-    """Business-rule violation in the pairing system (e.g. max pending reached)."""
-
-
-# ---------------------------------------------------------------------------
-# Config
-# ---------------------------------------------------------------------------
-
-_SAFE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-
-_MAX_CODE_ATTEMPTS = 10
-
-_CREATE_PAIRING_CODES = """
-CREATE TABLE IF NOT EXISTS pairing_codes (
-    id INTEGER PRIMARY KEY,
-    code_hash TEXT NOT NULL UNIQUE,
-    created_by TEXT NOT NULL,
-    expires_at TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    attempt_count INTEGER NOT NULL DEFAULT 0
-)
-"""
-
-
-@dataclass(frozen=True)
-class PairingConfig:
-    """Immutable configuration for the pairing system."""
-
-    alphabet: str = _SAFE_ALPHABET
-    code_length: int = 8
-    ttl_seconds: int = 3600
-    max_pending: int = 3
-    session_max_age_days: int = 30
-    rate_limit_attempts: int = 5
-    rate_limit_window: int = 300
-    enabled: bool = False
-
-    @classmethod
-    def from_dict(cls, data: dict) -> PairingConfig:
-        """Create PairingConfig from a dict (e.g. TOML [pairing] section).
-
-        Missing keys use field defaults.
-        """
-        known = {f.name for f in fields(cls)}
-        filtered = {k: v for k, v in data.items() if k in known}
-        return cls(**filtered)
 
 
 # ---------------------------------------------------------------------------
@@ -319,16 +287,3 @@ def set_pairing_manager(pm: PairingManager | None) -> None:
     """Set the module-level PairingManager (called from __main__.py)."""
     global _pairing_manager
     _pairing_manager = pm
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _sha256(text: str) -> str:
-    return hashlib.sha256(text.encode()).hexdigest()
-
-
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)

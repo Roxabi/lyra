@@ -280,8 +280,8 @@ class TestAgentEditCommand:
         monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
         _seed_agent(tmp_path / "auth.db", name="edit-nochange")
 
-        # Act — send 8 blank lines (one per editable field)
-        blank_inputs = "\n".join([""] * 8) + "\n"
+        # Act — send 8 blank lines (editable fields) + "N" for TTS init prompt
+        blank_inputs = "\n".join([""] * 8 + ["N"]) + "\n"
         result = runner.invoke(agent_app, ["edit", "edit-nochange"], input=blank_inputs)
 
         # Assert
@@ -299,8 +299,8 @@ class TestAgentEditCommand:
 
         # Act — fields: backend, model, max_turns, persona,
         # show_intermediate, cwd, memory_namespace, i18n_language (blank = keep current)
-        # Provide new model on 2nd prompt; leave all others blank
-        inputs = "\n".join(["", "claude-opus-4-6", "", "", "", "", "", ""]) + "\n"
+        # Provide new model on 2nd prompt; leave all others blank; "N" for TTS init
+        inputs = "\n".join(["", "claude-opus-4-6", "", "", "", "", "", "", "N"]) + "\n"
         result = runner.invoke(agent_app, ["edit", "edit-update"], input=inputs)
 
         # Assert — command succeeded

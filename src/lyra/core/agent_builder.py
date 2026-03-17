@@ -105,6 +105,8 @@ def _build_tts_from_dict(tts_data: dict) -> AgentTTSConfig:
         crossfade=tts_data.get("crossfade"),
         chunked=bool(tts_data["chunked"]) if "chunked" in tts_data else None,
         chunk_size=tts_data.get("chunk_size"),
+        exaggeration=tts_data.get("exaggeration"),
+        cfg_weight=tts_data.get("cfg_weight"),
     )
 
 

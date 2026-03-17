@@ -3,13 +3,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import Callable, Coroutine
-from typing import TYPE_CHECKING, Any
-
-from lyra.errors import ProviderError
+from typing import TYPE_CHECKING
 
 from .agent import AgentBase
 from .audio_pipeline import AudioPipeline
+from .hub_outbound import HubOutboundMixin
 from .hub_protocol import (  # noqa: F401 — public re-export
     Binding,
     ChannelAdapter,
@@ -17,7 +15,7 @@ from .hub_protocol import (  # noqa: F401 — public re-export
 )
 from .hub_rate_limit import RateLimiter
 from .inbound_bus import InboundBus
-from .message import InboundAudio, InboundMessage, OutboundMessage, Platform, Response
+from .message import InboundAudio, InboundMessage, Platform
 from .message_pipeline import (  # noqa: F401 — public re-export (Action)
     Action,
     MessagePipeline,
@@ -28,14 +26,12 @@ from .pool_manager import PoolManager
 
 if TYPE_CHECKING:
     from collections import deque
-    from collections.abc import AsyncIterator
 
     from ..stt import STTService
     from ..tts import TTSService
     from .circuit_breaker import CircuitRegistry
     from .context_resolver import ContextResolver
     from .memory import MemoryManager
-    from .message import OutboundAttachment, OutboundAudio, OutboundAudioChunk
     from .messages import MessageManager
     from .outbound_dispatcher import OutboundDispatcher
     from .pairing import PairingManager
@@ -45,7 +41,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-class Hub:
+class Hub(HubOutboundMixin):
     """Central hub: InboundBus + OutboundDispatchers + adapter registry + pools."""
 
     BUS_SIZE = 100
@@ -198,23 +194,6 @@ class Hub:
     def get_message(self, key: str) -> str | None:
         return self._msg_manager.get(key) if self._msg_manager else None
 
-    def record_circuit_success(self) -> None:
-        if self.circuit_registry is not None:
-            for name in ("anthropic", "hub"):
-                cb = self.circuit_registry.get(name)
-                if cb is not None:
-                    cb.record_success()
-
-    def record_circuit_failure(self, exc: BaseException) -> None:
-        if self.circuit_registry is not None:
-            _hub_cb = self.circuit_registry.get("hub")
-            if _hub_cb is not None:
-                _hub_cb.record_failure()
-            if isinstance(exc, ProviderError):
-                _ant_cb = self.circuit_registry.get("anthropic")
-                if _ant_cb is not None:
-                    _ant_cb.record_failure()
-
     @property
     def _rate_timestamps(self) -> dict[tuple[str, str, str], deque[float]]:
         return self._rate_limiter._timestamps
@@ -232,252 +211,6 @@ class Hub:
 
     def _is_rate_limited(self, msg: InboundMessage) -> bool:
         return self._rate_limiter.is_limited(msg)
-
-    # ------------------------------------------------------------------
-    # Outbound routing
-    # ------------------------------------------------------------------
-
-    async def _route_outbound(
-        self,
-        msg: InboundMessage,
-        enqueue_fn: Callable[[OutboundDispatcher], None],
-        fallback_fn: Callable[[ChannelAdapter], Coroutine[Any, Any, None]],
-        *,
-        resource: str = "response",
-    ) -> None:
-        """Core outbound routing: dispatcher queue -> direct adapter fallback.
-
-        Checks whether an OutboundDispatcher is registered for the message's
-        (platform, bot_id). If so, calls *enqueue_fn* (fire-and-forget queue).
-        Otherwise resolves the adapter and calls *fallback_fn* (direct send).
-        Updates ``_last_processed_at`` in both branches.
-
-        Args:
-            msg: The inbound message that triggered this outbound dispatch.
-            enqueue_fn: Called with the dispatcher when one is registered.
-            fallback_fn: Async callable invoked with the adapter as fallback.
-            resource: Label used in the KeyError message when no adapter exists.
-        """
-        platform = Platform(msg.platform)
-        dispatcher = self.outbound_dispatchers.get((platform, msg.bot_id))
-        if dispatcher is not None:
-            enqueue_fn(dispatcher)
-            self._last_processed_at = time.monotonic()
-            return
-        adapter = self.adapter_registry.get((platform, msg.bot_id))
-        if adapter is None:
-            raise KeyError(
-                f"No adapter registered for ({msg.platform!r}, {msg.bot_id!r}). "
-                f"Call register_adapter() before dispatching {resource}."
-            )
-        await fallback_fn(adapter)
-        self._last_processed_at = time.monotonic()
-
-    async def circuit_breaker_drop(self, msg: InboundMessage) -> bool:
-        """Return True if the circuit is open and a fast-fail reply was sent.
-
-        Internal API — promoted from private for cross-module access by
-        MessagePipeline. Not part of the public Hub contract.
-        """
-        if self.circuit_registry is None:
-            return False
-        cb = self.circuit_registry.get("anthropic")
-        if cb is None or not cb.is_open():
-            return False
-        status = cb.get_status()
-        retry_secs = int(status.retry_after or 0)
-        _retry_str = str(retry_secs)
-        _unavail = (
-            self._msg_manager.get("unavailable", retry_secs=_retry_str)
-            if self._msg_manager
-            else f"Lyra is currently unavailable. Please try again in {retry_secs}s."
-        )
-        try:
-            await self.dispatch_response(msg, Response(content=_unavail))
-        except Exception as exc:
-            log.exception("dispatch_response failed for fast-fail reply: %s", exc)
-        return True
-
-    async def dispatch_response(
-        self,
-        msg: InboundMessage,
-        response: Response | OutboundMessage,
-    ) -> None:
-        """Send response back via the originating adapter.
-
-        Routes through the OutboundDispatcher when one is registered for the
-        platform (fire-and-forget queue). Falls back to a direct adapter call
-        when no dispatcher is registered (used in tests and command responses).
-
-        Accepts either a Response (backward compat) or OutboundMessage directly.
-        """
-        if isinstance(response, OutboundMessage):
-            outbound = response
-        else:
-            outbound = response.to_outbound()
-            # Forward dispatch callback so deferred turn logging can capture
-            # reply_message_id after the adapter sends (#316).
-            _cb = response.metadata.get("_on_dispatched")
-            if _cb is not None:
-                outbound.metadata["_on_dispatched"] = _cb
-        if outbound.routing is None and msg.routing is not None:
-            outbound.routing = msg.routing
-
-        async def _fallback_and_notify(adapter: ChannelAdapter) -> None:
-            await adapter.send(msg, outbound)
-            _dispatched = outbound.metadata.pop("_on_dispatched", None)
-            if callable(_dispatched):
-                _dispatched(outbound)
-
-        await self._route_outbound(
-            msg,
-            enqueue_fn=lambda d: d.enqueue(msg, outbound),
-            fallback_fn=_fallback_and_notify,
-            resource="responses",
-        )
-
-        # /voice command: dispatch audio carried in Response.audio (pool path)
-        if isinstance(response, Response) and response.audio:
-            await self.dispatch_audio(msg, response.audio)
-
-        # Voice modality: synthesize TTS audio in background after text is dispatched
-        _should_speak = msg.modality == "voice" or (
-            isinstance(response, Response) and response.speak
-        )
-        if _should_speak and self._tts is not None:
-            text = outbound.to_text().strip()
-            if text:
-                task = asyncio.create_task(
-                    self._audio_pipeline.synthesize_and_dispatch_audio(msg, text),
-                    name=f"tts:{msg.id}",
-                )
-                self._memory_tasks.add(task)
-                task.add_done_callback(self._memory_tasks.discard)
-
-    async def dispatch_streaming(  # noqa: C901 — streaming protocol: voice/dispatcher/fallback branches + callback
-        self,
-        msg: InboundMessage,
-        chunks: AsyncIterator[str],
-        outbound: OutboundMessage | None = None,
-    ) -> None:
-        """Stream response back via the originating adapter.
-
-        Routes through the OutboundDispatcher when one is registered (fire-and-forget).
-        Falls back to a direct adapter call when no dispatcher is registered.
-
-        When *outbound* is provided it is forwarded to the adapter so the
-        platform message ID can be recorded in ``outbound.metadata``.
-
-        Voice modality: accumulates the full stream then delegates to
-        dispatch_response() which handles both text and TTS dispatch.
-        """
-        # Voice modality: accumulate full stream, dispatch text + schedule TTS
-        if msg.modality == "voice" and self._tts is not None:
-            text_parts: list[str] = []
-            async for chunk in chunks:
-                text_parts.append(chunk)
-            full_text = "".join(text_parts)
-            if full_text.strip():
-                await self.dispatch_response(msg, Response(content=full_text))
-            # Invoke _on_dispatched so the turn is logged even on voice path (#316).
-            if outbound is not None:
-                _dispatched = outbound.metadata.pop("_on_dispatched", None)
-                if callable(_dispatched):
-                    _dispatched(outbound)
-            return
-
-        if (
-            outbound is not None
-            and outbound.routing is None
-            and msg.routing is not None
-        ):
-            outbound.routing = msg.routing
-
-        platform = Platform(msg.platform)
-        dispatcher = self.outbound_dispatchers.get((platform, msg.bot_id))
-        if dispatcher is not None:
-            dispatcher.enqueue_streaming(msg, chunks, outbound)
-            self._last_processed_at = time.monotonic()
-            return
-
-        adapter = self.adapter_registry.get((platform, msg.bot_id))
-        if adapter is None:
-            raise KeyError(
-                f"No adapter registered for ({msg.platform!r}, {msg.bot_id!r}). "
-                "Call register_adapter() before dispatching responses."
-            )
-        if hasattr(adapter, "send_streaming"):
-            await adapter.send_streaming(msg, chunks, outbound)
-        else:
-            # Fallback: accumulate and send as one message
-            if outbound is not None:
-                log.warning(
-                    "Adapter for %s lacks send_streaming; "
-                    "reply_message_id will not be recorded",
-                    msg.platform,
-                )
-            text = ""
-            async for chunk in chunks:
-                text += chunk
-            await adapter.send(msg, OutboundMessage.from_text(text))
-        # Invoke dispatch callback for fallback (non-queued) path (#316).
-        if outbound is not None:
-            _dispatched = outbound.metadata.pop("_on_dispatched", None)
-            if callable(_dispatched):
-                _dispatched(outbound)
-        self._last_processed_at = time.monotonic()
-
-    async def dispatch_attachment(
-        self,
-        msg: InboundMessage,
-        attachment: OutboundAttachment,
-    ) -> None:
-        """Send an attachment back via the originating adapter."""
-        await self._route_outbound(
-            msg,
-            enqueue_fn=lambda d: d.enqueue_attachment(msg, attachment),
-            fallback_fn=lambda a: a.render_attachment(attachment, msg),
-            resource="attachments",
-        )
-
-    async def dispatch_audio(
-        self,
-        msg: InboundMessage,
-        audio: OutboundAudio,
-    ) -> None:
-        """Send an audio voice note back via the originating adapter."""
-        await self._route_outbound(
-            msg,
-            enqueue_fn=lambda d: d.enqueue_audio(msg, audio),
-            fallback_fn=lambda a: a.render_audio(audio, msg),
-            resource="audio",
-        )
-
-    async def dispatch_audio_stream(
-        self,
-        msg: InboundMessage,
-        chunks: AsyncIterator[OutboundAudioChunk],
-    ) -> None:
-        """Stream audio chunks back via the originating adapter."""
-        await self._route_outbound(
-            msg,
-            enqueue_fn=lambda d: d.enqueue_audio_stream(msg, chunks),
-            fallback_fn=lambda a: a.render_audio_stream(chunks, msg),
-            resource="audio stream",
-        )
-
-    async def dispatch_voice_stream(
-        self,
-        msg: InboundMessage,
-        chunks: AsyncIterator[OutboundAudioChunk],
-    ) -> None:
-        """Stream TTS audio to an active Discord voice session."""
-        await self._route_outbound(
-            msg,
-            enqueue_fn=lambda d: d.enqueue_voice_stream(msg, chunks),
-            fallback_fn=lambda a: a.render_voice_stream(chunks, msg),
-            resource="voice stream",
-        )
 
     async def _dispatch_pipeline_result(
         self,

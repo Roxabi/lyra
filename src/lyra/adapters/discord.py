@@ -5,7 +5,6 @@ import logging
 import os
 import re
 from collections.abc import AsyncIterator
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
 import discord
@@ -16,6 +15,10 @@ if TYPE_CHECKING:
 from lyra.adapters import discord_audio  # noqa: I001
 from lyra.adapters import discord_audio_outbound
 from lyra.adapters._shared import ATTACHMENT_EXTS_BASE, TypingTaskManager, resolve_msg
+from lyra.adapters.discord_config import (  # noqa: F401 — re-exported for external callers
+    DiscordConfig,
+    load_discord_config,
+)
 from lyra.adapters.discord_inbound import handle_message
 from lyra.adapters.discord_normalize import normalize as _normalize_impl
 from lyra.adapters.discord_outbound import (
@@ -48,28 +51,6 @@ from lyra.core.thread_store import ThreadStore
 _ATTACHMENT_EXTS = ATTACHMENT_EXTS_BASE
 
 log = logging.getLogger(__name__)
-
-
-_AUTO_THREAD_TRUE = frozenset({"1", "true", "yes", "on"})
-
-
-@dataclass(frozen=True)
-class DiscordConfig:
-    token: str = field(repr=False)
-    auto_thread: bool = True
-
-
-def load_discord_config() -> DiscordConfig:
-    """Load Discord configuration from environment variables.
-
-    Raises SystemExit if DISCORD_TOKEN is absent. Never logs the token.
-    """
-    token = os.environ.get("DISCORD_TOKEN")
-    if not token:
-        raise SystemExit("Missing required env var: DISCORD_TOKEN")
-    auto_thread_str = os.environ.get("DISCORD_AUTO_THREAD", "").strip().lower()
-    auto_thread = auto_thread_str in _AUTO_THREAD_TRUE if auto_thread_str else True
-    return DiscordConfig(token=token, auto_thread=auto_thread)
 
 
 class DiscordAdapter(discord.Client):

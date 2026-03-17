@@ -242,6 +242,15 @@ class PluginLoader:
                 result.update(plugin.handlers)
         return result
 
+    def get_command_descriptions(self, enabled: list[str]) -> dict[str, str]:
+        """Return {'/cmd': 'description'} for all commands in enabled plugins."""
+        result: dict[str, str] = {}
+        for name, plugin in self._loaded.items():
+            if name in enabled:
+                for cmd_spec in plugin.manifest.commands:
+                    result[f"/{cmd_spec.name}"] = cmd_spec.description
+        return result
+
     def get_timeout(self, command_name: str, enabled: list[str]) -> float:
         """Return the timeout for a plugin command (default 30s)."""
         for name, plugin in self._loaded.items():

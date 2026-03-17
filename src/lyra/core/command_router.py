@@ -123,6 +123,40 @@ class CommandRouter:
                 "Rename the plugin command or remove the builtin."
             )
 
+    @staticmethod
+    def _is_admin_only(description: str) -> bool:
+        """Check if a command description marks it as admin-only."""
+        return "(admin-only)" in description.lower()
+
+    @classmethod
+    def builtin_metadata(cls) -> list[tuple[str, str, bool]]:
+        """Return (name, description, admin_only) for default builtins only.
+
+        Class method — usable without instantiation (e.g., from CLI).
+        """
+        return [
+            (name, cfg.description, cls._is_admin_only(cfg.description))
+            for name, cfg in cls._DEFAULT_BUILTINS.items()
+        ]
+
+    def command_metadata(self) -> list[tuple[str, str, bool]]:
+        """Return (name, description, admin_only) for all registered commands.
+
+        Includes builtins and plugin commands. Admin-only is derived from
+        the description containing '(admin-only)'.
+        """
+        result: list[tuple[str, str, bool]] = []
+        for name, cfg in self._builtins.items():
+            result.append(
+                (name, cfg.description, self._is_admin_only(cfg.description))
+            )
+        plugin_descs = self._plugin_loader.get_command_descriptions(
+            self._enabled_plugins
+        )
+        for name, desc in plugin_descs.items():
+            result.append((name, desc, self._is_admin_only(desc)))
+        return sorted(result)
+
     def _rewrite_bare_url(self, msg: InboundMessage) -> InboundMessage:
         """Attach a synthetic /add CommandContext for a bare URL message."""
         url = msg.text.strip()

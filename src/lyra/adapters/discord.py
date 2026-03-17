@@ -30,6 +30,7 @@ from lyra.adapters.discord_threads import restore_hot_threads
 from lyra.adapters.discord_voice import VoiceSessionManager
 from lyra.adapters.discord_voice_commands import (
     handle_voice_command as _handle_voice_command_impl,
+    register_voice_app_commands as _register_voice_app_commands,
 )
 from lyra.core.auth import _ALLOW_ALL, _DENY_ALL, AuthMiddleware  # noqa: F401 — re-exported for tests and external callers
 from lyra.core.authenticator import Authenticator
@@ -79,6 +80,8 @@ class DiscordAdapter(discord.Client):
             intents = discord.Intents.default()
             intents.message_content = True
         super().__init__(intents=intents)
+        self.tree = discord.app_commands.CommandTree(self)
+        _register_voice_app_commands(self.tree, self)
         self._hub = hub
         self._bot_id = bot_id
         self._circuit_registry = circuit_registry
@@ -158,6 +161,29 @@ class DiscordAdapter(discord.Client):
                 )
             except Exception:
                 log.exception("ThreadStore: failed to restore owned threads")
+        # Sync app_commands tree for each guild (guild-scoped = instant).
+        for guild in self.guilds:
+            try:
+                await self.tree.sync(guild=guild)
+                log.info("Synced app_commands for guild %s", guild.id)
+            except Exception:
+                log.warning(
+                    "Failed to sync app_commands for guild %s",
+                    guild.id,
+                    exc_info=True,
+                )
+
+    async def on_guild_join(self, guild: discord.Guild) -> None:
+        """Sync app_commands tree when the bot joins a new guild."""
+        try:
+            await self.tree.sync(guild=guild)
+            log.info("Synced app_commands for new guild %s", guild.id)
+        except Exception:
+            log.warning(
+                "Failed to sync app_commands for new guild %s",
+                guild.id,
+                exc_info=True,
+            )
 
     async def on_voice_state_update(
         self,

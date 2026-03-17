@@ -24,6 +24,7 @@ import typer
 
 from lyra.cli_agent import agent_app  # noqa: F401 — re-exported for tests
 from lyra.cli_bot import bot_app
+from lyra.cli_setup import setup_app
 
 # ---------------------------------------------------------------------------
 # Version
@@ -48,6 +49,7 @@ config_app = typer.Typer(name="config", help="Manage instance config (config.tom
 lyra_app.add_typer(agent_app, name="agent")
 lyra_app.add_typer(config_app, name="config")
 lyra_app.add_typer(bot_app, name="bot")
+lyra_app.add_typer(setup_app, name="setup")
 
 # ---------------------------------------------------------------------------
 # lyra (root)

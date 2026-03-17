@@ -1,4 +1,4 @@
-"""Voice command handlers for DiscordAdapter (!join, !leave)."""
+"""Voice command handlers for DiscordAdapter (!join, !leave, /join, /leave)."""
 
 from __future__ import annotations
 
@@ -11,14 +11,38 @@ from lyra.adapters.discord_voice import (
     VoiceMode,
 )
 from lyra.core.command_parser import CommandParser
+from lyra.core.command_registry import CommandParam, PlatformCommand
 from lyra.core.trust import TrustLevel
 
 if TYPE_CHECKING:
+    import discord
+
     from lyra.adapters.discord import DiscordAdapter
 
 log = logging.getLogger(__name__)
 
 _command_parser = CommandParser()
+
+# Voice command metadata — consumed by command_registry.collect_commands()
+# and by register_voice_app_commands() for Discord slash command registration.
+VOICE_COMMANDS: list[PlatformCommand] = [
+    PlatformCommand(
+        name="/join",
+        description="Join your voice channel",
+        params=[
+            CommandParam(
+                name="mode",
+                description="Connection mode: transient or stay",
+                required=False,
+                choices=["transient", "stay"],
+            ),
+        ],
+    ),
+    PlatformCommand(
+        name="/leave",
+        description="Leave the voice channel",
+    ),
+]
 
 
 async def reply_safe(message: Any, text: str, *, label: str) -> None:
@@ -114,3 +138,123 @@ async def handle_voice_command(
     else:
         await handle_join_command(adapter, message, guild, cmd.args, trust=trust)
     return True
+
+
+def _resolve_slash_trust(
+    adapter: "DiscordAdapter", user_id: str
+) -> TrustLevel:
+    """Resolve trust level for a slash command interaction user."""
+    identity = adapter._auth.resolve(user_id)
+    rejection = adapter._guard_chain.run(identity)
+    if rejection is not None:
+        return TrustLevel.BLOCKED
+    return identity.trust_level
+
+
+async def _handle_join_slash(
+    interaction: Any,
+    adapter: "DiscordAdapter",
+    mode: str,
+) -> None:
+    """Handle the /join slash command interaction."""
+    import discord as _discord
+
+    if interaction.guild is None:
+        await interaction.response.send_message(
+            "This command can only be used in a server.", ephemeral=True
+        )
+        return
+    # Auth check — mirror the text-command auth flow
+    trust = _resolve_slash_trust(
+        adapter, str(interaction.user.id)
+    )
+    if trust == TrustLevel.BLOCKED:
+        await interaction.response.send_message(
+            "You don't have permission to use this command.",
+            ephemeral=True,
+        )
+        return
+    guild = interaction.guild
+    # interaction.user is already a Member in guild context
+    member = interaction.user
+    voice_state = member.voice
+    if voice_state is None or voice_state.channel is None:
+        await interaction.response.send_message(
+            "Join a voice channel first.", ephemeral=True
+        )
+        return
+    channel = voice_state.channel
+    if not isinstance(channel, _discord.VoiceChannel):
+        await interaction.response.send_message(
+            "Stage channels are not supported.", ephemeral=True
+        )
+        return
+    voice_mode = VoiceMode.PERSISTENT if mode == "stay" else VoiceMode.TRANSIENT
+    if voice_mode == VoiceMode.PERSISTENT and trust < TrustLevel.TRUSTED:
+        voice_mode = VoiceMode.TRANSIENT
+    try:
+        await adapter._vsm.join(guild, channel, voice_mode)
+        label = "persistent" if voice_mode == VoiceMode.PERSISTENT else "transient"
+        await interaction.response.send_message(
+            f"Joined {channel.name} ({label}).", ephemeral=True
+        )
+    except VoiceAlreadyActiveError:
+        await interaction.response.send_message(
+            "Already in a voice channel.", ephemeral=True
+        )
+    except VoiceDependencyError as exc:
+        log.error("Voice dependency error on /join slash: %s", exc)
+        await interaction.response.send_message(
+            "Voice is not available right now.", ephemeral=True
+        )
+
+
+def register_voice_app_commands(
+    tree: "discord.app_commands.CommandTree[Any]",
+    adapter: "DiscordAdapter",
+) -> None:
+    """Register /join and /leave as native Discord slash commands."""
+    import discord as _discord
+
+    @tree.command(name="join", description="Join your voice channel")
+    @_discord.app_commands.describe(
+        mode="Connection mode: transient or stay (persistent)"
+    )
+    @_discord.app_commands.choices(
+        mode=[
+            _discord.app_commands.Choice(name="transient", value="transient"),
+            _discord.app_commands.Choice(name="stay", value="stay"),
+        ]
+    )
+    async def join_slash(
+        interaction: _discord.Interaction, mode: str = "transient"
+    ) -> None:
+        await _handle_join_slash(interaction, adapter, mode)
+
+    @tree.command(name="leave", description="Leave the voice channel")
+    async def leave_slash(interaction: _discord.Interaction) -> None:
+        if interaction.guild is None:
+            await interaction.response.send_message(
+                "This command can only be used in a server.",
+                ephemeral=True,
+            )
+            return
+        trust = _resolve_slash_trust(
+            adapter, str(interaction.user.id)
+        )
+        if trust < TrustLevel.TRUSTED:
+            await interaction.response.send_message(
+                "You don't have permission to use this command.",
+                ephemeral=True,
+            )
+            return
+        guild_id = str(interaction.guild.id)
+        if adapter._vsm.get(guild_id) is None:
+            await interaction.response.send_message(
+                "I'm not in a voice channel.", ephemeral=True
+            )
+        else:
+            await adapter._vsm.leave(guild_id)
+            await interaction.response.send_message(
+                "Left the voice channel.", ephemeral=True
+            )

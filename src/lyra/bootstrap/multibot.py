@@ -11,8 +11,6 @@ from pathlib import Path
 from lyra.bootstrap.agent_factory import (
     _resolve_agents,
     _resolve_bot_agent_map,
-    apply_agent_stt_overlay,
-    apply_agent_tts_overlay,
 )
 from lyra.bootstrap.config import (
     _build_agent_overrides,
@@ -25,6 +23,7 @@ from lyra.bootstrap.multibot_wiring import (
     wire_discord_adapters,
     wire_telegram_adapters,
 )
+from lyra.bootstrap.voice_overlay import init_stt, init_tts
 from lyra.config import (
     DiscordBotConfig,
     DiscordMultiConfig,
@@ -39,8 +38,6 @@ from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.cli_pool import CliPool
 from lyra.core.hub import Hub
 from lyra.core.pairing import PairingManager, set_pairing_manager
-from lyra.stt import STTService, load_stt_config
-from lyra.tts import TTSService, load_tts_config
 
 log = logging.getLogger(__name__)
 
@@ -139,8 +136,8 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
             set_pairing_manager(pm)
 
         # STT / TTS services
-        stt_service = _init_stt(first_agent_config)
-        tts_service = _init_tts(
+        stt_service = init_stt(first_agent_config)
+        tts_service = init_tts(
             first_agent_config, stt_service, agent_configs, first_agent_name
         )
 
@@ -260,46 +257,3 @@ def _build_bot_auths(
         sys.exit(str(exc))
 
     return tg_bot_auths, dc_bot_auths
-
-
-def _init_stt(first_agent_config: Agent) -> STTService | None:
-    """Initialise STT service if STT_MODEL_SIZE is set."""
-    if not os.environ.get("STT_MODEL_SIZE"):
-        return None
-    try:
-        stt_cfg = apply_agent_stt_overlay(first_agent_config.stt, load_stt_config())
-        stt_service = STTService(stt_cfg)
-        log.info("STT enabled: model=%s (via voiceCLI)", stt_cfg.model_size)
-        return stt_service
-    except ValueError as exc:
-        raise SystemExit(f"Invalid STT configuration: {exc}") from exc
-
-
-def _init_tts(
-    first_agent_config: Agent,
-    stt_service: STTService | None,
-    agent_configs: dict[str, Agent],
-    first_agent_name: str,
-) -> TTSService | None:
-    """Initialise TTS service if STT is active and voice responses are enabled."""
-    voice_responses = os.environ.get("LYRA_VOICE_RESPONSES", "1") != "0"
-    if stt_service is None or not voice_responses:
-        return None
-
-    tts_cfg = apply_agent_tts_overlay(first_agent_config.tts, load_tts_config())
-    _agents_with_tts = [n for n, cfg in agent_configs.items() if cfg.tts is not None]
-    if len(_agents_with_tts) > 1:
-        log.warning(
-            "Multiple agents define [tts] config: %s — "
-            "using %r (first alphabetically). "
-            "Other agents' [tts] settings are ignored.",
-            _agents_with_tts,
-            first_agent_name,
-        )
-    tts_service = TTSService(tts_cfg)
-    log.info(
-        "TTS voice responses enabled: engine=%s voice=%s",
-        tts_cfg.engine or "default",
-        tts_cfg.voice or "default",
-    )
-    return tts_service

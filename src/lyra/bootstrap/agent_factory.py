@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
-import dataclasses
 import logging
 import os
 
-from lyra.agents.simple_agent import SimpleAgent
-from lyra.config import DiscordBotConfig, TelegramBotConfig
+# Re-exported for backward compatibility (tests import these from agent_factory)
+from lyra.bootstrap.bot_agent_map import resolve_bot_agent_map  # noqa: F401
+from lyra.bootstrap.voice_overlay import (  # noqa: F401
+    apply_agent_stt_overlay,
+    apply_agent_tts_overlay,
+)
 from lyra.core.agent import Agent, AgentBase
-from lyra.core.agent_config import AgentSTTConfig, AgentTTSConfig, SmartRoutingConfig
+from lyra.core.agent_config import SmartRoutingConfig
 from lyra.core.agent_store import AgentStore
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.cli_pool import CliPool
@@ -17,56 +20,24 @@ from lyra.core.messages import MessageManager
 from lyra.llm.base import LlmProvider
 from lyra.llm.registry import ProviderRegistry
 from lyra.llm.smart_routing import SmartRoutingDecorator
-from lyra.stt import STTConfig, STTService
-from lyra.tts import TTSConfig, TTSService
+from lyra.stt import STTService
+from lyra.tts import TTSService
 
 log = logging.getLogger(__name__)
 
 
-def apply_agent_tts_overlay(
-    agent_tts: AgentTTSConfig | None,
-    tts_cfg: TTSConfig,
-) -> TTSConfig:
-    """Overlay non-None fields from AgentTTSConfig onto TTSConfig.
-
-    None fields in agent_tts are skipped — voicecli global defaults remain in effect.
-    Returns an updated TTSConfig (via dataclasses.replace).
-    """
-    if agent_tts is None:
-        return tts_cfg
-    a = agent_tts
-    if a.engine is not None:
-        tts_cfg = dataclasses.replace(tts_cfg, engine=a.engine)
-    if a.voice is not None:
-        tts_cfg = dataclasses.replace(tts_cfg, voice=a.voice)
-    if a.language is not None:
-        tts_cfg = dataclasses.replace(tts_cfg, language=a.language)
-    return tts_cfg
+# ---------------------------------------------------------------------------
+# Backward-compatible alias used by multibot.py
+# ---------------------------------------------------------------------------
 
 
-def apply_agent_stt_overlay(
-    agent_stt: AgentSTTConfig | None,
-    stt_cfg: STTConfig,
-) -> STTConfig:
-    """Overlay non-None fields from AgentSTTConfig onto STTConfig.
-
-    None fields in agent_stt are skipped — voicecli global defaults remain in effect.
-    Returns an updated STTConfig (via dataclasses.replace).
-    """
-    if agent_stt is None:
-        return stt_cfg
-    a = agent_stt
-    if a.language_detection_threshold is not None:
-        stt_cfg = dataclasses.replace(
-            stt_cfg, language_detection_threshold=a.language_detection_threshold
-        )
-    if a.language_detection_segments is not None:
-        stt_cfg = dataclasses.replace(
-            stt_cfg, language_detection_segments=a.language_detection_segments
-        )
-    if a.language_fallback is not None:
-        stt_cfg = dataclasses.replace(stt_cfg, language_fallback=a.language_fallback)
-    return stt_cfg
+async def _resolve_bot_agent_map(
+    agent_store: AgentStore,
+    tg_bots: list,
+    dc_bots: list,
+) -> dict:
+    """Thin alias — delegates to bot_agent_map.resolve_bot_agent_map."""
+    return await resolve_bot_agent_map(agent_store, tg_bots, dc_bots)
 
 
 def _build_shared_base_providers(
@@ -211,6 +182,8 @@ def _create_agent(  # noqa: PLR0913 — factory with optional overrides for each
             from lyra.llm.drivers.cli import ClaudeCliDriver
 
             provider = ClaudeCliDriver(cli_pool)
+        from lyra.agents.simple_agent import SimpleAgent
+
         return SimpleAgent(
             config,
             provider,
@@ -285,90 +258,3 @@ def _resolve_agents(  # noqa: PLR0913
         )
         agents[name] = agent
     return agents
-
-
-async def _resolve_bot_agent_map(
-    agent_store: AgentStore,
-    tg_bots: "list[TelegramBotConfig]",
-    dc_bots: "list[DiscordBotConfig]",
-) -> "dict[tuple[str, str], str]":
-    """Resolve (platform, bot_id) -> agent_name for all configured bots.
-
-    Resolution order per bot:
-      1. bot_agent_map DB row (agent_store.get_bot_agent)
-      2. bot_cfg.agent from TOML — auto-seeds bot_agent_map in DB
-      3. Neither -> log error, skip (bot not included in result)
-
-    Bots whose resolved agent name is not found in the agents table are also
-    logged and skipped (adapter cannot be wired without a valid agent row).
-
-    Returns dict mapping (platform, bot_id) -> agent_name for bots that can
-    be safely wired.
-    """
-    result: dict[tuple[str, str], str] = {}
-
-    all_bots: list[tuple[str, str, str | None]] = []
-    for bot_cfg in tg_bots:
-        toml_agent = getattr(bot_cfg, "agent", None)
-        all_bots.append(("telegram", bot_cfg.bot_id, toml_agent))
-    for bot_cfg in dc_bots:
-        toml_agent = getattr(bot_cfg, "agent", None)
-        all_bots.append(("discord", bot_cfg.bot_id, toml_agent))
-
-    for platform, bot_id, toml_agent in all_bots:
-        # 1. Check DB cache (bot_agent_map table)
-        db_agent_name = agent_store.get_bot_agent(platform, bot_id)
-
-        if db_agent_name is not None:
-            # DB row found — validate the referenced agent exists in agents table.
-            # A stale bot_agent_map row (agent deleted) is a configuration error.
-            if agent_store.get(db_agent_name) is None:
-                log.error(
-                    "bot_agent_map: agent %r for (%r, %r) not found in"
-                    " agents table — skipping adapter",
-                    db_agent_name,
-                    platform,
-                    bot_id,
-                )
-                continue
-            result[(platform, bot_id)] = db_agent_name
-        elif toml_agent:
-            # Check agent exists in DB before seeding the mapping
-            if agent_store.get(toml_agent) is None:
-                log.error(
-                    "bot_agent_map: TOML agent %r for (%r, %r) not found in agents DB "
-                    "— skipping adapter (run 'lyra agent init' to import TOMLs)",
-                    toml_agent,
-                    platform,
-                    bot_id,
-                )
-                continue
-            # 2. No DB row — fall back to TOML bot_cfg.agent, seed bot_agent_map.
-            log.info(
-                "bot_agent_map: no DB row for (%r, %r) — seeding from TOML agent=%r",
-                platform,
-                bot_id,
-                toml_agent,
-            )
-            try:
-                await agent_store.set_bot_agent(platform, bot_id, toml_agent)
-            except Exception as exc:  # noqa: BLE001
-                log.warning(
-                    "bot_agent_map: failed to seed (%r, %r) -> %r: %s",
-                    platform,
-                    bot_id,
-                    toml_agent,
-                    exc,
-                )
-            result[(platform, bot_id)] = toml_agent
-        else:
-            # 3. No DB row, no TOML agent — skip
-            log.error(
-                "bot_agent_map: no DB row and no TOML agent for"
-                " (%r, %r) — skipping adapter",
-                platform,
-                bot_id,
-            )
-            continue
-
-    return result

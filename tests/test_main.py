@@ -38,6 +38,9 @@ class _FakeTgAdapter:
     async def send(self, msg: object, response: object) -> None:
         pass
 
+    async def resolve_identity(self) -> None:
+        pass
+
 
 class _FakeDcAdapter:
     def __init__(self, hub: Hub, **kwargs: object) -> None:

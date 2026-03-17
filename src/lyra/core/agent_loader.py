@@ -136,6 +136,8 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
 
     commands = _build_commands_from_dict(data.get("commands", {}))
 
+    # Reads [plugins].enabled — TOML key kept stable despite Python field rename
+    # to avoid collision with [commands] section (custom command metadata).
     plugins_section = data.get("plugins", {})
     commands_enabled: tuple[str, ...] = tuple(plugins_section.get("enabled", []))
 

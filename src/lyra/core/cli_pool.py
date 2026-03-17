@@ -9,8 +9,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Coroutine
 from pathlib import Path
+from typing import Any
 
 from .agent_config import ModelConfig
 from .cli_pool_worker import (
@@ -46,13 +47,23 @@ class CliPool(_CliPoolWorker):
         await pool.stop()
     """
 
-    def __init__(self, idle_ttl: int = 1200, default_timeout: int = 300) -> None:
+    def __init__(
+        self,
+        idle_ttl: int = 1200,
+        default_timeout: int = 300,
+        on_reap: Callable[
+            [str, str], Coroutine[Any, Any, None]
+        ]
+        | None = None,
+    ) -> None:
         self._idle_ttl = idle_ttl
         self._default_timeout = default_timeout
+        self._on_reap = on_reap
         self._entries: dict[str, _ProcessEntry] = {}
         self._reaper_task: asyncio.Task[None] | None = None
         self._cwd_overrides: dict[str, Path] = {}
         self._resume_session_ids: dict[str, str] = {}
+        self._last_sweep_at: float | None = None
 
     async def start(self) -> None:
         """Start the idle reaper background task."""
@@ -129,7 +140,9 @@ class CliPool(_CliPoolWorker):
                     on_intermediate=on_intermediate,
                     default_timeout=self._default_timeout,
                 )
-                if not result.ok and "Timeout" in result.error:
+                if not result.ok and (
+                    "Timeout" in result.error or "terminated" in result.error
+                ):
                     await self._kill(pool_id)
                     return result
                 entry.turn_count += 1

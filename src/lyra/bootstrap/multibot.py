@@ -14,6 +14,7 @@ from lyra.bootstrap.agent_factory import (
 )
 from lyra.bootstrap.config import (
     _build_agent_overrides,
+    _load_cli_pool_config,
     _load_messages,
     _load_pairing_config,
 )
@@ -143,6 +144,8 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
 
         from lyra.core.debouncer import DEFAULT_DEBOUNCE_MS
 
+        cli_pool_cfg = _load_cli_pool_config(raw_config)
+
         hub = Hub(
             circuit_registry=circuit_registry,
             msg_manager=msg_manager,
@@ -151,6 +154,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
             tts=tts_service,
             debounce_ms=DEFAULT_DEBOUNCE_MS,
             prefs_store=stores.prefs,
+            turn_timeout=cli_pool_cfg["turn_timeout"],
         )
         hub.set_turn_store(stores.turn)
 
@@ -158,9 +162,13 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
         cli_pool: CliPool | None = None
         for cfg in agent_configs.values():
             if cfg.model_config.backend == "claude-cli":
-                cli_pool = CliPool()
+                cli_pool = CliPool(
+                    idle_ttl=cli_pool_cfg["idle_ttl"],
+                    default_timeout=cli_pool_cfg["default_timeout"],
+                )
                 await cli_pool.start()
                 break
+        hub.cli_pool = cli_pool
 
         # Create and register all agents
         all_agents = _resolve_agents(

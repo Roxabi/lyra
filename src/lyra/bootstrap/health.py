@@ -59,7 +59,7 @@ def create_health_app(hub: Hub) -> FastAPI:
             for (platform, _bot_id), dispatcher in hub.outbound_dispatchers.items()
         }
 
-        return {
+        result = {
             "ok": True,
             "queue_size": hub.inbound_bus.staging_qsize(),
             "queues": {"inbound": inbound, "outbound": outbound},
@@ -67,6 +67,23 @@ def create_health_app(hub: Hub) -> FastAPI:
             "uptime_s": round(uptime_s, 1),
             "circuits": circuits,
         }
+
+        # Reaper fields only present when a CLI pool is configured
+        if hub.cli_pool is not None:
+            result["reaper_alive"] = (
+                hub.cli_pool._reaper_task is not None
+                and not hub.cli_pool._reaper_task.done()
+            )
+            result["reaper_last_sweep_age"] = (
+                round(
+                    time.monotonic() - hub.cli_pool._last_sweep_at,
+                    1,
+                )
+                if hub.cli_pool._last_sweep_at is not None
+                else None
+            )
+
+        return result
 
     @app.get("/config")
     async def config_endpoint(

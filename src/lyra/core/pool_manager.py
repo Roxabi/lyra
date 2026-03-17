@@ -36,6 +36,7 @@ class PoolManager:
                 agent_name=agent_name,
                 ctx=self._hub,
                 debounce_ms=self._hub._debounce_ms,
+                turn_timeout_ceiling=self._hub._turn_timeout,
             )
             if self._hub._turn_store is not None:
                 new_pool._observer.register_turn_store(self._hub._turn_store)
@@ -68,6 +69,11 @@ class PoolManager:
                     task = asyncio.create_task(agent.flush_session(pool, "idle"))
                     self._hub._memory_tasks.add(task)
                     task.add_done_callback(self._hub._memory_tasks.discard)
+            # Kill orphaned CLI process synchronously (pop entry now,
+            # schedule terminate) so a new pool can't claim the old process
+            if self._hub.cli_pool is not None:
+                self._hub.cli_pool._entries.pop(pid, None)
+                self._hub.cli_pool._cwd_overrides.pop(pid, None)
         if stale:
             log.info("evicted %d stale pool(s)", len(stale))
             log.debug("evicted pool IDs: %s", stale)

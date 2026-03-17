@@ -1,7 +1,8 @@
-"""Tests for _load_circuit_config() in lyra.__main__ (issue #104, SC-16).
+"""Tests for bootstrap config loaders (issue #104, SC-16; issue #317).
 
 Covers:
   SC-16: TOML-driven circuit config with defaults and per-service overrides.
+  #317: _load_cli_pool_config defaults and TOML overrides.
 """
 
 from __future__ import annotations
@@ -157,3 +158,47 @@ class TestLoadCircuitConfigTomlOverrides:
 
         # Assert — no admin ids
         assert admin_ids == set()
+
+
+# ---------------------------------------------------------------------------
+# _load_cli_pool_config (#317)
+# ---------------------------------------------------------------------------
+
+
+class TestLoadCliPoolConfig:
+    """#317: _load_cli_pool_config reads [cli_pool] section with defaults."""
+
+    def test_defaults_when_section_missing(self) -> None:
+        """SC-1: Missing [cli_pool] → hardcoded defaults preserved."""
+        from lyra.bootstrap.config import _load_cli_pool_config
+
+        result = _load_cli_pool_config({})
+        assert result["idle_ttl"] == 1200
+        assert result["default_timeout"] == 300
+        assert result["turn_timeout"] is None
+
+    def test_overrides_from_toml(self) -> None:
+        """SC-1: TOML values override defaults."""
+        from lyra.bootstrap.config import _load_cli_pool_config
+
+        raw = {
+            "cli_pool": {
+                "idle_ttl": 600,
+                "default_timeout": 120,
+                "turn_timeout": 300,
+            }
+        }
+        result = _load_cli_pool_config(raw)
+        assert result["idle_ttl"] == 600
+        assert result["default_timeout"] == 120
+        assert result["turn_timeout"] == 300
+
+    def test_partial_override_keeps_defaults(self) -> None:
+        """SC-1: Only turn_timeout set → idle_ttl and default_timeout keep defaults."""
+        from lyra.bootstrap.config import _load_cli_pool_config
+
+        raw = {"cli_pool": {"turn_timeout": 600}}
+        result = _load_cli_pool_config(raw)
+        assert result["idle_ttl"] == 1200
+        assert result["default_timeout"] == 300
+        assert result["turn_timeout"] == 600

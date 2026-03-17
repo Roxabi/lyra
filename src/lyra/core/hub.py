@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from ..stt import STTService
     from ..tts import TTSService
     from .circuit_breaker import CircuitRegistry
+    from .cli_pool import CliPool
     from .context_resolver import ContextResolver
     from .memory import MemoryManager
     from .messages import MessageManager
@@ -63,6 +64,7 @@ class Hub(HubOutboundMixin):
         debounce_ms: int = 0,
         context_resolver: ContextResolver | None = None,
         prefs_store: "PrefsStore | None" = None,
+        turn_timeout: float | None = None,
     ) -> None:
         self._bus_size = bus_size
         self.inbound_bus: InboundBus[InboundMessage] = InboundBus(name="inbound")
@@ -87,7 +89,9 @@ class Hub(HubOutboundMixin):
         self._memory: MemoryManager | None = None
         self._memory_tasks: set[asyncio.Task] = set()
         self._turn_store: TurnStore | None = None
+        self._turn_timeout = turn_timeout
         self._prefs_store: PrefsStore | None = prefs_store
+        self.cli_pool: CliPool | None = None
         self._pool_manager = PoolManager(self)
         self._audio_pipeline = AudioPipeline(self)
 

@@ -25,6 +25,7 @@
     "022-event-bus-singleton-vs-dependency-injection",
     "023-per-user-tts-prefs-and-agent-tts-config-overlay",
     "024-agent-store-sqlite-design-decisions",
-    "026-pool-callback-wiring-eager-vs-lazy"
+    "026-pool-callback-wiring-eager-vs-lazy",
+    "027-300-line-cap-refactoring-plan"
   ]
 }

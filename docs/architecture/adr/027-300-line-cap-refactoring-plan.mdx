@@ -1,0 +1,554 @@
+---
+title: "ADR-027: 300-Line Cap Refactoring Plan — Epic #293 Phase 2"
+description: Structured decomposition plan for the 12 src/lyra source files that still exceed the 300-line limit, including per-file analysis, dependency graph, parallel work batches, and risk assessment.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+Epic #293 mandates that no source file in `src/lyra/` exceeds 300 lines. After the
+first pass (issues #294–#318), 12 files remain over the cap. Some were outside the
+original scope; others closed as done but regrew. This ADR provides the authoritative
+decomposition plan so implementers can work in parallel without stepping on each other.
+
+Constraint: extracted modules must also be ≤300 lines each. `__init__.py` re-exports
+must be preserved. Zero behavioural changes are permitted.
+
+---
+
+## Per-File Analysis
+
+### 1. `core/hub.py` — 532 lines (issue #294)
+
+**Concerns present:**
+
+| Concern | Lines (approx) |
+|---------|----------------|
+| Class definition, constructor, registries | 1–97 |
+| Property accessors (pools, bus) | 98–104 |
+| Agent/adapter/binding registration and resolution | 106–184 |
+| Pool and debounce delegation | 186–194 |
+| Agent and message manager accessors | 195–199 |
+| Circuit breaker record helpers | 200–217 |
+| Rate-limit property pass-throughs (3 properties + 2 methods) | 218–234 |
+| Outbound routing: `_route_outbound`, `circuit_breaker_drop` | 236–299 |
+| Outbound dispatch methods (response, streaming, attachment, audio, voice) | 300–481 |
+| Bus consumer loop (`run`) and `shutdown` | 508–533 |
+
+**Root cause of regrowth:** The dispatch methods (`dispatch_response`, `dispatch_streaming`, `dispatch_attachment`, `dispatch_audio`, `dispatch_audio_stream`, `dispatch_voice_stream`, `_dispatch_pipeline_result`) were not extracted when `MessagePipeline` and `PoolManager` were split out.
+
+**Proposed split:**
+
+- `core/hub_dispatch.py` (new) — Extract all `dispatch_*` methods plus `_route_outbound` and `circuit_breaker_drop` as free functions that accept a `Hub` instance as their first argument. `Hub` keeps thin delegation wrappers to preserve the public interface. Estimated: ~160 lines.
+- `core/hub.py` after extraction — Constructor, registries, accessors, registration methods, rate-limit pass-throughs, `run`, `shutdown`. Estimated: ~220 lines.
+
+**`__init__.py` impact:** `core/__init__.py` re-exports `Hub`, `ChannelAdapter`, `Action`, `MessagePipeline`, `PipelineResult`, `RoutingKey` from `hub.py`. These re-exports all remain — `hub.py` stays the public surface; `hub_dispatch.py` is an internal implementation module.
+
+---
+
+### 2. `bootstrap/agent_factory.py` — 374 lines (outside original scope)
+
+**Concerns present:**
+
+| Concern | Lines (approx) |
+|---------|----------------|
+| TTS/STT overlay functions (`apply_agent_tts_overlay`, `apply_agent_stt_overlay`) | 26–69 |
+| Shared LLM driver building (`_build_shared_base_providers`) | 72–114 |
+| Per-agent registry building (`_build_per_agent_registry`) | 117–148 |
+| Convenience wrapper (`_build_provider_registry`) | 151–167 |
+| Agent instantiation (`_create_agent`) | 170–223 |
+| Multi-agent resolution (`_resolve_agents`) | 226–287 |
+| Bot-to-agent mapping resolution (`_resolve_bot_agent_map`) | 290–374 |
+
+**Proposed split:**
+
+- `bootstrap/agent_factory.py` — Keep `_create_agent`, `_resolve_agents`, `_build_provider_registry`, `_build_shared_base_providers`, `_build_per_agent_registry`. Estimated: ~210 lines.
+- `bootstrap/bot_agent_map.py` (new) — Extract `_resolve_bot_agent_map` and its DB-lookup helpers. Estimated: ~90 lines.
+- `bootstrap/voice_overlay.py` (new) — Extract `apply_agent_tts_overlay` and `apply_agent_stt_overlay`. Estimated: ~50 lines.
+
+**`multibot.py` import impact:** `multibot.py` already imports all three groups from `agent_factory`. Imports must be updated to the new module locations, or `agent_factory.py` must re-export them from the new modules.
+
+---
+
+### 3. `adapters/_shared.py` — 345 lines (outside original scope)
+
+**Concerns present:**
+
+| Concern | Lines (approx) |
+|---------|----------------|
+| `push_to_hub_guarded` — inbound bus guard | 32–70 |
+| `truncate_caption`, `sanitize_filename` — filename/text utils | 72–106 |
+| Constants: `ATTACHMENT_EXTS_BASE`, `DISCORD_MAX_LENGTH`, `AUDIO_MIME_TYPES`, audio ext set, max bytes | 109–156 |
+| `buffer_audio_chunks`, `_PartialAudioError` — audio buffering | 159–213 |
+| `chunk_text` — text splitting | 225–268 |
+| `resolve_msg`, `mime_to_ext` — message/MIME utils | 271–295 |
+| `TypingTaskManager` — per-channel typing tasks | 297–332 |
+| `parse_reply_to_id` — reply ID parser | 334–346 |
+
+**Proposed split:**
+
+- `adapters/_shared.py` — Keep `push_to_hub_guarded`, `resolve_msg`, `parse_reply_to_id`, `TypingTaskManager`, and the constants block. Estimated: ~150 lines.
+- `adapters/_shared_audio.py` (new) — `buffer_audio_chunks`, `_PartialAudioError`, `mime_to_ext`, `_AUDIO_EXTS`, `_MAX_OUTBOUND_AUDIO_BYTES`. Estimated: ~80 lines.
+- `adapters/_shared_text.py` (new) — `chunk_text`, `truncate_caption`, `sanitize_filename`. Estimated: ~80 lines.
+
+**Import impact:** `discord_audio_outbound`, `telegram.py`, and other adapters import from `_shared`. Their imports must be updated or `_shared.py` must re-export the relocated symbols.
+
+---
+
+### 4. `core/cli_pool.py` — 344 lines (outside original scope)
+
+**Concerns present:**
+
+| Concern | Lines (approx) |
+|---------|----------------|
+| Constants and `_find_project_root` | 23–48 |
+| `_ProcessEntry` dataclass | 51–66 |
+| `CliPool` public API: `start`, `stop`, `send`, `is_alive`, `reset`, `switch_cwd`, `resume_and_reset` | 68–231 |
+| `CliPool` internals: `_build_cmd`, `_spawn`, `_kill`, `_idle_reaper` | 237–344 |
+
+**Assessment:** The file is cohesive — one class, one responsibility (persistent CLI process pool). The bulk is the `_spawn` + `_idle_reaper` machinery. The cleanest split:
+
+- `core/cli_pool.py` — `CliPool` public API + `_ProcessEntry` + constants. Keep `send`, `is_alive`, `reset`, `switch_cwd`, `resume_and_reset`, `start`, `stop`. Remove internal methods to sub-module. Estimated: ~190 lines.
+- `core/cli_pool_worker.py` (new) — `_build_cmd`, `_spawn`, `_kill`, `_idle_reaper` as free functions receiving a `CliPool` reference. Estimated: ~130 lines.
+
+Alternatively, 344 lines with many blank lines and docstrings may compress significantly via formatting cleanup alone. A conservative estimate: removing redundant blank lines and consolidating multi-line log calls could recover 15–25 lines, still leaving it ~319 lines. The extraction is preferable to relying on cosmetic trimming.
+
+---
+
+### 5. `core/memory.py` — 338 lines (issue #301, closed — regrew)
+
+**Concerns present:**
+
+| Concern | Lines (approx) |
+|---------|----------------|
+| Module docstring, imports, `__all__`, logger | 1–31 |
+| `MemoryManager`: connect, close | 34–45 |
+| Identity anchor methods | 47–70 |
+| Session + contact upserts | 72–125 |
+| `recall` + `_fetch_preferences` | 127–209 |
+| `upsert_concept` | 213–280 |
+| `upsert_preference` | 282–338 |
+
+**Root cause of regrowth:** `upsert_concept` and `upsert_preference` grew in complexity (staleness logic, merge logic). The `recall` + `_fetch_preferences` pair also expanded.
+
+**Proposed split:**
+
+- `core/memory.py` — Module facade: `MemoryManager` shell with `connect`, `close`, identity anchor, `upsert_session`, `upsert_contact`, `recall`. Delegates to sub-modules. Estimated: ~160 lines.
+- `core/memory_upserts.py` (new) — `upsert_concept` and `upsert_preference` as standalone async functions accepting a `db` handle and `SessionSnapshot`. Estimated: ~140 lines.
+
+`__all__` and the re-export block at the top of `memory.py` must be preserved unchanged for backward compat.
+
+---
+
+### 6. `core/pairing.py` — 334 lines (outside original scope)
+
+**Concerns present:**
+
+| Concern | Lines (approx) |
+|---------|----------------|
+| Module docstring, constants, DDL string | 1–51 |
+| `PairingError`, `PairingConfig` | 29–74 |
+| `PairingManager`: `connect`, `close`, `generate_code`, `_count_pending` | 82–158 |
+| `PairingManager`: `validate_code` (IMMEDIATE transaction, grant write) | 160–257 |
+| `PairingManager`: `is_admin`, `revoke_session`, rate-limit methods | 263–303 |
+| Module-level DI (`_pairing_manager`, `get_pairing_manager`, `set_pairing_manager`) | 306–321 |
+| Helper functions (`_sha256`, `_utc_now`) | 329–334 |
+
+**Assessment:** Highly cohesive file. The `validate_code` method alone is ~100 lines due to transaction safety logic. Options:
+
+Option A (preferred): Minor restructuring — move `PairingConfig`, `PairingError`, and `_sha256`/`_utc_now` helpers into a `core/pairing_config.py`. Keep all `PairingManager` logic in `core/pairing.py`.
+- `core/pairing_config.py` (new): `PairingConfig`, `PairingError`, `_sha256`, `_utc_now`, constants. Estimated: ~45 lines.
+- `core/pairing.py` after: `PairingManager` + module DI. Estimated: ~275 lines.
+
+Option B: Extract rate limiting into `core/pairing_rate.py` (the sliding-window logic). Simpler but saves only ~25 lines.
+
+Option A is preferred. It isolates the value type from the stateful manager, which is a sound architectural boundary.
+
+---
+
+### 7. `core/pool_processor.py` — 325 lines (issue #300, open)
+
+**Concerns present:**
+
+| Concern | Lines (approx) |
+|---------|----------------|
+| `process_loop` — main loop | 45–83 |
+| `_process_with_cancel` — cancel-in-flight | 89–148 |
+| `_guarded_process_one` — timeout + error + events | 153–217 |
+| `_process_one` — single-turn execution (streaming + non-streaming paths) | 223–311 |
+| `_safe_dispatch` | 317–325 |
+
+**Assessment:** This file is 25 lines over. The `_process_one` method is the dominant contributor at ~90 lines, containing complex streaming/non-streaming branching with deferred-callback logic for turn logging.
+
+Given proximity to the cap, this is a strong candidate for **trimming rather than extraction**:
+- Remove redundant blank lines between methods (several have double-blank-line separators that could be single).
+- The `_process_one` noqa comment hints at a known complexity cost — the branches are load-bearing and cannot be further split without coupling to pool internals.
+- Estimated recoverable lines via formatting: 10–15 lines, reducing to ~310–315 lines.
+- If trimming is insufficient, extract `_safe_dispatch` and `_process_one` into `core/pool_processor_exec.py`. Estimated split: ~80 lines in new module, ~240 in original.
+
+**Recommendation:** Attempt formatting cleanup first; extract if still over.
+
+---
+
+### 8. `core/message_pipeline.py` — 325 lines (issue #294, open)
+
+**Concerns present:**
+
+| Concern | Lines (approx) |
+|---------|----------------|
+| `Action`, `PipelineResult`, `_DROP` constants | 29–46 |
+| `MessagePipeline`: `process` main entry | 60–112 |
+| Guard stages: `_validate_platform`, `_check_rate_limit`, `_resolve_binding`, `_lookup_agent` | 114–171 |
+| Terminal stages: `_dispatch_command` | 175–210 |
+| Context resolution: `_resolve_context` (3 resume paths) | 212–292 |
+| Terminal stage: `_submit_to_pool` | 294–325 |
+
+**Assessment:** This file is 25 lines over. `_resolve_context` is 80+ lines for three resume paths.
+
+Given proximity, trimming is preferable:
+- The `_resolve_context` method has several multi-line log strings and nested conditionals. Compressing those could recover 10–15 lines.
+- If still over: extract `_resolve_context` into `core/context_resume.py` as a standalone async function. Estimated: ~85 lines for the new module, ~245 for the original.
+
+**Recommendation:** Attempt formatting cleanup first; extract `_resolve_context` if still over.
+
+---
+
+### 9. `core/outbound_dispatcher.py` — 311 lines (issue #303, closed — regrew)
+
+**Concerns present:**
+
+| Concern | Lines (approx) |
+|---------|----------------|
+| `OutboundDispatcher`: constructor, `_verify_routing`, enqueue methods | 40–134 |
+| Lifecycle: `start`, `stop`, `qsize`, `_try_notify_user` | 136–156 |
+| `_worker_loop` — the entire dispatch engine with retry and CB logic | 158–311 |
+
+**Root cause of regrowth:** `_worker_loop` grew with routing verification logic, circuit breaker notify debouncing, and callback invocation. It is 153 lines by itself.
+
+**Assessment:** 11 lines over. Formatting cleanup alone (the `_worker_loop` has many inline string literals and continuation lines) could recover 5–10 lines.
+
+If trimming is insufficient: extract the retry loop body into a `_dispatch_item` helper method within the same file, breaking `_worker_loop` into dispatcher and single-item executor. This keeps everything in one file at ~305 lines — still marginal.
+
+**Recommendation:** Extract `_dispatch_item` as a private helper within the file to reduce `_worker_loop` to ~60 lines. This keeps the single-file structure while achieving the line cap. Estimated after restructure: ~295 lines.
+
+---
+
+### 10. `cli_agent_crud.py` — 308 lines (issue #299, closed — regrew)
+
+**Concerns present:**
+
+| Concern | Lines (approx) |
+|---------|----------------|
+| `init_agents` command | 18–52 |
+| `list_agents` command | 55–86 |
+| `show` command | 89–105 |
+| `validate` command (TOML path + DB path, each ~40 lines) | 108–185 |
+| `edit` command | 188–235 |
+| `delete_agent` command | 238–261 |
+| `assign` command | 264–288 |
+| `unassign` command | 291–308 |
+
+**Assessment:** 8 lines over. This is the most straightforward trimming candidate. The `validate` command is 78 lines because it has two code paths (TOML and DB) each with their own validation loops. Cosmetic cleanup (removing blank lines within async closures) can likely recover 8–12 lines. No extraction needed.
+
+**Recommendation:** Formatting cleanup only.
+
+---
+
+### 11. `bootstrap/multibot.py` — 305 lines (issue #302, closed — regrew)
+
+**Concerns present:**
+
+| Concern | Lines (approx) |
+|---------|----------------|
+| `_bootstrap_multibot` — main wiring function | 48–210 |
+| `_build_bot_auths` — auth middleware construction | 213–262 |
+| `_init_stt` — STT service initialisation | 265–275 |
+| `_init_tts` — TTS service initialisation | 278–305 |
+
+**Root cause of regrowth:** `_init_tts` and `_init_stt` were added here after `voice_overlay.py` was not created in the prior extraction.
+
+**Assessment:** 5 lines over. `_init_stt` and `_init_tts` (total ~45 lines) are identical in purpose to the `apply_agent_{stt,tts}_overlay` already in `agent_factory.py`. They can be relocated to a `bootstrap/voice_services.py` module (or merged with the proposed `bootstrap/voice_overlay.py` from the `agent_factory.py` split). This also achieves the `agent_factory.py` split goal, making it doubly worthwhile.
+
+**Recommendation:** Move `_init_stt` and `_init_tts` to the new `bootstrap/voice_overlay.py`. `multibot.py` imports them from there. After removal: ~260 lines.
+
+---
+
+### 12. `adapters/discord.py` — 304 lines (issue #296, open)
+
+**Concerns present:**
+
+| Concern | Lines (approx) |
+|---------|----------------|
+| `DiscordConfig`, `load_discord_config` | 56–72 |
+| `DiscordAdapter.__init__` and property/helper methods | 75–155 |
+| `on_ready`, `on_voice_state_update` event handlers | 156–193 |
+| Public API: `normalize_audio`, `normalize`, `on_message`, `send`, `send_streaming` | 195–254 |
+| Render methods: `render_audio`, `render_attachment`, `render_audio_stream`, `render_voice_stream` | 256–298 |
+| `_resolve_channel` | 299–305 |
+
+**Assessment:** 4 lines over. `DiscordAdapter` is already well-factored — almost every method delegates to a sub-module. `DiscordConfig` and `load_discord_config` (16 lines) can be relocated to `adapters/discord_config.py` (analogous to how `TelegramConfig` may be structured), and `DiscordAdapter` imports from there. Alternatively, a whitespace-only cleanup recovers the 4 lines at zero risk.
+
+**Recommendation:** Move `DiscordConfig` and `load_discord_config` to `adapters/discord_config.py`. `adapters/discord.py` imports from there. After removal: ~288 lines. Lower risk than trimming alone.
+
+---
+
+## Dependency Graph
+
+Files are organised by dependency direction (arrows mean "imports from"):
+
+```
+bootstrap/multibot.py
+  -> bootstrap/agent_factory.py
+  -> bootstrap/multibot_wiring.py
+  -> bootstrap/multibot_stores.py
+  -> bootstrap/config.py
+  -> core/hub.py
+  -> core/pairing.py
+  -> core/cli_pool.py
+  -> (proposed) bootstrap/voice_overlay.py  [new — receives _init_stt, _init_tts]
+  -> (proposed) bootstrap/bot_agent_map.py  [new — receives _resolve_bot_agent_map]
+
+bootstrap/agent_factory.py
+  -> core/cli_pool.py
+  -> core/circuit_breaker.py
+  -> llm/*
+
+core/hub.py
+  -> core/message_pipeline.py
+  -> core/pool_manager.py
+  -> core/audio_pipeline.py
+  -> core/hub_rate_limit.py
+  -> core/inbound_bus.py
+  -> (proposed) core/hub_dispatch.py  [new — receives dispatch_* methods]
+
+core/message_pipeline.py
+  -> core/hub.py  [TYPE_CHECKING only]
+  -> core/pool.py
+  -> core/agent.py
+  -> core/command_parser.py
+
+core/pool_processor.py
+  -> core/pool.py  [runtime reference via self._pool]
+  -> core/debouncer.py
+  -> core/message.py
+
+core/outbound_dispatcher.py
+  -> core/circuit_breaker.py
+  -> core/message.py
+  -> core/outbound_errors.py
+
+core/memory.py
+  -> core/memory_freshness.py
+  -> core/memory_schema.py
+  -> core/memory_types.py
+  -> roxabi_vault.AsyncMemoryDB
+  -> (proposed) core/memory_upserts.py  [new — receives upsert_concept, upsert_preference]
+
+core/pairing.py
+  -> core/sqlite_base.py
+  -> core/trust.py
+  -> core/auth_store.py  [TYPE_CHECKING]
+  -> (proposed) core/pairing_config.py  [new — receives PairingConfig, PairingError, helpers]
+
+core/cli_pool.py
+  -> core/agent_config.py
+  -> core/cli_protocol.py
+  -> (proposed) core/cli_pool_worker.py  [new — receives _build_cmd, _spawn, _kill, _idle_reaper]
+
+adapters/_shared.py
+  -> core/circuit_breaker.py
+  -> core/message.py
+  -> core/messages.py  [TYPE_CHECKING]
+  -> (proposed) adapters/_shared_audio.py  [new]
+  -> (proposed) adapters/_shared_text.py   [new]
+
+adapters/discord.py
+  -> adapters/_shared.py
+  -> adapters/discord_*  (all sub-modules)
+  -> core/*
+  -> (proposed) adapters/discord_config.py  [new — receives DiscordConfig + loader]
+```
+
+**Key coupling observation:** `bootstrap/multibot.py` is a fan-out hub that depends on nearly every bootstrap module. Changes to `agent_factory.py` split must be coordinated with it. Otherwise, all other files are independent of each other.
+
+---
+
+## Parallel Work Batches
+
+Files with no implementation-level dependencies on each other can be extracted simultaneously. The batches below are sized for one developer each.
+
+### Batch A — Bootstrap consolidation (coordinated, do these together or in sub-sequence)
+
+These two must be coordinated because `multibot.py` imports from `agent_factory.py`. However, they can be done by the same developer in one PR:
+
+1. Create `bootstrap/voice_overlay.py` with `apply_agent_tts_overlay`, `apply_agent_stt_overlay`, `_init_stt`, `_init_tts`.
+2. Update `bootstrap/agent_factory.py` to import overlay functions from new module.
+3. Update `bootstrap/multibot.py` to import `_init_stt` / `_init_tts` from new module.
+4. Create `bootstrap/bot_agent_map.py` with `_resolve_bot_agent_map`.
+5. Update `agent_factory.py` and `multibot.py` imports accordingly.
+
+Files affected: `bootstrap/multibot.py`, `bootstrap/agent_factory.py` (both resolved in one batch).
+
+**Risk:** `multibot.py` and `agent_factory.py` share a caller-callee relationship. A partial extraction where only one is updated creates a broken import state.
+
+---
+
+### Batch B — Core memory (independent)
+
+1. Create `core/memory_upserts.py` with `upsert_concept` and `upsert_preference` as async functions taking `(self: MemoryManager, ...)` or accepting the `db` handle.
+2. Thin `core/memory.py` to delegate to the new module.
+
+Files affected: `core/memory.py` only. No other file imports these methods directly; all callers go through `MemoryManager`.
+
+---
+
+### Batch C — Core pairing (independent)
+
+1. Create `core/pairing_config.py` with `PairingConfig`, `PairingError`, `_sha256`, `_utc_now`, DDL and constants.
+2. Update `core/pairing.py` to import from the new module.
+
+Files affected: `core/pairing.py` only. `bootstrap/multibot.py` imports `PairingManager` and `set_pairing_manager` from `pairing.py` — those stay in place.
+
+---
+
+### Batch D — Hub dispatch extraction (independent, but larger)
+
+1. Create `core/hub_dispatch.py` with all `dispatch_*` methods plus `_route_outbound` and `circuit_breaker_drop` as module-level functions taking `hub: Hub` as first argument.
+2. In `core/hub.py`, replace method bodies with one-line delegating calls.
+3. Verify `core/__init__.py` re-exports are unaffected (they import from `hub.py` which still exposes the methods).
+
+Files affected: `core/hub.py` only. `MessagePipeline` and `PoolProcessor` call `pool._ctx.dispatch_*` — those go through the `Hub` instance, so the delegation wrappers preserve the interface.
+
+---
+
+### Batch E — CLI pool extraction (independent)
+
+1. Create `core/cli_pool_worker.py` with `_build_cmd`, `_spawn`, `_kill`, `_idle_reaper` as module-level functions taking a `CliPool` reference.
+2. `CliPool` calls them via module import.
+
+Files affected: `core/cli_pool.py` only.
+
+---
+
+### Batch F — Adapters shared module split (independent)
+
+1. Create `adapters/_shared_audio.py` with `buffer_audio_chunks`, `_PartialAudioError`, `mime_to_ext`, `_AUDIO_EXTS`, `_MAX_OUTBOUND_AUDIO_BYTES`.
+2. Create `adapters/_shared_text.py` with `chunk_text`, `truncate_caption`, `sanitize_filename`.
+3. Update `adapters/_shared.py` to import and re-export the relocated symbols, OR update each importing adapter directly.
+
+Files affected: `adapters/_shared.py`. Secondary impact on any adapter file that imports from `_shared.py`. Re-exporting from `_shared.py` minimises secondary impact.
+
+---
+
+### Batch G — Discord config extraction (independent, smallest)
+
+1. Create `adapters/discord_config.py` with `DiscordConfig` and `load_discord_config`.
+2. Update `adapters/discord.py` to import from `discord_config.py`.
+3. Verify `adapters/__init__.py` is unaffected (it only imports `DiscordAdapter`).
+
+Files affected: `adapters/discord.py` only.
+
+---
+
+### Batch H — Trimming-only candidates (can be done by any developer, any order)
+
+These require no new files — only formatting cleanup:
+
+- `core/pool_processor.py` (25 over): Remove double blank lines, compress log strings.
+- `core/message_pipeline.py` (25 over): Compress `_resolve_context` log lines. If still over, extract `_resolve_context` body.
+- `core/outbound_dispatcher.py` (11 over): Extract `_dispatch_item` within the file.
+- `cli_agent_crud.py` (8 over): Remove intra-function blank lines.
+
+---
+
+### Batch execution order
+
+No hard sequencing is required across batches. All batches are independent except Batch A (where `multibot.py` and `agent_factory.py` must be handled together). Batches B through H can be distributed to different developers simultaneously.
+
+Recommended sequencing for a single developer:
+1. H (trimming, low risk, quick) — confirm which trimming cases actually close without extraction.
+2. G (4 lines, lowest risk extraction).
+3. C (pairing config, self-contained).
+4. B (memory upserts, self-contained).
+5. F (shared adapters — re-export approach keeps secondary impact minimal).
+6. E (cli_pool worker).
+7. D (hub dispatch — most lines affected).
+8. A (bootstrap — requires coordinated changes to two files).
+
+---
+
+## Risk Assessment
+
+### High risk
+
+**Batch D (hub dispatch extraction):** `Hub` is the central dependency. All adapters, all agents, all pools, and all tests that call `dispatch_*` go through `Hub`. Delegating wrappers preserve the interface, but any mistake in the wrapper signature (missed `await`, wrong argument order) produces a runtime error that may only appear under load. Mitigation: run the full test suite after each extracted method, not after the whole batch.
+
+**Batch A (bootstrap):** `_resolve_bot_agent_map` is called during startup. An import error kills the process before any logs are emitted. Mitigation: add a smoke-test import assertion in the test suite.
+
+### Medium risk
+
+**Batch F (adapters shared split):** Several adapter files import from `_shared.py`. If the re-export approach is not used, every importing file must be updated simultaneously. A partial update produces `ImportError` at runtime. Mitigation: use the re-export approach — keep all symbols importable from `_shared.py` via `from ._shared_audio import *` style re-exports.
+
+**Batch E (cli_pool worker):** The `_spawn` function holds the subprocess creation logic. Any argument mislabelling breaks the CLI backend silently (pool returns `CliResult(error=...)` rather than raising). Mitigation: ensure `tests/` cover the spawn path (mocked subprocess).
+
+### Low risk
+
+**Batches B, C, G:** Small extractions, narrow import surfaces, no protocol changes.
+
+**Batch H (trimming):** Pure cosmetic, zero behavioural risk. The only failure mode is an off-by-one in line counting.
+
+### Cross-cutting risks
+
+- **`__init__.py` re-export preservation:** `core/__init__.py` imports `Action`, `MessagePipeline`, `PipelineResult`, `RoutingKey` via `hub.py`. These must remain importable from `lyra.core` after extraction. Since `hub.py` already re-exports them via `# noqa: F401`, the pattern is established — new extracted modules follow the same pattern.
+- **Circular imports:** `hub_dispatch.py` must import `Hub` for type annotations but `hub.py` would import `hub_dispatch`. Use `TYPE_CHECKING` guard to break the cycle: runtime imports only the dispatch functions, type annotations are string-form or behind `TYPE_CHECKING`.
+- **`cli_pool_worker.py` circular reference:** same solution — `CliPool` is only needed for type annotations in worker functions.
+
+---
+
+## Options Considered
+
+### Option A: Extract new modules aggressively (this plan)
+
+Split by concern, creating new modules for each extracted group. Minimises per-file line count, maximises single-responsibility.
+
+- **Pros:** Definitively solves the cap. Each module has a clear, named responsibility. Easier to test in isolation.
+- **Cons:** More files to navigate; import graph grows. Each extraction carries refactoring risk.
+
+### Option B: Formatting cleanup only
+
+Rely solely on removing blank lines, collapsing log strings, and inlining short lambdas.
+
+- **Pros:** Zero semantic risk. No new files.
+- **Cons:** Not viable for files that are 30+ lines over (hub.py at 232 over, agent_factory.py at 74 over, etc.). Only viable for the trimming candidates.
+
+### Option C: Raise the limit for select files
+
+Exempt hub.py and agent_factory.py from the cap as architectural exceptions.
+
+- **Pros:** No refactoring work.
+- **Cons:** Undermines the epic's stated goal. These files are also the ones most likely to continue growing. Rejected.
+
+## Decision
+
+Option A for files more than 20 lines over the cap. Option B (trimming) attempted first for files 25 lines or fewer over the cap, with Option A as fallback if trimming is insufficient.
+
+## Consequences
+
+### Positive
+
+- All 12 files brought within the 300-line cap.
+- Each new extracted module is named by its single responsibility (`hub_dispatch`, `memory_upserts`, `pairing_config`, etc.), improving discoverability.
+- Parallel execution (Batches B–H) allows the work to be distributed across developers with no coordination overhead beyond Batch A.
+
+### Negative
+
+- The `lyra.core` and `lyra.adapters` namespaces gain 6–8 new internal modules.
+- Developers must learn the new module boundaries when adding features.
+
+### Neutral
+
+- All `__init__.py` re-exports are preserved. External callers (`from lyra.core import Hub`, `from lyra.core.memory import MemoryManager`) continue to work without change.
+- The `# noqa: F401` re-export pattern already in use in `hub.py` is extended to new extraction sites.

@@ -105,7 +105,7 @@ class AnthropicAgent(AgentBase):
             timeout=60.0,
         )
 
-    async def _process_llm(
+    async def _process_llm(  # noqa: C901 — voice modality branch adds one branch
         self, msg: InboundMessage, pool: Pool, *, on_intermediate=None
     ) -> Response:
         """Call the LlmProvider, handle STT, update history, return Response."""
@@ -137,7 +137,9 @@ class AnthropicAgent(AgentBase):
                         )
                     )
                     return Response(content=_noise_msg)
-                llm_text = f"\U0001f3a4 [transcribed]: {stt_result.text}"
+                llm_text = (
+                    f"<voice_transcript>{stt_result.text}</voice_transcript>"
+                )
                 history_text = stt_result.text
             elif _audio is not None and self._stt is None:
                 if tmp_path is not None:
@@ -150,6 +152,10 @@ class AnthropicAgent(AgentBase):
                         else "Voice messages are not supported — STT is not configured."
                     )
                 )
+            elif msg.modality == "voice":
+                # Pipeline-transcribed audio — wrap for prompt injection guard (H-8)
+                llm_text = f"<voice_transcript>{msg.text}</voice_transcript>"
+                history_text = msg.text
             else:
                 llm_text = history_text = msg.text
 

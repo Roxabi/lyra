@@ -190,7 +190,12 @@ class SimpleAgent(AgentBase):
                         else "I couldn't make out your voice message, please try again."
                     )
                 )
-            text = f"🎤 [transcribed]: {stt_result.text}"
+            text = (
+                f"<voice_transcript>{stt_result.text}</voice_transcript>"
+            )
+        elif msg.modality == "voice":
+            # Pipeline-transcribed audio — wrap for prompt injection guard (H-8)
+            text = f"<voice_transcript>{msg.text}</voice_transcript>"
         else:
             text = msg.text
 

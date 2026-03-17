@@ -144,7 +144,7 @@ class TestSimpleAgentAudioBranch:
         cli_pool.complete.assert_awaited_once()
         call_args = cli_pool.complete.call_args
         text_sent = call_args[0][1]
-        assert "🎤 [transcribed]: Hello world" in text_sent
+        assert "<voice_transcript>Hello world</voice_transcript>" in text_sent
 
         # Assert — Response contains the CLI reply
         assert isinstance(response, Response)

@@ -90,13 +90,20 @@ User → !unknown  → Telegram → Hub → CommandRouter → no handler → Age
 
 ### Platform-native command menus
 
-Lyra does **not** register commands with Telegram's `setMyCommands()` or Discord's `app_commands` tree. All command handling is application-level text parsing. This means:
+Lyra registers commands with each platform's native menu for autocomplete and discoverability. All command **routing** remains application-level text parsing — native registration is cosmetic only.
 
-- No autocomplete menu appears in either platform's native UI
-- The same command set works identically across Telegram and Discord
-- Plugins hot-reload without resyncing a Discord command tree
+**Telegram** — registered via `lyra setup commands` (one-time CLI, not at every startup):
 
-To add native Telegram autocomplete, call `bot.set_my_commands([BotCommand(...)])` at startup — it's cosmetic only, the routing stays the same.
+```bash
+lyra setup commands              # register for all configured Telegram bots
+lyra setup commands -c prod.toml # use a specific config file
+```
+
+Re-run after adding/removing commands to update the menu. Admin-only commands (`/circuit`, `/routing`, `/config`) are excluded from the public menu.
+
+**Discord** — voice commands (`/join`, `/leave`) are registered as native slash commands via `app_commands`. Synced automatically at bot connect (guild-scoped, instant propagation). Text-prefix fallback (`!join`, `!leave`) continues to work.
+
+If `tree.sync()` fails at connect, the bot logs a warning and continues with text-prefix commands only.
 
 ### Full routing order
 

@@ -123,6 +123,23 @@ class CommandRouter:
                 "Rename the plugin command or remove the builtin."
             )
 
+    def command_metadata(self) -> list[tuple[str, str, bool]]:
+        """Return (name, description, admin_only) for all registered commands.
+
+        Includes builtins and plugin commands. Admin-only is derived from
+        the description containing '(admin-only)'.
+        """
+        result: list[tuple[str, str, bool]] = []
+        for name, cfg in self._builtins.items():
+            admin = "(admin-only)" in cfg.description.lower()
+            result.append((name, cfg.description, admin))
+        plugin_descs = self._plugin_loader.get_command_descriptions(
+            self._enabled_plugins
+        )
+        for name, desc in plugin_descs.items():
+            result.append((name, desc, False))
+        return sorted(result)
+
     def _rewrite_bare_url(self, msg: InboundMessage) -> InboundMessage:
         """Attach a synthetic /add CommandContext for a bare URL message."""
         url = msg.text.strip()

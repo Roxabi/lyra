@@ -270,6 +270,7 @@ class StreamingIterator:
         self._idle_retries = 0
         self._done = False
         self.session_id: str | None = None
+        self.error: str | None = None
 
     def __aiter__(self) -> "StreamingIterator":
         return self
@@ -304,7 +305,9 @@ class StreamingIterator:
                         self._pool_id,
                         self._default_timeout * 3,
                     )
-                    self._done = True
+                    # Kill the alive-but-unresponsive subprocess before
+                    # marking done (otherwise aclose() skips cleanup).
+                    await self._cleanup()
                     raise StopAsyncIteration
                 continue
 
@@ -350,6 +353,17 @@ class StreamingIterator:
                     self.session_id = sid
                     if entry.session_id != sid:  # type: ignore[union-attr]
                         entry.session_id = sid  # type: ignore[union-attr]
+                if data.get("is_error", False):
+                    self.error = (
+                        data.get("result")
+                        or data.get("subtype")
+                        or "Unknown streaming error"
+                    )
+                    log.warning(
+                        "[pool:%s] streaming result is_error=True subtype=%s",
+                        self._pool_id,
+                        data.get("subtype", ""),
+                    )
                 log.info(
                     "[pool:%s] streaming result: %dms",
                     self._pool_id,
@@ -358,8 +372,8 @@ class StreamingIterator:
                 self._done = True
                 raise StopAsyncIteration
 
-    async def aclose(self) -> None:
-        """Clean up: kill subprocess if the stream was not fully consumed."""
+    async def _cleanup(self) -> None:
+        """Call pool_reset_fn and mark done. Safe to call multiple times."""
         if not self._done and self._pool_reset_fn is not None:
             try:
                 await self._pool_reset_fn()
@@ -370,6 +384,10 @@ class StreamingIterator:
                     exc_info=True,
                 )
         self._done = True
+
+    async def aclose(self) -> None:
+        """Clean up: kill subprocess if the stream was not fully consumed."""
+        await self._cleanup()
 
 
 async def send_and_read_stream(
@@ -407,8 +425,8 @@ async def send_and_read_stream(
         await asyncio.wait_for(proc.stdin.drain(), timeout=10)
     except asyncio.TimeoutError:
         log.error("[pool:%s] timeout writing stdin (streaming)", pool_id)
-        it = StreamingIterator(entry, pool_id)
-        it._done = True
+        it = StreamingIterator(entry, pool_id, pool_reset_fn=pool_reset_fn)
+        await it._cleanup()
         return it
 
     return StreamingIterator(

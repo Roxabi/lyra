@@ -197,23 +197,25 @@ class CliPool(_CliPoolWorker):
             if entry is None:
                 raise RuntimeError("Failed to respawn Claude CLI process")
 
-        # Acquire lock, write stdin, release lock before returning iterator.
-        async with entry._lock:
-            if not entry.is_alive():
-                raise RuntimeError("Process died before streaming send")
-
         _pool_id = pool_id
 
         async def _reset() -> None:
             await self.reset(_pool_id)
 
-        iterator = await send_and_read_stream(
-            entry,
-            message,
-            pool_id,
-            pool_reset_fn=_reset,
-            default_timeout=self._default_timeout,
-        )
+        # Lock: write stdin inside lock, release before returning the
+        # read-only iterator.  This prevents concurrent stdin interleave
+        # while allowing the iterator to be consumed without holding the lock.
+        async with entry._lock:
+            if not entry.is_alive():
+                raise RuntimeError("Process died before streaming send")
+            iterator = await send_and_read_stream(
+                entry,
+                message,
+                pool_id,
+                pool_reset_fn=_reset,
+                default_timeout=self._default_timeout,
+            )
+        entry.turn_count += 1
         entry.last_activity = time.time()
         return iterator
 

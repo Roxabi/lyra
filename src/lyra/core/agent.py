@@ -83,22 +83,22 @@ class AgentBase(ABC, SessionManager):
 
     @property
     def _effective_plugins(self) -> list[str]:  # noqa: D401
-        return self._command_mgr.effective_plugins
+        return self._command_mgr.effective_commands
 
     @_effective_plugins.setter
     def _effective_plugins(self, value: list[str]) -> None:
-        self._command_mgr.effective_plugins = value
+        self._command_mgr.effective_commands = value
 
     @property
     def _plugin_mtimes(self) -> dict[str, float]:  # noqa: D401
-        return self._command_mgr.plugin_mtimes
+        return self._command_mgr.command_mtimes
 
     @_plugin_mtimes.setter
     def _plugin_mtimes(self, value: dict[str, float]) -> None:
-        self._command_mgr.plugin_mtimes = value
+        self._command_mgr.command_mtimes = value
 
     def _record_plugin_mtimes(self) -> dict[str, float]:
-        return self._command_mgr._record_plugin_mtimes()
+        return self._command_mgr._record_command_mtimes()
 
     @property
     def name(self) -> str:
@@ -148,7 +148,7 @@ class AgentBase(ABC, SessionManager):
     def _rebuild_command_router(self) -> None:
         self.command_router = CommandRouter(
             self._command_loader,
-            self._command_mgr.effective_plugins,
+            self._command_mgr.effective_commands,
             circuit_registry=self._circuit_registry,
             msg_manager=self._msg_manager,
             smart_routing_decorator=self._smart_routing_decorator,

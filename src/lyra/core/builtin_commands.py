@@ -59,7 +59,7 @@ def help_command(
     plugin_handlers = command_loader.get_commands(enabled_plugins)
     plugin_cmds = [cmd for cmd in sorted(plugin_handlers) if cmd not in builtins]
     if plugin_cmds:
-        lines.append("Plugins:")
+        lines.append("Commands:")
         plugin_descs = command_loader.get_command_descriptions(enabled_plugins)
         for cmd_name in plugin_cmds:
             desc = plugin_descs.get(cmd_name, "(plugin command)")

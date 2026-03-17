@@ -66,9 +66,19 @@ async def _register_bot(
 
     # Load plugins for this bot's agent
     agent_overrides = raw.get("agents", {}).get(agent_name, {})
-    enabled_plugins: list[str] = agent_overrides.get("plugins", {}).get(
-        "enabled", []
-    )
+    _commands_enabled = agent_overrides.get("commands", {}).get("enabled")
+    _plugins_enabled = agent_overrides.get("plugins", {}).get("enabled")
+    if _commands_enabled is not None:
+        enabled_plugins: list[str] = _commands_enabled
+    elif _plugins_enabled is not None:
+        log.debug(
+            "Agent %s: config.toml uses deprecated [plugins].enabled key;"
+            " rename to [commands].enabled",
+            agent_name,
+        )
+        enabled_plugins = _plugins_enabled
+    else:
+        enabled_plugins = []
     for plugin_name in enabled_plugins:
         try:
             command_loader.load(plugin_name)

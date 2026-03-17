@@ -164,9 +164,9 @@ class CommandRouter:
         return replace(msg, command=ctx)
 
     def prepare(self, msg: InboundMessage) -> InboundMessage:
-        """Rewrite bare URLs to /add when patterns allow; return msg."""
+        """Rewrite bare URLs to /add when patterns.bare_url is True."""
         if msg.command is None and self._BARE_URL_RE.fullmatch(msg.text.strip()):
-            if self._patterns.get("bare_url", True):
+            if self._patterns.get("bare_url", False):
                 return self._rewrite_bare_url(msg)
         return msg
 
@@ -174,7 +174,7 @@ class CommandRouter:
         """Return True if msg carries a CommandContext or is a rewritable bare URL."""
         if msg.command is not None:
             return True
-        if self._patterns.get("bare_url", True):
+        if self._patterns.get("bare_url", False):
             return bool(self._BARE_URL_RE.fullmatch(msg.text.strip()))
         return False
 

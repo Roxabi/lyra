@@ -67,6 +67,7 @@ def make_router_with_session(
         command_loader=loader,
         enabled_plugins=[],
         session_driver=driver,
+        patterns={"bare_url": True},
     )
     router.register_session_command(
         "add", cmd_add, description="Save URL", timeout=60.0

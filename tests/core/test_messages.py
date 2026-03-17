@@ -557,7 +557,7 @@ system = "test"
         agent._command_loader.load("echo")
         agent._effective_plugins = ["echo"]
         agent._plugin_mtimes = agent._record_plugin_mtimes()
-        agent._command_mgr.plugin_hashes = agent._command_mgr._record_plugin_hashes()
+        agent._command_mgr.command_hashes = agent._command_mgr._record_command_hashes()
         agent.command_router = CommandRouter(
             agent._command_loader,
             agent._effective_plugins,

@@ -105,6 +105,10 @@ def _parse_toml(path: Path) -> AgentRow | None:
     commands_json = (
         json.dumps(commands_section) if commands_section is not None else None
     )
+    patterns_section = data.get("patterns")
+    patterns_json = (
+        json.dumps(patterns_section) if patterns_section is not None else None
+    )
 
     return AgentRow(
         name=name,
@@ -126,5 +130,6 @@ def _parse_toml(path: Path) -> AgentRow | None:
         workspaces_json=workspaces_json,
         i18n_language=i18n_language,
         commands_json=commands_json,
+        patterns_json=patterns_json,
         source="toml-seed",
     )

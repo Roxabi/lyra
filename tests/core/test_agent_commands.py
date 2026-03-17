@@ -86,7 +86,7 @@ class TestCommandReloadHashVerification:
         assert result is False
         loader.reload.assert_not_called()
         # mtime should still be updated to avoid re-checking
-        assert mgr.plugin_mtimes["echo"] == old_mtime + 10
+        assert mgr.command_mtimes["echo"] == old_mtime + 10
 
     def test_content_change_triggers_reload(self, tmp_path: Path) -> None:
         """Mtime advances AND content changes → reload triggered."""

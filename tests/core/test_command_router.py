@@ -119,13 +119,20 @@ def make_echo_plugin_dir(tmpdir: Path) -> Path:
     return tmpdir
 
 
-def make_router(tmp_path: Path, enabled: list[str] | None = None) -> CommandRouter:
+def make_router(
+    tmp_path: Path,
+    enabled: list[str] | None = None,
+    patterns: dict | None = None,
+) -> CommandRouter:
     """Build a CommandRouter with the echo plugin loaded."""
     plugins_dir = make_echo_plugin_dir(tmp_path)
     loader = CommandLoader(plugins_dir)
     loader.load("echo")
     effective = enabled if enabled is not None else ["echo"]
-    return CommandRouter(command_loader=loader, enabled_plugins=effective)
+    _patterns = patterns if patterns is not None else {"bare_url": True}
+    return CommandRouter(
+        command_loader=loader, enabled_plugins=effective, patterns=_patterns
+    )
 
 
 def make_minimal_toml(extra: str = "") -> str:
@@ -1463,6 +1470,60 @@ class TestBareUrlDetection:
         assert response is not None
         assert response.content == "added"
         handler.assert_called_once()
+
+
+class TestBareUrlPatternsDisabled:
+    """patterns={"bare_url": False} disables bare URL rewriting (opt-in model)."""
+
+    def test_bare_url_is_not_detected_when_disabled(self, tmp_path: Path) -> None:
+        # Arrange — router with bare_url explicitly disabled
+        router = make_router(tmp_path, patterns={"bare_url": False})
+        msg = make_message(content="https://example.com/article")
+
+        # Act
+        result = router.is_command(msg)
+
+        # Assert — bare URL passthrough: is_command returns False
+        assert result is False
+
+    def test_prepare_returns_message_unchanged_when_disabled(
+        self, tmp_path: Path
+    ) -> None:
+        # Arrange
+        router = make_router(tmp_path, patterns={"bare_url": False})
+        url = "https://example.com/page"
+        msg = make_message(content=url)
+
+        # Act
+        prepared = router.prepare(msg)
+
+        # Assert — no CommandContext added; message passes through
+        assert prepared.command is None
+
+    def test_default_patterns_disables_bare_url(self, tmp_path: Path) -> None:
+        # Arrange — router with no patterns (empty dict = default-off)
+        plugins_dir = make_echo_plugin_dir(tmp_path)
+        loader = CommandLoader(plugins_dir)
+        loader.load("echo")
+        router = CommandRouter(command_loader=loader, enabled_plugins=["echo"])
+        msg = make_message(content="https://example.com")
+
+        # Act
+        result = router.is_command(msg)
+
+        # Assert — default is opt-in (False): bare URL not treated as command
+        assert result is False
+
+    def test_bare_url_enabled_explicitly(self, tmp_path: Path) -> None:
+        # Arrange — router with bare_url explicitly enabled
+        router = make_router(tmp_path, patterns={"bare_url": True})
+        msg = make_message(content="https://example.com")
+
+        # Act
+        result = router.is_command(msg)
+
+        # Assert — explicit opt-in: bare URL is a command
+        assert result is True
 
 
 # ---------------------------------------------------------------------------

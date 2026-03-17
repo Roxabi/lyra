@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from .pool import Pool
 
 from .debouncer import MessageDebouncer
-from .message import GENERIC_ERROR_REPLY, Response
+from .message import GENERIC_ERROR_REPLY, OutboundMessage, Response
 
 log = logging.getLogger(__name__)
 
@@ -243,20 +243,39 @@ class PoolProcessor:
                 pool._ctx.record_circuit_failure(exc)
                 raise
 
+        # Capture values for the deferred turn-logging callback (#316).
+        _platform = pool.medium or str(msg.platform)
+        _user_id = pool.user_id or msg.user_id
+
         if isinstance(result, collections.abc.AsyncIterator):
+            # Bug 1 (#316): pass an OutboundMessage so the adapter can write
+            # reply_message_id on it; attach a callback for deferred turn logging.
+            _outbound = OutboundMessage.from_text("")
+
+            def _log_streaming_turn(outbound: OutboundMessage) -> None:
+                _reply_id = outbound.metadata.get("reply_message_id")
+                pool._observer.log_turn_async(
+                    role="assistant",
+                    platform=_platform,
+                    user_id=_user_id,
+                    content="",
+                    reply_message_id=(
+                        str(_reply_id) if _reply_id is not None else None
+                    ),
+                )
+
+            _outbound.metadata["_on_dispatched"] = _log_streaming_turn
             try:
-                await pool._ctx.dispatch_streaming(msg, result)
+                await pool._ctx.dispatch_streaming(msg, result, _outbound)
                 pool._ctx.record_circuit_success()
             except BaseException as exc:
                 pool._ctx.record_circuit_failure(exc)
                 raise
-            # L1 — streaming turn marker; TODO(#67): capture full content.
-            pool._observer.log_turn_async(
-                role="assistant",
-                platform=pool.medium or str(msg.platform),
-                user_id=pool.user_id or msg.user_id,
-                content="",
-            )
+            # Bug 1 (#316): update session_id from streaming iterator attribute
+            # (set by streaming agents after the stream completes).
+            _stream_sid = getattr(result, "session_id", None)
+            if _stream_sid:
+                pool.session_id = _stream_sid
             pool._observer.session_update_async(msg)
         else:
             pool._ctx.record_circuit_success()
@@ -266,19 +285,25 @@ class PoolProcessor:
                 _cli_session_id = result.metadata.get("session_id")
                 if _cli_session_id:
                     pool.session_id = _cli_session_id
-            await pool._ctx.dispatch_response(msg, result)
-            # L1 — log assistant turn (issue #67); fire-and-forget
+            # Bug 2 (#316): attach a deferred turn-logging callback so
+            # reply_message_id is captured after the adapter sends.
             if isinstance(result, Response):
-                _reply_msg_id = result.metadata.get("reply_message_id")
-                pool._observer.log_turn_async(
-                    role="assistant",
-                    platform=pool.medium or str(msg.platform),
-                    user_id=pool.user_id or msg.user_id,
-                    content=result.content,
-                    reply_message_id=(
-                        str(_reply_msg_id) if _reply_msg_id is not None else None
-                    ),
-                )
+                _content = result.content
+
+                def _log_turn(outbound: OutboundMessage) -> None:
+                    _reply_id = outbound.metadata.get("reply_message_id")
+                    pool._observer.log_turn_async(
+                        role="assistant",
+                        platform=_platform,
+                        user_id=_user_id,
+                        content=_content,
+                        reply_message_id=(
+                            str(_reply_id) if _reply_id is not None else None
+                        ),
+                    )
+
+                result.metadata["_on_dispatched"] = _log_turn
+            await pool._ctx.dispatch_response(msg, result)
             pool._observer.session_update_async(msg)
 
         _compact_fn = getattr(agent, "compact", None)

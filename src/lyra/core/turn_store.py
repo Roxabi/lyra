@@ -173,6 +173,26 @@ class TurnStore(SqliteStore):
                 role,
             )
 
+    async def get_last_session(self, pool_id: str) -> str | None:
+        """Return the most recent session_id for *pool_id*, or None.
+
+        Used by _resolve_context Path 3 (last-active-session fallback)
+        to resume the most recent session for DMs / channels (#316).
+        """
+        db = self._db_or_raise()
+        try:
+            async with db.execute(
+                "SELECT session_id FROM conversation_turns"
+                " WHERE pool_id = ? AND role = 'assistant'"
+                " ORDER BY timestamp DESC LIMIT 1",
+                (pool_id,),
+            ) as cur:
+                row = await cur.fetchone()
+                return row[0] if row else None
+        except Exception:
+            log.exception("TurnStore.get_last_session failed (pool=%s)", pool_id)
+            return None
+
     async def get_turns(
         self, pool_id: str, user_id: str, limit: int = 50
     ) -> list[dict]:

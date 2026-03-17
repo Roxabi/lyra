@@ -277,6 +277,15 @@ class OutboundDispatcher:
                             _attempt = len(_backoff_delays) + 1  # exit loop
                             break
 
+                # Invoke dispatched callback after successful send (#316).
+                # "send" → payload is the OutboundMessage; else → outbound.
+                if _last_exc is None:
+                    _out = payload if kind == "send" else outbound
+                    if _out is not None:
+                        _dispatched = _out.metadata.pop("_on_dispatched", None)
+                        if _dispatched is not None:
+                            _dispatched(_out)
+
                 if _last_exc is not None:
                     exc = _last_exc
                     if self._circuit is not None:

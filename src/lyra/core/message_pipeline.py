@@ -209,14 +209,15 @@ class MessagePipeline:
             response=response,
         )
 
-    async def _resolve_context(
+    async def _resolve_context(  # noqa: C901 — three resume paths with guard checks
         self, msg: InboundMessage, pool: Pool, pool_id: str
     ) -> None:
         """Attempt session resume before pool.submit(). No-op on any failure.
 
-        Two resume paths (priority order):
+        Three resume paths (priority order):
         1. Reply-to-resume — message replies to a known assistant turn.
         2. Thread-session-resume — Discord thread with a stored session_id.
+        3. Last-active-session — most recent session for this pool from TurnStore.
 
         pool._session_resume_fn is wired lazily by SimpleAgent on first process().
         """
@@ -254,7 +255,7 @@ class MessagePipeline:
                             pool_id,
                         )
                         await pool.resume_session(resolved.session_id)
-                        return  # reply-to-resume took priority; skip thread resume
+                        return  # reply-to-resume took priority; skip other paths
 
         # Path 2: thread-session-resume (Discord owned threads across restarts).
         thread_session_id: str | None = msg.platform_meta.get("thread_session_id")
@@ -272,6 +273,19 @@ class MessagePipeline:
                 pool_id,
             )
             await pool.resume_session(thread_session_id)
+            return  # thread-session-resume succeeded; skip Path 3
+
+        # Path 3: last-active-session (DMs / channel messages without threads).
+        # Query TurnStore for the most recent session in this pool (#316).
+        if pool.is_idle and self._hub._turn_store is not None:
+            last_sid = await self._hub._turn_store.get_last_session(pool_id)
+            if last_sid is not None:
+                log.info(
+                    "last-session-resume: resuming %r for pool %r",
+                    last_sid,
+                    pool_id,
+                )
+                await pool.resume_session(last_sid)
 
     async def _submit_to_pool(
         self,

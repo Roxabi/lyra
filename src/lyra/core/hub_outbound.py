@@ -65,6 +65,10 @@ class HubOutboundMixin:
             return None
         agent = self.agent_registry.get(binding.agent_name)
         if agent is None:
+            log.warning(
+                "Agent %r from binding not in registry — using global TTS defaults",
+                binding.agent_name,
+            )
             return None
         return agent.config.tts
 

@@ -302,8 +302,8 @@ class TTSService:
             log.info(
                 "TTS synthesis complete: engine=%s voice=%s"
                 " text_len=%d size=%d bytes duration=%s ms",
-                self._engine or "default",
-                self._voice or "default",
+                gen_kwargs.get("engine") or "default",
+                gen_kwargs.get("voice") or "default",
                 len(text),
                 len(audio_bytes),
                 duration_ms,

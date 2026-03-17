@@ -196,6 +196,7 @@ _TTS_FLOAT_FIELDS = {"exaggeration", "cfg_weight"}
 
 def _edit_tts_section(tts_data: dict | None) -> dict | None:
     """Interactively edit TTS fields.  Returns updated dict or None."""
+    initialized = False
     if tts_data is None:
         init = typer.prompt(
             "  Initialize TTS config for this agent? [y/N]", default="N"
@@ -203,16 +204,22 @@ def _edit_tts_section(tts_data: dict | None) -> dict | None:
         if init.strip().lower() not in ("y", "yes"):
             return None
         tts_data = {}
+        initialized = True
 
     typer.echo("  --- TTS config ---")
     changed = False
     for fname in _TTS_EDIT_FIELDS:
         current = tts_data.get(fname)
         val = typer.prompt(
-            f"  {fname} (current: {current!r}, blank=keep)", default=""
+            f"  {fname} (current: {current!r}, blank=keep, '-'=clear)",
+            default="",
         )
         v = val.strip()
         if not v:
+            continue
+        if v in ("-", "none"):
+            tts_data.pop(fname, None)
+            changed = True
             continue
         if fname in _TTS_FLOAT_FIELDS:
             try:
@@ -224,7 +231,7 @@ def _edit_tts_section(tts_data: dict | None) -> dict | None:
             tts_data[fname] = v
         changed = True
 
-    return tts_data if changed or tts_data else None
+    return tts_data if (changed or initialized) else None
 
 
 @agent_app.command(name="edit")

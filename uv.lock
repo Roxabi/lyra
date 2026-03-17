@@ -2133,7 +2133,7 @@ wheels = [
 [[package]]
 name = "roxabi-vault"
 version = "0.1.0"
-source = { git = "https://github.com/Roxabi/roxabi-vault.git?branch=staging#703a3674d71ee9ee251e6cd73134a3190a0f5290" }
+source = { git = "https://github.com/Roxabi/roxabi-vault.git?branch=staging#b200ad265732389c830b64f7a12dfa0f1d612df5" }
 dependencies = [
     { name = "aiosqlite" },
 ]

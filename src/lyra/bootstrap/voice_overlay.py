@@ -1,4 +1,4 @@
-"""Voice overlay helpers — TTS/STT config overlay and service initialisation."""
+"""Voice overlay helpers — STT config overlay and service initialisation."""
 
 from __future__ import annotations
 
@@ -7,32 +7,11 @@ import logging
 import os
 
 from lyra.core.agent import Agent
-from lyra.core.agent_config import AgentSTTConfig, AgentTTSConfig
+from lyra.core.agent_config import AgentSTTConfig
 from lyra.stt import STTConfig, STTService, load_stt_config
-from lyra.tts import TTSConfig, TTSService, load_tts_config
+from lyra.tts import TTSService, load_tts_config
 
 log = logging.getLogger(__name__)
-
-
-def apply_agent_tts_overlay(
-    agent_tts: AgentTTSConfig | None,
-    tts_cfg: TTSConfig,
-) -> TTSConfig:
-    """Overlay non-None fields from AgentTTSConfig onto TTSConfig.
-
-    Kept as a utility for tests. No longer used at startup — per-agent TTS
-    config is now resolved per-call in TTSService.synthesize().
-    """
-    if agent_tts is None:
-        return tts_cfg
-    a = agent_tts
-    if a.engine is not None:
-        tts_cfg = dataclasses.replace(tts_cfg, engine=a.engine)
-    if a.voice is not None:
-        tts_cfg = dataclasses.replace(tts_cfg, voice=a.voice)
-    if a.language is not None:
-        tts_cfg = dataclasses.replace(tts_cfg, language=a.language)
-    return tts_cfg
 
 
 def apply_agent_stt_overlay(

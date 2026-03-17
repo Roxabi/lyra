@@ -101,12 +101,14 @@ def _build_tts_from_dict(tts_data: dict) -> AgentTTSConfig:
         personality=tts_data.get("personality"),
         speed=tts_data.get("speed"),
         emotion=tts_data.get("emotion"),
-        segment_gap=tts_data.get("segment_gap"),
-        crossfade=tts_data.get("crossfade"),
+        segment_gap=int(tts_data["segment_gap"]) if "segment_gap" in tts_data else None,
+        crossfade=int(tts_data["crossfade"]) if "crossfade" in tts_data else None,
         chunked=bool(tts_data["chunked"]) if "chunked" in tts_data else None,
-        chunk_size=tts_data.get("chunk_size"),
-        exaggeration=tts_data.get("exaggeration"),
-        cfg_weight=tts_data.get("cfg_weight"),
+        chunk_size=int(tts_data["chunk_size"]) if "chunk_size" in tts_data else None,
+        exaggeration=(
+            float(tts_data["exaggeration"]) if "exaggeration" in tts_data else None
+        ),
+        cfg_weight=float(tts_data["cfg_weight"]) if "cfg_weight" in tts_data else None,
     )
 
 

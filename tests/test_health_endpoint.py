@@ -450,7 +450,7 @@ class TestHealthReaperFields:
         monkeypatch.setenv("LYRA_HEALTH_SECRET", HEALTH_SECRET)
 
     async def test_reaper_fields_absent_when_no_cli_pool(self, hub: Hub) -> None:
-        """No cli_pool → reaper_alive=False, reaper_last_sweep_age=None."""
+        """No cli_pool → reaper keys omitted entirely from response."""
         from lyra.bootstrap.health import create_health_app
 
         assert hub.cli_pool is None
@@ -460,8 +460,8 @@ class TestHealthReaperFields:
             resp = await client.get("/health", headers=AUTH_HEADERS)
 
         data = resp.json()
-        assert data["reaper_alive"] is False
-        assert data["reaper_last_sweep_age"] is None
+        assert "reaper_alive" not in data
+        assert "reaper_last_sweep_age" not in data
 
     async def test_reaper_fields_with_live_cli_pool(self, hub: Hub) -> None:
         """cli_pool with active reaper → reaper_alive=True."""

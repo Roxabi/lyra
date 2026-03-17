@@ -184,16 +184,20 @@ class _CliPoolWorker:
                     await self._kill(pool_id)
                     # Fire-and-forget notification for idle evictions
                     if self._on_reap and reason == "idle":  # type: ignore[attr-defined]
-                        try:
-                            asyncio.ensure_future(
-                                self._on_reap(pool_id, reason)  # type: ignore[attr-defined]
+                        _t = asyncio.create_task(
+                            self._on_reap(pool_id, reason)  # type: ignore[attr-defined]
+                        )
+                        _t.add_done_callback(
+                            lambda t, pid=pool_id: (
+                                log.warning(
+                                    "[pool:%s] on_reap failed: %s",
+                                    pid,
+                                    t.exception(),
+                                )
+                                if not t.cancelled() and t.exception()
+                                else None
                             )
-                        except Exception:
-                            log.warning(
-                                "[pool:%s] on_reap failed",
-                                pool_id,
-                                exc_info=True,
-                            )
+                        )
             except asyncio.CancelledError:
                 break
             except Exception as exc:

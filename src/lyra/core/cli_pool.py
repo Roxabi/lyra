@@ -9,8 +9,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Coroutine
 from pathlib import Path
+from typing import Any
 
 from .agent_config import ModelConfig
 from .cli_pool_worker import (
@@ -50,7 +51,10 @@ class CliPool(_CliPoolWorker):
         self,
         idle_ttl: int = 1200,
         default_timeout: int = 300,
-        on_reap: Callable[[str, str], Awaitable[None]] | None = None,
+        on_reap: Callable[
+            [str, str], Coroutine[Any, Any, None]
+        ]
+        | None = None,
     ) -> None:
         self._idle_ttl = idle_ttl
         self._default_timeout = default_timeout

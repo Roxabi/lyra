@@ -227,7 +227,7 @@ async def run_checks(config: MonitoringConfig) -> HealthReport:
         if health_json.get("reaper_alive") is not None:
             checks.append(check_reaper(health_json))
 
-    # Check 6: Disk space (blocking → offload to thread)
+    # Check 7: Disk space (blocking → offload to thread)
     checks.append(
         await asyncio.to_thread(
             check_disk, config.disk_check_path, config.min_disk_free_gb

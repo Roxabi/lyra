@@ -35,13 +35,18 @@ class AgentRow:
     i18n_language: str = "en"
     commands_json: str | None = None
     streaming: bool = False
+    # #343 — DB-first agent config
+    persona_json: str | None = None
+    voice_json: str | None = None
+    fallback_language: str = "en"
+    patterns_json: str | None = None
     source: str = "db"
     created_at: str = field(default_factory=_utc_now_iso)
     updated_at: str = field(default_factory=_utc_now_iso)
 
     @classmethod
     def from_db_row(cls, row: tuple) -> "AgentRow":  # type: ignore[type-arg]
-        """Construct an AgentRow from a raw aiosqlite SELECT tuple (22 columns)."""
+        """Construct an AgentRow from a raw aiosqlite SELECT tuple (26 columns)."""
         (
             name,
             backend,
@@ -65,6 +70,10 @@ class AgentRow:
             i18n_language,
             commands_json,
             streaming,
+            persona_json,
+            voice_json,
+            fallback_language,
+            patterns_json,
         ) = row
         return cls(
             name=name,
@@ -86,6 +95,10 @@ class AgentRow:
             i18n_language=i18n_language or "en",
             commands_json=commands_json,
             streaming=bool(streaming),
+            persona_json=persona_json,
+            voice_json=voice_json,
+            fallback_language=fallback_language or "en",
+            patterns_json=patterns_json,
             source=source,
             created_at=created_at,
             updated_at=updated_at,

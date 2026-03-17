@@ -44,7 +44,13 @@ def init_stt(first_agent_config: Agent) -> STTService | None:
     if not os.environ.get("STT_MODEL_SIZE"):
         return None
     try:
-        stt_cfg = apply_agent_stt_overlay(first_agent_config.stt, load_stt_config())
+        # #343 — prefer voice.stt, fall back to agent.stt for transition
+        agent_stt = (
+            first_agent_config.voice.stt
+            if first_agent_config.voice
+            else first_agent_config.stt
+        )
+        stt_cfg = apply_agent_stt_overlay(agent_stt, load_stt_config())
         stt_service = STTService(stt_cfg)
         log.info("STT enabled: model=%s (via voiceCLI)", stt_cfg.model_size)
         return stt_service

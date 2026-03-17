@@ -174,6 +174,18 @@ class AgentSTTConfig:
     language_fallback: str | None = None
 
 
+@dataclass(frozen=True)
+class AgentVoiceConfig:
+    """Unified per-agent voice config wrapping TTS + STT typed configs (#343).
+
+    Replaces separate Agent.tts and Agent.stt fields. Both old fields are kept
+    during the PR1 transition period and removed in PR3.
+    """
+
+    tts: AgentTTSConfig = field(default_factory=AgentTTSConfig)
+    stt: AgentSTTConfig = field(default_factory=AgentSTTConfig)
+
+
 @dataclass
 class Agent:
     """Configuration record for an agent. Mutable for hot-reload."""
@@ -190,5 +202,6 @@ class Agent:
     smart_routing: SmartRoutingConfig | None = None
     show_intermediate: bool = False  # show ⏳-prefixed intermediate turns to the user
     workspaces: dict[str, Path] = field(default_factory=dict)
-    tts: AgentTTSConfig | None = None
-    stt: AgentSTTConfig | None = None
+    tts: AgentTTSConfig | None = None  # deprecated — use voice.tts (PR1 compat)
+    stt: AgentSTTConfig | None = None  # deprecated — use voice.stt (PR1 compat)
+    voice: AgentVoiceConfig | None = None  # #343 — unified voice config

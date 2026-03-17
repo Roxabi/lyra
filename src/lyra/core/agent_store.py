@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 
@@ -62,6 +63,8 @@ class AgentStore(SqliteStore):
                     if "duplicate column" not in str(exc).lower():
                         raise
             await db.commit()
+            # #343 — data migration: populate new columns from old
+            await self._populate_343(db)
             await self._warm_cache()
         except Exception:
             log.exception("AgentStore.connect() setup failed; closing connection")
@@ -84,6 +87,77 @@ class AgentStore(SqliteStore):
             async for row in cur:
                 platform, bot_id, agent_name = row
                 self._bot_map[(platform, bot_id)] = agent_name
+
+    async def _populate_343(self, db: aiosqlite.Connection) -> None:
+        """One-time data migration (#343).
+
+        Populate persona_json, voice_json, fallback_language from old columns.
+        Skips rows where persona_json is already non-NULL (idempotent).
+        """
+        async with db.execute(
+            "SELECT name, persona, tts_json, stt_json, i18n_language "
+            "FROM agents WHERE persona_json IS NULL"
+        ) as cur:
+            rows = list(await cur.fetchall())
+        if not rows:
+            return
+        for name, persona_name, tts_raw, stt_raw, i18n_lang in rows:
+            # Persona: load file → serialize to JSON
+            persona_json_val: str | None = None
+            if persona_name:
+                try:
+                    from .persona import load_persona
+
+                    pc = load_persona(persona_name)
+                    persona_json_val = json.dumps(
+                        {
+                            "identity": {
+                                "display_name": pc.identity.name,
+                                "tagline": pc.identity.tagline,
+                                "role": pc.identity.role,
+                            },
+                            "personality": {
+                                "traits": list(pc.personality.traits),
+                                "style": pc.personality.communication_style,
+                                "humor": pc.personality.humor,
+                            },
+                            "expertise": {
+                                "areas": list(pc.expertise.areas),
+                                "instructions": list(pc.expertise.instructions),
+                            },
+                        }
+                    )
+                except Exception:
+                    log.warning(
+                        "_populate_343: persona %r for agent %r not found — "
+                        "using minimal fallback",
+                        persona_name,
+                        name,
+                    )
+                    persona_json_val = json.dumps(
+                        {"identity": {"display_name": name}}
+                    )
+
+            # Voice: merge tts_json + stt_json → voice_json
+            voice_json_val: str | None = None
+            tts_dict = json.loads(tts_raw) if tts_raw else None
+            stt_dict = json.loads(stt_raw) if stt_raw else None
+            if tts_dict or stt_dict:
+                merged: dict = {}
+                if tts_dict:
+                    merged["tts"] = tts_dict
+                if stt_dict:
+                    merged["stt"] = stt_dict
+                voice_json_val = json.dumps(merged)
+
+            fallback = i18n_lang or "en"
+            await db.execute(
+                "UPDATE agents SET persona_json=?, voice_json=?, fallback_language=? "
+                "WHERE name=?",
+                (persona_json_val, voice_json_val, fallback, name),
+            )
+        await db.commit()
+        log.info("_populate_343: migrated %d agent(s)", len(rows))
 
     async def close(self) -> None:
         """Close the database connection and clear caches."""
@@ -150,6 +224,10 @@ class AgentStore(SqliteStore):
                 row.i18n_language,
                 row.commands_json,
                 1 if row.streaming else 0,
+                row.persona_json,
+                row.voice_json,
+                row.fallback_language,
+                row.patterns_json,
                 # ON CONFLICT updated_at value
                 now,
             ),
@@ -175,6 +253,10 @@ class AgentStore(SqliteStore):
             i18n_language=row.i18n_language,
             commands_json=row.commands_json,
             streaming=row.streaming,
+            persona_json=row.persona_json,
+            voice_json=row.voice_json,
+            fallback_language=row.fallback_language,
+            patterns_json=row.patterns_json,
             source=row.source,
             created_at=row.created_at,
             updated_at=now,

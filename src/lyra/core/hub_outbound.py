@@ -70,6 +70,9 @@ class HubOutboundMixin:
                 binding.agent_name,
             )
             return None
+        # #343 — prefer voice.tts, fall back to agent.tts for transition
+        if agent.config.voice is not None:
+            return agent.config.voice.tts
         return agent.config.tts
 
     async def _route_outbound(

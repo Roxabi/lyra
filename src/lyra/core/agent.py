@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import sys
-import tomllib
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -13,16 +12,16 @@ if TYPE_CHECKING:
     from lyra.stt import STTService
     from lyra.tts import TTSService
 
+    from .agent_store import AgentStore
     from .memory import MemoryManager
 
-from .agent_config import Agent, _find_agent_dir
-from .agent_loader import load_agent_config
+from .agent_config import Agent, _find_agent_dir  # noqa: F401 — Agent re-exported
+from .agent_loader import load_agent_config  # noqa: F401 — re-export for tests
 from .agent_plugins import PluginReloadManager
 from .circuit_breaker import CircuitRegistry
 from .command_router import CommandRouter
 from .message import InboundMessage, Response
 from .messages import MessageManager
-from .persona import _PERSONAS_DIR
 from .plugin_loader import PluginLoader
 from .pool import Pool
 from .session_lifecycle import MODEL_CONTEXT_TOKENS, SessionManager
@@ -53,15 +52,16 @@ class AgentBase(ABC, SessionManager):
         smart_routing_decorator: Any | None = None,
         compact_context_tokens: int = MODEL_CONTEXT_TOKENS,
         instance_overrides: dict | None = None,
+        agent_store: "AgentStore | None" = None,
     ) -> None:
         self._instance_overrides: dict = instance_overrides or {}
         self._compact_context_tokens = compact_context_tokens
         self.config = config
         self._agents_dir = _find_agent_dir(config.name, agents_dir)
         self._config_path = self._agents_dir / f"{config.name}.toml"
-        self._last_mtime: float = (
-            self._config_path.stat().st_mtime if self._config_path.exists() else 0.0
-        )
+        # #343 — DB-first hot-reload: track DB updated_at instead of TOML mtime
+        self._agent_store = agent_store
+        self._last_db_updated_at: str | None = None
         self._circuit_registry = circuit_registry
         self._msg_manager = msg_manager
         self._stt = stt  # ADR-013: agent owns temp file cleanup
@@ -75,29 +75,9 @@ class AgentBase(ABC, SessionManager):
         self._rebuild_command_router()
         if self._tts is not None:
             self.command_router.register_passthrough("voice")
-        self._persona_path: Path | None = None
-        self._persona_mtime: float = 0.0
-        self._update_persona_tracking()
         # S3 — memory DI (issue #83); injected by Hub.register_agent()
         self._memory: "MemoryManager | None" = None
         self._task_registry: set | None = None
-
-    def _update_persona_tracking(self) -> None:
-        """Resolve and track persona vault file for hot-reload."""
-        if self.config.persona is None:
-            self._persona_path = None
-            self._persona_mtime = 0.0
-            return
-        try:
-            with self._config_path.open("rb") as f:
-                data = tomllib.load(f)
-            persona_name = data.get("agent", {}).get("persona", "")
-            if persona_name:
-                p_path = _PERSONAS_DIR / f"{persona_name}.persona.toml"
-                self._persona_path = p_path
-                self._persona_mtime = p_path.stat().st_mtime if p_path.exists() else 0.0
-        except Exception:
-            pass
 
     # -- Backward-compatible accessors (plugin state owned by _plugin_mgr) --
 
@@ -125,42 +105,46 @@ class AgentBase(ABC, SessionManager):
         return self.config.name
 
     def _maybe_reload(self) -> None:
-        """Reload config from TOML if the agent or persona file changed."""
-        try:
-            mtime = self._config_path.stat().st_mtime
-        except OSError:
+        """Reload config from DB if updated_at has changed (#343).
+
+        Falls back silently if the agent_store is not injected (test mode)
+        or if the DB is unavailable — the agent continues with cached config.
+        """
+        if self._agent_store is None:
+            # No store injected (test mode or legacy path) — skip DB reload
+            if self._plugin_mgr.reload_plugins():
+                self._rebuild_command_router()
             return
 
-        config_changed = mtime > self._last_mtime
-        persona_changed = False
+        try:
+            row = self._agent_store.get(self.config.name)
+        except Exception:
+            # DB unavailable — continue with cached config
+            if self._plugin_mgr.reload_plugins():
+                self._rebuild_command_router()
+            return
 
-        if self._persona_path:
-            try:
-                p_mtime = self._persona_path.stat().st_mtime
-                persona_changed = p_mtime > self._persona_mtime
-            except OSError:
-                pass
+        if row is None or row.updated_at == self._last_db_updated_at:
+            if self._plugin_mgr.reload_plugins():
+                self._rebuild_command_router()
+            return
 
-        if config_changed or persona_changed:
-            try:
-                new_config = load_agent_config(
+        try:
+            from .agent_db_loader import agent_row_to_config
+
+            new_config = agent_row_to_config(row, self._instance_overrides)
+            if new_config != self.config:
+                log.info(
+                    "Hot-reloaded config for agent %r from DB (model: %s -> %s)",
                     self.config.name,
-                    self._agents_dir,
-                    instance_overrides=self._instance_overrides,
+                    self.config.model_config.model,
+                    new_config.model_config.model,
                 )
-                if new_config != self.config:
-                    log.info(
-                        "Hot-reloaded config for agent %r (model: %s -> %s)",
-                        self.config.name,
-                        self.config.model_config.model,
-                        new_config.model_config.model,
-                    )
-                    self.config = new_config
-                    self._rebuild_command_router()
-                self._last_mtime = mtime
-                self._update_persona_tracking()
-            except Exception as exc:
-                log.warning("Failed to reload config for %r: %s", self.config.name, exc)
+                self.config = new_config
+                self._rebuild_command_router()
+            self._last_db_updated_at = row.updated_at
+        except Exception as exc:
+            log.warning("Failed to reload config for %r: %s", self.config.name, exc)
 
         if self._plugin_mgr.reload_plugins():
             self._rebuild_command_router()

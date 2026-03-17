@@ -190,18 +190,21 @@ class TTSService:
         agent_tts: "AgentTTSConfig | None",
         language: str | None,
         voice: str | None,
+        fallback_language: str | None = None,
     ) -> dict:
-        """Merge user pref > agent_tts > global defaults into generate_async kwargs.
+        """Merge user pref > agent_tts > fallback_language > global defaults.
 
         ``chunked`` is always ``True`` (safety hardcode, never overridden).
         """
         a = agent_tts
 
-        # language: user pref > agent_tts > global
+        # language: user pref > agent_tts > fallback_language (#343) > global
         if language is not None:
             effective_lang = language
         elif a is not None and a.language is not None:
             effective_lang = a.language
+        elif fallback_language is not None:
+            effective_lang = fallback_language
         else:
             effective_lang = self._language
 

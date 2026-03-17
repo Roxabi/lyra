@@ -144,6 +144,7 @@ def _create_agent(  # noqa: PLR0913 — factory with optional overrides for each
     tts: TTSService | None = None,
     provider_registry: ProviderRegistry | None = None,
     smart_routing_decorator: SmartRoutingDecorator | None = None,
+    agent_store: AgentStore | None = None,
 ) -> AgentBase:
     """Select agent implementation based on backend config."""
     backend = config.model_config.backend
@@ -167,6 +168,7 @@ def _create_agent(  # noqa: PLR0913 — factory with optional overrides for each
             stt=stt,
             tts=tts,
             smart_routing_decorator=smart_routing_decorator,
+            agent_store=agent_store,
         )
     if backend in ("claude-cli", "ollama"):
         if cli_pool is None:
@@ -186,6 +188,7 @@ def _create_agent(  # noqa: PLR0913 — factory with optional overrides for each
             msg_manager=msg_manager,
             stt=stt,
             tts=tts,
+            agent_store=agent_store,
         )
     raise ValueError(f"Unknown backend: {backend}")
 
@@ -197,6 +200,7 @@ def _resolve_agents(  # noqa: PLR0913
     msg_manager: MessageManager,
     stt_service: STTService | None,
     tts_service: TTSService | None = None,
+    agent_store: AgentStore | None = None,
 ) -> dict[str, AgentBase]:
     """Create all uniquely named agents referenced by bot configs.
 
@@ -247,6 +251,7 @@ def _resolve_agents(  # noqa: PLR0913
             tts=tts_service,
             provider_registry=per_agent_registry,
             smart_routing_decorator=per_agent_routing,
+            agent_store=agent_store,
         )
         agents[name] = agent
     return agents

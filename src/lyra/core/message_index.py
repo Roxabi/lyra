@@ -7,7 +7,7 @@ messages, enabling O(1) reply-to session resolution.
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from .sqlite_base import SqliteStore
 
@@ -69,10 +69,6 @@ class MessageIndex(SqliteStore):
     async def cleanup_older_than(self, days: int) -> int:
         """Delete entries older than *days*. Returns count of deleted rows."""
         db = self._require_db()
-        cutoff = datetime.now(UTC).isoformat()
-        # Approximate: subtract days from current ISO timestamp
-        from datetime import timedelta
-
         cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
         cursor = await db.execute(
             "DELETE FROM message_index WHERE created_at < ?",

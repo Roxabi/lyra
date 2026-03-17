@@ -255,13 +255,11 @@ class PoolProcessor:
                     ),
                 )
                 # Index assistant turn for reply-to session routing (#341).
-                if pool._observer._message_index is not None and _reply_id is not None:
-                    pool._observer._fire_and_forget(
-                        pool._observer._message_index.upsert(
-                            pool.pool_id, str(_reply_id), pool.session_id, "assistant"
-                        ),
-                        f"message_index upsert failed (pool={pool.pool_id})",
-                    )
+                pool._observer.index_turn_async(
+                    str(_reply_id) if _reply_id is not None else None,
+                    session_id=pool.session_id,
+                    role="assistant",
+                )
 
             _outbound.metadata["_on_dispatched"] = _log_streaming_turn
             try:
@@ -299,19 +297,11 @@ class PoolProcessor:
                         ),
                     )
                     # Index assistant turn for reply-to session routing (#341).
-                    if (
-                        pool._observer._message_index is not None
-                        and _reply_id is not None
-                    ):
-                        pool._observer._fire_and_forget(
-                            pool._observer._message_index.upsert(
-                                pool.pool_id,
-                                str(_reply_id),
-                                pool.session_id,
-                                "assistant",
-                            ),
-                            f"message_index upsert failed (pool={pool.pool_id})",
-                        )
+                    pool._observer.index_turn_async(
+                        str(_reply_id) if _reply_id is not None else None,
+                        session_id=pool.session_id,
+                        role="assistant",
+                    )
 
                 result.metadata["_on_dispatched"] = _log_turn
             await pool._ctx.dispatch_response(msg, result)

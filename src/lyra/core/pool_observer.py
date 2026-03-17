@@ -146,12 +146,25 @@ class PoolObserver:
             message_id=msg.id,
         )
         # Index user turn for reply-to session routing (#341).
-        if self._message_index is not None:
-            _msg_id = msg.platform_meta.get("message_id")
-            if _msg_id is not None:
-                self._fire_and_forget(
-                    self._message_index.upsert(
-                        self._pool_id, str(_msg_id), session_id, "user"
-                    ),
-                    f"message_index upsert failed (pool={self._pool_id} role=user)",
-                )
+        _msg_id = msg.platform_meta.get("message_id")
+        if _msg_id is not None:
+            self.index_turn_async(
+                str(_msg_id), session_id=session_id, role="user"
+            )
+
+    def index_turn_async(
+        self,
+        platform_msg_id: str | None,
+        *,
+        session_id: str,
+        role: str,
+    ) -> None:
+        """Fire-and-forget message index upsert; no-op if not connected."""
+        if self._message_index is None or platform_msg_id is None:
+            return
+        self._fire_and_forget(
+            self._message_index.upsert(
+                self._pool_id, platform_msg_id, session_id, role
+            ),
+            f"message_index upsert failed (pool={self._pool_id})",
+        )

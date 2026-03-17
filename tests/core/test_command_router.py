@@ -502,16 +502,14 @@ def make_registry_with_open(open_service: str) -> CircuitRegistry:
 
 def make_circuit_router(
     registry: CircuitRegistry | None = None,
-    admin_ids: set[str] | None = None,
 ) -> CommandRouter:
-    """Build a CommandRouter with circuit_registry and admin_user_ids set."""
+    """Build a CommandRouter with circuit_registry set."""
     plugins_dir = Path(tempfile.mkdtemp())
     loader = PluginLoader(plugins_dir)
     return CommandRouter(
         plugin_loader=loader,
         enabled_plugins=[],
         circuit_registry=registry,
-        admin_user_ids=admin_ids,
     )
 
 
@@ -552,12 +550,8 @@ class TestCircuitCommandAdminCheck:
         # Arrange
         registry = CircuitRegistry()
         registry.register(CircuitBreaker("anthropic"))
-        # Admin is a different user; msg sender is tg:user:42
-        router = make_circuit_router(
-            registry=registry,
-            admin_ids={"tg:user:999"},  # different user from sender
-        )
-        msg = make_circuit_msg(user_id="tg:user:42")
+        router = make_circuit_router(registry=registry)
+        msg = make_circuit_msg(user_id="tg:user:42")  # is_admin=False by default
 
         # Act
         response = await router.dispatch(msg)
@@ -573,8 +567,7 @@ class TestCircuitCommandAdminCheck:
         registry = CircuitRegistry()
         for name in ("anthropic", "telegram", "discord", "hub"):
             registry.register(CircuitBreaker(name))
-        admin_id = "tg:user:42"  # msg.user_id format — no platform prefix
-        router = make_circuit_router(registry=registry, admin_ids={admin_id})
+        router = make_circuit_router(registry=registry)
         msg = make_circuit_msg(user_id="tg:user:42", is_admin=True)
 
         # Act
@@ -589,20 +582,20 @@ class TestCircuitCommandAdminCheck:
         assert "hub" in response.content
 
     @pytest.mark.asyncio
-    async def test_circuit_command_denied_when_admin_ids_empty(
+    async def test_circuit_command_denied_when_not_admin(
         self,
     ) -> None:
-        """SC-15: Empty admin_user_ids → /circuit denied for all users."""
+        """SC-15: msg.is_admin=False → /circuit denied (fail-closed)."""
         # Arrange
         registry = CircuitRegistry()
         registry.register(CircuitBreaker("anthropic"))
-        router = make_circuit_router(registry=registry, admin_ids=set())
-        msg = make_circuit_msg(user_id="tg:user:42")
+        router = make_circuit_router(registry=registry)
+        msg = make_circuit_msg(user_id="tg:user:42")  # is_admin=False by default
 
         # Act
         response = await router.dispatch(msg)
 
-        # Assert — empty admin set blocks all users (fail-closed)
+        # Assert — non-admin msg.is_admin=False blocks access
         assert isinstance(response, Response)
         assert "admin-only" in response.content.lower()
 
@@ -617,8 +610,7 @@ class TestCircuitCommandOpenState:
         """SC-15: OPEN circuit shows 'retry in Xs' in the table."""
         # Arrange
         registry = make_registry_with_open("anthropic")
-        admin_id = "tg:user:42"  # msg.user_id format — no platform prefix
-        router = make_circuit_router(registry=registry, admin_ids={admin_id})
+        router = make_circuit_router(registry=registry)
         msg = make_circuit_msg(user_id="tg:user:42", is_admin=True)
 
         # Act
@@ -636,8 +628,8 @@ class TestCircuitCommandNoRegistry:
     @pytest.mark.asyncio
     async def test_circuit_command_no_registry(self) -> None:
         """No circuit_registry → 'Circuit breaker not configured.'"""
-        # Arrange — admin is set but no registry provided
-        router = make_circuit_router(registry=None, admin_ids={"tg:user:42"})
+        # Arrange — no registry provided; msg.is_admin=True grants access
+        router = make_circuit_router(registry=None)
         msg = make_circuit_msg(user_id="tg:user:42", is_admin=True)
 
         # Act
@@ -798,10 +790,9 @@ class TestStopCommand:
 
 def make_config_router(
     tmp_path: Path,
-    admin_ids: set[str] | None = None,
     with_holder: bool = True,
 ) -> CommandRouter:
-    """Build a CommandRouter with runtime_config_holder and admin_user_ids set."""
+    """Build a CommandRouter with runtime_config_holder set."""
     from lyra.core.runtime_config import RuntimeConfig, RuntimeConfigHolder
 
     plugins_dir = tmp_path / "plugins"
@@ -811,7 +802,6 @@ def make_config_router(
     return CommandRouter(
         plugin_loader=loader,
         enabled_plugins=[],
-        admin_user_ids=admin_ids,
         runtime_config_holder=holder,
     )
 
@@ -850,8 +840,8 @@ class TestConfigCommand:
     @pytest.mark.asyncio
     async def test_config_non_admin_denied(self, tmp_path: Path) -> None:
         """Non-admin sender → 'This command is admin-only.'"""
-        # Arrange — admin is a different user
-        router = make_config_router(tmp_path, admin_ids={"tg:user:999"})
+        # Arrange — msg.is_admin=False (default) denies access
+        router = make_config_router(tmp_path)
         msg = make_config_msg(user_id="tg:user:42")
 
         # Act
@@ -865,7 +855,7 @@ class TestConfigCommand:
     async def test_config_show_all_fields(self, tmp_path: Path) -> None:
         """Admin /config (no args) → table showing all 6 config fields."""
         # Arrange
-        router = make_config_router(tmp_path, admin_ids={"tg:user:42"})
+        router = make_config_router(tmp_path)
         msg = make_config_msg(user_id="tg:user:42", content="/config", is_admin=True)
 
         # Act
@@ -887,7 +877,7 @@ class TestConfigCommand:
         """Admin /config style=detailed → sets param, returns 'Updated:...'"""
         # Arrange — monkeypatch _AGENTS_DIR so save() writes into tmp_path
         monkeypatch.setattr("lyra.core.agent_config._AGENTS_DIR", tmp_path)
-        router = make_config_router(tmp_path, admin_ids={"tg:user:42"})
+        router = make_config_router(tmp_path)
         msg = make_config_msg(
             user_id="tg:user:42", content="/config style=detailed", is_admin=True
         )
@@ -904,7 +894,7 @@ class TestConfigCommand:
     async def test_config_set_unknown_key(self, tmp_path: Path) -> None:
         """Admin /config foo=bar → 'Unknown config key'"""
         # Arrange
-        router = make_config_router(tmp_path, admin_ids={"tg:user:42"})
+        router = make_config_router(tmp_path)
         msg = make_config_msg(
             user_id="tg:user:42", content="/config foo=bar", is_admin=True
         )
@@ -923,7 +913,7 @@ class TestConfigCommand:
         """Admin /config reset → 'Runtime config reset to defaults.'"""
         # Arrange
         monkeypatch.setattr("lyra.core.agent_config._AGENTS_DIR", tmp_path)
-        router = make_config_router(tmp_path, admin_ids={"tg:user:42"})
+        router = make_config_router(tmp_path)
         msg = make_config_msg(
             user_id="tg:user:42", content="/config reset", is_admin=True
         )
@@ -942,7 +932,7 @@ class TestConfigCommand:
         """Admin /config reset style → 'Reset: style = (default). Saved.'"""
         # Arrange
         monkeypatch.setattr("lyra.core.agent_config._AGENTS_DIR", tmp_path)
-        router = make_config_router(tmp_path, admin_ids={"tg:user:42"})
+        router = make_config_router(tmp_path)
         msg = make_config_msg(
             user_id="tg:user:42", content="/config reset style", is_admin=True
         )
@@ -958,7 +948,7 @@ class TestConfigCommand:
     async def test_config_reset_unknown_key(self, tmp_path: Path) -> None:
         """Admin /config reset unknown_key → error with 'Unknown config key'"""
         # Arrange
-        router = make_config_router(tmp_path, admin_ids={"tg:user:42"})
+        router = make_config_router(tmp_path)
         msg = make_config_msg(
             user_id="tg:user:42", content="/config reset unknown_key", is_admin=True
         )
@@ -974,9 +964,7 @@ class TestConfigCommand:
     async def test_config_no_holder(self, tmp_path: Path) -> None:
         """/config when runtime_config_holder is None → not available message."""
         # Arrange — router built without a holder
-        router = make_config_router(
-            tmp_path, admin_ids={"tg:user:42"}, with_holder=False
-        )
+        router = make_config_router(tmp_path, with_holder=False)
         msg = make_config_msg(user_id="tg:user:42", content="/config", is_admin=True)
 
         # Act
@@ -1103,7 +1091,6 @@ def make_workspace_router(tmp_path: Path, workspaces: dict[str, Path]) -> Comman
         plugin_loader=loader,
         enabled_plugins=[],
         workspaces=workspaces,
-        admin_user_ids={"alice"},  # make_message() default user_id
     )
 
 

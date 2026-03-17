@@ -89,7 +89,6 @@ class CommandRouter:
         enabled_plugins: list[str],
         builtins: dict[str, CommandConfig] | None = None,
         circuit_registry: CircuitRegistry | None = None,
-        admin_user_ids: set[str] | None = None,
         msg_manager: MessageManager | None = None,
         runtime_config_holder: RuntimeConfigHolder | None = None,
         runtime_config_path: Path | None = None,
@@ -104,7 +103,6 @@ class CommandRouter:
             builtins if builtins is not None else dict(self._DEFAULT_BUILTINS)
         )
         self._circuit_registry = circuit_registry
-        self._admin_user_ids = admin_user_ids or set()
         self._msg_manager = msg_manager
         self._runtime_config_holder = runtime_config_holder
         self._runtime_config_path = runtime_config_path

@@ -342,7 +342,6 @@ class TestRoutingCommand:
     def _make_router(
         self,
         *,
-        admin_ids: set[str] | None = None,
         decorator: SmartRoutingDecorator | None = None,
     ) -> CommandRouter:
         loader = MagicMock(spec=PluginLoader)
@@ -350,14 +349,13 @@ class TestRoutingCommand:
         return CommandRouter(
             plugin_loader=loader,
             enabled_plugins=[],
-            admin_user_ids=admin_ids or {"tg:user:123"},
             smart_routing_decorator=decorator,
         )
 
     async def test_routing_admin_only(self) -> None:
         """Non-admin users get rejected."""
         # Arrange
-        router = self._make_router(admin_ids={"tg:user:999"})
+        router = self._make_router()
         msg = _make_admin_msg("/routing", is_admin=False)
 
         # Act

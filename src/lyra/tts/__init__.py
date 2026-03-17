@@ -264,7 +264,9 @@ class TTSService:
         """
         from voicecli import generate_async
 
-        tmp_fd, tmp_str = tempfile.mkstemp(suffix=".wav")
+        tts_tmp = Path.home() / ".lyra" / "tmp"
+        tts_tmp.mkdir(parents=True, exist_ok=True)
+        tmp_fd, tmp_str = tempfile.mkstemp(suffix=".wav", dir=tts_tmp)
         os.close(tmp_fd)
         tmp_path = Path(tmp_str)
         extra_paths: list[Path] = []

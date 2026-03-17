@@ -46,7 +46,7 @@ async def _discord_typing_worker(
                 await asyncio.sleep(1.0 * (2**_attempt))
         assert channel is not None  # guaranteed by the loop above
         while True:
-            await channel.trigger_typing()
+            await channel.typing()
             await asyncio.sleep(9)
     except asyncio.CancelledError:
         pass

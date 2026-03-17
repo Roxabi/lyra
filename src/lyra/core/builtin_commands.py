@@ -23,26 +23,16 @@ if TYPE_CHECKING:
     from .runtime_config import RuntimeConfigHolder
 
 
-def require_admin(
-    msg: InboundMessage,
-    admin_user_ids: set[str]
-    | None = None,  # TODO: remove in #315 — all callers use 1-arg form  # noqa: E501
-) -> "Response | None":
+def require_admin(msg: InboundMessage) -> "Response | None":
     """Return a denied Response if the user is not an admin, else None.
 
-    Reads ``msg.is_admin`` when *admin_user_ids* is None (preferred).
-    Falls back to explicit set check for backward compat during migration.
+    Reads ``msg.is_admin`` set by ``Authenticator.resolve()``.
 
     Usage::
 
         if (denied := require_admin(msg)):
             return denied
     """
-    if admin_user_ids is not None and len(admin_user_ids) > 0:
-        # Legacy path — backward compat for callers still threading the set
-        if msg.user_id not in admin_user_ids:
-            return Response(content="This command is admin-only.")
-        return None
     if not msg.is_admin:
         return Response(content="This command is admin-only.")
     return None

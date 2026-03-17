@@ -202,7 +202,7 @@ class PoolProcessor:
                     pool.pool_id,
                 )
 
-    async def _process_one(self, msg: InboundMessage, agent: AgentBase) -> None:  # noqa: C901 — session-id update adds one branch
+    async def _process_one(self, msg: InboundMessage, agent: AgentBase) -> None:  # noqa: C901, PLR0915 — session-id update adds branches
         """Run agent.process and dispatch result (streaming or non-streaming)."""
         pool = self._pool
         pool.append(msg)
@@ -235,6 +235,15 @@ class PoolProcessor:
             _outbound = OutboundMessage.from_text("")
 
             def _log_streaming_turn(outbound: OutboundMessage) -> None:
+                # Propagate CLI session_id from the (now-consumed) iterator.
+                # When an OutboundDispatcher is used, dispatch_streaming returns
+                # immediately (fire-and-forget); the iterator is consumed later
+                # in the worker task.  Reading session_id here (in the
+                # _on_dispatched callback) guarantees the iterator has finished.
+                _stream_sid = getattr(result, "session_id", None)
+                if _stream_sid and pool.session_id != _stream_sid:
+                    pool.session_id = _stream_sid
+                pool._observer.session_update_async(msg)
                 _reply_id = outbound.metadata.get("reply_message_id")
                 pool._observer.log_turn_async(
                     role="assistant",
@@ -253,11 +262,12 @@ class PoolProcessor:
             except BaseException as exc:
                 pool._ctx.record_circuit_failure(exc)
                 raise
-            # Update session_id from streaming iterator attribute (#316).
+            # Fallback: update session_id here for the no-dispatcher path
+            # (where dispatch_streaming blocks until streaming finishes).
+            # The _on_dispatched callback above handles the dispatcher path.
             _stream_sid = getattr(result, "session_id", None)
-            if _stream_sid:
+            if _stream_sid and pool.session_id != _stream_sid:
                 pool.session_id = _stream_sid
-            pool._observer.session_update_async(msg)
         else:
             pool._ctx.record_circuit_success()
             # Update session_id with the real Claude CLI session UUID (#316).

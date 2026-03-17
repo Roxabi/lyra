@@ -47,7 +47,6 @@ class AgentBase(ABC, SessionManager):
         agents_dir: Path | None = None,
         plugins_dir: Path | None = None,
         circuit_registry: CircuitRegistry | None = None,
-        admin_user_ids: set[str] | None = None,
         msg_manager: MessageManager | None = None,
         stt: "STTService | None" = None,
         tts: "TTSService | None" = None,
@@ -64,7 +63,6 @@ class AgentBase(ABC, SessionManager):
             self._config_path.stat().st_mtime if self._config_path.exists() else 0.0
         )
         self._circuit_registry = circuit_registry
-        self._admin_user_ids = admin_user_ids
         self._msg_manager = msg_manager
         self._stt = stt  # ADR-013: agent owns temp file cleanup
         self._tts = tts
@@ -172,7 +170,6 @@ class AgentBase(ABC, SessionManager):
             self._plugin_loader,
             self._plugin_mgr.effective_plugins,
             circuit_registry=self._circuit_registry,
-            admin_user_ids=self._admin_user_ids,
             msg_manager=self._msg_manager,
             smart_routing_decorator=self._smart_routing_decorator,
             **self._build_router_kwargs(),

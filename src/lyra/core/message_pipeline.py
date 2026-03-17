@@ -204,7 +204,11 @@ class MessagePipeline:
         """
         if msg.reply_to_id is not None:
             resolver = self._hub._context_resolver
-            if resolver is not None:
+            if resolver is None:
+                log.debug(
+                    "reply-to-resume: no ContextResolver configured — skipping"
+                )
+            else:
                 resolved = await resolver.resolve(msg.reply_to_id)
                 if resolved is not None:
                     if resolved.pool_id != pool_id:
@@ -259,7 +263,18 @@ class MessagePipeline:
             return
         if pool.is_idle and self._hub._turn_store is not None:
             last_sid = await self._hub._turn_store.get_last_session(pool_id)
-            if last_sid is not None and last_sid != pool.session_id:
+            if last_sid is None:
+                log.debug(
+                    "last-session-resume: no prior session for pool %r",
+                    pool_id,
+                )
+            elif last_sid == pool.session_id:
+                log.debug(
+                    "last-session-resume: pool %r already on session %r",
+                    pool_id,
+                    last_sid,
+                )
+            else:
                 log.info(
                     "last-session-resume: resuming %r for pool %r",
                     last_sid,

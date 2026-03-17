@@ -9,6 +9,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import shutil
+import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -17,17 +19,18 @@ from .agent_config import ModelConfig
 
 log = logging.getLogger(__name__)
 
-# Explicit env allowlist — never forward secrets to the claude subprocess
+# Explicit env allowlist — never forward secrets to the claude subprocess.
+# HOME is intentionally excluded (H-4): forwarding the real HOME lets agentic
+# tools browse ~/.claude/ if the subprocess is prompt-injected.  _spawn()
+# sets HOME to a dedicated restricted directory instead.
+# USER, LOGNAME, and SHELL are excluded and pinned to dummy values to prevent
+# username/shell oracle attacks after prompt injection.
 _SAFE_ENV_KEYS = {
     "PATH",
-    "HOME",
     "LANG",
     "LC_ALL",
     "LC_CTYPE",
     "TMPDIR",
-    "USER",
-    "LOGNAME",
-    "SHELL",
 }
 
 
@@ -55,6 +58,7 @@ class _ProcessEntry:
     model_config: ModelConfig
     system_prompt: str = ""
     session_id: str | None = None
+    home_dir: Path | None = None
     turn_count: int = 0
     last_activity: float = field(default_factory=time.time)
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
@@ -97,6 +101,11 @@ class _CliPoolWorker:
             cmd.append("--dangerously-skip-permissions")
         if model_config.tools:
             cmd.extend(["--allowedTools", ",".join(model_config.tools)])
+        # H-10: --system-prompt exposes the value in /proc/<pid>/cmdline.
+        # A proper fix requires Claude CLI to support --system-prompt-file or
+        # stdin-based system prompt delivery.  Until then, this is the only
+        # mechanism available.  The env allowlist (H-4) already prevents the
+        # subprocess from accessing sensitive directories.
         if system_prompt:
             cmd.extend(["--system-prompt", system_prompt])
         if session_id:
@@ -124,8 +133,20 @@ class _CliPoolWorker:
             model_config.model,
             spawn_cwd,
         )
-        log.debug("[pool:%s] cmd: %s", pool_id, " ".join(cmd))
+        # Redact system prompt from debug log to avoid log-file exposure
+        _redacted = [
+            "<redacted>" if i > 0 and cmd[i - 1] == "--system-prompt" else c
+            for i, c in enumerate(cmd)
+        ]
+        log.debug("[pool:%s] cmd: %s", pool_id, " ".join(_redacted))
         env = {k: v for k, v in os.environ.items() if k in _SAFE_ENV_KEYS}
+        # H-4: Set HOME to a dedicated temp dir so the subprocess cannot
+        # browse ~/.claude/ or other user-home secrets if prompt-injected.
+        _claude_home = Path(tempfile.mkdtemp(prefix="lyra_claude_home_"))
+        env["HOME"] = str(_claude_home)
+        # Pin identity vars to dummy values — prevents username oracle
+        env["USER"] = "lyra"
+        env["LOGNAME"] = "lyra"
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -138,6 +159,7 @@ class _CliPoolWorker:
             )
         except Exception as exc:
             log.error("[pool:%s] failed to spawn: %s", pool_id, exc)
+            shutil.rmtree(_claude_home, ignore_errors=True)
             return None
 
         entry = _ProcessEntry(
@@ -145,6 +167,7 @@ class _CliPoolWorker:
             pool_id=pool_id,
             model_config=model_config,
             system_prompt=system_prompt,
+            home_dir=_claude_home,
         )
         self._entries[pool_id] = entry  # type: ignore[attr-defined]
         log.info("[pool:%s] spawned (PID=%d)", pool_id, proc.pid)
@@ -165,6 +188,8 @@ class _CliPoolWorker:
                     await entry.proc.wait()
             except ProcessLookupError:
                 pass
+        if entry.home_dir is not None:
+            shutil.rmtree(entry.home_dir, ignore_errors=True)
         log.debug("[pool:%s] killed", pool_id)
 
     async def _idle_reaper(self) -> None:

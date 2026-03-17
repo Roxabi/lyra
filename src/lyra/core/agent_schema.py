@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS bot_agent_map (
     platform TEXT NOT NULL,
     bot_id TEXT NOT NULL,
     agent_name TEXT NOT NULL,
+    settings_json TEXT,
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (platform, bot_id)
 )

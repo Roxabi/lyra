@@ -1375,6 +1375,53 @@ class TestWatchChannels:
         # Processed via owned-thread path, not watch channel
         hub.inbound_bus.put.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_watch_channel_create_thread_exception_fallback(self) -> None:
+        """Watch channel + create_thread raises: message still processed."""
+        from lyra.adapters.discord import DiscordAdapter
+
+        hub = MagicMock()
+        hub.inbound_bus = MagicMock()
+        hub.inbound_bus.put = MagicMock()
+
+        adapter = DiscordAdapter(
+            hub=hub,
+            bot_id="main",
+            intents=discord.Intents.none(),
+            auto_thread=True,
+            auth=_ALLOW_ALL,
+            watch_channels=frozenset({333}),
+        )
+        bot_user = SimpleNamespace(id=999, bot=True)
+        adapter._bot_user = bot_user
+
+        create_thread_mock = AsyncMock(
+            side_effect=Exception("discord unavailable")
+        )
+
+        discord_msg = SimpleNamespace(
+            guild=SimpleNamespace(id=111),
+            channel=SimpleNamespace(
+                id=333,
+                send=AsyncMock(),
+                type=SimpleNamespace(name="text"),
+                create_thread=create_thread_mock,
+            ),
+            author=SimpleNamespace(
+                id=42, name="Alice", display_name="Alice", bot=False
+            ),
+            content="https://example.com/article",
+            created_at=datetime.now(timezone.utc),
+            id=555,
+            mentions=[],
+            create_thread=create_thread_mock,
+        )
+
+        await adapter.on_message(discord_msg)
+
+        # Message still processed despite create_thread failure
+        hub.inbound_bus.put.assert_called_once()
+
 
 def test_normalize_empty_text() -> None:
     """normalize() with content=\"\" produces msg.text == \"\"."""

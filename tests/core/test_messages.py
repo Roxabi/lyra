@@ -556,14 +556,22 @@ system = "test"
         agent._plugin_loader.load("echo")
         agent._effective_plugins = ["echo"]
         agent._plugin_mtimes = agent._record_plugin_mtimes()
+        agent._plugin_mgr.plugin_hashes = agent._plugin_mgr._record_plugin_hashes()
         agent.command_router = CommandRouter(
             agent._plugin_loader,
             agent._effective_plugins,
             msg_manager=mm,
         )
 
-        # Act — simulate plugin handlers.py mtime change
+        # Act — simulate plugin handlers.py change (content + mtime)
         old_cr = agent.command_router
+        handlers_path.write_text(
+            "from lyra.core.message import Response, InboundMessage\n"
+            "from lyra.core.pool import Pool\n"
+            "async def cmd_echo("
+            "msg: InboundMessage, pool: Pool, args: list[str]) -> Response:\n"
+            '    return Response(content="v2: " + " ".join(args))\n'
+        )
         new_mtime = handlers_path.stat().st_mtime + 1
         os.utime(handlers_path, (new_mtime, new_mtime))
         agent._plugin_mtimes["echo"] = new_mtime - 2

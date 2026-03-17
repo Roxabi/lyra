@@ -138,7 +138,7 @@ After the Phase 1b refactoring, every module is ≤300 LOC. Key decomposition:
 
 | Domain | Main module | Extracted modules |
 |--------|------------|-------------------|
-| **Hub** | `hub.py` | `message_pipeline.py`, `audio_pipeline.py`, `pool_manager.py`, `hub_rate_limit.py`, `hub_protocol.py` |
+| **Hub** | `hub.py` | `hub_outbound.py`, `message_pipeline.py`, `audio_pipeline.py`, `pool_manager.py`, `hub_rate_limit.py`, `hub_protocol.py` |
 | **Agent** | `agent.py` (AgentBase ABC) | `agent_config.py` (Agent dataclass), `agent_builder.py`, `agent_loader.py`, `agent_models.py`, `agent_plugins.py` |
 | **Pool** | `pool.py` | `pool_processor.py` (debounce/cancel/dispatch), `pool_manager.py` (lifecycle), `pool_observer.py` (turn logging) |
 | **Commands** | `command_router.py` | `builtin_commands.py`, `workspace_commands.py`, `session_commands.py` |
@@ -147,7 +147,7 @@ After the Phase 1b refactoring, every module is ≤300 LOC. Key decomposition:
 | **Agent Store** | `agent_store.py` | `agent_seeder.py` (TOML → DB import) |
 | **Outbound** | `outbound_dispatcher.py` | `outbound_errors.py` |
 | **Telegram** | `telegram.py` (adapter shell) | `telegram_inbound.py`, `telegram_outbound.py`, `telegram_normalize.py`, `telegram_audio.py`, `telegram_formatting.py` |
-| **Discord** | `discord.py` (adapter shell) | `discord_inbound.py`, `discord_outbound.py`, `discord_normalize.py`, `discord_audio.py`, `discord_audio_outbound.py`, `discord_formatting.py`, `discord_threads.py`, `discord_voice_commands.py` |
+| **Discord** | `discord.py` (adapter shell) | `discord_inbound.py`, `discord_outbound.py`, `discord_normalize.py`, `discord_audio.py`, `discord_audio_outbound.py`, `discord_formatting.py`, `discord_threads.py`, `discord_voice.py`, `discord_voice_commands.py` |
 | **Bootstrap** | `multibot.py` | `multibot_stores.py`, `multibot_wiring.py` |
 | **Shared** | `adapters/_shared.py` | Common adapter utilities (typing control, etc.) |
 

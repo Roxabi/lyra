@@ -8,7 +8,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 from lyra.core.agent import Agent, AgentBase
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
-from lyra.core.context_resolver import ResolvedSession  # type: ignore[import]
 from lyra.core.hub import Hub
 from lyra.core.message import (
     InboundMessage,
@@ -349,28 +348,30 @@ class TestGateMethodsRemoved:
 # -------------------------------------------------------------------
 
 
-class _StubResolver:
-    """Stub ContextResolver returning a canned ResolvedSession (or None)."""
+class _StubMessageIndex:
+    """Stub MessageIndex returning a canned session_id (or None)."""
 
-    def __init__(self, result: ResolvedSession | None) -> None:
-        self._result = result
-        self.called_with: list[str] = []
+    def __init__(self, mapping: dict[tuple[str, str], str] | None = None) -> None:
+        self._mapping = mapping or {}
+        self.resolve_calls: list[tuple[str, str]] = []
 
-    async def resolve(self, reply_to_id: str) -> ResolvedSession | None:
-        self.called_with.append(reply_to_id)
-        return self._result
+    async def resolve(self, pool_id: str, platform_msg_id: str) -> str | None:
+        self.resolve_calls.append((pool_id, platform_msg_id))
+        return self._mapping.get((pool_id, platform_msg_id))
+
+    async def close(self) -> None:
+        pass
 
 
 class TestReplyToResumePipeline:
-    """MessagePipeline._resolve_context() reply-to-resume paths (T4.4, SC-6..9)."""
+    """MessagePipeline._resolve_context() reply-to-resume via MessageIndex (#341)."""
 
     async def test_reply_to_resume_calls_pool_resume(self) -> None:
-        """Resolver returns matching ResolvedSession — pool.resume_session is called."""
-        # Arrange
+        """MessageIndex returns session_id — pool.resume_session is called."""
         pool_id = "telegram:main:chat:42"
-        resolved = ResolvedSession(session_id="sess-1", pool_id=pool_id)
-        stub_resolver = _StubResolver(resolved)
-        hub = _make_hub(context_resolver=stub_resolver)
+        mi = _StubMessageIndex({(pool_id, "tg-msg-99"): "sess-1"})
+        hub = _make_hub()
+        hub._message_index = mi  # type: ignore[assignment]
         pool = hub.get_or_create_pool(pool_id, "lyra")
 
         resumed: list[str] = []
@@ -384,43 +385,33 @@ class TestReplyToResumePipeline:
         msg = dataclasses.replace(_base, reply_to_id="tg-msg-99")
         pipeline = MessagePipeline(hub)
 
-        # Act
         await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
 
-        # Assert
         assert resumed == ["sess-1"]
 
     async def test_no_resume_when_reply_to_id_none(self) -> None:
-        """When msg.reply_to_id is None, resolver is never called."""
-        # Arrange
-        stub_resolver = _StubResolver(None)
-        hub = _make_hub(context_resolver=stub_resolver)
+        """When msg.reply_to_id is None, MessageIndex is never called."""
+        mi = _StubMessageIndex()
+        hub = _make_hub()
+        hub._message_index = mi  # type: ignore[assignment]
         pool_id = "telegram:main:chat:42"
         pool = hub.get_or_create_pool(pool_id, "lyra")
 
         msg = make_inbound_message(scope_id="chat:42")
-        # reply_to_id defaults to None in make_inbound_message
         assert msg.reply_to_id is None
 
         pipeline = MessagePipeline(hub)
-
-        # Act
         await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
 
-        # Assert — resolver was never consulted
-        assert stub_resolver.called_with == []
+        assert mi.resolve_calls == []
 
-    async def test_no_resume_on_cross_pool(self) -> None:
-        """When resolved.pool_id differs from current pool_id, resume is skipped."""
-        # Arrange — resolver returns a session belonging to a different pool
-        resolved = ResolvedSession(
-            session_id="sess-other", pool_id="telegram:main:chat:99"
-        )
-        stub_resolver = _StubResolver(resolved)
-        hub = _make_hub(context_resolver=stub_resolver)
-
-        current_pool_id = "telegram:main:chat:42"
-        pool = hub.get_or_create_pool(current_pool_id, "lyra")
+    async def test_no_resume_when_not_found(self) -> None:
+        """When MessageIndex returns None, resume is not called (fallthrough)."""
+        pool_id = "telegram:main:chat:42"
+        mi = _StubMessageIndex()  # empty — resolve returns None
+        hub = _make_hub()
+        hub._message_index = mi  # type: ignore[assignment]
+        pool = hub.get_or_create_pool(pool_id, "lyra")
 
         resumed: list[str] = []
 
@@ -433,25 +424,19 @@ class TestReplyToResumePipeline:
         msg = dataclasses.replace(_base, reply_to_id="tg-msg-77")
         pipeline = MessagePipeline(hub)
 
-        # Act
-        await pipeline._resolve_context(  # type: ignore[attr-defined]
-            msg, pool, current_pool_id
-        )
+        await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
 
-        # Assert — cross-pool mismatch: resume must NOT be called
+        assert mi.resolve_calls == [(pool_id, "tg-msg-77")]
         assert resumed == []
 
     async def test_no_resume_when_pool_busy(self) -> None:
-        """When pool.is_idle is False, resume is skipped to avoid interrupting work."""
-        # Arrange
+        """When pool.is_idle is False, resume is skipped."""
         pool_id = "telegram:main:chat:42"
-        resolved = ResolvedSession(session_id="sess-busy", pool_id=pool_id)
-        stub_resolver = _StubResolver(resolved)
-        hub = _make_hub(context_resolver=stub_resolver)
+        mi = _StubMessageIndex({(pool_id, "tg-msg-88"): "sess-busy"})
+        hub = _make_hub()
+        hub._message_index = mi  # type: ignore[assignment]
 
         pool = hub.get_or_create_pool(pool_id, "lyra")
-
-        # Mark the pool as busy (not idle)
         pool._current_task = asyncio.create_task(asyncio.sleep(10))
 
         resumed: list[str] = []
@@ -466,10 +451,8 @@ class TestReplyToResumePipeline:
         pipeline = MessagePipeline(hub)
 
         try:
-            # Act
             await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
         finally:
-            # Cleanup — cancel the dummy task
             pool._current_task.cancel()
             try:
                 await pool._current_task
@@ -477,5 +460,137 @@ class TestReplyToResumePipeline:
                 pass
             pool._current_task = None
 
-        # Assert — busy pool: resume must NOT be called
+        assert resumed == []
+
+    async def test_no_resume_in_group_chat(self) -> None:
+        """Group chat guard prevents resume (cross-user risk)."""
+        pool_id = "telegram:main:chat:42"
+        mi = _StubMessageIndex({(pool_id, "tg-msg-55"): "sess-group"})
+        hub = _make_hub()
+        hub._message_index = mi  # type: ignore[assignment]
+
+        pool = hub.get_or_create_pool(pool_id, "lyra")
+
+        resumed: list[str] = []
+
+        async def _fake_resume(sid: str) -> None:
+            resumed.append(sid)
+
+        pool._session_resume_fn = _fake_resume  # type: ignore[attr-defined]
+
+        _base = make_inbound_message(scope_id="chat:42")
+        msg = dataclasses.replace(
+            _base,
+            reply_to_id="tg-msg-55",
+            platform_meta={**_base.platform_meta, "is_group": True},
+        )
+        pipeline = MessagePipeline(hub)
+
+        await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
+
+        assert mi.resolve_calls == [(pool_id, "tg-msg-55")]
+        assert resumed == []
+
+
+    async def test_no_resume_when_message_index_none(self) -> None:
+        """When hub._message_index is None, Path 1 is skipped entirely."""
+        pool_id = "telegram:main:chat:42"
+        hub = _make_hub()
+        assert hub._message_index is None
+        pool = hub.get_or_create_pool(pool_id, "lyra")
+
+        resumed: list[str] = []
+
+        async def _fake_resume(sid: str) -> None:
+            resumed.append(sid)
+
+        pool._session_resume_fn = _fake_resume  # type: ignore[attr-defined]
+
+        _base = make_inbound_message(scope_id="chat:42")
+        msg = dataclasses.replace(_base, reply_to_id="tg-msg-42")
+        pipeline = MessagePipeline(hub)
+
+        await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
+
+        assert resumed == []
+
+
+class TestResolveContextMessageIndex:
+    """Additional _resolve_context tests specific to MessageIndex (#341).
+
+    Note: cross-pool resume is impossible by design — MessageIndex.resolve
+    is keyed on pool_id, so the old cross-pool guard test was removed.
+    """
+
+    async def test_resolve_via_message_index(self) -> None:
+        """MessageIndex.resolve is called with pool_id + reply_to_id."""
+        pool_id = "telegram:main:chat:42"
+        mi = _StubMessageIndex({(pool_id, "msg-100"): "sess-abc"})
+        hub = _make_hub()
+        hub._message_index = mi  # type: ignore[assignment]
+        pool = hub.get_or_create_pool(pool_id, "lyra")
+
+        resumed: list[str] = []
+
+        async def _fake_resume(sid: str) -> None:
+            resumed.append(sid)
+
+        pool._session_resume_fn = _fake_resume  # type: ignore[attr-defined]
+
+        _base = make_inbound_message(scope_id="chat:42")
+        msg = dataclasses.replace(_base, reply_to_id="msg-100")
+        pipeline = MessagePipeline(hub)
+
+        await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
+
+        assert mi.resolve_calls == [(pool_id, "msg-100")]
+        assert resumed == ["sess-abc"]
+
+    async def test_resolve_fallback_when_not_found(self) -> None:
+        """When MessageIndex returns None, Path 3 fallback is tried."""
+        pool_id = "telegram:main:chat:42"
+        mi = _StubMessageIndex()  # empty
+        hub = _make_hub()
+        hub._message_index = mi  # type: ignore[assignment]
+        pool = hub.get_or_create_pool(pool_id, "lyra")
+
+        _base = make_inbound_message(scope_id="chat:42")
+        msg = dataclasses.replace(_base, reply_to_id="unknown-msg")
+        pipeline = MessagePipeline(hub)
+
+        # Should not raise — falls through to Path 3
+        await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
+
+        assert mi.resolve_calls == [(pool_id, "unknown-msg")]
+
+    async def test_resolve_skips_when_pool_busy(self) -> None:
+        """Busy pool prevents resume even when MessageIndex has a match."""
+        pool_id = "telegram:main:chat:42"
+        mi = _StubMessageIndex({(pool_id, "msg-busy"): "sess-x"})
+        hub = _make_hub()
+        hub._message_index = mi  # type: ignore[assignment]
+        pool = hub.get_or_create_pool(pool_id, "lyra")
+        pool._current_task = asyncio.create_task(asyncio.sleep(10))
+
+        resumed: list[str] = []
+
+        async def _fake_resume(sid: str) -> None:
+            resumed.append(sid)
+
+        pool._session_resume_fn = _fake_resume  # type: ignore[attr-defined]
+
+        _base = make_inbound_message(scope_id="chat:42")
+        msg = dataclasses.replace(_base, reply_to_id="msg-busy")
+        pipeline = MessagePipeline(hub)
+
+        try:
+            await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
+        finally:
+            pool._current_task.cancel()
+            try:
+                await pool._current_task
+            except asyncio.CancelledError:
+                pass
+            pool._current_task = None
+
         assert resumed == []

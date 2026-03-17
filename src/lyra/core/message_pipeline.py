@@ -202,44 +202,34 @@ class MessagePipeline:
         Three paths (priority order): (1) reply-to-resume, (2) thread-session-resume,
         (3) last-active-session from TurnStore.
         """
-        if msg.reply_to_id is not None:
-            resolver = self._hub._context_resolver
-            if resolver is None:
-                log.debug(
-                    "reply-to-resume: no ContextResolver configured — skipping"
-                )
-            else:
-                resolved = await resolver.resolve(msg.reply_to_id)
-                if resolved is not None:
-                    if resolved.pool_id != pool_id:
-                        log.info(
-                            "reply-to-resume: cross-pool mismatch"
-                            " (resolved=%r current=%r) — skipping",
-                            resolved.pool_id,
-                            pool_id,
-                        )
-                    elif msg.platform_meta.get(
-                        "is_group"
-                    ):  # TODO(post-#67): restrict to private chats
-                        log.info(
-                            "reply-to-resume: group chat"
-                            " — skipping resume (cross-user risk)",
-                        )
-                    elif not pool.is_idle:
-                        log.info(
-                            "reply-to-resume: pool %r busy"
-                            " — skipping resume of session %r",
-                            pool_id,
-                            resolved.session_id,
-                        )
-                    else:
-                        log.info(
-                            "reply-to-resume: resuming session %r for pool %r",
-                            resolved.session_id,
-                            pool_id,
-                        )
-                        await pool.resume_session(resolved.session_id)
-                        return
+        # Path 1: reply-to-resume via MessageIndex (#341).
+        if msg.reply_to_id is not None and self._hub._message_index is None:
+            log.debug("reply-to-resume: no MessageIndex configured — skipping")
+        if msg.reply_to_id is not None and self._hub._message_index is not None:
+            session_id = await self._hub._message_index.resolve(
+                pool_id, str(msg.reply_to_id)
+            )
+            if session_id is not None:
+                if msg.platform_meta.get("is_group"):
+                    log.info(
+                        "reply-to-resume: group chat"
+                        " — skipping resume (cross-user risk)",
+                    )
+                elif not pool.is_idle:
+                    log.info(
+                        "reply-to-resume: pool %r busy"
+                        " — skipping resume of session %r",
+                        pool_id,
+                        session_id,
+                    )
+                else:
+                    log.info(
+                        "reply-to-resume: resuming session %r for pool %r",
+                        session_id,
+                        pool_id,
+                    )
+                    await pool.resume_session(session_id)
+                    return
 
         thread_session_id: str | None = msg.platform_meta.get("thread_session_id")
         if thread_session_id is not None:

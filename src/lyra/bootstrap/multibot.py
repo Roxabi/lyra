@@ -37,7 +37,6 @@ from lyra.core.auth import AuthMiddleware
 from lyra.core.auth_store import AuthStore
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.cli_pool import CliPool
-from lyra.core.context_resolver import ContextResolver
 from lyra.core.hub import Hub
 from lyra.core.pairing import PairingManager, set_pairing_manager
 
@@ -145,8 +144,6 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
 
         cli_pool_cfg = _load_cli_pool_config(raw_config)
 
-        context_resolver = ContextResolver(db_path=vault_dir / "turns.db")
-
         hub = Hub(
             circuit_registry=circuit_registry,
             msg_manager=msg_manager,
@@ -156,9 +153,9 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
             debounce_ms=DEFAULT_DEBOUNCE_MS,
             prefs_store=stores.prefs,
             turn_timeout=cli_pool_cfg["turn_timeout"],
-            context_resolver=context_resolver,
         )
         hub.set_turn_store(stores.turn)
+        hub.set_message_index(stores.message_index)
 
         # Build cli_pool if any agent needs it
         cli_pool: CliPool | None = None

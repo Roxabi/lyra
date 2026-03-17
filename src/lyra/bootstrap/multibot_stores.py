@@ -11,6 +11,7 @@ from typing import AsyncIterator
 from lyra.core.agent_store import AgentStore
 from lyra.core.auth_store import AuthStore
 from lyra.core.credential_store import CredentialStore, LyraKeyring
+from lyra.core.message_index import MessageIndex
 from lyra.core.prefs_store import PrefsStore
 from lyra.core.thread_store import ThreadStore
 from lyra.core.turn_store import TurnStore
@@ -28,6 +29,7 @@ class StoreBundle:
     turn: TurnStore
     thread: ThreadStore
     prefs: PrefsStore
+    message_index: MessageIndex
 
 
 @asynccontextmanager
@@ -43,6 +45,7 @@ async def open_stores(vault_dir: Path) -> AsyncIterator[StoreBundle]:
     turn_store: TurnStore | None = None
     thread_store: ThreadStore | None = None
     prefs_store: PrefsStore | None = None
+    message_index_store: MessageIndex | None = None
     try:
         auth_store = AuthStore(db_path=vault_dir / "auth.db")
         await auth_store.connect()
@@ -66,6 +69,9 @@ async def open_stores(vault_dir: Path) -> AsyncIterator[StoreBundle]:
         prefs_store = PrefsStore(db_path=vault_dir / "auth.db")
         await prefs_store.connect()
 
+        message_index_store = MessageIndex(db_path=vault_dir / "message_index.db")
+        await message_index_store.connect()
+
         yield StoreBundle(
             auth=auth_store,
             cred=cred_store,
@@ -73,6 +79,7 @@ async def open_stores(vault_dir: Path) -> AsyncIterator[StoreBundle]:
             turn=turn_store,
             thread=thread_store,
             prefs=prefs_store,
+            message_index=message_index_store,
         )
     finally:
         all_stores = (
@@ -82,6 +89,7 @@ async def open_stores(vault_dir: Path) -> AsyncIterator[StoreBundle]:
             turn_store,
             thread_store,
             prefs_store,
+            message_index_store,
         )
         for store in all_stores:
             if store is not None:

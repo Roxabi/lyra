@@ -254,6 +254,12 @@ class PoolProcessor:
                         str(_reply_id) if _reply_id is not None else None
                     ),
                 )
+                # Index assistant turn for reply-to session routing (#341).
+                pool._observer.index_turn_async(
+                    str(_reply_id) if _reply_id is not None else None,
+                    session_id=pool.session_id,
+                    role="assistant",
+                )
 
             _outbound.metadata["_on_dispatched"] = _log_streaming_turn
             try:
@@ -289,6 +295,12 @@ class PoolProcessor:
                         reply_message_id=(
                             str(_reply_id) if _reply_id is not None else None
                         ),
+                    )
+                    # Index assistant turn for reply-to session routing (#341).
+                    pool._observer.index_turn_async(
+                        str(_reply_id) if _reply_id is not None else None,
+                        session_id=pool.session_id,
+                        role="assistant",
                     )
 
                 result.metadata["_on_dispatched"] = _log_turn

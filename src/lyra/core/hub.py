@@ -31,8 +31,8 @@ if TYPE_CHECKING:
     from ..tts import TTSService
     from .circuit_breaker import CircuitRegistry
     from .cli_pool import CliPool
-    from .context_resolver import ContextResolver
     from .memory import MemoryManager
+    from .message_index import MessageIndex
     from .messages import MessageManager
     from .outbound_dispatcher import OutboundDispatcher
     from .pairing import PairingManager
@@ -62,7 +62,6 @@ class Hub(HubOutboundMixin):
         stt: "STTService | None" = None,
         tts: "TTSService | None" = None,
         debounce_ms: int = 0,
-        context_resolver: ContextResolver | None = None,
         prefs_store: "PrefsStore | None" = None,
         turn_timeout: float | None = None,
     ) -> None:
@@ -78,7 +77,7 @@ class Hub(HubOutboundMixin):
         self.circuit_registry = circuit_registry
         self._msg_manager = msg_manager
         self._pairing_manager = pairing_manager
-        self._context_resolver = context_resolver
+        self._message_index: MessageIndex | None = None
         self._stt: STTService | None = stt
         self._tts: TTSService | None = tts
         self._pool_ttl = pool_ttl
@@ -124,6 +123,11 @@ class Hub(HubOutboundMixin):
         self._turn_store = store
         for pool in self.pools.values():
             pool._observer.register_turn_store(store)
+
+    def set_message_index(self, store: MessageIndex) -> None:
+        self._message_index = store
+        for pool in self.pools.values():
+            pool._observer.register_message_index(store)
 
     def register_adapter(
         self,
@@ -267,3 +271,5 @@ class Hub(HubOutboundMixin):
             await self._memory.close()
         if self._turn_store is not None:
             await self._turn_store.close()
+        if self._message_index is not None:
+            await self._message_index.close()

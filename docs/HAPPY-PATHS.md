@@ -619,11 +619,10 @@ Thread ownership (cross-bot silence):
 
 ```
 Adapter extracts reply_to_message_id from platform message
-  → ContextResolver.resolve(reply_to_id)
-    → query conversation_turns table (L1 memory / turns.db)
-    → find turn with that reply_message_id
-    → return ResolvedSession(session_id, pool_id)
-  → message routed to returned pool_id
+  → MessageIndex.resolve(pool_id, reply_to_id)
+    → PK lookup in message_index table (message_index.db)
+    → return session_id for that (pool_id, platform_msg_id)
+  → pool.resume_session(session_id)
   → preserves context of the replied-to message
 ```
 
@@ -711,6 +710,6 @@ After response generated:
 | 21 | Circuit breaker | CLOSED → OPEN → HALF_OPEN → CLOSED | 5.4 |
 | 22 | Auth check | Authenticator + GuardChain → TrustLevel enum | 6.1 |
 | 23 | Multi-bot same channel | Per-bot pools + thread ownership | 6.2 |
-| 24 | Reply threading | ContextResolver → turns.db lookup | 6.3 |
+| 24 | Reply threading | MessageIndex → message_index.db PK lookup | 6.3 |
 | 25 | Attachments | Adapter extract → Agent vision → render | 7.1 |
 | 26 | Turn logging | TurnStore fire-and-forget → turns.db | 7.2 |

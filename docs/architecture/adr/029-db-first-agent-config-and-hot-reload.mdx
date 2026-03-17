@@ -1,0 +1,185 @@
+---
+title: "ADR-029: DB-First Agent Config and DB-Driven Hot-Reload"
+description: Replaces TOML mtime hot-reload with DB updated_at polling, makes the SQLite agents table the single runtime source of truth, and demotes TOMLs to seed-only files.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+Agent configurations in Lyra live in two places simultaneously: TOML files under
+`src/lyra/agents/` (seed source, versioned) and the SQLite `agents` table in
+`~/.lyra/auth.db` (runtime source, per-machine). The current `AgentBase._maybe_reload()`
+watches the TOML file's `st_mtime` and reloads from TOML when the file changes.
+
+Several forces have driven the system away from this model:
+
+- The DB has already drifted from the TOMLs in production (e.g., `lyra_default` has
+  `Bash` and `Skill` tools in the DB but not in the TOML). The hot-reload path therefore
+  re-applies a stale TOML state and silently overwrites DB-only edits on the next message.
+- `lyra agent edit` modifies the DB directly, with no mechanism to propagate the change
+  into the running daemon. The user must restart the daemon to pick up edits.
+- `AgentStore` already provides a write-through in-memory cache with a sync `get()` path
+  (ADR-024). The DB row has an `updated_at` ISO-8601 timestamp that is bumped on every
+  `upsert()`. This is the natural signal for change detection.
+- The `_update_persona_tracking()` method opens the TOML file at runtime purely to read
+  the persona name that is already in the DB row (`AgentRow.persona`). This read is
+  redundant once the DB is authoritative.
+- `cli_agent_create.py` already carries a `TODO(#268)` comment acknowledging that `create`
+  should write to the DB instead of a TOML file.
+- `AnthropicAgent` registers `/add`, `/explain`, `/summarize` via
+  `_register_session_commands()`. `SimpleAgent` does not override this hook, so those
+  commands are absent for `claude-cli`-backed agents. This is a pre-existing gap that
+  surfaces naturally in the context of this change because `_rebuild_command_router()`
+  (called on reload) calls `_register_session_commands()`.
+
+## Options Considered
+
+### Option A: DB-first hot-reload via updated_at polling (proposed)
+
+`_maybe_reload()` compares `AgentRow.updated_at` from the in-memory `AgentStore` cache
+against a locally cached timestamp. On change, it calls `agent_row_to_config()` (DB path)
+instead of `load_agent_config()` (TOML path). `AgentBase` holds a reference to its
+`AgentStore` and the last-seen `updated_at` string. The TOML path in `_maybe_reload()` is
+removed. `_update_persona_tracking()` is replaced by reading `row.persona` directly from
+the cached `AgentRow`.
+
+Polling happens per-message (lazy), not on a background timer. Each inbound message
+triggers one sync `AgentStore.get()` call, which is an O(1) dict lookup.
+
+- **Pros:** Eliminates the DB/TOML drift bug permanently. `lyra agent edit` changes are
+  picked up on the next message with no daemon restart. The store cache is already a sync
+  O(1) read; no async overhead or background task is introduced. `updated_at` string
+  comparison is simpler and cheaper than `stat()`. Agent creation via `lyra agent create`
+  writes directly to the DB; no two-step TOML-then-init workflow. The persona name is
+  read from the DB row rather than re-parsing the TOML at runtime.
+- **Cons:** `AgentBase` gains a dependency on `AgentStore`. Currently `AgentBase` is a
+  pure domain object (it holds an `Agent` config dataclass and collaborates with
+  infrastructure only through injected interfaces). Introducing `AgentStore` creates a
+  direct dependency from the agent abstraction layer into the infrastructure layer. This
+  must be managed carefully (inject via constructor, keep the dependency optional to
+  preserve test isolation).
+
+### Option B: Retain TOML mtime hot-reload, fix drift by adding a write-back step
+
+When `lyra agent edit` writes to the DB it also regenerates the TOML file on disk. The
+existing `_maybe_reload()` logic is unchanged.
+
+- **Pros:** No changes to `AgentBase` wiring. The TOML remains the hot-reload source.
+- **Cons:** Regenerating TOML from DB is lossy — comments, section ordering, and any
+  TOML-only fields (e.g., `[prompt].system` for inline system prompts, which the DB
+  path does not support) would be lost. This deepens the coupling between the two
+  representations rather than resolving it. The drift problem re-emerges whenever a DB
+  field has no TOML equivalent. `lyra agent edit` changing both DB and file is a
+  write-amplification footgun for operators.
+
+### Option C: Remove hot-reload entirely; require daemon restart on config change
+
+`_maybe_reload()` becomes a no-op. All config changes require `supervisorctl restart`.
+
+- **Pros:** Maximum simplicity. No polling, no state tracking.
+- **Cons:** Eliminates a genuine operational convenience. `lyra agent edit` changes require
+  a full restart, increasing operator friction for routine tuning (model, max_turns,
+  persona). This is a regression from the current user experience.
+
+### Option D: Out-of-process reload signal (SIGHUP or IPC)
+
+The CLI sends a signal or writes to a coordination file; the daemon catches it and
+reloads from DB on demand.
+
+- **Pros:** Zero polling overhead. Reload is deterministic and immediate.
+- **Cons:** Signal-based reload requires platform-specific handling (SIGHUP is
+  Unix-only; Windows/WSL2 signal behaviour differs). Coordination files introduce their
+  own state management. This is significantly more complex than per-message polling for
+  a personal-scale agent engine where message volume is low and the per-message overhead
+  of one dict lookup is negligible.
+
+## Decision
+
+Adopt **Option A**.
+
+**Hot-reload mechanism.** Replace TOML `st_mtime` tracking with per-message `updated_at`
+comparison against the `AgentStore` in-memory cache. `AgentBase` receives an optional
+`AgentStore` via constructor injection; when `None` (test contexts without a store), hot-
+reload is skipped rather than raising. The comparison is a string equality check on the
+ISO-8601 `updated_at` value — cheaper than `stat()` and correct for a write-through cache
+that bumps `updated_at` atomically with every `upsert()`.
+
+**Persona tracking.** `_update_persona_tracking()` and `_persona_path`/`_persona_mtime`
+fields are removed. When reload fires, the persona name is read from `AgentRow.persona`
+(already in cache), passed to `load_persona()`, and the result is composed into the new
+`Agent` config via `agent_row_to_config()`. The TOML open in `_update_persona_tracking()`
+is eliminated. Persona files (`.persona.toml`) remain file-based and are not migrated to
+the DB; hot-reload of persona content alone (without a DB `upsert()`) requires a separate
+mechanism and is out of scope for this ADR.
+
+**TOML demotion.** TOMLs become seed-only files used exclusively by `lyra agent init`.
+They are not read at runtime after startup. They may remain under `src/lyra/agents/` for
+discoverability or be moved to `src/lyra/agents/seeds/` at the maintainer's discretion;
+this ADR does not mandate the move. The TOML fallback in `multibot.py` (the `else` branch
+that calls `load_agent_config()` when no DB row exists) is retained as a degraded-mode
+safety net for users who have not yet run `lyra agent init`, but a startup log warning is
+emitted to prompt migration.
+
+**`lyra agent create`.** The TODO(#268) comment is resolved: `create` writes to the DB
+via `AgentStore.upsert()` and does not create a TOML file. The "Next steps" prompt
+directing users to run `lyra agent init` is removed. The user agent directory
+(`~/.lyra/agents/`) becomes vestigial for new agents; the system agent directory
+(`src/lyra/agents/`) retains existing TOMLs for backward compatibility.
+
+**Session command registration gap.** The `/add`, `/explain`, `/summarize` commands are
+registered in `AnthropicAgent._register_session_commands()` but not in `SimpleAgent`.
+This gap is pre-existing and orthogonal to the hot-reload change. However, because
+`_rebuild_command_router()` calls `_register_session_commands()` on every reload, any
+attempt to make session commands available to `SimpleAgent` users should be addressed
+at the same time hot-reload is reworked, to avoid a second round-trip through the same
+code path. The fix belongs in `SimpleAgent._register_session_commands()` as an override,
+registering the same three commands conditionally on provider capability. This should be
+scoped as a separate sub-task within the same implementation work, not a separate issue,
+because the two changes share the same `_rebuild_command_router` / hook call chain.
+
+**Poll interval.** There is no background polling interval. Reload is lazy and
+per-message. Given that Lyra is a personal-scale agent engine (single-digit concurrent
+users), the per-message overhead of one O(1) dict lookup is negligible. Background
+timers would introduce asyncio task management complexity with no benefit at this scale.
+
+## Consequences
+
+### Positive
+
+- DB/TOML drift is eliminated as a class of bug. `lyra agent edit` changes take effect on
+  the next message without a daemon restart.
+- `agent_row_to_config()` is the single runtime deserialization path; `load_agent_config()`
+  (TOML path) is exercised only by `lyra agent init` and `lyra agent validate`.
+- Per-message reload check is O(1) (dict lookup + string comparison); cheaper than the
+  current `stat()` syscall.
+- `_update_persona_tracking()` and its redundant TOML open are removed, reducing the
+  number of file handles opened during normal operation.
+- `lyra agent create` no longer requires a two-step (create TOML, run init) workflow.
+
+### Negative
+
+- `AgentBase` gains a dependency on `AgentStore`, moving from a pure domain/application
+  object toward an infrastructure-aware one. This is an acceptable trade-off given that
+  `AgentBase` is already infrastructure-aware in other respects (it holds
+  `CircuitRegistry`, `MessageManager`, `PluginLoader`). The dependency must be injected,
+  not imported at module scope, to preserve unit testability.
+- Users who have never run `lyra agent init` will experience a degraded startup: the
+  daemon falls back to TOMLs and emits a warning but does not fail hard. This is a known
+  transitional risk; the warning message and documentation should direct users to the
+  migration command.
+- Persona hot-reload (changing a `.persona.toml` file without touching the DB) no longer
+  works automatically. Operators must run `lyra agent edit` or `lyra agent init --force`
+  to pick up persona file changes. This is a minor regression for persona-heavy workflows.
+
+### Neutral
+
+- The `_config_path` and `_last_mtime` fields on `AgentBase` are removed. Any code
+  referencing them directly (e.g., in tests) must be updated.
+- TOMLs under `src/lyra/agents/` remain in the repository as seed sources and for
+  reference documentation. They are not deleted by this change.
+- The TOML fallback path in `multibot.py` is retained but is now explicitly a degraded
+  mode, not a peer of the DB path. A follow-up can remove it once the user base has
+  migrated.

@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import logging
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from .message import InboundMessage
@@ -157,7 +157,7 @@ class PoolObserver:
         platform_msg_id: str | None,
         *,
         session_id: str,
-        role: str,
+        role: Literal["user", "assistant"],
     ) -> None:
         """Fire-and-forget message index upsert; no-op if not connected."""
         if self._message_index is None or platform_msg_id is None:

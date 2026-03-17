@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 
 from .sqlite_base import SqliteStore
 
@@ -41,7 +42,7 @@ class MessageIndex(SqliteStore):
         pool_id: str,
         platform_msg_id: str | None,
         session_id: str,
-        role: str,
+        role: Literal["user", "assistant"],
     ) -> None:
         """Index a message. Skips if platform_msg_id is None (circuit-breaker)."""
         if platform_msg_id is None:

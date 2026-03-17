@@ -203,6 +203,8 @@ class MessagePipeline:
         (3) last-active-session from TurnStore.
         """
         # Path 1: reply-to-resume via MessageIndex (#341).
+        if msg.reply_to_id is not None and self._hub._message_index is None:
+            log.debug("reply-to-resume: no MessageIndex configured — skipping")
         if msg.reply_to_id is not None and self._hub._message_index is not None:
             session_id = await self._hub._message_index.resolve(
                 pool_id, str(msg.reply_to_id)

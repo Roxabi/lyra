@@ -426,6 +426,7 @@ class TestReplyToResumePipeline:
 
         await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
 
+        assert mi.resolve_calls == [(pool_id, "tg-msg-77")]
         assert resumed == []
 
     async def test_no_resume_when_pool_busy(self) -> None:
@@ -487,11 +488,39 @@ class TestReplyToResumePipeline:
 
         await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
 
+        assert mi.resolve_calls == [(pool_id, "tg-msg-55")]
+        assert resumed == []
+
+
+    async def test_no_resume_when_message_index_none(self) -> None:
+        """When hub._message_index is None, Path 1 is skipped entirely."""
+        pool_id = "telegram:main:chat:42"
+        hub = _make_hub()
+        assert hub._message_index is None
+        pool = hub.get_or_create_pool(pool_id, "lyra")
+
+        resumed: list[str] = []
+
+        async def _fake_resume(sid: str) -> None:
+            resumed.append(sid)
+
+        pool._session_resume_fn = _fake_resume  # type: ignore[attr-defined]
+
+        _base = make_inbound_message(scope_id="chat:42")
+        msg = dataclasses.replace(_base, reply_to_id="tg-msg-42")
+        pipeline = MessagePipeline(hub)
+
+        await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
+
         assert resumed == []
 
 
 class TestResolveContextMessageIndex:
-    """Additional _resolve_context tests specific to MessageIndex (#341)."""
+    """Additional _resolve_context tests specific to MessageIndex (#341).
+
+    Note: cross-pool resume is impossible by design — MessageIndex.resolve
+    is keyed on pool_id, so the old cross-pool guard test was removed.
+    """
 
     async def test_resolve_via_message_index(self) -> None:
         """MessageIndex.resolve is called with pool_id + reply_to_id."""

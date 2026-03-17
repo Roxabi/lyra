@@ -1,0 +1,39 @@
+---
+title: "Enable token-level streaming from Claude CLI to adapters"
+issue: 320
+status: approved
+tier: F-full
+date: 2026-03-17
+---
+
+## Problem
+
+Lyra buffers complete LLM responses before sending them to users. When Claude CLI generates long responses, users on Telegram and Discord see nothing until the entire response is ready — no progressive feedback. This creates a poor UX, especially for multi-sentence answers where the CLI takes several seconds to complete.
+
+The Claude CLI already supports token-level streaming via `--include-partial-messages`, emitting `stream_event/content_block_delta` NDJSON lines with incremental text chunks. The downstream plumbing (hub dispatch, adapter streaming, pool processor routing) is already implemented and ready. The missing piece is parsing these deltas in the CLI protocol layer and wiring them through the agent/driver stack.
+
+## Who
+
+- **Primary:** End users on Telegram and Discord — they see responses appear progressively instead of waiting for the full buffer
+- **Secondary:** Agent developers — they get a `streaming` config flag to opt in per agent
+
+## Constraints
+
+- Backward compatibility: streaming must be opt-in per agent via config flag (default: false)
+- No other constraints — no specific CLI version requirement or performance budget
+
+## Out of Scope
+
+- **Streaming tool-use blocks** — tool JSON is buffered, not streamed to users
+- **Streaming for voice/TTS** — voice modality already buffers for TTS synthesis, no changes needed
+- **UI indicators** — no typing indicators or progress bars; just progressive text delivery via edit-in-place
+
+## Complexity
+
+**Tier: F-full** — Touches multiple domains (CLI protocol parsing, LLM driver layer, agent processing, pool routing, agent config) and introduces a new async generator data path through the stack.
+
+Signals observed:
+- 6+ files across core, llm/drivers, agents, and config layers
+- New async generator pattern through CLI protocol → driver → agent → pool processor
+- Edge cases around multi-turn conversations, tool-use blocks, and error handling mid-stream
+- Requires reconciling streaming iterator path with existing callback-based intermediate turn handling

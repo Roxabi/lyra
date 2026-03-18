@@ -361,3 +361,81 @@ def unassign(
             await store.close()
 
     asyncio.run(_run())
+
+
+@agent_app.command(name="patch")
+def patch_agent(
+    name: str = typer.Argument(..., help="Agent name to patch."),
+    json_patch: str = typer.Option(
+        ..., "--json", help="JSON object with field updates."
+    ),
+) -> None:
+    """Apply a partial JSON patch to an agent in DB."""
+    try:
+        fields = _json.loads(json_patch)
+    except _json.JSONDecodeError as e:
+        typer.echo(f"Error: invalid JSON — {e}", err=True)
+        raise typer.Exit(1)
+    if not isinstance(fields, dict):
+        typer.echo("Error: --json must be a JSON object (dict)", err=True)
+        raise typer.Exit(1)
+
+    async def _run() -> None:
+        from lyra.core.agent_refiner import RefinementPatch
+
+        store = await _connect_store()
+        try:
+            row = store.get(name)
+            if row is None:
+                typer.echo(f"Error: agent {name!r} not found in DB", err=True)
+                raise typer.Exit(1)
+            patch = RefinementPatch(fields=fields)
+            updated = patch.to_agent_row(row)
+            await store.upsert(updated)
+            typer.echo(f"Patched {name!r}: {', '.join(fields.keys())}")
+        finally:
+            await store.close()
+
+    asyncio.run(_run())
+
+
+@agent_app.command(name="refine")
+def refine(
+    name: str = typer.Argument(..., help="Agent name to refine."),
+) -> None:
+    """Interactively refine an agent profile via LLM-guided session."""
+    import asyncio as _asyncio
+
+    from lyra.core.agent_refiner import AgentRefiner, RefinementPatch, TerminalIO
+
+    async def _setup() -> tuple:
+        store = await _connect_store()
+        return store, AgentRefiner(name, store), TerminalIO()
+
+    store, refiner_obj, io_obj = _asyncio.run(_setup())
+
+    async def _apply(patch: RefinementPatch) -> None:
+        try:
+            row = store.get(name)
+            updated = patch.to_agent_row(row)
+            before = {f: getattr(row, f) for f in patch.fields}
+            await store.upsert(updated)
+            typer.echo("\nChanged fields:")
+            for field_name, new_val in patch.fields.items():
+                old_val = before.get(field_name)
+                typer.echo(f"  {field_name}: {old_val!r} → {new_val!r}")
+        finally:
+            await store.close()
+
+    try:
+        patch = refiner_obj.run_session(io_obj)
+        _asyncio.run(_apply(patch))
+        typer.echo("\nAgent profile updated. Restart lyra to apply.")
+    except KeyboardInterrupt:
+        typer.echo("\nRefinement session cancelled.")
+        _asyncio.run(store.close())
+        raise typer.Exit(0)
+    except RuntimeError as e:
+        typer.echo(f"Error: {e}", err=True)
+        _asyncio.run(store.close())
+        raise typer.Exit(1)

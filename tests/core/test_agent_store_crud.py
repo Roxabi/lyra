@@ -204,7 +204,9 @@ class TestBotSettings:
         await agent_store.upsert(make_agent_row("inline-agent"))
 
         await agent_store.set_bot_agent(
-            "discord", "bot-s3", "inline-agent",
+            "discord",
+            "bot-s3",
+            "inline-agent",
             settings={"watch_channels": [333]},
         )
 
@@ -216,7 +218,9 @@ class TestBotSettings:
     ) -> None:
         await agent_store.upsert(make_agent_row("preserve-agent"))
         await agent_store.set_bot_agent(
-            "discord", "bot-s4", "preserve-agent",
+            "discord",
+            "bot-s4",
+            "preserve-agent",
             settings={"watch_channels": [444]},
         )
 
@@ -229,7 +233,9 @@ class TestBotSettings:
     async def test_remove_bot_clears_settings(self, agent_store: AgentStore) -> None:
         await agent_store.upsert(make_agent_row("rm-settings-agent"))
         await agent_store.set_bot_agent(
-            "discord", "bot-s5", "rm-settings-agent",
+            "discord",
+            "bot-s5",
+            "rm-settings-agent",
             settings={"watch_channels": [555]},
         )
 
@@ -244,7 +250,9 @@ class TestBotSettings:
         await store1.connect()
         await store1.upsert(make_agent_row("warm-agent"))
         await store1.set_bot_agent(
-            "discord", "bot-warm", "warm-agent",
+            "discord",
+            "bot-warm",
+            "warm-agent",
             settings={"watch_channels": [666]},
         )
         await store1.close()

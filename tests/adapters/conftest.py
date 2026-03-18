@@ -15,7 +15,8 @@ import httpx
 import pytest
 
 from lyra.adapters.discord import DiscordAdapter
-from lyra.adapters.telegram import TelegramAdapter
+from lyra.adapters.telegram import _ALLOW_ALL, TelegramAdapter
+from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.message import InboundMessage
 from lyra.core.trust import TrustLevel
 
@@ -134,6 +135,132 @@ def mock_channel() -> MagicMock:
     ch = AsyncMock()
     ch.send = AsyncMock()
     return ch
+
+
+# ---------------------------------------------------------------------------
+# Extended message builders for render_attachment tests
+# (support omit_* and thread_id / topic_id parameters)
+# ---------------------------------------------------------------------------
+
+
+def make_tg_attach_msg(
+    chat_id: int = 42,
+    message_id: int = 10,
+    topic_id: int | None = None,
+    *,
+    omit_chat_id: bool = False,
+) -> InboundMessage:
+    """InboundMessage for Telegram render_attachment tests."""
+    return InboundMessage(
+        id=f"telegram:tg:user:1:0:{message_id}",
+        platform="telegram",
+        bot_id="main",
+        scope_id=f"chat:{chat_id}",
+        user_id="tg:user:1",
+        user_name="Alice",
+        is_mention=False,
+        text="hi",
+        text_raw="hi",
+        trust_level=TrustLevel.TRUSTED,
+        timestamp=datetime.now(timezone.utc),
+        platform_meta={
+            **({"chat_id": chat_id} if not omit_chat_id else {}),
+            "message_id": message_id,
+            "topic_id": topic_id,
+            "is_group": False,
+        },
+    )
+
+
+def make_dc_attach_msg(
+    channel_id: int = 99,
+    message_id: int = 55,
+    thread_id: int | None = None,
+    *,
+    omit_channel_id: bool = False,
+) -> InboundMessage:
+    """InboundMessage for Discord render_attachment tests."""
+    return InboundMessage(
+        id=f"discord:dc:user:1:0:{message_id}",
+        platform="discord",
+        bot_id="main",
+        scope_id=f"channel:{channel_id}",
+        user_id="dc:user:1",
+        user_name="Bob",
+        is_mention=False,
+        text="hi",
+        text_raw="hi",
+        trust_level=TrustLevel.TRUSTED,
+        timestamp=datetime.now(timezone.utc),
+        platform_meta={
+            "guild_id": 1,
+            **({"channel_id": channel_id} if not omit_channel_id else {}),
+            "message_id": message_id,
+            "thread_id": thread_id,
+            "channel_type": "text",
+        },
+    )
+
+
+def make_tg_attach_adapter() -> TelegramAdapter:
+    """TelegramAdapter with send_photo/send_video/send_document mocked."""
+    hub = MagicMock()
+    adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub)
+    bot_mock = AsyncMock()
+    bot_mock.send_photo = AsyncMock()
+    bot_mock.send_video = AsyncMock()
+    bot_mock.send_document = AsyncMock()
+    adapter.bot = bot_mock
+    return adapter
+
+
+def make_dc_attach_adapter() -> DiscordAdapter:
+    """DiscordAdapter for render_attachment tests."""
+    hub = MagicMock()
+    return DiscordAdapter(hub=hub, bot_id="main")
+
+
+# ---------------------------------------------------------------------------
+# Outbound-send test helpers (used by test_telegram_outbound_send/render)
+# ---------------------------------------------------------------------------
+
+
+def _make_telegram_adapter() -> TelegramAdapter:
+    """Build a TelegramAdapter with a MagicMock hub (no bot attached)."""
+    hub = MagicMock()
+    adapter = TelegramAdapter(
+        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+    )
+    return adapter
+
+
+def _make_telegram_message() -> InboundMessage:
+    """Build a minimal InboundMessage for adapter.send() calls."""
+    return InboundMessage(
+        id="msg-tg-138",
+        platform="telegram",
+        bot_id="main",
+        scope_id="chat:123",
+        user_id="tg:user:42",
+        user_name="Alice",
+        is_mention=False,
+        text="hello",
+        text_raw="hello",
+        timestamp=datetime.now(timezone.utc),
+        platform_meta={"chat_id": 123, "message_id": 1},
+        trust_level=TrustLevel.TRUSTED,
+    )
+
+
+def _make_open_registry(service: str) -> CircuitRegistry:
+    """Build a CircuitRegistry with the named circuit tripped OPEN."""
+    registry = CircuitRegistry()
+    for name in ("anthropic", "telegram", "discord", "hub"):
+        cb = CircuitBreaker(name, failure_threshold=1, recovery_timeout=60)
+        if name == service:
+            cb.record_failure()  # trips to OPEN
+        registry.register(cb)
+    return registry
 
 
 _original_extract_cookies = httpx.Cookies.extract_cookies

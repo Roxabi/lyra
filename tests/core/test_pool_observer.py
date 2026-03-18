@@ -249,9 +249,7 @@ class TestMessageIndexPopulation:
         obs.append(msg, session_id=_SESSION_ID)
         await asyncio.sleep(0)
 
-        mi.upsert.assert_called_once_with(
-            _POOL_ID, "42", _SESSION_ID, "user"
-        )
+        mi.upsert.assert_called_once_with(_POOL_ID, "42", _SESSION_ID, "user")
 
     async def test_append_skips_when_no_message_index(self) -> None:
         """append() does not fail when no MessageIndex is registered."""

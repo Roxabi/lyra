@@ -234,9 +234,7 @@ class TestEagerCleanupOnTerminated:
 
         from lyra.core.cli_protocol import CliResult
 
-        terminated_result = CliResult(
-            error="Process terminated unexpectedly"
-        )
+        terminated_result = CliResult(error="Process terminated unexpectedly")
         with patch(
             "lyra.core.cli_pool.send_and_read",
             new=AsyncMock(return_value=terminated_result),
@@ -262,4 +260,3 @@ class TestEagerCleanupOnTerminated:
 
         assert not result.ok
         assert "p2" not in pool._entries
-

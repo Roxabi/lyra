@@ -170,13 +170,23 @@ class TestBareUrlDetection:
     """prepare() rewrites bare URLs to /add; is_command() detects them."""
 
     def test_https_url_is_detected(self, tmp_path: Path) -> None:
-        assert make_router(tmp_path).is_command(make_message(content="https://example.com/article")) is True  # noqa: E501
+        assert (
+            make_router(tmp_path).is_command(
+                make_message(content="https://example.com/article")
+            )
+            is True
+        )  # noqa: E501
 
     def test_http_url_is_detected(self, tmp_path: Path) -> None:
-        assert make_router(tmp_path).is_command(make_message(content="http://example.com")) is True  # noqa: E501
+        assert (
+            make_router(tmp_path).is_command(make_message(content="http://example.com"))
+            is True
+        )  # noqa: E501
 
     def test_prepare_returns_add_command(self, tmp_path: Path) -> None:
-        prepared = make_router(tmp_path).prepare(make_message(content="https://example.com/page"))
+        prepared = make_router(tmp_path).prepare(
+            make_message(content="https://example.com/page")
+        )
         assert prepared.command is not None
         assert prepared.command.name == "add"
         assert prepared.command.prefix == "/"
@@ -188,11 +198,18 @@ class TestBareUrlDetection:
         assert prepared.command.args == url
 
     def test_url_with_surrounding_text_not_rewritten(self, tmp_path: Path) -> None:
-        prepared = make_router(tmp_path).prepare(make_message(content="check this https://example.com"))
+        prepared = make_router(tmp_path).prepare(
+            make_message(content="check this https://example.com")
+        )
         assert prepared.command is None
 
     def test_url_with_surrounding_text_is_not_command(self, tmp_path: Path) -> None:
-        assert make_router(tmp_path).is_command(make_message(content="check this https://example.com")) is False  # noqa: E501
+        assert (
+            make_router(tmp_path).is_command(
+                make_message(content="check this https://example.com")
+            )
+            is False
+        )  # noqa: E501
 
     def test_regular_command_unaffected_by_prepare(self, tmp_path: Path) -> None:
         prepared = make_router(tmp_path).prepare(make_message(content="/help"))
@@ -205,7 +222,10 @@ class TestBareUrlDetection:
         assert router.get_command_name(prepared) == "/add"
 
     def test_plain_text_not_detected_as_command(self, tmp_path: Path) -> None:
-        assert make_router(tmp_path).is_command(make_message(content="hello world")) is False  # noqa: E501
+        assert (
+            make_router(tmp_path).is_command(make_message(content="hello world"))
+            is False
+        )  # noqa: E501
 
     @pytest.mark.asyncio
     async def test_dispatch_bare_url_routes_to_add_session(
@@ -238,7 +258,10 @@ class TestBareUrlPatternsDisabled:
 
     def test_bare_url_is_not_detected_when_disabled(self, tmp_path: Path) -> None:
         router = make_router(tmp_path, patterns={"bare_url": False})
-        assert router.is_command(make_message(content="https://example.com/article")) is False  # noqa: E501
+        assert (
+            router.is_command(make_message(content="https://example.com/article"))
+            is False
+        )  # noqa: E501
 
     def test_prepare_returns_message_unchanged_when_disabled(
         self, tmp_path: Path
@@ -260,9 +283,12 @@ class TestBareUrlPatternsDisabled:
 
     def test_bare_url_enabled_explicitly(self, tmp_path: Path) -> None:
         # Explicit opt-in: bare URL is a command
-        assert make_router(tmp_path, patterns={"bare_url": True}).is_command(
-            make_message(content="https://example.com")
-        ) is True
+        assert (
+            make_router(tmp_path, patterns={"bare_url": True}).is_command(
+                make_message(content="https://example.com")
+            )
+            is True
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -348,6 +374,7 @@ class TestSessionCommands:
 
     def test_register_conflict_with_builtin_raises(self, tmp_path: Path) -> None:
         from unittest.mock import AsyncMock
+
         router = make_router(tmp_path)
         handler = AsyncMock(return_value=Response(content="x"))
         with pytest.raises(ValueError, match="clashes with a builtin"):
@@ -355,6 +382,7 @@ class TestSessionCommands:
 
     def test_register_conflict_with_plugin_raises(self, tmp_path: Path) -> None:
         from unittest.mock import AsyncMock
+
         router = make_router(tmp_path)  # has echo plugin
         handler = AsyncMock(return_value=Response(content="x"))
         with pytest.raises(ValueError, match="clashes with a plugin"):
@@ -364,9 +392,12 @@ class TestSessionCommands:
         from unittest.mock import AsyncMock
 
         from lyra.core.builtin_commands import help_command
+
         router = make_router(tmp_path)
         handler = AsyncMock(return_value=Response(content="x"))
-        router.register_session_command("mything", handler, description="Does the thing")  # noqa: E501
+        router.register_session_command(
+            "mything", handler, description="Does the thing"
+        )  # noqa: E501
         response = help_command(
             router._builtins,
             router._session_handlers,
@@ -381,6 +412,7 @@ class TestSessionCommands:
     def test_session_args_passed_to_handler(self, tmp_path: Path) -> None:
         import asyncio as _asyncio
         from unittest.mock import MagicMock
+
         received_args: list[list[str]] = []
 
         async def capturing_handler(msg, driver, args, timeout):

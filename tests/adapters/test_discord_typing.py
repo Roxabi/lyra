@@ -130,7 +130,9 @@ async def test_send_cancels_typing_task_at_start() -> None:
 
     adapter._cancel_typing = spy_cancel  # type: ignore[method-assign]
 
-    await adapter.send(make_dc_inbound_msg(is_mention=False), OutboundMessage.from_text("hi"))  # noqa: E501
+    await adapter.send(
+        make_dc_inbound_msg(is_mention=False), OutboundMessage.from_text("hi")
+    )  # noqa: E501
 
     assert 333 in cancelled_ids
 

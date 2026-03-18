@@ -236,7 +236,9 @@ class TestTurnTimeoutCeiling:
     def test_uses_ceiling_when_no_override(self, ctx_mock: MagicMock) -> None:
         """SC-4: No agent override → ceiling becomes default."""
         pool = Pool(
-            pool_id="p1", agent_name="a", ctx=ctx_mock,
+            pool_id="p1",
+            agent_name="a",
+            ctx=ctx_mock,
             turn_timeout_ceiling=600,
         )
         assert pool._turn_timeout == 600
@@ -244,16 +246,22 @@ class TestTurnTimeoutCeiling:
     def test_agent_below_ceiling_kept(self, ctx_mock: MagicMock) -> None:
         """SC-4: Agent override below ceiling → kept as-is."""
         pool = Pool(
-            pool_id="p1", agent_name="a", ctx=ctx_mock,
-            turn_timeout=300, turn_timeout_ceiling=600,
+            pool_id="p1",
+            agent_name="a",
+            ctx=ctx_mock,
+            turn_timeout=300,
+            turn_timeout_ceiling=600,
         )
         assert pool._turn_timeout == 300
 
     def test_agent_above_ceiling_clamped(self, ctx_mock: MagicMock) -> None:
         """SC-5: Agent override above ceiling → clamped to ceiling."""
         pool = Pool(
-            pool_id="p1", agent_name="a", ctx=ctx_mock,
-            turn_timeout=900, turn_timeout_ceiling=600,
+            pool_id="p1",
+            agent_name="a",
+            ctx=ctx_mock,
+            turn_timeout=900,
+            turn_timeout_ceiling=600,
         )
         assert pool._turn_timeout == 600
 
@@ -265,6 +273,9 @@ class TestTurnTimeoutCeiling:
     def test_agent_override_no_ceiling(self, ctx_mock: MagicMock) -> None:
         """Agent sets turn_timeout without ceiling → kept as-is."""
         pool = Pool(
-            pool_id="p1", agent_name="a", ctx=ctx_mock, turn_timeout=300,
+            pool_id="p1",
+            agent_name="a",
+            ctx=ctx_mock,
+            turn_timeout=300,
         )
         assert pool._turn_timeout == 300

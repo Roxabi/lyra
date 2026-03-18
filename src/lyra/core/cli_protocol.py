@@ -78,7 +78,8 @@ async def send_and_read(
     payload = {
         "type": "user",
         "message": {"role": "user", "content": message},
-        "session_id": entry.session_id or "",
+        # always empty — session binding is handled by --resume at spawn
+        "session_id": "",
         "parent_tool_use_id": None,
     }
     proc.stdin.write((json.dumps(payload) + "\n").encode())
@@ -417,7 +418,8 @@ async def send_and_read_stream(
     payload = {
         "type": "user",
         "message": {"role": "user", "content": message},
-        "session_id": entry.session_id or "",
+        # always empty — session binding is handled by --resume at spawn
+        "session_id": "",
         "parent_tool_use_id": None,
     }
     proc.stdin.write((json.dumps(payload) + "\n").encode())

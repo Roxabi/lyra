@@ -14,6 +14,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from lyra.integrations.base import SessionTools
+
 from . import builtin_commands, workspace_commands
 from .command_loader import AsyncHandler, CommandLoader
 from .command_parser import CommandContext
@@ -56,12 +58,16 @@ class CommandConfig:
 
 @runtime_checkable
 class SessionCommandHandler(Protocol):
-    """Async handler: (msg, driver, args, timeout) -> Response. No pool history."""
+    """Async handler: (msg, driver, tools, args, timeout) -> Response.
+
+    No pool history.
+    """
 
     async def __call__(
         self,
         msg: InboundMessage,
         driver: "LlmProvider",
+        tools: "SessionTools",
         args: list[str],
         timeout: float,
     ) -> Response: ...
@@ -72,6 +78,7 @@ class SessionCommandEntry:
     """Registry entry for a session command (async, isolated LLM call)."""
 
     handler: SessionCommandHandler
+    tools: SessionTools
     description: str = ""
     timeout: float = 60.0
 
@@ -214,6 +221,7 @@ class CommandRouter:
         self,
         name: str,
         handler: SessionCommandHandler,
+        tools: SessionTools | None = None,
         description: str = "",
         timeout: float = 60.0,
     ) -> None:
@@ -224,8 +232,14 @@ class CommandRouter:
         plugin_handlers = self._command_loader.get_commands(self._enabled_plugins)
         if cmd in plugin_handlers:
             raise ValueError(f"Session command {cmd!r} clashes with a plugin.")
+        from lyra.integrations.vault_cli import VaultCli
+        from lyra.integrations.web_intel import WebIntelScraper
+        _tools = tools if tools is not None else SessionTools(
+            scraper=WebIntelScraper(), vault=VaultCli()
+        )
         self._session_handlers[cmd] = SessionCommandEntry(
             handler=handler,
+            tools=_tools,
             description=description,
             timeout=timeout,
         )
@@ -277,7 +291,9 @@ class CommandRouter:
             return Response(content="Session commands require anthropic-sdk backend.")
         try:
             return await asyncio.wait_for(
-                entry.handler(msg, self._session_driver, args, entry.timeout),
+                entry.handler(
+                    msg, self._session_driver, entry.tools, args, entry.timeout
+                ),
                 timeout=entry.timeout,
             )
         except TimeoutError:

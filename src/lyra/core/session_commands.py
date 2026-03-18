@@ -1,7 +1,7 @@
 """Session command handlers for /add, /explain, /summarize (issue #99).
 
 Each handler is an async function conforming to SessionCommandHandler protocol:
-    async (msg, driver, args, timeout) -> Response
+    async (msg, driver, tools, args, timeout) -> Response
 
 Session commands make an isolated LLM call per invocation and never read or
 write pool.sdk_history or pool.history.
@@ -18,12 +18,7 @@ from typing import TYPE_CHECKING
 
 from lyra.core.agent_config import ModelConfig
 from lyra.core.message import InboundMessage, Response
-from lyra.core.session_helpers import (
-    ScrapeFailed,
-    VaultWriteFailed,
-    scrape_url,
-    vault_add,
-)
+from lyra.integrations.base import ScrapeFailed, SessionTools, VaultWriteFailed
 
 if TYPE_CHECKING:
     from lyra.llm.base import LlmProvider
@@ -80,10 +75,10 @@ def _make_model_cfg(driver: "LlmProvider") -> ModelConfig:
     return ModelConfig(backend="anthropic-sdk", model=str(model))
 
 
-async def _scrape_with_fallback(url: str, timeout: float) -> str:
-    """Scrape *url*, returning a fallback string on any ScrapeFailed."""
+async def _scrape_with_fallback(tools: "SessionTools", url: str, timeout: float) -> str:
+    """Scrape *url* via tools.scraper; return fallback string on any ScrapeFailed."""
     try:
-        return await scrape_url(url, timeout=timeout)
+        return await tools.scraper.scrape(url, timeout=timeout)
     except ScrapeFailed as exc:
         if exc.reason == "not_available":
             return f"[scraping unavailable] {url}"
@@ -136,6 +131,7 @@ async def _llm_complete(
 async def cmd_add(
     msg: InboundMessage,
     driver: "LlmProvider",
+    tools: "SessionTools",
     args: list[str],
     timeout: float,
 ) -> Response:
@@ -145,7 +141,7 @@ async def cmd_add(
 
     url = args[0]
 
-    scraped = await _scrape_with_fallback(url, timeout=timeout / 3)
+    scraped = await _scrape_with_fallback(tools, url, timeout=timeout / 3)
 
     llm_text, err = await _llm_complete(
         "session:add",
@@ -164,7 +160,7 @@ async def cmd_add(
     # Vault write
     vault_note = ""
     try:
-        await vault_add(title, tags, url, llm_text, timeout=timeout / 3)
+        await tools.vault.add(title, tags, url, llm_text, timeout=timeout / 3)
     except VaultWriteFailed as exc:
         log.warning("cmd_add: vault write failed (%s)", exc)
         if exc.args and exc.args[0] == "not_available":
@@ -178,6 +174,7 @@ async def cmd_add(
 async def cmd_explain(
     msg: InboundMessage,
     driver: "LlmProvider",
+    tools: "SessionTools",
     args: list[str],
     timeout: float,
 ) -> Response:
@@ -187,7 +184,7 @@ async def cmd_explain(
 
     url = args[0]
 
-    scraped = await _scrape_with_fallback(url, timeout=timeout / 3)
+    scraped = await _scrape_with_fallback(tools, url, timeout=timeout / 3)
 
     llm_text, err = await _llm_complete(
         "session:explain",
@@ -206,6 +203,7 @@ async def cmd_explain(
 async def cmd_summarize(
     msg: InboundMessage,
     driver: "LlmProvider",
+    tools: "SessionTools",
     args: list[str],
     timeout: float,
 ) -> Response:
@@ -215,7 +213,7 @@ async def cmd_summarize(
 
     url = args[0]
 
-    scraped = await _scrape_with_fallback(url, timeout=timeout / 3)
+    scraped = await _scrape_with_fallback(tools, url, timeout=timeout / 3)
 
     llm_text, err = await _llm_complete(
         "session:summarize",

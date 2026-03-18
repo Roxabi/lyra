@@ -307,13 +307,23 @@ class TestSessionCommands:
     ):
         from unittest.mock import AsyncMock, MagicMock
 
+        from lyra.integrations.base import SessionTools
+
         router = make_router(tmp_path)
         router._session_driver = driver or MagicMock()
+
+        scraper = MagicMock()
+        scraper.scrape = AsyncMock(return_value="content")
+        vault = MagicMock()
+        vault.add = AsyncMock()
+        vault.search = AsyncMock(return_value="results")
+        tools = SessionTools(scraper=scraper, vault=vault)
 
         async_handler = AsyncMock(return_value=Response(content=handler_response))
         router.register_session_command(
             "mysession",
             async_handler,
+            tools=tools,
             description="My session command",
             timeout=30.0,
         )
@@ -333,10 +343,10 @@ class TestSessionCommands:
     async def test_session_command_none_driver_returns_degradation(
         self, tmp_path: Path
     ) -> None:
+        from unittest.mock import AsyncMock
+
         router = make_router(tmp_path)
         router._session_driver = None
-
-        from unittest.mock import AsyncMock
 
         async_handler = AsyncMock(return_value=Response(content="never"))
         router.register_session_command("nosession", async_handler)
@@ -360,7 +370,7 @@ class TestSessionCommands:
         router = make_router(tmp_path)
         router._session_driver = MagicMock()
 
-        async def slow_handler(msg, driver, args, timeout):
+        async def slow_handler(msg, driver, tools, args, timeout):
             await _asyncio.sleep(10)
             return Response(content="never")
 
@@ -415,7 +425,7 @@ class TestSessionCommands:
 
         received_args: list[list[str]] = []
 
-        async def capturing_handler(msg, driver, args, timeout):
+        async def capturing_handler(msg, driver, tools, args, timeout):
             received_args.append(args)
             return Response(content="ok")
 

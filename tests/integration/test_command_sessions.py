@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -19,6 +19,7 @@ from lyra.core.command_router import CommandRouter
 from lyra.core.message import InboundMessage, Response
 from lyra.core.pool import Pool
 from lyra.core.trust import TrustLevel
+from lyra.integrations.base import SessionTools
 from lyra.llm.base import LlmProvider, LlmResult
 
 # ---------------------------------------------------------------------------
@@ -54,12 +55,28 @@ def make_mock_driver(
     return driver
 
 
+def make_mock_tools() -> tuple[SessionTools, MagicMock, MagicMock]:
+    """Return (tools, mock_scraper, mock_vault) for session command tests."""
+    scraper = MagicMock()
+    scraper.scrape = AsyncMock(return_value="page content")
+    vault = MagicMock()
+    vault.add = AsyncMock()
+    vault.search = AsyncMock(return_value="results")
+    tools = SessionTools(scraper=scraper, vault=vault)
+    return tools, scraper, vault
+
+
 def make_router_with_session(
     tmp_path: Path,
     driver: "LlmProvider | None" = None,
+    tools: "SessionTools | None" = None,
 ) -> CommandRouter:
     """Build a CommandRouter with session commands and a mock search plugin."""
     from lyra.core.session_commands import cmd_add, cmd_explain, cmd_summarize
+
+    _tools = tools
+    if _tools is None:
+        _tools, _, _ = make_mock_tools()
 
     # Minimal plugins dir (no real plugins needed for session command tests)
     loader = CommandLoader(tmp_path)
@@ -70,13 +87,14 @@ def make_router_with_session(
         patterns={"bare_url": True},
     )
     router.register_session_command(
-        "vault-add", cmd_add, description="Save URL", timeout=60.0
+        "vault-add", cmd_add, tools=_tools, description="Save URL", timeout=60.0
     )
     router.register_session_command(
-        "explain", cmd_explain, description="Explain URL", timeout=60.0
+        "explain", cmd_explain, tools=_tools, description="Explain URL", timeout=60.0
     )
     router.register_session_command(
-        "summarize", cmd_summarize, description="Summarize URL", timeout=60.0
+        "summarize", cmd_summarize, tools=_tools, description="Summarize URL",
+        timeout=60.0
     )
     return router
 
@@ -99,27 +117,22 @@ class TestBareUrlToAdd:
     @pytest.mark.asyncio
     async def test_bare_url_dispatched_to_add(self, tmp_path: Path) -> None:
         driver = make_mock_driver()
-        router = make_router_with_session(tmp_path, driver=driver)
+        tools, mock_scraper, mock_vault = make_mock_tools()
+        router = make_router_with_session(tmp_path, driver=driver, tools=tools)
         pool = make_pool()
 
-        with (
-            patch(
-                "lyra.core.session_commands.scrape_url",
-                new=AsyncMock(return_value="page content"),
-            ),
-            patch("lyra.core.session_commands.vault_add", new=AsyncMock()),
-        ):
-            msg = make_message("https://example.com/article")
-            # prepare() rewrites the bare URL to /vault-add
-            msg = router.prepare(msg)
-            assert msg.command is not None
-            assert msg.command.name == "vault-add"
+        msg = make_message("https://example.com/article")
+        # prepare() rewrites the bare URL to /vault-add
+        msg = router.prepare(msg)
+        assert msg.command is not None
+        assert msg.command.name == "vault-add"
 
-            response = await router.dispatch(msg, pool=pool)
+        response = await router.dispatch(msg, pool=pool)
 
         assert response is not None
         assert isinstance(response, Response)
         driver.complete.assert_called_once()
+        mock_scraper.scrape.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_is_command_returns_true_for_bare_url(self, tmp_path: Path) -> None:
@@ -139,15 +152,13 @@ class TestExplainSessionCommand:
     @pytest.mark.asyncio
     async def test_explain_returns_llm_response(self, tmp_path: Path) -> None:
         driver = make_mock_driver("This article explains Python async patterns.")
-        router = make_router_with_session(tmp_path, driver=driver)
+        tools, mock_scraper, _ = make_mock_tools()
+        mock_scraper.scrape = AsyncMock(return_value="article content")
+        router = make_router_with_session(tmp_path, driver=driver, tools=tools)
         pool = make_pool()
 
-        with patch(
-            "lyra.core.session_commands.scrape_url",
-            new=AsyncMock(return_value="article content"),
-        ):
-            msg = make_message("/explain https://example.com/async")
-            response = await router.dispatch(msg, pool=pool)
+        msg = make_message("/explain https://example.com/async")
+        response = await router.dispatch(msg, pool=pool)
 
         assert response is not None
         assert "async" in response.content.lower()
@@ -169,7 +180,7 @@ class TestSearchPlugin:
             Path(__file__).resolve().parent.parent.parent / "src" / "lyra" / "commands"
         )
         loader = CommandLoader(search_plugin_dir)
-        loader.load("search")
+        loaded_plugin = loader.load("search")
 
         driver = make_mock_driver()
         router = CommandRouter(
@@ -179,16 +190,24 @@ class TestSearchPlugin:
         )
         pool = make_pool()
 
-        with patch(
-            "lyra.core.session_helpers.vault_search",
-            new=AsyncMock(return_value="Result: python basics"),
-        ) as mock_search:
+        # Inject via the loaded module object — avoids stale package-attribute
+        # issue when another test has previously imported the module normally.
+        _search_handlers = loaded_plugin.module
+
+        mock_vault = MagicMock()
+        mock_vault.search = AsyncMock(return_value="Result: python basics")
+        mock_vault.add = AsyncMock()
+        _search_handlers.set_vault_provider(mock_vault)
+
+        try:
             msg = make_message("/search python basics")
             response = await router.dispatch(msg, pool=pool)
+        finally:
+            _search_handlers.set_vault_provider(None)
 
         assert response is not None
         assert "python" in response.content.lower()
-        mock_search.assert_called_once_with("python basics", timeout=25.0)
+        mock_vault.search.assert_called_once_with("python basics", timeout=25.0)
 
 
 # ---------------------------------------------------------------------------
@@ -204,20 +223,14 @@ class TestPoolHistoryUnchanged:
         self, tmp_path: Path
     ) -> None:
         driver = make_mock_driver()
-        router = make_router_with_session(tmp_path, driver=driver)
+        tools, _, _ = make_mock_tools()
+        router = make_router_with_session(tmp_path, driver=driver, tools=tools)
         pool = make_pool()
         pool.sdk_history = [{"role": "user", "content": "earlier msg"}]
         pool.history = ["earlier msg"]
 
-        with (
-            patch(
-                "lyra.core.session_commands.scrape_url",
-                new=AsyncMock(return_value="content"),
-            ),
-            patch("lyra.core.session_commands.vault_add", new=AsyncMock()),
-        ):
-            msg = make_message("/vault-add https://example.com")
-            await router.dispatch(msg, pool=pool)
+        msg = make_message("/vault-add https://example.com")
+        await router.dispatch(msg, pool=pool)
 
         # Pool history must be identical to before the command
         assert pool.sdk_history == [{"role": "user", "content": "earlier msg"}]
@@ -260,7 +273,7 @@ class TestSessionTimeout:
         loader = CommandLoader(tmp_path)
         driver = make_mock_driver()
 
-        async def slow_handler(msg, driver, args, timeout):  # noqa: ARG001
+        async def slow_handler(msg, driver, tools, args, timeout):  # noqa: ARG001
             await asyncio.sleep(10)
             return Response(content="never")
 

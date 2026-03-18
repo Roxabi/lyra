@@ -1,0 +1,76 @@
+---
+title: "ADR-030: Tool Provider Protocol for Session Commands"
+description: Introduce ScrapeProvider and VaultProvider Protocols in lyra.integrations, migrating session_helpers.py subprocess logic out of lyra.core and injecting concrete providers at agent init time.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+`src/lyra/core/session_helpers.py` hardcodes subprocess invocation for two external tools (web-intel scraper, vault CLI) inside Lyra's core layer. This violates the dependency rule: core defines abstractions, infrastructure implements them. Session commands (`/vault-add`, `/explain`, `/summarize`, `/search`) import directly from `session_helpers`, binding the session command layer to specific external tool implementations and their subprocess mechanics.
+
+The existing `LlmProvider` Protocol in `lyra.llm.base` (ADR-016) establishes the pattern: a Protocol in an infrastructure-adjacent module, concrete drivers in a dedicated package, wired at agent init. This decision applies the same pattern to external tool access.
+
+Two additional design questions arose during spec review (issue #360):
+
+1. Whether `SessionTools` (the carrier dataclass) should be required or optional at session command registration.
+2. How the search plugin command (`commands/search/handlers.py`), which has a different dispatch path than session commands, should receive the injected `VaultProvider`.
+
+## Options Considered
+
+### Option A: Keep session_helpers.py, add thin wrapper interfaces
+
+Wrap the existing functions behind Protocol-shaped callables without moving files or changing the import structure.
+
+- **Pros:** Minimal diff; no slice ordering risk.
+- **Cons:** Does not fix the layer violation — core still owns subprocess logic. Testing requires patching internals rather than substituting a mock Protocol implementation.
+
+### Option B: Protocols in lyra.integrations, injection via SessionCommandEntry (chosen)
+
+Define `ScrapeProvider` and `VaultProvider` Protocols in `lyra.integrations.base`. Implement `WebIntelScraper` and `VaultCli` in `lyra.integrations.web_intel` and `lyra.integrations.vault_cli`. Bundle them in a `SessionTools` dataclass. Extend `SessionCommandEntry` with a `tools` field. Inject at agent init via `register_session_command(name, handler, tools=tools)`. Delete `session_helpers.py`.
+
+- **Pros:** Layer violation eliminated. Implementations are independently testable via mock Protocols. Follows established `LlmProvider` precedent. `SessionTools` carrier keeps `register_session_command` parameter count stable as providers are added.
+- **Cons:** Requires updating `SessionCommandHandler` Protocol signature (positional change); search plugin handler needs a separate injection path.
+
+### Option C: Module-level provider singletons in lyra.integrations
+
+Construct `WebIntelScraper` and `VaultCli` as module singletons; session commands import them directly.
+
+- **Pros:** No injection plumbing needed.
+- **Cons:** Replaces one hardcoded import with another. Untestable without monkeypatching. Not extensible to per-agent backend selection.
+
+## Decision
+
+Option B is adopted, with the following clarifications from spec review:
+
+**Protocol methods are async.** Both `ScrapeProvider.scrape` and `VaultProvider.add` are declared `async` in the Protocol, matching `LlmProvider.complete`. This prevents a silent coroutine-not-awaited failure if a caller omits `await`.
+
+**`tools` is required at registration.** `register_session_command` accepts `tools: SessionTools` as a required parameter (not `Optional`). Callers that do not use external tools register handlers that ignore the parameter. This eliminates a dispatch-time guard and keeps the invariant: every `SessionCommandEntry` holds a fully-constructed `SessionTools`.
+
+**Search plugin handler injection.** `commands/search/handlers.py` is a plugin command, not a session command, and therefore cannot receive `tools` via `SessionCommandEntry`. It is migrated to accept a `VaultProvider` as a module-level injectable (set by the agent at startup), matching the pattern used for other plugin-level dependencies. This is a separate slice from the session command migration.
+
+**Slice 4/5 atomicity.** Updating `session_commands.py` handler signatures (slice 4) and updating agent registration (slice 5) are treated as a single atomic commit. Leaving the suite between these states would cause `tools` to be passed as `args` at the positional call site in `_dispatch_session`.
+
+**`SessionCommandHandler` Protocol update.** The Protocol in `command_router.py` is updated to `(msg, driver, tools, args, timeout)` in the same slice as the dispatch call site change.
+
+## Consequences
+
+### Positive
+
+- The dependency rule is restored: `lyra.core` defines no external tool mechanics; `lyra.integrations` owns subprocess wiring.
+- Session commands become testable by substituting a mock `SessionTools` — no subprocess patching needed.
+- Adding a third provider (e.g., a calendar tool) requires only a new Protocol field on `SessionTools` and a new implementation in `lyra.integrations`.
+- `LYRA_WEB_INTEL_PATH` env var behavior is preserved; it moves into `WebIntelScraper.__init__`.
+
+### Negative
+
+- `SessionCommandHandler` Protocol is a breaking interface change. Any external caller registering session commands must update handler signatures.
+- The search plugin handler requires a separate injection mechanism; it cannot share the `SessionCommandEntry` path.
+
+### Neutral
+
+- `ScrapeFailed` and `VaultWriteFailed` exception types move from `session_helpers` to `integrations.base`. Import sites in session commands and tests must be updated.
+- `VaultProvider.search` intentionally does not raise; it returns a graceful fallback string. This asymmetry with `add` (which raises `VaultWriteFailed`) is by design: search failure is non-fatal, write failure is actionable.
+- The `_scrape_with_fallback` helper in `session_commands.py` is refactored to accept `tools: SessionTools` and delegate to `tools.scraper.scrape` rather than calling `scrape_url` directly.

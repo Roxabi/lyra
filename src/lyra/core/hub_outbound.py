@@ -190,19 +190,33 @@ class HubOutboundMixin:
         chunks: AsyncIterator[str],
         outbound: OutboundMessage | None = None,
     ) -> None:
-        """Stream response back via the originating adapter."""
-        if msg.modality == "voice" and self._tts is not None:
-            text_parts: list[str] = []
-            async for chunk in chunks:
-                text_parts.append(chunk)
-            full_text = "".join(text_parts)
-            if full_text.strip():
-                await self.dispatch_response(msg, Response(content=full_text))
-            if outbound is not None:
-                _dispatched = outbound.metadata.pop("_on_dispatched", None)
-                if callable(_dispatched):
-                    _dispatched(outbound)
-            return
+        """Stream response back via the originating adapter.
+
+        For voice modality: text is streamed to the user immediately (so they
+        see it appearing) while also being collected for TTS synthesis.  After
+        the stream completes, TTS runs as a background task and the resulting
+        audio is dispatched as a voice note.
+        """
+        _should_speak = msg.modality == "voice" and self._tts is not None
+        _voice_parts: list[str] | None = None
+        _voice_done: asyncio.Event | None = None
+
+        if _should_speak:
+            # Tee the stream: forward chunks through the normal streaming path
+            # while collecting text for TTS synthesis after streaming completes.
+            _voice_parts = []
+            _voice_done = asyncio.Event()
+            _raw = chunks
+
+            async def _tee() -> AsyncIterator[str]:
+                try:
+                    async for chunk in _raw:
+                        _voice_parts.append(chunk)  # type: ignore[union-attr]
+                        yield chunk
+                finally:
+                    _voice_done.set()  # type: ignore[union-attr]
+
+            chunks = _tee()
 
         if (
             outbound is not None
@@ -216,32 +230,53 @@ class HubOutboundMixin:
         if dispatcher is not None:
             dispatcher.enqueue_streaming(msg, chunks, outbound)
             self._last_processed_at = time.monotonic()
-            return
-
-        adapter = self.adapter_registry.get((platform, msg.bot_id))
-        if adapter is None:
-            raise KeyError(
-                f"No adapter registered for ({msg.platform!r}, {msg.bot_id!r}). "
-                "Call register_adapter() before dispatching responses."
-            )
-        if hasattr(adapter, "send_streaming"):
-            await adapter.send_streaming(msg, chunks, outbound)
+            if _voice_done is not None:
+                # Dispatcher consumes chunks asynchronously in its worker;
+                # wait for the tee iterator to finish so text is fully collected.
+                await _voice_done.wait()
         else:
-            if outbound is not None:
-                log.warning(
-                    "Adapter for %s lacks send_streaming; "
-                    "reply_message_id will not be recorded",
-                    msg.platform,
+            adapter = self.adapter_registry.get((platform, msg.bot_id))
+            if adapter is None:
+                raise KeyError(
+                    f"No adapter registered for ({msg.platform!r}, {msg.bot_id!r}). "
+                    "Call register_adapter() before dispatching responses."
                 )
-            text = ""
-            async for chunk in chunks:
-                text += chunk
-            await adapter.send(msg, OutboundMessage.from_text(text))
-        if outbound is not None:
-            _dispatched = outbound.metadata.pop("_on_dispatched", None)
-            if callable(_dispatched):
-                _dispatched(outbound)
-        self._last_processed_at = time.monotonic()
+            if hasattr(adapter, "send_streaming"):
+                await adapter.send_streaming(msg, chunks, outbound)
+            else:
+                if outbound is not None:
+                    log.warning(
+                        "Adapter for %s lacks send_streaming; "
+                        "reply_message_id will not be recorded",
+                        msg.platform,
+                    )
+                text = ""
+                async for chunk in chunks:
+                    text += chunk
+                await adapter.send(msg, OutboundMessage.from_text(text))
+            if outbound is not None:
+                _dispatched = outbound.metadata.pop("_on_dispatched", None)
+                if callable(_dispatched):
+                    _dispatched(outbound)
+            self._last_processed_at = time.monotonic()
+
+        # Voice: synthesize TTS as a background task now that text is collected.
+        if _should_speak:
+            full_text = "".join(_voice_parts or []).strip()
+            if full_text:
+                agent_tts = self._resolve_agent_tts(msg)
+                fallback_lang = self._resolve_agent_fallback_language(msg)
+                task = asyncio.create_task(
+                    self._audio_pipeline.synthesize_and_dispatch_audio(
+                        msg,
+                        full_text,
+                        agent_tts=agent_tts,
+                        fallback_language=fallback_lang,
+                    ),
+                    name=f"tts:{msg.id}",
+                )
+                self._memory_tasks.add(task)
+                task.add_done_callback(self._memory_tasks.discard)
 
     async def dispatch_attachment(
         self,

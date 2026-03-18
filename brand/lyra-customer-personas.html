@@ -1,0 +1,1367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lyra — Customer Personas &amp; Voice Guide</title>
+<style>
+  :root {
+    --void: #060a14;
+    --deep: #0c1525;
+    --surface: #121f38;
+    --surface2: #1a2a45;
+    --channel: #00c8e0;
+    --amber: #f0a030;
+    --star: #eef4ff;
+    --muted: #6b7fa3;
+    --p1: #00c8e0;
+    --p2: #a78bfa;
+    --p3: #34d399;
+    --p4: #fb923c;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--void);
+    color: var(--star);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* ── HEADER ── */
+  .header {
+    text-align: center;
+    padding: 64px 24px 48px;
+    position: relative;
+    overflow: hidden;
+  }
+  .header::before {
+    content: '';
+    position: absolute;
+    top: -60px; left: 50%; transform: translateX(-50%);
+    width: 600px; height: 300px;
+    background: radial-gradient(ellipse, rgba(0,200,224,0.08) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .header-eyebrow {
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    color: var(--channel);
+    text-transform: uppercase;
+    margin-bottom: 16px;
+    opacity: 0.8;
+  }
+  .header h1 {
+    font-size: clamp(28px, 5vw, 52px);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    background: linear-gradient(135deg, var(--channel) 0%, var(--star) 50%, var(--amber) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 12px;
+  }
+  .header p {
+    color: var(--muted);
+    font-size: 15px;
+    max-width: 520px;
+    margin: 0 auto;
+  }
+
+  /* ── NAV ── */
+  .nav {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    padding: 0 24px 48px;
+    flex-wrap: wrap;
+  }
+  .nav-btn {
+    background: var(--surface);
+    border: 1px solid rgba(255,255,255,0.06);
+    color: var(--muted);
+    padding: 8px 18px;
+    border-radius: 100px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .nav-btn:hover { border-color: rgba(255,255,255,0.15); color: var(--star); }
+  .nav-btn.active { color: var(--void); font-weight: 600; }
+  .nav-btn[data-color="p1"].active { background: var(--p1); border-color: var(--p1); }
+  .nav-btn[data-color="p2"].active { background: var(--p2); border-color: var(--p2); }
+  .nav-btn[data-color="p3"].active { background: var(--p3); border-color: var(--p3); }
+  .nav-btn[data-color="p4"].active { background: var(--p4); border-color: var(--p4); }
+  .nav-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+  /* ── SECTIONS ── */
+  .section { display: none; padding: 0 24px 80px; max-width: 1200px; margin: 0 auto; }
+  .section.active { display: block; }
+
+  /* ── PERSONA CARD ── */
+  .persona-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 20px;
+    margin-bottom: 48px;
+  }
+
+  .persona-card {
+    background: var(--deep);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 16px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+    position: relative;
+  }
+  .persona-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+  }
+  .persona-card.expanded { grid-column: 1 / -1; }
+  .persona-card[data-persona="alex"] { --accent: var(--p1); }
+  .persona-card[data-persona="sofia"] { --accent: var(--p2); }
+  .persona-card[data-persona="marcus"] { --accent: var(--p3); }
+  .persona-card[data-persona="yuki"] { --accent: var(--p4); }
+
+  .persona-card:hover { border-color: rgba(255,255,255,0.12); }
+  .persona-card.expanded { border-color: var(--accent); }
+
+  .card-header {
+    padding: 24px;
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+  }
+
+  .avatar {
+    width: 56px;
+    height: 56px;
+    border-radius: 12px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--void);
+    position: relative;
+    overflow: hidden;
+  }
+  .avatar[data-persona="alex"] { background: linear-gradient(135deg, #00c8e0, #0099aa); }
+  .avatar[data-persona="sofia"] { background: linear-gradient(135deg, #a78bfa, #7c3aed); }
+  .avatar[data-persona="marcus"] { background: linear-gradient(135deg, #34d399, #059669); }
+  .avatar[data-persona="yuki"] { background: linear-gradient(135deg, #fb923c, #ea580c); }
+
+  .avatar svg { width: 32px; height: 32px; }
+
+  .card-meta { flex: 1; min-width: 0; }
+  .card-name { font-size: 17px; font-weight: 700; margin-bottom: 2px; }
+  .card-role { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .card-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tag {
+    font-size: 10px;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 0.05em;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.06);
+    color: var(--muted);
+  }
+  .tag.accent { background: rgba(var(--accent-rgb, 0,200,224), 0.15); color: var(--accent); }
+
+  .card-accent-bar {
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent), transparent);
+    margin: 0 24px 16px;
+    border-radius: 1px;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .persona-card.expanded .card-accent-bar { opacity: 1; }
+
+  .card-quote {
+    margin: 0 24px 20px;
+    padding: 14px 16px;
+    background: var(--surface);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    font-size: 13px;
+    font-style: italic;
+    color: var(--star);
+    line-height: 1.5;
+    opacity: 0.9;
+  }
+
+  .card-summary {
+    padding: 0 24px 24px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .summary-item { }
+  .summary-label {
+    font-size: 10px;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .summary-text { font-size: 13px; color: var(--star); }
+
+  /* ── EXPANDED DETAIL ── */
+  .card-detail { display: none; padding: 0 24px 28px; }
+  .persona-card.expanded .card-detail { display: block; }
+
+  .detail-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .detail-block {
+    background: var(--surface);
+    border-radius: 12px;
+    padding: 18px;
+    border: 1px solid rgba(255,255,255,0.05);
+  }
+  .detail-block h4 {
+    font-size: 11px;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .detail-block ul {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .detail-block ul li {
+    font-size: 13px;
+    color: #b0bfd4;
+    padding-left: 14px;
+    position: relative;
+    line-height: 1.45;
+  }
+  .detail-block ul li::before {
+    content: '–';
+    position: absolute;
+    left: 0;
+    color: var(--muted);
+  }
+
+  .day-block {
+    background: var(--surface);
+    border-radius: 12px;
+    padding: 18px;
+    border: 1px solid rgba(255,255,255,0.05);
+    margin-bottom: 16px;
+  }
+  .day-block h4 {
+    font-size: 11px;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 12px;
+  }
+  .day-timeline { display: flex; flex-direction: column; gap: 8px; }
+  .day-item { display: flex; gap: 12px; font-size: 13px; }
+  .day-time { color: var(--muted); font-family: 'Courier New', monospace; white-space: nowrap; flex-shrink: 0; width: 48px; }
+  .day-event { color: #b0bfd4; }
+
+  .tech-bar {
+    background: var(--surface);
+    border-radius: 12px;
+    padding: 18px;
+    border: 1px solid rgba(255,255,255,0.05);
+    margin-bottom: 16px;
+  }
+  .tech-bar h4 {
+    font-size: 11px;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 12px;
+  }
+  .tech-level {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+  .tech-label { font-size: 12px; color: var(--muted); width: 80px; }
+  .tech-dots { display: flex; gap: 4px; }
+  .tech-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--surface2); }
+  .tech-dot.on { background: var(--accent); }
+
+  .why-block {
+    background: linear-gradient(135deg, rgba(var(--accent-raw), 0.06), rgba(var(--accent-raw), 0.02));
+    border: 1px solid rgba(255,255,255,0.08);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 12px 12px 0;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .why-block h4 {
+    font-size: 11px;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 10px;
+  }
+  .why-block p { font-size: 13px; color: #b0bfd4; line-height: 1.6; }
+
+  .expand-hint {
+    text-align: center;
+    padding: 12px;
+    font-size: 12px;
+    color: var(--muted);
+    font-family: 'Courier New', monospace;
+    letter-spacing: 0.05em;
+    transition: opacity 0.2s;
+  }
+  .persona-card.expanded .expand-hint { display: none; }
+
+  /* ── VOICE GUIDE ── */
+  .voice-persona {
+    margin-bottom: 56px;
+  }
+  .voice-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 28px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .voice-avatar {
+    width: 44px; height: 44px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 16px;
+    color: var(--void);
+  }
+  .voice-header h2 { font-size: 20px; font-weight: 700; }
+  .voice-header span { font-size: 13px; color: var(--muted); }
+
+  .voice-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+  }
+
+  .voice-block {
+    background: var(--deep);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 12px;
+    padding: 18px;
+  }
+  .voice-block h4 {
+    font-size: 11px;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .voice-block.pain h4 { color: #f87171; }
+  .voice-block.desire h4 { color: #34d399; }
+  .voice-block.search h4 { color: #60a5fa; }
+  .voice-block.community h4 { color: #c084fc; }
+  .voice-block.trigger h4 { color: var(--amber); }
+
+  .voice-pill {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    margin: 3px 3px 3px 0;
+    line-height: 1.4;
+  }
+  .voice-block.pain .voice-pill { background: rgba(248,113,113,0.1); color: #fca5a5; }
+  .voice-block.desire .voice-pill { background: rgba(52,211,153,0.1); color: #6ee7b7; }
+  .voice-block.search .voice-pill { background: rgba(96,165,250,0.1); color: #93c5fd; font-family: 'Courier New', monospace; font-size: 11px; }
+  .voice-block.community .voice-pill { background: rgba(192,132,252,0.1); color: #d8b4fe; }
+  .voice-block.trigger .voice-pill { background: rgba(240,160,48,0.1); color: #fcd34d; }
+
+  /* ── JTBD ── */
+  .jtbd-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 20px;
+  }
+
+  .jtbd-card {
+    background: var(--deep);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+  .jtbd-top {
+    padding: 20px 20px 16px;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+  .jtbd-avatar {
+    width: 36px; height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--void);
+    flex-shrink: 0;
+  }
+  .jtbd-name { font-size: 15px; font-weight: 600; }
+  .jtbd-role { font-size: 11px; color: var(--muted); }
+
+  .jtbd-jobs { padding: 0 20px 20px; }
+  .jtbd-job {
+    padding: 14px;
+    border-radius: 10px;
+    background: var(--surface);
+    margin-bottom: 10px;
+    border: 1px solid rgba(255,255,255,0.04);
+  }
+  .jtbd-job:last-child { margin-bottom: 0; }
+  .jtbd-dimension {
+    font-size: 10px;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .jtbd-job.functional .jtbd-dimension { color: var(--channel); }
+  .jtbd-job.emotional .jtbd-dimension { color: #f472b6; }
+  .jtbd-job.social .jtbd-dimension { color: #a78bfa; }
+  .jtbd-statement { font-size: 12px; color: #b0bfd4; line-height: 1.5; }
+  .jtbd-statement em { color: var(--star); font-style: normal; font-weight: 500; }
+
+  /* ── SECTION TITLE ── */
+  .section-title {
+    font-size: 13px;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .section-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: rgba(255,255,255,0.06);
+  }
+
+  /* ── FOOTER ── */
+  .footer {
+    text-align: center;
+    padding: 32px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    margin-top: 40px;
+    font-size: 12px;
+    color: var(--muted);
+    font-family: 'Courier New', monospace;
+    letter-spacing: 0.05em;
+  }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 640px) {
+    .card-summary { grid-template-columns: 1fr; }
+    .detail-grid { grid-template-columns: 1fr; }
+    .voice-grid { grid-template-columns: 1fr; }
+    .jtbd-grid { grid-template-columns: 1fr; }
+    .persona-grid { grid-template-columns: 1fr; }
+  }
+
+  /* animations */
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .section.active { animation: fadeIn 0.25s ease; }
+</style><!-- diagram-meta:start -->
+<meta name="diagram:title"     content="Lyra — Customer Personas & Voice Guide">
+<meta name="diagram:date"      content="2026-03-18">
+<meta name="diagram:category"  content="brand">
+<meta name="diagram:cat-label" content="Lyra Branding">
+<meta name="diagram:color"     content="purple">
+<meta name="diagram:badges"    content="latest">
+<!-- diagram-meta:end -->
+</head>
+<body>
+
+<div class="header">
+  <div class="header-eyebrow">Lyra by Roxabi — Product Intelligence</div>
+  <h1>Customer Personas &amp; Voice Guide</h1>
+  <p>Four distinct users. Their language, goals, and the exact moment they find Lyra.</p>
+</div>
+
+<div class="nav">
+  <button class="nav-btn active" data-section="personas" data-color="p1" onclick="showSection('personas', this)">
+    <span class="nav-dot" style="background:var(--p1)"></span> Personas
+  </button>
+  <button class="nav-btn" data-section="voice" data-color="p2" onclick="showSection('voice', this)">
+    <span class="nav-dot" style="background:var(--p2)"></span> Customer Voice
+  </button>
+  <button class="nav-btn" data-section="jtbd" data-color="p3" onclick="showSection('jtbd', this)">
+    <span class="nav-dot" style="background:var(--p3)"></span> Jobs to Be Done
+  </button>
+</div>
+
+<!-- ══════════════════════════════════════════ SECTION: PERSONAS ══ -->
+<div id="section-personas" class="section active">
+  <div class="section-title">Four personas — click any card to expand</div>
+
+  <div class="persona-grid" id="persona-grid">
+
+    <!-- PERSONA 1: Alex — Privacy-Conscious Developer -->
+    <div class="persona-card" data-persona="alex" onclick="togglePersona(this)">
+      <div class="card-header">
+        <div class="avatar" data-persona="alex">
+          <svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="12" r="5" fill="rgba(0,0,0,0.4)"/><path d="M6 26c0-5.523 4.477-10 10-10s10 4.477 10 10" stroke="rgba(0,0,0,0.4)" stroke-width="2.5" stroke-linecap="round"/><rect x="10" y="20" width="12" height="8" rx="2" fill="rgba(0,0,0,0.3)"/><circle cx="16" cy="24" r="1.5" fill="rgba(0,0,0,0.5)"/></svg>
+        </div>
+        <div class="card-meta">
+          <div class="card-name">Alex Chen</div>
+          <div class="card-role">Senior Backend Engineer · Berlin · 32</div>
+          <div class="card-tags">
+            <span class="tag accent">Privacy-first</span>
+            <span class="tag">Self-hosted</span>
+            <span class="tag">OSS</span>
+          </div>
+        </div>
+      </div>
+      <div class="card-accent-bar"></div>
+      <div class="card-quote">"I'm not feeding proprietary client code into someone else's black box. Full stop."</div>
+      <div class="card-summary">
+        <div class="summary-item">
+          <div class="summary-label">Tech comfort</div>
+          <div class="summary-text">Expert — runs k8s at home</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">Self-host?</div>
+          <div class="summary-text">Yes — prefers it</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">Current tool</div>
+          <div class="summary-text">Local Ollama + cobbled shell scripts</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">Main channel</div>
+          <div class="summary-text">Telegram (work phone)</div>
+        </div>
+      </div>
+      <div class="card-detail">
+        <div class="day-block">
+          <h4>Day in the Life</h4>
+          <div class="day-timeline">
+            <div class="day-item"><span class="day-time">07:30</span><span class="day-event">Opens Telegram on the commute — wants a brief on overnight CI failures</span></div>
+            <div class="day-item"><span class="day-time">09:00</span><span class="day-event">Deep work: reviewing architecture for a client microservice (NDA-level code)</span></div>
+            <div class="day-item"><span class="day-time">12:30</span><span class="day-event">Asks AI to compare two approaches — pastes proprietary schema, hesitates, closes the tab</span></div>
+            <div class="day-item"><span class="day-time">16:00</span><span class="day-event">Gets pinged about an outage — wants AI help diagnosing logs, but they contain PII</span></div>
+            <div class="day-item"><span class="day-time">20:00</span><span class="day-event">Reads HN thread about another AI company's data breach, screenshots it, shares it internally</span></div>
+          </div>
+        </div>
+        <div class="detail-grid">
+          <div class="detail-block">
+            <h4>Pain Points</h4>
+            <ul>
+              <li>Every useful AI tool requires sending data to external servers he doesn't control</li>
+              <li>Cloud AI retains conversation history by default — he's read the ToS</li>
+              <li>Cobbled Ollama setup has no memory, no channels, restarts constantly</li>
+              <li>Team keeps using ChatGPT for client work — he's the only one uncomfortable with it</li>
+              <li>Can't recommend any cloud AI to the client without a legal review first</li>
+            </ul>
+          </div>
+          <div class="detail-block">
+            <h4>Goals</h4>
+            <ul>
+              <li>A personal AI that runs on his hardware — auditable, inspectable, his</li>
+              <li>Persistent memory of his preferences, codebases, recurring patterns</li>
+              <li>Accessible from Telegram without going through a cloud middleman</li>
+              <li>Easy model swap when a better local LLM ships</li>
+              <li>Confidence that client code never leaves the machine</li>
+            </ul>
+          </div>
+          <div class="detail-block">
+            <h4>Objections</h4>
+            <ul>
+              <li>"How much setup is this actually? I've been burned by self-hosted projects before."</li>
+              <li>"Does it work on my existing RTX 3060 or do I need new hardware?"</li>
+              <li>"If the Anthropic API is the default, that defeats the purpose for me."</li>
+              <li>"Is this maintained? Or will it be abandoned in 6 months?"</li>
+            </ul>
+          </div>
+          <div class="tech-bar">
+            <h4>Technical Comfort</h4>
+            <div class="tech-level">
+              <span class="tech-label">Linux/Server</span>
+              <div class="tech-dots">
+                <div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot on"></div>
+              </div>
+            </div>
+            <div class="tech-level">
+              <span class="tech-label">Docker/k8s</span>
+              <div class="tech-dots">
+                <div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot on"></div>
+              </div>
+            </div>
+            <div class="tech-level">
+              <span class="tech-label">Python</span>
+              <div class="tech-dots">
+                <div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot"></div>
+              </div>
+            </div>
+            <div class="tech-level">
+              <span class="tech-label">LLM/AI ops</span>
+              <div class="tech-dots">
+                <div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot"></div><div class="tech-dot"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="why-block">
+          <h4>Why Lyra</h4>
+          <p>Lyra runs entirely on Alex's own hardware — no cloud dependency for inference, no data leaving the machine. The architecture is ~300 lines of auditable Python, not a black box. He can read every routing decision, every memory write. The TOML config means he can swap models without touching code. Phase 2 gives him full local inference, eliminating Anthropic as a dependency. He installs it on a Saturday afternoon, reads the architecture doc over coffee, and trusts what he reads.</p>
+        </div>
+      </div>
+      <div class="expand-hint">Click to expand full profile</div>
+    </div>
+
+    <!-- PERSONA 2: Sofia — Solo Operator -->
+    <div class="persona-card" data-persona="sofia" onclick="togglePersona(this)">
+      <div class="card-header">
+        <div class="avatar" data-persona="sofia">
+          <svg viewBox="0 0 32 32" fill="none"><rect x="4" y="8" width="24" height="16" rx="3" stroke="rgba(0,0,0,0.5)" stroke-width="2"/><circle cx="16" cy="16" r="3" fill="rgba(0,0,0,0.4)"/><path d="M9 12h4M19 12h4M9 20h4M19 20h4" stroke="rgba(0,0,0,0.4)" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </div>
+        <div class="card-meta">
+          <div class="card-name">Sofia Rossi</div>
+          <div class="card-role">Indie Hacker &amp; Consultant · Lisbon · 29</div>
+          <div class="card-tags">
+            <span class="tag accent">Solo operator</span>
+            <span class="tag">Async work</span>
+            <span class="tag">Multi-context</span>
+          </div>
+        </div>
+      </div>
+      <div class="card-accent-bar"></div>
+      <div class="card-quote">"I don't need a smarter search engine. I need something that actually knows what I'm working on right now."</div>
+      <div class="card-summary">
+        <div class="summary-item">
+          <div class="summary-label">Tech comfort</div>
+          <div class="summary-text">Moderate — can SSH, run scripts</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">Self-host?</div>
+          <div class="summary-text">Willing if setup is clear</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">Current tools</div>
+          <div class="summary-text">ChatGPT Plus + Notion + Zapier</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">Main channel</div>
+          <div class="summary-text">Telegram (always open)</div>
+        </div>
+      </div>
+      <div class="card-detail">
+        <div class="day-block">
+          <h4>Day in the Life</h4>
+          <div class="day-timeline">
+            <div class="day-item"><span class="day-time">08:00</span><span class="day-event">Three projects active simultaneously — client consulting, SaaS build, personal newsletter</span></div>
+            <div class="day-item"><span class="day-time">09:30</span><span class="day-event">Starts a ChatGPT conversation — spends 5 minutes re-explaining context from yesterday</span></div>
+            <div class="day-item"><span class="day-time">11:00</span><span class="day-event">Gets a client question on WhatsApp — needs to check notes across 3 tools to answer</span></div>
+            <div class="day-item"><span class="day-time">14:00</span><span class="day-event">Writing a proposal — ChatGPT doesn't know her tone, her previous proposals, her client</span></div>
+            <div class="day-item"><span class="day-time">22:00</span><span class="day-event">Works from the couch — wants AI on Telegram, not opening a laptop just to ask a question</span></div>
+          </div>
+        </div>
+        <div class="detail-grid">
+          <div class="detail-block">
+            <h4>Pain Points</h4>
+            <ul>
+              <li>Every AI conversation starts from zero — no memory of who she is or what she's building</li>
+              <li>ChatGPT doesn't know her voice, her clients, or her projects</li>
+              <li>Context switching between tools (Notion, email, Slack, ChatGPT) destroys focus</li>
+              <li>Managing 3+ concurrent projects with zero AI continuity is exhausting</li>
+              <li>AI tools are desktop-first; she works everywhere including mobile</li>
+            </ul>
+          </div>
+          <div class="detail-block">
+            <h4>Goals</h4>
+            <ul>
+              <li>An AI that remembers: her active projects, her tone, her recurring clients</li>
+              <li>Message from Telegram without context setup every single time</li>
+              <li>Unified command surface — search notes, get summaries, draft messages</li>
+              <li>Something that feels like a reliable assistant, not a stateless chatbot</li>
+              <li>Runs 24/7 — not dependent on a laptop being open</li>
+            </ul>
+          </div>
+          <div class="detail-block">
+            <h4>Objections</h4>
+            <ul>
+              <li>"I'm not a developer. Will I need to touch Python config files?"</li>
+              <li>"What does 'always-on hardware' mean? I don't have a server at home."</li>
+              <li>"How is this different from just using Claude in Telegram directly?"</li>
+              <li>"I already pay for ChatGPT Plus. Is this worth the added complexity?"</li>
+            </ul>
+          </div>
+          <div class="tech-bar">
+            <h4>Technical Comfort</h4>
+            <div class="tech-level">
+              <span class="tech-label">Linux/Server</span>
+              <div class="tech-dots">
+                <div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot"></div><div class="tech-dot"></div><div class="tech-dot"></div>
+              </div>
+            </div>
+            <div class="tech-level">
+              <span class="tech-label">Terminal/CLI</span>
+              <div class="tech-dots">
+                <div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot"></div><div class="tech-dot"></div>
+              </div>
+            </div>
+            <div class="tech-level">
+              <span class="tech-label">APIs/Webhooks</span>
+              <div class="tech-dots">
+                <div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot"></div><div class="tech-dot"></div><div class="tech-dot"></div>
+              </div>
+            </div>
+            <div class="tech-level">
+              <span class="tech-label">AI/LLM</span>
+              <div class="tech-dots">
+                <div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot"></div><div class="tech-dot"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="why-block">
+          <h4>Why Lyra</h4>
+          <p>Lyra's 5-level memory means Sofia stops re-explaining herself. Session memory keeps context alive during a conversation; episodic memory recalls what she worked on last week; semantic memory searches her vault of saved articles and notes. Her Telegram conversation with Lyra is the unified command surface she doesn't have today. She can /add a client email, /search her notes, and continue a half-finished draft — from her phone, on a train, at 10pm.</p>
+        </div>
+      </div>
+      <div class="expand-hint">Click to expand full profile</div>
+    </div>
+
+    <!-- PERSONA 3: Marcus — Knowledge Worker -->
+    <div class="persona-card" data-persona="marcus" onclick="togglePersona(this)">
+      <div class="card-header">
+        <div class="avatar" data-persona="marcus">
+          <svg viewBox="0 0 32 32" fill="none"><path d="M6 8h20v16H6z" rx="2" stroke="rgba(0,0,0,0.4)" stroke-width="2"/><path d="M10 13h12M10 17h8" stroke="rgba(0,0,0,0.5)" stroke-width="2" stroke-linecap="round"/><circle cx="24" cy="24" r="5" fill="rgba(0,0,0,0.35)"/><path d="M22 24h4M24 22v4" stroke="rgba(0,0,0,0.6)" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </div>
+        <div class="card-meta">
+          <div class="card-name">Marcus Webb</div>
+          <div class="card-role">Independent Researcher &amp; Analyst · London · 37</div>
+          <div class="card-tags">
+            <span class="tag accent">Knowledge vault</span>
+            <span class="tag">Deep research</span>
+            <span class="tag">Information overload</span>
+          </div>
+        </div>
+      </div>
+      <div class="card-accent-bar"></div>
+      <div class="card-quote">"I've saved 6,000 links since 2019. I can't find anything I've read. The knowledge is useless if I can't recall it."</div>
+      <div class="card-summary">
+        <div class="summary-item">
+          <div class="summary-label">Tech comfort</div>
+          <div class="summary-text">High — writes Python scripts</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">Self-host?</div>
+          <div class="summary-text">Yes — already runs a NAS</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">Current stack</div>
+          <div class="summary-text">Obsidian + Readwise + Raindrop + ChatGPT</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">Main channel</div>
+          <div class="summary-text">Telegram + Discord</div>
+        </div>
+      </div>
+      <div class="card-detail">
+        <div class="day-block">
+          <h4>Day in the Life</h4>
+          <div class="day-timeline">
+            <div class="day-item"><span class="day-time">07:00</span><span class="day-event">Morning reading: 40+ tabs of research papers, articles, Twitter threads</span></div>
+            <div class="day-item"><span class="day-time">09:00</span><span class="day-event">Writing a report — remembers reading something relevant 3 months ago, can't find it</span></div>
+            <div class="day-item"><span class="day-time">11:00</span><span class="day-event">Tries Readwise → Raindrop → Obsidian → Google (own bookmarks) — finds it in 25 minutes</span></div>
+            <div class="day-item"><span class="day-time">15:00</span><span class="day-event">Sends 3 URLs to himself on Telegram to "read later" — they join 400 others, never read</span></div>
+            <div class="day-item"><span class="day-time">20:00</span><span class="day-event">Wants to query his reading history: "what have I saved about central bank policy?" — no tool does this well</span></div>
+          </div>
+        </div>
+        <div class="detail-grid">
+          <div class="detail-block">
+            <h4>Pain Points</h4>
+            <ul>
+              <li>Knowledge is scattered across 5+ tools — no single queryable store</li>
+              <li>AI doesn't know what he's read — answers from training data, not his actual research</li>
+              <li>Readwise/Raindrop have no semantic search, just tags and folders</li>
+              <li>Context window limits mean ChatGPT can't process his full research corpus</li>
+              <li>Every new AI conversation starts without the 5 years of context he's accumulated</li>
+            </ul>
+          </div>
+          <div class="detail-block">
+            <h4>Goals</h4>
+            <ul>
+              <li>A queryable semantic vault of everything he's read — "what have I saved about X?"</li>
+              <li>AI that reasons over his notes, not just general training data</li>
+              <li>Instant capture from Telegram: drop a URL, get it summarized and indexed</li>
+              <li>Memory that compounds over time — the longer he uses it, the smarter it gets</li>
+              <li>Runs on his own hardware so the knowledge base doesn't disappear with a SaaS pivot</li>
+            </ul>
+          </div>
+          <div class="detail-block">
+            <h4>Objections</h4>
+            <ul>
+              <li>"How do I migrate my existing Readwise/Raindrop data into Lyra?"</li>
+              <li>"Is the semantic search actually good, or just keyword matching?"</li>
+              <li>"What happens if the embeddings model changes and my semantic index breaks?"</li>
+              <li>"Does this replace my Obsidian workflow or add to it?"</li>
+            </ul>
+          </div>
+          <div class="tech-bar">
+            <h4>Technical Comfort</h4>
+            <div class="tech-level">
+              <span class="tech-label">Linux/Server</span>
+              <div class="tech-dots">
+                <div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot"></div>
+              </div>
+            </div>
+            <div class="tech-level">
+              <span class="tech-label">Python</span>
+              <div class="tech-dots">
+                <div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot"></div><div class="tech-dot"></div>
+              </div>
+            </div>
+            <div class="tech-level">
+              <span class="tech-label">Databases</span>
+              <div class="tech-dots">
+                <div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot"></div><div class="tech-dot"></div>
+              </div>
+            </div>
+            <div class="tech-level">
+              <span class="tech-label">AI/Embeddings</span>
+              <div class="tech-dots">
+                <div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="why-block">
+          <h4>Why Lyra</h4>
+          <p>Lyra's semantic memory (SQLite + BM25 + fastembed) is exactly what Marcus has been trying to build himself for 3 years. The /add command captures any URL from Telegram — scraped, summarized, indexed in seconds. /search gives him hybrid BM25 + vector retrieval over everything he's saved. His knowledge vault compounds over time and lives on his NAS, not a SaaS product that might pivot. The AI responds from his actual research corpus, not just its training data.</p>
+        </div>
+      </div>
+      <div class="expand-hint">Click to expand full profile</div>
+    </div>
+
+    <!-- PERSONA 4: Yuki — The Tinkerer -->
+    <div class="persona-card" data-persona="yuki" onclick="togglePersona(this)">
+      <div class="card-header">
+        <div class="avatar" data-persona="yuki">
+          <svg viewBox="0 0 32 32" fill="none"><path d="M16 4l3 6h7l-5.5 4.5 2 6.5L16 17l-6.5 4 2-6.5L6 10h7z" stroke="rgba(0,0,0,0.4)" stroke-width="2" stroke-linejoin="round"/><circle cx="16" cy="25" r="3" fill="rgba(0,0,0,0.4)"/><path d="M13 22l3 3 3-3" stroke="rgba(0,0,0,0.5)" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </div>
+        <div class="card-meta">
+          <div class="card-name">Yuki Tanaka</div>
+          <div class="card-role">Hobbyist Maker &amp; ML Engineer · Tokyo · 26</div>
+          <div class="card-tags">
+            <span class="tag accent">Builder mindset</span>
+            <span class="tag">Local LLMs</span>
+            <span class="tag">Homelab</span>
+          </div>
+        </div>
+      </div>
+      <div class="card-accent-bar"></div>
+      <div class="card-quote">"I want to understand every layer of my AI stack. If I can't read the source, I don't trust it."</div>
+      <div class="card-summary">
+        <div class="summary-item">
+          <div class="summary-label">Tech comfort</div>
+          <div class="summary-text">Expert — trains models, writes CUDA</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">Self-host?</div>
+          <div class="summary-text">Only option he'd consider</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">Current stack</div>
+          <div class="summary-text">Ollama + raw Python scripts + llama.cpp</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">Main channel</div>
+          <div class="summary-text">Discord (community first)</div>
+        </div>
+      </div>
+      <div class="card-detail">
+        <div class="day-block">
+          <h4>Day in the Life</h4>
+          <div class="day-timeline">
+            <div class="day-item"><span class="day-time">06:00</span><span class="day-event">Before work: experimenting with a new 7B model fine-tune on his RTX 4090</span></div>
+            <div class="day-item"><span class="day-time">12:00</span><span class="day-event">Lunch: reading the Lyra architecture PR on GitHub — evaluating before trying</span></div>
+            <div class="day-item"><span class="day-time">18:00</span><span class="day-event">After work sprint: wants to add a Discord bot that routes to his local model, writes 200 lines of glue code</span></div>
+            <div class="day-item"><span class="day-time">21:00</span><span class="day-event">Realizes his glue code doesn't handle concurrent users, restarts, gets frustrated</span></div>
+            <div class="day-item"><span class="day-time">23:00</span><span class="day-event">Posts in r/LocalLLaMA: "anyone have a clean asyncio bot setup that's actually production-ready?"</span></div>
+          </div>
+        </div>
+        <div class="detail-grid">
+          <div class="detail-block">
+            <h4>Pain Points</h4>
+            <ul>
+              <li>Every open-source bot is either too simple (no concurrency) or too complex (LangChain hell)</li>
+              <li>Concurrency bugs are hard — his bots break under concurrent requests</li>
+              <li>No clean extension model — adding a skill means modifying the core</li>
+              <li>Frameworks abstract too much — he wants to understand what's happening</li>
+              <li>No memory across sessions — every conversation restarts from zero</li>
+            </ul>
+          </div>
+          <div class="detail-block">
+            <h4>Goals</h4>
+            <ul>
+              <li>A production-ready async foundation he can actually read and extend</li>
+              <li>Clean adapter pattern — add Telegram, Discord, Matrix without touching the hub</li>
+              <li>Local LLM support first, cloud as fallback</li>
+              <li>Memory system he can inspect and extend (not a black box vector DB)</li>
+              <li>Weekend project that becomes a real daily tool</li>
+            </ul>
+          </div>
+          <div class="detail-block">
+            <h4>Objections</h4>
+            <ul>
+              <li>"Is this actually minimal or just calling itself minimal? I'll read the source before trusting."</li>
+              <li>"The Anthropic API default makes me skeptical — is local-first a real priority?"</li>
+              <li>"300 lines of hub sounds great but how much is the rest? Show me the total."</li>
+              <li>"Will this support Ollama / llama.cpp endpoints properly?"</li>
+            </ul>
+          </div>
+          <div class="tech-bar">
+            <h4>Technical Comfort</h4>
+            <div class="tech-level">
+              <span class="tech-label">Python/asyncio</span>
+              <div class="tech-dots">
+                <div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot on"></div>
+              </div>
+            </div>
+            <div class="tech-level">
+              <span class="tech-label">CUDA/GPU</span>
+              <div class="tech-dots">
+                <div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot on"></div>
+              </div>
+            </div>
+            <div class="tech-level">
+              <span class="tech-label">LLM/Inference</span>
+              <div class="tech-dots">
+                <div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot on"></div>
+              </div>
+            </div>
+            <div class="tech-level">
+              <span class="tech-label">MLOps</span>
+              <div class="tech-dots">
+                <div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot on"></div><div class="tech-dot"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="why-block">
+          <h4>Why Lyra</h4>
+          <p>Lyra is the clean foundation Yuki keeps trying to build himself on weekends. The hub is ~300 lines of readable asyncio Python — he reads the architecture doc in 20 minutes and understands every routing decision. The extension model (adapters, agents, skills) is the separation he needs to add his Discord adapter without breaking Telegram. Phase 2's Ollama support is directly on the roadmap. The 24 ADRs tell him why each decision was made, not just what it is. He forks it on day one.</p>
+        </div>
+      </div>
+      <div class="expand-hint">Click to expand full profile</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════ SECTION: VOICE ══ -->
+<div id="section-voice" class="section">
+
+  <!-- Alex -->
+  <div class="voice-persona">
+    <div class="voice-header">
+      <div class="voice-avatar" style="background:linear-gradient(135deg,#00c8e0,#0099aa)">A</div>
+      <div>
+        <h2>Alex Chen</h2>
+        <span>Privacy-Conscious Developer</span>
+      </div>
+    </div>
+    <div class="voice-grid">
+      <div class="voice-block pain">
+        <h4>Pain Language</h4>
+        <span class="voice-pill">"I don't trust sending client code to OpenAI"</span>
+        <span class="voice-pill">"My conversations are training their model"</span>
+        <span class="voice-pill">"Every useful tool leaks data by default"</span>
+        <span class="voice-pill">"I've read the ToS. It's not good."</span>
+        <span class="voice-pill">"My local setup is a mess of bash scripts"</span>
+        <span class="voice-pill">"No memory between sessions anyway"</span>
+      </div>
+      <div class="voice-block desire">
+        <h4>Desire Language</h4>
+        <span class="voice-pill">"I want full control over my AI stack"</span>
+        <span class="voice-pill">"I want to audit what it does with my data"</span>
+        <span class="voice-pill">"I want to swap models without breaking everything"</span>
+        <span class="voice-pill">"Something I can actually read the source of"</span>
+        <span class="voice-pill">"Runs on my hardware, stays on my hardware"</span>
+      </div>
+      <div class="voice-block search">
+        <h4>Search Queries</h4>
+        <span class="voice-pill">self-hosted AI assistant telegram</span>
+        <span class="voice-pill">local LLM with memory persistent</span>
+        <span class="voice-pill">private AI assistant no cloud</span>
+        <span class="voice-pill">ollama telegram bot asyncio</span>
+        <span class="voice-pill">open source AI agent self-hosted 2026</span>
+        <span class="voice-pill">AI assistant without data leaving machine</span>
+      </div>
+      <div class="voice-block community">
+        <h4>Communities</h4>
+        <span class="voice-pill">Hacker News (lurker, occasional poster)</span>
+        <span class="voice-pill">r/LocalLLaMA</span>
+        <span class="voice-pill">r/selfhosted</span>
+        <span class="voice-pill">Privacy-focused dev Discord servers</span>
+        <span class="voice-pill">GitHub trending — weekly check</span>
+      </div>
+      <div class="voice-block trigger">
+        <h4>Trigger Events</h4>
+        <span class="voice-pill">Another AI company data breach in the news</span>
+        <span class="voice-pill">Client asks: "is our code safe in ChatGPT?"</span>
+        <span class="voice-pill">HN thread: "here's what OpenAI stores"</span>
+        <span class="voice-pill">Team uses GPT-4 for NDA project — he notices</span>
+        <span class="voice-pill">Weekend with nothing to do — wants to build proper setup</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sofia -->
+  <div class="voice-persona">
+    <div class="voice-header">
+      <div class="voice-avatar" style="background:linear-gradient(135deg,#a78bfa,#7c3aed)">S</div>
+      <div>
+        <h2>Sofia Rossi</h2>
+        <span>Solo Operator</span>
+      </div>
+    </div>
+    <div class="voice-grid">
+      <div class="voice-block pain">
+        <h4>Pain Language</h4>
+        <span class="voice-pill">"I have to re-explain everything every time"</span>
+        <span class="voice-pill">"It doesn't know my clients, my tone, my projects"</span>
+        <span class="voice-pill">"ChatGPT is a stranger who needs context every morning"</span>
+        <span class="voice-pill">"I'm switching between 6 tools just to answer one question"</span>
+        <span class="voice-pill">"My AI tools are desktop-only and I'm always on mobile"</span>
+      </div>
+      <div class="voice-block desire">
+        <h4>Desire Language</h4>
+        <span class="voice-pill">"I want an AI that actually knows me"</span>
+        <span class="voice-pill">"I want it to remember our last conversation"</span>
+        <span class="voice-pill">"I want one place for everything — not 5 apps"</span>
+        <span class="voice-pill">"I want a reliable AI teammate, not a tool"</span>
+        <span class="voice-pill">"Available on Telegram, all day, no setup"</span>
+        <span class="voice-pill">"An assistant that compounds knowledge over time"</span>
+      </div>
+      <div class="voice-block search">
+        <h4>Search Queries</h4>
+        <span class="voice-pill">AI assistant with memory across sessions</span>
+        <span class="voice-pill">ChatGPT alternative that remembers me</span>
+        <span class="voice-pill">personal AI assistant telegram bot</span>
+        <span class="voice-pill">AI that knows my projects context</span>
+        <span class="voice-pill">persistent AI assistant freelancer</span>
+        <span class="voice-pill">replace ChatGPT with something smarter</span>
+      </div>
+      <div class="voice-block community">
+        <h4>Communities</h4>
+        <span class="voice-pill">Twitter/X — indie hacker circles</span>
+        <span class="voice-pill">r/Entrepreneur</span>
+        <span class="voice-pill">Indie Hackers forum</span>
+        <span class="voice-pill">Telegram productivity groups</span>
+        <span class="voice-pill">Make / Zapier communities</span>
+      </div>
+      <div class="voice-block trigger">
+        <h4>Trigger Events</h4>
+        <span class="voice-pill">Spends 20 minutes re-explaining a project to ChatGPT</span>
+        <span class="voice-pill">Misses something because it was in a different tool</span>
+        <span class="voice-pill">Sees "AI with memory" on Product Hunt — tries, disappointed</span>
+        <span class="voice-pill">Overwhelmed by context switching between projects</span>
+        <span class="voice-pill">Colleague recommends "self-hosted AI" — wants to understand</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Marcus -->
+  <div class="voice-persona">
+    <div class="voice-header">
+      <div class="voice-avatar" style="background:linear-gradient(135deg,#34d399,#059669)">M</div>
+      <div>
+        <h2>Marcus Webb</h2>
+        <span>Knowledge Worker &amp; Researcher</span>
+      </div>
+    </div>
+    <div class="voice-grid">
+      <div class="voice-block pain">
+        <h4>Pain Language</h4>
+        <span class="voice-pill">"I have 6,000 bookmarks and can't find anything"</span>
+        <span class="voice-pill">"My knowledge is trapped in different silos"</span>
+        <span class="voice-pill">"ChatGPT answers from its training data, not my research"</span>
+        <span class="voice-pill">"Tags and folders don't scale to 5 years of reading"</span>
+        <span class="voice-pill">"The knowledge I've accumulated is basically useless"</span>
+        <span class="voice-pill">"I'm paying for 4 tools that don't talk to each other"</span>
+      </div>
+      <div class="voice-block desire">
+        <h4>Desire Language</h4>
+        <span class="voice-pill">"I want to query everything I've ever read"</span>
+        <span class="voice-pill">"I want an AI that knows my research corpus"</span>
+        <span class="voice-pill">"One drop point for URLs, automatically indexed"</span>
+        <span class="voice-pill">"Semantic search across my own knowledge base"</span>
+        <span class="voice-pill">"A second brain that actually works"</span>
+        <span class="voice-pill">"Knowledge that compounds the longer I use it"</span>
+      </div>
+      <div class="voice-block search">
+        <h4>Search Queries</h4>
+        <span class="voice-pill">personal knowledge base AI search semantic</span>
+        <span class="voice-pill">second brain AI assistant self-hosted</span>
+        <span class="voice-pill">obsidian alternative with AI chat</span>
+        <span class="voice-pill">local AI with vector search my notes</span>
+        <span class="voice-pill">readwise alternative open source</span>
+        <span class="voice-pill">AI that searches my saved articles</span>
+      </div>
+      <div class="voice-block community">
+        <h4>Communities</h4>
+        <span class="voice-pill">r/PKM (Personal Knowledge Management)</span>
+        <span class="voice-pill">Obsidian Discord</span>
+        <span class="voice-pill">Hacker News — "Ask HN: how do you manage reading?"</span>
+        <span class="voice-pill">Twitter/X — PKM researchers</span>
+        <span class="voice-pill">r/LocalLLaMA — RAG threads</span>
+      </div>
+      <div class="voice-block trigger">
+        <h4>Trigger Events</h4>
+        <span class="voice-pill">Spends 30 mins finding a link he saved 3 months ago</span>
+        <span class="voice-pill">Readwise raises prices again — evaluates alternatives</span>
+        <span class="voice-pill">HN thread: "building my own RAG pipeline" — considers it</span>
+        <span class="voice-pill">Writing a report — knows he read the perfect source, can't find it</span>
+        <span class="voice-pill">Tries a "second brain" app — it doesn't have semantic search</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Yuki -->
+  <div class="voice-persona">
+    <div class="voice-header">
+      <div class="voice-avatar" style="background:linear-gradient(135deg,#fb923c,#ea580c)">Y</div>
+      <div>
+        <h2>Yuki Tanaka</h2>
+        <span>Hobbyist Maker &amp; Tinkerer</span>
+      </div>
+    </div>
+    <div class="voice-grid">
+      <div class="voice-block pain">
+        <h4>Pain Language</h4>
+        <span class="voice-pill">"Every open-source bot is either too basic or LangChain spaghetti"</span>
+        <span class="voice-pill">"I break under concurrent requests every time"</span>
+        <span class="voice-pill">"No clean extension model — I have to fork the core"</span>
+        <span class="voice-pill">"Frameworks abstract too much, I can't debug anything"</span>
+        <span class="voice-pill">"I spend the weekend building what should already exist"</span>
+        <span class="voice-pill">"No memory = no point, it's just a chatbot"</span>
+      </div>
+      <div class="voice-block desire">
+        <h4>Desire Language</h4>
+        <span class="voice-pill">"I want a clean asyncio foundation I can read"</span>
+        <span class="voice-pill">"Proper concurrency, not bolted-on threading"</span>
+        <span class="voice-pill">"Clean adapter pattern — add channels without touching the hub"</span>
+        <span class="voice-pill">"Local LLM first, cloud fallback"</span>
+        <span class="voice-pill">"Something I can fork and extend my way"</span>
+        <span class="voice-pill">"A weekend project that becomes a real daily tool"</span>
+      </div>
+      <div class="voice-block search">
+        <h4>Search Queries</h4>
+        <span class="voice-pill">asyncio telegram discord bot production ready</span>
+        <span class="voice-pill">local LLM bot memory persistent asyncio</span>
+        <span class="voice-pill">open source AI agent framework minimal</span>
+        <span class="voice-pill">ollama telegram bot python 2026</span>
+        <span class="voice-pill">self-hosted AI agent discord telegram hub</span>
+        <span class="voice-pill">hub and spoke AI bot architecture python</span>
+      </div>
+      <div class="voice-block community">
+        <h4>Communities</h4>
+        <span class="voice-pill">r/LocalLLaMA (active contributor)</span>
+        <span class="voice-pill">r/MachineLearning</span>
+        <span class="voice-pill">GitHub — stars, watches, forks</span>
+        <span class="voice-pill">Discord — ML Japan community</span>
+        <span class="voice-pill">Twitter/X — AI researchers, Andrej Karpathy</span>
+      </div>
+      <div class="voice-block trigger">
+        <h4>Trigger Events</h4>
+        <span class="voice-pill">r/LocalLLaMA post: "clean Python bot that handles concurrency?"</span>
+        <span class="voice-pill">His asyncio bot breaks at 3 concurrent users — again</span>
+        <span class="voice-pill">Sees Lyra architecture doc on HN — reads the ADRs, impressed</span>
+        <span class="voice-pill">New 7B model drops — wants to wire it into a useful interface</span>
+        <span class="voice-pill">Weekend project frustration — builds the same thing for the 4th time</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════ SECTION: JTBD ══ -->
+<div id="section-jtbd" class="section">
+  <div class="section-title">Jobs to Be Done — functional, emotional, social dimensions</div>
+
+  <div class="jtbd-grid">
+
+    <!-- Alex JTBD -->
+    <div class="jtbd-card">
+      <div class="jtbd-top">
+        <div class="jtbd-avatar" style="background:linear-gradient(135deg,#00c8e0,#0099aa)">A</div>
+        <div>
+          <div class="jtbd-name">Alex Chen</div>
+          <div class="jtbd-role">Privacy-Conscious Developer</div>
+        </div>
+      </div>
+      <div class="jtbd-jobs">
+        <div class="jtbd-job functional">
+          <div class="jtbd-dimension">Functional</div>
+          <div class="jtbd-statement">When <em>I need AI assistance on client code</em>, I want to <em>query a local AI without data leaving my machine</em>, so I can <em>get help without violating client data agreements or my own privacy principles</em>.</div>
+        </div>
+        <div class="jtbd-job emotional">
+          <div class="jtbd-dimension">Emotional</div>
+          <div class="jtbd-statement">When <em>I use AI tools at work</em>, I want to <em>feel confident that I control my data</em>, so I can <em>stop the background anxiety of "what are they doing with this?"</em></div>
+        </div>
+        <div class="jtbd-job social">
+          <div class="jtbd-dimension">Social</div>
+          <div class="jtbd-statement">When <em>my team uses cloud AI carelessly</em>, I want to <em>recommend a principled alternative I can stand behind</em>, so I can <em>be the person who sets a better standard — not just the person who says no</em>.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sofia JTBD -->
+    <div class="jtbd-card">
+      <div class="jtbd-top">
+        <div class="jtbd-avatar" style="background:linear-gradient(135deg,#a78bfa,#7c3aed)">S</div>
+        <div>
+          <div class="jtbd-name">Sofia Rossi</div>
+          <div class="jtbd-role">Solo Operator</div>
+        </div>
+      </div>
+      <div class="jtbd-jobs">
+        <div class="jtbd-job functional">
+          <div class="jtbd-dimension">Functional</div>
+          <div class="jtbd-statement">When <em>I start a new AI conversation</em>, I want to <em>continue exactly where I left off — with full context of my projects, clients, and tone</em>, so I can <em>stop wasting 10 minutes per session re-explaining who I am</em>.</div>
+        </div>
+        <div class="jtbd-job emotional">
+          <div class="jtbd-dimension">Emotional</div>
+          <div class="jtbd-statement">When <em>I'm working across three projects simultaneously</em>, I want to <em>feel like I have a reliable teammate who knows what I'm doing</em>, so I can <em>stop feeling like I'm managing everything alone</em>.</div>
+        </div>
+        <div class="jtbd-job social">
+          <div class="jtbd-dimension">Social</div>
+          <div class="jtbd-statement">When <em>other indie hackers ask how I stay organized</em>, I want to <em>describe a personal AI setup that sounds thoughtful and intentional</em>, so I can <em>be seen as someone who builds smart systems, not someone who just pays for SaaS</em>.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Marcus JTBD -->
+    <div class="jtbd-card">
+      <div class="jtbd-top">
+        <div class="jtbd-avatar" style="background:linear-gradient(135deg,#34d399,#059669)">M</div>
+        <div>
+          <div class="jtbd-name">Marcus Webb</div>
+          <div class="jtbd-role">Knowledge Worker</div>
+        </div>
+      </div>
+      <div class="jtbd-jobs">
+        <div class="jtbd-job functional">
+          <div class="jtbd-dimension">Functional</div>
+          <div class="jtbd-statement">When <em>I'm writing a report or researching a topic</em>, I want to <em>semantically query everything I've ever saved — articles, papers, notes</em>, so I can <em>find the source I know exists without spending 30 minutes hunting across tools</em>.</div>
+        </div>
+        <div class="jtbd-job emotional">
+          <div class="jtbd-dimension">Emotional</div>
+          <div class="jtbd-statement">When <em>I save something to read later</em>, I want to <em>feel confident it will be findable and useful in a year</em>, so I can <em>stop the nagging feeling that I'm collecting knowledge I'll never be able to use</em>.</div>
+        </div>
+        <div class="jtbd-job social">
+          <div class="jtbd-dimension">Social</div>
+          <div class="jtbd-statement">When <em>I share research or write publicly</em>, I want to <em>draw from a rich personal knowledge base that reflects 5 years of careful reading</em>, so I can <em>produce work that is genuinely better-informed than colleagues who rely only on general AI</em>.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Yuki JTBD -->
+    <div class="jtbd-card">
+      <div class="jtbd-top">
+        <div class="jtbd-avatar" style="background:linear-gradient(135deg,#fb923c,#ea580c)">Y</div>
+        <div>
+          <div class="jtbd-name">Yuki Tanaka</div>
+          <div class="jtbd-role">Hobbyist Maker</div>
+        </div>
+      </div>
+      <div class="jtbd-jobs">
+        <div class="jtbd-job functional">
+          <div class="jtbd-dimension">Functional</div>
+          <div class="jtbd-statement">When <em>I want to build a personal AI with my own models and channels</em>, I want to <em>start from a clean, auditable asyncio foundation with a real extension model</em>, so I can <em>stop rewriting the same concurrency and routing logic every weekend project</em>.</div>
+        </div>
+        <div class="jtbd-job emotional">
+          <div class="jtbd-dimension">Emotional</div>
+          <div class="jtbd-statement">When <em>I spend a weekend building AI infrastructure that breaks under load</em>, I want to <em>feel like I'm standing on a solid foundation someone else figured out</em>, so I can <em>focus my energy on the interesting parts — the agents, the skills, the models</em>.</div>
+        </div>
+        <div class="jtbd-job social">
+          <div class="jtbd-dimension">Social</div>
+          <div class="jtbd-statement">When <em>I contribute to or fork an open-source AI project</em>, I want to <em>work on a codebase that other serious engineers respect</em>, so I can <em>be part of a community building real infrastructure — not toy demos</em>.</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="footer">
+  lyra-customer-personas.html · Lyra by Roxabi · 2026
+</div>
+
+<script>
+  function showSection(name, btn) {
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('section-' + name).classList.add('active');
+    btn.classList.add('active');
+  }
+
+  function togglePersona(card) {
+    const grid = document.getElementById('persona-grid');
+    const isExpanded = card.classList.contains('expanded');
+
+    // Close all
+    grid.querySelectorAll('.persona-card').forEach(c => c.classList.remove('expanded'));
+
+    // Toggle
+    if (!isExpanded) {
+      card.classList.add('expanded');
+      setTimeout(() => {
+        card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 50);
+    }
+  }
+</script>
+
+</body>
+</html>

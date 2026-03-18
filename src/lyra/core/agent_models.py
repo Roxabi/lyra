@@ -40,6 +40,7 @@ class AgentRow:
     voice_json: str | None = None
     fallback_language: str = "en"
     patterns_json: str | None = None
+    passthroughs_json: str | None = None
     source: str = "db"
     created_at: str = field(default_factory=_utc_now_iso)
     updated_at: str = field(default_factory=_utc_now_iso)
@@ -74,6 +75,7 @@ class AgentRow:
             voice_json,
             fallback_language,
             patterns_json,
+            passthroughs_json,
         ) = row
         return cls(
             name=name,
@@ -99,6 +101,7 @@ class AgentRow:
             voice_json=voice_json,
             fallback_language=fallback_language or "en",
             patterns_json=patterns_json,
+            passthroughs_json=passthroughs_json,
             source=source,
             created_at=created_at,
             updated_at=updated_at,

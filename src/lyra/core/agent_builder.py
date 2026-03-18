@@ -198,6 +198,7 @@ def _assemble_agent(  # noqa: PLR0913 — one param per Agent field
     stt: AgentSTTConfig | None,
     voice: "AgentVoiceConfig | None" = None,
     patterns: dict[str, bool] | None = None,
+    passthroughs: tuple[str, ...] | None = None,
 ) -> Agent:
     """Instantiate an Agent from already-resolved fields.
 
@@ -221,4 +222,5 @@ def _assemble_agent(  # noqa: PLR0913 — one param per Agent field
         stt=stt,
         voice=voice,
         patterns=patterns or {},
+        passthroughs=passthroughs or (),
     )

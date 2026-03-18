@@ -85,6 +85,51 @@ def make_dc_adapter() -> DiscordAdapter:
     return DiscordAdapter(hub=hub, bot_id="main")
 
 
+def make_dc_inbound_msg(
+    *,
+    channel_id: int = 333,
+    message_id: int = 555,
+    is_mention: bool = False,
+    msg_id: str = "msg-1",
+) -> InboundMessage:
+    """Build an InboundMessage matching the standard discord test fixture values."""
+    return InboundMessage(
+        id=msg_id,
+        platform="discord",
+        bot_id="main",
+        scope_id=f"channel:{channel_id}",
+        user_id="dc:user:42",
+        user_name="Alice",
+        is_mention=is_mention,
+        text="hello",
+        text_raw="hello",
+        timestamp=datetime.now(timezone.utc),
+        trust_level=TrustLevel.TRUSTED,
+        platform_meta={
+            "guild_id": 111,
+            "channel_id": channel_id,
+            "message_id": message_id,
+            "thread_id": None,
+            "channel_type": "text",
+        },
+    )
+
+
+def attach_typing_cm(mock_channel: MagicMock) -> None:
+    """Attach a valid async context manager to mock_channel.typing().
+
+    discord.py's Messageable.typing() returns an async context manager.
+    AsyncMock's default auto-spec returns a coroutine instead, which
+    causes ``async with messageable.typing()`` to raise TypeError.
+    Call this helper on every mock channel used with adapter.send() or
+    adapter.send_streaming().
+    """
+    mock_typing_cm = AsyncMock()
+    mock_typing_cm.__aenter__ = AsyncMock(return_value=None)
+    mock_typing_cm.__aexit__ = AsyncMock(return_value=False)
+    mock_channel.typing = MagicMock(return_value=mock_typing_cm)
+
+
 def mock_channel() -> MagicMock:
     ch = AsyncMock()
     ch.send = AsyncMock()

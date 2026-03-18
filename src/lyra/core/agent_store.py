@@ -277,6 +277,7 @@ class AgentStore(SqliteStore):
                 row.voice_json,
                 row.fallback_language,
                 row.patterns_json,
+                row.passthroughs_json,
                 # ON CONFLICT updated_at value
                 now,
             ),
@@ -306,6 +307,7 @@ class AgentStore(SqliteStore):
             voice_json=row.voice_json,
             fallback_language=row.fallback_language,
             patterns_json=row.patterns_json,
+            passthroughs_json=row.passthroughs_json,
             source=row.source,
             created_at=row.created_at,
             updated_at=now,

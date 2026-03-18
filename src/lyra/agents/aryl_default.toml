@@ -33,6 +33,14 @@ complex  = "claude-opus-4-6"
 [plugins]
 enabled = ["echo", "search"]
 
+[tts]
+voice = "Ono_Anna"
+personality = "Précise et directe, aucune fioriture."
+emotion = "Neutre et sèche, assurée"
+speed = "Alerte et incisif"
+
+[stt]
+
 # [workspaces]
 # lyra     = "~/projects/lyra"
 # projects = "~/projects"

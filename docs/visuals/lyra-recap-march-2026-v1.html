@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lyra — Project Recap · March 2026</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Azeret+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'base' });</script>
+<style>
+:root {
+  --font-display: 'Instrument Serif', Georgia, serif;
+  --font-body: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-mono: 'Azeret Mono', 'SF Mono', Consolas, monospace;
+  --bg: #f7f3ed;
+  --surface: #ffffff;
+  --surface-elevated: #fdfaf5;
+  --surface2: #ede8e0;
+  --border: rgba(80, 50, 25, 0.10);
+  --border-bright: rgba(80, 50, 25, 0.20);
+  --text: #271c12;
+  --text-dim: #7a6455;
+  --text-label: #9b7a68;
+  --terra: #9b4f2e;
+  --terra-dim: rgba(155, 79, 46, 0.10);
+  --sage: #3d7a6a;
+  --sage-dim: rgba(61, 122, 106, 0.10);
+  --gold: #a07c2a;
+  --gold-dim: rgba(160, 124, 42, 0.12);
+  --crimson: #8b2535;
+  --crimson-dim: rgba(139, 37, 53, 0.10);
+  --accent: var(--terra);
+  --accent-dim: var(--terra-dim);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1410;
+    --surface: #231d17;
+    --surface-elevated: #2d2419;
+    --surface2: #1f1913;
+    --border: rgba(220, 180, 130, 0.08);
+    --border-bright: rgba(220, 180, 130, 0.16);
+    --text: #f0e8df;
+    --text-dim: #a8907e;
+    --text-label: #8a7265;
+    --terra: #d4784f;
+    --terra-dim: rgba(212, 120, 79, 0.12);
+    --sage: #6aad9e;
+    --sage-dim: rgba(106, 173, 158, 0.12);
+    --gold: #d4a83e;
+    --gold-dim: rgba(212, 168, 62, 0.12);
+    --crimson: #c24460;
+    --crimson-dim: rgba(194, 68, 96, 0.12);
+  }
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--text);
+  background: var(--bg);
+  background-image:
+    radial-gradient(ellipse at 75% 0%, var(--terra-dim) 0%, transparent 55%),
+    radial-gradient(ellipse at 10% 85%, var(--sage-dim) 0%, transparent 50%);
+  padding: 32px 40px 80px;
+  overflow-wrap: break-word;
+}
+.wrap {
+  max-width: 1380px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 168px 1fr;
+  gap: 0 48px;
+}
+.main { min-width: 0; }
+.toc {
+  position: sticky;
+  top: 24px;
+  align-self: start;
+  padding: 14px 0;
+  grid-row: 1 / -1;
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+}
+.toc::-webkit-scrollbar { width: 3px; }
+.toc::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 2px; }
+.toc-title {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--text-label);
+  padding: 0 0 10px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.toc a {
+  display: block;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-decoration: none;
+  padding: 4px 8px;
+  border-radius: 5px;
+  border-left: 2px solid transparent;
+  transition: all 0.15s;
+  line-height: 1.4;
+  margin-bottom: 1px;
+}
+.toc a:hover { color: var(--text); background: var(--surface2); }
+.toc a.active { color: var(--terra); border-left-color: var(--terra); background: var(--terra-dim); }
+.page-header { margin-bottom: 48px; padding-bottom: 32px; border-bottom: 2px solid var(--border); animation: fadeUp 0.5s ease both; }
+.page-label { font-family: var(--font-mono); font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 2px; color: var(--terra); margin-bottom: 12px; }
+.page-title { font-family: var(--font-display); font-size: clamp(38px, 5vw, 60px); line-height: 1.05; color: var(--text); margin-bottom: 12px; }
+.page-subtitle { font-size: 16px; color: var(--text-dim); max-width: 580px; }
+.page-meta { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
+.meta-tag { font-family: var(--font-mono); font-size: 11px; padding: 3px 10px; border-radius: 20px; border: 1px solid var(--border-bright); color: var(--text-dim); background: var(--surface); }
+.meta-tag.hi { background: var(--terra-dim); border-color: var(--terra); color: var(--terra); }
+.sec-head {
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  gap: 12px;
+  align-items: baseline;
+  padding: 8px 0;
+  margin: 52px 0 22px;
+  border-bottom: 1px solid var(--border);
+  scroll-margin-top: 24px;
+}
+.sec-num { font-family: var(--font-display); font-size: 30px; line-height: 1; color: var(--border-bright); font-style: italic; }
+.sec-title-text { font-family: var(--font-mono); font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 2px; color: var(--text-dim); }
+.ve-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px 24px; position: relative; min-width: 0; }
+.ve-card--hero {
+  background: color-mix(in srgb, var(--surface) 92%, var(--terra) 8%);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.04);
+  border-color: color-mix(in srgb, var(--border) 40%, var(--terra) 60%);
+  padding: 30px 34px;
+}
+.ve-card--elevated { box-shadow: 0 2px 10px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.03); }
+.ve-card--recessed { background: color-mix(in srgb, var(--bg) 65%, var(--surface) 35%); box-shadow: inset 0 1px 3px rgba(0,0,0,0.05); }
+.card-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--text-label);
+  margin-bottom: 10px;
+  padding-left: 16px;
+  position: relative;
+}
+.card-label::before { content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 7px; height: 7px; border-radius: 50%; background: var(--terra); }
+.card-label.sage::before { background: var(--sage); }
+.card-label.gold::before { background: var(--gold); }
+.card-label.crimson::before { background: var(--crimson); }
+.card-label.dim::before { background: var(--text-dim); }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid-2 > * { min-width: 0; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+.grid-3 > * { min-width: 0; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.grid-4 > * { min-width: 0; }
+@media (max-width: 900px) { .grid-4 { grid-template-columns: 1fr 1fr; } .grid-3 { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 600px) { .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; } }
+.kpi-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px 24px; min-width: 0; }
+.kpi-num { font-family: var(--font-display); font-size: 52px; line-height: 1; font-style: italic; margin-bottom: 4px; }
+.kpi-label { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-dim); }
+.kpi-sub { font-size: 12px; color: var(--text-dim); margin-top: 8px; line-height: 1.5; }
+.kpi-card.k-green { border-top: 3px solid var(--sage); } .kpi-card.k-green .kpi-num { color: var(--sage); }
+.kpi-card.k-gold  { border-top: 3px solid var(--gold); } .kpi-card.k-gold  .kpi-num { color: var(--gold); }
+.kpi-card.k-red   { border-top: 3px solid var(--terra); } .kpi-card.k-red   .kpi-num { color: var(--terra); }
+.kpi-card.k-dim   { border-top: 3px solid var(--text-dim); } .kpi-card.k-dim   .kpi-num { color: var(--text-dim); }
+/* Mermaid */
+.mermaid-wrap {
+  background: color-mix(in srgb, var(--surface) 92%, var(--terra) 8%);
+  border: 1px solid color-mix(in srgb, var(--border) 40%, var(--terra) 60%);
+  border-radius: 16px;
+  padding: 28px;
+  box-shadow: 0 6px 30px rgba(0,0,0,0.08);
+  position: relative;
+  overflow: hidden;
+  cursor: grab;
+  user-select: none;
+}
+.mermaid-wrap:active { cursor: grabbing; }
+.mermaid-controls { display: flex; gap: 6px; justify-content: flex-end; margin-bottom: 14px; }
+.mermaid-controls button {
+  background: var(--surface);
+  border: 1px solid var(--border-bright);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.mermaid-controls button:hover { background: var(--surface-elevated); color: var(--text); }
+.mermaid-viewport { overflow: hidden; width: 100%; min-height: 280px; display: flex; justify-content: center; }
+.mermaid-inner { transform-origin: top center; display: flex; justify-content: center; }
+/* Timeline */
+.timeline { position: relative; padding-left: 28px; }
+.timeline::before { content: ''; position: absolute; left: 8px; top: 8px; bottom: 8px; width: 2px; background: linear-gradient(to bottom, var(--terra), var(--sage)); border-radius: 2px; }
+.tl-item { position: relative; margin-bottom: 22px; }
+.tl-item::before { content: ''; position: absolute; left: -24px; top: 7px; width: 10px; height: 10px; border-radius: 50%; background: var(--terra); border: 2px solid var(--bg); }
+.tl-item.sage::before { background: var(--sage); }
+.tl-item.gold::before { background: var(--gold); }
+.tl-item.neutral::before { background: var(--text-dim); }
+.tl-date { font-family: var(--font-mono); font-size: 10px; color: var(--text-label); margin-bottom: 3px; }
+.tl-title { font-weight: 600; font-size: 14px; margin-bottom: 3px; }
+.tl-desc { font-size: 13px; color: var(--text-dim); line-height: 1.5; }
+/* Decision cards */
+.decision { border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; background: var(--surface); margin-bottom: 12px; min-width: 0; }
+.dec-label { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-label); margin-bottom: 6px; }
+.dec-title { font-weight: 600; font-size: 14px; margin-bottom: 6px; }
+.dec-body { font-size: 13px; color: var(--text-dim); line-height: 1.55; }
+.dec-body strong { color: var(--text); font-weight: 600; }
+/* Debt cards */
+.debt-card { border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px 16px 24px; position: relative; min-width: 0; margin-bottom: 12px; background: color-mix(in srgb, var(--surface) 96%, var(--gold) 4%); }
+.debt-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; border-radius: 10px 0 0 10px; }
+.debt-card.high::before { background: var(--crimson); }
+.debt-card.med::before  { background: var(--gold); }
+.debt-card.low::before  { background: var(--sage); }
+.debt-sev { font-family: var(--font-mono); font-size: 9px; font-weight: 500; text-transform: uppercase; letter-spacing: 1.5px; display: inline-block; padding: 2px 8px; border-radius: 10px; margin-bottom: 6px; }
+.debt-card.high .debt-sev { background: var(--crimson-dim); color: var(--crimson); }
+.debt-card.med  .debt-sev { background: var(--gold-dim);   color: var(--gold);   }
+.debt-card.low  .debt-sev { background: var(--sage-dim);   color: var(--sage);   }
+.debt-title { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+.debt-desc  { font-size: 13px; color: var(--text-dim); margin-bottom: 8px; line-height: 1.5; }
+.debt-fix   { font-size: 12px; font-family: var(--font-mono); color: var(--text-dim); background: var(--surface2); border-radius: 6px; padding: 6px 10px; line-height: 1.5; }
+/* Lists — no flex on li */
+.feat-list { list-style: none; padding: 0; margin: 0; }
+.feat-list li { position: relative; padding: 5px 0 5px 18px; font-size: 13px; color: var(--text-dim); border-bottom: 1px solid var(--border); }
+.feat-list li:last-child { border-bottom: none; }
+.feat-list li::before { content: '·'; position: absolute; left: 4px; color: var(--sage); font-size: 18px; line-height: 1.2; }
+.feat-list li strong { color: var(--text); font-weight: 600; }
+.inv-list { list-style: none; padding: 0; margin: 0; }
+.inv-list li { position: relative; padding: 9px 0 9px 18px; font-size: 13px; border-bottom: 1px solid var(--border); line-height: 1.5; }
+.inv-list li:last-child { border-bottom: none; }
+.inv-list li::before { content: '—'; position: absolute; left: 0; color: var(--terra); font-family: var(--font-display); }
+/* Code */
+code { font-family: var(--font-mono); font-size: 12px; background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; color: var(--terra); }
+.code-block { font-family: var(--font-mono); font-size: 12px; line-height: 1.6; background: var(--surface-elevated); border: 1px solid var(--border); border-radius: 8px; padding: 14px 18px; overflow-x: auto; white-space: pre; color: var(--text); }
+/* Chips */
+.chip { display: inline-block; font-family: var(--font-mono); font-size: 10px; padding: 2px 8px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface2); color: var(--text-dim); white-space: nowrap; }
+.chip.ready   { background: var(--sage-dim);  border-color: var(--sage);  color: var(--sage); }
+.chip.blocked { background: var(--terra-dim); border-color: var(--terra); color: var(--terra); }
+.chip.active  { background: var(--gold-dim);  border-color: var(--gold);  color: var(--gold); }
+/* Next steps */
+.next-item { display: grid; grid-template-columns: 44px 1fr; gap: 16px; align-items: start; padding: 16px 0; border-bottom: 1px solid var(--border); }
+.next-item:last-child { border-bottom: none; }
+.next-item > * { min-width: 0; }
+.next-num { font-family: var(--font-display); font-size: 34px; line-height: 1; color: var(--border-bright); font-style: italic; text-align: right; }
+.next-title { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+.next-desc { font-size: 13px; color: var(--text-dim); line-height: 1.5; }
+/* Animations */
+@keyframes fadeUp   { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeScale { from { opacity: 0; transform: scale(0.93); } to { opacity: 1; transform: scale(1); } }
+@media (prefers-reduced-motion: no-preference) {
+  .au  { animation: fadeUp   0.45s ease both; }
+  .as  { animation: fadeScale 0.4s ease both; }
+  .d1 { animation-delay: 0.05s; } .d2 { animation-delay: 0.10s; }
+  .d3 { animation-delay: 0.15s; } .d4 { animation-delay: 0.20s; }
+}
+/* Mobile TOC */
+@media (max-width: 1000px) {
+  body { padding: 0 20px 60px; }
+  .wrap { grid-template-columns: 1fr; }
+  .toc {
+    position: sticky; top: 0; z-index: 200; max-height: none;
+    display: flex; gap: 4px; align-items: center; overflow-x: auto;
+    -webkit-overflow-scrolling: touch; background: var(--bg);
+    border-bottom: 1px solid var(--border); padding: 10px 0;
+    margin: 0 -20px; padding-left: 20px; padding-right: 20px; grid-row: auto;
+  }
+  .toc::-webkit-scrollbar { display: none; }
+  .toc-title { display: none; }
+  .toc a { white-space: nowrap; flex-shrink: 0; border-left: none; border-bottom: 2px solid transparent; border-radius: 4px 4px 0 0; padding: 6px 10px; font-size: 10px; }
+  .toc a.active { border-left: none; border-bottom-color: var(--terra); background: var(--terra-dim); }
+  .main { padding-top: 20px; }
+  .sec-head { scroll-margin-top: 52px; }
+}
+@media (max-width: 768px) { .page-title { font-size: 34px; } }
+</style><!-- diagram-meta:start -->
+<meta name="diagram:title"     content="Lyra — Project Recap · March 2026 v1">
+<meta name="diagram:date"      content="2026-03-18">
+<meta name="diagram:category"  content="lyra">
+<meta name="diagram:cat-label" content="Lyra Docs">
+<meta name="diagram:color"     content="blue">
+<meta name="diagram:badges"    content="latest">
+<!-- diagram-meta:end -->
+</head>
+<body>
+<div class="wrap">
+
+<nav class="toc" id="toc">
+  <div class="toc-title">Contents</div>
+  <a href="#s1">Identity</a>
+  <a href="#s2">Architecture</a>
+  <a href="#s3">Activity</a>
+  <a href="#s4">Decisions</a>
+  <a href="#s5">State</a>
+  <a href="#s6">Mental model</a>
+  <a href="#s7">Debt</a>
+  <a href="#s8">Next steps</a>
+</nav>
+
+<div class="main">
+
+<!-- HEADER -->
+<header class="page-header">
+  <div class="page-label">Project Recap &middot; March 12, 2026</div>
+  <h1 class="page-title">Lyra</h1>
+  <p class="page-subtitle">Personal AI agent engine — hub-and-spoke, asyncio, multi-channel. Your conversations. Your hardware. Your agents.</p>
+  <div class="page-meta">
+    <span class="meta-tag hi">v0.1.0</span>
+    <span class="meta-tag">Python 3.12</span>
+    <span class="meta-tag">branch: staging</span>
+    <span class="meta-tag">Phase 1b tail</span>
+    <span class="meta-tag">122 commits / 2 weeks</span>
+  </div>
+</header>
+
+<!-- 1. IDENTITY -->
+<div id="s1" class="sec-head"><span class="sec-num">1</span><span class="sec-title-text">Project Identity</span></div>
+
+<div class="ve-card ve-card--hero au">
+  <div class="card-label">What this is</div>
+  <p style="font-family: var(--font-display); font-size: 20px; line-height: 1.45; margin-bottom: 24px; max-width: 680px;">
+    A <em>self-hosted</em> AI agent engine that routes Telegram and Discord conversations through isolated per-scope agent pools — without cloud lock-in, data leakage, or subscription dependency. Swap the model in a TOML file.
+  </p>
+  <div class="grid-3">
+    <div>
+      <div class="card-label sage">Runtime</div>
+      <ul class="feat-list">
+        <li><strong>Python 3.12</strong> + asyncio</li>
+        <li><strong>uv</strong> package manager</li>
+        <li><strong>FastAPI</strong> + uvicorn</li>
+        <li><strong>Anthropic SDK</strong> ≥ 0.49</li>
+        <li><strong>pydantic</strong> ≥ 2.12</li>
+      </ul>
+    </div>
+    <div>
+      <div class="card-label">Adapters</div>
+      <ul class="feat-list">
+        <li><strong>aiogram</strong> ≥ 3.26 — Telegram</li>
+        <li><strong>discord.py</strong> ≥ 2.4 — Discord</li>
+        <li>CLIAdapter — local stdin/stdout</li>
+        <li>HTTPAdapter — future</li>
+      </ul>
+    </div>
+    <div>
+      <div class="card-label gold">Stage</div>
+      <ul class="feat-list">
+        <li>Phase 1b tail — actively shipping</li>
+        <li>Hub + adapters: stable</li>
+        <li>Agent core: wrapping up</li>
+        <li>Voice pipeline: unblocked</li>
+        <li>NATS / Phase 2: frozen</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- 2. ARCHITECTURE -->
+<div id="s2" class="sec-head"><span class="sec-num">2</span><span class="sec-title-text">Architecture Snapshot</span></div>
+
+<div class="mermaid-wrap as" id="mermaid-wrap">
+  <div class="mermaid-controls">
+    <button onclick="zoomM(-0.15)">−</button>
+    <button onclick="zoomM(0.15)">+</button>
+    <button onclick="resetM()">reset</button>
+    <button onclick="expandM()">⛶</button>
+  </div>
+  <div class="mermaid-viewport">
+    <div class="mermaid-inner" id="mermaid-inner">
+      <div class="mermaid">%%{init: {
+  "theme": "base",
+  "themeVariables": {
+    "primaryColor": "#fdf4ee",
+    "primaryTextColor": "#271c12",
+    "primaryBorderColor": "#c89070",
+    "lineColor": "#9b4f2e",
+    "secondaryColor": "#e6f0ed",
+    "tertiaryColor": "#fdf8f2",
+    "edgeLabelBackground": "#fdf9f4",
+    "fontFamily": "Plus Jakarta Sans, system-ui, sans-serif",
+    "fontSize": "14px",
+    "clusterBkg": "#f7f3ed",
+    "clusterBorder": "#c89070"
+  }
+}}%%
+flowchart TD
+    TG["Telegram Adapter<br/>aiogram v3 · polling"]
+    DC["Discord Adapter<br/>discord.py v2 · gateway"]
+    IB["InboundBus<br/>per-platform bounded queues<br/>→ shared staging queue"]
+    HUB["Hub<br/>RoutingKey(platform, bot_id, scope_id)<br/>resolve_binding()"]
+    P1["Pool · scope A<br/>asyncio.Task + history<br/>e.g. chat:555"]
+    P2["Pool · scope B<br/>asyncio.Task + history<br/>e.g. thread:888"]
+    AGT["AgentBase<br/>stateless singleton<br/>TOML persona config"]
+    CB["CircuitBreaker<br/>per-service failure isolation"]
+    LLM["LLM Backends<br/>Anthropic SDK · Claude CLI"]
+    OD1["OutboundDispatcher<br/>Telegram"]
+    OD2["OutboundDispatcher<br/>Discord"]
+    MON["Monitoring<br/>2-layer health checks<br/>+ escalation"]
+
+    TG -->|"put(msg)"| IB
+    DC -->|"put(msg)"| IB
+    IB -->|"staging.get()"| HUB
+    HUB -->|"telegram:main:chat:555"| P1
+    HUB -->|"discord:main:thread:888"| P2
+    P1 -->|"process(msg)"| AGT
+    P2 -->|"process(msg)"| AGT
+    AGT --> CB
+    CB --> LLM
+    P1 --> OD1
+    P2 --> OD2
+    OD1 -->|"send(response)"| TG
+    OD2 -->|"send(response)"| DC
+    MON -.->|"health check"| HUB
+
+    classDef adapter fill:#e6f0ed,stroke:#3d7a6a,color:#1f3d36
+    classDef core    fill:#fdf4ee,stroke:#9b4f2e,color:#5a2a14
+    classDef agent   fill:#fdf8f0,stroke:#a07c2a,color:#50400e
+    classDef infra   fill:#f4f4f4,stroke:#888888,color:#333333
+
+    class TG,DC adapter
+    class IB,HUB,P1,P2,OD1,OD2 core
+    class AGT,CB,LLM agent
+    class MON infra
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="grid-3" style="margin-top:18px;">
+  <div class="ve-card ve-card--elevated">
+    <div class="card-label sage">Channel layer</div>
+    <p style="font-size:13px; color:var(--text-dim); margin-bottom:10px;">Translate platform events ↔ domain <code>Message</code>. Per-platform bounded queues in <code>InboundBus</code> isolate backpressure — a Telegram flood can't starve Discord.</p>
+    <ul class="feat-list">
+      <li><code>telegram.py</code> — 359 lines</li>
+      <li><code>discord.py</code> — 340 lines</li>
+      <li><code>InboundBus</code> — 107 lines, feeder tasks</li>
+    </ul>
+  </div>
+  <div class="ve-card ve-card--elevated">
+    <div class="card-label">Hub layer</div>
+    <p style="font-size:13px; color:var(--text-dim); margin-bottom:10px;"><code>Hub</code> holds the binding registry. <code>Pool</code> (one per conversation scope) owns the <code>asyncio.Task</code> and history. <code>OutboundDispatcher</code> routes replies back per-channel.</p>
+    <ul class="feat-list">
+      <li><code>hub.py</code> — 444 lines</li>
+      <li><code>pool.py</code> — 162 lines</li>
+      <li><code>outbound_dispatcher.py</code> — 141 lines</li>
+      <li><code>command_router.py</code> — 185 lines</li>
+    </ul>
+  </div>
+  <div class="ve-card ve-card--elevated">
+    <div class="card-label gold">Agent + LLM layer</div>
+    <p style="font-size:13px; color:var(--text-dim); margin-bottom:10px;">Stateless agents driven by TOML persona configs. Two backends: direct Anthropic SDK and Claude CLI subprocess. Circuit breaker per service.</p>
+    <ul class="feat-list">
+      <li><code>agent.py</code> — 512 lines, ABC</li>
+      <li><code>anthropic_agent.py</code> — 171 lines</li>
+      <li><code>cli_pool.py</code> — 410 lines, subprocess</li>
+      <li><code>circuit_breaker.py</code> — 189 lines</li>
+    </ul>
+  </div>
+</div>
+
+<!-- 3. RECENT ACTIVITY -->
+<div id="s3" class="sec-head"><span class="sec-num">3</span><span class="sec-title-text">Recent Activity</span></div>
+
+<div class="grid-2" style="align-items:start;">
+  <div>
+    <div class="card-label" style="margin-bottom:16px;">Feature &amp; infrastructure</div>
+    <div class="timeline">
+      <div class="tl-item">
+        <div class="tl-date">Mar 12, 2026</div>
+        <div class="tl-title">Architecture docs &amp; visual explainer</div>
+        <div class="tl-desc">engine-overview.md, security-routing.md, and an interactive HTML diagram. Proactive cognitive debt reduction before the next implementation sprint.</div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-date">~Mar 2–8</div>
+        <div class="tl-title">Hub refactor trilogy (#125, #126, #127)</div>
+        <div class="tl-desc">Three sequential PRs: scope_id routing (user_id → conversation scope), per-channel InboundBus + OutboundDispatcher, per-session asyncio.Task with Discord thread auto-creation. Hub is now properly isolated.</div>
+      </div>
+      <div class="tl-item sage">
+        <div class="tl-date">~Feb 26</div>
+        <div class="tl-title">Two-layer monitoring (#111, #121)</div>
+        <div class="tl-desc">Bash pre-check layer runs before LLM monitoring calls, keeping observability cheap. Escalation system routes alerts through the normal channel stack.</div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-date">~Feb 25</div>
+        <div class="tl-title">Unified pairing system (#103, #124)</div>
+        <div class="tl-desc">Single access-control system spanning Telegram and Discord, replacing two separate implementations. TrustLevel enum propagated through the full message lifecycle.</div>
+      </div>
+      <div class="tl-item neutral">
+        <div class="tl-date">Mar 11</div>
+        <div class="tl-title">Supervisor migration to lyra-stack</div>
+        <div class="tl-desc">Moved from isolated supervisord to shared hub at ~/projects/lyra-stack. Removed hardcoded paths; switched to LYRA_STACK_DIR env var and run.sh wrapper for .env sourcing.</div>
+      </div>
+    </div>
+  </div>
+  <div>
+    <div class="card-label gold" style="margin-bottom:16px;">Planning &amp; docs</div>
+    <div class="timeline">
+      <div class="tl-item gold">
+        <div class="tl-date">Mar 11, 2026</div>
+        <div class="tl-title">Voice STT specs &amp; plans (#80)</div>
+        <div class="tl-desc">Full dev-core lifecycle: frame → spec → plan. 4 slices, 19 tasks. ADR-013 decides temp file cleanup ownership (Agent, not STTService). Ready to implement once #139 ships.</div>
+      </div>
+      <div class="tl-item gold">
+        <div class="tl-date">Mar 11</div>
+        <div class="tl-title">Runtime agent config spec &amp; plan (#135)</div>
+        <div class="tl-desc"><code>!config</code> live tuning without restart. Independent of critical path — small scope (S), no blockers. Branch feat/135 is already open.</div>
+      </div>
+      <div class="tl-item gold">
+        <div class="tl-date">Mar 11</div>
+        <div class="tl-title">Roadmap: #139 message normalization</div>
+        <div class="tl-desc">Typed bus envelope epic added as Phase 1b tail item. This is the gate for STT, TTS, command sessions, and the legacy <code>content: str</code> cleanup.</div>
+      </div>
+      <div class="tl-item neutral">
+        <div class="tl-date">Mar 11</div>
+        <div class="tl-title">Community health files</div>
+        <div class="tl-desc">LICENSE (MIT), SECURITY.md, FUNDING.yml, issue templates, PR template. OSS scaffolding complete.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 4. DECISION LOG -->
+<div id="s4" class="sec-head"><span class="sec-num">4</span><span class="sec-title-text">Decision Log</span></div>
+
+<div class="decision">
+  <div class="dec-label">ADR · scope_id routing (#125)</div>
+  <div class="dec-title">Pool routing uses (platform, bot_id, scope_id), not user_id</div>
+  <div class="dec-body"><strong>Why:</strong> Group chats and threads need conversation-scope isolation — multiple users share one pool per chat. user_id was wrong for groups. scope_id captures chat_id, topic_id, thread_id, or channel_id as appropriate.<br><strong>Considered:</strong> Using session_id — rejected, scope is per-container not per-user-session.<br><strong>Contract:</strong> <code>RoutingKey.to_pool_id()</code> is the single source of truth for the <code>platform:bot_id:scope_id</code> format (ADR-001 §4). Never construct inline.</div>
+</div>
+
+<div class="decision">
+  <div class="dec-label">Design · OutboundDispatcher (#126)</div>
+  <div class="dec-title">Outbound separated from adapters: one OutboundDispatcher per platform</div>
+  <div class="dec-body"><strong>Why:</strong> Inbound and outbound are different concerns. Per-channel outbound queues prevent a slow Discord reply from blocking Telegram sends. The dispatcher drains the queue and calls <code>adapter.send()</code>.<br><strong>Caveat:</strong> Two TODO markers remain — <code>reply_message_id</code> is not yet stored in <code>response.metadata</code> after streaming, which matters for edit-in-place across session boundaries.</div>
+</div>
+
+<div class="decision">
+  <div class="dec-label">ADR-013 · temp file lifecycle (STT)</div>
+  <div class="dec-title">Audio temp file cleanup is the Agent's responsibility, not STTService</div>
+  <div class="dec-body"><strong>Why:</strong> STTService only knows the happy path. The Agent has try/finally context across all error branches — if STTService cleaned up, a transcription error would leave orphaned temp files.<br><strong>Ordering constraint:</strong> #139 (typed bus envelope) must ship before #80 (STT) — audio content needs a typed carrier in the bus.</div>
+</div>
+
+<div class="decision">
+  <div class="dec-label">Strategy · Chimera patterns</div>
+  <div class="dec-title">#134 (smart routing) and #135 (runtime config) promoted from ClawFamily analysis</div>
+  <div class="dec-body"><strong>Why:</strong> IronClaw and ScalyClaw analyses identified complexity-based model selection and live <code>!config</code> tuning as high-value, low-risk patterns. Added to Phase 1b tail as independent items — no blockers, fit within existing <code>AgentBase</code> abstraction.<br><strong>Deferred:</strong> Proactive engine, command shield, memory consolidation — Phase 2, needs infra.</div>
+</div>
+
+<div class="decision">
+  <div class="dec-label">Architecture · per-session asyncio.Task (#127)</div>
+  <div class="dec-title">Each Pool runs one asyncio.Task; Discord threads auto-created on first message</div>
+  <div class="dec-body"><strong>Why:</strong> Discord threads map 1:1 to conversation scopes. Creating on first message avoids needing the thread ID upfront. The Task will be cancelled on scope eviction (future).<br><strong>Considered:</strong> Discord Forum channels — deferred, regular threads are simpler for current use case.</div>
+</div>
+
+<!-- 5. STATE OF THINGS -->
+<div id="s5" class="sec-head"><span class="sec-num">5</span><span class="sec-title-text">State of Things</span></div>
+
+<div class="grid-4" style="margin-bottom:22px;">
+  <div class="kpi-card k-green as d1">
+    <div class="kpi-num">15</div>
+    <div class="kpi-label">Phase 1b issues shipped</div>
+    <div class="kpi-sub">Hub refactor trilogy, pairing, monitoring, circuit breaker, plugins, persona, SDK agent, memory foundation, TOML templates.</div>
+  </div>
+  <div class="kpi-card k-gold as d2">
+    <div class="kpi-num">2</div>
+    <div class="kpi-label">Open branches</div>
+    <div class="kpi-sub"><code>feat/135</code> runtime config and <code>feat/147</code> STT v1 — both in flight, neither merged.</div>
+  </div>
+  <div class="kpi-card k-red as d3">
+    <div class="kpi-num">4</div>
+    <div class="kpi-label">Issues blocked</div>
+    <div class="kpi-sub">#83 memory, #99 command sessions, #79 TTS, #136 multi-bot registry — all waiting on upstream issues.</div>
+  </div>
+  <div class="kpi-card k-dim as d4">
+    <div class="kpi-num">3</div>
+    <div class="kpi-label">Open TODOs in core</div>
+    <div class="kpi-sub">Pool eviction strategy, two reply_message_id markers in adapters.</div>
+  </div>
+</div>
+
+<div class="grid-2" style="align-items:start;">
+  <div class="ve-card" style="border-left:3px solid var(--sage);">
+    <div class="card-label sage">Working (stable)</div>
+    <ul class="feat-list" style="margin-top:8px;">
+      <li><strong>Hub + InboundBus + OutboundDispatcher</strong> — full message pipeline</li>
+      <li><strong>Telegram adapter</strong> — polling, streaming, topic support</li>
+      <li><strong>Discord adapter</strong> — gateway, thread auto-creation</li>
+      <li><strong>Unified pairing</strong> — access control across both platforms</li>
+      <li><strong>Circuit breaker</strong> — per-service LLM failure isolation</li>
+      <li><strong>Anthropic SDK agent</strong> — direct API calls</li>
+      <li><strong>Plugin loader</strong> — directory-based MVP, echo + pairing</li>
+      <li><strong>Monitoring</strong> — two-layer health checks + escalation</li>
+      <li><strong>TOML message templates</strong> — i18n-ready</li>
+      <li><strong>Persona system</strong> — vault-backed agent identity</li>
+      <li><strong>Test suite</strong> — 25+ files across core, adapters, agents</li>
+    </ul>
+  </div>
+  <div>
+    <div class="ve-card" style="margin-bottom:12px; border-left:3px solid var(--gold);">
+      <div class="card-label gold">In progress</div>
+      <ul class="feat-list" style="margin-top:8px;">
+        <li><span class="chip active">#139</span> <strong>Message normalization</strong> — typed bus envelope, next up</li>
+        <li><span class="chip active">feat/135</span> <strong>Runtime agent config</strong> — branch open, plan ready</li>
+        <li><span class="chip active">feat/147</span> <strong>STT v1 Telegram voice</strong> — branch open</li>
+        <li><span class="chip">#123</span> <strong>LlmProvider protocol</strong> — in analysis</li>
+        <li><span class="chip">#134</span> <strong>Smart routing</strong> — ready, no blockers</li>
+      </ul>
+    </div>
+    <div class="ve-card" style="border-left:3px solid var(--terra);">
+      <div class="card-label crimson">Blocked</div>
+      <ul class="feat-list" style="margin-top:8px;">
+        <li><span class="chip blocked">#83</span> Memory integration — needs #123</li>
+        <li><span class="chip blocked">#99</span> Command sessions — needs #83 + #139</li>
+        <li><span class="chip blocked">#79</span> TTS — needs #136 (multi-bot registry)</li>
+        <li><span class="chip blocked">#136</span> Multi-bot registry — needs #83 + #79</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- 6. MENTAL MODEL -->
+<div id="s6" class="sec-head"><span class="sec-num">6</span><span class="sec-title-text">Mental Model Essentials</span></div>
+
+<div class="grid-2" style="align-items:start;">
+  <div>
+    <div class="ve-card ve-card--elevated" style="margin-bottom:14px;">
+      <div class="card-label">Key invariants</div>
+      <ul class="inv-list">
+        <li><strong>Trust is hardcoded "user" from adapters.</strong> <code>Message.from_adapter()</code> always sets <code>trust="user"</code>. Only internal Hub code may set <code>trust="system"</code>. Never derive trust from inbound channel data.</li>
+        <li><strong>Pool ID = <code>RoutingKey.to_pool_id()</code> only.</strong> Format is <code>platform:bot_id:scope_id</code>. ADR-001 §4 forbids constructing this string inline anywhere in the codebase.</li>
+        <li><strong>InboundBus: register before start().</strong> Calling <code>register()</code> after feeders are running raises <code>RuntimeError</code>. A queue registered late would silently receive messages but have no feeder to drain it.</li>
+        <li><strong>Agent is stateless — Pool owns history.</strong> One <code>AgentBase</code> singleton serves all Pools. Conversation history lives in <code>Pool.history</code> and <code>Pool.sdk_history</code>. Mutating Agent state corrupts all scopes.</li>
+        <li><strong>Per-platform backpressure isolation.</strong> A Telegram flood cannot starve Discord. InboundBus maintains separate bounded queues; feeder tasks drain independently into one staging queue.</li>
+      </ul>
+    </div>
+  </div>
+  <div>
+    <div class="ve-card" style="margin-bottom:14px;">
+      <div class="card-label gold">Non-obvious coupling</div>
+      <ul class="inv-list">
+        <li><strong>scope_id extraction is adapter-specific.</strong> <code>Message.extract_scope_id()</code> branches on <code>TelegramContext</code> vs <code>DiscordContext</code>. Adding a new platform requires a new branch here — it raises <code>ValueError</code> at runtime, not at startup.</li>
+        <li><strong>OutboundDispatcher is created by Hub, not adapters.</strong> Adapters only implement <code>send()</code>. The dispatcher manages the per-channel outbound queue and calls <code>adapter.send()</code> from a background task.</li>
+        <li><strong>Pool eviction is absent.</strong> Pools accumulate indefinitely until process restart. The TODO at <code>pool.py:35</code> must be resolved before the memory layer (#83) can be designed — the eviction hook is where L0 compaction attaches.</li>
+        <li><strong>cli_pool.py and anthropic_agent.py are parallel, not hierarchical.</strong> Both subclass <code>AgentBase</code> but have completely different concurrency models (subprocess vs asyncio). Their fates diverge under #123.</li>
+      </ul>
+    </div>
+    <div class="ve-card ve-card--recessed">
+      <div class="card-label crimson">Gotchas</div>
+      <ul class="inv-list">
+        <li><code>content: MessageContent | str</code> — the <code>str</code> branch is legacy. New code should not assume <code>str</code> content. Will be cleaned up after #139.</li>
+        <li>Discord <code>thread_id</code> in <code>DiscordContext</code> can be <code>None</code>. <code>extract_scope_id()</code> always prefers thread over channel — check this logic before adding thread-aware features.</li>
+        <li>Telegram <code>message_id</code> is optional in <code>TelegramContext</code> — service messages (joins, pins) have no message_id. Don't assume it's set.</li>
+        <li><code>TURN_TIMEOUT_DEFAULT = 60.0s</code> in pool.py. Long-running agent turns (e.g. Whisper transcription) may timeout before STT completes. Review when implementing #80.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- 7. COGNITIVE DEBT -->
+<div id="s7" class="sec-head"><span class="sec-num">7</span><span class="sec-title-text">Cognitive Debt Hotspots</span></div>
+
+<div class="debt-card high">
+  <div class="debt-sev">high</div>
+  <div class="debt-title">Pool eviction strategy — undecided, blocks memory layer</div>
+  <div class="debt-desc"><code>pool.py:35</code> has a TODO with two documented options: <code>deque(maxlen=N)</code> sliding window, or a <code>Pool.append()</code> mutator with compaction callback. This decision is on the critical path to #83 (memory integration), which blocks #99 (command sessions). The longer it stays undecided, the more code accumulates assuming the current unbounded list.</div>
+  <div class="debt-fix">Fix: Write a 1-page ADR. Option B (compaction callback) is likely correct — the memory layer needs hook points for L0→L1 cascade. Decide during #123 LlmProvider design.</div>
+</div>
+
+<div class="debt-card high">
+  <div class="debt-sev">high</div>
+  <div class="debt-title"><code>cli_pool.py</code> — 410 lines, unclear fate under #123</div>
+  <div class="debt-desc">The Claude CLI subprocess pool is the largest module in core. When #123 (LlmProvider protocol) ships with a <code>ClaudeCliDriver</code>, it's unclear whether <code>cli_pool.py</code> becomes that driver (refactored in-place) or gets deleted and replaced. No doc comment explains the tension. If deleted, current CLI test coverage is wasted investment. If promoted, it needs significant reshaping.</div>
+  <div class="debt-fix">Fix: Add a module docstring to cli_pool.py explaining its expected fate. Decide explicitly during the #123 LlmProvider protocol design session.</div>
+</div>
+
+<div class="debt-card med">
+  <div class="debt-sev">medium</div>
+  <div class="debt-title">reply_message_id not stored after streaming — breaks edit-in-place across restarts</div>
+  <div class="debt-desc">Two TODOs — <code>discord.py:271</code> and <code>telegram.py:285</code> — note that the placeholder message ID is not stored in <code>response.metadata["reply_message_id"]</code>. Streaming edits work within a session (Pool holds the ID in memory) but break if the process restarts or if session persistence (#67) ever stores and replays responses.</div>
+  <div class="debt-fix">Fix: Complete both TODOs before implementing session persistence (#67). The fix is local to each adapter — should be a 1-hour task.</div>
+</div>
+
+<div class="debt-card med">
+  <div class="debt-sev">medium</div>
+  <div class="debt-title">Plugin handlers have no isolated tests</div>
+  <div class="debt-desc"><code>plugins/echo/handlers.py</code> and <code>plugins/pairing/handlers.py</code> have no dedicated test files. Plugin behavior is only verified end-to-end through the full Hub routing stack. A bug in a handler would surface as a routing failure — hard to pinpoint without unit-level tests.</div>
+  <div class="debt-fix">Fix: Add <code>tests/plugins/test_echo_handler.py</code> and <code>test_pairing_handler.py</code>. Invoke handlers directly, bypass Hub. Small surface area — should take under an hour.</div>
+</div>
+
+<div class="debt-card low">
+  <div class="debt-sev">low</div>
+  <div class="debt-title"><code>content: MessageContent | str</code> — legacy union pollutes the type model</div>
+  <div class="debt-desc">The <code>str</code> branch in <code>Message.content</code> was kept for backwards compatibility during adapter migration. <code>extract_text()</code> handles it but the union creates defensive branching anywhere content is inspected. This will linger until #139 (message normalization) forces a cleanup.</div>
+  <div class="debt-fix">Fix: After #139 ships, make <code>content: MessageContent</code> mandatory and remove the <code>str</code> branch from <code>extract_text()</code>. Tag with a comment now so it's findable.</div>
+</div>
+
+<!-- 8. NEXT STEPS -->
+<div id="s8" class="sec-head"><span class="sec-num">8</span><span class="sec-title-text">Next Steps</span></div>
+
+<div class="ve-card ve-card--hero" style="margin-bottom:24px;">
+  <div class="card-label">Critical path</div>
+  <div class="code-block">#139 message normalization   ‖   #123 LlmProvider protocol
+        ↓                                   ↓
+ unblocks #80 (STT)              unblocks #83 (memory integration)
+ unblocks #79 via #136                      ↓
+                               unblocks #99 (command sessions)</div>
+</div>
+
+<div class="next-item">
+  <div class="next-num">1</div>
+  <div>
+    <div class="next-title"><span class="chip active">#139</span> Message &amp; Media Normalization — start next</div>
+    <div class="next-desc">Typed bus envelope for all adapters. Spec exists, size L. This is the gate for STT, TTS, command sessions, and the legacy <code>str</code> content cleanup. Everything downstream is waiting on this one.</div>
+  </div>
+</div>
+<div class="next-item">
+  <div class="next-num">2</div>
+  <div>
+    <div class="next-title"><span class="chip active">feat/135</span> Runtime agent config — merge or continue</div>
+    <div class="next-desc">Branch is open. Plan has 4 slices. Size S, no blockers. Can land independently of #139. Quick win that improves live tuning ergonomics without touching the critical path.</div>
+  </div>
+</div>
+<div class="next-item">
+  <div class="next-num">3</div>
+  <div>
+    <div class="next-title"><span class="chip">#123</span> LlmProvider protocol — parallel with #139</div>
+    <div class="next-desc">Still in analysis. Can progress independently of #139. Decide the fate of <code>cli_pool.py</code> here. Critical for memory integration (#83) which unblocks most of Phase 1b tail.</div>
+  </div>
+</div>
+<div class="next-item">
+  <div class="next-num">4</div>
+  <div>
+    <div class="next-title"><span class="chip active">feat/147</span> STT v1 Telegram voice — land after #139</div>
+    <div class="next-desc">Branch open. Full spec + plan (4 slices, 19 tasks, ADR-013). Depends on #139 for typed audio content in the bus. Should be straightforward once the envelope is in place.</div>
+  </div>
+</div>
+<div class="next-item">
+  <div class="next-num">5</div>
+  <div>
+    <div class="next-title">Pool eviction decision — unblock memory (#83)</div>
+    <div class="next-desc">The TODO at <code>pool.py:35</code> needs a resolution. Write a short ADR: sliding window vs compaction callback. Doing this during #123 design makes sense — the LlmProvider protocol shape determines which eviction model fits better.</div>
+  </div>
+</div>
+
+</div><!-- /main -->
+</div><!-- /wrap -->
+
+<script>
+// === MERMAID ZOOM + PAN ===
+const INITIAL_ZOOM = 1.05;
+let currentZoom = INITIAL_ZOOM;
+let isDragging = false;
+let panOffset = { x: 0, y: 0 };
+let panStart  = { x: 0, y: 0 };
+let dragStart = { x: 0, y: 0 };
+
+const wrap  = document.getElementById('mermaid-wrap');
+const inner = document.getElementById('mermaid-inner');
+
+function applyT() {
+  inner.style.transform = `translate(${panOffset.x}px, ${panOffset.y}px) scale(${currentZoom})`;
+  inner.style.transformOrigin = 'top center';
+}
+
+function zoomM(delta) { currentZoom = Math.max(0.3, Math.min(3, currentZoom + delta)); applyT(); }
+function resetM() { currentZoom = INITIAL_ZOOM; panOffset = { x:0, y:0 }; applyT(); }
+function expandM() {
+  const svg = wrap.querySelector('svg');
+  if (!svg) return;
+  const blob = new Blob([svg.outerHTML], { type: 'image/svg+xml' });
+  window.open(URL.createObjectURL(blob), '_blank');
+}
+
+wrap.addEventListener('wheel', e => {
+  if (e.ctrlKey || e.metaKey) { e.preventDefault(); zoomM(e.deltaY < 0 ? 0.1 : -0.1); }
+}, { passive: false });
+
+wrap.addEventListener('mousedown', e => {
+  if (e.button !== 0) return;
+  isDragging = false;
+  dragStart = { x: e.clientX, y: e.clientY };
+  panStart  = { ...panOffset };
+  const onMove = e => {
+    const dx = e.clientX - dragStart.x, dy = e.clientY - dragStart.y;
+    if (Math.abs(dx) + Math.abs(dy) > 3) isDragging = true;
+    if (isDragging) { panOffset = { x: panStart.x + dx, y: panStart.y + dy }; applyT(); }
+  };
+  const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+});
+
+wrap.addEventListener('click', e => {
+  if (!isDragging && !e.target.closest('.mermaid-controls')) expandM();
+  isDragging = false;
+});
+
+// === TOC SCROLL SPY ===
+(function() {
+  const toc = document.getElementById('toc');
+  const links = toc.querySelectorAll('a');
+  const sections = [];
+  links.forEach(l => { const el = document.getElementById(l.getAttribute('href').slice(1)); if (el) sections.push({ el, link: l }); });
+  const obs = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        links.forEach(l => l.classList.remove('active'));
+        const m = sections.find(s => s.el === entry.target);
+        if (m) { m.link.classList.add('active'); if (window.innerWidth <= 1000) m.link.scrollIntoView({ behavior:'smooth', block:'nearest', inline:'center' }); }
+      }
+    });
+  }, { rootMargin: '-10% 0px -80% 0px' });
+  sections.forEach(s => obs.observe(s.el));
+  links.forEach(l => l.addEventListener('click', e => {
+    e.preventDefault();
+    const el = document.getElementById(l.getAttribute('href').slice(1));
+    if (el) { el.scrollIntoView({ behavior:'smooth', block:'start' }); history.replaceState(null,'','#'+l.getAttribute('href').slice(1)); }
+  }));
+})();
+</script>
+</body>
+</html>

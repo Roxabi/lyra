@@ -206,3 +206,4 @@ class Agent:
     stt: AgentSTTConfig | None = None  # deprecated — use voice.stt (PR1 compat)
     voice: AgentVoiceConfig | None = None  # #343 — unified voice config
     patterns: dict[str, bool] = field(default_factory=dict)  # #345 — rewrite rules
+    passthroughs: tuple[str, ...] = field(default=())  # commands forwarded to LLM

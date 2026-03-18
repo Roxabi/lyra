@@ -1,0 +1,1757 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lyra Engine — Project Master Plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ── RESET ─────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+/* ── TOKENS ─────────────────────────────────────────────────── */
+:root {
+  --font-display: 'Playfair Display', Georgia, serif;
+  --font-body:    'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono:    'IBM Plex Mono', 'Fira Code', Consolas, monospace;
+
+  --bg:          #f7f4ef;
+  --bg-alt:      #eeebe4;
+  --surface:     #ffffff;
+  --surface-2:   #faf8f4;
+  --border:      rgba(26, 21, 35, 0.08);
+  --border-2:    rgba(26, 21, 35, 0.14);
+  --text:        #1a1523;
+  --text-dim:    #655f72;
+  --text-muted:  #a89fba;
+
+  --accent:       #4f46e5;
+  --accent-dim:   rgba(79, 70, 229, 0.1);
+
+  --done:         #059669;
+  --done-dim:     rgba(5, 150, 105, 0.1);
+  --active:       #c2720f;
+  --active-dim:   rgba(194, 114, 15, 0.1);
+  --unblocked:    #0882a8;
+  --unblocked-dim:rgba(8, 130, 168, 0.1);
+  --ready:        #0f9f6a;
+  --ready-dim:    rgba(15, 159, 106, 0.1);
+  --blocked:      #c81d47;
+  --blocked-dim:  rgba(200, 29, 71, 0.1);
+  --frozen:       #64748b;
+  --frozen-dim:   rgba(100, 116, 139, 0.1);
+  --planned:      #6d28d9;
+  --planned-dim:  rgba(109, 40, 217, 0.1);
+  --analysis:     #0e7490;
+  --analysis-dim: rgba(14, 116, 144, 0.1);
+
+  --radius:    8px;
+  --radius-lg: 14px;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 14px rgba(0,0,0,0.09), 0 2px 6px rgba(0,0,0,0.05);
+  --shadow-lg: 0 8px 28px rgba(0,0,0,0.11), 0 4px 10px rgba(0,0,0,0.06);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:          #0c0a14;
+    --bg-alt:      #13101f;
+    --surface:     #18152a;
+    --surface-2:   #201c35;
+    --border:      rgba(255,255,255,0.07);
+    --border-2:    rgba(255,255,255,0.12);
+    --text:        #ece8f5;
+    --text-dim:    #8e88a5;
+    --text-muted:  #4d4667;
+
+    --accent:       #818cf8;
+    --accent-dim:   rgba(129, 140, 248, 0.13);
+
+    --done:         #34d399;
+    --done-dim:     rgba(52, 211, 153, 0.13);
+    --active:       #fbbf24;
+    --active-dim:   rgba(251, 191, 36, 0.13);
+    --unblocked:    #22d3ee;
+    --unblocked-dim:rgba(34, 211, 238, 0.13);
+    --ready:        #6ee7b7;
+    --ready-dim:    rgba(110, 231, 183, 0.13);
+    --blocked:      #fb7185;
+    --blocked-dim:  rgba(251, 113, 133, 0.13);
+    --frozen:       #94a3b8;
+    --frozen-dim:   rgba(148, 163, 184, 0.13);
+    --planned:      #c4b5fd;
+    --planned-dim:  rgba(196, 181, 253, 0.13);
+    --analysis:     #67e8f9;
+    --analysis-dim: rgba(103, 232, 249, 0.13);
+  }
+}
+
+/* ── BASE ───────────────────────────────────────────────────── */
+body {
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  font-size: 14px;
+}
+
+/* ── LAYOUT ─────────────────────────────────────────────────── */
+.page {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 28px 100px;
+}
+
+/* ── STICKY NAV ─────────────────────────────────────────────── */
+.sticky-nav {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border-2);
+  padding: 10px 0;
+  margin-bottom: 0;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+}
+.nav-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 28px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.nav-inner::-webkit-scrollbar { display: none; }
+.nav-link {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  text-decoration: none;
+  padding: 4px 9px;
+  border-radius: 4px;
+  white-space: nowrap;
+  transition: 0.15s;
+}
+.nav-link:hover {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+.nav-sep {
+  color: var(--border-2);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+/* ── HERO ───────────────────────────────────────────────────── */
+.hero {
+  padding: 64px 0 48px;
+  border-bottom: 1px solid var(--border-2);
+  margin-bottom: 56px;
+  position: relative;
+}
+.hero-bg-accent {
+  position: absolute;
+  top: 0; right: 0;
+  width: 400px; height: 300px;
+  background: radial-gradient(ellipse at 80% 20%, var(--accent-dim) 0%, transparent 70%);
+  pointer-events: none;
+}
+.hero-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.hero-label::before {
+  content: '';
+  display: inline-block;
+  width: 28px;
+  height: 1px;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+.hero h1 {
+  font-family: var(--font-display);
+  font-size: clamp(36px, 5.5vw, 58px);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin-bottom: 20px;
+}
+.hero h1 em {
+  font-style: italic;
+  color: var(--accent);
+}
+.hero-sub {
+  font-size: 15px;
+  color: var(--text-dim);
+  max-width: 600px;
+  line-height: 1.75;
+  margin-bottom: 36px;
+}
+.hero-stats {
+  display: flex;
+  gap: 36px;
+  flex-wrap: wrap;
+}
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.stat-value {
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text);
+}
+.stat-value.done  { color: var(--done); }
+.stat-value.live  { color: var(--active); }
+.stat-value.ahead { color: var(--planned); }
+.stat-value.ice   { color: var(--frozen); }
+.stat-label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ── SECTION ────────────────────────────────────────────────── */
+.section {
+  margin-bottom: 68px;
+  scroll-margin-top: 56px;
+}
+.section-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 26px;
+  padding-bottom: 13px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.section-number {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+.section-title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.section-pill {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+/* ── BADGES ─────────────────────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.b-done       { background: var(--done-dim);     color: var(--done); }
+.b-active     { background: var(--active-dim);   color: var(--active); }
+.b-unblocked  { background: var(--unblocked-dim);color: var(--unblocked); }
+.b-ready      { background: var(--ready-dim);    color: var(--ready); }
+.b-blocked    { background: var(--blocked-dim);  color: var(--blocked); }
+.b-frozen     { background: var(--frozen-dim);   color: var(--frozen); }
+.b-planned    { background: var(--planned-dim);  color: var(--planned); }
+.b-analysis   { background: var(--analysis-dim); color: var(--analysis); }
+.b-next       { background: var(--active); color: #fff; }
+.b-accent     { background: var(--accent-dim);   color: var(--accent); }
+.b-p1         { background: var(--blocked-dim);  color: var(--blocked); }
+.b-p2         { background: var(--unblocked-dim);color: var(--unblocked); }
+.b-p3         { background: var(--frozen-dim);   color: var(--frozen); }
+.sz-s         { background: var(--ready-dim);    color: var(--ready); }
+.sz-m         { background: var(--accent-dim);   color: var(--accent); }
+.sz-l         { background: var(--blocked-dim);  color: var(--blocked); }
+
+/* ── PHASE TIMELINE ─────────────────────────────────────────── */
+.phase-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(165px, 1fr));
+  gap: 12px;
+}
+.phase-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  box-shadow: var(--shadow-sm);
+  min-width: 0;
+}
+.phase-card.p-done      { border-top: 3px solid var(--done); }
+.phase-card.p-active    { border-top: 3px solid var(--active); }
+.phase-card.p-unblocked { border-top: 3px solid var(--unblocked); }
+.phase-card.p-planned   { border-top: 3px solid var(--planned); }
+.phase-card.p-frozen    { border-top: 3px solid var(--frozen); opacity: 0.75; }
+.phase-emoji {
+  font-size: 18px;
+  margin-bottom: 8px;
+}
+.phase-label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 5px;
+}
+.phase-card.p-done      .phase-label { color: var(--done); }
+.phase-card.p-active    .phase-label { color: var(--active); }
+.phase-card.p-unblocked .phase-label { color: var(--unblocked); }
+.phase-card.p-planned   .phase-label { color: var(--planned); }
+.phase-card.p-frozen    .phase-label { color: var(--frozen); }
+.phase-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 7px;
+  overflow-wrap: break-word;
+}
+.phase-desc {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  line-height: 1.55;
+  overflow-wrap: break-word;
+}
+
+/* ── MERMAID WRAP ───────────────────────────────────────────── */
+.mermaid-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px 24px 16px;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  position: relative;
+  min-width: 0;
+}
+.mermaid-ctrl {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  gap: 4px;
+  z-index: 10;
+}
+.mermaid-ctrl button {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 3px 8px;
+  transition: 0.15s;
+}
+.mermaid-ctrl button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.mermaid-scroll {
+  overflow-x: auto;
+}
+.mermaid-caption {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: 14px;
+  font-style: italic;
+}
+
+/* ── ISSUE GRID ─────────────────────────────────────────────── */
+.issue-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(265px, 1fr));
+  gap: 12px;
+}
+.issue-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 15px;
+  box-shadow: var(--shadow-sm);
+  min-width: 0;
+}
+.issue-card.is-next {
+  border-color: var(--active);
+  box-shadow: 0 0 0 1px var(--active), var(--shadow-sm);
+}
+.issue-card.is-cp {
+  border-left: 3px solid var(--accent);
+}
+.issue-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 9px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.issue-num {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.issue-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  min-width: 0;
+  overflow-wrap: break-word;
+  flex: 1;
+  line-height: 1.4;
+}
+.issue-meta {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-bottom: 9px;
+}
+.issue-desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.55;
+  overflow-wrap: break-word;
+  min-width: 0;
+}
+.issue-deps {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-muted);
+  margin-top: 8px;
+  overflow-wrap: break-word;
+}
+
+/* ── MEMORY LEVELS ──────────────────────────────────────────── */
+.memory-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+  margin-bottom: 28px;
+}
+.mem-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px 14px;
+  box-shadow: var(--shadow-sm);
+  text-align: center;
+  min-width: 0;
+}
+.mem-card.m-impl    { border-top: 3px solid var(--done); }
+.mem-card.m-planned { border-top: 3px solid var(--planned); opacity: 0.8; }
+.mem-card.m-frozen  { border-top: 3px solid var(--frozen); opacity: 0.65; }
+.mem-num {
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 6px;
+}
+.mem-card.m-impl    .mem-num { color: var(--done); }
+.mem-card.m-planned .mem-num { color: var(--planned); }
+.mem-card.m-frozen  .mem-num { color: var(--frozen); }
+.mem-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+.mem-desc {
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  overflow-wrap: break-word;
+  margin-bottom: 10px;
+}
+
+/* ── TABLE ──────────────────────────────────────────────────── */
+.table-wrap {
+  overflow-x: auto;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  font-size: 13px;
+}
+thead { position: sticky; top: 0; z-index: 2; }
+th {
+  background: var(--surface-2);
+  padding: 10px 14px;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border-2);
+  white-space: nowrap;
+}
+td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  min-width: 0;
+  overflow-wrap: break-word;
+  line-height: 1.5;
+}
+tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: var(--bg-alt); }
+td code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+/* ── CALLOUTS ───────────────────────────────────────────────── */
+.callout {
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  border-left: 3px solid;
+  margin-bottom: 12px;
+  overflow-wrap: break-word;
+  min-width: 0;
+}
+.callout.rose   { background: rgba(200,29,71,0.06);  border-color: var(--blocked); }
+.callout.gold   { background: rgba(194,114,15,0.06); border-color: var(--active); }
+.callout.teal   { background: rgba(8,130,168,0.06);  border-color: var(--unblocked); }
+.callout.indigo { background: rgba(79,70,229,0.06);  border-color: var(--accent); }
+.callout.green  { background: rgba(5,150,105,0.06);  border-color: var(--done); }
+.callout-head {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 7px;
+}
+.callout.rose   .callout-head { color: var(--blocked); }
+.callout.gold   .callout-head { color: var(--active); }
+.callout.teal   .callout-head { color: var(--unblocked); }
+.callout.indigo .callout-head { color: var(--accent); }
+.callout.green  .callout-head { color: var(--done); }
+.callout p, .callout li {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.6;
+}
+.callout code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+/* ── ARCH LEGEND ────────────────────────────────────────────── */
+.legend {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  margin-bottom: 6px;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-dim);
+}
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ── PHASE 2 GRID ───────────────────────────────────────────── */
+.p2-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+.p2-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 18px;
+  box-shadow: var(--shadow-sm);
+  min-width: 0;
+}
+.p2-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 8px;
+  overflow-wrap: break-word;
+}
+.p2-card-meta {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 9px;
+}
+.p2-card-desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.55;
+  overflow-wrap: break-word;
+}
+
+/* ── FOOTER ─────────────────────────────────────────────────── */
+.footer {
+  padding-top: 36px;
+  border-top: 1px solid var(--border);
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+}
+
+/* ── RESPONSIVE ─────────────────────────────────────────────── */
+@media (max-width: 720px) {
+  .memory-row { grid-template-columns: repeat(3, 1fr); }
+  .hero-stats { gap: 20px; }
+  .phase-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 480px) {
+  .memory-row { grid-template-columns: repeat(2, 1fr); }
+  .phase-grid { grid-template-columns: 1fr; }
+}
+
+/* ── GRID-2 ─────────────────────────────────────────────────── */
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 640px) {
+  .grid-2 { grid-template-columns: 1fr; }
+}
+</style><!-- diagram-meta:start -->
+<meta name="diagram:title"     content="Lyra — Project Roadmap v1">
+<meta name="diagram:date"      content="2026-03-18">
+<meta name="diagram:category"  content="lyra">
+<meta name="diagram:cat-label" content="Lyra Docs">
+<meta name="diagram:color"     content="blue">
+<meta name="diagram:badges"    content="latest">
+<!-- diagram-meta:end -->
+</head>
+<body>
+
+<!-- ── STICKY NAV ──────────────────────────────────────────── -->
+<nav class="sticky-nav">
+  <div class="nav-inner">
+    <a class="nav-link" href="#phases">Phases</a>
+    <span class="nav-sep">·</span>
+    <a class="nav-link" href="#arch">Architecture</a>
+    <span class="nav-sep">·</span>
+    <a class="nav-link" href="#active">Active #1b</a>
+    <span class="nav-sep">·</span>
+    <a class="nav-link" href="#voice">Voice #74</a>
+    <span class="nav-sep">·</span>
+    <a class="nav-link" href="#memory">Memory</a>
+    <span class="nav-sep">·</span>
+    <a class="nav-link" href="#infra">Infra</a>
+    <span class="nav-sep">·</span>
+    <a class="nav-link" href="#chimera">Chimera</a>
+    <span class="nav-sep">·</span>
+    <a class="nav-link" href="#phase2">Phase 2</a>
+    <span class="nav-sep">·</span>
+    <a class="nav-link" href="#biz">Business</a>
+    <span class="nav-sep">·</span>
+    <a class="nav-link" href="#codebase">Codebase</a>
+    <span class="nav-sep">·</span>
+    <a class="nav-link" href="#notes">Notes</a>
+  </div>
+</nav>
+
+<div class="page">
+
+<!-- ── HERO ─────────────────────────────────────────────────── -->
+<header class="hero">
+  <div class="hero-bg-accent"></div>
+  <div class="hero-label">Project Master Plan · 2026-03-12</div>
+  <h1>Lyra <em>Engine</em> — Full Roadmap</h1>
+  <p class="hero-sub">Personal AI agent engine. Hub-and-spoke, asyncio, multi-channel (Telegram + Discord). All phases, issues, dependencies, and architecture in one view.</p>
+  <div class="hero-stats">
+    <div class="stat">
+      <span class="stat-value done">2</span>
+      <span class="stat-label">Phases Done</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value live">7</span>
+      <span class="stat-label">Active Issues</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value ahead">20+</span>
+      <span class="stat-label">Planned Issues</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value ice">4</span>
+      <span class="stat-label">Frozen Phases</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value done">18</span>
+      <span class="stat-label">Phase 1b Completed</span>
+    </div>
+  </div>
+</header>
+
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- 01 · PHASE OVERVIEW                                        -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<section id="phases" class="section">
+  <div class="section-header">
+    <span class="section-number">01</span>
+    <h2 class="section-title">Phase Overview</h2>
+  </div>
+  <div class="phase-grid">
+
+    <div class="phase-card p-done">
+      <div class="phase-emoji">✅</div>
+      <div class="phase-label">Done</div>
+      <div class="phase-name">Phase 0 — #101</div>
+      <div class="phase-desc">Bot core parity: pairing, circuit breaker, TOML templates, plugin system.</div>
+    </div>
+
+    <div class="phase-card p-done">
+      <div class="phase-emoji">✅</div>
+      <div class="phase-label">Done</div>
+      <div class="phase-name">Phase 1 — Hub</div>
+      <div class="phase-desc">asyncio bus, Telegram + Discord adapters, SimpleAgent, command router.</div>
+    </div>
+
+    <div class="phase-card p-active">
+      <div class="phase-emoji">⚡</div>
+      <div class="phase-label">Tail Active</div>
+      <div class="phase-name">Phase 1b — #73</div>
+      <div class="phase-desc">Agent core: persona ✓, SDK agent ✓, parity ✓, memory foundation ✓, hub refactor ✓. 7 tail issues remain.</div>
+    </div>
+
+    <div class="phase-card p-unblocked">
+      <div class="phase-emoji">🔓</div>
+      <div class="phase-label">Unblocked</div>
+      <div class="phase-name">Voice — #74</div>
+      <div class="phase-desc">#80 STT ready now. #79 TTS blocked by #136 multi-bot. Unblocked since #76 shipped.</div>
+    </div>
+
+    <div class="phase-card p-planned">
+      <div class="phase-emoji">◦</div>
+      <div class="phase-label">Planned</div>
+      <div class="phase-name">Phase 2 — #60</div>
+      <div class="phase-desc">NATS + Machine 2 coordination. Start after 1b tail + voice stable.</div>
+    </div>
+
+    <div class="phase-card p-frozen">
+      <div class="phase-emoji">❄</div>
+      <div class="phase-label">Frozen</div>
+      <div class="phase-name">Phase 3 — #61</div>
+      <div class="phase-desc">Atomic SLMs + cognitive pipeline. Needs VRAM benchmark first.</div>
+    </div>
+
+    <div class="phase-card p-frozen">
+      <div class="phase-emoji">❄</div>
+      <div class="phase-label">Frozen</div>
+      <div class="phase-name">Phase 4 — #62</div>
+      <div class="phase-desc">Resilience, observability, security. Hash-chained audit trail.</div>
+    </div>
+
+    <div class="phase-card p-frozen">
+      <div class="phase-emoji">❄</div>
+      <div class="phase-label">Frozen</div>
+      <div class="phase-name">Phase 5 — #63</div>
+      <div class="phase-desc">Multi-agent orchestration.</div>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- 02 · CURRENT ARCHITECTURE                                  -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<section id="arch" class="section">
+  <div class="section-header">
+    <span class="section-number">02</span>
+    <h2 class="section-title">Current Architecture</h2>
+    <span class="section-pill badge b-done">Implemented</span>
+  </div>
+
+  <div class="mermaid-wrap" id="arch-wrap">
+    <div class="mermaid-ctrl">
+      <button onclick="zoomD('arch-wrap',1.25)">+</button>
+      <button onclick="zoomD('arch-wrap',0.8)">−</button>
+      <button onclick="resetD('arch-wrap')">⟳</button>
+    </div>
+    <div class="mermaid-scroll" id="arch-inner">
+      <div class="mermaid">
+flowchart LR
+    subgraph CH [Channels]
+        TG[Telegram]
+        DC[Discord]
+    end
+    subgraph CORE [Hub Core]
+        IB[InboundBus]
+        HUB[Hub Router]
+        OD[OutboundDispatcher]
+    end
+    subgraph POOLS [Pools - one per scope]
+        P1[Pool chat-555]
+        P2[Pool thread-888]
+    end
+    subgraph INTEL [Intelligence]
+        AGT[AnthropicAgent]
+        API[Anthropic Claude]
+        MEM[Memory L0 and L3]
+    end
+    TG -->|aiogram v3 webhook| IB
+    DC -->|discord.py v2 gateway| IB
+    IB -->|bounded queue 100| HUB
+    HUB --> P1
+    HUB --> P2
+    P1 --> AGT
+    P2 --> AGT
+    AGT --> API
+    API --> AGT
+    AGT --> MEM
+    AGT -->|response| HUB
+    HUB --> OD
+    OD --> TG
+    OD --> DC
+    style HUB fill:#4f46e5,color:#fff,stroke:#3730a3
+    style AGT fill:#059669,color:#fff,stroke:#047857
+    style IB fill:#0882a8,color:#fff,stroke:#0369a1
+    style OD fill:#0882a8,color:#fff,stroke:#0369a1
+    style API fill:#7c3aed,color:#fff,stroke:#6d28d9
+    style MEM fill:#c2720f,color:#fff,stroke:#a16207
+      </div>
+    </div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#4f46e5"></div>Hub — router + rate limiter + pairing gate</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#059669"></div>AnthropicAgent — stateless singleton</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#0882a8"></div>Bus infrastructure</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#7c3aed"></div>Anthropic API (cloud LLM)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#c2720f"></div>Memory L0+L3 (SQLite + BM25 + embeddings)</div>
+    </div>
+    <div class="mermaid-caption">Hub-and-spoke. Messages enter InboundBus → Hub resolves binding → per-scope Pool → AnthropicAgent. Responses return via OutboundDispatcher.</div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- 03 · PHASE 1b TAIL — ACTIVE ISSUES                        -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<section id="active" class="section">
+  <div class="section-header">
+    <span class="section-number">03</span>
+    <h2 class="section-title">Phase 1b Tail — Active Issues</h2>
+    <span class="section-pill badge b-active">Current Focus</span>
+  </div>
+
+  <div class="callout gold" style="margin-bottom:22px;">
+    <div class="callout-head">Critical Path</div>
+    <p><code>#139 ∥ #123</code> → <code>#83</code> → <code>#99</code><br>
+    Independent (do anytime): <code>#135</code> (S) &middot; <code>#134</code> (M) &middot; <code>#80</code> STT (M)</p>
+  </div>
+
+  <div class="mermaid-wrap" style="margin-bottom:24px;" id="dep-wrap">
+    <div class="mermaid-ctrl">
+      <button onclick="zoomD('dep-wrap',1.25)">+</button>
+      <button onclick="zoomD('dep-wrap',0.8)">−</button>
+      <button onclick="resetD('dep-wrap')">⟳</button>
+    </div>
+    <div class="mermaid-scroll" id="dep-inner">
+      <div class="mermaid">
+flowchart LR
+    M139["139 - Msg Normalization\nL - NEXT"]
+    M123["123 - LlmProvider\nL - Analysis"]
+    M83["83 - Agent Integration\nL - Blocked"]
+    M99["99 - Command Sessions\nL - Blocked"]
+    M135["135 - Runtime Config\nS - Ready"]
+    M134["134 - Smart Routing\nM - Ready"]
+    M80["80 - Voice STT\nM - Ready"]
+    M79["79 - Voice TTS\nP2 - Ready"]
+    M136["136 - Multi-bot\nM - Blocked last"]
+    M128["128 - Import History\nP2 - Blocked"]
+    M139 --> M99
+    M123 --> M83
+    M83 --> M99
+    M83 --> M136
+    M79 --> M136
+    M83 --> M128
+    M139 --> M80
+    M139 --> M79
+    style M139 fill:#c2720f,color:#fff,stroke:#a16207
+    style M123 fill:#0882a8,color:#fff,stroke:#0369a1
+    style M83 fill:#c81d47,color:#fff,stroke:#9f1239
+    style M99 fill:#c81d47,color:#fff,stroke:#9f1239
+    style M135 fill:#0f9f6a,color:#fff,stroke:#047857
+    style M134 fill:#0f9f6a,color:#fff,stroke:#047857
+    style M136 fill:#64748b,color:#fff,stroke:#475569
+    style M80 fill:#0f9f6a,color:#fff,stroke:#047857
+    style M79 fill:#0f9f6a,color:#fff,stroke:#047857
+    style M128 fill:#c81d47,color:#fff,stroke:#9f1239
+      </div>
+    </div>
+    <div class="mermaid-caption">Dependency graph. Amber = next up &middot; Teal = analysis &middot; Green = ready to pick &middot; Red = blocked &middot; Grey = do last</div>
+  </div>
+
+  <div class="issue-grid">
+
+    <div class="issue-card is-next">
+      <div class="issue-row">
+        <span class="issue-num">#139</span>
+        <span class="issue-title">Message &amp; Media Normalization</span>
+      </div>
+      <div class="issue-meta">
+        <span class="badge b-next">NEXT</span>
+        <span class="badge sz-l">L</span>
+      </div>
+      <p class="issue-desc">Typed bus envelope for all adapters — unblocks #99, #80, #79. Highest-leverage issue in the backlog.</p>
+    </div>
+
+    <div class="issue-card is-cp">
+      <div class="issue-row">
+        <span class="issue-num">#123</span>
+        <span class="issue-title">LlmProvider Protocol</span>
+      </div>
+      <div class="issue-meta">
+        <span class="badge b-analysis">Analysis</span>
+        <span class="badge sz-l">L</span>
+      </div>
+      <p class="issue-desc">AnthropicSdkDriver + ClaudeCliDriver + OllamaDriver. Runs in parallel with #139. Unblocks #83.</p>
+    </div>
+
+    <div class="issue-card">
+      <div class="issue-row">
+        <span class="issue-num">#83</span>
+        <span class="issue-title">Lyra Agent Integration</span>
+      </div>
+      <div class="issue-meta">
+        <span class="badge b-blocked">Blocked</span>
+        <span class="badge sz-l">L</span>
+        <span class="badge b-p1">P1</span>
+      </div>
+      <p class="issue-desc">Identity anchor, session lifecycle, L0 compaction into L3. Core of the memory + agent track.</p>
+      <div class="issue-deps">↳ Blocked by #123</div>
+    </div>
+
+    <div class="issue-card">
+      <div class="issue-row">
+        <span class="issue-num">#99</span>
+        <span class="issue-title">Hub Command Sessions</span>
+      </div>
+      <div class="issue-meta">
+        <span class="badge b-blocked">Blocked</span>
+        <span class="badge sz-l">L</span>
+      </div>
+      <p class="issue-desc">/add, /explain, /summarize, /search — multi-turn command sessions with session state.</p>
+      <div class="issue-deps">↳ Blocked by #83 + #139</div>
+    </div>
+
+    <div class="issue-card">
+      <div class="issue-row">
+        <span class="issue-num">#135</span>
+        <span class="issue-title">Runtime Agent Config</span>
+      </div>
+      <div class="issue-meta">
+        <span class="badge b-ready">Ready</span>
+        <span class="badge sz-s">S</span>
+      </div>
+      <p class="issue-desc"><code>!config</code> live tuning without restart. Chimera pattern from ScalyClaw. Independent.</p>
+    </div>
+
+    <div class="issue-card">
+      <div class="issue-row">
+        <span class="issue-num">#134</span>
+        <span class="issue-title">LLM Smart Routing</span>
+      </div>
+      <div class="issue-meta">
+        <span class="badge b-ready">Ready</span>
+        <span class="badge sz-m">M</span>
+      </div>
+      <p class="issue-desc">Complexity-based model selection — simple messages route to small model, complex to large. Chimera pattern from IronClaw. Independent.</p>
+    </div>
+
+    <div class="issue-card">
+      <div class="issue-row">
+        <span class="issue-num">#136</span>
+        <span class="issue-title">Multi-bot Registry Upgrade</span>
+      </div>
+      <div class="issue-meta">
+        <span class="badge b-blocked">Blocked</span>
+        <span class="badge sz-m">M</span>
+      </div>
+      <p class="issue-desc">Per-bot-id routing + multi-token config. Do last — not a blocker for voice.</p>
+      <div class="issue-deps">↳ Blocked by #83 + #79</div>
+    </div>
+
+  </div>
+
+  <div style="margin-top:24px;">
+    <div class="callout green">
+      <div class="callout-head">Phase 1b Completed (18 issues)</div>
+      <p>#112 Hub refactor &middot; #75 Agent persona &middot; #76 Direct SDK agent &middot; #77 Parity audit &middot; #78 Vault memory L3 &middot; #81 roxabi-memory &middot; #82 Hybrid search fastembed &middot; #84 Vault-migrate v2 &middot; #103 Unified pairing &middot; #104 Circuit breaker &middot; #105 TOML templates &middot; #106 Plugin system &middot; #111 Bash pre-check &middot; #125 scope_id routing &middot; #126 per-channel queues &middot; #127 per-session Task + Discord threads</p>
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- 04 · VOICE PIPELINE                                        -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<section id="voice" class="section">
+  <div class="section-header">
+    <span class="section-number">04</span>
+    <h2 class="section-title">Voice Pipeline — #74</h2>
+    <span class="section-pill badge b-unblocked">Unblocked</span>
+  </div>
+
+  <div class="callout teal" style="margin-bottom:20px;">
+    <div class="callout-head">Status</div>
+    <p><strong>#80 STT</strong> is ready to pick now (unblocked after #139). Plan exists at <code>artifacts/plans/80-voice-stt-whisper-plan.mdx</code>.<br>
+    <strong>#79 TTS</strong> also unblocked after #139, but needs #136 multi-bot registry before production use.<br>
+    <strong>#42</strong> language detection is fully independent.</p>
+  </div>
+
+  <div class="issue-grid">
+
+    <div class="issue-card">
+      <div class="issue-row">
+        <span class="issue-num">#80</span>
+        <span class="issue-title">Voice STT — Audio Transcription (Whisper)</span>
+      </div>
+      <div class="issue-meta">
+        <span class="badge b-ready">Ready</span>
+        <span class="badge sz-m">M</span>
+        <span class="badge b-p2">P2</span>
+      </div>
+      <p class="issue-desc">Whisper-based transcription. Receives audio from normalized bus envelope. Full plan + spec already exists in <code>artifacts/</code>.</p>
+      <div class="issue-deps">↳ Unblocked after #139</div>
+    </div>
+
+    <div class="issue-card">
+      <div class="issue-row">
+        <span class="issue-num">#79</span>
+        <span class="issue-title">Voice TTS in Telegram (voicecli)</span>
+      </div>
+      <div class="issue-meta">
+        <span class="badge b-ready">Ready</span>
+        <span class="badge sz-m">M</span>
+        <span class="badge b-p2">P2</span>
+      </div>
+      <p class="issue-desc">voicecli Qwen TTS integration. Sends voice messages back to Telegram. External tool ADR-010 pattern.</p>
+      <div class="issue-deps">↳ Unblocked after #139 · Full production needs #136</div>
+    </div>
+
+    <div class="issue-card">
+      <div class="issue-row">
+        <span class="issue-num">#42</span>
+        <span class="issue-title">Automatic Language Detection</span>
+      </div>
+      <div class="issue-meta">
+        <span class="badge b-ready">Ready</span>
+        <span class="badge sz-m">M</span>
+        <span class="badge b-p2">P2</span>
+      </div>
+      <p class="issue-desc">Detect message language for i18n routing and voice pipeline. Fully independent.</p>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- 05 · MEMORY SYSTEM                                         -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<section id="memory" class="section">
+  <div class="section-header">
+    <span class="section-number">05</span>
+    <h2 class="section-title">Memory System — 5 Levels</h2>
+  </div>
+
+  <div class="memory-row">
+    <div class="mem-card m-impl">
+      <div class="mem-num">L0</div>
+      <div class="mem-name">Working</div>
+      <div class="mem-desc">Active context window. LLM-managed. Volatile. Auto-compacted when window fills.</div>
+      <span class="badge b-done">Impl.</span>
+    </div>
+    <div class="mem-card m-planned">
+      <div class="mem-num">L1</div>
+      <div class="mem-name">Session</div>
+      <div class="mem-desc">Multi-turn state per Pool. Configurable timeout. Cleanup on disconnect.</div>
+      <span class="badge b-planned">Deferred</span>
+    </div>
+    <div class="mem-card m-planned">
+      <div class="mem-num">L2</div>
+      <div class="mem-name">Episodic</div>
+      <div class="mem-desc">Dated Markdown files. Immutable, auditable. Human-readable.</div>
+      <span class="badge b-planned">Deferred</span>
+    </div>
+    <div class="mem-card m-impl">
+      <div class="mem-num">L3</div>
+      <div class="mem-name">Semantic</div>
+      <div class="mem-desc">SQLite + BM25 (rank-bm25) + sqlite-vec. Hybrid search. roxabi-memory package.</div>
+      <span class="badge b-done">Impl.</span>
+    </div>
+    <div class="mem-card m-frozen">
+      <div class="mem-num">L4</div>
+      <div class="mem-name">Procedural</div>
+      <div class="mem-desc">Learned skills + preferences. LLM-driven clustering. Knowledge graph optional.</div>
+      <span class="badge b-frozen">Phase 3</span>
+    </div>
+  </div>
+
+  <div class="issue-grid">
+
+    <div class="issue-card is-cp">
+      <div class="issue-row">
+        <span class="issue-num">#83</span>
+        <span class="issue-title">Lyra Agent Integration</span>
+      </div>
+      <div class="issue-meta">
+        <span class="badge b-blocked">Blocked</span>
+        <span class="badge b-p1">P1</span>
+      </div>
+      <p class="issue-desc">Identity anchor, session lifecycle, L0 compaction into L3. Gates #128, #67, #136.</p>
+      <div class="issue-deps">↳ Blocked by #123</div>
+    </div>
+
+    <div class="issue-card">
+      <div class="issue-row">
+        <span class="issue-num">#128</span>
+        <span class="issue-title">Import 2ndBrain History</span>
+      </div>
+      <div class="issue-meta">
+        <span class="badge b-blocked">Blocked</span>
+        <span class="badge b-p2">P2</span>
+      </div>
+      <p class="issue-desc">Migrate 2ndBrain session history → episodic memory L3. One-time migration.</p>
+      <div class="issue-deps">↳ Blocked by #83</div>
+    </div>
+
+    <div class="issue-card">
+      <div class="issue-row">
+        <span class="issue-num">#67</span>
+        <span class="issue-title">Session Persistence</span>
+      </div>
+      <div class="issue-meta">
+        <span class="badge b-ready">Open</span>
+        <span class="badge b-p2">P2</span>
+      </div>
+      <p class="issue-desc">JSONL conversation history. Persist pools across restarts. Blocked by #83.</p>
+    </div>
+
+    <div class="issue-card">
+      <div class="issue-row">
+        <span class="issue-num">#71</span>
+        <span class="issue-title">Memory SLM</span>
+      </div>
+      <div class="issue-meta">
+        <span class="badge b-frozen">Frozen</span>
+        <span class="badge b-p3">P3</span>
+      </div>
+      <p class="issue-desc">Episodic-to-semantic promotion via ~1B small model. Part of Phase 3 cognitive pipeline.</p>
+    </div>
+
+    <div class="issue-card">
+      <div class="issue-row">
+        <span class="issue-num">#72</span>
+        <span class="issue-title">Memory Phase 2 — L4 Procedural</span>
+      </div>
+      <div class="issue-meta">
+        <span class="badge b-frozen">Frozen</span>
+        <span class="badge b-p3">P3</span>
+      </div>
+      <p class="issue-desc">Level 4 procedural seeds. Knowledge graph (networkx or kuzu). Phase 3.</p>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- 06 · INFRASTRUCTURE                                        -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<section id="infra" class="section">
+  <div class="section-header">
+    <span class="section-number">06</span>
+    <h2 class="section-title">Infrastructure Track</h2>
+  </div>
+
+  <div class="issue-grid">
+
+    <div class="issue-card">
+      <div class="issue-row">
+        <span class="issue-num">#133</span>
+        <span class="issue-title">Split Adapters — Independent Supervisor Processes</span>
+      </div>
+      <div class="issue-meta">
+        <span class="badge b-ready">Open</span>
+        <span class="badge b-p2">P2</span>
+      </div>
+      <p class="issue-desc">Each adapter (Telegram, Discord) runs as an independent supervisord process for fault isolation and independent restart without affecting the Hub.</p>
+    </div>
+
+    <div class="issue-card">
+      <div class="issue-row">
+        <span class="issue-num">#132</span>
+        <span class="issue-title">Document Machine 2 Supervisor + Voice Daemons</span>
+      </div>
+      <div class="issue-meta">
+        <span class="badge b-ready">Open</span>
+        <span class="badge b-p2">P2</span>
+      </div>
+      <p class="issue-desc">Document Machine 2 supervisor setup, voicecli_tts and voicecli_stt daemon configuration for lyra-stack.</p>
+    </div>
+
+    <div class="issue-card">
+      <div class="issue-row">
+        <span class="issue-num">#123</span>
+        <span class="issue-title">Claude CLI Wrapper Library</span>
+      </div>
+      <div class="issue-meta">
+        <span class="badge b-analysis">Analysis</span>
+        <span class="badge b-p2">P2</span>
+      </div>
+      <p class="issue-desc">Extract 2ndBrain pool design into a reusable Claude CLI wrapper library. Also drives the LlmProvider protocol for #83.</p>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- 07 · CHIMERA STRATEGY — PHASE 2 PATTERNS                  -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<section id="chimera" class="section">
+  <div class="section-header">
+    <span class="section-number">07</span>
+    <h2 class="section-title">Chimera Strategy — Planned Patterns</h2>
+    <span class="section-pill badge b-planned">After 1b</span>
+  </div>
+
+  <div class="callout indigo" style="margin-bottom:22px;">
+    <div class="callout-head">Source</div>
+    <p>Patterns distilled from ClawFamily analysis (IronClaw, ScalyClaw, OpenClaw, OpenFang). #134 and #135 already in the 1b tail. Remainder implements after Phase 1b is closed. Full design: <code>artifacts/analyses/clawfamily/chimera-strategy.md</code></p>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Issue</th>
+          <th>Pattern</th>
+          <th>Source</th>
+          <th>Size</th>
+          <th>Phase</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>#134</code></td>
+          <td>Smart routing — complexity-based model selection</td>
+          <td>IronClaw</td>
+          <td><span class="badge sz-m">M</span></td>
+          <td><span class="badge b-active">1b tail</span></td>
+        </tr>
+        <tr>
+          <td><code>#135</code></td>
+          <td>Runtime agent config — <code>!config</code> live tuning</td>
+          <td>ScalyClaw</td>
+          <td><span class="badge sz-s">S</span></td>
+          <td><span class="badge b-active">1b tail</span></td>
+        </tr>
+        <tr>
+          <td>—</td>
+          <td>Proactive engagement engine (2-phase cron + queue)</td>
+          <td>ScalyClaw</td>
+          <td><span class="badge sz-l">L</span></td>
+          <td><span class="badge b-planned">Phase 2</span></td>
+        </tr>
+        <tr>
+          <td>—</td>
+          <td>Command shield (deterministic blocklist, no LLM)</td>
+          <td>ScalyClaw</td>
+          <td><span class="badge sz-s">S</span></td>
+          <td><span class="badge b-planned">Phase 2</span></td>
+        </tr>
+        <tr>
+          <td>—</td>
+          <td>Memory consolidation (LLM-driven clustering)</td>
+          <td>ScalyClaw</td>
+          <td><span class="badge sz-m">M</span></td>
+          <td><span class="badge b-planned">Phase 2</span></td>
+        </tr>
+        <tr>
+          <td>—</td>
+          <td>Lane-based queue (cron lane separate from user lane)</td>
+          <td>OpenClaw</td>
+          <td><span class="badge sz-s">S</span></td>
+          <td><span class="badge b-planned">Phase 2</span></td>
+        </tr>
+        <tr>
+          <td>—</td>
+          <td>Diagnostic events + stuck detection</td>
+          <td>OpenClaw</td>
+          <td><span class="badge sz-m">M</span></td>
+          <td><span class="badge b-planned">Phase 2</span></td>
+        </tr>
+        <tr>
+          <td>—</td>
+          <td>Prompt injection scanner</td>
+          <td>OpenFang</td>
+          <td><span class="badge sz-s">S</span></td>
+          <td><span class="badge b-planned">Phase 2</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- 08 · PHASE 2 — NATS + MACHINE 2                           -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<section id="phase2" class="section">
+  <div class="section-header">
+    <span class="section-number">08</span>
+    <h2 class="section-title">Phase 2 — NATS + Machine 2 (#60)</h2>
+    <span class="section-pill badge b-planned">Planned</span>
+  </div>
+
+  <div class="callout gold" style="margin-bottom:22px;">
+    <div class="callout-head">Prerequisite Gate</div>
+    <p>Start only after Phase 1b tail + voice pipeline are stable. NATS and local LLM on Machine 2 are explicitly frozen until then. Rolling decision: NATS adoption → after 1b tail shipped and stable in production.</p>
+  </div>
+
+  <div class="grid-2">
+    <div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>#</th><th>Issue</th><th>P</th></tr></thead>
+          <tbody>
+            <tr><td><code>#49</code></td><td>Install NATS server on Machine 1</td><td><span class="badge b-p2">P2</span></td></tr>
+            <tr><td><code>#50</code></td><td>NatsBus implementation</td><td><span class="badge b-p2">P2</span></td></tr>
+            <tr><td><code>#48</code></td><td>Bus abstraction — LocalBus/NatsBus interface</td><td><span class="badge b-p2">P2</span></td></tr>
+            <tr><td><code>#51</code></td><td>LLM worker on Machine 2 — NATS inference service</td><td><span class="badge b-p2">P2</span></td></tr>
+            <tr><td><code>#52</code></td><td>Health check — heartbeat + worker status</td><td><span class="badge b-p2">P2</span></td></tr>
+            <tr><td><code>#23</code></td><td>Machine 2 timeout + circuit breaker + cloud fallback</td><td><span class="badge b-p2">P2</span></td></tr>
+            <tr><td><code>#56</code></td><td>JetStream persistence — survive restarts, replay</td><td><span class="badge b-p3">P3</span></td></tr>
+            <tr><td><code>#57</code></td><td>NATS observability — Prometheus + Grafana</td><td><span class="badge b-p3">P3</span></td></tr>
+            <tr><td><code>#58</code></td><td>NATS auth — nkey/JWT</td><td><span class="badge b-p3">P3</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div>
+      <div class="p2-card">
+        <div class="p2-card-title">Phase 3 — Atomic SLMs</div>
+        <div class="p2-card-meta">
+          <span class="badge b-frozen">Frozen until Phase 2 stable</span>
+          <span class="badge b-p3">P3</span>
+        </div>
+        <div class="p2-card-desc">Reserve full LLM for generation only. Everything else → small specialized models.
+          <br><br>
+          <strong>VRAM budget on Machine 1:</strong> TTS 5GB + embeddings 0.5GB = 5.5GB / 10GB. 4.5GB headroom.
+          <br><br>
+          Routing / intent: ~1-3B &lt;50ms<br>
+          Memory relevance: ~1B &lt;30ms<br>
+          Entity extraction: ~3B &lt;100ms<br>
+          Skill planner: ~3-7B &lt;200ms<br><br>
+          Expected: 80-90% messages routed without full LLM. Cost ÷10, latency ÷5.
+        </div>
+      </div>
+      <div class="p2-card" style="margin-top:12px;">
+        <div class="p2-card-title">CognitiveFrame Protocol</div>
+        <div class="p2-card-meta">
+          <span class="badge b-frozen">Phase 3</span>
+        </div>
+        <div class="p2-card-desc">SLMs exchange <code>CognitiveFrame</code> — compact structures, not natural language. Fields: intent, entities, context_refs, skill_path, confidence, emotional_tone, metadata.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- 09 · BUSINESS VALIDATION                                   -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<section id="biz" class="section">
+  <div class="section-header">
+    <span class="section-number">09</span>
+    <h2 class="section-title">Business Validation Track</h2>
+  </div>
+
+  <div class="callout teal" style="margin-bottom:22px;">
+    <div class="callout-head">Strategy</div>
+    <p>No direct interviews. Social replaces interviews: post content about niche pain points, observe signals. Engagement, DMs, comments = organic validation. P1 issues gate all downstream dev.</p>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Issue</th>
+          <th>P</th>
+          <th>Go/No-go Gate</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>#10</code></td>
+          <td>LegalTech validation — LinkedIn posts (lawyers / notaries)</td>
+          <td><span class="badge b-p1">P1</span></td>
+          <td>3 qualified DMs or 1 pricing request → go</td>
+        </tr>
+        <tr>
+          <td><code>#47</code></td>
+          <td>Social media strategy synthesis</td>
+          <td><span class="badge b-p1">P1</span></td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td><code>#11</code></td>
+          <td>MedTech validation — LinkedIn posts</td>
+          <td><span class="badge b-p2">P2</span></td>
+          <td>Social signals</td>
+        </tr>
+        <tr>
+          <td><code>#65</code></td>
+          <td>Google Workspace integration (epic)</td>
+          <td><span class="badge b-p2">P2</span></td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td><code>#14</code></td>
+          <td>LLM benchmark — Qwen vs Mistral on Machine 2</td>
+          <td><span class="badge b-p2">P2</span></td>
+          <td>Informs default LLM decision for Phase 2</td>
+        </tr>
+        <tr>
+          <td><code>#16</code></td>
+          <td>LegalTech SaaS development</td>
+          <td><span class="badge b-p3">P3</span></td>
+          <td>Gated on #10 signal</td>
+        </tr>
+        <tr>
+          <td><code>#17</code></td>
+          <td>MedTech cardio development</td>
+          <td><span class="badge b-p3">P3</span></td>
+          <td>Gated on #11 signal</td>
+        </tr>
+        <tr>
+          <td><code>#18</code></td>
+          <td>YouTube automation pipeline</td>
+          <td><span class="badge b-p3">P3</span></td>
+          <td>After 1 validated manual workflow</td>
+        </tr>
+        <tr>
+          <td><code>#19</code></td>
+          <td>Meta-skills + atomic SLM (YouTube/SaaS)</td>
+          <td><span class="badge b-p3">P3</span></td>
+          <td>Phase 3+</td>
+        </tr>
+        <tr>
+          <td><code>#20</code></td>
+          <td>Polymarket agent</td>
+          <td><span class="badge b-p3">P3</span></td>
+          <td>Phase 3+</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- 10 · CODEBASE MAP                                          -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<section id="codebase" class="section">
+  <div class="section-header">
+    <span class="section-number">10</span>
+    <h2 class="section-title">Codebase Map</h2>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>File</th>
+          <th>Status</th>
+          <th>Purpose</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>core/hub.py</code></td>
+          <td><span class="badge b-done">Done</span></td>
+          <td>Central router — InboundBus + OutboundDispatchers + adapter registry + pools + rate limiter (20msg/60s sliding window) + pairing gate</td>
+        </tr>
+        <tr>
+          <td><code>core/message.py</code></td>
+          <td><span class="badge b-done">Done</span></td>
+          <td>Message, Response, Platform, TelegramContext, DiscordContext, TextContent, ImageContent, AudioContent. trust field security model.</td>
+        </tr>
+        <tr>
+          <td><code>core/inbound_bus.py</code></td>
+          <td><span class="badge b-done">Done</span></td>
+          <td>Per-platform asyncio.Queue(100). Bounded, backpressure-aware. All channels dequeue to single staging queue. (#126)</td>
+        </tr>
+        <tr>
+          <td><code>core/outbound_dispatcher.py</code></td>
+          <td><span class="badge b-done">Done</span></td>
+          <td>Per-platform outbound queue. Fire-and-forget response routing. Owns circuit breaker check. (#126)</td>
+        </tr>
+        <tr>
+          <td><code>core/pool.py</code></td>
+          <td><span class="badge b-done">Done</span></td>
+          <td>Per-scope conversation pool. asyncio.Task per scope for sequential processing. Conversation history + session state. (#127)</td>
+        </tr>
+        <tr>
+          <td><code>core/agent.py</code></td>
+          <td><span class="badge b-done">Done</span></td>
+          <td>AgentBase protocol. Stateless singleton — immutable config: system_prompt, permissions, memory_namespace.</td>
+        </tr>
+        <tr>
+          <td><code>core/circuit_breaker.py</code></td>
+          <td><span class="badge b-done">Done</span></td>
+          <td>CircuitRegistry + per-provider circuit breakers. Hub checks before spending LLM tokens. (#104)</td>
+        </tr>
+        <tr>
+          <td><code>core/command_router.py</code></td>
+          <td><span class="badge b-done">Done</span></td>
+          <td>Slash-command dispatch. get_command_name(), is_command(), dispatch(). (#66)</td>
+        </tr>
+        <tr>
+          <td><code>core/pairing.py</code></td>
+          <td><span class="badge b-done">Done</span></td>
+          <td>Unified pairing system for Telegram + Discord. /join code validation. Pairing gate in Hub. (#103)</td>
+        </tr>
+        <tr>
+          <td><code>core/plugin_loader.py</code></td>
+          <td><span class="badge b-done">Done</span></td>
+          <td>Directory-based plugin discovery and loading. Scans <code>plugins/</code>, loads handler modules. (#106)</td>
+        </tr>
+        <tr>
+          <td><code>core/messages.py</code></td>
+          <td><span class="badge b-done">Done</span></td>
+          <td>TOML message template system with i18n. get(key, **kwargs) → localized string. (#105)</td>
+        </tr>
+        <tr>
+          <td><code>agents/anthropic_agent.py</code></td>
+          <td><span class="badge b-done">Done</span></td>
+          <td>Direct Anthropic SDK agent. Replaces CLI subprocess. Streaming support. (#76)</td>
+        </tr>
+        <tr>
+          <td><code>agents/simple_agent.py</code></td>
+          <td><span class="badge b-done">Done</span></td>
+          <td>Minimal agent for testing. Echo / fixed response.</td>
+        </tr>
+        <tr>
+          <td><code>adapters/telegram.py</code></td>
+          <td><span class="badge b-done">Done</span></td>
+          <td>aiogram v3 webhook adapter. Normalizes Telegram updates → Message. send() + send_streaming() with edit-in-place.</td>
+        </tr>
+        <tr>
+          <td><code>adapters/discord.py</code></td>
+          <td><span class="badge b-done">Done</span></td>
+          <td>discord.py v2 gateway adapter. Auto-creates threads for forum channels. Per-channel queue routing. (#127)</td>
+        </tr>
+        <tr>
+          <td><code>monitoring/</code></td>
+          <td><span class="badge b-done">Done</span></td>
+          <td>Bash pre-check layer before LLM monitoring calls. Health checks, escalation, config. (#111)</td>
+        </tr>
+        <tr>
+          <td><code>plugins/echo/</code></td>
+          <td><span class="badge b-done">Done</span></td>
+          <td>Reference plugin — echoes messages back. Demonstrates plugin system.</td>
+        </tr>
+        <tr>
+          <td><code>plugins/pairing/</code></td>
+          <td><span class="badge b-done">Done</span></td>
+          <td>/join command handler plugin integrated with PairingManager.</td>
+        </tr>
+        <tr>
+          <td><code>config.py</code></td>
+          <td><span class="badge b-done">Done</span></td>
+          <td>Pydantic settings. Loaded from TOML + env. Validated at startup.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- 11 · NOTES & RISKS                                         -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<section id="notes" class="section">
+  <div class="section-header">
+    <span class="section-number">11</span>
+    <h2 class="section-title">Notes &amp; Risks</h2>
+  </div>
+
+  <div class="callout gold">
+    <div class="callout-head">Bottleneck — #139 is the highest-leverage pick</div>
+    <p>Message Normalization (#139) unblocks <strong>5 issues</strong>: #99 (command sessions), #80 (STT), #79 (TTS), and indirectly the entire voice pipeline. Should be picked immediately after any in-progress work completes.</p>
+  </div>
+
+  <div class="callout rose">
+    <div class="callout-head">Critical — Synchronous Embeddings</div>
+    <p><code>sentence-transformers</code> blocks the asyncio event loop without <code>run_in_executor</code>. Phase 1b uses <code>fastembed</code> (ONNX, lighter). Evaluate before adding more embedding calls in Phase 2. Non-negotiable: never call synchronous I/O in the event loop.</p>
+  </div>
+
+  <div class="callout rose">
+    <div class="callout-head">Critical — Machine 2 Fallback Not Implemented</div>
+    <p>Timeout + circuit breaker if Machine 2 is offline is not implemented. Not relevant in Phase 1 (cloud LLM only). <strong>Required before #51</strong> in Phase 2. #23 covers this.</p>
+  </div>
+
+  <div class="callout gold">
+    <div class="callout-head">VRAM Budget — Measure Before Phase 2 SLMs</div>
+    <p>Machine 1 VRAM: TTS ~5GB + embeddings ~0.5GB = <strong>5.5GB / 10GB used</strong>. 4.5GB headroom. Measure with <code>nvidia-smi</code> under real load before committing to Phase 2 SLMs. Budget is tight.</p>
+  </div>
+
+  <div class="callout teal">
+    <div class="callout-head">Rolling Decisions — Still Open</div>
+    <p>
+      Default LLM for Machine 2 → after benchmark #14 (Qwen vs Mistral).<br>
+      LegalTech go/no-go → social signals #10 (min: 3 qualified DMs or 1 pricing request).<br>
+      MedTech go/no-go → social signals #11.<br>
+      NATS adoption → after Phase 1b tail shipped and stable in production.<br>
+      YouTube automation → after 1 validated manual workflow.
+    </p>
+  </div>
+
+  <div class="callout indigo">
+    <div class="callout-head">ADR-010 — External Tool Pattern (Install → Wrap → Declare)</div>
+    <p>External CLIs (voiceCLI, imageCLI, Google Workspace) follow: <strong>Install</strong> binary on PATH, <strong>Wrap</strong> in a thin roxabi-plugins skill (SKILL.md only), <strong>Declare</strong> in agent TOML (Bash allowlist now, MCP later). No forking, no vendoring. Upstream maintains the CLI.</p>
+  </div>
+
+  <div class="callout indigo">
+    <div class="callout-head">Security Contract — Never Derive Trust from Inbound Data</div>
+    <p>Adapters set <code>trust="user"</code> unconditionally. Only Hub internal code may set <code>trust="system"</code>. <code>Message.user_id</code> is the authenticated sender identity (rate limiting, pairing). <code>Message.extract_scope_id()</code> is the conversation scope (pool routing). Never derive either from unverified channel data.</p>
+  </div>
+
+</section>
+
+
+<!-- ── FOOTER ────────────────────────────────────────────────── -->
+<footer class="footer">
+  Lyra Engine — Project Master Plan · 2026-03-12 · claude-sonnet-4-6
+</footer>
+
+</div><!-- /.page -->
+
+<!-- ── MERMAID ────────────────────────────────────────────────── -->
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({
+  startOnLoad: true,
+  theme: 'base',
+  themeVariables: {
+    primaryColor: '#4f46e5',
+    primaryTextColor: '#ffffff',
+    primaryBorderColor: '#3730a3',
+    lineColor: '#8b85a0',
+    secondaryColor: '#f0ece5',
+    tertiaryColor: '#f7f4ef',
+    background: '#ffffff',
+    mainBkg: '#ffffff',
+    nodeBorder: '#d8d4e8',
+    clusterBkg: '#f0ece5',
+    clusterBorder: '#d8d4e8',
+    titleColor: '#1a1523',
+    edgeLabelBackground: '#faf8f4',
+    fontFamily: '"IBM Plex Mono", monospace',
+    fontSize: '12px',
+  },
+  flowchart: {
+    htmlLabels: false,
+    curve: 'cardinal',
+    padding: 20,
+  },
+});
+</script>
+
+<!-- ── ZOOM CONTROLS ─────────────────────────────────────────── -->
+<script>
+const scales = {};
+function zoomD(id, factor) {
+  const wrap = document.getElementById(id);
+  if (!wrap) return;
+  const svg = wrap.querySelector('svg');
+  if (!svg) return;
+  scales[id] = (scales[id] || 1) * factor;
+  svg.style.transform = `scale(${scales[id]})`;
+  svg.style.transformOrigin = 'top left';
+}
+function resetD(id) {
+  const wrap = document.getElementById(id);
+  if (!wrap) return;
+  const svg = wrap.querySelector('svg');
+  if (!svg) return;
+  scales[id] = 1;
+  svg.style.transform = 'scale(1)';
+}
+</script>
+
+</body>
+</html>

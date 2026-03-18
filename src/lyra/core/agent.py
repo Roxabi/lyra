@@ -75,6 +75,8 @@ class AgentBase(ABC, SessionManager):
         self._rebuild_command_router()
         if self._tts is not None:
             self.command_router.register_passthrough("voice")
+        for _cmd in config.passthroughs:
+            self.command_router.register_passthrough(_cmd)
         # S3 — memory DI (issue #83); injected by Hub.register_agent()
         self._memory: "MemoryManager | None" = None
         self._task_registry: set | None = None

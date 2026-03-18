@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lyra — Visual Directions v2 (F · G · H)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<!-- diagram-meta:start -->
+<meta name="diagram:title"     content="Lyra — Visual Directions v2">
+<meta name="diagram:date"      content="2026-03-18">
+<meta name="diagram:category"  content="brand">
+<meta name="diagram:cat-label" content="Lyra Branding">
+<meta name="diagram:color"     content="amber">
+<meta name="diagram:badges"    content="latest,v2">
+<!-- diagram-meta:end -->
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+/* ── Direction Variables ──────────────────────────────────── */
+.dir-F {
+  --bg:       #1a1d23;
+  --bg2:      #21252d;
+  --bg3:      #282d37;
+  --bg4:      #2f3540;
+  --c1:       #f0a030;
+  --c2:       #00c8e0;
+  --c3:       #f5f5f0;
+  --c4:       #f0a03018;
+  --c5:       #00c8e018;
+  --text:     #f5f5f0;
+  --muted:    #7a8494;
+  --border:   #353d4a;
+  --grad:     linear-gradient(135deg,#f0a030,#f0c060);
+  --grad2:    linear-gradient(135deg,#00c8e0,#00a0b8);
+  --font-h:   'JetBrains Mono', monospace;
+  --font-b:   'Inter', sans-serif;
+  --font-m:   'JetBrains Mono', monospace;
+  --radius:   6px;
+  --glow1:    0 0 20px #f0a03030;
+  --glow2:    0 0 20px #00c8e030;
+}
+.dir-G {
+  --bg:       #0c1222;
+  --bg2:      #111b30;
+  --bg3:      #16243e;
+  --bg4:      #1c2e4a;
+  --c1:       #00d4aa;
+  --c2:       #e8edf5;
+  --c3:       #d4a017;
+  --c4:       #00d4aa18;
+  --c5:       #d4a01718;
+  --text:     #e8edf5;
+  --muted:    #6b8aaa;
+  --border:   #1e3050;
+  --grad:     linear-gradient(135deg,#00d4aa,#00b892);
+  --grad2:    linear-gradient(135deg,#d4a017,#e8b830);
+  --font-h:   'Space Grotesk', sans-serif;
+  --font-b:   'Space Grotesk', sans-serif;
+  --font-m:   'JetBrains Mono', monospace;
+  --radius:   4px;
+  --glow1:    0 0 24px #00d4aa28;
+  --glow2:    0 0 24px #d4a01728;
+}
+.dir-H {
+  --bg:       #0a0a0f;
+  --bg2:      #111118;
+  --bg3:      #18181f;
+  --bg4:      #20202a;
+  --c1:       #e85d04;
+  --c2:       #fafafa;
+  --c3:       #6b7280;
+  --c4:       #e85d0420;
+  --c5:       #fafafa10;
+  --text:     #fafafa;
+  --muted:    #6b7280;
+  --border:   #2a2a35;
+  --grad:     linear-gradient(135deg,#e85d04,#ff7d2a);
+  --grad2:    linear-gradient(135deg,#6b7280,#9ca3af);
+  --font-h:   'Outfit', sans-serif;
+  --font-b:   'Inter', sans-serif;
+  --font-m:   'JetBrains Mono', monospace;
+  --radius:   3px;
+  --glow1:    0 0 28px #e85d0438;
+  --glow2:    0 0 16px #ffffff15;
+}
+
+/* ── Base ─────────────────────────────────────────────── */
+body {
+  background: #0d0f14;
+  color: #ccc;
+  font-family: 'Inter', sans-serif;
+  min-height: 100vh;
+}
+
+/* ── Tabs ────────────────────────────────────────────── */
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 20px 24px 0;
+  background: #0d0f14;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  border-bottom: 1px solid #1a2030;
+}
+.tab {
+  padding: 11px 22px;
+  cursor: pointer;
+  border: none;
+  background: #131820;
+  color: #6b8090;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: .04em;
+  transition: all .2s;
+  border-top: 2px solid transparent;
+  border-radius: 4px 4px 0 0;
+}
+.tab:hover { background: #1a2232; color: #aaa; }
+.tab[data-dir="F"].active { border-top-color: #f0a030; color: #f0a030; background: #1a1d23; }
+.tab[data-dir="G"].active { border-top-color: #00d4aa; color: #00d4aa; background: #0c1222; }
+.tab[data-dir="H"].active { border-top-color: #e85d04; color: #e85d04; background: #0a0a0f; }
+
+/* ── Direction Panels ────────────────────────────────── */
+.direction { display: none; min-height: calc(100vh - 54px); padding: 48px 40px 64px; }
+.direction.active { display: block; }
+.dir-F.direction { background: var(--bg); }
+.dir-G.direction { background: var(--bg); }
+.dir-H.direction { background: var(--bg); }
+
+/* ── Section scaffolding ──────────────────────────────── */
+.dir-title {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin-bottom: 44px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+.dir-code {
+  font-family: var(--font-m);
+  font-size: 12px;
+  color: var(--c1);
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  border-radius: 4px;
+  letter-spacing: .1em;
+}
+.dir-name {
+  font-family: var(--font-h);
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text);
+}
+.dir-tagline {
+  font-family: var(--font-b);
+  font-size: 14px;
+  color: var(--muted);
+}
+.section-3   { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; margin-bottom: 28px; }
+.section-2   { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 28px; }
+.section-wide{ margin-bottom: 28px; }
+.card-label  { font-family: var(--font-m); font-size: 10px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); margin-bottom: 14px; }
+
+/* ── Palette ──────────────────────────────────────────── */
+.palette { display: flex; gap: 10px; flex-wrap: wrap; }
+.swatch { width: 76px; }
+.sw-color { width: 76px; height: 54px; border-radius: var(--radius); border: 1px solid rgba(255,255,255,.07); }
+.sw-hex  { font-family: var(--font-m); font-size: 10px; color: var(--muted); margin-top: 5px; }
+.sw-name { font-size: 9px; color: var(--muted); opacity: .6; margin-top: 1px; }
+
+/* ── Typography panel ─────────────────────────────────── */
+.type-panel {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px 32px;
+}
+.type-h    { font-family: var(--font-h); font-size: 32px; font-weight: 700; color: var(--text); line-height: 1.15; margin-bottom: 10px; }
+.type-sub  { font-family: var(--font-h); font-size: 16px; font-weight: 400; color: var(--c1); margin-bottom: 14px; }
+.type-body { font-family: var(--font-b); font-size: 14px; color: var(--muted); line-height: 1.65; max-width: 420px; }
+.type-mono { font-family: var(--font-m); font-size: 12px; color: var(--c2); margin-top: 14px; opacity: .65; }
+
+/* ── Logo panel ──────────────────────────────────────── */
+.logo-panel {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+}
+
+/* ── Component Card ──────────────────────────────────── */
+.comp-card {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  box-shadow: var(--glow1);
+}
+.c-tag   { font-family: var(--font-m); font-size: 10px; letter-spacing: .15em; text-transform: uppercase; color: var(--c1); margin-bottom: 8px; }
+.c-title { font-family: var(--font-h); font-size: 18px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+.c-text  { font-family: var(--font-b); font-size: 14px; color: var(--muted); line-height: 1.55; margin-bottom: 20px; }
+.c-btn {
+  display: inline-block;
+  padding: 9px 20px;
+  background: var(--grad);
+  border: none;
+  border-radius: var(--radius);
+  color: #fff;
+  font-family: var(--font-b);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: .03em;
+  box-shadow: var(--glow1);
+}
+
+/* ── Hero ────────────────────────────────────────────── */
+.hero-panel {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 56px 48px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.hero-eyebrow { font-family: var(--font-m); font-size: 11px; letter-spacing: .25em; text-transform: uppercase; color: var(--c1); margin-bottom: 18px; }
+.hero-h {
+  font-family: var(--font-h);
+  font-size: 48px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1.08;
+  margin-bottom: 18px;
+}
+.hero-sub { font-family: var(--font-b); font-size: 17px; color: var(--muted); max-width: 540px; margin: 0 auto 32px; line-height: 1.65; }
+.btn-primary {
+  display: inline-block;
+  padding: 14px 30px;
+  background: var(--grad);
+  border: none;
+  border-radius: var(--radius);
+  color: #fff;
+  font-family: var(--font-h);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: var(--glow1);
+  letter-spacing: .04em;
+  margin-right: 10px;
+}
+.btn-ghost {
+  display: inline-block;
+  padding: 14px 30px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--muted);
+  font-family: var(--font-b);
+  font-size: 14px;
+  cursor: pointer;
+  transition: border-color .2s, color .2s;
+}
+.btn-ghost:hover { border-color: var(--c1); color: var(--c1); }
+
+/* ── Modularity Showcase ─────────────────────────────── */
+.mod-showcase {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 32px;
+}
+.mod-grid {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  justify-content: center;
+  margin-top: 8px;
+}
+.mod-block {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  min-width: 140px;
+  text-align: center;
+  position: relative;
+  box-shadow: var(--glow1);
+}
+.mod-block.slot {
+  border-style: dashed;
+  border-color: var(--c1);
+  background: var(--c4);
+  opacity: .7;
+}
+.mod-icon { font-family: var(--font-m); font-size: 22px; margin-bottom: 8px; }
+.mod-label { font-family: var(--font-h); font-size: 12px; font-weight: 600; color: var(--text); }
+.mod-sub   { font-family: var(--font-m); font-size: 10px; color: var(--muted); margin-top: 4px; }
+.mod-arrow {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  color: var(--c1);
+  font-size: 18px;
+  opacity: .6;
+}
+.mod-plus {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px dashed var(--c1);
+  color: var(--c1);
+  font-size: 16px;
+  margin: 0 10px;
+  opacity: .55;
+}
+
+/* ── Mood + Yuki ─────────────────────────────────────── */
+.mood-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.mood-chip {
+  padding: 5px 13px;
+  border-radius: 100px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  font-family: var(--font-b);
+  font-size: 12px;
+  color: var(--muted);
+}
+.yuki-block {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--c1);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  padding: 16px 20px;
+  font-family: var(--font-b);
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.yuki-block strong { color: var(--text); font-weight: 600; }
+
+/* ── Gradient text ───────────────────────────────────── */
+.grad-text {
+  background: var(--grad);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Dir-F specifics ─────────────────────────────────── */
+.dir-F .hero-h { letter-spacing: -.01em; }
+.dir-F .mod-block { border-radius: 6px; }
+.dir-F .type-h  { letter-spacing: -.01em; }
+
+/* ── Dir-G specifics ─────────────────────────────────── */
+.dir-G .hero-h  { font-weight: 600; letter-spacing: -.02em; }
+.dir-G .c-title { font-weight: 600; }
+.dir-G .mod-block { background: var(--bg3); }
+
+/* ── Dir-H specifics ─────────────────────────────────── */
+.dir-H .hero-h  { font-weight: 800; letter-spacing: -.02em; font-size: 52px; }
+.dir-H .type-h  { font-weight: 800; }
+.dir-H .c-btn   { font-weight: 700; text-transform: uppercase; letter-spacing: .06em; font-size: 12px; }
+.dir-H .btn-primary { text-transform: uppercase; letter-spacing: .06em; font-size: 12px; }
+.dir-H .mod-label { font-weight: 700; }
+
+/* ── Hero decorative SVG bg ──────────────────────────── */
+.hero-deco { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+
+/* ── Responsive ──────────────────────────────────────── */
+@media (max-width: 900px) {
+  .section-3 { grid-template-columns: 1fr 1fr; }
+  .section-2 { grid-template-columns: 1fr; }
+  .hero-h    { font-size: 34px !important; }
+  .direction { padding: 32px 20px 48px; }
+  .mod-grid  { flex-wrap: wrap; gap: 12px; }
+  .mod-arrow, .mod-plus { display: none; }
+}
+@media (max-width: 620px) {
+  .section-3 { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<nav class="tabs">
+  <button class="tab active" data-dir="F">F — Workbench</button>
+  <button class="tab"        data-dir="G">G — Open Circuit</button>
+  <button class="tab"        data-dir="H">H — Forge</button>
+</nav>
+
+
+<!-- ═══════════════════════════════════════════════════════
+     DIRECTION F — WORKBENCH
+════════════════════════════════════════════════════════ -->
+<section class="direction dir-F active" id="dir-F">
+
+  <div class="dir-title">
+    <span class="dir-code">F</span>
+    <span class="dir-name">Workbench</span>
+    <span class="dir-tagline">Modular craft — build on a solid foundation</span>
+  </div>
+
+  <!-- Row 1: Palette + Logo + Mood -->
+  <div class="section-3">
+    <div>
+      <div class="card-label">Color Palette</div>
+      <div class="palette">
+        <div class="swatch"><div class="sw-color" style="background:#1a1d23;border-color:#353d4a"></div><div class="sw-hex">#1a1d23</div><div class="sw-name">Dark Slate</div></div>
+        <div class="swatch"><div class="sw-color" style="background:#282d37"></div><div class="sw-hex">#282d37</div><div class="sw-name">Bench Surface</div></div>
+        <div class="swatch"><div class="sw-color" style="background:#353d4a"></div><div class="sw-hex">#353d4a</div><div class="sw-name">Grid Line</div></div>
+        <div class="swatch"><div class="sw-color" style="background:#f0a030"></div><div class="sw-hex">#f0a030</div><div class="sw-name">Amber</div></div>
+        <div class="swatch"><div class="sw-color" style="background:#00c8e0"></div><div class="sw-hex">#00c8e0</div><div class="sw-name">Teal</div></div>
+        <div class="swatch"><div class="sw-color" style="background:#f5f5f0"></div><div class="sw-hex">#f5f5f0</div><div class="sw-name">Warm White</div></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card-label">Logo Mark</div>
+      <div class="logo-panel">
+        <svg width="160" height="170" viewBox="0 0 160 170" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="fg1" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#f0a030"/>
+              <stop offset="100%" stop-color="#00c8e0"/>
+            </linearGradient>
+            <linearGradient id="fg2" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stop-color="#00c8e0"/>
+              <stop offset="100%" stop-color="#f0a030"/>
+            </linearGradient>
+          </defs>
+          <!-- Grid background hint -->
+          <line x1="0" y1="28" x2="160" y2="28" stroke="#353d4a" stroke-width=".5" opacity=".4"/>
+          <line x1="0" y1="56" x2="160" y2="56" stroke="#353d4a" stroke-width=".5" opacity=".4"/>
+          <line x1="0" y1="84" x2="160" y2="84" stroke="#353d4a" stroke-width=".5" opacity=".4"/>
+          <line x1="40" y1="0"  x2="40"  y2="120" stroke="#353d4a" stroke-width=".5" opacity=".4"/>
+          <line x1="80" y1="0"  x2="80"  y2="120" stroke="#353d4a" stroke-width=".5" opacity=".4"/>
+          <line x1="120" y1="0" x2="120" y2="120" stroke="#353d4a" stroke-width=".5" opacity=".4"/>
+          <!-- Core base block -->
+          <rect x="54" y="38" width="52" height="52" rx="5" fill="#21252d" stroke="url(#fg1)" stroke-width="2"/>
+          <!-- Extension slot left -->
+          <rect x="14" y="52" width="34" height="24" rx="4" fill="#282d37" stroke="#f0a030" stroke-width="1.5" stroke-dasharray="4 2"/>
+          <!-- Extension slot right -->
+          <rect x="112" y="52" width="34" height="24" rx="4" fill="#282d37" stroke="#00c8e0" stroke-width="1.5" stroke-dasharray="4 2"/>
+          <!-- Extension slot top -->
+          <rect x="66" y="4" width="28" height="28" rx="4" fill="#282d37" stroke="#f0a030" stroke-width="1.5" stroke-dasharray="4 2"/>
+          <!-- Connectors -->
+          <line x1="48" y1="64" x2="54" y2="64" stroke="#f0a030" stroke-width="2"/>
+          <circle cx="48" cy="64" r="2.5" fill="#f0a030"/>
+          <line x1="106" y1="64" x2="112" y2="64" stroke="#00c8e0" stroke-width="2"/>
+          <circle cx="112" cy="64" r="2.5" fill="#00c8e0"/>
+          <line x1="80" y1="32" x2="80" y2="38" stroke="#f0a030" stroke-width="2"/>
+          <circle cx="80" cy="32" r="2.5" fill="#f0a030"/>
+          <!-- Core center mark -->
+          <circle cx="80" cy="64" r="8" fill="url(#fg1)" opacity=".9"/>
+          <circle cx="80" cy="64" r="3" fill="#f5f5f0"/>
+          <!-- Plus labels on slots -->
+          <text x="31" y="67" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#f0a030" opacity=".6">+</text>
+          <text x="129" y="67" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#00c8e0" opacity=".6">+</text>
+          <text x="80" y="22" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#f0a030" opacity=".6">+</text>
+          <!-- Wordmark -->
+          <text x="80" y="136" text-anchor="middle" font-family="JetBrains Mono" font-size="20" font-weight="600" letter-spacing="7" fill="#f5f5f0">LYRA</text>
+          <text x="80" y="152" text-anchor="middle" font-family="JetBrains Mono" font-size="8" letter-spacing="4" fill="#7a8494">WORKBENCH</text>
+        </svg>
+      </div>
+    </div>
+
+    <div>
+      <div class="card-label">Mood Keywords</div>
+      <div class="mood-row">
+        <span class="mood-chip">Modular</span>
+        <span class="mood-chip">Composable</span>
+        <span class="mood-chip">Precise</span>
+        <span class="mood-chip">Warm-technical</span>
+        <span class="mood-chip">Inviting</span>
+        <span class="mood-chip">Craftable</span>
+      </div>
+      <div class="yuki-block">
+        <strong>Why Yuki reads this as "extend me":</strong> The grid and modular blocks echo the visual language of a good SDK docs site. Dashed-border slots are a literal invitation — he sees open sockets and immediately wants to fill them. Amber on the core, teal on the edges mirrors Lyra's architecture: hub as the warm center, channels as the active periphery.
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 2: Typography + Component Card -->
+  <div class="section-2">
+    <div>
+      <div class="card-label">Typography</div>
+      <div class="type-panel">
+        <div class="type-h">Build your<br><span class="grad-text">intelligence layer.</span></div>
+        <div class="type-sub">JetBrains Mono 700 — the dev default</div>
+        <div class="type-body">A clean asyncio foundation with a real extension model. Read every routing decision. Plug in your own adapters, agents, and skills without touching the core.</div>
+        <div class="type-mono">$ lyra adapter add discord --local</div>
+      </div>
+    </div>
+    <div>
+      <div class="card-label">Component — Card</div>
+      <div class="comp-card">
+        <div class="c-tag">Adapter · Discord</div>
+        <div class="c-title">Discord Gateway</div>
+        <div class="c-text">Routes all guild messages through the hub. Handles concurrent users via asyncio pools — no glue code required. Plug in, configure, ship.</div>
+        <button class="c-btn">Install Adapter →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 3: Hero -->
+  <div class="section-wide">
+    <div class="card-label">Hero Section</div>
+    <div class="hero-panel">
+      <svg class="hero-deco" viewBox="0 0 800 300" preserveAspectRatio="xMidYMid slice">
+        <!-- grid lines -->
+        <line x1="0" y1="50"  x2="800" y2="50"  stroke="#353d4a" stroke-width=".5" opacity=".3"/>
+        <line x1="0" y1="100" x2="800" y2="100" stroke="#353d4a" stroke-width=".5" opacity=".3"/>
+        <line x1="0" y1="150" x2="800" y2="150" stroke="#353d4a" stroke-width=".5" opacity=".3"/>
+        <line x1="0" y1="200" x2="800" y2="200" stroke="#353d4a" stroke-width=".5" opacity=".3"/>
+        <line x1="0" y1="250" x2="800" y2="250" stroke="#353d4a" stroke-width=".5" opacity=".3"/>
+        <line x1="100" y1="0" x2="100" y2="300" stroke="#353d4a" stroke-width=".5" opacity=".3"/>
+        <line x1="200" y1="0" x2="200" y2="300" stroke="#353d4a" stroke-width=".5" opacity=".3"/>
+        <line x1="300" y1="0" x2="300" y2="300" stroke="#353d4a" stroke-width=".5" opacity=".3"/>
+        <line x1="400" y1="0" x2="400" y2="300" stroke="#353d4a" stroke-width=".5" opacity=".3"/>
+        <line x1="500" y1="0" x2="500" y2="300" stroke="#353d4a" stroke-width=".5" opacity=".3"/>
+        <line x1="600" y1="0" x2="600" y2="300" stroke="#353d4a" stroke-width=".5" opacity=".3"/>
+        <line x1="700" y1="0" x2="700" y2="300" stroke="#353d4a" stroke-width=".5" opacity=".3"/>
+        <!-- corner blocks hinting at modules -->
+        <rect x="30" y="20" width="40" height="40" rx="4" fill="none" stroke="#f0a030" stroke-width="1" stroke-dasharray="3 2" opacity=".25"/>
+        <rect x="730" y="240" width="40" height="40" rx="4" fill="none" stroke="#00c8e0" stroke-width="1" stroke-dasharray="3 2" opacity=".25"/>
+      </svg>
+      <div class="hero-eyebrow">Personal Intelligence Engine</div>
+      <div class="hero-h">Your AI stack,<br><span class="grad-text">built your way.</span></div>
+      <div class="hero-sub">A production-ready asyncio foundation with a clean extension model. Add adapters, agents, and skills — never rewrite the core.</div>
+      <button class="btn-primary">Read the Architecture</button>
+      <button class="btn-ghost">View on GitHub</button>
+    </div>
+  </div>
+
+  <!-- Row 4: Modularity Showcase -->
+  <div class="section-wide">
+    <div class="card-label">Modularity Showcase — "EXTEND THIS"</div>
+    <div class="mod-showcase">
+      <div class="mod-grid">
+        <div class="mod-block">
+          <div class="mod-icon" style="color:#00c8e0">⬡</div>
+          <div class="mod-label">Adapter</div>
+          <div class="mod-sub">Telegram · Discord</div>
+        </div>
+        <div class="mod-arrow">→</div>
+        <div class="mod-block" style="box-shadow:var(--glow1)">
+          <div class="mod-icon" style="color:#f0a030">◈</div>
+          <div class="mod-label">Hub</div>
+          <div class="mod-sub">Route · Pool · Dispatch</div>
+        </div>
+        <div class="mod-arrow">→</div>
+        <div class="mod-block">
+          <div class="mod-icon" style="color:#00c8e0">◇</div>
+          <div class="mod-label">Agent</div>
+          <div class="mod-sub">Your model · Your logic</div>
+        </div>
+        <div class="mod-plus">+</div>
+        <div class="mod-block slot">
+          <div class="mod-icon" style="color:#f0a030;opacity:.5">+</div>
+          <div class="mod-label" style="color:var(--muted)">Your Skill</div>
+          <div class="mod-sub">Plug in here</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+
+<!-- ═══════════════════════════════════════════════════════
+     DIRECTION G — OPEN CIRCUIT
+════════════════════════════════════════════════════════ -->
+<section class="direction dir-G" id="dir-G">
+
+  <div class="dir-title">
+    <span class="dir-code">G</span>
+    <span class="dir-name">Open Circuit</span>
+    <span class="dir-tagline">Technical extension — empty slots are the feature</span>
+  </div>
+
+  <!-- Row 1: Palette + Logo + Mood -->
+  <div class="section-3">
+    <div>
+      <div class="card-label">Color Palette</div>
+      <div class="palette">
+        <div class="swatch"><div class="sw-color" style="background:#0c1222;border-color:#1e3050"></div><div class="sw-hex">#0c1222</div><div class="sw-name">Deep Navy</div></div>
+        <div class="swatch"><div class="sw-color" style="background:#16243e"></div><div class="sw-hex">#16243e</div><div class="sw-name">PCB Surface</div></div>
+        <div class="swatch"><div class="sw-color" style="background:#1e3050"></div><div class="sw-hex">#1e3050</div><div class="sw-name">Trace Layer</div></div>
+        <div class="swatch"><div class="sw-color" style="background:#00d4aa"></div><div class="sw-hex">#00d4aa</div><div class="sw-name">Electric Teal</div></div>
+        <div class="swatch"><div class="sw-color" style="background:#e8edf5"></div><div class="sw-hex">#e8edf5</div><div class="sw-name">Signal White</div></div>
+        <div class="swatch"><div class="sw-color" style="background:#d4a017"></div><div class="sw-hex">#d4a017</div><div class="sw-name">Connector Gold</div></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card-label">Logo Mark</div>
+      <div class="logo-panel">
+        <svg width="160" height="170" viewBox="0 0 160 170" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="gg1" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#00d4aa"/>
+              <stop offset="100%" stop-color="#d4a017"/>
+            </linearGradient>
+          </defs>
+          <!-- Circuit trace lines -->
+          <path d="M 80,62 L 80,28 L 52,28 L 52,12" stroke="#1e3050" stroke-width="3" fill="none"/>
+          <path d="M 80,62 L 80,28 L 108,28 L 108,12" stroke="#1e3050" stroke-width="3" fill="none"/>
+          <path d="M 80,78 L 80,108 L 44,108 L 44,120" stroke="#1e3050" stroke-width="3" fill="none"/>
+          <path d="M 80,78 L 80,108 L 116,108 L 116,120" stroke="#1e3050" stroke-width="3" fill="none"/>
+          <path d="M 62,70 L 28,70" stroke="#1e3050" stroke-width="3" fill="none"/>
+          <path d="M 98,70 L 132,70" stroke="#1e3050" stroke-width="3" fill="none"/>
+          <!-- Active traces -->
+          <path d="M 80,62 L 80,28 L 52,28 L 52,12" stroke="#00d4aa" stroke-width="1.5" fill="none" opacity=".7"/>
+          <path d="M 62,70 L 28,70" stroke="#d4a017" stroke-width="1.5" fill="none" opacity=".7"/>
+          <path d="M 80,78 L 80,108 L 116,108 L 116,120" stroke="#00d4aa" stroke-width="1.5" fill="none" opacity=".7"/>
+          <!-- Central hub -->
+          <circle cx="80" cy="70" r="18" fill="#111b30" stroke="url(#gg1)" stroke-width="2"/>
+          <circle cx="80" cy="70" r="10" fill="#00d4aa" opacity=".15"/>
+          <circle cx="80" cy="70" r="5" fill="#00d4aa"/>
+          <circle cx="80" cy="70" r="2" fill="#e8edf5"/>
+          <!-- Connected nodes -->
+          <circle cx="52" cy="12" r="4.5" fill="#00d4aa"/>
+          <circle cx="108" cy="12" r="4.5" fill="#1e3050" stroke="#00d4aa" stroke-width="1.5" stroke-dasharray="2 1.5"/>
+          <circle cx="44" cy="120" r="4.5" fill="#d4a017"/>
+          <circle cx="116" cy="120" r="4.5" fill="#1e3050" stroke="#d4a017" stroke-width="1.5" stroke-dasharray="2 1.5"/>
+          <circle cx="28" cy="70" r="4.5" fill="#1e3050" stroke="#d4a017" stroke-width="1.5" stroke-dasharray="2 1.5"/>
+          <circle cx="132" cy="70" r="4.5" fill="#1e3050" stroke="#00d4aa" stroke-width="1.5" stroke-dasharray="2 1.5"/>
+          <!-- Open slot labels -->
+          <text x="108" y="9" text-anchor="middle" font-family="JetBrains Mono" font-size="6" fill="#00d4aa" opacity=".5">?</text>
+          <text x="28" y="67" text-anchor="middle" font-family="JetBrains Mono" font-size="6" fill="#d4a017" opacity=".5">?</text>
+          <!-- Wordmark -->
+          <text x="80" y="145" text-anchor="middle" font-family="Space Grotesk" font-size="20" font-weight="600" letter-spacing="5" fill="#e8edf5">LYRA</text>
+          <text x="80" y="160" text-anchor="middle" font-family="JetBrains Mono" font-size="7.5" letter-spacing="3.5" fill="#6b8aaa">OPEN CIRCUIT</text>
+        </svg>
+      </div>
+    </div>
+
+    <div>
+      <div class="card-label">Mood Keywords</div>
+      <div class="mood-row">
+        <span class="mood-chip">Technical</span>
+        <span class="mood-chip">Transparent</span>
+        <span class="mood-chip">Extensible</span>
+        <span class="mood-chip">Alive</span>
+        <span class="mood-chip">Node-based</span>
+        <span class="mood-chip">Data-flowing</span>
+      </div>
+      <div class="yuki-block">
+        <strong>Why Yuki reads this as "extend me":</strong> Dashed-ring open nodes are a universal signal in circuit diagrams — "unconnected port, available for extension." Yuki reads circuit boards intuitively. He sees the empty slots and his first instinct is to wire them up. The node-and-trace visual language maps directly to Lyra's adapter model in his mental model.
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 2: Typography + Component Card -->
+  <div class="section-2">
+    <div>
+      <div class="card-label">Typography</div>
+      <div class="type-panel">
+        <div class="type-h">An open hub with<br><span class="grad-text">room for your nodes.</span></div>
+        <div class="type-sub">Space Grotesk 600 — geometric, technical</div>
+        <div class="type-body">Built-in adapters are connected. The open ports are yours. Every node traces back to clean, readable Python — no opaque framework between you and the signal.</div>
+        <div class="type-mono">// 6 ports. 3 connected. 3 open.</div>
+      </div>
+    </div>
+    <div>
+      <div class="card-label">Component — Card</div>
+      <div class="comp-card">
+        <div class="c-tag">Node · Unconnected</div>
+        <div class="c-title">Matrix Adapter</div>
+        <div class="c-text">Open port. This adapter slot is available. Implement the BaseAdapter interface — 4 methods — and plug directly into the routing layer.</div>
+        <button class="c-btn">Connect Node →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 3: Hero -->
+  <div class="section-wide">
+    <div class="card-label">Hero Section</div>
+    <div class="hero-panel">
+      <svg class="hero-deco" viewBox="0 0 800 300" preserveAspectRatio="xMidYMid slice">
+        <!-- Circuit traces - large scale -->
+        <path d="M 0,150 L 180,150 L 180,80 L 320,80" stroke="#1e3050" stroke-width="2" fill="none" opacity=".5"/>
+        <path d="M 800,150 L 620,150 L 620,220 L 480,220" stroke="#1e3050" stroke-width="2" fill="none" opacity=".5"/>
+        <path d="M 320,80 L 480,80 L 480,220" stroke="#1e3050" stroke-width="1.5" fill="none" opacity=".3"/>
+        <!-- Nodes far left/right -->
+        <circle cx="20" cy="150" r="6" fill="none" stroke="#00d4aa" stroke-width="1.5" stroke-dasharray="3 2" opacity=".4"/>
+        <circle cx="780" cy="150" r="6" fill="none" stroke="#d4a017" stroke-width="1.5" stroke-dasharray="3 2" opacity=".4"/>
+        <!-- Active trace highlight -->
+        <path d="M 0,150 L 180,150 L 180,80 L 380,80" stroke="#00d4aa" stroke-width="1" fill="none" opacity=".3"/>
+      </svg>
+      <div class="hero-eyebrow">Personal Intelligence Engine</div>
+      <div class="hero-h">Plug your nodes in.<br><span class="grad-text">The circuit is open.</span></div>
+      <div class="hero-sub">A transparent asyncio core with named connection points. See every trace. Own every adapter. The architecture is the documentation.</div>
+      <button class="btn-primary">Explore the Circuit</button>
+      <button class="btn-ghost">Architecture Docs</button>
+    </div>
+  </div>
+
+  <!-- Row 4: Modularity Showcase -->
+  <div class="section-wide">
+    <div class="card-label">Modularity Showcase — "EXTEND THIS"</div>
+    <div class="mod-showcase">
+      <div class="mod-grid">
+        <div class="mod-block">
+          <div class="mod-icon" style="color:#00d4aa">◉</div>
+          <div class="mod-label">Adapter Layer</div>
+          <div class="mod-sub">Telegram · Discord · ···</div>
+        </div>
+        <div class="mod-arrow">→</div>
+        <div class="mod-block" style="border-color:var(--c1);box-shadow:0 0 20px #00d4aa22">
+          <div class="mod-icon" style="color:#d4a017">⬡</div>
+          <div class="mod-label">Hub Node</div>
+          <div class="mod-sub">Route · Normalize · Pool</div>
+        </div>
+        <div class="mod-arrow">→</div>
+        <div class="mod-block">
+          <div class="mod-icon" style="color:#00d4aa">◈</div>
+          <div class="mod-label">Agent</div>
+          <div class="mod-sub">Ollama · OpenAI · Custom</div>
+        </div>
+        <div class="mod-plus">+</div>
+        <div class="mod-block slot" style="border-color:var(--c1)">
+          <div class="mod-icon" style="color:#00d4aa;opacity:.5">?</div>
+          <div class="mod-label" style="color:var(--muted)">Open Port</div>
+          <div class="mod-sub">Wire your module</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+
+<!-- ═══════════════════════════════════════════════════════
+     DIRECTION H — FORGE
+════════════════════════════════════════════════════════ -->
+<section class="direction dir-H" id="dir-H">
+
+  <div class="dir-title">
+    <span class="dir-code">H</span>
+    <span class="dir-name">Forge</span>
+    <span class="dir-tagline">Maker energy — raw materials in, crafted output out</span>
+  </div>
+
+  <!-- Row 1: Palette + Logo + Mood -->
+  <div class="section-3">
+    <div>
+      <div class="card-label">Color Palette</div>
+      <div class="palette">
+        <div class="swatch"><div class="sw-color" style="background:#0a0a0f;border-color:#2a2a35"></div><div class="sw-hex">#0a0a0f</div><div class="sw-name">Obsidian</div></div>
+        <div class="swatch"><div class="sw-color" style="background:#18181f"></div><div class="sw-hex">#18181f</div><div class="sw-name">Forge Floor</div></div>
+        <div class="swatch"><div class="sw-color" style="background:#2a2a35"></div><div class="sw-hex">#2a2a35</div><div class="sw-name">Steel</div></div>
+        <div class="swatch"><div class="sw-color" style="background:#e85d04"></div><div class="sw-hex">#e85d04</div><div class="sw-name">Forge Orange</div></div>
+        <div class="swatch"><div class="sw-color" style="background:#6b7280"></div><div class="sw-hex">#6b7280</div><div class="sw-name">Steel Gray</div></div>
+        <div class="swatch"><div class="sw-color" style="background:#fafafa"></div><div class="sw-hex">#fafafa</div><div class="sw-name">Spark White</div></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card-label">Logo Mark</div>
+      <div class="logo-panel">
+        <svg width="160" height="170" viewBox="0 0 160 170" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="hg1" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#ff7d2a"/>
+              <stop offset="100%" stop-color="#e85d04"/>
+            </linearGradient>
+            <linearGradient id="hg2" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#e85d04"/>
+              <stop offset="100%" stop-color="#9a3d00"/>
+            </linearGradient>
+            <filter id="hglow">
+              <feGaussianBlur stdDeviation="3" result="b"/>
+              <feComposite in="SourceGraphic" in2="b" operator="over"/>
+            </filter>
+          </defs>
+          <!-- Diamond / crystal form — compressed raw → refined output -->
+          <polygon points="80,18 106,56 80,90 54,56" fill="url(#hg2)" opacity=".9"/>
+          <polygon points="80,18 106,56 80,90 54,56" fill="none" stroke="url(#hg1)" stroke-width="1.5"/>
+          <!-- Internal facets -->
+          <line x1="80" y1="18" x2="80" y2="90" stroke="#e85d0440" stroke-width="1"/>
+          <line x1="54" y1="56" x2="106" y2="56" stroke="#fafafa20" stroke-width="1"/>
+          <!-- Highlight facet top-left -->
+          <polygon points="80,18 54,56 80,56" fill="#fafafa" opacity=".12"/>
+          <!-- Glow core -->
+          <circle cx="80" cy="56" r="6" fill="#e85d04" filter="url(#hglow)" opacity=".8"/>
+          <circle cx="80" cy="56" r="3" fill="#fafafa"/>
+          <!-- Angular base / anvil hint -->
+          <path d="M 56,96 L 80,108 L 104,96 L 100,90 L 80,90 L 60,90 Z" fill="#18181f" stroke="#2a2a35" stroke-width="1.5"/>
+          <rect x="66" y="108" width="28" height="6" rx="2" fill="#2a2a35"/>
+          <!-- Spark particles -->
+          <circle cx="114" cy="42" r="1.5" fill="#e85d04" opacity=".7"/>
+          <circle cx="120" cy="52" r="1" fill="#ff7d2a" opacity=".5"/>
+          <circle cx="44" cy="38" r="1.5" fill="#e85d04" opacity=".6"/>
+          <circle cx="38" cy="50" r="1" fill="#ff7d2a" opacity=".4"/>
+          <circle cx="118" cy="68" r="1" fill="#fafafa" opacity=".4"/>
+          <circle cx="40" cy="65" r="1" fill="#fafafa" opacity=".3"/>
+          <!-- Wordmark -->
+          <text x="80" y="136" text-anchor="middle" font-family="Outfit" font-size="20" font-weight="800" letter-spacing="6" fill="#fafafa">LYRA</text>
+          <text x="80" y="152" text-anchor="middle" font-family="JetBrains Mono" font-size="7.5" letter-spacing="4" fill="#6b7280">FORGE</text>
+        </svg>
+      </div>
+    </div>
+
+    <div>
+      <div class="card-label">Mood Keywords</div>
+      <div class="mood-row">
+        <span class="mood-chip">Powerful</span>
+        <span class="mood-chip">Maker pride</span>
+        <span class="mood-chip">Craftsperson</span>
+        <span class="mood-chip">Angular</span>
+        <span class="mood-chip">Bold</span>
+        <span class="mood-chip">I built this</span>
+      </div>
+      <div class="yuki-block">
+        <strong>Why Yuki reads this as "extend me":</strong> The forge metaphor directly parallels his Saturday workflow — raw Python scripts in, polished agent out. The diamond mark is compressed potential waiting to be shaped. The angular, uncompromising aesthetic appeals to his maker pride. He doesn't want soft — he wants the tool that matches his ambition to "write something production-ready."
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 2: Typography + Component Card -->
+  <div class="section-2">
+    <div>
+      <div class="card-label">Typography</div>
+      <div class="type-panel">
+        <div class="type-h">Shape your AI.<br><span class="grad-text">Don't wrap it.</span></div>
+        <div class="type-sub">Outfit 800 — impact, maker energy</div>
+        <div class="type-body">Raw asyncio. Readable routing. No framework between you and the metal. Lyra is the forge — bring your model, your channels, your logic. Walk away with something real.</div>
+        <div class="type-mono">// 300 lines. Read them. Fork them.</div>
+      </div>
+    </div>
+    <div>
+      <div class="card-label">Component — Card</div>
+      <div class="comp-card">
+        <div class="c-tag">Skill · Custom</div>
+        <div class="c-title">Local RAG Pipeline</div>
+        <div class="c-text">Pull in your corpus. BM25 + fastembed. Queried via Telegram. Runs on your GPU, answers from your data — not a cloud you don't control.</div>
+        <button class="c-btn">FORGE SKILL</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 3: Hero -->
+  <div class="section-wide">
+    <div class="card-label">Hero Section</div>
+    <div class="hero-panel">
+      <svg class="hero-deco" viewBox="0 0 800 300" preserveAspectRatio="xMidYMid slice">
+        <!-- Angular geometric shapes in bg -->
+        <polygon points="680,20 740,80 680,140" fill="none" stroke="#e85d04" stroke-width="1" opacity=".08"/>
+        <polygon points="60,160 120,260 0,260" fill="none" stroke="#e85d04" stroke-width="1" opacity=".07"/>
+        <!-- Spark dots -->
+        <circle cx="720" cy="60" r="2" fill="#e85d04" opacity=".3"/>
+        <circle cx="700" cy="45" r="1.5" fill="#ff7d2a" opacity=".2"/>
+        <circle cx="80" cy="200" r="2" fill="#e85d04" opacity=".25"/>
+        <circle cx="100" cy="185" r="1" fill="#fafafa" opacity=".15"/>
+        <circle cx="760" cy="200" r="1.5" fill="#e85d04" opacity=".2"/>
+        <circle cx="40" cy="100" r="1" fill="#fafafa" opacity=".1"/>
+        <!-- Angular cut lines -->
+        <line x1="0" y1="280" x2="140" y2="200" stroke="#2a2a35" stroke-width="1" opacity=".4"/>
+        <line x1="800" y1="20" x2="660" y2="100" stroke="#2a2a35" stroke-width="1" opacity=".4"/>
+      </svg>
+      <div class="hero-eyebrow">Personal Intelligence Engine</div>
+      <div class="hero-h">Stop scripting.<br><span class="grad-text">Start forging.</span></div>
+      <div class="hero-sub">A production-grade asyncio foundation built to be extended. Your models. Your channels. Your rules. Read the source in 20 minutes and own it completely.</div>
+      <button class="btn-primary">FORK THE FORGE</button>
+      <button class="btn-ghost">Read Architecture</button>
+    </div>
+  </div>
+
+  <!-- Row 4: Modularity Showcase -->
+  <div class="section-wide">
+    <div class="card-label">Modularity Showcase — "EXTEND THIS"</div>
+    <div class="mod-showcase">
+      <div class="mod-grid">
+        <div class="mod-block">
+          <div class="mod-icon" style="color:#6b7280">◧</div>
+          <div class="mod-label">Raw Input</div>
+          <div class="mod-sub">Discord · Telegram · CLI</div>
+        </div>
+        <div class="mod-arrow" style="font-size:22px;color:#e85d04">⇒</div>
+        <div class="mod-block" style="border-color:#e85d04;box-shadow:0 0 24px #e85d0430">
+          <div class="mod-icon" style="color:#e85d04">◆</div>
+          <div class="mod-label">Forge / Hub</div>
+          <div class="mod-sub">Route · Pool · Shape</div>
+        </div>
+        <div class="mod-arrow" style="font-size:22px;color:#e85d04">⇒</div>
+        <div class="mod-block">
+          <div class="mod-icon" style="color:#fafafa">◈</div>
+          <div class="mod-label">Crafted Output</div>
+          <div class="mod-sub">Your model · Your answer</div>
+        </div>
+        <div class="mod-plus" style="border-color:#e85d04;color:#e85d04">+</div>
+        <div class="mod-block slot" style="border-color:#e85d04;background:#e85d0412">
+          <div class="mod-icon" style="color:#e85d04;opacity:.5">◇</div>
+          <div class="mod-label" style="color:var(--muted)">Your Skill</div>
+          <div class="mod-sub">Forge it here</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+
+<script>
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      const dir = tab.dataset.dir;
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.direction').forEach(d => d.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById('dir-' + dir).classList.add('active');
+    });
+  });
+</script>
+
+</body>
+</html>

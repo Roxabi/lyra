@@ -188,6 +188,13 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — each branch handles one opti
     else:
         patterns: dict[str, bool] = {}
 
+    # Passthroughs: commands forwarded straight to the LLM
+    passthroughs: tuple[str, ...] = tuple(
+        json.loads(row.passthroughs_json)
+        if row.passthroughs_json
+        else []
+    )
+
     return _assemble_agent(
         name=row.name,
         system_prompt=system_prompt,
@@ -205,4 +212,5 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — each branch handles one opti
         stt=agent_stt,
         voice=voice,
         patterns=patterns,
+        passthroughs=passthroughs,
     )

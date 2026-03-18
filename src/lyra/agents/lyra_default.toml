@@ -42,6 +42,14 @@ complex  = "claude-opus-4-6"
 [plugins]
 enabled = ["echo", "search"]
 
+[tts]
+voice = "Sohee"
+personality = "Chaleureuse et curieuse, naturellement expressive."
+emotion = "Bienveillante et engagée, légèrement enthousiaste"
+speed = "Rythme naturel et posé"
+
+[stt]
+
 # [workspaces]
 # lyra        = "~/projects/lyra"
 # projects    = "~/projects"

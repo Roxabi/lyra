@@ -54,6 +54,8 @@ _MIGRATE_AGENTS = [
     "ALTER TABLE agents ADD COLUMN patterns_json TEXT",
     # #347 — per-bot settings (watch_channels etc.)
     "ALTER TABLE bot_agent_map ADD COLUMN settings_json TEXT",
+    # passthroughs: agent-level list of commands forwarded straight to the LLM
+    "ALTER TABLE agents ADD COLUMN passthroughs_json TEXT",
 ]
 
 _CREATE_BOT_AGENT_MAP = """
@@ -84,14 +86,14 @@ _AGENT_COLUMNS = (
     "memory_namespace, cwd, source, created_at, updated_at, "
     "tts_json, stt_json, skip_permissions, "
     "permissions_json, workspaces_json, i18n_language, commands_json, streaming, "
-    "persona_json, voice_json, fallback_language, patterns_json"
+    "persona_json, voice_json, fallback_language, patterns_json, passthroughs_json"
 )
 
 _SELECT_AGENTS = f"SELECT {_AGENT_COLUMNS} FROM agents"
 
 _UPSERT_AGENT = (
     f"INSERT INTO agents ({_AGENT_COLUMNS}) "
-    f"VALUES ({', '.join(['?'] * 26)}) "
+    f"VALUES ({', '.join(['?'] * 27)}) "
     "ON CONFLICT(name) DO UPDATE SET "
     "backend=excluded.backend, "
     "model=excluded.model, "
@@ -115,6 +117,7 @@ _UPSERT_AGENT = (
     "voice_json=COALESCE(excluded.voice_json, agents.voice_json), "
     "fallback_language=excluded.fallback_language, "
     "patterns_json=COALESCE(excluded.patterns_json, agents.patterns_json), "
+    "passthroughs_json=COALESCE(excluded.passthroughs_json, agents.passthroughs_json), "
     "source=excluded.source, "
     "updated_at=?"
 )

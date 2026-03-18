@@ -218,6 +218,9 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
         k: bool(v) for k, v in patterns_section.items()
     }
 
+    # Passthroughs: commands forwarded straight to the LLM
+    passthroughs: tuple[str, ...] = tuple(data.get("passthroughs", []))
+
     return _assemble_agent(
         name=name,
         system_prompt=system_prompt,
@@ -234,4 +237,5 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
         tts=agent_tts,
         stt=agent_stt,
         patterns=patterns,
+        passthroughs=passthroughs,
     )

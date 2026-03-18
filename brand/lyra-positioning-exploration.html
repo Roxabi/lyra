@@ -1,0 +1,1741 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lyra — Positioning Exploration</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Outfit:wght@300;400;600;700;800&display=swap');
+
+  :root {
+    --void: #060a14;
+    --deep-space: #0c1525;
+    --surface: #121f38;
+    --surface-2: #1a2d4a;
+    --channel: #00c8e0;
+    --channel-dim: rgba(0, 200, 224, 0.15);
+    --channel-glow: rgba(0, 200, 224, 0.3);
+    --amber: #f0a030;
+    --amber-dim: rgba(240, 160, 48, 0.15);
+    --amber-glow: rgba(240, 160, 48, 0.3);
+    --star: #eef4ff;
+    --text: #b8cfe8;
+    --text-dim: #5a7a9a;
+    --border: rgba(0, 200, 224, 0.12);
+    --border-amber: rgba(240, 160, 48, 0.12);
+    --radius: 12px;
+    --radius-sm: 8px;
+
+    /* Palette Alt A */
+    --alt-a-primary: #6c63ff;
+    --alt-a-secondary: #ff6b9d;
+    --alt-a-bg: #0a0612;
+
+    /* Palette Alt B */
+    --alt-b-primary: #00e5a0;
+    --alt-b-secondary: #ff4d6d;
+    --alt-b-bg: #040d08;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--void);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+    overflow-x: hidden;
+  }
+
+  /* ─── NOISE OVERLAY ─── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ─── LAYOUT ─── */
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 32px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ─── HERO ─── */
+  .hero {
+    padding: 80px 0 64px;
+    text-align: center;
+    position: relative;
+  }
+
+  .hero-eyebrow {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    color: var(--channel);
+    text-transform: uppercase;
+    margin-bottom: 20px;
+    opacity: 0.8;
+  }
+
+  .hero-title {
+    font-family: 'Outfit', sans-serif;
+    font-size: clamp(36px, 6vw, 64px);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    background: linear-gradient(135deg, var(--star) 0%, var(--channel) 50%, var(--amber) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 20px;
+  }
+
+  .hero-subtitle {
+    font-size: 18px;
+    color: var(--text-dim);
+    max-width: 560px;
+    margin: 0 auto 48px;
+    font-weight: 300;
+    line-height: 1.6;
+  }
+
+  .hero-glow {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 600px;
+    height: 300px;
+    background: radial-gradient(ellipse at 50% 0%, rgba(0, 200, 224, 0.08) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  /* ─── NAV PILLS ─── */
+  .nav-pills {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 80px;
+  }
+
+  .nav-pill {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    padding: 8px 18px;
+    border-radius: 100px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    display: inline-block;
+  }
+
+  .nav-pill:hover {
+    border-color: var(--channel);
+    color: var(--channel);
+    background: var(--channel-dim);
+  }
+
+  /* ─── SECTION HEADERS ─── */
+  .section {
+    padding: 64px 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .section-header {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    margin-bottom: 48px;
+  }
+
+  .section-number {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--channel);
+    opacity: 0.6;
+    min-width: 28px;
+  }
+
+  .section-title {
+    font-family: 'Outfit', sans-serif;
+    font-size: clamp(22px, 3vw, 30px);
+    font-weight: 700;
+    color: var(--star);
+    letter-spacing: -0.01em;
+  }
+
+  .section-desc {
+    color: var(--text-dim);
+    font-size: 14px;
+    margin-left: auto;
+    max-width: 320px;
+    text-align: right;
+    line-height: 1.5;
+  }
+
+  /* ─── TABS ─── */
+  .tab-bar {
+    display: flex;
+    gap: 4px;
+    background: var(--deep-space);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 4px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+  }
+
+  .tab-btn {
+    flex: 1;
+    min-width: 120px;
+    padding: 10px 16px;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-sm);
+    color: var(--text-dim);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: inherit;
+  }
+
+  .tab-btn:hover { color: var(--star); background: var(--surface); }
+
+  .tab-btn.active {
+    background: var(--surface-2);
+    color: var(--channel);
+    border: 1px solid var(--border);
+  }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* ─── CARDS ─── */
+  .card {
+    background: var(--deep-space);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 28px 32px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s ease;
+  }
+
+  .card:hover { border-color: rgba(0, 200, 224, 0.25); }
+
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--channel-glow), transparent);
+    opacity: 0.5;
+  }
+
+  .card-amber { border-color: var(--border-amber); }
+  .card-amber::before { background: linear-gradient(90deg, transparent, var(--amber-glow), transparent); }
+  .card-amber:hover { border-color: rgba(240, 160, 48, 0.3); }
+
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+    margin-bottom: 24px;
+  }
+
+  .card-tag {
+    display: inline-block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    padding: 3px 10px;
+    border-radius: 4px;
+    margin-bottom: 14px;
+  }
+
+  .tag-channel { background: var(--channel-dim); color: var(--channel); border: 1px solid rgba(0,200,224,0.2); }
+  .tag-amber { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(240,160,48,0.2); }
+  .tag-muted { background: rgba(90, 122, 154, 0.1); color: var(--text-dim); border: 1px solid rgba(90,122,154,0.15); }
+
+  .card-title {
+    font-family: 'Outfit', sans-serif;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--star);
+    margin-bottom: 12px;
+    letter-spacing: -0.01em;
+  }
+
+  .card p {
+    font-size: 14px;
+    line-height: 1.65;
+    color: var(--text);
+  }
+
+  /* ─── CATEGORY CARDS ─── */
+  .category-card {
+    background: var(--deep-space);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 28px 32px;
+    position: relative;
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 0.25s ease;
+  }
+
+  .category-card.selected {
+    border-color: var(--channel);
+    background: linear-gradient(135deg, var(--deep-space), rgba(0, 200, 224, 0.04));
+  }
+
+  .category-card.selected::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 30% 0%, var(--channel-dim), transparent 60%);
+  }
+
+  .category-badge {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    font-size: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 0.1em;
+    padding: 4px 10px;
+    border-radius: 4px;
+    background: var(--channel-dim);
+    color: var(--channel);
+    border: 1px solid rgba(0,200,224,0.2);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .category-card.selected .category-badge { opacity: 1; }
+
+  .cat-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--channel);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    opacity: 0.7;
+  }
+
+  .cat-name {
+    font-family: 'Outfit', sans-serif;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--star);
+    margin-bottom: 14px;
+    letter-spacing: -0.01em;
+  }
+
+  .cat-implications {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  .implication-row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 8px;
+    font-size: 13px;
+    align-items: flex-start;
+  }
+
+  .implication-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--amber);
+    opacity: 0.7;
+    min-width: 80px;
+    padding-top: 2px;
+    letter-spacing: 0.05em;
+  }
+
+  .implication-value { color: var(--text); line-height: 1.5; }
+
+  /* ─── POSITIONING STATEMENTS ─── */
+  .positioning-card {
+    background: var(--deep-space);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 32px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .positioning-angle {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+
+  .angle-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+
+  .angle-icon-privacy { background: rgba(0, 200, 224, 0.1); border: 1px solid rgba(0,200,224,0.2); }
+  .angle-icon-intel { background: rgba(240, 160, 48, 0.1); border: 1px solid rgba(240,160,48,0.2); }
+  .angle-icon-personal { background: rgba(108, 99, 255, 0.1); border: 1px solid rgba(108,99,255,0.2); }
+
+  .angle-meta { flex: 1; }
+  .angle-label { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.15em; color: var(--text-dim); text-transform: uppercase; margin-bottom: 3px; }
+  .angle-name { font-family: 'Outfit', sans-serif; font-size: 17px; font-weight: 600; color: var(--star); }
+
+  .positioning-statement {
+    background: var(--surface);
+    border-radius: var(--radius-sm);
+    padding: 20px 24px;
+    margin-bottom: 20px;
+    font-size: 15px;
+    line-height: 1.75;
+    color: var(--text);
+    border-left: 3px solid var(--channel);
+  }
+
+  .positioning-statement.amber-accent { border-left-color: var(--amber); }
+  .positioning-statement.purple-accent { border-left-color: #8b7cf8; }
+
+  .ps-for { color: var(--text-dim); }
+  .ps-who { color: var(--text-dim); }
+  .ps-category { color: var(--channel); font-weight: 600; }
+  .ps-category-amber { color: var(--amber); font-weight: 600; }
+  .ps-category-purple { color: #a78bfa; font-weight: 600; }
+  .ps-benefit { color: var(--star); font-weight: 500; }
+  .ps-unlike { color: var(--text-dim); }
+  .ps-diff { color: var(--star); }
+
+  .positioning-analysis {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+    margin-top: 4px;
+  }
+
+  .pa-item {
+    background: rgba(0,0,0,0.2);
+    border-radius: var(--radius-sm);
+    padding: 14px 16px;
+    border: 1px solid rgba(255,255,255,0.04);
+  }
+
+  .pa-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  .pa-val { font-size: 13px; color: var(--text); line-height: 1.5; }
+  .pa-label-green { color: #4ade80; }
+  .pa-label-yellow { color: #facc15; }
+  .pa-label-red { color: #f87171; }
+
+  /* ─── COMPETITIVE MATRIX ─── */
+  .matrix-container {
+    position: relative;
+    background: var(--deep-space);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 32px;
+    overflow: hidden;
+  }
+
+  #scatter-canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  .matrix-legend {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+
+  .legend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* ─── DIFFERENTIATORS ─── */
+  .diff-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .diff-table th {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    text-align: left;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .diff-table td {
+    padding: 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    font-size: 13px;
+    vertical-align: top;
+  }
+
+  .diff-table tr:last-child td { border-bottom: none; }
+
+  .diff-table tr:hover td { background: rgba(0,200,224,0.03); }
+
+  .rank-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .rank-1 { background: rgba(240,160,48,0.2); color: var(--amber); border: 1px solid rgba(240,160,48,0.3); }
+  .rank-2 { background: rgba(0,200,224,0.15); color: var(--channel); border: 1px solid rgba(0,200,224,0.25); }
+  .rank-3 { background: rgba(148,163,184,0.1); color: #94a3b8; border: 1px solid rgba(148,163,184,0.15); }
+  .rank-4 { background: rgba(148,163,184,0.07); color: #64748b; border: 1px solid rgba(148,163,184,0.1); }
+  .rank-5 { background: rgba(148,163,184,0.05); color: #475569; border: 1px solid rgba(148,163,184,0.07); }
+
+  .moat-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .moat-fill {
+    height: 4px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, var(--channel), var(--amber));
+    transition: width 0.6s ease;
+  }
+
+  .moat-bg {
+    flex: 1;
+    height: 4px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .diff-claim { color: var(--star); font-weight: 500; margin-bottom: 4px; font-size: 14px; }
+  .diff-why { color: var(--text-dim); font-size: 13px; line-height: 1.5; }
+
+  /* ─── ANTI-POSITIONING ─── */
+  .anti-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+  }
+
+  .anti-card {
+    background: var(--deep-space);
+    border: 1px solid rgba(248, 113, 113, 0.12);
+    border-radius: var(--radius);
+    padding: 22px 24px;
+    position: relative;
+  }
+
+  .anti-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(248, 113, 113, 0.3), transparent);
+  }
+
+  .anti-icon {
+    font-size: 20px;
+    margin-bottom: 12px;
+    display: block;
+  }
+
+  .anti-title {
+    font-family: 'Outfit', sans-serif;
+    font-size: 16px;
+    font-weight: 600;
+    color: #fca5a5;
+    margin-bottom: 8px;
+  }
+
+  .anti-body {
+    font-size: 13px;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+
+  /* ─── PALETTE EXPLORER ─── */
+  .palette-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+  }
+
+  @media (max-width: 700px) {
+    .palette-grid { grid-template-columns: 1fr; }
+    .positioning-analysis { grid-template-columns: 1fr; }
+    .section-header { flex-wrap: wrap; }
+    .section-desc { text-align: left; margin-left: 44px; }
+    .diff-table { font-size: 12px; }
+  }
+
+  .palette-swatch {
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+
+  .palette-swatch:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+
+  .swatch-preview {
+    height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .swatch-label {
+    font-family: 'Outfit', sans-serif;
+    font-weight: 700;
+    font-size: 20px;
+    letter-spacing: 0.1em;
+    position: relative;
+    z-index: 1;
+  }
+
+  .swatch-meta {
+    padding: 14px 16px;
+    background: var(--deep-space);
+  }
+
+  .swatch-name {
+    font-family: 'Outfit', sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--star);
+    margin-bottom: 4px;
+  }
+
+  .swatch-colors {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+  }
+
+  .swatch-chip {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+  }
+
+  .swatch-desc {
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.5;
+    margin-top: 6px;
+  }
+
+  /* ─── FOOTER ─── */
+  .footer {
+    padding: 48px 0 32px;
+    border-top: 1px solid var(--border);
+    text-align: center;
+  }
+
+  .footer-wordmark {
+    font-family: 'Outfit', sans-serif;
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    background: linear-gradient(135deg, var(--channel), var(--amber));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 8px;
+  }
+
+  .footer-sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+
+  .footer-date {
+    margin-top: 24px;
+    font-size: 12px;
+    color: var(--text-dim);
+    opacity: 0.5;
+  }
+
+  /* ─── ACCORDION ─── */
+  .accordion-item {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .accordion-toggle {
+    width: 100%;
+    background: none;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 0;
+    cursor: pointer;
+    font-family: inherit;
+    color: var(--star);
+    font-size: 15px;
+    font-weight: 500;
+    text-align: left;
+  }
+
+  .accordion-toggle:hover { color: var(--channel); }
+
+  .accordion-arrow {
+    font-size: 18px;
+    color: var(--text-dim);
+    transition: transform 0.2s;
+    flex-shrink: 0;
+  }
+
+  .accordion-item.open .accordion-arrow { transform: rotate(90deg); color: var(--channel); }
+
+  .accordion-body {
+    display: none;
+    padding: 0 0 20px;
+    font-size: 14px;
+    color: var(--text);
+    line-height: 1.7;
+  }
+
+  .accordion-item.open .accordion-body { display: block; }
+
+  /* ─── CHIPS ─── */
+  .chip-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+  }
+
+  .chip {
+    padding: 4px 12px;
+    border-radius: 100px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .chip-blue { background: rgba(0,200,224,0.1); color: var(--channel); border: 1px solid rgba(0,200,224,0.2); }
+  .chip-amber { background: rgba(240,160,48,0.1); color: var(--amber); border: 1px solid rgba(240,160,48,0.2); }
+  .chip-muted { background: rgba(90,122,154,0.08); color: var(--text-dim); border: 1px solid rgba(90,122,154,0.12); }
+
+  /* ─── HIGHLIGHT BOX ─── */
+  .callout {
+    background: linear-gradient(135deg, var(--surface), rgba(0,200,224,0.04));
+    border: 1px solid var(--channel);
+    border-radius: var(--radius);
+    padding: 24px 28px;
+    margin-bottom: 32px;
+    position: relative;
+  }
+
+  .callout::before {
+    content: 'RECOMMENDATION';
+    position: absolute;
+    top: -1px;
+    left: 24px;
+    transform: translateY(-50%);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    background: var(--void);
+    padding: 0 8px;
+    color: var(--channel);
+  }
+
+  .callout p { font-size: 14px; color: var(--text); line-height: 1.7; }
+  .callout p strong { color: var(--star); }
+
+  /* ─── SCROLLBAR ─── */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--void); }
+  ::-webkit-scrollbar-thumb { background: var(--surface-2); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+  /* ─── ANIMATIONS ─── */
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .fade-in {
+    animation: fadeInUp 0.5s ease forwards;
+  }
+
+  .stagger > * {
+    opacity: 0;
+    animation: fadeInUp 0.4s ease forwards;
+  }
+  .stagger > *:nth-child(1) { animation-delay: 0.05s; }
+  .stagger > *:nth-child(2) { animation-delay: 0.12s; }
+  .stagger > *:nth-child(3) { animation-delay: 0.19s; }
+  .stagger > *:nth-child(4) { animation-delay: 0.26s; }
+  .stagger > *:nth-child(5) { animation-delay: 0.33s; }
+  .stagger > *:nth-child(6) { animation-delay: 0.40s; }
+</style><!-- diagram-meta:start -->
+<meta name="diagram:title"     content="Lyra — Positioning Exploration">
+<meta name="diagram:date"      content="2026-03-18">
+<meta name="diagram:category"  content="brand">
+<meta name="diagram:cat-label" content="Lyra Branding">
+<meta name="diagram:color"     content="purple">
+<meta name="diagram:badges"    content="latest">
+<!-- diagram-meta:end -->
+</head>
+<body>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-glow"></div>
+  <div class="container">
+    <div class="hero-eyebrow">Lyra by Roxabi — Strategic Positioning</div>
+    <h1 class="hero-title">Positioning Exploration</h1>
+    <p class="hero-subtitle">Category definition, positioning angles, competitive landscape, differentiators, and anti-positioning for a personal AI agent engine that runs on your hardware.</p>
+    <nav class="nav-pills">
+      <a href="#category" class="nav-pill">01 Category</a>
+      <a href="#statements" class="nav-pill">02 Statements</a>
+      <a href="#matrix" class="nav-pill">03 Competitive Map</a>
+      <a href="#differentiators" class="nav-pill">04 Differentiators</a>
+      <a href="#anti" class="nav-pill">05 Anti-Positioning</a>
+      <a href="#palette" class="nav-pill">06 Palette Options</a>
+    </nav>
+  </div>
+</div>
+
+<!-- ─── SECTION 1: CATEGORY DEFINITION ─── -->
+<section class="section" id="category">
+  <div class="container">
+    <div class="section-header">
+      <span class="section-number">01</span>
+      <h2 class="section-title">Category Definition</h2>
+      <span class="section-desc">What game are we playing? Each category choice sets different expectations, competitive sets, and pricing psychology.</span>
+    </div>
+
+    <div class="callout">
+      <p><strong>Context:</strong> Category is not just a label — it shapes who compares you to whom, what price feels reasonable, and what the first sentence of a press mention sounds like. The right category should be owned, not borrowed.</p>
+    </div>
+
+    <div class="card-grid stagger" id="category-cards">
+
+      <!-- Option A -->
+      <div class="category-card" onclick="selectCategory(this, 'A')">
+        <span class="category-badge">RECOMMENDED</span>
+        <div class="cat-label">Option A</div>
+        <div class="cat-name">Personal AI Agent Engine</div>
+        <p style="font-size:13px;color:var(--text);line-height:1.6;">
+          You own the runtime. You own the memory. You own the data. A new category that didn't exist before local LLMs became viable — and Lyra defines it.
+        </p>
+        <div class="cat-implications">
+          <div class="implication-row">
+            <span class="implication-label">Competitors</span>
+            <span class="implication-value">Primarily vs Jan.ai, GPT4All, Ollama — positioned as "the personal agent layer above bare LLMs"</span>
+          </div>
+          <div class="implication-row">
+            <span class="implication-label">Expectations</span>
+            <span class="implication-value">Always-on, multi-channel, memory, extension model — users expect a product, not a script</span>
+          </div>
+          <div class="implication-row">
+            <span class="implication-label">Pricing</span>
+            <span class="implication-value">One-time or free/OSS with services; "no subscription" is a differentiator, not a price point</span>
+          </div>
+          <div class="implication-row">
+            <span class="implication-label">Risk</span>
+            <span class="implication-value">New categories require education. The first 100 users must be self-selectors who already feel this pain.</span>
+          </div>
+        </div>
+        <div class="chip-row" style="margin-top:16px;">
+          <span class="chip chip-blue">Category creation</span>
+          <span class="chip chip-amber">Developer-first</span>
+          <span class="chip chip-muted">Privacy moat</span>
+        </div>
+      </div>
+
+      <!-- Option B -->
+      <div class="category-card" onclick="selectCategory(this, 'B')">
+        <div class="cat-label">Option B</div>
+        <div class="cat-name">Self-Hosted AI Assistant</div>
+        <p style="font-size:13px;color:var(--text);line-height:1.6;">
+          Positions Lyra in the established homelab / self-hosted community. Familiar framing for Hacker News readers, Raspberry Pi enthusiasts, and privacy-first power users.
+        </p>
+        <div class="cat-implications">
+          <div class="implication-row">
+            <span class="implication-label">Competitors</span>
+            <span class="implication-value">Directly vs Jan.ai, GPT4All, Open-WebUI, PrivateGPT — well-understood comparison set</span>
+          </div>
+          <div class="implication-row">
+            <span class="implication-label">Expectations</span>
+            <span class="implication-value">Local inference, chat interface, model flexibility — "assistant" implies Q&amp;A, not persistent agents</span>
+          </div>
+          <div class="implication-row">
+            <span class="implication-label">Pricing</span>
+            <span class="implication-value">OSS community expects free + hardware costs. Lower willingness to pay commercially.</span>
+          </div>
+          <div class="implication-row">
+            <span class="implication-label">Risk</span>
+            <span class="implication-value">Undersells Lyra's multi-agent architecture, memory system, and multi-channel capabilities. Feels like "yet another local chatbot."</span>
+          </div>
+        </div>
+        <div class="chip-row" style="margin-top:16px;">
+          <span class="chip chip-blue">Easy discovery</span>
+          <span class="chip chip-muted">Existing community</span>
+          <span class="chip chip-amber">Undersells vision</span>
+        </div>
+      </div>
+
+      <!-- Option C -->
+      <div class="category-card" onclick="selectCategory(this, 'C')">
+        <div class="cat-label">Option C</div>
+        <div class="cat-name">Personal Intelligence Engine</div>
+        <p style="font-size:13px;color:var(--text);line-height:1.6;">
+          Aspirational framing that emphasises the cognitive architecture — memory, context, reasoning — over the channel/platform mechanics. Appeals to the "second brain" crowd.
+        </p>
+        <div class="cat-implications">
+          <div class="implication-row">
+            <span class="implication-label">Competitors</span>
+            <span class="implication-value">vs Notion AI, Mem.ai, Rewind — knowledge management adjacent rather than AI assistant adjacent</span>
+          </div>
+          <div class="implication-row">
+            <span class="implication-label">Expectations</span>
+            <span class="implication-value">Users expect deep memory, synthesis, and personal knowledge management — possibly too abstract for technical first adopters</span>
+          </div>
+          <div class="implication-row">
+            <span class="implication-label">Pricing</span>
+            <span class="implication-value">Higher WTP — "intelligence" is a premium word. Sets up future paid services naturally.</span>
+          </div>
+          <div class="implication-row">
+            <span class="implication-label">Risk</span>
+            <span class="implication-value">Overpromises on the personal knowledge graph story if memory system is still Phase 1. May attract wrong audience (non-developers).</span>
+          </div>
+        </div>
+        <div class="chip-row" style="margin-top:16px;">
+          <span class="chip chip-amber">Premium framing</span>
+          <span class="chip chip-muted">Broader audience</span>
+          <span class="chip chip-blue">Aspirational</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:8px; background: rgba(0,200,224,0.04);">
+      <div style="display:flex;gap:12px;align-items:flex-start;">
+        <div>
+          <div class="card-title" style="font-size:15px;margin-bottom:8px;">Verdict: Option A is the right call now — with Option C as the narrative trajectory</div>
+          <p style="font-size:13px;color:var(--text-dim);line-height:1.7;">
+            "Personal AI Agent Engine" owns a new space without borrowing credibility from adjacent categories. It sets accurate expectations (persistent, multi-channel, extensible) for the target audience of developers and AI tinkerers. The "engine" qualifier signals infrastructure-level thinking — builders who want a foundation, not a black box. Option C's language ("intelligence", "knows you") can be layered into copy and brand voice without becoming the primary category label.
+          </p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ─── SECTION 2: POSITIONING STATEMENTS ─── -->
+<section class="section" id="statements">
+  <div class="container">
+    <div class="section-header">
+      <span class="section-number">02</span>
+      <h2 class="section-title">Positioning Statements</h2>
+      <span class="section-desc">Three angles on the same product — choose one as primary, use the others as supporting copy.</span>
+    </div>
+
+    <div class="tab-bar">
+      <button class="tab-btn active" onclick="switchTab('pos', 'angle-a', this)">A — Sovereignty</button>
+      <button class="tab-btn" onclick="switchTab('pos', 'angle-b', this)">B — Intelligence</button>
+      <button class="tab-btn" onclick="switchTab('pos', 'angle-c', this)">C — Relationship</button>
+    </div>
+
+    <!-- ANGLE A: Privacy/Sovereignty -->
+    <div class="tab-panel active" id="pos-angle-a">
+      <div class="positioning-card">
+        <div class="positioning-angle">
+          <div class="angle-icon angle-icon-privacy">&#x1F512;</div>
+          <div class="angle-meta">
+            <div class="angle-label">Angle A</div>
+            <div class="angle-name">Sovereignty — Your data. Your hardware. Your rules.</div>
+          </div>
+        </div>
+
+        <div class="positioning-statement">
+          <span class="ps-for">For</span>
+          <span> privacy-conscious developers and power users </span>
+          <span class="ps-who">who are tired of feeding their most personal conversations to cloud services they don't control,</span>
+          <span class="ps-category"> Lyra is the personal AI agent engine </span>
+          <span class="ps-benefit">that runs 24/7 on hardware you own, remembers everything you've told it, and connects to the channels you already use — without a subscription, without cloud lock-in, and without your data leaving your machine.</span>
+          <br><br>
+          <span class="ps-unlike">Unlike ChatGPT, Claude, or Copilot,</span>
+          <span class="ps-diff"> Lyra has no company that can change its privacy policy, raise its price, or shut it down. The intelligence is yours, not rented.</span>
+        </div>
+
+        <div class="positioning-analysis">
+          <div class="pa-item">
+            <div class="pa-label pa-label-green">Strength</div>
+            <div class="pa-val">Immediately resonant with the dev/homelab audience. Privacy is a real, growing concern. Clear "unlike" contrast with dominant market leaders.</div>
+          </div>
+          <div class="pa-item">
+            <div class="pa-label pa-label-yellow">Limitation</div>
+            <div class="pa-val">Phase 1 still uses Anthropic cloud LLM by default — claim is architecturally true but the full local experience is Phase 2. Don't over-promise on local inference today.</div>
+          </div>
+          <div class="pa-item">
+            <div class="pa-label pa-label-red">Risk</div>
+            <div class="pa-val">Privacy framing attracts a narrower audience. Risk of being perceived as "just another privacy tool" rather than a capable AI agent. May lose mainstream-aspirational appeal.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ANGLE B: Intelligence/Capability -->
+    <div class="tab-panel" id="pos-angle-b">
+      <div class="positioning-card">
+        <div class="positioning-angle">
+          <div class="angle-icon angle-icon-intel">&#x26A1;</div>
+          <div class="angle-meta">
+            <div class="angle-label">Angle B</div>
+            <div class="angle-name">Intelligence — Multi-agent, persistent memory, always on.</div>
+          </div>
+        </div>
+
+        <div class="positioning-statement amber-accent">
+          <span class="ps-for">For</span>
+          <span> developers and AI builders </span>
+          <span class="ps-who">who want a personal AI that can actually do things — not just answer questions but run autonomously, remember context across months, and orchestrate specialized agents for different tasks —</span>
+          <span class="ps-category-amber"> Lyra is the personal AI agent engine </span>
+          <span class="ps-benefit">that gives you a production-grade hub-and-spoke architecture on your own hardware, with a 5-level memory system, multi-channel routing, and a clean extension model for skills and agents.</span>
+          <br><br>
+          <span class="ps-unlike">Unlike LangChain or LlamaIndex,</span>
+          <span class="ps-diff"> Lyra is a working product out of the box, not a framework that requires you to build everything yourself from primitives.</span>
+        </div>
+
+        <div class="positioning-analysis">
+          <div class="pa-item">
+            <div class="pa-label pa-label-green">Strength</div>
+            <div class="pa-val">Speaks directly to the secondary audience (AI tinkerers/builders). Positions against frameworks — a genuinely different value prop than "just use LangChain." Strong technical credibility signal.</div>
+          </div>
+          <div class="pa-item">
+            <div class="pa-label pa-label-yellow">Limitation</div>
+            <div class="pa-val">Requires more explanation. "Hub-and-spoke architecture" and "5-level memory system" are compelling to insiders but opaque to anyone outside the AI builder community.</div>
+          </div>
+          <div class="pa-item">
+            <div class="pa-label pa-label-red">Risk</div>
+            <div class="pa-val">Risks framing Lyra as a developer framework rather than a personal product. The "capability" story can attract contributors who want to extend it, but not users who want to use it.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ANGLE C: Personal/Relationship -->
+    <div class="tab-panel" id="pos-angle-c">
+      <div class="positioning-card">
+        <div class="positioning-angle">
+          <div class="angle-icon angle-icon-personal">&#x1F9E0;</div>
+          <div class="angle-meta">
+            <div class="angle-label">Angle C</div>
+            <div class="angle-name">Relationship — An AI that genuinely knows you.</div>
+          </div>
+        </div>
+
+        <div class="positioning-statement purple-accent">
+          <span class="ps-for">For</span>
+          <span> people who feel like every conversation with a cloud AI starts from zero and ends the moment they close the tab —</span>
+          <span class="ps-category-purple"> Lyra is the personal AI agent </span>
+          <span class="ps-benefit">that runs on your own machine, remembers your conversations, your preferences, and the context you've built up over time, and grows more useful the longer you use it — not because it's reading your data on a server somewhere, but because it lives where you do.</span>
+          <br><br>
+          <span class="ps-unlike">Unlike any cloud AI assistant,</span>
+          <span class="ps-diff"> Lyra doesn't forget you when you log out, doesn't reset when the company upgrades its model, and doesn't share what you tell it with anyone. It's the AI that's actually yours.</span>
+        </div>
+
+        <div class="positioning-analysis">
+          <div class="pa-item">
+            <div class="pa-label pa-label-green">Strength</div>
+            <div class="pa-val">Most emotionally resonant. "Starts from zero" is a universally felt pain with every AI product. This angle could cross beyond the developer audience into the aspirational power user segment.</div>
+          </div>
+          <div class="pa-item">
+            <div class="pa-label pa-label-yellow">Limitation</div>
+            <div class="pa-val">Requires the memory system to be genuinely impressive. The promise of "remembers everything" sets a high bar. Phase 1 memory is good but not magic — validate before leading with this.</div>
+          </div>
+          <div class="pa-item">
+            <div class="pa-label pa-label-red">Risk</div>
+            <div class="pa-val">The relationship framing may conflict with "it runs on your server" — people don't think of servers as warm and personal. Requires strong UX storytelling to bridge the gap.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card card-amber" style="margin-top:20px;">
+      <div class="card-title" style="font-size:15px;">Recommended primary: A — with C as the brand voice, B in technical docs</div>
+      <p style="font-size:13px;line-height:1.7;">Use Angle A as the headline positioning (it matches the target audience and can be claimed truthfully today). Let Angle C inform the brand voice, tagline copy, and landing page narrative — it's the feeling Lyra should create. Keep Angle B for GitHub README, technical blog posts, and developer documentation where specificity builds trust.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ─── SECTION 3: COMPETITIVE MATRIX ─── -->
+<section class="section" id="matrix">
+  <div class="container">
+    <div class="section-header">
+      <span class="section-number">03</span>
+      <h2 class="section-title">Competitive Matrix</h2>
+      <span class="section-desc">Lyra's unique position in the landscape. Each competitor mapped across four axes.</span>
+    </div>
+
+    <div class="matrix-container">
+      <canvas id="scatter-canvas" width="1000" height="520"></canvas>
+
+      <div class="matrix-legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#f0a030;box-shadow:0 0 6px #f0a030;"></div> Lyra</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#00c8e0;"></div> Local/Open-source tools</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#8b7cf8;"></div> Developer frameworks</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f87171;"></div> Cloud AI assistants</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#4ade80;"></div> Workflow/automation tools</div>
+        <div style="margin-left:auto;font-size:12px;color:var(--text-dim);">X-axis: Privacy (cloud → local) &nbsp;|&nbsp; Y-axis: Capability (chat → agent)</div>
+      </div>
+    </div>
+
+    <!-- Dimension breakdown table -->
+    <div style="margin-top:24px;">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.15em;text-transform:uppercase;color:var(--text-dim);margin-bottom:16px;">All four dimensions</div>
+      <div style="overflow-x:auto;">
+        <table class="diff-table">
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th>Privacy</th>
+              <th>Capability</th>
+              <th>Memory</th>
+              <th>Extensibility</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong style="color:var(--amber);">Lyra</strong></td>
+              <td><span style="color:#4ade80;">&#9679;</span> Local-first</td>
+              <td><span style="color:#4ade80;">&#9679;</span> Multi-agent + skills</td>
+              <td><span style="color:#4ade80;">&#9679;</span> 5-level persistent</td>
+              <td><span style="color:#4ade80;">&#9679;</span> Plugins + adapters</td>
+              <td style="color:var(--text-dim);font-size:12px;">The only product in all four green quadrants simultaneously</td>
+            </tr>
+            <tr>
+              <td>ChatGPT</td>
+              <td><span style="color:#f87171;">&#9679;</span> Full cloud</td>
+              <td><span style="color:#facc15;">&#9679;</span> GPTs, tools</td>
+              <td><span style="color:#facc15;">&#9679;</span> Projects (limited)</td>
+              <td><span style="color:#facc15;">&#9679;</span> GPT Store (closed)</td>
+              <td style="color:var(--text-dim);font-size:12px;">Memory improving but cloud-only; no bring-your-own channel</td>
+            </tr>
+            <tr>
+              <td>Claude (web)</td>
+              <td><span style="color:#f87171;">&#9679;</span> Full cloud</td>
+              <td><span style="color:#facc15;">&#9679;</span> Projects</td>
+              <td><span style="color:#facc15;">&#9679;</span> Projects (limited)</td>
+              <td><span style="color:#f87171;">&#9679;</span> Closed</td>
+              <td style="color:var(--text-dim);font-size:12px;">High quality output; zero control, no automation</td>
+            </tr>
+            <tr>
+              <td>Copilot</td>
+              <td><span style="color:#f87171;">&#9679;</span> Microsoft cloud</td>
+              <td><span style="color:#facc15;">&#9679;</span> M365 actions</td>
+              <td><span style="color:#facc15;">&#9679;</span> Contextual only</td>
+              <td><span style="color:#facc15;">&#9679;</span> M365 locked</td>
+              <td style="color:var(--text-dim);font-size:12px;">Enterprise-focused; not personal</td>
+            </tr>
+            <tr>
+              <td>LangChain</td>
+              <td><span style="color:#8b7cf8;">&#9679;</span> Framework (any)</td>
+              <td><span style="color:#4ade80;">&#9679;</span> Full agent primitives</td>
+              <td><span style="color:#facc15;">&#9679;</span> Pluggable (build it)</td>
+              <td><span style="color:#4ade80;">&#9679;</span> Very open</td>
+              <td style="color:var(--text-dim);font-size:12px;">Framework not product. You build everything.</td>
+            </tr>
+            <tr>
+              <td>LlamaIndex</td>
+              <td><span style="color:#8b7cf8;">&#9679;</span> Framework (any)</td>
+              <td><span style="color:#facc15;">&#9679;</span> RAG + agents</td>
+              <td><span style="color:#4ade80;">&#9679;</span> Strong RAG patterns</td>
+              <td><span style="color:#4ade80;">&#9679;</span> Very open</td>
+              <td style="color:var(--text-dim);font-size:12px;">Better for knowledge retrieval; not a personal agent product</td>
+            </tr>
+            <tr>
+              <td>n8n</td>
+              <td><span style="color:#4ade80;">&#9679;</span> Self-hostable</td>
+              <td><span style="color:#facc15;">&#9679;</span> Workflow automation</td>
+              <td><span style="color:#f87171;">&#9679;</span> None (stateless flows)</td>
+              <td><span style="color:#4ade80;">&#9679;</span> Node-based</td>
+              <td style="color:var(--text-dim);font-size:12px;">Great at integrations; not an AI agent; no conversational memory</td>
+            </tr>
+            <tr>
+              <td>Flowise</td>
+              <td><span style="color:#4ade80;">&#9679;</span> Self-hostable</td>
+              <td><span style="color:#facc15;">&#9679;</span> LLM flows (visual)</td>
+              <td><span style="color:#facc15;">&#9679;</span> Limited</td>
+              <td><span style="color:#facc15;">&#9679;</span> Visual-only</td>
+              <td style="color:var(--text-dim);font-size:12px;">Visual builder; hard to extend programmatically</td>
+            </tr>
+            <tr>
+              <td>Jan.ai</td>
+              <td><span style="color:#4ade80;">&#9679;</span> Fully local</td>
+              <td><span style="color:#f87171;">&#9679;</span> Chat only</td>
+              <td><span style="color:#f87171;">&#9679;</span> None</td>
+              <td><span style="color:#facc15;">&#9679;</span> Model swap</td>
+              <td style="color:var(--text-dim);font-size:12px;">Local privacy win; no agents, no memory, no channels</td>
+            </tr>
+            <tr>
+              <td>GPT4All</td>
+              <td><span style="color:#4ade80;">&#9679;</span> Fully local</td>
+              <td><span style="color:#f87171;">&#9679;</span> Chat only</td>
+              <td><span style="color:#f87171;">&#9679;</span> None</td>
+              <td><span style="color:#facc15;">&#9679;</span> Model swap</td>
+              <td style="color:var(--text-dim);font-size:12px;">Desktop app; no bot integration, no automation</td>
+            </tr>
+            <tr>
+              <td>Ollama</td>
+              <td><span style="color:#4ade80;">&#9679;</span> Fully local</td>
+              <td><span style="color:#f87171;">&#9679;</span> API only</td>
+              <td><span style="color:#f87171;">&#9679;</span> None (inference only)</td>
+              <td><span style="color:#4ade80;">&#9679;</span> OpenAI-compat API</td>
+              <td style="color:var(--text-dim);font-size:12px;">Excellent LLM runtime; no agent layer at all — complements Lyra</td>
+            </tr>
+            <tr>
+              <td>Telegram bots</td>
+              <td><span style="color:#facc15;">&#9679;</span> Varies</td>
+              <td><span style="color:#f87171;">&#9679;</span> Single-purpose</td>
+              <td><span style="color:#f87171;">&#9679;</span> None</td>
+              <td><span style="color:#f87171;">&#9679;</span> Closed</td>
+              <td style="color:var(--text-dim);font-size:12px;">Single bot, single function. Lyra is the layer above all of these.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── SECTION 4: DIFFERENTIATORS ─── -->
+<section class="section" id="differentiators">
+  <div class="container">
+    <div class="section-header">
+      <span class="section-number">04</span>
+      <h2 class="section-title">Differentiators</h2>
+      <span class="section-desc">Ranked by defensibility — can competitors copy this? How long would it take?</span>
+    </div>
+
+    <div style="overflow-x:auto;">
+      <table class="diff-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Differentiator</th>
+            <th>What Lyra Claims</th>
+            <th>Why Competitors Can't</th>
+            <th>Defensibility</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="rank-badge rank-1">1</span></td>
+            <td>
+              <div class="diff-claim">Architectural unity: one system, all channels</div>
+            </td>
+            <td style="color:var(--text-dim);font-size:13px;">A single hub-and-spoke runtime that simultaneously serves Telegram, Discord, and future channels with isolated per-scope memory and agent pools.</td>
+            <td style="color:var(--text-dim);font-size:13px;">Cloud AIs have no concept of "your channels." Local tools (Jan.ai, Ollama) are desktop apps. Frameworks (LangChain) require you to build the channel layer. Nobody combines all three in a product.</td>
+            <td>
+              <div class="moat-bar">
+                <div class="moat-bg"><div class="moat-fill" style="width:90%;"></div></div>
+                <span style="font-size:12px;color:var(--text-dim);min-width:60px;">Very High</span>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td><span class="rank-badge rank-1">2</span></td>
+            <td>
+              <div class="diff-claim">5-level persistent memory, cross-session</div>
+            </td>
+            <td style="color:var(--text-dim);font-size:13px;">Working → Session → Episodic → Semantic (SQLite + BM25 + embeddings) → Procedural. Memory that survives crashes, restarts, and weeks. Hybrid search. Compaction built in.</td>
+            <td style="color:var(--text-dim);font-size:13px;">Cloud AIs have limited Projects memory, no local storage, reset on model upgrades. Local chat tools have zero persistence. LangChain has pluggable memory but you wire it yourself.</td>
+            <td>
+              <div class="moat-bar">
+                <div class="moat-bg"><div class="moat-fill" style="width:85%;"></div></div>
+                <span style="font-size:12px;color:var(--text-dim);min-width:60px;">Very High</span>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td><span class="rank-badge rank-2">3</span></td>
+            <td>
+              <div class="diff-claim">No subscription, no cloud lock-in, ever</div>
+            </td>
+            <td style="color:var(--text-dim);font-size:13px;">Lyra is MIT-licensed. The intelligence lives on hardware you own. No company can change its privacy policy, raise prices, or sunset the product.</td>
+            <td style="color:var(--text-dim);font-size:13px;">ChatGPT, Claude, Copilot are cloud businesses — they structurally cannot make this claim. OSS alternatives exist but none combine this with full agent capabilities.</td>
+            <td>
+              <div class="moat-bar">
+                <div class="moat-bg"><div class="moat-fill" style="width:75%;"></div></div>
+                <span style="font-size:12px;color:var(--text-dim);min-width:60px;">High</span>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td><span class="rank-badge rank-2">4</span></td>
+            <td>
+              <div class="diff-claim">Auditable by design — ~300 line core</div>
+            </td>
+            <td style="color:var(--text-dim);font-size:13px;">The hub is ~300 lines. Every routing decision, memory write, and skill invocation is traceable. Readable in an afternoon. No magic, no black-box middleware.</td>
+            <td style="color:var(--text-dim);font-size:13px;">LangChain/LlamaIndex are complex abstraction layers — auditing is hard. n8n/Flowise are visual tools (opaque runtime). Cloud AIs are completely black-box.</td>
+            <td>
+              <div class="moat-bar">
+                <div class="moat-bg"><div class="moat-fill" style="width:65%;"></div></div>
+                <span style="font-size:12px;color:var(--text-dim);min-width:60px;">High</span>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td><span class="rank-badge rank-3">5</span></td>
+            <td>
+              <div class="diff-claim">Voice round-trip on your hardware</div>
+            </td>
+            <td style="color:var(--text-dim);font-size:13px;">STT (faster-whisper large-v3-turbo + personal vocab) + TTS (Qwen-fast, OGG/Opus, Discord voice bubble) — fully local, integrated into the same agent pipeline.</td>
+            <td style="color:var(--text-dim);font-size:13px;">Cloud AIs have voice but it's their servers. Local tools have no voice pipeline. voiceCLI is a sibling project that makes this a native capability, not an integration.</td>
+            <td>
+              <div class="moat-bar">
+                <div class="moat-bg"><div class="moat-fill" style="width:55%;"></div></div>
+                <span style="font-size:12px;color:var(--text-dim);min-width:60px;">Medium</span>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td><span class="rank-badge rank-4">6</span></td>
+            <td>
+              <div class="diff-claim">TOML-configured agents, DB-managed at runtime</div>
+            </td>
+            <td style="color:var(--text-dim);font-size:13px;">Agent personalities, prompts, and capabilities are TOML files — readable, diffable, version-controlled. Runtime management via AgentStore (SQLite) without touching config.</td>
+            <td style="color:var(--text-dim);font-size:13px;">Cloud AIs have no notion of separate agent configs. Framework tools have agents as code constructs, hard to manage without redeploy. Flowise has visual-only config.</td>
+            <td>
+              <div class="moat-bar">
+                <div class="moat-bg"><div class="moat-fill" style="width:45%;"></div></div>
+                <span style="font-size:12px;color:var(--text-dim);min-width:60px;">Medium</span>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td><span class="rank-badge rank-5">7</span></td>
+            <td>
+              <div class="diff-claim">Knowledge vault — scrape → LLM → search</div>
+            </td>
+            <td style="color:var(--text-dim);font-size:13px;">/add, /explain, /summarize, /search slash commands pipe web content through the LLM into a local semantic vault with FTS5 + embedding search.</td>
+            <td style="color:var(--text-dim);font-size:13px;">Cloud AIs have no persistent vault. Local tools have no ingestion pipeline. This is a product behavior that competitors would need to build end-to-end.</td>
+            <td>
+              <div class="moat-bar">
+                <div class="moat-bg"><div class="moat-fill" style="width:40%;"></div></div>
+                <span style="font-size:12px;color:var(--text-dim);min-width:60px;">Med-Low</span>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card" style="margin-top:24px;">
+      <div class="card-title" style="font-size:15px;">Moat summary</div>
+      <p style="font-size:13px;color:var(--text-dim);line-height:1.7;">Differentiators 1–3 form the core moat. They are simultaneously true today, architecturally difficult to replicate (cloud AIs can't go local by design; local tools lack the agent layer), and directly relevant to the target audience. Differentiators 4–7 deepen the value for early adopters and builders but are eventually copyable. The long-term moat is the compound effect: <strong style="color:var(--star);">no single competitor occupies all seven dimensions at once.</strong></p>
+    </div>
+  </div>
+</section>
+
+<!-- ─── SECTION 5: ANTI-POSITIONING ─── -->
+<section class="section" id="anti">
+  <div class="container">
+    <div class="section-header">
+      <span class="section-number">05</span>
+      <h2 class="section-title">Anti-Positioning</h2>
+      <span class="section-desc">What Lyra is not. What we refuse to compete on. Clarity about limits is a form of positioning.</span>
+    </div>
+
+    <div class="anti-grid stagger">
+      <div class="anti-card">
+        <span class="anti-icon">&#x2716;</span>
+        <div class="anti-title">Not a chatbot</div>
+        <div class="anti-body">Lyra is not a thin wrapper around an LLM API with a nice interface. It is a persistent, multi-agent engine with memory, routing, and skills. The conversation interface is one output modality — not the product.</div>
+      </div>
+
+      <div class="anti-card">
+        <span class="anti-icon">&#x2716;</span>
+        <div class="anti-title">Not a framework to sell</div>
+        <div class="anti-body">Lyra is not LangChain. There are no abstractions designed for general-purpose use. The extension model serves one operator (you) on hardware you own. It is a personal tool that happens to be well-engineered — not a platform built to be sold to others.</div>
+      </div>
+
+      <div class="anti-card">
+        <span class="anti-icon">&#x2716;</span>
+        <div class="anti-title">Not a task manager or calendar</div>
+        <div class="anti-body">Lyra does not manage your to-do list, your calendar, or your reminders. It is an AI intelligence layer, not a productivity suite. Those integrations may emerge as skills — they are not the core value proposition.</div>
+      </div>
+
+      <div class="anti-card">
+        <span class="anti-icon">&#x2716;</span>
+        <div class="anti-title">Not autonomous without supervision</div>
+        <div class="anti-body">Lyra does not act without you. It has a trust model, a permission system, and a human-in-the-loop design. "Agentic" means capable of multi-step reasoning — not capable of running your life. Autonomy is bounded and opt-in.</div>
+      </div>
+
+      <div class="anti-card">
+        <span class="anti-icon">&#x2716;</span>
+        <div class="anti-title">Not multi-tenant SaaS</div>
+        <div class="anti-body">Lyra is built for one operator. The architecture does not support production multi-tenancy, shared user databases, or high-concurrency scaling. If you're building a product for others, use a different foundation.</div>
+      </div>
+
+      <div class="anti-card">
+        <span class="anti-icon">&#x2716;</span>
+        <div class="anti-title">Not competing on model benchmarks</div>
+        <div class="anti-body">Lyra does not claim its LLM output is smarter than OpenAI's. The value is the architecture around the model — memory, routing, persistence, privacy — not the raw inference quality. The model is a swappable component.</div>
+      </div>
+
+      <div class="anti-card">
+        <span class="anti-icon">&#x2716;</span>
+        <div class="anti-title">Not a visual no-code tool</div>
+        <div class="anti-body">Lyra is configured in TOML and Python. There is no drag-and-drop UI, no visual flow builder, no node canvas. The audience is people who are comfortable in a terminal. That constraint is a feature — it keeps the surface auditable and the core minimal.</div>
+      </div>
+
+      <div class="anti-card">
+        <span class="anti-icon">&#x2716;</span>
+        <div class="anti-title">Not a subscription product</div>
+        <div class="anti-body">Lyra does not charge a monthly fee. It does not have a freemium tier with paywalled memory. The cost is your hardware and (optionally) your LLM API key. This is a structural choice that defines the business model and the relationship with users.</div>
+      </div>
+    </div>
+
+    <div class="card card-amber" style="margin-top:24px;">
+      <div class="card-title" style="font-size:15px;">Why anti-positioning matters</div>
+      <p style="font-size:13px;line-height:1.7;">Clear limits prevent scope creep, set honest expectations, and sharpen the identity. A product that claims to be everything is understood as nothing. Lyra's constraints — personal-first, terminal-native, single-operator, not autonomous — are not weaknesses. They are the conditions that make the privacy claim, the auditability claim, and the ownership claim credible. Remove any of these constraints and the core positioning collapses.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ─── SECTION 6: PALETTE OPTIONS ─── -->
+<section class="section" id="palette">
+  <div class="container">
+    <div class="section-header">
+      <span class="section-number">06</span>
+      <h2 class="section-title">Palette Options</h2>
+      <span class="section-desc">Three colour directions — current brand plus two alternatives to consider.</span>
+    </div>
+
+    <div class="palette-grid stagger">
+
+      <!-- Current: Teal + Amber -->
+      <div class="palette-swatch">
+        <div class="swatch-preview" style="background: linear-gradient(135deg, #060a14 0%, #0c1525 50%, #121f38 100%);">
+          <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 30% 50%, rgba(0,200,224,0.2), transparent 60%)"></div>
+          <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 70% 50%, rgba(240,160,48,0.2), transparent 60%)"></div>
+          <span class="swatch-label" style="background:linear-gradient(90deg,#00c8e0,#f0a030);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">LYRA</span>
+        </div>
+        <div class="swatch-meta">
+          <div class="swatch-name">Current — Channel + Hub</div>
+          <div class="swatch-desc">Teal signals digital liveness and connectivity. Amber signals warmth, intelligence, and personal presence. The gradient tells the transformation story: raw input becoming thoughtful response. Strong metaphor coherence with the lyre/constellation duality.</div>
+          <div class="swatch-colors">
+            <span class="swatch-chip" style="background:rgba(0,200,224,0.1);color:#00c8e0;border:1px solid rgba(0,200,224,0.2);">#00c8e0</span>
+            <span class="swatch-chip" style="background:rgba(240,160,48,0.1);color:#f0a030;border:1px solid rgba(240,160,48,0.2);">#f0a030</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Alt A: Violet + Coral -->
+      <div class="palette-swatch">
+        <div class="swatch-preview" style="background:linear-gradient(135deg,#0a0612,#12082a);">
+          <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 30% 50%, rgba(108,99,255,0.25), transparent 60%)"></div>
+          <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 70% 50%, rgba(255,107,157,0.2), transparent 60%)"></div>
+          <span class="swatch-label" style="background:linear-gradient(90deg,#6c63ff,#ff6b9d);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">LYRA</span>
+        </div>
+        <div class="swatch-meta">
+          <div class="swatch-name">Alt A — Synthesis + Presence</div>
+          <div class="swatch-desc">Violet signals synthesis, abstract intelligence, and depth. Coral/rose signals warmth and human presence. This palette leans into the "relationship" angle and reads as more distinctly personal. Risk: closer to consumer AI aesthetics (Notion, Linear).</div>
+          <div class="swatch-colors">
+            <span class="swatch-chip" style="background:rgba(108,99,255,0.1);color:#6c63ff;border:1px solid rgba(108,99,255,0.2);">#6c63ff</span>
+            <span class="swatch-chip" style="background:rgba(255,107,157,0.1);color:#ff6b9d;border:1px solid rgba(255,107,157,0.2);">#ff6b9d</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Alt B: Emerald + Red -->
+      <div class="palette-swatch">
+        <div class="swatch-preview" style="background:linear-gradient(135deg,#040d08,#08180e);">
+          <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 30% 50%, rgba(0,229,160,0.2), transparent 60%)"></div>
+          <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 70% 50%, rgba(255,77,109,0.2), transparent 60%)"></div>
+          <span class="swatch-label" style="background:linear-gradient(90deg,#00e5a0,#ff4d6d);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">LYRA</span>
+        </div>
+        <div class="swatch-meta">
+          <div class="swatch-name">Alt B — Signal + Alert</div>
+          <div class="swatch-desc">Emerald green against a near-black background is a strong hacker/terminal aesthetic — signals uptime, liveness, and systems thinking. Red gives urgency and contrast. High technical credibility; lower warmth. Best if leaning into the "always-on monitoring" narrative.</div>
+          <div class="swatch-colors">
+            <span class="swatch-chip" style="background:rgba(0,229,160,0.1);color:#00e5a0;border:1px solid rgba(0,229,160,0.2);">#00e5a0</span>
+            <span class="swatch-chip" style="background:rgba(255,77,109,0.1);color:#ff4d6d;border:1px solid rgba(255,77,109,0.2);">#ff4d6d</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:24px;">
+      <div class="card-title" style="font-size:15px;">Palette recommendation: keep current, strengthen amber usage</div>
+      <p style="font-size:13px;color:var(--text-dim);line-height:1.7;">The teal/amber system is already deeply embedded in the logo, animation, and brand narrative. The metaphor coherence (teal = channel input, amber = resolved intelligence) is a genuine design strength that would be lost with a palette change. The recommendation is not to replace it, but to give amber more weight in hero copy and UI accents — it is currently used primarily in the logo, but its warmth should permeate the product language. Alt A is worth revisiting if Lyra ever addresses a consumer audience (Angle C positioning). Alt B fits a developer tooling framing but sacrifices the warmth that makes Lyra feel personal.</p>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-wordmark">LYRA</div>
+    <div class="footer-sub">Personal AI Agent Engine &nbsp;·&nbsp; Roxabi</div>
+    <div class="footer-date">Positioning exploration — generated March 2026</div>
+  </div>
+</footer>
+
+<script>
+// ─── TAB SWITCHING ───
+function switchTab(group, id, btn) {
+  document.querySelectorAll(`#${group}-${id}`).forEach(p => { /* handled by id directly */ });
+
+  const allPanels = btn.closest('.container').querySelectorAll('.tab-panel');
+  const allBtns = btn.closest('.tab-bar').querySelectorAll('.tab-btn');
+
+  allBtns.forEach(b => b.classList.remove('active'));
+  allPanels.forEach(p => p.classList.remove('active'));
+
+  btn.classList.add('active');
+  const panel = document.getElementById(`${group}-${id}`);
+  if (panel) { panel.classList.add('active'); }
+}
+
+// ─── CATEGORY SELECTION ───
+function selectCategory(card, id) {
+  document.querySelectorAll('.category-card').forEach(c => c.classList.remove('selected'));
+  card.classList.add('selected');
+}
+
+// Auto-select A on load
+window.addEventListener('DOMContentLoaded', () => {
+  const cards = document.querySelectorAll('.category-card');
+  if (cards.length > 0) cards[0].classList.add('selected');
+  drawScatter();
+});
+
+// ─── SCATTER PLOT ───
+function drawScatter() {
+  const canvas = document.getElementById('scatter-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+
+  const W = canvas.width;
+  const H = canvas.height;
+  const PAD = 60;
+
+  // Clear
+  ctx.clearRect(0, 0, W, H);
+
+  // Background
+  ctx.fillStyle = '#0c1525';
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid lines
+  ctx.strokeStyle = 'rgba(0,200,224,0.06)';
+  ctx.lineWidth = 1;
+  for (let i = 1; i < 4; i++) {
+    const x = PAD + ((W - PAD * 2) / 4) * i;
+    const y = PAD + ((H - PAD * 2) / 4) * i;
+    ctx.beginPath(); ctx.moveTo(x, PAD); ctx.lineTo(x, H - PAD); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(PAD, y); ctx.lineTo(W - PAD, y); ctx.stroke();
+  }
+
+  // Axes
+  ctx.strokeStyle = 'rgba(0,200,224,0.2)';
+  ctx.lineWidth = 1;
+  // X
+  ctx.beginPath();
+  ctx.moveTo(PAD, H - PAD);
+  ctx.lineTo(W - PAD, H - PAD);
+  ctx.stroke();
+  // Y
+  ctx.beginPath();
+  ctx.moveTo(PAD, PAD);
+  ctx.lineTo(PAD, H - PAD);
+  ctx.stroke();
+
+  // Axis labels
+  ctx.fillStyle = 'rgba(90,122,154,0.7)';
+  ctx.font = '11px JetBrains Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('CLOUD', PAD + 20, H - PAD + 18);
+  ctx.fillText('LOCAL', W - PAD - 10, H - PAD + 18);
+  ctx.fillText('PRIVACY', (W / 2), H - 12);
+
+  ctx.save();
+  ctx.translate(14, H / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('CAPABILITY', 0, 0);
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(PAD - 28, PAD + 10);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('AGENT', 0, 0);
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(PAD - 28, H - PAD - 10);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('CHAT', 0, 0);
+  ctx.restore();
+
+  // Quadrant labels
+  ctx.fillStyle = 'rgba(0,200,224,0.04)';
+  // Top-right quadrant highlight (Lyra's zone)
+  const qx = PAD + (W - PAD * 2) / 2;
+  const qy = PAD;
+  const qw = (W - PAD * 2) / 2;
+  const qh = (H - PAD * 2) / 2;
+  ctx.fillRect(qx, qy, qw, qh);
+
+  ctx.fillStyle = 'rgba(0,200,224,0.08)';
+  ctx.font = '10px JetBrains Mono, monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText('LOCAL + AGENT', W - PAD - 8, PAD + 16);
+
+  // Data points: [label, x(0=cloud,1=local), y(0=chat,1=agent), color, size, bold]
+  const points = [
+    ['Lyra', 0.78, 0.82, '#f0a030', 14, true],
+    ['ChatGPT', 0.08, 0.50, '#f87171', 9, false],
+    ['Claude', 0.06, 0.38, '#f87171', 8, false],
+    ['Copilot', 0.12, 0.40, '#f87171', 7, false],
+    ['LangChain', 0.55, 0.88, '#8b7cf8', 8, false],
+    ['LlamaIndex', 0.52, 0.72, '#8b7cf8', 7, false],
+    ['n8n', 0.72, 0.42, '#4ade80', 8, false],
+    ['Flowise', 0.68, 0.38, '#4ade80', 7, false],
+    ['Jan.ai', 0.95, 0.12, '#00c8e0', 8, false],
+    ['GPT4All', 0.92, 0.10, '#00c8e0', 7, false],
+    ['Ollama', 0.97, 0.05, '#00c8e0', 8, false],
+    ['TG Bots', 0.40, 0.15, '#00c8e0', 6, false],
+  ];
+
+  const toX = (v) => PAD + v * (W - PAD * 2);
+  const toY = (v) => (H - PAD) - v * (H - PAD * 2);
+
+  // Draw connection lines from Lyra to nearby
+  const lyra = points[0];
+  const lx = toX(lyra[1]);
+  const ly = toY(lyra[2]);
+
+  // Draw all points
+  points.forEach(([label, px, py, color, size, bold]) => {
+    const cx = toX(px);
+    const cy = toY(py);
+
+    // Glow for Lyra
+    if (bold) {
+      const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, size * 3);
+      grad.addColorStop(0, 'rgba(240,160,48,0.35)');
+      grad.addColorStop(1, 'rgba(240,160,48,0)');
+      ctx.beginPath();
+      ctx.arc(cx, cy, size * 3, 0, Math.PI * 2);
+      ctx.fillStyle = grad;
+      ctx.fill();
+    }
+
+    // Dot
+    ctx.beginPath();
+    ctx.arc(cx, cy, size, 0, Math.PI * 2);
+    ctx.fillStyle = bold ? color : color + 'cc';
+    ctx.fill();
+
+    if (bold) {
+      ctx.strokeStyle = '#ffffff33';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    // Label
+    ctx.fillStyle = bold ? '#eef4ff' : 'rgba(184,207,232,0.75)';
+    ctx.font = bold ? 'bold 12px Inter, sans-serif' : '11px Inter, sans-serif';
+    ctx.textAlign = cx > W / 2 + 40 ? 'right' : 'left';
+
+    let labelX = cx + (cx > W / 2 + 40 ? -(size + 6) : (size + 6));
+    let labelY = cy + (cy < H / 2 ? (size + 14) : -(size + 4));
+
+    ctx.fillText(label, labelX, labelY);
+  });
+}
+
+// ─── INTERSECTION OBSERVER FOR ANIMATIONS ───
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      e.target.style.opacity = '1';
+    }
+  });
+}, { threshold: 0.1 });
+
+document.querySelectorAll('.stagger').forEach(el => observer.observe(el));
+</script>
+
+</body>
+</html>

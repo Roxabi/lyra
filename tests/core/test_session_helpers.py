@@ -28,7 +28,8 @@ class TestScrapeUrl:
 
     @pytest.mark.asyncio
     async def test_happy_path_returns_stdout(self) -> None:
-        proc = _make_fake_proc(returncode=0, stdout=b"scraped content here")
+        payload = b'{"success": true, "data": {"text": "scraped content here"}}'
+        proc = _make_fake_proc(returncode=0, stdout=payload)
         with patch(
             "asyncio.create_subprocess_exec",
             new=AsyncMock(return_value=proc),
@@ -59,7 +60,8 @@ class TestScrapeUrl:
 
     @pytest.mark.asyncio
     async def test_url_passed_to_subprocess(self) -> None:
-        proc = _make_fake_proc(stdout=b"content")
+        payload = b'{"success": true, "data": {"text": "content"}}'
+        proc = _make_fake_proc(stdout=payload)
         url = "https://example.com/page"
         calls: list = []
 
@@ -71,8 +73,11 @@ class TestScrapeUrl:
             await scrape_url(url)
 
         assert len(calls) == 1
-        assert calls[0][0] == "web-intel:scrape"
-        assert calls[0][1] == url
+        # Command is: uv run python <scraper_path> <url>
+        assert calls[0][0] == "uv"
+        assert calls[0][1] == "run"
+        assert calls[0][2] == "python"
+        assert calls[0][-1] == url  # URL is the last positional arg
 
 
 class TestVaultAdd:
@@ -119,8 +124,10 @@ class TestVaultAdd:
             await vault_add("T", ["a", "b"], "https://x.com", "body")
 
         joined_args = " ".join(calls[0])
-        assert "--tags" in joined_args
-        assert "a,b" in joined_args
+        # Tags are now stored in --metadata JSON (vault put has no --tags flag)
+        assert "--metadata" in joined_args
+        assert '"a"' in joined_args
+        assert '"b"' in joined_args
 
     @pytest.mark.asyncio
     async def test_tags_omitted_when_empty(self) -> None:

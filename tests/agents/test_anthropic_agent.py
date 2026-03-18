@@ -309,7 +309,7 @@ class TestSessionCommandWiring:
         provider = make_mock_provider()
         agent = AnthropicAgent(make_config(), provider)
         session_keys = set(agent.command_router._session_handlers.keys())
-        assert "/add" in session_keys
+        assert "/vault-add" in session_keys
         assert "/explain" in session_keys
         assert "/summarize" in session_keys
 
@@ -319,6 +319,6 @@ class TestSessionCommandWiring:
         provider = make_mock_provider()
         agent = AnthropicAgent(make_config(), provider)
         handlers = agent.command_router._session_handlers
-        assert "vault" in handlers["/add"].description.lower()
+        assert "vault" in handlers["/vault-add"].description.lower()
         assert "explain" in handlers["/explain"].description.lower()
         assert "summarize" in handlers["/summarize"].description.lower()

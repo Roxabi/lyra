@@ -1,18 +1,50 @@
 """Subprocess helpers for session commands (issue #99).
 
 Provides async wrappers around external CLI tools:
-  - web-intel:scrape  — fetches and converts web content to text
-  - vault             — reads/writes to the personal knowledge base
+  - web-intel scraper  — fetches and converts web content to text
+  - vault              — reads/writes to the personal knowledge base
+
+web-intel is an external plugin (roxabi-plugins) with its own venv and heavy
+deps (playwright, trafilatura, …). It cannot be imported directly — Lyra spawns
+it as a subprocess via `uv run python scripts/scraper.py <url>` inside the
+plugin directory.
+
+Override the plugin root with LYRA_WEB_INTEL_PATH env var.
+Default: ~/projects/roxabi-plugins/plugins/web-intel
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
+import logging
+import os
 from asyncio.subprocess import PIPE
+from pathlib import Path
+
+log = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# web-intel path resolution
+# ---------------------------------------------------------------------------
+
+
+def _web_intel_path() -> Path:
+    """Resolve the web-intel plugin root (machine-specific, overridable)."""
+    raw = os.environ.get("LYRA_WEB_INTEL_PATH")
+    if raw:
+        return Path(raw).expanduser()
+    return Path.home() / "projects" / "roxabi-plugins" / "plugins" / "web-intel"
+
+
+# ---------------------------------------------------------------------------
+# Exceptions
+# ---------------------------------------------------------------------------
 
 
 class ScrapeFailed(Exception):
-    """Raised when web-intel:scrape fails or is not available."""
+    """Raised when the web-intel scraper fails or is not available."""
 
     def __init__(self, reason: str) -> None:
         self.reason = reason
@@ -23,28 +55,66 @@ class VaultWriteFailed(Exception):
     """Raised when the vault CLI write fails or is not available."""
 
 
+# ---------------------------------------------------------------------------
+# Scraper
+# ---------------------------------------------------------------------------
+
+
 async def scrape_url(url: str, timeout: float = 30.0) -> str:
-    """Run web-intel:scrape <url> and return the decoded stdout.
+    """Run the web-intel scraper and return extracted text content.
+
+    Invokes: uv run python scripts/scraper.py <url>
+    inside the web-intel plugin directory (separate venv, heavy deps).
+
+    Returns the ``data.text`` field from the scraper's JSON output.
 
     Raises:
-        ScrapeFailed("not_available")  — if web-intel:scrape is not on PATH.
-        ScrapeFailed("subprocess_error") — if the process exits non-zero.
-        asyncio.TimeoutError — if the subprocess takes longer than timeout.
+        ScrapeFailed("not_available")    — uv or scraper.py not found.
+        ScrapeFailed("subprocess_error") — process exited non-zero or bad JSON.
+        ScrapeFailed("timeout")          — subprocess exceeded timeout.
     """
+    plugin_root = _web_intel_path()
+    scraper = plugin_root / "scripts" / "scraper.py"
+
     try:
         proc = await asyncio.create_subprocess_exec(
-            "web-intel:scrape", url, stdout=PIPE, stderr=PIPE
+            "uv", "run", "python", str(scraper), url,
+            stdout=PIPE, stderr=PIPE,
+            cwd=str(plugin_root),
         )
         try:
-            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         except asyncio.TimeoutError:
             proc.kill()
             raise ScrapeFailed("timeout")
         if proc.returncode != 0:
+            log.warning(
+                "scrape_url: scraper exited %d: %s",
+                proc.returncode, stderr.decode()[:200],
+            )
             raise ScrapeFailed("subprocess_error")
-        return stdout.decode()
     except FileNotFoundError:
         raise ScrapeFailed("not_available")
+
+    try:
+        result = json.loads(stdout.decode())
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        log.warning("scrape_url: failed to parse JSON output: %s", exc)
+        raise ScrapeFailed("subprocess_error")
+
+    if not result.get("success"):
+        log.warning("scrape_url: scraper reported failure: %s", result.get("error"))
+        raise ScrapeFailed("subprocess_error")
+
+    text = result.get("data", {}).get("text", "")
+    if not text:
+        raise ScrapeFailed("subprocess_error")
+    return text
+
+
+# ---------------------------------------------------------------------------
+# Vault
+# ---------------------------------------------------------------------------
 
 
 async def vault_add(
@@ -54,31 +124,53 @@ async def vault_add(
     body: str,
     timeout: float = 30.0,
 ) -> None:
-    """Run vault add ... to persist content to the knowledge base.
+    """Run ``vault put`` to persist content to the knowledge base.
+
+    Maps to: vault put <body> --title <title> --category references
+                              --type bookmark --metadata <json>
+
+    URL and tags are stored in --metadata (vault put has no --url/--tags flags).
 
     Raises:
-        VaultWriteFailed("not_available")    — if vault is not on PATH.
-        VaultWriteFailed("subprocess_error") — if the process exits non-zero.
-        asyncio.TimeoutError — if the subprocess takes longer than timeout.
+        VaultWriteFailed("not_available")    — vault not on PATH.
+        VaultWriteFailed("subprocess_error") — process exited non-zero.
+        VaultWriteFailed("timeout")          — subprocess exceeded timeout.
     """
-    args = ["vault", "add", "--title", title, "--url", url, "--body", body]
+    metadata: dict[str, object] = {"url": url}
     if tags:
-        args += ["--tags", ",".join(tags)]
+        metadata["tags"] = tags
+
+    args = [
+        "vault", "put", body,
+        "--title", title,
+        "--category", "references",
+        "--type", "bookmark",
+        "--metadata", json.dumps(metadata),
+    ]
     try:
         proc = await asyncio.create_subprocess_exec(*args, stdout=PIPE, stderr=PIPE)
         try:
-            await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         except asyncio.TimeoutError:
             proc.kill()
             raise VaultWriteFailed("timeout")
         if proc.returncode != 0:
+            log.warning(
+                "vault_add: vault exited %d: %s",
+                proc.returncode, stderr.decode()[:200],
+            )
             raise VaultWriteFailed("subprocess_error")
     except FileNotFoundError:
         raise VaultWriteFailed("not_available")
 
 
+# ---------------------------------------------------------------------------
+# Vault search (non-fatal)
+# ---------------------------------------------------------------------------
+
+
 async def vault_search(query: str, timeout: float = 30.0) -> str:
-    """Run vault search <query> and return the decoded stdout.
+    """Run ``vault search <query>`` and return decoded stdout.
 
     Returns a graceful string (no exception) when vault is absent or returns
     no results — search failure is not fatal.

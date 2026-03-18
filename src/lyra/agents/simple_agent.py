@@ -112,19 +112,19 @@ class SimpleAgent(AgentBase):
             "vault-add",
             cmd_add,
             description="Save a URL to the vault: /vault-add <url>",
-            timeout=60.0,
+            timeout=1200.0,
         )
         self.command_router.register_session_command(
             "explain",
             cmd_explain,
             description="Explain a URL in plain language: /explain <url>",
-            timeout=60.0,
+            timeout=1200.0,
         )
         self.command_router.register_session_command(
             "summarize",
             cmd_summarize,
             description="Summarize a URL in bullet points: /summarize <url>",
-            timeout=60.0,
+            timeout=1200.0,
         )
 
     def _maybe_register_reset(self, pool: Pool) -> None:

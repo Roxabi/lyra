@@ -43,7 +43,18 @@ define require_machine1
 	@[ -n "$(MACHINE1_DIR)" ] || { echo "Error: MACHINE1_DIR not set in .env"; exit 1; }
 endef
 
-.PHONY: lyra telegram discord register deploy remote test lint typecheck format
+DIAGRAMS_DIR := $(HOME)/.agent/diagrams
+DIAGRAMS_PORT := 8080
+
+.PHONY: lyra telegram discord register deploy remote test lint typecheck format visuals visuals-scan
+
+## visuals — serve visual center at http://localhost:8080
+visuals:
+	@cd $(DIAGRAMS_DIR) && DIAGRAMS_PORT=$(DIAGRAMS_PORT) python3 serve.py
+
+## visuals-scan — regenerate manifest (no server)
+visuals-scan:
+	@cd $(DIAGRAMS_DIR) && python3 gen-manifest.py
 
 lyra:
 ifeq ($(LYRA_CMD),stop)

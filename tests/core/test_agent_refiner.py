@@ -340,6 +340,7 @@ class TestPatchInvalidJson:
 
         # Assert
         assert result.exit_code == 1
+        assert "JSON object" in result.output or "dict" in result.output.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -387,13 +388,15 @@ class TestRunSession:
         mock_driver.chat.side_effect = [
             # First call: initial greeting
             "Here is your profile. What would you like to change?",
-            # Second call: contains PATCH block — session ends
+            # Second call: response to "change the model" — no patch yet
+            "Got it, I'll update the model to 'new-model'. Confirm?",
+            # Third call: response to "confirm" — contains PATCH block
             'I\'ll update the model.\n<<PATCH>>\n{"model": "new-model"}\n<<END_PATCH>>',
         ]
 
         mock_io = MagicMock(spec=TerminalIO)
-        # prompt() is only called once (after greeting), second call not reached
-        mock_io.prompt.return_value = "change the model"
+        # First prompt: describe what to change; second prompt: confirm
+        mock_io.prompt.side_effect = ["change the model", "confirm"]
 
         refiner = AgentRefiner("lyra_default", store, driver=mock_driver)
 
@@ -429,6 +432,9 @@ class TestRunSession:
 
         # Assert
         assert result.fields == {"persona": "aryl"}
+        # Assert driver was called for greeting + the 2 loop turns
+        assert mock_driver.chat.call_count == 3
+        assert mock_io.prompt.call_count == 2
 
     def test_run_session_raises_on_abort(self) -> None:
         # Arrange
@@ -448,6 +454,9 @@ class TestRunSession:
         # Act + Assert
         with pytest.raises(KeyboardInterrupt):
             refiner.run_session(mock_io)
+
+        # Assert driver was called only for the greeting, not again after abort
+        mock_driver.chat.assert_called_once()
 
     def test_run_session_skips_empty_input(self) -> None:
         # Arrange — first prompt returns empty (skipped), second returns abort
@@ -581,3 +590,188 @@ class TestExtractPatchMissing:
 
         # Assert
         assert result is None
+
+
+# ---------------------------------------------------------------------------
+# T9 — apply_patch happy path (SC-1)
+# ---------------------------------------------------------------------------
+
+
+class TestApplyPatch:
+    """AgentRefiner.apply_patch() — happy path and error branch."""
+
+    def test_apply_patch_updates_and_returns_row(self) -> None:
+        # Arrange
+        row = make_row()
+        store = make_store(row)
+        refiner = AgentRefiner("lyra_default", store)
+        patch = RefinementPatch(fields={"model": "claude-opus-4-6"})
+
+        # Act
+        updated = refiner.apply_patch(patch)
+
+        # Assert
+        assert updated.model == "claude-opus-4-6"
+        assert updated.name == "lyra_default"
+        store.upsert.assert_awaited_once()
+
+    def test_apply_patch_unknown_agent_raises_value_error(self) -> None:
+        # Arrange
+        store = make_store(row=None)
+        refiner = AgentRefiner("missing", store)
+        patch = RefinementPatch(fields={"model": "claude-opus-4-6"})
+
+        # Act + Assert
+        with pytest.raises(ValueError, match="not found"):
+            refiner.apply_patch(patch)
+
+
+# ---------------------------------------------------------------------------
+# T10 — refine CLI command (SC-2 + SC-3)
+# ---------------------------------------------------------------------------
+
+
+class TestRefineCommand:
+    """Integration tests for `lyra agent refine` CLI command."""
+
+    def test_refine_applies_patch_and_prints_diff(self) -> None:
+        # Arrange
+        from unittest.mock import patch as mock_patch
+
+        from typer.testing import CliRunner
+
+        from lyra.cli_agent import agent_app
+
+        row = make_row()
+        store = make_store(row)
+
+        async def fake_connect():
+            return store
+
+        runner = CliRunner()
+
+        with mock_patch(
+            "lyra.cli_agent_crud._connect_store", side_effect=fake_connect
+        ), mock_patch(
+            "lyra.core.agent_refiner.AgentRefiner.run_session",
+            return_value=RefinementPatch(fields={"model": "claude-opus-4-6"}),
+        ):
+            result = runner.invoke(agent_app, ["refine", "lyra_default"])
+
+        # Assert
+        assert result.exit_code == 0, result.output
+        assert "claude-opus-4-6" in result.output  # diff shows new value
+        store.upsert.assert_awaited_once()
+
+    def test_refine_cancelled_by_keyboard_interrupt(self) -> None:
+        # Arrange
+        from unittest.mock import patch as mock_patch
+
+        from typer.testing import CliRunner
+
+        from lyra.cli_agent import agent_app
+
+        row = make_row()
+        store = make_store(row)
+
+        async def fake_connect():
+            return store
+
+        runner = CliRunner()
+
+        with mock_patch(
+            "lyra.cli_agent_crud._connect_store", side_effect=fake_connect
+        ), mock_patch(
+            "lyra.core.agent_refiner.AgentRefiner.run_session",
+            side_effect=KeyboardInterrupt(),
+        ):
+            result = runner.invoke(agent_app, ["refine", "lyra_default"])
+
+        # Assert
+        assert result.exit_code == 0
+        assert "cancelled" in result.output.lower()
+        store.close.assert_awaited()
+
+    def test_refine_unknown_agent_exits_with_error(self) -> None:
+        # Arrange
+        from unittest.mock import patch as mock_patch
+
+        from typer.testing import CliRunner
+
+        from lyra.cli_agent import agent_app
+
+        store = make_store(row=None)  # agent not found
+
+        async def fake_connect():
+            return store
+
+        runner = CliRunner()
+
+        with mock_patch("lyra.cli_agent_crud._connect_store", side_effect=fake_connect):
+            result = runner.invoke(agent_app, ["refine", "unknown_agent"])
+
+        # Assert — agent not found propagates as exit code 1
+        assert result.exit_code == 1
+
+
+# ---------------------------------------------------------------------------
+# T11 — _extract_patch multi-line / pretty-printed JSON (SC-7)
+# ---------------------------------------------------------------------------
+
+
+class TestExtractPatchMultiLine:
+    """AgentRefiner._extract_patch() — handles pretty-printed and complex JSON."""
+
+    def test_extract_patch_handles_pretty_printed_json(self) -> None:
+        # Arrange — LLMs commonly emit pretty-printed JSON
+        text = (
+            "I'll update the model and persona.\n"
+            "<<PATCH>>\n"
+            '{\n  "model": "claude-opus-4-6",\n  "persona": "aryl"\n}\n'
+            "<<END_PATCH>>\n"
+            "These changes will take effect on restart."
+        )
+
+        # Act
+        result = AgentRefiner._extract_patch(text)
+
+        # Assert
+        assert result is not None
+        assert result.fields == {"model": "claude-opus-4-6", "persona": "aryl"}
+
+    def test_extract_patch_handles_json_with_boolean_values(self) -> None:
+        # Arrange — JSON with booleans (a common LLM output pattern)
+        text = '<<PATCH>>\n{"model": "new", "streaming": true}\n<<END_PATCH>>'
+
+        # Act
+        result = AgentRefiner._extract_patch(text)
+
+        # Assert
+        assert result is not None
+        assert result.fields["model"] == "new"
+        assert result.fields["streaming"] is True
+
+
+# ---------------------------------------------------------------------------
+# T12 — RefinementPatch allow-list validation (future: REFINABLE_FIELDS)
+# ---------------------------------------------------------------------------
+
+
+class TestRefinementPatchValidation:
+    """RefinementPatch — allow-list validation via REFINABLE_FIELDS + __post_init__."""
+
+    def test_disallowed_field_raises_value_error(self) -> None:
+        # A security-sensitive field that must not be patchable via LLM
+        with pytest.raises(ValueError, match="disallowed"):
+            RefinementPatch(fields={"skip_permissions": True})
+
+    def test_unknown_field_raises_value_error(self) -> None:
+        with pytest.raises(ValueError, match="disallowed"):
+            RefinementPatch(fields={"nonexistent_field": "value"})
+
+    def test_valid_fields_accepted(self) -> None:
+        # Should not raise — model and persona are in REFINABLE_FIELDS
+        patch = RefinementPatch(
+            fields={"model": "claude-opus-4-6", "persona": "lyra"}
+        )
+        assert patch.fields["model"] == "claude-opus-4-6"

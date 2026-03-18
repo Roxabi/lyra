@@ -404,38 +404,40 @@ def refine(
     name: str = typer.Argument(..., help="Agent name to refine."),
 ) -> None:
     """Interactively refine an agent profile via LLM-guided session."""
-    import asyncio as _asyncio
+    from lyra.core.agent_refiner import AgentRefiner, TerminalIO
 
-    from lyra.core.agent_refiner import AgentRefiner, RefinementPatch, TerminalIO
-
-    async def _setup() -> tuple:
+    async def _run() -> None:
         store = await _connect_store()
-        return store, AgentRefiner(name, store), TerminalIO()
-
-    store, refiner_obj, io_obj = _asyncio.run(_setup())
-
-    async def _apply(patch: RefinementPatch) -> None:
         try:
-            row = store.get(name)
-            updated = patch.to_agent_row(row)
-            before = {f: getattr(row, f) for f in patch.fields}
+            if store.get(name) is None:
+                typer.echo(f"Error: agent {name!r} not found in DB", err=True)
+                raise typer.Exit(1)
+            refiner = AgentRefiner(name, store)
+            io = TerminalIO()
+            before_row = store.get(name)
+            try:
+                patch = refiner.run_session(io)
+            except KeyboardInterrupt:
+                typer.echo("\nRefinement session cancelled.")
+                raise typer.Exit(0)
+            except RuntimeError as e:
+                typer.echo(f"Error: {e}", err=True)
+                raise typer.Exit(1)
+            # Apply patch
+            current = store.get(name)
+            if current is None:
+                typer.echo(
+                    f"Error: agent {name!r} disappeared during session", err=True
+                )
+                raise typer.Exit(1)
+            updated = patch.to_agent_row(current)
             await store.upsert(updated)
             typer.echo("\nChanged fields:")
             for field_name, new_val in patch.fields.items():
-                old_val = before.get(field_name)
+                old_val = getattr(before_row, field_name, "?")
                 typer.echo(f"  {field_name}: {old_val!r} → {new_val!r}")
+            typer.echo("\nAgent profile updated. Restart lyra to apply.")
         finally:
             await store.close()
 
-    try:
-        patch = refiner_obj.run_session(io_obj)
-        _asyncio.run(_apply(patch))
-        typer.echo("\nAgent profile updated. Restart lyra to apply.")
-    except KeyboardInterrupt:
-        typer.echo("\nRefinement session cancelled.")
-        _asyncio.run(store.close())
-        raise typer.Exit(0)
-    except RuntimeError as e:
-        typer.echo(f"Error: {e}", err=True)
-        _asyncio.run(store.close())
-        raise typer.Exit(1)
+    asyncio.run(_run())

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import dataclasses
 import json
-import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -15,11 +14,36 @@ if TYPE_CHECKING:
 __all__ = [
     "AgentRefiner",
     "LlmProvider",
+    "REFINABLE_FIELDS",
     "RefinementContext",
     "RefinementPatch",
     "SdkLlmProvider",
     "TerminalIO",
 ]
+
+# ---------------------------------------------------------------------------
+# Allow-list of patchable AgentRow fields
+# ---------------------------------------------------------------------------
+
+REFINABLE_FIELDS: frozenset[str] = frozenset({
+    "model",
+    "persona",
+    "persona_json",
+    "voice_json",
+    "tts_json",
+    "stt_json",
+    "patterns_json",
+    "passthroughs_json",
+    "plugins_json",
+    "fallback_language",
+    "tools_json",
+    "max_turns",
+    "streaming",
+    "i18n_language",
+    "memory_namespace",
+    "workspaces_json",
+    "commands_json",
+})
 
 
 # ---------------------------------------------------------------------------
@@ -36,6 +60,7 @@ class RefinementContext:
     persona_json: str | None     # AgentRow.persona_json (rich JSON string)
     voice_json: str | None       # AgentRow.voice_json (merged TTS+STT JSON)
     model: str
+    passthroughs: list[str]      # parsed from AgentRow.passthroughs_json
     patterns: dict               # parsed from AgentRow.patterns_json
     plugins: list[str]           # parsed from AgentRow.plugins_json
 
@@ -45,6 +70,14 @@ class RefinementPatch:
     """Proposed field updates to apply to an AgentRow."""
 
     fields: dict[str, Any]  # maps AgentRow field names → new values
+
+    def __post_init__(self) -> None:
+        unknown = set(self.fields) - REFINABLE_FIELDS
+        if unknown:
+            raise ValueError(
+                f"Unknown or disallowed AgentRow field(s): {sorted(unknown)}. "
+                f"Patchable fields: {sorted(REFINABLE_FIELDS)}"
+            )
 
     def as_json(self) -> str:
         """Return JSON string of fields dict."""
@@ -73,7 +106,7 @@ class TerminalIO:
 class LlmProvider(Protocol):
     """Protocol for any LLM backend used by AgentRefiner."""
 
-    def chat(self, system: str, messages: list[dict]) -> str:
+    def chat(self, system: str, messages: list[dict[str, Any]]) -> str:
         """Single LLM call returning assistant response text."""
         ...
 
@@ -103,6 +136,10 @@ class SdkLlmProvider:
 # ---------------------------------------------------------------------------
 # AgentRefiner
 # ---------------------------------------------------------------------------
+
+_CONFIRM_WORDS: frozenset[str] = frozenset(
+    {"confirm", "yes", "done", "apply", "ok", "y"}
+)
 
 
 class AgentRefiner:
@@ -136,6 +173,9 @@ class AgentRefiner:
             persona_json=row.persona_json,
             voice_json=row.voice_json,
             model=row.model,
+            passthroughs=json.loads(row.passthroughs_json)  # type: ignore[attr-defined]
+            if getattr(row, "passthroughs_json", None)
+            else [],
             patterns=json.loads(row.patterns_json) if row.patterns_json else {},
             plugins=json.loads(row.plugins_json) if row.plugins_json else [],
         )
@@ -144,7 +184,7 @@ class AgentRefiner:
     # Interactive session
     # ------------------------------------------------------------------
 
-    def run_session(self, io: TerminalIO) -> RefinementPatch:
+    def run_session(self, io: TerminalIO, *, max_turns: int = 20) -> RefinementPatch:
         """LLM-driven Q&A loop. Returns patch on user confirmation.
 
         Flow:
@@ -163,7 +203,7 @@ class AgentRefiner:
         ctx = self.read_profile()
 
         system = self._build_system_prompt(ctx)
-        messages: list[dict] = []
+        messages: list[dict[str, Any]] = []
 
         # Initial greeting
         initial_msg = "Hello, I'd like to refine this agent's profile."
@@ -174,22 +214,33 @@ class AgentRefiner:
         messages.append({"role": "user", "content": initial_msg})
         messages.append({"role": "assistant", "content": initial_response})
 
-        while True:
+        turn = 0
+        while turn < max_turns:
+            turn += 1
             user_input = io.prompt("\nYou: ").strip()
             if not user_input:
+                turn -= 1  # don't count empty prompts against the limit
                 continue
             if user_input.lower() in ("quit", "exit", "abort"):
                 raise KeyboardInterrupt("Session aborted by user.")
+
+            waiting_for_confirmation = user_input.lower().strip(".!") in _CONFIRM_WORDS
 
             messages.append({"role": "user", "content": user_input})
             response = driver.chat(system, messages)
             io.print(f"\nAssistant: {response}")
             messages.append({"role": "assistant", "content": response})
 
-            # Check for patch marker
-            patch = self._extract_patch(response)
-            if patch is not None:
-                return patch
+            # Only extract patch when operator explicitly confirmed
+            if waiting_for_confirmation:
+                patch = self._extract_patch(response)
+                if patch is not None:
+                    return patch
+
+        raise RuntimeError(
+            f"Max turns ({max_turns}) reached without a confirmed patch. "
+            "Try again or use 'lyra agent patch' directly."
+        )
 
     # ------------------------------------------------------------------
     # Patch apply
@@ -247,6 +298,7 @@ class AgentRefiner:
         lines.extend(
             [
                 f"  plugins: {ctx.plugins}",
+                f"  passthroughs: {ctx.passthroughs}",
                 "",
                 "Your job:",
                 "1. Present the current profile in plain language.",
@@ -260,8 +312,9 @@ class AgentRefiner:
                 "   <<END_PATCH>>",
                 "",
                 "Valid patchable AgentRow fields: model, persona, persona_json,",
-                "voice_json, patterns_json, plugins_json, fallback_language,",
-                "tools_json, max_turns, streaming, i18n_language.",
+                "voice_json, tts_json, stt_json, patterns_json, passthroughs_json,",
+                "plugins_json, fallback_language, tools_json, max_turns, streaming,",
+                "i18n_language, memory_namespace, workspaces_json, commands_json.",
                 "",
                 "JSON field values must be valid strings"
                 " (JSON arrays/objects as JSON strings).",
@@ -273,15 +326,15 @@ class AgentRefiner:
     @staticmethod
     def _extract_patch(text: str) -> RefinementPatch | None:
         """Extract <<PATCH>>...<<END_PATCH>> block from LLM response."""
-        m = re.search(r"<<PATCH>>\s*(\{.*?\})\s*<<END_PATCH>>", text, re.DOTALL)
-        if not m:
+        if "<<PATCH>>" not in text or "<<END_PATCH>>" not in text:
             return None
         try:
-            fields = json.loads(m.group(1))
+            raw = text.split("<<PATCH>>", 1)[1].split("<<END_PATCH>>", 1)[0].strip()
+            fields = json.loads(raw)
             if not isinstance(fields, dict):
                 return None
             return RefinementPatch(fields=fields)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, IndexError, ValueError):
             return None
 
     def _resolve_driver(self) -> LlmProvider:

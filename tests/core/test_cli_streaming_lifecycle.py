@@ -236,19 +236,17 @@ class TestSendAndReadStream:
         assert payload["message"]["content"] == "hello world"
         assert payload["message"]["role"] == "user"
 
-    async def test_includes_session_id_in_payload(self) -> None:
-        # Arrange — entry has an existing session_id
+    async def test_session_id_in_payload_is_always_empty(self) -> None:
+        # session_id must always be "" — session binding is handled by --resume at spawn
         proc = make_fake_proc([INIT_LINE, RESULT_LINE])
         entry = make_entry(proc)
         entry.session_id = "existing-session"
 
-        # Act
         await send_and_read_stream(entry, "continue", DEFAULT_POOL_ID)
 
-        # Assert — payload carries the existing session_id
         written_bytes = proc.stdin.write.call_args[0][0]
         payload = json.loads(written_bytes.decode().strip())
-        assert payload["session_id"] == "existing-session"
+        assert payload["session_id"] == ""
 
     async def test_returns_done_iterator_when_stdin_is_none(self) -> None:
         # Arrange — proc.stdin is None (simulates broken process)

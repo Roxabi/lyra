@@ -183,7 +183,7 @@ Adapter.on_message()
 
 ### 2.3 Session Command
 
-**Trigger:** User sends `/add`, `/explain`, or `/summarize` with a URL.
+**Trigger:** User sends `/vault-add`, `/explain`, or `/summarize` with a URL.
 
 **Flow:**
 
@@ -199,14 +199,14 @@ Adapter.on_message()
       )
     → LLM processes scrape in isolation
     → handler parses output (Title, Summary, Tags)
-    → /add:       vault_add(title, summary, tags)
+    → /vault-add: vault_add(title, summary, tags)
     → /explain:   returns explanation
     → /summarize: returns bullet points
   → Response(content="Saved to vault" or explanation text)
   → dispatch_response()
 ```
 
-**Output:** Confirmation (for `/add`) or extracted content (for `/explain`, `/summarize`).
+**Output:** Confirmation (for `/vault-add`) or extracted content (for `/explain`, `/summarize`).
 
 ---
 
@@ -219,8 +219,8 @@ Adapter.on_message()
 ```
 [intake through MessagePipeline]
   → regex match: ^https?://\S+$
-  → rewrite msg.text → "/add https://example.com"
-  → attach CommandContext for /add
+  → rewrite msg.text → "/vault-add https://example.com"
+  → attach CommandContext for /vault-add
   → dispatch to session command handler (flow 2.3)
 ```
 
@@ -694,7 +694,7 @@ After response generated:
 | 5 | Builtin command | CommandParser → CommandRouter → handler | 2.1 |
 | 6 | Plugin command | CommandLoader → dynamic import → handler | 2.2 |
 | 7 | Session command | Isolated pool → LLM → vault | 2.3 |
-| 8 | Bare URL rewrite | Regex → `/add` rewrite → session handler | 2.4 |
+| 8 | Bare URL rewrite | Regex → `/vault-add` rewrite → session handler | 2.4 |
 | 9 | Workspace switch | `/folder` → CliPool cwd override → respawn | 2.5 |
 | 10 | Voice input (STT) | Whisper transcribe → inject as text | 3.1 |
 | 11 | Voice output (TTS) | Qwen TTS → WAV → OGG/Opus → send_voice | 3.2 |

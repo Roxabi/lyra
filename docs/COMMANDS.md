@@ -116,10 +116,10 @@ Incoming message
   ├─ CommandParser: detect / or ! prefix → CommandContext
   │
   ├─ CommandRouter.dispatch():
-  │    1. Bare URL? → rewrite to /add <url>
+  │    1. Bare URL? → rewrite to /vault-add <url> (target from patterns.toml)
   │    2. Builtin?  → /help, /clear, /new, /stop, /config, /circuit, /routing, /folder, /cd
   │    3. /workspace → list (ls/list/no-arg) or switch to named workspace
-  │    4. Session?  → /add, /explain, /summarize, /search (isolated LLM calls)
+  │    4. Session?  → /vault-add, /explain, /summarize, /search (isolated LLM calls)
   │    5. Plugin?   → any [[commands]] from enabled plugin.toml files
   │    6. Passthrough? → registered commands that skip dispatch, go to LLM (e.g. /voice)
   │    7. ! prefix + unknown → return None → fall through to LLM
@@ -156,11 +156,11 @@ Incoming message
 | `/echo <text>` | Echo back the message (test) | — (plugin) |
 | `/voice <text>` | Send voice reply — routes through LLM then TTS (OGG/Opus) | `voicecli` |
 | `/image <prompt>` | Generate image prompt | — (prompt-only) |
-| `/add <url>` | Scrape URL → LLM summary → save to vault | `web-intel:scrape`, `vault` |
+| `/vault-add <url>` | Scrape URL → LLM summary → save to vault | `web-intel:scrape`, `vault` |
 | `/explain <url>` | Scrape URL → plain-language explanation | `web-intel:scrape` |
 | `/summarize <url>` | Scrape URL → bullet-point summary | `web-intel:scrape` |
 | `/search <query>` | Full-text search over vault | `vault` (plugin) |
-| `<url>` (bare) | Auto-rewritten to `/add <url>` | — |
+| `<url>` (bare) | Auto-rewritten to `/vault-add <url>` (configured in `src/lyra/config/patterns.toml`) | — |
 | `/workspace <name> [question]` | Switch working directory to named workspace | — (builtin) |
 | `/workspace ls` | List configured workspaces | — (builtin) |
 
@@ -168,12 +168,12 @@ Incoming message
 
 ## Session Commands
 
-Session commands (`/add`, `/explain`, `/summarize`) make an isolated LLM call per invocation. They never read or write the pool conversation history — they are stateless with respect to the active session.
+Session commands (`/vault-add`, `/explain`, `/summarize`) make an isolated LLM call per invocation. They never read or write the pool conversation history — they are stateless with respect to the active session.
 
-### `/add <url>` — Save to vault
+### `/vault-add <url>` — Save to vault
 
 ```
-/add https://example.com/article
+/vault-add https://example.com/article
 ```
 
 Pipeline: **scrape** (`web-intel:scrape`) → **LLM summary** (title, paragraph summary, 3-5 tags) → **vault write** (`vault add`).
@@ -198,13 +198,13 @@ Pipeline: **scrape** → **LLM 3-5 bullet points**. No vault write.
 
 ### Bare URL auto-rewrite
 
-Sending a bare URL (no slash command prefix) is automatically rewritten to `/add <url>`:
+Sending a bare URL (no slash command prefix) is automatically rewritten to `/vault-add <url>`:
 
 ```
-https://example.com/article   →   /add https://example.com/article
+https://example.com/article   →   /vault-add https://example.com/article
 ```
 
-The detection uses `CommandRouter._BARE_URL_RE` (`^https?://\S+$`).
+The detection uses `CommandRouter._BARE_URL_RE` (`^https?://\S+$`). The target command is read from `src/lyra/config/patterns.toml` `[bare_url].command` — change it there to reroute bare URLs to a different command without touching Python.
 
 ### `/search <query>` — Vault full-text search
 
@@ -218,7 +218,7 @@ Runs `vault search <query>` and returns matching results. Stateless — no LLM c
 
 | Command | Requires | Graceful fallback |
 |---------|----------|------------------|
-| `/add` | `web-intel:scrape`, `vault` | LLM runs on URL string if scrape fails; vault error noted in response |
+| `/vault-add` | `web-intel:scrape`, `vault` | LLM runs on URL string if scrape fails; vault error noted in response |
 | `/explain` | `web-intel:scrape` | Explanation runs on URL string if scrape unavailable |
 | `/summarize` | `web-intel:scrape` | Summary runs on URL string if scrape unavailable |
 | `/search` | `vault` | Returns `"vault CLI not available."` — not fatal |
@@ -436,7 +436,7 @@ See also: [ADR-010 — External tool integration](architecture/adr/010-external-
 ```
 Built-in commands              Plugin commands             CLI-backed commands        Session commands (LLM)
 (builtin_commands.py)          ────────────────────        ─────────────────────      ──────────────────────
-/help      → _help()           /echo  → cmd_echo()         /voice → voicecli          /add     → cmd_add()
+/help      → _help()           /echo  → cmd_echo()         /voice → voicecli          /vault-add → cmd_add()
 /stop      → pool.cancel()     /invite → cmd_invite()                                 /explain → cmd_explain()
 /clear     → _cmd_clear()      /join   → cmd_join()                                   /summarize→cmd_summarize()
 /config    → _cmd_config()     /svc    → cmd_svc()                                    /search  → cmd_search()

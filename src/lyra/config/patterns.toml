@@ -1,0 +1,7 @@
+# Pattern rules — defines what each rewrite pattern does.
+# Agents activate patterns via [patterns] in their TOML (bare_url = true/false).
+# This file controls the behaviour of each pattern.
+
+[bare_url]
+# Command dispatched when a message is a bare URL and bare_url pattern is enabled.
+command = "vault-add"

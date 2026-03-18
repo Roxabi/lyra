@@ -85,13 +85,13 @@ class AnthropicAgent(AgentBase):
         }
 
     def _register_session_commands(self) -> None:
-        """Register /add, /explain, /summarize as session commands on the router."""
+        """Register /vault-add, /explain, /summarize as session commands."""
         from lyra.core.session_commands import cmd_add, cmd_explain, cmd_summarize
 
         self.command_router.register_session_command(
-            "add",
+            "vault-add",
             cmd_add,
-            description="Save a URL to the vault: /add <url>",
+            description="Save a URL to the vault: /vault-add <url>",
             timeout=60.0,
         )
         self.command_router.register_session_command(

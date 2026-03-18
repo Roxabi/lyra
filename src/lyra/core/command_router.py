@@ -8,8 +8,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from . import builtin_commands, workspace_commands
@@ -19,14 +21,26 @@ from .message import InboundMessage, Response
 from .pool import Pool
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from lyra.core.runtime_config import RuntimeConfigHolder
     from lyra.llm.base import LlmProvider
     from lyra.llm.smart_routing import SmartRoutingDecorator
 
     from .circuit_breaker import CircuitRegistry
     from .messages import MessageManager
+
+_BUNDLED_PATTERNS_CONFIG = (
+    Path(__file__).resolve().parent.parent / "config" / "patterns.toml"
+)
+
+
+def _load_pattern_configs(path: Path | None = None) -> dict[str, dict]:
+    """Load pattern rule configs from TOML. Falls back to bundled defaults."""
+    target = path or _BUNDLED_PATTERNS_CONFIG
+    try:
+        with open(target, "rb") as f:
+            return tomllib.load(f)
+    except FileNotFoundError:
+        return {}
 
 log = logging.getLogger(__name__)
 
@@ -97,6 +111,7 @@ class CommandRouter:
         workspaces: dict[str, Path] | None = None,
         session_driver: "LlmProvider | None" = None,
         patterns: dict[str, bool] | None = None,
+        pattern_configs: dict[str, dict] | None = None,
     ) -> None:
         self._command_loader = command_loader
         self._enabled_plugins = enabled_plugins
@@ -112,6 +127,9 @@ class CommandRouter:
         self._workspaces: dict[str, Path] = workspaces or {}
         self._session_driver: LlmProvider | None = session_driver
         self._patterns: dict[str, bool] = patterns or {}
+        self._pattern_configs: dict[str, dict] = (
+            pattern_configs if pattern_configs is not None else _load_pattern_configs()
+        )
         self._session_handlers: dict[str, SessionCommandEntry] = {}
         self._passthroughs: set[str] = set()
         # Guard: raise early if any loaded plugin command clashes with a builtin.
@@ -158,13 +176,17 @@ class CommandRouter:
         return sorted(result)
 
     def _rewrite_bare_url(self, msg: InboundMessage) -> InboundMessage:
-        """Attach a synthetic /add CommandContext for a bare URL message."""
+        """Attach a synthetic command CommandContext for a bare URL message.
+
+        Target command is read from patterns.toml [bare_url].command.
+        """
         url = msg.text.strip()
-        ctx = CommandContext(prefix="/", name="add", args=url, raw=msg.text)
+        command = self._pattern_configs.get("bare_url", {}).get("command", "vault-add")
+        ctx = CommandContext(prefix="/", name=command, args=url, raw=msg.text)
         return replace(msg, command=ctx)
 
     def prepare(self, msg: InboundMessage) -> InboundMessage:
-        """Rewrite bare URLs to /add when patterns.bare_url is True."""
+        """Rewrite bare URLs per patterns.toml when patterns.bare_url is True."""
         if msg.command is None and self._BARE_URL_RE.fullmatch(msg.text.strip()):
             if self._patterns.get("bare_url", False):
                 return self._rewrite_bare_url(msg)

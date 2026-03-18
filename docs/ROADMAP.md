@@ -39,7 +39,7 @@
 | #151 | AuthMiddleware + TrustLevel per adapter | M | ✅ Done |
 | #152 | RoutingContext + outbound verification | M | ✅ Done |
 | #83 | Lyra agent integration — identity anchor, session lifecycle, L0 compaction | L | ✅ Done |
-| #99 | Hub command sessions — /add, /explain, /summarize, /search | L | ✅ Done |
+| #99 | Hub command sessions — /vault-add, /explain, /summarize, /search | L | ✅ Done |
 | #136 | Multi-bot registry upgrade — per-bot-id routing + multi-token config | M | Blocked by #83 + #79 — do last |
 
 **Remaining**: #136 (blocked by #79)

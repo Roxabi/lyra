@@ -29,7 +29,7 @@ _WORKSPACE_BUILTIN_CONFLICTS = frozenset(
         "workspace",  # /workspace is now a builtin command
         # Session command names — a workspace with these names would silently
         # conflict with the session command registered in _register_session_commands().
-        "add",
+        "vault-add",
         "explain",
         "summarize",
         "search",

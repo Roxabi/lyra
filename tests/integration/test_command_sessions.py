@@ -70,7 +70,7 @@ def make_router_with_session(
         patterns={"bare_url": True},
     )
     router.register_session_command(
-        "add", cmd_add, description="Save URL", timeout=60.0
+        "vault-add", cmd_add, description="Save URL", timeout=60.0
     )
     router.register_session_command(
         "explain", cmd_explain, description="Explain URL", timeout=60.0
@@ -89,12 +89,12 @@ def make_pool() -> MagicMock:
 
 
 # ---------------------------------------------------------------------------
-# AC-1: Bare URL → /add dispatch
+# AC-1: Bare URL → /vault-add dispatch
 # ---------------------------------------------------------------------------
 
 
 class TestBareUrlToAdd:
-    """AC-1: A bare URL message is dispatched to /add."""
+    """AC-1: A bare URL message is dispatched to /vault-add."""
 
     @pytest.mark.asyncio
     async def test_bare_url_dispatched_to_add(self, tmp_path: Path) -> None:
@@ -110,10 +110,10 @@ class TestBareUrlToAdd:
             patch("lyra.core.session_commands.vault_add", new=AsyncMock()),
         ):
             msg = make_message("https://example.com/article")
-            # prepare() rewrites the bare URL to /add
+            # prepare() rewrites the bare URL to /vault-add
             msg = router.prepare(msg)
             assert msg.command is not None
-            assert msg.command.name == "add"
+            assert msg.command.name == "vault-add"
 
             response = await router.dispatch(msg, pool=pool)
 
@@ -216,7 +216,7 @@ class TestPoolHistoryUnchanged:
             ),
             patch("lyra.core.session_commands.vault_add", new=AsyncMock()),
         ):
-            msg = make_message("/add https://example.com")
+            msg = make_message("/vault-add https://example.com")
             await router.dispatch(msg, pool=pool)
 
         # Pool history must be identical to before the command
@@ -237,7 +237,7 @@ class TestSessionDriverNone:
         router = make_router_with_session(tmp_path, driver=None)
         pool = make_pool()
 
-        msg = make_message("/add https://example.com")
+        msg = make_message("/vault-add https://example.com")
         response = await router.dispatch(msg, pool=pool)
 
         assert response is not None

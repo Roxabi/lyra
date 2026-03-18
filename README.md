@@ -38,7 +38,7 @@ flowchart TD
     HUB -->|"discord · main · thread:888"| P2["Pool<br/>asyncio.Task"]
     P1 --> AGENT["Agent<br/>stateless singleton"]
     P2 --> AGENT
-    AGENT -->|"/add · /explain<br/>/summarize · /search<br/>bare URL"| SC["SessionCommand<br/>scrape → LLM → vault"]
+    AGENT -->|"/vault-add · /explain<br/>/summarize · /search<br/>bare URL"| SC["SessionCommand<br/>scrape → LLM → vault"]
     AGENT -->|"normal chat"| LLM["LLM<br/>LlmProvider<br/>Claude CLI + SDK"]
     P1 --> TGO["tg_outbound<br/>OutboundDispatcher"]
     P2 --> DCO["dc_outbound<br/>OutboundDispatcher"]
@@ -64,7 +64,7 @@ flowchart TD
 | **LLM** | LlmProvider protocol: Claude CLI + Anthropic SDK drivers · smart routing (complexity-based model selection) · Ollama (Phase 2) |
 | **Agents** | Stateless singleton · isolated per-scope pools · AgentStore (SQLite) · TOML seeds · N agents × N bots via `config.toml` |
 | **Memory** | 5 levels: working (L0 compaction ✅) → session → episodic → semantic (SQLite + FTS5 + fastembed ✅) → procedural · cross-session recall via `[MEMORY]`/`[PREFERENCES]` blocks |
-| **Session commands** | `/add <url>` (scrape → LLM → vault) · `/explain <url>` · `/summarize <url>` · `/search <query>` · bare URL auto-rewrite → `/add` |
+| **Session commands** | `/vault-add <url>` (scrape → LLM → vault) · `/explain <url>` · `/summarize <url>` · `/search <query>` · bare URL auto-rewrite → `/vault-add` |
 
 ### Security & Voice
 
@@ -163,11 +163,11 @@ Send these directly in Telegram or Discord:
 
 | Command | Description |
 |---------|-------------|
-| `/add <url>` | Scrape URL → LLM summary → save to vault |
+| `/vault-add <url>` | Scrape URL → LLM summary → save to vault |
 | `/explain <url>` | Scrape URL → plain-language explanation |
 | `/summarize <url>` | Scrape URL → bullet-point summary |
 | `/search <query>` | Full-text search over vault |
-| `<url>` (bare) | Auto-rewritten to `/add <url>` |
+| `<url>` (bare) | Auto-rewritten to `/vault-add <url>` |
 | `/clear` | Reset conversation history |
 | `/voice <text>` | Send voice reply — prompt routes through LLM then TTS (`voicecli`) |
 | `/help` | List all available commands |

@@ -1,0 +1,12 @@
+{
+  "name": "refine-agent",
+  "version": "0.1.0",
+  "description": "Conversationally refine Lyra agent profiles — persona, voice, passthroughs, model.",
+  "skills": [
+    {
+      "name": "refine-agent",
+      "path": "skills/refine-agent/SKILL.md",
+      "description": "Interactive agent profile refinement via lyra agent patch"
+    }
+  ]
+}

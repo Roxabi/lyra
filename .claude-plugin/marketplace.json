@@ -1,0 +1,14 @@
+{
+  "name": "lyra-marketplace",
+  "version": "1.0.0",
+  "description": "Lyra-specific Claude Code plugins — agent management, persona refinement.",
+  "owner": { "name": "Roxabi", "url": "https://github.com/Roxabi" },
+  "plugins": [
+    {
+      "name": "refine-agent",
+      "description": "Conversationally refine Lyra agent profiles — persona, voice, passthroughs.",
+      "source": "./plugins/refine-agent",
+      "category": "agent-management"
+    }
+  ]
+}

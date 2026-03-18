@@ -361,3 +361,83 @@ def unassign(
             await store.close()
 
     asyncio.run(_run())
+
+
+@agent_app.command(name="patch")
+def patch_agent(
+    name: str = typer.Argument(..., help="Agent name to patch."),
+    json_patch: str = typer.Option(
+        ..., "--json", help="JSON object with field updates."
+    ),
+) -> None:
+    """Apply a partial JSON patch to an agent in DB."""
+    try:
+        fields = _json.loads(json_patch)
+    except _json.JSONDecodeError as e:
+        typer.echo(f"Error: invalid JSON — {e}", err=True)
+        raise typer.Exit(1)
+    if not isinstance(fields, dict):
+        typer.echo("Error: --json must be a JSON object (dict)", err=True)
+        raise typer.Exit(1)
+
+    async def _run() -> None:
+        from lyra.core.agent_refiner import RefinementPatch
+
+        store = await _connect_store()
+        try:
+            row = store.get(name)
+            if row is None:
+                typer.echo(f"Error: agent {name!r} not found in DB", err=True)
+                raise typer.Exit(1)
+            patch = RefinementPatch(fields=fields)
+            updated = patch.to_agent_row(row)
+            await store.upsert(updated)
+            typer.echo(f"Patched {name!r}: {', '.join(fields.keys())}")
+        finally:
+            await store.close()
+
+    asyncio.run(_run())
+
+
+@agent_app.command(name="refine")
+def refine(
+    name: str = typer.Argument(..., help="Agent name to refine."),
+) -> None:
+    """Interactively refine an agent profile via LLM-guided session."""
+    from lyra.core.agent_refiner import AgentRefiner, RefinementCancelled, TerminalIO
+
+    async def _run() -> None:
+        store = await _connect_store()
+        try:
+            if store.get(name) is None:
+                typer.echo(f"Error: agent {name!r} not found in DB", err=True)
+                raise typer.Exit(1)
+            refiner = AgentRefiner(name, store)
+            io = TerminalIO()
+            before_row = store.get(name)
+            try:
+                patch = refiner.run_session(io)
+            except RefinementCancelled:
+                typer.echo("\nRefinement session cancelled.")
+                raise typer.Exit(0)
+            except RuntimeError as e:
+                typer.echo(f"Error: {e}", err=True)
+                raise typer.Exit(1)
+            # Apply patch
+            current = store.get(name)
+            if current is None:
+                typer.echo(
+                    f"Error: agent {name!r} disappeared during session", err=True
+                )
+                raise typer.Exit(1)
+            updated = patch.to_agent_row(current)
+            await store.upsert(updated)
+            typer.echo("\nChanged fields:")
+            for field_name, new_val in patch.fields.items():
+                old_val = getattr(before_row, field_name, "?")
+                typer.echo(f"  {field_name}: {old_val!r} → {new_val!r}")
+            typer.echo("\nAgent profile updated. Restart lyra to apply.")
+        finally:
+            await store.close()
+
+    asyncio.run(_run())

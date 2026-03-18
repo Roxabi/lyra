@@ -4,7 +4,7 @@
     "compress@roxabi-marketplace": true,
     "1b1@roxabi-marketplace": true,
     "web-intel@roxabi-marketplace": true,
-    "voice-cli@roxabi-marketplace": true,
+    "voice-cli@voicecli-marketplace": true,
     "cv@roxabi-marketplace": true,
     "get-invoice-details@roxabi-marketplace": true,
     "image-prompt-generator@roxabi-marketplace": true,
@@ -26,6 +26,13 @@
       "source": {
         "source": "github",
         "repo": "Roxabi/roxabi-vault"
+      },
+      "autoUpdate": true
+    },
+    "voicecli-marketplace": {
+      "source": {
+        "source": "github",
+        "repo": "Roxabi/voiceCLI"
       },
       "autoUpdate": true
     }

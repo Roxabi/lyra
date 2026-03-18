@@ -42,7 +42,7 @@ class VaultCli:
             metadata["tags"] = tags
 
         args = [
-            "vault", "put", body,
+            "vault", "put", "--", body,
             "--title", title,
             "--category", "references",
             "--type", "bookmark",
@@ -54,6 +54,7 @@ class VaultCli:
                 _, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
             except asyncio.TimeoutError:
                 proc.kill()
+                await proc.wait()
                 raise VaultWriteFailed("timeout")
             if proc.returncode != 0:
                 log.warning(
@@ -68,12 +69,13 @@ class VaultCli:
         """Run vault search; returns graceful string on any failure."""
         try:
             proc = await asyncio.create_subprocess_exec(
-                "vault", "search", query, stdout=PIPE, stderr=PIPE
+                "vault", "search", "--", query, stdout=PIPE, stderr=PIPE
             )
             try:
                 stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
             except asyncio.TimeoutError:
                 proc.kill()
+                await proc.wait()
                 return "vault search timed out."
             if proc.returncode != 0:
                 return "Search returned no results."

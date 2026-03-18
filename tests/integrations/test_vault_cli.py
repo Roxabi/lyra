@@ -1,6 +1,8 @@
 """Tests for VaultCli (lyra.integrations.vault_cli)."""
 from __future__ import annotations
 
+import asyncio
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -64,6 +66,30 @@ class TestVaultCliAdd:
             with pytest.raises(VaultWriteFailed):
                 await VaultCli().add("T", [], "https://x.com", "body")
 
+    @pytest.mark.asyncio
+    async def test_timeout_raises_vault_write_failed(self):
+        proc = _make_proc()
+        proc.kill = MagicMock()
+        proc.wait = AsyncMock()
+        wait_for_path = "lyra.integrations.vault_cli.asyncio.wait_for"
+        with patch("asyncio.create_subprocess_exec", new=AsyncMock(return_value=proc)):
+            with patch(wait_for_path, side_effect=asyncio.TimeoutError):
+                with pytest.raises(VaultWriteFailed):
+                    await VaultCli().add("T", [], "https://x.com", "body")
+
+    @pytest.mark.asyncio
+    async def test_empty_tags_not_in_metadata_json(self):
+        proc = _make_proc(returncode=0)
+        calls = []
+        async def fake_exec(*args, **kwargs):
+            calls.append(list(args))
+            return proc
+        with patch("asyncio.create_subprocess_exec", new=fake_exec):
+            await VaultCli().add("T", [], "https://x.com", "body")
+        meta_idx = calls[0].index("--metadata")
+        metadata = json.loads(calls[0][meta_idx + 1])
+        assert "tags" not in metadata
+
 class TestVaultCliSearch:
     @pytest.mark.asyncio
     async def test_happy_path_returns_stdout(self):
@@ -84,3 +110,14 @@ class TestVaultCliSearch:
         with patch("asyncio.create_subprocess_exec", new=AsyncMock(return_value=proc)):
             result = await VaultCli().search("query")
         assert "no results" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_timeout_returns_graceful_string(self):
+        proc = _make_proc()
+        proc.kill = MagicMock()
+        proc.wait = AsyncMock()
+        wait_for_path = "lyra.integrations.vault_cli.asyncio.wait_for"
+        with patch("asyncio.create_subprocess_exec", new=AsyncMock(return_value=proc)):
+            with patch(wait_for_path, side_effect=asyncio.TimeoutError):
+                result = await VaultCli().search("query")
+        assert "timed out" in result.lower()

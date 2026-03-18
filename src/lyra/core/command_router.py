@@ -221,7 +221,7 @@ class CommandRouter:
         self,
         name: str,
         handler: SessionCommandHandler,
-        tools: SessionTools | None = None,
+        tools: SessionTools,
         description: str = "",
         timeout: float = 60.0,
     ) -> None:
@@ -232,14 +232,9 @@ class CommandRouter:
         plugin_handlers = self._command_loader.get_commands(self._enabled_plugins)
         if cmd in plugin_handlers:
             raise ValueError(f"Session command {cmd!r} clashes with a plugin.")
-        from lyra.integrations.vault_cli import VaultCli
-        from lyra.integrations.web_intel import WebIntelScraper
-        _tools = tools if tools is not None else SessionTools(
-            scraper=WebIntelScraper(), vault=VaultCli()
-        )
         self._session_handlers[cmd] = SessionCommandEntry(
             handler=handler,
-            tools=_tools,
+            tools=tools,
             description=description,
             timeout=timeout,
         )

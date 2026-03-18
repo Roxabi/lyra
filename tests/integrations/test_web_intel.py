@@ -1,6 +1,7 @@
 """Tests for WebIntelScraper (lyra.integrations.web_intel)."""
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -59,6 +60,35 @@ class TestWebIntelScraper:
     async def test_success_false_raises_subprocess_error(self):
         payload = b'{"success": false, "error": "blocked"}'
         proc = _make_proc(stdout=payload)
+        with patch("asyncio.create_subprocess_exec", new=AsyncMock(return_value=proc)):
+            with pytest.raises(ScrapeFailed) as exc:
+                await WebIntelScraper().scrape("https://example.com")
+        assert exc.value.reason == "subprocess_error"
+
+    @pytest.mark.asyncio
+    async def test_timeout_raises_scrape_failed(self):
+        proc = _make_proc()
+        proc.kill = MagicMock()
+        proc.wait = AsyncMock()
+        wait_for_path = "lyra.integrations.web_intel.asyncio.wait_for"
+        with patch("asyncio.create_subprocess_exec", new=AsyncMock(return_value=proc)):
+            with patch(wait_for_path, side_effect=asyncio.TimeoutError):
+                with pytest.raises(ScrapeFailed) as exc:
+                    await WebIntelScraper().scrape("https://example.com")
+        assert exc.value.reason == "timeout"
+
+    @pytest.mark.asyncio
+    async def test_empty_text_raises_subprocess_error(self):
+        payload = b'{"success": true, "data": {"text": ""}}'
+        proc = _make_proc(stdout=payload)
+        with patch("asyncio.create_subprocess_exec", new=AsyncMock(return_value=proc)):
+            with pytest.raises(ScrapeFailed) as exc:
+                await WebIntelScraper().scrape("https://example.com")
+        assert exc.value.reason == "subprocess_error"
+
+    @pytest.mark.asyncio
+    async def test_bad_json_raises_subprocess_error(self):
+        proc = _make_proc(stdout=b"not json at all")
         with patch("asyncio.create_subprocess_exec", new=AsyncMock(return_value=proc)):
             with pytest.raises(ScrapeFailed) as exc:
                 await WebIntelScraper().scrape("https://example.com")

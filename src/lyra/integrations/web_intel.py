@@ -53,6 +53,7 @@ class WebIntelScraper:
                 )
             except asyncio.TimeoutError:
                 proc.kill()
+                await proc.wait()
                 raise ScrapeFailed("timeout")
             if proc.returncode != 0:
                 log.warning(

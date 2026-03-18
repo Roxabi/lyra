@@ -282,7 +282,8 @@ class TestSessionTimeout:
             enabled_plugins=[],
             session_driver=driver,
         )
-        router.register_session_command("slow", slow_handler, timeout=0.01)
+        tools = SessionTools(scraper=MagicMock(), vault=MagicMock())
+        router.register_session_command("slow", slow_handler, tools=tools, timeout=0.01)
 
         msg = make_message("/slow")
         pool = make_pool()

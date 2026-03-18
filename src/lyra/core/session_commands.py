@@ -163,7 +163,7 @@ async def cmd_add(
         await tools.vault.add(title, tags, url, llm_text, timeout=timeout / 3)
     except VaultWriteFailed as exc:
         log.warning("cmd_add: vault write failed (%s)", exc)
-        if exc.args and exc.args[0] == "not_available":
+        if exc.reason == "not_available":
             vault_note = "\n\n(vault CLI not available — summary not saved)"
         else:
             vault_note = "\n\n(vault write failed — summary not saved)"

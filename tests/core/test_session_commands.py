@@ -108,7 +108,7 @@ class TestCmdAdd:
         assert "[scraping unavailable]" in content
 
     @pytest.mark.asyncio
-    async def test_vault_failure_returns_summary_with_note(self) -> None:
+    async def test_vault_not_available_returns_summary_with_note(self) -> None:
         driver = make_driver("Title: Test\nSummary: X.\nTags: a")
         tools = make_tools(vault_side_effect=VaultWriteFailed("not_available"))
         msg = make_message()
@@ -118,8 +118,22 @@ class TestCmdAdd:
         assert isinstance(response, Response)
         # Summary is returned even when vault fails
         assert "Title: Test" in response.content
-        # Vault failure noted
-        assert "vault" in response.content.lower()
+        # Vault failure noted with "not available"
+        assert "not available" in response.content.lower()
+
+    @pytest.mark.asyncio
+    async def test_vault_write_failed_returns_summary_with_note(self) -> None:
+        driver = make_driver("Title: Test\nSummary: X.\nTags: a")
+        tools = make_tools(vault_side_effect=VaultWriteFailed(""))
+        msg = make_message()
+
+        response = await cmd_add(msg, driver, tools, ["https://example.com"], 60.0)
+
+        assert isinstance(response, Response)
+        # Summary is returned even when vault fails
+        assert "Title: Test" in response.content
+        # Generic failure noted with "write failed"
+        assert "write failed" in response.content.lower()
 
     @pytest.mark.asyncio
     async def test_scrape_subprocess_error_uses_fallback(self) -> None:

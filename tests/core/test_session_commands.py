@@ -1,16 +1,16 @@
-"""Tests for session_commands.py (issue #99 T4)."""
+"""Tests for session_commands.py (issue #99 T4, #360)."""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from lyra.core.message import InboundMessage, Response
 from lyra.core.session_commands import cmd_add, cmd_explain, cmd_summarize
-from lyra.core.session_helpers import ScrapeFailed, VaultWriteFailed
 from lyra.core.trust import TrustLevel
+from lyra.integrations.base import ScrapeFailed, SessionTools, VaultWriteFailed
 from lyra.llm.base import LlmResult
 
 
@@ -39,37 +39,53 @@ def make_driver(
     return driver
 
 
+def make_tools(
+    scrape_return: str = "scraped content",
+    scrape_side_effect=None,
+    vault_side_effect=None,
+) -> SessionTools:
+    """Build a SessionTools with mock scraper and vault."""
+    scraper = MagicMock()
+    if scrape_side_effect is not None:
+        scraper.scrape = AsyncMock(side_effect=scrape_side_effect)
+    else:
+        scraper.scrape = AsyncMock(return_value=scrape_return)
+
+    vault = MagicMock()
+    if vault_side_effect is not None:
+        vault.add = AsyncMock(side_effect=vault_side_effect)
+    else:
+        vault.add = AsyncMock()
+    vault.search = AsyncMock(return_value="results")
+
+    return SessionTools(scraper=scraper, vault=vault)
+
+
 class TestCmdAdd:
     """cmd_add() — scrape → LLM → vault write."""
 
     @pytest.mark.asyncio
     async def test_happy_path_calls_scrape_driver_vault(self) -> None:
         driver = make_driver("Title: My Page\nSummary: Great page.\nTags: tech, news")
+        tools = make_tools(scrape_return="scraped content")
         msg = make_message()
 
-        with (
-            patch(
-                "lyra.core.session_commands.scrape_url",
-                new=AsyncMock(return_value="scraped content"),
-            ) as mock_scrape,
-            patch(
-                "lyra.core.session_commands.vault_add",
-                new=AsyncMock(),
-            ) as mock_vault,
-        ):
-            response = await cmd_add(msg, driver, ["https://example.com"], 60.0)
+        response = await cmd_add(msg, driver, tools, ["https://example.com"], 60.0)
 
         assert isinstance(response, Response)
         assert "Saved:" in response.content
-        mock_scrape.assert_called_once_with("https://example.com", timeout=20.0)
+        tools.scraper.scrape.assert_called_once_with(  # type: ignore[attr-defined]
+            "https://example.com", timeout=20.0
+        )
         driver.complete.assert_called_once()
-        mock_vault.assert_called_once()
+        tools.vault.add.assert_called_once()  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
     async def test_missing_arg_returns_usage_hint(self) -> None:
         driver = make_driver()
+        tools = make_tools()
         msg = make_message()
-        response = await cmd_add(msg, driver, [], 60.0)
+        response = await cmd_add(msg, driver, tools, [], 60.0)
         assert "Usage:" in response.content
         driver.complete.assert_not_called()
 
@@ -78,19 +94,10 @@ class TestCmdAdd:
         self,
     ) -> None:
         driver = make_driver("Title: Fallback\nSummary: No scrape.\nTags: x")
+        tools = make_tools(scrape_side_effect=ScrapeFailed("not_available"))
         msg = make_message()
 
-        with (
-            patch(
-                "lyra.core.session_commands.scrape_url",
-                new=AsyncMock(side_effect=ScrapeFailed("not_available")),
-            ),
-            patch(
-                "lyra.core.session_commands.vault_add",
-                new=AsyncMock(),
-            ),
-        ):
-            response = await cmd_add(msg, driver, ["https://example.com"], 60.0)
+        response = await cmd_add(msg, driver, tools, ["https://example.com"], 60.0)
 
         assert isinstance(response, Response)
         driver.complete.assert_called_once()
@@ -101,41 +108,40 @@ class TestCmdAdd:
         assert "[scraping unavailable]" in content
 
     @pytest.mark.asyncio
-    async def test_vault_failure_returns_summary_with_note(self) -> None:
+    async def test_vault_not_available_returns_summary_with_note(self) -> None:
         driver = make_driver("Title: Test\nSummary: X.\nTags: a")
+        tools = make_tools(vault_side_effect=VaultWriteFailed("not_available"))
         msg = make_message()
 
-        with (
-            patch(
-                "lyra.core.session_commands.scrape_url",
-                new=AsyncMock(return_value="scraped"),
-            ),
-            patch(
-                "lyra.core.session_commands.vault_add",
-                new=AsyncMock(side_effect=VaultWriteFailed("not_available")),
-            ),
-        ):
-            response = await cmd_add(msg, driver, ["https://example.com"], 60.0)
+        response = await cmd_add(msg, driver, tools, ["https://example.com"], 60.0)
 
         assert isinstance(response, Response)
         # Summary is returned even when vault fails
         assert "Title: Test" in response.content
-        # Vault failure noted
-        assert "vault" in response.content.lower()
+        # Vault failure noted with "not available"
+        assert "not available" in response.content.lower()
+
+    @pytest.mark.asyncio
+    async def test_vault_write_failed_returns_summary_with_note(self) -> None:
+        driver = make_driver("Title: Test\nSummary: X.\nTags: a")
+        tools = make_tools(vault_side_effect=VaultWriteFailed(""))
+        msg = make_message()
+
+        response = await cmd_add(msg, driver, tools, ["https://example.com"], 60.0)
+
+        assert isinstance(response, Response)
+        # Summary is returned even when vault fails
+        assert "Title: Test" in response.content
+        # Generic failure noted with "write failed"
+        assert "write failed" in response.content.lower()
 
     @pytest.mark.asyncio
     async def test_scrape_subprocess_error_uses_fallback(self) -> None:
         driver = make_driver("Title: T\nSummary: S.\nTags: t")
+        tools = make_tools(scrape_side_effect=ScrapeFailed("subprocess_error"))
         msg = make_message()
 
-        with (
-            patch(
-                "lyra.core.session_commands.scrape_url",
-                new=AsyncMock(side_effect=ScrapeFailed("subprocess_error")),
-            ),
-            patch("lyra.core.session_commands.vault_add", new=AsyncMock()),
-        ):
-            await cmd_add(msg, driver, ["https://example.com"], 60.0)
+        await cmd_add(msg, driver, tools, ["https://example.com"], 60.0)
 
         driver.complete.assert_called_once()
         messages = driver.complete.call_args.kwargs["messages"]
@@ -148,13 +154,10 @@ class TestCmdExplain:
     @pytest.mark.asyncio
     async def test_happy_path_returns_explanation(self) -> None:
         driver = make_driver("This page is about asyncio in Python.")
+        tools = make_tools(scrape_return="some content")
         msg = make_message()
 
-        with patch(
-            "lyra.core.session_commands.scrape_url",
-            new=AsyncMock(return_value="some content"),
-        ):
-            response = await cmd_explain(msg, driver, ["https://example.com"], 60.0)
+        response = await cmd_explain(msg, driver, tools, ["https://example.com"], 60.0)
 
         assert isinstance(response, Response)
         assert "asyncio" in response.content
@@ -163,21 +166,19 @@ class TestCmdExplain:
     @pytest.mark.asyncio
     async def test_missing_arg_returns_usage_hint(self) -> None:
         driver = make_driver()
+        tools = make_tools()
         msg = make_message()
-        response = await cmd_explain(msg, driver, [], 60.0)
+        response = await cmd_explain(msg, driver, tools, [], 60.0)
         assert "Usage:" in response.content
         driver.complete.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_scrape_failure_still_calls_driver(self) -> None:
         driver = make_driver("Explanation text.")
+        tools = make_tools(scrape_side_effect=ScrapeFailed("not_available"))
         msg = make_message()
 
-        with patch(
-            "lyra.core.session_commands.scrape_url",
-            new=AsyncMock(side_effect=ScrapeFailed("not_available")),
-        ):
-            response = await cmd_explain(msg, driver, ["https://example.com"], 60.0)
+        response = await cmd_explain(msg, driver, tools, ["https://example.com"], 60.0)
 
         driver.complete.assert_called_once()
         assert isinstance(response, Response)
@@ -189,13 +190,12 @@ class TestCmdSummarize:
     @pytest.mark.asyncio
     async def test_happy_path_returns_summary(self) -> None:
         driver = make_driver("- Point one\n- Point two\n- Point three")
+        tools = make_tools(scrape_return="content")
         msg = make_message()
 
-        with patch(
-            "lyra.core.session_commands.scrape_url",
-            new=AsyncMock(return_value="content"),
-        ):
-            response = await cmd_summarize(msg, driver, ["https://example.com"], 60.0)
+        response = await cmd_summarize(
+            msg, driver, tools, ["https://example.com"], 60.0
+        )
 
         assert isinstance(response, Response)
         assert "Point one" in response.content
@@ -204,8 +204,9 @@ class TestCmdSummarize:
     @pytest.mark.asyncio
     async def test_missing_arg_returns_usage_hint(self) -> None:
         driver = make_driver()
+        tools = make_tools()
         msg = make_message()
-        response = await cmd_summarize(msg, driver, [], 60.0)
+        response = await cmd_summarize(msg, driver, tools, [], 60.0)
         assert "Usage:" in response.content
         driver.complete.assert_not_called()
 
@@ -215,13 +216,10 @@ class TestCmdSummarize:
         from lyra.core.session_commands import SUMMARIZE_SYSTEM_PROMPT
 
         driver = make_driver("summary")
+        tools = make_tools(scrape_return="content")
         msg = make_message()
 
-        with patch(
-            "lyra.core.session_commands.scrape_url",
-            new=AsyncMock(return_value="content"),
-        ):
-            await cmd_summarize(msg, driver, ["https://example.com"], 60.0)
+        await cmd_summarize(msg, driver, tools, ["https://example.com"], 60.0)
 
         call_args = driver.complete.call_args
         # system_prompt is the 4th positional argument
@@ -229,5 +227,5 @@ class TestCmdSummarize:
         assert system_prompt == SUMMARIZE_SYSTEM_PROMPT
 
     # AC-7 (pool history isolation) is covered by the integration test
-    # tests/core/test_command_sessions.py::TestPoolHistoryUnchanged which pre-seeds
-    # a real pool and asserts sdk_history and history are unchanged after the command.
+    # tests/integration/test_command_sessions.py::TestPoolHistoryUnchanged which
+    # pre-seeds a real pool and asserts sdk_history and history are unchanged.

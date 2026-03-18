@@ -235,9 +235,12 @@ class TestBareUrlDetection:
         from unittest.mock import AsyncMock
         from unittest.mock import MagicMock as MM
 
+        from lyra.integrations.base import SessionTools
+
         router = make_router(tmp_path)
         handler = AsyncMock(return_value=Response(content="added"))
-        router.register_session_command("vault-add", handler)
+        tools = SessionTools(scraper=MM(), vault=MM())
+        router.register_session_command("vault-add", handler, tools=tools)
         router._session_driver = MM()
 
         msg = make_message(content="https://example.com/test")
@@ -307,13 +310,23 @@ class TestSessionCommands:
     ):
         from unittest.mock import AsyncMock, MagicMock
 
+        from lyra.integrations.base import SessionTools
+
         router = make_router(tmp_path)
         router._session_driver = driver or MagicMock()
+
+        scraper = MagicMock()
+        scraper.scrape = AsyncMock(return_value="content")
+        vault = MagicMock()
+        vault.add = AsyncMock()
+        vault.search = AsyncMock(return_value="results")
+        tools = SessionTools(scraper=scraper, vault=vault)
 
         async_handler = AsyncMock(return_value=Response(content=handler_response))
         router.register_session_command(
             "mysession",
             async_handler,
+            tools=tools,
             description="My session command",
             timeout=30.0,
         )
@@ -333,13 +346,16 @@ class TestSessionCommands:
     async def test_session_command_none_driver_returns_degradation(
         self, tmp_path: Path
     ) -> None:
+        from unittest.mock import AsyncMock, MagicMock
+
+        from lyra.integrations.base import SessionTools
+
         router = make_router(tmp_path)
         router._session_driver = None
 
-        from unittest.mock import AsyncMock
-
+        tools = SessionTools(scraper=MagicMock(), vault=MagicMock())
         async_handler = AsyncMock(return_value=Response(content="never"))
-        router.register_session_command("nosession", async_handler)
+        router.register_session_command("nosession", async_handler, tools=tools)
 
         msg = make_message(content="/nosession")
         pool = MagicMock(spec=Pool)
@@ -357,14 +373,17 @@ class TestSessionCommands:
     ) -> None:
         import asyncio as _asyncio
 
+        from lyra.integrations.base import SessionTools
+
         router = make_router(tmp_path)
         router._session_driver = MagicMock()
 
-        async def slow_handler(msg, driver, args, timeout):
+        async def slow_handler(msg, driver, tools, args, timeout):
             await _asyncio.sleep(10)
             return Response(content="never")
 
-        router.register_session_command("slow", slow_handler, timeout=0.01)
+        tools = SessionTools(scraper=MagicMock(), vault=MagicMock())
+        router.register_session_command("slow", slow_handler, tools=tools, timeout=0.01)
 
         msg = make_message(content="/slow")
         pool = MagicMock(spec=Pool)
@@ -373,30 +392,38 @@ class TestSessionCommands:
         assert "timed out" in response.content.lower()
 
     def test_register_conflict_with_builtin_raises(self, tmp_path: Path) -> None:
-        from unittest.mock import AsyncMock
+        from unittest.mock import AsyncMock, MagicMock
+
+        from lyra.integrations.base import SessionTools
 
         router = make_router(tmp_path)
         handler = AsyncMock(return_value=Response(content="x"))
+        tools = SessionTools(scraper=MagicMock(), vault=MagicMock())
         with pytest.raises(ValueError, match="clashes with a builtin"):
-            router.register_session_command("help", handler)
+            router.register_session_command("help", handler, tools=tools)
 
     def test_register_conflict_with_plugin_raises(self, tmp_path: Path) -> None:
-        from unittest.mock import AsyncMock
+        from unittest.mock import AsyncMock, MagicMock
+
+        from lyra.integrations.base import SessionTools
 
         router = make_router(tmp_path)  # has echo plugin
         handler = AsyncMock(return_value=Response(content="x"))
+        tools = SessionTools(scraper=MagicMock(), vault=MagicMock())
         with pytest.raises(ValueError, match="clashes with a plugin"):
-            router.register_session_command("echo", handler)
+            router.register_session_command("echo", handler, tools=tools)
 
     def test_help_includes_session_commands_section(self, tmp_path: Path) -> None:
-        from unittest.mock import AsyncMock
+        from unittest.mock import AsyncMock, MagicMock
 
         from lyra.core.builtin_commands import help_command
+        from lyra.integrations.base import SessionTools
 
         router = make_router(tmp_path)
         handler = AsyncMock(return_value=Response(content="x"))
+        tools = SessionTools(scraper=MagicMock(), vault=MagicMock())
         router.register_session_command(
-            "mything", handler, description="Does the thing"
+            "mything", handler, tools=tools, description="Does the thing"
         )  # noqa: E501
         response = help_command(
             router._builtins,
@@ -413,15 +440,18 @@ class TestSessionCommands:
         import asyncio as _asyncio
         from unittest.mock import MagicMock
 
+        from lyra.integrations.base import SessionTools
+
         received_args: list[list[str]] = []
 
-        async def capturing_handler(msg, driver, args, timeout):
+        async def capturing_handler(msg, driver, tools, args, timeout):
             received_args.append(args)
             return Response(content="ok")
 
         router = make_router(tmp_path)
         router._session_driver = MagicMock()
-        router.register_session_command("capture", capturing_handler)
+        tools = SessionTools(scraper=MagicMock(), vault=MagicMock())
+        router.register_session_command("capture", capturing_handler, tools=tools)
         msg = make_message(content="/capture foo bar")
         pool = MagicMock(spec=Pool)
         _asyncio.get_event_loop().run_until_complete(router.dispatch(msg, pool=pool))

@@ -1,0 +1,1187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lyra — Video Creative Brief</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0a0f;
+  --bg2:#111118;
+  --bg3:#18181f;
+  --bg4:#20202a;
+  --bg5:#28282f;
+  --c1:#e85d04;
+  --c1h:#ff7d2a;
+  --c1dim:#e85d0420;
+  --c2:#fafafa;
+  --c3:#6b7280;
+  --c4:#9ca3af;
+  --border:#2a2a35;
+  --border2:#3a3a45;
+  --font-h:'Outfit',sans-serif;
+  --font-m:'JetBrains Mono',monospace;
+  --font-b:'Inter',sans-serif;
+  --glow:0 0 28px #e85d0438;
+  --radius:4px;
+}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--c2);font-family:var(--font-b);font-size:14px;line-height:1.6;min-height:100vh;overflow-x:hidden}
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--bg5);border-radius:3px}
+
+/* ── HEADER ── */
+.header{padding:60px 24px 40px;text-align:center;position:relative;overflow:hidden}
+.header::before{content:'';position:absolute;top:-40px;left:50%;transform:translateX(-50%);width:800px;height:400px;background:radial-gradient(ellipse,rgba(232,93,4,0.10) 0%,transparent 65%);pointer-events:none}
+.eyebrow{font-family:var(--font-m);font-size:11px;letter-spacing:0.2em;color:var(--c1);text-transform:uppercase;margin-bottom:20px;opacity:.9}
+.header h1{font-family:var(--font-h);font-size:clamp(28px,4vw,48px);font-weight:800;letter-spacing:-0.02em;line-height:1.1;margin-bottom:16px}
+.header h1 span{background:linear-gradient(135deg,#e85d04,#ff7d2a);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.header-sub{color:var(--c3);font-size:15px;max-width:560px;margin:0 auto 32px}
+.header-meta{display:flex;gap:16px;justify-content:center;flex-wrap:wrap}
+.meta-badge{background:var(--bg3);border:1px solid var(--border);color:var(--c4);font-family:var(--font-m);font-size:11px;padding:5px 12px;border-radius:3px;letter-spacing:0.05em}
+.meta-badge strong{color:var(--c1)}
+
+/* ── VIDEO TABS ── */
+.video-tabs{display:flex;gap:2px;padding:0 24px;max-width:1100px;margin:0 auto 0;border-bottom:1px solid var(--border)}
+.vtab{background:none;border:none;color:var(--c3);font-family:var(--font-h);font-size:14px;font-weight:600;padding:14px 24px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .15s,border-color .15s;letter-spacing:-0.01em}
+.vtab:hover{color:var(--c2)}
+.vtab.active{color:var(--c1);border-bottom-color:var(--c1)}
+
+/* ── PANELS ── */
+.panel{display:none;max-width:1100px;margin:0 auto;padding:32px 24px 80px}
+.panel.active{display:block}
+
+/* ── SECTION HEADERS ── */
+.sec-label{font-family:var(--font-m);font-size:10px;letter-spacing:0.18em;text-transform:uppercase;color:var(--c1);margin-bottom:8px;opacity:.85}
+.sec-title{font-family:var(--font-h);font-size:22px;font-weight:800;letter-spacing:-0.02em;margin-bottom:4px}
+.sec-sub{color:var(--c3);font-size:13px;margin-bottom:28px}
+
+/* ── VIDEO META CARD ── */
+.video-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1px;background:var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:32px}
+.vm-cell{background:var(--bg2);padding:16px 20px}
+.vm-label{font-family:var(--font-m);font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--c3);margin-bottom:6px}
+.vm-value{font-size:14px;color:var(--c2);font-weight:500}
+.vm-value.orange{color:var(--c1)}
+
+/* ── TIMELINE ── */
+.timeline-wrap{margin-bottom:32px}
+.timeline-label{font-family:var(--font-m);font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--c3);margin-bottom:10px}
+.timeline{display:flex;gap:2px;height:44px;border-radius:var(--radius);overflow:hidden;position:relative}
+.tl-seg{display:flex;align-items:center;justify-content:center;font-family:var(--font-m);font-size:10px;font-weight:500;letter-spacing:0.04em;cursor:default;transition:opacity .15s;position:relative}
+.tl-seg:hover{opacity:.85}
+.tl-seg .tl-name{position:absolute;bottom:-22px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:9px;color:var(--c3);letter-spacing:0.05em}
+.timeline-spacer{height:28px}
+
+/* ── SCENE CARDS ── */
+.scenes{display:flex;flex-direction:column;gap:2px;margin-bottom:32px}
+.scene-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.scene-header{display:flex;align-items:center;gap:14px;padding:14px 18px;cursor:pointer;user-select:none;transition:background .15s}
+.scene-header:hover{background:var(--bg3)}
+.scene-num{font-family:var(--font-m);font-size:11px;color:var(--c1);font-weight:600;min-width:28px}
+.scene-title-wrap{flex:1}
+.scene-name{font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--c2);margin-bottom:1px}
+.scene-timing{font-family:var(--font-m);font-size:11px;color:var(--c3)}
+.scene-toggle{color:var(--c3);font-size:12px;transition:transform .2s}
+.scene-body{display:none;padding:0 18px 18px;border-top:1px solid var(--border)}
+.scene-body.open{display:block}
+.scene-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+@media(max-width:700px){.scene-grid{grid-template-columns:1fr}}
+.sg-block{}
+.sg-label{font-family:var(--font-m);font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--c1);margin-bottom:6px;opacity:.8}
+.sg-text{font-size:13px;color:var(--c4);line-height:1.55}
+.sg-text.vo{font-family:var(--font-m);font-size:12px;color:var(--c2);background:var(--bg3);border-left:2px solid var(--c1);padding:8px 12px;border-radius:0 var(--radius) var(--radius) 0;line-height:1.5}
+.component-pill{display:inline-block;background:var(--c1dim);border:1px solid rgba(232,93,4,.25);color:var(--c1h);font-family:var(--font-m);font-size:10px;padding:2px 8px;border-radius:2px;margin:2px 2px 0 0;letter-spacing:0.04em}
+.anim-tag{display:inline-block;background:var(--bg4);border:1px solid var(--border2);color:var(--c4);font-family:var(--font-m);font-size:10px;padding:2px 8px;border-radius:2px;margin:2px 2px 0 0}
+
+/* ── PRODUCTION SPEC ── */
+.spec-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:32px}
+@media(max-width:700px){.spec-grid{grid-template-columns:1fr}}
+.spec-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px}
+.spec-card h4{font-family:var(--font-h);font-size:15px;font-weight:700;margin-bottom:12px;color:var(--c2)}
+.spec-card ul{list-style:none;display:flex;flex-direction:column;gap:6px}
+.spec-card li{font-size:13px;color:var(--c4);display:flex;align-items:flex-start;gap:8px}
+.spec-card li::before{content:'—';color:var(--c1);flex-shrink:0;margin-top:1px;font-family:var(--font-m)}
+
+/* ── COMPONENT MAP ── */
+.comp-table{width:100%;border-collapse:collapse;margin-bottom:32px;font-size:13px}
+.comp-table th{text-align:left;font-family:var(--font-m);font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--c3);padding:8px 12px;border-bottom:1px solid var(--border)}
+.comp-table td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:top}
+.comp-table tr:last-child td{border-bottom:none}
+.comp-table td:first-child{font-family:var(--font-m);font-size:12px;color:var(--c1);white-space:nowrap}
+.comp-table td:nth-child(2){color:var(--c4)}
+.comp-table td:nth-child(3){color:var(--c3);font-size:12px}
+.comp-table tbody tr:hover td{background:var(--bg2)}
+
+/* ── PIPELINE ── */
+.pipeline{display:flex;flex-direction:column;gap:2px;margin-bottom:32px}
+.pipe-step{display:flex;align-items:flex-start;gap:16px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px 20px}
+.pipe-num{font-family:var(--font-m);font-size:22px;font-weight:600;color:var(--c1);opacity:.4;min-width:28px;line-height:1}
+.pipe-content{}
+.pipe-title{font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--c2);margin-bottom:4px}
+.pipe-text{font-size:13px;color:var(--c4);line-height:1.5}
+.pipe-code{font-family:var(--font-m);font-size:11px;color:var(--c1h);background:var(--bg4);border:1px solid var(--border);padding:2px 8px;border-radius:2px;margin-top:6px;display:inline-block}
+
+/* ── MUSIC BOX ── */
+.music-box{background:var(--bg2);border:1px solid var(--border);border-left:3px solid var(--c1);border-radius:var(--radius);padding:16px 20px;margin-bottom:32px}
+.music-box h4{font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--c2);margin-bottom:8px}
+.music-box p{font-size:13px;color:var(--c4);line-height:1.5}
+
+/* ── THUMBNAIL ── */
+.thumb-box{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:32px;display:flex;gap:20px;align-items:center}
+.thumb-preview{width:160px;height:90px;background:var(--bg);border:1px solid var(--border2);border-radius:var(--radius);flex-shrink:0;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
+.thumb-preview::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 30% 50%,rgba(232,93,4,.25) 0%,transparent 60%)}
+.thumb-preview-text{font-family:var(--font-h);font-size:11px;font-weight:800;color:var(--c2);text-align:center;position:relative;z-index:1;text-transform:uppercase;letter-spacing:0.05em;line-height:1.2}
+.thumb-preview-text span{color:var(--c1);display:block}
+.thumb-desc{flex:1}
+.thumb-desc h4{font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--c2);margin-bottom:6px}
+.thumb-desc p{font-size:13px;color:var(--c4);line-height:1.5}
+
+/* ── SOCIAL CLIPS ── */
+.clips-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:32px}
+@media(max-width:800px){.clips-grid{grid-template-columns:1fr}}
+.clip-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.clip-header{background:var(--bg3);border-bottom:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;gap:10px}
+.clip-letter{width:28px;height:28px;background:var(--c1);border-radius:3px;display:flex;align-items:center;justify-content:center;font-family:var(--font-h);font-size:13px;font-weight:800;color:#fff;flex-shrink:0}
+.clip-label{font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--c2)}
+.clip-body{padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.clip-row-label{font-family:var(--font-m);font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--c1);margin-bottom:4px;opacity:.8}
+.clip-row-text{font-size:12px;color:var(--c4);line-height:1.45}
+.clip-vo{font-family:var(--font-m);font-size:11px;color:var(--c2);background:var(--bg4);border-left:2px solid var(--c1);padding:6px 10px;border-radius:0 2px 2px 0;line-height:1.5}
+
+/* ── DISTRIBUTION TABLE ── */
+.dist-table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:32px}
+.dist-table th{text-align:left;font-family:var(--font-m);font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--c3);padding:8px 12px;border-bottom:1px solid var(--border)}
+.dist-table td{padding:10px 12px;border-bottom:1px solid var(--border);color:var(--c4)}
+.dist-table td:first-child{font-family:var(--font-h);font-weight:700;color:var(--c2);font-size:13px}
+.dist-table tbody tr:hover td{background:var(--bg2)}
+
+/* ── DIVIDER ── */
+.divider{height:1px;background:var(--border);margin:32px 0}
+
+/* ── SEGMENT COLORS ── */
+.tl-hook{background:rgba(232,93,4,.85);color:#fff}
+.tl-problem{background:rgba(100,100,120,.7);color:#ddd}
+.tl-solution{background:rgba(232,93,4,.6);color:#fff}
+.tl-arch{background:rgba(232,93,4,.45);color:#fff}
+.tl-extend{background:rgba(232,93,4,.7);color:#fff}
+.tl-tagline{background:rgba(232,93,4,1);color:#fff;box-shadow:var(--glow)}
+.tl-terminal{background:rgba(50,55,70,.9);color:#9ca3af}
+.tl-telegram{background:rgba(0,136,204,.55);color:#fff}
+.tl-memory{background:rgba(100,60,180,.6);color:#fff}
+.tl-multi{background:rgba(232,93,4,.5);color:#fff}
+.tl-cta{background:rgba(232,93,4,.9);color:#fff;box-shadow:var(--glow)}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════ HEADER ═══════════════════════════ -->
+<div class="header">
+  <div class="eyebrow">Direction H — Forge &nbsp;·&nbsp; Video Creative Brief</div>
+  <h1>Lyra <span>Video Production</span></h1>
+  <p class="header-sub">Three videos. One intelligence engine. Everything below is what gets built.</p>
+  <div class="header-meta">
+    <span class="meta-badge"><strong>Category</strong> Personal Intelligence Engine</span>
+    <span class="meta-badge"><strong>Tagline</strong> Your intelligence, compounded</span>
+    <span class="meta-badge"><strong>Primary</strong> Yuki (tinkerer)</span>
+    <span class="meta-badge"><strong>Secondary</strong> Sofia (solo operator)</span>
+    <span class="meta-badge"><strong>Palette</strong> Obsidian · Forge Orange · Steel Gray</span>
+    <span class="meta-badge"><strong>Date</strong> 2026-03-18</span>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ TABS ═══════════════════════════ -->
+<nav class="video-tabs">
+  <button class="vtab active" onclick="switchTab('v1',this)">01 — Launch Trailer</button>
+  <button class="vtab" onclick="switchTab('v2',this)">02 — Product Demo</button>
+  <button class="vtab" onclick="switchTab('v3',this)">03 — Social Clips</button>
+  <button class="vtab" onclick="switchTab('pipeline',this)">04 — Pipeline</button>
+</nav>
+
+<!-- ═══════════════════════════════════════════════════════
+     VIDEO 1 — LAUNCH TRAILER
+═══════════════════════════════════════════════════════ -->
+<div class="panel active" id="v1">
+
+  <div style="margin-bottom:32px">
+    <div class="sec-label">Video 01</div>
+    <div class="sec-title">Launch Trailer</div>
+    <div class="sec-sub">First impression. GitHub README · Twitter/X · Landing page hero. 45–60 seconds.</div>
+  </div>
+
+  <!-- Meta -->
+  <div class="video-meta">
+    <div class="vm-cell"><div class="vm-label">Duration</div><div class="vm-value orange">45–60 s</div></div>
+    <div class="vm-cell"><div class="vm-label">Aspect Ratio</div><div class="vm-value">16:9</div></div>
+    <div class="vm-cell"><div class="vm-label">Resolution</div><div class="vm-value">1920 × 1080</div></div>
+    <div class="vm-cell"><div class="vm-label">FPS</div><div class="vm-value">30</div></div>
+    <div class="vm-cell"><div class="vm-label">Format</div><div class="vm-value">MP4 H.264</div></div>
+    <div class="vm-cell"><div class="vm-label">Distribution</div><div class="vm-value">GitHub · Twitter/X · Landing</div></div>
+    <div class="vm-cell"><div class="vm-label">Audience</div><div class="vm-value orange">Yuki (primary)</div></div>
+    <div class="vm-cell"><div class="vm-label">Tone</div><div class="vm-value">Confident · No fluff</div></div>
+  </div>
+
+  <!-- Timeline -->
+  <div class="timeline-wrap">
+    <div class="timeline-label">Visual Timeline (30 fps · ~52 s target)</div>
+    <div class="timeline">
+      <div class="tl-seg tl-hook" style="flex:5" title="Hook — 0-5s">Hook<div class="tl-name">0–5s</div></div>
+      <div class="tl-seg tl-problem" style="flex:10" title="Problem — 5-15s">Problem<div class="tl-name">5–15s</div></div>
+      <div class="tl-seg tl-solution" style="flex:10" title="Reveal — 15-25s">Reveal<div class="tl-name">15–25s</div></div>
+      <div class="tl-seg tl-arch" style="flex:10" title="Architecture — 25-35s">Arch<div class="tl-name">25–35s</div></div>
+      <div class="tl-seg tl-extend" style="flex:10" title="Extensibility — 35-45s">Extend<div class="tl-name">35–45s</div></div>
+      <div class="tl-seg tl-tagline" style="flex:7" title="Tagline — 45-52s">Tagline<div class="tl-name">45–52s</div></div>
+    </div>
+    <div class="timeline-spacer"></div>
+  </div>
+
+  <!-- Scenes -->
+  <div class="sec-label" style="margin-bottom:12px">Scene Breakdown</div>
+  <div class="scenes">
+
+    <!-- Scene 1 -->
+    <div class="scene-card">
+      <div class="scene-header" onclick="toggleScene(this)">
+        <span class="scene-num">S01</span>
+        <div class="scene-title-wrap">
+          <div class="scene-name">Hook — The Void</div>
+          <div class="scene-timing">frames 0–150 &nbsp;·&nbsp; 0–5 s</div>
+        </div>
+        <span class="scene-toggle">▼</span>
+      </div>
+      <div class="scene-body">
+        <div class="scene-grid">
+          <div class="sg-block">
+            <div class="sg-label">Visual</div>
+            <div class="sg-text">Pure obsidian black. Single blinking monospace cursor center-frame. One line of text types out character-by-character in JetBrains Mono. Forge orange cursor pulse. No background, no gradients — maximum contrast.</div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">VO</div>
+            <div class="sg-text vo">Your AI assistant knows nothing about you.<br>Tomorrow it will know nothing again.</div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">Components</div>
+            <div>
+              <span class="component-pill">GlitchText</span>
+              <span class="component-pill">Typewriter</span>
+              <span class="component-pill">FilmGrain</span>
+              <span class="component-pill">Vignette</span>
+            </div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">Animation Style</div>
+            <div>
+              <span class="anim-tag">typewriter 60 cpm</span>
+              <span class="anim-tag">glitch settle at f60</span>
+              <span class="anim-tag">cursor blink 500ms</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scene 2 -->
+    <div class="scene-card">
+      <div class="scene-header" onclick="toggleScene(this)">
+        <span class="scene-num">S02</span>
+        <div class="scene-title-wrap">
+          <div class="scene-name">Problem — The Reset</div>
+          <div class="scene-timing">frames 150–450 &nbsp;·&nbsp; 5–15 s</div>
+        </div>
+        <span class="scene-toggle">▼</span>
+      </div>
+      <div class="scene-body">
+        <div class="scene-grid">
+          <div class="sg-block">
+            <div class="sg-label">Visual</div>
+            <div class="sg-text">Three floating cards drift in from right: ChatGPT, Claude Web, n8n logos. Each card fades and dissolves — simulating cloud logout / subscription expiry. Steel gray grid pattern as background. Cards pulse red briefly then vanish.</div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">VO</div>
+            <div class="sg-text vo">Cloud tools reset. Subscriptions expire.<br>Your context vanishes.<br>Your data lives on someone else's server.</div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">Components</div>
+            <div>
+              <span class="component-pill">FloatingCards</span>
+              <span class="component-pill">GridPattern</span>
+              <span class="component-pill">FadeText</span>
+              <span class="component-pill">FilmGrain</span>
+            </div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">Animation Style</div>
+            <div>
+              <span class="anim-tag">spring float in</span>
+              <span class="anim-tag">opacity fade-to-zero</span>
+              <span class="anim-tag">grid pan slow right</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scene 3 -->
+    <div class="scene-card">
+      <div class="scene-header" onclick="toggleScene(this)">
+        <span class="scene-num">S03</span>
+        <div class="scene-title-wrap">
+          <div class="scene-name">Solution Reveal — Lyra Online</div>
+          <div class="scene-timing">frames 450–750 &nbsp;·&nbsp; 15–25 s</div>
+        </div>
+        <span class="scene-toggle">▼</span>
+      </div>
+      <div class="scene-body">
+        <div class="scene-grid">
+          <div class="sg-block">
+            <div class="sg-label">Visual</div>
+            <div class="sg-text">Terminal cold open. Black screen, bash prompt. <code>lyra start</code> typed out. Status lines appear — adapters connecting, hub online, memory loaded. Forge orange glow radiates from center. "lyra" wordmark crystallizes from particles. Impact text slams in: PERSONAL INTELLIGENCE ENGINE.</div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">VO</div>
+            <div class="sg-text vo">Lyra. A personal intelligence engine.<br>Runs 24/7. On your hardware.<br>No cloud. No reset. No lock-in.</div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">Components</div>
+            <div>
+              <span class="component-pill">Typewriter</span>
+              <span class="component-pill">ImpactText</span>
+              <span class="component-pill">ParticleField</span>
+              <span class="component-pill">GradientBackground</span>
+              <span class="component-pill">LightSweep</span>
+            </div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">Animation Style</div>
+            <div>
+              <span class="anim-tag">terminal type-in</span>
+              <span class="anim-tag">particle crystallize</span>
+              <span class="anim-tag">impact 3D entrance</span>
+              <span class="anim-tag">light sweep on reveal</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scene 4 -->
+    <div class="scene-card">
+      <div class="scene-header" onclick="toggleScene(this)">
+        <span class="scene-num">S04</span>
+        <div class="scene-title-wrap">
+          <div class="scene-name">Architecture Flash — Hub and Spoke</div>
+          <div class="scene-timing">frames 750–1050 &nbsp;·&nbsp; 25–35 s</div>
+        </div>
+        <span class="scene-toggle">▼</span>
+      </div>
+      <div class="scene-body">
+        <div class="scene-grid">
+          <div class="sg-block">
+            <div class="sg-label">Visual</div>
+            <div class="sg-text">Animated architecture diagram. Hub node (forge orange) center. Telegram, Discord channel nodes animate in from edges with connecting lines. Pool nodes spawn beneath hub with lock icons. Memory node pulses. Each connection draws with a spark trace. Badges pop in: "asyncio", "sequential per scope", "parallel across users".</div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">VO</div>
+            <div class="sg-text vo">Hub and spoke. Every message routed,<br>every conversation isolated.<br>Sequential per user. Parallel across all.</div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">Components</div>
+            <div>
+              <span class="component-pill">FloatingCards</span>
+              <span class="component-pill">Badge</span>
+              <span class="component-pill">AnimatedLine</span>
+              <span class="component-pill">GridPattern</span>
+              <span class="component-pill">FloatingOrbs</span>
+            </div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">Animation Style</div>
+            <div>
+              <span class="anim-tag">spring card entrance</span>
+              <span class="anim-tag">line draw SVG</span>
+              <span class="anim-tag">badge pop scale</span>
+              <span class="anim-tag">orb pulse glow</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scene 5 -->
+    <div class="scene-card">
+      <div class="scene-header" onclick="toggleScene(this)">
+        <span class="scene-num">S05</span>
+        <div class="scene-title-wrap">
+          <div class="scene-name">Extensibility Showcase — Your Rules</div>
+          <div class="scene-timing">frames 1050–1350 &nbsp;·&nbsp; 35–45 s</div>
+        </div>
+        <span class="scene-toggle">▼</span>
+      </div>
+      <div class="scene-body">
+        <div class="scene-grid">
+          <div class="sg-block">
+            <div class="sg-label">Visual</div>
+            <div class="sg-text">Split: left side shows a TOML config file typing out (10 lines — custom agent definition). Right side shows Telegram notification arriving: custom agent responds instantly. Badge pops: "Custom agent. 10 lines." Then a second badge: "Swap model. One line." Particle sparks scatter on each badge pop.</div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">VO</div>
+            <div class="sg-text vo">Add an agent. Ten lines of TOML.<br>Swap the model. One line.<br>Your stack. Your rules.</div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">Components</div>
+            <div>
+              <span class="component-pill">Typewriter</span>
+              <span class="component-pill">NotificationToast</span>
+              <span class="component-pill">Badge</span>
+              <span class="component-pill">PhoneFrame</span>
+              <span class="component-pill">ParticleField</span>
+            </div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">Animation Style</div>
+            <div>
+              <span class="anim-tag">code type-in left</span>
+              <span class="anim-tag">toast slide-in right</span>
+              <span class="anim-tag">badge pop stagger</span>
+              <span class="anim-tag">spark burst</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scene 6 -->
+    <div class="scene-card">
+      <div class="scene-header" onclick="toggleScene(this)">
+        <span class="scene-num">S06</span>
+        <div class="scene-title-wrap">
+          <div class="scene-name">Tagline + CTA — Compound</div>
+          <div class="scene-timing">frames 1350–1560 &nbsp;·&nbsp; 45–52 s</div>
+        </div>
+        <span class="scene-toggle">▼</span>
+      </div>
+      <div class="scene-body">
+        <div class="scene-grid">
+          <div class="sg-block">
+            <div class="sg-label">Visual</div>
+            <div class="sg-text">Full obsidian. Forge orange radial glow builds from center. Tagline slams in word-by-word with 3D perspective: "YOUR INTELLIGENCE, COMPOUNDED." Below: "Lyra — open source" fades in (JetBrains Mono). Cursor blinks. Vignette frames edges. FilmGrain overlays for cinematic texture.</div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">VO</div>
+            <div class="sg-text vo">Your intelligence, compounded.<br>Lyra. Open source. Self-hosted.</div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">Components</div>
+            <div>
+              <span class="component-pill">ImpactText</span>
+              <span class="component-pill">StaggeredWords</span>
+              <span class="component-pill">GradientBackground</span>
+              <span class="component-pill">FilmGrain</span>
+              <span class="component-pill">Vignette</span>
+              <span class="component-pill">SyncedCaptions</span>
+            </div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">Animation Style</div>
+            <div>
+              <span class="anim-tag">word stagger 3D</span>
+              <span class="anim-tag">glow radial build</span>
+              <span class="anim-tag">fade-in subline</span>
+              <span class="anim-tag">vignette clamp</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /scenes -->
+
+  <!-- Music -->
+  <div class="music-box">
+    <h4>Music &amp; Sound Design</h4>
+    <p>Ambient electronic underscore — sparse, industrial texture. Slow build from isolated synth pad (S01) through rising tension (S02) to a crisp forge-strike impact on the Lyra reveal (S03). Subtle metallic spark SFX on badge pops and connection draws. Crystallization sound on particle settle. Final chord holds under tagline with reverb tail. No licensed tracks — use royalty-free (Pixabay / Freesound: search "ambient electronic", "industrial synth", "spark sfx").</p>
+  </div>
+
+  <!-- Thumbnail -->
+  <div class="thumb-box">
+    <div class="thumb-preview">
+      <div class="thumb-preview-text">LYRA<span style="color:#e85d04;font-size:9px;margin-top:2px">PERSONAL INTELLIGENCE</span><span style="color:#6b7280;font-size:8px">ENGINE</span></div>
+    </div>
+    <div class="thumb-desc">
+      <h4>Thumbnail Concept</h4>
+      <p>Obsidian background. Forge orange radial glow (left third). "LYRA" in Outfit 800 — large, white, uppercase. Subtitle: "Personal Intelligence Engine" in JetBrains Mono, forge orange. Bottom-right: terminal cursor blinking. No faces, no gradients beyond the glow. Maximum contrast for GitHub dark mode and Twitter card preview.</p>
+    </div>
+  </div>
+
+</div><!-- /v1 -->
+
+
+<!-- ═══════════════════════════════════════════════════════
+     VIDEO 2 — PRODUCT DEMO
+═══════════════════════════════════════════════════════ -->
+<div class="panel" id="v2">
+
+  <div style="margin-bottom:32px">
+    <div class="sec-label">Video 02</div>
+    <div class="sec-title">Product Demo</div>
+    <div class="sec-sub">Show Lyra working. YouTube · Docs · Landing deeper section. 90–120 seconds.</div>
+  </div>
+
+  <div class="video-meta">
+    <div class="vm-cell"><div class="vm-label">Duration</div><div class="vm-value orange">90–120 s</div></div>
+    <div class="vm-cell"><div class="vm-label">Aspect Ratio</div><div class="vm-value">16:9</div></div>
+    <div class="vm-cell"><div class="vm-label">Resolution</div><div class="vm-value">1920 × 1080</div></div>
+    <div class="vm-cell"><div class="vm-label">FPS</div><div class="vm-value">30</div></div>
+    <div class="vm-cell"><div class="vm-label">Format</div><div class="vm-value">MP4 H.264</div></div>
+    <div class="vm-cell"><div class="vm-label">Distribution</div><div class="vm-value">YouTube · Docs · Landing</div></div>
+    <div class="vm-cell"><div class="vm-label">Audience</div><div class="vm-value orange">Yuki + Sofia</div></div>
+    <div class="vm-cell"><div class="vm-label">Tone</div><div class="vm-value">Technical · Real output</div></div>
+  </div>
+
+  <!-- Timeline -->
+  <div class="timeline-wrap">
+    <div class="timeline-label">Visual Timeline (30 fps · ~105 s target)</div>
+    <div class="timeline">
+      <div class="tl-seg tl-terminal" style="flex:15" title="Terminal cold open">Terminal<div class="tl-name">0–15s</div></div>
+      <div class="tl-seg tl-telegram" style="flex:25" title="Telegram conversation">Telegram<div class="tl-name">15–40s</div></div>
+      <div class="tl-seg tl-memory" style="flex:20" title="Memory in action">Memory<div class="tl-name">40–60s</div></div>
+      <div class="tl-seg tl-multi" style="flex:25" title="Multi-channel">Multi-ch<div class="tl-name">60–85s</div></div>
+      <div class="tl-seg tl-extend" style="flex:15" title="Extension point">Extend<div class="tl-name">85–100s</div></div>
+      <div class="tl-seg tl-cta" style="flex:5" title="Tagline">CTA<div class="tl-name">100–105s</div></div>
+    </div>
+    <div class="timeline-spacer"></div>
+  </div>
+
+  <div class="sec-label" style="margin-bottom:12px">Scene Breakdown</div>
+  <div class="scenes">
+
+    <!-- D01 -->
+    <div class="scene-card">
+      <div class="scene-header" onclick="toggleScene(this)">
+        <span class="scene-num">D01</span>
+        <div class="scene-title-wrap">
+          <div class="scene-name">Terminal Cold Open</div>
+          <div class="scene-timing">frames 0–450 &nbsp;·&nbsp; 0–15 s</div>
+        </div>
+        <span class="scene-toggle">▼</span>
+      </div>
+      <div class="scene-body">
+        <div class="scene-grid">
+          <div class="sg-block">
+            <div class="sg-label">Visual</div>
+            <div class="sg-text">Real terminal (dark, JetBrains Mono). Bash prompt shows <code>lyra start</code> typed out. Lines scroll: "Hub online", "Telegram adapter ready", "Discord adapter ready", "Memory: loaded 47 episodic entries", "3 agents active". Forge orange status dots pulse beside each line. No voiceover music — only subtle ambient hum.</div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">VO</div>
+            <div class="sg-text vo">Boot sequence. Two seconds.<br>Hub online. Three agents active.<br>Memory loaded from last session.</div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">Components</div>
+            <div>
+              <span class="component-pill">Typewriter</span>
+              <span class="component-pill">FadeText</span>
+              <span class="component-pill">FilmGrain</span>
+              <span class="component-pill">GridPattern</span>
+            </div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">Animation Style</div>
+            <div>
+              <span class="anim-tag">terminal line-by-line</span>
+              <span class="anim-tag">status dot pulse</span>
+              <span class="anim-tag">subtle scan-line FX</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- D02 -->
+    <div class="scene-card">
+      <div class="scene-header" onclick="toggleScene(this)">
+        <span class="scene-num">D02</span>
+        <div class="scene-title-wrap">
+          <div class="scene-name">Telegram Conversation — Real Chat</div>
+          <div class="scene-timing">frames 450–1200 &nbsp;·&nbsp; 15–40 s</div>
+        </div>
+        <span class="scene-toggle">▼</span>
+      </div>
+      <div class="scene-body">
+        <div class="scene-grid">
+          <div class="sg-block">
+            <div class="sg-label">Visual</div>
+            <div class="sg-text">PhoneFrame (realistic Telegram dark UI). User message types in: "What did we discuss about the ryvo pricing model last week?" Lyra typing indicator (three dots). Response appears: a structured recall referencing previous session context. Timestamp shown. Second message: "Add a note — we're going freemium first." Lyra confirms. Badge pops: "Stored to episodic memory."</div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">VO</div>
+            <div class="sg-text vo">Ask anything. Lyra recalls context<br>from sessions days ago.<br>It remembers because it's yours.</div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">Components</div>
+            <div>
+              <span class="component-pill">PhoneFrame</span>
+              <span class="component-pill">ChatInterface</span>
+              <span class="component-pill">NotificationToast</span>
+              <span class="component-pill">Badge</span>
+              <span class="component-pill">KenBurns</span>
+            </div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">Animation Style</div>
+            <div>
+              <span class="anim-tag">phone 3D float</span>
+              <span class="anim-tag">chat bubble slide-in</span>
+              <span class="anim-tag">typing dot pulse</span>
+              <span class="anim-tag">badge pop on memory write</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- D03 -->
+    <div class="scene-card">
+      <div class="scene-header" onclick="toggleScene(this)">
+        <span class="scene-num">D03</span>
+        <div class="scene-title-wrap">
+          <div class="scene-name">Memory in Action — Five Levels</div>
+          <div class="scene-timing">frames 1200–1800 &nbsp;·&nbsp; 40–60 s</div>
+        </div>
+        <span class="scene-toggle">▼</span>
+      </div>
+      <div class="scene-body">
+        <div class="scene-grid">
+          <div class="sg-block">
+            <div class="sg-label">Visual</div>
+            <div class="sg-text">Diagram view: five stacked memory layers animate in from left, each labeled: Working → Session → Episodic → Semantic → Procedural. Connecting arrows pulse with data flow. Forge orange highlights "Episodic" and "Semantic" as the active layers. AnimatedBar shows recall hit rate. Badge: "SQLite + FTS5 · fastembed". Progress ring for memory utilization.</div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">VO</div>
+            <div class="sg-text vo">Five memory levels. Working to procedural.<br>Semantic search across every session.<br>You don't repeat yourself. Neither does Lyra.</div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">Components</div>
+            <div>
+              <span class="component-pill">FloatingCards</span>
+              <span class="component-pill">AnimatedBar</span>
+              <span class="component-pill">ProgressRing</span>
+              <span class="component-pill">Badge</span>
+              <span class="component-pill">AnimatedLine</span>
+              <span class="component-pill">FadeText</span>
+            </div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">Animation Style</div>
+            <div>
+              <span class="anim-tag">layer spring stagger</span>
+              <span class="anim-tag">bar animate on enter</span>
+              <span class="anim-tag">ring fill spring</span>
+              <span class="anim-tag">line draw data flow</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- D04 -->
+    <div class="scene-card">
+      <div class="scene-header" onclick="toggleScene(this)">
+        <span class="scene-num">D04</span>
+        <div class="scene-title-wrap">
+          <div class="scene-name">Multi-Channel — Same Agent, Every Platform</div>
+          <div class="scene-timing">frames 1800–2550 &nbsp;·&nbsp; 60–85 s</div>
+        </div>
+        <span class="scene-toggle">▼</span>
+      </div>
+      <div class="scene-body">
+        <div class="scene-grid">
+          <div class="sg-block">
+            <div class="sg-label">Visual</div>
+            <div class="sg-text">BrowserTabs: tabs accumulate — Telegram Web, Discord, a hypothetical Signal tab. Each tab shows a different conversation with the same Lyra agent. Messages arrive simultaneously across tabs. Central hub node pulses (forge orange) connecting to all three. Badge: "Parallel across scopes — zero config." The hub handles all routing without user configuration.</div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">VO</div>
+            <div class="sg-text vo">Telegram. Discord. Signal.<br>Same agent. Same memory.<br>Routing handled. Zero config.</div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">Components</div>
+            <div>
+              <span class="component-pill">BrowserTabs</span>
+              <span class="component-pill">ChatInterface</span>
+              <span class="component-pill">FloatingCards</span>
+              <span class="component-pill">Badge</span>
+              <span class="component-pill">FloatingOrbs</span>
+            </div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">Animation Style</div>
+            <div>
+              <span class="anim-tag">tabs accumulate stagger</span>
+              <span class="anim-tag">hub orb pulse sync</span>
+              <span class="anim-tag">simultaneous message pop</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- D05 -->
+    <div class="scene-card">
+      <div class="scene-header" onclick="toggleScene(this)">
+        <span class="scene-num">D05</span>
+        <div class="scene-title-wrap">
+          <div class="scene-name">Extension Point — TOML to Live Agent</div>
+          <div class="scene-timing">frames 2550–3000 &nbsp;·&nbsp; 85–100 s</div>
+        </div>
+        <span class="scene-toggle">▼</span>
+      </div>
+      <div class="scene-body">
+        <div class="scene-grid">
+          <div class="sg-block">
+            <div class="sg-label">Visual</div>
+            <div class="sg-text">Terminal: <code>lyra agent create research-agent</code> typed. TOML file opens — 10 lines shown. <code>lyra agent init</code> runs. Telegram notification appears: new agent online. ChatInterface shows a test conversation with the new agent — it responds immediately. Badge: "New agent. 2 minutes."</div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">VO</div>
+            <div class="sg-text vo">Create an agent. Two minutes, ten lines.<br>Init, assign, done.<br>Your intelligence engine. Extensible by design.</div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">Components</div>
+            <div>
+              <span class="component-pill">Typewriter</span>
+              <span class="component-pill">NotificationToast</span>
+              <span class="component-pill">ChatInterface</span>
+              <span class="component-pill">Badge</span>
+              <span class="component-pill">Timer</span>
+            </div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">Animation Style</div>
+            <div>
+              <span class="anim-tag">terminal type-in</span>
+              <span class="anim-tag">toast slide-up</span>
+              <span class="anim-tag">chat bubble stagger</span>
+              <span class="anim-tag">timer count-up</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- D06 -->
+    <div class="scene-card">
+      <div class="scene-header" onclick="toggleScene(this)">
+        <span class="scene-num">D06</span>
+        <div class="scene-title-wrap">
+          <div class="scene-name">Tagline Close</div>
+          <div class="scene-timing">frames 3000–3150 &nbsp;·&nbsp; 100–105 s</div>
+        </div>
+        <span class="scene-toggle">▼</span>
+      </div>
+      <div class="scene-body">
+        <div class="scene-grid">
+          <div class="sg-block">
+            <div class="sg-label">Visual</div>
+            <div class="sg-text">Obsidian. Forge orange glow. "YOUR INTELLIGENCE, COMPOUNDED." ImpactText 3D. Below: "github.com/Roxabi/lyra" in JetBrains Mono fades in. SyncedCaptions visible for accessibility.</div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">VO</div>
+            <div class="sg-text vo">Your intelligence, compounded.<br>github.com/Roxabi/lyra</div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">Components</div>
+            <div>
+              <span class="component-pill">ImpactText</span>
+              <span class="component-pill">FadeText</span>
+              <span class="component-pill">SyncedCaptions</span>
+              <span class="component-pill">Vignette</span>
+              <span class="component-pill">GradientBackground</span>
+            </div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-label">Animation Style</div>
+            <div>
+              <span class="anim-tag">impact 3D entrance</span>
+              <span class="anim-tag">URL fade slide-up</span>
+              <span class="anim-tag">glow radial clamp</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /scenes -->
+
+  <div class="music-box">
+    <h4>Music &amp; Sound Design</h4>
+    <p>Ambient electronic — slightly warmer and more methodical than Video 1. Opens with sparse terminal ambience (subtle keyboard click texture). Builds through memory diagram into a confident mid-section pulse. Multi-channel scene gets a layered synth swell. Extension scene: a satisfying "connect" sound effect on agent creation. Tagline close: same chord as Video 1 for brand consistency. SFX: typing, notification chime (Telegram register), subtle data-flow hum on memory diagram.</p>
+  </div>
+
+  <div class="thumb-box">
+    <div class="thumb-preview">
+      <div class="thumb-preview-text" style="font-size:9px;line-height:1.3">DEMO<span style="color:#e85d04;font-size:10px;margin:2px 0">LYRA</span><span style="color:#6b7280">WATCH IT WORK</span></div>
+    </div>
+    <div class="thumb-desc">
+      <h4>Thumbnail Concept</h4>
+      <p>Split composition: left half shows a real terminal with Lyra boot output (obsidian background, green/orange status lines). Right half shows a Telegram chat on a phone frame (forge orange accent). Horizontal dividing line in forge orange. Top-left: "DEMO" badge in JetBrains Mono. Bottom: "Lyra — Personal Intelligence Engine" tagline. Max readability at 320px wide (YouTube mobile).</p>
+    </div>
+  </div>
+
+</div><!-- /v2 -->
+
+
+<!-- ═══════════════════════════════════════════════════════
+     VIDEO 3 — SOCIAL CLIPS
+═══════════════════════════════════════════════════════ -->
+<div class="panel" id="v3">
+
+  <div style="margin-bottom:32px">
+    <div class="sec-label">Video 03</div>
+    <div class="sec-title">Social Clips — 3 × 15 s</div>
+    <div class="sec-sub">Snackable content for Twitter/X and LinkedIn. Developer awareness. Punchy and self-contained.</div>
+  </div>
+
+  <div class="video-meta">
+    <div class="vm-cell"><div class="vm-label">Count</div><div class="vm-value orange">3 clips</div></div>
+    <div class="vm-cell"><div class="vm-label">Duration each</div><div class="vm-value">15 s</div></div>
+    <div class="vm-cell"><div class="vm-label">Aspect Ratio</div><div class="vm-value">1:1 (sq) / 9:16 (story)</div></div>
+    <div class="vm-cell"><div class="vm-label">Resolution</div><div class="vm-value">1080 × 1080 / 1080 × 1920</div></div>
+    <div class="vm-cell"><div class="vm-label">FPS</div><div class="vm-value">30</div></div>
+    <div class="vm-cell"><div class="vm-label">Format</div><div class="vm-value">MP4 H.264</div></div>
+    <div class="vm-cell"><div class="vm-label">Distribution</div><div class="vm-value">Twitter/X · LinkedIn</div></div>
+    <div class="vm-cell"><div class="vm-label">Captions</div><div class="vm-value orange">Always on (no audio autoplay)</div></div>
+  </div>
+
+  <div class="sec-label" style="margin-bottom:12px">Clip Breakdown</div>
+  <div class="clips-grid">
+
+    <!-- Clip A -->
+    <div class="clip-card">
+      <div class="clip-header">
+        <div class="clip-letter">A</div>
+        <div class="clip-label">Memory — Before / After</div>
+      </div>
+      <div class="clip-body">
+        <div>
+          <div class="clip-row-label">Concept</div>
+          <div class="clip-row-text">Show Lyra remembering context across days. Before: user asks "what was my decision on X?" — generic AI says "I don't have context from previous sessions." After: Lyra recalls verbatim from episodic memory.</div>
+        </div>
+        <div>
+          <div class="clip-row-label">Visual</div>
+          <div class="clip-row-text">Split screen. Left (gray, desaturated): standard chat, empty response. Right (obsidian, forge orange): Lyra chat, rich recalled response. Timestamp badge: "3 days ago recalled." Progress ring fills. ImpactText: "IT REMEMBERS."</div>
+        </div>
+        <div>
+          <div class="clip-row-label">VO</div>
+          <div class="clip-vo">Other AIs forget.<br>Lyra remembers.<br>Every session. Yours.</div>
+        </div>
+        <div>
+          <div class="clip-row-label">Components</div>
+          <div>
+            <span class="component-pill">ChatInterface</span>
+            <span class="component-pill">ImpactText</span>
+            <span class="component-pill">ProgressRing</span>
+            <span class="component-pill">Badge</span>
+            <span class="component-pill">SyncedCaptions</span>
+            <span class="component-pill">GradientBackground</span>
+          </div>
+        </div>
+        <div>
+          <div class="clip-row-label">Timing (30fps · 450 frames)</div>
+          <div class="clip-row-text">f0–90 — "Before" (gray). f90–270 — Lyra response builds. f270–360 — ImpactText. f360–450 — tagline hold.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Clip B -->
+    <div class="clip-card">
+      <div class="clip-header">
+        <div class="clip-letter">B</div>
+        <div class="clip-label">Always On — 3am Answer</div>
+      </div>
+      <div class="clip-body">
+        <div>
+          <div class="clip-row-label">Concept</div>
+          <div class="clip-row-text">3am Telegram message gets an immediate, intelligent response. No waiting, no cloud dependency. Lyra runs 24/7 on the user's hardware — it never sleeps.</div>
+        </div>
+        <div>
+          <div class="clip-row-label">Visual</div>
+          <div class="clip-row-text">PhoneFrame floating on obsidian. Lock screen shows time: 03:14. Telegram notification slides in (NotificationToast). Screen unlocks — ChatInterface shows message sent, instant response. Badge: "24/7 · Self-hosted · RTX 3080." Timer shows response latency: 1.2s.</div>
+        </div>
+        <div>
+          <div class="clip-row-label">VO</div>
+          <div class="clip-vo">3am. Question.<br>Lyra answers.<br>No cloud. No wait. Always on.</div>
+        </div>
+        <div>
+          <div class="clip-row-label">Components</div>
+          <div>
+            <span class="component-pill">PhoneFrame</span>
+            <span class="component-pill">NotificationToast</span>
+            <span class="component-pill">ChatInterface</span>
+            <span class="component-pill">Timer</span>
+            <span class="component-pill">Badge</span>
+            <span class="component-pill">SyncedCaptions</span>
+            <span class="component-pill">Vignette</span>
+          </div>
+        </div>
+        <div>
+          <div class="clip-row-label">Timing (30fps · 450 frames)</div>
+          <div class="clip-row-text">f0–60 — lock screen / timestamp. f60–150 — notification slide. f150–300 — chat exchange. f300–390 — badge + timer pop. f390–450 — tagline.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Clip C -->
+    <div class="clip-card">
+      <div class="clip-header">
+        <div class="clip-letter">C</div>
+        <div class="clip-label">Extend — Agent in 10 Lines</div>
+      </div>
+      <div class="clip-body">
+        <div>
+          <div class="clip-row-label">Concept</div>
+          <div class="clip-row-text">Show adding a custom agent in 10 lines of TOML. The agent is live on Telegram within seconds. Pure developer appeal — shows the real extensibility of the platform without abstraction.</div>
+        </div>
+        <div>
+          <div class="clip-row-label">Visual</div>
+          <div class="clip-row-text">Terminal frame (JetBrains Mono). 10-line TOML types out in real-time — agent name, model, system prompt, permissions. <code>lyra agent init</code> runs. Telegram notification pops: "research-agent online." ChatInterface: first message to new agent — immediate response. Badge: "10 lines. 2 minutes. Done."</div>
+        </div>
+        <div>
+          <div class="clip-row-label">VO</div>
+          <div class="clip-vo">10 lines of TOML.<br>New agent. Live on Telegram.<br>Your stack. Your rules.</div>
+        </div>
+        <div>
+          <div class="clip-row-label">Components</div>
+          <div>
+            <span class="component-pill">Typewriter</span>
+            <span class="component-pill">NotificationToast</span>
+            <span class="component-pill">ChatInterface</span>
+            <span class="component-pill">Badge</span>
+            <span class="component-pill">SyncedCaptions</span>
+            <span class="component-pill">GlitchText</span>
+          </div>
+        </div>
+        <div>
+          <div class="clip-row-label">Timing (30fps · 450 frames)</div>
+          <div class="clip-row-text">f0–180 — TOML types out (60 cpm). f180–240 — lyra agent init. f240–330 — notification + chat. f330–390 — badge pop. f390–450 — tagline.</div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /clips-grid -->
+
+  <!-- Component map for socials -->
+  <div class="sec-label" style="margin-bottom:8px">Notes for Social Format</div>
+  <div class="spec-grid">
+    <div class="spec-card">
+      <h4>Square 1:1 (Twitter/X · LinkedIn feed)</h4>
+      <ul>
+        <li>1080 × 1080px — content safe zone 900px centered</li>
+        <li>SyncedCaptions mandatory — muted autoplay</li>
+        <li>Forge orange branding band top or bottom 40px</li>
+        <li>Outfit 800 caption font — minimum 28px for legibility</li>
+        <li>Export: 2 versions — with captions, without captions (for platforms with native captions)</li>
+      </ul>
+    </div>
+    <div class="spec-card">
+      <h4>Vertical 9:16 (Story / Reels)</h4>
+      <ul>
+        <li>1080 × 1920px — content recentered for vertical</li>
+        <li>Phone mockup takes 60% height, centered</li>
+        <li>VO text as large captions, top 20% of frame</li>
+        <li>Lyra wordmark bottom-right, always visible</li>
+        <li>Render as separate composition from 1:1</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="thumb-box">
+    <div class="thumb-preview" style="width:90px;height:90px;border-radius:8px">
+      <div class="thumb-preview-text" style="font-size:9px">LYRA<span style="font-size:7px;color:#e85d04">CLIPS</span></div>
+    </div>
+    <div class="thumb-desc">
+      <h4>Thumbnail / Preview Frame Concept (all 3 clips)</h4>
+      <p>Each clip: first frame is a bold black card with the clip topic in Outfit 800 — "MEMORY", "ALWAYS ON", "EXTEND" — in forge orange. Clip letter (A / B / C) in JetBrains Mono bottom-right. Used as static preview before autoplay. Twitter card pulls first frame automatically — design for it.</p>
+    </div>
+  </div>
+
+</div><!-- /v3 -->
+
+
+<!-- ═══════════════════════════════════════════════════════
+     PIPELINE
+═══════════════════════════════════════════════════════ -->
+<div class="panel" id="pipeline">
+
+  <div style="margin-bottom:32px">
+    <div class="sec-label">Production Workflow</div>
+    <div class="sec-title">Pipeline</div>
+    <div class="sec-sub">End-to-end production from VO script to platform-ready export.</div>
+  </div>
+
+  <div class="pipeline">
+
+    <div class="pipe-step">
+      <div class="pipe-num">1</div>
+      <div class="pipe-content">
+        <div class="pipe-title">Write VO Script</div>
+        <div class="pipe-text">Finalize narration line-by-line from this brief. Keep sentences short — monospace energy. Target ~120 words/min delivery pace. English only (contrast with existing narration.md which is French for the origin story video). Write each scene's VO as a separate segment with 500ms gap between segments. Mark emotion hints inline with HTML comments.</div>
+        <span class="pipe-code">Output: vo-launch.md / vo-demo.md / vo-clips.md</span>
+      </div>
+    </div>
+
+    <div class="pipe-step">
+      <div class="pipe-num">2</div>
+      <div class="pipe-content">
+        <div class="pipe-title">Generate Voice with VoiceCLI</div>
+        <div class="pipe-text">Engine: <strong>qwen-fast</strong> (same as narration.md — validated on RTX 5070Ti with CUDA graphs, 2–3s per segment). Voice profile: Male — technical, confident, low-affect (Yuki register). Suggested voice: <strong>Mateo</strong> or <strong>Ono_Kenji</strong> if available in Chatterbox roster — or request a custom profile via VoiceCLI voice designer. Personality: "Builder who ships. Precise. No hype." Speed: moderate, slight pause on technical terms. Crossfade: 80ms between segments. Output: OGG/Opus for Telegram preview, WAV for Remotion render.</div>
+        <span class="pipe-code">voicecli tts --engine qwen-fast --voice Mateo --input vo-launch.md --out vo-launch.wav</span>
+      </div>
+    </div>
+
+    <div class="pipe-step">
+      <div class="pipe-num">3</div>
+      <div class="pipe-content">
+        <div class="pipe-title">Transcribe for Word-Level Timestamps</div>
+        <div class="pipe-text">Use faster-whisper (large-v3-turbo model) to generate word-level timestamps from the rendered WAV. Output JSON consumed by SyncedCaptions component for frame-accurate caption sync. Also used to validate VO timing against scene frame budgets — adjust script if any segment runs long.</div>
+        <span class="pipe-code">voicecli stt --model large-v3-turbo --word-timestamps --input vo-launch.wav --out vo-launch-timestamps.json</span>
+      </div>
+    </div>
+
+    <div class="pipe-step">
+      <div class="pipe-num">4</div>
+      <div class="pipe-content">
+        <div class="pipe-title">Build Remotion Compositions</div>
+        <div class="pipe-text">Create three compositions in remotion-factory: <strong>LyraLaunchTrailer</strong>, <strong>LyraDemoVideo</strong>, <strong>LyraSocialClips</strong> (3 sub-compositions). Register in Root.tsx. Use Forge palette constants: <code>FORGE_BG = "#0a0a0f"</code>, <code>FORGE_ORANGE = "#e85d04"</code>, <code>FORGE_GRAY = "#6b7280"</code>. Import kit components by path. Load VO audio via <code>staticFile("vo-launch.wav")</code>. Pass timestamps JSON as prop to SyncedCaptions. All animation via useCurrentFrame() — zero CSS animations.</div>
+        <span class="pipe-code">src/showcase/LyraLaunchTrailer.tsx · LyraDemoVideo.tsx · LyraSocialClips.tsx</span>
+      </div>
+    </div>
+
+    <div class="pipe-step">
+      <div class="pipe-num">5</div>
+      <div class="pipe-content">
+        <div class="pipe-title">Forge-Themed Custom Components</div>
+        <div class="pipe-text">Several scenes need light customization beyond stock kit props. Create <code>src/kit-lyra/</code> directory for Lyra-specific variants: <strong>ForgeTerminal</strong> (terminal with Forge palette, status dot animations), <strong>ForgeArchDiagram</strong> (hub-and-spoke SVG animation for D04), <strong>ForgeMemoryLayers</strong> (five-level stack for D03). These wrap existing kits — no new animation primitives, just styled compositions.</div>
+        <span class="pipe-code">src/kit-lyra/ForgeTerminal.tsx · ForgeArchDiagram.tsx · ForgeMemoryLayers.tsx</span>
+      </div>
+    </div>
+
+    <div class="pipe-step">
+      <div class="pipe-num">6</div>
+      <div class="pipe-content">
+        <div class="pipe-title">Render with Remotion CLI</div>
+        <div class="pipe-text">Render one video at a time (saturates machine). Use concurrency matching CPU cores. Output to <code>out/</code>. Verify frame count against timing spec before committing output. Run typecheck first to catch component errors before long render. CRF 18 for master, CRF 23 for distribution copies.</div>
+        <span class="pipe-code">npx remotion render LyraLaunchTrailer out/lyra-launch-v1.mp4 --concurrency=8 --codec=h264 --crf=18</span>
+      </div>
+    </div>
+
+    <div class="pipe-step">
+      <div class="pipe-num">7</div>
+      <div class="pipe-content">
+        <div class="pipe-title">Post-Production</div>
+        <div class="pipe-text">Thumbnail: export a single frame from the tagline scene — use as GitHub, YouTube, and Twitter card. Captions: burn SyncedCaptions into social clips export. Platform optimization: for Twitter/X, encode at target bitrate ≤5 Mbps and file size ≤512 MB (5 min limit for base accounts). YouTube: upload master CRF 18, let YouTube transcode. LinkedIn: export a separate square version for feed autoplay. Verify all color profiles are sRGB before upload.</div>
+        <span class="pipe-code">ffmpeg -i out/lyra-launch-v1.mp4 -b:v 4M -maxrate 5M out/lyra-launch-twitter.mp4</span>
+      </div>
+    </div>
+
+  </div><!-- /pipeline -->
+
+  <div class="divider"></div>
+
+  <!-- Component Map -->
+  <div class="sec-label" style="margin-bottom:12px">Full Component Map</div>
+  <table class="comp-table">
+    <thead>
+      <tr>
+        <th>Component</th>
+        <th>Used in</th>
+        <th>Purpose</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>Typewriter</td><td>S01 · S03 · D01 · D05 · Clip C</td><td>Terminal text, command input, code reveal</td></tr>
+      <tr><td>GlitchText</td><td>S01 · Clip C</td><td>Hook impact, reset effect</td></tr>
+      <tr><td>FadeText</td><td>S02 · D01 · D06</td><td>Status lines, subheadings, URL reveal</td></tr>
+      <tr><td>StaggeredWords</td><td>S06</td><td>Tagline word-by-word entrance</td></tr>
+      <tr><td>ImpactText</td><td>S03 · S06 · D06 · Clip A</td><td>Reveal moments, tagline, category name</td></tr>
+      <tr><td>FloatingCards</td><td>S02 · S04 · D03 · D04</td><td>Architecture nodes, competitor cards, memory layers</td></tr>
+      <tr><td>Badge</td><td>S04 · S05 · D02 · D03 · D04 · D05 · Clip B · Clip C</td><td>Feature callouts, tech labels, stats</td></tr>
+      <tr><td>ChatInterface</td><td>D02 · D04 · D05 · Clip A · Clip B · Clip C</td><td>Telegram conversation simulation</td></tr>
+      <tr><td>PhoneFrame</td><td>S05 · D02 · Clip B</td><td>Mobile Telegram view, 3D float</td></tr>
+      <tr><td>NotificationToast</td><td>S05 · D05 · Clip B · Clip C</td><td>Telegram notification, agent online alert</td></tr>
+      <tr><td>BrowserTabs</td><td>D04</td><td>Multi-channel platform view</td></tr>
+      <tr><td>AnimatedBar</td><td>D03</td><td>Memory recall hit rate</td></tr>
+      <tr><td>ProgressRing</td><td>D03 · Clip A</td><td>Memory utilization, recall visualization</td></tr>
+      <tr><td>AnimatedLine</td><td>D03 · S04</td><td>Data flow, architecture connections</td></tr>
+      <tr><td>Timer</td><td>D05 · Clip B</td><td>Response latency, agent creation time</td></tr>
+      <tr><td>GradientBackground</td><td>S03 · S06 · D06 · Clip A</td><td>Forge orange radial glow buildup</td></tr>
+      <tr><td>ParticleField</td><td>S03 · S05</td><td>Crystallization reveal, spark scatter</td></tr>
+      <tr><td>GridPattern</td><td>S02 · S04 · D01</td><td>Background texture, technical feel</td></tr>
+      <tr><td>FloatingOrbs</td><td>S04 · D04</td><td>Hub node glow, soft background depth</td></tr>
+      <tr><td>FilmGrain</td><td>S01 · S02 · D01 · S06</td><td>Cinematic texture throughout</td></tr>
+      <tr><td>Vignette</td><td>S01 · S06 · D06 · Clip B</td><td>Edge darkening, cinematic framing</td></tr>
+      <tr><td>LightSweep</td><td>S03</td><td>Reveal sweep on crystallization</td></tr>
+      <tr><td>KenBurns</td><td>D02</td><td>Slow phone float during Telegram scene</td></tr>
+      <tr><td>SyncedCaptions</td><td>S06 · D06 · All clips</td><td>Word-level captions from Whisper timestamps</td></tr>
+    </tbody>
+  </table>
+
+  <div class="divider"></div>
+
+  <!-- Distribution table -->
+  <div class="sec-label" style="margin-bottom:12px">Distribution Matrix</div>
+  <table class="dist-table">
+    <thead>
+      <tr>
+        <th>Video</th>
+        <th>Platform</th>
+        <th>Format</th>
+        <th>Resolution</th>
+        <th>Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>Launch Trailer</td><td>GitHub README</td><td>MP4 embed via HTML</td><td>1920×1080</td><td>Autoplay muted in README — add thumbnail attribute</td></tr>
+      <tr><td>Launch Trailer</td><td>Twitter/X</td><td>MP4 ≤5 Mbps</td><td>1920×1080</td><td>Upload natively, not as link — Twitter transcodes</td></tr>
+      <tr><td>Launch Trailer</td><td>Landing page hero</td><td>MP4 + WebM</td><td>1920×1080</td><td>Provide WebM fallback for Chrome performance</td></tr>
+      <tr><td>Product Demo</td><td>YouTube</td><td>MP4 master CRF 18</td><td>1920×1080</td><td>YouTube transcodes — upload high quality master</td></tr>
+      <tr><td>Product Demo</td><td>Docs site</td><td>MP4 embed</td><td>1920×1080</td><td>Link to YouTube embed, not self-hosted</td></tr>
+      <tr><td>Product Demo</td><td>Landing deeper</td><td>MP4 + lazy load</td><td>1920×1080</td><td>Lazy load below fold, poster frame required</td></tr>
+      <tr><td>Clip A — Memory</td><td>Twitter/X</td><td>MP4 ≤5 Mbps</td><td>1080×1080</td><td>Square format — no letterbox</td></tr>
+      <tr><td>Clip A — Memory</td><td>LinkedIn</td><td>MP4</td><td>1080×1080</td><td>Add "Lyra" text overlay frame 0 for muted preview</td></tr>
+      <tr><td>Clip B — Always On</td><td>Twitter/X</td><td>MP4 ≤5 Mbps</td><td>1080×1080</td><td>Strong first frame — 03:14 timestamp hook</td></tr>
+      <tr><td>Clip C — Extend</td><td>Twitter/X</td><td>MP4 ≤5 Mbps</td><td>1080×1080</td><td>Technical audience — no need to simplify</td></tr>
+    </tbody>
+  </table>
+
+</div><!-- /pipeline -->
+
+<script>
+function switchTab(id, btn) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.vtab').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  btn.classList.add('active');
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+function toggleScene(header) {
+  const body = header.nextElementSibling;
+  const toggle = header.querySelector('.scene-toggle');
+  const isOpen = body.classList.contains('open');
+  body.classList.toggle('open', !isOpen);
+  toggle.textContent = isOpen ? '▼' : '▲';
+  toggle.style.transform = isOpen ? '' : 'rotate(180deg)';
+}
+
+// Open first scene of active panel by default
+document.addEventListener('DOMContentLoaded', () => {
+  const firstHeader = document.querySelector('#v1 .scene-header');
+  if (firstHeader) toggleScene(firstHeader);
+});
+</script>
+</body>
+</html>

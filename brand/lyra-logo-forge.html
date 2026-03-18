@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lyra — Forge Logo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --obsidian:   #0a0a0f;
+  --forge:      #e85d04;
+  --ember:      #f97316;
+  --steel:      #6b7280;
+  --spark:      #fafafa;
+  --iron:       #1f2937;
+  --iron-light: #2a2a35;
+  --forge-glow: #e85d0440;
+  --forge-dim:  #e85d0420;
+}
+
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: var(--obsidian);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  font-family: 'Inter', sans-serif;
+}
+
+/* ── Background: viewport sparks ──────────────────────────── */
+.bg-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+/* ── Logo container ──────────────────────────────────────── */
+.logo-wrap {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  /* Intro: fade in whole container from obsidian */
+  opacity: 0;
+  animation: bgReveal 0.6s ease-out 0.2s forwards;
+}
+
+@keyframes bgReveal {
+  to { opacity: 1; }
+}
+
+/* ── Mark SVG ───────────────────────────────────────────── */
+.mark-svg {
+  display: block;
+  overflow: visible;
+}
+
+/* ── Wordmark ───────────────────────────────────────────── */
+.wordmark {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 800;
+  font-size: clamp(28px, 5vw, 48px);
+  letter-spacing: 0.25em;
+  color: var(--spark);
+  text-shadow:
+    0 0 24px rgba(232, 93, 4, 0.45),
+    0 0 60px rgba(232, 93, 4, 0.18);
+  margin-top: 28px;
+  opacity: 0;
+  transform: translateY(8px);
+  animation: wordmarkIn 0.7s cubic-bezier(0.22, 1, 0.36, 1) 5.4s forwards;
+  /* idle: very subtle ember throb */
+  filter: brightness(1);
+}
+
+@keyframes wordmarkIn {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* idle wordmark glow pulse */
+.wordmark.idle-active {
+  animation:
+    wordmarkIn 0.7s cubic-bezier(0.22, 1, 0.36, 1) 5.4s forwards,
+    wordmarkGlow 3.5s ease-in-out 6.2s infinite;
+}
+
+@keyframes wordmarkGlow {
+  0%, 100% {
+    text-shadow:
+      0 0 24px rgba(232, 93, 4, 0.45),
+      0 0 60px rgba(232, 93, 4, 0.18);
+  }
+  50% {
+    text-shadow:
+      0 0 32px rgba(249, 115, 22, 0.65),
+      0 0 80px rgba(232, 93, 4, 0.28);
+  }
+}
+
+/* ── Tagline ─────────────────────────────────────────────── */
+.tagline {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 300;
+  font-size: clamp(9px, 1.4vw, 12px);
+  letter-spacing: 0.22em;
+  color: var(--steel);
+  text-transform: lowercase;
+  margin-top: 10px;
+  opacity: 0;
+  animation: taglineIn 1.0s ease-out 6.0s forwards;
+}
+
+@keyframes taglineIn {
+  to { opacity: 1; }
+}
+
+/* ────────────────────────────────────────────────────────────
+   SVG ANIMATION KEYFRAMES (referenced by SVG animateTransform
+   + CSS class triggers for the outer SVG elements)
+   ──────────────────────────────────────────────────────────── */
+
+/* Diamond crystallize */
+@keyframes facetReveal {
+  from { opacity: 0; transform: scale(0.7); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* Inner glow build */
+@keyframes glowBuild {
+  from { opacity: 0; r: 0; }
+  to   { opacity: 1; }
+}
+
+/* Anvil fade in */
+@keyframes anvilIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Diamond idle: ember breathe ───────────────────────────── */
+@keyframes emberBreathe {
+  0%, 100% { filter: drop-shadow(0 0 18px rgba(232,93,4,0.55)) drop-shadow(0 0 40px rgba(232,93,4,0.22)); }
+  50%      { filter: drop-shadow(0 0 28px rgba(249,115,22,0.75)) drop-shadow(0 0 64px rgba(232,93,4,0.32)); }
+}
+
+/* ── Facet shimmer ─────────────────────────────────────────── */
+@keyframes facetShimmer {
+  0%, 100% { opacity: 0.06; }
+  50%      { opacity: 0.18; }
+}
+
+/* ── Spark drift ───────────────────────────────────────────── */
+@keyframes sparkDrift1 {
+  0%   { transform: translate(0, 0) scale(1); opacity: 0.7; }
+  60%  { opacity: 0.4; }
+  100% { transform: translate(18px, -32px) scale(0.3); opacity: 0; }
+}
+@keyframes sparkDrift2 {
+  0%   { transform: translate(0, 0) scale(1); opacity: 0.6; }
+  60%  { opacity: 0.3; }
+  100% { transform: translate(-22px, -28px) scale(0.2); opacity: 0; }
+}
+@keyframes sparkDrift3 {
+  0%   { transform: translate(0, 0) scale(1); opacity: 0.55; }
+  60%  { opacity: 0.25; }
+  100% { transform: translate(12px, -38px) scale(0.25); opacity: 0; }
+}
+@keyframes sparkDrift4 {
+  0%   { transform: translate(0, 0) scale(1); opacity: 0.5; }
+  70%  { opacity: 0.2; }
+  100% { transform: translate(-14px, -30px) scale(0.2); opacity: 0; }
+}
+
+/* ── Hub-and-spoke flash inside crystal ─────────────────────── */
+@keyframes spokeFlash {
+  0%   { opacity: 0; }
+  15%  { opacity: 0.55; }
+  40%  { opacity: 0.45; }
+  70%  { opacity: 0.2; }
+  100% { opacity: 0.0; }
+}
+
+/* ── Hub orbit rings ─────────────────────────────────────────── */
+@keyframes orbitPulse {
+  0%   { r: 7px;  opacity: 0.5; }
+  100% { r: 38px; opacity: 0; }
+}
+
+/* ── Background spark drift ──────────────────────────────────── */
+@keyframes bgSparkFloat {
+  0%   { transform: translateY(0) translateX(0); opacity: var(--op); }
+  50%  { transform: translateY(-30vh) translateX(calc(var(--dx) * 0.5)); opacity: calc(var(--op) * 0.7); }
+  100% { transform: translateY(-60vh) translateX(var(--dx)); opacity: 0; }
+}
+
+/* ── Replay button ────────────────────────────────────────────── */
+.replay-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: #1f2937;
+  border: 1px solid #2a2a35;
+  color: #6b7280;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  padding: 8px 14px;
+  cursor: pointer;
+  z-index: 10;
+  transition: color 0.2s, border-color 0.2s;
+}
+.replay-btn:hover {
+  color: #fafafa;
+  border-color: #e85d04;
+}
+</style>
+</head>
+<body>
+
+<!-- Background ambient sparks -->
+<svg class="bg-layer" id="bgLayer" xmlns="http://www.w3.org/2000/svg"></svg>
+
+<div class="logo-wrap" id="logoWrap">
+
+  <!-- ── Mark ───────────────────────────────────────────────────── -->
+  <svg class="mark-svg" id="markSvg"
+       viewBox="0 0 240 260"
+       width="clamp(180px, 28vw, 280px)"
+       height="clamp(196px, 30vw, 304px)"
+       xmlns="http://www.w3.org/2000/svg"
+       overflow="visible">
+
+    <defs>
+      <!-- Main diamond fill: deep faceted iron with ember core -->
+      <linearGradient id="diamFill" x1="0.5" y1="0" x2="0.5" y2="1">
+        <stop offset="0%"   stop-color="#2a1808"/>
+        <stop offset="40%"  stop-color="#1a0f06"/>
+        <stop offset="100%" stop-color="#0d0d14"/>
+      </linearGradient>
+
+      <!-- Top face: bright spark-lit highlight -->
+      <linearGradient id="topFaceFill" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%"   stop-color="#fafafa" stop-opacity="0.14"/>
+        <stop offset="100%" stop-color="#e85d04" stop-opacity="0.06"/>
+      </linearGradient>
+
+      <!-- Side left face -->
+      <linearGradient id="leftFaceFill" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%"   stop-color="#e85d04" stop-opacity="0.18"/>
+        <stop offset="100%" stop-color="#0a0a0f" stop-opacity="0"/>
+      </linearGradient>
+
+      <!-- Side right face -->
+      <linearGradient id="rightFaceFill" x1="1" y1="0" x2="0" y2="1">
+        <stop offset="0%"   stop-color="#f97316" stop-opacity="0.10"/>
+        <stop offset="100%" stop-color="#0a0a0f" stop-opacity="0"/>
+      </linearGradient>
+
+      <!-- Core inner glow radial -->
+      <radialGradient id="coreGlow" cx="50%" cy="55%" r="50%">
+        <stop offset="0%"   stop-color="#f97316" stop-opacity="0.75"/>
+        <stop offset="40%"  stop-color="#e85d04" stop-opacity="0.35"/>
+        <stop offset="100%" stop-color="#e85d04" stop-opacity="0"/>
+      </radialGradient>
+
+      <!-- Hub center radial -->
+      <radialGradient id="hubRadial" cx="50%" cy="50%" r="50%">
+        <stop offset="0%"   stop-color="#fafafa"/>
+        <stop offset="35%"  stop-color="#f97316"/>
+        <stop offset="100%" stop-color="#e85d04" stop-opacity="0"/>
+      </radialGradient>
+
+      <!-- Anvil surface gradient -->
+      <linearGradient id="anvilFill" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%"   stop-color="#2a2a35"/>
+        <stop offset="100%" stop-color="#1f2937"/>
+      </linearGradient>
+
+      <!-- Spoke lines gradient -->
+      <linearGradient id="spokeGrad" x1="0.5" y1="0" x2="0.5" y2="1">
+        <stop offset="0%"   stop-color="#e85d04" stop-opacity="0.7"/>
+        <stop offset="100%" stop-color="#fafafa" stop-opacity="0.3"/>
+      </linearGradient>
+
+      <!-- Circuit trace gradient -->
+      <linearGradient id="traceGrad" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%"   stop-color="#e85d04" stop-opacity="0.5"/>
+        <stop offset="100%" stop-color="#fafafa" stop-opacity="0.15"/>
+      </linearGradient>
+
+      <!-- Glow filter: soft ember aura around diamond -->
+      <filter id="glowSoft" x="-60%" y="-60%" width="220%" height="220%">
+        <feGaussianBlur stdDeviation="7" result="blur"/>
+        <feMerge>
+          <feMergeNode in="blur"/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+
+      <!-- Strong glow for hub center -->
+      <filter id="glowStrong" x="-100%" y="-100%" width="300%" height="300%">
+        <feGaussianBlur stdDeviation="5" result="blur"/>
+        <feMerge>
+          <feMergeNode in="blur"/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+
+      <!-- Anvil shadow -->
+      <filter id="anvilShadow" x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#e85d04" flood-opacity="0.15"/>
+      </filter>
+
+      <!-- Clip for diamond fill (keep glow inside crystal boundary) -->
+      <clipPath id="diamondClip">
+        <!-- main diamond + lower crystal body together -->
+        <polygon points="120,14 182,82 156,142 120,158 84,142 58,82"/>
+      </clipPath>
+    </defs>
+
+    <!-- ═══════════════════════════════════════════════════════
+         PHASE 1: Sparks converge — individual spark particles
+         animate toward center (pure SVG animateMotion)
+         Each runs: 0.3s → 1.6s
+         ═══════════════════════════════════════════════════════ -->
+    <g id="convergeSparks">
+      <!-- Spark from top-left -->
+      <circle r="2.2" fill="#f97316" opacity="0">
+        <animate attributeName="opacity" values="0;0.9;0" dur="0.9s" begin="0.3s" fill="freeze"/>
+        <animateMotion path="M 30,20 C 70,50 100,80 120,100" dur="0.9s" begin="0.3s" fill="freeze"/>
+      </circle>
+      <!-- Spark from top-right -->
+      <circle r="2.0" fill="#e85d04" opacity="0">
+        <animate attributeName="opacity" values="0;0.8;0" dur="0.9s" begin="0.45s" fill="freeze"/>
+        <animateMotion path="M 210,25 C 175,55 148,78 122,100" dur="0.9s" begin="0.45s" fill="freeze"/>
+      </circle>
+      <!-- Spark from left -->
+      <circle r="1.8" fill="#fafafa" opacity="0">
+        <animate attributeName="opacity" values="0;0.7;0" dur="0.8s" begin="0.5s" fill="freeze"/>
+        <animateMotion path="M 10,90 C 50,90 85,92 118,98" dur="0.8s" begin="0.5s" fill="freeze"/>
+      </circle>
+      <!-- Spark from right -->
+      <circle r="1.8" fill="#fafafa" opacity="0">
+        <animate attributeName="opacity" values="0;0.7;0" dur="0.8s" begin="0.55s" fill="freeze"/>
+        <animateMotion path="M 230,90 C 190,90 155,92 122,98" dur="0.8s" begin="0.55s" fill="freeze"/>
+      </circle>
+      <!-- Spark from bottom-left -->
+      <circle r="1.6" fill="#e85d04" opacity="0">
+        <animate attributeName="opacity" values="0;0.6;0" dur="0.75s" begin="0.6s" fill="freeze"/>
+        <animateMotion path="M 40,160 C 75,145 100,120 118,102" dur="0.75s" begin="0.6s" fill="freeze"/>
+      </circle>
+      <!-- Spark from bottom-right -->
+      <circle r="1.6" fill="#f97316" opacity="0">
+        <animate attributeName="opacity" values="0;0.6;0" dur="0.75s" begin="0.65s" fill="freeze"/>
+        <animateMotion path="M 200,160 C 165,145 140,120 122,102" dur="0.75s" begin="0.65s" fill="freeze"/>
+      </circle>
+      <!-- Smaller accent sparks -->
+      <circle r="1.2" fill="#e85d04" opacity="0">
+        <animate attributeName="opacity" values="0;0.5;0" dur="0.6s" begin="0.4s" fill="freeze"/>
+        <animateMotion path="M 120,0 C 120,30 120,65 120,98" dur="0.6s" begin="0.4s" fill="freeze"/>
+      </circle>
+      <circle r="1.2" fill="#fafafa" opacity="0">
+        <animate attributeName="opacity" values="0;0.4;0" dur="0.7s" begin="0.7s" fill="freeze"/>
+        <animateMotion path="M 55,45 C 80,65 100,82 118,100" dur="0.7s" begin="0.7s" fill="freeze"/>
+      </circle>
+      <circle r="1.2" fill="#fafafa" opacity="0">
+        <animate attributeName="opacity" values="0;0.4;0" dur="0.7s" begin="0.75s" fill="freeze"/>
+        <animateMotion path="M 185,45 C 160,65 140,82 122,100" dur="0.7s" begin="0.75s" fill="freeze"/>
+      </circle>
+    </g>
+
+    <!-- ═══════════════════════════════════════════════════════
+         PHASE 2 & 3: Diamond crystallizes + glow builds
+         Facets appear one by one: 1.4s → 3.0s
+         ═══════════════════════════════════════════════════════ -->
+
+    <!-- Diamond main body group — transform-origin at center 120,95 -->
+    <g id="diamondGroup" style="transform-origin: 120px 100px;">
+
+      <!-- === FULL DIAMOND SILHOUETTE (6-facet gem) ===
+           Geometry (viewBox 240×260):
+           Top vertex:    (120, 14)
+           Upper-left:    (58,  82)  — shoulder
+           Upper-right:   (182, 82)
+           Lower-left:    (84,  142)
+           Lower-right:   (156, 142)
+           Bottom vertex: (120, 158)
+
+           Facets:
+           - Top face:    (120,14) (58,82) (182,82)
+           - Left upper:  (120,14) (58,82) (84,142) (120,100) — left main facet
+           - Right upper: (120,14) (182,82) (156,142) (120,100) — right main facet
+           - Left lower:  (58,82) (84,142) (120,158) (120,100)
+           - Right lower: (182,82) (156,142) (120,158) (120,100)
+           - Center belt: belt highlight line
+      -->
+
+      <!-- Base fill (full diamond body, appears first — quick pop-in) -->
+      <polygon id="diamBase"
+        points="120,14 182,82 156,142 120,158 84,142 58,82"
+        fill="url(#diamFill)"
+        stroke="none"
+        opacity="0">
+        <animate attributeName="opacity" from="0" to="1" dur="0.25s" begin="1.4s" fill="freeze"/>
+      </polygon>
+
+      <!-- Top face highlight — crystallizes first -->
+      <polygon id="facetTop"
+        points="120,14 58,82 182,82"
+        fill="url(#topFaceFill)"
+        stroke="#fafafa"
+        stroke-width="0.8"
+        stroke-opacity="0.35"
+        opacity="0">
+        <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="1.5s" fill="freeze"/>
+      </polygon>
+
+      <!-- Left upper facet -->
+      <polygon id="facetLeftUpper"
+        points="120,14 58,82 84,142 120,100"
+        fill="url(#leftFaceFill)"
+        stroke="#e85d04"
+        stroke-width="0.7"
+        stroke-opacity="0.5"
+        opacity="0">
+        <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="1.7s" fill="freeze"/>
+      </polygon>
+
+      <!-- Right upper facet -->
+      <polygon id="facetRightUpper"
+        points="120,14 182,82 156,142 120,100"
+        fill="url(#rightFaceFill)"
+        stroke="#f97316"
+        stroke-width="0.7"
+        stroke-opacity="0.4"
+        opacity="0">
+        <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="1.85s" fill="freeze"/>
+      </polygon>
+
+      <!-- Left lower facet -->
+      <polygon id="facetLeftLower"
+        points="58,82 84,142 120,158 120,100"
+        fill="#1a0e06"
+        fill-opacity="0.7"
+        stroke="#e85d04"
+        stroke-width="0.7"
+        stroke-opacity="0.3"
+        opacity="0">
+        <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="2.0s" fill="freeze"/>
+      </polygon>
+
+      <!-- Right lower facet -->
+      <polygon id="facetRightLower"
+        points="182,82 156,142 120,158 120,100"
+        fill="#12100a"
+        fill-opacity="0.65"
+        stroke="#f97316"
+        stroke-width="0.7"
+        stroke-opacity="0.25"
+        opacity="0">
+        <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="2.1s" fill="freeze"/>
+      </polygon>
+
+      <!-- Main outer edges (traced stroke — primary visual) -->
+      <!-- Top-left edge -->
+      <line x1="120" y1="14" x2="58" y2="82"
+        stroke="#e85d04" stroke-width="1.5" stroke-linecap="round"
+        stroke-dasharray="80" stroke-dashoffset="80" opacity="0.9">
+        <animate attributeName="stroke-dashoffset" from="80" to="0" dur="0.4s" begin="1.5s" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1"/>
+        <animate attributeName="opacity" from="0" to="0.9" dur="0.15s" begin="1.5s" fill="freeze"/>
+      </line>
+      <!-- Top-right edge -->
+      <line x1="120" y1="14" x2="182" y2="82"
+        stroke="#f97316" stroke-width="1.5" stroke-linecap="round"
+        stroke-dasharray="80" stroke-dashoffset="80" opacity="0.85">
+        <animate attributeName="stroke-dashoffset" from="80" to="0" dur="0.4s" begin="1.65s" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1"/>
+        <animate attributeName="opacity" from="0" to="0.85" dur="0.15s" begin="1.65s" fill="freeze"/>
+      </line>
+      <!-- Belt left -->
+      <line x1="58" y1="82" x2="84" y2="142"
+        stroke="#e85d04" stroke-width="1.2" stroke-linecap="round"
+        stroke-dasharray="65" stroke-dashoffset="65" opacity="0.7">
+        <animate attributeName="stroke-dashoffset" from="65" to="0" dur="0.35s" begin="1.8s" fill="freeze"/>
+        <animate attributeName="opacity" from="0" to="0.7" dur="0.15s" begin="1.8s" fill="freeze"/>
+      </line>
+      <!-- Belt right -->
+      <line x1="182" y1="82" x2="156" y2="142"
+        stroke="#f97316" stroke-width="1.2" stroke-linecap="round"
+        stroke-dasharray="65" stroke-dashoffset="65" opacity="0.65">
+        <animate attributeName="stroke-dashoffset" from="65" to="0" dur="0.35s" begin="1.9s" fill="freeze"/>
+        <animate attributeName="opacity" from="0" to="0.65" dur="0.15s" begin="1.9s" fill="freeze"/>
+      </line>
+      <!-- Lower left edge -->
+      <line x1="84" y1="142" x2="120" y2="158"
+        stroke="#e85d04" stroke-width="1.2" stroke-linecap="round"
+        stroke-dasharray="42" stroke-dashoffset="42" opacity="0.6">
+        <animate attributeName="stroke-dashoffset" from="42" to="0" dur="0.3s" begin="2.05s" fill="freeze"/>
+        <animate attributeName="opacity" from="0" to="0.6" dur="0.15s" begin="2.05s" fill="freeze"/>
+      </line>
+      <!-- Lower right edge -->
+      <line x1="156" y1="142" x2="120" y2="158"
+        stroke="#f97316" stroke-width="1.2" stroke-linecap="round"
+        stroke-dasharray="42" stroke-dashoffset="42" opacity="0.55">
+        <animate attributeName="stroke-dashoffset" from="42" to="0" dur="0.3s" begin="2.15s" fill="freeze"/>
+        <animate attributeName="opacity" from="0" to="0.55" dur="0.15s" begin="2.15s" fill="freeze"/>
+      </line>
+      <!-- Horizontal belt across -->
+      <line x1="58" y1="82" x2="182" y2="82"
+        stroke="#fafafa" stroke-width="0.7" stroke-linecap="round"
+        stroke-opacity="0.2"
+        stroke-dasharray="124" stroke-dashoffset="124" opacity="0">
+        <animate attributeName="stroke-dashoffset" from="124" to="0" dur="0.45s" begin="1.75s" fill="freeze"/>
+        <animate attributeName="opacity" from="0" to="1" dur="0.2s" begin="1.75s" fill="freeze"/>
+      </line>
+      <!-- Vertical center axis -->
+      <line x1="120" y1="14" x2="120" y2="158"
+        stroke="#e85d04" stroke-width="0.6" stroke-linecap="round"
+        stroke-opacity="0.25"
+        stroke-dasharray="144" stroke-dashoffset="144" opacity="0">
+        <animate attributeName="stroke-dashoffset" from="144" to="0" dur="0.5s" begin="1.6s" fill="freeze"/>
+        <animate attributeName="opacity" from="0" to="1" dur="0.2s" begin="1.6s" fill="freeze"/>
+      </line>
+
+      <!-- ── Internal glow: ember radiating from center ─────── -->
+      <!-- Glow builds: 2.2s → 2.8s -->
+      <ellipse cx="120" cy="95" rx="0" ry="0"
+        fill="url(#coreGlow)"
+        opacity="0">
+        <animate attributeName="rx" from="0" to="52" dur="0.6s" begin="2.2s" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1"/>
+        <animate attributeName="ry" from="0" to="50" dur="0.6s" begin="2.2s" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1"/>
+        <animate attributeName="opacity" from="0" to="1" dur="0.4s" begin="2.2s" fill="freeze"/>
+      </ellipse>
+
+      <!-- ═══════════════════════════════════════════════════════
+           PHASE 4: Hub-and-spoke pattern briefly flashes
+           inside the crystal — 2.9s → 3.8s
+           ═══════════════════════════════════════════════════════ -->
+      <g id="innerSpokes" opacity="0">
+        <animate attributeName="opacity"
+          values="0;0;0.55;0.45;0.2;0.05;0"
+          keyTimes="0;0.05;0.2;0.45;0.7;0.9;1"
+          dur="1.4s" begin="2.85s" fill="freeze"/>
+
+        <!-- Central hub dot -->
+        <circle cx="120" cy="95" r="4"
+          fill="url(#hubRadial)"
+          filter="url(#glowStrong)"/>
+
+        <!-- Spoke: to top vertex -->
+        <line x1="120" y1="95" x2="120" y2="28"
+          stroke="url(#spokeGrad)" stroke-width="0.8" stroke-linecap="round"/>
+        <!-- Spoke: to upper-left shoulder -->
+        <line x1="120" y1="95" x2="73" y2="82"
+          stroke="url(#spokeGrad)" stroke-width="0.8" stroke-linecap="round"/>
+        <!-- Spoke: to upper-right shoulder -->
+        <line x1="120" y1="95" x2="167" y2="82"
+          stroke="url(#spokeGrad)" stroke-width="0.8" stroke-linecap="round"/>
+        <!-- Spoke: to lower-left -->
+        <line x1="120" y1="95" x2="88" y2="140"
+          stroke="url(#spokeGrad)" stroke-width="0.8" stroke-linecap="round"/>
+        <!-- Spoke: to lower-right -->
+        <line x1="120" y1="95" x2="152" y2="140"
+          stroke="url(#spokeGrad)" stroke-width="0.8" stroke-linecap="round"/>
+        <!-- Spoke: to bottom vertex -->
+        <line x1="120" y1="95" x2="120" y2="155"
+          stroke="url(#spokeGrad)" stroke-width="0.8" stroke-linecap="round"/>
+
+        <!-- Circuit node dots on spokes -->
+        <circle cx="120" cy="57" r="2.2" fill="#e85d04" opacity="0.8"/>
+        <circle cx="96"  cy="89" r="1.8" fill="#fafafa" opacity="0.7"/>
+        <circle cx="144" cy="89" r="1.8" fill="#fafafa" opacity="0.7"/>
+        <circle cx="104" cy="117" r="1.8" fill="#e85d04" opacity="0.6"/>
+        <circle cx="136" cy="117" r="1.8" fill="#e85d04" opacity="0.6"/>
+        <circle cx="120" cy="128" r="2.0" fill="#f97316" opacity="0.7"/>
+
+        <!-- Circuit traces on upper facet -->
+        <line x1="88" y1="67" x2="108" y2="67"
+          stroke="#e85d04" stroke-width="0.6" stroke-opacity="0.5" stroke-dasharray="3 3"/>
+        <line x1="132" y1="67" x2="152" y2="67"
+          stroke="#fafafa" stroke-width="0.6" stroke-opacity="0.35" stroke-dasharray="3 3"/>
+        <!-- Small angle connector -->
+        <polyline points="104,72 110,67 116,72"
+          stroke="#e85d04" stroke-width="0.7" stroke-linecap="round" fill="none" opacity="0.5"/>
+        <polyline points="124,72 130,67 136,72"
+          stroke="#fafafa" stroke-width="0.7" stroke-linecap="round" fill="none" opacity="0.35"/>
+      </g>
+
+      <!-- Hub glow rings — 3 expanding rings from center (3.0s) -->
+      <g id="hubRings">
+        <circle cx="120" cy="95" r="6" fill="none"
+          stroke="#e85d04" stroke-width="1.5" opacity="0">
+          <animate attributeName="r"       from="6"  to="45" dur="0.9s" begin="3.0s" fill="freeze"/>
+          <animate attributeName="opacity" from="0.6" to="0" dur="0.9s" begin="3.0s" fill="freeze"/>
+        </circle>
+        <circle cx="120" cy="95" r="6" fill="none"
+          stroke="#f97316" stroke-width="1.2" opacity="0">
+          <animate attributeName="r"       from="6"  to="38" dur="0.75s" begin="3.2s" fill="freeze"/>
+          <animate attributeName="opacity" from="0.45" to="0" dur="0.75s" begin="3.2s" fill="freeze"/>
+        </circle>
+        <circle cx="120" cy="95" r="6" fill="none"
+          stroke="#fafafa" stroke-width="0.8" opacity="0">
+          <animate attributeName="r"       from="6"  to="28" dur="0.55s" begin="3.4s" fill="freeze"/>
+          <animate attributeName="opacity" from="0.3" to="0" dur="0.55s" begin="3.4s" fill="freeze"/>
+        </circle>
+      </g>
+
+      <!-- Permanent hub core dot (stays on after animation) -->
+      <circle cx="120" cy="95" r="0"
+        fill="url(#hubRadial)"
+        filter="url(#glowStrong)"
+        opacity="0">
+        <animate attributeName="r"       from="0"   to="5.5" dur="0.3s" begin="3.0s" fill="freeze" calcMode="spline" keySplines="0.5 1.5 0.5 1"/>
+        <animate attributeName="opacity" from="0"   to="1"   dur="0.3s" begin="3.0s" fill="freeze"/>
+      </circle>
+      <circle cx="120" cy="95" r="0"
+        fill="#fafafa" opacity="0">
+        <animate attributeName="r"       from="0"   to="2.2" dur="0.25s" begin="3.1s" fill="freeze"/>
+        <animate attributeName="opacity" from="0"   to="1"   dur="0.25s" begin="3.1s" fill="freeze"/>
+      </circle>
+
+    </g>
+    <!-- /diamondGroup -->
+
+    <!-- ═══════════════════════════════════════════════════════
+         PHASE 5: Anvil base fades in — 3.8s
+         ═══════════════════════════════════════════════════════ -->
+    <g id="anvilGroup" opacity="0" filter="url(#anvilShadow)">
+      <animate attributeName="opacity" from="0" to="1" dur="0.5s" begin="3.8s" fill="freeze"/>
+
+      <!-- Anvil top platform (sits under diamond bottom vertex) -->
+      <!-- Diamond bottom vertex is at (120, 158) -->
+      <!-- Anvil body: trapezoid widening downward -->
+      <polygon
+        points="96,162 144,162 152,178 88,178"
+        fill="url(#anvilFill)"
+        stroke="#2a2a35"
+        stroke-width="1.2"
+        stroke-linejoin="round"/>
+
+      <!-- Anvil neck / waist (narrow section) -->
+      <rect x="106" y="178" width="28" height="10" rx="0"
+        fill="#1f2937"
+        stroke="#2a2a35"
+        stroke-width="1"/>
+
+      <!-- Anvil base block -->
+      <rect x="96" y="188" width="48" height="12" rx="2"
+        fill="#1c1c27"
+        stroke="#2a2a35"
+        stroke-width="1.2"/>
+
+      <!-- Anvil face highlight line -->
+      <line x1="96" y1="163" x2="144" y2="163"
+        stroke="#fafafa" stroke-width="0.5" stroke-opacity="0.12"/>
+
+      <!-- Ember glow underneath diamond on anvil top -->
+      <ellipse cx="120" cy="163" rx="22" ry="4"
+        fill="#e85d04" opacity="0.12"/>
+
+      <!-- Connecting point: diamond meets anvil -->
+      <circle cx="120" cy="160" r="3"
+        fill="#e85d04" opacity="0.7"
+        filter="url(#glowStrong)"/>
+      <circle cx="120" cy="160" r="1.5"
+        fill="#fafafa" opacity="0.9"/>
+    </g>
+
+    <!-- ═══════════════════════════════════════════════════════
+         IDLE ANIMATIONS (begin after intro ~5.5s)
+         ═══════════════════════════════════════════════════════ -->
+
+    <!-- Idle: ember breathe — outer glow on diamond -->
+    <g id="idleGlow">
+      <!-- Pulsing aura behind diamond -->
+      <ellipse cx="120" cy="90" rx="0" ry="0"
+        fill="none"
+        stroke="#e85d04"
+        stroke-width="2"
+        opacity="0">
+        <!-- Build in at start of idle -->
+        <animate attributeName="rx" from="0" to="65" dur="0.4s" begin="5.5s" fill="freeze"/>
+        <animate attributeName="ry" from="0" to="60" dur="0.4s" begin="5.5s" fill="freeze"/>
+        <animate attributeName="opacity"
+          values="0;0;0.18;0.08;0.18;0.08;0.18;0.08"
+          keyTimes="0;0.06;0.1;0.5;0.55;1;1;1"
+          dur="3.8s" begin="5.5s" repeatCount="indefinite"/>
+        <animate attributeName="rx"
+          values="65;68;65;68;65"
+          keyTimes="0;0.25;0.5;0.75;1"
+          dur="3.8s" begin="5.5s" repeatCount="indefinite" additive="sum"/>
+      </ellipse>
+
+      <!-- Periodically emitted orbit pulse ring -->
+      <circle cx="120" cy="95" r="7" fill="none"
+        stroke="#e85d04" stroke-width="1" opacity="0">
+        <animate attributeName="r"
+          values="7;7;42;42"
+          keyTimes="0;0.02;1;1"
+          dur="4.0s" begin="6.0s" repeatCount="indefinite"/>
+        <animate attributeName="opacity"
+          values="0;0.45;0;0"
+          keyTimes="0;0.04;0.7;1"
+          dur="4.0s" begin="6.0s" repeatCount="indefinite"/>
+      </circle>
+      <!-- Second, offset ring -->
+      <circle cx="120" cy="95" r="7" fill="none"
+        stroke="#f97316" stroke-width="0.7" opacity="0">
+        <animate attributeName="r"
+          values="7;7;34;34"
+          keyTimes="0;0.02;1;1"
+          dur="4.0s" begin="8.0s" repeatCount="indefinite"/>
+        <animate attributeName="opacity"
+          values="0;0.3;0;0"
+          keyTimes="0;0.04;0.7;1"
+          dur="4.0s" begin="8.0s" repeatCount="indefinite"/>
+      </circle>
+    </g>
+
+    <!-- Idle: facet shimmer (top-left highlight alternates) -->
+    <polygon
+      points="120,14 58,82 120,82"
+      fill="#fafafa"
+      opacity="0">
+      <!-- Wait for intro, then begin shimmer loop -->
+      <animate attributeName="opacity"
+        values="0;0;0.12;0.05;0.14;0.04;0.12;0.04;0.13;0.05;0"
+        keyTimes="0;0.5;0.52;0.6;0.62;0.7;0.72;0.8;0.82;0.9;1"
+        dur="6.0s" begin="5.5s" repeatCount="indefinite"/>
+    </polygon>
+
+    <!-- Idle: occasional drift spark from diamond -->
+    <!-- Spark 1: drifts upper-right -->
+    <circle cx="150" cy="60" r="1.8" fill="#f97316" opacity="0">
+      <animate attributeName="opacity"
+        values="0;0;0;0.8;0.5;0;0;0;0;0;0;0;0"
+        keyTimes="0;0.3;0.31;0.35;0.5;0.6;0.7;0.8;0.85;0.9;0.95;0.97;1"
+        dur="7.0s" begin="6.5s" repeatCount="indefinite"/>
+      <animate attributeName="cx"
+        values="150;150;150;152;158;166;170;170;170;170;170;170;170"
+        keyTimes="0;0.3;0.31;0.35;0.5;0.6;0.7;0.8;0.85;0.9;0.95;0.97;1"
+        dur="7.0s" begin="6.5s" repeatCount="indefinite"/>
+      <animate attributeName="cy"
+        values="60;60;60;58;50;38;26;26;26;26;26;26;26"
+        keyTimes="0;0.3;0.31;0.35;0.5;0.6;0.7;0.8;0.85;0.9;0.95;0.97;1"
+        dur="7.0s" begin="6.5s" repeatCount="indefinite"/>
+      <animate attributeName="r"
+        values="1.8;1.8;1.8;1.8;1.6;1.2;0.7;0.7;0.7;0.7;0.7;0.7;0.7"
+        keyTimes="0;0.3;0.31;0.35;0.5;0.6;0.7;0.8;0.85;0.9;0.95;0.97;1"
+        dur="7.0s" begin="6.5s" repeatCount="indefinite"/>
+    </circle>
+
+    <!-- Spark 2: drifts upper-left -->
+    <circle cx="90" cy="65" r="1.5" fill="#e85d04" opacity="0">
+      <animate attributeName="opacity"
+        values="0;0;0;0;0;0;0.7;0.4;0;0;0;0;0"
+        keyTimes="0;0.1;0.2;0.4;0.42;0.45;0.5;0.65;0.75;0.8;0.9;0.95;1"
+        dur="9.0s" begin="7.2s" repeatCount="indefinite"/>
+      <animate attributeName="cx"
+        values="90;90;90;90;90;90;88;82;76;76;76;76;76"
+        keyTimes="0;0.1;0.2;0.4;0.42;0.45;0.5;0.65;0.75;0.8;0.9;0.95;1"
+        dur="9.0s" begin="7.2s" repeatCount="indefinite"/>
+      <animate attributeName="cy"
+        values="65;65;65;65;65;65;62;52;40;40;40;40;40"
+        keyTimes="0;0.1;0.2;0.4;0.42;0.45;0.5;0.65;0.75;0.8;0.9;0.95;1"
+        dur="9.0s" begin="7.2s" repeatCount="indefinite"/>
+    </circle>
+
+    <!-- Spark 3: small white, drifts right of center top -->
+    <circle cx="130" cy="40" r="1.2" fill="#fafafa" opacity="0">
+      <animate attributeName="opacity"
+        values="0;0;0;0;0;0.6;0.35;0;0;0;0"
+        keyTimes="0;0.2;0.35;0.37;0.4;0.45;0.6;0.7;0.8;0.9;1"
+        dur="11.0s" begin="8.0s" repeatCount="indefinite"/>
+      <animate attributeName="cy"
+        values="40;40;40;40;40;38;28;18;18;18;18"
+        keyTimes="0;0.2;0.35;0.37;0.4;0.45;0.6;0.7;0.8;0.9;1"
+        dur="11.0s" begin="8.0s" repeatCount="indefinite"/>
+      <animate attributeName="cx"
+        values="130;130;130;130;130;131;133;136;136;136;136"
+        keyTimes="0;0.2;0.35;0.37;0.4;0.45;0.6;0.7;0.8;0.9;1"
+        dur="11.0s" begin="8.0s" repeatCount="indefinite"/>
+    </circle>
+
+    <!-- Hub idle: breathing dot center -->
+    <circle cx="120" cy="95" r="2.2" fill="#fafafa" opacity="0">
+      <animate attributeName="opacity"
+        values="0;0;0.9;0.6;0.9;0.6;0.9;0.6"
+        keyTimes="0;0.15;0.16;0.5;0.51;0.75;0.76;1"
+        dur="2.8s" begin="5.5s" repeatCount="indefinite"/>
+      <animate attributeName="r"
+        values="2.2;2.2;2.2;1.8;2.2;1.8;2.2;1.8"
+        keyTimes="0;0.15;0.16;0.5;0.51;0.75;0.76;1"
+        dur="2.8s" begin="5.5s" repeatCount="indefinite"/>
+    </circle>
+
+  </svg>
+  <!-- /mark SVG -->
+
+  <!-- ── Wordmark ─────────────────────────────────────────────── -->
+  <div class="wordmark idle-active" id="wordmark">LYRA</div>
+
+  <!-- ── Tagline ──────────────────────────────────────────────── -->
+  <div class="tagline" id="tagline">your intelligence, compounded</div>
+
+</div>
+<!-- /logo-wrap -->
+
+<!-- Replay button -->
+<button class="replay-btn" id="replayBtn" onclick="replayLogo()">replay</button>
+
+<script>
+// ── Background ambient sparks ────────────────────────────────────────
+(function buildBgSparks() {
+  const svg = document.getElementById('bgLayer');
+  const ns = 'http://www.w3.org/2000/svg';
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  const count = 40;
+  const colors = ['#e85d04', '#f97316', '#fafafa', '#e85d04', '#fafafa'];
+
+  for (let i = 0; i < count; i++) {
+    const x = Math.random() * w;
+    const y = h * 0.3 + Math.random() * h * 0.7; // start in lower 70%
+    const r = 0.4 + Math.random() * 1.2;
+    const op = 0.04 + Math.random() * 0.12;
+    const dur = 18 + Math.random() * 22;
+    const delay = Math.random() * dur;
+    const dx = (Math.random() - 0.5) * 80;
+    const color = colors[Math.floor(Math.random() * colors.length)];
+
+    const c = document.createElementNS(ns, 'circle');
+    c.setAttribute('cx', x);
+    c.setAttribute('cy', y);
+    c.setAttribute('r', r);
+    c.setAttribute('fill', color);
+
+    const animY = document.createElementNS(ns, 'animate');
+    animY.setAttribute('attributeName', 'cy');
+    animY.setAttribute('from', y);
+    animY.setAttribute('to', -20);
+    animY.setAttribute('dur', dur + 's');
+    animY.setAttribute('begin', delay + 's');
+    animY.setAttribute('repeatCount', 'indefinite');
+
+    const animX = document.createElementNS(ns, 'animate');
+    animX.setAttribute('attributeName', 'cx');
+    animX.setAttribute('values', `${x};${x + dx * 0.5};${x + dx}`);
+    animX.setAttribute('dur', (dur * 0.8) + 's');
+    animX.setAttribute('begin', delay + 's');
+    animX.setAttribute('repeatCount', 'indefinite');
+
+    const animOp = document.createElementNS(ns, 'animate');
+    animOp.setAttribute('attributeName', 'opacity');
+    animOp.setAttribute('values', `0;${op};${op * 0.6};${op};0`);
+    animOp.setAttribute('keyTimes', '0;0.1;0.5;0.9;1');
+    animOp.setAttribute('dur', dur + 's');
+    animOp.setAttribute('begin', delay + 's');
+    animOp.setAttribute('repeatCount', 'indefinite');
+
+    c.appendChild(animY);
+    c.appendChild(animX);
+    c.appendChild(animOp);
+    svg.appendChild(c);
+  }
+})();
+
+// ── Replay ───────────────────────────────────────────────────────────
+function replayLogo() {
+  const wrap = document.getElementById('logoWrap');
+  const wm = document.getElementById('wordmark');
+  const tl = document.getElementById('tagline');
+
+  // Reset CSS animations by cloning
+  const clone = wrap.cloneNode(true);
+  wrap.parentNode.replaceChild(clone, wrap);
+
+  // Re-attach replay handler
+  document.getElementById('replayBtn').onclick = replayLogo;
+
+  // Re-register idle class so wordmark glow animates
+  const newWm = document.getElementById('wordmark');
+  if (newWm) {
+    newWm.classList.add('idle-active');
+  }
+}
+</script>
+
+</body>
+</html>

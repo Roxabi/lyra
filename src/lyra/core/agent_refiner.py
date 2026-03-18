@@ -15,11 +15,21 @@ __all__ = [
     "AgentRefiner",
     "LlmProvider",
     "REFINABLE_FIELDS",
+    "RefinementCancelled",
     "RefinementContext",
     "RefinementPatch",
     "SdkLlmProvider",
     "TerminalIO",
 ]
+
+# ---------------------------------------------------------------------------
+# Exceptions
+# ---------------------------------------------------------------------------
+
+
+class RefinementCancelled(Exception):
+    """Raised when the operator aborts an interactive refinement session."""
+
 
 # ---------------------------------------------------------------------------
 # Allow-list of patchable AgentRow fields
@@ -114,7 +124,12 @@ class LlmProvider(Protocol):
 class SdkLlmProvider:
     """Anthropic SDK-based LLM provider (sync)."""
 
-    def __init__(self, api_key: str, model: str = "claude-haiku-4-5-20251001") -> None:
+    def __init__(
+        self,
+        api_key: str,
+        # Haiku: lowest latency/cost for interactive CLI session
+        model: str = "claude-haiku-4-5-20251001",
+    ) -> None:
         import anthropic
 
         self._client = anthropic.Anthropic(api_key=api_key)
@@ -222,7 +237,7 @@ class AgentRefiner:
                 turn -= 1  # don't count empty prompts against the limit
                 continue
             if user_input.lower() in ("quit", "exit", "abort"):
-                raise KeyboardInterrupt("Session aborted by user.")
+                raise RefinementCancelled("Session aborted by user.")
 
             waiting_for_confirmation = user_input.lower().strip(".!") in _CONFIRM_WORDS
 

@@ -11,6 +11,7 @@ import pytest
 from lyra.core.agent_models import AgentRow
 from lyra.core.agent_refiner import (
     AgentRefiner,
+    RefinementCancelled,
     RefinementContext,
     RefinementPatch,
     TerminalIO,
@@ -127,7 +128,7 @@ class TestReadProfile:
 
         # Assert — RefinementContext is frozen
         assert isinstance(ctx, RefinementContext)
-        with pytest.raises((AttributeError, TypeError)):
+        with pytest.raises(AttributeError):
             ctx.agent_name = "new_name"  # type: ignore[misc]
 
 
@@ -214,6 +215,14 @@ class TestRefinementPatch:
 
 class TestPatchCommand:
     """lyra agent patch — CLI integration via typer CliRunner."""
+
+    @pytest.fixture()
+    def cli(self):
+        from typer.testing import CliRunner
+
+        from lyra.cli_agent import agent_app
+
+        return CliRunner(), agent_app
 
     def test_patch_command_success(self) -> None:
         # Arrange
@@ -311,6 +320,7 @@ class TestPatchInvalidJson:
 
         from lyra.cli_agent import agent_app
 
+        # Typer's CliRunner merges stderr into output by default — no mix_stderr needed
         runner = CliRunner()
 
         # Act
@@ -452,7 +462,7 @@ class TestRunSession:
         refiner = AgentRefiner("lyra_default", store, driver=mock_driver)
 
         # Act + Assert
-        with pytest.raises(KeyboardInterrupt):
+        with pytest.raises(RefinementCancelled):
             refiner.run_session(mock_io)
 
         # Assert driver was called only for the greeting, not again after abort
@@ -473,7 +483,7 @@ class TestRunSession:
         refiner = AgentRefiner("lyra_default", store, driver=mock_driver)
 
         # Act + Assert
-        with pytest.raises(KeyboardInterrupt):
+        with pytest.raises(RefinementCancelled):
             refiner.run_session(mock_io)
 
 
@@ -683,7 +693,7 @@ class TestRefineCommand:
             "lyra.cli_agent_crud._connect_store", side_effect=fake_connect
         ), mock_patch(
             "lyra.core.agent_refiner.AgentRefiner.run_session",
-            side_effect=KeyboardInterrupt(),
+            side_effect=RefinementCancelled(),
         ):
             result = runner.invoke(agent_app, ["refine", "lyra_default"])
 

@@ -404,7 +404,7 @@ def refine(
     name: str = typer.Argument(..., help="Agent name to refine."),
 ) -> None:
     """Interactively refine an agent profile via LLM-guided session."""
-    from lyra.core.agent_refiner import AgentRefiner, TerminalIO
+    from lyra.core.agent_refiner import AgentRefiner, RefinementCancelled, TerminalIO
 
     async def _run() -> None:
         store = await _connect_store()
@@ -417,7 +417,7 @@ def refine(
             before_row = store.get(name)
             try:
                 patch = refiner.run_session(io)
-            except KeyboardInterrupt:
+            except RefinementCancelled:
                 typer.echo("\nRefinement session cancelled.")
                 raise typer.Exit(0)
             except RuntimeError as e:

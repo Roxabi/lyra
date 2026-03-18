@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lyra — Logo Forge v0.2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;700;800&family=JetBrains+Mono:wght@300;400;500&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --obsidian:    #0a0a0f;
+  --forge-floor: #18181f;
+  --steel:       #2a2a35;
+  --forge:       #e85d04;
+  --ember:       #f97316;
+  --steel-gray:  #6b7280;
+  --spark:       #fafafa;
+  --deep-iron:   #1f2937;
+  --forge-glow:  rgba(232,93,4,0.4);
+}
+
+html, body {
+  width: 100%; min-height: 100vh;
+  background: var(--obsidian);
+  font-family: 'Inter', sans-serif;
+  color: var(--spark);
+}
+
+/* ── Header ───────────────────────────────── */
+.page-header {
+  text-align: center;
+  padding: 40px 20px 12px;
+}
+.page-header h1 {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 800;
+  font-size: clamp(24px, 4vw, 36px);
+  letter-spacing: 0.15em;
+  color: var(--spark);
+}
+.page-header .subtitle {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  color: var(--steel-gray);
+  margin-top: 6px;
+}
+
+/* ── Grid ─────────────────────────────────── */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+  max-width: 1400px;
+  margin: 24px auto 40px;
+  padding: 0 16px;
+}
+
+.cell {
+  background: var(--forge-floor);
+  border: 1px solid var(--steel);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 8px 14px;
+  transition: border-color 0.3s;
+  position: relative;
+}
+.cell:hover {
+  border-color: var(--forge);
+}
+
+.cell svg.mark {
+  display: block;
+  width: 100%;
+  max-width: 260px;
+  height: auto;
+}
+
+.cell .label {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.1em;
+  color: var(--spark);
+  margin-top: 10px;
+}
+.cell .desc {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--steel-gray);
+  margin-top: 3px;
+  text-align: center;
+  line-height: 1.4;
+}
+
+/* ── Aura Animations ─────────────────────── */
+@keyframes rotateSlow {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes pulseGlow {
+  0%, 100% { opacity: 0.15; }
+  50%      { opacity: 0.35; }
+}
+@keyframes pulseGlowStrong {
+  0%, 100% { opacity: 0.25; }
+  50%      { opacity: 0.5; }
+}
+@keyframes floatUp1 {
+  0%   { transform: translate(0, 0); opacity: 0; }
+  15%  { opacity: 0.7; }
+  85%  { opacity: 0.3; }
+  100% { transform: translate(8px, -30px); opacity: 0; }
+}
+@keyframes floatUp2 {
+  0%   { transform: translate(0, 0); opacity: 0; }
+  20%  { opacity: 0.6; }
+  80%  { opacity: 0.2; }
+  100% { transform: translate(-10px, -28px); opacity: 0; }
+}
+@keyframes floatUp3 {
+  0%   { transform: translate(0, 0); opacity: 0; }
+  10%  { opacity: 0.5; }
+  90%  { opacity: 0.15; }
+  100% { transform: translate(5px, -35px); opacity: 0; }
+}
+@keyframes expandRing {
+  0%   { r: 8; opacity: 0.5; stroke-width: 1.5; }
+  100% { r: 70; opacity: 0; stroke-width: 0.3; }
+}
+@keyframes expandRing2 {
+  0%   { r: 8; opacity: 0.35; stroke-width: 1.2; }
+  100% { r: 55; opacity: 0; stroke-width: 0.2; }
+}
+@keyframes expandRing3 {
+  0%   { r: 8; opacity: 0.25; stroke-width: 1; }
+  100% { r: 45; opacity: 0; stroke-width: 0.15; }
+}
+@keyframes emberBreathe {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 0.75; }
+}
+@keyframes shimmerRay {
+  0%, 100% { opacity: 0.08; }
+  50%      { opacity: 0.22; }
+}
+@keyframes hardFlash {
+  0%, 100% { opacity: 0.6; }
+  50%      { opacity: 0.9; }
+}
+
+/* ── Responsive ───────────────────────────── */
+@media (max-width: 900px) {
+  .grid { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1>LYRA FORGE</h1>
+  <div class="subtitle">logo forge v0.2 — 8 variations / 4 auras × 4 anvils</div>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<script>
+// ── Brand Palette ──────────────────────────────────────────────────────
+const C = {
+  obsidian:   '#0a0a0f',
+  forgeFloor: '#18181f',
+  steel:      '#2a2a35',
+  forge:      '#e85d04',
+  ember:      '#f97316',
+  steelGray:  '#6b7280',
+  spark:      '#fafafa',
+  deepIron:   '#1f2937',
+};
+
+// ── Variation Config ───────────────────────────────────────────────────
+const VARIATIONS = [
+  { key: 'A', aura: 'corona',    anvil: 'blacksmith', auraLabel: 'Sun Corona (16 rays)',            anvilLabel: 'Classic Blacksmith' },
+  { key: 'B', aura: 'particles', anvil: 'blacksmith', auraLabel: 'Particle Field (embers)',         anvilLabel: 'Classic Blacksmith' },
+  { key: 'C', aura: 'prism',     anvil: 'industrial', auraLabel: 'Prism Refraction (facet beams)',  anvilLabel: 'Industrial Platform' },
+  { key: 'D', aura: 'magnetic',  anvil: 'industrial', auraLabel: 'Magnetic Field Arcs',             anvilLabel: 'Industrial Platform' },
+  { key: 'E', aura: 'bloom',     anvil: 'crystal',    auraLabel: 'Clean Bloom (blur glow)',         anvilLabel: 'Crystal Formation' },
+  { key: 'F', aura: 'hardlight', anvil: 'crystal',    auraLabel: 'Hard Light (✦ rays)',             anvilLabel: 'Crystal Formation' },
+  { key: 'G', aura: 'pulse',     anvil: 'hexagonal',  auraLabel: 'Energy Pulse (rings)',            anvilLabel: 'Hex Pedestal' },
+  { key: 'H', aura: 'none',      anvil: 'hexagonal',  auraLabel: 'No Aura (pure diamond)',          anvilLabel: 'Hex Pedestal' },
+];
+
+// ── Shared Defs (per-SVG, prefixed) ────────────────────────────────────
+function defs(p) {
+  return `
+    <linearGradient id="${p}-diamFill" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%"   stop-color="#2a1808"/>
+      <stop offset="40%"  stop-color="#1a0f06"/>
+      <stop offset="100%" stop-color="#0d0d14"/>
+    </linearGradient>
+    <linearGradient id="${p}-topFace" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"   stop-color="${C.spark}" stop-opacity="0.14"/>
+      <stop offset="100%" stop-color="${C.forge}" stop-opacity="0.06"/>
+    </linearGradient>
+    <linearGradient id="${p}-leftFace" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"   stop-color="${C.forge}" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="${C.obsidian}" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="${p}-rightFace" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="${C.ember}" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="${C.obsidian}" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="${p}-coreGlow" cx="50%" cy="55%" r="50%">
+      <stop offset="0%"   stop-color="${C.ember}" stop-opacity="0.75"/>
+      <stop offset="40%"  stop-color="${C.forge}" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="${C.forge}" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="${p}-hubRadial" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="${C.spark}"/>
+      <stop offset="35%"  stop-color="${C.ember}"/>
+      <stop offset="100%" stop-color="${C.forge}" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="${p}-anvilFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="${C.steel}"/>
+      <stop offset="100%" stop-color="${C.deepIron}"/>
+    </linearGradient>
+    <linearGradient id="${p}-anvilFillDark" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="${C.deepIron}"/>
+      <stop offset="100%" stop-color="#1c1c27"/>
+    </linearGradient>
+    <filter id="${p}-glowSoft" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="6" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="${p}-glowStrong" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="${p}-bloomFilter" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="18" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="${p}-anvilShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="${C.forge}" flood-opacity="0.15"/>
+    </filter>
+    <clipPath id="${p}-diamClip">
+      <polygon points="120,14 182,82 156,142 120,158 84,142 58,82"/>
+    </clipPath>
+  `;
+}
+
+// ── Diamond Shape (shared) ─────────────────────────────────────────────
+function diamond(p) {
+  return `
+    <g class="diamond-group">
+      <!-- Base fill -->
+      <polygon points="120,14 182,82 156,142 120,158 84,142 58,82"
+        fill="url(#${p}-diamFill)" stroke="none"/>
+
+      <!-- Top face -->
+      <polygon points="120,14 58,82 182,82"
+        fill="url(#${p}-topFace)" stroke="${C.spark}" stroke-width="0.8" stroke-opacity="0.35"/>
+
+      <!-- Left upper facet -->
+      <polygon points="120,14 58,82 84,142 120,100"
+        fill="url(#${p}-leftFace)" stroke="${C.forge}" stroke-width="0.7" stroke-opacity="0.5"/>
+
+      <!-- Right upper facet -->
+      <polygon points="120,14 182,82 156,142 120,100"
+        fill="url(#${p}-rightFace)" stroke="${C.ember}" stroke-width="0.7" stroke-opacity="0.4"/>
+
+      <!-- Left lower facet -->
+      <polygon points="58,82 84,142 120,158 120,100"
+        fill="#1a0e06" fill-opacity="0.7" stroke="${C.forge}" stroke-width="0.7" stroke-opacity="0.3"/>
+
+      <!-- Right lower facet -->
+      <polygon points="182,82 156,142 120,158 120,100"
+        fill="#12100a" fill-opacity="0.65" stroke="${C.ember}" stroke-width="0.7" stroke-opacity="0.25"/>
+
+      <!-- Outer edges -->
+      <line x1="120" y1="14" x2="58"  y2="82"  stroke="${C.forge}" stroke-width="1.5" stroke-linecap="round" opacity="0.9"/>
+      <line x1="120" y1="14" x2="182" y2="82"  stroke="${C.ember}" stroke-width="1.5" stroke-linecap="round" opacity="0.85"/>
+      <line x1="58"  y1="82" x2="84"  y2="142" stroke="${C.forge}" stroke-width="1.2" stroke-linecap="round" opacity="0.7"/>
+      <line x1="182" y1="82" x2="156" y2="142" stroke="${C.ember}" stroke-width="1.2" stroke-linecap="round" opacity="0.65"/>
+      <line x1="84"  y1="142" x2="120" y2="158" stroke="${C.forge}" stroke-width="1.2" stroke-linecap="round" opacity="0.6"/>
+      <line x1="156" y1="142" x2="120" y2="158" stroke="${C.ember}" stroke-width="1.2" stroke-linecap="round" opacity="0.55"/>
+
+      <!-- Belt + axis -->
+      <line x1="58" y1="82" x2="182" y2="82" stroke="${C.spark}" stroke-width="0.7" opacity="0.2"/>
+      <line x1="120" y1="14" x2="120" y2="158" stroke="${C.forge}" stroke-width="0.6" opacity="0.25"/>
+
+      <!-- Inner core glow -->
+      <ellipse cx="120" cy="95" rx="52" ry="50" fill="url(#${p}-coreGlow)" clip-path="url(#${p}-diamClip)"/>
+
+      <!-- Hub core dot -->
+      <circle cx="120" cy="95" r="5.5" fill="url(#${p}-hubRadial)" filter="url(#${p}-glowStrong)"/>
+      <circle cx="120" cy="95" r="2.2" fill="${C.spark}" style="animation: emberBreathe 2.8s ease-in-out infinite;"/>
+    </g>
+  `;
+}
+
+// ── Anvil Variants ─────────────────────────────────────────────────────
+
+function anvilBlacksmith(p) {
+  return `
+    <g filter="url(#${p}-anvilShadow)">
+      <!-- Connection glow -->
+      <ellipse cx="120" cy="163" rx="24" ry="4" fill="${C.forge}" opacity="0.15"/>
+      <circle cx="120" cy="160" r="3" fill="${C.forge}" opacity="0.7" filter="url(#${p}-glowStrong)"/>
+      <circle cx="120" cy="160" r="1.5" fill="${C.spark}" opacity="0.9"/>
+
+      <!-- Face / top surface -->
+      <polygon points="68,166 172,166 164,184 76,184"
+        fill="url(#${p}-anvilFill)" stroke="${C.steel}" stroke-width="1" stroke-linejoin="round"/>
+
+      <!-- Horn (left tapered projection) -->
+      <polygon points="68,166 42,170 40,176 68,184 76,184"
+        fill="#252530" stroke="${C.steel}" stroke-width="0.8" stroke-linejoin="round"/>
+      <!-- Horn tip highlight -->
+      <circle cx="44" cy="173" r="1.5" fill="${C.forge}" opacity="0.25"/>
+
+      <!-- Heel (right squared projection) -->
+      <polygon points="172,166 192,168 192,182 172,184"
+        fill="#252530" stroke="${C.steel}" stroke-width="0.8" stroke-linejoin="round"/>
+
+      <!-- Face highlight line -->
+      <line x1="76" y1="167" x2="164" y2="167" stroke="${C.spark}" stroke-width="0.5" opacity="0.12"/>
+
+      <!-- Hardy hole -->
+      <rect x="146" y="172" width="6" height="6" rx="0.5" fill="${C.obsidian}" stroke="#1a1a25" stroke-width="0.5"/>
+
+      <!-- Pritchel hole -->
+      <circle cx="156" cy="175" r="2" fill="${C.obsidian}" stroke="#1a1a25" stroke-width="0.5"/>
+
+      <!-- Hammer marks on face (texture) -->
+      <line x1="92" y1="170" x2="96" y2="170" stroke="${C.spark}" stroke-width="0.3" opacity="0.08"/>
+      <line x1="108" y1="172" x2="113" y2="172" stroke="${C.spark}" stroke-width="0.3" opacity="0.06"/>
+      <line x1="124" y1="170" x2="128" y2="171" stroke="${C.spark}" stroke-width="0.3" opacity="0.07"/>
+
+      <!-- Waist (narrow section) -->
+      <polygon points="90,184 150,184 146,196 94,196"
+        fill="${C.deepIron}" stroke="${C.steel}" stroke-width="0.8"/>
+
+      <!-- Waist rivet detail -->
+      <circle cx="98" cy="190" r="1.5" fill="#1a1a25" stroke="#333" stroke-width="0.4"/>
+      <circle cx="142" cy="190" r="1.5" fill="#1a1a25" stroke="#333" stroke-width="0.4"/>
+
+      <!-- Base / foot -->
+      <polygon points="80,196 160,196 166,202 162,210 78,210 74,202"
+        fill="#1c1c27" stroke="${C.steel}" stroke-width="1" stroke-linejoin="round"/>
+
+      <!-- Base bottom edge highlight -->
+      <line x1="80" y1="209" x2="160" y2="209" stroke="${C.spark}" stroke-width="0.4" opacity="0.06"/>
+
+      <!-- Forge glow under face -->
+      <ellipse cx="120" cy="184" rx="30" ry="2" fill="${C.forge}" opacity="0.08"/>
+    </g>
+  `;
+}
+
+function anvilIndustrial(p) {
+  return `
+    <g filter="url(#${p}-anvilShadow)">
+      <!-- Connection glow -->
+      <ellipse cx="120" cy="163" rx="24" ry="4" fill="${C.forge}" opacity="0.15"/>
+      <circle cx="120" cy="160" r="3" fill="${C.forge}" opacity="0.7" filter="url(#${p}-glowStrong)"/>
+      <circle cx="120" cy="160" r="1.5" fill="${C.spark}" opacity="0.9"/>
+
+      <!-- Main platform -->
+      <rect x="62" y="166" width="116" height="16" rx="2"
+        fill="url(#${p}-anvilFill)" stroke="#3a3a45" stroke-width="1"/>
+
+      <!-- Platform top edge glow -->
+      <line x1="64" y1="166" x2="176" y2="166" stroke="${C.forge}" stroke-width="0.8" opacity="0.25"/>
+
+      <!-- Corner bolts (detailed) -->
+      <circle cx="72"  cy="172" r="3.5" fill="#1a1a25" stroke="#3a3a45" stroke-width="0.6"/>
+      <circle cx="72"  cy="172" r="1.2" fill="#333"/>
+      <line x1="70" y1="172" x2="74" y2="172" stroke="#444" stroke-width="0.4"/>
+      <line x1="72" y1="170" x2="72" y2="174" stroke="#444" stroke-width="0.4"/>
+
+      <circle cx="168" cy="172" r="3.5" fill="#1a1a25" stroke="#3a3a45" stroke-width="0.6"/>
+      <circle cx="168" cy="172" r="1.2" fill="#333"/>
+      <line x1="166" y1="172" x2="170" y2="172" stroke="#444" stroke-width="0.4"/>
+      <line x1="168" y1="170" x2="168" y2="174" stroke="#444" stroke-width="0.4"/>
+
+      <!-- Circuit traces (etched into surface) -->
+      <path d="M 84,170 L 98,170 L 102,174 L 112,174" stroke="${C.forge}" stroke-width="0.6" fill="none" opacity="0.45"/>
+      <path d="M 128,174 L 138,174 L 142,170 L 156,170" stroke="${C.forge}" stroke-width="0.6" fill="none" opacity="0.35"/>
+      <path d="M 98,176 L 108,176 L 110,174" stroke="${C.ember}" stroke-width="0.5" fill="none" opacity="0.25"/>
+      <path d="M 130,176 L 140,176 L 142,174" stroke="${C.ember}" stroke-width="0.5" fill="none" opacity="0.2"/>
+
+      <!-- Circuit nodes -->
+      <circle cx="84"  cy="170" r="1.5" fill="${C.forge}" opacity="0.5">
+        <animate attributeName="opacity" values="0.3;0.7;0.3" dur="2s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="156" cy="170" r="1.5" fill="${C.ember}" opacity="0.4">
+        <animate attributeName="opacity" values="0.2;0.6;0.2" dur="2.5s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="112" cy="174" r="1" fill="${C.spark}" opacity="0.3"/>
+      <circle cx="128" cy="174" r="1" fill="${C.spark}" opacity="0.3"/>
+
+      <!-- Support columns -->
+      <rect x="82"  y="182" width="12" height="14" rx="1" fill="${C.deepIron}" stroke="${C.steel}" stroke-width="0.6"/>
+      <rect x="146" y="182" width="12" height="14" rx="1" fill="${C.deepIron}" stroke="${C.steel}" stroke-width="0.6"/>
+
+      <!-- Cross brace -->
+      <line x1="94" y1="190" x2="146" y2="190" stroke="${C.steel}" stroke-width="1.2"/>
+      <line x1="94" y1="188" x2="146" y2="188" stroke="#333" stroke-width="0.4"/>
+
+      <!-- Base plate -->
+      <rect x="72" y="196" width="96" height="12" rx="2"
+        fill="#1c1c27" stroke="${C.steel}" stroke-width="1"/>
+
+      <!-- Ventilation slits in base -->
+      <line x1="88"  y1="202" x2="98"  y2="202" stroke="${C.obsidian}" stroke-width="2" stroke-linecap="round"/>
+      <line x1="106" y1="202" x2="116" y2="202" stroke="${C.obsidian}" stroke-width="2" stroke-linecap="round"/>
+      <line x1="124" y1="202" x2="134" y2="202" stroke="${C.obsidian}" stroke-width="2" stroke-linecap="round"/>
+      <line x1="142" y1="202" x2="152" y2="202" stroke="${C.obsidian}" stroke-width="2" stroke-linecap="round"/>
+
+      <!-- Base bolts -->
+      <circle cx="78"  cy="200" r="2" fill="#1a1a25" stroke="#333" stroke-width="0.4"/>
+      <circle cx="162" cy="200" r="2" fill="#1a1a25" stroke="#333" stroke-width="0.4"/>
+    </g>
+  `;
+}
+
+function anvilCrystal(p) {
+  return `
+    <g filter="url(#${p}-anvilShadow)">
+      <!-- Connection glow -->
+      <ellipse cx="120" cy="163" rx="20" ry="4" fill="${C.forge}" opacity="0.18"/>
+      <circle cx="120" cy="160" r="3" fill="${C.forge}" opacity="0.7" filter="url(#${p}-glowStrong)"/>
+      <circle cx="120" cy="160" r="1.5" fill="${C.spark}" opacity="0.9"/>
+
+      <!-- Central pillar crystal -->
+      <polygon points="110,162 130,162 136,210 104,210"
+        fill="#1a1525" stroke="${C.steel}" stroke-width="0.8" opacity="0.9"/>
+      <!-- Pillar inner facet -->
+      <polygon points="116,162 130,162 130,210 120,210"
+        fill="#1f1a2e" stroke="none" opacity="0.5"/>
+
+      <!-- Left shard cluster -->
+      <polygon points="64,205 74,155 84,205"
+        fill="#1f1830" stroke="${C.steel}" stroke-width="0.6" opacity="0.8"/>
+      <polygon points="72,208 80,162 88,208"
+        fill="#251d38" stroke="${C.steel}" stroke-width="0.6" opacity="0.7"/>
+      <!-- Left inner shard -->
+      <polygon points="84,206 90,172 96,206"
+        fill="#1a1428" stroke="${C.forge}" stroke-width="0.4" opacity="0.5"/>
+
+      <!-- Right shard cluster -->
+      <polygon points="156,205 166,155 176,205"
+        fill="#1f1830" stroke="${C.steel}" stroke-width="0.6" opacity="0.8"/>
+      <polygon points="152,208 160,162 168,208"
+        fill="#251d38" stroke="${C.steel}" stroke-width="0.6" opacity="0.7"/>
+      <!-- Right inner shard -->
+      <polygon points="144,206 150,172 156,206"
+        fill="#1a1428" stroke="${C.ember}" stroke-width="0.4" opacity="0.5"/>
+
+      <!-- Small accent shards front -->
+      <polygon points="96,210 100,184 104,210"
+        fill="#221a30" stroke="${C.forge}" stroke-width="0.3" opacity="0.4"/>
+      <polygon points="136,210 140,184 144,210"
+        fill="#221a30" stroke="${C.ember}" stroke-width="0.3" opacity="0.4"/>
+
+      <!-- Crystal vein glow lines -->
+      <line x1="74" y1="168" x2="76" y2="198" stroke="${C.forge}" stroke-width="0.5" opacity="0.2">
+        <animate attributeName="opacity" values="0.1;0.35;0.1" dur="3s" repeatCount="indefinite"/>
+      </line>
+      <line x1="166" y1="168" x2="164" y2="198" stroke="${C.ember}" stroke-width="0.5" opacity="0.2">
+        <animate attributeName="opacity" values="0.1;0.3;0.1" dur="3.5s" repeatCount="indefinite"/>
+      </line>
+      <line x1="120" y1="165" x2="120" y2="200" stroke="${C.forge}" stroke-width="0.4" opacity="0.15">
+        <animate attributeName="opacity" values="0.08;0.25;0.08" dur="4s" repeatCount="indefinite"/>
+      </line>
+
+      <!-- Crystal tips glow dots -->
+      <circle cx="74"  cy="156" r="1.5" fill="${C.forge}" opacity="0.35"/>
+      <circle cx="166" cy="156" r="1.5" fill="${C.ember}" opacity="0.3"/>
+      <circle cx="80"  cy="163" r="1"   fill="${C.spark}" opacity="0.2"/>
+      <circle cx="160" cy="163" r="1"   fill="${C.spark}" opacity="0.2"/>
+    </g>
+  `;
+}
+
+function anvilHexagonal(p) {
+  return `
+    <g filter="url(#${p}-anvilShadow)">
+      <!-- Connection glow -->
+      <ellipse cx="120" cy="163" rx="18" ry="3" fill="${C.forge}" opacity="0.15"/>
+      <circle cx="120" cy="160" r="3" fill="${C.forge}" opacity="0.7" filter="url(#${p}-glowStrong)"/>
+      <circle cx="120" cy="160" r="1.5" fill="${C.spark}" opacity="0.9"/>
+
+      <!-- Top tier — hexagonal face (isometric) -->
+      <!-- Top face -->
+      <polygon points="88,168 120,158 152,168 152,178 120,188 88,178"
+        fill="url(#${p}-anvilFill)" stroke="#3a3a45" stroke-width="0.8"/>
+      <!-- Left face -->
+      <polygon points="88,178 120,188 120,198 88,188"
+        fill="${C.deepIron}" stroke="${C.steel}" stroke-width="0.7"/>
+      <!-- Right face -->
+      <polygon points="120,188 152,178 152,188 120,198"
+        fill="#252530" stroke="${C.steel}" stroke-width="0.7"/>
+
+      <!-- Top face surface detail — hex pattern inset -->
+      <polygon points="100,171 120,164 140,171 140,177 120,184 100,177"
+        fill="none" stroke="${C.forge}" stroke-width="0.4" opacity="0.15"/>
+      <!-- Inner hex -->
+      <polygon points="110,174 120,170 130,174 130,178 120,182 110,178"
+        fill="none" stroke="${C.forge}" stroke-width="0.3" opacity="0.25"/>
+
+      <!-- Surface circuit traces -->
+      <path d="M 96,173 L 108,173 L 112,170" stroke="${C.forge}" stroke-width="0.5" fill="none" opacity="0.3"/>
+      <path d="M 128,170 L 132,173 L 144,173" stroke="${C.ember}" stroke-width="0.5" fill="none" opacity="0.25"/>
+
+      <!-- Node connectors on vertices -->
+      <circle cx="88"  cy="173" r="2.5" fill="#1a1a25" stroke="${C.forge}" stroke-width="0.6" opacity="0.5"/>
+      <circle cx="152" cy="173" r="2.5" fill="#1a1a25" stroke="${C.ember}" stroke-width="0.6" opacity="0.5"/>
+      <circle cx="120" cy="161" r="2"   fill="#1a1a25" stroke="${C.spark}" stroke-width="0.5" opacity="0.35"/>
+      <!-- Vertex glow dots -->
+      <circle cx="88"  cy="173" r="1" fill="${C.forge}" opacity="0.4">
+        <animate attributeName="opacity" values="0.2;0.6;0.2" dur="2.2s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="152" cy="173" r="1" fill="${C.ember}" opacity="0.35">
+        <animate attributeName="opacity" values="0.15;0.5;0.15" dur="2.8s" repeatCount="indefinite"/>
+      </circle>
+
+      <!-- Lower tier — wider hex base -->
+      <!-- Top face -->
+      <polygon points="80,192 120,200 160,192 160,200 120,208 80,200"
+        fill="#1c1c27" stroke="${C.steel}" stroke-width="0.6"/>
+      <!-- Left face -->
+      <polygon points="80,200 120,208 120,216 80,208"
+        fill="#181822" stroke="${C.steel}" stroke-width="0.5"/>
+      <!-- Right face -->
+      <polygon points="120,208 160,200 160,208 120,216"
+        fill="#1e1e28" stroke="${C.steel}" stroke-width="0.5"/>
+
+      <!-- Base connectors -->
+      <circle cx="80"  cy="196" r="1.5" fill="#1a1a25" stroke="#333" stroke-width="0.4"/>
+      <circle cx="160" cy="196" r="1.5" fill="#1a1a25" stroke="#333" stroke-width="0.4"/>
+
+      <!-- Edge highlight -->
+      <line x1="90" y1="169" x2="150" y2="169" stroke="${C.spark}" stroke-width="0.3" opacity="0.1"/>
+    </g>
+  `;
+}
+
+// ── Aura Variants ──────────────────────────────────────────────────────
+
+function auraCorona(p) {
+  // 16 rays radiating from diamond center
+  const cx = 120, cy = 88;
+  let rays = '';
+  for (let i = 0; i < 16; i++) {
+    const angle = (i * 22.5) * Math.PI / 180;
+    const r1 = 62, r2 = 85 + (i % 3) * 8;
+    const x1 = cx + Math.cos(angle) * r1;
+    const y1 = cy + Math.sin(angle) * r1;
+    const x2 = cx + Math.cos(angle) * r2;
+    const y2 = cy + Math.sin(angle) * r2;
+    const opacity = 0.08 + (i % 4) * 0.04;
+    const color = i % 2 === 0 ? C.forge : C.ember;
+    const width = i % 4 === 0 ? 1.5 : 0.8;
+    rays += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"
+      stroke="${color}" stroke-width="${width}" opacity="${opacity}" stroke-linecap="round"
+      style="animation: shimmerRay ${2 + (i % 3)}s ease-in-out ${i * 0.15}s infinite;"/>`;
+  }
+  return `
+    <g class="aura-corona" style="transform-origin: ${cx}px ${cy}px; animation: rotateSlow 40s linear infinite;">
+      <!-- Soft radial glow -->
+      <circle cx="${cx}" cy="${cy}" r="80" fill="none" stroke="${C.forge}" stroke-width="1.5"
+        opacity="0.08" style="animation: pulseGlow 4s ease-in-out infinite;"/>
+      <circle cx="${cx}" cy="${cy}" r="72" fill="${C.forge}" opacity="0.04"
+        filter="url(#${p}-glowSoft)" style="animation: pulseGlow 3.5s ease-in-out 0.5s infinite;"/>
+      ${rays}
+    </g>
+  `;
+}
+
+function auraParticles(p) {
+  const cx = 120, cy = 88;
+  let particles = '';
+  const count = 22;
+  for (let i = 0; i < count; i++) {
+    const angle = (i / count) * Math.PI * 2 + (Math.sin(i * 7) * 0.3);
+    const dist = 55 + Math.sin(i * 3.7) * 25;
+    const x = cx + Math.cos(angle) * dist;
+    const y = cy + Math.sin(angle) * dist * 0.85;
+    const r = 0.8 + (i % 5) * 0.4;
+    const color = i % 3 === 0 ? C.spark : (i % 3 === 1 ? C.forge : C.ember);
+    const anim = `floatUp${1 + (i % 3)}`;
+    const dur = 4 + (i % 5) * 1.5;
+    const delay = (i * 0.4) % dur;
+    particles += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r}" fill="${color}"
+      opacity="0" style="animation: ${anim} ${dur}s ease-in-out ${delay}s infinite;"/>`;
+  }
+  return `<g class="aura-particles">${particles}</g>`;
+}
+
+function auraPrism(p) {
+  // Beams refracting out from each facet edge
+  return `
+    <g class="aura-prism">
+      <!-- Top-left facet beam -->
+      <line x1="58" y1="82" x2="28" y2="62" stroke="${C.forge}" stroke-width="1" opacity="0.12"
+        style="animation: shimmerRay 3s ease-in-out infinite;"/>
+      <line x1="58" y1="82" x2="22" y2="78" stroke="${C.ember}" stroke-width="0.7" opacity="0.08"
+        style="animation: shimmerRay 3.5s ease-in-out 0.3s infinite;"/>
+
+      <!-- Top-right facet beam -->
+      <line x1="182" y1="82" x2="212" y2="62" stroke="${C.ember}" stroke-width="1" opacity="0.12"
+        style="animation: shimmerRay 3s ease-in-out 0.5s infinite;"/>
+      <line x1="182" y1="82" x2="218" y2="78" stroke="${C.forge}" stroke-width="0.7" opacity="0.08"
+        style="animation: shimmerRay 3.5s ease-in-out 0.8s infinite;"/>
+
+      <!-- Left lower beam -->
+      <line x1="58" y1="82" x2="30" y2="105" stroke="${C.forge}" stroke-width="0.8" opacity="0.1"
+        style="animation: shimmerRay 2.8s ease-in-out 0.2s infinite;"/>
+      <line x1="84" y1="142" x2="55" y2="158" stroke="${C.forge}" stroke-width="0.6" opacity="0.07"
+        style="animation: shimmerRay 3.2s ease-in-out 0.4s infinite;"/>
+
+      <!-- Right lower beam -->
+      <line x1="182" y1="82" x2="210" y2="105" stroke="${C.ember}" stroke-width="0.8" opacity="0.1"
+        style="animation: shimmerRay 2.8s ease-in-out 0.7s infinite;"/>
+      <line x1="156" y1="142" x2="185" y2="158" stroke="${C.ember}" stroke-width="0.6" opacity="0.07"
+        style="animation: shimmerRay 3.2s ease-in-out 0.9s infinite;"/>
+
+      <!-- Top vertex beam (upward) -->
+      <line x1="120" y1="14" x2="120" y2="-18" stroke="${C.spark}" stroke-width="0.8" opacity="0.1"
+        style="animation: shimmerRay 4s ease-in-out infinite;"/>
+      <line x1="120" y1="14" x2="105" y2="-10" stroke="${C.forge}" stroke-width="0.5" opacity="0.06"
+        style="animation: shimmerRay 4s ease-in-out 0.5s infinite;"/>
+      <line x1="120" y1="14" x2="135" y2="-10" stroke="${C.ember}" stroke-width="0.5" opacity="0.06"
+        style="animation: shimmerRay 4s ease-in-out 1s infinite;"/>
+
+      <!-- Spectral dispersion dots at beam tips -->
+      <circle cx="28" cy="62" r="2" fill="${C.forge}" opacity="0.15"/>
+      <circle cx="212" cy="62" r="2" fill="${C.ember}" opacity="0.15"/>
+      <circle cx="120" cy="-18" r="1.5" fill="${C.spark}" opacity="0.1"/>
+    </g>
+  `;
+}
+
+function auraMagnetic(p) {
+  return `
+    <g class="aura-magnetic">
+      <!-- Field lines curving around diamond — left side -->
+      <path d="M 120,-5 C 50,10 20,55 25,95 C 30,135 60,170 120,185"
+        fill="none" stroke="${C.forge}" stroke-width="0.7" opacity="0.12"
+        style="animation: shimmerRay 4s ease-in-out infinite;"/>
+      <path d="M 120,0 C 60,15 35,55 38,90 C 41,130 65,162 120,178"
+        fill="none" stroke="${C.forge}" stroke-width="0.5" opacity="0.08"
+        style="animation: shimmerRay 4.5s ease-in-out 0.5s infinite;"/>
+
+      <!-- Field lines — right side -->
+      <path d="M 120,-5 C 190,10 220,55 215,95 C 210,135 180,170 120,185"
+        fill="none" stroke="${C.ember}" stroke-width="0.7" opacity="0.12"
+        style="animation: shimmerRay 4s ease-in-out 0.3s infinite;"/>
+      <path d="M 120,0 C 180,15 205,55 202,90 C 199,130 175,162 120,178"
+        fill="none" stroke="${C.ember}" stroke-width="0.5" opacity="0.08"
+        style="animation: shimmerRay 4.5s ease-in-out 0.8s infinite;"/>
+
+      <!-- Outer field arcs -->
+      <path d="M 120,-15 C 30,-5 0,50 5,95 C 10,145 50,185 120,198"
+        fill="none" stroke="${C.forge}" stroke-width="0.4" opacity="0.06"
+        style="animation: shimmerRay 5s ease-in-out 0.2s infinite;"/>
+      <path d="M 120,-15 C 210,-5 240,50 235,95 C 230,145 190,185 120,198"
+        fill="none" stroke="${C.ember}" stroke-width="0.4" opacity="0.06"
+        style="animation: shimmerRay 5s ease-in-out 0.7s infinite;"/>
+
+      <!-- Pole dots -->
+      <circle cx="120" cy="-8" r="2" fill="${C.spark}" opacity="0.15"/>
+      <circle cx="120" cy="190" r="2" fill="${C.forge}" opacity="0.12"/>
+
+      <!-- Field node dots along arcs -->
+      <circle cx="40" cy="60" r="1.2" fill="${C.forge}" opacity="0.15"/>
+      <circle cx="200" cy="60" r="1.2" fill="${C.ember}" opacity="0.15"/>
+      <circle cx="30" cy="110" r="1" fill="${C.forge}" opacity="0.1"/>
+      <circle cx="210" cy="110" r="1" fill="${C.ember}" opacity="0.1"/>
+    </g>
+  `;
+}
+
+function auraBloom(p) {
+  return `
+    <g class="aura-bloom">
+      <ellipse cx="120" cy="88" rx="78" ry="72" fill="${C.forge}" opacity="0.08"
+        filter="url(#${p}-bloomFilter)"
+        style="animation: pulseGlow 4s ease-in-out infinite;"/>
+      <ellipse cx="120" cy="88" rx="55" ry="50" fill="${C.ember}" opacity="0.06"
+        filter="url(#${p}-bloomFilter)"
+        style="animation: pulseGlow 3.5s ease-in-out 0.5s infinite;"/>
+      <ellipse cx="120" cy="88" rx="35" ry="32" fill="${C.spark}" opacity="0.03"
+        filter="url(#${p}-bloomFilter)"
+        style="animation: pulseGlowStrong 3s ease-in-out 1s infinite;"/>
+    </g>
+  `;
+}
+
+function auraHardlight(p) {
+  // 4 sharp rays in ✦ pattern
+  const cx = 120, cy = 88;
+  return `
+    <g class="aura-hardlight">
+      <!-- Vertical ray (up) -->
+      <line x1="${cx}" y1="${cy - 55}" x2="${cx}" y2="${cy - 100}"
+        stroke="${C.spark}" stroke-width="2" opacity="0.6" stroke-linecap="round"
+        style="animation: hardFlash 3s ease-in-out infinite;"/>
+      <line x1="${cx}" y1="${cy - 55}" x2="${cx}" y2="${cy - 85}"
+        stroke="${C.forge}" stroke-width="4" opacity="0.15" stroke-linecap="round"
+        style="animation: hardFlash 3s ease-in-out infinite;"/>
+
+      <!-- Vertical ray (down) -->
+      <line x1="${cx}" y1="${cy + 55}" x2="${cx}" y2="${cy + 85}"
+        stroke="${C.spark}" stroke-width="1.5" opacity="0.35" stroke-linecap="round"
+        style="animation: hardFlash 3s ease-in-out 0.5s infinite;"/>
+
+      <!-- Horizontal ray (left) -->
+      <line x1="${cx - 60}" y1="${cy}" x2="${cx - 100}" y2="${cy}"
+        stroke="${C.spark}" stroke-width="2" opacity="0.5" stroke-linecap="round"
+        style="animation: hardFlash 3s ease-in-out 0.3s infinite;"/>
+      <line x1="${cx - 60}" y1="${cy}" x2="${cx - 88}" y2="${cy}"
+        stroke="${C.forge}" stroke-width="3.5" opacity="0.12" stroke-linecap="round"
+        style="animation: hardFlash 3s ease-in-out 0.3s infinite;"/>
+
+      <!-- Horizontal ray (right) -->
+      <line x1="${cx + 60}" y1="${cy}" x2="${cx + 100}" y2="${cy}"
+        stroke="${C.spark}" stroke-width="2" opacity="0.5" stroke-linecap="round"
+        style="animation: hardFlash 3s ease-in-out 0.8s infinite;"/>
+      <line x1="${cx + 60}" y1="${cy}" x2="${cx + 88}" y2="${cy}"
+        stroke="${C.forge}" stroke-width="3.5" opacity="0.12" stroke-linecap="round"
+        style="animation: hardFlash 3s ease-in-out 0.8s infinite;"/>
+
+      <!-- Small accent diagonals -->
+      <line x1="${cx - 42}" y1="${cy - 42}" x2="${cx - 60}" y2="${cy - 60}"
+        stroke="${C.forge}" stroke-width="0.8" opacity="0.15" stroke-linecap="round"
+        style="animation: hardFlash 3.5s ease-in-out 0.2s infinite;"/>
+      <line x1="${cx + 42}" y1="${cy - 42}" x2="${cx + 60}" y2="${cy - 60}"
+        stroke="${C.ember}" stroke-width="0.8" opacity="0.15" stroke-linecap="round"
+        style="animation: hardFlash 3.5s ease-in-out 0.6s infinite;"/>
+      <line x1="${cx - 42}" y1="${cy + 42}" x2="${cx - 55}" y2="${cy + 55}"
+        stroke="${C.forge}" stroke-width="0.6" opacity="0.1" stroke-linecap="round"
+        style="animation: hardFlash 3.5s ease-in-out 0.4s infinite;"/>
+      <line x1="${cx + 42}" y1="${cy + 42}" x2="${cx + 55}" y2="${cy + 55}"
+        stroke="${C.ember}" stroke-width="0.6" opacity="0.1" stroke-linecap="round"
+        style="animation: hardFlash 3.5s ease-in-out 0.9s infinite;"/>
+    </g>
+  `;
+}
+
+function auraPulse(p) {
+  const cx = 120, cy = 88;
+  return `
+    <g class="aura-pulse">
+      <!-- Ring 1 -->
+      <circle cx="${cx}" cy="${cy}" r="8" fill="none" stroke="${C.forge}" stroke-width="1.5" opacity="0"
+        style="animation: expandRing 3.5s ease-out infinite;"/>
+      <!-- Ring 2 (offset) -->
+      <circle cx="${cx}" cy="${cy}" r="8" fill="none" stroke="${C.ember}" stroke-width="1.2" opacity="0"
+        style="animation: expandRing2 3.5s ease-out 1.2s infinite;"/>
+      <!-- Ring 3 (offset) -->
+      <circle cx="${cx}" cy="${cy}" r="8" fill="none" stroke="${C.spark}" stroke-width="0.8" opacity="0"
+        style="animation: expandRing3 3.5s ease-out 2.3s infinite;"/>
+      <!-- Static faint ring indicators -->
+      <circle cx="${cx}" cy="${cy}" r="50" fill="none" stroke="${C.forge}" stroke-width="0.4" opacity="0.06"/>
+      <circle cx="${cx}" cy="${cy}" r="65" fill="none" stroke="${C.forge}" stroke-width="0.3" opacity="0.04"/>
+    </g>
+  `;
+}
+
+function auraNone() {
+  return `<!-- no aura -->`;
+}
+
+// ── Aura / Anvil dispatch ──────────────────────────────────────────────
+const AURAS = {
+  corona: auraCorona, particles: auraParticles, prism: auraPrism,
+  magnetic: auraMagnetic, bloom: auraBloom, hardlight: auraHardlight,
+  pulse: auraPulse, none: auraNone,
+};
+const ANVILS = {
+  blacksmith: anvilBlacksmith, industrial: anvilIndustrial,
+  crystal: anvilCrystal, hexagonal: anvilHexagonal,
+};
+
+// ── Build Grid ─────────────────────────────────────────────────────────
+const grid = document.getElementById('grid');
+
+VARIATIONS.forEach(v => {
+  const p = v.key; // prefix for IDs
+  const cell = document.createElement('div');
+  cell.className = 'cell';
+
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '-10 -20 260 260');
+  svg.setAttribute('class', 'mark');
+  svg.setAttribute('xmlns', ns);
+  svg.setAttribute('overflow', 'visible');
+
+  svg.innerHTML = `
+    <defs>${defs(p)}</defs>
+    ${AURAS[v.aura](p)}
+    ${diamond(p)}
+    ${ANVILS[v.anvil](p)}
+  `;
+
+  cell.appendChild(svg);
+
+  const label = document.createElement('div');
+  label.className = 'label';
+  label.textContent = v.key;
+  cell.appendChild(label);
+
+  const desc = document.createElement('div');
+  desc.className = 'desc';
+  desc.textContent = `${v.auraLabel}\n× ${v.anvilLabel}`;
+  cell.appendChild(desc);
+
+  grid.appendChild(cell);
+});
+</script>
+
+</body>
+</html>

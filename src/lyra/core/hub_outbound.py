@@ -261,8 +261,8 @@ class HubOutboundMixin:
             self._last_processed_at = time.monotonic()
 
         # Voice: synthesize TTS as a background task now that text is collected.
-        if _should_speak and _voice_parts:
-            full_text = "".join(_voice_parts).strip()
+        if _should_speak:
+            full_text = "".join(_voice_parts or []).strip()
             if full_text:
                 agent_tts = self._resolve_agent_tts(msg)
                 fallback_lang = self._resolve_agent_fallback_language(msg)

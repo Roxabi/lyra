@@ -930,9 +930,9 @@ class TestDispatchStreaming:
         # TTS was triggered as a background task — drain deterministically
         if hub._memory_tasks:
             await asyncio.gather(*hub._memory_tasks)
-        hub._audio_pipeline.synthesize_and_dispatch_audio.assert_awaited_once()
-        call_args = hub._audio_pipeline.synthesize_and_dispatch_audio.call_args
-        assert call_args.args[1] == "Hello world"  # full text passed to TTS
+        hub._audio_pipeline.synthesize_and_dispatch_audio.assert_awaited_once_with(
+            msg, "Hello world", agent_tts=None, fallback_language=None
+        )
 
     async def test_voice_streaming_empty_text_no_tts(self) -> None:
         """Voice modality with empty/whitespace text does not trigger TTS."""
@@ -1081,9 +1081,9 @@ class TestDispatchStreaming:
         # TTS was triggered after dispatcher consumed all chunks
         if hub._memory_tasks:
             await asyncio.gather(*hub._memory_tasks)
-        hub._audio_pipeline.synthesize_and_dispatch_audio.assert_awaited_once()
-        call_args = hub._audio_pipeline.synthesize_and_dispatch_audio.call_args
-        assert call_args.args[1] == "Hello world"
+        hub._audio_pipeline.synthesize_and_dispatch_audio.assert_awaited_once_with(
+            msg, "Hello world", agent_tts=None, fallback_language=None
+        )
 
 
 # ---------------------------------------------------------------------------

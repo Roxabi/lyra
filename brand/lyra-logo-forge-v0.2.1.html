@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lyra — Logo Forge v0.2.1</title>
+<meta name="diagram:title" content="Lyra Logo Forge v0.2.1">
+<meta name="diagram:date" content="2026-03-15">
+<meta name="diagram:category" content="lyra">
+<meta name="diagram:cat-label" content="Lyra Brand">
+<meta name="diagram:color" content="amber">
+<meta name="diagram:badges" content="latest">
+<!-- diagram-meta:end -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --obsidian:   #0a0a0f;
+  --forge:      #e85d04;
+  --ember:      #f97316;
+  --steel:      #2a2a35;
+  --steel-gray: #6b7280;
+  --spark:      #fafafa;
+  --iron:       #1f2937;
+  --iron-light: #2a2a35;
+}
+
+html, body { width: 100%; height: 100%; overflow-x: hidden; }
+body {
+  background: var(--obsidian);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  font-family: 'Inter', sans-serif;
+}
+
+/* ── Background sparks ─────────────────── */
+.bg-layer { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+
+/* ── Page header ───────────────────────── */
+.page-header {
+  position: relative; z-index: 1;
+  text-align: center; padding: 28px 20px 4px;
+}
+.page-header h1 {
+  font-family: 'Outfit', sans-serif; font-weight: 800;
+  font-size: clamp(18px, 3vw, 28px); letter-spacing: 0.18em; color: var(--spark);
+}
+.page-header .sub {
+  font-family: 'JetBrains Mono', monospace; font-size: 10px;
+  letter-spacing: 0.18em; color: var(--steel-gray); margin-top: 4px;
+}
+
+/* ── Comparison layout ─────────────────── */
+.comparison {
+  position: relative; z-index: 1;
+  display: flex; gap: 24px;
+  justify-content: center; align-items: flex-start;
+  padding: 16px 20px 30px;
+  width: 100%; max-width: 900px;
+}
+
+.col {
+  flex: 1; max-width: 420px;
+  display: flex; flex-direction: column; align-items: center;
+  opacity: 0; animation: fadeIn 0.6s ease-out 0.2s forwards;
+}
+
+@keyframes fadeIn { to { opacity: 1; } }
+
+.col .mark-svg { display: block; overflow: visible; width: clamp(180px, 28vw, 280px); height: auto; }
+
+/* ── Wordmark ──────────────────────────── */
+.col .wordmark {
+  font-family: 'Outfit', sans-serif; font-weight: 800;
+  font-size: clamp(22px, 4vw, 38px); letter-spacing: 0.25em; color: var(--spark);
+  text-shadow: 0 0 24px rgba(232,93,4,0.45), 0 0 60px rgba(232,93,4,0.18);
+  margin-top: 20px; opacity: 0; transform: translateY(8px);
+  animation: wordIn 0.7s cubic-bezier(0.22,1,0.36,1) 5.4s forwards;
+}
+@keyframes wordIn { to { opacity: 1; transform: translateY(0); } }
+
+.col .wordmark.idle {
+  animation: wordIn 0.7s cubic-bezier(0.22,1,0.36,1) 5.4s forwards,
+             wordGlow 3.5s ease-in-out 6.2s infinite;
+}
+@keyframes wordGlow {
+  0%, 100% { text-shadow: 0 0 24px rgba(232,93,4,0.45), 0 0 60px rgba(232,93,4,0.18); }
+  50%      { text-shadow: 0 0 32px rgba(249,115,22,0.65), 0 0 80px rgba(232,93,4,0.28); }
+}
+
+/* ── Tagline ───────────────────────────── */
+.col .tagline {
+  font-family: 'JetBrains Mono', monospace; font-weight: 300;
+  font-size: clamp(8px, 1.2vw, 11px); letter-spacing: 0.22em;
+  color: var(--steel-gray); text-transform: lowercase;
+  margin-top: 6px; opacity: 0; animation: fadeIn 1s ease-out 6.0s forwards;
+}
+
+/* ── Anvil label ───────────────────────── */
+.col .anvil-label {
+  margin-top: 14px; padding: 5px 14px;
+  background: #18181f; border: 1px solid var(--steel); border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace; font-size: 10px;
+  letter-spacing: 0.12em; color: var(--steel-gray);
+  opacity: 0; animation: fadeIn 0.6s ease-out 6.5s forwards;
+}
+
+/* ── Particle field animations ─────────── */
+@keyframes pFloat1 {
+  0%   { transform: translate(0,0); opacity: 0; }
+  12%  { opacity: 0.75; }
+  88%  { opacity: 0.2; }
+  100% { transform: translate(10px,-34px); opacity: 0; }
+}
+@keyframes pFloat2 {
+  0%   { transform: translate(0,0); opacity: 0; }
+  18%  { opacity: 0.6; }
+  82%  { opacity: 0.15; }
+  100% { transform: translate(-12px,-30px); opacity: 0; }
+}
+@keyframes pFloat3 {
+  0%   { transform: translate(0,0); opacity: 0; }
+  10%  { opacity: 0.55; }
+  90%  { opacity: 0.12; }
+  100% { transform: translate(6px,-38px); opacity: 0; }
+}
+
+/* ── Idle shimmer ──────────────────────── */
+@keyframes emberBreathe {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 0.8; }
+}
+
+/* ── Replay ────────────────────────────── */
+.replay-btn {
+  position: fixed; bottom: 20px; right: 20px;
+  background: #1f2937; border: 1px solid #2a2a35;
+  color: #6b7280; font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; letter-spacing: 0.1em;
+  padding: 8px 14px; cursor: pointer; z-index: 10;
+  transition: color 0.2s, border-color 0.2s;
+}
+.replay-btn:hover { color: #fafafa; border-color: #e85d04; }
+
+/* ── Responsive ────────────────────────── */
+@media (max-width: 640px) {
+  .comparison { flex-direction: column; align-items: center; }
+  .col { max-width: 340px; }
+}
+</style>
+</head>
+<body>
+
+<svg class="bg-layer" id="bgLayer" xmlns="http://www.w3.org/2000/svg"></svg>
+
+<div class="page-header">
+  <h1>LYRA FORGE</h1>
+  <div class="sub">v0.2.1 — particle aura × pick your anvil</div>
+</div>
+
+<div class="comparison" id="comparison"></div>
+
+<button class="replay-btn" id="replayBtn">replay</button>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════
+// CONSTANTS
+// ═══════════════════════════════════════════════════════════════════════
+const C = {
+  obsidian: '#0a0a0f', forge: '#e85d04', ember: '#f97316',
+  steel: '#2a2a35', steelGray: '#6b7280', spark: '#fafafa',
+  iron: '#1f2937', forgeFloor: '#18181f',
+};
+
+const COLS = [
+  { id: 'industrial', label: 'Industrial Platform', anvilFn: anvilIndustrial },
+  { id: 'hexagonal',  label: 'Hexagonal Pedestal',  anvilFn: anvilHexagonal },
+];
+
+// ═══════════════════════════════════════════════════════════════════════
+// BACKGROUND SPARKS
+// ═══════════════════════════════════════════════════════════════════════
+(function bgSparks() {
+  const svg = document.getElementById('bgLayer');
+  const ns = 'http://www.w3.org/2000/svg';
+  const w = window.innerWidth, h = window.innerHeight;
+  const colors = [C.forge, C.ember, C.spark, C.forge, C.spark];
+  for (let i = 0; i < 35; i++) {
+    const x = Math.random() * w;
+    const y = h * 0.3 + Math.random() * h * 0.7;
+    const r = 0.4 + Math.random() * 1.1;
+    const op = 0.04 + Math.random() * 0.1;
+    const dur = 18 + Math.random() * 20;
+    const delay = Math.random() * dur;
+    const dx = (Math.random() - 0.5) * 70;
+    const color = colors[Math.floor(Math.random() * colors.length)];
+    const c = document.createElementNS(ns, 'circle');
+    c.setAttribute('cx', x); c.setAttribute('cy', y);
+    c.setAttribute('r', r); c.setAttribute('fill', color);
+    ['cy', 'cx', 'opacity'].forEach((attr, j) => {
+      const a = document.createElementNS(ns, 'animate');
+      if (attr === 'cy') {
+        a.setAttribute('attributeName', 'cy');
+        a.setAttribute('from', y); a.setAttribute('to', -20);
+        a.setAttribute('dur', dur + 's'); a.setAttribute('begin', delay + 's');
+        a.setAttribute('repeatCount', 'indefinite');
+      } else if (attr === 'cx') {
+        a.setAttribute('attributeName', 'cx');
+        a.setAttribute('values', `${x};${x + dx * 0.5};${x + dx}`);
+        a.setAttribute('dur', (dur * 0.8) + 's'); a.setAttribute('begin', delay + 's');
+        a.setAttribute('repeatCount', 'indefinite');
+      } else {
+        a.setAttribute('attributeName', 'opacity');
+        a.setAttribute('values', `0;${op};${op * 0.6};${op};0`);
+        a.setAttribute('keyTimes', '0;0.1;0.5;0.9;1');
+        a.setAttribute('dur', dur + 's'); a.setAttribute('begin', delay + 's');
+        a.setAttribute('repeatCount', 'indefinite');
+      }
+      c.appendChild(a);
+    });
+    svg.appendChild(c);
+  }
+})();
+
+// ═══════════════════════════════════════════════════════════════════════
+// SHARED SVG BUILDERS
+// ═══════════════════════════════════════════════════════════════════════
+
+function svgDefs(p) {
+  return `
+    <linearGradient id="${p}-dF" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#2a1808"/><stop offset="40%" stop-color="#1a0f06"/>
+      <stop offset="100%" stop-color="#0d0d14"/>
+    </linearGradient>
+    <linearGradient id="${p}-tF" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="${C.spark}" stop-opacity="0.14"/>
+      <stop offset="100%" stop-color="${C.forge}" stop-opacity="0.06"/>
+    </linearGradient>
+    <linearGradient id="${p}-lF" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="${C.forge}" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="${C.obsidian}" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="${p}-rF" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${C.ember}" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="${C.obsidian}" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="${p}-cG" cx="50%" cy="55%" r="50%">
+      <stop offset="0%" stop-color="${C.ember}" stop-opacity="0.75"/>
+      <stop offset="40%" stop-color="${C.forge}" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="${C.forge}" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="${p}-hR" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="${C.spark}"/>
+      <stop offset="35%" stop-color="${C.ember}"/>
+      <stop offset="100%" stop-color="${C.forge}" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="${p}-sG" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="${C.forge}" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="${C.spark}" stop-opacity="0.3"/>
+    </linearGradient>
+    <linearGradient id="${p}-aF" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${C.steel}"/><stop offset="100%" stop-color="${C.iron}"/>
+    </linearGradient>
+    <filter id="${p}-gS" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="${p}-aS" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="${C.forge}" flood-opacity="0.15"/>
+    </filter>
+    <clipPath id="${p}-dC">
+      <polygon points="120,14 182,82 156,142 120,158 84,142 58,82"/>
+    </clipPath>
+  `;
+}
+
+// ── Phase 1: Converging Sparks ──────────────────────────────────────
+function convergeSparks() {
+  const sparks = [
+    { r: 2.2, fill: C.ember,  op: '0;0.9;0',  dur: 0.9, begin: 0.3, path: 'M 30,20 C 70,50 100,80 120,100' },
+    { r: 2.0, fill: C.forge,  op: '0;0.8;0',  dur: 0.9, begin: 0.45, path: 'M 210,25 C 175,55 148,78 122,100' },
+    { r: 1.8, fill: C.spark,  op: '0;0.7;0',  dur: 0.8, begin: 0.5, path: 'M 10,90 C 50,90 85,92 118,98' },
+    { r: 1.8, fill: C.spark,  op: '0;0.7;0',  dur: 0.8, begin: 0.55, path: 'M 230,90 C 190,90 155,92 122,98' },
+    { r: 1.6, fill: C.forge,  op: '0;0.6;0',  dur: 0.75, begin: 0.6, path: 'M 40,160 C 75,145 100,120 118,102' },
+    { r: 1.6, fill: C.ember,  op: '0;0.6;0',  dur: 0.75, begin: 0.65, path: 'M 200,160 C 165,145 140,120 122,102' },
+    { r: 1.2, fill: C.forge,  op: '0;0.5;0',  dur: 0.6, begin: 0.4, path: 'M 120,0 C 120,30 120,65 120,98' },
+    { r: 1.2, fill: C.spark,  op: '0;0.4;0',  dur: 0.7, begin: 0.7, path: 'M 55,45 C 80,65 100,82 118,100' },
+    { r: 1.2, fill: C.spark,  op: '0;0.4;0',  dur: 0.7, begin: 0.75, path: 'M 185,45 C 160,65 140,82 122,100' },
+  ];
+  return sparks.map(s => `
+    <circle r="${s.r}" fill="${s.fill}" opacity="0">
+      <animate attributeName="opacity" values="${s.op}" dur="${s.dur}s" begin="${s.begin}s" fill="freeze"/>
+      <animateMotion path="${s.path}" dur="${s.dur}s" begin="${s.begin}s" fill="freeze"/>
+    </circle>
+  `).join('');
+}
+
+// ── Phases 2–4: Diamond crystallizes + core glow + hub flash ─────────
+function diamondPhases(p) {
+  return `
+    <!-- Base fill -->
+    <polygon points="120,14 182,82 156,142 120,158 84,142 58,82"
+      fill="url(#${p}-dF)" opacity="0">
+      <animate attributeName="opacity" from="0" to="1" dur="0.25s" begin="1.4s" fill="freeze"/>
+    </polygon>
+
+    <!-- Top face -->
+    <polygon points="120,14 58,82 182,82"
+      fill="url(#${p}-tF)" stroke="${C.spark}" stroke-width="0.8" stroke-opacity="0.35" opacity="0">
+      <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="1.5s" fill="freeze"/>
+    </polygon>
+
+    <!-- Left upper facet -->
+    <polygon points="120,14 58,82 84,142 120,100"
+      fill="url(#${p}-lF)" stroke="${C.forge}" stroke-width="0.7" stroke-opacity="0.5" opacity="0">
+      <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="1.7s" fill="freeze"/>
+    </polygon>
+
+    <!-- Right upper facet -->
+    <polygon points="120,14 182,82 156,142 120,100"
+      fill="url(#${p}-rF)" stroke="${C.ember}" stroke-width="0.7" stroke-opacity="0.4" opacity="0">
+      <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="1.85s" fill="freeze"/>
+    </polygon>
+
+    <!-- Left lower -->
+    <polygon points="58,82 84,142 120,158 120,100"
+      fill="#1a0e06" fill-opacity="0.7" stroke="${C.forge}" stroke-width="0.7" stroke-opacity="0.3" opacity="0">
+      <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="2.0s" fill="freeze"/>
+    </polygon>
+
+    <!-- Right lower -->
+    <polygon points="182,82 156,142 120,158 120,100"
+      fill="#12100a" fill-opacity="0.65" stroke="${C.ember}" stroke-width="0.7" stroke-opacity="0.25" opacity="0">
+      <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="2.1s" fill="freeze"/>
+    </polygon>
+
+    <!-- Edge traces -->
+    <line x1="120" y1="14" x2="58" y2="82" stroke="${C.forge}" stroke-width="1.5" stroke-linecap="round"
+      stroke-dasharray="80" stroke-dashoffset="80" opacity="0">
+      <animate attributeName="stroke-dashoffset" from="80" to="0" dur="0.4s" begin="1.5s" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1"/>
+      <animate attributeName="opacity" from="0" to="0.9" dur="0.15s" begin="1.5s" fill="freeze"/>
+    </line>
+    <line x1="120" y1="14" x2="182" y2="82" stroke="${C.ember}" stroke-width="1.5" stroke-linecap="round"
+      stroke-dasharray="80" stroke-dashoffset="80" opacity="0">
+      <animate attributeName="stroke-dashoffset" from="80" to="0" dur="0.4s" begin="1.65s" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1"/>
+      <animate attributeName="opacity" from="0" to="0.85" dur="0.15s" begin="1.65s" fill="freeze"/>
+    </line>
+    <line x1="58" y1="82" x2="84" y2="142" stroke="${C.forge}" stroke-width="1.2" stroke-linecap="round"
+      stroke-dasharray="65" stroke-dashoffset="65" opacity="0">
+      <animate attributeName="stroke-dashoffset" from="65" to="0" dur="0.35s" begin="1.8s" fill="freeze"/>
+      <animate attributeName="opacity" from="0" to="0.7" dur="0.15s" begin="1.8s" fill="freeze"/>
+    </line>
+    <line x1="182" y1="82" x2="156" y2="142" stroke="${C.ember}" stroke-width="1.2" stroke-linecap="round"
+      stroke-dasharray="65" stroke-dashoffset="65" opacity="0">
+      <animate attributeName="stroke-dashoffset" from="65" to="0" dur="0.35s" begin="1.9s" fill="freeze"/>
+      <animate attributeName="opacity" from="0" to="0.65" dur="0.15s" begin="1.9s" fill="freeze"/>
+    </line>
+    <line x1="84" y1="142" x2="120" y2="158" stroke="${C.forge}" stroke-width="1.2" stroke-linecap="round"
+      stroke-dasharray="42" stroke-dashoffset="42" opacity="0">
+      <animate attributeName="stroke-dashoffset" from="42" to="0" dur="0.3s" begin="2.05s" fill="freeze"/>
+      <animate attributeName="opacity" from="0" to="0.6" dur="0.15s" begin="2.05s" fill="freeze"/>
+    </line>
+    <line x1="156" y1="142" x2="120" y2="158" stroke="${C.ember}" stroke-width="1.2" stroke-linecap="round"
+      stroke-dasharray="42" stroke-dashoffset="42" opacity="0">
+      <animate attributeName="stroke-dashoffset" from="42" to="0" dur="0.3s" begin="2.15s" fill="freeze"/>
+      <animate attributeName="opacity" from="0" to="0.55" dur="0.15s" begin="2.15s" fill="freeze"/>
+    </line>
+
+    <!-- Belt + axis -->
+    <line x1="58" y1="82" x2="182" y2="82" stroke="${C.spark}" stroke-width="0.7" stroke-opacity="0.2"
+      stroke-dasharray="124" stroke-dashoffset="124" opacity="0">
+      <animate attributeName="stroke-dashoffset" from="124" to="0" dur="0.45s" begin="1.75s" fill="freeze"/>
+      <animate attributeName="opacity" from="0" to="1" dur="0.2s" begin="1.75s" fill="freeze"/>
+    </line>
+    <line x1="120" y1="14" x2="120" y2="158" stroke="${C.forge}" stroke-width="0.6" stroke-opacity="0.25"
+      stroke-dasharray="144" stroke-dashoffset="144" opacity="0">
+      <animate attributeName="stroke-dashoffset" from="144" to="0" dur="0.5s" begin="1.6s" fill="freeze"/>
+      <animate attributeName="opacity" from="0" to="1" dur="0.2s" begin="1.6s" fill="freeze"/>
+    </line>
+
+    <!-- Core glow (Phase 3) -->
+    <ellipse cx="120" cy="95" rx="0" ry="0" fill="url(#${p}-cG)" opacity="0" clip-path="url(#${p}-dC)">
+      <animate attributeName="rx" from="0" to="52" dur="0.6s" begin="2.2s" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1"/>
+      <animate attributeName="ry" from="0" to="50" dur="0.6s" begin="2.2s" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1"/>
+      <animate attributeName="opacity" from="0" to="1" dur="0.4s" begin="2.2s" fill="freeze"/>
+    </ellipse>
+
+    <!-- Hub-and-spoke flash (Phase 4) -->
+    <g opacity="0">
+      <animate attributeName="opacity" values="0;0;0.55;0.45;0.2;0.05;0" keyTimes="0;0.05;0.2;0.45;0.7;0.9;1"
+        dur="1.4s" begin="2.85s" fill="freeze"/>
+      <circle cx="120" cy="95" r="4" fill="url(#${p}-hR)" filter="url(#${p}-gS)"/>
+      <line x1="120" y1="95" x2="120" y2="28" stroke="url(#${p}-sG)" stroke-width="0.8" stroke-linecap="round"/>
+      <line x1="120" y1="95" x2="73" y2="82" stroke="url(#${p}-sG)" stroke-width="0.8" stroke-linecap="round"/>
+      <line x1="120" y1="95" x2="167" y2="82" stroke="url(#${p}-sG)" stroke-width="0.8" stroke-linecap="round"/>
+      <line x1="120" y1="95" x2="88" y2="140" stroke="url(#${p}-sG)" stroke-width="0.8" stroke-linecap="round"/>
+      <line x1="120" y1="95" x2="152" y2="140" stroke="url(#${p}-sG)" stroke-width="0.8" stroke-linecap="round"/>
+      <line x1="120" y1="95" x2="120" y2="155" stroke="url(#${p}-sG)" stroke-width="0.8" stroke-linecap="round"/>
+      <circle cx="120" cy="57" r="2.2" fill="${C.forge}" opacity="0.8"/>
+      <circle cx="96" cy="89" r="1.8" fill="${C.spark}" opacity="0.7"/>
+      <circle cx="144" cy="89" r="1.8" fill="${C.spark}" opacity="0.7"/>
+      <circle cx="104" cy="117" r="1.8" fill="${C.forge}" opacity="0.6"/>
+      <circle cx="136" cy="117" r="1.8" fill="${C.forge}" opacity="0.6"/>
+      <circle cx="120" cy="128" r="2.0" fill="${C.ember}" opacity="0.7"/>
+    </g>
+
+    <!-- Hub rings -->
+    <circle cx="120" cy="95" r="6" fill="none" stroke="${C.forge}" stroke-width="1.5" opacity="0">
+      <animate attributeName="r" from="6" to="45" dur="0.9s" begin="3.0s" fill="freeze"/>
+      <animate attributeName="opacity" from="0.6" to="0" dur="0.9s" begin="3.0s" fill="freeze"/>
+    </circle>
+    <circle cx="120" cy="95" r="6" fill="none" stroke="${C.ember}" stroke-width="1.2" opacity="0">
+      <animate attributeName="r" from="6" to="38" dur="0.75s" begin="3.2s" fill="freeze"/>
+      <animate attributeName="opacity" from="0.45" to="0" dur="0.75s" begin="3.2s" fill="freeze"/>
+    </circle>
+    <circle cx="120" cy="95" r="6" fill="none" stroke="${C.spark}" stroke-width="0.8" opacity="0">
+      <animate attributeName="r" from="6" to="28" dur="0.55s" begin="3.4s" fill="freeze"/>
+      <animate attributeName="opacity" from="0.3" to="0" dur="0.55s" begin="3.4s" fill="freeze"/>
+    </circle>
+
+    <!-- Permanent hub core -->
+    <circle cx="120" cy="95" r="0" fill="url(#${p}-hR)" filter="url(#${p}-gS)" opacity="0">
+      <animate attributeName="r" from="0" to="5.5" dur="0.3s" begin="3.0s" fill="freeze" calcMode="spline" keySplines="0.5 1.5 0.5 1"/>
+      <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="3.0s" fill="freeze"/>
+    </circle>
+    <circle cx="120" cy="95" r="0" fill="${C.spark}" opacity="0">
+      <animate attributeName="r" from="0" to="2.2" dur="0.25s" begin="3.1s" fill="freeze"/>
+      <animate attributeName="opacity" from="0" to="1" dur="0.25s" begin="3.1s" fill="freeze"/>
+    </circle>
+  `;
+}
+
+// ── Idle effects: aura shimmer, drift sparks, hub breathe ────────────
+function idleEffects(p) {
+  return `
+    <!-- Idle: aura pulse -->
+    <ellipse cx="120" cy="90" rx="0" ry="0" fill="none" stroke="${C.forge}" stroke-width="2" opacity="0">
+      <animate attributeName="rx" from="0" to="65" dur="0.4s" begin="5.5s" fill="freeze"/>
+      <animate attributeName="ry" from="0" to="60" dur="0.4s" begin="5.5s" fill="freeze"/>
+      <animate attributeName="opacity" values="0;0;0.18;0.08;0.18;0.08" keyTimes="0;0.06;0.1;0.5;0.55;1"
+        dur="3.8s" begin="5.5s" repeatCount="indefinite"/>
+    </ellipse>
+
+    <!-- Idle: pulse ring -->
+    <circle cx="120" cy="95" r="7" fill="none" stroke="${C.forge}" stroke-width="1" opacity="0">
+      <animate attributeName="r" values="7;7;42;42" keyTimes="0;0.02;1;1" dur="4.0s" begin="6.0s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.45;0;0" keyTimes="0;0.04;0.7;1" dur="4.0s" begin="6.0s" repeatCount="indefinite"/>
+    </circle>
+
+    <!-- Idle: facet shimmer -->
+    <polygon points="120,14 58,82 120,82" fill="${C.spark}" opacity="0">
+      <animate attributeName="opacity"
+        values="0;0;0.12;0.05;0.14;0.04;0.12;0.04;0.13;0.05;0"
+        keyTimes="0;0.5;0.52;0.6;0.62;0.7;0.72;0.8;0.82;0.9;1"
+        dur="6.0s" begin="5.5s" repeatCount="indefinite"/>
+    </polygon>
+
+    <!-- Idle: drift sparks -->
+    <circle cx="150" cy="60" r="1.8" fill="${C.ember}" opacity="0">
+      <animate attributeName="opacity" values="0;0;0;0.8;0.5;0;0;0;0;0" keyTimes="0;0.3;0.31;0.35;0.5;0.6;0.7;0.8;0.9;1"
+        dur="7.0s" begin="6.5s" repeatCount="indefinite"/>
+      <animate attributeName="cx" values="150;150;150;152;158;166;170;170;170;170" keyTimes="0;0.3;0.31;0.35;0.5;0.6;0.7;0.8;0.9;1"
+        dur="7.0s" begin="6.5s" repeatCount="indefinite"/>
+      <animate attributeName="cy" values="60;60;60;58;50;38;26;26;26;26" keyTimes="0;0.3;0.31;0.35;0.5;0.6;0.7;0.8;0.9;1"
+        dur="7.0s" begin="6.5s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="90" cy="65" r="1.5" fill="${C.forge}" opacity="0">
+      <animate attributeName="opacity" values="0;0;0;0;0;0;0.7;0.4;0;0;0;0;0" keyTimes="0;0.1;0.2;0.4;0.42;0.45;0.5;0.65;0.75;0.8;0.9;0.95;1"
+        dur="9.0s" begin="7.2s" repeatCount="indefinite"/>
+      <animate attributeName="cx" values="90;90;90;90;90;90;88;82;76;76;76;76;76" keyTimes="0;0.1;0.2;0.4;0.42;0.45;0.5;0.65;0.75;0.8;0.9;0.95;1"
+        dur="9.0s" begin="7.2s" repeatCount="indefinite"/>
+      <animate attributeName="cy" values="65;65;65;65;65;65;62;52;40;40;40;40;40" keyTimes="0;0.1;0.2;0.4;0.42;0.45;0.5;0.65;0.75;0.8;0.9;0.95;1"
+        dur="9.0s" begin="7.2s" repeatCount="indefinite"/>
+    </circle>
+
+    <!-- Idle: hub breathe -->
+    <circle cx="120" cy="95" r="2.2" fill="${C.spark}" opacity="0">
+      <animate attributeName="opacity" values="0;0;0.9;0.6;0.9;0.6;0.9;0.6" keyTimes="0;0.15;0.16;0.5;0.51;0.75;0.76;1"
+        dur="2.8s" begin="5.5s" repeatCount="indefinite"/>
+      <animate attributeName="r" values="2.2;2.2;2.2;1.8;2.2;1.8;2.2;1.8" keyTimes="0;0.15;0.16;0.5;0.51;0.75;0.76;1"
+        dur="2.8s" begin="5.5s" repeatCount="indefinite"/>
+    </circle>
+  `;
+}
+
+// ── Particle Field Aura ─────────────────────────────────────────────
+function particleAura() {
+  const cx = 120, cy = 88, count = 24;
+  let out = '';
+  for (let i = 0; i < count; i++) {
+    const angle = (i / count) * Math.PI * 2 + Math.sin(i * 7) * 0.3;
+    const dist = 52 + Math.sin(i * 3.7) * 24;
+    const x = cx + Math.cos(angle) * dist;
+    const y = cy + Math.sin(angle) * dist * 0.82;
+    const r = 0.7 + (i % 5) * 0.35;
+    const color = [C.forge, C.ember, C.spark][i % 3];
+    const anim = `pFloat${1 + (i % 3)}`;
+    const dur = 4.5 + (i % 5) * 1.3;
+    const delay = (i * 0.45) % dur;
+    out += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r}" fill="${color}"
+      opacity="0" style="animation: ${anim} ${dur.toFixed(1)}s ease-in-out ${delay.toFixed(1)}s infinite;"/>`;
+  }
+  // Wrap in group that fades in at idle start
+  return `
+    <g opacity="0">
+      <animate attributeName="opacity" from="0" to="1" dur="0.8s" begin="5.5s" fill="freeze"/>
+      ${out}
+    </g>
+  `;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// ANVIL VARIANTS
+// ═══════════════════════════════════════════════════════════════════════
+
+function anvilIndustrial(p) {
+  return `
+    <g opacity="0" filter="url(#${p}-aS)">
+      <animate attributeName="opacity" from="0" to="1" dur="0.5s" begin="3.8s" fill="freeze"/>
+
+      <!-- Connection glow -->
+      <ellipse cx="120" cy="163" rx="24" ry="4" fill="${C.forge}" opacity="0.15"/>
+      <circle cx="120" cy="160" r="3" fill="${C.forge}" opacity="0.7" filter="url(#${p}-gS)"/>
+      <circle cx="120" cy="160" r="1.5" fill="${C.spark}" opacity="0.9"/>
+
+      <!-- Main platform -->
+      <rect x="62" y="166" width="116" height="16" rx="2"
+        fill="url(#${p}-aF)" stroke="#3a3a45" stroke-width="1"/>
+      <!-- Platform top edge glow -->
+      <line x1="64" y1="166" x2="176" y2="166" stroke="${C.forge}" stroke-width="0.8" opacity="0.25"/>
+
+      <!-- Corner bolts (detailed hex bolts) -->
+      <circle cx="72" cy="172" r="3.5" fill="#1a1a25" stroke="#3a3a45" stroke-width="0.6"/>
+      <circle cx="72" cy="172" r="1.2" fill="#333"/>
+      <line x1="70" y1="172" x2="74" y2="172" stroke="#444" stroke-width="0.4"/>
+      <line x1="72" y1="170" x2="72" y2="174" stroke="#444" stroke-width="0.4"/>
+      <circle cx="168" cy="172" r="3.5" fill="#1a1a25" stroke="#3a3a45" stroke-width="0.6"/>
+      <circle cx="168" cy="172" r="1.2" fill="#333"/>
+      <line x1="166" y1="172" x2="170" y2="172" stroke="#444" stroke-width="0.4"/>
+      <line x1="168" y1="170" x2="168" y2="174" stroke="#444" stroke-width="0.4"/>
+
+      <!-- Circuit traces etched into surface -->
+      <path d="M 84,170 L 98,170 L 102,174 L 112,174" stroke="${C.forge}" stroke-width="0.6" fill="none" opacity="0.45"/>
+      <path d="M 128,174 L 138,174 L 142,170 L 156,170" stroke="${C.forge}" stroke-width="0.6" fill="none" opacity="0.35"/>
+      <path d="M 98,176 L 108,176 L 110,174" stroke="${C.ember}" stroke-width="0.5" fill="none" opacity="0.25"/>
+      <path d="M 130,176 L 140,176 L 142,174" stroke="${C.ember}" stroke-width="0.5" fill="none" opacity="0.2"/>
+
+      <!-- Circuit nodes (pulsing) -->
+      <circle cx="84" cy="170" r="1.5" fill="${C.forge}" opacity="0.5">
+        <animate attributeName="opacity" values="0.3;0.7;0.3" dur="2s" begin="4.3s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="156" cy="170" r="1.5" fill="${C.ember}" opacity="0.4">
+        <animate attributeName="opacity" values="0.2;0.6;0.2" dur="2.5s" begin="4.5s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="112" cy="174" r="1" fill="${C.spark}" opacity="0.3"/>
+      <circle cx="128" cy="174" r="1" fill="${C.spark}" opacity="0.3"/>
+
+      <!-- Support columns -->
+      <rect x="82" y="182" width="12" height="14" rx="1" fill="${C.iron}" stroke="${C.steel}" stroke-width="0.6"/>
+      <rect x="146" y="182" width="12" height="14" rx="1" fill="${C.iron}" stroke="${C.steel}" stroke-width="0.6"/>
+
+      <!-- Cross brace -->
+      <line x1="94" y1="190" x2="146" y2="190" stroke="${C.steel}" stroke-width="1.2"/>
+      <line x1="94" y1="188" x2="146" y2="188" stroke="#333" stroke-width="0.4"/>
+      <!-- Brace rivets -->
+      <circle cx="110" cy="189" r="1.2" fill="#1a1a25" stroke="#333" stroke-width="0.3"/>
+      <circle cx="130" cy="189" r="1.2" fill="#1a1a25" stroke="#333" stroke-width="0.3"/>
+
+      <!-- Base plate -->
+      <rect x="72" y="196" width="96" height="12" rx="2" fill="#1c1c27" stroke="${C.steel}" stroke-width="1"/>
+
+      <!-- Ventilation slits -->
+      <line x1="88" y1="202" x2="98" y2="202" stroke="${C.obsidian}" stroke-width="2" stroke-linecap="round"/>
+      <line x1="106" y1="202" x2="116" y2="202" stroke="${C.obsidian}" stroke-width="2" stroke-linecap="round"/>
+      <line x1="124" y1="202" x2="134" y2="202" stroke="${C.obsidian}" stroke-width="2" stroke-linecap="round"/>
+      <line x1="142" y1="202" x2="152" y2="202" stroke="${C.obsidian}" stroke-width="2" stroke-linecap="round"/>
+
+      <!-- Base bolts -->
+      <circle cx="78" cy="200" r="2" fill="#1a1a25" stroke="#333" stroke-width="0.4"/>
+      <circle cx="162" cy="200" r="2" fill="#1a1a25" stroke="#333" stroke-width="0.4"/>
+    </g>
+  `;
+}
+
+function anvilHexagonal(p) {
+  return `
+    <g opacity="0" filter="url(#${p}-aS)">
+      <animate attributeName="opacity" from="0" to="1" dur="0.5s" begin="3.8s" fill="freeze"/>
+
+      <!-- Connection glow -->
+      <ellipse cx="120" cy="163" rx="20" ry="4" fill="${C.forge}" opacity="0.18"/>
+      <circle cx="120" cy="160" r="3" fill="${C.forge}" opacity="0.7" filter="url(#${p}-gS)"/>
+      <circle cx="120" cy="160" r="1.5" fill="${C.spark}" opacity="0.9"/>
+
+      <!-- ══ UPPER TIER — main hexagonal block ══ -->
+      <!-- Top face (isometric) -->
+      <polygon points="88,168 120,158 152,168 152,180 120,190 88,180"
+        fill="url(#${p}-aF)" stroke="#3a3a45" stroke-width="0.8"/>
+      <!-- Left face -->
+      <polygon points="88,180 120,190 120,200 88,190"
+        fill="${C.iron}" stroke="${C.steel}" stroke-width="0.7"/>
+      <!-- Right face -->
+      <polygon points="120,190 152,180 152,190 120,200"
+        fill="#252530" stroke="${C.steel}" stroke-width="0.7"/>
+
+      <!-- Top face — outer hex inset -->
+      <polygon points="98,171 120,164 142,171 142,179 120,186 98,179"
+        fill="none" stroke="${C.forge}" stroke-width="0.4" opacity="0.2"/>
+      <!-- Top face — inner hex inset -->
+      <polygon points="108,174 120,170 132,174 132,179 120,183 108,179"
+        fill="none" stroke="${C.forge}" stroke-width="0.35" opacity="0.3"/>
+      <!-- Center dot on top face -->
+      <circle cx="120" cy="176" r="1.5" fill="${C.forge}" opacity="0.25"/>
+
+      <!-- Circuit traces on top face -->
+      <path d="M 95,174 L 106,174 L 110,171" stroke="${C.forge}" stroke-width="0.5" fill="none" opacity="0.35"/>
+      <path d="M 130,171 L 134,174 L 145,174" stroke="${C.ember}" stroke-width="0.5" fill="none" opacity="0.3"/>
+      <path d="M 108,178 L 114,178 L 116,176" stroke="${C.forge}" stroke-width="0.4" fill="none" opacity="0.2"/>
+      <path d="M 124,176 L 126,178 L 132,178" stroke="${C.ember}" stroke-width="0.4" fill="none" opacity="0.2"/>
+
+      <!-- Vertex nodes (top tier) — 6 vertices -->
+      <circle cx="88" cy="174" r="2.8" fill="#1a1a25" stroke="${C.forge}" stroke-width="0.6" opacity="0.6"/>
+      <circle cx="88" cy="174" r="1.2" fill="${C.forge}" opacity="0.5">
+        <animate attributeName="opacity" values="0.25;0.7;0.25" dur="2.2s" begin="4.3s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="152" cy="174" r="2.8" fill="#1a1a25" stroke="${C.ember}" stroke-width="0.6" opacity="0.6"/>
+      <circle cx="152" cy="174" r="1.2" fill="${C.ember}" opacity="0.45">
+        <animate attributeName="opacity" values="0.2;0.65;0.2" dur="2.8s" begin="4.5s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="120" cy="160" r="2.2" fill="#1a1a25" stroke="${C.spark}" stroke-width="0.5" opacity="0.4"/>
+      <!-- Bottom vertices of upper tier -->
+      <circle cx="88" cy="180" r="1.8" fill="#1a1a25" stroke="${C.forge}" stroke-width="0.4" opacity="0.35"/>
+      <circle cx="152" cy="180" r="1.8" fill="#1a1a25" stroke="${C.ember}" stroke-width="0.4" opacity="0.35"/>
+      <circle cx="120" cy="190" r="1.8" fill="#1a1a25" stroke="${C.forge}" stroke-width="0.4" opacity="0.3"/>
+
+      <!-- Edge glow lines on upper tier -->
+      <line x1="89" y1="169" x2="119" y2="159" stroke="${C.forge}" stroke-width="0.5" opacity="0.15"/>
+      <line x1="121" y1="159" x2="151" y2="169" stroke="${C.ember}" stroke-width="0.5" opacity="0.12"/>
+
+      <!-- ══ LOWER TIER — wider hex base ══ -->
+      <!-- Top face -->
+      <polygon points="78,196 120,204 162,196 162,204 120,212 78,204"
+        fill="#1c1c27" stroke="${C.steel}" stroke-width="0.6"/>
+      <!-- Left face -->
+      <polygon points="78,204 120,212 120,220 78,212"
+        fill="#181822" stroke="${C.steel}" stroke-width="0.5"/>
+      <!-- Right face -->
+      <polygon points="120,212 162,204 162,212 120,220"
+        fill="#1e1e28" stroke="${C.steel}" stroke-width="0.5"/>
+
+      <!-- Lower tier vertex nodes -->
+      <circle cx="78" cy="200" r="2" fill="#1a1a25" stroke="${C.forge}" stroke-width="0.4" opacity="0.35"/>
+      <circle cx="78" cy="200" r="0.8" fill="${C.forge}" opacity="0.3"/>
+      <circle cx="162" cy="200" r="2" fill="#1a1a25" stroke="${C.ember}" stroke-width="0.4" opacity="0.35"/>
+      <circle cx="162" cy="200" r="0.8" fill="${C.ember}" opacity="0.3"/>
+
+      <!-- Lower tier edge glow -->
+      <line x1="80" y1="197" x2="160" y2="197" stroke="${C.forge}" stroke-width="0.3" opacity="0.1"/>
+
+      <!-- Connector lines between tiers -->
+      <line x1="88" y1="190" x2="78" y2="196" stroke="${C.steel}" stroke-width="0.5" opacity="0.3"/>
+      <line x1="152" y1="190" x2="162" y2="196" stroke="${C.steel}" stroke-width="0.5" opacity="0.3"/>
+      <line x1="120" y1="200" x2="120" y2="204" stroke="${C.forge}" stroke-width="0.4" opacity="0.2"/>
+    </g>
+  `;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// BUILD COLUMNS
+// ═══════════════════════════════════════════════════════════════════════
+const container = document.getElementById('comparison');
+
+COLS.forEach(col => {
+  const p = col.id; // prefix
+
+  // Column wrapper
+  const div = document.createElement('div');
+  div.className = 'col';
+  div.id = `col-${p}`;
+
+  // SVG
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('class', 'mark-svg');
+  svg.setAttribute('viewBox', '0 0 240 260');
+  svg.setAttribute('xmlns', ns);
+  svg.setAttribute('overflow', 'visible');
+
+  svg.innerHTML = `
+    <defs>${svgDefs(p)}</defs>
+
+    <!-- Phase 1: Converging sparks -->
+    <g>${convergeSparks()}</g>
+
+    <!-- Phases 2-4: Diamond -->
+    <g style="transform-origin: 120px 100px;">
+      ${diamondPhases(p)}
+    </g>
+
+    <!-- Phase 5: Anvil -->
+    ${col.anvilFn(p)}
+
+    <!-- Idle effects -->
+    ${idleEffects(p)}
+
+    <!-- Particle field aura (idle) -->
+    ${particleAura()}
+  `;
+
+  div.appendChild(svg);
+
+  // Wordmark
+  const wm = document.createElement('div');
+  wm.className = 'wordmark idle';
+  wm.textContent = 'LYRA';
+  div.appendChild(wm);
+
+  // Tagline
+  const tl = document.createElement('div');
+  tl.className = 'tagline';
+  tl.textContent = 'your intelligence, compounded';
+  div.appendChild(tl);
+
+  // Anvil label
+  const lb = document.createElement('div');
+  lb.className = 'anvil-label';
+  lb.textContent = col.label;
+  div.appendChild(lb);
+
+  container.appendChild(div);
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// REPLAY
+// ═══════════════════════════════════════════════════════════════════════
+document.getElementById('replayBtn').addEventListener('click', function() {
+  const comp = document.getElementById('comparison');
+  const clone = comp.cloneNode(false); // empty container
+  comp.parentNode.replaceChild(clone, comp);
+  clone.id = 'comparison';
+
+  // Rebuild
+  COLS.forEach(col => {
+    const p = col.id;
+    const div = document.createElement('div');
+    div.className = 'col';
+    div.id = `col-${p}`;
+
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('class', 'mark-svg');
+    svg.setAttribute('viewBox', '0 0 240 260');
+    svg.setAttribute('xmlns', ns);
+    svg.setAttribute('overflow', 'visible');
+
+    svg.innerHTML = `
+      <defs>${svgDefs(p)}</defs>
+      <g>${convergeSparks()}</g>
+      <g style="transform-origin: 120px 100px;">${diamondPhases(p)}</g>
+      ${col.anvilFn(p)}
+      ${idleEffects(p)}
+      ${particleAura()}
+    `;
+
+    div.appendChild(svg);
+
+    const wm = document.createElement('div');
+    wm.className = 'wordmark idle';
+    wm.textContent = 'LYRA';
+    div.appendChild(wm);
+
+    const tl = document.createElement('div');
+    tl.className = 'tagline';
+    tl.textContent = 'your intelligence, compounded';
+    div.appendChild(tl);
+
+    const lb = document.createElement('div');
+    lb.className = 'anvil-label';
+    lb.textContent = col.label;
+    div.appendChild(lb);
+
+    clone.appendChild(div);
+  });
+});
+</script>
+</body>
+</html>

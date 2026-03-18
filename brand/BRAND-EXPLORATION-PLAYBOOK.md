@@ -1,7 +1,8 @@
 # Brand Exploration Playbook
 
-**Version:** 1.0 (2026-03-18)
+**Version:** 2.2 (2026-03-18)
 **Source:** Lyra brand exploration session — reconstructed as a reusable process.
+**Changelog:** v2.2 — Phase 8 Video Production section; font-drift, logo fidelity, palette contamination, and gui.new font-exploration learnings from Lyra launch trailer session. v2.1 — sub-variant funnel, kill list pattern, animation-as-narrative learning from v0.2.2 forge session. v2.0 — expanded skills inventory, detailed Phase 7 iteration workflow, new learnings from logo forge session.
 **Applies to:** Any product with an existing codebase and at least a rough vision statement.
 
 ---
@@ -57,29 +58,46 @@ These roxabi-plugins skills are used across phases. Install at project scope bef
 | `dev-core:product-lead` | Phases 2, 4, 6 | Positioning, personas, messaging, taglines, video brief |
 | `dev-core:frontend-dev` | Phases 2, 4, 6, 7 | Visual directions, logo creation, variation galleries |
 | `dev-core:doc-writer` | Phase 6 | Brand book, playbook documentation |
+| `dev-core:architect` | Phase 1 | Gap analysis, system design review |
 | `Explore` (subagent) | Phase 1 | Discovery & audit across repos/vaults |
 
-#### Skills (invoked within agent prompts or standalone)
+#### Skills — core (used in every brand session)
 
 | Skill | Plugin | Used in | Role |
 |-------|--------|---------|------|
 | `product-management:write-spec` | product-management | Phase 2 | Positioning statement structure |
 | `product-management:competitive-brief` | product-management | Phase 2 | Competitive analysis, battlecards |
 | `product-management:synthesize-research` | product-management | Phase 2 | Persona research synthesis |
-| `marketing:brand-review` | marketing | Phase 4 | Voice consistency check |
+| `marketing:brand-review` | marketing | Phases 4, 6 | Voice consistency check against locked decisions |
 | `marketing:campaign-plan` | marketing | Phase 6 | Video brief, content calendar |
-| `marketing:draft-content` | marketing | Phases 4, 6 | Taglines, copy examples |
-| `marketing:competitive-brief` | marketing | Phase 2 | Competitive positioning |
-| `design:design-handoff` | design | Phase 6 | Logo spec, animation details |
-| `design:ux-copy` | design | Phase 4 | Tagline refinement, CTA copy |
-| `design:design-critique` | design | Phase 7 | Logo iteration feedback |
-| `logo-generator:logo-design` | logo-generator | Phase 6 | Animated SVG logo creation |
-| `logo-generator:logo-explore-svg` | logo-generator | Phase 7 | SVG logo variation gallery |
-| `logo-generator:logo-explore-ai` | logo-generator | Phase 7 | AI-generated logo concepts (Flux) |
+| `marketing:content-creation` | marketing | Phases 4, 6 | Taglines, copy examples, channel-specific content |
+| `marketing:draft-content` | marketing | Phases 4, 6 | Blog posts, landing page copy, press releases |
+| `marketing:competitive-brief` | marketing | Phase 2 | Competitive positioning, battlecards |
+| `design:design-handoff` | design | Phase 6 | Logo spec, animation details, developer handoff |
+| `design:ux-copy` | design | Phase 4 | Tagline refinement, CTA copy, microcopy |
+| `design:design-critique` | design | Phase 7 | Structured logo iteration feedback |
+| `logo-generator:logo-design` | logo-generator | Phase 6 | Animated SVG logo creation with live preview |
+| `logo-generator:logo-explore-svg` | logo-generator | Phase 7 | SVG logo variation gallery (shapes, palettes) |
+| `logo-generator:logo-explore-ai` | logo-generator | Phase 7 | AI-generated logo concepts via Flux |
 | `visual-explainer:generate-web-diagram` | visual-explainer | All phases | Interactive HTML artifact generation |
-| `content-lab:video-recipe` | content-lab | Phase 6 | Video reference analysis |
+| `content-lab:video-recipe` | content-lab | Phase 6 | Video reference analysis (structure, VAKOG) |
 
-#### For production (Phase 8+, not covered in this playbook)
+#### Skills — supporting (high-value in specific situations)
+
+| Skill | Plugin | Used in | Role |
+|-------|--------|---------|------|
+| `design:design-system` | design | Phase 6+ | Extract a design system from locked brand decisions |
+| `design:research-synthesis` | design | Phase 2 | Synthesize user research into persona themes |
+| `design:accessibility-review` | design | Phase 7 | WCAG audit on logo contrast, touch targets |
+| `visual-explainer:generate-slides` | visual-explainer | Phase 6+ | Brand presentation deck from locked assets |
+| `visual-explainer:fact-check` | visual-explainer | Phase 6 | Verify brand book accuracy against codebase |
+| `visual-explainer:diff-review` | visual-explainer | Phase 7 | Before/after comparison of logo iterations |
+| `marketing:seo-audit` | marketing | Phase 8+ | SEO strategy for brand launch |
+| `1b1:1b1` | 1b1 | Phases 3, 5 | Walk through decisions one-by-one at convergence gates |
+| `dev-core:frame` | dev-core | Phase 1 | Problem framing before exploration |
+| `dev-core:interview` | dev-core | Phase 2 | Structured brainstorming → spec promotion |
+
+#### Skills — production (Phase 8+, not covered in this playbook)
 
 | Tool | Role |
 |------|------|
@@ -417,10 +435,124 @@ Never edit the base file. Create `[product]-logo-[direction]-v0.2.html`, then `v
 - A variation gallery (showing all versions side by side) becomes valuable for decision-making
 - The base file is the stable reference; variants are experiments
 
-When building a variation gallery (multiple logo variants in one file), use a shared base template approach:
-- Define the shared elements (e.g., diamond shape, wordmark, colors) as a JavaScript template or CSS variables
-- Each variant only specifies what differs (e.g., aura style, base element)
-- This prevents copy-paste drift and makes the gallery easier to maintain
+#### Iteration workflow: the funnel pattern
+
+Logo iteration follows a repeating funnel: **Broad → Narrow → Animate → Pick**. Each cycle produces a new version file.
+
+**Step 1 — Variation gallery (broad).** Build a static grid (e.g., 4×2) showing many options at once. Each cell varies one or two dimensions (e.g., aura style × base/anvil type). Use a shared JS template to render the common mark (diamond, wordmark, colors) and only inject the unique elements per cell. This prevents copy-paste drift. File: `[product]-logo-[direction]-v0.N.html`.
+
+**Step 2 — Founder narrows.** Review the grid and give specific, dimensional feedback:
+- "I like [element] from [cell]" — locks a dimension
+- "I'm torn between [A] and [B]" — these survive to the next step
+- "I don't see any difference between [X] and [Y]" — a signal that the differentiator is too subtle (see pitfall below)
+
+Good feedback is per-dimension, not per-cell: "I like the particles from B, but I prefer the anvil from C or G" is more useful than "I like B best."
+
+**Step 3 — Animated side-by-side (narrow).** Build a 2-up (or 3-up) comparison with the **full animation sequence** — not a static grid. The animation is part of the logo identity; a static comparison cannot capture timing, sequencing, or idle behavior. Include:
+- Full intro sequence (converging sparks → crystallize → hub flash → base appears → wordmark → tagline)
+- Idle animations (particle field, ember breathe, drift sparks)
+- A replay button
+- Clear labels for each option
+
+File: `[product]-logo-[direction]-v0.N.1.html` (sub-version of the gallery it refines).
+
+**Step 4 — Final pick.** Founder watches both animations 2-3 times, picks one. Lock the combination. The winning version becomes the new production baseline.
+
+Repeat the funnel if needed (e.g., "I picked the anvil, but now I want to try a different aura"). Each cycle is fast because the shared template only requires swapping the varying element.
+
+**Step 5 (optional) — Sub-variant exploration.** If the founder narrows to a category but hasn't picked a specific treatment, spawn a sub-variant gallery. Example: the founder picks "Industrial" over "Hexagonal" as the anvil family, but hasn't decided how detailed/heavy it should be. Build a new grid with 3–4 sub-variants within the chosen category (e.g., Industrial Standard / Circuit / Armored). Keep the locked dimensions frozen (aura, diamond, wordmark) and only vary the undecided dimension. File: `[product]-logo-[direction]-v0.N.2.html`.
+
+This extends the funnel: **Broad gallery → Animated 2-up → Sub-variant grid → Final pick**. The Lyra forge session followed exactly this path: v0.2 (8 broad) → v0.2.1 (2 animated) → v0.2.2 (6 sub-variants: 3 industrial + 3 hexagonal).
+
+#### Kill list: tracking rejected elements
+
+Maintain a running kill list of elements the founder has explicitly rejected. Check it before every new iteration. Rejected elements must not reappear in any future version.
+
+Format (keep in agent context or as a comment in the variation file):
+```
+KILL LIST:
+- Orbit arcs / tilted ellipses (aura) — "I don't like the ellipse"
+- <ellipse> SVG elements — "remove the ellipse" (use <circle> instead)
+- Simple trapezoid anvil — "anvil feels too simple"
+```
+
+**Why this matters:** In the Lyra forge session, the founder asked to remove ellipses in v0.2, and had to repeat the request in v0.2.1 because the idle effects still used `<ellipse>` elements. A tracked kill list prevents this friction. The list is cumulative — once an element is killed, it stays killed across all future iterations.
+
+#### Variation gallery architecture
+
+When building a gallery of logo variants, define shared elements in one JavaScript template block and have each variant only specify its unique properties:
+
+```
+// Shared: defs(), diamond(), convergeSparks(), idleEffects()
+// Per-variant: anvilFn(prefix), auraFn(prefix)
+// Grid: VARIATIONS.forEach(v => buildCell(v))
+```
+
+Key rules:
+- **Prefix all SVG IDs** with the cell key (e.g., `A-diamFill`, `B-diamFill`) — SVG IDs are global within the page, and duplicates cause silent rendering bugs
+- **Extract the diamond shape into a single function** — it's identical across all variants
+- **Each aura and anvil is a separate function** — easy to swap, combine, or add new ones
+- **Use CSS Grid** for the layout, not flexbox — grids handle equal-height cells better
+
+#### Common pitfalls
+
+**"I don't see any difference."** If two variants look identical, the differentiator is too subtle. Every variation must have at least one **visually dominant** difference — not just a subtle aura or opacity change. If the only difference is a CSS animation that doesn't render at first glance (e.g., expanding concentric rings vs. no aura), the comparison fails.
+
+**Static grid for final comparison.** Static grids are for breadth exploration (Step 1). Never use a static grid for the final 2-3 options — the animation sequence and idle behavior are load-bearing identity decisions that can only be evaluated in motion.
+
+**Missing replay button.** Animated logos need a replay button. SVG `<animate>` elements use `begin` attributes with absolute times from page load — once played, they can't be replayed without cloning the SVG. Always include a replay mechanism that clones the SVG container.
+
+**Anvil/base too simple.** The base element anchors the entire mark. A simple trapezoid reads as placeholder, not design. Add structural detail: bolts, circuit traces, surface texture, tiered geometry, vertex nodes. The base should match the visual complexity of the diamond — they should feel like they belong in the same world.
+
+---
+
+### Phase 8: Video Production (roxabi-production)
+
+**Goal:** Produce the launch trailer and promotional videos using the locked brand assets from Phase 6–7.
+
+**Inputs:**
+- Locked brand book (fonts, colors, logo, animation principles)
+- Video creative brief from Phase 6 (if produced)
+- Logo HTML file and animation sequence
+- Scene-by-scene breakdown
+
+**Process:**
+
+The video production pipeline uses `roxabi-production` — a custom React + Puppeteer + FFmpeg engine that mirrors Remotion's API (`useCurrentFrame()`, `Sequence`, `spring()`, `interpolate()`).
+
+**Key architectural decisions:**
+1. **Brand tokens as constants**: Define `HEADING_FONT`, `HEADING_WEIGHT`, `BG`, `ORANGE`, `WHITE` etc. at the top of the trailer file. This enables font variation renders without code duplication.
+2. **Reusable kit components**: Create project-specific components in `kits/kit-[project]/` (e.g., `ForgeTerminal`, `ForgeArchDiagram`, `LyraLogo`). These are the frame-based equivalents of the CSS-animated logo HTML.
+3. **Font variation workflow**: Keep one source file with a configurable `HEADING_FONT` constant. Render variants by swapping the constant and producing separate MP4 outputs (e.g., `v0.2.1a` = Outfit, `v0.2.1b` = Unbounded, `v0.2.1c` = Chakra Petch). Never duplicate the full trailer source for a single-property change.
+
+**Critical rules:**
+
+- **All fonts must come from the brand book.** The trailer initially used Space Grotesk and Questrial with teal/amber colors from v1 (lyre). These were caught during review and corrected to Outfit 800 + forge orange palette. Lock the brand book BEFORE producing video.
+- **Logo must match the latest version.** The trailer initially rendered the old lyre logo instead of the forge diamond. Always verify the logo component against the authoritative logo HTML file.
+- **Colors must match the forge palette.** The S03 "LYRA" wordmark used `#00c8e0` (teal) and `#f0a030` (amber) — v1 lyre colors. These were replaced with Spark White + Forge Orange text-shadow to match the forge identity.
+- **Version MP4 outputs**: Use `v{major}.{minor}.{patch}{variant}` naming (e.g., `lyra-launch-v0.2.1a.mp4`).
+- **Font imports in index.html**: All Google Fonts used by any variant must be imported in `dev/index.html` before rendering.
+- **Closing card**: Launch trailers must end with a proper brand lockup — centered logo mark + tagline + subline + CTA. Not just a small watermark.
+- **Brand icon usage**: Use `simple-icons` (MIT) for third-party brand logos. Render monochrome/white, never their brand colors, to maintain the forge palette dominance.
+
+**Render pipeline:**
+1. Start Vite dev server on port 3001 (renderer hardcodes this port)
+2. `npm run render -- <compositionId> <outputPath>` — positional args only
+3. Puppeteer captures frames → FFmpeg encodes to MP4
+
+**Outputs:**
+- One or more versioned MP4 files in `out/`
+- The trailer source file (e.g., `showcase/LyraLaunchTrailer.tsx`) with the brand-default font as the base
+
+### Learnings specific to video production
+
+**Font consistency is the #1 brand drift risk in video.** Unlike static brand assets where the designer sees the font name, video compositions are 800+ lines of code where `fontFamily` strings are scattered across scene components. Centralizing the font into a top-level constant (`HEADING_FONT`) eliminates this drift.
+
+**The logo component must be a faithful port, not a creative reinterpretation.** When translating the CSS-animated logo HTML into a frame-based React component, use the exact SVG geometry (viewBox, polygon points, gradient stops). The first attempt used entirely different SVG paths (lyre curves instead of diamond polygon) because the source logo HTML wasn't read carefully.
+
+**Scene-level review catches palette contamination.** Each scene (S01–S06) should be reviewed against the brand book color table individually. The S03 teal gradient survived two rounds of changes because it was never reviewed against the forge palette specifically.
+
+**gui.new for font exploration.** For subjective decisions like font choice, create an interactive HTML preview showing all candidates at the same size on the forge dark background. Post to `gui.new` for a shareable link. This is faster than rendering full videos to compare fonts.
 
 ---
 
@@ -496,8 +628,10 @@ Examples:
 lyra-visual-directions.html           # Phase 2 exploration
 lyra-visual-directions-v2.html        # Phase 4 refined exploration
 lyra-logo-forge.html                  # Phase 6 production logo (direction name in filename)
-lyra-logo-forge-v0.2.html             # Phase 7 first iteration
-lyra-logo-forge-v0.3.html             # Phase 7 second iteration
+lyra-logo-forge-v0.2.html             # Phase 7 broad gallery (8 variations, static)
+lyra-logo-forge-v0.2.1.html           # Phase 7 animated 2-up (narrows to 2 finalists)
+lyra-logo-forge-v0.2.2.html           # Phase 7 sub-variant grid (3+3 within finalists)
+lyra-logo-forge-v0.3.html             # Phase 7 next major iteration
 ```
 
 The brand book and identity docs use uppercase: `BRAND-BOOK.md`, `BRAND-IDENTITY.md`.
@@ -545,6 +679,24 @@ Keep exploration artifacts in the brand directory for reference and historical r
 **Name the core metaphor early.** In the Lyra session, the Forge metaphor emerged in Phase 4 (visual v2) and then needed to be backfilled into positioning and messaging. If a strong metaphor emerges at any point, immediately check whether it restructures prior work. A named metaphor is the most powerful alignment tool in the brand — it makes every subsequent decision faster.
 
 **Resolve the intelligence-vs-relationship tension explicitly.** Most products with an AI agent component face a version of this tension: warm/relational language attracts some users and repels others. Don't leave it implicit. Force the brand book to include a section that defines where each register is appropriate and provides specific before/after examples. See Section 5 of the Lyra brand book for a worked example.
+
+### Logo forge iteration learnings (v2.0)
+
+**Every variation needs a visually dominant differentiator.** In the Lyra forge session, two hexagonal pedestal variants (G and H) looked identical because the only difference was a subtle aura effect (expanding rings vs. no aura). The founder couldn't tell them apart. Rule: if you have to stare for 5 seconds to spot the difference, the differentiator is too subtle for a comparison grid. Vary a structural element (geometry, detail level, number of tiers), not just an ambient effect.
+
+**Static grids are for exploration; animated side-by-side is for the final call.** The first forge gallery (v0.2) was a 4×2 static comparison grid — useful for rapid breadth scanning but couldn't show the full animation sequence. The founder expected animated intros and a replay button, because the animation IS the logo identity. Lesson: always match the comparison format to the decision being made. Breadth → static grid. Final pick → animated side-by-side with replay.
+
+**Dimensional feedback produces faster convergence.** The most actionable feedback from the forge session was dimensional: "I like the particles from B" (locks the aura dimension) and "I'm torn between Industrial and Hexagonal" (narrows the base to 2 options). This immediately defined v0.2.1 as: particle aura × 2 anvil finalists, animated side-by-side. Compare with non-dimensional feedback like "I like B best" — that's harder to act on because B is a specific combination, not a separable choice.
+
+**Base elements need visual weight.** The original forge logo had a simple trapezoid anvil. The founder's reaction: "Anvil feels too simple." Logo bases are easy to under-design because attention goes to the mark (diamond). But the base anchors the composition — it needs structural detail (hardware, tiering, texture) proportional to the complexity of the mark above it.
+
+**Animation phases are narrative, not decoration.** In the Lyra forge session, the v0.2 grid (static) and v0.2.1 (animated side-by-side) both weakened the Phase 4 hub-and-spoke constellation flash — shorter duration, lower opacity, missing circuit traces. The founder immediately noticed: "we lost the constellation that was displayed inside the diamond." Each animation phase tells part of the brand story (sparks converge = inputs arriving, crystallize = hub forming, constellation flash = intelligence network activating, anvil = hardware foundation). Weakening any phase breaks the narrative. Rule: when porting a logo into a comparison format, preserve every animation phase at full fidelity. If the phase is too subtle at grid scale, increase its duration and opacity rather than dropping it.
+
+**Rejected elements resurface across iterations.** The founder rejected ellipses in v0.2 ("I don't like the ellipse"). In v0.2.1, the idle effects still contained `<ellipse>` elements (aura pulse, connection glow). The founder had to repeat the kill request. This is the most common iteration friction. Solution: maintain an explicit kill list (see Phase 7 workflow above) and grep for killed elements before delivering any new version. This applies to SVG element types, specific visual treatments, and conceptual approaches.
+
+**Sub-variant exploration deepens the funnel.** After narrowing to 2 anvil categories (Industrial vs Hexagonal), v0.2.2 introduced 3 sub-variants per category (Standard/Circuit/Armored for Industrial; Standard/Crystal/Monument for Hexagonal). This gave the founder 6 options with meaningful visual differences within each category — varying detail density, structural proportions, and decorative treatments. The sub-variant step is especially useful when the founder says "I'm torn between two categories" — it lets them see the range within each before committing.
+
+**Core glow can use circles.** The diamond's inner glow was originally an `<ellipse>` (rx=52, ry=50). Replacing it with a `<circle r="51">` produces no visible difference because the clip path crops it to the diamond shape anyway. When a founder requests removing a specific SVG element type, check every instance — including decorative uses inside clip paths that aren't visually distinguishable from alternatives.
 
 ---
 
@@ -605,9 +757,27 @@ A quick reference for running this process on a new product.
 
 ### Phase 7 (iteration)
 
-- [ ] Feedback on logo is specific (what to remove/add/change, not just "I don't like it")
-- [ ] Iteration is a new file with version suffix (v0.2, v0.3) — base file untouched
-- [ ] If building a variation gallery: shared elements are defined once, variants only specify differences
+- [ ] Feedback on logo is specific and **dimensional** (per element, not per cell)
+- [ ] Iteration is a new file with version suffix (v0.2, v0.2.1, v0.2.2) — base file untouched
+- [ ] **Kill list maintained** — rejected elements listed, grepped for before delivery
+- [ ] **Variation gallery (broad):** shared JS template, prefixed SVG IDs, CSS Grid layout
+- [ ] Every variation has at least one **visually dominant** differentiator (not just a subtle aura)
+- [ ] **Animated side-by-side (narrow):** full intro sequence, idle animations, replay button
+- [ ] **All animation phases preserved at full fidelity** — constellation/hub flash not weakened
+- [ ] **Sub-variant grid (if needed):** 3+ treatments within each surviving category
+- [ ] Final 2-3 candidates are compared **in motion**, not as static snapshots
+- [ ] Base/anvil element has structural detail proportional to the mark's complexity
+
+### Phase 8 (video production)
+
+- [ ] All `fontFamily` references use the locked brand book typography (`HEADING_FONT` constant)
+- [ ] Logo component SVG matches the authoritative logo HTML exactly (polygon points, gradients, viewBox)
+- [ ] Color palette: every hex in the trailer cross-checked against brand book Section 6 table
+- [ ] No v1 colors present (`#00c8e0` teal and `#f0a030` amber are lyre-era — eliminated)
+- [ ] Closing card: centered logo + tagline + subline + CTA (not just a watermark)
+- [ ] Font imports in `dev/index.html` include all variants being tested
+- [ ] MP4 outputs versioned correctly with variant suffixes (e.g., `lyra-launch-v0.2.1a.mp4`)
+- [ ] Third-party brand icons rendered monochrome white (not their brand colors)
 
 ### Brand book quality check
 
@@ -618,9 +788,12 @@ A quick reference for running this process on a new product.
 - [ ] Section 5: All pillars are ordered, taglines are listed with lead tagline called out, narrative arc is present
 - [ ] Section 6: All color tokens have hex values and semantic roles; typography roles are defined; logo description is literal enough to re-implement
 - [ ] Section 7: Core metaphor is named, its elements are mapped to product architecture, bidirectionality (or equivalent tension) is resolved
-- [ ] Section 8: Every file in the brand directory is listed with a one-line description
+- [ ] Section 8: Every file in the brand directory is listed with a one-line description; if video has been produced, `roxabi-production` is noted as the video engine tool and output MP4s are listed
 
 ---
 
 *Derived from the Lyra brand exploration session — 2026-03-18*
+*v2.2 updated with Phase 8 Video Production (roxabi-production pipeline, font-drift rules, logo fidelity, palette contamination learnings from Lyra launch trailer session).*
+*v2.1 updated with sub-variant funnel, kill list pattern, animation-as-narrative learnings from v0.2.2 forge session.*
+*v2.0 updated with logo forge iteration learnings and comprehensive skills inventory.*
 *Authored as a reusable process playbook for all Roxabi products.*

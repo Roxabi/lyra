@@ -207,14 +207,14 @@ class HubOutboundMixin:
             _voice_parts = []
             _voice_done = asyncio.Event()
             _raw = chunks
-            _parts_ref = _voice_parts
-            _done_ref = _voice_done
 
             async def _tee() -> AsyncIterator[str]:
-                async for chunk in _raw:
-                    _parts_ref.append(chunk)
-                    yield chunk
-                _done_ref.set()
+                try:
+                    async for chunk in _raw:
+                        _voice_parts.append(chunk)  # type: ignore[union-attr]
+                        yield chunk
+                finally:
+                    _voice_done.set()  # type: ignore[union-attr]
 
             chunks = _tee()
 

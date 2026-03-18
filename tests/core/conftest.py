@@ -10,12 +10,13 @@ from lyra.core.message import (
 from lyra.core.trust import TrustLevel
 
 
-def make_inbound_message(
+def make_inbound_message(  # noqa: PLR0913
     platform: str = "telegram",
     bot_id: str = "main",
     user_id: str = "alice",
     scope_id: str | None = None,
     platform_meta: dict | None = None,
+    modality: str | None = None,
 ) -> InboundMessage:
     """Build a minimal InboundMessage for hub tests."""
     if platform == "telegram":
@@ -46,7 +47,7 @@ def make_inbound_message(
     else:
         _scope = scope_id if scope_id is not None else f"{platform}:default"
         _meta = platform_meta or {}
-    return InboundMessage(
+    kwargs: dict = dict(
         id="msg-1",
         platform=platform,
         bot_id=bot_id,
@@ -60,3 +61,6 @@ def make_inbound_message(
         platform_meta=_meta,
         trust_level=TrustLevel.TRUSTED,
     )
+    if modality is not None:
+        kwargs["modality"] = modality
+    return InboundMessage(**kwargs)

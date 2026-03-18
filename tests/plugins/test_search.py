@@ -1,4 +1,8 @@
-"""Tests for the search plugin (issue #99 T5, #360)."""
+"""Tests for the search session command handler (issue #99 T5, #360).
+
+/search is now a session command (registered via register_session_command),
+not a plugin command. It receives SessionTools via injection.
+"""
 
 from __future__ import annotations
 
@@ -7,10 +11,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.commands.search.handlers import cmd_search, set_vault_provider
+from lyra.commands.search.handlers import cmd_search
 from lyra.core.message import InboundMessage, Response
-from lyra.core.pool import Pool
 from lyra.core.trust import TrustLevel
+from lyra.integrations.base import SessionTools
 
 
 def make_message(text: str = "/search hello") -> InboundMessage:
@@ -29,67 +33,52 @@ def make_message(text: str = "/search hello") -> InboundMessage:
     )
 
 
-def make_pool() -> MagicMock:
-    return MagicMock(spec=Pool)
-
-
-def make_mock_vault(return_value: str = "results") -> MagicMock:
+def make_tools(return_value: str = "results") -> tuple[SessionTools, AsyncMock]:
+    vault_search: AsyncMock = AsyncMock(return_value=return_value)
     vault = MagicMock()
-    vault.search = AsyncMock(return_value=return_value)
+    vault.search = vault_search
     vault.add = AsyncMock()
-    return vault
+    scraper = MagicMock()
+    scraper.scrape = AsyncMock(return_value="")
+    return SessionTools(scraper=scraper, vault=vault), vault_search
+
+
+def make_driver() -> MagicMock:
+    return MagicMock()
 
 
 class TestCmdSearch:
-    """cmd_search() — VaultProvider injection, edge cases."""
-
-    @pytest.fixture(autouse=True)
-    def reset_vault_provider(self):
-        """Reset the module-level vault provider after each test."""
-        yield
-        set_vault_provider(None)
+    """cmd_search() — SessionTools injection, edge cases."""
 
     @pytest.mark.asyncio
     async def test_happy_path_returns_vault_results(self) -> None:
         msg = make_message("/search python asyncio")
-        pool = make_pool()
-        vault = make_mock_vault("Result 1\nResult 2\n")
-        set_vault_provider(vault)
+        tools, vault_search = make_tools("Result 1\nResult 2\n")
 
-        response = await cmd_search(msg, pool, ["python", "asyncio"])
+        response = await cmd_search(
+            msg, make_driver(), tools, ["python", "asyncio"], 30.0
+        )
 
         assert isinstance(response, Response)
         assert "Result 1" in response.content
-        vault.search.assert_called_once_with("python asyncio", timeout=25.0)
+        vault_search.assert_called_once_with("python asyncio", timeout=25.0)
 
     @pytest.mark.asyncio
     async def test_empty_args_returns_usage_hint(self) -> None:
         msg = make_message("/search")
-        pool = make_pool()
-        response = await cmd_search(msg, pool, [])
+        tools, _ = make_tools()
+
+        response = await cmd_search(msg, make_driver(), tools, [], 30.0)
+
         assert isinstance(response, Response)
         assert "Usage:" in response.content
 
     @pytest.mark.asyncio
-    async def test_no_vault_provider_returns_not_available(self) -> None:
-        """When vault provider is None (not set), returns a graceful message."""
-        msg = make_message("/search query")
-        pool = make_pool()
-        # Do not call set_vault_provider — it stays None
-
-        response = await cmd_search(msg, pool, ["query"])
-
-        assert isinstance(response, Response)
-        assert "vault" in response.content.lower()
-
-    @pytest.mark.asyncio
     async def test_vault_absent_returns_graceful_string(self) -> None:
         msg = make_message("/search query")
-        pool = make_pool()
-        vault = make_mock_vault("vault CLI not available.")
-        set_vault_provider(vault)
+        tools, _ = make_tools("vault CLI not available.")
 
-        response = await cmd_search(msg, pool, ["query"])
+        response = await cmd_search(msg, make_driver(), tools, ["query"], 30.0)
 
         assert isinstance(response, Response)
         assert "vault" in response.content.lower()
@@ -97,10 +86,8 @@ class TestCmdSearch:
     @pytest.mark.asyncio
     async def test_multi_word_query_joined(self) -> None:
         msg = make_message("/search foo bar baz")
-        pool = make_pool()
-        vault = make_mock_vault("results")
-        set_vault_provider(vault)
+        tools, vault_search = make_tools("results")
 
-        await cmd_search(msg, pool, ["foo", "bar", "baz"])
+        await cmd_search(msg, make_driver(), tools, ["foo", "bar", "baz"], 30.0)
 
-        vault.search.assert_called_once_with("foo bar baz", timeout=25.0)
+        vault_search.assert_called_once_with("foo bar baz", timeout=25.0)

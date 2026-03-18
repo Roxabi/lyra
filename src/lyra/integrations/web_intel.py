@@ -23,10 +23,18 @@ log = logging.getLogger(__name__)
 class WebIntelScraper:
     """ScrapeProvider backed by the web-intel roxabi plugin."""
 
+    _TRUSTED_BASE = Path.home() / "projects"
+
     def __init__(self, plugin_root: Path | None = None) -> None:
         raw = os.environ.get("LYRA_WEB_INTEL_PATH")
         if raw:
-            self._root = Path(raw).expanduser()
+            resolved = Path(raw).expanduser().resolve()
+            if not resolved.is_relative_to(self._TRUSTED_BASE):
+                raise ValueError(
+                    f"LYRA_WEB_INTEL_PATH resolves to {resolved!r}, "
+                    f"which is outside the trusted base {self._TRUSTED_BASE!r}."
+                )
+            self._root = resolved
         else:
             self._root = plugin_root or (
                 Path.home() / "projects" / "roxabi-plugins" / "plugins" / "web-intel"

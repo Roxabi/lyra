@@ -5,7 +5,5 @@ priority = 100
 enabled = true
 timeout = 30.0
 
-[[commands]]
-name = "search"
-description = "Search the vault: /search <query>"
-handler = "cmd_search"
+# /search is registered as a session command by agents (via register_session_command)
+# to receive SessionTools injection. No plugin commands exported from this module.

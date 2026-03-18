@@ -96,6 +96,13 @@ class TestWebIntelScraper:
 
     @pytest.mark.asyncio
     async def test_env_var_overrides_plugin_root(self, monkeypatch, tmp_path):
+        # Patch _TRUSTED_BASE to tmp_path.parent so tmp_path passes validation.
+        monkeypatch.setattr(WebIntelScraper, "_TRUSTED_BASE", tmp_path.parent)
         monkeypatch.setenv("LYRA_WEB_INTEL_PATH", str(tmp_path))
         scraper = WebIntelScraper()
-        assert scraper._root == tmp_path
+        assert scraper._root == tmp_path.resolve()
+
+    def test_env_var_outside_trusted_base_raises(self, monkeypatch):
+        monkeypatch.setenv("LYRA_WEB_INTEL_PATH", "/tmp/evil-path")
+        with pytest.raises(ValueError, match="outside the trusted base"):
+            WebIntelScraper()

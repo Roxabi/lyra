@@ -171,43 +171,31 @@ class TestExplainSessionCommand:
 
 
 class TestSearchPlugin:
-    """AC-6: /search <query> dispatched as plugin command."""
+    """AC-6: /search <query> dispatched as session command (promoted from plugin)."""
 
     @pytest.mark.asyncio
     async def test_search_uses_vault_search(self, tmp_path: Path) -> None:
-        # Build a router with the real search plugin
-        search_plugin_dir = (
-            Path(__file__).resolve().parent.parent.parent / "src" / "lyra" / "commands"
-        )
-        loader = CommandLoader(search_plugin_dir)
-        loaded_plugin = loader.load("search")
+        from lyra.commands.search.handlers import cmd_search
+
+        tools, _, vault = make_mock_tools()
+        vault_search: AsyncMock = AsyncMock(return_value="Result: python basics")
+        vault.search = vault_search
 
         driver = make_mock_driver()
-        router = CommandRouter(
-            command_loader=loader,
-            enabled_plugins=["search"],
-            session_driver=driver,
+        router = make_router_with_session(tmp_path, driver=driver, tools=tools)
+        router.register_session_command(
+            "search", cmd_search, tools=tools,
+            description="Search the vault: /search <query>",
+            timeout=30.0,
         )
         pool = make_pool()
 
-        # Inject via the loaded module object — avoids stale package-attribute
-        # issue when another test has previously imported the module normally.
-        _search_handlers = loaded_plugin.module
-
-        mock_vault = MagicMock()
-        mock_vault.search = AsyncMock(return_value="Result: python basics")
-        mock_vault.add = AsyncMock()
-        _search_handlers.set_vault_provider(mock_vault)
-
-        try:
-            msg = make_message("/search python basics")
-            response = await router.dispatch(msg, pool=pool)
-        finally:
-            _search_handlers.set_vault_provider(None)
+        msg = make_message("/search python basics")
+        response = await router.dispatch(msg, pool=pool)
 
         assert response is not None
         assert "python" in response.content.lower()
-        mock_vault.search.assert_called_once_with("python basics", timeout=25.0)
+        vault_search.assert_called_once_with("python basics", timeout=25.0)
 
 
 # ---------------------------------------------------------------------------

@@ -892,6 +892,199 @@ class TestDispatchStreaming:
         assert isinstance(sent[0], OutboundMessage)
         assert "Hello world" in str(sent[0].content)
 
+    async def test_voice_streaming_streams_text_and_triggers_tts(self) -> None:
+        """Voice modality: text streams to user, then TTS fires as background task."""
+        hub = Hub(tts=MagicMock())  # type: ignore[arg-type]
+        hub._audio_pipeline.synthesize_and_dispatch_audio = AsyncMock()  # type: ignore[method-assign]
+        streamed: list[str] = []
+
+        class StreamAdapter:
+            async def send(
+                self, original_msg: InboundMessage, outbound: OutboundMessage
+            ) -> None:
+                pass
+
+            async def send_streaming(
+                self,
+                original_msg: InboundMessage,
+                chunks: object,
+                outbound: object = None,
+            ) -> None:
+                async for chunk in chunks:  # type: ignore[union-attr]
+                    streamed.append(chunk)
+
+        hub.register_adapter(Platform.TELEGRAM, "main", StreamAdapter())  # type: ignore[arg-type]
+        msg = make_inbound_message(
+            platform="telegram", bot_id="main", modality="voice"
+        )
+
+        async def gen():
+            yield "Hello"
+            yield " world"
+
+        await hub.dispatch_streaming(msg, gen())
+
+        # Text was streamed to the adapter (user sees it appearing)
+        assert streamed == ["Hello", " world"]
+
+        # TTS was triggered as a background task — drain deterministically
+        if hub._memory_tasks:
+            await asyncio.gather(*hub._memory_tasks)
+        hub._audio_pipeline.synthesize_and_dispatch_audio.assert_awaited_once_with(
+            msg, "Hello world", agent_tts=None, fallback_language=None
+        )
+
+    async def test_voice_streaming_empty_text_no_tts(self) -> None:
+        """Voice modality with empty/whitespace text does not trigger TTS."""
+        hub = Hub(tts=MagicMock())  # type: ignore[arg-type]
+        hub._audio_pipeline.synthesize_and_dispatch_audio = AsyncMock()  # type: ignore[method-assign]
+
+        class StreamAdapter:
+            async def send(
+                self, original_msg: InboundMessage, outbound: OutboundMessage
+            ) -> None:
+                pass
+
+            async def send_streaming(
+                self,
+                original_msg: InboundMessage,
+                chunks: object,
+                outbound: object = None,
+            ) -> None:
+                async for _ in chunks:  # type: ignore[union-attr]
+                    pass
+
+        hub.register_adapter(Platform.TELEGRAM, "main", StreamAdapter())  # type: ignore[arg-type]
+        msg = make_inbound_message(
+            platform="telegram", bot_id="main", modality="voice"
+        )
+
+        async def gen():
+            yield "  "
+            yield " "
+
+        await hub.dispatch_streaming(msg, gen())
+
+        # No TTS task should have been created
+        hub._audio_pipeline.synthesize_and_dispatch_audio.assert_not_awaited()
+
+    async def test_voice_streaming_no_tts_service_streams_normally(self) -> None:
+        """When TTS is not configured, voice streaming works like normal streaming."""
+        hub = Hub()  # no tts
+        streamed: list[str] = []
+
+        class StreamAdapter:
+            async def send(
+                self, original_msg: InboundMessage, outbound: OutboundMessage
+            ) -> None:
+                pass
+
+            async def send_streaming(
+                self,
+                original_msg: InboundMessage,
+                chunks: object,
+                outbound: object = None,
+            ) -> None:
+                async for chunk in chunks:  # type: ignore[union-attr]
+                    streamed.append(chunk)
+
+        hub.register_adapter(Platform.TELEGRAM, "main", StreamAdapter())  # type: ignore[arg-type]
+        msg = make_inbound_message(
+            platform="telegram", bot_id="main", modality="voice"
+        )
+
+        async def gen():
+            yield "Hello"
+
+        await hub.dispatch_streaming(msg, gen())
+        assert streamed == ["Hello"]
+
+    async def test_voice_streaming_legacy_adapter_fallback(self) -> None:
+        """Voice + legacy adapter (no send_streaming): collects text, triggers TTS."""
+        hub = Hub(tts=MagicMock())  # type: ignore[arg-type]
+        hub._audio_pipeline.synthesize_and_dispatch_audio = AsyncMock()  # type: ignore[method-assign]
+        sent: list[OutboundMessage] = []
+
+        class LegacyAdapter:
+            async def send(
+                self, original_msg: InboundMessage, outbound: OutboundMessage
+            ) -> None:
+                sent.append(outbound)
+
+        hub.register_adapter(Platform.TELEGRAM, "main", LegacyAdapter())  # type: ignore[arg-type]
+        msg = make_inbound_message(
+            platform="telegram", bot_id="main", modality="voice"
+        )
+
+        async def gen():
+            yield "Hello"
+            yield " world"
+
+        await hub.dispatch_streaming(msg, gen())
+
+        # Text was sent via legacy fallback
+        assert len(sent) == 1
+        assert "Hello world" in str(sent[0].content)
+
+        # TTS was triggered — drain deterministically
+        if hub._memory_tasks:
+            await asyncio.gather(*hub._memory_tasks)
+        hub._audio_pipeline.synthesize_and_dispatch_audio.assert_awaited_once()
+
+    async def test_voice_streaming_dispatcher_path_triggers_tts(self) -> None:
+        """Voice + dispatcher path: text streams via dispatcher, TTS fires after."""
+        from lyra.core.outbound_dispatcher import OutboundDispatcher
+
+        hub = Hub(tts=MagicMock())  # type: ignore[arg-type]
+        hub._audio_pipeline.synthesize_and_dispatch_audio = AsyncMock()  # type: ignore[method-assign]
+        streamed: list[str] = []
+
+        class StreamAdapter:
+            async def send(
+                self, original_msg: InboundMessage, outbound: OutboundMessage
+            ) -> None:
+                pass
+
+            async def send_streaming(
+                self,
+                original_msg: InboundMessage,
+                chunks: object,
+                outbound: object = None,
+            ) -> None:
+                async for chunk in chunks:  # type: ignore[union-attr]
+                    streamed.append(chunk)
+
+        adapter = StreamAdapter()
+        hub.register_adapter(Platform.TELEGRAM, "main", adapter)  # type: ignore[arg-type]
+        dispatcher = OutboundDispatcher("telegram", adapter)  # type: ignore[arg-type]
+        hub.register_outbound_dispatcher(Platform.TELEGRAM, "main", dispatcher)
+        await dispatcher.start()
+
+        msg = make_inbound_message(
+            platform="telegram", bot_id="main", modality="voice"
+        )
+
+        async def gen():
+            yield "Hello"
+            yield " world"
+
+        try:
+            await asyncio.wait_for(
+                hub.dispatch_streaming(msg, gen()), timeout=5.0
+            )
+        finally:
+            await dispatcher.stop()
+
+        # Text was streamed via the dispatcher worker
+        assert streamed == ["Hello", " world"]
+
+        # TTS was triggered after dispatcher consumed all chunks
+        if hub._memory_tasks:
+            await asyncio.gather(*hub._memory_tasks)
+        hub._audio_pipeline.synthesize_and_dispatch_audio.assert_awaited_once_with(
+            msg, "Hello world", agent_tts=None, fallback_language=None
+        )
+
 
 # ---------------------------------------------------------------------------
 # Hub run loop with streaming agent

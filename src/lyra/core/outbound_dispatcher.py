@@ -247,7 +247,11 @@ class OutboundDispatcher:
                         retry_possible = (
                             is_transient
                             and _attempt < len(_backoff_delays)
-                            and kind in ("send", "streaming")
+                            # Streaming sends cannot be retried: the AsyncIterator
+                            # is one-shot and already consumed after the first
+                            # attempt.  A retry would create an orphaned "…"
+                            # placeholder that never gets filled in.
+                            and kind == "send"
                         )
                         if retry_possible:
                             delay = _backoff_delays[_attempt]

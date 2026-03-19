@@ -1,0 +1,46 @@
+---
+title: "feat: concurrent outbound dispatching with per-scope serialization"
+issue: 364
+status: approved
+tier: F-lite
+date: 2026-03-19
+---
+
+## Problem
+
+`OutboundDispatcher` utilise une boucle worker unique et séquentielle : un item est entièrement traité avant que le suivant soit dépilé. Une réponse lente (streaming 90s + tool calls) bloque **tous les autres scopes** dans le même dispatcher — threads Discord, canaux, DMs confondus.
+
+Impact observé lors d'une session de debug le 2026-03-19 : une session Discord active (`b11239d5`) avec heavy tool use (plusieurs `Read` sur de gros fichiers Python, extended thinking) → 90s par réponse → messages suivants en attente 7 à 17 min, perçus comme "non reçus" par l'utilisateur. L'infrastructure était saine (queues non-vides, circuit breakers fermés) ; le bottleneck était la dispatch séquentielle.
+
+## Who
+
+- **Primary:** Tous les utilisateurs de canaux Discord/Telegram actifs pendant qu'une autre conversation fait du heavy processing (tool use, extended thinking, streaming long).
+- **Secondary:** Le dispatcher lui-même — mémoire unbounded via `_scope_locks` si non purgée.
+
+## Constraints
+
+- Python asyncio uniquement — pas de threads, pas de multiprocessing.
+- L'ordre des messages **au sein d'un même scope** doit être garanti (conversations cohérentes).
+- Pas de workers persistants supplémentaires — les tasks doivent être créées on-demand et GC'd.
+- Discord rate limits respectés (sends naturellement per-channel).
+- `_scope_locks` dict doit être purgé périodiquement pour éviter la croissance unbounded.
+- Changement minimal : seul `_worker_loop` est restructuré.
+
+## Out of Scope
+
+- Prioritisation inter-scopes (FIFO suffisant par scope).
+- Backpressure ou bounded queue (issue orthogonale).
+- Migration vers un autre backend de queue (asyncio.Queue reste).
+- Refactoring des autres composants du dispatcher (`_dispatch_item`, format envelope, etc.).
+- Issue #363 (pool architecture / session continuity) — adjacent mais orthogonale.
+
+## Complexity
+
+**Tier: F-lite** — Scope limité à `outbound_dispatcher.py` + tests, solution complètement spécifiée dans l'issue, patterns asyncio connus, 1 inconnue mineure (stratégie de cleanup de `_scope_locks`).
+
+Signaux observés :
+- 2-3 fichiers touchés (dispatcher + tests)
+- Single domain (outbound dispatch)
+- Solution proposée clé en main dans l'issue body
+- 1 inconnue : reaper vs TTL pour `_scope_locks` cleanup
+- Pas de nouveaux modules ou abstractions cross-domain

@@ -165,6 +165,8 @@ class CliPool(_CliPoolWorker):
         message: str,
         model_config: ModelConfig,
         system_prompt: str = "",
+        *,
+        on_intermediate: Callable[[str], Awaitable[None]] | None = None,
     ) -> StreamingIterator:
         """Send a message and return a streaming iterator for text_delta chunks.
 
@@ -214,6 +216,7 @@ class CliPool(_CliPoolWorker):
                 pool_id,
                 pool_reset_fn=_reset,
                 default_timeout=self._default_timeout,
+                on_intermediate=on_intermediate,
             )
         entry.turn_count += 1
         entry.last_activity = time.time()

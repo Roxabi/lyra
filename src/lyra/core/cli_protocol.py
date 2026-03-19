@@ -260,6 +260,7 @@ class StreamingIterator:
         *,
         pool_reset_fn: Callable[[], Awaitable[None]] | None = None,
         default_timeout: float = 300,
+        on_intermediate: Callable[[str], Awaitable[None]] | None = None,
     ) -> None:
         from .cli_pool import _ProcessEntry
 
@@ -268,6 +269,7 @@ class StreamingIterator:
         self._pool_id = pool_id
         self._pool_reset_fn = pool_reset_fn
         self._default_timeout = default_timeout
+        self._on_intermediate = on_intermediate
         self._idle_retries = 0
         self._done = False
         self.session_id: str | None = None
@@ -338,6 +340,32 @@ class StreamingIterator:
                     self.session_id,
                 )
 
+            elif msg_type == "assistant":
+                # Intermediate turns arrive before the final streamed turn.
+                # Every assistant event in the streaming path is an intermediate
+                # (tool use, sub-task reasoning, etc.) — fire on_intermediate for each.
+                if self._on_intermediate is not None:
+                    blocks = data.get("message", {}).get("content", [])
+                    texts = [b["text"] for b in blocks if b.get("type") == "text"]
+                    if texts:
+                        try:
+                            await asyncio.wait_for(
+                                self._on_intermediate("\n\n".join(texts)),
+                                timeout=5.0,
+                            )
+                        except asyncio.TimeoutError:
+                            log.warning(
+                                "[pool:%s] on_intermediate callback timed out"
+                                " (>5s) — dropping",
+                                self._pool_id,
+                            )
+                        except Exception:
+                            log.warning(
+                                "[pool:%s] on_intermediate callback failed",
+                                self._pool_id,
+                                exc_info=True,
+                            )
+
             elif msg_type == "stream_event":
                 event_data = data.get("event", data)
                 event_type = event_data.get("type", "")
@@ -391,19 +419,26 @@ class StreamingIterator:
         await self._cleanup()
 
 
-async def send_and_read_stream(
+async def send_and_read_stream(  # noqa: PLR0913
     entry: object,
     message: str,
     pool_id: str,
     *,
     pool_reset_fn: Callable[[], Awaitable[None]] | None = None,
     default_timeout: float = 300,
+    on_intermediate: Callable[[str], Awaitable[None]] | None = None,
 ) -> StreamingIterator:
     """Write *message* to stdin then return a StreamingIterator for text_delta chunks.
 
     The returned iterator exposes a ``session_id`` attribute (``None`` until
     ``system/init`` or ``result`` is parsed).  Call ``aclose()`` to kill the
     subprocess on cancellation.
+
+    Parameters
+    ----------
+    on_intermediate:
+        Optional async callback fired for each intermediate assistant turn
+        (tool use, sub-task reasoning) that precedes the final streaming turn.
     """
     from .cli_pool import _ProcessEntry
 
@@ -411,7 +446,7 @@ async def send_and_read_stream(
     proc = entry.proc
 
     if proc.stdin is None:
-        it = StreamingIterator(entry, pool_id)
+        it = StreamingIterator(entry, pool_id, on_intermediate=on_intermediate)
         it._done = True
         return it
 
@@ -427,7 +462,9 @@ async def send_and_read_stream(
         await asyncio.wait_for(proc.stdin.drain(), timeout=10)
     except asyncio.TimeoutError:
         log.error("[pool:%s] timeout writing stdin (streaming)", pool_id)
-        it = StreamingIterator(entry, pool_id, pool_reset_fn=pool_reset_fn)
+        it = StreamingIterator(
+            entry, pool_id, pool_reset_fn=pool_reset_fn, on_intermediate=on_intermediate
+        )
         await it._cleanup()
         return it
 
@@ -436,4 +473,5 @@ async def send_and_read_stream(
         pool_id,
         pool_reset_fn=pool_reset_fn,
         default_timeout=default_timeout,
+        on_intermediate=on_intermediate,
     )

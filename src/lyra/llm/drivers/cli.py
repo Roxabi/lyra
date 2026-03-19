@@ -63,8 +63,10 @@ class ClaudeCliDriver:
         text: str,
         model_cfg: ModelConfig,
         system_prompt: str,
+        *,
+        on_intermediate: Callable[[str], Awaitable[None]] | None = None,
     ) -> AsyncIterator[str]:
         """Return a streaming iterator for text_delta chunks."""
         return await self._pool.send_streaming(
-            pool_id, text, model_cfg, system_prompt
+            pool_id, text, model_cfg, system_prompt, on_intermediate=on_intermediate
         )

@@ -42,6 +42,7 @@ def _load_pattern_configs(path: Path | None = None) -> dict[str, dict]:
     except FileNotFoundError:
         return {}
 
+
 log = logging.getLogger(__name__)
 
 
@@ -153,14 +154,21 @@ class CommandRouter:
         """
         result: list[tuple[str, str, bool]] = []
         for name, cfg in self._builtins.items():
-            result.append(
-                (name, cfg.description, self._is_admin_only(cfg.description))
-            )
+            result.append((name, cfg.description, self._is_admin_only(cfg.description)))
         plugin_descs = self._command_loader.get_command_descriptions(
             self._enabled_plugins
         )
         for name, desc in plugin_descs.items():
             result.append((name, desc, self._is_admin_only(desc)))
+        # Processor commands registered via ProcessorRegistry (issue #363)
+        try:
+            import lyra.core.processors  # noqa: F401
+            from lyra.core.processor_registry import registry as _proc_registry
+
+            for cmd, desc in _proc_registry.descriptions().items():
+                result.append((cmd, desc, False))
+        except Exception:
+            pass
         return sorted(result)
 
     def _rewrite_bare_url(self, msg: InboundMessage) -> InboundMessage:

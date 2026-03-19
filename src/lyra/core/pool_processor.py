@@ -225,6 +225,28 @@ class PoolProcessor:
                 Response(content=f"⏳ {turn_text}", intermediate=True),
             )
 
+        # Processor pre-hook: enrich message before LLM (B1 — issue #363).
+        # pool.append gets the original so history shows the real command;
+        # agent.process gets the enriched version so the LLM sees scraped content.
+        _processor = None
+        _original_msg = msg
+        if msg.command is not None:
+            _session_tools = getattr(agent, "_session_tools", None)
+            if _session_tools is not None:
+                import lyra.core.processors  # noqa: F401 — trigger self-registration
+                from lyra.core.processor_registry import registry as _proc_registry
+
+                _cmd_name = f"{msg.command.prefix}{msg.command.name}"
+                _processor = _proc_registry.build(_cmd_name, _session_tools)
+                if _processor is not None:
+                    try:
+                        msg = await _processor.pre(msg)
+                    except Exception:
+                        log.warning(
+                            "Processor pre() failed for %s", _cmd_name, exc_info=True
+                        )
+                        _processor = None
+
         result = agent.process(msg, pool, on_intermediate=_intermediate_cb)
         if not isinstance(result, collections.abc.AsyncIterator):
             # Regular coroutine — await to get the actual result
@@ -233,10 +255,26 @@ class PoolProcessor:
             except Exception as exc:
                 pool._ctx.record_circuit_failure(exc)
                 raise
+            # Processor post-hook: side effects after LLM response (B1 — issue #363).
+            if _processor is not None and isinstance(result, Response):
+                try:
+                    result = await _processor.post(_original_msg, result)
+                except Exception:
+                    log.warning("Processor post() failed", exc_info=True)
 
         # Capture values for the deferred turn-logging callback (#316).
         _platform = pool.medium or str(msg.platform)
         _user_id = pool.user_id or msg.user_id
+
+        # Guard: processors with non-trivial post() are incompatible with streaming
+        # agents because post() is only called in the non-streaming branch.
+        # Raise early to prevent silent vault write drops (issue #363).
+        # To support streaming, override process() to return a Response.
+        if _processor is not None and isinstance(result, collections.abc.AsyncIterator):
+            raise NotImplementedError(
+                f"Processor {type(_processor).__name__!r} is not compatible with "
+                "streaming agents — override process() to return a Response."
+            )
 
         if isinstance(result, collections.abc.AsyncIterator):
             # Bug 1 (#316): pass an OutboundMessage so the adapter can write
@@ -257,7 +295,7 @@ class PoolProcessor:
                 _stream_sid = getattr(result, "session_id", None)
                 if _stream_sid and pool.session_id != _stream_sid:
                     pool.session_id = _stream_sid
-                pool._observer.session_update_async(msg)
+                pool._observer.session_update_async(_original_msg)
                 _reply_id = outbound.metadata.get("reply_message_id")
                 pool._observer.log_turn_async(
                     role="assistant",
@@ -277,7 +315,7 @@ class PoolProcessor:
 
             _outbound.metadata["_on_dispatched"] = _log_streaming_turn
             try:
-                await pool._ctx.dispatch_streaming(msg, result, _outbound)
+                await pool._ctx.dispatch_streaming(_original_msg, result, _outbound)
                 pool._ctx.record_circuit_success()
             except BaseException as exc:
                 pool._ctx.record_circuit_failure(exc)
@@ -295,18 +333,6 @@ class PoolProcessor:
                 _cli_session_id = result.metadata.get("session_id")
                 if _cli_session_id:
                     pool.session_id = _cli_session_id
-            # Apply post-processor side effects (e.g. vault.add) — #363.
-            if isinstance(result, Response):
-                _post_fn = msg.platform_meta.get("_post_processor")
-                if _post_fn is not None:
-                    try:
-                        result = await _post_fn(msg, result)
-                    except Exception:
-                        log.warning(
-                            "post-processor raised in pool %s — using original",
-                            pool.pool_id,
-                            exc_info=True,
-                        )
             # Attach deferred turn-logging callback after adapter sends (#316).
             if isinstance(result, Response):
                 _content = result.content
@@ -330,8 +356,8 @@ class PoolProcessor:
                     )
 
                 result.metadata["_on_dispatched"] = _log_turn
-            await pool._ctx.dispatch_response(msg, result)
-            pool._observer.session_update_async(msg)
+            await pool._ctx.dispatch_response(_original_msg, result)
+            pool._observer.session_update_async(_original_msg)
 
         _compact_fn = getattr(agent, "compact", None)
         if _compact_fn is not None:

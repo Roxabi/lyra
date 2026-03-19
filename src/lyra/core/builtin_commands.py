@@ -56,6 +56,17 @@ def help_command(
         for cmd_name, entry in sorted(session_handlers.items()):
             desc = getattr(entry, "description", "") or "(no description)"
             lines.append(f"  {cmd_name} — {desc}")
+    # Include processor registry commands (issue #363 — session_handlers is now empty)
+    try:
+        import lyra.core.processors  # noqa: F401 — trigger self-registration
+        from lyra.core.processor_registry import registry as _proc_registry
+
+        proc_descs = _proc_registry.descriptions()
+        if proc_descs:
+            for cmd_name, desc in sorted(proc_descs.items()):
+                lines.append(f"  {cmd_name} — {desc or '(no description)'}")
+    except Exception:
+        pass
     plugin_handlers = command_loader.get_commands(enabled_plugins)
     plugin_cmds = [cmd for cmd in sorted(plugin_handlers) if cmd not in builtins]
     if plugin_cmds:

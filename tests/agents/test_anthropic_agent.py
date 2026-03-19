@@ -15,6 +15,7 @@ from lyra.core.message import InboundMessage
 from lyra.core.pool import Pool
 from lyra.core.trust import TrustLevel
 from lyra.llm.base import LlmResult
+from tests.helpers import reload_processors
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -306,19 +307,24 @@ class TestSessionCommandWiring:
     def test_session_handlers_contains_add_explain_summarize(self) -> None:
         from lyra.agents.anthropic_agent import AnthropicAgent
 
+        reload_processors()
         provider = make_mock_provider()
         agent = AnthropicAgent(make_config(), provider)
-        session_keys = set(agent.command_router._session_handlers.keys())
-        assert "/vault-add" in session_keys
-        assert "/explain" in session_keys
-        assert "/summarize" in session_keys
+        # Commands are registered as passthroughs (processor pipeline, issue #363)
+        passthroughs = agent.command_router._passthroughs
+        assert "/vault-add" in passthroughs
+        assert "/explain" in passthroughs
+        assert "/summarize" in passthroughs
 
     def test_session_handlers_have_correct_descriptions(self) -> None:
         from lyra.agents.anthropic_agent import AnthropicAgent
+        from lyra.core.processor_registry import registry
 
+        reload_processors()
         provider = make_mock_provider()
-        agent = AnthropicAgent(make_config(), provider)
-        handlers = agent.command_router._session_handlers
-        assert "vault" in handlers["/vault-add"].description.lower()
-        assert "explain" in handlers["/explain"].description.lower()
-        assert "summarize" in handlers["/summarize"].description.lower()
+        AnthropicAgent(make_config(), provider)
+        # Descriptions live in the processor registry (issue #363)
+        descs = registry.descriptions()
+        assert "vault" in descs["/vault-add"].lower()
+        assert "explain" in descs["/explain"].lower()
+        assert "summarize" in descs["/summarize"].lower()

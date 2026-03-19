@@ -9,8 +9,10 @@ import pytest
 from lyra.core.processor_registry import (
     BaseProcessor,
     ProcessorRegistry,
+    registry,
 )
 from lyra.integrations.base import SessionTools
+from tests.helpers import reload_processors
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -237,24 +239,10 @@ class TestCommandsAndDescriptions:
 class TestModuleSingletonRegistration:
     def test_import_registers_expected_commands(self) -> None:
         """Importing lyra.core.processors populates the module singleton."""
-        import importlib
-
-        import lyra.core.processors
-        import lyra.core.processors.explain
-        import lyra.core.processors.search
-        import lyra.core.processors.summarize
-        import lyra.core.processors.vault_add
-        from lyra.core.processor_registry import registry
-
         # Arrange — clear then force reload to re-trigger @register decorators.
         # Needed because a preceding conftest may have called registry.clear() after
         # the modules were already imported (Python caches them and skips re-execution).
-        registry.clear()
-        importlib.reload(lyra.core.processors.explain)
-        importlib.reload(lyra.core.processors.search)
-        importlib.reload(lyra.core.processors.summarize)
-        importlib.reload(lyra.core.processors.vault_add)
-        importlib.reload(lyra.core.processors)
+        reload_processors()
 
         # Act
         registered = registry.commands()
@@ -264,3 +252,6 @@ class TestModuleSingletonRegistration:
         assert expected.issubset(registered), (
             f"Missing commands: {expected - registered}"
         )
+
+        # Teardown — restore clean state for subsequent tests
+        registry.clear()

@@ -15,6 +15,7 @@ from lyra.core.message import InboundMessage
 from lyra.core.pool import Pool
 from lyra.core.trust import TrustLevel
 from lyra.llm.base import LlmResult
+from tests.helpers import reload_processors
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -303,34 +304,10 @@ class TestSessionCommandWiring:
         agent = AnthropicAgent(make_config(), provider)
         assert agent.command_router._session_driver is provider
 
-    def _reload_processors(self) -> None:
-        """Force reload of processor submodules to re-trigger @register decorators.
-
-        The global registry may have been cleared by a preceding conftest
-        (tests/core/processors/conftest.py autouse fixture).  Python caches
-        imports, so a plain ``import lyra.core.processors`` is a no-op after
-        the first import.  We must explicitly reload each submodule.
-        """
-        import importlib
-
-        import lyra.core.processors
-        import lyra.core.processors.explain
-        import lyra.core.processors.search
-        import lyra.core.processors.summarize
-        import lyra.core.processors.vault_add
-        from lyra.core.processor_registry import registry
-
-        registry.clear()
-        importlib.reload(lyra.core.processors.explain)
-        importlib.reload(lyra.core.processors.search)
-        importlib.reload(lyra.core.processors.summarize)
-        importlib.reload(lyra.core.processors.vault_add)
-        importlib.reload(lyra.core.processors)
-
     def test_session_handlers_contains_add_explain_summarize(self) -> None:
         from lyra.agents.anthropic_agent import AnthropicAgent
 
-        self._reload_processors()
+        reload_processors()
         provider = make_mock_provider()
         agent = AnthropicAgent(make_config(), provider)
         # Commands are registered as passthroughs (processor pipeline, issue #363)
@@ -343,7 +320,7 @@ class TestSessionCommandWiring:
         from lyra.agents.anthropic_agent import AnthropicAgent
         from lyra.core.processor_registry import registry
 
-        self._reload_processors()
+        reload_processors()
         provider = make_mock_provider()
         AnthropicAgent(make_config(), provider)
         # Descriptions live in the processor registry (issue #363)

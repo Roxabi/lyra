@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import socket
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from lyra.core.command_parser import CommandContext
 from lyra.core.message import InboundMessage
@@ -394,3 +397,44 @@ class TestRejectsPrivateIps:
         url, err = _extract_and_validate_url(self._make_cmd_msg("http://93.184.216.34"))
         assert err is None
         assert url == "http://93.184.216.34"
+
+    def test_rejects_hostname_resolving_to_loopback_via_mock(self) -> None:
+        """_extract_and_validate_url rejects a hostname that resolves to 127.0.0.1.
+
+        Uses a mock to avoid real DNS — verifies the socket.getaddrinfo path
+        inside _is_private_ip() regardless of actual DNS resolution.
+        """
+        # socket.getaddrinfo returns a list of 5-tuples; the address is in [4]
+        loopback_addrinfo = [
+            (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("127.0.0.1", 0))
+        ]
+        with patch(
+            "lyra.core.processors._scraping.socket.getaddrinfo",
+            return_value=loopback_addrinfo,
+        ):
+            _, err = _extract_and_validate_url(
+                self._make_cmd_msg("http://internal.corp.example")
+            )
+
+        assert err is not None
+        assert self._ERROR_FRAGMENT in err
+
+
+# ---------------------------------------------------------------------------
+# _scrape_with_fallback() — non-ScrapeFailed exception propagation contract
+# ---------------------------------------------------------------------------
+
+
+class TestScrapeWithFallbackExceptionContract:
+    async def test_unexpected_exception_propagates(self) -> None:
+        """Non-ScrapeFailed exceptions propagate out of _scrape_with_fallback.
+
+        The function only catches ScrapeFailed.  Any other exception (e.g. a
+        bare RuntimeError or asyncio.TimeoutError from the scraper) must
+        propagate unchanged to the caller.
+        """
+        scraper = MagicMock()
+        scraper.scrape = AsyncMock(side_effect=RuntimeError("unexpected network error"))
+
+        with pytest.raises(RuntimeError, match="unexpected network error"):
+            await _scrape_with_fallback(scraper, "https://example.com", timeout=30.0)

@@ -77,6 +77,7 @@ class AgentBase(ABC, SessionManager):
             self.command_router.register_passthrough("voice")
         for _cmd in config.passthroughs:
             self.command_router.register_passthrough(_cmd)
+
         # S3 — memory DI (issue #83); injected by Hub.register_agent()
         self._memory: "MemoryManager | None" = None
         self._task_registry: set | None = None
@@ -157,14 +158,10 @@ class AgentBase(ABC, SessionManager):
             patterns=self.config.patterns,
             **self._build_router_kwargs(),
         )
-        self._register_session_commands()
 
     def _build_router_kwargs(self) -> dict:
         """Hook for subclasses to inject extra CommandRouter constructor kwargs."""
         return {}
-
-    def _register_session_commands(self) -> None:
-        """Hook for subclasses — called after CommandRouter (re)build."""
 
     def _handle_voice_command(self, msg: "InboundMessage") -> "InboundMessage | None":
         """Rewrite /voice <prompt> as a voice-modality LLM request.

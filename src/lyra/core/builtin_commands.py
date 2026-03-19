@@ -40,7 +40,7 @@ def require_admin(msg: InboundMessage) -> "Response | None":
 
 def help_command(
     builtins: Mapping[str, object],
-    session_handlers: Mapping[str, object],
+    session_handlers: "Mapping[str, object] | None",
     command_loader: "CommandLoader",
     enabled_plugins: list[str],
     msg_manager: "MessageManager | None",
@@ -59,7 +59,7 @@ def help_command(
     plugin_handlers = command_loader.get_commands(enabled_plugins)
     plugin_cmds = [cmd for cmd in sorted(plugin_handlers) if cmd not in builtins]
     if plugin_cmds:
-        lines.append("Commands:")
+        lines.append("Plugins:")
         plugin_descs = command_loader.get_command_descriptions(enabled_plugins)
         for cmd_name in plugin_cmds:
             desc = plugin_descs.get(cmd_name, "(plugin command)")

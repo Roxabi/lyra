@@ -122,6 +122,15 @@ class PoolProcessor:
 
             # New message arrived while agent was processing → cancel-in-flight.
             new_msg = inbox_waiter.result()
+            # Mark any in-flight streaming as superseded BEFORE yielding to the
+            # event loop.  asyncio is single-threaded: the flag is guaranteed to
+            # be visible to the dispatcher worker the next time it runs (i.e.
+            # after the `await agent_task` below).  This prevents the dispatcher
+            # from sending an orphaned "…" placeholder for the cancelled turn.
+            _inflight = pool._inflight_stream_outbound
+            if _inflight is not None:
+                _inflight.metadata["_superseded"] = True
+                pool._inflight_stream_outbound = None
             agent_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await agent_task
@@ -233,8 +242,13 @@ class PoolProcessor:
             # Bug 1 (#316): pass an OutboundMessage so the adapter can write
             # reply_message_id on it; attach a callback for deferred turn logging.
             _outbound = OutboundMessage.from_text("")
+            # Register before dispatch so _process_with_cancel can supersede it.
+            pool._inflight_stream_outbound = _outbound
 
             def _log_streaming_turn(outbound: OutboundMessage) -> None:
+                # Clear inflight reference once streaming is fully delivered.
+                if pool._inflight_stream_outbound is outbound:
+                    pool._inflight_stream_outbound = None
                 # Propagate CLI session_id from the (now-consumed) iterator.
                 # When an OutboundDispatcher is used, dispatch_streaming returns
                 # immediately (fire-and-forget); the iterator is consumed later
@@ -281,6 +295,18 @@ class PoolProcessor:
                 _cli_session_id = result.metadata.get("session_id")
                 if _cli_session_id:
                     pool.session_id = _cli_session_id
+            # Apply post-processor side effects (e.g. vault.add) — #363.
+            if isinstance(result, Response):
+                _post_fn = msg.platform_meta.get("_post_processor")
+                if _post_fn is not None:
+                    try:
+                        result = await _post_fn(msg, result)
+                    except Exception:
+                        log.warning(
+                            "post-processor raised in pool %s — using original",
+                            pool.pool_id,
+                            exc_info=True,
+                        )
             # Attach deferred turn-logging callback after adapter sends (#316).
             if isinstance(result, Response):
                 _content = result.content

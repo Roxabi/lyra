@@ -74,7 +74,6 @@ class SimpleAgent(AgentBase):
         )
         self._runtime_config_holder = RuntimeConfigHolder(rc)
         self._runtime_config_path = resolved_agents_dir / "lyra_runtime.toml"
-        # MUST be set before super().__init__() — _register_session_commands needs it
         self._provider = provider
         super().__init__(
             config,
@@ -101,39 +100,7 @@ class SimpleAgent(AgentBase):
             "runtime_config_holder": self._runtime_config_holder,
             "runtime_config_path": self._runtime_config_path,
             "workspaces": self.config.workspaces,
-            "session_driver": self._provider,
         }
-
-    def _register_session_commands(self) -> None:
-        """Register /vault-add, /explain, /summarize, /search as session commands."""
-        from lyra.commands.search.handlers import cmd_search
-        from lyra.core.session_commands import cmd_add, cmd_explain, cmd_summarize
-        from lyra.integrations.base import SessionTools
-        from lyra.integrations.vault_cli import VaultCli
-        from lyra.integrations.web_intel import WebIntelScraper
-
-        tools = SessionTools(scraper=WebIntelScraper(), vault=VaultCli())
-
-        self.command_router.register_session_command(
-            "vault-add", cmd_add, tools=tools,
-            description="Save a URL to the vault: /vault-add <url>",
-            timeout=1200.0,
-        )
-        self.command_router.register_session_command(
-            "explain", cmd_explain, tools=tools,
-            description="Explain a URL in plain language: /explain <url>",
-            timeout=1200.0,
-        )
-        self.command_router.register_session_command(
-            "summarize", cmd_summarize, tools=tools,
-            description="Summarize a URL in bullet points: /summarize <url>",
-            timeout=1200.0,
-        )
-        self.command_router.register_session_command(
-            "search", cmd_search, tools=tools,
-            description="Search the vault: /search <query>",
-            timeout=30.0,
-        )
 
     def _maybe_register_reset(self, pool: Pool) -> None:
         """Register a session reset callback on the pool the first time we process.

@@ -69,8 +69,6 @@ class AnthropicAgent(AgentBase):
             smart_routing_decorator=smart_routing_decorator,
             agent_store=agent_store,
         )
-        # Note: _register_session_commands() is called by AgentBase.__init__ via
-        # the hook. No explicit call needed here.
 
     @property
     def runtime_config(self) -> RuntimeConfig:
@@ -84,35 +82,49 @@ class AnthropicAgent(AgentBase):
             "session_driver": self._provider,
         }
 
+    def _rebuild_command_router(self) -> None:
+        super()._rebuild_command_router()
+        self._register_session_commands()
+
     def _register_session_commands(self) -> None:
-        """Register /vault-add, /explain, /summarize, /search as session commands."""
-        from lyra.commands.search.handlers import cmd_search
+        """Register built-in session commands on the command router."""
         from lyra.core.session_commands import cmd_add, cmd_explain, cmd_summarize
         from lyra.integrations.base import SessionTools
         from lyra.integrations.vault_cli import VaultCli
         from lyra.integrations.web_intel import WebIntelScraper
 
-        tools = SessionTools(scraper=WebIntelScraper(), vault=VaultCli())
+        try:
+            scraper = WebIntelScraper()
+            vault = VaultCli()
+        except Exception:
+            log.warning("AnthropicAgent: could not build session tools; using stubs")
+            scraper = None  # type: ignore[assignment]
+            vault = None  # type: ignore[assignment]
 
+        if scraper is None or vault is None:
+            return
+
+        tools = SessionTools(scraper=scraper, vault=vault)
         self.command_router.register_session_command(
-            "vault-add", cmd_add, tools=tools,
-            description="Save a URL to the vault: /vault-add <url>",
-            timeout=60.0,
+            "vault-add",
+            cmd_add,
+            tools=tools,
+            description="Save URL to vault: /vault-add <url>",
+            timeout=600.0,
         )
         self.command_router.register_session_command(
-            "explain", cmd_explain, tools=tools,
+            "explain",
+            cmd_explain,
+            tools=tools,
             description="Explain a URL in plain language: /explain <url>",
-            timeout=60.0,
+            timeout=120.0,
         )
         self.command_router.register_session_command(
-            "summarize", cmd_summarize, tools=tools,
+            "summarize",
+            cmd_summarize,
+            tools=tools,
             description="Summarize a URL in bullet points: /summarize <url>",
-            timeout=60.0,
-        )
-        self.command_router.register_session_command(
-            "search", cmd_search, tools=tools,
-            description="Search the vault: /search <query>",
-            timeout=30.0,
+            timeout=120.0,
         )
 
     async def _process_llm(  # noqa: C901 — voice modality branch adds one branch

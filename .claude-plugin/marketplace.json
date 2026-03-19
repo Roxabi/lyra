@@ -9,6 +9,12 @@
       "description": "Conversationally refine Lyra agent profiles — persona, voice, passthroughs.",
       "source": "./plugins/refine-agent",
       "category": "agent-management"
+    },
+    {
+      "name": "lyra-send",
+      "description": "Send messages, images, and voice notes to users via Lyra bots (Telegram & Discord).",
+      "source": "./plugins/lyra-send",
+      "category": "utilities"
     }
   ]
 }

@@ -98,6 +98,7 @@ class Pool:
         self._debouncer = MessageDebouncer(debounce_ms)
         self._inbox: asyncio.Queue[InboundMessage] = asyncio.Queue()
         self._current_task: asyncio.Task | None = None
+        self._inflight_stream_outbound: OutboundMessage | None = None
         self._last_active: float = time.monotonic()
         self.session_id: str = str(uuid.uuid4())  # S1 (issue #83)
         self.user_id: str = ""

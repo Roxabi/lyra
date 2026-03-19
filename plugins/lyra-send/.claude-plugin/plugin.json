@@ -1,0 +1,12 @@
+{
+  "name": "lyra-send",
+  "version": "0.1.0",
+  "description": "Send messages, images, and voice notes to users via Lyra bots (Telegram & Discord).",
+  "skills": [
+    {
+      "name": "send",
+      "path": "skills/send/SKILL.md",
+      "description": "Send a message, image, or voice note to a user via Telegram or Discord"
+    }
+  ]
+}

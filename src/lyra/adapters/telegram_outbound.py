@@ -10,8 +10,6 @@ from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
 from lyra.adapters.telegram_formatting import (
-    TELEGRAM_MAX_LENGTH,
-    _convert_markdown,
     _render_buttons,
     _render_text,
     _validate_inbound,
@@ -215,7 +213,7 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: edit/ch
             now = time.monotonic()
             if now - last_edit >= 0.5:
                 accumulated = "".join(parts)
-                _converted = _convert_markdown(accumulated[:TELEGRAM_MAX_LENGTH])
+                _converted = _render_text(accumulated)[0]
                 await adapter.bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=placeholder.message_id,

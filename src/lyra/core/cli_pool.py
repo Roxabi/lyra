@@ -56,7 +56,7 @@ class CliPool(_CliPoolWorker):
     def __init__(
         self,
         idle_ttl: int = 1200,
-        default_timeout: int = 300,
+        default_timeout: int = 1200,  # 20 min × 3 retries = 60 min max idle
         on_reap: Callable[
             [str, str], Coroutine[Any, Any, None]
         ]

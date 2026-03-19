@@ -95,7 +95,7 @@ def _load_cli_pool_config(raw: dict) -> dict:
     section: dict = raw.get("cli_pool", {})
     return {
         "idle_ttl": section.get("idle_ttl", 1200),
-        "default_timeout": section.get("default_timeout", 300),
+        "default_timeout": section.get("default_timeout", 1200),  # 20 min × 3 = 60 min
         "turn_timeout": section.get("turn_timeout"),
     }
 

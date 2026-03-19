@@ -48,7 +48,7 @@ class Hub(HubOutboundMixin):
     BUS_SIZE = 100
     RATE_LIMIT = 20
     RATE_WINDOW = 60
-    POOL_TTL: float = 3600.0
+    POOL_TTL: float = 604800.0  # 7 days
 
     def __init__(  # noqa: PLR0913
         self,

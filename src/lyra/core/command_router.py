@@ -1,6 +1,7 @@
-"""Command router — dispatch slash commands to builtins, session handlers, or plugins.
+"""Command router — dispatch slash commands to builtins, processor commands, or plugins.
 
 Builtin implementations live in builtin_commands.py and workspace_commands.py (#298).
+Processor commands (pre/post hooks into the pool flow) live in processor_registry.py.
 """
 
 from __future__ import annotations
@@ -12,9 +13,7 @@ import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
-
-from lyra.integrations.base import SessionTools
+from typing import TYPE_CHECKING
 
 from . import builtin_commands, workspace_commands
 from .command_loader import AsyncHandler, CommandLoader
@@ -24,7 +23,6 @@ from .pool import Pool
 
 if TYPE_CHECKING:
     from lyra.core.runtime_config import RuntimeConfigHolder
-    from lyra.llm.base import LlmProvider
     from lyra.llm.smart_routing import SmartRoutingDecorator
 
     from .circuit_breaker import CircuitRegistry
@@ -56,31 +54,14 @@ class CommandConfig:
     timeout: float = 30.0
 
 
-@runtime_checkable
-class SessionCommandHandler(Protocol):
-    """Async handler: (msg, driver, tools, args, timeout) -> Response.
-
-    No pool history.
-    """
-
-    async def __call__(
-        self,
-        msg: InboundMessage,
-        driver: "LlmProvider",
-        tools: "SessionTools",
-        args: list[str],
-        timeout: float,
-    ) -> Response: ...
-
-
 @dataclass(frozen=True)
 class SessionCommandEntry:
-    """Registry entry for a session command (async, isolated LLM call)."""
+    """Registry entry for a session command handler."""
 
-    handler: SessionCommandHandler
-    tools: SessionTools
+    handler: object  # AsyncHandler: (msg, driver, tools, args, timeout) -> Response
+    tools: object  # SessionTools
     description: str = ""
-    timeout: float = 60.0
+    timeout: float = 30.0
 
 
 class CommandRouter:
@@ -109,16 +90,16 @@ class CommandRouter:
         command_loader: CommandLoader,
         enabled_plugins: list[str],
         builtins: dict[str, CommandConfig] | None = None,
-        circuit_registry: CircuitRegistry | None = None,
-        msg_manager: MessageManager | None = None,
-        runtime_config_holder: RuntimeConfigHolder | None = None,
+        circuit_registry: "CircuitRegistry | None" = None,
+        msg_manager: "MessageManager | None" = None,
+        runtime_config_holder: "RuntimeConfigHolder | None" = None,
         runtime_config_path: Path | None = None,
-        smart_routing_decorator: SmartRoutingDecorator | None = None,
+        smart_routing_decorator: "SmartRoutingDecorator | None" = None,
         on_debounce_change: Callable[[int], None] | None = None,
         workspaces: dict[str, Path] | None = None,
-        session_driver: "LlmProvider | None" = None,
         patterns: dict[str, bool] | None = None,
         pattern_configs: dict[str, dict] | None = None,
+        session_driver: object = None,
     ) -> None:
         self._command_loader = command_loader
         self._enabled_plugins = enabled_plugins
@@ -132,13 +113,13 @@ class CommandRouter:
         self._smart_routing = smart_routing_decorator
         self._on_debounce_change = on_debounce_change
         self._workspaces: dict[str, Path] = workspaces or {}
-        self._session_driver: LlmProvider | None = session_driver
         self._patterns: dict[str, bool] = patterns or {}
         self._pattern_configs: dict[str, dict] = (
             pattern_configs if pattern_configs is not None else _load_pattern_configs()
         )
-        self._session_handlers: dict[str, SessionCommandEntry] = {}
         self._passthroughs: set[str] = set()
+        self._session_driver: object = session_driver
+        self._session_handlers: dict[str, SessionCommandEntry] = {}
         # Guard: raise early if any loaded plugin command clashes with a builtin.
         plugin_handlers = command_loader.get_commands(enabled_plugins)
         conflicts = set(plugin_handlers) & set(self._builtins)
@@ -220,19 +201,30 @@ class CommandRouter:
     def register_session_command(
         self,
         name: str,
-        handler: SessionCommandHandler,
-        tools: SessionTools,
+        handler: object,
+        *,
+        tools: object,
         description: str = "",
-        timeout: float = 60.0,
+        timeout: float = 30.0,
     ) -> None:
-        """Register session command; name has no leading slash. Raises on clash."""
-        cmd = f"/{name}"
-        if cmd in self._builtins:
-            raise ValueError(f"Session command {cmd!r} clashes with a builtin.")
+        """Register a session command handler.
+
+        *name* must not include the leading slash (e.g. ``"vault-add"``).
+        Raises ``ValueError`` if the name clashes with a builtin or plugin command.
+        """
+        full_name = f"/{name}"
+        if full_name in self._builtins:
+            raise ValueError(
+                f"Session command {full_name!r} clashes with a builtin. "
+                "Use a different name."
+            )
         plugin_handlers = self._command_loader.get_commands(self._enabled_plugins)
-        if cmd in plugin_handlers:
-            raise ValueError(f"Session command {cmd!r} clashes with a plugin.")
-        self._session_handlers[cmd] = SessionCommandEntry(
+        if full_name in plugin_handlers:
+            raise ValueError(
+                f"Session command {full_name!r} clashes with a plugin. "
+                "Use a different name."
+            )
+        self._session_handlers[full_name] = SessionCommandEntry(
             handler=handler,
             tools=tools,
             description=description,
@@ -273,28 +265,6 @@ class CommandRouter:
             )
         return None
 
-    async def _dispatch_session(
-        self,
-        name: str,
-        args: list[str],
-        msg: InboundMessage,
-        pool: Pool | None,  # noqa: ARG002 — future use; session commands are pool-agnostic
-    ) -> Response:
-        """Dispatch a session command with timeout and driver checks."""
-        entry = self._session_handlers[name]
-        if self._session_driver is None:
-            return Response(content="Session commands require anthropic-sdk backend.")
-        try:
-            return await asyncio.wait_for(
-                entry.handler(
-                    msg, self._session_driver, entry.tools, args, entry.timeout
-                ),
-                timeout=entry.timeout,
-            )
-        except TimeoutError:
-            log.warning("Session command %s timed out after %.1fs", name, entry.timeout)
-            return Response(content=f"Command timed out after {entry.timeout:.0f}s.")
-
     async def dispatch(  # noqa: C901 — command routing has inherent branching complexity
         self, msg: InboundMessage, pool: Pool | None = None
     ) -> Response | None:
@@ -319,8 +289,40 @@ class CommandRouter:
         if builtin_response is not None:
             return builtin_response
 
-        if command_name in self._session_handlers:
-            return await self._dispatch_session(command_name, args, msg, pool)
+        session_entry = self._session_handlers.get(command_name)
+        if session_entry is not None:
+            if self._session_driver is None:
+                return Response(
+                    content=(
+                        "Session commands require an anthropic-sdk backend. "
+                        "No session driver is configured."
+                    )
+                )
+            import asyncio as _asyncio
+
+            try:
+                return await _asyncio.wait_for(
+                    session_entry.handler(  # type: ignore[operator]
+                        msg,
+                        self._session_driver,
+                        session_entry.tools,
+                        args,
+                        session_entry.timeout,
+                    ),
+                    timeout=session_entry.timeout,
+                )
+            except _asyncio.TimeoutError:
+                log.warning(
+                    "Session command %s timed out after %.1fs",
+                    command_name,
+                    session_entry.timeout,
+                )
+                return Response(
+                    content=(
+                        f"Command {command_name} timed out"
+                        f" after {session_entry.timeout:.0f}s."
+                    )
+                )
 
         plugin_handlers: dict[str, AsyncHandler] = self._command_loader.get_commands(
             self._enabled_plugins

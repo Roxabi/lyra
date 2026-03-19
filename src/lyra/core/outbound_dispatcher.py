@@ -235,6 +235,11 @@ class OutboundDispatcher:
                 elif kind == "attachment":
                     await self._adapter.render_attachment(payload, msg)
                 else:
+                    # Drain superseded streaming (cancel-in-flight) silently.
+                    if outbound is not None and outbound.metadata.get("_superseded"):
+                        async for _ in payload:
+                            pass
+                        break
                     await self._adapter.send_streaming(msg, payload, outbound)
                 if self._circuit is not None:
                     self._circuit.record_success()

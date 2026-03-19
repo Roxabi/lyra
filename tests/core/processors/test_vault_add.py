@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
@@ -431,3 +432,91 @@ class TestVaultAddProcessorPost:
         # Assert — empty tags list passed
         call_args = tools.vault.add.call_args  # type: ignore[attr-defined]
         assert call_args.args[1] == []
+
+
+# ---------------------------------------------------------------------------
+# VaultAddProcessor — concurrent isolation (B3 verification)
+# ---------------------------------------------------------------------------
+
+
+class TestVaultAddProcessorConcurrency:
+    async def test_concurrent_post_uses_correct_urls(self) -> None:
+        """Two concurrent post() calls with different URLs use the correct original msg
+        URLs.
+
+        Verifies the B3 fix: URL is re-extracted from the original InboundMessage
+        in post() rather than stored as mutable instance state, so concurrent
+        execution never mixes up URLs between requests.
+        """
+        # Arrange — separate tools per processor to track calls independently
+        tools_a = make_tools()
+        tools_b = make_tools()
+
+        proc_a = VaultAddProcessor(tools_a)
+        proc_b = VaultAddProcessor(tools_b)
+
+        msg_a = make_msg(
+            text="/vault-add https://example-a.com",
+            command_name="vault-add",
+            command_args="https://example-a.com",
+        )
+        msg_b = make_msg(
+            text="/vault-add https://example-b.com",
+            command_name="vault-add",
+            command_args="https://example-b.com",
+        )
+        response_a = Response(content="Title: Page A\nTags: alpha\n\nSummary A.")
+        response_b = Response(content="Title: Page B\nTags: beta\n\nSummary B.")
+
+        # Act — run both post() calls concurrently
+        await asyncio.gather(
+            proc_a.post(msg_a, response_a),
+            proc_b.post(msg_b, response_b),
+        )
+
+        # Assert — each vault received exactly one call with the correct URL
+        tools_a.vault.add.assert_called_once()  # type: ignore[attr-defined]
+        tools_b.vault.add.assert_called_once()  # type: ignore[attr-defined]
+
+        call_a = tools_a.vault.add.call_args  # type: ignore[attr-defined]
+        call_b = tools_b.vault.add.call_args  # type: ignore[attr-defined]
+
+        assert call_a.args[2] == "https://example-a.com"
+        assert call_b.args[2] == "https://example-b.com"
+
+    async def test_concurrent_post_does_not_mix_titles(self) -> None:
+        """Concurrent post() calls parse titles from their own response,
+        not each other's.
+        """
+        # Arrange
+        tools_a = make_tools()
+        tools_b = make_tools()
+
+        proc_a = VaultAddProcessor(tools_a)
+        proc_b = VaultAddProcessor(tools_b)
+
+        msg_a = make_msg(
+            text="/vault-add https://example-a.com",
+            command_name="vault-add",
+            command_args="https://example-a.com",
+        )
+        msg_b = make_msg(
+            text="/vault-add https://example-b.com",
+            command_name="vault-add",
+            command_args="https://example-b.com",
+        )
+        response_a = Response(content="Title: Alpha Title\nTags: a\n\nContent A.")
+        response_b = Response(content="Title: Beta Title\nTags: b\n\nContent B.")
+
+        # Act
+        await asyncio.gather(
+            proc_a.post(msg_a, response_a),
+            proc_b.post(msg_b, response_b),
+        )
+
+        # Assert — titles come from each processor's own response
+        call_a = tools_a.vault.add.call_args  # type: ignore[attr-defined]
+        call_b = tools_b.vault.add.call_args  # type: ignore[attr-defined]
+
+        assert call_a.args[0] == "Alpha Title"
+        assert call_b.args[0] == "Beta Title"

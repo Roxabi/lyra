@@ -60,6 +60,8 @@ class OutboundDispatcher:
         self._worker: asyncio.Task[None] | None = None
         # Per-chat last circuit-open notification timestamp for debouncing (Fix 3)
         self._circuit_notify_ts: dict[str, float] = {}
+        self._scope_locks: dict[str, asyncio.Lock] = {}
+        self._scope_tasks: set[asyncio.Task[None]] = set()
 
     def _verify_routing(self, routing: RoutingContext | None) -> bool:
         """True if routing matches this dispatcher (or is absent); False on mismatch."""
@@ -128,11 +130,14 @@ class OutboundDispatcher:
         )
 
     async def stop(self) -> None:
-        """Cancel the worker task and wait for it to finish."""
+        """Cancel worker, drain in-flight scope tasks, reap idle locks."""
         if self._worker is not None:
             self._worker.cancel()
             await asyncio.gather(self._worker, return_exceptions=True)
             self._worker = None
+        if self._scope_tasks:
+            await asyncio.gather(*self._scope_tasks, return_exceptions=True)
+        self._reap_scope_locks()
 
     def qsize(self) -> int:
         """Return the number of pending items in the outbound queue."""
@@ -142,157 +147,182 @@ class OutboundDispatcher:
         """Delegate to module-level helper in outbound_errors."""
         await try_notify_user(self._platform_name, self._adapter, msg, text)
 
-    async def _worker_loop(self) -> None:  # noqa: C901, PLR0915 — outbound dispatch with circuit-breaker, routing verification, kind branching, and error classification
-        """Consume the outbound queue indefinitely."""
+    async def _dispatch_item(self, item: _ITEM) -> None:  # noqa: C901, PLR0915 — outbound dispatch with circuit-breaker, routing verification, kind branching, and error classification
+        """Dispatch a single item (routing check, circuit, retry, send, callback)."""
+        kind = item[0]
+        if kind == "streaming":
+            _, msg, payload, outbound = item
+        elif kind in (
+            "send",
+            "audio",
+            "audio_stream",
+            "voice_stream",
+            "attachment",
+        ):
+            _, msg, payload = item
+            outbound = None
+        else:
+            log.error(
+                '{"event": "unknown_kind", "kind": "%s", "action": "skipped"}',
+                kind,
+            )
+            return
+        # Verify routing context matches this dispatcher.
+        # "send": check payload (OutboundMessage) routing.
+        # "streaming": check outbound routing if provided.
+        # "audio"/"audio_stream"/"attachment": use msg (InboundMessage) routing.
+        # "voice_stream": synthesize from msg when routing absent — TTS callers
+        #     may omit explicit routing; synthesizing ensures the routing check
+        #     validates platform+bot_id without requiring callers to set it.
+        if kind == "send":
+            _routing = getattr(payload, "routing", None) or msg.routing
+        elif kind == "voice_stream":
+            _routing = msg.routing or RoutingContext(
+                platform=msg.platform,
+                bot_id=msg.bot_id,
+                scope_id=msg.scope_id,
+            )
+        elif kind in ("audio", "audio_stream", "attachment"):
+            _routing = msg.routing
+        else:
+            _routing = outbound.routing if outbound is not None else msg.routing
+        if not self._verify_routing(_routing):
+            if kind in ("streaming", "audio_stream", "voice_stream"):
+                async for _ in payload:
+                    pass
+            return
+
+        if self._circuit is not None and self._circuit.is_open():
+            log.warning(
+                '{"event": "%s_circuit_open", "action": "%s", "dropped": true}',
+                self._platform_name,
+                kind,
+            )
+            # Drain streaming iterator to prevent generator leaks
+            if kind in ("streaming", "audio_stream", "voice_stream"):
+                async for _ in payload:
+                    pass
+            _cb_out = payload if kind == "send" else outbound
+            if _cb_out is not None:
+                _cb_out.metadata["reply_message_id"] = None
+                _cb = _cb_out.metadata.pop("_on_dispatched", None)
+                if callable(_cb):
+                    _cb(_cb_out)
+            # Fix 3: notify user once per chat per debounce window
+            scope_key = msg.scope_id or msg.id
+            now = time.monotonic()
+            last_ts = self._circuit_notify_ts.get(scope_key, 0.0)
+            if now - last_ts >= _CIRCUIT_NOTIFY_DEBOUNCE:
+                self._circuit_notify_ts[scope_key] = now
+                await self._try_notify_user(msg, _CIRCUIT_OPEN_MSG)
+            return
+
+        # Fix 1: retry loop with exponential backoff for transient errors
+        _backoff_delays = (1.0, 2.0, 4.0)
+        _last_exc: Exception | None = None
+        _attempt = 0
+        while _attempt <= len(_backoff_delays):
+            try:
+                if kind == "send":
+                    await self._adapter.send(msg, payload)
+                elif kind == "audio":
+                    await self._adapter.render_audio(payload, msg)
+                elif kind == "audio_stream":
+                    await self._adapter.render_audio_stream(payload, msg)
+                elif kind == "voice_stream":
+                    await self._adapter.render_voice_stream(payload, msg)
+                elif kind == "attachment":
+                    await self._adapter.render_attachment(payload, msg)
+                else:
+                    await self._adapter.send_streaming(msg, payload, outbound)
+                if self._circuit is not None:
+                    self._circuit.record_success()
+                _last_exc = None
+                break  # success
+            except BaseException as exc:
+                if not isinstance(exc, Exception):
+                    # Re-raise CancelledError / KeyboardInterrupt immediately
+                    if self._circuit is not None:
+                        self._circuit.record_failure()
+                    raise
+                is_transient = _is_transient_error(exc)
+                retry_possible = (
+                    is_transient
+                    and _attempt < len(_backoff_delays)
+                    and kind in ("send", "streaming")
+                )
+                if retry_possible:
+                    delay = _backoff_delays[_attempt]
+                    log.warning(
+                        "OutboundDispatcher[%s] delivery attempt %d failed"
+                        " (kind=%s, transient), retrying in %.0fs: %s",
+                        self._platform_name,
+                        _attempt + 1,
+                        kind,
+                        delay,
+                        exc,
+                    )
+                    _last_exc = exc
+                    _attempt += 1
+                    await asyncio.sleep(delay)
+                else:
+                    _last_exc = exc
+                    _attempt = len(_backoff_delays) + 1  # exit loop
+                    break
+
+        # Invoke dispatched callback after send (#316).
+        # "send" → payload is the OutboundMessage; else → outbound.
+        _out = payload if kind == "send" else outbound
+        if _out is not None:
+            _dispatched = _out.metadata.pop("_on_dispatched", None)
+            if callable(_dispatched):
+                _dispatched(_out)
+
+        if _last_exc is not None:
+            exc = _last_exc
+            if self._circuit is not None:
+                self._circuit.record_failure()
+            # Drain iterator to prevent generator leaks on delivery failure
+            if kind in ("streaming", "audio_stream", "voice_stream"):
+                async for _ in payload:
+                    pass
+            log.error(
+                "OutboundDispatcher[%s] delivery failed (kind=%s): %s",
+                self._platform_name,
+                kind,
+                exc,
+                exc_info=exc,
+            )
+            # Fix 1: send user notification after all retries exhausted
+            if kind in ("send", "streaming"):
+                await self._try_notify_user(msg, _SEND_ERROR_MSG)
+
+    async def _worker_loop(self) -> None:
+        """Fan-out: dequeue → lock per scope → create_task → task_done immediately."""
         while True:
             item = await self._queue.get()
             try:
-                kind = item[0]
-                if kind == "streaming":
-                    _, msg, payload, outbound = item
-                elif kind in (
-                    "send",
-                    "audio",
-                    "audio_stream",
-                    "voice_stream",
-                    "attachment",
-                ):
-                    _, msg, payload = item
-                    outbound = None
-                else:
-                    log.error(
-                        '{"event": "unknown_kind", "kind": "%s", "action": "skipped"}',
-                        kind,
-                    )
-                    continue
-                # Verify routing context matches this dispatcher.
-                # "send": check payload (OutboundMessage) routing.
-                # "streaming": check outbound routing if provided.
-                # "audio"/"audio_stream"/"attachment": use msg (InboundMessage) routing.
-                # "voice_stream": synthesize from msg when routing absent — TTS callers
-                #     may omit explicit routing; synthesizing ensures the routing check
-                #     validates platform+bot_id without requiring callers to set it.
-                if kind == "send":
-                    _routing = getattr(payload, "routing", None) or msg.routing
-                elif kind == "voice_stream":
-                    _routing = msg.routing or RoutingContext(
-                        platform=msg.platform,
-                        bot_id=msg.bot_id,
-                        scope_id=msg.scope_id,
-                    )
-                elif kind in ("audio", "audio_stream", "attachment"):
-                    _routing = msg.routing
-                else:
-                    _routing = outbound.routing if outbound is not None else msg.routing
-                if not self._verify_routing(_routing):
-                    if kind in ("streaming", "audio_stream", "voice_stream"):
-                        async for _ in payload:
-                            pass
-                    continue
-
-                if self._circuit is not None and self._circuit.is_open():
-                    log.warning(
-                        '{"event": "%s_circuit_open", "action": "%s", "dropped": true}',
-                        self._platform_name,
-                        kind,
-                    )
-                    # Drain streaming iterator to prevent generator leaks
-                    if kind in ("streaming", "audio_stream", "voice_stream"):
-                        async for _ in payload:
-                            pass
-                    _cb_out = payload if kind == "send" else outbound
-                    if _cb_out is not None:
-                        _cb_out.metadata["reply_message_id"] = None
-                        _cb = _cb_out.metadata.pop("_on_dispatched", None)
-                        if callable(_cb):
-                            _cb(_cb_out)
-                    # Fix 3: notify user once per chat per debounce window
-                    scope_key = msg.scope_id or msg.id
-                    now = time.monotonic()
-                    last_ts = self._circuit_notify_ts.get(scope_key, 0.0)
-                    if now - last_ts >= _CIRCUIT_NOTIFY_DEBOUNCE:
-                        self._circuit_notify_ts[scope_key] = now
-                        await self._try_notify_user(msg, _CIRCUIT_OPEN_MSG)
-                    continue
-
-                # Fix 1: retry loop with exponential backoff for transient errors
-                _backoff_delays = (1.0, 2.0, 4.0)
-                _last_exc: Exception | None = None
-                _attempt = 0
-                while _attempt <= len(_backoff_delays):
-                    try:
-                        if kind == "send":
-                            await self._adapter.send(msg, payload)
-                        elif kind == "audio":
-                            await self._adapter.render_audio(payload, msg)
-                        elif kind == "audio_stream":
-                            await self._adapter.render_audio_stream(payload, msg)
-                        elif kind == "voice_stream":
-                            await self._adapter.render_voice_stream(payload, msg)
-                        elif kind == "attachment":
-                            await self._adapter.render_attachment(payload, msg)
-                        else:
-                            await self._adapter.send_streaming(msg, payload, outbound)
-                        if self._circuit is not None:
-                            self._circuit.record_success()
-                        _last_exc = None
-                        break  # success
-                    except BaseException as exc:
-                        if not isinstance(exc, Exception):
-                            # Re-raise CancelledError / KeyboardInterrupt immediately
-                            if self._circuit is not None:
-                                self._circuit.record_failure()
-                            raise
-                        is_transient = _is_transient_error(exc)
-                        retry_possible = (
-                            is_transient
-                            and _attempt < len(_backoff_delays)
-                            and kind in ("send", "streaming")
-                        )
-                        if retry_possible:
-                            delay = _backoff_delays[_attempt]
-                            log.warning(
-                                "OutboundDispatcher[%s] delivery attempt %d failed"
-                                " (kind=%s, transient), retrying in %.0fs: %s",
-                                self._platform_name,
-                                _attempt + 1,
-                                kind,
-                                delay,
-                                exc,
-                            )
-                            _last_exc = exc
-                            _attempt += 1
-                            await asyncio.sleep(delay)
-                        else:
-                            _last_exc = exc
-                            _attempt = len(_backoff_delays) + 1  # exit loop
-                            break
-
-                # Invoke dispatched callback after send (#316).
-                # "send" → payload is the OutboundMessage; else → outbound.
-                _out = payload if kind == "send" else outbound
-                if _out is not None:
-                    _dispatched = _out.metadata.pop("_on_dispatched", None)
-                    if callable(_dispatched):
-                        _dispatched(_out)
-
-                if _last_exc is not None:
-                    exc = _last_exc
-                    if self._circuit is not None:
-                        self._circuit.record_failure()
-                    # Drain iterator to prevent generator leaks on delivery failure
-                    if kind in ("streaming", "audio_stream", "voice_stream"):
-                        async for _ in payload:
-                            pass
-                    log.error(
-                        "OutboundDispatcher[%s] delivery failed (kind=%s): %s",
-                        self._platform_name,
-                        kind,
-                        exc,
-                        exc_info=exc,
-                    )
-                    # Fix 1: send user notification after all retries exhausted
-                    if kind in ("send", "streaming"):
-                        await self._try_notify_user(msg, _SEND_ERROR_MSG)
+                msg: InboundMessage = item[1]
+                scope_id = msg.scope_id or msg.id
+                lock = self._scope_locks.setdefault(scope_id, asyncio.Lock())
+                task = asyncio.create_task(
+                    self._process_locked(lock, item),
+                    name=f"outbound-scope-{self._platform_name}-{scope_id}",
+                )
+                task.add_done_callback(lambda t: self._scope_tasks.discard(t))
+                self._scope_tasks.add(task)
             finally:
                 self._queue.task_done()
+
+    async def _process_locked(self, lock: asyncio.Lock, item: _ITEM) -> None:
+        """Acquire scope lock, then dispatch. Serializes same-scope messages."""
+        async with lock:
+            await self._dispatch_item(item)
+
+    def _reap_scope_locks(self) -> None:
+        """Remove idle scope locks (not currently held)."""
+        self._scope_locks = {
+            scope_id: lock
+            for scope_id, lock in self._scope_locks.items()
+            if lock.locked()
+        }

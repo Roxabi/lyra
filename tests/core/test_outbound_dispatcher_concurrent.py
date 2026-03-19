@@ -11,7 +11,6 @@ T4 [GREEN]: stop() drains in-flight tasks before returning.
 from __future__ import annotations
 
 import asyncio
-import time
 from unittest.mock import AsyncMock, MagicMock
 
 from lyra.core.message import InboundMessage, OutboundMessage
@@ -36,23 +35,26 @@ def _make_msg(scope_id: str) -> InboundMessage:
 
 
 async def test_concurrent_different_scopes() -> None:
-    """Two items from different scopes with 100ms send each complete in < 190ms.
+    """Two items from different scopes dispatch concurrently (Event-based).
 
-    Old sequential _worker_loop processes one item at a time, so two 100ms sends
-    take ~200ms total. New fan-out (create_task per scope) runs both in parallel
-    and finishes in ~100ms. The 190ms ceiling gives generous CI headroom while
-    remaining well below the 200ms sequential floor.
+    Each send sets a done_event on completion. Both events must fire within
+    0.19s — well above a single 100ms send (concurrent path) but well below
+    two sequential 100ms sends (~200ms). This avoids the flaky wall-clock
+    ceiling while still distinguishing concurrent from sequential execution.
 
     [RED against old sequential implementation, GREEN with new fan-out]
     """
     # Arrange
     adapter = MagicMock()
-    call_count = 0
+    done_a: asyncio.Event = asyncio.Event()
+    done_b: asyncio.Event = asyncio.Event()
 
     async def slow_send(msg: InboundMessage, out: OutboundMessage) -> None:
-        nonlocal call_count
         await asyncio.sleep(0.1)
-        call_count += 1
+        if out.to_text() == "a":
+            done_a.set()
+        else:
+            done_b.set()
 
     adapter.send = AsyncMock(side_effect=slow_send)
     dispatcher = OutboundDispatcher(platform_name="discord", adapter=adapter)
@@ -63,20 +65,14 @@ async def test_concurrent_different_scopes() -> None:
         msg_b = _make_msg("channel:B")
 
         # Act
-        t0 = time.perf_counter()
         dispatcher.enqueue(msg_a, OutboundMessage.from_text("a"))
         dispatcher.enqueue(msg_b, OutboundMessage.from_text("b"))
 
-        # Wait just over one send duration — concurrent sends both finish;
-        # sequential sends would need ~200ms for two back-to-back 100ms ops.
-        await asyncio.sleep(0.15)
-        elapsed = time.perf_counter() - t0
-
-        # Assert — both sends completed, wall time < 190ms (concurrent)
-        assert call_count == 2, f"Expected 2 sends, got {call_count}"
-        assert elapsed < 0.19, (
-            f"Expected concurrent dispatch (<190ms), got {elapsed:.3f}s — "
-            "dispatcher appears to be running sequentially"
+        # Assert — both events must fire within 190ms (concurrent ~100ms,
+        # sequential ~200ms). TimeoutError means sequential dispatch.
+        await asyncio.wait_for(
+            asyncio.gather(done_a.wait(), done_b.wait()),
+            timeout=0.19,
         )
     finally:
         await dispatcher.stop()

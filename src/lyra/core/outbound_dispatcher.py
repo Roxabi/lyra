@@ -26,6 +26,7 @@ from .outbound_errors import (
     _CIRCUIT_NOTIFY_DEBOUNCE,
     _CIRCUIT_OPEN_MSG,
     _ITEM,
+    _SCOPE_REAP_THRESHOLD,
     _SEND_ERROR_MSG,
     _is_transient_error,
     try_notify_user,
@@ -303,14 +304,30 @@ class OutboundDispatcher:
             item = await self._queue.get()
             try:
                 msg: InboundMessage = item[1]
+                assert isinstance(msg, InboundMessage), (
+                    f"Expected InboundMessage at item[1], got {type(msg)!r}"
+                )
                 scope_id = msg.scope_id or msg.id
                 lock = self._scope_locks.setdefault(scope_id, asyncio.Lock())
                 task = asyncio.create_task(
                     self._process_locked(lock, item),
                     name=f"outbound-scope-{self._platform_name}-{scope_id}",
                 )
-                task.add_done_callback(lambda t: self._scope_tasks.discard(t))
+
+                def _on_task_done(t: asyncio.Task[None]) -> None:
+                    self._scope_tasks.discard(t)
+                    if not t.cancelled() and (exc := t.exception()) is not None:
+                        log.error(
+                            "OutboundDispatcher[%s] scope task exception: %s",
+                            self._platform_name,
+                            exc,
+                            exc_info=exc,
+                        )
+
+                task.add_done_callback(_on_task_done)
                 self._scope_tasks.add(task)
+                if len(self._scope_locks) > _SCOPE_REAP_THRESHOLD:
+                    self._reap_scope_locks()
             finally:
                 self._queue.task_done()
 

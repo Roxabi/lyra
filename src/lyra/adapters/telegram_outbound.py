@@ -214,12 +214,19 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: edit/ch
             if now - last_edit >= 0.5:
                 accumulated = "".join(parts)
                 _converted = _render_text(accumulated)[0]
-                await adapter.bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=placeholder.message_id,
-                    text=_converted,
-                    parse_mode="MarkdownV2",
-                )
+                try:
+                    await adapter.bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=placeholder.message_id,
+                        text=_converted,
+                        parse_mode="MarkdownV2",
+                    )
+                except Exception as edit_exc:
+                    # Intermediate edits are best-effort live UI updates.
+                    # Any failure (MESSAGE_TOO_LONG, "not modified", rate-limit…)
+                    # must NOT interrupt chunk accumulation — all content is
+                    # collected here and delivered in the final publish step below.
+                    log.debug("Intermediate streaming edit skipped: %s", edit_exc)
                 last_edit = now
     except Exception as exc:
         stream_error = exc

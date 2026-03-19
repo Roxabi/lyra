@@ -21,6 +21,7 @@ log = logging.getLogger(__name__)
 _SEND_ERROR_MSG = "⚠️ I encountered an error sending my response. Please try again."
 _CIRCUIT_OPEN_MSG = "⚠️ I'm temporarily unavailable. Please try again in a moment."
 _CIRCUIT_NOTIFY_DEBOUNCE = 60.0  # seconds between circuit-open notifications per chat
+_SCOPE_REAP_THRESHOLD = 256  # reap idle scope locks when dict exceeds this size
 
 # Queue item: (kind, msg, payload) for send;
 # (kind, msg, chunks, outbound) for streaming; (kind, inbound, audio) for audio;

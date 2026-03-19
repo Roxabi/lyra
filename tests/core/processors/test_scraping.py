@@ -321,3 +321,76 @@ class TestScrapingProcessorTruncation:
         # Assert
         assert "Usage:" in result.text
         tools.scraper.scrape.assert_not_called()  # type: ignore[attr-defined]
+
+# ---------------------------------------------------------------------------
+# _is_private_ip() and SSRF protection in _extract_and_validate_url()
+# ---------------------------------------------------------------------------
+
+
+class TestRejectsPrivateIps:
+    """B8 (SSRF): _extract_and_validate_url must reject private/LAN addresses."""
+
+    _ERROR_FRAGMENT = "no private/LAN IP addresses allowed"
+
+    def _make_cmd_msg(self, url: str) -> "InboundMessage":
+        return make_msg(
+            text=f"/explain {url}",
+            command_name="explain",
+            command_args=url,
+        )
+
+    def test_rejects_192_168(self) -> None:
+        _, err = _extract_and_validate_url(self._make_cmd_msg("http://192.168.1.1"))
+        assert err is not None
+        assert self._ERROR_FRAGMENT in err
+
+    def test_rejects_192_168_subnet(self) -> None:
+        _, err = _extract_and_validate_url(self._make_cmd_msg("http://192.168.100.200"))
+        assert err is not None
+        assert self._ERROR_FRAGMENT in err
+
+    def test_rejects_10_x(self) -> None:
+        _, err = _extract_and_validate_url(self._make_cmd_msg("http://10.0.0.1"))
+        assert err is not None
+        assert self._ERROR_FRAGMENT in err
+
+    def test_rejects_10_deep(self) -> None:
+        _, err = _extract_and_validate_url(self._make_cmd_msg("http://10.255.255.255"))
+        assert err is not None
+        assert self._ERROR_FRAGMENT in err
+
+    def test_rejects_172_16(self) -> None:
+        _, err = _extract_and_validate_url(self._make_cmd_msg("http://172.16.0.1"))
+        assert err is not None
+        assert self._ERROR_FRAGMENT in err
+
+    def test_rejects_172_31(self) -> None:
+        _, err = _extract_and_validate_url(self._make_cmd_msg("http://172.31.255.255"))
+        assert err is not None
+        assert self._ERROR_FRAGMENT in err
+
+    def test_rejects_127_0_0_1(self) -> None:
+        _, err = _extract_and_validate_url(self._make_cmd_msg("http://127.0.0.1"))
+        assert err is not None
+        assert self._ERROR_FRAGMENT in err
+
+    def test_rejects_localhost(self) -> None:
+        _, err = _extract_and_validate_url(self._make_cmd_msg("http://localhost"))
+        assert err is not None
+        assert self._ERROR_FRAGMENT in err
+
+    def test_rejects_169_254_link_local(self) -> None:
+        _, err = _extract_and_validate_url(self._make_cmd_msg("http://169.254.169.254"))
+        assert err is not None
+        assert self._ERROR_FRAGMENT in err
+
+    def test_rejects_returns_empty_url(self) -> None:
+        url, _ = _extract_and_validate_url(self._make_cmd_msg("http://127.0.0.1"))
+        assert url == ""
+
+    def test_public_ip_is_allowed(self) -> None:
+        # 93.184.216.34 is example.com — a real public IP; no DNS needed since
+        # we pass a bare IP string that resolves instantly via getaddrinfo.
+        url, err = _extract_and_validate_url(self._make_cmd_msg("http://93.184.216.34"))
+        assert err is None
+        assert url == "http://93.184.216.34"

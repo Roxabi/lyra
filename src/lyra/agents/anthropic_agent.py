@@ -87,45 +87,26 @@ class AnthropicAgent(AgentBase):
         self._register_session_commands()
 
     def _register_session_commands(self) -> None:
-        """Register built-in session commands on the command router."""
-        from lyra.core.session_commands import cmd_add, cmd_explain, cmd_summarize
+        """Store SessionTools and register processor commands as passthroughs.
+
+        Replaces the old session-command registrations (cmd_add, cmd_explain,
+        cmd_summarize, cmd_search) — B2, issue #363.  The processor pipeline
+        in pool_processor.py now handles these commands via pre()/post() hooks
+        on the normal pool flow, so responses land in pool history and enable
+        follow-up questions.
+        """
+        import lyra.core.processors  # noqa: F401 — trigger self-registration
+        from lyra.core.processor_registry import registry
         from lyra.integrations.base import SessionTools
         from lyra.integrations.vault_cli import VaultCli
         from lyra.integrations.web_intel import WebIntelScraper
 
-        try:
-            scraper = WebIntelScraper()
-            vault = VaultCli()
-        except Exception:
-            log.warning("AnthropicAgent: could not build session tools; using stubs")
-            scraper = None  # type: ignore[assignment]
-            vault = None  # type: ignore[assignment]
+        self._session_tools = SessionTools(scraper=WebIntelScraper(), vault=VaultCli())
 
-        if scraper is None or vault is None:
-            return
-
-        tools = SessionTools(scraper=scraper, vault=vault)
-        self.command_router.register_session_command(
-            "vault-add",
-            cmd_add,
-            tools=tools,
-            description="Save URL to vault: /vault-add <url>",
-            timeout=600.0,
-        )
-        self.command_router.register_session_command(
-            "explain",
-            cmd_explain,
-            tools=tools,
-            description="Explain a URL in plain language: /explain <url>",
-            timeout=120.0,
-        )
-        self.command_router.register_session_command(
-            "summarize",
-            cmd_summarize,
-            tools=tools,
-            description="Summarize a URL in bullet points: /summarize <url>",
-            timeout=120.0,
-        )
+        # Register each processor command as a passthrough so command_router.dispatch()
+        # returns None (agent-handled) rather than "unknown command".
+        for cmd in registry.commands():
+            self.command_router.register_passthrough(cmd.lstrip("/"))
 
     async def _process_llm(  # noqa: C901 — voice modality branch adds one branch
         self, msg: InboundMessage, pool: Pool, *, on_intermediate=None

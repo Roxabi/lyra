@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import logging
 from abc import ABC
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -51,9 +52,7 @@ class BaseProcessor(ABC):
         """Transform message before pool submission.  Default: pass-through."""
         return msg
 
-    async def post(
-        self, msg: "InboundMessage", response: "Response"
-    ) -> "Response":
+    async def post(self, msg: "InboundMessage", response: "Response") -> "Response":
         """Side effects after LLM response.  Default: pass-through."""
         return response
 
@@ -81,7 +80,7 @@ class ProcessorRegistry:
         command: str,
         *,
         description: str = "",
-    ):
+    ) -> Callable[[type[BaseProcessor]], type[BaseProcessor]]:
         """Class decorator: register *cls* as the processor for *command*.
 
         *command* must include the leading slash (e.g. ``"/vault-add"``).
@@ -126,6 +125,10 @@ class ProcessorRegistry:
         if cls is None:
             return None
         return cls(tools)
+
+    def clear(self) -> None:
+        """Remove all registered processors.  Use only in tests — not thread-safe."""
+        self._entries.clear()
 
 
 # Module-level singleton — import and use this everywhere.

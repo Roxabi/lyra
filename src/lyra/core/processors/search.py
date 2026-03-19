@@ -32,11 +32,12 @@ class SearchProcessor(BaseProcessor):
             else msg.text.strip()
         )
 
-        try:
-            results = await self.tools.vault.search(query, timeout=25.0)
-        except Exception:
-            log.warning("SearchProcessor: vault.search() failed", exc_info=True)
-            results = "(search unavailable)"
+        if not query:
+            return dataclasses.replace(msg, text="Usage: /search <query>")
+
+        # VaultProvider.search intentionally does NOT raise (see integrations/base.py).
+        # No try/except needed — empty/error results are returned as empty strings.
+        results = await self.tools.vault.search(query, timeout=25.0)
 
         if not results or not results.strip():
             results = f'(no results found for "{query}")'

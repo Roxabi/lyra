@@ -45,6 +45,9 @@ log = logging.getLogger(__name__)
 class Hub(HubOutboundMixin):
     """Central hub: InboundBus + OutboundDispatchers + adapter registry + pools."""
 
+    # Class-level defaults used directly in tests and when Hub() is constructed
+    # without config.  Production values come from [hub] in config.toml via
+    # bootstrap.config._load_hub_config().
     BUS_SIZE = 100
     RATE_LIMIT = 20
     RATE_WINDOW = 60

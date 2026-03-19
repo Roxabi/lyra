@@ -15,6 +15,7 @@ from lyra.bootstrap.agent_factory import (
 from lyra.bootstrap.config import (
     _build_agent_overrides,
     _load_cli_pool_config,
+    _load_hub_config,
     _load_messages,
     _load_pairing_config,
 )
@@ -143,6 +144,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
         from lyra.core.debouncer import DEFAULT_DEBOUNCE_MS
 
         cli_pool_cfg = _load_cli_pool_config(raw_config)
+        hub_cfg = _load_hub_config(raw_config)
 
         hub = Hub(
             circuit_registry=circuit_registry,
@@ -153,6 +155,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
             debounce_ms=DEFAULT_DEBOUNCE_MS,
             prefs_store=stores.prefs,
             turn_timeout=cli_pool_cfg["turn_timeout"],
+            pool_ttl=hub_cfg["pool_ttl"],
         )
         hub.set_turn_store(stores.turn)
         hub.set_message_index(stores.message_index)

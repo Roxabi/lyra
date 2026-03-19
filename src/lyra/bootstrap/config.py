@@ -100,6 +100,25 @@ def _load_cli_pool_config(raw: dict) -> dict:
     }
 
 
+def _load_hub_config(raw: dict) -> dict:
+    """Load [hub] section from raw config dict. Missing keys → defaults.
+
+    Keys
+    ----
+    pool_ttl     : float  — idle pool eviction TTL in seconds (default: 604800 / 7 days)
+    bus_size     : int    — inbound bus queue capacity (default: 100)
+    rate_limit   : int    — max messages per rate window per user (default: 20)
+    rate_window  : int    — rate window duration in seconds (default: 60)
+    """
+    section: dict = raw.get("hub", {})
+    return {
+        "pool_ttl": float(section.get("pool_ttl", 604800.0)),
+        "bus_size": int(section.get("bus_size", 100)),
+        "rate_limit": int(section.get("rate_limit", 20)),
+        "rate_window": int(section.get("rate_window", 60)),
+    }
+
+
 def _load_messages(language: str = "en") -> MessageManager:
     """Load MessageManager.
 

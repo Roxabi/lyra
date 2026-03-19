@@ -174,7 +174,7 @@ class TestLoadCliPoolConfig:
 
         result = _load_cli_pool_config({})
         assert result["idle_ttl"] == 1200
-        assert result["default_timeout"] == 300
+        assert result["default_timeout"] == 1200
         assert result["turn_timeout"] is None
 
     def test_overrides_from_toml(self) -> None:
@@ -200,5 +200,5 @@ class TestLoadCliPoolConfig:
         raw = {"cli_pool": {"turn_timeout": 600}}
         result = _load_cli_pool_config(raw)
         assert result["idle_ttl"] == 1200
-        assert result["default_timeout"] == 300
+        assert result["default_timeout"] == 1200
         assert result["turn_timeout"] == 600

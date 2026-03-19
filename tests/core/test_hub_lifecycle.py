@@ -54,9 +54,9 @@ class TestPoolTTLEviction:
         assert "p1" in hub.pools
 
     def test_pool_ttl_default(self) -> None:
-        """Default POOL_TTL is 3600s and passes through to _pool_ttl."""
+        """Default POOL_TTL is 604800s (7 days) and passes through to _pool_ttl."""
         hub = Hub()
-        assert hub._pool_ttl == 3600.0
+        assert hub._pool_ttl == Hub.POOL_TTL
 
     def test_done_task_pool_evicted(self) -> None:
         """A pool whose task finished (done()=True) is evicted when stale."""

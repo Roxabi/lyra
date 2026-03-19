@@ -10,8 +10,6 @@ from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
 from lyra.adapters.telegram_formatting import (
-    TELEGRAM_MAX_LENGTH,
-    _convert_markdown,
     _render_buttons,
     _render_text,
     _validate_inbound,
@@ -215,13 +213,20 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: edit/ch
             now = time.monotonic()
             if now - last_edit >= 0.5:
                 accumulated = "".join(parts)
-                _converted = _convert_markdown(accumulated[:TELEGRAM_MAX_LENGTH])
-                await adapter.bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=placeholder.message_id,
-                    text=_converted,
-                    parse_mode="MarkdownV2",
-                )
+                _converted = _render_text(accumulated)[0]
+                try:
+                    await adapter.bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=placeholder.message_id,
+                        text=_converted,
+                        parse_mode="MarkdownV2",
+                    )
+                except Exception as edit_exc:
+                    # Intermediate edits are best-effort live UI updates.
+                    # Any failure (MESSAGE_TOO_LONG, "not modified", rate-limit…)
+                    # must NOT interrupt chunk accumulation — all content is
+                    # collected here and delivered in the final publish step below.
+                    log.debug("Intermediate streaming edit skipped: %s", edit_exc)
                 last_edit = now
     except Exception as exc:
         stream_error = exc

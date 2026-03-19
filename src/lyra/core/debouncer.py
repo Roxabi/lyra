@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 DEFAULT_DEBOUNCE_MS = 300
+_MAX_MERGED_CHARS = 4096
 
 
 class MessageDebouncer:
@@ -34,14 +35,19 @@ class MessageDebouncer:
     Usage inside Pool._process_loop()::
 
         msgs = await debouncer.collect(inbox)
-        combined = MessageDebouncer.merge(msgs)
+        combined = debouncer.merge(msgs)
         # ... dispatch combined to agent
     """
 
-    __slots__ = ("debounce_ms",)
+    __slots__ = ("debounce_ms", "_max_merged_chars")
 
-    def __init__(self, debounce_ms: int = DEFAULT_DEBOUNCE_MS) -> None:
+    def __init__(
+        self,
+        debounce_ms: int = DEFAULT_DEBOUNCE_MS,
+        max_merged_chars: int = _MAX_MERGED_CHARS,
+    ) -> None:
         self.debounce_ms = debounce_ms
+        self._max_merged_chars = max_merged_chars
 
     async def collect(
         self, inbox: asyncio.Queue[InboundMessage]
@@ -111,8 +117,7 @@ class MessageDebouncer:
             pass
         return buffer
 
-    @staticmethod
-    def merge(messages: list[InboundMessage]) -> InboundMessage:
+    def merge(self, messages: list[InboundMessage]) -> InboundMessage:
         """Combine multiple messages into a single InboundMessage.
 
         Text fields are joined with newlines. Attachments are concatenated.
@@ -128,9 +133,8 @@ class MessageDebouncer:
         if len(messages) == 1:
             return messages[0]
 
-        _MAX_MERGED_CHARS = 4096
-        combined_text = "\n".join(m.text for m in messages)[:_MAX_MERGED_CHARS]
-        combined_raw = "\n".join(m.text_raw for m in messages)[:_MAX_MERGED_CHARS]
+        combined_text = "\n".join(m.text for m in messages)[:self._max_merged_chars]
+        combined_raw = "\n".join(m.text_raw for m in messages)[:self._max_merged_chars]
         merged_attachments = [a for m in messages for a in m.attachments]
         last = messages[-1]
 

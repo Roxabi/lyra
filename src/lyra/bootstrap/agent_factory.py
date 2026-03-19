@@ -40,6 +40,7 @@ async def _resolve_bot_agent_map(
 def _build_shared_base_providers(
     circuit_registry: CircuitRegistry,
     cli_pool: CliPool | None,
+    llm_cfg: dict | None = None,
 ) -> dict[str, LlmProvider]:
     """Build shared driver instances that are safe to reuse across all agents.
 
@@ -70,7 +71,12 @@ def _build_shared_base_providers(
         from lyra.llm.drivers.sdk import AnthropicSdkDriver
 
         sdk_driver = AnthropicSdkDriver(api_key)
-        retry: LlmProvider = RetryDecorator(sdk_driver, max_retries=3, backoff_base=1.0)
+        _llm = llm_cfg or {}
+        retry: LlmProvider = RetryDecorator(
+            sdk_driver,
+            max_retries=_llm.get("max_retries", 3),
+            backoff_base=_llm.get("backoff_base", 1.0),
+        )
 
         anthropic_cb = circuit_registry.get("anthropic")
         if anthropic_cb is not None:
@@ -201,6 +207,7 @@ def _resolve_agents(  # noqa: PLR0913
     stt_service: STTService | None,
     tts_service: TTSService | None = None,
     agent_store: AgentStore | None = None,
+    llm_cfg: dict | None = None,
 ) -> dict[str, AgentBase]:
     """Create all uniquely named agents referenced by bot configs.
 
@@ -215,7 +222,7 @@ def _resolve_agents(  # noqa: PLR0913
     """
     # Build shared driver instances once — AnthropicSdkDriver, RetryDecorator,
     # CircuitBreakerDecorator and ClaudeCliDriver are stateless across agents.
-    shared_providers = _build_shared_base_providers(circuit_registry, cli_pool)
+    shared_providers = _build_shared_base_providers(circuit_registry, cli_pool, llm_cfg)
 
     agents: dict[str, AgentBase] = {}
     for name, agent_config in sorted(agent_configs.items()):  # deterministic log order

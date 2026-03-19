@@ -42,13 +42,16 @@ class CliResult:
         return not self.error
 
 
-async def send_and_read(
+async def send_and_read(  # noqa: PLR0913
     entry: object,  # _ProcessEntry — typed as object to avoid a circular import
     message: str,
     pool_id: str,
     *,
     on_intermediate: Callable[[str], Awaitable[None]] | None = None,
     default_timeout: float = 300,
+    stdin_drain_timeout: float = 10.0,
+    max_idle_retries: int = 3,
+    intermediate_timeout: float = 5.0,
 ) -> CliResult:
     """Write *message* to *entry*'s stdin as NDJSON, then read until a result.
 
@@ -84,7 +87,7 @@ async def send_and_read(
     }
     proc.stdin.write((json.dumps(payload) + "\n").encode())
     try:
-        await asyncio.wait_for(proc.stdin.drain(), timeout=10)
+        await asyncio.wait_for(proc.stdin.drain(), timeout=stdin_drain_timeout)
     except asyncio.TimeoutError:
         return CliResult(error="Timeout writing to subprocess stdin")
 
@@ -93,15 +96,19 @@ async def send_and_read(
         pool_id=pool_id,
         on_intermediate=on_intermediate,
         default_timeout=default_timeout,
+        max_idle_retries=max_idle_retries,
+        intermediate_timeout=intermediate_timeout,
     )
 
 
-async def read_until_result(  # noqa: C901, PLR0915 — protocol dispatch: each JSON event type requires its own branch
+async def read_until_result(  # noqa: C901, PLR0913, PLR0915
     entry: object,
     *,
     pool_id: str,
     on_intermediate: Callable[[str], Awaitable[None]] | None = None,
     default_timeout: float = 300,
+    max_idle_retries: int = 3,
+    intermediate_timeout: float = 5.0,
 ) -> CliResult:
     """Read stdout lines from *entry*'s process until a ``result`` event arrives.
 
@@ -125,7 +132,6 @@ async def read_until_result(  # noqa: C901, PLR0915 — protocol dispatch: each 
         return CliResult(error="Process stdout is None")
 
     idle_timeout = default_timeout
-    max_idle_retries = 3
     idle_retries = 0
     session_id: str | None = None
     result_parts: list[str] = []  # accumulate text across all assistant events
@@ -196,7 +202,7 @@ async def read_until_result(  # noqa: C901, PLR0915 — protocol dispatch: each 
                         try:
                             await asyncio.wait_for(
                                 on_intermediate(pending_intermediate),
-                                timeout=5.0,
+                                timeout=intermediate_timeout,
                             )
                         except asyncio.TimeoutError:
                             log.warning(
@@ -261,6 +267,8 @@ class StreamingIterator:
         pool_reset_fn: Callable[[], Awaitable[None]] | None = None,
         default_timeout: float = 300,
         on_intermediate: Callable[[str], Awaitable[None]] | None = None,
+        max_idle_retries: int = 3,
+        intermediate_timeout: float = 5.0,
     ) -> None:
         from .cli_pool import _ProcessEntry
 
@@ -270,6 +278,8 @@ class StreamingIterator:
         self._pool_reset_fn = pool_reset_fn
         self._default_timeout = default_timeout
         self._on_intermediate = on_intermediate
+        self._max_idle_retries = max_idle_retries
+        self._intermediate_timeout = intermediate_timeout
         self._idle_retries = 0
         self._done = False
         self.session_id: str | None = None
@@ -302,11 +312,11 @@ class StreamingIterator:
                     self._done = True
                     raise StopAsyncIteration
                 self._idle_retries += 1
-                if self._idle_retries >= 3:
+                if self._idle_retries >= self._max_idle_retries:
                     log.error(
                         "[pool:%s] streaming timeout: no output for %ds",
                         self._pool_id,
-                        self._default_timeout * 3,
+                        self._default_timeout * self._max_idle_retries,
                     )
                     # Kill the alive-but-unresponsive subprocess before
                     # marking done (otherwise aclose() skips cleanup).
@@ -351,7 +361,7 @@ class StreamingIterator:
                         try:
                             await asyncio.wait_for(
                                 self._on_intermediate("\n\n".join(texts)),
-                                timeout=5.0,
+                                timeout=self._intermediate_timeout,
                             )
                         except asyncio.TimeoutError:
                             log.warning(
@@ -427,6 +437,9 @@ async def send_and_read_stream(  # noqa: PLR0913
     pool_reset_fn: Callable[[], Awaitable[None]] | None = None,
     default_timeout: float = 300,
     on_intermediate: Callable[[str], Awaitable[None]] | None = None,
+    stdin_drain_timeout: float = 10.0,
+    max_idle_retries: int = 3,
+    intermediate_timeout: float = 5.0,
 ) -> StreamingIterator:
     """Write *message* to stdin then return a StreamingIterator for text_delta chunks.
 
@@ -444,9 +457,13 @@ async def send_and_read_stream(  # noqa: PLR0913
 
     assert isinstance(entry, _ProcessEntry)
     proc = entry.proc
-
     if proc.stdin is None:
-        it = StreamingIterator(entry, pool_id, on_intermediate=on_intermediate)
+        it = StreamingIterator(
+            entry, pool_id,
+            on_intermediate=on_intermediate,
+            max_idle_retries=max_idle_retries,
+            intermediate_timeout=intermediate_timeout,
+        )
         it._done = True
         return it
 
@@ -459,11 +476,15 @@ async def send_and_read_stream(  # noqa: PLR0913
     }
     proc.stdin.write((json.dumps(payload) + "\n").encode())
     try:
-        await asyncio.wait_for(proc.stdin.drain(), timeout=10)
+        await asyncio.wait_for(proc.stdin.drain(), timeout=stdin_drain_timeout)
     except asyncio.TimeoutError:
         log.error("[pool:%s] timeout writing stdin (streaming)", pool_id)
         it = StreamingIterator(
-            entry, pool_id, pool_reset_fn=pool_reset_fn, on_intermediate=on_intermediate
+            entry, pool_id,
+            pool_reset_fn=pool_reset_fn,
+            on_intermediate=on_intermediate,
+            max_idle_retries=max_idle_retries,
+            intermediate_timeout=intermediate_timeout,
         )
         await it._cleanup()
         return it
@@ -474,4 +495,6 @@ async def send_and_read_stream(  # noqa: PLR0913
         pool_reset_fn=pool_reset_fn,
         default_timeout=default_timeout,
         on_intermediate=on_intermediate,
+        max_idle_retries=max_idle_retries,
+        intermediate_timeout=intermediate_timeout,
     )

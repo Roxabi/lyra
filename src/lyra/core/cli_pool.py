@@ -53,7 +53,7 @@ class CliPool(_CliPoolWorker):
         await pool.stop()
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         idle_ttl: int = 1200,
         default_timeout: int = 1200,  # 20 min × 3 retries = 60 min max idle
@@ -61,10 +61,23 @@ class CliPool(_CliPoolWorker):
             [str, str], Coroutine[Any, Any, None]
         ]
         | None = None,
+        *,
+        reaper_interval: int = 60,
+        kill_timeout: float = 5.0,
+        read_buffer_bytes: int = 1024 * 1024,
+        stdin_drain_timeout: float = 10.0,
+        max_idle_retries: int = 3,
+        intermediate_timeout: float = 5.0,
     ) -> None:
         self._idle_ttl = idle_ttl
         self._default_timeout = default_timeout
         self._on_reap = on_reap
+        self._reaper_interval = reaper_interval
+        self._kill_timeout = kill_timeout
+        self._read_buffer_bytes = read_buffer_bytes
+        self._stdin_drain_timeout = stdin_drain_timeout
+        self._max_idle_retries = max_idle_retries
+        self._intermediate_timeout = intermediate_timeout
         self._entries: dict[str, _ProcessEntry] = {}
         self._reaper_task: asyncio.Task[None] | None = None
         self._cwd_overrides: dict[str, Path] = {}
@@ -145,6 +158,9 @@ class CliPool(_CliPoolWorker):
                     pool_id,
                     on_intermediate=on_intermediate,
                     default_timeout=self._default_timeout,
+                    stdin_drain_timeout=self._stdin_drain_timeout,
+                    max_idle_retries=self._max_idle_retries,
+                    intermediate_timeout=self._intermediate_timeout,
                 )
                 if not result.ok and (
                     "Timeout" in result.error or "terminated" in result.error
@@ -217,6 +233,9 @@ class CliPool(_CliPoolWorker):
                 pool_reset_fn=_reset,
                 default_timeout=self._default_timeout,
                 on_intermediate=on_intermediate,
+                stdin_drain_timeout=self._stdin_drain_timeout,
+                max_idle_retries=self._max_idle_retries,
+                intermediate_timeout=self._intermediate_timeout,
             )
         entry.turn_count += 1
         entry.last_activity = time.time()

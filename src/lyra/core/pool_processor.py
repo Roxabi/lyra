@@ -18,7 +18,6 @@ if TYPE_CHECKING:
     from .message import InboundMessage
     from .pool import Pool
 
-from .debouncer import MessageDebouncer
 from .message import GENERIC_ERROR_REPLY, OutboundMessage, Response
 
 log = logging.getLogger(__name__)
@@ -63,7 +62,7 @@ class PoolProcessor:
                     break
 
                 # Phase 2: process with cancel-in-flight
-                msg = MessageDebouncer.merge(buffer)
+                msg = pool._debouncer.merge(buffer)
                 _last_msg = msg
                 _last_msg = await self._process_with_cancel(msg, buffer, agent)
         except asyncio.CancelledError:
@@ -144,7 +143,7 @@ class PoolProcessor:
             buffer.append(new_msg)
             buffer.extend(await pool._debouncer.drain_followups(pool._inbox))
 
-            msg = MessageDebouncer.merge(buffer)
+            msg = pool._debouncer.merge(buffer)
 
     async def _guarded_process_one(self, msg: InboundMessage, agent: AgentBase) -> None:
         """Wrap _process_one with timeout and error handling."""
@@ -368,7 +367,7 @@ class PoolProcessor:
         try:
             await asyncio.wait_for(
                 pool._ctx.dispatch_response(msg, response),
-                timeout=SAFE_DISPATCH_TIMEOUT,
+                timeout=pool._safe_dispatch_timeout,
             )
         except Exception as exc:
             log.exception("_safe_dispatch failed for pool %s: %s", pool.pool_id, exc)

@@ -15,9 +15,13 @@ from lyra.bootstrap.agent_factory import (
 from lyra.bootstrap.config import (
     _build_agent_overrides,
     _load_cli_pool_config,
+    _load_debouncer_config,
     _load_hub_config,
+    _load_inbound_bus_config,
+    _load_llm_config,
     _load_messages,
     _load_pairing_config,
+    _load_pool_config,
 )
 from lyra.bootstrap.multibot_stores import open_stores
 from lyra.bootstrap.multibot_wiring import (
@@ -141,10 +145,12 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
         stt_service = init_stt(first_agent_config)
         tts_service = init_tts(stt_service)
 
-        from lyra.core.debouncer import DEFAULT_DEBOUNCE_MS
-
         cli_pool_cfg = _load_cli_pool_config(raw_config)
         hub_cfg = _load_hub_config(raw_config)
+        pool_cfg = _load_pool_config(raw_config)
+        llm_cfg = _load_llm_config(raw_config)
+        inbound_bus_cfg = _load_inbound_bus_config(raw_config)
+        debouncer_cfg = _load_debouncer_config(raw_config)
 
         hub = Hub(
             circuit_registry=circuit_registry,
@@ -152,10 +158,17 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
             pairing_manager=pm,
             stt=stt_service,
             tts=tts_service,
-            debounce_ms=DEFAULT_DEBOUNCE_MS,
+            debounce_ms=debouncer_cfg["default_debounce_ms"],
             prefs_store=stores.prefs,
             turn_timeout=cli_pool_cfg["turn_timeout"],
             pool_ttl=hub_cfg["pool_ttl"],
+            bus_size=hub_cfg["bus_size"],
+            rate_limit=hub_cfg["rate_limit"],
+            rate_window=hub_cfg["rate_window"],
+            max_sdk_history=pool_cfg["max_sdk_history"],
+            safe_dispatch_timeout=pool_cfg["safe_dispatch_timeout"],
+            staging_maxsize=inbound_bus_cfg["staging_maxsize"],
+            platform_queue_maxsize=inbound_bus_cfg["platform_queue_maxsize"],
         )
         hub.set_turn_store(stores.turn)
         hub.set_message_index(stores.message_index)
@@ -167,6 +180,12 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
                 cli_pool = CliPool(
                     idle_ttl=cli_pool_cfg["idle_ttl"],
                     default_timeout=cli_pool_cfg["default_timeout"],
+                    reaper_interval=cli_pool_cfg["reaper_interval"],
+                    kill_timeout=cli_pool_cfg["kill_timeout"],
+                    read_buffer_bytes=cli_pool_cfg["read_buffer_bytes"],
+                    stdin_drain_timeout=cli_pool_cfg["stdin_drain_timeout"],
+                    max_idle_retries=cli_pool_cfg["max_idle_retries"],
+                    intermediate_timeout=cli_pool_cfg["intermediate_timeout"],
                 )
                 await cli_pool.start()
                 break
@@ -181,6 +200,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
             stt_service,
             tts_service,
             agent_store=stores.agent,
+            llm_cfg=llm_cfg,
         )
         for ag in all_agents.values():
             hub.register_agent(ag)

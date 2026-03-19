@@ -53,6 +53,12 @@ class Hub(HubOutboundMixin):
     RATE_WINDOW = 60
     POOL_TTL: float = 604800.0  # 7 days
 
+    # Class-level defaults for pool and bus config.
+    MAX_SDK_HISTORY = 50
+    SAFE_DISPATCH_TIMEOUT: float = 10.0
+    STAGING_MAXSIZE = 500
+    PLATFORM_QUEUE_MAXSIZE = 100
+
     def __init__(  # noqa: PLR0913
         self,
         bus_size: int = BUS_SIZE,
@@ -67,11 +73,18 @@ class Hub(HubOutboundMixin):
         debounce_ms: int = 0,
         prefs_store: "PrefsStore | None" = None,
         turn_timeout: float | None = None,
+        max_sdk_history: int = MAX_SDK_HISTORY,
+        safe_dispatch_timeout: float = SAFE_DISPATCH_TIMEOUT,
+        staging_maxsize: int = STAGING_MAXSIZE,
+        platform_queue_maxsize: int = PLATFORM_QUEUE_MAXSIZE,
     ) -> None:
         self._bus_size = bus_size
-        self.inbound_bus: InboundBus[InboundMessage] = InboundBus(name="inbound")
+        self._platform_queue_maxsize = platform_queue_maxsize
+        self.inbound_bus: InboundBus[InboundMessage] = InboundBus(
+            name="inbound", staging_maxsize=staging_maxsize
+        )
         self.inbound_audio_bus: InboundBus[InboundAudio] = InboundBus(
-            name="inbound-audio"
+            name="inbound-audio", staging_maxsize=staging_maxsize
         )
         self.outbound_dispatchers: dict[tuple[Platform, str], OutboundDispatcher] = {}
         self.adapter_registry: dict[tuple[Platform, str], ChannelAdapter] = {}
@@ -93,6 +106,8 @@ class Hub(HubOutboundMixin):
         self._turn_store: TurnStore | None = None
         self._turn_timeout = turn_timeout
         self._prefs_store: PrefsStore | None = prefs_store
+        self._max_sdk_history = max_sdk_history
+        self._safe_dispatch_timeout = safe_dispatch_timeout
         self.cli_pool: CliPool | None = None
         self._pool_manager = PoolManager(self)
         self._audio_pipeline = AudioPipeline(self)
@@ -140,9 +155,11 @@ class Hub(HubOutboundMixin):
     ) -> None:
         self.adapter_registry[(platform, bot_id)] = adapter
         if platform not in self.inbound_bus.registered_platforms():
-            self.inbound_bus.register(platform, maxsize=self._bus_size)
+            self.inbound_bus.register(platform, maxsize=self._platform_queue_maxsize)
         if platform not in self.inbound_audio_bus.registered_platforms():
-            self.inbound_audio_bus.register(platform, maxsize=self._bus_size)
+            self.inbound_audio_bus.register(
+                platform, maxsize=self._platform_queue_maxsize
+            )
 
     def register_outbound_dispatcher(
         self,

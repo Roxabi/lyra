@@ -37,6 +37,8 @@ class PoolManager:
                 ctx=self._hub,
                 debounce_ms=self._hub._debounce_ms,
                 turn_timeout_ceiling=self._hub._turn_timeout,
+                max_sdk_history=self._hub._max_sdk_history,
+                safe_dispatch_timeout=self._hub._safe_dispatch_timeout,
             )
             if self._hub._turn_store is not None:
                 new_pool._observer.register_turn_store(self._hub._turn_store)

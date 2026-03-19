@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 from lyra.core.cli_protocol import StreamingIterator, send_and_read_stream
 
 from .conftest import (
+    ASSISTANT_INTERMEDIATE_LINE,
     DEFAULT_POOL_ID,
     ERROR_RESULT_LINE,
     INIT_LINE,
@@ -305,3 +306,38 @@ class TestSendAndReadStream:
 
         # Assert — reset_fn wired through correctly
         pool_reset_fn.assert_awaited_once()
+
+    async def test_passes_on_intermediate_to_iterator(self) -> None:
+        # Arrange — verify on_intermediate is threaded into the iterator
+        proc = make_fake_proc(
+            [INIT_LINE, ASSISTANT_INTERMEDIATE_LINE, TEXT_DELTA_LINE, RESULT_LINE]
+        )
+        entry = make_entry(proc)
+        received: list[str] = []
+
+        async def on_intermediate(text: str) -> None:
+            received.append(text)
+
+        # Act
+        it = await send_and_read_stream(
+            entry, "hello", DEFAULT_POOL_ID, on_intermediate=on_intermediate
+        )
+        chunks = [chunk async for chunk in it]
+
+        # Assert — callback fired; tokens still yielded
+        assert received == ["I need to check something first."]
+        assert chunks == ["Hello"]
+
+    async def test_on_intermediate_none_when_not_provided(self) -> None:
+        # Arrange — no on_intermediate; iterator must work normally
+        proc = make_fake_proc(
+            [INIT_LINE, ASSISTANT_INTERMEDIATE_LINE, TEXT_DELTA_LINE, RESULT_LINE]
+        )
+        entry = make_entry(proc)
+
+        # Act
+        it = await send_and_read_stream(entry, "hello", DEFAULT_POOL_ID)
+        chunks = [chunk async for chunk in it]
+
+        # Assert — no error, tokens yielded
+        assert chunks == ["Hello"]

@@ -7,6 +7,8 @@ import pytest
 from lyra.core.cli_protocol import StreamingIterator
 
 from .conftest import (
+    ASSISTANT_INTERMEDIATE_LINE,
+    ASSISTANT_INTERMEDIATE_LINE2,
     DEFAULT_POOL_ID,
     INIT_LINE,
     INPUT_JSON_DELTA_LINE,
@@ -226,4 +228,184 @@ class TestStreamingIteratorNonJson:
         chunks = [chunk async for chunk in it]
 
         # Assert
+        assert chunks == ["Hello"]
+
+
+# ---------------------------------------------------------------------------
+# TestStreamingIteratorIntermediate
+# ---------------------------------------------------------------------------
+
+
+class TestStreamingIteratorIntermediate:
+    """StreamingIterator fires on_intermediate for assistant events before streaming."""
+
+    async def test_single_assistant_event_fires_callback(self) -> None:
+        # Arrange — one intermediate turn, then streaming tokens
+        proc = make_fake_proc(
+            [INIT_LINE, ASSISTANT_INTERMEDIATE_LINE, TEXT_DELTA_LINE, RESULT_LINE]
+        )
+        entry = make_entry(proc)
+        received: list[str] = []
+
+        async def on_intermediate(text: str) -> None:
+            received.append(text)
+
+        # Act
+        it = StreamingIterator(entry, DEFAULT_POOL_ID, on_intermediate=on_intermediate)
+        chunks = [chunk async for chunk in it]
+
+        # Assert — callback fired with intermediate text; tokens still yielded
+        assert received == ["I need to check something first."]
+        assert chunks == ["Hello"]
+
+    async def test_multiple_assistant_events_fire_multiple_callbacks(self) -> None:
+        # Arrange — two intermediate turns, then streaming tokens
+        proc = make_fake_proc(
+            [
+                INIT_LINE,
+                ASSISTANT_INTERMEDIATE_LINE,
+                ASSISTANT_INTERMEDIATE_LINE2,
+                TEXT_DELTA_LINE,
+                RESULT_LINE,
+            ]
+        )
+        entry = make_entry(proc)
+        received: list[str] = []
+
+        async def on_intermediate(text: str) -> None:
+            received.append(text)
+
+        # Act
+        it = StreamingIterator(entry, DEFAULT_POOL_ID, on_intermediate=on_intermediate)
+        chunks = [chunk async for chunk in it]
+
+        # Assert — both intermediates fired in order; tokens still yielded
+        assert received == [
+            "I need to check something first.",
+            "Let me verify that too.",
+        ]
+        assert chunks == ["Hello"]
+
+    async def test_no_callback_when_on_intermediate_is_none(self) -> None:
+        # Arrange — assistant event present but no callback wired
+        proc = make_fake_proc(
+            [INIT_LINE, ASSISTANT_INTERMEDIATE_LINE, TEXT_DELTA_LINE, RESULT_LINE]
+        )
+        entry = make_entry(proc)
+
+        # Act — no on_intermediate; must not raise
+        it = StreamingIterator(entry, DEFAULT_POOL_ID)
+        chunks = [chunk async for chunk in it]
+
+        # Assert — tokens still yielded without error
+        assert chunks == ["Hello"]
+
+    async def test_callback_exception_does_not_stop_iteration(self) -> None:
+        # Arrange — callback raises; iterator must survive and still yield chunks
+        proc = make_fake_proc(
+            [INIT_LINE, ASSISTANT_INTERMEDIATE_LINE, TEXT_DELTA_LINE, RESULT_LINE]
+        )
+        entry = make_entry(proc)
+
+        async def on_intermediate(text: str) -> None:
+            raise RuntimeError("callback exploded")
+
+        # Act / Assert — no exception propagated to caller
+        it = StreamingIterator(entry, DEFAULT_POOL_ID, on_intermediate=on_intermediate)
+        chunks = [chunk async for chunk in it]
+
+        assert chunks == ["Hello"]
+
+    async def test_callback_timeout_does_not_stop_iteration(self) -> None:
+        # Arrange — callback hangs longer than the 5s guard
+        import asyncio
+
+        proc = make_fake_proc(
+            [INIT_LINE, ASSISTANT_INTERMEDIATE_LINE, TEXT_DELTA_LINE, RESULT_LINE]
+        )
+        entry = make_entry(proc)
+
+        async def on_intermediate(text: str) -> None:
+            raise asyncio.TimeoutError  # simulates hanging callback
+
+        # Act / Assert — timeout swallowed; stream continues
+        it = StreamingIterator(entry, DEFAULT_POOL_ID, on_intermediate=on_intermediate)
+        chunks = [chunk async for chunk in it]
+
+        assert chunks == ["Hello"]
+
+    async def test_no_intermediates_without_assistant_events(self) -> None:
+        # Arrange — plain single-turn response: no assistant events before tokens
+        proc = make_fake_proc(
+            [INIT_LINE, TEXT_DELTA_LINE, TEXT_DELTA_LINE2, RESULT_LINE]
+        )
+        entry = make_entry(proc)
+        received: list[str] = []
+
+        async def on_intermediate(text: str) -> None:
+            received.append(text)
+
+        # Act
+        it = StreamingIterator(entry, DEFAULT_POOL_ID, on_intermediate=on_intermediate)
+        chunks = [chunk async for chunk in it]
+
+        # Assert — callback never fired; all tokens yielded
+        assert received == []
+        assert chunks == ["Hello", " world"]
+
+    async def test_assistant_event_with_multiple_text_blocks_joined(self) -> None:
+        # Arrange — assistant message has two text content blocks
+        multi_block_line = _ndjson(
+            {
+                "type": "assistant",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "text", "text": "Part one."},
+                        {"type": "text", "text": "Part two."},
+                    ],
+                },
+            }
+        )
+        proc = make_fake_proc(
+            [INIT_LINE, multi_block_line, TEXT_DELTA_LINE, RESULT_LINE]
+        )
+        entry = make_entry(proc)
+        received: list[str] = []
+
+        async def on_intermediate(text: str) -> None:
+            received.append(text)
+
+        # Act
+        it = StreamingIterator(entry, DEFAULT_POOL_ID, on_intermediate=on_intermediate)
+        chunks = [chunk async for chunk in it]
+
+        # Assert — text blocks joined with double newline
+        assert received == ["Part one.\n\nPart two."]
+        assert chunks == ["Hello"]
+
+    async def test_assistant_event_with_no_text_blocks_skipped(self) -> None:
+        # Arrange — assistant message has only tool_use blocks (no text)
+        tool_use_line = _ndjson(
+            {
+                "type": "assistant",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "tool_use", "id": "t1", "name": "Bash"}],
+                },
+            }
+        )
+        proc = make_fake_proc([INIT_LINE, tool_use_line, TEXT_DELTA_LINE, RESULT_LINE])
+        entry = make_entry(proc)
+        received: list[str] = []
+
+        async def on_intermediate(text: str) -> None:
+            received.append(text)
+
+        # Act
+        it = StreamingIterator(entry, DEFAULT_POOL_ID, on_intermediate=on_intermediate)
+        chunks = [chunk async for chunk in it]
+
+        # Assert — no-text assistant event silently skipped; tokens still yielded
+        assert received == []
         assert chunks == ["Hello"]

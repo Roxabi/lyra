@@ -361,6 +361,24 @@ ERROR_RESULT_LINE = _ndjson(
         "duration_ms": 50,
     }
 )
+ASSISTANT_INTERMEDIATE_LINE = _ndjson(
+    {
+        "type": "assistant",
+        "message": {
+            "role": "assistant",
+            "content": [{"type": "text", "text": "I need to check something first."}],
+        },
+    }
+)
+ASSISTANT_INTERMEDIATE_LINE2 = _ndjson(
+    {
+        "type": "assistant",
+        "message": {
+            "role": "assistant",
+            "content": [{"type": "text", "text": "Let me verify that too."}],
+        },
+    }
+)
 
 
 # ---------------------------------------------------------------------------

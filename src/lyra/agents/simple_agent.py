@@ -102,6 +102,10 @@ class SimpleAgent(AgentBase):
             "workspaces": self.config.workspaces,
         }
 
+    def _rebuild_command_router(self) -> None:
+        super()._rebuild_command_router()
+        self._register_session_commands()
+
     def _register_session_commands(self) -> None:
         """Store SessionTools; register processor cmds as passthroughs (B2, #363)."""
         import lyra.core.processors  # noqa: F401 — trigger self-registration
@@ -110,7 +114,18 @@ class SimpleAgent(AgentBase):
         from lyra.integrations.vault_cli import VaultCli
         from lyra.integrations.web_intel import WebIntelScraper
 
-        self._session_tools = SessionTools(scraper=WebIntelScraper(), vault=VaultCli())
+        try:
+            self._session_tools = SessionTools(
+                scraper=WebIntelScraper(), vault=VaultCli()
+            )
+        except Exception:
+            log.warning(
+                "SimpleAgent: could not build session tools"
+                " — processor pipeline disabled",
+                exc_info=True,
+            )
+            self._session_tools = None
+            return
 
         for cmd in registry.commands():
             self.command_router.register_passthrough(cmd.lstrip("/"))

@@ -266,6 +266,16 @@ class PoolProcessor:
         _platform = pool.medium or str(msg.platform)
         _user_id = pool.user_id or msg.user_id
 
+        # Guard: processors with non-trivial post() are incompatible with streaming
+        # agents because post() is only called in the non-streaming branch.
+        # Raise early to prevent silent vault write drops (issue #363).
+        # To support streaming, override process() to return a Response.
+        if _processor is not None and isinstance(result, collections.abc.AsyncIterator):
+            raise NotImplementedError(
+                f"Processor {type(_processor).__name__!r} is not compatible with "
+                "streaming agents — override process() to return a Response."
+            )
+
         if isinstance(result, collections.abc.AsyncIterator):
             # Bug 1 (#316): pass an OutboundMessage so the adapter can write
             # reply_message_id on it; attach a callback for deferred turn logging.
@@ -323,18 +333,6 @@ class PoolProcessor:
                 _cli_session_id = result.metadata.get("session_id")
                 if _cli_session_id:
                     pool.session_id = _cli_session_id
-            # Apply post-processor side effects (e.g. vault.add) — #363.
-            if isinstance(result, Response):
-                _post_fn = msg.platform_meta.get("_post_processor")
-                if _post_fn is not None:
-                    try:
-                        result = await _post_fn(msg, result)
-                    except Exception:
-                        log.warning(
-                            "post-processor raised in pool %s — using original",
-                            pool.pool_id,
-                            exc_info=True,
-                        )
             # Attach deferred turn-logging callback after adapter sends (#316).
             if isinstance(result, Response):
                 _content = result.content

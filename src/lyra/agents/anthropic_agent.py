@@ -101,7 +101,18 @@ class AnthropicAgent(AgentBase):
         from lyra.integrations.vault_cli import VaultCli
         from lyra.integrations.web_intel import WebIntelScraper
 
-        self._session_tools = SessionTools(scraper=WebIntelScraper(), vault=VaultCli())
+        try:
+            self._session_tools = SessionTools(
+                scraper=WebIntelScraper(), vault=VaultCli()
+            )
+        except Exception:
+            log.warning(
+                "AnthropicAgent: could not build session tools"
+                " — processor pipeline disabled",
+                exc_info=True,
+            )
+            self._session_tools = None
+            return
 
         # Register each processor command as a passthrough so command_router.dispatch()
         # returns None (agent-handled) rather than "unknown command".

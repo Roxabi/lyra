@@ -66,14 +66,62 @@ def make_mock_tools() -> tuple[SessionTools, MagicMock, MagicMock]:
     return tools, scraper, vault
 
 
+async def _stub_vault_add(msg, driver, tools, args, timeout):  # noqa: ARG001
+    """Minimal stub replacing cmd_add for router-contract tests."""
+    if not args:
+        return Response(content="Usage: /vault-add <url>")
+    url = args[0]
+    content = await tools.scraper.scrape(url, timeout=timeout / 3)
+    from lyra.core.agent_config import ModelConfig
+    model_cfg = ModelConfig(backend="anthropic-sdk", model="claude-haiku-4-5-20251001")
+    result = await driver.complete(
+        "session:vault-add", "", model_cfg, "You are a helper.",
+        messages=[{"role": "user", "content": content}],
+    )
+    return Response(content=f"Saved: {url}\n\n{result.result}")
+
+
+async def _stub_explain(msg, driver, tools, args, timeout):  # noqa: ARG001
+    """Minimal stub replacing cmd_explain for router-contract tests."""
+    if not args:
+        return Response(content="Usage: /explain <url>")
+    url = args[0]
+    content = await tools.scraper.scrape(url, timeout=timeout / 3)
+    from lyra.core.agent_config import ModelConfig
+    model_cfg = ModelConfig(backend="anthropic-sdk", model="claude-haiku-4-5-20251001")
+    result = await driver.complete(
+        "session:explain", "", model_cfg, "You are a helper.",
+        messages=[{"role": "user", "content": content}],
+    )
+    return Response(content=result.result)
+
+
+async def _stub_summarize(msg, driver, tools, args, timeout):  # noqa: ARG001
+    """Minimal stub replacing cmd_summarize for router-contract tests."""
+    if not args:
+        return Response(content="Usage: /summarize <url>")
+    url = args[0]
+    content = await tools.scraper.scrape(url, timeout=timeout / 3)
+    from lyra.core.agent_config import ModelConfig
+    model_cfg = ModelConfig(backend="anthropic-sdk", model="claude-haiku-4-5-20251001")
+    result = await driver.complete(
+        "session:summarize", "", model_cfg, "You are a helper.",
+        messages=[{"role": "user", "content": content}],
+    )
+    return Response(content=result.result)
+
+
 def make_router_with_session(
     tmp_path: Path,
     driver: "LlmProvider | None" = None,
     tools: "SessionTools | None" = None,
 ) -> CommandRouter:
-    """Build a CommandRouter with session commands and a mock search plugin."""
-    from lyra.core.session_commands import cmd_add, cmd_explain, cmd_summarize
+    """Build a CommandRouter with stub session commands for router-contract tests.
 
+    The old session_commands module was deleted in issue #363 (processor pipeline
+    migration). These stubs preserve the router-level contracts without depending
+    on the removed module.
+    """
     _tools = tools
     if _tools is None:
         _tools, _, _ = make_mock_tools()
@@ -87,13 +135,13 @@ def make_router_with_session(
         patterns={"bare_url": True},
     )
     router.register_session_command(
-        "vault-add", cmd_add, tools=_tools, description="Save URL", timeout=60.0
+        "vault-add", _stub_vault_add, tools=_tools, description="Save URL", timeout=60.0
     )
     router.register_session_command(
-        "explain", cmd_explain, tools=_tools, description="Explain URL", timeout=60.0
+        "explain", _stub_explain, tools=_tools, description="Explain URL", timeout=60.0
     )
     router.register_session_command(
-        "summarize", cmd_summarize, tools=_tools, description="Summarize URL",
+        "summarize", _stub_summarize, tools=_tools, description="Summarize URL",
         timeout=60.0
     )
     return router

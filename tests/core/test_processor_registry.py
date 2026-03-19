@@ -237,9 +237,24 @@ class TestCommandsAndDescriptions:
 class TestModuleSingletonRegistration:
     def test_import_registers_expected_commands(self) -> None:
         """Importing lyra.core.processors populates the module singleton."""
-        # Arrange — import triggers @register decorators
-        import lyra.core.processors  # noqa: F401
+        import importlib
+
+        import lyra.core.processors
+        import lyra.core.processors.explain
+        import lyra.core.processors.search
+        import lyra.core.processors.summarize
+        import lyra.core.processors.vault_add
         from lyra.core.processor_registry import registry
+
+        # Arrange — clear then force reload to re-trigger @register decorators.
+        # Needed because a preceding conftest may have called registry.clear() after
+        # the modules were already imported (Python caches them and skips re-execution).
+        registry.clear()
+        importlib.reload(lyra.core.processors.explain)
+        importlib.reload(lyra.core.processors.search)
+        importlib.reload(lyra.core.processors.summarize)
+        importlib.reload(lyra.core.processors.vault_add)
+        importlib.reload(lyra.core.processors)
 
         # Act
         registered = registry.commands()

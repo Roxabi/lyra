@@ -303,22 +303,51 @@ class TestSessionCommandWiring:
         agent = AnthropicAgent(make_config(), provider)
         assert agent.command_router._session_driver is provider
 
+    def _reload_processors(self) -> None:
+        """Force reload of processor submodules to re-trigger @register decorators.
+
+        The global registry may have been cleared by a preceding conftest
+        (tests/core/processors/conftest.py autouse fixture).  Python caches
+        imports, so a plain ``import lyra.core.processors`` is a no-op after
+        the first import.  We must explicitly reload each submodule.
+        """
+        import importlib
+
+        import lyra.core.processors
+        import lyra.core.processors.explain
+        import lyra.core.processors.search
+        import lyra.core.processors.summarize
+        import lyra.core.processors.vault_add
+        from lyra.core.processor_registry import registry
+
+        registry.clear()
+        importlib.reload(lyra.core.processors.explain)
+        importlib.reload(lyra.core.processors.search)
+        importlib.reload(lyra.core.processors.summarize)
+        importlib.reload(lyra.core.processors.vault_add)
+        importlib.reload(lyra.core.processors)
+
     def test_session_handlers_contains_add_explain_summarize(self) -> None:
         from lyra.agents.anthropic_agent import AnthropicAgent
 
+        self._reload_processors()
         provider = make_mock_provider()
         agent = AnthropicAgent(make_config(), provider)
-        session_keys = set(agent.command_router._session_handlers.keys())
-        assert "/vault-add" in session_keys
-        assert "/explain" in session_keys
-        assert "/summarize" in session_keys
+        # Commands are registered as passthroughs (processor pipeline, issue #363)
+        passthroughs = agent.command_router._passthroughs
+        assert "/vault-add" in passthroughs
+        assert "/explain" in passthroughs
+        assert "/summarize" in passthroughs
 
     def test_session_handlers_have_correct_descriptions(self) -> None:
         from lyra.agents.anthropic_agent import AnthropicAgent
+        from lyra.core.processor_registry import registry
 
+        self._reload_processors()
         provider = make_mock_provider()
-        agent = AnthropicAgent(make_config(), provider)
-        handlers = agent.command_router._session_handlers
-        assert "vault" in handlers["/vault-add"].description.lower()
-        assert "explain" in handlers["/explain"].description.lower()
-        assert "summarize" in handlers["/summarize"].description.lower()
+        AnthropicAgent(make_config(), provider)
+        # Descriptions live in the processor registry (issue #363)
+        descs = registry.descriptions()
+        assert "vault" in descs["/vault-add"].lower()
+        assert "explain" in descs["/explain"].lower()
+        assert "summarize" in descs["/summarize"].lower()

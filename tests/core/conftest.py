@@ -887,7 +887,6 @@ async def make_pairing_auth_store(db_path: str = ":memory:") -> AuthStore:
 
 async def make_pairing_pm(  # noqa: PLR0913 — test factory with optional overrides
     enabled: bool = True,
-    admin_user_ids: set[str] | None = None,
     max_pending: int = 3,
     rate_limit_attempts: int = 5,
     rate_limit_window: int = 300,
@@ -910,7 +909,6 @@ async def make_pairing_pm(  # noqa: PLR0913 — test factory with optional overr
     pm = PairingManager(
         config=config,
         db_path=":memory:",
-        admin_user_ids=admin_user_ids or {_PAIRING_ADMIN_ID},
         auth_store=auth_store,
     )
     await pm.connect()

@@ -340,7 +340,6 @@ class TestRateLimiting:
         pm = PairingManager(
             config=PairingConfig(rate_limit_attempts=5, rate_limit_window=300),
             db_path=":memory:",
-            admin_user_ids=set(),
             auth_store=None,
         )
         for _ in range(4):
@@ -351,7 +350,6 @@ class TestRateLimiting:
         pm = PairingManager(
             config=PairingConfig(rate_limit_attempts=3, rate_limit_window=300),
             db_path=":memory:",
-            admin_user_ids=set(),
             auth_store=None,
         )
         for _ in range(3):
@@ -362,7 +360,6 @@ class TestRateLimiting:
         pm = PairingManager(
             config=PairingConfig(rate_limit_attempts=3, rate_limit_window=1),
             db_path=":memory:",
-            admin_user_ids=set(),
             auth_store=None,
         )
         # Fill the window

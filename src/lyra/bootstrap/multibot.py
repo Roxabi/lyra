@@ -135,7 +135,6 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
             pm = PairingManager(
                 config=pairing_config,
                 db_path=vault_dir / "pairing.db",
-                admin_user_ids=admin_user_ids,
                 auth_store=stores.auth,
             )
             await pm.connect()

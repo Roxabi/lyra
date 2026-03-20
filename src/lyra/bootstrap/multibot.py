@@ -51,7 +51,7 @@ log = logging.getLogger(__name__)
 async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
     raw_config: dict,
     circuit_registry: CircuitRegistry,
-    admin_user_ids: set[str],
+    admin_user_ids: frozenset[str],
     tg_multi_cfg: TelegramMultiConfig,
     dc_multi_cfg: DiscordMultiConfig,
     *,
@@ -81,7 +81,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
             tg_multi_cfg,
             dc_multi_cfg,
             stores.auth,
-            frozenset(admin_user_ids),
+            admin_user_ids,
         )
         log.info("Authenticator: %d admin_user_id(s) configured", len(admin_user_ids))
 
@@ -127,8 +127,10 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
         pairing_config = _load_pairing_config(raw_config)
         if pairing_config.enabled and not admin_user_ids:
             log.warning(
-                "Pairing is enabled but no admin user_ids configured in "
-                "[admin].user_ids — no one can run /invite or /unpair"
+                "Pairing enabled but [admin].user_ids is empty — "
+                "/invite and /unpair require is_admin=True "
+                "(granted to [admin].user_ids entries "
+                "or users configured as OWNER in [[auth.*_bots]])"
             )
         pm: PairingManager | None = None
         if pairing_config.enabled:

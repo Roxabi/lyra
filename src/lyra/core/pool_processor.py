@@ -286,6 +286,25 @@ class PoolProcessor:
             )
 
         if isinstance(result, collections.abc.AsyncIterator):
+            # Fix #373: tee the iterator to capture streamed content for turn logging.
+            # Save original ref before wrapping — session_id lives on the original.
+            _result_iter_for_sid = result
+            _content_parts: list[str] = []
+
+            async def _capture() -> collections.abc.AsyncGenerator[str, None]:
+                try:
+                    async for chunk in _result_iter_for_sid:
+                        _content_parts.append(chunk)
+                        yield chunk
+                finally:
+                    # Close the inner iterator if it supports it (async generators do;
+                    # custom AsyncIterator wrappers may not).
+                    _aclose = getattr(_result_iter_for_sid, "aclose", None)
+                    if callable(_aclose):
+                        await _aclose()  # type: ignore[misc]
+
+            result = _capture()  # type: ignore[assignment]
+
             # Bug 1 (#316): pass an OutboundMessage so the adapter can write
             # reply_message_id on it; attach a callback for deferred turn logging.
             _outbound = OutboundMessage.from_text("")
@@ -301,7 +320,7 @@ class PoolProcessor:
                 # immediately (fire-and-forget); the iterator is consumed later
                 # in the worker task.  Reading session_id here (in the
                 # _on_dispatched callback) guarantees the iterator has finished.
-                _stream_sid = getattr(result, "session_id", None)
+                _stream_sid = getattr(_result_iter_for_sid, "session_id", None)
                 if _stream_sid and pool.session_id != _stream_sid:
                     pool.session_id = _stream_sid
                 pool._observer.session_update_async(_original_msg)
@@ -310,7 +329,7 @@ class PoolProcessor:
                     role="assistant",
                     platform=_platform,
                     user_id=_user_id,
-                    content="",
+                    content="".join(_content_parts),
                     reply_message_id=(
                         str(_reply_id) if _reply_id is not None else None
                     ),
@@ -332,7 +351,7 @@ class PoolProcessor:
             # Fallback: update session_id here for the no-dispatcher path
             # (where dispatch_streaming blocks until streaming finishes).
             # The _on_dispatched callback above handles the dispatcher path.
-            _stream_sid = getattr(result, "session_id", None)
+            _stream_sid = getattr(_result_iter_for_sid, "session_id", None)
             if _stream_sid and pool.session_id != _stream_sid:
                 pool.session_id = _stream_sid
         else:

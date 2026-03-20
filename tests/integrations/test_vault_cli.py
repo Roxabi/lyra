@@ -90,6 +90,37 @@ class TestVaultCliAdd:
         metadata = json.loads(calls[0][meta_idx + 1])
         assert "tags" not in metadata
 
+    @pytest.mark.asyncio
+    async def test_no_metadata_flag_when_url_and_tags_both_empty(self):
+        """Regression: --metadata must be omitted when url='' and tags=[]."""
+        proc = _make_proc(returncode=0)
+        calls = []
+        async def fake_exec(*args, **kwargs):
+            calls.append(list(args))
+            return proc
+        with patch("asyncio.create_subprocess_exec", new=fake_exec):
+            await VaultCli().add("T", [], "", "body")
+        assert "--metadata" not in calls[0]
+
+    @pytest.mark.asyncio
+    async def test_invalid_category_raises_value_error(self):
+        """category values with -- prefix or special chars are rejected."""
+        with pytest.raises(ValueError, match="category"):
+            await VaultCli().add("T", [], "", "body", category="--malicious")
+
+    @pytest.mark.asyncio
+    async def test_invalid_entry_type_raises_value_error(self):
+        with pytest.raises(ValueError, match="entry_type"):
+            await VaultCli().add("T", [], "", "body", entry_type="bad type")
+
+    @pytest.mark.asyncio
+    async def test_valid_custom_category_accepted(self):
+        proc = _make_proc(returncode=0)
+        with patch("asyncio.create_subprocess_exec", new=AsyncMock(return_value=proc)):
+            await VaultCli().add(
+                "T", [], "", "body", category="notes", entry_type="note"
+            )
+
 class TestVaultCliSearch:
     @pytest.mark.asyncio
     async def test_happy_path_returns_stdout(self):

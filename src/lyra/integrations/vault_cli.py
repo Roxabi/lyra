@@ -12,9 +12,12 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from asyncio.subprocess import PIPE
 
 from lyra.integrations.base import VaultWriteFailed
+
+_SAFE_CLI_ARG_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
 
 log = logging.getLogger(__name__)
 
@@ -22,13 +25,15 @@ log = logging.getLogger(__name__)
 class VaultCli:
     """VaultProvider backed by the vault CLI."""
 
-    async def add(
+    async def add(  # noqa: PLR0913 — each param is a distinct vault field
         self,
         title: str,
         tags: list[str],
         url: str,
         body: str,
         timeout: float = 30.0,
+        category: str = "references",
+        entry_type: str = "bookmark",
     ) -> None:
         """Run vault put to persist content.
 
@@ -37,17 +42,31 @@ class VaultCli:
             VaultWriteFailed("subprocess_error") — non-zero exit.
             VaultWriteFailed("timeout")          — exceeded timeout.
         """
-        metadata: dict[str, object] = {"url": url}
+        # Guard: reject values that could be interpreted as CLI flags.
+        for param_name, param_value in (
+            ("category", category),
+            ("entry_type", entry_type),
+        ):
+            if not _SAFE_CLI_ARG_RE.fullmatch(param_value):
+                raise ValueError(
+                    f"VaultCli.add: unsafe {param_name!r} value {param_value!r} — "
+                    "must match [a-zA-Z0-9_-]+"
+                )
+
+        metadata: dict[str, object] = {}
+        if url:
+            metadata["url"] = url
         if tags:
             metadata["tags"] = tags
 
         args = [
             "vault", "put", "--", body,
             "--title", title,
-            "--category", "references",
-            "--type", "bookmark",
-            "--metadata", json.dumps(metadata),
+            "--category", category,
+            "--type", entry_type,
         ]
+        if metadata:
+            args += ["--metadata", json.dumps(metadata)]
         try:
             proc = await asyncio.create_subprocess_exec(*args, stdout=PIPE, stderr=PIPE)
             try:

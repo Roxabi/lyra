@@ -5,6 +5,6 @@ Importing this package registers all built-in processors with the module-level
 by creating a new module here and importing it below — no other file changes needed.
 """
 
-from . import _scraping, explain, search, summarize, vault_add
+from . import _scraping, add_vault, explain, search, summarize, vault_add
 
-__all__ = ["_scraping", "explain", "search", "summarize", "vault_add"]
+__all__ = ["_scraping", "add_vault", "explain", "search", "summarize", "vault_add"]

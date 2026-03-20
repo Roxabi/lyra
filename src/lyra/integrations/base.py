@@ -43,13 +43,15 @@ class ScrapeProvider(Protocol):
 class VaultProvider(Protocol):
     """Async vault access: write and search the knowledge base."""
 
-    async def add(
+    async def add(  # noqa: PLR0913 — each param is a distinct vault field
         self,
         title: str,
         tags: list[str],
         url: str,
         body: str,
         timeout: float = 30.0,
+        category: str = "references",
+        entry_type: str = "bookmark",
     ) -> None: ...
 
     async def search(self, query: str, timeout: float = 30.0) -> str: ...

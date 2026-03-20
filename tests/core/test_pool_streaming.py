@@ -28,8 +28,8 @@ class StreamingAgent:
 
     async def process(  # type: ignore[override]
         self,
-        msg: InboundMessage,
-        pool: Pool,
+        _msg: InboundMessage,
+        _pool: Pool,
         *,
         on_intermediate=None,
     ) -> collections.abc.AsyncIterator[str]:
@@ -47,14 +47,33 @@ class FailingStreamingAgent:
 
     async def process(  # type: ignore[override]
         self,
-        msg: InboundMessage,
-        pool: Pool,
+        _msg: InboundMessage,
+        _pool: Pool,
         *,
         on_intermediate=None,
     ) -> collections.abc.AsyncIterator[str]:
         async def _gen() -> collections.abc.AsyncIterator[str]:
             yield "partial"
             raise RuntimeError("stream error")
+
+        return _gen()
+
+
+class EmptyStreamingAgent:
+    """Test double: returns an async generator that yields no chunks."""
+
+    name = "test_agent"
+
+    async def process(  # type: ignore[override]
+        self,
+        _msg: InboundMessage,
+        _pool: Pool,
+        *,
+        on_intermediate=None,  # noqa: ARG002
+    ) -> collections.abc.AsyncIterator[str]:
+        async def _gen() -> collections.abc.AsyncIterator[str]:
+            if False:  # pragma: no cover
+                yield ""  # async generator without unreachable-yield warning
 
         return _gen()
 
@@ -236,3 +255,71 @@ class TestPoolStreaming:
         ctx.dispatch_response.assert_awaited()
         response_arg: Response = ctx.dispatch_response.call_args[0][1]
         assert len(response_arg.content) > 0
+
+    @pytest.mark.asyncio
+    async def test_streaming_turn_logs_full_content(self) -> None:
+        """_log_streaming_turn passes accumulated content to log_turn_async (#373)."""
+        agent = StreamingAgent()  # yields "hello " then "world"
+        ctx = _make_ctx_mock({"test_agent": agent})
+
+        async def _fake_dispatch(_msg, chunks, outbound=None):
+            async for _ in chunks:
+                pass
+            if outbound is not None:
+                cb = outbound.metadata.pop("_on_dispatched", None)
+                if callable(cb):
+                    cb(outbound)
+
+        ctx.dispatch_streaming.side_effect = _fake_dispatch
+        pool = Pool(
+            pool_id="test:main:chat:logcontent", agent_name="test_agent", ctx=ctx
+        )
+
+        logged: list[str] = []
+
+        def _capture_turn(**kw: object) -> None:
+            if kw.get("role") == "assistant":
+                logged.append(str(kw.get("content", "")))
+
+        pool._observer.log_turn_async = _capture_turn  # type: ignore[method-assign]
+
+        msg = make_msg("log content test")
+        pool.submit(msg)
+        if pool._current_task:
+            await asyncio.wait_for(pool._current_task, timeout=2.0)
+
+        assert logged == ["hello world"], f"expected full content, got {logged!r}"
+
+    @pytest.mark.asyncio
+    async def test_streaming_turn_logs_empty_for_zero_chunks(self) -> None:
+        """Zero-chunk stream stores content='' (#373)."""
+        agent = EmptyStreamingAgent()
+        ctx = _make_ctx_mock({"test_agent": agent})
+
+        async def _fake_dispatch(_msg, chunks, outbound=None):
+            async for _ in chunks:
+                pass
+            if outbound is not None:
+                cb = outbound.metadata.pop("_on_dispatched", None)
+                if callable(cb):
+                    cb(outbound)
+
+        ctx.dispatch_streaming.side_effect = _fake_dispatch
+        pool = Pool(
+            pool_id="test:main:chat:emptycontent", agent_name="test_agent", ctx=ctx
+        )
+
+        logged: list[str] = []
+
+        def _capture_turn(**kw: object) -> None:
+            if kw.get("role") == "assistant":
+                logged.append(str(kw.get("content", "MISSING")))
+
+        pool._observer.log_turn_async = _capture_turn  # type: ignore[method-assign]
+
+        msg = make_msg("empty stream test")
+        pool.submit(msg)
+        if pool._current_task:
+            await asyncio.wait_for(pool._current_task, timeout=2.0)
+
+        assert logged == [""], f"expected empty string, got {logged!r}"

@@ -18,6 +18,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from lyra.core.processor_registry import BaseProcessor, register
+from lyra.core.processors._scraping import _SAFE_SCRAPE_MAX_CHARS
 from lyra.integrations.base import VaultWriteFailed
 
 if TYPE_CHECKING:
@@ -51,6 +52,16 @@ class AddVaultProcessor(BaseProcessor):
             return dataclasses.replace(
                 msg, text=f"Usage: {cmd} <note content>"
             )
+
+        # B2: cap content length — mirrors _scraping.py _SAFE_SCRAPE_MAX_CHARS guard.
+        # Prevents OS ARG_MAX overflow in subprocess and token-cost DoS via LLM.
+        if len(content) > _SAFE_SCRAPE_MAX_CHARS:
+            log.warning(
+                "AddVaultProcessor: note content truncated from %d to %d chars",
+                len(content),
+                _SAFE_SCRAPE_MAX_CHARS,
+            )
+            content = content[:_SAFE_SCRAPE_MAX_CHARS] + "\n\n[note truncated]"
 
         title = content[:_TITLE_MAX_CHARS].rstrip()
         try:

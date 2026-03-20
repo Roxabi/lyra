@@ -104,9 +104,9 @@ class TestAddVaultProcessorPreHappyPath:
         # Act
         await proc.pre(msg)
 
-        # Assert — title is capped at 80 chars
+        # Assert — title is exactly 80 chars (rstrip is no-op for "A"*120)
         (title, *_), _ = calls[0]
-        assert len(title) <= 80
+        assert title == "A" * 80
 
     async def test_passes_full_content_as_body(self) -> None:
         # Arrange
@@ -149,6 +149,25 @@ class TestAddVaultProcessorPreHappyPath:
         # Assert
         assert "<note_content>" in enriched.text
         assert "Call dentist" in enriched.text
+
+    async def test_content_truncated_when_exceeds_max_chars(self) -> None:
+        # Arrange — B2: oversized content cap mirrors _scraping.py guard
+        from lyra.core.processors._scraping import _SAFE_SCRAPE_MAX_CHARS
+
+        oversized = "B" * (_SAFE_SCRAPE_MAX_CHARS + 500)
+        tools = make_tools()
+        proc = AddVaultProcessor(tools)
+        msg = make_msg(command_args=oversized)
+        calls = []
+        tools.vault.add = AsyncMock(side_effect=lambda *a, **kw: calls.append((a, kw)))  # type: ignore[attr-defined]
+
+        # Act
+        await proc.pre(msg)
+
+        # Assert — body passed to vault is capped, not the raw oversized string
+        (_, _, _, body), _ = calls[0]
+        assert len(body) <= _SAFE_SCRAPE_MAX_CHARS + len("\n\n[note truncated]")
+        assert "[note truncated]" in body
 
     async def test_html_special_chars_escaped_in_enriched_message(self) -> None:
         # Arrange — B1: prompt injection guard via HTML-escaping

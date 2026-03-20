@@ -12,9 +12,12 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from asyncio.subprocess import PIPE
 
 from lyra.integrations.base import VaultWriteFailed
+
+_SAFE_CLI_ARG_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
 
 log = logging.getLogger(__name__)
 
@@ -39,6 +42,17 @@ class VaultCli:
             VaultWriteFailed("subprocess_error") — non-zero exit.
             VaultWriteFailed("timeout")          — exceeded timeout.
         """
+        # Guard: reject values that could be interpreted as CLI flags.
+        for param_name, param_value in (
+            ("category", category),
+            ("entry_type", entry_type),
+        ):
+            if not _SAFE_CLI_ARG_RE.fullmatch(param_value):
+                raise ValueError(
+                    f"VaultCli.add: unsafe {param_name!r} value {param_value!r} — "
+                    "must match [a-zA-Z0-9_-]+"
+                )
+
         metadata: dict[str, object] = {}
         if url:
             metadata["url"] = url

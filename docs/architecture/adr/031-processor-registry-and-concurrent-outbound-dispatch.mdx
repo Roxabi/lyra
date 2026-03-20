@@ -1,0 +1,159 @@
+---
+title: "ADR-031: Processor Registry and Concurrent Outbound Dispatch"
+description: Replace session command handlers with a decorator-based processor registry (pre/post hooks into the pool flow), and add per-scope asyncio.Lock fan-out to the outbound dispatcher for concurrent message delivery.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+Two independent but related problems were addressed in issues #363 and #364.
+
+### Problem 1 — Session command handlers bypass LLM history (issue #363)
+
+ADR-030 introduced `SessionCommandEntry` / `register_session_command` as a way to inject
+session-scoped slash command handlers into `CommandRouter`. Session commands dispatch
+eagerly in `CommandRouter.dispatch()` via a `session_driver`, before the pool processes
+the message. This means their responses do not pass through `pool.append()` and are not
+added to conversation history. Follow-up questions ("what did you just summarise?") see
+no context. Additionally, each handler had to be wired manually at agent initialisation,
+requiring edits to both the handler file and the agent setup code.
+
+### Problem 2 — Outbound messages to the same chat serialise through a single worker (issue #364)
+
+`OutboundDispatcher._worker_loop()` previously dequeued items and awaited
+`_dispatch_item()` inline — one item at a time, globally. A slow platform send (e.g.
+a Telegram file upload) would block all subsequent outbound messages for all scopes.
+For a multi-chat scenario (or burst responses), this creates head-of-line blocking.
+
+## Options Considered — Processor Registry
+
+### Option A: Keep session command handlers, add history injection
+
+After `CommandRouter.dispatch()` returns, inject the result into `pool.append()` before
+responding.
+
+- **Pros:** Minimal change to command routing infrastructure.
+- **Cons:** History injection is non-trivial: the response is already typed as `Response`
+  and the pool's append path expects an `InboundMessage`. Requires artificial round-trip
+  plumbing that duplicates the normal pool flow.
+
+### Option B: Pre/post processor hooks into the normal pool flow (chosen)
+
+Define a `BaseProcessor` ABC with `pre(msg) -> msg` and `post(msg, response) -> response`
+hooks. Register processors via a `@register("/cmd")` decorator against a module-level
+singleton `ProcessorRegistry`. `PoolProcessor._process_one()` looks up the registry,
+calls `pre()` before `agent.process()`, and calls `post()` after. Responses land in
+history naturally because the pool flow is unchanged.
+
+- **Pros:** Responses enter conversation history without special wiring. Adding a new
+  command requires only one new file — no edits to core modules. The registry pattern
+  follows the established `LlmProvider` / driver registry precedent (ADR-016). One
+  instance per request avoids shared-state races.
+- **Cons:** `post()` is only called in the non-streaming branch. A processor registered
+  against a streaming agent silently drops its post-hook. A runtime guard
+  (`NotImplementedError`) is added to catch this misconfiguration early.
+
+### Option C: Plugin command + manual history append
+
+Implement vault-add, explain, etc. as plugin commands (existing `CommandLoader` path),
+and manually append the response to pool history after dispatch.
+
+- **Pros:** No new infrastructure.
+- **Cons:** Plugin commands run after `CommandRouter.dispatch()` returns and before
+  `pool.append()` in `_process_one`, creating the same history-bypass problem as Option A.
+
+## Options Considered — Concurrent Outbound Dispatch
+
+### Option A: Single-threaded worker (status quo)
+
+`_worker_loop` awaits `_dispatch_item` for each item sequentially.
+
+- **Pros:** Simple. Natural FIFO ordering across all scopes.
+- **Cons:** One slow delivery (file upload, TTS render) blocks all other scopes.
+
+### Option B: Per-scope asyncio.Lock fan-out (chosen)
+
+`_worker_loop` creates an `asyncio.Task` per queue item. All tasks for the same `scope_id`
+share an `asyncio.Lock` (stored in `_scope_locks`), so messages within a single chat are
+still delivered in order. Tasks for different scopes run concurrently. Idle locks are
+reaped when the dict exceeds 256 entries.
+
+- **Pros:** Eliminates cross-scope head-of-line blocking. Preserves per-scope ordering.
+  Tasks are tracked in `_scope_tasks` and awaited on `stop()` for clean shutdown.
+- **Cons:** Each scope accumulates a lock in `_scope_locks` until reaped. For the
+  current personal-agent use case (low scope cardinality), memory impact is negligible.
+  Reap threshold is a tunable constant (`_SCOPE_REAP_THRESHOLD = 256`).
+
+### Option C: Per-scope dedicated asyncio.Queue
+
+Maintain a `dict[str, asyncio.Queue]` and a worker task per scope.
+
+- **Pros:** Clean per-scope isolation with no lock.
+- **Cons:** Creates an unbounded number of long-lived tasks (one per ever-seen scope).
+  Harder to shut down cleanly.
+
+## Decision
+
+**Processor registry (Option B)** is adopted for issue #363. The `register_session_command`
+API is retained for backward compatibility but is superseded by `@register` for any
+new command that requires conversation history. New contributors should prefer
+`@register`; `register_session_command` should be considered legacy.
+
+Processors are self-registering via `processors/__init__.py`. New commands require only
+a new module in `src/lyra/core/processors/` — no edits to core files.
+
+**Per-scope lock fan-out (Option B)** is adopted for issue #364.
+
+### Constraints that follow from these decisions
+
+1. `BaseProcessor.post()` is only invoked in the non-streaming branch of `_process_one`.
+   A processor registered against a streaming agent raises `NotImplementedError` at
+   request time. Agent authors who need post-hook behaviour must override `process()` to
+   return a `Response`.
+
+2. `processors/__init__.py` must import every processor module to trigger registration.
+   Adding a new processor file without updating `__init__.py` silently makes it invisible.
+   This is a known limitation of the self-registration pattern.
+
+3. The lazy import of `lyra.core.processors` inside `_process_one` (current
+   implementation) fires on every command message. Python's `sys.modules` cache makes
+   this idempotent but not free. A future improvement is to move this import to
+   application startup (see review findings).
+
+4. `_scope_locks` idle locks accumulate until the dict reaches `_SCOPE_REAP_THRESHOLD`
+   (256). This is appropriate for a personal-agent deployment. If scope cardinality
+   grows significantly, replace with LRU eviction.
+
+## Consequences
+
+### Positive
+
+- Vault-add, explain, summarize, and search responses now appear in conversation history,
+  enabling follow-up questions.
+- Adding a new slash command requires one file in `processors/` and no edits to any
+  core module.
+- Cross-scope outbound delivery is no longer serialised; slow file uploads do not block
+  other chats.
+- Per-scope message ordering is preserved.
+
+### Negative
+
+- Processors are incompatible with streaming agents. This is an explicit, documented
+  constraint, but it is enforced at runtime rather than at registration time.
+- `processors/__init__.py` must be kept in sync with the processors package; a missing
+  import produces a silent registration gap.
+- `_session_handlers` and `ProcessorRegistry` coexist without a documented migration
+  deadline, creating an undocumented fork for contributors choosing where to place new
+  commands.
+
+### Neutral
+
+- `outbound_errors.py` was extracted from `outbound_dispatcher.py` to keep both modules
+  under the 300-line cap (ADR-027). Constants, error classifier, and `try_notify_user`
+  live there. The `try_notify_user` function contains platform-branching logic that could
+  eventually move into the `ChannelAdapter` protocol as a `notify_user()` method.
+- `_scope_tasks` is a `set[Task]` cleaned up via done-callbacks. This is correct for
+  asyncio's single-threaded model; no additional synchronisation is needed.

@@ -18,8 +18,6 @@ if TYPE_CHECKING:
     from .message import InboundMessage
     from .pool import Pool
 
-import lyra.core.processors  # noqa: F401 — registers processors via @register decorators
-
 from .debouncer import MessageDebouncer
 from .message import GENERIC_ERROR_REPLY, OutboundMessage, Response
 
@@ -235,6 +233,12 @@ class PoolProcessor:
         if msg.command is not None:
             _session_tools = getattr(agent, "_session_tools", None)
             if _session_tools is not None:
+                # Import inside the function to avoid circular imports:
+                # processors → processor_registry → message;
+                # pool_processor also imports message.
+                # Python caches modules in sys.modules after the first import,
+                # so this is effectively free (one dict lookup) on every call.
+                import lyra.core.processors  # noqa: F401 — registers processors via @register decorators
                 from lyra.core.processor_registry import registry as _proc_registry
 
                 _cmd_name = f"{msg.command.prefix}{msg.command.name}"

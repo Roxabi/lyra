@@ -15,11 +15,10 @@ import re
 from typing import TYPE_CHECKING
 
 from lyra.core.message import Response
-from lyra.core.processor_registry import BaseProcessor, register
+from lyra.core.processor_registry import register
 from lyra.core.processors._scraping import (
-    _SAFE_SCRAPE_MAX_CHARS,
+    ScrapingProcessor,
     _extract_and_validate_url,
-    _scrape_with_fallback,
 )
 from lyra.integrations.base import VaultWriteFailed
 
@@ -57,7 +56,7 @@ def _parse_tags(text: str) -> list[str]:
     "/vault-add",
     description="Save a URL to the vault: /vault-add <url>",
 )
-class VaultAddProcessor(BaseProcessor):
+class VaultAddProcessor(ScrapingProcessor):
     """Validate URL → scrape → LLM summarise → vault.add() side effect.
 
     No mutable instance state: URL is re-extracted from the original InboundMessage
@@ -65,26 +64,9 @@ class VaultAddProcessor(BaseProcessor):
     ever cached.
     """
 
-    async def pre(self, msg: "InboundMessage") -> "InboundMessage":
-        url, err = _extract_and_validate_url(msg)
-        if err:
-            return dataclasses.replace(msg, text=err)
-
-        scraped = await _scrape_with_fallback(self.tools.scraper, url, timeout=30.0)
-
-        # B5: truncate to guard against prompt injection and token DoS
-        if len(scraped) > _SAFE_SCRAPE_MAX_CHARS:
-            log.warning(
-                "VaultAddProcessor: scraped content truncated"
-                " from %d to %d chars for %s",
-                len(scraped),
-                _SAFE_SCRAPE_MAX_CHARS,
-                url,
-            )
-            scraped = scraped[:_SAFE_SCRAPE_MAX_CHARS] + "\n\n[content truncated]"
-
-        enriched = f"{_INSTRUCTION}\n\nURL: {url}\n\n{scraped}"
-        return dataclasses.replace(msg, text=enriched)
+    @property
+    def instruction(self) -> str:
+        return _INSTRUCTION
 
     async def post(self, msg: "InboundMessage", response: "Response") -> "Response":
         # B3: re-extract URL from original msg — no self._url needed

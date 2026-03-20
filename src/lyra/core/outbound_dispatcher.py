@@ -26,6 +26,7 @@ from .outbound_errors import (
     _CIRCUIT_NOTIFY_DEBOUNCE,
     _CIRCUIT_OPEN_MSG,
     _ITEM,
+    _NOTIFY_TS_REAP_THRESHOLD,
     _SCOPE_REAP_THRESHOLD,
     _SEND_ERROR_MSG,
     _is_transient_error,
@@ -301,8 +302,16 @@ class OutboundDispatcher:
                 exc_info=exc,
             )
             # Fix 1: send user notification after all retries exhausted
+            # Gate on circuit: skip if circuit already open to avoid duplicate
+            # notifications (the circuit-open debounce already informed the user).
             if kind in ("send", "streaming"):
-                await self._try_notify_user(msg, _SEND_ERROR_MSG)
+                await try_notify_user(
+                    self._platform_name,
+                    self._adapter,
+                    msg,
+                    _SEND_ERROR_MSG,
+                    circuit=self._circuit,
+                )
 
     async def _worker_loop(self) -> None:
         """Fan-out: dequeue → lock per scope → create_task → task_done immediately."""
@@ -339,6 +348,8 @@ class OutboundDispatcher:
                 self._scope_tasks.add(task)
                 if len(self._scope_locks) > _SCOPE_REAP_THRESHOLD:
                     self._reap_scope_locks()
+                if len(self._circuit_notify_ts) > _NOTIFY_TS_REAP_THRESHOLD:
+                    self._reap_circuit_notify_ts()
             finally:
                 self._queue.task_done()
 
@@ -353,4 +364,13 @@ class OutboundDispatcher:
             scope_id: lock
             for scope_id, lock in self._scope_locks.items()
             if lock.locked()
+        }
+
+    def _reap_circuit_notify_ts(self) -> None:
+        """Remove debounce timestamps older than the debounce window."""
+        now = time.monotonic()
+        self._circuit_notify_ts = {
+            scope_key: ts
+            for scope_key, ts in self._circuit_notify_ts.items()
+            if now - ts < _CIRCUIT_NOTIFY_DEBOUNCE
         }

@@ -22,10 +22,15 @@ _SEND_ERROR_MSG = "⚠️ I encountered an error sending my response. Please try
 _CIRCUIT_OPEN_MSG = "⚠️ I'm temporarily unavailable. Please try again in a moment."
 _CIRCUIT_NOTIFY_DEBOUNCE = 60.0  # seconds between circuit-open notifications per chat
 _SCOPE_REAP_THRESHOLD = 256  # reap idle scope locks when dict exceeds this size
+_NOTIFY_TS_REAP_THRESHOLD = 512  # reap stale circuit-notify timestamps when > this size
 
-# Queue item: (kind, msg, payload) for send;
-# (kind, msg, chunks, outbound) for streaming; (kind, inbound, audio) for audio;
-# (kind, inbound, attachment) for attachment; (kind, inbound, chunks) for audio_stream
+# Queue item shapes (heterogeneous tuple — see OutboundDispatcher._dispatch_item):
+#   ("send",         InboundMessage, OutboundMessage)
+#   ("streaming",    InboundMessage, AsyncIterator[str], OutboundMessage | None)
+#   ("audio",        InboundMessage, OutboundAudio)
+#   ("audio_stream", InboundMessage, AsyncIterator[OutboundAudioChunk])
+#   ("voice_stream", InboundMessage, AsyncIterator[OutboundAudioChunk])
+#   ("attachment",   InboundMessage, OutboundAttachment)
 _ITEM = tuple
 
 
@@ -53,12 +58,12 @@ def _is_transient_error(exc: BaseException) -> bool:
         return True
 
     # aiohttp transients (used by both aiogram and discord.py internally)
-    if module.startswith("aiohttp"):
+    if module == "aiohttp" or module.startswith("aiohttp."):
         return True
 
     # aiogram: TelegramNetworkError is transient; TelegramAPIError subclasses
     # with status >= 500 are transient; 4xx (bad token, chat not found) are not.
-    if module.startswith("aiogram"):
+    if module == "aiogram" or module.startswith("aiogram."):
         if "NetworkError" in name or "ServerError" in name:
             return True
         # TelegramRetryAfter → rate limit → retryable
@@ -71,7 +76,7 @@ def _is_transient_error(exc: BaseException) -> bool:
         return False
 
     # discord.py: HTTPException with status >= 500 or 429 is transient
-    if module.startswith("discord"):
+    if module == "discord" or module.startswith("discord."):
         if "GatewayNotFound" in name or "ConnectionClosed" in name:
             return True
         status = getattr(exc, "status", None)
@@ -92,12 +97,23 @@ async def try_notify_user(
     adapter: Any,
     msg: "InboundMessage",
     text: str,
+    *,
+    circuit: Any = None,  # CircuitBreaker | None — avoids hard import
 ) -> None:
     """Send a short plaintext notification directly, bypassing the queue.
 
     Attempts a bare platform send without retry. Any failure is logged and
     swallowed so the caller's error path is never disrupted.
+
+    When *circuit* is provided and open, the notification is suppressed to
+    avoid amplifying failures against an already-degraded platform.
     """
+    if circuit is not None and getattr(circuit, "is_open", lambda: False)():
+        log.debug(
+            "OutboundDispatcher[%s]: suppressing user notification (circuit open)",
+            platform_name,
+        )
+        return
     try:
         if platform_name == "telegram":
             chat_id: int | None = msg.platform_meta.get("chat_id")

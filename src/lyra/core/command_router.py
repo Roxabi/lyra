@@ -217,6 +217,13 @@ class CommandRouter:
     ) -> None:
         """Register a session command handler.
 
+        .. deprecated::
+            Prefer ``@register`` from ``lyra.core.processor_registry`` for new commands.
+            Processor commands land in conversation history and support
+            follow-up questions.
+            Session commands will be removed once all callers are migrated.
+            See ADR-031 (docs/architecture/adr/031-*.mdx).
+
         *name* must not include the leading slash (e.g. ``"vault-add"``).
         Raises ``ValueError`` if the name clashes with a builtin or plugin command.
         """

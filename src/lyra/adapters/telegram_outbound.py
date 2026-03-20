@@ -233,6 +233,11 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: edit/ch
                     # must NOT interrupt chunk accumulation — all content is
                     # collected here and delivered in the final publish step below.
                     log.debug("Intermediate streaming edit skipped: %s", edit_exc)
+                # Reset timer unconditionally: on "message not modified" we want to
+                # suppress the next edit for a full debounce window; on rate-limit
+                # (429) the 500ms window is shorter than Telegram's flood-wait but
+                # acceptable for a personal-scale bot — the final edit always delivers
+                # the complete content regardless.
                 last_edit = now
     except Exception as exc:
         stream_error = exc

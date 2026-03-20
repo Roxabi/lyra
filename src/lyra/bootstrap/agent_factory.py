@@ -40,6 +40,7 @@ async def _resolve_bot_agent_map(
 def _build_shared_base_providers(
     circuit_registry: CircuitRegistry,
     cli_pool: CliPool | None,
+    llm_cfg: dict,
 ) -> dict[str, LlmProvider]:
     """Build shared driver instances that are safe to reuse across all agents.
 
@@ -70,7 +71,11 @@ def _build_shared_base_providers(
         from lyra.llm.drivers.sdk import AnthropicSdkDriver
 
         sdk_driver = AnthropicSdkDriver(api_key)
-        retry: LlmProvider = RetryDecorator(sdk_driver, max_retries=3, backoff_base=1.0)
+        retry: LlmProvider = RetryDecorator(
+            sdk_driver,
+            max_retries=llm_cfg.get("max_retries", 3),
+            backoff_base=llm_cfg.get("backoff_base", 1.0),
+        )
 
         anthropic_cb = circuit_registry.get("anthropic")
         if anthropic_cb is not None:
@@ -120,6 +125,7 @@ def _build_provider_registry(
     circuit_registry: CircuitRegistry,
     cli_pool: CliPool | None,
     smart_routing_config: SmartRoutingConfig | None = None,
+    llm_cfg: dict | None = None,  # None → {} (no config, use defaults)
 ) -> tuple[ProviderRegistry, SmartRoutingDecorator | None]:
     """Build and return a ProviderRegistry with all configured drivers.
 
@@ -131,7 +137,7 @@ def _build_provider_registry(
     Returns (registry, smart_routing_decorator_or_None) so the routing
     decorator's history is accessible to the /routing admin command.
     """
-    shared = _build_shared_base_providers(circuit_registry, cli_pool)
+    shared = _build_shared_base_providers(circuit_registry, cli_pool, llm_cfg or {})
     return _build_per_agent_registry(shared, smart_routing_config)
 
 
@@ -201,6 +207,7 @@ def _resolve_agents(  # noqa: PLR0913
     stt_service: STTService | None,
     tts_service: TTSService | None = None,
     agent_store: AgentStore | None = None,
+    llm_cfg: dict | None = None,
 ) -> dict[str, AgentBase]:
     """Create all uniquely named agents referenced by bot configs.
 
@@ -215,7 +222,9 @@ def _resolve_agents(  # noqa: PLR0913
     """
     # Build shared driver instances once — AnthropicSdkDriver, RetryDecorator,
     # CircuitBreakerDecorator and ClaudeCliDriver are stateless across agents.
-    shared_providers = _build_shared_base_providers(circuit_registry, cli_pool)
+    shared_providers = _build_shared_base_providers(
+        circuit_registry, cli_pool, llm_cfg or {}
+    )
 
     agents: dict[str, AgentBase] = {}
     for name, agent_config in sorted(agent_configs.items()):  # deterministic log order

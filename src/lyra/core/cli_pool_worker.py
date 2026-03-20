@@ -67,6 +67,9 @@ class _CliPoolWorker:
     - ``self._cwd_overrides: dict[str, Path]``
     - ``self._resume_session_ids: dict[str, str]``
     - ``self._default_timeout: int``
+    - ``self._kill_timeout: float``
+    - ``self._reaper_interval: int``
+    - ``self._read_buffer_bytes: int``
     """
 
     def _build_cmd(
@@ -138,7 +141,7 @@ class _CliPoolWorker:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=str(spawn_cwd),
-                limit=1024 * 1024,  # 1MB — prevents LimitOverrunError
+                limit=self._read_buffer_bytes,  # type: ignore[attr-defined]  # prevents LimitOverrunError
                 env=env,
             )
         except Exception as exc:
@@ -164,7 +167,9 @@ class _CliPoolWorker:
             try:
                 entry.proc.terminate()
                 try:
-                    await asyncio.wait_for(entry.proc.wait(), timeout=5)
+                    await asyncio.wait_for(
+                        entry.proc.wait(), timeout=self._kill_timeout  # type: ignore[attr-defined]
+                    )
                 except asyncio.TimeoutError:
                     entry.proc.kill()
                     await entry.proc.wait()
@@ -175,7 +180,7 @@ class _CliPoolWorker:
     async def _idle_reaper(self) -> None:
         while True:
             try:
-                await asyncio.sleep(60)
+                await asyncio.sleep(self._reaper_interval)  # type: ignore[attr-defined]
                 self._last_sweep_at = time.monotonic()  # type: ignore[attr-defined]
                 now = time.time()
                 snapshot = list(self._entries.items())  # type: ignore[attr-defined]  # snapshot before async _kill

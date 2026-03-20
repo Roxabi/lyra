@@ -91,12 +91,36 @@ def _load_pairing_config(raw: dict) -> PairingConfig:
 
 
 def _load_cli_pool_config(raw: dict) -> dict:
-    """Load [cli_pool] section from raw config dict. Missing keys → defaults."""
+    """Load [cli_pool] section from raw config dict. Missing keys → defaults.
+
+    Keys
+    ----
+    idle_ttl              : int   — idle process eviction TTL in seconds (default: 1200)
+    default_timeout       : int   — per-readline idle timeout in seconds (default: 1200)
+    turn_timeout          : float | None — pool turn timeout (default: None)
+    reaper_interval       : int   — idle reaper sleep interval in seconds (default: 60)
+    kill_timeout          : float — process exit wait timeout (default: 5)
+    read_buffer_bytes     : int   — asyncio subprocess stdout buffer (default: 1 MB)
+    stdin_drain_timeout   : float — stdin drain timeout in seconds (default: 10.0)
+    max_idle_retries      : int   — max readline retries on timeout (default: 3)
+    intermediate_timeout  : float — on_intermediate callback timeout (default: 5.0)
+    """
     section: dict = raw.get("cli_pool", {})
     return {
         "idle_ttl": section.get("idle_ttl", 1200),
-        "default_timeout": section.get("default_timeout", 1200),  # 20 min × 3 = 60 min
-        "turn_timeout": section.get("turn_timeout"),
+        # effective max idle = default_timeout × max_idle_retries
+        "default_timeout": section.get("default_timeout", 1200),
+        "turn_timeout": (
+            float(section["turn_timeout"])
+            if section.get("turn_timeout") is not None
+            else None
+        ),
+        "reaper_interval": int(section.get("reaper_interval", 60)),
+        "kill_timeout": float(section.get("kill_timeout", 5.0)),
+        "read_buffer_bytes": int(section.get("read_buffer_bytes", 1024 * 1024)),
+        "stdin_drain_timeout": float(section.get("stdin_drain_timeout", 10.0)),
+        "max_idle_retries": int(section.get("max_idle_retries", 3)),
+        "intermediate_timeout": float(section.get("intermediate_timeout", 5.0)),
     }
 
 
@@ -106,16 +130,76 @@ def _load_hub_config(raw: dict) -> dict:
     Keys
     ----
     pool_ttl     : float  — idle pool eviction TTL in seconds (default: 604800 / 7 days)
-    bus_size     : int    — inbound bus queue capacity (default: 100)
     rate_limit   : int    — max messages per rate window per user (default: 20)
     rate_window  : int    — rate window duration in seconds (default: 60)
     """
     section: dict = raw.get("hub", {})
     return {
         "pool_ttl": float(section.get("pool_ttl", 604800.0)),
-        "bus_size": int(section.get("bus_size", 100)),
         "rate_limit": int(section.get("rate_limit", 20)),
         "rate_window": int(section.get("rate_window", 60)),
+    }
+
+
+def _load_pool_config(raw: dict) -> dict:
+    """Load [pool] section from raw config dict. Missing keys → defaults.
+
+    Keys
+    ----
+    max_sdk_history      : int   — max SDK history entries per pool (default: 50)
+    safe_dispatch_timeout: float — dispatch_response timeout (default: 10.0)
+    """
+    section: dict = raw.get("pool", {})
+    return {
+        "max_sdk_history": int(section.get("max_sdk_history", 50)),
+        "safe_dispatch_timeout": float(section.get("safe_dispatch_timeout", 10.0)),
+    }
+
+
+def _load_llm_config(raw: dict) -> dict:
+    """Load [llm] section from raw config dict. Missing keys → defaults.
+
+    Keys
+    ----
+    max_retries  : int   — RetryDecorator max retries on transient failures (default: 3)
+    backoff_base : float — RetryDecorator exponential backoff base (default: 1.0)
+    """
+    section: dict = raw.get("llm", {})
+    return {
+        "max_retries": int(section.get("max_retries", 3)),
+        "backoff_base": float(section.get("backoff_base", 1.0)),
+    }
+
+
+def _load_inbound_bus_config(raw: dict) -> dict:
+    """Load [inbound_bus] section from raw config dict. Missing keys → defaults.
+
+    Keys
+    ----
+    queue_depth_threshold  : int — staging depth warning threshold (default: 100)
+    staging_maxsize        : int — staging queue capacity (default: 500)
+    platform_queue_maxsize : int — per-platform queue capacity (default: 100)
+    """
+    section: dict = raw.get("inbound_bus", {})
+    return {
+        "queue_depth_threshold": int(section.get("queue_depth_threshold", 100)),
+        "staging_maxsize": int(section.get("staging_maxsize", 500)),
+        "platform_queue_maxsize": int(section.get("platform_queue_maxsize", 100)),
+    }
+
+
+def _load_debouncer_config(raw: dict) -> dict:
+    """Load [debouncer] section from raw config dict. Missing keys → defaults.
+
+    Keys
+    ----
+    default_debounce_ms : int — rapid-message aggregation window in ms (default: 300)
+    max_merged_chars    : int — max combined text length after merge (default: 4096)
+    """
+    section: dict = raw.get("debouncer", {})
+    return {
+        "default_debounce_ms": int(section.get("default_debounce_ms", 300)),
+        "max_merged_chars": int(section.get("max_merged_chars", 4096)),
     }
 
 

@@ -55,10 +55,15 @@ class InboundBus(Generic[T]):
             logged (edge-triggered).
     """
 
-    def __init__(self, name: str = "inbound", queue_depth_threshold: int = 100) -> None:
+    def __init__(
+        self,
+        name: str = "inbound",
+        queue_depth_threshold: int = 100,
+        staging_maxsize: int = 500,
+    ) -> None:
         self._name = name
         self._queues: dict[Platform, asyncio.Queue[T]] = {}
-        self._staging: asyncio.Queue[T] = asyncio.Queue(maxsize=500)
+        self._staging: asyncio.Queue[T] = asyncio.Queue(maxsize=staging_maxsize)
         self._feeders: dict[Platform, asyncio.Task[None]] = {}
         self._threshold = queue_depth_threshold
         self._depth_exceeded = False

@@ -53,9 +53,16 @@ class Hub(HubOutboundMixin):
     RATE_WINDOW = 60
     POOL_TTL: float = 604800.0  # 7 days
 
+    # Class-level defaults for pool and bus config.
+    MAX_SDK_HISTORY = 50                    # [pool] max_sdk_history
+    SAFE_DISPATCH_TIMEOUT: float = 10.0    # [pool] safe_dispatch_timeout
+    STAGING_MAXSIZE = 500                   # [inbound_bus] staging_maxsize
+    PLATFORM_QUEUE_MAXSIZE = 100            # [inbound_bus] platform_queue_maxsize
+    QUEUE_DEPTH_THRESHOLD = 100             # [inbound_bus] queue_depth_threshold
+    MAX_MERGED_CHARS = 4096                 # [debouncer] max_merged_chars
+
     def __init__(  # noqa: PLR0913
         self,
-        bus_size: int = BUS_SIZE,
         rate_limit: int = RATE_LIMIT,
         rate_window: int = RATE_WINDOW,
         pool_ttl: float = POOL_TTL,
@@ -67,11 +74,23 @@ class Hub(HubOutboundMixin):
         debounce_ms: int = 0,
         prefs_store: "PrefsStore | None" = None,
         turn_timeout: float | None = None,
+        max_sdk_history: int = MAX_SDK_HISTORY,
+        safe_dispatch_timeout: float = SAFE_DISPATCH_TIMEOUT,
+        staging_maxsize: int = STAGING_MAXSIZE,
+        platform_queue_maxsize: int = PLATFORM_QUEUE_MAXSIZE,
+        queue_depth_threshold: int = QUEUE_DEPTH_THRESHOLD,
+        max_merged_chars: int = MAX_MERGED_CHARS,
     ) -> None:
-        self._bus_size = bus_size
-        self.inbound_bus: InboundBus[InboundMessage] = InboundBus(name="inbound")
+        self._platform_queue_maxsize = platform_queue_maxsize
+        self.inbound_bus: InboundBus[InboundMessage] = InboundBus(
+            name="inbound",
+            staging_maxsize=staging_maxsize,
+            queue_depth_threshold=queue_depth_threshold,
+        )
         self.inbound_audio_bus: InboundBus[InboundAudio] = InboundBus(
-            name="inbound-audio"
+            name="inbound-audio",
+            staging_maxsize=staging_maxsize,
+            queue_depth_threshold=queue_depth_threshold,
         )
         self.outbound_dispatchers: dict[tuple[Platform, str], OutboundDispatcher] = {}
         self.adapter_registry: dict[tuple[Platform, str], ChannelAdapter] = {}
@@ -93,6 +112,9 @@ class Hub(HubOutboundMixin):
         self._turn_store: TurnStore | None = None
         self._turn_timeout = turn_timeout
         self._prefs_store: PrefsStore | None = prefs_store
+        self._max_sdk_history = max_sdk_history
+        self._safe_dispatch_timeout = safe_dispatch_timeout
+        self._max_merged_chars = max_merged_chars
         self.cli_pool: CliPool | None = None
         self._pool_manager = PoolManager(self)
         self._audio_pipeline = AudioPipeline(self)
@@ -140,9 +162,11 @@ class Hub(HubOutboundMixin):
     ) -> None:
         self.adapter_registry[(platform, bot_id)] = adapter
         if platform not in self.inbound_bus.registered_platforms():
-            self.inbound_bus.register(platform, maxsize=self._bus_size)
+            self.inbound_bus.register(platform, maxsize=self._platform_queue_maxsize)
         if platform not in self.inbound_audio_bus.registered_platforms():
-            self.inbound_audio_bus.register(platform, maxsize=self._bus_size)
+            self.inbound_audio_bus.register(
+                platform, maxsize=self._platform_queue_maxsize
+            )
 
     def register_outbound_dispatcher(
         self,

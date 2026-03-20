@@ -68,12 +68,16 @@ class Pool:
         turn_timeout: float | None = TURN_TIMEOUT_DEFAULT,
         debounce_ms: int = DEFAULT_DEBOUNCE_MS,
         turn_timeout_ceiling: float | None = None,
+        max_sdk_history: int = 50,
+        safe_dispatch_timeout: float = 10.0,
+        max_merged_chars: int = 4096,
     ) -> None:
         self.pool_id = pool_id
         self.agent_name = agent_name
         self.history: list[InboundMessage] = []
         self.sdk_history: deque[dict] = deque()
-        self.max_sdk_history: int = 50
+        self.max_sdk_history: int = max_sdk_history
+        self._safe_dispatch_timeout: float = safe_dispatch_timeout
         self._session_reset_fn: Callable[[], Awaitable[None]] | None = None
         self._session_resume_fn: Callable[[str], Awaitable[None]] | None = None
         self._switch_workspace_fn: Callable[[Path], Awaitable[None]] | None = None
@@ -95,7 +99,7 @@ class Pool:
             self._turn_timeout = turn_timeout_ceiling
         else:
             self._turn_timeout = None
-        self._debouncer = MessageDebouncer(debounce_ms)
+        self._debouncer = MessageDebouncer(debounce_ms, max_merged_chars)
         self._inbox: asyncio.Queue[InboundMessage] = asyncio.Queue()
         self._current_task: asyncio.Task | None = None
         self._inflight_stream_outbound: OutboundMessage | None = None

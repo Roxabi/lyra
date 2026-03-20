@@ -291,7 +291,7 @@ class PoolProcessor:
             _result_iter_for_sid = result
             _content_parts: list[str] = []
 
-            async def _capture() -> collections.abc.AsyncIterator[str]:
+            async def _capture() -> collections.abc.AsyncGenerator[str, None]:
                 async for chunk in _result_iter_for_sid:
                     _content_parts.append(chunk)
                     yield chunk

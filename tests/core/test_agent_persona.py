@@ -235,3 +235,15 @@ system = "You are a plain bot."
         agent = load_agent_config("myagent", agents_dir=tmp_path)
         assert agent.persona is None
         assert agent.system_prompt == "You are a plain bot."
+
+
+def test_lyra_default_persona_has_turn_closure_instruction() -> None:
+    """Composed system prompt includes turn-closure instruction (#373)."""
+    from lyra.core.persona import compose_system_prompt, load_persona
+
+    fixture_dir = Path(__file__).parent.parent / "fixtures" / "personas"
+    persona = load_persona("lyra_default", personas_dir=fixture_dir)
+    prompt = compose_system_prompt(persona)
+    assert "close the turn" in prompt, (
+        f"Turn-closure instruction missing from composed prompt.\nGot:\n{prompt}"
+    )

@@ -40,16 +40,17 @@ def _parse_md_table(match: re.Match[str]) -> str:
 
 
 _MENTION_RE = re.compile(r"<@!?\d+>")
+_THREAD_SPLIT_RE = re.compile(r"\s*(?:—|--)\s*")
 
 
 def make_thread_name(content: str, fallback: str) -> str:
     """Derive a Discord thread name from a message.
 
-    Takes the segment before the first ' — ' (em-dash), strips @mentions,
-    collapses whitespace, and falls back to *fallback* when the result is empty.
-    The return value is always ≤ 100 characters (Discord limit).
+    Takes the segment before the first ' — ' (em-dash) or '--' (double dash),
+    strips @mentions, collapses whitespace, and falls back to *fallback* when
+    the result is empty. The return value is always ≤ 100 characters (Discord limit).
     """
-    segment = content.split(" — ", 1)[0] if " — " in content else content
+    segment = _THREAD_SPLIT_RE.split(content, maxsplit=1)[0]
     clean = _MENTION_RE.sub("", segment).strip()
     name = " ".join(clean.split()) or fallback
     return name[:100]

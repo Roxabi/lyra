@@ -126,6 +126,7 @@ def _build_provider_registry(
     circuit_registry: CircuitRegistry,
     cli_pool: CliPool | None,
     smart_routing_config: SmartRoutingConfig | None = None,
+    llm_cfg: dict | None = None,
 ) -> tuple[ProviderRegistry, SmartRoutingDecorator | None]:
     """Build and return a ProviderRegistry with all configured drivers.
 
@@ -137,7 +138,7 @@ def _build_provider_registry(
     Returns (registry, smart_routing_decorator_or_None) so the routing
     decorator's history is accessible to the /routing admin command.
     """
-    shared = _build_shared_base_providers(circuit_registry, cli_pool)
+    shared = _build_shared_base_providers(circuit_registry, cli_pool, llm_cfg)
     return _build_per_agent_registry(shared, smart_routing_config)
 
 

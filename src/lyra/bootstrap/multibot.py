@@ -162,13 +162,14 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
             prefs_store=stores.prefs,
             turn_timeout=cli_pool_cfg["turn_timeout"],
             pool_ttl=hub_cfg["pool_ttl"],
-            bus_size=hub_cfg["bus_size"],
             rate_limit=hub_cfg["rate_limit"],
             rate_window=hub_cfg["rate_window"],
             max_sdk_history=pool_cfg["max_sdk_history"],
             safe_dispatch_timeout=pool_cfg["safe_dispatch_timeout"],
             staging_maxsize=inbound_bus_cfg["staging_maxsize"],
             platform_queue_maxsize=inbound_bus_cfg["platform_queue_maxsize"],
+            queue_depth_threshold=inbound_bus_cfg["queue_depth_threshold"],
+            max_merged_chars=debouncer_cfg["max_merged_chars"],
         )
         hub.set_turn_store(stores.turn)
         hub.set_message_index(stores.message_index)

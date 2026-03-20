@@ -73,3 +73,45 @@ class TestMerge:
         assert len(result.attachments) == 2
         assert result.attachments[0] is a1
         assert result.attachments[1] is a2
+
+
+# ---------------------------------------------------------------------------
+# MessageDebouncer configurable max_merged_chars
+# ---------------------------------------------------------------------------
+
+
+class TestMergeConfigurable:
+    """max_merged_chars controls truncation of merged text (#369)."""
+
+    def test_merge_truncates_text_at_max_merged_chars(self) -> None:
+        """Combined text is truncated to max_merged_chars."""
+        debouncer = MessageDebouncer(max_merged_chars=5)
+        m1 = make_debouncer_msg("hello")
+        m2 = make_debouncer_msg("world")
+        result = debouncer.merge([m1, m2])
+        # "hello\nworld" → truncated to 5 chars
+        assert result.text == "hello"
+
+    def test_merge_truncates_text_raw_independently(self) -> None:
+        """text_raw is also independently truncated to max_merged_chars."""
+        debouncer = MessageDebouncer(max_merged_chars=5)
+        m1 = make_debouncer_msg("hello")
+        m2 = make_debouncer_msg("world")
+        result = debouncer.merge([m1, m2])
+        assert result.text_raw == "hello"
+
+    def test_merge_default_limit_does_not_truncate_short_messages(self) -> None:
+        """Default 4096-char limit does not affect short messages."""
+        debouncer = MessageDebouncer()
+        m1 = make_debouncer_msg("hello")
+        m2 = make_debouncer_msg("world")
+        result = debouncer.merge([m1, m2])
+        assert result.text == "hello\nworld"
+
+    def test_merge_single_message_unaffected_by_limit(self) -> None:
+        """Single-message fast path is not subject to truncation."""
+        debouncer = MessageDebouncer(max_merged_chars=3)
+        msg = make_debouncer_msg("hello")
+        result = debouncer.merge([msg])
+        # identity fast-path returns as-is, no slice applied
+        assert result is msg

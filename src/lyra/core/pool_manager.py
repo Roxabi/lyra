@@ -39,6 +39,7 @@ class PoolManager:
                 turn_timeout_ceiling=self._hub._turn_timeout,
                 max_sdk_history=self._hub._max_sdk_history,
                 safe_dispatch_timeout=self._hub._safe_dispatch_timeout,
+                max_merged_chars=self._hub._max_merged_chars,
             )
             if self._hub._turn_store is not None:
                 new_pool._observer.register_turn_store(self._hub._turn_store)

@@ -22,8 +22,6 @@ from .message import GENERIC_ERROR_REPLY, OutboundMessage, Response
 
 log = logging.getLogger(__name__)
 
-SAFE_DISPATCH_TIMEOUT = 10.0
-
 
 class PoolProcessor:
     """Async processing engine for a Pool.

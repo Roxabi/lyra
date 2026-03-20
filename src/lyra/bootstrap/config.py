@@ -108,8 +108,13 @@ def _load_cli_pool_config(raw: dict) -> dict:
     section: dict = raw.get("cli_pool", {})
     return {
         "idle_ttl": section.get("idle_ttl", 1200),
-        "default_timeout": section.get("default_timeout", 1200),  # 20 min × 3 = 60 min
-        "turn_timeout": section.get("turn_timeout"),
+        # effective max idle = default_timeout × max_idle_retries
+        "default_timeout": section.get("default_timeout", 1200),
+        "turn_timeout": (
+            float(section["turn_timeout"])
+            if section.get("turn_timeout") is not None
+            else None
+        ),
         "reaper_interval": int(section.get("reaper_interval", 60)),
         "kill_timeout": float(section.get("kill_timeout", 5.0)),
         "read_buffer_bytes": int(section.get("read_buffer_bytes", 1024 * 1024)),
@@ -125,14 +130,12 @@ def _load_hub_config(raw: dict) -> dict:
     Keys
     ----
     pool_ttl     : float  — idle pool eviction TTL in seconds (default: 604800 / 7 days)
-    bus_size     : int    — inbound bus queue capacity (default: 100)
     rate_limit   : int    — max messages per rate window per user (default: 20)
     rate_window  : int    — rate window duration in seconds (default: 60)
     """
     section: dict = raw.get("hub", {})
     return {
         "pool_ttl": float(section.get("pool_ttl", 604800.0)),
-        "bus_size": int(section.get("bus_size", 100)),
         "rate_limit": int(section.get("rate_limit", 20)),
         "rate_window": int(section.get("rate_window", 60)),
     }
@@ -160,13 +163,11 @@ def _load_llm_config(raw: dict) -> dict:
     ----
     max_retries  : int   — RetryDecorator max retries on transient failures (default: 3)
     backoff_base : float — RetryDecorator exponential backoff base (default: 1.0)
-    max_prompt_bytes : int — max system_prompt size in bytes (default: 65536 / 64 KB)
     """
     section: dict = raw.get("llm", {})
     return {
         "max_retries": int(section.get("max_retries", 3)),
         "backoff_base": float(section.get("backoff_base", 1.0)),
-        "max_prompt_bytes": int(section.get("max_prompt_bytes", 64 * 1024)),
     }
 
 

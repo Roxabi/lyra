@@ -70,6 +70,7 @@ class Pool:
         turn_timeout_ceiling: float | None = None,
         max_sdk_history: int = 50,
         safe_dispatch_timeout: float = 10.0,
+        max_merged_chars: int = 4096,
     ) -> None:
         self.pool_id = pool_id
         self.agent_name = agent_name
@@ -98,7 +99,7 @@ class Pool:
             self._turn_timeout = turn_timeout_ceiling
         else:
             self._turn_timeout = None
-        self._debouncer = MessageDebouncer(debounce_ms)
+        self._debouncer = MessageDebouncer(debounce_ms, max_merged_chars)
         self._inbox: asyncio.Queue[InboundMessage] = asyncio.Queue()
         self._current_task: asyncio.Task | None = None
         self._inflight_stream_outbound: OutboundMessage | None = None

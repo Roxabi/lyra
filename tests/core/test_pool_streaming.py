@@ -404,6 +404,11 @@ class TestPoolStreaming:
             async def __anext__(self) -> str:
                 return await self._inner.__anext__()
 
+            async def aclose(self) -> None:
+                _close = getattr(self._inner, "aclose", None)
+                if callable(_close):
+                    await _close()  # type: ignore[misc]
+
         class SessionIdStreamingAgent:
             name = "test_agent"
 

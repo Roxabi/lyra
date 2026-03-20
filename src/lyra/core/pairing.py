@@ -52,18 +52,17 @@ class PairingManager(SqliteStore):
 
     On successful code validation, grants are written to AuthStore instead of
     the former paired_sessions table (removed in #245).
+    Admin check (is_admin/_admin_user_ids) removed in #315.
     """
 
     def __init__(
         self,
         config: PairingConfig,
         db_path: str | Path,
-        admin_user_ids: set[str],
         auth_store: AuthStore | None = None,
     ) -> None:
         super().__init__(db_path)
         self.config = config
-        self._admin_user_ids = admin_user_ids
         self._auth_store = auth_store
         # In-memory sliding window: identity_key -> deque of failure timestamps
         self._rate_timestamps: dict[str, deque[float]] = {}
@@ -227,10 +226,6 @@ class PairingManager(SqliteStore):
     # ------------------------------------------------------------------
     # Session checks
     # ------------------------------------------------------------------
-
-    def is_admin(self, identity_key: str) -> bool:
-        """Return True if the identity_key belongs to an admin user."""
-        return identity_key in self._admin_user_ids
 
     async def revoke_session(self, identity_key: str) -> bool:
         """Revoke a user's grant. Returns True if it existed."""

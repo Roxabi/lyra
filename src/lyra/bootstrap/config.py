@@ -55,10 +55,10 @@ def _build_agent_overrides(raw: dict, name: str) -> dict:
 
 def _load_circuit_config(
     raw: dict,
-) -> tuple[CircuitRegistry, set[str]]:
+) -> tuple[CircuitRegistry, frozenset[str]]:
     """Load [circuit_breaker.*] and [admin] sections from raw config dict.
 
-    Returns (CircuitRegistry with 4 named CBs, set of admin user_ids).
+    Returns (CircuitRegistry with 4 named CBs, frozenset of admin user_ids).
     Missing sections → all defaults.
     """
     cb_section = raw.get("circuit_breaker", {})
@@ -73,7 +73,7 @@ def _load_circuit_config(
             )
         )
 
-    admin_ids: set[str] = set(raw.get("admin", {}).get("user_ids", []))
+    admin_ids: frozenset[str] = frozenset(raw.get("admin", {}).get("user_ids", []))
     for aid in admin_ids:
         if not _ADMIN_ID_PATTERN.match(aid):
             log.warning(

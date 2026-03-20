@@ -31,7 +31,6 @@ from lyra.config import (
     TelegramMultiConfig,
     load_multibot_config,
 )
-from lyra.core.admin import set_admin_user_ids
 from lyra.errors import KeyringError, MissingCredentialsError
 
 log = logging.getLogger(__name__)
@@ -77,7 +76,6 @@ async def _main(*, adapter: str = "all", _stop: asyncio.Event | None = None) -> 
         )
     raw_config = _load_raw_config()
     circuit_registry, admin_user_ids = _load_circuit_config(raw_config)
-    set_admin_user_ids(admin_user_ids)
     try:
         tg_multi_cfg, dc_multi_cfg = load_multibot_config(raw_config)
     except ValueError as exc:

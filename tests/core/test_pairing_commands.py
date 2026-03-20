@@ -77,6 +77,15 @@ class TestCmdInvite:
         response = await cmd_invite(msg, pool, [])
         assert "not enabled" in response.content.lower()
 
+    async def test_formerly_admin_id_without_flag_is_rejected(self) -> None:
+        """Regression: admin gate is msg.is_admin only — user_id alone is not enough."""
+        pm = await make_pm()
+        set_pairing_manager(pm)
+        msg = make_message(content="/invite", user_id=_ADMIN_ID, is_admin=False)
+        pool = Pool(pool_id="test", agent_name="test", ctx=MagicMock())
+        response = await cmd_invite(msg, pool, [])
+        assert "admin-only" in response.content.lower()
+
 
 # ---------------------------------------------------------------------------
 # TestCmdJoin
@@ -196,3 +205,12 @@ class TestCmdUnpair:
         pool = Pool(pool_id="test", agent_name="test", ctx=MagicMock())
         response = await cmd_unpair(msg, pool, [])
         assert "not enabled" in response.content.lower()
+
+    async def test_formerly_admin_id_without_flag_is_rejected(self) -> None:
+        """Regression: admin gate is msg.is_admin only — user_id alone is not enough."""
+        pm = await make_pm()
+        set_pairing_manager(pm)
+        msg = make_message(content="/unpair", user_id=_ADMIN_ID, is_admin=False)
+        pool = Pool(pool_id="test", agent_name="test", ctx=MagicMock())
+        response = await cmd_unpair(msg, pool, [_ADMIN_ID])
+        assert "admin-only" in response.content.lower()

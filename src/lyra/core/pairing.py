@@ -52,6 +52,7 @@ class PairingManager(SqliteStore):
 
     On successful code validation, grants are written to AuthStore instead of
     the former paired_sessions table (removed in #245).
+    Admin check (is_admin/_admin_user_ids) removed in #315.
     """
 
     def __init__(

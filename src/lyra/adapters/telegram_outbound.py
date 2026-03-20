@@ -25,6 +25,10 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("lyra.adapters.telegram")
 
+# Seconds between intermediate streaming edits (debounce).
+# Aligned with Discord. Telegram allows ~1 edit/s per chat before flood-wait.
+STREAMING_EDIT_INTERVAL = 1.0
+
 
 # ---------------------------------------------------------------------------
 # Typing indicator — two-phase design
@@ -205,13 +209,15 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: edit/ch
             outbound.metadata["reply_message_id"] = fallback_msg.message_id
         return
 
-    last_edit = time.monotonic()
+    last_edit: float | None = None  # set on first token; debounce starts then
     stream_error: Exception | None = None
     try:
         async for chunk in chunks:
             parts.append(chunk)
             now = time.monotonic()
-            if now - last_edit >= 0.5:
+            if last_edit is None:
+                last_edit = now
+            elif now - last_edit >= STREAMING_EDIT_INTERVAL:
                 accumulated = "".join(parts)
                 _converted = _render_text(accumulated)[0]
                 try:

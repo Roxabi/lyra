@@ -22,6 +22,10 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("lyra.adapters.discord")
 
+# Seconds between intermediate streaming edits (debounce).
+# Aligned with Telegram. Respects Discord's ~1 edit/s rate limit per message.
+STREAMING_EDIT_INTERVAL = 1.0
+
 
 async def _discord_typing_worker(
     resolve_channel: Callable,
@@ -181,13 +185,15 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: edit/ch
             )
         return
 
-    last_edit = time.monotonic()
+    last_edit: float | None = None  # set on first token; debounce starts then
     stream_error: Exception | None = None
     try:
         async for chunk in chunks:
             parts.append(chunk)
             now = time.monotonic()
-            if now - last_edit >= 1.0:
+            if last_edit is None:
+                last_edit = now
+            elif now - last_edit >= STREAMING_EDIT_INTERVAL:
                 accumulated = "".join(parts)
                 await placeholder.edit(content=accumulated[:DISCORD_MAX_LENGTH])
                 last_edit = now

@@ -26,6 +26,7 @@ from .outbound_errors import (
     _CIRCUIT_NOTIFY_DEBOUNCE,
     _CIRCUIT_OPEN_MSG,
     _ITEM,
+    _NOTIFY_TS_REAP_THRESHOLD,
     _SCOPE_REAP_THRESHOLD,
     _SEND_ERROR_MSG,
     _is_transient_error,
@@ -220,9 +221,10 @@ class OutboundDispatcher:
 
         # Fix 1: retry loop with exponential backoff for transient errors
         _backoff_delays = (1.0, 2.0, 4.0)
+        _max_attempts = 1 + len(_backoff_delays)  # 1 initial + 3 retries = 4 total
         _last_exc: Exception | None = None
         _attempt = 0
-        while _attempt <= len(_backoff_delays):
+        while _attempt < _max_attempts:
             try:
                 if kind == "send":
                     await self._adapter.send(msg, payload)
@@ -254,8 +256,8 @@ class OutboundDispatcher:
                 is_transient = _is_transient_error(exc)
                 retry_possible = (
                     is_transient
-                    and _attempt < len(_backoff_delays)
-                    and kind in ("send", "streaming")
+                    and _attempt + 1 < _max_attempts
+                    and kind == "send"  # streaming iterators cannot be replayed
                 )
                 if retry_possible:
                     delay = _backoff_delays[_attempt]
@@ -273,7 +275,7 @@ class OutboundDispatcher:
                     await asyncio.sleep(delay)
                 else:
                     _last_exc = exc
-                    _attempt = len(_backoff_delays) + 1  # exit loop
+                    _attempt = _max_attempts  # exit loop
                     break
 
         # Invoke dispatched callback after send (#316).
@@ -300,18 +302,31 @@ class OutboundDispatcher:
                 exc_info=exc,
             )
             # Fix 1: send user notification after all retries exhausted
+            # Gate on circuit: skip if circuit already open to avoid duplicate
+            # notifications (the circuit-open debounce already informed the user).
             if kind in ("send", "streaming"):
-                await self._try_notify_user(msg, _SEND_ERROR_MSG)
+                await try_notify_user(
+                    self._platform_name,
+                    self._adapter,
+                    msg,
+                    _SEND_ERROR_MSG,
+                    circuit=self._circuit,
+                )
 
     async def _worker_loop(self) -> None:
         """Fan-out: dequeue → lock per scope → create_task → task_done immediately."""
         while True:
             item = await self._queue.get()
             try:
-                msg: InboundMessage = item[1]
-                assert isinstance(msg, InboundMessage), (
-                    f"Expected InboundMessage at item[1], got {type(msg)!r}"
-                )
+                msg = item[1]
+                if not isinstance(msg, InboundMessage):
+                    log.error(
+                        "OutboundDispatcher[%s]: malformed queue item"
+                        " (expected InboundMessage at [1], got %r) — skipped",
+                        self._platform_name,
+                        type(msg),
+                    )
+                    continue
                 scope_id = msg.scope_id or msg.id
                 lock = self._scope_locks.setdefault(scope_id, asyncio.Lock())
                 task = asyncio.create_task(
@@ -333,6 +348,8 @@ class OutboundDispatcher:
                 self._scope_tasks.add(task)
                 if len(self._scope_locks) > _SCOPE_REAP_THRESHOLD:
                     self._reap_scope_locks()
+                if len(self._circuit_notify_ts) > _NOTIFY_TS_REAP_THRESHOLD:
+                    self._reap_circuit_notify_ts()
             finally:
                 self._queue.task_done()
 
@@ -347,4 +364,13 @@ class OutboundDispatcher:
             scope_id: lock
             for scope_id, lock in self._scope_locks.items()
             if lock.locked()
+        }
+
+    def _reap_circuit_notify_ts(self) -> None:
+        """Remove debounce timestamps older than the debounce window."""
+        now = time.monotonic()
+        self._circuit_notify_ts = {
+            scope_key: ts
+            for scope_key, ts in self._circuit_notify_ts.items()
+            if now - ts < _CIRCUIT_NOTIFY_DEBOUNCE
         }

@@ -181,7 +181,7 @@ async def test_circuit_open_debounce_suppresses_second_notification() -> None:
         msg = make_dispatcher_msg()  # scope_id = "chat:123"
         notify_calls: list[str] = []
 
-        async def fake_notify(*args: object) -> None:
+        async def fake_notify(*args: object, **kwargs: object) -> None:
             notify_calls.append(str(args[3]))
 
         _patch = patch(
@@ -266,7 +266,7 @@ async def test_failed_send_notifies_user() -> None:
     adapter.send = AsyncMock(side_effect=ValueError("permanent"))
     notify_calls: list[str] = []
 
-    async def fake_notify(*args: object) -> None:
+    async def fake_notify(*args: object, **kwargs: object) -> None:
         notify_calls.append(str(args[3]))
 
     dispatcher = OutboundDispatcher(platform_name="telegram", adapter=adapter)
@@ -310,6 +310,56 @@ async def test_scope_reap_triggered_at_threshold() -> None:
         assert len(dispatcher._scope_locks) <= 1
     finally:
         await dispatcher.stop()
+
+
+# ---------------------------------------------------------------------------
+# Retry exhaustion — transient error on every attempt
+# ---------------------------------------------------------------------------
+
+
+class TestRetryExhaustion:
+    async def test_transient_error_exhausts_retries_and_notifies(self) -> None:
+        """ConnectionError on every attempt: 4 sends, 1 notify, 1 circuit failure."""
+        # Arrange
+        adapter = MagicMock()
+        done_event = asyncio.Event()
+
+        async def always_fail(_msg: InboundMessage, _out: OutboundMessage) -> None:
+            raise ConnectionError("network unreachable")
+
+        adapter.send = AsyncMock(side_effect=always_fail)
+
+        mock_circuit = MagicMock(spec=CircuitBreaker)
+        mock_circuit.is_open.return_value = False
+
+        dispatcher = OutboundDispatcher(
+            platform_name="telegram",
+            adapter=adapter,
+            circuit=mock_circuit,
+        )
+
+        notify_mock = AsyncMock(side_effect=lambda *_, **__: done_event.set())
+
+        await dispatcher.start()
+        try:
+            msg = make_dispatcher_msg()
+            with (
+                patch("asyncio.sleep", new=AsyncMock()),
+                patch(
+                    "lyra.core.outbound_dispatcher.try_notify_user",
+                    new=notify_mock,
+                ),
+            ):
+                dispatcher.enqueue(msg, OutboundMessage.from_text("hi"))
+                # Act — wait until try_notify_user fires (exhaustion complete)
+                await asyncio.wait_for(done_event.wait(), timeout=2.0)
+
+            # Assert
+            assert adapter.send.await_count == 4  # 1 initial + 3 retries
+            notify_mock.assert_awaited_once()
+            mock_circuit.record_failure.assert_called_once()
+        finally:
+            await dispatcher.stop()
 
 
 # ---------------------------------------------------------------------------

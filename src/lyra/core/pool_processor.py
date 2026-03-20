@@ -230,7 +230,12 @@ class PoolProcessor:
         if msg.command is not None:
             _session_tools = getattr(agent, "_session_tools", None)
             if _session_tools is not None:
-                import lyra.core.processors  # noqa: F401 — trigger self-registration
+                # Import inside the function to avoid circular imports:
+                # processors → processor_registry → message;
+                # pool_processor also imports message.
+                # Python caches modules in sys.modules after the first import,
+                # so this is effectively free (one dict lookup) on every call.
+                import lyra.core.processors  # noqa: F401 — registers processors via @register decorators
                 from lyra.core.processor_registry import registry as _proc_registry
 
                 _cmd_name = f"{msg.command.prefix}{msg.command.name}"
@@ -242,7 +247,15 @@ class PoolProcessor:
                         log.warning(
                             "Processor pre() failed for %s", _cmd_name, exc_info=True
                         )
-                        _processor = None
+                        # Surface the error rather than falling through to the LLM
+                        # with an unmodified message (confusing non-response).
+                        _error_reply = pool._msg(
+                            "generic",
+                            f"⚠️ Command {_cmd_name} failed to prepare."
+                            " Please try again.",
+                        )
+                        await self._safe_dispatch(msg, Response(content=_error_reply))
+                        return
 
         result = agent.process(msg, pool, on_intermediate=_intermediate_cb)
         if not isinstance(result, collections.abc.AsyncIterator):
@@ -263,14 +276,13 @@ class PoolProcessor:
         _platform = pool.medium or str(msg.platform)
         _user_id = pool.user_id or msg.user_id
 
-        # Guard: processors with non-trivial post() are incompatible with streaming
-        # agents because post() is only called in the non-streaming branch.
-        # Raise early to prevent silent vault write drops (issue #363).
-        # To support streaming, override process() to return a Response.
+        # Guard: processors with post() are incompatible with streaming agents.
+        # To support streaming, override process() to return a Response (non-streaming).
         if _processor is not None and isinstance(result, collections.abc.AsyncIterator):
             raise NotImplementedError(
                 f"Processor {type(_processor).__name__!r} is not compatible with "
-                "streaming agents — override process() to return a Response."
+                f"streaming agent {type(agent).__name__!r} — "
+                "override process() to return a Response instead of an AsyncIterator."
             )
 
         if isinstance(result, collections.abc.AsyncIterator):

@@ -11,6 +11,7 @@ T4 [GREEN]: stop() drains in-flight tasks before returning.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 from unittest.mock import AsyncMock, MagicMock
 
 from lyra.core.message import InboundMessage, OutboundMessage
@@ -20,13 +21,8 @@ from .conftest import make_dispatcher_msg
 
 
 def _make_msg(scope_id: str) -> InboundMessage:
-    """Clone make_dispatcher_msg but override scope_id.
-
-    InboundMessage is a frozen dataclass; object.__setattr__ bypasses the freeze.
-    """
-    msg = make_dispatcher_msg()
-    object.__setattr__(msg, "scope_id", scope_id)
-    return msg
+    """Create a test InboundMessage with the given scope_id."""
+    return dataclasses.replace(make_dispatcher_msg(), scope_id=scope_id)
 
 
 # ---------------------------------------------------------------------------
@@ -109,8 +105,10 @@ async def test_fifo_same_scope() -> None:
         for label in ("msg1", "msg2", "msg3"):
             dispatcher.enqueue(msg, OutboundMessage.from_text(label))
 
-        # 3 sequential sends × 30ms each = ~90ms; add comfortable margin.
-        await asyncio.sleep(0.20)
+        # Wait for queue to drain, then await any in-flight scope tasks.
+        await dispatcher._queue.join()
+        if dispatcher._scope_tasks:
+            await asyncio.gather(*list(dispatcher._scope_tasks), return_exceptions=True)
 
         # Assert — FIFO order preserved
         assert call_order == ["msg1", "msg2", "msg3"], (
@@ -144,8 +142,9 @@ async def test_scope_locks_cleanup() -> None:
         msg = _make_msg(scope)
         dispatcher.enqueue(msg, OutboundMessage.from_text("x"))
 
-    # Allow sends to complete so locks are released before stop().
-    await asyncio.sleep(0.05)
+    # Wait for queue to drain so locks are released before stop().
+    await dispatcher._queue.join()
+    await asyncio.sleep(0)  # yield to event loop for scope task cleanup
 
     # Act
     await dispatcher.stop()
@@ -187,7 +186,7 @@ async def test_stop_drains_tasks() -> None:
     # Act
     dispatcher.enqueue(make_dispatcher_msg(), OutboundMessage.from_text("x"))
     await asyncio.sleep(0.01)  # let the worker dequeue and start the scope task
-    await dispatcher.stop()    # must wait for the 100ms send to finish
+    await dispatcher.stop()  # must wait for the 100ms send to finish
 
     # Assert — send completed before stop() returned
     assert completed == ["done"], (

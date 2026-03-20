@@ -22,6 +22,7 @@ from .cli_pool_worker import (
 )
 from .cli_protocol import (
     _SESSION_ID_RE,
+    CliProtocolOptions,
     CliResult,
     StreamingIterator,
     send_and_read,
@@ -75,9 +76,11 @@ class CliPool(_CliPoolWorker):
         self._reaper_interval = reaper_interval
         self._kill_timeout = kill_timeout
         self._read_buffer_bytes = read_buffer_bytes
-        self._stdin_drain_timeout = stdin_drain_timeout
-        self._max_idle_retries = max_idle_retries
-        self._intermediate_timeout = intermediate_timeout
+        self._protocol_opts = CliProtocolOptions(
+            stdin_drain_timeout=stdin_drain_timeout,
+            max_idle_retries=max_idle_retries,
+            intermediate_timeout=intermediate_timeout,
+        )
         self._entries: dict[str, _ProcessEntry] = {}
         self._reaper_task: asyncio.Task[None] | None = None
         self._cwd_overrides: dict[str, Path] = {}
@@ -158,9 +161,7 @@ class CliPool(_CliPoolWorker):
                     pool_id,
                     on_intermediate=on_intermediate,
                     default_timeout=self._default_timeout,
-                    stdin_drain_timeout=self._stdin_drain_timeout,
-                    max_idle_retries=self._max_idle_retries,
-                    intermediate_timeout=self._intermediate_timeout,
+                    opts=self._protocol_opts,
                 )
                 if not result.ok and (
                     "Timeout" in result.error or "terminated" in result.error
@@ -233,9 +234,7 @@ class CliPool(_CliPoolWorker):
                 pool_reset_fn=_reset,
                 default_timeout=self._default_timeout,
                 on_intermediate=on_intermediate,
-                stdin_drain_timeout=self._stdin_drain_timeout,
-                max_idle_retries=self._max_idle_retries,
-                intermediate_timeout=self._intermediate_timeout,
+                opts=self._protocol_opts,
             )
         entry.turn_count += 1
         entry.last_activity = time.time()

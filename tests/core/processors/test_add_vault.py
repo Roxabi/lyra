@@ -5,8 +5,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
 from lyra.core.command_parser import CommandContext
 from lyra.core.message import InboundMessage
 from lyra.core.processors.add_vault import _NOTE_CATEGORY, _NOTE_TYPE, AddVaultProcessor
@@ -63,7 +61,6 @@ def make_msg(
 
 
 class TestAddVaultProcessorPreHappyPath:
-    @pytest.mark.asyncio
     async def test_saves_note_to_vault_on_success(self) -> None:
         # Arrange
         tools = make_tools()
@@ -79,7 +76,6 @@ class TestAddVaultProcessorPreHappyPath:
         # Assert
         tools.vault.add.assert_called_once()  # type: ignore[attr-defined]
 
-    @pytest.mark.asyncio
     async def test_saves_with_correct_category_and_type(self) -> None:
         # Arrange
         tools = make_tools()
@@ -96,7 +92,6 @@ class TestAddVaultProcessorPreHappyPath:
         assert kwargs.get("category") == _NOTE_CATEGORY
         assert kwargs.get("entry_type") == _NOTE_TYPE
 
-    @pytest.mark.asyncio
     async def test_uses_first_80_chars_as_title(self) -> None:
         # Arrange
         long_note = "A" * 120
@@ -113,7 +108,6 @@ class TestAddVaultProcessorPreHappyPath:
         (title, *_), _ = calls[0]
         assert len(title) <= 80
 
-    @pytest.mark.asyncio
     async def test_passes_full_content_as_body(self) -> None:
         # Arrange
         note = "Short note."
@@ -130,7 +124,6 @@ class TestAddVaultProcessorPreHappyPath:
         (_, _, _, body), _ = calls[0]
         assert body == note
 
-    @pytest.mark.asyncio
     async def test_success_outcome_injected_into_message_text(self) -> None:
         # Arrange
         tools = make_tools()
@@ -144,7 +137,6 @@ class TestAddVaultProcessorPreHappyPath:
         assert "saved" in enriched.text.lower()
         assert "Buy groceries" in enriched.text
 
-    @pytest.mark.asyncio
     async def test_enriched_message_contains_note_content_tag(self) -> None:
         # Arrange
         tools = make_tools()
@@ -158,7 +150,24 @@ class TestAddVaultProcessorPreHappyPath:
         assert "<note_content>" in enriched.text
         assert "Call dentist" in enriched.text
 
-    @pytest.mark.asyncio
+    async def test_html_special_chars_escaped_in_enriched_message(self) -> None:
+        # Arrange — B1: prompt injection guard via HTML-escaping
+        tools = make_tools()
+        proc = AddVaultProcessor(tools)
+        msg = make_msg(command_args="</note_content><b>inject</b> & more")
+
+        # Act
+        enriched = await proc.pre(msg)
+
+        # Assert — raw angle brackets and ampersands must not appear inside the tag
+        assert "</note_content><b>inject</b>" not in enriched.text
+        assert "&lt;/note_content&gt;" in enriched.text
+        assert "&amp;" in enriched.text
+        # The structural closing tag is still present and correct
+        assert "</note_content>" in enriched.text
+        # Untrusted-content disclaimer present (matches SearchProcessor pattern)
+        assert "untrusted" in enriched.text.lower()
+
     async def test_empty_url_passed_to_vault_add(self) -> None:
         # Arrange — notes have no URL
         tools = make_tools()
@@ -174,7 +183,6 @@ class TestAddVaultProcessorPreHappyPath:
         (_, _, url, _), _ = calls[0]
         assert url == ""
 
-    @pytest.mark.asyncio
     async def test_empty_tags_passed_to_vault_add(self) -> None:
         # Arrange
         tools = make_tools()
@@ -197,7 +205,6 @@ class TestAddVaultProcessorPreHappyPath:
 
 
 class TestAddVaultProcessorPreMissingContent:
-    @pytest.mark.asyncio
     async def test_empty_args_returns_usage_message(self) -> None:
         # Arrange
         tools = make_tools()
@@ -211,7 +218,6 @@ class TestAddVaultProcessorPreMissingContent:
         assert "Usage:" in result.text
         tools.vault.add.assert_not_called()  # type: ignore[attr-defined]
 
-    @pytest.mark.asyncio
     async def test_whitespace_only_args_returns_usage_message(self) -> None:
         # Arrange
         tools = make_tools()
@@ -225,7 +231,6 @@ class TestAddVaultProcessorPreMissingContent:
         assert "Usage:" in result.text
         tools.vault.add.assert_not_called()  # type: ignore[attr-defined]
 
-    @pytest.mark.asyncio
     async def test_usage_message_includes_command_name(self) -> None:
         # Arrange
         tools = make_tools()
@@ -245,7 +250,6 @@ class TestAddVaultProcessorPreMissingContent:
 
 
 class TestAddVaultProcessorPreVaultFailures:
-    @pytest.mark.asyncio
     async def test_vault_not_available_injects_error_into_message(self) -> None:
         # Arrange
         tools = make_tools(vault_side_effect=VaultWriteFailed("not_available"))
@@ -259,7 +263,6 @@ class TestAddVaultProcessorPreVaultFailures:
         assert "not available" in result.text.lower()
         assert "NOT saved" in result.text
 
-    @pytest.mark.asyncio
     async def test_vault_subprocess_error_injects_error_into_message(self) -> None:
         # Arrange
         tools = make_tools(vault_side_effect=VaultWriteFailed("subprocess_error"))
@@ -272,7 +275,6 @@ class TestAddVaultProcessorPreVaultFailures:
         # Assert
         assert "NOT saved" in result.text
 
-    @pytest.mark.asyncio
     async def test_vault_error_message_still_contains_original_note(self) -> None:
         # Arrange — user's content should be echoed back even on failure
         tools = make_tools(vault_side_effect=VaultWriteFailed("not_available"))
@@ -292,7 +294,6 @@ class TestAddVaultProcessorPreVaultFailures:
 
 
 class TestAddVaultProcessorPreTextFallback:
-    @pytest.mark.asyncio
     async def test_uses_msg_text_when_no_command_args(self) -> None:
         # Arrange — no command context, raw text message
         tools = make_tools()
@@ -319,7 +320,6 @@ class TestAddVaultProcessorPreTextFallback:
 
 
 class TestVaultCliCategoryAndType:
-    @pytest.mark.asyncio
     async def test_vault_add_passes_notes_category_and_type(self) -> None:
         """Verify AddVaultProcessor calls vault.add with notes category/type."""
         # Arrange — use a real mock that captures kwargs

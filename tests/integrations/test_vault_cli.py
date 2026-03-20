@@ -90,6 +90,18 @@ class TestVaultCliAdd:
         metadata = json.loads(calls[0][meta_idx + 1])
         assert "tags" not in metadata
 
+    @pytest.mark.asyncio
+    async def test_no_metadata_flag_when_url_and_tags_both_empty(self):
+        """Regression: --metadata must be omitted when url='' and tags=[]."""
+        proc = _make_proc(returncode=0)
+        calls = []
+        async def fake_exec(*args, **kwargs):
+            calls.append(list(args))
+            return proc
+        with patch("asyncio.create_subprocess_exec", new=fake_exec):
+            await VaultCli().add("T", [], "", "body")
+        assert "--metadata" not in calls[0]
+
 class TestVaultCliSearch:
     @pytest.mark.asyncio
     async def test_happy_path_returns_stdout(self):

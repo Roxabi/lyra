@@ -220,9 +220,10 @@ class OutboundDispatcher:
 
         # Fix 1: retry loop with exponential backoff for transient errors
         _backoff_delays = (1.0, 2.0, 4.0)
+        _max_attempts = 1 + len(_backoff_delays)  # 1 initial + 3 retries = 4 total
         _last_exc: Exception | None = None
         _attempt = 0
-        while _attempt <= len(_backoff_delays):
+        while _attempt < _max_attempts:
             try:
                 if kind == "send":
                     await self._adapter.send(msg, payload)
@@ -254,8 +255,8 @@ class OutboundDispatcher:
                 is_transient = _is_transient_error(exc)
                 retry_possible = (
                     is_transient
-                    and _attempt < len(_backoff_delays)
-                    and kind in ("send", "streaming")
+                    and _attempt + 1 < _max_attempts
+                    and kind == "send"  # streaming iterators cannot be replayed
                 )
                 if retry_possible:
                     delay = _backoff_delays[_attempt]
@@ -273,7 +274,7 @@ class OutboundDispatcher:
                     await asyncio.sleep(delay)
                 else:
                     _last_exc = exc
-                    _attempt = len(_backoff_delays) + 1  # exit loop
+                    _attempt = _max_attempts  # exit loop
                     break
 
         # Invoke dispatched callback after send (#316).
@@ -308,10 +309,15 @@ class OutboundDispatcher:
         while True:
             item = await self._queue.get()
             try:
-                msg: InboundMessage = item[1]
-                assert isinstance(msg, InboundMessage), (
-                    f"Expected InboundMessage at item[1], got {type(msg)!r}"
-                )
+                msg = item[1]
+                if not isinstance(msg, InboundMessage):
+                    log.error(
+                        "OutboundDispatcher[%s]: malformed queue item"
+                        " (expected InboundMessage at [1], got %r) — skipped",
+                        self._platform_name,
+                        type(msg),
+                    )
+                    continue
                 scope_id = msg.scope_id or msg.id
                 lock = self._scope_locks.setdefault(scope_id, asyncio.Lock())
                 task = asyncio.create_task(

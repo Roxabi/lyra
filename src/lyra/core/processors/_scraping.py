@@ -81,7 +81,7 @@ def _extract_and_validate_url(msg: "InboundMessage") -> tuple[str, str | None]:
     hostname = parsed.hostname or ""
     if _is_private_ip(hostname):
         cmd = f"/{msg.command.name}" if msg.command else "cmd"
-        return "", f"Usage: /{cmd} <url> (no private/LAN IP addresses allowed)"
+        return "", f"Usage: {cmd} <url> (no private/LAN IP addresses allowed)"
 
     return url, None
 
@@ -133,5 +133,5 @@ class ScrapingProcessor(BaseProcessor):
             )
             scraped = scraped[:_SAFE_SCRAPE_MAX_CHARS] + "\n\n[content truncated]"
 
-        enriched = f"{self.instruction}\n\nURL: {url}\n\n{scraped}"
+        enriched = f'{self.instruction}\n\n<webpage url="{url}">\n{scraped}\n</webpage>'
         return dataclasses.replace(msg, text=enriched)

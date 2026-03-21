@@ -207,6 +207,13 @@ class Pool:
         """
         if self._session_resume_fn is not None:
             await self._session_resume_fn(session_id)
+        else:
+            log.warning(
+                "[pool:%s] resume_session: no resume callback registered"
+                " — skipping resume of %r (SDK pool or misconfigured agent)",
+                self.pool_id,
+                session_id,
+            )
         self._observer.reset_session_persisted()
 
     def _msg(self, key: str, fallback: str) -> str:

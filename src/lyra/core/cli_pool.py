@@ -273,8 +273,8 @@ class CliPool(_CliPoolWorker):
             )  # noqa: E501
             return
         if not self._session_file_exists(session_id):
-            log.info(
-                "[pool:%s] resume_and_reset: session %r not on disk — skipping (Tier-2)",  # noqa: E501
+            log.warning(
+                "[pool:%s] resume_and_reset: session %r not on disk — fresh start (Tier-2)",  # noqa: E501
                 pool_id,
                 session_id,
             )
@@ -282,7 +282,7 @@ class CliPool(_CliPoolWorker):
         # If the live process already holds this session, skip kill+respawn.
         entry = self._entries.get(pool_id)
         if entry is not None and entry.is_alive() and entry.session_id == session_id:
-            log.debug(
+            log.info(
                 "[pool:%s] resume_and_reset: process already on session %s — no-op",
                 pool_id,
                 session_id,

@@ -120,11 +120,12 @@ class _CliPoolWorker:
             system_prompt=system_prompt,
         )
         log.info(
-            "[pool:%s] spawning: backend=%s model=%s cwd=%s",
+            "[pool:%s] spawning: backend=%s model=%s cwd=%s resume=%s",
             pool_id,
             model_config.backend,
             model_config.model,
             spawn_cwd,
+            resume_session_id or "-",
         )
         # Redact system prompt from debug log to avoid log-file exposure
         _redacted = [

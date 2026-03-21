@@ -58,10 +58,7 @@ class CliPool(_CliPoolWorker):
         self,
         idle_ttl: int = 1200,
         default_timeout: int = 1200,  # 20 min × 3 retries = 60 min max idle
-        on_reap: Callable[
-            [str, str], Coroutine[Any, Any, None]
-        ]
-        | None = None,
+        on_reap: Callable[[str, str], Coroutine[Any, Any, None]] | None = None,
         *,
         reaper_interval: int = 60,
         kill_timeout: float = 5.0,
@@ -245,6 +242,10 @@ class CliPool(_CliPoolWorker):
         entry = self._entries.get(pool_id)
         return entry is not None and entry.is_alive()
 
+    def get_active_pool_ids(self) -> list[str]:
+        """Return pool IDs with a currently running subprocess."""
+        return [pid for pid, entry in self._entries.items() if entry.is_alive()]
+
     async def reset(self, pool_id: str) -> None:
         """Kill the process for this pool. Next send() spawns a fresh one."""
         await self._kill(pool_id)
@@ -260,10 +261,11 @@ class CliPool(_CliPoolWorker):
         """Return True if a Claude session JSONL file exists for this session_id."""
         return any(_CLAUDE_PROJECTS.glob(f"*/{session_id}.jsonl"))
 
-    async def resume_and_reset(self, pool_id: str, session_id: str) -> None:
+    async def resume_and_reset(self, pool_id: str, session_id: str) -> bool:
         """Kill process; next _spawn() uses --resume <session_id> (one-shot).
 
-        No-op on invalid session_id format or pruned session file (Tier-2).
+        Returns True if the resume was accepted, False if skipped (invalid id,
+        pruned session file, or process already on that session).
         """
         if not _SESSION_ID_RE.match(session_id):
             log.warning(
@@ -271,14 +273,14 @@ class CliPool(_CliPoolWorker):
                 pool_id,
                 session_id,
             )  # noqa: E501
-            return
+            return False
         if not self._session_file_exists(session_id):
             log.warning(
-                "[pool:%s] resume_and_reset: session %r not on disk — fresh start (Tier-2)",  # noqa: E501
+                "[pool:%s] resume_and_reset: session %r not on disk — falling through (Tier-2)",  # noqa: E501
                 pool_id,
                 session_id,
             )
-            return
+            return False
         # If the live process already holds this session, skip kill+respawn.
         entry = self._entries.get(pool_id)
         if entry is not None and entry.is_alive() and entry.session_id == session_id:
@@ -287,7 +289,7 @@ class CliPool(_CliPoolWorker):
                 pool_id,
                 session_id,
             )
-            return
+            return True
         # is_idle verified by caller; race window is sub-millisecond.
         await self._kill(pool_id)
         self._resume_session_ids[pool_id] = session_id
@@ -296,3 +298,4 @@ class CliPool(_CliPoolWorker):
             pool_id,
             session_id,
         )  # noqa: E501
+        return True

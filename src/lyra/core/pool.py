@@ -57,7 +57,7 @@ class Pool:
     """One pool per conversation scope. Holds history and a per-session asyncio.Task."""
 
     _session_reset_fn: Callable[[], Awaitable[None]] | None
-    _session_resume_fn: Callable[[str], Awaitable[None]] | None
+    _session_resume_fn: Callable[[str], Awaitable[bool]] | None
     _switch_workspace_fn: Callable[[Path], Awaitable[None]] | None
 
     def __init__(  # noqa: PLR0913
@@ -79,7 +79,7 @@ class Pool:
         self.max_sdk_history: int = max_sdk_history
         self._safe_dispatch_timeout: float = safe_dispatch_timeout
         self._session_reset_fn: Callable[[], Awaitable[None]] | None = None
-        self._session_resume_fn: Callable[[str], Awaitable[None]] | None = None
+        self._session_resume_fn: Callable[[str], Awaitable[bool]] | None = None
         self._switch_workspace_fn: Callable[[Path], Awaitable[None]] | None = None
         self._ctx = ctx
         # Ceiling clamp: use ceiling as default, clamp agent override to ceiling
@@ -110,6 +110,7 @@ class Pool:
         self.session_start: datetime = datetime.now(UTC)
         self.message_count: int = 0
         self._system_prompt: str = ""
+        self._last_msg: InboundMessage | None = None
         self._observer = PoolObserver(
             pool_id=pool_id,
             session_id_fn=lambda: self.session_id,
@@ -199,14 +200,16 @@ class Pool:
         if self._current_task is not None and not self._current_task.done():
             self._current_task.cancel()
 
-    async def resume_session(self, session_id: str) -> None:
+    async def resume_session(self, session_id: str) -> bool:
         """Resume a specific Claude session (CLI backend).
 
-        No-op for SDK-backed pools.
-        Resets _session_persisted so the resumed session_id is persisted (#341).
+        Returns True if the resume was accepted, False if skipped (pruned file,
+        invalid id, SDK pool, or misconfigured agent).
+        Resets _session_persisted only when resume is accepted so the resumed
+        session_id is re-persisted on the next turn (#341).
         """
         if self._session_resume_fn is not None:
-            await self._session_resume_fn(session_id)
+            accepted = await self._session_resume_fn(session_id)
         else:
             log.warning(
                 "[pool:%s] resume_session: no resume callback registered"
@@ -214,7 +217,10 @@ class Pool:
                 self.pool_id,
                 session_id,
             )
-        self._observer.reset_session_persisted()
+            accepted = False
+        if accepted:
+            self._observer.reset_session_persisted()
+        return accepted
 
     def _msg(self, key: str, fallback: str) -> str:
         """Fetch a localised message, falling back to the given string."""
@@ -249,6 +255,7 @@ class Pool:
             self.user_id = msg.user_id
             self.medium = str(msg.platform)
         self.message_count += 1
+        self._last_msg = msg
         self._observer.append(msg, session_id=self.session_id)
 
     def snapshot(self, agent_namespace: str) -> "SessionSnapshot":

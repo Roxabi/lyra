@@ -54,12 +54,12 @@ class Hub(HubOutboundMixin):
     POOL_TTL: float = 604800.0  # 7 days
 
     # Class-level defaults for pool and bus config.
-    MAX_SDK_HISTORY = 50                    # [pool] max_sdk_history
-    SAFE_DISPATCH_TIMEOUT: float = 10.0    # [pool] safe_dispatch_timeout
-    STAGING_MAXSIZE = 500                   # [inbound_bus] staging_maxsize
-    PLATFORM_QUEUE_MAXSIZE = 100            # [inbound_bus] platform_queue_maxsize
-    QUEUE_DEPTH_THRESHOLD = 100             # [inbound_bus] queue_depth_threshold
-    MAX_MERGED_CHARS = 4096                 # [debouncer] max_merged_chars
+    MAX_SDK_HISTORY = 50  # [pool] max_sdk_history
+    SAFE_DISPATCH_TIMEOUT: float = 10.0  # [pool] safe_dispatch_timeout
+    STAGING_MAXSIZE = 500  # [inbound_bus] staging_maxsize
+    PLATFORM_QUEUE_MAXSIZE = 100  # [inbound_bus] platform_queue_maxsize
+    QUEUE_DEPTH_THRESHOLD = 100  # [inbound_bus] queue_depth_threshold
+    MAX_MERGED_CHARS = 4096  # [debouncer] max_merged_chars
 
     def __init__(  # noqa: PLR0913
         self,
@@ -287,6 +287,57 @@ class Hub(HubOutboundMixin):
                 await self._dispatch_pipeline_result(msg, result)
             finally:
                 self.inbound_bus.task_done()
+
+    async def notify_shutdown_inflight(self, active_pool_ids: list[str]) -> None:
+        """Notify users of in-flight requests that are about to be killed.
+
+        Called just before cli_pool.stop() during graceful shutdown.
+        Fire-and-forget with a 3s total timeout so it never blocks teardown.
+        """
+        from .outbound_errors import try_notify_user
+
+        _RESTART_MSG = (
+            "\u26a0\ufe0f I was restarted mid-response"
+            " \u2014 please resend your message."
+        )
+        _NOTIFY_TIMEOUT = 3.0
+
+        async def _notify_one(pool_id: str) -> None:
+            pool = self.pools.get(pool_id)
+            if pool is None or pool._last_msg is None:
+                return
+            msg = pool._last_msg
+            platform_str = str(msg.platform)
+            try:
+                platform = Platform(platform_str)
+            except ValueError:
+                return
+            adapter = self.adapter_registry.get((platform, msg.bot_id))
+            if adapter is None:
+                return
+            circuit = (
+                self.circuit_registry.get(platform_str)
+                if self.circuit_registry is not None
+                else None
+            )
+            await try_notify_user(
+                platform_str, adapter, msg, _RESTART_MSG, circuit=circuit
+            )
+
+        tasks = [asyncio.create_task(_notify_one(pid)) for pid in active_pool_ids]
+        if tasks:
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*tasks, return_exceptions=True),
+                    timeout=_NOTIFY_TIMEOUT,
+                )
+            except asyncio.TimeoutError:
+                log.warning(
+                    "notify_shutdown_inflight: timed out after %.1fs"
+                    " (%d pools pending)",
+                    _NOTIFY_TIMEOUT,
+                    len(active_pool_ids),
+                )
 
     async def shutdown(self) -> None:
         """Flush all live pools, drain pending memory tasks, close memory DB."""

@@ -136,9 +136,7 @@ async def wire_discord_adapters(  # noqa: PLR0913 — wiring requires all deps
 
         watch_channels: frozenset[int] = frozenset()
         if agent_store is not None:
-            bot_settings = agent_store.get_bot_settings(
-                "discord", bot_cfg.bot_id
-            )
+            bot_settings = agent_store.get_bot_settings("discord", bot_cfg.bot_id)
             raw_ids = bot_settings.get("watch_channels", [])
             valid_ids: list[int] = []
             for ch in raw_ids:
@@ -273,5 +271,8 @@ async def run_lifecycle(  # noqa: PLR0913, C901 — lifecycle orchestration
     if pm is not None:
         await pm.close()
     if cli_pool is not None:
+        active_ids = cli_pool.get_active_pool_ids()
+        if active_ids:
+            await hub.notify_shutdown_inflight(active_ids)
         await cli_pool.stop()
     log.info("Lyra stopped.")

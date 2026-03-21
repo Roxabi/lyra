@@ -84,8 +84,7 @@ class AgentStore(SqliteStore):
         self._bot_map.clear()
         self._bot_settings.clear()
         async with db.execute(
-            "SELECT platform, bot_id, agent_name, settings_json "
-            "FROM bot_agent_map"
+            "SELECT platform, bot_id, agent_name, settings_json FROM bot_agent_map"
         ) as cur:
             async for row in cur:
                 platform, bot_id, agent_name, settings_raw = row
@@ -143,9 +142,7 @@ class AgentStore(SqliteStore):
                             },
                             "expertise": {
                                 "areas": list(pc.expertise.areas),
-                                "instructions": list(
-                                    pc.expertise.instructions
-                                ),
+                                "instructions": list(pc.expertise.instructions),
                             },
                         }
                     )
@@ -156,9 +153,7 @@ class AgentStore(SqliteStore):
                         persona_name,
                         name,
                     )
-                    persona_json_val = json.dumps(
-                        {"identity": {"display_name": name}}
-                    )
+                    persona_json_val = json.dumps({"identity": {"display_name": name}})
             sets.append("persona_json=COALESCE(persona_json, ?)")
             vals.append(persona_json_val)
 

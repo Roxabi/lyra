@@ -56,9 +56,7 @@ class HubOutboundMixin:
             self, msg: InboundMessage
         ) -> Any: ...  # returns Binding | None
 
-    def _resolve_agent_tts(
-        self, msg: "InboundMessage"
-    ) -> "AgentTTSConfig | None":
+    def _resolve_agent_tts(self, msg: "InboundMessage") -> "AgentTTSConfig | None":
         """Resolve per-agent TTS config from the message's binding."""
         binding = self.resolve_binding(msg)
         if binding is None:
@@ -75,9 +73,7 @@ class HubOutboundMixin:
             return agent.config.voice.tts
         return agent.config.tts  # PR3-remove: dual-read transition
 
-    def _resolve_agent_fallback_language(
-        self, msg: "InboundMessage"
-    ) -> str | None:
+    def _resolve_agent_fallback_language(self, msg: "InboundMessage") -> str | None:
         """Resolve per-agent fallback_language from the message's binding (#343)."""
         binding = self.resolve_binding(msg)
         if binding is None:

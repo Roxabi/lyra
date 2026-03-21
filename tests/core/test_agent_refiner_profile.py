@@ -183,9 +183,7 @@ class TestRefinementPatch:
 
     def test_as_json_multi_field_patch(self) -> None:
         # Arrange
-        patch = RefinementPatch(
-            fields={"model": "claude-opus-4-6", "streaming": True}
-        )
+        patch = RefinementPatch(fields={"model": "claude-opus-4-6", "streaming": True})
 
         # Act
         result = patch.as_json()
@@ -277,7 +275,5 @@ class TestRefinementPatchValidation:
 
     def test_valid_fields_accepted(self) -> None:
         # Should not raise — model and persona are in REFINABLE_FIELDS
-        patch = RefinementPatch(
-            fields={"model": "claude-opus-4-6", "persona": "lyra"}
-        )
+        patch = RefinementPatch(fields={"model": "claude-opus-4-6", "persona": "lyra"})
         assert patch.fields["model"] == "claude-opus-4-6"

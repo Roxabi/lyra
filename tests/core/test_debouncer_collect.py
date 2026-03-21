@@ -1,5 +1,5 @@
-"""Tests for MessageDebouncer.collect() — async debounce window behaviour (issue #145).
-"""
+"""Tests for MessageDebouncer.collect() — async debounce window behaviour
+(issue #145)."""
 
 from __future__ import annotations
 

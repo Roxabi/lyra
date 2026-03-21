@@ -82,6 +82,7 @@ def _make_ctx(agent) -> MagicMock:
 
 async def _drain(pool: Pool, *, timeout: float = 3.0) -> None:
     import asyncio
+
     await asyncio.sleep(0)
     if pool._current_task is not None:
         await asyncio.wait_for(pool._current_task, timeout=timeout)
@@ -108,12 +109,14 @@ class TestProcessorPreCalledBeforeLLM:
             _session_tools = tools
 
             async def process(
-                self, msg: InboundMessage, _pool, *, on_intermediate=None  # noqa: ARG002
+                self,
+                msg: InboundMessage,
+                _pool,
+                *,
+                on_intermediate=None,  # noqa: ARG002
             ):
                 received_texts.append(msg.text)
-                return Response(
-                    content="Title: Example\nTags: test\n\nA nice summary."
-                )
+                return Response(content="Title: Example\nTags: test\n\nA nice summary.")
 
         agent = RecordingAgent()
         ctx = _make_ctx(agent)
@@ -259,8 +262,7 @@ class TestPreExceptionDispatchesErrorResponse:
         assert isinstance(dispatched, Response)
         # The error message should mention the failing command
         assert (
-            "/vault-add" in dispatched.content
-            or "failed" in dispatched.content.lower()
+            "/vault-add" in dispatched.content or "failed" in dispatched.content.lower()
         )
 
     async def test_unexpected_pre_exception_does_not_call_vault(self) -> None:

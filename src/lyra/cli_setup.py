@@ -98,9 +98,7 @@ async def _register_bot(
     # Resolve token
     creds = await cred_store.get_full("telegram", bot_id)
     if creds is None:
-        typer.echo(
-            f"Error: no credentials for telegram bot_id={bot_id}", err=True
-        )
+        typer.echo(f"Error: no credentials for telegram bot_id={bot_id}", err=True)
         return True
     token, _ = creds
 
@@ -108,8 +106,7 @@ async def _register_bot(
     try:
         username = await _register_telegram_bot(bot_id, token, public_commands)
         typer.echo(
-            f"Registered {len(public_commands)} commands"
-            f" for bot @{username} ({bot_id})"
+            f"Registered {len(public_commands)} commands for bot @{username} ({bot_id})"
         )
     except Exception as exc:
         typer.echo(

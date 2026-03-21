@@ -1,5 +1,5 @@
-"""Tests for Layer 1 monitoring primitive checks: process, disk, circuits, queue depth.
-"""
+"""Tests for Layer 1 monitoring primitive checks:
+process, disk, circuits, queue depth."""
 
 from __future__ import annotations
 

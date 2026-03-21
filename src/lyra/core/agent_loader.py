@@ -214,9 +214,7 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
 
     # Patterns: configurable rewrite rules (#345)
     patterns_section = data.get("patterns", {})
-    patterns: dict[str, bool] = {
-        k: bool(v) for k, v in patterns_section.items()
-    }
+    patterns: dict[str, bool] = {k: bool(v) for k, v in patterns_section.items()}
 
     # Passthroughs: commands forwarded straight to the LLM
     passthroughs: tuple[str, ...] = tuple(data.get("passthroughs", []))

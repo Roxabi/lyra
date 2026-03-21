@@ -123,9 +123,7 @@ class TestDispatchStreaming:
                     streamed.append(chunk)
 
         hub.register_adapter(Platform.TELEGRAM, "main", StreamAdapter())  # type: ignore[arg-type]
-        msg = make_inbound_message(
-            platform="telegram", bot_id="main", modality="voice"
-        )
+        msg = make_inbound_message(platform="telegram", bot_id="main", modality="voice")
 
         async def gen():
             yield "Hello"
@@ -162,9 +160,7 @@ class TestDispatchStreaming:
                     pass
 
         hub.register_adapter(Platform.TELEGRAM, "main", StreamAdapter())  # type: ignore[arg-type]
-        msg = make_inbound_message(
-            platform="telegram", bot_id="main", modality="voice"
-        )
+        msg = make_inbound_message(platform="telegram", bot_id="main", modality="voice")
 
         async def gen():
             yield "  "
@@ -196,9 +192,7 @@ class TestDispatchStreaming:
                     streamed.append(chunk)
 
         hub.register_adapter(Platform.TELEGRAM, "main", StreamAdapter())  # type: ignore[arg-type]
-        msg = make_inbound_message(
-            platform="telegram", bot_id="main", modality="voice"
-        )
+        msg = make_inbound_message(platform="telegram", bot_id="main", modality="voice")
 
         async def gen():
             yield "Hello"
@@ -219,9 +213,7 @@ class TestDispatchStreaming:
                 sent.append(outbound)
 
         hub.register_adapter(Platform.TELEGRAM, "main", LegacyAdapter())  # type: ignore[arg-type]
-        msg = make_inbound_message(
-            platform="telegram", bot_id="main", modality="voice"
-        )
+        msg = make_inbound_message(platform="telegram", bot_id="main", modality="voice")
 
         async def gen():
             yield "Hello"
@@ -264,23 +256,17 @@ class TestDispatchStreaming:
         adapter = StreamAdapter()
         hub.register_adapter(Platform.TELEGRAM, "main", adapter)  # type: ignore[arg-type]
         dispatcher = OutboundDispatcher("telegram", adapter)  # type: ignore[arg-type]
-        hub.register_outbound_dispatcher(
-            Platform.TELEGRAM, "main", dispatcher
-        )
+        hub.register_outbound_dispatcher(Platform.TELEGRAM, "main", dispatcher)
         await dispatcher.start()
 
-        msg = make_inbound_message(
-            platform="telegram", bot_id="main", modality="voice"
-        )
+        msg = make_inbound_message(platform="telegram", bot_id="main", modality="voice")
 
         async def gen():
             yield "Hello"
             yield " world"
 
         try:
-            await asyncio.wait_for(
-                hub.dispatch_streaming(msg, gen()), timeout=5.0
-            )
+            await asyncio.wait_for(hub.dispatch_streaming(msg, gen()), timeout=5.0)
         finally:
             await dispatcher.stop()
 

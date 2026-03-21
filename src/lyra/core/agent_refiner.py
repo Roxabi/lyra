@@ -35,25 +35,27 @@ class RefinementCancelled(Exception):
 # Allow-list of patchable AgentRow fields
 # ---------------------------------------------------------------------------
 
-REFINABLE_FIELDS: frozenset[str] = frozenset({
-    "model",
-    "persona",
-    "persona_json",
-    "voice_json",
-    "tts_json",
-    "stt_json",
-    "patterns_json",
-    "passthroughs_json",
-    "plugins_json",
-    "fallback_language",
-    "tools_json",
-    "max_turns",
-    "streaming",
-    "i18n_language",
-    "memory_namespace",
-    "workspaces_json",
-    "commands_json",
-})
+REFINABLE_FIELDS: frozenset[str] = frozenset(
+    {
+        "model",
+        "persona",
+        "persona_json",
+        "voice_json",
+        "tts_json",
+        "stt_json",
+        "patterns_json",
+        "passthroughs_json",
+        "plugins_json",
+        "fallback_language",
+        "tools_json",
+        "max_turns",
+        "streaming",
+        "i18n_language",
+        "memory_namespace",
+        "workspaces_json",
+        "commands_json",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -66,13 +68,13 @@ class RefinementContext:
     """Snapshot of an agent's refinable profile fields."""
 
     agent_name: str
-    persona: str | None          # AgentRow.persona (name string)
-    persona_json: str | None     # AgentRow.persona_json (rich JSON string)
-    voice_json: str | None       # AgentRow.voice_json (merged TTS+STT JSON)
+    persona: str | None  # AgentRow.persona (name string)
+    persona_json: str | None  # AgentRow.persona_json (rich JSON string)
+    voice_json: str | None  # AgentRow.voice_json (merged TTS+STT JSON)
     model: str
-    passthroughs: list[str]      # parsed from AgentRow.passthroughs_json
-    patterns: dict               # parsed from AgentRow.patterns_json
-    plugins: list[str]           # parsed from AgentRow.plugins_json
+    passthroughs: list[str]  # parsed from AgentRow.passthroughs_json
+    patterns: dict  # parsed from AgentRow.patterns_json
+    plugins: list[str]  # parsed from AgentRow.plugins_json
 
 
 @dataclass

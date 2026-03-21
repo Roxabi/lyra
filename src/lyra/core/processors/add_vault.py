@@ -49,9 +49,7 @@ class AddVaultProcessor(BaseProcessor):
         content = msg.command.args.strip() if msg.command else msg.text.strip()
         if not content:
             cmd = f"/{msg.command.name}" if msg.command else "/add-vault"
-            return dataclasses.replace(
-                msg, text=f"Usage: {cmd} <note content>"
-            )
+            return dataclasses.replace(msg, text=f"Usage: {cmd} <note content>")
 
         # B2: cap content length — mirrors _scraping.py _SAFE_SCRAPE_MAX_CHARS guard.
         # Prevents OS ARG_MAX overflow in subprocess and token-cost DoS via LLM.
@@ -80,22 +78,17 @@ class AddVaultProcessor(BaseProcessor):
             )
         except VaultWriteFailed as exc:
             if exc.reason == "not_available":
-                outcome = (
-                    "The vault CLI is not available — the note was NOT saved."
-                )
+                outcome = "The vault CLI is not available — the note was NOT saved."
             else:
                 outcome = (
-                    f"The vault write failed ({exc.reason}) — "
-                    "the note was NOT saved."
+                    f"The vault write failed ({exc.reason}) — the note was NOT saved."
                 )
             log.warning("AddVaultProcessor: vault write failed (%s)", exc)
 
         # B1: HTML-escape user content before embedding in XML tags to prevent
         # prompt injection via tag breakout (e.g. </note_content> in content).
         safe_content = (
-            content.replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
+            content.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
         )
         enriched = (
             f"{outcome}\n\n"

@@ -110,15 +110,11 @@ class TestIsTransientError:
     # discord.py errors (detected by module name)
 
     def test_discord_gateway_not_found_transient(self) -> None:
-        cls = type(
-            "GatewayNotFound", (Exception,), {"__module__": "discord.errors"}
-        )
+        cls = type("GatewayNotFound", (Exception,), {"__module__": "discord.errors"})
         assert _is_transient_error(cls()) is True
 
     def test_discord_connection_closed_transient(self) -> None:
-        cls = type(
-            "ConnectionClosed", (Exception,), {"__module__": "discord.gateway"}
-        )
+        cls = type("ConnectionClosed", (Exception,), {"__module__": "discord.gateway"})
         assert _is_transient_error(cls()) is True
 
     def test_discord_http_500_transient(self) -> None:

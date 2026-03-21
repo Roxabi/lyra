@@ -165,9 +165,7 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — each branch handles one opti
     if voice and voice.stt.language_fallback is None and i18n_language:
         import dataclasses
 
-        patched_stt = dataclasses.replace(
-            voice.stt, language_fallback=i18n_language
-        )
+        patched_stt = dataclasses.replace(voice.stt, language_fallback=i18n_language)
         voice = AgentVoiceConfig(tts=voice.tts, stt=patched_stt)
         agent_stt = patched_stt
 
@@ -190,9 +188,7 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — each branch handles one opti
 
     # Passthroughs: commands forwarded straight to the LLM
     passthroughs: tuple[str, ...] = tuple(
-        json.loads(row.passthroughs_json)
-        if row.passthroughs_json
-        else []
+        json.loads(row.passthroughs_json) if row.passthroughs_json else []
     )
 
     return _assemble_agent(

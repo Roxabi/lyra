@@ -140,9 +140,7 @@ async def handle_voice_command(
     return True
 
 
-def _resolve_slash_trust(
-    adapter: "DiscordAdapter", user_id: str
-) -> TrustLevel:
+def _resolve_slash_trust(adapter: "DiscordAdapter", user_id: str) -> TrustLevel:
     """Resolve trust level for a slash command interaction user."""
     identity = adapter._auth.resolve(user_id)
     rejection = adapter._guard_chain.run(identity)
@@ -165,9 +163,7 @@ async def _handle_join_slash(
         )
         return
     # Auth check — mirror the text-command auth flow
-    trust = _resolve_slash_trust(
-        adapter, str(interaction.user.id)
-    )
+    trust = _resolve_slash_trust(adapter, str(interaction.user.id))
     if trust == TrustLevel.BLOCKED:
         await interaction.response.send_message(
             "You don't have permission to use this command.",
@@ -239,9 +235,7 @@ def register_voice_app_commands(
                 ephemeral=True,
             )
             return
-        trust = _resolve_slash_trust(
-            adapter, str(interaction.user.id)
-        )
+        trust = _resolve_slash_trust(adapter, str(interaction.user.id))
         if trust < TrustLevel.TRUSTED:
             await interaction.response.send_message(
                 "You don't have permission to use this command.",

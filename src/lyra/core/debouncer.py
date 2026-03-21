@@ -133,8 +133,8 @@ class MessageDebouncer:
         if len(messages) == 1:
             return messages[0]
 
-        combined_text = "\n".join(m.text for m in messages)[:self._max_merged_chars]
-        combined_raw = "\n".join(m.text_raw for m in messages)[:self._max_merged_chars]
+        combined_text = "\n".join(m.text for m in messages)[: self._max_merged_chars]
+        combined_raw = "\n".join(m.text_raw for m in messages)[: self._max_merged_chars]
         merged_attachments = [a for m in messages for a in m.attachments]
         last = messages[-1]
 

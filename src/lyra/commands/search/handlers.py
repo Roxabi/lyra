@@ -4,6 +4,7 @@ Runs vault search via the injected SessionTools.vault.
 Registered as a session command (not a plugin command) — receives tools via injection.
 Stateless — no LLM call.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

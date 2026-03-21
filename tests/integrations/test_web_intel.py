@@ -1,4 +1,5 @@
 """Tests for WebIntelScraper (lyra.integrations.web_intel)."""
+
 from __future__ import annotations
 
 import asyncio
@@ -10,11 +11,12 @@ from lyra.integrations.base import ScrapeFailed, ScrapeProvider
 from lyra.integrations.web_intel import WebIntelScraper
 
 
-def _make_proc(returncode=0, stdout=b'', stderr=b''):
+def _make_proc(returncode=0, stdout=b"", stderr=b""):
     proc = MagicMock()
     proc.returncode = returncode
     proc.communicate = AsyncMock(return_value=(stdout, stderr))
     return proc
+
 
 class TestWebIntelScraper:
     def test_implements_scrape_provider(self):
@@ -33,9 +35,11 @@ class TestWebIntelScraper:
         payload = b'{"success": true, "data": {"text": "ok"}}'
         proc = _make_proc(stdout=payload)
         calls = []
+
         async def fake_exec(*args, **kwargs):
             calls.append(args)
             return proc
+
         with patch("asyncio.create_subprocess_exec", new=fake_exec):
             await WebIntelScraper().scrape("https://example.com/page")
         assert calls[0][0] == "uv"

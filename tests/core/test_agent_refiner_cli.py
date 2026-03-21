@@ -322,11 +322,12 @@ class TestRefineCommand:
 
         runner = CliRunner()
 
-        with mock_patch(
-            "lyra.cli_agent_crud._connect_store", side_effect=fake_connect
-        ), mock_patch(
-            "lyra.core.agent_refiner.AgentRefiner.run_session",
-            return_value=RefinementPatch(fields={"model": "claude-opus-4-6"}),
+        with (
+            mock_patch("lyra.cli_agent_crud._connect_store", side_effect=fake_connect),
+            mock_patch(
+                "lyra.core.agent_refiner.AgentRefiner.run_session",
+                return_value=RefinementPatch(fields={"model": "claude-opus-4-6"}),
+            ),
         ):
             result = runner.invoke(agent_app, ["refine", "lyra_default"])
 
@@ -351,11 +352,12 @@ class TestRefineCommand:
 
         runner = CliRunner()
 
-        with mock_patch(
-            "lyra.cli_agent_crud._connect_store", side_effect=fake_connect
-        ), mock_patch(
-            "lyra.core.agent_refiner.AgentRefiner.run_session",
-            side_effect=RefinementCancelled(),
+        with (
+            mock_patch("lyra.cli_agent_crud._connect_store", side_effect=fake_connect),
+            mock_patch(
+                "lyra.core.agent_refiner.AgentRefiner.run_session",
+                side_effect=RefinementCancelled(),
+            ),
         ):
             result = runner.invoke(agent_app, ["refine", "lyra_default"])
 

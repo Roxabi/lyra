@@ -6,6 +6,7 @@ inside the web-intel plugin directory (separate venv: playwright, trafilatura).
 Override plugin root with LYRA_WEB_INTEL_PATH env var.
 Default: ~/projects/roxabi-plugins/plugins/web-intel
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -51,8 +52,13 @@ class WebIntelScraper:
         scraper = self._root / "scripts" / "scraper.py"
         try:
             proc = await asyncio.create_subprocess_exec(
-                "uv", "run", "python", str(scraper), url,
-                stdout=PIPE, stderr=PIPE,
+                "uv",
+                "run",
+                "python",
+                str(scraper),
+                url,
+                stdout=PIPE,
+                stderr=PIPE,
                 cwd=str(self._root),
             )
             try:
@@ -66,7 +72,8 @@ class WebIntelScraper:
             if proc.returncode != 0:
                 log.warning(
                     "WebIntelScraper: exited %d: %s",
-                    proc.returncode, stderr.decode()[:200],
+                    proc.returncode,
+                    stderr.decode()[:200],
                 )
                 raise ScrapeFailed("subprocess_error")
         except FileNotFoundError:

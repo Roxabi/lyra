@@ -105,6 +105,7 @@ def _make_ctx(agent) -> MagicMock:
 
 async def _drain(pool: Pool, *, timeout: float = 3.0) -> None:
     import asyncio
+
     await asyncio.sleep(0)
     if pool._current_task is not None:
         await asyncio.wait_for(pool._current_task, timeout=timeout)

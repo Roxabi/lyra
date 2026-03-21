@@ -325,6 +325,7 @@ class TestScrapingProcessorTruncation:
         assert "Usage:" in result.text
         tools.scraper.scrape.assert_not_called()  # type: ignore[attr-defined]
 
+
 # ---------------------------------------------------------------------------
 # _is_private_ip() and SSRF protection in _extract_and_validate_url()
 # ---------------------------------------------------------------------------

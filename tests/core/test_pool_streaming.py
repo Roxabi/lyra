@@ -344,6 +344,7 @@ class TestPoolStreaming:
     @pytest.mark.asyncio
     async def test_streaming_turn_logs_partial_content_when_superseded(self) -> None:
         """Superseded streaming turn logs partial content accumulated before cancel (#373)."""  # noqa: E501
+
         # Arrange: agent that yields two chunks with a brief pause
         class SlowStreamingAgent:
             name = "test_agent"

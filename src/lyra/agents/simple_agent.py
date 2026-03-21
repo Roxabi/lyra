@@ -130,7 +130,6 @@ class SimpleAgent(AgentBase):
         for cmd in registry.commands():
             self.command_router.register_passthrough(cmd.lstrip("/"))
 
-
     def _maybe_register_reset(self, pool: Pool) -> None:
         """Register a session reset callback on the pool the first time we process.
 

@@ -89,10 +89,14 @@ class _CliPoolWorker:
             model_config.model,
             # max_turns=None means unlimited — omit the flag, let claude CLI decide.
             # max_turns=0 is treated as None (DB sentinel); any positive int is passed.
-            *([
-                "--max-turns",
-                str(model_config.max_turns),
-            ] if model_config.max_turns else []),
+            *(
+                [
+                    "--max-turns",
+                    str(model_config.max_turns),
+                ]
+                if model_config.max_turns
+                else []
+            ),
         ]
         if model_config.streaming:
             cmd.append("--include-partial-messages")
@@ -173,7 +177,8 @@ class _CliPoolWorker:
                 entry.proc.terminate()
                 try:
                     await asyncio.wait_for(
-                        entry.proc.wait(), timeout=self._kill_timeout  # type: ignore[attr-defined]
+                        entry.proc.wait(),
+                        timeout=self._kill_timeout,  # type: ignore[attr-defined]
                     )
                 except asyncio.TimeoutError:
                     entry.proc.kill()

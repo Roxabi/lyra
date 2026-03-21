@@ -8,6 +8,7 @@ Mirrors the LlmProvider pattern in lyra.llm.base:
 VaultProvider.search intentionally does NOT raise — search failure is non-fatal.
 VaultProvider.add raises VaultWriteFailed — write failure is actionable.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

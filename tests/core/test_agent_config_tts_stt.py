@@ -1,5 +1,5 @@
-"""Tests for AgentTTSConfig/AgentSTTConfig dataclasses, TOML parsing, and STT overlay.
-"""
+"""Tests for AgentTTSConfig/AgentSTTConfig dataclasses, TOML parsing,
+and STT overlay."""
 
 from __future__ import annotations
 

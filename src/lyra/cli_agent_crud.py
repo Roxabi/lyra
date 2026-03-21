@@ -271,9 +271,7 @@ def edit(name: str = typer.Argument(..., help="Agent name to edit.")) -> None:
                         new_vals[field_name] = v
 
             # TTS editing sub-section
-            existing_tts = (
-                _json.loads(row.tts_json) if row.tts_json else None
-            )
+            existing_tts = _json.loads(row.tts_json) if row.tts_json else None
             updated_tts = _edit_tts_section(existing_tts)
             if updated_tts is not None:
                 new_vals["tts_json"] = _json.dumps(updated_tts)

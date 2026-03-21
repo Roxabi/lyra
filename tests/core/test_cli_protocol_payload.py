@@ -121,7 +121,7 @@ class TestStreamingPayload:
         empty to avoid the CLI creating a new session (parentUuid: None).
         """
         proc = make_fake_proc([_STREAM_INIT, _TEXT_DELTA, _STREAM_RESULT])
-        entry = _ProcessEntry(proc=proc, pool_id=  "p1", model_config=DEFAULT_MODEL)
+        entry = _ProcessEntry(proc=proc, pool_id="p1", model_config=DEFAULT_MODEL)
         entry.session_id = "old-session-f911cd3c"
 
         await send_and_read_stream(entry, "hello", "p1")

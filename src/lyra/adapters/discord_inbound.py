@@ -100,9 +100,7 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
 
     # Watch channel: process all messages in designated channels (no mention needed).
     _is_watch_channel = (
-        not _is_dm
-        and not _is_thread
-        and message.channel.id in adapter._watch_channels
+        not _is_dm and not _is_thread and message.channel.id in adapter._watch_channels
     )
 
     _should_process = _is_dm or _is_mention or _in_owned_thread or _is_watch_channel

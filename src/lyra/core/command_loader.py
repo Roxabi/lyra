@@ -124,9 +124,7 @@ class CommandLoader:
     def _validate_name(self, name: str) -> None:
         """Validate plugin name: safe characters + no path traversal."""
         if not re.match(r"^[a-zA-Z0-9_]+$", name):
-            raise ValueError(
-                f"Invalid plugin name {name!r}: only [a-zA-Z0-9_] allowed"
-            )
+            raise ValueError(f"Invalid plugin name {name!r}: only [a-zA-Z0-9_] allowed")
         plugin_dir = self.plugins_dir / name
         if not plugin_dir.resolve().is_relative_to(self.plugins_dir.resolve()):
             raise ValueError(f"Plugin name {name!r} escapes plugins directory")

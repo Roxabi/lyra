@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -10,7 +11,7 @@ import pytest
 
 from lyra.core.agent_config import ModelConfig
 from lyra.core.cli_pool import CliPool, _ProcessEntry
-from lyra.core.cli_protocol import read_until_result
+from lyra.core.cli_protocol import CliResult, read_until_result
 
 from .conftest_cli_pool import (
     _PATCH_TARGET,
@@ -260,3 +261,155 @@ class TestEagerCleanupOnTerminated:
 
         assert not result.ok
         assert "p2" not in pool._entries
+
+
+# ---------------------------------------------------------------------------
+# TestKillPreservesSession — Bug 2: session preserved across reaper/error kills
+# ---------------------------------------------------------------------------
+
+
+class TestKillPreservesSession:
+    """_kill() preserves session_id in _resume_session_ids when appropriate."""
+
+    async def test_kill_preserves_session_when_file_exists(self) -> None:
+        pool = CliPool()
+        proc = make_fake_proc([])
+        entry = _ProcessEntry(
+            proc=proc, pool_id="pool-1", model_config=DEFAULT_MODEL,
+            session_id="sess-abc123-deadbeef",
+        )
+        pool._entries["pool-1"] = entry
+
+        with patch.object(pool, "_session_file_exists", return_value=True):
+            await pool._kill("pool-1")
+
+        assert pool._resume_session_ids.get("pool-1") == "sess-abc123-deadbeef"
+
+    async def test_kill_does_not_preserve_when_preserve_false(self) -> None:
+        pool = CliPool()
+        proc = make_fake_proc([])
+        entry = _ProcessEntry(
+            proc=proc, pool_id="pool-1", model_config=DEFAULT_MODEL,
+            session_id="sess-abc123-deadbeef",
+        )
+        pool._entries["pool-1"] = entry
+
+        with patch.object(pool, "_session_file_exists", return_value=True):
+            await pool._kill("pool-1", preserve_session=False)
+
+        assert pool._resume_session_ids.get("pool-1") is None
+
+    async def test_kill_does_not_preserve_when_session_id_is_none(self) -> None:
+        pool = CliPool()
+        proc = make_fake_proc([])
+        entry = _ProcessEntry(
+            proc=proc, pool_id="pool-1", model_config=DEFAULT_MODEL,
+            session_id=None,
+        )
+        pool._entries["pool-1"] = entry
+
+        with patch.object(pool, "_session_file_exists", return_value=True):
+            await pool._kill("pool-1")
+
+        assert pool._resume_session_ids.get("pool-1") is None
+
+    async def test_kill_does_not_preserve_when_session_file_missing(self) -> None:
+        pool = CliPool()
+        proc = make_fake_proc([])
+        entry = _ProcessEntry(
+            proc=proc, pool_id="pool-1", model_config=DEFAULT_MODEL,
+            session_id="sess-abc123-deadbeef",
+        )
+        pool._entries["pool-1"] = entry
+
+        with patch.object(pool, "_session_file_exists", return_value=False):
+            await pool._kill("pool-1")
+
+        assert pool._resume_session_ids.get("pool-1") is None
+
+    async def test_send_terminated_preserves_session_for_next_spawn(self) -> None:
+        pool = CliPool()
+        proc = make_fake_proc([INIT_LINE])
+        entry = _ProcessEntry(
+            proc=proc, pool_id="p1", model_config=DEFAULT_MODEL,
+            session_id="sess-to-resume",
+        )
+        pool._entries["p1"] = entry
+
+        terminated_result = CliResult(error="Process terminated unexpectedly")
+        with (
+            patch(
+                "lyra.core.cli_pool.send_and_read",
+                new=AsyncMock(return_value=terminated_result),
+            ),
+            patch.object(pool, "_session_file_exists", return_value=True),
+        ):
+            await pool.send("p1", "hello", DEFAULT_MODEL)
+
+        assert pool._resume_session_ids.get("p1") == "sess-to-resume"
+
+    async def test_switch_cwd_does_not_preserve_session(self, tmp_path: Path) -> None:
+        pool = CliPool()
+        proc = make_fake_proc([])
+        entry = _ProcessEntry(
+            proc=proc, pool_id="p1", model_config=DEFAULT_MODEL,
+            session_id="sess-abc",
+        )
+        pool._entries["p1"] = entry
+
+        with patch.object(pool, "_session_file_exists", return_value=True):
+            await pool.switch_cwd("p1", tmp_path)
+
+        assert pool._resume_session_ids.get("p1") is None
+
+    async def test_reset_does_not_preserve_session(self) -> None:
+        pool = CliPool()
+        proc = make_fake_proc([])
+        entry = _ProcessEntry(
+            proc=proc, pool_id="p1", model_config=DEFAULT_MODEL,
+            session_id="sess-abc",
+        )
+        pool._entries["p1"] = entry
+
+        with patch.object(pool, "_session_file_exists", return_value=True):
+            await pool.reset("p1")
+
+        assert pool._resume_session_ids.get("p1") is None
+
+
+# ---------------------------------------------------------------------------
+# TestReaperSkipsLockedEntries — Bug 1: reaper must not kill in-use processes
+# ---------------------------------------------------------------------------
+
+
+class TestReaperSkipsLockedEntries:
+    """Reaper skips entries whose _lock is held (in-use by send())."""
+
+    async def test_reaper_skips_locked_entry(self) -> None:
+        pool = CliPool(idle_ttl=1)  # very short TTL
+        proc = make_fake_proc([])
+        entry = _ProcessEntry(proc=proc, pool_id="p-locked", model_config=DEFAULT_MODEL)
+        entry.last_activity = 0.0  # far in the past → definitely idle
+        pool._entries["p-locked"] = entry
+
+        # While lock is held: reaper must NOT kill
+        async with entry._lock:
+            now = time.time()
+            to_kill = [
+                (pid, e)
+                for pid, e in list(pool._entries.items())
+                if not e.is_alive()
+                or ((now - e.last_activity) > pool._idle_ttl and not e._lock.locked())
+            ]
+            assert len(to_kill) == 0, "Locked entry should not be in to_kill"
+
+        # After lock released: reaper should kill
+        now = time.time()
+        to_kill = [
+            (pid, e)
+            for pid, e in list(pool._entries.items())
+            if not e.is_alive()
+            or ((now - e.last_activity) > pool._idle_ttl and not e._lock.locked())
+        ]
+        assert len(to_kill) == 1
+        assert to_kill[0][0] == "p-locked"

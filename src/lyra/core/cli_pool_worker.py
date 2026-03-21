@@ -167,11 +167,26 @@ class _CliPoolWorker:
         log.info("[pool:%s] spawned (PID=%d)", pool_id, proc.pid)
         return entry
 
-    async def _kill(self, pool_id: str) -> None:
+    def _session_file_exists(self, session_id: str) -> bool:
+        """Return True if a Claude session JSONL file exists for this session_id."""
+        return any(_CLAUDE_PROJECTS.glob(f"*/{session_id}.jsonl"))
+
+    async def _kill(self, pool_id: str, *, preserve_session: bool = True) -> None:
         entry = self._entries.pop(pool_id, None)  # type: ignore[attr-defined]
         self._cwd_overrides.pop(pool_id, None)  # type: ignore[attr-defined]
         if entry is None:
             return
+        if (
+            preserve_session
+            and entry.session_id
+            and self._session_file_exists(entry.session_id)
+        ):
+            self._resume_session_ids[pool_id] = entry.session_id  # type: ignore[attr-defined]
+            log.debug(
+                "[pool:%s] kill: preserving session %s for auto-resume",
+                pool_id,
+                entry.session_id,
+            )
         if entry.is_alive():
             try:
                 entry.proc.terminate()
@@ -198,7 +213,10 @@ class _CliPoolWorker:
                     (pool_id, entry)
                     for pool_id, entry in snapshot
                     if not entry.is_alive()
-                    or (now - entry.last_activity) > self._idle_ttl  # type: ignore[attr-defined]
+                    or (
+                        (now - entry.last_activity) > self._idle_ttl  # type: ignore[attr-defined]
+                        and not entry._lock.locked()
+                    )
                 ]
                 for pool_id, entry in to_kill:
                     reason = "idle" if entry.is_alive() else "dead"

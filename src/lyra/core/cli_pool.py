@@ -15,7 +15,6 @@ from typing import Any
 
 from .agent_config import ModelConfig
 from .cli_pool_worker import (
-    _CLAUDE_PROJECTS,
     _LYRA_ROOT,
     _CliPoolWorker,
     _ProcessEntry,
@@ -133,7 +132,7 @@ class CliPool(_CliPoolWorker):
                 "[pool:%s] system_prompt changed — respawning process",
                 pool_id,
             )
-            await self._kill(pool_id)
+            await self._kill(pool_id, preserve_session=False)
             entry = await self._spawn(pool_id, model_config, system_prompt)
             if entry is None:
                 return CliResult(error="Failed to respawn Claude CLI process")
@@ -199,7 +198,7 @@ class CliPool(_CliPoolWorker):
                 "[pool:%s] system_prompt changed — respawning (streaming)",
                 pool_id,
             )
-            await self._kill(pool_id)
+            await self._kill(pool_id, preserve_session=False)
             entry = await self._spawn(pool_id, model_config, system_prompt)
             if entry is None:
                 raise RuntimeError("Failed to respawn Claude CLI process")
@@ -208,7 +207,7 @@ class CliPool(_CliPoolWorker):
                 "[pool:%s] model_config mismatch — respawning (streaming)",
                 pool_id,
             )
-            await self._kill(pool_id)
+            await self._kill(pool_id, preserve_session=False)
             entry = await self._spawn(pool_id, model_config, system_prompt)
             if entry is None:
                 raise RuntimeError("Failed to respawn Claude CLI process")
@@ -248,18 +247,15 @@ class CliPool(_CliPoolWorker):
 
     async def reset(self, pool_id: str) -> None:
         """Kill the process for this pool. Next send() spawns a fresh one."""
-        await self._kill(pool_id)
+        await self._kill(pool_id, preserve_session=False)
         log.info("[pool:%s] reset", pool_id)
 
     async def switch_cwd(self, pool_id: str, cwd: Path) -> None:
         """Kill any existing process and store cwd override. Next send() respawns."""
-        await self._kill(pool_id)  # _kill pops _cwd_overrides — set override after
+        # _kill pops _cwd_overrides — set override after
+        await self._kill(pool_id, preserve_session=False)
         self._cwd_overrides[pool_id] = cwd
         log.info("[pool:%s] workspace switched to %s", pool_id, cwd)
-
-    def _session_file_exists(self, session_id: str) -> bool:
-        """Return True if a Claude session JSONL file exists for this session_id."""
-        return any(_CLAUDE_PROJECTS.glob(f"*/{session_id}.jsonl"))
 
     async def resume_and_reset(self, pool_id: str, session_id: str) -> bool:
         """Kill process; next _spawn() uses --resume <session_id> (one-shot).
@@ -291,7 +287,7 @@ class CliPool(_CliPoolWorker):
             )
             return True
         # is_idle verified by caller; race window is sub-millisecond.
-        await self._kill(pool_id)
+        await self._kill(pool_id, preserve_session=False)
         self._resume_session_ids[pool_id] = session_id
         log.info(
             "[pool:%s] resume_and_reset: will resume %s on next spawn",

@@ -157,7 +157,10 @@ async def send(  # noqa: C901 — attachment loop adds branches
                 sent = await messageable.send(chunk)
         if i == last_idx:
             outbound.metadata["reply_message_id"] = sent.id
-    adapter._cancel_typing(send_to_id)
+    if outbound.intermediate:
+        adapter._start_typing(send_to_id)
+    else:
+        adapter._cancel_typing(send_to_id)
     log.debug(
         "stored reply_message_id=%s for msg_id=%s",
         outbound.metadata.get("reply_message_id"),

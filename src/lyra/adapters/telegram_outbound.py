@@ -147,7 +147,10 @@ async def send(
         sent = await adapter.bot.send_message(**kwargs)
         if i == last_idx:
             outbound.metadata["reply_message_id"] = sent.message_id
-    adapter._cancel_typing(chat_id)
+    if outbound.intermediate:
+        adapter._start_typing(chat_id)
+    else:
+        adapter._cancel_typing(chat_id)
 
 
 async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: edit/chunk/finalize branches are inherently sequential

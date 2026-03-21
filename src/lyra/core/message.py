@@ -137,6 +137,7 @@ class Response:
         """Convert to OutboundMessage for use with the typed dispatch path."""
         outbound = OutboundMessage.from_text(self.content)
         outbound.routing = self.routing
+        outbound.intermediate = self.intermediate
         return outbound
 
 
@@ -248,6 +249,7 @@ class OutboundMessage:
     buttons: list[Button] = field(default_factory=list)
     edit_id: str | None = None
     is_final: bool = True
+    intermediate: bool = False  # True → typing continues after send
     metadata: dict[str, Any] = field(default_factory=dict)
     routing: RoutingContext | None = None
 

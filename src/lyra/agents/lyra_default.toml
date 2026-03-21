@@ -16,7 +16,7 @@ show_intermediate = true   # show ⏳-prefixed intermediate turns
 #          "ollama" will use a local model via Ollama HTTP API (future)
 backend = "claude-cli"
 model = "claude-sonnet-4-6"
-max_turns = 10
+# max_turns omitted → None (unlimited). Set a positive int to cap tool-use turns.
 # tools: explicit allowlist — omits Bash and Write to prevent prompt injection → RCE
 # To disable all tools: tools = [] and ensure --allowedTools is passed (see cli_pool.py)
 tools = ["Read", "Grep", "Glob", "WebFetch", "WebSearch"]

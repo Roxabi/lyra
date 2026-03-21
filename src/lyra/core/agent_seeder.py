@@ -72,7 +72,8 @@ def _parse_toml(path: Path) -> AgentRow | None:
 
     backend = _m("backend", "anthropic-sdk")
     model = _m("model", "claude-3-5-haiku-20241022")
-    max_turns = _m("max_turns", 10)
+    _mt = _m("max_turns", None)
+    max_turns = None if not _mt else int(_mt)  # 0 or absent → None (unlimited)
     tools_json = json.dumps(_m("tools", []))
     persona = agent_section.get("persona")
     show_intermediate = agent_section.get("show_intermediate", False)

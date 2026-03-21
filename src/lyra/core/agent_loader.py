@@ -110,7 +110,7 @@ def load_agent_config(  # noqa: C901, PLR0915 — config parsing with many indep
     model_cfg = ModelConfig(
         backend=backend,
         model=model,
-        max_turns=int(model_section.get("max_turns", 10)),
+        max_turns=(lambda v: None if not v else int(v))(model_section.get("max_turns")),
         tools=tuple(model_section.get("tools", [])),
         cwd=cwd,
         skip_permissions=bool(model_section.get("skip_permissions", False)),

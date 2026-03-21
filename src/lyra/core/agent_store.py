@@ -254,7 +254,7 @@ class AgentStore(SqliteStore):
                 row.name,
                 row.backend,
                 row.model,
-                row.max_turns,
+                row.max_turns or 0,  # None (unlimited) → 0 sentinel for NOT NULL
                 row.tools_json,
                 row.persona,
                 1 if row.show_intermediate else 0,

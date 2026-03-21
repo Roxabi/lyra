@@ -51,7 +51,7 @@ class EffectiveConfig:
     model: str
     temperature: float
     system_prompt: str
-    max_turns: int
+    max_turns: int | None  # None = unlimited
 
 
 @dataclass

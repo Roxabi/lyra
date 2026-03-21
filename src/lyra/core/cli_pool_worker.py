@@ -87,8 +87,12 @@ class _CliPoolWorker:
             "--verbose",
             "--model",
             model_config.model,
-            "--max-turns",
-            str(model_config.max_turns),
+            # max_turns=None means unlimited — omit the flag, let claude CLI decide.
+            # max_turns=0 is treated as None (DB sentinel); any positive int is passed.
+            *([
+                "--max-turns",
+                str(model_config.max_turns),
+            ] if model_config.max_turns else []),
         ]
         if model_config.streaming:
             cmd.append("--include-partial-messages")

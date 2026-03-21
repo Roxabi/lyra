@@ -60,6 +60,9 @@ class ModelConfig:
              or "ollama" (local, future).
     model:   model identifier passed to the backend CLI.
     max_turns: max agentic turns per conversation turn.
+             None (or 0 in DB) means unlimited — the backend imposes no cap.
+             Default is None (unlimited). Set an explicit positive integer to
+             throttle long-running agents.
     tools:   allowed tools (empty = backend defaults).
     cwd:     working directory for the Claude subprocess (claude-cli only).
              None → defaults to the Lyra project root.
@@ -71,7 +74,7 @@ class ModelConfig:
 
     backend: str = "claude-cli"
     model: str = "claude-sonnet-4-5"
-    max_turns: int = 10
+    max_turns: int | None = None  # None = unlimited (0 sentinel in DB)
     tools: tuple[str, ...] = field(default=())
     # compare=False: cwd is spawn-routing config, not model identity.
     # Changing cwd should not trigger the "model_config mismatch" warning

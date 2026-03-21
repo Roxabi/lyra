@@ -72,7 +72,10 @@ class AnthropicSdkDriver:
 
         try:
             accumulated_text = ""
-            max_turns = model_cfg.max_turns
+            # None = unlimited; fall back to a large safety cap so we never
+            # spin forever in case the model keeps returning tool_use.
+            _MAX_TURNS_SAFETY = 1000
+            max_turns = model_cfg.max_turns or _MAX_TURNS_SAFETY
             final: Any = None
 
             for _turn in range(max_turns):

@@ -13,7 +13,7 @@ show_intermediate = true
 [model]
 backend = "claude-cli"
 model = "claude-haiku-4-5-20251001"
-max_turns = 15
+# max_turns omitted → None (unlimited). Set a positive int to cap tool-use turns.
 tools = ["Read", "Grep", "Glob", "WebFetch", "WebSearch"]
 
 [agent.smart_routing]

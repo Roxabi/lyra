@@ -19,7 +19,7 @@ class AgentRow:
     name: str
     backend: str
     model: str
-    max_turns: int = 10
+    max_turns: int | None = None  # None = unlimited (stored as 0 in DB)
     tools_json: str = "[]"
     persona: str | None = None
     show_intermediate: bool = False
@@ -81,7 +81,7 @@ class AgentRow:
             name=name,
             backend=backend,
             model=model,
-            max_turns=max_turns,
+            max_turns=max_turns or None,  # 0 sentinel in DB → None (unlimited)
             tools_json=tools_json,
             persona=persona,
             show_intermediate=bool(show_intermediate),

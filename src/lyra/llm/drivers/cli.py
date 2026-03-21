@@ -33,13 +33,14 @@ class ClaudeCliDriver:
         """Delegate workspace switch to CliPool."""
         await self._pool.switch_cwd(pool_id, cwd)
 
-    async def resume_and_reset(self, pool_id: str, session_id: str) -> None:
+    async def resume_and_reset(self, pool_id: str, session_id: str) -> bool:
         """Delegate session resume to CliPool.
 
         Wired into pool._session_resume_fn by SimpleAgent._maybe_register_resume
         so that pool.resume_session(sid) → CliPool.resume_and_reset(pool_id, sid).
+        Returns True if the resume was accepted, False if skipped.
         """
-        await self._pool.resume_and_reset(pool_id, session_id)
+        return await self._pool.resume_and_reset(pool_id, session_id)
 
     def is_alive(self, pool_id: str) -> bool:
         """Delegate liveness check to CliPool."""

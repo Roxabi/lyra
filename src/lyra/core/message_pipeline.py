@@ -217,8 +217,7 @@ class MessagePipeline:
                     )
                 elif not pool.is_idle:
                     log.info(
-                        "reply-to-resume: pool %r busy"
-                        " — skipping resume of session %r",
+                        "reply-to-resume: pool %r busy — skipping resume of session %r",
                         pool_id,
                         session_id,
                     )
@@ -245,8 +244,14 @@ class MessagePipeline:
                 thread_session_id,
                 pool_id,
             )
-            await pool.resume_session(thread_session_id)
-            return
+            accepted = await pool.resume_session(thread_session_id)
+            if accepted:
+                return
+            log.info(
+                "thread-session-resume: session %r not accepted"
+                " — falling through to Path 3",
+                thread_session_id,
+            )
 
         # Path 3: last-active-session — skip group chats (cross-user risk).
         if msg.platform_meta.get("is_group"):

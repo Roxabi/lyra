@@ -1,4 +1,5 @@
 """Tests for VaultCli (lyra.integrations.vault_cli)."""
+
 from __future__ import annotations
 
 import asyncio
@@ -11,11 +12,12 @@ from lyra.integrations.base import VaultProvider, VaultWriteFailed
 from lyra.integrations.vault_cli import VaultCli
 
 
-def _make_proc(returncode=0, stdout=b'', stderr=b''):
+def _make_proc(returncode=0, stdout=b"", stderr=b""):
     proc = MagicMock()
     proc.returncode = returncode
     proc.communicate = AsyncMock(return_value=(stdout, stderr))
     return proc
+
 
 class TestVaultCliAdd:
     def test_implements_vault_provider(self):
@@ -31,9 +33,11 @@ class TestVaultCliAdd:
     async def test_uses_vault_put_command(self):
         proc = _make_proc(returncode=0)
         calls = []
+
         async def fake_exec(*args, **kwargs):
             calls.append(list(args))
             return proc
+
         with patch("asyncio.create_subprocess_exec", new=fake_exec):
             await VaultCli().add("T", ["a", "b"], "https://x.com", "body")
         assert calls[0][0] == "vault"
@@ -43,9 +47,11 @@ class TestVaultCliAdd:
     async def test_tags_in_metadata_json(self):
         proc = _make_proc(returncode=0)
         calls = []
+
         async def fake_exec(*args, **kwargs):
             calls.append(list(args))
             return proc
+
         with patch("asyncio.create_subprocess_exec", new=fake_exec):
             await VaultCli().add("T", ["a", "b"], "https://x.com", "body")
         joined = " ".join(calls[0])
@@ -81,9 +87,11 @@ class TestVaultCliAdd:
     async def test_empty_tags_not_in_metadata_json(self):
         proc = _make_proc(returncode=0)
         calls = []
+
         async def fake_exec(*args, **kwargs):
             calls.append(list(args))
             return proc
+
         with patch("asyncio.create_subprocess_exec", new=fake_exec):
             await VaultCli().add("T", [], "https://x.com", "body")
         meta_idx = calls[0].index("--metadata")
@@ -95,9 +103,11 @@ class TestVaultCliAdd:
         """Regression: --metadata must be omitted when url='' and tags=[]."""
         proc = _make_proc(returncode=0)
         calls = []
+
         async def fake_exec(*args, **kwargs):
             calls.append(list(args))
             return proc
+
         with patch("asyncio.create_subprocess_exec", new=fake_exec):
             await VaultCli().add("T", [], "", "body")
         assert "--metadata" not in calls[0]
@@ -120,6 +130,7 @@ class TestVaultCliAdd:
             await VaultCli().add(
                 "T", [], "", "body", category="notes", entry_type="note"
             )
+
 
 class TestVaultCliSearch:
     @pytest.mark.asyncio

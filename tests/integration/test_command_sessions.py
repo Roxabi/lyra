@@ -73,9 +73,13 @@ async def _stub_vault_add(msg, driver, tools, args, timeout):  # noqa: ARG001
     url = args[0]
     content = await tools.scraper.scrape(url, timeout=timeout / 3)
     from lyra.core.agent_config import ModelConfig
+
     model_cfg = ModelConfig(backend="anthropic-sdk", model="claude-haiku-4-5-20251001")
     result = await driver.complete(
-        "session:vault-add", "", model_cfg, "You are a helper.",
+        "session:vault-add",
+        "",
+        model_cfg,
+        "You are a helper.",
         messages=[{"role": "user", "content": content}],
     )
     return Response(content=f"Saved: {url}\n\n{result.result}")
@@ -88,9 +92,13 @@ async def _stub_explain(msg, driver, tools, args, timeout):  # noqa: ARG001
     url = args[0]
     content = await tools.scraper.scrape(url, timeout=timeout / 3)
     from lyra.core.agent_config import ModelConfig
+
     model_cfg = ModelConfig(backend="anthropic-sdk", model="claude-haiku-4-5-20251001")
     result = await driver.complete(
-        "session:explain", "", model_cfg, "You are a helper.",
+        "session:explain",
+        "",
+        model_cfg,
+        "You are a helper.",
         messages=[{"role": "user", "content": content}],
     )
     return Response(content=result.result)
@@ -103,9 +111,13 @@ async def _stub_summarize(msg, driver, tools, args, timeout):  # noqa: ARG001
     url = args[0]
     content = await tools.scraper.scrape(url, timeout=timeout / 3)
     from lyra.core.agent_config import ModelConfig
+
     model_cfg = ModelConfig(backend="anthropic-sdk", model="claude-haiku-4-5-20251001")
     result = await driver.complete(
-        "session:summarize", "", model_cfg, "You are a helper.",
+        "session:summarize",
+        "",
+        model_cfg,
+        "You are a helper.",
         messages=[{"role": "user", "content": content}],
     )
     return Response(content=result.result)
@@ -141,8 +153,11 @@ def make_router_with_session(
         "explain", _stub_explain, tools=_tools, description="Explain URL", timeout=60.0
     )
     router.register_session_command(
-        "summarize", _stub_summarize, tools=_tools, description="Summarize URL",
-        timeout=60.0
+        "summarize",
+        _stub_summarize,
+        tools=_tools,
+        description="Summarize URL",
+        timeout=60.0,
     )
     return router
 
@@ -232,7 +247,9 @@ class TestSearchPlugin:
         driver = make_mock_driver()
         router = make_router_with_session(tmp_path, driver=driver, tools=tools)
         router.register_session_command(
-            "search", cmd_search, tools=tools,
+            "search",
+            cmd_search,
+            tools=tools,
             description="Search the vault: /search <query>",
             timeout=30.0,
         )

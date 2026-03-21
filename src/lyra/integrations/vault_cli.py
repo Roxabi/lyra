@@ -7,6 +7,7 @@ Maps to:
 
 VaultProvider.search intentionally swallows all errors — search failure is non-fatal.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -60,13 +61,19 @@ class VaultCli:
             metadata["tags"] = tags
 
         args = [
-            "vault", "put", "--", body,
-            "--title", title,
-            "--category", category,
-            "--type", entry_type,
+            "vault",
+            "put",
+            "--title",
+            title,
+            "--category",
+            category,
+            "--type",
+            entry_type,
         ]
         if metadata:
             args += ["--metadata", json.dumps(metadata)]
+        # `--` ends option processing so body content starting with `-` is safe.
+        args += ["--", body]
         try:
             proc = await asyncio.create_subprocess_exec(*args, stdout=PIPE, stderr=PIPE)
             try:
@@ -78,7 +85,8 @@ class VaultCli:
             if proc.returncode != 0:
                 log.warning(
                     "VaultCli.add: exited %d: %s",
-                    proc.returncode, stderr.decode()[:200],
+                    proc.returncode,
+                    stderr.decode()[:200],
                 )
                 raise VaultWriteFailed("subprocess_error")
         except FileNotFoundError:

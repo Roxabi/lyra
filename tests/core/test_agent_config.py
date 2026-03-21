@@ -15,7 +15,7 @@ class TestModelConfig:
         cfg = ModelConfig()
         assert cfg.backend == "claude-cli"
         assert cfg.model == "claude-sonnet-4-5"
-        assert cfg.max_turns == 10
+        assert cfg.max_turns is None  # None = unlimited (default)
         assert cfg.tools == ()
 
     def test_tools_field_is_tuple(self) -> None:
@@ -82,7 +82,7 @@ system = "Hello."
 
         assert agent.model_config.backend == "claude-cli"
         assert agent.model_config.model == "claude-sonnet-4-5"
-        assert agent.model_config.max_turns == 10
+        assert agent.model_config.max_turns is None  # None = unlimited (default)
         assert agent.model_config.tools == ()
 
     def test_missing_agent_section_uses_name_as_namespace(self, tmp_path: Path) -> None:

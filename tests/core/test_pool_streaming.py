@@ -8,7 +8,7 @@ from __future__ import annotations
 import asyncio
 import collections.abc
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -207,10 +207,12 @@ class TestPoolResumeSession:
         await pool.resume_session("sess-xyz")  # type: ignore[attr-defined]
 
     async def test_resume_session_resets_session_persisted(self) -> None:
-        """resume_session() resets _session_persisted (#341)."""
+        """resume_session() resets _session_persisted when resume is accepted (#341)."""
         ctx = _make_ctx_mock()
         pool = Pool("p1", "agent", ctx=ctx)
         pool._observer._session_persisted = True  # simulate already persisted
+        # Provide a callback that accepts the resume (CLI pool behaviour)
+        pool._session_resume_fn = AsyncMock(return_value=True)  # type: ignore[attr-defined]
 
         await pool.resume_session("sess-new")  # type: ignore[attr-defined]
 

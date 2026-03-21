@@ -38,11 +38,19 @@ class TestCliPoolBuildCmd:
         assert "--model" in cmd
         idx = cmd.index("--model")
         assert cmd[idx + 1] == "claude-sonnet-4-5"
+        # max_turns=None (default) → unlimited, --max-turns flag omitted
+        assert "--max-turns" not in cmd
+        assert "--allowedTools" not in cmd
+        assert "--resume" not in cmd
+
+    def test_explicit_max_turns(self) -> None:
+        pool = CliPool()
+        cfg = ModelConfig(max_turns=10)
+        cmd = pool._build_cmd(cfg)
+
         assert "--max-turns" in cmd
         idx = cmd.index("--max-turns")
         assert cmd[idx + 1] == "10"
-        assert "--allowedTools" not in cmd
-        assert "--resume" not in cmd
 
     def test_with_tools(self) -> None:
         pool = CliPool()

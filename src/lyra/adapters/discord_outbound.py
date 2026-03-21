@@ -27,7 +27,7 @@ log = logging.getLogger("lyra.adapters.discord")
 STREAMING_EDIT_INTERVAL = 1.0
 
 
-async def _discord_typing_worker(
+async def _discord_typing_worker(  # noqa: C901 — retry + error branches
     resolve_channel: Callable,
     channel_id: int,
 ) -> None:
@@ -44,18 +44,48 @@ async def _discord_typing_worker(
             try:
                 channel = await resolve_channel(channel_id)
                 break
-            except Exception:
+            except Exception as exc:
                 if _attempt == 2:
+                    log.warning(
+                        "typing: failed to resolve channel %d after %d attempts: %s",
+                        channel_id,
+                        _attempt + 1,
+                        exc,
+                    )
                     raise
                 await asyncio.sleep(1.0 * (2**_attempt))
         assert channel is not None  # guaranteed by the loop above
+        _consecutive_errors = 0
         while True:
-            await channel.typing()
+            try:
+                await channel.typing()
+                _consecutive_errors = 0
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                _consecutive_errors += 1
+                if _consecutive_errors == 1:
+                    log.warning(
+                        "typing: channel %d trigger failed: %s — will retry",
+                        channel_id,
+                        exc,
+                    )
+                if _consecutive_errors >= 3:
+                    log.warning(
+                        "typing: channel %d giving up after %d consecutive errors",
+                        channel_id,
+                        _consecutive_errors,
+                    )
+                    return
             await asyncio.sleep(9)
     except asyncio.CancelledError:
         pass
     except Exception as exc:
-        log.debug("discord typing worker for channel %d: %s", channel_id, exc)
+        log.warning(
+            "typing: worker for channel %d exited unexpectedly: %s",
+            channel_id,
+            exc,
+        )
 
 
 async def _discord_send_with_retry(

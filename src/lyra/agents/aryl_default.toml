@@ -1,6 +1,8 @@
 # Agent configuration for Aryl default agent.
 # Aryl is a sharp, direct, technically-focused counterpart to Lyra.
 
+passthroughs = ["refine"]
+
 [agent]
 name = "aryl_default"
 memory_namespace = "aryl"

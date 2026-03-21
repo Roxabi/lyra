@@ -2,6 +2,8 @@
 # One file per agent — model + backend are here, not hardcoded.
 # Future: a model-selector SLM will override [model] at runtime.
 
+passthroughs = ["refine"]
+
 [agent]
 name = "lyra_default"
 memory_namespace = "lyra"
@@ -49,6 +51,9 @@ emotion = "Bienveillante et engagée, légèrement enthousiaste"
 speed = "Rythme naturel et posé"
 
 [stt]
+
+[patterns]
+bare_url = true
 
 # [workspaces]
 # lyra        = "~/projects/lyra"

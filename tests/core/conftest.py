@@ -448,6 +448,23 @@ async def agent_store(tmp_path: Path):
         await store.close()
 
 
+@pytest.fixture
+async def json_agent_store(tmp_path: Path):
+    """JsonAgentStore fixture backed by a tmp JSON file — no SQLite needed.
+
+    Use this in tests that exercise agent configuration logic but do not
+    specifically test the SQLite implementation.  Faster and DB-free.
+    """
+    from lyra.core.json_agent_store import JsonAgentStore
+
+    store = JsonAgentStore(path=tmp_path / "agents_test.json")
+    await store.connect()
+    try:
+        yield store
+    finally:
+        await store.close()
+
+
 # ---------------------------------------------------------------------------
 # OutboundDispatcher shared helpers (used by test_outbound_dispatcher_queue,
 # test_outbound_dispatcher_media)

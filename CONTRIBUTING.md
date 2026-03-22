@@ -169,6 +169,80 @@ Reviews focus on correctness, clarity, and architectural consistency — not sty
 - Distinguish blocking from non-blocking feedback — prefix optional suggestions with `nit:`
 - Approve once all `issue:` comments are resolved; `nit:` items can merge at author's discretion
 
+## Workpack-style task files (multi-hour agent runs)
+
+For any plan with 3 or more tasks, split the plan into a workpack — a directory of small,
+self-contained files that an agent can execute sequentially without human input.
+
+### When to use a workpack
+
+| Situation | Use workpack? |
+|-----------|---------------|
+| 1–2 task plan, ≤30 min estimated | No — keep the single `.mdx` plan file |
+| 3+ task plan, any estimated length | Yes |
+| Expected run time > 1 hour | Yes |
+| Unattended overnight / CI run | Yes |
+
+### Directory layout
+
+```
+artifacts/plans/<issue>/
+  rules.md        # agent behavior contract: autonomy, error handling, quality, commits
+  scope.md        # one-paragraph goal, deliverables, out-of-scope, task table
+  task-0001.md    # one logical unit: context + action + files changed + expected outcome + commit
+  task-0002.md
+  ...
+```
+
+The `<issue>` directory name uses the GitHub issue number (e.g., `401`).
+
+### Template
+
+Copy from `artifacts/plans/TEMPLATE/` and fill in the blanks:
+
+```bash
+cp -r artifacts/plans/TEMPLATE artifacts/plans/<issue>
+```
+
+Then edit each file:
+
+- **`rules.md`** — keep as-is unless the run has special constraints (e.g., read-only filesystem,
+  no network access).
+- **`scope.md`** — fill in the issue number, goal sentence, deliverables checklist, and task table.
+- **`task-NNNN.md`** — one file per task. Delete the template and create numbered files.
+  Add more (`task-0002.md`, `task-0003.md`, …) as needed.
+
+### Task file anatomy
+
+Each `task-NNNN.md` must include:
+
+| Section | Purpose |
+|---------|---------|
+| **Context** | Why this task exists; reference files to read first |
+| **Action** | Numbered, imperative steps — no ambiguity |
+| **Files changed** | Table of `file → change type` (create / modify / delete) |
+| **Expected outcome** | Runnable verify command + expected output |
+| **Commit** | Exact commit message for this task |
+
+### Running a workpack
+
+Queue the tasks in Claude Code as sequential prompts (one per task file), or write a driver
+script that feeds them one at a time. The agent reads `rules.md` once, then executes each task
+file in order without pausing.
+
+```
+Read artifacts/plans/<issue>/rules.md and artifacts/plans/<issue>/scope.md.
+Then execute artifacts/plans/<issue>/task-0001.md.
+```
+
+The first prompt loads the behavior contract and kicks off task-0001 in one go. After each task completes, the next prompt:
+
+```
+Execute artifacts/plans/<issue>/task-0002.md.
+```
+
+Repeat until all tasks are done. This enables 4–12 hour unattended runs.
+
 ## Architecture decisions (ADRs)
 
 Significant architectural choices — especially irreversible ones — are recorded as ADRs in `docs/architecture/adr/`.

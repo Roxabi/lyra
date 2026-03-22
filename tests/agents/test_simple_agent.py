@@ -250,8 +250,11 @@ class TestSimpleAgentStreaming:
         # Act
         result = await agent.process(msg, pool)
 
-        # Assert — streaming path returns iterator, not Response
-        assert result is fake_iterator
+        # Assert — S4: streaming path returns a StreamProcessor-wrapped AsyncIterator
+        # (not the raw driver iterator, and not a Response).
+        assert isinstance(result, AsyncIterator)
+        assert not isinstance(result, Response)
+        assert result is not fake_iterator
 
     async def test_returns_response_when_streaming_false(self) -> None:
         # Arrange — streaming=False falls through to complete()

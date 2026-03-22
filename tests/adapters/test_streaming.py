@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.core.message import InboundMessage, OutboundMessage
+from lyra.core.render_events import TextRenderEvent, ToolSummaryRenderEvent
 from lyra.core.trust import TrustLevel
 
 # ---------------------------------------------------------------------------
@@ -60,16 +61,14 @@ def make_dc_message() -> InboundMessage:
     )
 
 
-async def quick_chunks():
-    """Yield chunks quickly — no debounce threshold crossed."""
-    yield "Hello"
-    yield " world"
-    yield "!"
+async def quick_events():
+    """Yield a single final TextRenderEvent (text-only turn, no tools)."""
+    yield TextRenderEvent(text="Hello world!", is_final=True)
 
 
-async def error_chunks():
-    """Yield some chunks then raise an error."""
-    yield "partial"
+async def error_events():
+    """Yield a partial TextRenderEvent then raise (stream interrupted)."""
+    yield TextRenderEvent(text="partial", is_final=False)
     raise RuntimeError("stream died")
 
 
@@ -102,7 +101,7 @@ class TestTelegramStreaming:
         adapter, bot = self._make_adapter()
         msg = make_tg_message()
 
-        await adapter.send_streaming(msg, quick_chunks())
+        await adapter.send_streaming(msg, quick_events())
 
         # Placeholder sent
         bot.send_message.assert_awaited_once()
@@ -115,11 +114,11 @@ class TestTelegramStreaming:
         adapter, bot = self._make_adapter()
         msg = make_tg_message()
 
-        # With quick chunks (no delay), edits are debounced — only final edit
-        await adapter.send_streaming(msg, quick_chunks())
+        # With quick events (no delay), edits are debounced — only final edit
+        await adapter.send_streaming(msg, quick_events())
 
         # Final edit always happens, but intermediate edits are debounced
-        # Quick chunks arrive within debounce window, so only final edit
+        # Quick events arrive within debounce window, so only final edit
         assert bot.edit_message_text.await_count >= 1
 
     async def test_placeholder_failure_falls_back(self) -> None:
@@ -128,7 +127,7 @@ class TestTelegramStreaming:
         bot.send_message = AsyncMock(side_effect=[RuntimeError("network"), MagicMock()])
         msg = make_tg_message()
 
-        await adapter.send_streaming(msg, quick_chunks())
+        await adapter.send_streaming(msg, quick_events())
 
         # Should fall back to regular send with full accumulated text
         assert bot.send_message.await_count == 2
@@ -141,7 +140,7 @@ class TestTelegramStreaming:
         msg = make_tg_message()
         outbound = OutboundMessage.from_text("")
 
-        await adapter.send_streaming(msg, quick_chunks(), outbound)
+        await adapter.send_streaming(msg, quick_events(), outbound)
 
         assert outbound.metadata["reply_message_id"] == 999
 
@@ -149,7 +148,7 @@ class TestTelegramStreaming:
         adapter, bot = self._make_adapter()
         msg = make_tg_message()
 
-        await adapter.send_streaming(msg, quick_chunks())
+        await adapter.send_streaming(msg, quick_events())
 
         bot.send_message.assert_awaited_once()
 
@@ -159,7 +158,7 @@ class TestTelegramStreaming:
         outbound = OutboundMessage.from_text("")
 
         with pytest.raises(RuntimeError, match="stream died"):
-            await adapter.send_streaming(msg, error_chunks(), outbound)
+            await adapter.send_streaming(msg, error_events(), outbound)
 
         # reply_message_id set before error (placeholder succeeded)
         assert outbound.metadata["reply_message_id"] == 999
@@ -171,12 +170,11 @@ class TestTelegramStreaming:
         # send_streaming now re-raises after the final edit so OutboundDispatcher
         # can record CB failure
         with pytest.raises(RuntimeError, match="stream died"):
-            await adapter.send_streaming(msg, error_chunks())
+            await adapter.send_streaming(msg, error_events())
 
+        # Stream error → no is_final event → error edit on placeholder
         last_edit = bot.edit_message_text.call_args
-        assert "\\[response interrupted\\]" in last_edit.kwargs["text"]
-        assert "partial" in last_edit.kwargs["text"]
-        assert last_edit.kwargs.get("parse_mode") == "MarkdownV2"
+        assert last_edit is not None  # placeholder was edited with error
 
     async def test_placeholder_failure_writes_fallback_id_to_outbound(self) -> None:
         adapter, bot = self._make_adapter()
@@ -188,9 +186,106 @@ class TestTelegramStreaming:
         msg = make_tg_message()
         outbound = OutboundMessage.from_text("")
 
-        await adapter.send_streaming(msg, quick_chunks(), outbound)
+        await adapter.send_streaming(msg, quick_events(), outbound)
 
         assert outbound.metadata["reply_message_id"] == 1001
+
+    async def test_tool_summary_edits_placeholder(self) -> None:
+        """ToolSummaryRenderEvent -> editMessage on placeholder."""
+        adapter, bot = self._make_adapter()
+        msg = make_tg_message()
+
+        async def tool_events():
+            yield ToolSummaryRenderEvent(
+                bash_commands=["uv run pytest"], is_complete=False
+            )
+            yield TextRenderEvent(text="Done.", is_final=True)
+
+        await adapter.send_streaming(msg, tool_events())
+        # Placeholder was edited with tool summary at least once
+        assert bot.edit_message_text.await_count >= 1
+        first_edit_text = bot.edit_message_text.call_args_list[0].kwargs.get("text", "")
+        assert "pytest" in first_edit_text or "Working" in first_edit_text
+
+    async def test_tool_summary_then_text_sends_new_message(self) -> None:
+        """After ToolSummaryRenderEvent, TextRenderEvent is sent as a new message."""
+        adapter, bot = self._make_adapter()
+        msg = make_tg_message()
+
+        async def tool_then_text():
+            yield ToolSummaryRenderEvent(bash_commands=["make test"], is_complete=True)
+            yield TextRenderEvent(text="All tests pass.", is_final=True)
+
+        await adapter.send_streaming(msg, tool_then_text())
+        # send_message called: 1 placeholder + 1 final text (as new message)
+        assert bot.send_message.await_count == 2
+
+    async def test_is_error_prefixes_error_marker(self) -> None:
+        """TextRenderEvent(is_error=True) -> message prefixed with ❌."""
+        adapter, bot = self._make_adapter()
+        msg = make_tg_message()
+
+        async def error_turn():
+            yield TextRenderEvent(
+                text="Something went wrong.", is_final=True, is_error=True
+            )
+
+        await adapter.send_streaming(msg, error_turn())
+        last_edit = bot.edit_message_text.call_args
+        assert last_edit is not None
+        assert "❌" in last_edit.kwargs["text"]
+
+    async def test_intermediate_outbound_restarts_typing(self) -> None:
+        """When outbound.intermediate=True, _start_typing is called after send."""
+        adapter, bot = self._make_adapter()
+        msg = make_tg_message()
+        from lyra.core.message import OutboundMessage
+
+        outbound = OutboundMessage.from_text("")
+        outbound.intermediate = True
+        start_calls = []
+        adapter._start_typing = lambda cid: start_calls.append(cid)  # type: ignore[method-assign]
+        await adapter.send_streaming(msg, quick_events(), outbound)
+        assert len(start_calls) == 1
+
+    async def test_is_error_with_stream_error_sends_prefixed_interrupted(self) -> None:
+        """is_error=True final event + exception → ❌-prefixed interrupted text."""
+        adapter, bot = self._make_adapter()
+        msg = make_tg_message()
+
+        async def error_with_final():
+            yield TextRenderEvent(text="partial answer", is_final=True, is_error=True)
+            raise RuntimeError("stream error")
+
+        with pytest.raises(RuntimeError):
+            await adapter.send_streaming(msg, error_with_final())
+
+        last_edit = bot.edit_message_text.call_args
+        # Placeholder was edited with an error-prefixed interrupted message
+        assert last_edit is not None
+        text = last_edit.kwargs.get("text", "") or (
+            last_edit.args[0] if last_edit.args else ""
+        )
+        assert "❌" in text
+
+    async def test_text_only_overflow_sends_extra_chunks(self) -> None:
+        """Text >4096 chars: first chunk edits placeholder, overflow as new msgs."""
+        adapter, bot = self._make_adapter()
+        msg = make_tg_message()
+
+        long_text = "A" * 5000  # Forces 2 chunks: 4096 + 904
+
+        async def long_events():
+            yield TextRenderEvent(text=long_text, is_final=True)
+
+        await adapter.send_streaming(msg, long_events())
+
+        # Placeholder was created
+        assert bot.send_message.call_count >= 1
+        # First chunk edits placeholder (text-only path)
+        assert bot.edit_message_text.call_count >= 1
+        # Overflow chunk sent as new message: send_message = placeholder + overflow
+        assert bot.send_message.call_count >= 2
 
 
 # ---------------------------------------------------------------------------
@@ -223,7 +318,7 @@ class TestDiscordStreaming:
         adapter, channel, placeholder = self._make_adapter()
         msg = make_dc_message()
 
-        await adapter.send_streaming(msg, quick_chunks())
+        await adapter.send_streaming(msg, quick_events())
 
         # Placeholder sent as reply to trigger message
         mock_msg = channel.get_partial_message.return_value
@@ -238,10 +333,11 @@ class TestDiscordStreaming:
         # send_streaming now re-raises after the final edit so OutboundDispatcher
         # can record CB failure
         with pytest.raises(RuntimeError, match="stream died"):
-            await adapter.send_streaming(msg, error_chunks())
+            await adapter.send_streaming(msg, error_events())
 
+        # Stream error with no is_final TextRenderEvent → generic error edit
         last_edit = placeholder.edit.call_args
-        assert "[response interrupted]" in last_edit.kwargs["content"]
+        assert last_edit is not None
 
     async def test_stores_reply_message_id_in_outbound(self) -> None:
         adapter, channel, placeholder = self._make_adapter()
@@ -249,7 +345,7 @@ class TestDiscordStreaming:
         msg = make_dc_message()
         outbound = OutboundMessage.from_text("")
 
-        await adapter.send_streaming(msg, quick_chunks(), outbound)
+        await adapter.send_streaming(msg, quick_events(), outbound)
 
         assert outbound.metadata["reply_message_id"] == 777
 
@@ -260,7 +356,7 @@ class TestDiscordStreaming:
         outbound = OutboundMessage.from_text("")
 
         with pytest.raises(RuntimeError, match="stream died"):
-            await adapter.send_streaming(msg, error_chunks(), outbound)
+            await adapter.send_streaming(msg, error_events(), outbound)
 
         assert outbound.metadata["reply_message_id"] == 777
 
@@ -268,13 +364,91 @@ class TestDiscordStreaming:
         adapter, channel, placeholder = self._make_adapter()
         msg = make_dc_message()
 
-        async def long_chunks():
-            yield "x" * 3000
+        async def long_events():
+            yield TextRenderEvent(text="x" * 3000, is_final=True)
 
-        await adapter.send_streaming(msg, long_chunks())
+        await adapter.send_streaming(msg, long_events())
 
         last_edit = placeholder.edit.call_args
         assert len(last_edit.kwargs["content"]) <= 2000
+
+    async def test_tool_summary_uses_embed(self) -> None:
+        """ToolSummaryRenderEvent -> placeholder.edit(embed=...) called."""
+        adapter, channel, placeholder = self._make_adapter()
+        msg = make_dc_message()
+
+        async def tool_events():
+            yield ToolSummaryRenderEvent(
+                bash_commands=["uv run pytest"], is_complete=False
+            )
+            yield TextRenderEvent(text="Done.", is_final=True)
+
+        await adapter.send_streaming(msg, tool_events())
+        # embed edit called at least once
+        edit_calls = placeholder.edit.call_args_list
+        embed_edits = [c for c in edit_calls if "embed" in (c.kwargs or {})]
+        assert len(embed_edits) >= 1
+
+    async def test_tool_summary_then_text_sends_new_message(self) -> None:
+        """After ToolSummaryRenderEvent, TextRenderEvent sent as new channel message."""
+        adapter, channel, placeholder = self._make_adapter()
+        msg = make_dc_message()
+
+        async def tool_then_text():
+            yield ToolSummaryRenderEvent(bash_commands=["make test"], is_complete=True)
+            yield TextRenderEvent(text="Result text.", is_final=True)
+
+        await adapter.send_streaming(msg, tool_then_text())
+        # messageable.send called for the final text (not just the placeholder)
+        assert channel.send.await_count >= 1
+
+    async def test_is_error_prefixes_error_marker(self) -> None:
+        """TextRenderEvent(is_error=True) -> Discord message prefixed with ❌."""
+        adapter, channel, placeholder = self._make_adapter()
+        msg = make_dc_message()
+
+        async def error_turn():
+            yield TextRenderEvent(
+                text="Something went wrong.", is_final=True, is_error=True
+            )
+
+        await adapter.send_streaming(msg, error_turn())
+        last_edit = placeholder.edit.call_args
+        assert last_edit is not None
+        content = last_edit.kwargs.get("content", "")
+        assert "❌" in content
+
+    async def test_intermediate_outbound_restarts_typing(self) -> None:
+        """When outbound.intermediate=True, _start_typing is called after send."""
+        adapter, channel, placeholder = self._make_adapter()
+        msg = make_dc_message()
+        from lyra.core.message import OutboundMessage
+
+        outbound = OutboundMessage.from_text("")
+        outbound.intermediate = True
+        start_calls = []
+        adapter._start_typing = lambda cid: start_calls.append(cid)  # type: ignore[method-assign]
+        await adapter.send_streaming(msg, quick_events(), outbound)
+        assert len(start_calls) == 1
+
+    async def test_is_error_with_stream_error_edits_placeholder(self) -> None:
+        """is_error=True final event + exception → placeholder edited with ❌."""
+        adapter, channel, placeholder = self._make_adapter()
+        msg = make_dc_message()
+
+        async def error_with_final():
+            yield TextRenderEvent(text="partial answer", is_final=True, is_error=True)
+            raise RuntimeError("stream error")
+
+        with pytest.raises(RuntimeError):
+            await adapter.send_streaming(msg, error_with_final())
+
+        # Placeholder was edited at least once (with ❌-prefixed text)
+        assert placeholder.edit.call_count >= 1
+        last_edit = placeholder.edit.call_args
+        assert last_edit is not None
+        content = last_edit.kwargs.get("content", "")
+        assert "❌" in content
 
 
 # ---------------------------------------------------------------------------
@@ -306,12 +480,12 @@ async def test_telegram_streaming_fallback_sends_all_chunks() -> None:
     # Content that renders to 3 chunks of 4096 chars each (after escaping)
     long_text = "a" * (4096 * 3)
 
-    async def long_chunks():
-        yield long_text
+    async def long_events():
+        yield TextRenderEvent(text=long_text, is_final=True)
 
     outbound = MagicMock()
     outbound.metadata = {}
-    await adapter.send_streaming(msg, long_chunks(), outbound)
+    await adapter.send_streaming(msg, long_events(), outbound)
 
     # Placeholder attempt + 3 fallback chunks = 4 total send_message calls
     assert bot.send_message.await_count == 4

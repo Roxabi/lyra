@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 
 from lyra.core.agent_config import ModelConfig
 from lyra.core.circuit_breaker import CircuitBreaker
 from lyra.llm.base import LlmProvider, LlmResult
+from lyra.llm.events import LlmEvent
 
 log = logging.getLogger(__name__)
 
@@ -81,6 +82,20 @@ class RetryDecorator:
         assert result is not None  # total_attempts ≥ 1
         return result
 
+    async def stream(  # noqa: PLR0913
+        self,
+        pool_id: str,
+        text: str,
+        model_cfg: ModelConfig,
+        system_prompt: str,
+        *,
+        messages: list[dict] | None = None,
+    ) -> AsyncIterator[LlmEvent]:
+        """Delegate streaming to inner provider (no retry — stream is live data)."""
+        return await self._inner.stream(
+            pool_id, text, model_cfg, system_prompt, messages=messages
+        )
+
     def is_alive(self, pool_id: str) -> bool:
         return self._inner.is_alive(pool_id)
 
@@ -131,6 +146,20 @@ class CircuitBreakerDecorator:
         else:
             self._cb.record_failure()
         return result
+
+    async def stream(  # noqa: PLR0913
+        self,
+        pool_id: str,
+        text: str,
+        model_cfg: ModelConfig,
+        system_prompt: str,
+        *,
+        messages: list[dict] | None = None,
+    ) -> AsyncIterator[LlmEvent]:
+        """Delegate to inner provider (circuit check applies to complete() only)."""
+        return await self._inner.stream(
+            pool_id, text, model_cfg, system_prompt, messages=messages
+        )
 
     def is_alive(self, pool_id: str) -> bool:
         return self._inner.is_alive(pool_id)

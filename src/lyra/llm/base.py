@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
 from lyra.core.agent_config import ModelConfig
+from lyra.llm.events import LlmEvent
 
 
 @dataclass
@@ -46,5 +47,15 @@ class LlmProvider(Protocol):
     def is_alive(self, pool_id: str) -> bool: ...
 
     # stream() is an optional duck-typed method — providers that support
-    # streaming implement it; SimpleAgent checks via hasattr().
-    # Not part of the protocol to avoid breaking existing providers.
+    # streaming implement it and yield AsyncIterator[LlmEvent]; SimpleAgent
+    # checks via hasattr() rather than isinstance() so that existing providers
+    # are not broken by missing this method.
+    async def stream(
+        self,
+        pool_id: str,
+        text: str,
+        model_cfg: ModelConfig,
+        system_prompt: str,
+        *,
+        messages: list[dict] | None = None,
+    ) -> AsyncIterator[LlmEvent]: ...

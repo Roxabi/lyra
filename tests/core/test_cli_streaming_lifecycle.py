@@ -7,6 +7,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock
 
 from lyra.core.cli_protocol import StreamingIterator, send_and_read_stream
+from lyra.llm.events import ResultLlmEvent, TextLlmEvent
 
 from .conftest import (
     ASSISTANT_INTERMEDIATE_LINE,
@@ -39,7 +40,7 @@ class TestStreamingIteratorError:
         chunks = [chunk async for chunk in it]
 
         # Assert
-        assert chunks == []
+        assert chunks == [ResultLlmEvent(is_error=True, duration_ms=50, cost_usd=None)]
         assert it.error == "Something went wrong"
 
     async def test_error_none_on_success(self) -> None:
@@ -183,7 +184,10 @@ class TestStreamingIteratorTimeout:
         chunks = [chunk async for chunk in it]
 
         # Assert — recovered after single timeout
-        assert chunks == ["Hello"]
+        assert chunks == [
+            TextLlmEvent(text="Hello"),
+            ResultLlmEvent(is_error=False, duration_ms=100, cost_usd=None),
+        ]
 
     async def test_timeout_with_dead_process_stops_immediately(self) -> None:
         # Arrange — timeout occurs and process has died (returncode set)
@@ -290,7 +294,11 @@ class TestSendAndReadStream:
         chunks = [chunk async for chunk in it]
 
         # Assert
-        assert chunks == ["Hello", " world"]
+        assert chunks == [
+            TextLlmEvent(text="Hello"),
+            TextLlmEvent(text=" world"),
+            ResultLlmEvent(is_error=False, duration_ms=100, cost_usd=None),
+        ]
 
     async def test_passes_pool_reset_fn_to_iterator(self) -> None:
         # Arrange
@@ -307,8 +315,8 @@ class TestSendAndReadStream:
         # Assert — reset_fn wired through correctly
         pool_reset_fn.assert_awaited_once()
 
-    async def test_passes_on_intermediate_to_iterator(self) -> None:
-        # Arrange — verify on_intermediate is threaded into the iterator
+    async def test_on_intermediate_accepted_but_deprecated(self) -> None:
+        # Arrange — on_intermediate still accepted for backward compat but is deprecated
         proc = make_fake_proc(
             [INIT_LINE, ASSISTANT_INTERMEDIATE_LINE, TEXT_DELTA_LINE, RESULT_LINE]
         )
@@ -322,13 +330,16 @@ class TestSendAndReadStream:
         it = await send_and_read_stream(
             entry, "hello", DEFAULT_POOL_ID, on_intermediate=on_intermediate
         )
-        chunks = [chunk async for chunk in it]
+        events = [ev async for ev in it]
 
-        # Assert — callback fired; tokens still yielded
-        assert received == ["I need to check something first."]
-        assert chunks == ["Hello"]
+        # Assert — callback NOT fired (deprecated); events still yielded correctly
+        assert received == []
+        assert events == [
+            TextLlmEvent(text="Hello"),
+            ResultLlmEvent(is_error=False, duration_ms=100, cost_usd=None),
+        ]
 
-    async def test_on_intermediate_none_when_not_provided(self) -> None:
+    async def test_on_intermediate_none_yields_events_normally(self) -> None:
         # Arrange — no on_intermediate; iterator must work normally
         proc = make_fake_proc(
             [INIT_LINE, ASSISTANT_INTERMEDIATE_LINE, TEXT_DELTA_LINE, RESULT_LINE]
@@ -337,7 +348,10 @@ class TestSendAndReadStream:
 
         # Act
         it = await send_and_read_stream(entry, "hello", DEFAULT_POOL_ID)
-        chunks = [chunk async for chunk in it]
+        events = [ev async for ev in it]
 
-        # Assert — no error, tokens yielded
-        assert chunks == ["Hello"]
+        # Assert — text-only assistant event skipped; LlmEvents still yielded
+        assert events == [
+            TextLlmEvent(text="Hello"),
+            ResultLlmEvent(is_error=False, duration_ms=100, cost_usd=None),
+        ]

@@ -13,12 +13,13 @@ import logging
 import re
 import time
 from collections import deque
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from lyra.core.agent_config import Complexity, ModelConfig, SmartRoutingConfig
 from lyra.llm.base import LlmProvider, LlmResult
+from lyra.llm.events import LlmEvent
 
 if TYPE_CHECKING:
     from lyra.core.message import InboundMessage
@@ -276,6 +277,20 @@ class SmartRoutingDecorator:
         )
 
         return result
+
+    async def stream(  # noqa: PLR0913
+        self,
+        pool_id: str,
+        text: str,
+        model_cfg: ModelConfig,
+        system_prompt: str,
+        *,
+        messages: list[dict] | None = None,
+    ) -> AsyncIterator[LlmEvent]:
+        """Delegate streaming to inner provider (routing applies to complete() only)."""
+        return await self._inner.stream(
+            pool_id, text, model_cfg, system_prompt, messages=messages
+        )
 
     def is_alive(self, pool_id: str) -> bool:
         return self._inner.is_alive(pool_id)

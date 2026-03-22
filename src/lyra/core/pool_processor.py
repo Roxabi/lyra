@@ -18,6 +18,8 @@ if TYPE_CHECKING:
     from .message import InboundMessage
     from .pool import Pool
 
+from lyra.llm.events import ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
+
 from .message import GENERIC_ERROR_REPLY, OutboundMessage, Response
 
 log = logging.getLogger(__name__)
@@ -292,13 +294,25 @@ class PoolProcessor:
             _content_parts: list[str] = []
 
             async def _capture() -> collections.abc.AsyncGenerator[str, None]:
+                # S2 bridge: _result_iter_for_sid now yields LlmEvent objects.
+                # S4 will replace this with RenderEvent handling once
+                # StreamProcessor is wired.
                 try:
-                    async for chunk in _result_iter_for_sid:
-                        _content_parts.append(chunk)
-                        yield chunk
+                    async for event in _result_iter_for_sid:
+                        if isinstance(event, TextLlmEvent):
+                            _content_parts.append(event.text)
+                            yield event.text
+                        elif isinstance(event, ToolUseLlmEvent):
+                            pass  # skip — not logged as text content
+                        elif isinstance(event, ResultLlmEvent):
+                            # turn complete — ResultLlmEvent is the terminal sentinel
+                            break
+                        else:
+                            # Fallback: legacy str chunks from pre-retype iterators
+                            chunk = str(event)
+                            _content_parts.append(chunk)
+                            yield chunk
                 finally:
-                    # Close the inner iterator if it supports it (async generators do;
-                    # custom AsyncIterator wrappers may not).
                     _aclose = getattr(_result_iter_for_sid, "aclose", None)
                     if callable(_aclose):
                         await _aclose()  # type: ignore[misc]

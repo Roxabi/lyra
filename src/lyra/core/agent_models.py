@@ -5,7 +5,16 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-__all__ = ["AgentRow", "BotAgentMapRow", "AgentRuntimeStateRow", "_utc_now_iso"]
+__all__ = [
+    "AgentRow",
+    "BotAgentMapRow",
+    "AgentRuntimeStateRow",
+    "VALID_AGENT_STATUSES",
+    "_utc_now_iso",
+]
+
+#: Valid values for ``AgentRuntimeStateRow.status`` and ``set_runtime_state()``.
+VALID_AGENT_STATUSES: frozenset[str] = frozenset({"idle", "active", "error"})
 
 
 def _utc_now_iso() -> str:

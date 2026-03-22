@@ -43,7 +43,7 @@ chunks (`True`) or a single buffered result (`False`).
 ## Decorator stack
 
 ```
-CircuitBreaker → SmartRoutingDecorator → RetryDecorator → Driver
+CircuitBreakerDecorator → SmartRoutingDecorator → RetryDecorator → Driver
 ```
 
 Each decorator wraps an `LlmProvider` and implements the same protocol.

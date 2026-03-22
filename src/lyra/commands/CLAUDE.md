@@ -81,9 +81,14 @@ Session commands are used when a command needs injected service dependencies.
    `/clear`, `/new`, `/folder`, `/workspace`) — always available, admin-gated where noted
 2. **Session commands** — registered by agents via `register_session_command()`
 3. **Plugin commands** — discovered from `commands/` subdirectories via `CommandLoader`
-4. **Processor commands** — registered via `processor_registry.py` (issue #363)
 
 Built-in commands always win. Plugin commands cannot override built-ins.
+
+Note: **Processor commands** (`processor_registry.py`) are pre/post hooks injected
+into the pool processing flow — they are not dispatched via `CommandRouter.dispatch()`.
+They appear in `/help` output (via `command_metadata()`) but are invoked by the pool
+processor, not the command router. Session commands are deprecated in favour of
+processor commands (see ADR-031).
 
 ## Slash command format
 

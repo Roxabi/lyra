@@ -21,8 +21,8 @@ Every adapter must implement:
 | `render_audio_stream(chunks, inbound)` | Stream TTS audio chunks |
 | `render_attachment(msg, inbound)` | Send an attachment (image/file) |
 
-`render_voice_stream()` is Discord-only (voice channel playback). Telegram does not
-implement it.
+`render_voice_stream()` is implemented as a no-op stub on Telegram (drains the
+iterator and logs a warning); functional voice-channel playback is Discord-only.
 
 ## File structure
 
@@ -116,8 +116,8 @@ when a message is received; cancel it when the reply is sent.
 
 - Do NOT add LLM calls, agent logic, or memory reads to adapters.
 - Do NOT call `hub.push()` directly — use `push_to_hub_guarded()`.
-- Do NOT implement `render_voice_stream()` in the Telegram adapter — it is
-  Discord-only.
+- Do NOT make `render_voice_stream()` functional in the Telegram adapter — it is
+  intentionally a no-op stub; voice-channel playback is Discord-only.
 - Do NOT add platform-specific constants to `_shared.py` — put them in the
   platform-specific submodule.
 - Do NOT block the event loop in any adapter method — all I/O must be async.

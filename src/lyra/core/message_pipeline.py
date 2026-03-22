@@ -97,7 +97,7 @@ class MessagePipeline:
             return
         try:
             self._trace_hook(stage, event, **payload)
-        except Exception:  # noqa: BLE001
+        except Exception:
             log.debug("trace_hook raised — ignoring", exc_info=True)
 
     async def process(

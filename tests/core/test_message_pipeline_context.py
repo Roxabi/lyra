@@ -7,7 +7,7 @@ import asyncio
 import dataclasses
 from unittest.mock import patch
 
-from lyra.core.message_pipeline import MessagePipeline, ResumeStatus
+from lyra.core.message_pipeline import Action, MessagePipeline, ResumeStatus
 from tests.core.conftest import _make_hub, make_inbound_message
 
 # -------------------------------------------------------------------
@@ -407,6 +407,35 @@ class TestResolveContextResumeStatus:
 
         assert status == ResumeStatus.SKIPPED
 
+    async def test_path2_rejected_group_chat_returns_skipped(self) -> None:
+        """Path 2 rejected in a group chat → SKIPPED (silent, no notification).
+
+        Group-chat resume is a deliberate safety skip regardless of whether
+        path 2 was attempted — broadcasting session-state into a shared channel
+        would leak per-user context to all participants.
+        """
+        pool_id = "telegram:main:chat:42"
+        hub = _make_hub()
+        pool = hub.get_or_create_pool(pool_id, "lyra")
+
+        async def _rejected_resume(sid: str) -> bool:
+            return False
+
+        pool._session_resume_fn = _rejected_resume  # type: ignore[attr-defined]
+
+        _base = make_inbound_message(scope_id="chat:42")
+        _meta = {
+            **_base.platform_meta,
+            "thread_session_id": "tss-dead",
+            "is_group": True,
+        }
+        msg = dataclasses.replace(_base, platform_meta=_meta)
+        pipeline = MessagePipeline(hub)
+
+        status = await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
+
+        assert status == ResumeStatus.SKIPPED
+
 
 # -------------------------------------------------------------------
 # T7.2 — _submit_to_pool notification on FRESH (#380)
@@ -443,8 +472,9 @@ class TestNotifySessionFallthrough:
             from lyra.core.message import Platform
 
             key = RoutingKey(Platform("telegram"), "main", "chat:42")
-            await pipeline._submit_to_pool(msg, pool, key)  # type: ignore[attr-defined]
+            result = await pipeline._submit_to_pool(msg, pool, key)  # type: ignore[attr-defined]
 
+        assert result.action == Action.SUBMIT_TO_POOL
         assert len(notify_calls) == 1
         platform_called, text_called = notify_calls[0]
         assert platform_called == "telegram"
@@ -477,8 +507,9 @@ class TestNotifySessionFallthrough:
             from lyra.core.message import Platform
 
             key = RoutingKey(Platform("telegram"), "main", "chat:42")
-            await pipeline._submit_to_pool(msg, pool, key)  # type: ignore[attr-defined]
+            result = await pipeline._submit_to_pool(msg, pool, key)  # type: ignore[attr-defined]
 
+        assert result.action == Action.SUBMIT_TO_POOL
         assert notify_calls == []
 
     async def test_no_notify_when_skipped(self) -> None:
@@ -501,6 +532,7 @@ class TestNotifySessionFallthrough:
             from lyra.core.message import Platform
 
             key = RoutingKey(Platform("telegram"), "main", "chat:42")
-            await pipeline._submit_to_pool(msg, pool, key)  # type: ignore[attr-defined]
+            result = await pipeline._submit_to_pool(msg, pool, key)  # type: ignore[attr-defined]
 
+        assert result.action == Action.SUBMIT_TO_POOL
         assert notify_calls == []

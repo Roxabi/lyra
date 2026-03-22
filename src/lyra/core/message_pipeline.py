@@ -286,8 +286,10 @@ class MessagePipeline:
             )
 
         # Path 3: last-active-session — skip group chats (cross-user risk).
+        # Always SKIPPED for group chats regardless of path2_attempted: the resume
+        # was a deliberate safety skip, not a failure, so no notification is warranted.
         if msg.platform_meta.get("is_group"):
-            return ResumeStatus.FRESH if path2_attempted else ResumeStatus.SKIPPED
+            return ResumeStatus.SKIPPED
         if pool.is_idle and self._hub._turn_store is not None:
             last_sid = await self._hub._turn_store.get_last_session(pool_id)
             if last_sid is None:

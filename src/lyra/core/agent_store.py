@@ -8,7 +8,13 @@ from pathlib import Path
 
 import aiosqlite
 
-from .agent_models import AgentRow, AgentRuntimeStateRow, BotAgentMapRow, _utc_now_iso
+from .agent_models import (
+    VALID_AGENT_STATUSES,
+    AgentRow,
+    AgentRuntimeStateRow,
+    BotAgentMapRow,
+    _utc_now_iso,
+)
 from .agent_schema import (
     _CREATE_AGENT_RUNTIME_STATE,
     _CREATE_AGENTS,
@@ -415,10 +421,10 @@ class AgentStore(SqliteStore):
         self, agent_name: str, status: str, pool_count: int = 0
     ) -> None:
         """Upsert runtime state for an agent."""
-        _valid_statuses = {"idle", "active", "error"}
-        if status not in _valid_statuses:
+        if status not in VALID_AGENT_STATUSES:
             raise ValueError(
-                f"invalid status {status!r} — must be one of {sorted(_valid_statuses)}"
+                f"invalid status {status!r} — must be one of "
+                f"{sorted(VALID_AGENT_STATUSES)}"
             )
         db = self._require_db()
         now = _utc_now_iso()

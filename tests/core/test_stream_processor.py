@@ -208,6 +208,8 @@ class TestStreamProcessor:
         ]
         assert len(final_summaries) == 1
         assert len(final_summaries[0].files) == 2
+        assert "a.py" in final_summaries[0].files
+        assert "b.py" in final_summaries[0].files
 
     # ------------------------------------------------------------------
     # T14 — Three files at group_threshold (SC-5)
@@ -233,6 +235,9 @@ class TestStreamProcessor:
         ]
         assert len(final_summaries) == 1
         assert len(final_summaries[0].files) == 3
+        assert "a.py" in final_summaries[0].files
+        assert "b.py" in final_summaries[0].files
+        assert "c.py" in final_summaries[0].files
 
     # ------------------------------------------------------------------
     # T15 — 80 edits over 5 files (SC-4, SC-5)

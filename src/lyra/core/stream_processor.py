@@ -68,6 +68,9 @@ class StreamProcessor:
         # --- pending text ---
         self._pending_text: str = ""
 
+        # --- reuse guard ---
+        self._consumed: bool = False
+
     # ------------------------------------------------------------------
     # Public interface
     # ------------------------------------------------------------------
@@ -90,6 +93,7 @@ class StreamProcessor:
             ``ToolSummaryRenderEvent`` mid-turn (throttled) and at turn end
             (unconditional), followed by ``TextRenderEvent`` at turn end.
         """
+        self._mark_consumed()
         _result_received = False
         async for event in events:
             if isinstance(event, TextLlmEvent):
@@ -98,24 +102,33 @@ class StreamProcessor:
             elif isinstance(event, ToolUseLlmEvent):
                 self._accumulate(event)
                 if self._should_emit() and self._has_any_tool_events():
-                    yield self._snapshot()
+                    yield self._emit_snapshot()
 
             elif isinstance(event, ResultLlmEvent):
                 _result_received = True
                 if self._has_any_tool_events():
-                    yield self._snapshot(is_complete=True)
+                    yield self._emit_snapshot(is_complete=True)
                 yield TextRenderEvent(text=self._pending_text, is_final=True)
 
         # Stream ended without ResultLlmEvent (truncation or upstream error)
         if not _result_received:
             if self._has_any_tool_events():
-                yield self._snapshot(is_complete=True)
+                yield self._emit_snapshot(is_complete=True)
             if self._pending_text:
                 yield TextRenderEvent(text=self._pending_text, is_final=False)
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _mark_consumed(self) -> None:
+        """Guard against reuse — raise if process() was already called."""
+        if self._consumed:
+            raise RuntimeError(
+                "StreamProcessor.process() called more than once. "
+                "Create a new instance per turn."
+            )
+        self._consumed = True
 
     def _accumulate_web(
         self, event: ToolUseLlmEvent, *, show_key: str, input_key: str
@@ -180,8 +193,8 @@ class StreamProcessor:
         elapsed = time.monotonic() - self._last_tool_emit
         return elapsed >= self._config.throttle_ms / 1000
 
-    def _snapshot(self, *, is_complete: bool = False) -> ToolSummaryRenderEvent:
-        """Build a ``ToolSummaryRenderEvent`` from a safe copy of all accumulators.
+    def _emit_snapshot(self, *, is_complete: bool = False) -> ToolSummaryRenderEvent:
+        """Emit a ``ToolSummaryRenderEvent`` from a safe copy of all accumulators.
 
         Side-effect: updates ``_last_tool_emit`` to ``time.monotonic()``.
         """

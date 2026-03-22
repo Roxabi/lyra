@@ -35,6 +35,7 @@ from .outbound_errors import (
 
 if TYPE_CHECKING:
     from lyra.core.hub import ChannelAdapter
+    from lyra.core.render_events import RenderEvent
 
 log = logging.getLogger(__name__)
 
@@ -92,7 +93,7 @@ class OutboundDispatcher:
     def enqueue_streaming(
         self,
         msg: InboundMessage,
-        chunks: AsyncIterator[str],
+        chunks: AsyncIterator[RenderEvent],
         outbound: OutboundMessage | None = None,
     ) -> None:
         """Enqueue a streaming response for delivery (fire-and-forget)."""

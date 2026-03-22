@@ -11,6 +11,7 @@ import discord
 
 if TYPE_CHECKING:
     from lyra.core.hub import Hub
+    from lyra.core.render_events import RenderEvent
 
 from lyra.adapters import discord_audio  # noqa: I001
 from lyra.adapters import discord_audio_outbound
@@ -256,11 +257,11 @@ class DiscordAdapter(discord.Client):
     async def send_streaming(
         self,
         original_msg: InboundMessage,
-        chunks: AsyncIterator[str],
+        events: AsyncIterator[RenderEvent],
         outbound: OutboundMessage | None = None,
     ) -> None:
         """Stream response with edit-in-place, debounced at ~1s."""
-        await _send_streaming_impl(self, original_msg, chunks, outbound)
+        await _send_streaming_impl(self, original_msg, events, outbound)
 
     async def render_audio(self, msg: OutboundAudio, inbound: InboundMessage) -> None:
         """Send an OutboundAudio envelope as a Discord voice message."""

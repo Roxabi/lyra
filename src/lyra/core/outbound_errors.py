@@ -26,7 +26,7 @@ _NOTIFY_TS_REAP_THRESHOLD = 512  # reap stale circuit-notify timestamps when > t
 
 # Queue item shapes (heterogeneous tuple — see OutboundDispatcher._dispatch_item):
 #   ("send",         InboundMessage, OutboundMessage)
-#   ("streaming",    InboundMessage, AsyncIterator[str], OutboundMessage | None)
+#   ("streaming",    InboundMessage, AsyncIterator[RenderEvent], OutboundMessage | None)
 #   ("audio",        InboundMessage, OutboundAudio)
 #   ("audio_stream", InboundMessage, AsyncIterator[OutboundAudioChunk])
 #   ("voice_stream", InboundMessage, AsyncIterator[OutboundAudioChunk])

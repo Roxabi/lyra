@@ -24,6 +24,8 @@ from lyra.core.message import (
 from lyra.core.messages import MessageManager
 from lyra.core.pool import Pool
 from lyra.core.runtime_config import RuntimeConfig, RuntimeConfigHolder
+from lyra.core.stream_processor import StreamProcessor
+from lyra.core.tool_display_config import ToolDisplayConfig
 from lyra.llm.base import LlmProvider
 from lyra.stt import is_whisper_noise
 
@@ -31,6 +33,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable
 
     from lyra.core.agent_store import AgentStore
+    from lyra.core.render_events import RenderEvent
     from lyra.stt import STTService
     from lyra.tts import TTSService
 
@@ -65,7 +68,10 @@ class SimpleAgent(AgentBase):
         runtime_config: RuntimeConfig | None = None,
         agents_dir: Path | None = None,
         agent_store: "AgentStore | None" = None,
+        tool_display_config: ToolDisplayConfig | None = None,
     ) -> None:
+        # S4: use ToolDisplayConfig.defaults() until S5 (#386) wires TOML loading
+        self._tool_display_config = tool_display_config or ToolDisplayConfig.defaults()
         resolved_agents_dir = agents_dir or _AGENTS_DIR
         rc = (
             runtime_config
@@ -175,7 +181,7 @@ class SimpleAgent(AgentBase):
         pool: Pool,
         *,
         on_intermediate: "Callable[[str], Awaitable[None]] | None" = None,
-    ) -> "Response | AsyncIterator[str]":
+    ) -> "Response | AsyncIterator[RenderEvent]":
         self._maybe_reload()
 
         # /voice pre-router: rewrite as voice-modality LLM request
@@ -237,15 +243,17 @@ class SimpleAgent(AgentBase):
             len(text),
         )
 
-        # Streaming path: return AsyncIterator directly for pool_processor routing
+        # Streaming path: wrap with StreamProcessor to emit RenderEvent (#387)
         _stream_fn = getattr(self._provider, "stream", None)
         if model_cfg.streaming and _stream_fn is not None:
-            return await _stream_fn(
+            stream_iter = await _stream_fn(
                 pool.pool_id,
                 text,
                 model_cfg,
                 pool._system_prompt or self.config.system_prompt,
             )
+            processor = StreamProcessor(config=self._tool_display_config)
+            return processor.process(stream_iter)
 
         # Use injected callback only if show_intermediate is enabled
         cb = on_intermediate if self.config.show_intermediate else None

@@ -240,8 +240,10 @@ class TestEvictionSessionPreserve:
         hub.cli_pool = cli_pool
 
         entry = _ProcessEntry(
-            proc=make_fake_proc([]), pool_id="pool-1",
-            model_config=DEFAULT_MODEL, session_id="sess-evict-resume",
+            proc=make_fake_proc([]),
+            pool_id="pool-1",
+            model_config=DEFAULT_MODEL,
+            session_id="sess-evict-resume",
         )
         cli_pool._entries["pool-1"] = entry
 
@@ -258,7 +260,9 @@ class TestEvictionSessionPreserve:
 
         # Next spawn: --resume passed to CLI, intent consumed (SC4/SC9)
         resumed_proc = make_fake_proc([INIT_LINE, ASSISTANT_LINE, RESULT_LINE])
-        with patch(_PATCH_TARGET, new=AsyncMock(return_value=resumed_proc)) as mock_spawn:  # noqa: E501
+        with patch(
+            _PATCH_TARGET, new=AsyncMock(return_value=resumed_proc)
+        ) as mock_spawn:  # noqa: E501
             await cli_pool.send("pool-1", "hello", DEFAULT_MODEL)
 
         cmd_args = list(mock_spawn.call_args[0])
@@ -275,8 +279,10 @@ class TestEvictionSessionPreserve:
         hub.cli_pool = cli_pool
 
         entry = _ProcessEntry(
-            proc=make_fake_proc([]), pool_id="pool-1",
-            model_config=DEFAULT_MODEL, session_id="sess-gone",
+            proc=make_fake_proc([]),
+            pool_id="pool-1",
+            model_config=DEFAULT_MODEL,
+            session_id="sess-gone",
         )
         cli_pool._entries["pool-1"] = entry
 

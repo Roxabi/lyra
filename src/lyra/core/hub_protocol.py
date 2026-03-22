@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import Any, NamedTuple, Protocol
+from typing import TYPE_CHECKING, Any, NamedTuple, Protocol
 
 from .message import (
     InboundAudio,
@@ -16,6 +16,9 @@ from .message import (
     Platform,
 )
 from .trust import TrustLevel
+
+if TYPE_CHECKING:
+    from .render_events import RenderEvent
 
 
 class ChannelAdapter(Protocol):
@@ -42,10 +45,15 @@ class ChannelAdapter(Protocol):
     async def send_streaming(
         self,
         original_msg: InboundMessage,
-        chunks: AsyncIterator[str],
+        events: AsyncIterator[RenderEvent],
         outbound: OutboundMessage | None = None,
     ) -> None:
         """Stream response to the channel with edit-in-place.
+
+        *events* yields ``RenderEvent`` objects from the ``StreamProcessor``
+        pipeline: ``ToolSummaryRenderEvent`` mid-turn (throttled tool summary
+        cards) followed by a single ``TextRenderEvent(is_final=True)`` at the
+        end of the turn.
 
         When *outbound* is provided, adapters write the platform message ID
         to ``outbound.metadata["reply_message_id"]`` after sending the

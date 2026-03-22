@@ -82,3 +82,26 @@ owner_users = []                        # numeric Discord snowflake IDs — seed
 # bot_id = "aryl"
 # default = "blocked"
 # owner_users = []
+
+# ----------------------------------------------------------------------------
+# Tool display — controls how tool calls are shown during streaming responses
+# All keys are optional; values shown are the defaults.
+# ----------------------------------------------------------------------------
+
+[tool_display]
+# names_threshold = 3     # edits before switching to count mode per file (e.g. "3 edits")
+# group_threshold = 3     # files before switching to grouped summary (e.g. "4 files edited")
+# bash_max_len    = 60    # max characters shown per bash command before truncating
+# throttle_ms     = 2000  # min milliseconds between streaming tool-summary updates
+
+[tool_display.show]
+# Per-tool visibility — set to false to silence a tool from the summary card.
+# edit       = true
+# write      = true
+# bash       = true
+# web_fetch  = true
+# web_search = true
+# agent      = true
+# read       = false   # silent by default (high-frequency, low signal)
+# grep       = false   # silent by default
+# glob       = false   # silent by default

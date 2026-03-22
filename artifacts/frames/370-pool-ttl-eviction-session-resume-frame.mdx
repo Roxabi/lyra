@@ -1,0 +1,45 @@
+---
+title: "fix(pool): TTL eviction should preserve session for auto-resume"
+issue: 370
+status: approved
+tier: F-lite
+date: 2026-03-22
+---
+
+## Problem
+
+When a pool entry is evicted after TTL expiry (`pool_manager._evict_stale_pools`), the eviction path does a raw `.pop()` on the entry without calling `_kill(preserve_session=True)`. This means `_resume_session_ids` is never populated, so the next spawn for that pool cannot auto-resume the previous session.
+
+Two prior commits established the auto-resume machinery: `bfe2e9f` introduced `_kill(preserve_session=True)` which stores the session_id in `_resume_session_ids` for pickup on next spawn, and `0e75f01` wired `ClaudeCliDriver.resume_and_reset()` as Path 3 fallback via `get_last_session(pool_id)`. The TTL eviction path bypasses `_kill()` entirely, leaving a gap: cli_pool-level auto-resume never fires after a TTL expiry, and Path 3 only covers users where the session file happens to still be on disk.
+
+The user experience gap is concrete: a user who returns after the pool TTL has expired silently starts a fresh session instead of resuming where they left off, even though the session file may still be valid. `03c603f` added a notification for this fallthrough, but the fix is to prevent the fallthrough in the first place.
+
+## Who
+
+- **Primary:** Users who return to a conversation after the pool TTL has expired — they lose session continuity silently.
+- **Secondary:** The pool/session infrastructure maintainer — the eviction path diverges from the established `_kill()` contract used everywhere else.
+
+## Constraints
+
+- `flush_pool` must continue to pass `preserve_session=False` — intentional discards must not preserve the session.
+- Path 3 (`_resolve_context`) remains the fallback for cases where `_resume_session_ids` is still empty; it must not be removed.
+- Existing tests must continue to pass.
+- The fix is local to `_evict_stale_pools` — no changes to the `_kill()` contract or `_resume_session_ids` structure.
+
+## Out of Scope
+
+- Changing how `flush_pool` works (`preserve_session=False` is intentional there).
+- Modifying Path 3 fallback behaviour — it stays as the disk-based safety net.
+- Extending TTL duration or making TTL configurable.
+- Handling the case where the session file itself has been deleted from disk (Path 3 handles that gracefully already).
+
+## Complexity
+
+**Tier: F-lite** — Targeted one-domain fix with clear before/after. The change is a 3-line swap (`_entries.pop` → `_kill(preserve_session=True)`) in `_evict_stale_pools`, plus a new test scenario. Architecture label reflects that this closes a gap in the established resume contract across pool/session machinery.
+
+Signals observed:
+- 3 key files, all in `src/lyra/core/`
+- Single domain: pool lifecycle management
+- No new patterns — uses existing `_kill(preserve_session=True)` contract
+- `<!-- complexity: 2 -->` in issue body
+- P2-medium label (not L/XL)

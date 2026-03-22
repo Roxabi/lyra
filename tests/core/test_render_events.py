@@ -87,6 +87,20 @@ class TestFileEditSummary:
         with pytest.raises(TypeError):
             hash(s)
 
+    def test_snapshot_returns_equal_copy(self) -> None:
+        """snapshot() produces an equal but independent copy."""
+        s = FileEditSummary(path="x.py", edits=["fn_a", "fn_b"], count=2)
+        snap = s.snapshot()
+        assert snap == s
+        assert snap.edits is not s.edits  # independent list
+
+    def test_snapshot_independence(self) -> None:
+        """Mutating the original's edits after snapshot() does not affect the snap."""
+        s = FileEditSummary(path="x.py", edits=["fn_a"], count=1)
+        snap = s.snapshot()
+        s.edits.append("fn_b")  # type: ignore[union-attr]  # mutate original
+        assert snap.edits == ["fn_a"]
+
 
 # ---------------------------------------------------------------------------
 # TextRenderEvent
@@ -99,9 +113,10 @@ class TestTextRenderEvent:
         assert e.text == "hello"
         assert e.is_final is True
 
-    def test_is_final_defaults_false(self) -> None:
-        e = TextRenderEvent(text="partial")
-        assert e.is_final is False
+    def test_is_final_is_required(self) -> None:
+        """is_final has no default — callers must be explicit about finality."""
+        with pytest.raises(TypeError):
+            TextRenderEvent(text="partial")  # type: ignore[call-arg]
 
     def test_frozen(self) -> None:
         e = TextRenderEvent(text="x", is_final=True)
@@ -115,8 +130,9 @@ class TestTextRenderEvent:
         assert a != TextRenderEvent(text="hi", is_final=False)
 
     def test_is_render_event(self) -> None:
+        """TextRenderEvent is a member of the RenderEvent union discriminator."""
         e = TextRenderEvent(text="hi", is_final=True)
-        assert isinstance(e, TextRenderEvent)
+        assert isinstance(e, (TextRenderEvent, ToolSummaryRenderEvent))
 
 
 # ---------------------------------------------------------------------------

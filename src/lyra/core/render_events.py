@@ -40,11 +40,23 @@ class FileEditSummary:
     When ``count > names_threshold``, ``edits`` is cleared and only ``count``
     is shown (count mode). When ``len(files) >= group_threshold``, the adapter
     renders a grouped summary instead of per-file detail.
+
+    Use :meth:`snapshot` to produce a safe copy before embedding in an emitted
+    event — never pass a live accumulator reference directly.
     """
 
     path: str
     edits: list[str] = field(default_factory=list)
     count: int = 0
+
+    def snapshot(self) -> "FileEditSummary":
+        """Return a shallow copy safe to embed in an emitted ``RenderEvent``.
+
+        ``StreamProcessor`` must call this before passing an accumulator into
+        ``ToolSummaryRenderEvent`` to prevent shared-reference mutation of
+        already-emitted events.
+        """
+        return FileEditSummary(path=self.path, edits=list(self.edits), count=self.count)
 
 
 @dataclass(frozen=True)
@@ -57,7 +69,7 @@ class TextRenderEvent:
     """
 
     text: str
-    is_final: bool = False
+    is_final: bool
 
 
 @dataclass(frozen=True)

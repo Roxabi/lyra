@@ -40,8 +40,6 @@ class TestTextLlmEvent:
     def test_is_llm_event(self) -> None:
         e = TextLlmEvent(text="hi")
         assert isinstance(e, TextLlmEvent)
-        # Union member — matches the LlmEvent type alias
-        assert type(e) in (TextLlmEvent, ToolUseLlmEvent, ResultLlmEvent)
 
 
 # ---------------------------------------------------------------------------

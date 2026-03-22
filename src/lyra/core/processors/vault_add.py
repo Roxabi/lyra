@@ -79,13 +79,17 @@ class VaultAddProcessor(ScrapingProcessor):
         vault_note = ""
         try:
             await self.tools.vault.add(title, tags, url, response.content, timeout=30.0)
+            vault_note = "\n\n✅ Saved to vault."
         except VaultWriteFailed as exc:
             log.warning("VaultAddProcessor: vault write failed (%s)", exc)
             if exc.reason == "not_available":
-                vault_note = "\n\n(vault CLI not available — summary not saved)"
+                vault_note = "\n\n⚠️ Vault CLI not available — summary not saved."
             else:
-                vault_note = "\n\n(vault write failed — summary not saved)"
+                vault_note = "\n\n⚠️ Vault write failed — summary not saved."
+        except Exception as exc:
+            log.warning(
+                "VaultAddProcessor: unexpected vault error: %s", exc, exc_info=True
+            )
+            vault_note = "\n\n⚠️ Vault write failed — summary not saved."
 
-        if vault_note:
-            return dataclasses.replace(response, content=response.content + vault_note)
-        return response
+        return dataclasses.replace(response, content=response.content + vault_note)

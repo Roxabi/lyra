@@ -88,7 +88,7 @@ class TestVaultAddProcessorPost:
         assert "tech" in call_kwargs.args[1]  # tags list
         assert "python" in call_kwargs.args[1]
         assert call_kwargs.args[2] == "https://example.com"  # url
-        assert result is response  # response returned unchanged on success
+        assert "✅ Saved to vault." in result.content  # success recap appended
 
     async def test_vault_not_available_appends_note_to_response(self) -> None:
         # Arrange
@@ -105,7 +105,8 @@ class TestVaultAddProcessorPost:
         result = await proc.post(msg, response)
 
         # Assert
-        assert "vault CLI not available" in result.content
+        assert "⚠️" in result.content
+        assert "Vault CLI not available" in result.content
 
     async def test_vault_write_failed_appends_generic_note(self) -> None:
         # Arrange
@@ -122,7 +123,26 @@ class TestVaultAddProcessorPost:
         result = await proc.post(msg, response)
 
         # Assert
-        assert "vault write failed" in result.content
+        assert "⚠️" in result.content
+        assert "Vault write failed" in result.content
+
+    async def test_unexpected_exception_appends_fail_note(self) -> None:
+        # Arrange — vault.add raises something other than VaultWriteFailed
+        tools = make_tools(vault_side_effect=RuntimeError("disk full"))
+        proc = VaultAddProcessor(tools)
+        msg = make_msg(
+            text="/vault-add https://example.com",
+            command_name="vault-add",
+            command_args="https://example.com",
+        )
+        response = Response(content="Title: Page\nTags: a\n\nSummary.")
+
+        # Act
+        result = await proc.post(msg, response)
+
+        # Assert — unexpected exception is caught and a fail note is still shown
+        assert "⚠️" in result.content
+        assert "Vault write failed" in result.content
 
     async def test_empty_url_in_msg_returns_response_unchanged(self) -> None:
         # Arrange
@@ -158,8 +178,9 @@ class TestVaultAddProcessorPost:
         # Act
         result = await proc.post(msg, response)
 
-        # Assert — on success, response is returned without modification
-        assert result.content == original_content
+        # Assert — success recap is appended to original content
+        assert result.content.startswith(original_content)
+        assert "✅ Saved to vault." in result.content
 
     async def test_falls_back_to_url_as_title_when_no_title_line(self) -> None:
         # Arrange

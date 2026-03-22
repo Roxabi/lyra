@@ -6,7 +6,9 @@ When the section is absent, ``ToolDisplayConfig.defaults()`` is used.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import dataclasses
+from dataclasses import dataclass, field, fields
+from types import MappingProxyType
 
 # Canonical show-key names (lowercase).  StreamProcessor normalises tool_name
 # to lowercase before lookup.
@@ -41,17 +43,42 @@ class ToolDisplayConfig:
     throttle_ms:
         Minimum milliseconds between consecutive ``ToolSummaryRenderEvent``
         emissions during a single turn.  The final ``is_complete=True`` emission
-        always bypasses this throttle.  Default: 2000.
+        always bypasses this throttle.  Default: 2000.  Use 0 to disable
+        throttling entirely.
     show:
-        Mapping of tool name → whether to surface the call in the summary card.
-        Keys not present in this map are treated as ``False`` (silent).
+        Read-only mapping of tool name → whether to surface the call in the
+        summary card.  Keys not present in this map are treated as ``False``
+        (silent).  Mutation raises ``TypeError``.
     """
 
     names_threshold: int = 3
     group_threshold: int = 3
     bash_max_len: int = 60
     throttle_ms: int = 2000
-    show: dict[str, bool] = field(default_factory=lambda: dict(_DEFAULT_SHOW))
+    show: MappingProxyType[str, bool] = field(
+        default_factory=lambda: MappingProxyType(dict(_DEFAULT_SHOW))
+    )
+
+    def __post_init__(self) -> None:
+        """Validate numeric fields on construction.
+
+        Raises
+        ------
+        ValueError
+            If any numeric field is out of its acceptable range.
+        """
+        if self.names_threshold < 1:
+            raise ValueError(
+                f"names_threshold must be >= 1, got {self.names_threshold}"
+            )
+        if self.group_threshold < 1:
+            raise ValueError(
+                f"group_threshold must be >= 1, got {self.group_threshold}"
+            )
+        if self.bash_max_len < 1:
+            raise ValueError(f"bash_max_len must be >= 1, got {self.bash_max_len}")
+        if self.throttle_ms < 0:
+            raise ValueError(f"throttle_ms must be >= 0, got {self.throttle_ms}")
 
     @classmethod
     def defaults(cls) -> ToolDisplayConfig:
@@ -73,17 +100,33 @@ class ToolDisplayConfig:
         Args:
             data: Raw dict from the ``[tool_display]`` TOML section.
                   An empty dict returns ``ToolDisplayConfig.defaults()``.
+
+        Raises:
+            ValueError: If a numeric field value cannot be coerced to ``int``,
+                        or if a numeric field is out of its valid range.
         """
         if not data:
             return cls.defaults()
 
+        # Use the authoritative dataclasses API rather than relying on CPython's
+        # implementation detail of scalar field defaults being set as class attrs.
+        _field_defaults = {
+            f.name: f.default
+            for f in fields(cls)
+            if f.default is not dataclasses.MISSING
+        }
+
         show_overrides: dict[str, bool] = data.get("show", {})
-        merged_show = {**_DEFAULT_SHOW, **show_overrides}
+        merged_show = MappingProxyType({**_DEFAULT_SHOW, **show_overrides})
 
         return cls(
-            names_threshold=int(data.get("names_threshold", cls.names_threshold)),
-            group_threshold=int(data.get("group_threshold", cls.group_threshold)),
-            bash_max_len=int(data.get("bash_max_len", cls.bash_max_len)),
-            throttle_ms=int(data.get("throttle_ms", cls.throttle_ms)),
+            names_threshold=int(
+                data.get("names_threshold", _field_defaults["names_threshold"])
+            ),
+            group_threshold=int(
+                data.get("group_threshold", _field_defaults["group_threshold"])
+            ),
+            bash_max_len=int(data.get("bash_max_len", _field_defaults["bash_max_len"])),
+            throttle_ms=int(data.get("throttle_ms", _field_defaults["throttle_ms"])),
             show=merged_show,
         )

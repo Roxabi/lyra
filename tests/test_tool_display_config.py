@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 
 from lyra.bootstrap.config import _load_tool_display_config
@@ -64,8 +66,22 @@ class TestToolDisplayConfigDefaults:
         # Arrange
         cfg = ToolDisplayConfig.defaults()
         # Act / Assert — frozen dataclass raises FrozenInstanceError on mutation
-        with pytest.raises(Exception):
+        with pytest.raises(dataclasses.FrozenInstanceError):
             cfg.names_threshold = 99  # type: ignore[misc]
+
+    def test_show_is_read_only(self) -> None:
+        # Arrange — show is MappingProxyType; key mutation must raise TypeError
+        cfg = ToolDisplayConfig.defaults()
+        # Act / Assert
+        with pytest.raises(TypeError):
+            cfg.show["bash"] = False  # type: ignore[index]
+
+    def test_show_dict_instances_are_independent(self) -> None:
+        # Arrange — each instance must get its own MappingProxyType (no shared ref)
+        cfg1 = ToolDisplayConfig.defaults()
+        cfg2 = ToolDisplayConfig.defaults()
+        # Assert
+        assert cfg1.show is not cfg2.show
 
 
 # ---------------------------------------------------------------------------
@@ -151,6 +167,50 @@ class TestToolDisplayConfigFromDict:
         # Assert — known keys parsed, unknown tolerated
         assert cfg.names_threshold == 2
         assert "unknown_tool" in cfg.show  # merged into show dict as-is
+
+    def test_invalid_string_for_numeric_field_raises_value_error(self) -> None:
+        # Arrange — non-numeric value for a threshold field
+        data = {"names_threshold": "fast"}
+        # Act / Assert — documents that int() raises ValueError on bad input;
+        # guards against a future try/except silently swallowing this
+        with pytest.raises(ValueError):
+            ToolDisplayConfig.from_dict(data)
+
+    def test_names_threshold_zero_raises_value_error(self) -> None:
+        # Arrange
+        data = {"names_threshold": 0}
+        # Act / Assert
+        with pytest.raises(ValueError, match="names_threshold"):
+            ToolDisplayConfig.from_dict(data)
+
+    def test_group_threshold_zero_raises_value_error(self) -> None:
+        # Arrange
+        data = {"group_threshold": 0}
+        # Act / Assert
+        with pytest.raises(ValueError, match="group_threshold"):
+            ToolDisplayConfig.from_dict(data)
+
+    def test_bash_max_len_zero_raises_value_error(self) -> None:
+        # Arrange
+        data = {"bash_max_len": 0}
+        # Act / Assert
+        with pytest.raises(ValueError, match="bash_max_len"):
+            ToolDisplayConfig.from_dict(data)
+
+    def test_throttle_ms_negative_raises_value_error(self) -> None:
+        # Arrange
+        data = {"throttle_ms": -1}
+        # Act / Assert
+        with pytest.raises(ValueError, match="throttle_ms"):
+            ToolDisplayConfig.from_dict(data)
+
+    def test_throttle_ms_zero_is_valid(self) -> None:
+        # Arrange — throttle_ms=0 means "no throttle"; explicitly allowed (>= 0)
+        data = {"throttle_ms": 0}
+        # Act
+        cfg = ToolDisplayConfig.from_dict(data)
+        # Assert
+        assert cfg.throttle_ms == 0
 
 
 # ---------------------------------------------------------------------------

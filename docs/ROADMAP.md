@@ -227,7 +227,7 @@ See `docs/ARCHITECTURE.md` → **Python-first Paradigm** for the full definition
 
 ## Refactoring policy
 
-Feature work accumulates silently. `core/` reached 60+ files; 13 files exceeded 300 lines. Without a cadence, the mental model degrades and agent context costs rise.
+Feature work accumulates silently. `core/` had grown to 60+ files; over a dozen exceeded 300 lines at peak. Without a cadence, the mental model degrades and agent context costs rise.
 
 **Cadence:** for every 2 feature issues closed, open 1 refactor issue.
 
@@ -239,9 +239,9 @@ Feature work accumulates silently. `core/` reached 60+ files; 13 files exceeded 
 
 **Goal:** minimize total file count. Fewer files = faster agent mental models = lower error rate.
 
-**Triage checklist (on feature issue close):**
-- [ ] Has this closure crossed the 2-feature threshold? → open a refactor issue if yes
-- [ ] Did this feature add new files that are already oversized? → open a targeted refactor issue immediately
+**Triage steps (on feature issue close):**
+1. Have 2 feature issues been closed since the last refactor issue was opened? → open a refactor issue if yes
+2. Did this feature add new files that are already oversized? → open a targeted refactor issue immediately
 
 ---
 

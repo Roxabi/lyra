@@ -275,7 +275,9 @@ class TestKillPreservesSession:
         pool = CliPool()
         proc = make_fake_proc([])
         entry = _ProcessEntry(
-            proc=proc, pool_id="pool-1", model_config=DEFAULT_MODEL,
+            proc=proc,
+            pool_id="pool-1",
+            model_config=DEFAULT_MODEL,
             session_id="sess-abc123-deadbeef",
         )
         pool._entries["pool-1"] = entry
@@ -289,7 +291,9 @@ class TestKillPreservesSession:
         pool = CliPool()
         proc = make_fake_proc([])
         entry = _ProcessEntry(
-            proc=proc, pool_id="pool-1", model_config=DEFAULT_MODEL,
+            proc=proc,
+            pool_id="pool-1",
+            model_config=DEFAULT_MODEL,
             session_id="sess-abc123-deadbeef",
         )
         pool._entries["pool-1"] = entry
@@ -303,7 +307,9 @@ class TestKillPreservesSession:
         pool = CliPool()
         proc = make_fake_proc([])
         entry = _ProcessEntry(
-            proc=proc, pool_id="pool-1", model_config=DEFAULT_MODEL,
+            proc=proc,
+            pool_id="pool-1",
+            model_config=DEFAULT_MODEL,
             session_id=None,
         )
         pool._entries["pool-1"] = entry
@@ -317,7 +323,9 @@ class TestKillPreservesSession:
         pool = CliPool()
         proc = make_fake_proc([])
         entry = _ProcessEntry(
-            proc=proc, pool_id="pool-1", model_config=DEFAULT_MODEL,
+            proc=proc,
+            pool_id="pool-1",
+            model_config=DEFAULT_MODEL,
             session_id="sess-abc123-deadbeef",
         )
         pool._entries["pool-1"] = entry
@@ -331,7 +339,9 @@ class TestKillPreservesSession:
         pool = CliPool()
         proc = make_fake_proc([INIT_LINE])
         entry = _ProcessEntry(
-            proc=proc, pool_id="p1", model_config=DEFAULT_MODEL,
+            proc=proc,
+            pool_id="p1",
+            model_config=DEFAULT_MODEL,
             session_id="sess-to-resume",
         )
         pool._entries["p1"] = entry
@@ -352,7 +362,9 @@ class TestKillPreservesSession:
         pool = CliPool()
         proc = make_fake_proc([])
         entry = _ProcessEntry(
-            proc=proc, pool_id="p1", model_config=DEFAULT_MODEL,
+            proc=proc,
+            pool_id="p1",
+            model_config=DEFAULT_MODEL,
             session_id="sess-abc",
         )
         pool._entries["p1"] = entry
@@ -366,7 +378,9 @@ class TestKillPreservesSession:
         pool = CliPool()
         proc = make_fake_proc([])
         entry = _ProcessEntry(
-            proc=proc, pool_id="p1", model_config=DEFAULT_MODEL,
+            proc=proc,
+            pool_id="p1",
+            model_config=DEFAULT_MODEL,
             session_id="sess-abc",
         )
         pool._entries["p1"] = entry
@@ -428,7 +442,9 @@ class TestSyncEvictEntry:
         pool = CliPool()
         proc = make_fake_proc([])
         entry = _ProcessEntry(
-            proc=proc, pool_id="pool-1", model_config=DEFAULT_MODEL,
+            proc=proc,
+            pool_id="pool-1",
+            model_config=DEFAULT_MODEL,
             session_id="sess-abc123-deadbeef",
         )
         pool._entries["pool-1"] = entry
@@ -446,7 +462,9 @@ class TestSyncEvictEntry:
         pool = CliPool()
         proc = make_fake_proc([])
         entry = _ProcessEntry(
-            proc=proc, pool_id="pool-1", model_config=DEFAULT_MODEL,
+            proc=proc,
+            pool_id="pool-1",
+            model_config=DEFAULT_MODEL,
             session_id="sess-abc123-deadbeef",
         )
         pool._entries["pool-1"] = entry
@@ -464,7 +482,9 @@ class TestSyncEvictEntry:
         pool = CliPool()
         proc = make_fake_proc([])
         entry = _ProcessEntry(
-            proc=proc, pool_id="pool-1", model_config=DEFAULT_MODEL,
+            proc=proc,
+            pool_id="pool-1",
+            model_config=DEFAULT_MODEL,
             session_id=None,
         )
         pool._entries["pool-1"] = entry
@@ -482,7 +502,9 @@ class TestSyncEvictEntry:
         pool = CliPool()
         proc = make_fake_proc([])
         entry = _ProcessEntry(
-            proc=proc, pool_id="pool-1", model_config=DEFAULT_MODEL,
+            proc=proc,
+            pool_id="pool-1",
+            model_config=DEFAULT_MODEL,
             session_id="sess-abc123-deadbeef",
         )
         pool._entries["pool-1"] = entry

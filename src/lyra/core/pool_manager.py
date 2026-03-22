@@ -74,11 +74,11 @@ class PoolManager:
                     task = asyncio.create_task(agent.flush_session(pool, "idle"))
                     self._hub._memory_tasks.add(task)
                     task.add_done_callback(self._hub._memory_tasks.discard)
-            # Kill orphaned CLI process synchronously (pop entry now,
-            # schedule terminate) so a new pool can't claim the old process
+            # Evict CLI entry synchronously so a new pool can't claim the old
+            # process. preserve_session=True stores session_id for auto-resume
+            # on next spawn (mirrors _kill contract; see #370).
             if self._hub.cli_pool is not None:
-                self._hub.cli_pool._entries.pop(pid, None)
-                self._hub.cli_pool._cwd_overrides.pop(pid, None)
+                self._hub.cli_pool._sync_evict_entry(pid, preserve_session=True)
         if stale:
             log.info("evicted %d stale pool(s)", len(stale))
             log.debug("evicted pool IDs: %s", stale)

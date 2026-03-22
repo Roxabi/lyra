@@ -4,13 +4,22 @@ from __future__ import annotations
 
 import asyncio
 import time
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from lyra.core.cli_pool import CliPool, _ProcessEntry
 from lyra.core.hub import Hub
 from lyra.core.message import Platform
 from lyra.core.pool import Pool
+from tests.core.conftest_cli_pool import (
+    _PATCH_TARGET,
+    ASSISTANT_LINE,
+    DEFAULT_MODEL,
+    INIT_LINE,
+    RESULT_LINE,
+    make_fake_proc,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -194,10 +203,7 @@ class TestEvictionFlushSession:
         agent = _StubAgent()
         hub.register_agent(agent)  # type: ignore[arg-type]
 
-        # Simulate cli_pool with entries
         cli_pool = MagicMock()
-        cli_pool._entries = {"pool-1": "some-entry"}
-        cli_pool._cwd_overrides = {"pool-1": "/tmp"}
         hub.cli_pool = cli_pool
 
         pool = hub.get_or_create_pool("pool-1", "test-agent")
@@ -206,5 +212,92 @@ class TestEvictionFlushSession:
 
         hub.get_or_create_pool("pool-2", "test-agent")
 
+        cli_pool._sync_evict_entry.assert_called_once_with(
+            "pool-1", preserve_session=True
+        )
+
+
+# ---------------------------------------------------------------------------
+# TestEvictionSessionPreserve — #370
+# ---------------------------------------------------------------------------
+
+
+class TestEvictionSessionPreserve:
+    """TTL eviction must preserve session_id in _resume_session_ids for auto-resume."""
+
+    @pytest.mark.asyncio()
+    async def test_eviction_preserves_session_for_auto_resume(self) -> None:
+        """After TTL eviction: session preserved AND next _spawn passes --resume.
+
+        SC3: _resume_session_ids populated before entry removed.
+        SC4/SC9: next send() triggers _spawn with --resume <session_id> and
+                 consumes the intent (one-shot).
+        SC5: FRESH notification implicitly suppressed — --resume causes CLI to
+             resume the existing session rather than starting fresh.
+        """
+        hub = _make_hub(pool_ttl=0.1)
+        cli_pool = CliPool()
+        hub.cli_pool = cli_pool
+
+        entry = _ProcessEntry(
+            proc=make_fake_proc([]), pool_id="pool-1",
+            model_config=DEFAULT_MODEL, session_id="sess-evict-resume",
+        )
+        cli_pool._entries["pool-1"] = entry
+
+        hub.get_or_create_pool("pool-1", "test-agent")
+        hub.pools["pool-1"]._last_active = time.monotonic() - 1.0
+        hub._pool_manager._last_eviction_check = 0.0
+
+        # Evict: session_id preserved before entry removed (SC3)
+        with patch.object(cli_pool, "_session_file_exists", return_value=True):
+            hub.get_or_create_pool("pool-2", "test-agent")
+
+        assert cli_pool._resume_session_ids.get("pool-1") == "sess-evict-resume"
         assert "pool-1" not in cli_pool._entries
-        assert "pool-1" not in cli_pool._cwd_overrides
+
+        # Next spawn: --resume passed to CLI, intent consumed (SC4/SC9)
+        resumed_proc = make_fake_proc([INIT_LINE, ASSISTANT_LINE, RESULT_LINE])
+        with patch(_PATCH_TARGET, new=AsyncMock(return_value=resumed_proc)) as mock_spawn:  # noqa: E501
+            await cli_pool.send("pool-1", "hello", DEFAULT_MODEL)
+
+        cmd_args = list(mock_spawn.call_args[0])
+        assert "--resume" in cmd_args, f"--resume missing in {cmd_args}"
+        assert cmd_args[cmd_args.index("--resume") + 1] == "sess-evict-resume"
+        # One-shot: intent consumed after spawn
+        assert cli_pool._resume_session_ids.get("pool-1") is None
+
+    @pytest.mark.asyncio()
+    async def test_eviction_no_session_preserved_when_file_missing(self) -> None:
+        """Session file absent at eviction time → _resume_session_ids not populated."""
+        hub = _make_hub(pool_ttl=0.1)
+        cli_pool = CliPool()
+        hub.cli_pool = cli_pool
+
+        entry = _ProcessEntry(
+            proc=make_fake_proc([]), pool_id="pool-1",
+            model_config=DEFAULT_MODEL, session_id="sess-gone",
+        )
+        cli_pool._entries["pool-1"] = entry
+
+        hub.get_or_create_pool("pool-1", "test-agent")
+        hub.pools["pool-1"]._last_active = time.monotonic() - 1.0
+        hub._pool_manager._last_eviction_check = 0.0
+
+        with patch.object(cli_pool, "_session_file_exists", return_value=False):
+            hub.get_or_create_pool("pool-2", "test-agent")
+
+        assert cli_pool._resume_session_ids.get("pool-1") is None
+        assert "pool-1" not in cli_pool._entries
+
+    @pytest.mark.asyncio()
+    async def test_flush_pool_does_not_call_sync_evict_entry(self) -> None:
+        """flush_pool (intentional disconnect) must not call _sync_evict_entry."""
+        hub = _make_hub()
+        cli_pool = MagicMock()
+        hub.cli_pool = cli_pool
+        hub.get_or_create_pool("pool-1", "test-agent")
+
+        await hub._pool_manager.flush_pool("pool-1")
+
+        cli_pool._sync_evict_entry.assert_not_called()

@@ -171,6 +171,26 @@ class _CliPoolWorker:
         """Return True if a Claude session JSONL file exists for this session_id."""
         return any(_CLAUDE_PROJECTS.glob(f"*/{session_id}.jsonl"))
 
+    def _maybe_preserve_session(
+        self, pool_id: str, entry: _ProcessEntry, *, preserve_session: bool
+    ) -> None:
+        """Write session_id to _resume_session_ids if all three conditions hold.
+
+        Shared by _kill and _sync_evict_entry — single definition of the
+        preservation contract so both callers stay in sync automatically.
+        """
+        if (
+            preserve_session
+            and entry.session_id
+            and self._session_file_exists(entry.session_id)
+        ):
+            self._resume_session_ids[pool_id] = entry.session_id  # type: ignore[attr-defined]
+            log.debug(
+                "[pool:%s] preserving session %s for auto-resume",
+                pool_id,
+                entry.session_id,
+            )
+
     def _sync_evict_entry(self, pool_id: str, *, preserve_session: bool = True) -> None:
         """Sync counterpart to _kill for use in synchronous eviction paths.
 
@@ -179,41 +199,22 @@ class _CliPoolWorker:
         set, and the session file exists on disk, stores session_id in
         _resume_session_ids for one-shot pickup by the next _spawn().
 
-        Does NOT terminate the process — the idle reaper handles cleanup on its
-        next sweep (it will find _entries[pool_id] absent and return immediately).
+        Does NOT terminate the process — once the entry is removed from _entries,
+        the idle reaper's snapshot will not include this pool_id, so the orphaned
+        process persists until natural idle-timeout or parent exit.
         """
         entry = self._entries.pop(pool_id, None)  # type: ignore[attr-defined]
         self._cwd_overrides.pop(pool_id, None)  # type: ignore[attr-defined]
         if entry is None:
             return
-        if (
-            preserve_session
-            and entry.session_id
-            and self._session_file_exists(entry.session_id)
-        ):
-            self._resume_session_ids[pool_id] = entry.session_id  # type: ignore[attr-defined]
-            log.debug(
-                "[pool:%s] sync_evict_entry: preserving session %s for auto-resume",
-                pool_id,
-                entry.session_id,
-            )
+        self._maybe_preserve_session(pool_id, entry, preserve_session=preserve_session)
 
     async def _kill(self, pool_id: str, *, preserve_session: bool = True) -> None:
         entry = self._entries.pop(pool_id, None)  # type: ignore[attr-defined]
         self._cwd_overrides.pop(pool_id, None)  # type: ignore[attr-defined]
         if entry is None:
             return
-        if (
-            preserve_session
-            and entry.session_id
-            and self._session_file_exists(entry.session_id)
-        ):
-            self._resume_session_ids[pool_id] = entry.session_id  # type: ignore[attr-defined]
-            log.debug(
-                "[pool:%s] kill: preserving session %s for auto-resume",
-                pool_id,
-                entry.session_id,
-            )
+        self._maybe_preserve_session(pool_id, entry, preserve_session=preserve_session)
         if entry.is_alive():
             try:
                 entry.proc.terminate()

@@ -457,6 +457,7 @@ class TestSyncEvictEntry:
 
         assert pool._resume_session_ids.get("pool-1") is None
         assert "pool-1" not in pool._entries
+        assert "pool-1" not in pool._cwd_overrides
 
     def test_sync_evict_entry_no_preserve_when_session_id_none(self) -> None:
         """session_id=None → _resume_session_ids not written."""
@@ -467,12 +468,14 @@ class TestSyncEvictEntry:
             session_id=None,
         )
         pool._entries["pool-1"] = entry
+        pool._cwd_overrides["pool-1"] = Path("/tmp/cwd")
 
         with patch.object(pool, "_session_file_exists", return_value=True):
             pool._sync_evict_entry("pool-1")
 
         assert pool._resume_session_ids.get("pool-1") is None
         assert "pool-1" not in pool._entries
+        assert "pool-1" not in pool._cwd_overrides
 
     def test_sync_evict_entry_no_preserve_when_file_missing(self) -> None:
         """Session file absent → _resume_session_ids not written."""
@@ -483,12 +486,14 @@ class TestSyncEvictEntry:
             session_id="sess-abc123-deadbeef",
         )
         pool._entries["pool-1"] = entry
+        pool._cwd_overrides["pool-1"] = Path("/tmp/cwd")
 
         with patch.object(pool, "_session_file_exists", return_value=False):
             pool._sync_evict_entry("pool-1")
 
         assert pool._resume_session_ids.get("pool-1") is None
         assert "pool-1" not in pool._entries
+        assert "pool-1" not in pool._cwd_overrides
 
     def test_sync_evict_entry_no_op_when_entry_absent(self) -> None:
         """pool_id not in _entries → silent no-op, no KeyError."""

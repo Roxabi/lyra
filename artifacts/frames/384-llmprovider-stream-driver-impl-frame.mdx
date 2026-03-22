@@ -1,0 +1,63 @@
+---
+title: "arch(stream): P2 — LlmProvider.stream() + driver implementations"
+issue: 384
+status: approved
+tier: F-lite
+date: 2026-03-22
+---
+
+## Problem
+
+The `LlmProvider` protocol currently only exposes `complete()`, a non-streaming interface that
+returns a single `LlmResponse` after the full LLM turn. Phase 1 (#383) established the `LlmEvent`
+type hierarchy; this phase wires `stream()` into the protocol and both drivers so that
+`SimpleAgent.process()` can iterate events as they arrive from Claude.
+
+Without `stream()`, the hexagonal streaming pipeline (Phase 3 — StreamProcessor, Phase 4 — adapters)
+has nothing to consume. Phases 2 → 3 → 4 are the critical path for real-time tool-call visibility
+in Telegram and Discord.
+
+The `ClaudeCliDriver` already has a `stream()` method but its return type is untyped and it does not
+yield `ToolUseLlmEvent` for `tool_use` content blocks. The `cli_protocol.py` `StreamingIterator`
+parses NDJSON but silently drops `content_block_start` events with `type: tool_use`.
+`AnthropicSdkDriver` has no `stream()` at all.
+
+## Who
+
+- **Primary:** Lyra engine internals — `SimpleAgent.process()` calls `provider.stream()` to drive
+  the LLM → StreamProcessor pipeline.
+- **Secondary:** Lyra developers iterating on the streaming arch (issues #371–#388).
+
+## Constraints
+
+- **Blocked by #383** — `LlmEvent` type system (`TextLlmEvent`, `ToolUseLlmEvent`, `ResultLlmEvent`)
+  must exist before this issue can be merged. Can develop in parallel.
+- **Single-turn only** — `stream()` covers one request/response cycle. Multi-turn tool-use loop
+  stays in `complete()`.
+- **`on_intermediate` not in scope** — `stream()` signature is `stream(...) → AsyncIterator[LlmEvent]`
+  only; callback-based notification is superseded by the iterator.
+- **No CB/retry on `stream()`** — circuit-breaker and retry decorators wrap `complete()` only.
+  Carry-forward known gap, not blocking.
+- **`cost_usd` unavailable on CLI driver** — `ResultLlmEvent.cost_usd` is always `None` for
+  `ClaudeCliDriver`; SDK driver fills it from the stream's final usage block.
+- **4 files, single domain** — `src/lyra/llm/` + `src/lyra/core/cli_protocol.py`.
+
+## Out of Scope
+
+- Multi-turn agentic tool-use loop (stays in `complete()`)
+- `StreamProcessor` / `RenderEvent` / channel adapter wiring (Phase 3–4, separate issues)
+- Circuit-breaker / retry wrapping of `stream()`
+- `on_intermediate` callback pattern (replaced by iterator)
+- Any change outside `llm/base.py`, `llm/drivers/sdk.py`, `llm/drivers/cli.py`, `cli_protocol.py`
+
+## Complexity
+
+**Tier: F-lite** — Single domain (LLM driver layer), 4 files, clear acceptance criteria,
+no new architecture introduced. The `ClaudeCliDriver` path is a retype + fix; the SDK path adds
+low-level event iteration already documented in the Anthropic SDK.
+
+Signals observed:
+- `size:F-lite` label on issue
+- ≤4 files, all within `llm/` + `core/`
+- No new patterns or unknowns — SDK event iteration API is known
+- Acceptance criteria fully enumerated in issue body

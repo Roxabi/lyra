@@ -4,6 +4,15 @@ These frozen dataclasses represent the output side of the StreamProcessor —
 events consumed by outbound adapters (Telegram, Discord, TTS tee, turn logger).
 
 No framework imports (aiogram, discord, anthropic) are permitted in this module.
+
+Immutability contract
+---------------------
+All classes use ``frozen=True`` which prevents *re-assignment* of fields
+(``event.field = x`` raises ``FrozenInstanceError``) but does **not** prevent
+in-place mutation of mutable containers (e.g. ``event.edits.append(...)``
+succeeds). ``StreamProcessor`` must always construct a fresh copy of any
+mutable accumulator before passing it into an event — never share the live
+accumulator reference with an already-emitted event.
 """
 
 from __future__ import annotations

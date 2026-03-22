@@ -82,6 +82,7 @@ show_missing = true
 
 [tool.pyright]
 pythonVersion = "3.12"
+typeCheckingMode = "basic"
 include = ["src", "tests"]
 venvPath = "."
 venv = ".venv"

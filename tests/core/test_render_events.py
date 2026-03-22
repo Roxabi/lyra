@@ -42,6 +42,12 @@ class TestSilentCounts:
         assert SilentCounts(reads=1) == SilentCounts(reads=1)
         assert SilentCounts(reads=1) != SilentCounts(reads=2)
 
+    def test_is_hashable(self) -> None:
+        """SilentCounts is hashable — all fields are scalars."""
+        sc = SilentCounts(reads=1, greps=2, globs=3)
+        assert hash(sc) == hash(SilentCounts(reads=1, greps=2, globs=3))
+        assert {sc}  # can be placed in a set
+
 
 # ---------------------------------------------------------------------------
 # FileEditSummary
@@ -74,6 +80,12 @@ class TestFileEditSummary:
         a = FileEditSummary(path="x.py", edits=["f"], count=1)
         b = FileEditSummary(path="x.py", edits=["f"], count=1)
         assert a == b
+
+    def test_is_not_hashable(self) -> None:
+        """FileEditSummary is NOT hashable — edits is a list (mutable)."""
+        s = FileEditSummary(path="x.py")
+        with pytest.raises(TypeError):
+            hash(s)
 
 
 # ---------------------------------------------------------------------------
@@ -145,6 +157,8 @@ class TestToolSummaryRenderEvent:
         b = ToolSummaryRenderEvent()
         assert a.files is not b.files
         assert a.bash_commands is not b.bash_commands
+        assert a.web_fetches is not b.web_fetches
+        assert a.agent_calls is not b.agent_calls
         assert a.silent_counts is not b.silent_counts
 
     def test_frozen(self) -> None:
@@ -157,6 +171,12 @@ class TestToolSummaryRenderEvent:
         b = ToolSummaryRenderEvent(bash_commands=["ls"])
         assert a == b
         assert a != ToolSummaryRenderEvent(bash_commands=["pwd"])
+
+    def test_is_not_hashable(self) -> None:
+        """ToolSummaryRenderEvent is NOT hashable — contains mutable containers."""
+        e = ToolSummaryRenderEvent()
+        with pytest.raises(TypeError):
+            hash(e)
 
 
 # ---------------------------------------------------------------------------
@@ -178,6 +198,18 @@ class TestRenderEventUnion:
 
         assert _RenderEvent is RenderEvent
 
+    def test_all_exports_complete(self) -> None:
+        """Ensure __all__ matches the exact expected public API."""
+        import lyra.core.render_events as _mod
+
+        assert set(_mod.__all__) == {
+            "FileEditSummary",
+            "RenderEvent",
+            "SilentCounts",
+            "TextRenderEvent",
+            "ToolSummaryRenderEvent",
+        }
+
 
 # ---------------------------------------------------------------------------
 # Hexagonal boundary — no framework imports
@@ -188,16 +220,17 @@ class TestHexagonalBoundary:
     def test_grep_no_framework_imports(self) -> None:
         """Programmatic check: neither module contains forbidden imports."""
         import ast
-        import pathlib
+        from pathlib import Path
 
         forbidden = {"aiogram", "discord", "anthropic"}
+        # Anchor to this file's location so the test works from any cwd.
+        _root = Path(__file__).resolve().parent.parent.parent
         paths = [
-            pathlib.Path("src/lyra/llm/events.py"),
-            pathlib.Path("src/lyra/core/render_events.py"),
+            _root / "src" / "lyra" / "llm" / "events.py",
+            _root / "src" / "lyra" / "core" / "render_events.py",
         ]
         for path in paths:
-            if not path.exists():
-                continue
+            assert path.exists(), f"Source not found: {path}"
             tree = ast.parse(path.read_text())
             for node in ast.walk(tree):
                 if isinstance(node, (ast.Import, ast.ImportFrom)):

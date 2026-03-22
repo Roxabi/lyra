@@ -5,11 +5,19 @@ streaming. They form the input side of the LLM → StreamProcessor → RenderEve
 pipeline.
 
 No framework imports (aiogram, discord, anthropic) are permitted in this module.
+
+Immutability contract
+---------------------
+All classes use ``frozen=True`` which prevents *re-assignment* of fields
+(``event.field = x`` raises ``FrozenInstanceError``) but does **not** prevent
+in-place mutation of mutable containers (``event.input["k"] = v`` succeeds).
+Callers must never mutate event objects after construction.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -30,7 +38,7 @@ class ToolUseLlmEvent:
 
     tool_name: str
     tool_id: str
-    input: dict = field(default_factory=dict)
+    input: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

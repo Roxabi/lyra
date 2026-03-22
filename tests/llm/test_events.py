@@ -76,6 +76,17 @@ class TestToolUseLlmEvent:
         b = ToolUseLlmEvent(tool_name="Edit", tool_id="t1", input={})
         assert a == b
 
+    def test_is_not_hashable(self) -> None:
+        """ToolUseLlmEvent is NOT hashable — input is a dict (mutable).
+
+        Note the asymmetry: TextLlmEvent and ResultLlmEvent (scalar fields only)
+        are hashable; ToolUseLlmEvent is not. Do not rely on hash() for LlmEvent
+        union values without checking the concrete type first.
+        """
+        e = ToolUseLlmEvent(tool_name="Edit", tool_id="t1")
+        with pytest.raises(TypeError):
+            hash(e)
+
 
 # ---------------------------------------------------------------------------
 # ResultLlmEvent
@@ -132,3 +143,14 @@ class TestLlmEventUnion:
         from lyra.llm.events import LlmEvent as _LlmEvent  # noqa: F401
 
         assert _LlmEvent is LlmEvent
+
+    def test_all_exports_complete(self) -> None:
+        """Ensure __all__ matches the exact expected public API."""
+        import lyra.llm.events as _mod
+
+        assert set(_mod.__all__) == {
+            "LlmEvent",
+            "ResultLlmEvent",
+            "TextLlmEvent",
+            "ToolUseLlmEvent",
+        }

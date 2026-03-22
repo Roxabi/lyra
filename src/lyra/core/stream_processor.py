@@ -21,7 +21,7 @@ Only stdlib and lyra-internal modules may be used.
 from __future__ import annotations
 
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 
 from lyra.core.render_events import (
     FileEditSummary,
@@ -74,7 +74,7 @@ class StreamProcessor:
 
     async def process(
         self, events: AsyncIterator[LlmEvent]
-    ) -> AsyncIterator[RenderEvent]:
+    ) -> AsyncGenerator[RenderEvent, None]:
         """Process an async stream of ``LlmEvent`` objects.
 
         Yields ``RenderEvent`` objects as they are produced.
@@ -90,23 +90,39 @@ class StreamProcessor:
             ``ToolSummaryRenderEvent`` mid-turn (throttled) and at turn end
             (unconditional), followed by ``TextRenderEvent`` at turn end.
         """
+        _result_received = False
         async for event in events:
             if isinstance(event, TextLlmEvent):
                 self._pending_text += event.text
 
             elif isinstance(event, ToolUseLlmEvent):
                 self._accumulate(event)
-                if self._should_emit():
+                if self._should_emit() and self._has_any_tool_events():
                     yield self._snapshot()
 
             elif isinstance(event, ResultLlmEvent):
+                _result_received = True
                 if self._has_any_tool_events():
                     yield self._snapshot(is_complete=True)
                 yield TextRenderEvent(text=self._pending_text, is_final=True)
 
+        # Stream ended without ResultLlmEvent (truncation or upstream error)
+        if not _result_received:
+            if self._has_any_tool_events():
+                yield self._snapshot(is_complete=True)
+            if self._pending_text:
+                yield TextRenderEvent(text=self._pending_text, is_final=False)
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _accumulate_web(
+        self, event: ToolUseLlmEvent, *, show_key: str, input_key: str
+    ) -> None:
+        """Append a web tool input value if the show flag is set."""
+        if self._config.show.get(show_key, False):
+            self._web_fetches.append(event.input.get(input_key, ""))
 
     def _accumulate_file_edit(self, event: ToolUseLlmEvent) -> None:
         """Update the per-file accumulator for an edit or write tool call."""
@@ -145,9 +161,11 @@ class StreamProcessor:
         elif tool_key == "glob":
             self._silent_globs += 1
 
-        elif tool_key in ("web_fetch", "web_search", "webfetch", "websearch"):
-            if self._config.show.get("web_fetch", False):
-                self._web_fetches.append(event.input.get("url", ""))
+        elif tool_key in ("web_fetch", "webfetch"):
+            self._accumulate_web(event, show_key="web_fetch", input_key="url")
+
+        elif tool_key in ("web_search", "websearch"):
+            self._accumulate_web(event, show_key="web_search", input_key="query")
 
         elif tool_key == "agent":
             if self._config.show.get("agent", False):

@@ -100,6 +100,27 @@ class TestStreamProcessor:
         assert text.is_final is True
         assert text.text == "Refactoring..."
 
+    async def test_write_tool_tracked(self) -> None:
+        """Write tool calls are accumulated into the files dict."""
+        # Arrange
+        processor = StreamProcessor(cfg())
+        events = async_events(
+            ToolUseLlmEvent(
+                tool_name="Write", tool_id="w1", input={"path": "src/new.py"}
+            ),
+            ResultLlmEvent(is_error=False, duration_ms=50),
+        )
+
+        # Act
+        result = await collect(processor.process(events))
+
+        # Assert
+        final_summaries = [
+            e for e in result if isinstance(e, ToolSummaryRenderEvent) and e.is_complete
+        ]
+        assert len(final_summaries) == 1
+        assert "src/new.py" in final_summaries[0].files
+
     # ------------------------------------------------------------------
     # T11 — Five edits at threshold (SC-4: names mode)
     # ------------------------------------------------------------------
@@ -304,6 +325,8 @@ class TestStreamProcessor:
         assert final.silent_counts.globs == 1
         assert final.files == {}
         assert final.bash_commands == []
+        assert final.web_fetches == []
+        assert final.agent_calls == []
 
     # ------------------------------------------------------------------
     # T18 — WebFetch visible (SC-9)
@@ -331,6 +354,50 @@ class TestStreamProcessor:
         ]
         assert len(final_summaries) == 1
         assert len(final_summaries[0].web_fetches) == 1
+
+    async def test_web_search_visible(self) -> None:
+        """WebSearch calls are recorded in the web_fetches list."""
+        # Arrange
+        processor = StreamProcessor(cfg())
+        events = async_events(
+            ToolUseLlmEvent(
+                tool_name="WebSearch",
+                tool_id="ws1",
+                input={"query": "python asyncio"},
+            ),
+            ResultLlmEvent(is_error=False, duration_ms=50),
+        )
+
+        # Act
+        result = await collect(processor.process(events))
+
+        # Assert
+        final_summaries = [
+            e for e in result if isinstance(e, ToolSummaryRenderEvent) and e.is_complete
+        ]
+        assert len(final_summaries) == 1
+        assert len(final_summaries[0].web_fetches) == 1
+
+    async def test_web_fetch_hidden_when_show_false(self) -> None:
+        """WebFetch is silently dropped when show['web_fetch']=False."""
+        # Arrange
+        config = ToolDisplayConfig.from_dict({"show": {"web_fetch": False}})
+        processor = StreamProcessor(config)
+        events = async_events(
+            ToolUseLlmEvent(
+                tool_name="WebFetch",
+                tool_id="wf1",
+                input={"url": "https://example.com"},
+            ),
+            ResultLlmEvent(is_error=False, duration_ms=50),
+        )
+
+        # Act
+        result = await collect(processor.process(events))
+
+        # Assert — event dropped: no ToolSummaryRenderEvent emitted
+        tool_summaries = [e for e in result if isinstance(e, ToolSummaryRenderEvent)]
+        assert len(tool_summaries) == 0
 
     # ------------------------------------------------------------------
     # T19 — Agent calls accumulation (SC-10)
@@ -380,6 +447,14 @@ class TestStreamProcessor:
             e for e in result if isinstance(e, ToolSummaryRenderEvent) and e.is_complete
         ]
         assert len(complete_summaries) == 1
+
+        # Also verify throttle does not suppress the first mid-turn event
+        mid_summaries = [
+            e
+            for e in result
+            if isinstance(e, ToolSummaryRenderEvent) and not e.is_complete
+        ]
+        assert len(mid_summaries) == 1
 
     # ------------------------------------------------------------------
     # T21 — Throttle suppresses duplicate mid-turn events (SC-8)
@@ -453,6 +528,32 @@ class TestStreamProcessor:
         text_events = [e for e in result if isinstance(e, TextRenderEvent)]
         assert len(text_events) == 1
         assert text_events[0].text == "Hello world"
+
+    async def test_empty_stream(self) -> None:
+        """Empty event stream yields no events."""
+        # Arrange
+        processor = StreamProcessor(cfg())
+
+        # Act
+        result = await collect(processor.process(async_events()))
+
+        # Assert
+        assert result == []
+
+    async def test_no_result_event(self) -> None:
+        """Stream truncated without ResultLlmEvent flushes pending state."""
+        # Arrange
+        processor = StreamProcessor(cfg())
+        events = async_events(TextLlmEvent(text="partial response"))
+
+        # Act
+        result = await collect(processor.process(events))
+
+        # Assert — pending text emitted with is_final=False to signal truncation
+        text_events = [e for e in result if isinstance(e, TextRenderEvent)]
+        assert len(text_events) == 1
+        assert text_events[0].text == "partial response"
+        assert text_events[0].is_final is False
 
     # ------------------------------------------------------------------
     # T24 — Hexagonal boundary (no framework imports in stream_processor)

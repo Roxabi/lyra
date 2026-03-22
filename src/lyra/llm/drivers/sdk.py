@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import time
+from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
@@ -19,6 +21,7 @@ from lyra.errors import (
     ProviderRateLimitError,
 )
 from lyra.llm.base import LlmResult
+from lyra.llm.events import LlmEvent, ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
 
 log = logging.getLogger(__name__)
 
@@ -174,6 +177,86 @@ class AnthropicSdkDriver:
                 "AnthropicSdkDriver unexpected error [pool:%s]", pool_id, exc_info=True
             )
             raise ProviderError(str(exc), provider="anthropic", retryable=True) from exc
+
+    async def stream(  # noqa: PLR0913
+        self,
+        pool_id: str,
+        text: str,
+        model_cfg: ModelConfig,
+        system_prompt: str,
+        *,
+        messages: list[dict] | None = None,
+    ) -> AsyncIterator[LlmEvent]:
+        """Return an async iterator of LlmEvents for a single-turn streaming request.
+
+        Emits TextLlmEvent per text delta, ToolUseLlmEvent at content block
+        start for tool_use blocks, and a final ResultLlmEvent with timing.
+        Single-turn only — no tool-use loop.
+        """
+        return self._stream_gen(
+            pool_id, text, model_cfg, system_prompt, messages=messages
+        )
+
+    async def _stream_gen(  # noqa: C901, PLR0913, PLR0912
+        self,
+        pool_id: str,
+        text: str,
+        model_cfg: ModelConfig,
+        system_prompt: str,
+        *,
+        messages: list[dict] | None = None,
+    ) -> AsyncIterator[LlmEvent]:
+        """Async generator: yield LlmEvents for a single streaming turn."""
+        if messages is None:
+            messages = [{"role": "user", "content": text}]
+
+        kwargs: dict[str, Any] = {
+            "model": model_cfg.model,
+            "max_tokens": 4096,
+            "messages": messages,
+        }
+        if system_prompt:
+            kwargs["system"] = system_prompt
+        if model_cfg.tools:
+            kwargs["tools"] = [t for t in TOOLS if t["name"] in model_cfg.tools]
+
+        t0 = time.monotonic()
+        cost_usd: float | None = None
+        try:
+            async with self._client.messages.stream(**kwargs) as stream:
+                async for event in stream:
+                    event_type = getattr(event, "type", "")
+                    if event_type == "content_block_start":
+                        cb = getattr(event, "content_block", None)
+                        if cb is not None and getattr(cb, "type", "") == "tool_use":
+                            yield ToolUseLlmEvent(
+                                tool_name=cb.name,
+                                tool_id=cb.id,
+                                input={},
+                            )
+                    elif event_type == "content_block_delta":
+                        delta = getattr(event, "delta", None)
+                        if delta is not None:
+                            if getattr(delta, "type", "") == "text_delta":
+                                yield TextLlmEvent(text=delta.text)
+
+                try:
+                    final = await stream.get_final_message()
+                    cost_usd = getattr(final.usage, "cost_usd", None)
+                except Exception:
+                    cost_usd = None
+
+            duration_ms = int((time.monotonic() - t0) * 1000)
+            yield ResultLlmEvent(
+                is_error=False, duration_ms=duration_ms, cost_usd=cost_usd
+            )
+        except Exception:
+            yield ResultLlmEvent(
+                is_error=True,
+                duration_ms=int((time.monotonic() - t0) * 1000),
+                cost_usd=None,
+            )
+            raise
 
     def is_alive(self, pool_id: str) -> bool:
         return True  # SDK backend is always reachable (no persistent process)

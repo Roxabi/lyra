@@ -9,6 +9,7 @@ from pathlib import Path
 from lyra.core.agent_config import ModelConfig
 from lyra.core.cli_pool import CliPool
 from lyra.llm.base import LlmResult
+from lyra.llm.events import LlmEvent
 
 log = logging.getLogger(__name__)
 
@@ -73,9 +74,13 @@ class ClaudeCliDriver:
         model_cfg: ModelConfig,
         system_prompt: str,
         *,
-        on_intermediate: Callable[[str], Awaitable[None]] | None = None,
-    ) -> AsyncIterator[str]:
-        """Return a streaming iterator for text_delta chunks."""
+        messages: list[dict] | None = None,  # protocol compliance; ignored by CliPool
+    ) -> AsyncIterator[LlmEvent]:
+        """Return a streaming iterator yielding LlmEvent objects.
+
+        Yields TextLlmEvent for text chunks, ToolUseLlmEvent when the LLM
+        calls a tool, and a terminal ResultLlmEvent at end of turn.
+        """
         return await self._pool.send_streaming(
-            pool_id, text, model_cfg, system_prompt, on_intermediate=on_intermediate
+            pool_id, text, model_cfg, system_prompt, on_intermediate=None
         )

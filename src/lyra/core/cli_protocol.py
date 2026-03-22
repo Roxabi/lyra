@@ -11,8 +11,11 @@ import asyncio
 import json
 import logging
 import re
+from collections import deque
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+
+from lyra.llm.events import LlmEvent, ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
 
 log = logging.getLogger(__name__)
 
@@ -65,20 +68,8 @@ async def send_and_read(  # noqa: PLR0913 — protocol fn: positional args map 1
 ) -> CliResult:
     """Write *message* to *entry*'s stdin as NDJSON, then read until a result.
 
-    Parameters
-    ----------
-    entry:
-        A ``_ProcessEntry``-like object (``proc``, ``session_id``, ``is_alive``).
-    message:
-        The user message text to send.
-    pool_id:
-        Used only for log messages (no pool state is read/written here).
-    on_intermediate:
-        Async callback for every assistant turn except the last.
-    default_timeout:
-        Per-readline idle timeout; retried up to ``opts.max_idle_retries`` times.
-    opts:
-        Wire-level timing and retry knobs; see ``CliProtocolOptions``.
+    ``on_intermediate`` fires for each assistant turn before the final result.
+    ``default_timeout`` is retried up to ``opts.max_idle_retries`` times.
     """
     from .cli_pool import _ProcessEntry  # local import to avoid circularity
 
@@ -119,16 +110,8 @@ async def read_until_result(  # noqa: C901, PLR0915
 ) -> CliResult:
     """Read stdout lines from *entry*'s process until a ``result`` event arrives.
 
-    Parameters
-    ----------
-    entry:
-        A ``_ProcessEntry``-like object (``proc``, ``session_id``, ``is_alive``).
-    pool_id:
-        Used only for log messages.
-    on_intermediate:
-        Async callback for intermediate assistant turns.
-    default_timeout:
-        Per-readline idle timeout in seconds.
+    ``on_intermediate`` fires for each intermediate assistant turn.
+    Raises no exceptions — returns ``CliResult(error=...)`` on failure.
     """
     from .cli_pool import _ProcessEntry  # local import to avoid circularity
 
@@ -281,20 +264,28 @@ class StreamingIterator:
         self._pool_id = pool_id
         self._pool_reset_fn = pool_reset_fn
         self._default_timeout = default_timeout
-        self._on_intermediate = on_intermediate
         self._max_idle_retries = opts.max_idle_retries
-        self._intermediate_timeout = opts.intermediate_timeout
         self._idle_retries = 0
         self._done = False
+        self._pending: deque[LlmEvent] = deque()
         self.session_id: str | None = None
         self.error: str | None = None
+        if on_intermediate is not None:
+            log.warning(
+                "[pool:%s] StreamingIterator: on_intermediate is deprecated and has"
+                " no effect — use the LlmEvent iterator instead",
+                pool_id,
+            )
 
     def __aiter__(self) -> "StreamingIterator":
         return self
 
-    async def __anext__(self) -> str:  # noqa: C901, PLR0912, PLR0915 — protocol event dispatch
+    async def __anext__(self) -> LlmEvent:  # noqa: C901, PLR0912, PLR0915 — protocol event dispatch
         if self._done:
             raise StopAsyncIteration
+
+        if self._pending:
+            return self._pending.popleft()
 
         entry = self._entry
         proc = entry.proc  # type: ignore[union-attr]
@@ -303,6 +294,9 @@ class StreamingIterator:
             raise StopAsyncIteration
 
         while True:
+            if self._pending:
+                return self._pending.popleft()
+
             try:
                 raw = await asyncio.wait_for(
                     proc.stdout.readline(), timeout=self._default_timeout
@@ -355,40 +349,40 @@ class StreamingIterator:
                 )
 
             elif msg_type == "assistant":
-                # Intermediate turns arrive before the final streamed turn.
-                # Every assistant event in the streaming path is an intermediate
-                # (tool use, sub-task reasoning, etc.) — fire on_intermediate for each.
-                if self._on_intermediate is not None:
-                    blocks = data.get("message", {}).get("content", [])
-                    texts = [b["text"] for b in blocks if b.get("type") == "text"]
-                    if texts:
-                        try:
-                            await asyncio.wait_for(
-                                self._on_intermediate("\n\n".join(texts)),
-                                timeout=self._intermediate_timeout,
+                blocks = data.get("message", {}).get("content", [])
+                for b in blocks:
+                    if b.get("type") == "tool_use":
+                        self._pending.append(
+                            ToolUseLlmEvent(
+                                tool_name=b.get("name", ""),
+                                tool_id=b.get("id", ""),
+                                input=b.get("input", {}),
                             )
-                        except asyncio.TimeoutError:
-                            log.warning(
-                                "[pool:%s] on_intermediate callback timed out"
-                                " (>5s) — dropping",
-                                self._pool_id,
-                            )
-                        except Exception:
-                            log.warning(
-                                "[pool:%s] on_intermediate callback failed",
-                                self._pool_id,
-                                exc_info=True,
-                            )
+                        )
+                if self._pending:
+                    return self._pending.popleft()
 
             elif msg_type == "stream_event":
                 event_data = data.get("event", data)
                 event_type = event_data.get("type", "")
-                if event_type == "content_block_delta":
+                if event_type == "content_block_start":
+                    cb = event_data.get("content_block", {})
+                    if cb.get("type") == "tool_use":
+                        self._pending.append(
+                            ToolUseLlmEvent(
+                                tool_name=cb.get("name", ""),
+                                tool_id=cb.get("id", ""),
+                                input={},
+                            )
+                        )
+                        if self._pending:
+                            return self._pending.popleft()
+                elif event_type == "content_block_delta":
                     delta = event_data.get("delta", {})
                     if delta.get("type") == "text_delta":
                         text = delta.get("text", "")
                         if text:
-                            return text
+                            return TextLlmEvent(text=text)
 
             elif msg_type == "result":
                 sid = data.get("session_id", "")
@@ -396,7 +390,8 @@ class StreamingIterator:
                     self.session_id = sid
                     if entry.session_id != sid:  # type: ignore[union-attr]
                         entry.session_id = sid  # type: ignore[union-attr]
-                if data.get("is_error", False):
+                is_error = data.get("is_error", False)
+                if is_error:
                     self.error = (
                         data.get("result")
                         or data.get("subtype")
@@ -413,7 +408,11 @@ class StreamingIterator:
                     data.get("duration_ms", 0),
                 )
                 self._done = True
-                raise StopAsyncIteration
+                return ResultLlmEvent(
+                    is_error=is_error,
+                    duration_ms=data.get("duration_ms", 0),
+                    cost_usd=None,
+                )
 
     async def _cleanup(self) -> None:
         """Call pool_reset_fn and mark done. Safe to call multiple times."""
@@ -443,18 +442,11 @@ async def send_and_read_stream(  # noqa: PLR0913 — protocol fn: positional arg
     on_intermediate: Callable[[str], Awaitable[None]] | None = None,
     opts: CliProtocolOptions = CliProtocolOptions(),
 ) -> StreamingIterator:
-    """Write *message* to stdin then return a StreamingIterator for text_delta chunks.
+    """Write *message* to stdin and return a StreamingIterator[LlmEvent].
 
-    The returned iterator exposes a ``session_id`` attribute (``None`` until
-    ``system/init`` or ``result`` is parsed).  Call ``aclose()`` to kill the
-    subprocess on cancellation.
-
-    Parameters
-    ----------
-    on_intermediate:
-        Async callback for intermediate turns before the final streaming turn.
-    opts:
-        Wire-level timing and retry knobs; see ``CliProtocolOptions``.
+    The iterator exposes ``session_id`` (None until parsed from the stream).
+    Call ``aclose()`` to kill the subprocess on cancellation.
+    ``on_intermediate`` is deprecated — accepted but has no effect.
     """
     from .cli_pool import _ProcessEntry
 

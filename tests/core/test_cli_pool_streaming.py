@@ -12,6 +12,7 @@ import pytest
 from lyra.core.agent_config import ModelConfig
 from lyra.core.cli_pool import CliPool, _ProcessEntry
 from lyra.core.cli_protocol import StreamingIterator
+from lyra.llm.events import ResultLlmEvent, TextLlmEvent
 
 from .conftest_cli_pool import (
     _PATCH_TARGET,
@@ -186,8 +187,11 @@ class TestCliPoolSendStreaming:
         with patch(_PATCH_TARGET, new=AsyncMock(return_value=proc)):
             it = await pool.send_streaming("pool-s1", "hello", DEFAULT_MODEL)
 
-        chunks = [chunk async for chunk in it]
-        assert chunks == ["Hello"]
+        events = [ev async for ev in it]
+        assert events == [
+            TextLlmEvent(text="Hello"),
+            ResultLlmEvent(is_error=False, duration_ms=75, cost_usd=None),
+        ]
 
     async def test_send_streaming_spawn_failure_raises(self) -> None:
         pool = CliPool()

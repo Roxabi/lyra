@@ -240,13 +240,11 @@ class SimpleAgent(AgentBase):
         # Streaming path: return AsyncIterator directly for pool_processor routing
         _stream_fn = getattr(self._provider, "stream", None)
         if model_cfg.streaming and _stream_fn is not None:
-            cb = on_intermediate if self.config.show_intermediate else None
             return await _stream_fn(
                 pool.pool_id,
                 text,
                 model_cfg,
                 pool._system_prompt or self.config.system_prompt,
-                on_intermediate=cb,
             )
 
         # Use injected callback only if show_intermediate is enabled

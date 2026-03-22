@@ -454,7 +454,8 @@ async def send_and_read_stream(  # noqa: PLR0913 — protocol fn: positional arg
     proc = entry.proc
     if proc.stdin is None:
         it = StreamingIterator(
-            entry, pool_id,
+            entry,
+            pool_id,
             on_intermediate=on_intermediate,
             opts=opts,
         )
@@ -474,7 +475,8 @@ async def send_and_read_stream(  # noqa: PLR0913 — protocol fn: positional arg
     except asyncio.TimeoutError:
         log.error("[pool:%s] timeout writing stdin (streaming)", pool_id)
         it = StreamingIterator(
-            entry, pool_id,
+            entry,
+            pool_id,
             pool_reset_fn=pool_reset_fn,
             on_intermediate=on_intermediate,
             opts=opts,

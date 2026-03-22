@@ -21,6 +21,13 @@ from .message import (
     RoutingContext,
 )
 from .pool import Pool
+from .render_events import (
+    FileEditSummary,
+    RenderEvent,
+    SilentCounts,
+    TextRenderEvent,
+    ToolSummaryRenderEvent,
+)
 
 __all__ = [
     "Action",
@@ -31,6 +38,7 @@ __all__ = [
     "ChannelAdapter",
     "CodeBlock",
     "ContentPart",
+    "FileEditSummary",
     "Hub",
     "MessagePipeline",
     "InboundMessage",
@@ -40,7 +48,11 @@ __all__ = [
     "PipelineResult",
     "Platform",
     "Pool",
+    "RenderEvent",
     "Response",
     "RoutingContext",
     "RoutingKey",
+    "SilentCounts",
+    "TextRenderEvent",
+    "ToolSummaryRenderEvent",
 ]

@@ -102,7 +102,7 @@ class MockAdapter:
     async def send_streaming(
         self,
         original_msg: InboundMessage,
-        chunks: object,
+        events: object,
         outbound: object = None,
     ) -> None:
         pass
@@ -626,7 +626,7 @@ class _MockAdapter:
     async def send_streaming(
         self,
         original_msg: InboundMessage,
-        chunks: object,
+        events: object,
         outbound: object = None,
     ) -> None:
         pass

@@ -108,7 +108,11 @@ class StreamProcessor:
                 _result_received = True
                 if self._has_any_tool_events():
                     yield self._emit_snapshot(is_complete=True)
-                yield TextRenderEvent(text=self._pending_text, is_final=True)
+                yield TextRenderEvent(
+                    text=self._pending_text,
+                    is_final=True,
+                    is_error=event.is_error,  # #392: propagate error state
+                )
 
         # Stream ended without ResultLlmEvent (truncation or upstream error)
         if not _result_received:

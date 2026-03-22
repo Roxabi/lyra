@@ -14,6 +14,7 @@ import pytest
 
 from lyra.core.message import InboundMessage, Response
 from lyra.core.pool import Pool
+from lyra.core.render_events import TextRenderEvent
 from tests.core.conftest import _make_ctx_mock, make_msg
 
 # ---------------------------------------------------------------------------
@@ -32,10 +33,9 @@ class StreamingAgent:
         _pool: Pool,
         *,
         on_intermediate=None,
-    ) -> collections.abc.AsyncIterator[str]:
-        async def _gen() -> collections.abc.AsyncIterator[str]:
-            yield "hello "
-            yield "world"
+    ) -> collections.abc.AsyncIterator[TextRenderEvent]:
+        async def _gen() -> collections.abc.AsyncIterator[TextRenderEvent]:
+            yield TextRenderEvent(text="hello world", is_final=True)
 
         return _gen()
 
@@ -51,16 +51,16 @@ class FailingStreamingAgent:
         _pool: Pool,
         *,
         on_intermediate=None,
-    ) -> collections.abc.AsyncIterator[str]:
-        async def _gen() -> collections.abc.AsyncIterator[str]:
-            yield "partial"
+    ) -> collections.abc.AsyncIterator[TextRenderEvent]:
+        async def _gen() -> collections.abc.AsyncIterator[TextRenderEvent]:
+            yield TextRenderEvent(text="partial", is_final=False)
             raise RuntimeError("stream error")
 
         return _gen()
 
 
 class EmptyStreamingAgent:
-    """Test double: returns an async generator that yields no chunks."""
+    """Test double: returns an async generator that yields no events."""
 
     name = "test_agent"
 
@@ -70,10 +70,10 @@ class EmptyStreamingAgent:
         _pool: Pool,
         *,
         on_intermediate=None,  # noqa: ARG002
-    ) -> collections.abc.AsyncIterator[str]:
-        async def _gen() -> collections.abc.AsyncIterator[str]:
+    ) -> collections.abc.AsyncIterator[TextRenderEvent]:
+        async def _gen() -> collections.abc.AsyncIterator[TextRenderEvent]:
             if False:  # pragma: no cover
-                yield ""  # async generator without unreachable-yield warning
+                yield TextRenderEvent(text="", is_final=True)
 
         return _gen()
 
@@ -347,7 +347,7 @@ class TestPoolStreaming:
     async def test_streaming_turn_logs_partial_content_when_superseded(self) -> None:
         """Superseded streaming turn logs partial content accumulated before cancel (#373)."""  # noqa: E501
 
-        # Arrange: agent that yields two chunks with a brief pause
+        # Arrange: agent that yields two events with a brief pause
         class SlowStreamingAgent:
             name = "test_agent"
 
@@ -357,11 +357,11 @@ class TestPoolStreaming:
                 _pool: Pool,
                 *,
                 on_intermediate=None,  # noqa: ARG002
-            ) -> collections.abc.AsyncIterator[str]:
-                async def _gen() -> collections.abc.AsyncIterator[str]:
-                    yield "first"
+            ) -> collections.abc.AsyncIterator[TextRenderEvent]:
+                async def _gen() -> collections.abc.AsyncIterator[TextRenderEvent]:
+                    yield TextRenderEvent(text="first", is_final=False)
                     await asyncio.sleep(0.05)
-                    yield "second"
+                    yield TextRenderEvent(text="second", is_final=True)
 
                 return _gen()
 
@@ -398,13 +398,15 @@ class TestPoolStreaming:
         class _IteratorWithSessionId:
             """Async iterator wrapper that allows arbitrary attribute assignment."""
 
-            def __init__(self, inner: collections.abc.AsyncIterator[str]) -> None:
+            def __init__(
+                self, inner: collections.abc.AsyncIterator[TextRenderEvent]
+            ) -> None:
                 self._inner = inner
 
-            def __aiter__(self) -> collections.abc.AsyncIterator[str]:
+            def __aiter__(self) -> collections.abc.AsyncIterator[TextRenderEvent]:
                 return self  # type: ignore[return-value]
 
-            async def __anext__(self) -> str:
+            async def __anext__(self) -> TextRenderEvent:
                 return await self._inner.__anext__()
 
             async def aclose(self) -> None:
@@ -421,9 +423,9 @@ class TestPoolStreaming:
                 _pool: Pool,
                 *,
                 on_intermediate=None,  # noqa: ARG002
-            ) -> collections.abc.AsyncIterator[str]:
-                async def _gen() -> collections.abc.AsyncIterator[str]:
-                    yield "hello"
+            ) -> collections.abc.AsyncIterator[TextRenderEvent]:
+                async def _gen() -> collections.abc.AsyncIterator[TextRenderEvent]:
+                    yield TextRenderEvent(text="hello", is_final=True)
 
                 it = _IteratorWithSessionId(_gen())
                 it.session_id = "session-from-iterator"  # type: ignore[attr-defined]

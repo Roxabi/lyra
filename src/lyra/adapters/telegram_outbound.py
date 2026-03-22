@@ -19,6 +19,7 @@ from lyra.core.message import (
     InboundMessage,
     OutboundMessage,
 )
+from lyra.core.render_events import RenderEvent, TextRenderEvent, ToolSummaryRenderEvent
 
 if TYPE_CHECKING:
     from lyra.adapters.telegram import TelegramAdapter
@@ -153,17 +154,52 @@ async def send(
         adapter._cancel_typing(chat_id)
 
 
-async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: edit/chunk/finalize branches are inherently sequential
+def _format_tool_summary(event: ToolSummaryRenderEvent) -> str:
+    """Format a ToolSummaryRenderEvent as human-readable Telegram text."""
+    lines: list[str] = []
+    if event.files:
+        grouped = len(event.files) >= 3
+        if grouped:
+            total = sum(f.count for f in event.files.values())
+            lines.append(f"✏️ {len(event.files)} files · {total} edits")
+        else:
+            for summary in event.files.values():
+                label = (
+                    ", ".join(summary.edits) if summary.edits else f"×{summary.count}"
+                )
+                lines.append(f"✏️ `{summary.path}` ({label})")
+    for cmd in event.bash_commands:
+        lines.append(f"💻 `{cmd}`")
+    for url in event.web_fetches:
+        lines.append(f"🌐 {url}")
+    for agent in event.agent_calls:
+        lines.append(f"🤖 {agent}")
+    sc = event.silent_counts
+    silent = sc.reads + sc.greps + sc.globs
+    if silent:
+        lines.append(f"🔍 {silent} silent")
+    header = "🔧 Done ✅" if event.is_complete else "🔧 Working…"
+    body = "\n".join(lines)
+    return f"{header}\n{body}".strip() if body else header
+
+
+async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: tool-summary/text/fallback branches are inherently sequential
     adapter: TelegramAdapter,
     original_msg: InboundMessage,
-    chunks: AsyncIterator[str],
+    events: AsyncIterator[RenderEvent],
     outbound: OutboundMessage | None = None,
 ) -> None:
-    """Stream response with edit-in-place, debounced at ~500ms.
+    """Stream RenderEvent objects with edit-in-place tool summary and final text send.
+
+    Flow for tool-using turns:
+      placeholder → editMessage(tool summary) on each ToolSummaryRenderEvent
+      → send_message(final text) on TextRenderEvent(is_final=True)
+
+    Flow for text-only turns:
+      placeholder → editMessage(final text) on TextRenderEvent(is_final=True)
 
     Circuit breaker checks and recording are handled by OutboundDispatcher,
-    not here. This method performs the bare streaming send and raises on
-    failure.
+    not here. This method performs the bare streaming send and raises on failure.
 
     When *outbound* is provided, ``outbound.metadata["reply_message_id"]``
     is set to the placeholder message ID after it is sent.
@@ -174,8 +210,7 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: edit/ch
     chat_id, _topic_id, _msg_id = meta
 
     # The typing task was started by _start_typing() in _on_message on receipt.
-    # We let it run until the placeholder is sent (first visible content),
-    # then cancel it. _cancel_typing is a no-op if the task is already done.
+    # We let it run until the placeholder is sent, then cancel it.
     parts: list[str] = []
 
     # Send placeholder
@@ -192,8 +227,9 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: edit/ch
     except Exception:
         adapter._cancel_typing(chat_id)
         log.exception("Failed to send placeholder — falling back to non-streaming")
-        async for chunk in chunks:
-            parts.append(chunk)
+        async for event in events:
+            if isinstance(event, TextRenderEvent):
+                parts.append(event.text)
         fallback_content = "".join(parts) or _placeholder_text
         chunks_rendered = _render_text(fallback_content)
         if chunks_rendered:
@@ -212,74 +248,99 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: edit/ch
             outbound.metadata["reply_message_id"] = fallback_msg.message_id
         return
 
-    last_edit: float | None = None  # set on first token; debounce starts then
+    had_tool_events = False
+    last_tool_edit: float | None = None
+    final_text: str | None = None
+    is_error_turn: bool = False
     stream_error: Exception | None = None
+
     try:
-        async for chunk in chunks:
-            parts.append(chunk)
-            now = time.monotonic()
-            if last_edit is None:
-                last_edit = now
-            elif now - last_edit >= STREAMING_EDIT_INTERVAL:
-                accumulated = "".join(parts)
-                _converted = _render_text(accumulated)[0]
-                try:
-                    await adapter.bot.edit_message_text(
-                        chat_id=chat_id,
-                        message_id=placeholder.message_id,
-                        text=_converted,
-                        parse_mode="MarkdownV2",
-                    )
-                except Exception as edit_exc:
-                    # Intermediate edits are best-effort live UI updates.
-                    # Any failure (MESSAGE_TOO_LONG, "not modified", rate-limit…)
-                    # must NOT interrupt chunk accumulation — all content is
-                    # collected here and delivered in the final publish step below.
-                    log.debug("Intermediate streaming edit skipped: %s", edit_exc)
-                # Reset timer unconditionally: on "message not modified" we want to
-                # suppress the next edit for a full debounce window; on rate-limit
-                # (429) the 500ms window is shorter than Telegram's flood-wait but
-                # acceptable for a personal-scale bot — the final edit always delivers
-                # the complete content regardless.
-                last_edit = now
+        async for event in events:
+            if isinstance(event, ToolSummaryRenderEvent):
+                had_tool_events = True
+                tool_text = _format_tool_summary(event)
+                now = time.monotonic()
+                # Always edit on is_complete; otherwise respect debounce
+                if (
+                    event.is_complete
+                    or last_tool_edit is None
+                    or (now - last_tool_edit) >= STREAMING_EDIT_INTERVAL
+                ):
+                    try:
+                        rendered = _render_text(tool_text)
+                        await adapter.bot.edit_message_text(
+                            chat_id=chat_id,
+                            message_id=placeholder.message_id,
+                            text=rendered[0],
+                            parse_mode="MarkdownV2",
+                        )
+                        last_tool_edit = now
+                    except Exception as edit_exc:
+                        log.debug("Tool summary edit skipped: %s", edit_exc)
+
+            elif isinstance(event, TextRenderEvent) and event.is_final:
+                final_text = event.text
+                is_error_turn = event.is_error
     except Exception as exc:
         stream_error = exc
         log.exception("Stream interrupted")
 
-    accumulated = "".join(parts)
-    if stream_error is not None:
-        if accumulated:
-            accumulated += adapter._msg("stream_interrupted", " [response interrupted]")
-        else:
-            accumulated = adapter._msg("generic", GENERIC_ERROR_REPLY)
-
-    # Final edit with complete text (always runs, even after stream error).
-    # If accumulated exceeds the limit, edit the placeholder with the first
-    # chunk and send any overflow chunks as follow-up messages.
-    if accumulated:
-        final_chunks = _render_text(accumulated)
+    # Deliver final text
+    if final_text is not None:
+        display_text = ("❌ " + final_text) if is_error_turn else final_text
+        if stream_error is not None:
+            if display_text:
+                display_text += adapter._msg(
+                    "stream_interrupted", " [response interrupted]"
+                )
+            else:
+                display_text = adapter._msg("generic", GENERIC_ERROR_REPLY)
+        final_chunks = _render_text(display_text) if display_text else []
+        if had_tool_events:
+            # Tool summary stays in placeholder; text sent as a new message
+            for chunk in final_chunks:
+                try:
+                    await adapter.bot.send_message(
+                        chat_id=chat_id,
+                        text=chunk,
+                        parse_mode="MarkdownV2",
+                    )
+                except Exception:
+                    log.exception("Failed to send final text chunk")
+        elif final_chunks:
+            # Text-only turn: edit placeholder with text (preserves overflow logic)
+            try:
+                await adapter.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=placeholder.message_id,
+                    text=final_chunks[0],
+                    parse_mode="MarkdownV2",
+                )
+            except Exception:
+                log.exception("Final edit failed")
+            for extra_chunk in final_chunks[1:]:
+                try:
+                    await adapter.bot.send_message(
+                        chat_id=chat_id,
+                        text=extra_chunk,
+                        parse_mode="MarkdownV2",
+                    )
+                except Exception:
+                    log.exception("Failed to send overflow chunk")
+    elif stream_error is not None:
+        # No text at all — send generic error
+        error_text = adapter._msg("generic", GENERIC_ERROR_REPLY)
         try:
             await adapter.bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=placeholder.message_id,
-                text=final_chunks[0],
+                text=_render_text(error_text)[0],
                 parse_mode="MarkdownV2",
             )
         except Exception:
-            log.exception("Final edit failed")
-        for extra_chunk in final_chunks[1:]:
-            try:
-                await adapter.bot.send_message(
-                    chat_id=chat_id,
-                    text=extra_chunk,
-                    parse_mode="MarkdownV2",
-                )
-            except Exception:
-                log.exception("Failed to send overflow chunk")
+            log.exception("Error edit failed")
 
-    # Cancel typing after final content is confirmed (streaming done).
-    # If this was an intermediate message, restart the indicator so the user
-    # knows more content is coming (mirrors the same check in send()).
+    # Cancel typing after final content is confirmed.
     if outbound is not None and outbound.intermediate:
         adapter._start_typing(chat_id)
     else:

@@ -66,10 +66,15 @@ class TextRenderEvent:
     In V1 text is NOT streamed incrementally — the full response accumulates
     in ``StreamProcessor`` and emits as a single event with ``is_final=True``
     after ``ResultLlmEvent`` arrives.
+
+    ``is_error`` is ``True`` when the originating ``ResultLlmEvent.is_error``
+    was ``True`` — i.e. the LLM turn ended in an error state. Adapters should
+    render error turns visibly differently (e.g. with a ``❌`` prefix).
     """
 
     text: str
     is_final: bool
+    is_error: bool = False
 
 
 @dataclass(frozen=True)

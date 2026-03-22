@@ -8,6 +8,8 @@ import time
 from collections.abc import AsyncIterator, Callable
 from typing import TYPE_CHECKING, Any
 
+import discord
+
 from lyra.adapters._shared import DISCORD_MAX_LENGTH
 from lyra.adapters.discord_formatting import render_buttons, render_text
 from lyra.core.message import (
@@ -16,6 +18,7 @@ from lyra.core.message import (
     OutboundMessage,
     Platform,
 )
+from lyra.core.render_events import RenderEvent, TextRenderEvent, ToolSummaryRenderEvent
 
 if TYPE_CHECKING:
     from lyra.adapters.discord import DiscordAdapter
@@ -168,13 +171,54 @@ async def send(  # noqa: C901 — attachment loop adds branches
     )
 
 
-async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: edit/chunk/finalize branches are inherently sequential
+def _build_tool_embed(event: ToolSummaryRenderEvent) -> "discord.Embed":
+    """Build a Discord embed from a ToolSummaryRenderEvent."""
+    title = "🔧 Done ✅" if event.is_complete else "🔧 Working…"
+    color = discord.Color.green() if event.is_complete else discord.Color.blue()
+    lines: list[str] = []
+    if event.files:
+        grouped = len(event.files) >= 3
+        if grouped:
+            total = sum(f.count for f in event.files.values())
+            lines.append(f"✏️ {len(event.files)} files · {total} edits")
+        else:
+            for summary in event.files.values():
+                label = (
+                    ", ".join(summary.edits) if summary.edits else f"×{summary.count}"
+                )
+                lines.append(f"✏️ `{summary.path}` ({label})")
+    for cmd in event.bash_commands:
+        lines.append(f"💻 `{cmd}`")
+    for url in event.web_fetches:
+        lines.append(f"🌐 {url}")
+    for agent in event.agent_calls:
+        lines.append(f"🤖 {agent}")
+    sc = event.silent_counts
+    silent = sc.reads + sc.greps + sc.globs
+    if silent:
+        lines.append(f"🔍 {silent} silent")
+    description = "\n".join(lines) or "\u200b"  # zero-width space for empty embed
+    return discord.Embed(title=title, description=description, color=color)
+
+
+async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: tool-summary/text/fallback branches are inherently sequential
     adapter: "DiscordAdapter",
     original_msg: InboundMessage,
-    chunks: AsyncIterator[str],
+    events: AsyncIterator[RenderEvent],
     outbound: OutboundMessage | None = None,
 ) -> None:
-    """Stream response with edit-in-place, debounced at ~1s."""
+    """Stream RenderEvent objects with embed-based tool summary and final text send.
+
+    Flow for tool-using turns:
+      placeholder → embed update on each ToolSummaryRenderEvent (throttled)
+      → messageable.send(final text) on TextRenderEvent(is_final=True)
+
+    Flow for text-only turns:
+      placeholder → placeholder.edit(content=final text) on
+      TextRenderEvent(is_final=True)
+
+    Circuit breaker checks and recording are handled by OutboundDispatcher.
+    """
     if original_msg.platform != Platform.DISCORD.value:
         log.error(
             "send_streaming() called with non-discord message id=%s",
@@ -207,8 +251,9 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: edit/ch
             outbound.metadata["reply_message_id"] = placeholder.id
     except Exception:
         log.exception("Failed to send placeholder — falling back to non-streaming")
-        async for chunk in chunks:
-            parts.append(chunk)
+        async for event in events:
+            if isinstance(event, TextRenderEvent):
+                parts.append(event.text)
         fallback_content = "".join(parts) or _placeholder_text
         fallback_outbound = OutboundMessage.from_text(fallback_content)
         await send(adapter, original_msg, fallback_outbound)
@@ -218,45 +263,75 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: edit/ch
             )
         return
 
-    last_edit: float | None = None  # set on first token; debounce starts then
+    had_tool_events = False
+    last_tool_edit: float | None = None
+    final_text: str | None = None
+    is_error_turn: bool = False
     stream_error: Exception | None = None
+
     try:
-        async for chunk in chunks:
-            parts.append(chunk)
-            now = time.monotonic()
-            if last_edit is None:
-                last_edit = now
-            elif now - last_edit >= STREAMING_EDIT_INTERVAL:
-                accumulated = "".join(parts)
-                await placeholder.edit(content=accumulated[:DISCORD_MAX_LENGTH])
-                last_edit = now
+        async for event in events:
+            if isinstance(event, ToolSummaryRenderEvent):
+                had_tool_events = True
+                now = time.monotonic()
+                if (
+                    event.is_complete
+                    or last_tool_edit is None
+                    or (now - last_tool_edit) >= STREAMING_EDIT_INTERVAL
+                ):
+                    embed = _build_tool_embed(event)
+                    await _discord_send_with_retry(
+                        lambda e=embed: placeholder.edit(embed=e),
+                        label="Tool summary embed",
+                    )
+                    last_tool_edit = now
+
+            elif isinstance(event, TextRenderEvent) and event.is_final:
+                final_text = event.text
+                is_error_turn = event.is_error
     except Exception as exc:
         stream_error = exc
         log.exception("Stream interrupted")
 
-    accumulated = "".join(parts)
-    if stream_error is not None:
-        if accumulated:
-            accumulated += adapter._msg("stream_interrupted", " [response interrupted]")
-        else:
-            accumulated = adapter._msg("generic", GENERIC_ERROR_REPLY)
-
-    # Final edit (always runs): edit placeholder with first chunk, send overflow.
-    if accumulated:
-        final_chunks = render_text(accumulated, DISCORD_MAX_LENGTH)
-        await _discord_send_with_retry(
-            lambda: placeholder.edit(content=final_chunks[0]),
-            label="Final edit",
+    # Deliver final text
+    if final_text is not None:
+        display_text = ("❌ " + final_text) if is_error_turn else final_text
+        if stream_error is not None:
+            if display_text:
+                display_text += adapter._msg(
+                    "stream_interrupted", " [response interrupted]"
+                )
+            else:
+                display_text = adapter._msg("generic", GENERIC_ERROR_REPLY)
+        final_chunks = (
+            render_text(display_text, DISCORD_MAX_LENGTH) if display_text else []
         )
-        for extra_chunk in final_chunks[1:]:
+        if had_tool_events:
+            # Tool summary stays in placeholder; text as new message(s)
+            for chunk in final_chunks:
+                await _discord_send_with_retry(
+                    lambda c=chunk: messageable.send(c),
+                    label="Final text chunk",
+                )
+        elif final_chunks:
+            # Text-only turn: edit placeholder with text
             await _discord_send_with_retry(
-                lambda c=extra_chunk: messageable.send(c),
-                label="Overflow chunk",
+                lambda: placeholder.edit(content=final_chunks[0]),
+                label="Final edit",
             )
+            for extra_chunk in final_chunks[1:]:
+                await _discord_send_with_retry(
+                    lambda c=extra_chunk: messageable.send(c),
+                    label="Overflow chunk",
+                )
+    elif stream_error is not None:
+        error_text = adapter._msg("generic", GENERIC_ERROR_REPLY)
+        await _discord_send_with_retry(
+            lambda: placeholder.edit(content=error_text[:DISCORD_MAX_LENGTH]),
+            label="Error edit",
+        )
 
-    # Cancel typing after final content is confirmed (streaming done).
-    # If this was an intermediate message, restart the indicator so the user
-    # knows more content is coming (mirrors the same check in send()).
+    # Cancel typing after final content is confirmed.
     if outbound is not None and outbound.intermediate:
         adapter._start_typing(send_to_id)
     else:

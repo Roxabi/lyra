@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 from lyra.core.circuit_breaker import CircuitBreaker
 from lyra.core.message import OutboundMessage
 from lyra.core.outbound_dispatcher import OutboundDispatcher
+from lyra.core.render_events import TextRenderEvent
 
 from .conftest import make_dispatcher_msg
 
@@ -43,8 +44,8 @@ class TestOutboundDispatcherEnqueue:
         try:
             msg = make_dispatcher_msg()
 
-            async def chunks() -> AsyncIterator[str]:
-                yield "hello"
+            async def chunks() -> AsyncIterator[TextRenderEvent]:
+                yield TextRenderEvent(text="hello", is_final=True)
 
             dispatcher.enqueue_streaming(msg, chunks())
             await asyncio.sleep(0.05)
@@ -61,8 +62,8 @@ class TestOutboundDispatcherEnqueue:
             msg = make_dispatcher_msg()
             outbound = OutboundMessage.from_text("")
 
-            async def chunks() -> AsyncIterator[str]:
-                yield "hello"
+            async def chunks() -> AsyncIterator[TextRenderEvent]:
+                yield TextRenderEvent(text="hello", is_final=True)
 
             dispatcher.enqueue_streaming(msg, chunks(), outbound)
             await asyncio.sleep(0.05)
@@ -127,8 +128,8 @@ class TestOutboundDispatcherCircuitBreaker:
             msg = make_dispatcher_msg()
             outbound = OutboundMessage.from_text("")
 
-            async def chunks() -> AsyncIterator[str]:
-                yield "hello"
+            async def chunks() -> AsyncIterator[TextRenderEvent]:
+                yield TextRenderEvent(text="hello", is_final=True)
 
             dispatcher.enqueue_streaming(msg, chunks(), outbound)
             await asyncio.sleep(0.05)

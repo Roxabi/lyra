@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.adapters.telegram import _ALLOW_ALL
+from lyra.core.render_events import TextRenderEvent
 from lyra.core.trust import TrustLevel
 
 # ---------------------------------------------------------------------------
@@ -224,8 +225,8 @@ async def test_send_streaming_cancels_typing_task_after_placeholder() -> None:
     mock_task.done.return_value = False
     adapter._typing_tasks[456] = mock_task
 
-    async def _chunks() -> AsyncIterator[str]:
-        yield "hello"
+    async def _chunks() -> AsyncIterator[TextRenderEvent]:
+        yield TextRenderEvent(text="hello", is_final=True)
 
     # Act
     await adapter.send_streaming(original_msg, _chunks())

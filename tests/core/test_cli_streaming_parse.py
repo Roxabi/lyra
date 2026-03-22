@@ -355,9 +355,7 @@ class TestStreamingIteratorAssistant:
                 },
             }
         )
-        proc = make_fake_proc(
-            [INIT_LINE, cb_start_line, TEXT_DELTA_LINE, RESULT_LINE]
-        )
+        proc = make_fake_proc([INIT_LINE, cb_start_line, TEXT_DELTA_LINE, RESULT_LINE])
         entry = make_entry(proc)
 
         # Act

@@ -16,6 +16,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 
 if TYPE_CHECKING:
     from lyra.core.hub import Hub
+    from lyra.core.render_events import RenderEvent
 
 from lyra.adapters import telegram_audio  # noqa: I001
 from lyra.adapters._shared import TypingTaskManager, resolve_msg
@@ -260,10 +261,10 @@ class TelegramAdapter:
     async def send_streaming(
         self,
         original_msg: InboundMessage,
-        chunks: AsyncIterator[str],
+        events: AsyncIterator[RenderEvent],
         outbound: OutboundMessage | None = None,
     ) -> None:
-        await _send_streaming_impl(self, original_msg, chunks, outbound)
+        await _send_streaming_impl(self, original_msg, events, outbound)
 
     async def render_audio(self, msg: OutboundAudio, inbound: InboundMessage) -> None:
         await telegram_audio.render_audio(self, msg, inbound)

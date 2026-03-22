@@ -415,21 +415,14 @@ class TestAnthropicSdkDriverStream:
     def _tool_start_ev(self, name: str, id_: str) -> object:
         return types.SimpleNamespace(
             type="content_block_start",
-            content_block=types.SimpleNamespace(
-                type="tool_use", name=name, id=id_
-            ),
+            content_block=types.SimpleNamespace(type="tool_use", name=name, id=id_),
         )
 
-    async def _collect(
-        self, driver: AnthropicSdkDriver, raw_events: list
-    ) -> list:
+    async def _collect(self, driver: AnthropicSdkDriver, raw_events: list) -> list:
         stream = _FakeStream(raw_events)
         driver._client.messages.stream = MagicMock(return_value=stream)
         return [
-            e
-            async for e in await driver.stream(
-                "pool-1", "hi", make_model_cfg(), ""
-            )
+            e async for e in await driver.stream("pool-1", "hi", make_model_cfg(), "")
         ]
 
     async def test_text_delta_yields_text_llm_event(self) -> None:
@@ -451,9 +444,7 @@ class TestAnthropicSdkDriverStream:
         driver = make_driver()
 
         # Act
-        result = await self._collect(
-            driver, [self._tool_start_ev("Bash", "tu_001")]
-        )
+        result = await self._collect(driver, [self._tool_start_ev("Bash", "tu_001")])
 
         # Assert — ToolUseLlmEvent emitted before terminal ResultLlmEvent
         assert result[0] == ToolUseLlmEvent(
@@ -479,17 +470,12 @@ class TestAnthropicSdkDriverStream:
     async def test_exception_yields_error_result_not_reraise(self) -> None:
         # Arrange — stream context manager raises immediately
         driver = make_driver()
-        stream = _FakeStream(
-            [], raise_in_enter=RuntimeError("connection failed")
-        )
+        stream = _FakeStream([], raise_in_enter=RuntimeError("connection failed"))
         driver._client.messages.stream = MagicMock(return_value=stream)
 
         # Act — must NOT raise (is_error sentinel terminates cleanly)
         result = [
-            e
-            async for e in await driver.stream(
-                "pool-1", "hi", make_model_cfg(), ""
-            )
+            e async for e in await driver.stream("pool-1", "hi", make_model_cfg(), "")
         ]
 
         # Assert — single ResultLlmEvent with is_error=True

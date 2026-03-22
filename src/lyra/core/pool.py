@@ -19,6 +19,7 @@ from .debouncer import DEFAULT_DEBOUNCE_MS, MessageDebouncer
 from .message import InboundMessage, OutboundMessage, Response
 from .pool_observer import PoolObserver
 from .pool_processor import PoolProcessor
+from .render_events import RenderEvent
 
 log = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ class PoolContext(Protocol):
     async def dispatch_streaming(
         self,
         msg: InboundMessage,
-        chunks: AsyncIterator[str],
+        chunks: AsyncIterator[RenderEvent],
         outbound: OutboundMessage | None = None,
     ) -> None: ...
 

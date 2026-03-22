@@ -11,6 +11,7 @@ from lyra.core.message import (
     OutboundMessage,
     Platform,
 )
+from lyra.core.render_events import TextRenderEvent
 from tests.core.conftest import make_inbound_message
 
 # ---------------------------------------------------------------------------
@@ -32,18 +33,19 @@ class TestDispatchStreaming:
             async def send_streaming(
                 self,
                 original_msg: InboundMessage,
-                chunks: object,
+                events: object,
                 outbound=None,
             ) -> None:
-                async for chunk in chunks:  # type: ignore[union-attr]
-                    received.append(chunk)
+                async for event in events:  # type: ignore[union-attr]
+                    if isinstance(event, TextRenderEvent):
+                        received.append(event.text)
 
         hub.register_adapter(Platform.TELEGRAM, "main", StreamAdapter())  # type: ignore[arg-type]
         msg = make_inbound_message(platform="telegram", bot_id="main")
 
         async def gen():
-            yield "Hello"
-            yield " world"
+            yield TextRenderEvent(text="Hello", is_final=False)
+            yield TextRenderEvent(text=" world", is_final=True)
 
         await hub.dispatch_streaming(msg, gen())
         assert received == ["Hello", " world"]
@@ -61,10 +63,10 @@ class TestDispatchStreaming:
             async def send_streaming(
                 self,
                 original_msg: InboundMessage,
-                chunks: object,
+                events: object,
                 outbound=None,
             ) -> None:
-                async for _ in chunks:  # type: ignore[union-attr]
+                async for _ in events:  # type: ignore[union-attr]
                     pass
 
         hub.register_adapter(Platform.TELEGRAM, "main", StreamAdapter())  # type: ignore[arg-type]
@@ -72,7 +74,7 @@ class TestDispatchStreaming:
         msg = make_inbound_message(platform="telegram", bot_id="main")
 
         async def gen():
-            yield "hi"
+            yield TextRenderEvent(text="hi", is_final=True)
 
         await hub.dispatch_streaming(msg, gen())
         assert hub._last_processed_at is not None
@@ -92,8 +94,8 @@ class TestDispatchStreaming:
         msg = make_inbound_message(platform="telegram", bot_id="main")
 
         async def gen():
-            yield "Hello"
-            yield " world"
+            yield TextRenderEvent(text="Hello", is_final=False)
+            yield TextRenderEvent(text=" world", is_final=True)
 
         await hub.dispatch_streaming(msg, gen())
         assert len(sent) == 1
@@ -105,7 +107,7 @@ class TestDispatchStreaming:
         """Voice modality: text streams to user, then TTS fires as background task."""
         hub = Hub(tts=MagicMock())  # type: ignore[arg-type]
         hub._audio_pipeline.synthesize_and_dispatch_audio = AsyncMock()  # type: ignore[method-assign]
-        streamed: list[str] = []
+        streamed: list[TextRenderEvent] = []
 
         class StreamAdapter:
             async def send(
@@ -116,22 +118,25 @@ class TestDispatchStreaming:
             async def send_streaming(
                 self,
                 original_msg: InboundMessage,
-                chunks: object,
+                events: object,
                 outbound: object = None,
             ) -> None:
-                async for chunk in chunks:  # type: ignore[union-attr]
+                async for chunk in events:  # type: ignore[union-attr]
                     streamed.append(chunk)
 
         hub.register_adapter(Platform.TELEGRAM, "main", StreamAdapter())  # type: ignore[arg-type]
         msg = make_inbound_message(platform="telegram", bot_id="main", modality="voice")
 
         async def gen():
-            yield "Hello"
-            yield " world"
+            yield TextRenderEvent(text="Hello", is_final=False)
+            yield TextRenderEvent(text=" world", is_final=True)
 
         await hub.dispatch_streaming(msg, gen())
 
-        assert streamed == ["Hello", " world"]
+        assert streamed == [
+            TextRenderEvent(text="Hello", is_final=False),
+            TextRenderEvent(text=" world", is_final=True),
+        ]
 
         if hub._memory_tasks:
             await asyncio.gather(*hub._memory_tasks)
@@ -153,18 +158,18 @@ class TestDispatchStreaming:
             async def send_streaming(
                 self,
                 original_msg: InboundMessage,
-                chunks: object,
+                events: object,
                 outbound: object = None,
             ) -> None:
-                async for _ in chunks:  # type: ignore[union-attr]
+                async for _ in events:  # type: ignore[union-attr]
                     pass
 
         hub.register_adapter(Platform.TELEGRAM, "main", StreamAdapter())  # type: ignore[arg-type]
         msg = make_inbound_message(platform="telegram", bot_id="main", modality="voice")
 
         async def gen():
-            yield "  "
-            yield " "
+            yield TextRenderEvent(text="  ", is_final=False)
+            yield TextRenderEvent(text=" ", is_final=True)
 
         await hub.dispatch_streaming(msg, gen())
         hub._audio_pipeline.synthesize_and_dispatch_audio.assert_not_awaited()
@@ -185,17 +190,18 @@ class TestDispatchStreaming:
             async def send_streaming(
                 self,
                 original_msg: InboundMessage,
-                chunks: object,
+                events: object,
                 outbound: object = None,
             ) -> None:
-                async for chunk in chunks:  # type: ignore[union-attr]
-                    streamed.append(chunk)
+                async for chunk in events:  # type: ignore[union-attr]
+                    if isinstance(chunk, TextRenderEvent):
+                        streamed.append(chunk.text)
 
         hub.register_adapter(Platform.TELEGRAM, "main", StreamAdapter())  # type: ignore[arg-type]
         msg = make_inbound_message(platform="telegram", bot_id="main", modality="voice")
 
         async def gen():
-            yield "Hello"
+            yield TextRenderEvent(text="Hello", is_final=True)
 
         await hub.dispatch_streaming(msg, gen())
         assert streamed == ["Hello"]
@@ -216,8 +222,8 @@ class TestDispatchStreaming:
         msg = make_inbound_message(platform="telegram", bot_id="main", modality="voice")
 
         async def gen():
-            yield "Hello"
-            yield " world"
+            yield TextRenderEvent(text="Hello", is_final=False)
+            yield TextRenderEvent(text=" world", is_final=True)
 
         await hub.dispatch_streaming(msg, gen())
 
@@ -247,11 +253,12 @@ class TestDispatchStreaming:
             async def send_streaming(
                 self,
                 original_msg: InboundMessage,
-                chunks: object,
+                events: object,
                 outbound: object = None,
             ) -> None:
-                async for chunk in chunks:  # type: ignore[union-attr]
-                    streamed.append(chunk)
+                async for chunk in events:  # type: ignore[union-attr]
+                    if isinstance(chunk, TextRenderEvent):
+                        streamed.append(chunk.text)
 
         adapter = StreamAdapter()
         hub.register_adapter(Platform.TELEGRAM, "main", adapter)  # type: ignore[arg-type]
@@ -262,8 +269,8 @@ class TestDispatchStreaming:
         msg = make_inbound_message(platform="telegram", bot_id="main", modality="voice")
 
         async def gen():
-            yield "Hello"
-            yield " world"
+            yield TextRenderEvent(text="Hello", is_final=False)
+            yield TextRenderEvent(text=" world", is_final=True)
 
         try:
             await asyncio.wait_for(hub.dispatch_streaming(msg, gen()), timeout=5.0)
@@ -294,8 +301,8 @@ class TestHubRunStreaming:
             async def process(  # type: ignore[override]
                 self, msg: InboundMessage, pool: Pool, *, on_intermediate=None
             ):
-                yield "chunk1"
-                yield "chunk2"
+                yield TextRenderEvent(text="chunk1", is_final=False)
+                yield TextRenderEvent(text="chunk2", is_final=True)
 
         class CapturingStreamAdapter:
             async def send(
@@ -306,11 +313,12 @@ class TestHubRunStreaming:
             async def send_streaming(
                 self,
                 original_msg: InboundMessage,
-                chunks: object,
+                events: object,
                 outbound=None,
             ) -> None:
-                async for chunk in chunks:  # type: ignore[union-attr]
-                    received_chunks.append(chunk)
+                async for chunk in events:  # type: ignore[union-attr]
+                    if isinstance(chunk, TextRenderEvent):
+                        received_chunks.append(chunk.text)
 
         config = Agent(name="streamer", system_prompt="", memory_namespace="lyra")
         hub.register_agent(StreamingAgent(config))

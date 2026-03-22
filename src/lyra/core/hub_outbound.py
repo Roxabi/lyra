@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 from lyra.errors import ProviderError
 
 from .message import OutboundMessage, Platform, Response
+from .render_events import TextRenderEvent
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -33,6 +34,7 @@ if TYPE_CHECKING:
     )
     from .messages import MessageManager
     from .outbound_dispatcher import OutboundDispatcher
+    from .render_events import RenderEvent
 
 log = logging.getLogger(__name__)
 
@@ -180,10 +182,10 @@ class HubOutboundMixin:
                 self._memory_tasks.add(task)
                 task.add_done_callback(self._memory_tasks.discard)
 
-    async def dispatch_streaming(  # noqa: C901
+    async def dispatch_streaming(  # noqa: C901, PLR0915
         self,
         msg: InboundMessage,
-        chunks: AsyncIterator[str],
+        chunks: AsyncIterator[RenderEvent],
         outbound: OutboundMessage | None = None,
     ) -> None:
         """Stream response back via the originating adapter.
@@ -204,11 +206,13 @@ class HubOutboundMixin:
             _voice_done = asyncio.Event()
             _raw = chunks
 
-            async def _tee() -> AsyncIterator[str]:
+            async def _tee() -> AsyncIterator[RenderEvent]:
                 try:
-                    async for chunk in _raw:
-                        _voice_parts.append(chunk)  # type: ignore[union-attr]
-                        yield chunk
+                    async for event in _raw:
+                        if isinstance(event, TextRenderEvent):
+                            _voice_parts.append(event.text)  # type: ignore[union-attr]
+                        # ToolSummaryRenderEvent: skip — voice only needs text
+                        yield event
                 finally:
                     _voice_done.set()  # type: ignore[union-attr]
 
@@ -247,9 +251,17 @@ class HubOutboundMixin:
                         msg.platform,
                     )
                 text = ""
-                async for chunk in chunks:
-                    text += chunk
-                await adapter.send(msg, OutboundMessage.from_text(text))
+                async for event in chunks:
+                    if isinstance(event, TextRenderEvent):
+                        text += event.text
+                if text:
+                    await adapter.send(msg, OutboundMessage.from_text(text))
+                else:
+                    log.debug(
+                        "dispatch_streaming fallback: no text events in stream"
+                        " — skipping send for msg %s",
+                        msg.id,
+                    )
             if outbound is not None:
                 _dispatched = outbound.metadata.pop("_on_dispatched", None)
                 if callable(_dispatched):

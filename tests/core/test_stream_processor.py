@@ -534,6 +534,46 @@ class TestStreamProcessor:
         assert len(text_events) == 1
         assert text_events[0].text == "Hello world"
 
+    # ------------------------------------------------------------------
+    # B3 — is_error propagation from ResultLlmEvent → TextRenderEvent (#392)
+    # ------------------------------------------------------------------
+
+    async def test_is_error_propagated_to_text_render_event(self) -> None:
+        """ResultLlmEvent(is_error=True) → TextRenderEvent(is_error=True) (#392)."""
+        # Arrange
+        processor = StreamProcessor(cfg())
+        events = async_events(
+            TextLlmEvent(text="error response"),
+            ResultLlmEvent(is_error=True, duration_ms=0),
+        )
+
+        # Act
+        result = await collect(processor.process(events))
+        text_events = [e for e in result if isinstance(e, TextRenderEvent)]
+
+        # Assert
+        assert len(text_events) == 1
+        assert text_events[0].text == "error response"
+        assert text_events[0].is_error is True
+        assert text_events[0].is_final is True
+
+    async def test_is_error_false_propagated_to_text_render_event(self) -> None:
+        """ResultLlmEvent(is_error=False) → TextRenderEvent(is_error=False)."""
+        # Arrange
+        processor = StreamProcessor(cfg())
+        events = async_events(
+            TextLlmEvent(text="normal response"),
+            ResultLlmEvent(is_error=False, duration_ms=0),
+        )
+
+        # Act
+        result = await collect(processor.process(events))
+        text_events = [e for e in result if isinstance(e, TextRenderEvent)]
+
+        # Assert
+        assert len(text_events) == 1
+        assert text_events[0].is_error is False
+
     async def test_empty_stream(self) -> None:
         """Empty event stream yields no events."""
         # Arrange

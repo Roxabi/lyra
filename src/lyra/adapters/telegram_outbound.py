@@ -278,7 +278,12 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: edit/ch
                 log.exception("Failed to send overflow chunk")
 
     # Cancel typing after final content is confirmed (streaming done).
-    adapter._cancel_typing(chat_id)
+    # If this was an intermediate message, restart the indicator so the user
+    # knows more content is coming (mirrors the same check in send()).
+    if outbound is not None and outbound.intermediate:
+        adapter._start_typing(chat_id)
+    else:
+        adapter._cancel_typing(chat_id)
 
     # Re-raise stream error so OutboundDispatcher can record CB failure
     if stream_error is not None:

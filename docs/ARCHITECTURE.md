@@ -132,6 +132,102 @@ Discord  ──▶ dc_inbound Queue ──┘         (bounded 100)        │
 
 **Adapter registry** (`dict[tuple[Platform, str], ChannelAdapter]`) — keyed by `(platform, bot_id)`. Multiple bots per platform are supported; each registers independently via `hub.register_adapter(Platform.TELEGRAM, bot_id, adapter)`. The OutboundDispatcher routes responses back to the originating channel.
 
+### Message Pipeline — State Machine
+
+```mermaid
+stateDiagram-v2
+    direction LR
+
+    [*] --> ValidatingPlatform : MessagePipeline.process()
+    ValidatingPlatform --> Dropped : unknown platform
+    ValidatingPlatform --> RateLimitCheck : platform known
+
+    RateLimitCheck --> Dropped : rate limit exceeded
+    RateLimitCheck --> ResolvingBinding : within limit
+
+    ResolvingBinding --> Dropped : no binding match
+    ResolvingBinding --> LookingUpAgent : binding resolved
+
+    LookingUpAgent --> Dropped : agent not registered
+    LookingUpAgent --> PoolReady : agent found → get_or_create_pool()
+
+    PoolReady --> ParsingCommand : CommandParser.parse()
+    ParsingCommand --> DispatchingCommand : is_command() = true
+    ParsingCommand --> SubmittingToPool : plain message
+
+    DispatchingCommand --> ResponseSent : command handled → OutboundDispatcher
+    DispatchingCommand --> SubmittingToPool : passthrough (! prefix or unknown)
+    DispatchingCommand --> ErrorReply : command error / timeout
+
+    SubmittingToPool --> Dropped : no adapter registered / circuit open
+    SubmittingToPool --> Debouncing : pool._inbox.put()
+    Debouncing --> Processing : debounce window elapsed → agent.process()
+    Debouncing --> Cancelled : /stop received during debounce
+
+    Processing --> StreamingResponse : LLM streaming chunks
+    Processing --> ResponseSent : full response ready
+    Processing --> ErrorReply : agent error / circuit open
+    Processing --> Cancelled : task cancelled mid-flight
+
+    StreamingResponse --> ResponseSent : final chunk confirmed sent
+    ResponseSent --> [*] : OutboundDispatcher → adapter.send()
+    ErrorReply --> [*] : error message delivered
+    Cancelled --> [*] : cancellation ack sent
+    Dropped --> [*]
+```
+
+### Command Routing — State Machine
+
+```mermaid
+stateDiagram-v2
+    direction LR
+
+    [*] --> RawMessage
+
+    RawMessage --> Parsed : CommandParser.parse()
+    Parsed --> Rewriting : bare URL pattern match → router.prepare()
+    Rewriting --> CommandCheck
+    Parsed --> CommandCheck : no rewrite needed
+
+    CommandCheck --> NotACommand : is_command() = false → submit to pool
+    CommandCheck --> BuiltinLookup : is_command() = true
+
+    BuiltinLookup --> Executed_Builtin : /clear /new /help /config /stop …
+    BuiltinLookup --> SessionLookup : not a builtin
+
+    note right of Executed_Builtin
+        Some builtins check msg.trust
+        internally (admin-only commands
+        return a permission-denied reply).
+    end note
+
+    SessionLookup --> HandlerFound_Session : registered session command (/vault-add /explain …)
+    SessionLookup --> PluginLookup : not a session command
+
+    HandlerFound_Session --> NoDriver : session_driver is None
+    HandlerFound_Session --> Executed_Session : driver available → asyncio.wait_for()
+    Executed_Session --> TimedOut : timeout exceeded
+    Executed_Session --> ResponseReady
+
+    PluginLookup --> HandlerFound_Plugin : plugin handler registered
+    PluginLookup --> Unknown : no handler found
+
+    HandlerFound_Plugin --> Executed_Plugin : asyncio.wait_for(handler, timeout)
+    Executed_Plugin --> TimedOut : timeout exceeded
+    Executed_Plugin --> ResponseReady
+
+    Unknown --> Passthrough : ! prefix or registered passthrough → None returned
+    Unknown --> FallbackReply : /unknown — "Unknown command: …"
+
+    Passthrough --> NotACommand
+    NotACommand --> [*] : submitted to pool as plain text
+    ResponseReady --> [*] : Response → OutboundDispatcher
+    Executed_Builtin --> [*] : Response → OutboundDispatcher
+    NoDriver --> [*] : "No session driver" reply
+    TimedOut --> [*] : "Command timed out" reply
+    FallbackReply --> [*]
+```
+
 ### Module Layout
 
 After the Phase 1b refactoring, every module is ≤300 LOC. Key decomposition:
@@ -279,6 +375,56 @@ class Agent:
 Multiple agents run simultaneously on different pools. A single agent (e.g., `lyra`) serves multiple pools without duplication.
 
 > **Upgrade path Phase 2**: if the atomic SLMs require sub-millisecond recall of user preferences, add `agent_state: dict` to the Pool (one line). Zero refactoring of the agent model.
+
+### Agent Lifecycle — State Machine
+
+```mermaid
+stateDiagram-v2
+    direction TB
+
+    [*] --> Scaffolded : lyra agent create <name>
+
+    Scaffolded --> Seeded : lyra agent init (TOML → DB via agent_seeder)
+    Scaffolded --> Deleted : lyra agent delete (no bots assigned)
+
+    Seeded --> Assigned : lyra agent assign --platform P --bot <id>
+    Seeded --> Deleted : lyra agent delete
+
+    Assigned --> Running : hub.register_agent() at startup
+    Assigned --> Unassigned : lyra agent unassign
+
+    Unassigned --> Assigned : lyra agent assign
+    Unassigned --> Deleted : lyra agent delete
+
+    Running --> Idle : no active pool tasks (all pools drained)
+    Idle --> Active : message arrives → pool.submit()
+
+    Active --> Processing : debounce elapsed → agent.process()
+    Processing --> Active : response dispatched (pool stays warm)
+    Processing --> Error : exception in agent.process()
+
+    Error --> Active : next message arrives (non-fatal — pool recovers)
+    Error --> Stopped : circuit breaker open (repeated failures)
+
+    Idle --> Stopped : hub shutdown / supervisord stop
+    Active --> Stopped : hub shutdown (in-flight tasks cancelled)
+
+    Stopped --> Running : supervisor restart → hub.register_agent()
+    Stopped --> [*]
+    Deleted --> [*]
+
+    note right of Seeded
+        Agent config lives in ~/.lyra/auth.db.
+        TOML files are seed sources only.
+        Runtime always reads from DB.
+    end note
+
+    note right of Running
+        Stateless singleton — immutable config.
+        All mutable state lives in the Pool.
+        One agent can serve N pools concurrently.
+    end note
+```
 
 ---
 

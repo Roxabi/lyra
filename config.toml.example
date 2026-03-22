@@ -36,6 +36,30 @@ user_ids = [
 ]
 
 # ----------------------------------------------------------------------------
+# Tool display — controls how tool calls are shown during streaming responses
+# All keys are optional; values shown are the defaults.
+# ----------------------------------------------------------------------------
+
+[tool_display]
+# names_threshold = 3     # named edits to show per file before collapsing to "N edits"
+# group_threshold = 3     # files before switching to grouped summary (e.g. "4 files edited")
+# bash_max_len    = 60    # max characters shown per bash command before truncating
+# throttle_ms     = 2000  # min milliseconds between streaming tool-summary updates (0 = off)
+
+[tool_display.show]
+# Per-tool visibility — set to false to silence a tool from the summary card.
+# Only the keys listed below are recognised; unknown keys are silently ignored.
+# edit       = true
+# write      = true
+# bash       = true
+# web_fetch  = true
+# web_search = true
+# agent      = true
+# read       = false   # silent by default (high-frequency, low signal)
+# grep       = false   # silent by default
+# glob       = false   # silent by default
+
+# ----------------------------------------------------------------------------
 # Telegram bots — one [[telegram.bots]] + [[auth.telegram_bots]] per bot
 # ----------------------------------------------------------------------------
 

@@ -11,6 +11,7 @@ from pathlib import Path
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.messages import MessageManager
 from lyra.core.pairing import PairingConfig
+from lyra.core.tool_display_config import ToolDisplayConfig
 
 log = logging.getLogger(__name__)
 
@@ -88,6 +89,22 @@ def _load_pairing_config(raw: dict) -> PairingConfig:
     """Load [pairing] section from raw config dict. Missing section → all defaults."""
     pairing_section: dict = raw.get("pairing", {})
     return PairingConfig.from_dict(pairing_section)
+
+
+def _load_tool_display_config(raw: dict) -> ToolDisplayConfig:
+    """Load [tool_display] section from raw config dict. Missing section → all defaults.
+
+    Keys (all optional)
+    -------------------
+    names_threshold : int  — edits before switching to count mode per file (default: 3)
+    group_threshold : int  — files before switching to grouped display (default: 3)
+    bash_max_len    : int  — max chars per bash command shown (default: 60)
+    throttle_ms     : int  — min ms between ToolSummaryRenderEvent emits (default: 2000)
+
+    [tool_display.show]   — per-tool visibility overrides (merged with defaults)
+    """
+    section: dict = raw.get("tool_display", {})
+    return ToolDisplayConfig.from_dict(section)
 
 
 def _load_cli_pool_config(raw: dict) -> dict:

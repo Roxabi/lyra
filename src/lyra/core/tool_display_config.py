@@ -117,7 +117,11 @@ class ToolDisplayConfig:
         }
 
         show_overrides: dict[str, bool] = data.get("show", {})
-        merged_show = MappingProxyType({**_DEFAULT_SHOW, **show_overrides})
+        # Coerce all show values to bool — guards programmatic callers passing
+        # integers or other truthy values into a field typed dict[str, bool].
+        merged_show = MappingProxyType(
+            {k: bool(v) for k, v in {**_DEFAULT_SHOW, **show_overrides}.items()}
+        )
 
         return cls(
             names_threshold=int(

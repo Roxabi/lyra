@@ -235,6 +235,58 @@ class TestTelegramStreaming:
         assert last_edit is not None
         assert "❌" in last_edit.kwargs["text"]
 
+    async def test_intermediate_outbound_restarts_typing(self) -> None:
+        """When outbound.intermediate=True, _start_typing is called after send."""
+        adapter, bot = self._make_adapter()
+        msg = make_tg_message()
+        from lyra.core.message import OutboundMessage
+
+        outbound = OutboundMessage.from_text("")
+        outbound.intermediate = True
+        start_calls = []
+        adapter._start_typing = lambda cid: start_calls.append(cid)  # type: ignore[method-assign]
+        await adapter.send_streaming(msg, quick_events(), outbound)
+        assert len(start_calls) == 1
+
+    async def test_is_error_with_stream_error_sends_prefixed_interrupted(self) -> None:
+        """is_error=True final event + exception → ❌-prefixed interrupted text."""
+        adapter, bot = self._make_adapter()
+        msg = make_tg_message()
+
+        async def error_with_final():
+            yield TextRenderEvent(text="partial answer", is_final=True, is_error=True)
+            raise RuntimeError("stream error")
+
+        with pytest.raises(RuntimeError):
+            await adapter.send_streaming(msg, error_with_final())
+
+        last_edit = bot.edit_message_text.call_args
+        # Placeholder was edited with an error-prefixed interrupted message
+        assert last_edit is not None
+        text = last_edit.kwargs.get("text", "") or (
+            last_edit.args[0] if last_edit.args else ""
+        )
+        assert "❌" in text
+
+    async def test_text_only_overflow_sends_extra_chunks(self) -> None:
+        """Text >4096 chars: first chunk edits placeholder, overflow as new msgs."""
+        adapter, bot = self._make_adapter()
+        msg = make_tg_message()
+
+        long_text = "A" * 5000  # Forces 2 chunks: 4096 + 904
+
+        async def long_events():
+            yield TextRenderEvent(text=long_text, is_final=True)
+
+        await adapter.send_streaming(msg, long_events())
+
+        # Placeholder was created
+        assert bot.send_message.call_count >= 1
+        # First chunk edits placeholder (text-only path)
+        assert bot.edit_message_text.call_count >= 1
+        # Overflow chunk sent as new message: send_message = placeholder + overflow
+        assert bot.send_message.call_count >= 2
+
 
 # ---------------------------------------------------------------------------
 # Discord streaming
@@ -361,6 +413,38 @@ class TestDiscordStreaming:
             )
 
         await adapter.send_streaming(msg, error_turn())
+        last_edit = placeholder.edit.call_args
+        assert last_edit is not None
+        content = last_edit.kwargs.get("content", "")
+        assert "❌" in content
+
+    async def test_intermediate_outbound_restarts_typing(self) -> None:
+        """When outbound.intermediate=True, _start_typing is called after send."""
+        adapter, channel, placeholder = self._make_adapter()
+        msg = make_dc_message()
+        from lyra.core.message import OutboundMessage
+
+        outbound = OutboundMessage.from_text("")
+        outbound.intermediate = True
+        start_calls = []
+        adapter._start_typing = lambda cid: start_calls.append(cid)  # type: ignore[method-assign]
+        await adapter.send_streaming(msg, quick_events(), outbound)
+        assert len(start_calls) == 1
+
+    async def test_is_error_with_stream_error_edits_placeholder(self) -> None:
+        """is_error=True final event + exception → placeholder edited with ❌."""
+        adapter, channel, placeholder = self._make_adapter()
+        msg = make_dc_message()
+
+        async def error_with_final():
+            yield TextRenderEvent(text="partial answer", is_final=True, is_error=True)
+            raise RuntimeError("stream error")
+
+        with pytest.raises(RuntimeError):
+            await adapter.send_streaming(msg, error_with_final())
+
+        # Placeholder was edited at least once (with ❌-prefixed text)
+        assert placeholder.edit.call_count >= 1
         last_edit = placeholder.edit.call_args
         assert last_edit is not None
         content = last_edit.kwargs.get("content", "")

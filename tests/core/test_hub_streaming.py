@@ -33,10 +33,10 @@ class TestDispatchStreaming:
             async def send_streaming(
                 self,
                 original_msg: InboundMessage,
-                chunks: object,
+                events: object,
                 outbound=None,
             ) -> None:
-                async for event in chunks:  # type: ignore[union-attr]
+                async for event in events:  # type: ignore[union-attr]
                     if isinstance(event, TextRenderEvent):
                         received.append(event.text)
 
@@ -63,10 +63,10 @@ class TestDispatchStreaming:
             async def send_streaming(
                 self,
                 original_msg: InboundMessage,
-                chunks: object,
+                events: object,
                 outbound=None,
             ) -> None:
-                async for _ in chunks:  # type: ignore[union-attr]
+                async for _ in events:  # type: ignore[union-attr]
                     pass
 
         hub.register_adapter(Platform.TELEGRAM, "main", StreamAdapter())  # type: ignore[arg-type]
@@ -118,10 +118,10 @@ class TestDispatchStreaming:
             async def send_streaming(
                 self,
                 original_msg: InboundMessage,
-                chunks: object,
+                events: object,
                 outbound: object = None,
             ) -> None:
-                async for chunk in chunks:  # type: ignore[union-attr]
+                async for chunk in events:  # type: ignore[union-attr]
                     streamed.append(chunk)
 
         hub.register_adapter(Platform.TELEGRAM, "main", StreamAdapter())  # type: ignore[arg-type]
@@ -158,10 +158,10 @@ class TestDispatchStreaming:
             async def send_streaming(
                 self,
                 original_msg: InboundMessage,
-                chunks: object,
+                events: object,
                 outbound: object = None,
             ) -> None:
-                async for _ in chunks:  # type: ignore[union-attr]
+                async for _ in events:  # type: ignore[union-attr]
                     pass
 
         hub.register_adapter(Platform.TELEGRAM, "main", StreamAdapter())  # type: ignore[arg-type]
@@ -190,10 +190,10 @@ class TestDispatchStreaming:
             async def send_streaming(
                 self,
                 original_msg: InboundMessage,
-                chunks: object,
+                events: object,
                 outbound: object = None,
             ) -> None:
-                async for chunk in chunks:  # type: ignore[union-attr]
+                async for chunk in events:  # type: ignore[union-attr]
                     if isinstance(chunk, TextRenderEvent):
                         streamed.append(chunk.text)
 
@@ -253,10 +253,10 @@ class TestDispatchStreaming:
             async def send_streaming(
                 self,
                 original_msg: InboundMessage,
-                chunks: object,
+                events: object,
                 outbound: object = None,
             ) -> None:
-                async for chunk in chunks:  # type: ignore[union-attr]
+                async for chunk in events:  # type: ignore[union-attr]
                     if isinstance(chunk, TextRenderEvent):
                         streamed.append(chunk.text)
 
@@ -313,10 +313,10 @@ class TestHubRunStreaming:
             async def send_streaming(
                 self,
                 original_msg: InboundMessage,
-                chunks: object,
+                events: object,
                 outbound=None,
             ) -> None:
-                async for chunk in chunks:  # type: ignore[union-attr]
+                async for chunk in events:  # type: ignore[union-attr]
                     if isinstance(chunk, TextRenderEvent):
                         received_chunks.append(chunk.text)
 

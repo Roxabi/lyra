@@ -254,7 +254,14 @@ class HubOutboundMixin:
                 async for event in chunks:
                     if isinstance(event, TextRenderEvent):
                         text += event.text
-                await adapter.send(msg, OutboundMessage.from_text(text))
+                if text:
+                    await adapter.send(msg, OutboundMessage.from_text(text))
+                else:
+                    log.debug(
+                        "dispatch_streaming fallback: no text events in stream"
+                        " — skipping send for msg %s",
+                        msg.id,
+                    )
             if outbound is not None:
                 _dispatched = outbound.metadata.pop("_on_dispatched", None)
                 if callable(_dispatched):

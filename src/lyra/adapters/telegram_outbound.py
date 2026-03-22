@@ -297,16 +297,21 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: tool-su
                 display_text = adapter._msg("generic", GENERIC_ERROR_REPLY)
         final_chunks = _render_text(display_text) if display_text else []
         if had_tool_events:
-            # Tool summary stays in placeholder; text sent as a new message
+            # Tool summary stays in placeholder; text sent as new message(s).
+            # Update reply_message_id to the final text message so session
+            # routing can match user replies to the correct pool (#387).
+            _last_sent = None
             for chunk in final_chunks:
                 try:
-                    await adapter.bot.send_message(
+                    _last_sent = await adapter.bot.send_message(
                         chat_id=chat_id,
                         text=chunk,
                         parse_mode="MarkdownV2",
                     )
                 except Exception:
                     log.exception("Failed to send final text chunk")
+            if outbound is not None and _last_sent is not None:
+                outbound.metadata["reply_message_id"] = _last_sent.message_id
         elif final_chunks:
             # Text-only turn: edit placeholder with text (preserves overflow logic)
             try:

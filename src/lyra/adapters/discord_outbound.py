@@ -307,12 +307,23 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: tool-su
             render_text(display_text, DISCORD_MAX_LENGTH) if display_text else []
         )
         if had_tool_events:
-            # Tool summary stays in placeholder; text as new message(s)
-            for chunk in final_chunks:
-                await _discord_send_with_retry(
-                    lambda c=chunk: messageable.send(c),
-                    label="Final text chunk",
-                )
+            # Tool summary stays in placeholder; text as new message(s).
+            # Update reply_message_id to the final text message so session
+            # routing can match user replies to the correct pool (#387).
+            for i, chunk in enumerate(final_chunks):
+                is_last = (i == len(final_chunks) - 1)
+                if is_last:
+                    try:
+                        _sent = await messageable.send(chunk)
+                        if outbound is not None:
+                            outbound.metadata["reply_message_id"] = _sent.id
+                    except Exception:
+                        log.exception("Failed to send final text chunk")
+                else:
+                    await _discord_send_with_retry(
+                        lambda c=chunk: messageable.send(c),
+                        label="Final text chunk",
+                    )
         elif final_chunks:
             # Text-only turn: edit placeholder with text
             await _discord_send_with_retry(

@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
     from .agent_store import AgentStore
     from .memory import MemoryManager
+    from .render_events import RenderEvent
 
 from .agent_commands import CommandReloadManager
 from .agent_config import Agent, _find_agent_dir  # noqa: F401 — Agent re-exported
@@ -253,4 +254,4 @@ class AgentBase(ABC, SessionManager):
         pool: Pool,
         *,
         on_intermediate: "Callable[[str], Awaitable[None]] | None" = None,
-    ) -> "Response | AsyncIterator[str]": ...
+    ) -> "Response | AsyncIterator[RenderEvent]": ...

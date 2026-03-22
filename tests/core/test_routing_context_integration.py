@@ -21,6 +21,7 @@ from lyra.core.message import (
     Response,
     RoutingContext,
 )
+from lyra.core.render_events import TextRenderEvent
 
 from .conftest import _RC_DC, _RC_TG, make_routing_inbound
 
@@ -317,10 +318,10 @@ class TestDispatcherRoutingIntegration:
             outbound.routing = rc
             drained = False
 
-            async def bad_chunks() -> AsyncIterator[str]:
+            async def bad_chunks() -> AsyncIterator[TextRenderEvent]:
                 nonlocal drained
-                yield "chunk1"
-                yield "chunk2"
+                yield TextRenderEvent(text="chunk1", is_final=False)
+                yield TextRenderEvent(text="chunk2", is_final=True)
                 drained = True
 
             dispatcher.enqueue_streaming(msg, bad_chunks(), outbound)
@@ -385,8 +386,8 @@ class TestHubDispatchPropagation:
         msg = make_routing_inbound(routing=_RC_TG)
         outbound = OutboundMessage.from_text("")
 
-        async def chunks() -> AsyncIterator[str]:
-            yield "hello"
+        async def chunks() -> AsyncIterator[TextRenderEvent]:
+            yield TextRenderEvent(text="hello", is_final=True)
 
         await hub.dispatch_streaming(msg, chunks(), outbound)
         assert outbound.routing is _RC_TG

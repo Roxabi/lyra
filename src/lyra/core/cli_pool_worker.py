@@ -171,6 +171,33 @@ class _CliPoolWorker:
         """Return True if a Claude session JSONL file exists for this session_id."""
         return any(_CLAUDE_PROJECTS.glob(f"*/{session_id}.jsonl"))
 
+    def _sync_evict_entry(self, pool_id: str, *, preserve_session: bool = True) -> None:
+        """Sync counterpart to _kill for use in synchronous eviction paths.
+
+        Pops the entry and cwd_override immediately within a single synchronous
+        frame (no event-loop yield). If preserve_session=True, entry.session_id is
+        set, and the session file exists on disk, stores session_id in
+        _resume_session_ids for one-shot pickup by the next _spawn().
+
+        Does NOT terminate the process — the idle reaper handles cleanup on its
+        next sweep (it will find _entries[pool_id] absent and return immediately).
+        """
+        entry = self._entries.pop(pool_id, None)  # type: ignore[attr-defined]
+        self._cwd_overrides.pop(pool_id, None)  # type: ignore[attr-defined]
+        if entry is None:
+            return
+        if (
+            preserve_session
+            and entry.session_id
+            and self._session_file_exists(entry.session_id)
+        ):
+            self._resume_session_ids[pool_id] = entry.session_id  # type: ignore[attr-defined]
+            log.debug(
+                "[pool:%s] sync_evict_entry: preserving session %s for auto-resume",
+                pool_id,
+                entry.session_id,
+            )
+
     async def _kill(self, pool_id: str, *, preserve_session: bool = True) -> None:
         entry = self._entries.pop(pool_id, None)  # type: ignore[attr-defined]
         self._cwd_overrides.pop(pool_id, None)  # type: ignore[attr-defined]

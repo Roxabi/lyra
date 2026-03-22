@@ -372,7 +372,7 @@ class TestMakeAgentStore:
 
         store = make_agent_store()
         assert isinstance(store, JsonAgentStore)
-        assert store._path == custom_path
+        assert store.path == custom_path
 
     def test_lyra_db_other_value_returns_agent_store(
         self, monkeypatch: pytest.MonkeyPatch

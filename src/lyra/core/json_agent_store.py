@@ -19,14 +19,12 @@ import json
 import logging
 from pathlib import Path
 
-from .agent_models import AgentRow, AgentRuntimeStateRow
+from .agent_models import VALID_AGENT_STATUSES, AgentRow, AgentRuntimeStateRow
 from .agent_seeder import seed_from_toml as _seed_from_toml
 
 log = logging.getLogger(__name__)
 
 __all__ = ["JsonAgentStore"]
-
-_VALID_STATUSES = {"idle", "active", "error"}
 
 
 class JsonAgentStore:
@@ -51,6 +49,11 @@ class JsonAgentStore:
         self._bot_map: dict[tuple[str, str], str] = {}
         self._bot_settings: dict[tuple[str, str], dict] = {}
         self._connected: bool = False
+
+    @property
+    def path(self) -> Path:
+        """Path to the backing JSON file."""
+        return self._path
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -192,9 +195,10 @@ class JsonAgentStore:
         self, agent_name: str, status: str, pool_count: int = 0
     ) -> None:
         """Validate status; no-op (runtime state not persisted in test store)."""
-        if status not in _VALID_STATUSES:
+        if status not in VALID_AGENT_STATUSES:
             raise ValueError(
-                f"invalid status {status!r} — must be one of {sorted(_VALID_STATUSES)}"
+                f"invalid status {status!r} — must be one of "
+                f"{sorted(VALID_AGENT_STATUSES)}"
             )
         # No-op: JsonAgentStore does not track runtime state.
 
@@ -211,7 +215,11 @@ class JsonAgentStore:
     # ------------------------------------------------------------------
 
     def _persist(self) -> None:
-        """Serialize in-memory state to the JSON file."""
+        """Serialize in-memory state to the JSON file.
+
+        Raises :class:`OSError` on write failure (e.g. disk full, bad permissions)
+        after logging a warning so the error context is not lost.
+        """
         data: dict = {
             "agents": [dataclasses.asdict(row) for row in self._agents.values()],
             "bot_map": {
@@ -221,4 +229,13 @@ class JsonAgentStore:
                 f"{p}:{b}": s for (p, b), s in self._bot_settings.items()
             },
         }
-        self._path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        try:
+            self._path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        except OSError as exc:
+            log.warning(
+                "JsonAgentStore._persist(): failed to write %s (%s) — in-memory state "
+                "is intact but will not survive reconnect",
+                self._path,
+                exc,
+            )
+            raise

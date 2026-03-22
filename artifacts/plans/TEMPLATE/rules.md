@@ -20,9 +20,9 @@ The agent must follow them without deviation.
 
 ## Quality
 
-- Run `uv run ruff check . && uv run ruff format .` after every file edit.
+- Run `uv run ruff check . && uv run ruff format . && uv run pyright` after every file edit.
 - Run `uv run pytest` after each task that modifies source code (not docs-only tasks).
-- Fix all lint and test failures before moving to the next task (max 3 attempts per failure).
+- Fix all lint, typecheck, and test failures before moving to the next task (max 3 attempts per failure).
 
 ## Scope
 

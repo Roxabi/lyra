@@ -25,6 +25,7 @@ List what will exist when this run is done:
 - [ ] _File or feature 2_
 - [ ] All tests passing (`uv run pytest`)
 - [ ] Lint clean (`uv run ruff check .`)
+- [ ] Typecheck clean (`uv run pyright`)
 
 ## Out of scope
 

@@ -1,7 +1,7 @@
 # Lyra — Prioritized Roadmap
 
 > Living document. Updated as decisions are made.
-> Last updated: 2026-03-17
+> Last updated: 2026-03-22
 
 ---
 
@@ -222,6 +222,26 @@ When onboarding a new project or reviewing an existing one, verify:
 Projects needing a library API review (tracked separately): `roxabi_boilerplate` (NestJS backend → FastAPI migration?), `ryvo` (same), `roxabi_site` (Vue/TS frontend — frontend stays TS).
 
 See `docs/ARCHITECTURE.md` → **Python-first Paradigm** for the full definition.
+
+---
+
+## Refactoring policy
+
+Feature work accumulates silently. `core/` reached 60+ files; 13 files exceeded 300 lines. Without a cadence, the mental model degrades and agent context costs rise.
+
+**Cadence:** for every 2 feature issues closed, open 1 refactor issue.
+
+**Scope of refactor issues:**
+- File size — split files exceeding 300 lines
+- Directory size — break up directories with 20+ files
+- Duplication — consolidate repeated patterns
+- Unused code — remove dead modules, functions, and imports
+
+**Goal:** minimize total file count. Fewer files = faster agent mental models = lower error rate.
+
+**Triage checklist (on feature issue close):**
+- [ ] Has this closure crossed the 2-feature threshold? → open a refactor issue if yes
+- [ ] Did this feature add new files that are already oversized? → open a targeted refactor issue immediately
 
 ---
 

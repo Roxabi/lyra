@@ -138,9 +138,7 @@ Discord  ──▶ dc_inbound Queue ──┘         (bounded 100)        │
 stateDiagram-v2
     direction LR
 
-    [*] --> Received : adapter receives update
-
-    Received --> ValidatingPlatform : MessagePipeline.process()
+    [*] --> ValidatingPlatform : MessagePipeline.process()
     ValidatingPlatform --> Dropped : unknown platform
     ValidatingPlatform --> RateLimitCheck : platform known
 
@@ -161,6 +159,7 @@ stateDiagram-v2
     DispatchingCommand --> SubmittingToPool : passthrough (! prefix or unknown)
     DispatchingCommand --> ErrorReply : command error / timeout
 
+    SubmittingToPool --> Dropped : no adapter registered / circuit open
     SubmittingToPool --> Debouncing : pool._inbox.put()
     Debouncing --> Processing : debounce window elapsed → agent.process()
     Debouncing --> Cancelled : /stop received during debounce
@@ -185,19 +184,22 @@ stateDiagram-v2
 
     [*] --> RawMessage
 
-    RawMessage --> Rewriting : router.prepare() — bare URL → /vault-add
-    Rewriting --> Parsed : CommandParser.parse()
-    RawMessage --> Parsed : no rewrite needed
+    RawMessage --> Parsed : CommandParser.parse()
+    Parsed --> Rewriting : bare URL pattern match → router.prepare()
+    Rewriting --> CommandCheck
+    Parsed --> CommandCheck : no rewrite needed
 
-    Parsed --> NotACommand : is_command() = false → submit to pool
-    Parsed --> BuiltinLookup : is_command() = true
+    CommandCheck --> NotACommand : is_command() = false → submit to pool
+    CommandCheck --> BuiltinLookup : is_command() = true
 
-    BuiltinLookup --> HandlerFound_Builtin : /clear /new /help /config /stop …
+    BuiltinLookup --> Executed_Builtin : /clear /new /help /config /stop …
     BuiltinLookup --> SessionLookup : not a builtin
 
-    HandlerFound_Builtin --> GuardCheck_Builtin : trust + admin check
-    GuardCheck_Builtin --> Executed_Builtin : authorized
-    GuardCheck_Builtin --> Rejected : insufficient trust level
+    note right of Executed_Builtin
+        Some builtins check msg.trust
+        internally (admin-only commands
+        return a permission-denied reply).
+    end note
 
     SessionLookup --> HandlerFound_Session : registered session command (/vault-add /explain …)
     SessionLookup --> PluginLookup : not a session command
@@ -220,7 +222,7 @@ stateDiagram-v2
     Passthrough --> NotACommand
     NotACommand --> [*] : submitted to pool as plain text
     ResponseReady --> [*] : Response → OutboundDispatcher
-    Rejected --> [*] : "Permission denied" reply
+    Executed_Builtin --> [*] : Response → OutboundDispatcher
     NoDriver --> [*] : "No session driver" reply
     TimedOut --> [*] : "Command timed out" reply
     FallbackReply --> [*]

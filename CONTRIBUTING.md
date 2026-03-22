@@ -235,7 +235,7 @@ Read artifacts/plans/<issue>/rules.md and artifacts/plans/<issue>/scope.md.
 Then execute artifacts/plans/<issue>/task-0001.md.
 ```
 
-After each task completes, the next prompt:
+The first prompt loads the behavior contract and kicks off task-0001 in one go. After each task completes, the next prompt:
 
 ```
 Execute artifacts/plans/<issue>/task-0002.md.

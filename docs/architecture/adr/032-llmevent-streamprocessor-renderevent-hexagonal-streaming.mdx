@@ -1,0 +1,149 @@
+---
+title: "ADR-032: LlmEvent → StreamProcessor → RenderEvent — Hexagonal Streaming Pipeline"
+description: Replace AsyncIterator[str] end-to-end with a typed event hierarchy (LlmEvent → RenderEvent) and a domain-layer StreamProcessor, closing the six architectural gaps that block real-time tool-call visibility.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+Issue #371. `LlmProvider.complete()` buffers the entire LLM response and processes tool-use
+blocks internally. `ChannelAdapter.send_streaming()` receives only `AsyncIterator[str]`, making
+real-time tool call visibility structurally impossible. Six concrete gaps block the hexagonal
+target:
+
+| Gap | Missing |
+|-----|---------|
+| G1 | `LlmProvider.stream() → AsyncIterator[LlmEvent]` |
+| G2 | `llm/events.py` — `TextLlmEvent \| ToolUseLlmEvent \| ResultLlmEvent` |
+| G3 | `core/stream_processor.py` — aggregation, thresholds, throttle |
+| G4 | `core/render_events.py` — `TextRenderEvent \| ToolSummaryRenderEvent` |
+| G5 | `send_streaming(AsyncIterator[str])` → `AsyncIterator[RenderEvent]` |
+| G6 | `[tool_display]` config section missing |
+
+The current `stream()` method on `ClaudeCliDriver` already exists (ADR-028) and returns
+`AsyncIterator[str]`. `AnthropicSdkDriver` has no `stream()` method — it buffers everything
+in `complete()`. `SimpleAgent.process()` returns `Response | AsyncIterator[str]`.
+
+A full gap analysis with three candidate shapes was conducted in
+`artifacts/analyses/371-arch-stream-processor-render-event-analysis.mdx`.
+
+## Options Considered
+
+### Option A: Full hexagonal replacement (recommended)
+
+Replace the `str`-based streaming stack end-to-end across all layers. Introduce
+`LlmEvent` and `RenderEvent` hierarchies as frozen dataclasses. Add a domain-layer
+`StreamProcessor` that is config-driven and channel-agnostic. Update all affected call
+sites — `SimpleAgent.process()`, `hub_outbound.dispatch_streaming()`, both channel
+adapters, and the `ChannelAdapter` protocol — to speak `RenderEvent`.
+
+- **Pros:** Aligns exactly with the hexagonal target. `StreamProcessor` is fully unit-testable
+  with no network dependencies. New LLM drivers or channel adapters only implement their own
+  event type — no platform knowledge crosses layer boundaries. The existing 134-line
+  `telegram_outbound.send_streaming()` placeholder/edit/finalize structure maps cleanly to
+  `RenderEvent` types and can be adapted rather than rewritten.
+- **Cons:** 11 files touched across 4 layers (plus `outbound_dispatcher.py` type annotations —
+  see Consequences). `SimpleAgent.process()` return type changes from
+  `Response | AsyncIterator[str]` to `Response | AsyncIterator[RenderEvent]`.
+  The TTS tee in `hub_outbound.dispatch_streaming()` must be updated to extract
+  `TextRenderEvent.text` instead of raw str chunks.
+
+**Scope:** L
+
+### Option B: Additive dual-channel
+
+Keep `send_streaming(AsyncIterator[str])` for text. Add a parallel optional
+`send_tool_events(AsyncIterator[ToolSummaryRenderEvent])` method on the protocol.
+Adapters that support it implement the method; others skip silently.
+
+- **Pros:** Zero breaking changes to the text streaming path. TTS tee and str pipeline
+  untouched.
+- **Cons:** Two parallel streams must be coordinated — text chunks and tool events originate
+  from the same underlying LLM stream and cannot be decoupled without buffering, defeating
+  live rendering. The voice/TTS path still processes only str, leaving the voice modality
+  broken. Does not close the hexagonal gap — `ChannelAdapter` remains coupled to `str`.
+  Permanent protocol bifurcation accumulates debt.
+
+**Scope:** M (fewer files, but coordination logic is non-trivial)
+
+### Option C: Tagged string encoding
+
+Encode tool events as sentinel-tagged strings in the existing `AsyncIterator[str]`:
+`"\x00TOOL_SUMMARY:{json}\x00"` interleaved with text chunks. Adapters decode at the edge.
+
+- **Pros:** Zero protocol changes. Smallest implementation surface.
+- **Cons:** Sentinel parsing is fragile. Type safety is lost at every consumer. Explicitly
+  anti-hexagonal. TTS would synthesize tool-summary JSON as speech unless explicitly stripped
+  — a hard blocker for the voice modality.
+
+**Scope:** S (implementation) + XL (eventual cleanup debt)
+
+## Decision
+
+**Option A: Full hexagonal replacement.**
+
+Option B's dual-channel coordination problem is structural, not incidental: text and tool events
+are interleaved in the same LLM response stream; splitting them requires buffering that eliminates
+live rendering. Option C is disqualified by the TTS corruption risk alone.
+
+Option A's blast radius (11+ files, 4 layers) is real but bounded. The 5-phase rollout — each
+phase independently mergeable to `staging` — de-risks execution. The `complete()` path is
+untouched throughout, preserving zero regression on all non-streaming turns.
+
+The dependency rule is enforced: `llm/events.py` imports nothing outside `lyra.llm`;
+`core/stream_processor.py` imports from `lyra.llm.events` and `core/render_events` only;
+channel adapters import `RenderEvent` from `core/render_events` only — no platform types
+cross the hexagonal boundary.
+
+## Consequences
+
+### Positive
+
+- `StreamProcessor` is fully unit-testable in isolation with no network or subprocess
+  dependencies — ~15 test cases covering aggregation, throttle, and per-tool `show` flags.
+- Adding a new LLM driver requires only implementing `stream() → AsyncIterator[LlmEvent]`.
+  Adding a new channel adapter requires only handling `AsyncIterator[RenderEvent]`.
+  Neither needs knowledge of the other layer.
+- Real-time tool-call visibility in Telegram and Discord is unblocked.
+
+### Negative
+
+- `SimpleAgent.process()` return type changes from `Response | AsyncIterator[str]` to
+  `Response | AsyncIterator[RenderEvent]`. All callers (pool_processor routing, hub dispatch
+  chain) must be updated in Phase 4.
+- `OutboundDispatcher.enqueue_streaming()` (`core/outbound_dispatcher.py`) has an explicit
+  `AsyncIterator[str]` annotation on its `chunks` parameter (line 93) and a corresponding
+  `_ITEM` union type. These become stale when the element type changes to `RenderEvent`. The
+  drain loops (`async for _ in payload: pass`) are structurally compatible regardless — this
+  is a type annotation update only, but `outbound_dispatcher.py` must be added as a 12th file
+  in the Phase 4 blast radius (annotation-only change, low risk).
+
+### Neutral
+
+- `stream()` remains duck-typed via `hasattr()` — consistent with ADR-028. The
+  `RetryDecorator` and `CircuitBreakerDecorator` wrappers (ADR-016) compose over `complete()`
+  only and do not forward `stream()`. This asymmetry exists today with `AsyncIterator[str]`
+  and carries forward unchanged to `AsyncIterator[LlmEvent]`. The spec must document
+  explicitly that the streaming path bypasses circuit-breaker protection, so implementors
+  do not assume CB wrapping on the streaming leg.
+- The `--include-partial-messages` spawn-time flag contracts from ADR-028 (cancel-in-flight
+  cleanup, session ID propagation, tool-use delta filtering) are unaffected — they operate
+  below the `LlmEvent` abstraction layer at the CLI protocol level.
+- Phase 5 (config + wiring) is independent of all other phases and can be merged at any time.
+
+## Implementation Phases
+
+```
+P1 (½ day)  — Type definitions        llm/events.py + core/render_events.py
+P2 (1 day)  — LLM driver stream()     base.py + sdk.py + cli.py + CliPool
+P3 (2 days) — StreamProcessor         core/stream_processor.py + ~15 unit tests
+P4 (1 day)  — Outbound adapters       hub_outbound.py + hub_protocol.py + outbound_dispatcher.py
+                                       + telegram_outbound.py + discord_outbound.py
+P5 (½ day)  — Config + wiring         config.toml.example + bootstrap/config.py
+```
+
+P1 + P2 run in parallel. P3 is blocked by P1 + P2. P4 is blocked by P3. P5 is independent.
+Each phase is independently mergeable to `staging`.

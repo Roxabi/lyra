@@ -6,7 +6,7 @@ import dataclasses
 import enum
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from .agent import AgentBase
 from .command_parser import CommandParser
@@ -24,6 +24,11 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 _command_parser = CommandParser()
+
+# Type alias for the optional trace hook.
+# Called with (stage, event, **payload) at key pipeline decision points.
+# The hook must be a plain synchronous callable — it is never awaited.
+TraceHook = Callable[..., None]
 
 
 class Action(enum.Enum):
@@ -71,10 +76,29 @@ class MessagePipeline:
 
     Each guard stage returns ``PipelineResult`` to stop processing or ``None``
     to continue. Terminal stages always return a ``PipelineResult``.
+
+    An optional *trace_hook* can be supplied for observability.  It is called
+    as ``trace_hook(stage, event, **payload)`` at each key decision point and
+    must be a plain synchronous callable (never awaited).  When ``None``
+    (the default) the hook path is a no-op with zero overhead.
     """
 
-    def __init__(self, hub: Hub) -> None:
+    def __init__(self, hub: Hub, *, trace_hook: TraceHook | None = None) -> None:
         self._hub = hub
+        self._trace_hook = trace_hook
+
+    # ------------------------------------------------------------------
+    # Internal tracing helper
+    # ------------------------------------------------------------------
+
+    def _trace(self, stage: str, event: str, **payload: object) -> None:
+        """Emit a trace event if a hook is registered. Never raises."""
+        if self._trace_hook is None:
+            return
+        try:
+            self._trace_hook(stage, event, **payload)
+        except Exception:  # noqa: BLE001
+            log.debug("trace_hook raised — ignoring", exc_info=True)
 
     async def process(
         self,
@@ -83,8 +107,22 @@ class MessagePipeline:
         """Route *msg* through the pipeline stages."""
         from .hub import RoutingKey
 
+        self._trace(
+            "inbound",
+            "message_received",
+            msg_id=msg.id,
+            platform=msg.platform,
+            user_id=msg.user_id,
+        )
+
         result = self._validate_platform(msg)
         if result is not None:
+            self._trace(
+                "inbound",
+                "platform_invalid",
+                platform=msg.platform,
+                action=result.action.value,
+            )
             return result
 
         key = RoutingKey(
@@ -95,20 +133,35 @@ class MessagePipeline:
 
         result = self._check_rate_limit(msg, key)
         if result is not None:
+            self._trace("inbound", "rate_limited", action=result.action.value)
             return result
 
         binding = self._resolve_binding(msg, key)
         if binding is None:
+            self._trace("pool", "no_binding", action=Action.DROP.value)
             return _DROP
 
         agent = self._lookup_agent(binding, key)
         if agent is None:
+            self._trace(
+                "pool",
+                "no_agent",
+                agent_name=binding.agent_name,
+                action=Action.DROP.value,
+            )
             return _DROP
 
         pool = self._hub.get_or_create_pool(
             binding.pool_id,
             binding.agent_name,
         )
+        self._trace(
+            "pool",
+            "agent_selected",
+            agent=binding.agent_name,
+            pool_id=binding.pool_id,
+        )
+
         router = getattr(agent, "command_router", None)
 
         cmd_ctx = _command_parser.parse(msg.text)
@@ -120,6 +173,8 @@ class MessagePipeline:
             msg = router.prepare(msg)
 
         if router and router.is_command(msg):
+            _cmd = msg.text.split()[0] if msg.text else ""
+            self._trace("processor", "command_detected", command=_cmd)
             return await self._dispatch_command(msg, router, pool, key)
 
         return await self._submit_to_pool(msg, pool, key)
@@ -204,11 +259,18 @@ class MessagePipeline:
                 else GENERIC_ERROR_REPLY
             )
             response = Response(content=_content)
+            self._trace(
+                "outbound",
+                "command_error",
+                action=Action.COMMAND_HANDLED.value,
+            )
             return PipelineResult(action=Action.COMMAND_HANDLED, response=response)
 
         if response is None:  # !-prefixed command not found — fall through to pool
+            self._trace("processor", "command_fallthrough")
             return await self._submit_to_pool(msg, pool, key)
 
+        self._trace("outbound", "command_handled", action=Action.COMMAND_HANDLED.value)
         return PipelineResult(
             action=Action.COMMAND_HANDLED,
             response=response,
@@ -326,8 +388,16 @@ class MessagePipeline:
                 msg.platform,
                 msg.bot_id,
             )
+            self._trace(
+                "outbound",
+                "no_adapter",
+                platform=msg.platform,
+                bot_id=msg.bot_id,
+                action=Action.DROP.value,
+            )
             return _DROP
         if await self._hub.circuit_breaker_drop(msg):
+            self._trace("outbound", "circuit_open", action=Action.DROP.value)
             return _DROP
         # Register session persistence callback once.
         _update_fn = msg.platform_meta.get("_session_update_fn")
@@ -345,6 +415,12 @@ class MessagePipeline:
                 exc_info=True,
             )
             status = ResumeStatus.SKIPPED
+        self._trace(
+            "outbound",
+            "message_submitted",
+            adapter=msg.platform,
+            resume_status=status.value,
+        )
         if status == ResumeStatus.FRESH:
             await self._notify_session_fallthrough(msg)
         return PipelineResult(action=Action.SUBMIT_TO_POOL, pool=pool)

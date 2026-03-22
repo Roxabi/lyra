@@ -6,12 +6,14 @@ Source: src/lyra/llm/drivers/sdk.py
 
 from __future__ import annotations
 
+import types
 from unittest.mock import AsyncMock, MagicMock
 
 from lyra.core.agent_config import ModelConfig
 from lyra.llm.drivers.sdk import (  # type: ignore[reportMissingImports]
     AnthropicSdkDriver,
 )
+from lyra.llm.events import ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -25,6 +27,53 @@ def make_driver() -> AnthropicSdkDriver:
 
 def make_model_cfg() -> ModelConfig:
     return ModelConfig(backend="anthropic-sdk")
+
+
+class _FakeStream:
+    """Async context manager + async iterator for messages.stream() mocks.
+
+    Pass ``raise_in_enter`` to simulate a connection/auth error before any
+    events are delivered.
+    """
+
+    def __init__(
+        self,
+        events: list,
+        *,
+        raise_in_enter: Exception | None = None,
+        cost_usd: float | None = None,
+    ) -> None:
+        self._events = list(events)
+        self._raise_in_enter = raise_in_enter
+        self._cost_usd = cost_usd
+        self._idx = 0
+
+    async def __aenter__(self) -> object:
+        if self._raise_in_enter is not None:
+            raise self._raise_in_enter
+        return self
+
+    async def __aexit__(self, *_args: object) -> bool:
+        return False
+
+    def __aiter__(self) -> object:
+        return self
+
+    async def __anext__(self) -> object:
+        if self._idx >= len(self._events):
+            raise StopAsyncIteration
+        ev = self._events[self._idx]
+        self._idx += 1
+        return ev
+
+    async def get_final_message(self) -> object:
+        """Return mock final message with optional cost_usd on usage."""
+        msg = MagicMock()
+        if self._cost_usd is not None:
+            msg.usage = types.SimpleNamespace(cost_usd=self._cost_usd)
+        else:
+            msg.usage = MagicMock(spec=[])  # no cost_usd attribute
+        return msg
 
 
 # ---------------------------------------------------------------------------
@@ -347,6 +396,107 @@ class TestExecuteTool:
         driver = make_driver()
         with pytest.raises(ValueError, match="Unknown tool"):
             await driver._execute_tool("nonexistent", {})
+
+
+# ---------------------------------------------------------------------------
+# stream() — LlmEvent async iteration
+# ---------------------------------------------------------------------------
+
+
+class TestAnthropicSdkDriverStream:
+    """AnthropicSdkDriver.stream() yields typed LlmEvent objects."""
+
+    def _text_ev(self, text: str) -> object:
+        return types.SimpleNamespace(
+            type="content_block_delta",
+            delta=types.SimpleNamespace(type="text_delta", text=text),
+        )
+
+    def _tool_start_ev(self, name: str, id_: str) -> object:
+        return types.SimpleNamespace(
+            type="content_block_start",
+            content_block=types.SimpleNamespace(
+                type="tool_use", name=name, id=id_
+            ),
+        )
+
+    async def _collect(
+        self, driver: AnthropicSdkDriver, raw_events: list
+    ) -> list:
+        stream = _FakeStream(raw_events)
+        driver._client.messages.stream = MagicMock(return_value=stream)
+        return [
+            e
+            async for e in await driver.stream(
+                "pool-1", "hi", make_model_cfg(), ""
+            )
+        ]
+
+    async def test_text_delta_yields_text_llm_event(self) -> None:
+        # Arrange — one text_delta event
+        driver = make_driver()
+
+        # Act
+        result = await self._collect(driver, [self._text_ev("hello")])
+
+        # Assert — TextLlmEvent then terminal ResultLlmEvent
+        assert result[0] == TextLlmEvent(text="hello")
+        assert isinstance(result[1], ResultLlmEvent)
+        assert result[1].is_error is False
+
+    async def test_content_block_start_tool_use_yields_tool_use_event(
+        self,
+    ) -> None:
+        # Arrange — content_block_start with type==tool_use
+        driver = make_driver()
+
+        # Act
+        result = await self._collect(
+            driver, [self._tool_start_ev("Bash", "tu_001")]
+        )
+
+        # Assert — ToolUseLlmEvent emitted before terminal ResultLlmEvent
+        assert result[0] == ToolUseLlmEvent(
+            tool_name="Bash", tool_id="tu_001", input={}
+        )
+        assert isinstance(result[1], ResultLlmEvent)
+        assert result[1].is_error is False
+
+    async def test_unknown_event_type_is_skipped(self) -> None:
+        # Arrange — unrecognised event type → silently dropped
+        driver = make_driver()
+        other = types.SimpleNamespace(type="message_start")
+
+        # Act
+        result = await self._collect(driver, [other])
+
+        # Assert — only terminal ResultLlmEvent emitted
+        assert len(result) == 1
+        assert isinstance(result[0], ResultLlmEvent)
+        assert result[0].is_error is False
+        assert result[0].cost_usd is None
+
+    async def test_exception_yields_error_result_not_reraise(self) -> None:
+        # Arrange — stream context manager raises immediately
+        driver = make_driver()
+        stream = _FakeStream(
+            [], raise_in_enter=RuntimeError("connection failed")
+        )
+        driver._client.messages.stream = MagicMock(return_value=stream)
+
+        # Act — must NOT raise (is_error sentinel terminates cleanly)
+        result = [
+            e
+            async for e in await driver.stream(
+                "pool-1", "hi", make_model_cfg(), ""
+            )
+        ]
+
+        # Assert — single ResultLlmEvent with is_error=True
+        assert len(result) == 1
+        assert isinstance(result[0], ResultLlmEvent)
+        assert result[0].is_error is True
+        assert result[0].cost_usd is None
 
 
 # ---------------------------------------------------------------------------

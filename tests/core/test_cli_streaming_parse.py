@@ -337,6 +337,40 @@ class TestStreamingIteratorAssistant:
             ResultLlmEvent(is_error=False, duration_ms=100, cost_usd=None),
         ]
 
+    async def test_stream_event_content_block_start_tool_use_yields_event(
+        self,
+    ) -> None:
+        # Arrange — stream_event / content_block_start with type=tool_use
+        # exercises the branch at cli_protocol.py:StreamingIterator.__anext__
+        cb_start_line = _ndjson(
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_start",
+                    "content_block": {
+                        "type": "tool_use",
+                        "name": "Read",
+                        "id": "tu_42",
+                    },
+                },
+            }
+        )
+        proc = make_fake_proc(
+            [INIT_LINE, cb_start_line, TEXT_DELTA_LINE, RESULT_LINE]
+        )
+        entry = make_entry(proc)
+
+        # Act
+        it = StreamingIterator(entry, DEFAULT_POOL_ID)
+        events = [ev async for ev in it]
+
+        # Assert — ToolUseLlmEvent before TextLlmEvent, then ResultLlmEvent
+        assert events == [
+            ToolUseLlmEvent(tool_name="Read", tool_id="tu_42", input={}),
+            TextLlmEvent(text="Hello"),
+            ResultLlmEvent(is_error=False, duration_ms=100, cost_usd=None),
+        ]
+
     async def test_on_intermediate_deprecated_but_harmless(self, caplog) -> None:
         # Arrange — on_intermediate is deprecated; passing it should log a warning
         # but not raise and not affect iteration

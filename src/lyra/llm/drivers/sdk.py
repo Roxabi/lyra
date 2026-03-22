@@ -256,7 +256,7 @@ class AnthropicSdkDriver:
                 duration_ms=int((time.monotonic() - t0) * 1000),
                 cost_usd=None,
             )
-            raise
+            return  # terminate cleanly — is_error=True is the sentinel
 
     def is_alive(self, pool_id: str) -> bool:
         return True  # SDK backend is always reachable (no persistent process)

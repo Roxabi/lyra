@@ -34,6 +34,26 @@ class Action(enum.Enum):
     SUBMIT_TO_POOL = "submit_to_pool"
 
 
+class ResumeStatus(enum.Enum):
+    """Outcome of _resolve_context() — how session continuity was handled.
+
+    RESUMED  — a session was successfully resumed via any path.
+    FRESH    — Path 2 (thread-session-resume) was attempted but rejected;
+               Claude will start fresh. The user should be notified.
+    SKIPPED  — no resume was attempted (pool busy, group chat, first use, etc.).
+               Silent: this is expected behaviour.
+    """
+
+    RESUMED = "resumed"
+    FRESH = "fresh"
+    SKIPPED = "skipped"
+
+
+_SESSION_FALLTHROUGH_MSG = (
+    "⚠️ Couldn't resume your previous session \u2014 starting fresh."
+)
+
+
 @dataclass(frozen=True)
 class PipelineResult:
     """Immutable result from MessagePipeline.process()."""
@@ -196,12 +216,22 @@ class MessagePipeline:
 
     async def _resolve_context(  # noqa: C901 — three resume paths with guard checks
         self, msg: InboundMessage, pool: Pool, pool_id: str
-    ) -> None:
-        """Attempt session resume before pool.submit(). No-op on any failure.
+    ) -> ResumeStatus:
+        """Attempt session resume before pool.submit().
 
         Three paths (priority order): (1) reply-to-resume, (2) thread-session-resume,
         (3) last-active-session from TurnStore.
+
+        Returns:
+            RESUMED  — a session was successfully resumed via any path.
+            FRESH    — Path 2 was attempted but rejected (session pruned /
+                       invalid / expired); Claude will start fresh. The caller
+                       should notify the user.
+            SKIPPED  — no resume was attempted (pool busy, group chat, first
+                       use, no TurnStore, …). Silent and expected.
         """
+        path2_attempted = False
+
         # Path 1: reply-to-resume via MessageIndex (#341).
         if msg.reply_to_id is not None and self._hub._message_index is None:
             log.debug("reply-to-resume: no MessageIndex configured — skipping")
@@ -228,8 +258,9 @@ class MessagePipeline:
                         pool_id,
                     )
                     await pool.resume_session(session_id)
-                    return
+                    return ResumeStatus.RESUMED
 
+        # Path 2: thread-session-resume.
         thread_session_id: str | None = msg.platform_meta.get("thread_session_id")
         if thread_session_id is not None:
             if not pool.is_idle:
@@ -238,15 +269,16 @@ class MessagePipeline:
                     pool_id,
                     thread_session_id,
                 )
-                return
+                return ResumeStatus.SKIPPED
             log.info(
                 "thread-session-resume: resuming %r for pool %r",
                 thread_session_id,
                 pool_id,
             )
+            path2_attempted = True
             accepted = await pool.resume_session(thread_session_id)
             if accepted:
-                return
+                return ResumeStatus.RESUMED
             log.info(
                 "thread-session-resume: session %r not accepted"
                 " — falling through to Path 3",
@@ -254,8 +286,10 @@ class MessagePipeline:
             )
 
         # Path 3: last-active-session — skip group chats (cross-user risk).
+        # Always SKIPPED for group chats regardless of path2_attempted: the resume
+        # was a deliberate safety skip, not a failure, so no notification is warranted.
         if msg.platform_meta.get("is_group"):
-            return
+            return ResumeStatus.SKIPPED
         if pool.is_idle and self._hub._turn_store is not None:
             last_sid = await self._hub._turn_store.get_last_session(pool_id)
             if last_sid is None:
@@ -276,6 +310,9 @@ class MessagePipeline:
                     pool_id,
                 )
                 await pool.resume_session(last_sid)
+                return ResumeStatus.RESUMED
+
+        return ResumeStatus.FRESH if path2_attempted else ResumeStatus.SKIPPED
 
     async def _submit_to_pool(
         self,
@@ -301,10 +338,37 @@ class MessagePipeline:
         if _agent is not None and hasattr(_agent, "configure_pool"):
             _agent.configure_pool(pool)
         try:
-            await self._resolve_context(msg, pool, pool.pool_id)
+            status = await self._resolve_context(msg, pool, pool.pool_id)
         except Exception:
             log.warning(
                 "_resolve_context failed — continuing with active session",
                 exc_info=True,
             )
+            status = ResumeStatus.SKIPPED
+        if status == ResumeStatus.FRESH:
+            await self._notify_session_fallthrough(msg)
         return PipelineResult(action=Action.SUBMIT_TO_POOL, pool=pool)
+
+    async def _notify_session_fallthrough(self, msg: InboundMessage) -> None:
+        """Send a pre-response notice when Path 2 resume fails and Claude starts fresh.
+
+        Uses try_notify_user so any send failure is logged and swallowed —
+        the pool submit always proceeds regardless.
+        """
+        from .outbound_errors import try_notify_user
+
+        try:
+            platform = Platform(msg.platform)
+        except ValueError:
+            return
+        adapter = self._hub.adapter_registry.get((platform, msg.bot_id))
+        if adapter is None:
+            return
+        circuit = (
+            self._hub.circuit_registry.get(msg.platform)
+            if self._hub.circuit_registry is not None
+            else None
+        )
+        await try_notify_user(
+            msg.platform, adapter, msg, _SESSION_FALLTHROUGH_MSG, circuit=circuit
+        )

@@ -25,14 +25,20 @@ Every store that writes to SQLite lives here.
 ## Import pattern
 
 ```python
-# Subpackage re-exports (preferred)
+# Subpackage re-exports — only the 4 most-used abstract types + factory:
+#   AgentStore, AgentStoreProtocol, AuthStore, SqliteStore, make_agent_store
 from lyra.core.stores import AgentStore, AuthStore, SqliteStore, AgentStoreProtocol
 
-# Direct module imports
+# Direct module imports — required for all other types:
 from lyra.core.stores.agent_store import AgentRow, AgentStore, AgentRuntimeStateRow
 from lyra.core.stores.agent_store_protocol import AgentStoreProtocol, make_agent_store
 from lyra.core.stores.pairing import PairingStore
 from lyra.core.stores.thread_store import ThreadStore
+from lyra.core.stores.credential_store import CredentialStore
+from lyra.core.stores.turn_store import TurnStore
+from lyra.core.stores.prefs_store import PrefsStore
+from lyra.core.stores.message_index import MessageIndex
+from lyra.core.stores.pairing_config import PairingConfig
 ```
 
 ## Gotchas

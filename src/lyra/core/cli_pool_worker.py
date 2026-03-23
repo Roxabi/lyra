@@ -1,7 +1,7 @@
 """Worker/process management helpers for CliPool — split from cli_pool.py (#293).
 
 Contains _ProcessEntry, subprocess spawn/kill helpers, and the idle reaper.
-CliPool (cli_pool.py) inherits from _CliPoolWorker to preserve the public API.
+CliPool (cli_pool.py) inherits from CliPoolWorkerMixin to preserve the public API.
 """
 
 from __future__ import annotations
@@ -59,7 +59,7 @@ class _ProcessEntry:
         return self.proc.returncode is None
 
 
-class _CliPoolWorker:  # pyright: ignore[reportUnusedClass]
+class CliPoolWorkerMixin:
     """Base class providing spawn/kill worker methods for CliPool.
 
     Subclasses must initialise:

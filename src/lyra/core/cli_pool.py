@@ -16,7 +16,7 @@ from typing import Any
 from .agent_config import ModelConfig
 from .cli_pool_worker import (
     _LYRA_ROOT,
-    _CliPoolWorker,
+    CliPoolWorkerMixin,
     _ProcessEntry,
 )
 from .cli_protocol import (
@@ -39,7 +39,7 @@ __all__ = [
 log = logging.getLogger(__name__)
 
 
-class CliPool(_CliPoolWorker):
+class CliPool(CliPoolWorkerMixin):
     """Pool of persistent Claude CLI processes (one per pool_id).
 
     Usage::

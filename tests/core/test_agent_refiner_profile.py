@@ -31,7 +31,7 @@ def make_row(**kwargs) -> AgentRow:
         backend="anthropic-sdk",
         model="claude-haiku-4-5-20251001",
         persona="lyra",
-        voice_json='{"tts": {"voice": "echo"}}',
+        tts_json='{"voice": "echo"}',
         plugins_json='["plugin_a"]',
         patterns_json='{"bare_url": true}',
     )
@@ -93,17 +93,17 @@ class TestReadProfile:
         assert ctx.plugins == []
         assert ctx.patterns == {}
 
-    def test_read_profile_parses_voice_json(self) -> None:
+    def test_read_profile_parses_tts_json(self) -> None:
         # Arrange
-        row = make_row(voice_json='{"tts": {"voice": "echo"}, "stt": {}}')
+        row = make_row(tts_json='{"voice": "echo", "engine": "qwen-fast"}')
         store = make_store(row)
         refiner = AgentRefiner("lyra_default", store)
 
         # Act
         ctx = refiner.read_profile()
 
-        # Assert — voice_json is passed through as raw string
-        assert ctx.voice_json == '{"tts": {"voice": "echo"}, "stt": {}}'
+        # Assert — tts_json is passed through as raw string
+        assert ctx.tts_json == '{"voice": "echo", "engine": "qwen-fast"}'
 
     def test_read_profile_returns_frozen_context(self) -> None:
         # Arrange
@@ -153,7 +153,7 @@ class TestRefinementPatch:
         assert updated.name == existing.name
         assert updated.backend == existing.backend
         assert updated.persona == existing.persona
-        assert updated.voice_json == existing.voice_json
+        assert updated.tts_json == existing.tts_json
         assert updated.plugins_json == existing.plugins_json
 
     def test_to_agent_row_applies_multiple_fields(self) -> None:

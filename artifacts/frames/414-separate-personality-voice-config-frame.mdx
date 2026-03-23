@@ -1,0 +1,57 @@
+---
+title: "Separate agent personality from voice config"
+issue: 414
+status: draft
+tier: F-lite
+date: 2026-03-23
+---
+
+## Problem
+
+The current `[tts]` section in agent TOML/DB conflates three distinct concerns into a single `tts_json` blob:
+
+1. **Core personality** — traits, tone. These define *who* the agent is and should feed **both** text (LLM system prompt) and voice (TTS instruct).
+2. **LLM-specific** — fields that only shape text output (e.g. writing style nuances that don't map to voice).
+3. **Voice-specific** — engine, voice name, chunked, segment_gap, crossfade, exaggeration, cfg_weight. Purely technical audio params.
+
+Today everything is flattened together. This means:
+- Personality traits only feed TTS instruct — they don't shape the agent's text responses.
+- Developers can't tell which fields control character vs. audio engineering.
+- No path to align how an agent *writes* with how it *speaks*.
+
+Discovered during voice_json cleanup (stale denormalized merge of tts_json + stt_json), which highlighted the data model conflation.
+
+## Who
+
+- **Primary:** Developers editing agent TOML configs and the agent seeder/loader pipeline.
+- **Secondary:** End users — personality-aligned text responses improve coherence between written and spoken agent output.
+
+## Constraints
+
+- **DB is single source of truth** — every personality/voice field must be loaded from DB. No fallback system (TOML → DB → default chain). DB has it or it doesn't.
+- **One-shot migration** — existing `tts_json` data is migrated once. No dual-read compatibility layer.
+
+## Out of Scope
+
+- Rich prompt engineering for personality → system prompt mapping (follow-up).
+- Changes to the external voiceCLI interface.
+- STT config changes.
+
+## Scope
+
+1. **Define the three-way taxonomy**: Classify every current `tts_json` field as core (both), LLM-only, or voice-only. This is the key design decision — spec must nail this down.
+2. **TOML + DB restructure**: Update agent TOML sections and DB schema to reflect the taxonomy. Exact schema approach (new columns vs. restructured JSON) decided in spec after reading current schema.
+3. **System prompt integration**: Core personality fields feed into the agent's text system prompt — tone alignment between written and spoken output.
+4. **Loader / seeder update**: `AgentTTSConfig`, `agent_db_loader`, `agent_seeder` updated to handle the new structure. DB is the sole source — no fallbacks.
+5. **TTS kwarg building**: `tts/__init__.py` and `audio_pipeline.py` consume voice-only config; core personality feeds both instruct and system prompt.
+6. **One-shot migration**: Existing `tts_json` data split into the new structure in a single migration.
+
+## Complexity
+
+**Tier: F-lite** — Well-scoped refactor with known affected files (6 modules). Single domain (agent config pipeline), clear before/after. The taxonomy and DB schema decisions are the open questions for spec.
+
+Signals:
+- All affected files identified in the issue
+- No new external dependencies
+- No new architectural patterns — restructuring existing data flow
+- Migration is one-shot (split known fields into categorized groups)

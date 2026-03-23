@@ -31,7 +31,7 @@ def make_row(**kwargs) -> AgentRow:
         backend="anthropic-sdk",
         model="claude-haiku-4-5-20251001",
         persona="lyra",
-        voice_json='{"tts": {"voice": "echo"}}',
+        tts_json='{"voice": "echo"}',
         plugins_json='["plugin_a"]',
         patterns_json='{"bare_url": true}',
     )

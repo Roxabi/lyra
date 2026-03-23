@@ -101,47 +101,38 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — each branch handles one opti
 
     memory_namespace = row.memory_namespace or row.name
 
-    # #343 — Voice: voice_json first, then old tts_json/stt_json fallback
+    # Voice config: read directly from tts_json / stt_json (single source of truth)
     voice: AgentVoiceConfig | None = None
     agent_tts: AgentTTSConfig | None = None
     agent_stt: AgentSTTConfig | None = None
-    if row.voice_json:
-        voice_data = json.loads(row.voice_json)
-        tts_part = voice_data.get("tts", {})
-        stt_part = voice_data.get("stt", {})
-        agent_tts = _build_tts_from_dict(tts_part) if tts_part else AgentTTSConfig()
-        agent_stt = _build_stt_from_dict(stt_part) if stt_part else AgentSTTConfig()
-        voice = AgentVoiceConfig(tts=agent_tts, stt=agent_stt)
-    else:
-        # Fallback: read from old tts_json / stt_json columns
-        if row.tts_json:
-            tts_data: dict = json.loads(row.tts_json)
-            _tts_known = {f.name for f in AgentTTSConfig.__dataclass_fields__.values()}
-            _tts_extra = set(tts_data) - _tts_known
-            if _tts_extra:
-                log.warning(
-                    "agent_row_to_config(%s): unknown tts_json keys: %s",
-                    row.name,
-                    _tts_extra,
-                )
-            agent_tts = _build_tts_from_dict(tts_data)
+    if row.tts_json:
+        tts_data: dict = json.loads(row.tts_json)
+        _tts_known = {f.name for f in AgentTTSConfig.__dataclass_fields__.values()}
+        _tts_extra = set(tts_data) - _tts_known
+        if _tts_extra:
+            log.warning(
+                "agent_row_to_config(%s): unknown tts_json keys: %s",
+                row.name,
+                _tts_extra,
+            )
+        agent_tts = _build_tts_from_dict(tts_data)
 
-        if row.stt_json:
-            stt_data: dict = json.loads(row.stt_json)
-            _stt_known = {f.name for f in AgentSTTConfig.__dataclass_fields__.values()}
-            _stt_extra = set(stt_data) - _stt_known
-            if _stt_extra:
-                log.warning(
-                    "agent_row_to_config(%s): unknown stt_json keys: %s",
-                    row.name,
-                    _stt_extra,
-                )
-            agent_stt = _build_stt_from_dict(stt_data)
+    if row.stt_json:
+        stt_data: dict = json.loads(row.stt_json)
+        _stt_known = {f.name for f in AgentSTTConfig.__dataclass_fields__.values()}
+        _stt_extra = set(stt_data) - _stt_known
+        if _stt_extra:
+            log.warning(
+                "agent_row_to_config(%s): unknown stt_json keys: %s",
+                row.name,
+                _stt_extra,
+            )
+        agent_stt = _build_stt_from_dict(stt_data)
 
-        if agent_tts or agent_stt:
-            voice = AgentVoiceConfig(
-                tts=agent_tts or AgentTTSConfig(),
-                stt=agent_stt or AgentSTTConfig(),
+    if agent_tts or agent_stt:
+        voice = AgentVoiceConfig(
+            tts=agent_tts or AgentTTSConfig(),
+            stt=agent_stt or AgentSTTConfig(),
             )
 
     # Permissions from DB

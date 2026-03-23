@@ -108,15 +108,14 @@ class AgentStore(SqliteStore):
     async def _populate_343(self, db: aiosqlite.Connection) -> None:
         """One-time data migration (#343).
 
-        Populate persona_json, voice_json, fallback_language from old columns.
-        Uses OR guard so agents needing either persona or voice migration are
-        picked up (idempotent — each column is only written when NULL).
+        Populate persona_json and fallback_language from old columns.
+        Idempotent — each column is only written when NULL.
         """
         from ..persona import load_persona
 
         async with db.execute(
             "SELECT name, persona, tts_json, stt_json, i18n_language "
-            "FROM agents WHERE persona_json IS NULL OR voice_json IS NULL"
+            "FROM agents WHERE persona_json IS NULL"
         ) as cur:
             rows = list(await cur.fetchall())
         if not rows:
@@ -162,27 +161,6 @@ class AgentStore(SqliteStore):
                     persona_json_val = json.dumps({"identity": {"display_name": name}})
             sets.append("persona_json=COALESCE(persona_json, ?)")
             vals.append(persona_json_val)
-
-            # Voice: merge tts_json + stt_json → voice_json
-            voice_json_val: str | None = None
-            try:
-                tts_dict = json.loads(tts_raw) if tts_raw else None
-                stt_dict = json.loads(stt_raw) if stt_raw else None
-            except json.JSONDecodeError:
-                log.warning(
-                    "_populate_343: corrupt tts/stt JSON for %r — skipping voice",
-                    name,
-                )
-                tts_dict = stt_dict = None
-            if tts_dict or stt_dict:
-                merged: dict = {}
-                if tts_dict:
-                    merged["tts"] = tts_dict
-                if stt_dict:
-                    merged["stt"] = stt_dict
-                voice_json_val = json.dumps(merged)
-            sets.append("voice_json=COALESCE(voice_json, ?)")
-            vals.append(voice_json_val)
 
             # fallback_language
             fallback = i18n_lang or "en"
@@ -243,9 +221,8 @@ class AgentStore(SqliteStore):
     async def upsert(self, row: AgentRow) -> None:
         """Insert or update an agent row in DB and cache.
 
-        Note: ``persona_json``, ``voice_json``, and ``patterns_json`` use
-        COALESCE in the ON CONFLICT clause — passing None for these fields
-        preserves the existing DB value rather than clearing it.
+        Note: ``persona_json`` and ``patterns_json`` use COALESCE in the
+        ON CONFLICT clause — passing None preserves the existing DB value.
         """
         db = self._require_db()
         now = _utc_now_iso()
@@ -275,7 +252,7 @@ class AgentStore(SqliteStore):
                 row.commands_json,
                 1 if row.streaming else 0,
                 row.persona_json,
-                row.voice_json,
+                None,  # voice_json — deprecated, always NULL
                 row.fallback_language,
                 row.patterns_json,
                 row.passthroughs_json,
@@ -305,7 +282,6 @@ class AgentStore(SqliteStore):
             commands_json=row.commands_json,
             streaming=row.streaming,
             persona_json=row.persona_json,
-            voice_json=row.voice_json,
             fallback_language=row.fallback_language,
             patterns_json=row.patterns_json,
             passthroughs_json=row.passthroughs_json,

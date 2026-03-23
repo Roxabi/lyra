@@ -36,6 +36,7 @@ complex  = "claude-opus-4-6"
 enabled = ["echo", "search"]
 
 [tts]
+engine = "qwen-fast"
 voice = "Ono_Anna"
 personality = "Précise et directe, aucune fioriture."
 emotion = "Neutre et sèche, assurée"

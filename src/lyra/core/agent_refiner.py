@@ -40,7 +40,6 @@ REFINABLE_FIELDS: frozenset[str] = frozenset(
         "model",
         "persona",
         "persona_json",
-        "voice_json",
         "tts_json",
         "stt_json",
         "patterns_json",
@@ -70,7 +69,8 @@ class RefinementContext:
     agent_name: str
     persona: str | None  # AgentRow.persona (name string)
     persona_json: str | None  # AgentRow.persona_json (rich JSON string)
-    voice_json: str | None  # AgentRow.voice_json (merged TTS+STT JSON)
+    tts_json: str | None  # AgentRow.tts_json
+    stt_json: str | None  # AgentRow.stt_json
     model: str
     passthroughs: list[str]  # parsed from AgentRow.passthroughs_json
     patterns: dict  # parsed from AgentRow.patterns_json
@@ -188,7 +188,8 @@ class AgentRefiner:
             agent_name=row.name,
             persona=row.persona,
             persona_json=row.persona_json,
-            voice_json=row.voice_json,
+            tts_json=row.tts_json,
+            stt_json=row.stt_json,
             model=row.model,
             passthroughs=json.loads(row.passthroughs_json)  # type: ignore[attr-defined]
             if getattr(row, "passthroughs_json", None)
@@ -303,13 +304,14 @@ class AgentRefiner:
                     lines.append(f"  role: {identity['role']}")
             except Exception:  # noqa: BLE001
                 pass
-        if ctx.voice_json:
+        if ctx.tts_json:
             try:
-                v = json.loads(ctx.voice_json)
-                if v.get("tts"):
-                    lines.append(f"  voice_tts: {v['tts']}")
-                if v.get("stt"):
-                    lines.append(f"  voice_stt: {v['stt']}")
+                lines.append(f"  tts: {json.loads(ctx.tts_json)}")
+            except Exception:  # noqa: BLE001
+                pass
+        if ctx.stt_json:
+            try:
+                lines.append(f"  stt: {json.loads(ctx.stt_json)}")
             except Exception:  # noqa: BLE001
                 pass
         lines.extend(
@@ -329,7 +331,7 @@ class AgentRefiner:
                 "   <<END_PATCH>>",
                 "",
                 "Valid patchable AgentRow fields: model, persona, persona_json,",
-                "voice_json, tts_json, stt_json, patterns_json, passthroughs_json,",
+                "tts_json, stt_json, patterns_json, passthroughs_json,",
                 "plugins_json, fallback_language, tools_json, max_turns, streaming,",
                 "i18n_language, memory_namespace, workspaces_json, commands_json.",
                 "",

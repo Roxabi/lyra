@@ -30,7 +30,7 @@ class TestExtractPatchValid:
 
     def test_extract_patch_returns_patch_from_valid_block(self) -> None:
         # Arrange
-        text = 'Some text <<PATCH>>\n{"voice_json": "test"}\n<<END_PATCH>>'
+        text = 'Some text <<PATCH>>\n{"tts_json": "test"}\n<<END_PATCH>>'
 
         # Act
         result = AgentRefiner._extract_patch(text)
@@ -38,7 +38,7 @@ class TestExtractPatchValid:
         # Assert
         assert result is not None
         assert isinstance(result, RefinementPatch)
-        assert result.fields == {"voice_json": "test"}
+        assert result.fields == {"tts_json": "test"}
 
     def test_extract_patch_with_multiple_fields(self) -> None:
         # Arrange

@@ -46,7 +46,6 @@ class AgentRow:
     streaming: bool = False
     # #343 — DB-first agent config
     persona_json: str | None = None
-    voice_json: str | None = None
     fallback_language: str = "en"
     patterns_json: str | None = None
     passthroughs_json: str | None = None
@@ -81,7 +80,7 @@ class AgentRow:
             commands_json,
             streaming,
             persona_json,
-            voice_json,
+            _voice_json,  # deprecated — kept in DB but no longer used
             fallback_language,
             patterns_json,
             passthroughs_json,
@@ -107,7 +106,6 @@ class AgentRow:
             commands_json=commands_json,
             streaming=bool(streaming),
             persona_json=persona_json,
-            voice_json=voice_json,
             fallback_language=fallback_language or "en",
             patterns_json=patterns_json,
             passthroughs_json=passthroughs_json,

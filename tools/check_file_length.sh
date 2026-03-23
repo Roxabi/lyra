@@ -23,12 +23,9 @@ EXEMPT=(
     "src/lyra/core/hub/hub.py"              # 353 lines — #396 refactor backlog
     "src/lyra/adapters/discord_outbound.py" # 353 lines — #396 refactor backlog
     "src/lyra/tts/__init__.py"              # 336 lines — #396 refactor backlog
-    "src/lyra/adapters/discord.py"          # 314 lines — #196 adapter protocol
+    "src/lyra/adapters/discord.py"          # 311 lines — #196 adapter protocol
     "src/lyra/core/audio_pipeline.py"       # 313 lines — #396 refactor backlog
     "src/lyra/agents/simple_agent.py"       # 306 lines — #396 refactor backlog
-    "src/lyra/adapters/telegram.py"         # 448 lines — #196 adapter protocol
-    "src/lyra/core/agent.py"                # existing — #196
-    "src/lyra/cli_agent.py"                 # existing — #268
 )
 
 is_exempt() {

@@ -16,8 +16,7 @@ from lyra.config import DiscordBotConfig, TelegramBotConfig
 from lyra.core.auth import AuthMiddleware
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.cli_pool import CliPool
-from lyra.core.hub import Hub, RoutingKey
-from lyra.core.hub.outbound_dispatcher import OutboundDispatcher
+from lyra.core.hub import Hub, OutboundDispatcher, RoutingKey
 from lyra.core.message import Platform
 from lyra.core.messages import MessageManager
 from lyra.core.stores.agent_store import AgentStore

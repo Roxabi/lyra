@@ -26,12 +26,14 @@ Outbound (platform) ←──────────────── Outbound
 
 `core/` is split into 4 subdirectories plus flat modules:
 
-| Subdir | Files | Purpose |
-|--------|-------|---------|
-| `stores/` | 12 files | SQLite persistence — all durable stores, shared base, pairing state |
-| `hub/` | 8 files | Message routing, outbound dispatch, pool lifecycle orchestration |
-| `pool/` | 3 files | Pool primitives — lifecycle, per-message processing, session observation |
-| `commands/` | 4 files | Internal command routing infra (NOT plugin commands) |
+| Subdir | Modules | Purpose |
+|--------|---------|---------|
+| `stores/` | 12 | SQLite persistence — all durable stores, shared base, pairing state |
+| `hub/` | 8 | Message routing, outbound dispatch, pool lifecycle orchestration |
+| `pool/` | 3 | Pool primitives — lifecycle, per-message processing, session observation |
+| `commands/` | 4 | Internal command routing infra (NOT plugin commands) |
+
+Each subdir also contains an `__init__.py` with re-exports.
 
 Each subdir has its own `CLAUDE.md`. See them for file-level details and gotchas.
 

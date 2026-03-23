@@ -18,9 +18,8 @@ if TYPE_CHECKING:
     from ..message import InboundMessage
     from .pool import Pool
 
-from lyra.core.render_events import RenderEvent, TextRenderEvent
-
 from ..message import GENERIC_ERROR_REPLY, OutboundMessage, Response
+from ..render_events import RenderEvent, TextRenderEvent
 
 log = logging.getLogger(__name__)
 

@@ -48,5 +48,4 @@ from lyra.core.stores.thread_store import ThreadStore
   `pairing.py` as the data shape for pairing rows.
 - `json_agent_store.py` implements `AgentStoreProtocol` without SQLite — use it in
   tests that must not touch the filesystem. Instantiate via `make_agent_store(use_json=True)`.
-- Compat shims in `lyra/core/` (e.g. `core/agent_store.py`) re-export from here.
-  New code should import directly from `lyra.core.stores`, not from the shims.
+- Import directly from `lyra.core.stores` — no compat shims exist at flat paths.

@@ -12,7 +12,7 @@ import pytest
 from typer.testing import CliRunner
 
 from lyra.cli import agent_app  # type: ignore[import-not-found]
-from lyra.core.agent_store import AgentRow, AgentStore
+from lyra.core.stores.agent_store import AgentRow, AgentStore
 
 # ---------------------------------------------------------------------------
 # Shared runner

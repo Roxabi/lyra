@@ -311,7 +311,7 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: tool-su
             # Update reply_message_id to the final text message so session
             # routing can match user replies to the correct pool (#387).
             for i, chunk in enumerate(final_chunks):
-                is_last = (i == len(final_chunks) - 1)
+                is_last = i == len(final_chunks) - 1
                 if is_last:
                     try:
                         _sent = await messageable.send(chunk)

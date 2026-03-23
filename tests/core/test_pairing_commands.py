@@ -8,8 +8,8 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 from lyra.commands.pairing.handlers import cmd_invite, cmd_join, cmd_unpair
-from lyra.core.pairing import set_pairing_manager
 from lyra.core.pool import Pool
+from lyra.core.stores.pairing import set_pairing_manager
 from lyra.core.trust import TrustLevel
 
 from .conftest import (

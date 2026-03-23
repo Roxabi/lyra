@@ -20,7 +20,7 @@ import pytest
 from typer.testing import CliRunner
 
 from lyra.cli_bot import bot_app
-from lyra.core.credential_store import CredentialStore, LyraKeyring
+from lyra.core.stores.credential_store import CredentialStore, LyraKeyring
 
 # ---------------------------------------------------------------------------
 # Helpers

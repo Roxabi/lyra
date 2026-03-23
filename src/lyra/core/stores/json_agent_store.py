@@ -133,9 +133,7 @@ class JsonAgentStore:
 
     async def delete(self, name: str) -> None:
         """Delete an agent. Raises ValueError if any bot is still assigned to it."""
-        assigned = [
-            f"{p}:{b}" for (p, b), n in self._bot_map.items() if n == name
-        ]
+        assigned = [f"{p}:{b}" for (p, b), n in self._bot_map.items() if n == name]
         if assigned:
             raise ValueError(
                 f"Agent {name!r} is still assigned to one or more bots. "
@@ -222,12 +220,8 @@ class JsonAgentStore:
         """
         data: dict = {
             "agents": [dataclasses.asdict(row) for row in self._agents.values()],
-            "bot_map": {
-                f"{p}:{b}": name for (p, b), name in self._bot_map.items()
-            },
-            "bot_settings": {
-                f"{p}:{b}": s for (p, b), s in self._bot_settings.items()
-            },
+            "bot_map": {f"{p}:{b}": name for (p, b), name in self._bot_map.items()},
+            "bot_settings": {f"{p}:{b}": s for (p, b), s in self._bot_settings.items()},
         }
         try:
             self._path.write_text(json.dumps(data, indent=2), encoding="utf-8")

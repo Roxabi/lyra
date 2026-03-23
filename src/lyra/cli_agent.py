@@ -12,7 +12,7 @@ from typing import Optional
 
 import typer
 
-from lyra.core.agent_store import AgentStore
+from lyra.core.stores.agent_store import AgentStore
 
 agent_app = typer.Typer(name="agent", help="Manage agent configurations.")
 _DEFAULT_TOOLS = ["Read", "Grep", "Glob", "WebFetch", "WebSearch"]

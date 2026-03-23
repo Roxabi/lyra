@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from lyra.core.credential_store import BotSecretRow, CredentialStore, LyraKeyring
+from lyra.core.stores.credential_store import BotSecretRow, CredentialStore, LyraKeyring
 from lyra.errors import KeyringError
 
 # ---------------------------------------------------------------------------

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from lyra.core.agent_store import AgentRow, AgentStore
+from lyra.core.stores.agent_store import AgentRow, AgentStore
 
 from .conftest import make_agent_row, make_store
 

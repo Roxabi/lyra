@@ -9,8 +9,8 @@ from __future__ import annotations
 import logging
 
 from lyra.core.message import InboundMessage, Response
-from lyra.core.pairing import PairingError, get_pairing_manager
 from lyra.core.pool import Pool
+from lyra.core.stores.pairing import PairingError, get_pairing_manager
 
 log = logging.getLogger(__name__)
 

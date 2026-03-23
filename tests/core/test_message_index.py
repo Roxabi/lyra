@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from lyra.core.message_index import MessageIndex
+from lyra.core.stores.message_index import MessageIndex
 
 
 @pytest.fixture

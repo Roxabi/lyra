@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from lyra.core.pairing import (
+from lyra.core.stores.pairing import (
     PairingConfig,
     PairingError,
     PairingManager,

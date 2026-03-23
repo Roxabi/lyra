@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from lyra.core.json_agent_store import JsonAgentStore
+from lyra.core.stores.json_agent_store import JsonAgentStore
 
 from .conftest import make_agent_row
 
@@ -336,8 +336,8 @@ class TestMakeAgentStore:
     def test_default_returns_agent_store(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("LYRA_DB", raising=False)
 
-        from lyra.core.agent_store import AgentStore
-        from lyra.core.agent_store_protocol import make_agent_store
+        from lyra.core.stores.agent_store import AgentStore
+        from lyra.core.stores.agent_store_protocol import make_agent_store
 
         store = make_agent_store()
         assert isinstance(store, AgentStore)
@@ -348,7 +348,7 @@ class TestMakeAgentStore:
         monkeypatch.setenv("LYRA_DB", "json")
         monkeypatch.delenv("LYRA_AGENT_STORE_PATH", raising=False)
 
-        from lyra.core.agent_store_protocol import make_agent_store
+        from lyra.core.stores.agent_store_protocol import make_agent_store
 
         store = make_agent_store()
         assert isinstance(store, JsonAgentStore)
@@ -360,7 +360,7 @@ class TestMakeAgentStore:
         monkeypatch.setenv("LYRA_DB", "json")
         monkeypatch.setenv("LYRA_AGENT_STORE_PATH", str(custom_path))
 
-        from lyra.core.agent_store_protocol import make_agent_store
+        from lyra.core.stores.agent_store_protocol import make_agent_store
 
         store = make_agent_store()
         assert isinstance(store, JsonAgentStore)
@@ -371,8 +371,8 @@ class TestMakeAgentStore:
     ) -> None:
         monkeypatch.setenv("LYRA_DB", "sqlite")
 
-        from lyra.core.agent_store import AgentStore
-        from lyra.core.agent_store_protocol import make_agent_store
+        from lyra.core.stores.agent_store import AgentStore
+        from lyra.core.stores.agent_store_protocol import make_agent_store
 
         store = make_agent_store()
         assert isinstance(store, AgentStore)

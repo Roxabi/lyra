@@ -32,8 +32,8 @@ from lyra.stt import is_whisper_noise
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable
 
-    from lyra.core.agent_store import AgentStore
     from lyra.core.render_events import RenderEvent
+    from lyra.core.stores.agent_store import AgentStore
     from lyra.stt import STTService
     from lyra.tts import TTSService
 

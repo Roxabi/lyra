@@ -47,7 +47,7 @@ from lyra.core.message import (
     OutboundMessage,
 )
 from lyra.core.messages import MessageManager
-from lyra.core.thread_store import ThreadStore
+from lyra.core.stores.thread_store import ThreadStore
 
 # Discord: same base extensions, no platform-specific additions needed.
 _ATTACHMENT_EXTS = ATTACHMENT_EXTS_BASE

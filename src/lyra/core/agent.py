@@ -12,9 +12,9 @@ if TYPE_CHECKING:
     from lyra.stt import STTService
     from lyra.tts import TTSService
 
-    from .agent_store import AgentStore
     from .memory import MemoryManager
     from .render_events import RenderEvent
+    from .stores.agent_store import AgentStore
 
 from .agent_commands import CommandReloadManager
 from .agent_config import Agent, _find_agent_dir  # noqa: F401 — Agent re-exported

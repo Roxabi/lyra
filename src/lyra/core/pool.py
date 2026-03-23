@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 if TYPE_CHECKING:
     from .agent import AgentBase
     from .memory import SessionSnapshot
-    from .turn_store import TurnStore
+    from .stores.turn_store import TurnStore
 
 from .debouncer import DEFAULT_DEBOUNCE_MS, MessageDebouncer
 from .message import InboundMessage, OutboundMessage, Response

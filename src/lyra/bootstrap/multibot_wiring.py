@@ -13,17 +13,17 @@ from lyra.adapters.discord import DiscordAdapter
 from lyra.adapters.telegram import TelegramAdapter
 from lyra.bootstrap.health import create_health_app
 from lyra.config import DiscordBotConfig, TelegramBotConfig
-from lyra.core.agent_store import AgentStore
 from lyra.core.auth import AuthMiddleware
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.cli_pool import CliPool
-from lyra.core.credential_store import CredentialStore
 from lyra.core.hub import Hub, RoutingKey
 from lyra.core.message import Platform
 from lyra.core.messages import MessageManager
 from lyra.core.outbound_dispatcher import OutboundDispatcher
-from lyra.core.pairing import PairingManager
-from lyra.core.thread_store import ThreadStore
+from lyra.core.stores.agent_store import AgentStore
+from lyra.core.stores.credential_store import CredentialStore
+from lyra.core.stores.pairing import PairingManager
+from lyra.core.stores.thread_store import ThreadStore
 from lyra.errors import MissingCredentialsError
 
 log = logging.getLogger(__name__)

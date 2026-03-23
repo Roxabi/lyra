@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 
 from lyra.config import DiscordBotConfig, TelegramBotConfig
-from lyra.core.agent_store import AgentStore
+from lyra.core.stores.agent_store import AgentStore
 
 log = logging.getLogger(__name__)
 

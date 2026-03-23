@@ -32,12 +32,12 @@ if TYPE_CHECKING:
     from .circuit_breaker import CircuitRegistry
     from .cli_pool import CliPool
     from .memory import MemoryManager
-    from .message_index import MessageIndex
     from .messages import MessageManager
     from .outbound_dispatcher import OutboundDispatcher
-    from .pairing import PairingManager
-    from .prefs_store import PrefsStore
-    from .turn_store import TurnStore
+    from .stores.message_index import MessageIndex
+    from .stores.pairing import PairingManager
+    from .stores.prefs_store import PrefsStore
+    from .stores.turn_store import TurnStore
 
 log = logging.getLogger(__name__)
 

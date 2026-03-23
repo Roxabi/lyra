@@ -19,7 +19,7 @@ from lyra.core.identity import Identity
 from lyra.core.trust import TrustLevel
 
 if TYPE_CHECKING:
-    from lyra.core.auth_store import AuthStore
+    from lyra.core.stores.auth_store import AuthStore
 
 log = logging.getLogger(__name__)
 

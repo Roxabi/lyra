@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from .message import InboundMessage
-    from .message_index import MessageIndex
-    from .turn_store import TurnStore
+    from .stores.message_index import MessageIndex
+    from .stores.turn_store import TurnStore
 
 log = logging.getLogger(__name__)
 

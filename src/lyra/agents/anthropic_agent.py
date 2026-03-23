@@ -23,7 +23,7 @@ from lyra.llm.base import LlmProvider
 from lyra.stt import is_whisper_noise
 
 if TYPE_CHECKING:
-    from lyra.core.agent_store import AgentStore
+    from lyra.core.stores.agent_store import AgentStore
     from lyra.stt import STTService
     from lyra.tts import TTSService
 

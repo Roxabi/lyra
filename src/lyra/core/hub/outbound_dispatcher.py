@@ -13,8 +13,8 @@ import time
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
 
-from .circuit_breaker import CircuitBreaker, CircuitRegistry
-from .message import (
+from ..circuit_breaker import CircuitBreaker, CircuitRegistry
+from ..message import (
     InboundMessage,
     OutboundAttachment,
     OutboundAudio,

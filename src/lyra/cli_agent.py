@@ -12,7 +12,7 @@ from typing import Optional
 
 import typer
 
-from lyra.core.agent_store import AgentStore
+from lyra.core.stores.agent_store import AgentStore
 
 agent_app = typer.Typer(name="agent", help="Manage agent configurations.")
 _DEFAULT_TOOLS = ["Read", "Grep", "Glob", "WebFetch", "WebSearch"]
@@ -83,5 +83,5 @@ def _list_from_dir(
 # Register commands from sub-modules (import triggers @agent_app.command())
 # ---------------------------------------------------------------------------
 
-import lyra.cli_agent_create as _create  # noqa: E402, F401
-import lyra.cli_agent_crud as _crud  # noqa: E402, F401
+import lyra.cli_agent_create as _create  # noqa: E402, F401  # pyright: ignore[reportUnusedImport]
+import lyra.cli_agent_crud as _crud  # noqa: E402, F401  # pyright: ignore[reportUnusedImport]

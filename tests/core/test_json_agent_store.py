@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from lyra.core.json_agent_store import JsonAgentStore
+from lyra.core.stores.json_agent_store import JsonAgentStore
 
 from .conftest import make_agent_row
 
@@ -23,9 +23,7 @@ from .conftest import make_agent_row
 class TestJsonAgentStoreConnect:
     """JsonAgentStore.connect() lifecycle tests."""
 
-    async def test_connect_with_missing_file_starts_empty(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_connect_with_missing_file_starts_empty(self, tmp_path: Path) -> None:
         # Arrange — point to a non-existent path
         store = JsonAgentStore(path=tmp_path / "does_not_exist.json")
 
@@ -108,9 +106,7 @@ class TestJsonAgentStoreCRUD:
         assert "agent-a" in names
         assert "agent-b" in names
 
-    async def test_delete_removes_agent(
-        self, json_agent_store: JsonAgentStore
-    ) -> None:
+    async def test_delete_removes_agent(self, json_agent_store: JsonAgentStore) -> None:
         # Arrange
         await json_agent_store.upsert(make_agent_row("to-delete"))
 
@@ -131,9 +127,7 @@ class TestJsonAgentStoreCRUD:
         with pytest.raises(ValueError, match="assigned"):
             await json_agent_store.delete("assigned-agent")
 
-    async def test_upsert_is_idempotent(
-        self, json_agent_store: JsonAgentStore
-    ) -> None:
+    async def test_upsert_is_idempotent(self, json_agent_store: JsonAgentStore) -> None:
         # Arrange
         row = make_agent_row("dup-agent")
 
@@ -194,9 +188,7 @@ class TestJsonBotMap:
         # Act + Assert — must not raise
         await json_agent_store.remove_bot_agent("telegram", "nonexistent-bot")
 
-    async def test_get_all_bot_mappings(
-        self, json_agent_store: JsonAgentStore
-    ) -> None:
+    async def test_get_all_bot_mappings(self, json_agent_store: JsonAgentStore) -> None:
         # Arrange
         await json_agent_store.upsert(make_agent_row("map-agent"))
         await json_agent_store.set_bot_agent("telegram", "bot-map-1", "map-agent")
@@ -344,8 +336,8 @@ class TestMakeAgentStore:
     def test_default_returns_agent_store(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("LYRA_DB", raising=False)
 
-        from lyra.core.agent_store import AgentStore
-        from lyra.core.agent_store_protocol import make_agent_store
+        from lyra.core.stores.agent_store import AgentStore
+        from lyra.core.stores.agent_store_protocol import make_agent_store
 
         store = make_agent_store()
         assert isinstance(store, AgentStore)
@@ -356,7 +348,7 @@ class TestMakeAgentStore:
         monkeypatch.setenv("LYRA_DB", "json")
         monkeypatch.delenv("LYRA_AGENT_STORE_PATH", raising=False)
 
-        from lyra.core.agent_store_protocol import make_agent_store
+        from lyra.core.stores.agent_store_protocol import make_agent_store
 
         store = make_agent_store()
         assert isinstance(store, JsonAgentStore)
@@ -368,7 +360,7 @@ class TestMakeAgentStore:
         monkeypatch.setenv("LYRA_DB", "json")
         monkeypatch.setenv("LYRA_AGENT_STORE_PATH", str(custom_path))
 
-        from lyra.core.agent_store_protocol import make_agent_store
+        from lyra.core.stores.agent_store_protocol import make_agent_store
 
         store = make_agent_store()
         assert isinstance(store, JsonAgentStore)
@@ -379,8 +371,8 @@ class TestMakeAgentStore:
     ) -> None:
         monkeypatch.setenv("LYRA_DB", "sqlite")
 
-        from lyra.core.agent_store import AgentStore
-        from lyra.core.agent_store_protocol import make_agent_store
+        from lyra.core.stores.agent_store import AgentStore
+        from lyra.core.stores.agent_store_protocol import make_agent_store
 
         store = make_agent_store()
         assert isinstance(store, AgentStore)

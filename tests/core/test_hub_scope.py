@@ -190,7 +190,7 @@ class TestRateTimestampsCleanup:
         # Advance monotonic clock past the 1-second window
         now_plus_2 = hub._rate_timestamps[key][0] + 2
         with unittest.mock.patch(
-            "lyra.core.hub_rate_limit.time.monotonic", return_value=now_plus_2
+            "lyra.core.hub.hub_rate_limit.time.monotonic", return_value=now_plus_2
         ):
             result = hub._is_rate_limited(msg)
 

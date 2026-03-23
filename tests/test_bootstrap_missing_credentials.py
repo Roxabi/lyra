@@ -34,7 +34,7 @@ class TestMissingCredentials:
         """telegram get_full() → None raises MissingCredentialsError."""
         # Arrange
         patch_bootstrap_common(monkeypatch)
-        _, fake_cred_store = make_fake_stores(monkeypatch, tg_creds=None)
+        _, _ = make_fake_stores(monkeypatch, tg_creds=None)
 
         monkeypatch.setattr(
             main_mod,
@@ -67,7 +67,7 @@ class TestMissingCredentials:
         """discord get_full() → None raises MissingCredentialsError."""
         # Arrange
         patch_bootstrap_common(monkeypatch)
-        _, fake_cred_store = make_fake_stores(
+        _, _ = make_fake_stores(
             monkeypatch, tg_creds=("tg-token", "tg-secret"), dc_creds=None
         )
 

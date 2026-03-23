@@ -32,8 +32,8 @@ from lyra.stt import is_whisper_noise
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable
 
-    from lyra.core.agent_store import AgentStore
     from lyra.core.render_events import RenderEvent
+    from lyra.core.stores.agent_store import AgentStore
     from lyra.stt import STTService
     from lyra.tts import TTSService
 
@@ -114,7 +114,7 @@ class SimpleAgent(AgentBase):
 
     def _register_session_commands(self) -> None:
         """Store SessionTools; register processor cmds as passthroughs (B2, #363)."""
-        import lyra.core.processors  # noqa: F401 — trigger self-registration
+        import lyra.core.processors  # noqa: F401 — trigger self-registration  # pyright: ignore[reportUnusedImport]
         from lyra.core.processor_registry import registry
         from lyra.integrations.base import SessionTools
         from lyra.integrations.vault_cli import VaultCli

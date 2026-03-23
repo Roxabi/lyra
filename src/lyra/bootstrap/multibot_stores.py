@@ -8,13 +8,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import AsyncIterator
 
-from lyra.core.agent_store import AgentStore
-from lyra.core.auth_store import AuthStore
-from lyra.core.credential_store import CredentialStore, LyraKeyring
-from lyra.core.message_index import MessageIndex
-from lyra.core.prefs_store import PrefsStore
-from lyra.core.thread_store import ThreadStore
-from lyra.core.turn_store import TurnStore
+from lyra.core.stores.agent_store import AgentStore
+from lyra.core.stores.auth_store import AuthStore
+from lyra.core.stores.credential_store import CredentialStore, LyraKeyring
+from lyra.core.stores.message_index import MessageIndex
+from lyra.core.stores.prefs_store import PrefsStore
+from lyra.core.stores.thread_store import ThreadStore
+from lyra.core.stores.turn_store import TurnStore
 
 log = logging.getLogger(__name__)
 

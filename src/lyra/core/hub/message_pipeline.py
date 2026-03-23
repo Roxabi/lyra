@@ -8,15 +8,15 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable
 
-from .agent import AgentBase
-from .command_parser import CommandParser
-from .message import (
+from ..agent import AgentBase
+from ..commands.command_parser import CommandParser
+from ..message import (
     GENERIC_ERROR_REPLY,
     InboundMessage,
     Platform,
     Response,
 )
-from .pool import Pool
+from ..pool import Pool
 
 if TYPE_CHECKING:
     from .hub import Binding, Hub, RoutingKey
@@ -105,7 +105,7 @@ class MessagePipeline:
         msg: InboundMessage,
     ) -> PipelineResult:
         """Route *msg* through the pipeline stages."""
-        from .hub import RoutingKey
+        from .hub import RoutingKey  # noqa: PLC0415 — deferred to avoid circular import
 
         self._trace(
             "inbound",

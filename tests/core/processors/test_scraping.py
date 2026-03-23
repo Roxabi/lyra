@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.core.command_parser import CommandContext
+from lyra.core.commands.command_parser import CommandContext
 from lyra.core.message import InboundMessage
 from lyra.core.processors._scraping import (
     _SAFE_SCRAPE_MAX_CHARS,

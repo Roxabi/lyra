@@ -1,21 +1,31 @@
 #!/usr/bin/env bash
-# Check that no Python source file exceeds 500 lines (tests excluded).
+# Check that no Python source file exceeds 300 lines (tests excluded).
 # Known exceptions are listed below — each must have a tracking issue.
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-MAX=500
+MAX=300
 FAIL=0
 
 # Files exempt from the limit (tracked for future refactoring).
 EXEMPT=(
-    "src/lyra/adapters/telegram.py"    # #196 — adapter protocol inherently large
-    "src/lyra/adapters/discord.py"     # #196 — adapter protocol inherently large
-    "src/lyra/core/hub.py"             # #196 — central bus, split planned
-    "src/lyra/core/agent.py"           # #196 — config loader + runner
-    "src/lyra/__main__.py"             # #196 — startup wiring
-    "src/lyra/cli_agent.py"            # #268 — all lyra agent CLI commands in one module
+    "src/lyra/core/cli_protocol.py"         # 494 lines — #396 refactor backlog
+    "src/lyra/core/hub/message_pipeline.py" # 450 lines — #396 refactor backlog
+    "src/lyra/core/stores/agent_store.py"   # 449 lines — #396 refactor backlog
+    "src/lyra/cli_agent_crud.py"            # 441 lines — #396 refactor backlog
+    "src/lyra/core/pool/pool_processor.py"  # 406 lines — #396 refactor backlog
+    "src/lyra/core/hub/outbound_dispatcher.py" # 377 lines — #396 refactor backlog
+    "src/lyra/core/commands/command_router.py" # 374 lines — #396 refactor backlog
+    "src/lyra/core/agent_refiner.py"        # 367 lines — #396 refactor backlog
+    "src/lyra/core/hub/hub_outbound.py"     # 356 lines — #396 refactor backlog
+    "src/lyra/adapters/telegram_outbound.py" # 356 lines — #396 refactor backlog
+    "src/lyra/core/hub/hub.py"              # 353 lines — #396 refactor backlog
+    "src/lyra/adapters/discord_outbound.py" # 353 lines — #396 refactor backlog
+    "src/lyra/tts/__init__.py"              # 336 lines — #396 refactor backlog
+    "src/lyra/adapters/discord.py"          # 311 lines — #196 adapter protocol
+    "src/lyra/core/audio_pipeline.py"       # 313 lines — #396 refactor backlog
+    "src/lyra/agents/simple_agent.py"       # 306 lines — #396 refactor backlog
 )
 
 is_exempt() {

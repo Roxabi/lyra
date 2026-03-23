@@ -15,21 +15,21 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from . import builtin_commands, workspace_commands
+from .. import builtin_commands, workspace_commands
+from ..message import InboundMessage, Response
+from ..pool.pool import Pool
 from .command_loader import AsyncHandler, CommandLoader
 from .command_parser import CommandContext
-from .message import InboundMessage, Response
-from .pool import Pool
 
 if TYPE_CHECKING:
     from lyra.core.runtime_config import RuntimeConfigHolder
     from lyra.llm.smart_routing import SmartRoutingDecorator
 
-    from .circuit_breaker import CircuitRegistry
-    from .messages import MessageManager
+    from ..circuit_breaker import CircuitRegistry
+    from ..messages import MessageManager
 
 _BUNDLED_PATTERNS_CONFIG = (
-    Path(__file__).resolve().parent.parent / "config" / "patterns.toml"
+    Path(__file__).resolve().parent.parent.parent / "config" / "patterns.toml"
 )
 
 
@@ -162,7 +162,7 @@ class CommandRouter:
             result.append((name, desc, self._is_admin_only(desc)))
         # Processor commands registered via ProcessorRegistry (issue #363)
         try:
-            import lyra.core.processors  # noqa: F401
+            import lyra.core.processors  # noqa: F401  # pyright: ignore[reportUnusedImport]
             from lyra.core.processor_registry import registry as _proc_registry
 
             for cmd, desc in _proc_registry.descriptions().items():

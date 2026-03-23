@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.turn_store import TurnStore
+from lyra.core.stores.turn_store import TurnStore
 
 
 @pytest.fixture

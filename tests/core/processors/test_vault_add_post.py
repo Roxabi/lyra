@@ -6,7 +6,7 @@ import asyncio
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.core.command_parser import CommandContext
+from lyra.core.commands.command_parser import CommandContext
 from lyra.core.message import InboundMessage, Response
 from lyra.core.processors.vault_add import VaultAddProcessor
 from lyra.core.trust import TrustLevel

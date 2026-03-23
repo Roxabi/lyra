@@ -14,8 +14,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from lyra.core.hub import Hub
+from lyra.core.hub.message_pipeline import Action, MessagePipeline, PipelineResult
 from lyra.core.message import InboundMessage, OutboundAudio, Response
-from lyra.core.message_pipeline import Action, MessagePipeline, PipelineResult
 from tests.core.conftest import make_inbound_message
 
 # ---------------------------------------------------------------------------

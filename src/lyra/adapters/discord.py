@@ -16,10 +16,7 @@ if TYPE_CHECKING:
 from lyra.adapters import discord_audio  # noqa: I001
 from lyra.adapters import discord_audio_outbound
 from lyra.adapters._shared import ATTACHMENT_EXTS_BASE, TypingTaskManager, resolve_msg
-from lyra.adapters.discord_config import (  # noqa: F401 — re-exported for external callers
-    DiscordConfig,
-    load_discord_config,
-)
+from lyra.adapters.discord_config import DiscordConfig, load_discord_config  # noqa: F401 — re-exported  # pyright: ignore[reportUnusedImport]
 from lyra.adapters.discord_inbound import handle_message
 from lyra.adapters.discord_normalize import normalize as _normalize_impl
 from lyra.adapters.discord_outbound import (
@@ -33,7 +30,7 @@ from lyra.adapters.discord_voice_commands import (
     handle_voice_command as _handle_voice_command_impl,
     register_voice_app_commands as _register_voice_app_commands,
 )
-from lyra.core.auth import _ALLOW_ALL, _DENY_ALL, AuthMiddleware  # noqa: F401 — re-exported for tests and external callers
+from lyra.core.auth import _ALLOW_ALL, _DENY_ALL, AuthMiddleware  # noqa: F401 — re-exported for tests and external callers  # pyright: ignore[reportUnusedImport]
 from lyra.core.authenticator import Authenticator
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.guard import BlockedGuard, GuardChain
@@ -47,7 +44,7 @@ from lyra.core.message import (
     OutboundMessage,
 )
 from lyra.core.messages import MessageManager
-from lyra.core.thread_store import ThreadStore
+from lyra.core.stores.thread_store import ThreadStore
 
 # Discord: same base extensions, no platform-specific additions needed.
 _ATTACHMENT_EXTS = ATTACHMENT_EXTS_BASE

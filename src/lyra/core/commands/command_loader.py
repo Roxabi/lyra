@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Callable, cast
 
 if TYPE_CHECKING:
     from lyra.core.message import InboundMessage, Response
-    from lyra.core.pool import Pool
+    from lyra.core.pool.pool import Pool
 
 log = logging.getLogger(__name__)
 

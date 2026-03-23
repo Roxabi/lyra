@@ -12,7 +12,11 @@ from types import ModuleType
 
 import pytest
 
-from lyra.core.command_loader import CommandLoader, LoadedPlugin, PluginManifest
+from lyra.core.commands.command_loader import (
+    CommandLoader,
+    LoadedPlugin,
+    PluginManifest,
+)
 
 from .conftest import make_plugin
 

@@ -19,8 +19,12 @@ from dotenv import load_dotenv
 # Re-export adapters so test monkeypatching on main_mod still works.
 # The bootstrap modules import these directly; tests that patch main_mod.*
 # must also patch the bootstrap module namespace (see tests/test_main.py).
-from lyra.adapters.discord import DiscordAdapter  # noqa: F401
-from lyra.adapters.telegram import TelegramAdapter  # noqa: F401
+from lyra.adapters.discord import (
+    DiscordAdapter,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+)
+from lyra.adapters.telegram import (
+    TelegramAdapter,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+)
 from lyra.bootstrap.config import (
     _load_circuit_config,
     _load_raw_config,

@@ -243,6 +243,22 @@ Execute artifacts/plans/<issue>/task-0002.md.
 
 Repeat until all tasks are done. This enables 4–12 hour unattended runs.
 
+## File Size Policy
+
+All Python source files must be ≤ 300 lines. This limit keeps files within a single agent
+context window and encourages focused modules.
+
+### Adding to the allowlist
+
+If you need to defer a refactor:
+
+1. Add the file path to the `EXEMPT` array in `tools/check_file_length.sh`
+2. Include a comment with the line count and a tracking issue number: `# 450 lines — #396`
+3. Open a dedicated refactor issue if one doesn't exist
+4. Remove the exemption once the file is refactored below 300 lines
+
+The allowlist is not a permanent exemption — every entry must have a tracking issue.
+
 ## Architecture decisions (ADRs)
 
 Significant architectural choices — especially irreversible ones — are recorded as ADRs in `docs/architecture/adr/`.

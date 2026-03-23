@@ -126,7 +126,7 @@ async def send(
     meta = _validate_inbound(original_msg, "send")
     if meta is None:
         return
-    chat_id, _topic_id, _msg_id = meta
+    chat_id, _, _ = meta
 
     # Flatten content parts to plain text, escape and chunk
     text = outbound.to_text()
@@ -207,7 +207,7 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: tool-su
     meta = _validate_inbound(original_msg, "send_streaming")
     if meta is None:
         return
-    chat_id, _topic_id, _msg_id = meta
+    chat_id, _, _ = meta
 
     # The typing task was started by _start_typing() in _on_message on receipt.
     # We let it run until the placeholder is sent, then cancel it.
@@ -278,7 +278,7 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: tool-su
                     except Exception as edit_exc:
                         log.debug("Tool summary edit skipped: %s", edit_exc)
 
-            elif isinstance(event, TextRenderEvent) and event.is_final:
+            elif isinstance(event, TextRenderEvent) and event.is_final:  # pyright: ignore[reportUnnecessaryIsInstance]
                 final_text = event.text
                 is_error_turn = event.is_error
     except Exception as exc:

@@ -13,9 +13,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.command_loader import CommandLoader
-from lyra.core.command_parser import CommandParser
-from lyra.core.command_router import CommandRouter
+from lyra.core.commands.command_loader import CommandLoader
+from lyra.core.commands.command_parser import CommandParser
+from lyra.core.commands.command_router import CommandRouter
 from lyra.core.message import InboundMessage, Response
 from lyra.core.pool import Pool
 from lyra.core.trust import TrustLevel
@@ -180,7 +180,7 @@ class TestBareUrlToAdd:
     @pytest.mark.asyncio
     async def test_bare_url_dispatched_to_add(self, tmp_path: Path) -> None:
         driver = make_mock_driver()
-        tools, mock_scraper, mock_vault = make_mock_tools()
+        tools, mock_scraper, _ = make_mock_tools()
         router = make_router_with_session(tmp_path, driver=driver, tools=tools)
         pool = make_pool()
 

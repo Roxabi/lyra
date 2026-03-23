@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .command_router import CommandConfig
+    from .commands.command_router import CommandConfig
 
 # Agent config directories — resolution order: user → system
 _USER_AGENTS_DIR = Path.home() / ".lyra" / "agents"

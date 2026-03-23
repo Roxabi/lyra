@@ -40,7 +40,7 @@ class TestCredentialResolution:
         # Arrange
         patch_bootstrap_common(monkeypatch)
         expected_token = "real-telegram-token-xyz"
-        _, fake_cred_store = make_fake_stores(
+        _, _ = make_fake_stores(
             monkeypatch,
             tg_creds=(expected_token, "webhook-secret"),
             dc_creds=None,
@@ -100,7 +100,7 @@ class TestCredentialResolution:
         # Arrange
         patch_bootstrap_common(monkeypatch)
         expected_token = "real-discord-token-abc"
-        _, fake_cred_store = make_fake_stores(
+        _, _ = make_fake_stores(
             monkeypatch,
             tg_creds=None,
             dc_creds=(expected_token, None),

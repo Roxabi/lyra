@@ -10,7 +10,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .message import InboundMessage
+    from ..message import InboundMessage
 
 log = logging.getLogger(__name__)
 

@@ -185,7 +185,7 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
         return
 
     # Inject stored session + persistence callback into platform_meta.
-    _meta_updates: dict = {}
+    _meta_updates: dict[str, Any] = {}
     if _stored_session_id is not None:
         _meta_updates["thread_session_id"] = _stored_session_id
     _has_thread_id = hub_msg.platform_meta.get("thread_id") is not None

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.core.outbound_errors import _is_transient_error, try_notify_user
+from lyra.core.hub.outbound_errors import _is_transient_error, try_notify_user
 
 from .conftest import make_dispatcher_msg
 

@@ -10,8 +10,8 @@ from lyra.adapters.discord_voice import (
     VoiceDependencyError,
     VoiceMode,
 )
-from lyra.core.command_parser import CommandParser
-from lyra.core.command_registry import CommandParam, PlatformCommand
+from lyra.core.commands.command_parser import CommandParser
+from lyra.core.commands.command_registry import CommandParam, PlatformCommand
 from lyra.core.trust import TrustLevel
 
 if TYPE_CHECKING:

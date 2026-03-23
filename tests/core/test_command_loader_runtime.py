@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from lyra.core.command_loader import CommandLoader, LoadedPlugin
+from lyra.core.commands.command_loader import CommandLoader, LoadedPlugin
 
 from .conftest import make_plugin
 

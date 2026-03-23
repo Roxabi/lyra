@@ -58,8 +58,8 @@ async def _register_bot(
     voice_commands: list,
 ) -> bool:
     """Register commands for a single Telegram bot. Returns True on error."""
-    from lyra.core.command_registry import collect_commands
-    from lyra.core.command_router import CommandRouter
+    from lyra.core.commands.command_registry import collect_commands
+    from lyra.core.commands.command_router import CommandRouter
 
     bot_id = bot_cfg.get("bot_id", "unknown")
     agent_name = bot_cfg.get("agent", "")
@@ -120,8 +120,8 @@ async def _register_bot(
 async def _register_all(config_path: str) -> None:
     """For each Telegram bot: resolve token, collect commands, set_my_commands."""
     from lyra.adapters.discord_voice_commands import VOICE_COMMANDS
-    from lyra.core.command_loader import CommandLoader
-    from lyra.core.credential_store import CredentialStore, LyraKeyring
+    from lyra.core.commands.command_loader import CommandLoader
+    from lyra.core.stores.credential_store import CredentialStore, LyraKeyring
 
     try:
         with open(config_path, "rb") as f:

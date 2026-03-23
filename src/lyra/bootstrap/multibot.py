@@ -39,11 +39,11 @@ from lyra.config import (
 from lyra.core.agent import Agent
 from lyra.core.agent_loader import agent_row_to_config, load_agent_config
 from lyra.core.auth import AuthMiddleware
-from lyra.core.auth_store import AuthStore
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.cli_pool import CliPool
 from lyra.core.hub import Hub
-from lyra.core.pairing import PairingManager, set_pairing_manager
+from lyra.core.stores.auth_store import AuthStore
+from lyra.core.stores.pairing import PairingManager, set_pairing_manager
 
 log = logging.getLogger(__name__)
 

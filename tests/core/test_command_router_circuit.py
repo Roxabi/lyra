@@ -17,9 +17,9 @@ import pytest
 
 from lyra.core.agent import load_agent_config
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
-from lyra.core.command_loader import CommandLoader
-from lyra.core.command_parser import CommandParser
-from lyra.core.command_router import CommandConfig, CommandRouter
+from lyra.core.commands.command_loader import CommandLoader
+from lyra.core.commands.command_parser import CommandParser
+from lyra.core.commands.command_router import CommandConfig, CommandRouter
 from lyra.core.message import InboundMessage, Response
 from lyra.core.trust import TrustLevel
 

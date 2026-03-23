@@ -249,7 +249,7 @@ system = "You are a test assistant."
         import os
 
         from lyra.core.agent import AgentBase, load_agent_config
-        from lyra.core.command_router import CommandRouter
+        from lyra.core.commands.command_router import CommandRouter
         from lyra.core.message import InboundMessage, Response
         from lyra.core.pool import Pool
 

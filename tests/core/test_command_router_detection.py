@@ -19,8 +19,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from lyra.core.agent import Agent, AgentBase, load_agent_config
-from lyra.core.command_loader import CommandLoader
-from lyra.core.command_router import CommandRouter
+from lyra.core.commands.command_loader import CommandLoader
+from lyra.core.commands.command_router import CommandRouter
 from lyra.core.message import (
     InboundMessage,
     OutboundMessage,

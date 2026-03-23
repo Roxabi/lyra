@@ -10,7 +10,7 @@ from pathlib import Path
 
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.messages import MessageManager
-from lyra.core.pairing import PairingConfig
+from lyra.core.stores.pairing import PairingConfig
 from lyra.core.tool_display_config import ToolDisplayConfig
 
 log = logging.getLogger(__name__)

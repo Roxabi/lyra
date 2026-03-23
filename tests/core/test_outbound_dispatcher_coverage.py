@@ -17,9 +17,9 @@ from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from lyra.core.circuit_breaker import CircuitBreaker
+from lyra.core.hub.outbound_dispatcher import OutboundDispatcher
+from lyra.core.hub.outbound_errors import _SCOPE_REAP_THRESHOLD
 from lyra.core.message import InboundMessage, OutboundMessage, RoutingContext
-from lyra.core.outbound_dispatcher import OutboundDispatcher
-from lyra.core.outbound_errors import _SCOPE_REAP_THRESHOLD
 from lyra.core.render_events import TextRenderEvent
 
 from .conftest import make_dispatcher_msg
@@ -186,7 +186,7 @@ async def test_circuit_open_debounce_suppresses_second_notification() -> None:
             notify_calls.append(str(args[3]))
 
         _patch = patch(
-            "lyra.core.outbound_dispatcher.try_notify_user", side_effect=fake_notify
+            "lyra.core.hub.outbound_dispatcher.try_notify_user", side_effect=fake_notify
         )
         with _patch:
             dispatcher.enqueue(msg, OutboundMessage.from_text("first"))
@@ -275,7 +275,7 @@ async def test_failed_send_notifies_user() -> None:
     try:
         msg = make_dispatcher_msg()
         _patch = patch(
-            "lyra.core.outbound_dispatcher.try_notify_user", side_effect=fake_notify
+            "lyra.core.hub.outbound_dispatcher.try_notify_user", side_effect=fake_notify
         )
         with _patch:
             dispatcher.enqueue(msg, OutboundMessage.from_text("hi"))
@@ -347,7 +347,7 @@ class TestRetryExhaustion:
             with (
                 patch("asyncio.sleep", new=AsyncMock()),
                 patch(
-                    "lyra.core.outbound_dispatcher.try_notify_user",
+                    "lyra.core.hub.outbound_dispatcher.try_notify_user",
                     new=notify_mock,
                 ),
             ):

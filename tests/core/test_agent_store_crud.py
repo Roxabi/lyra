@@ -7,7 +7,7 @@ from pathlib import Path
 import aiosqlite
 import pytest
 
-from lyra.core.agent_store import AgentRow, AgentStore
+from lyra.core.stores.agent_store import AgentRow, AgentStore
 
 from .conftest import make_agent_row, make_store
 

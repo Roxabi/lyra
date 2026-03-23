@@ -7,8 +7,8 @@ from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
 from lyra.core.circuit_breaker import CircuitBreaker
+from lyra.core.hub.outbound_dispatcher import OutboundDispatcher
 from lyra.core.message import OutboundMessage
-from lyra.core.outbound_dispatcher import OutboundDispatcher
 from lyra.core.render_events import TextRenderEvent
 
 from .conftest import make_dispatcher_msg
@@ -182,7 +182,7 @@ class TestOutboundDispatcherCircuitBreaker:
             await dispatcher.stop()
 
     async def test_stop_cancels_worker(self) -> None:
-        adapter, dispatcher = _make_adapter()
+        _, dispatcher = _make_adapter()
         await dispatcher.start()
         assert dispatcher._worker is not None
         await dispatcher.stop()

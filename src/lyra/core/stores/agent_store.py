@@ -8,14 +8,14 @@ from pathlib import Path
 
 import aiosqlite
 
-from .agent_models import (
+from ..agent_models import (
     VALID_AGENT_STATUSES,
     AgentRow,
     AgentRuntimeStateRow,
     BotAgentMapRow,
     _utc_now_iso,
 )
-from .agent_schema import (
+from ..agent_schema import (
     _CREATE_AGENT_RUNTIME_STATE,
     _CREATE_AGENTS,
     _CREATE_BOT_AGENT_MAP,
@@ -23,7 +23,7 @@ from .agent_schema import (
     _SELECT_AGENTS,
     _UPSERT_AGENT,
 )
-from .agent_seeder import seed_from_toml as _seed_from_toml
+from ..agent_seeder import seed_from_toml as _seed_from_toml
 from .sqlite_base import SqliteStore
 
 log = logging.getLogger(__name__)
@@ -112,7 +112,7 @@ class AgentStore(SqliteStore):
         Uses OR guard so agents needing either persona or voice migration are
         picked up (idempotent — each column is only written when NULL).
         """
-        from .persona import load_persona
+        from ..persona import load_persona
 
         async with db.execute(
             "SELECT name, persona, tts_json, stt_json, i18n_language "

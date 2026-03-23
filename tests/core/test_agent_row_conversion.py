@@ -11,7 +11,7 @@ class TestAgentRowToConfigTTSSTT:
     """agent_row_to_config() must deserialize tts_json / stt_json into typed config."""
 
     def _make_row(self, tts_json=None, stt_json=None):
-        from lyra.core.agent_store import AgentRow
+        from lyra.core.stores.agent_store import AgentRow
 
         return AgentRow(
             name="row-agent",

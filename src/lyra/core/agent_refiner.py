@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
     from lyra.core.agent_models import AgentRow
-    from lyra.core.agent_store import AgentStore
+    from lyra.core.stores.agent_store import AgentStore
 
 __all__ = [
     "AgentRefiner",

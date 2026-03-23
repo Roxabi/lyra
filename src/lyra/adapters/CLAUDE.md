@@ -7,7 +7,7 @@ Adapters translate platform-native events into `InboundMessage` / `InboundAudio`
 and translate `OutboundMessage` / `OutboundAudio` into platform API calls.
 No business logic or LLM interaction lives here.
 
-## ChannelAdapter protocol (defined in `core/hub_protocol.py`)
+## ChannelAdapter protocol (defined in `core/hub/hub_protocol.py`)
 
 Every adapter must implement:
 

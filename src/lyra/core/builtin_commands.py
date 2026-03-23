@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from lyra.llm.smart_routing import SmartRoutingDecorator
 
     from .circuit_breaker import CircuitRegistry
-    from .command_loader import CommandLoader
+    from .commands.command_loader import CommandLoader
     from .messages import MessageManager
     from .runtime_config import RuntimeConfigHolder
 
@@ -58,7 +58,7 @@ def help_command(
             lines.append(f"  {cmd_name} — {desc}")
     # Include processor registry commands (issue #363 — session_handlers is now empty)
     try:
-        import lyra.core.processors  # noqa: F401 — trigger self-registration
+        import lyra.core.processors  # noqa: F401 — trigger self-registration  # pyright: ignore[reportUnusedImport]
         from lyra.core.processor_registry import registry as _proc_registry
 
         proc_descs = _proc_registry.descriptions()

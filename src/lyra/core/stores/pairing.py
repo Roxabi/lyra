@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from lyra.core.auth_store import AuthStore
+    from lyra.core.stores.auth_store import AuthStore
 
 from lyra.core.trust import TrustLevel
 

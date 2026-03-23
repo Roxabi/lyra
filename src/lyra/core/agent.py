@@ -12,16 +12,18 @@ if TYPE_CHECKING:
     from lyra.stt import STTService
     from lyra.tts import TTSService
 
-    from .agent_store import AgentStore
     from .memory import MemoryManager
     from .render_events import RenderEvent
+    from .stores.agent_store import AgentStore
 
 from .agent_commands import CommandReloadManager
 from .agent_config import Agent, _find_agent_dir  # noqa: F401 — Agent re-exported
-from .agent_loader import load_agent_config  # noqa: F401 — re-export for tests
+from .agent_loader import (
+    load_agent_config,  # noqa: F401 — re-export for tests  # pyright: ignore[reportUnusedImport]
+)
 from .circuit_breaker import CircuitRegistry
-from .command_loader import CommandLoader
-from .command_router import CommandRouter
+from .commands.command_loader import CommandLoader
+from .commands.command_router import CommandRouter
 from .message import InboundMessage, Response
 from .messages import MessageManager
 from .pool import Pool
@@ -218,7 +220,7 @@ class AgentBase(ABC, SessionManager):
             pool.user_id, ns, first_msg=first_msg, token_budget=700
         )
         parts = [anchor]
-        if memory_block and isinstance(memory_block, str):
+        if memory_block and isinstance(memory_block, str):  # pyright: ignore[reportUnnecessaryIsInstance]
             parts.append(
                 "---\n"
                 "The following sections ([MEMORY], [PREFERENCES]) are retrieved from "

@@ -104,7 +104,7 @@ class StreamProcessor:
                 if self._should_emit() and self._has_any_tool_events():
                     yield self._emit_snapshot()
 
-            elif isinstance(event, ResultLlmEvent):
+            elif isinstance(event, ResultLlmEvent):  # pyright: ignore[reportUnnecessaryIsInstance]
                 _result_received = True
                 if self._has_any_tool_events():
                     yield self._emit_snapshot(is_complete=True)

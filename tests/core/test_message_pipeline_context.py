@@ -7,7 +7,7 @@ import asyncio
 import dataclasses
 from unittest.mock import patch
 
-from lyra.core.message_pipeline import Action, MessagePipeline, ResumeStatus
+from lyra.core.hub.message_pipeline import Action, MessagePipeline, ResumeStatus
 from tests.core.conftest import _make_hub, make_inbound_message
 
 # -------------------------------------------------------------------
@@ -466,7 +466,7 @@ class TestNotifySessionFallthrough:
         async def _fake_notify(platform: str, _a, _o, text: str, **_kw) -> None:
             notify_calls.append((platform, text))
 
-        _patch = "lyra.core.outbound_errors.try_notify_user"
+        _patch = "lyra.core.hub.outbound_errors.try_notify_user"
         with patch(_patch, side_effect=_fake_notify):
             from lyra.core.hub import RoutingKey
             from lyra.core.message import Platform
@@ -501,7 +501,7 @@ class TestNotifySessionFallthrough:
         async def _fake_notify(*_args, **_kw) -> None:
             notify_calls.append(_args)
 
-        _patch = "lyra.core.outbound_errors.try_notify_user"
+        _patch = "lyra.core.hub.outbound_errors.try_notify_user"
         with patch(_patch, side_effect=_fake_notify):
             from lyra.core.hub import RoutingKey
             from lyra.core.message import Platform
@@ -526,7 +526,7 @@ class TestNotifySessionFallthrough:
         async def _fake_notify(*_args, **_kw) -> None:
             notify_calls.append(_args)
 
-        _patch = "lyra.core.outbound_errors.try_notify_user"
+        _patch = "lyra.core.hub.outbound_errors.try_notify_user"
         with patch(_patch, side_effect=_fake_notify):
             from lyra.core.hub import RoutingKey
             from lyra.core.message import Platform

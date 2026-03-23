@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .agent_config import Agent
-    from .command_loader import CommandLoader
+    from .commands.command_loader import CommandLoader
 
 log = logging.getLogger(__name__)
 

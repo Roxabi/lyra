@@ -13,13 +13,11 @@ import pytest
 
 from lyra.core.agent import Agent, AgentBase
 from lyra.core.agent_config import ModelConfig
-from lyra.core.agent_store import AgentRow, AgentStore
-from lyra.core.auth_store import AuthStore
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.cli_pool import _ProcessEntry
-from lyra.core.command_loader import CommandLoader
-from lyra.core.command_parser import CommandParser
-from lyra.core.command_router import CommandRouter
+from lyra.core.commands.command_loader import CommandLoader
+from lyra.core.commands.command_parser import CommandParser
+from lyra.core.commands.command_router import CommandRouter
 from lyra.core.hub import Hub
 from lyra.core.message import (
     Attachment,
@@ -30,11 +28,10 @@ from lyra.core.message import (
     Response,
     RoutingContext,
 )
-from lyra.core.message_pipeline import (
-    MessagePipeline,  # noqa: F401 — re-exported for tests
-)
-from lyra.core.pairing import PairingConfig, PairingManager
 from lyra.core.pool import Pool
+from lyra.core.stores.agent_store import AgentRow, AgentStore
+from lyra.core.stores.auth_store import AuthStore
+from lyra.core.stores.pairing import PairingConfig, PairingManager
 from lyra.core.trust import TrustLevel
 
 # ---------------------------------------------------------------------------
@@ -455,7 +452,7 @@ async def json_agent_store(tmp_path: Path):
     Use this in tests that exercise agent configuration logic but do not
     specifically test the SQLite implementation.  Faster and DB-free.
     """
-    from lyra.core.json_agent_store import JsonAgentStore
+    from lyra.core.stores.json_agent_store import JsonAgentStore
 
     store = JsonAgentStore(path=tmp_path / "agents_test.json")
     await store.connect()
@@ -835,7 +832,7 @@ _open_pairing_stores: list[AuthStore] = []
 @pytest.fixture(autouse=True)
 async def _cleanup_pairing_state(tmp_path: Path):
     """Reset pairing global and close all PairingManagers/AuthStores after each test."""
-    from lyra.core.pairing import set_pairing_manager
+    from lyra.core.stores.pairing import set_pairing_manager
 
     _cleanup_pairing_state.tmp_path = tmp_path  # type: ignore[attr-defined]
     yield

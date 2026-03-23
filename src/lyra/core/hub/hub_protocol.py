@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, NamedTuple, Protocol
 
-from .message import (
+from ..message import (
     InboundAudio,
     InboundMessage,
     OutboundAttachment,
@@ -15,10 +15,10 @@ from .message import (
     OutboundMessage,
     Platform,
 )
-from .trust import TrustLevel
+from ..trust import TrustLevel
 
 if TYPE_CHECKING:
-    from .render_events import RenderEvent
+    from ..render_events import RenderEvent
 
 
 class ChannelAdapter(Protocol):

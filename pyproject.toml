@@ -86,24 +86,35 @@ typeCheckingMode = "strict"
 include = ["src", "tests"]
 venvPath = "."
 venv = ".venv"
-# Unknown-type cascade: demoted until annotation sprint (Wave 4) adds full coverage.
-# These rules fire on every JSON/TOML loading site and every unparameterised
-# third-party stub — too noisy to enforce before the codebase is fully annotated.
+# ── Permanent policy ──────────────────────────────────────────────────────────
+#
+# reportPrivateUsage: Python's _name is a convention (advisory), not access
+# control. Pyright enforcing it generates false positives on tightly-coupled
+# partner modules, stdlib internals, and white-box test access — none of which
+# represent real violations. Enforced by code review, not by the type checker.
+reportPrivateUsage = "none"
+#
+# reportUnusedFunction: Decorator-registered callables (Discord app_commands,
+# Telegram update handlers, asyncio task targets) are not statically reachable.
+# Confirmed by manual audit 2026-03-23: all 48 src hits are dynamic registrations
+# or private module helpers called through the module's public entry point.
+reportUnusedFunction = "none"
+#
+# ── Temporary debt — remove after Wave 4 TypedDict annotation sprint ──────────
+# (tracked in https://github.com/Roxabi/lyra/issues/411)
+#
+# All six rules cascade from dict[str, Any] produced by JSON/TOML config loading.
+# Fix: replace raw dicts with TypedDicts at every config loading site, then
+# re-enable these rules one by one. Until then they generate ~3 000 false positives.
 reportUnknownVariableType = "none"
 reportUnknownMemberType = "none"
 reportUnknownArgumentType = "none"
 reportUnknownParameterType = "none"
 reportMissingParameterType = "none"
 reportUnknownLambdaType = "none"
-# Private-access convention: Python's _name convention is enforced by code review,
-# not by pyright. Tests legitimately access internals.
-reportPrivateUsage = "none"
-# Dynamically-registered functions (discord/telegram slash commands, pytest
-# fixtures) are unreachable via static analysis — too many false positives.
-reportUnusedFunction = "none"
-# Generic annotations without explicit type arguments: existing code uses bare
-# `dict`, `list`, `tuple` widely. Fixing 200+ annotation sites is deferred to
-# the Wave 4 annotation sprint (tracked in ROADMAP.md).
+#
+# reportMissingTypeArgument: bare dict/list/tuple annotations throughout the
+# codebase. Fix alongside the TypedDict sprint above.
 reportMissingTypeArgument = "none"
 
 [tool.ruff]

@@ -121,7 +121,7 @@ class AgentStore(SqliteStore):
         if not rows:
             return
         migrated = 0
-        for name, persona_name, tts_raw, stt_raw, i18n_lang in rows:
+        for name, persona_name, _tts_raw, _stt_raw, i18n_lang in rows:
             sets: list[str] = []
             vals: list[str | None] = []
 

@@ -1,0 +1,1375 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- diagram-meta:start -->
+<meta name="diagram:title"     content="Lyra — Recap March 19, 2026">
+<meta name="diagram:date"      content="2026-03-20">
+<meta name="diagram:category"  content="recap">
+<meta name="diagram:cat-label" content="Recap">
+<meta name="diagram:color"     content="blue">
+<!-- diagram-meta:end -->
+<title>Lyra — Recap 19 mars 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;1,400&family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:ital@0;1&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+/* ── PALETTE ── warm parchment / sage ink */
+:root {
+  --font-body: 'Space Grotesk', system-ui, sans-serif;
+  --font-serif: 'Lora', Georgia, serif;
+  --font-mono: 'Space Mono', 'SF Mono', Consolas, monospace;
+
+  --bg:               #f4ede0;
+  --bg-alt:           #ede4d4;
+  --surface:          #faf6ee;
+  --surface-elevated: #ffffff;
+  --border:           rgba(80, 60, 20, 0.12);
+  --border-bright:    rgba(80, 60, 20, 0.22);
+  --text:             #291e0c;
+  --text-dim:         #7a6a52;
+  --text-muted:       #a89880;
+
+  --sage:        #2e7d6c;
+  --sage-dim:    rgba(46, 125, 108, 0.12);
+  --sage-bright: #1a5e50;
+  --olive:       #6b7c2d;
+  --olive-dim:   rgba(107, 124, 45, 0.12);
+  --amber:       #b86a00;
+  --amber-dim:   rgba(184, 106, 0, 0.12);
+  --rose:        #8b3a3a;
+  --rose-dim:    rgba(139, 58, 58, 0.12);
+  --sky:         #1e6fa0;
+  --sky-dim:     rgba(30, 111, 160, 0.12);
+
+  --node-a:     var(--sage);
+  --node-a-dim: var(--sage-dim);
+  --node-b:     var(--olive);
+  --node-b-dim: var(--olive-dim);
+  --node-c:     var(--amber);
+  --node-c-dim: var(--amber-dim);
+  --accent:     var(--sage);
+  --accent-dim: var(--sage-dim);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--text);
+  background: var(--bg);
+  background-image:
+    radial-gradient(at 15% 10%, rgba(46,125,108,0.07) 0%, transparent 50%),
+    radial-gradient(at 85% 80%, rgba(107,124,45,0.06) 0%, transparent 50%),
+    radial-gradient(circle, rgba(80,60,20,0.04) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 28px 28px;
+  margin: 0;
+  overflow-wrap: break-word;
+}
+
+/* ── LAYOUT ── */
+.page-wrap {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 24px 80px;
+}
+
+/* ── NAV ── */
+.sidenav {
+  position: fixed;
+  top: 50%;
+  left: 16px;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 100;
+}
+.sidenav a {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border-bright);
+  transition: background 0.2s, width 0.2s;
+  text-decoration: none;
+  position: relative;
+}
+.sidenav a:hover {
+  background: var(--sage);
+  width: 28px;
+  border-radius: 4px;
+}
+.sidenav a span {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+.sidenav a:hover span { opacity: 1; }
+@media (max-width: 900px) { .sidenav { display: none; } }
+
+/* ── CARDS ── */
+.ve-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px 24px;
+  position: relative;
+  min-width: 0;
+}
+.ve-card--elevated {
+  background: var(--surface-elevated);
+  box-shadow: 0 2px 10px rgba(80,60,20,0.08), 0 1px 2px rgba(80,60,20,0.04);
+}
+.ve-card--hero {
+  background: color-mix(in srgb, var(--surface) 90%, var(--sage) 10%);
+  box-shadow: 0 4px 24px rgba(80,60,20,0.10);
+  border-color: color-mix(in srgb, var(--border) 40%, var(--sage) 60%);
+}
+.ve-card--recessed {
+  background: color-mix(in srgb, var(--bg) 65%, var(--surface) 35%);
+  border-color: var(--border);
+}
+.ve-card--accent-sage { border-left: 3px solid var(--sage); }
+.ve-card--accent-olive { border-left: 3px solid var(--olive); }
+.ve-card--accent-amber { border-left: 3px solid var(--amber); }
+.ve-card--accent-rose  { border-left: 3px solid var(--rose); }
+.ve-card--accent-sky   { border-left: 3px solid var(--sky); }
+
+.ve-card__label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.6px;
+  color: var(--sage);
+  margin-bottom: 10px;
+  padding-left: 14px;
+  position: relative;
+}
+.ve-card__label::before {
+  content: '';
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* ── HEADER ── */
+.page-header {
+  padding: 56px 0 40px;
+  text-align: center;
+}
+.page-header .eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--sage);
+  margin-bottom: 12px;
+}
+.page-header h1 {
+  font-family: var(--font-serif);
+  font-size: clamp(2.2rem, 5vw, 3.4rem);
+  font-weight: 600;
+  line-height: 1.15;
+  margin: 0 0 8px;
+  color: var(--text);
+}
+.page-header h1 em {
+  font-style: italic;
+  color: var(--sage-bright);
+}
+.page-header .subtitle {
+  font-size: 16px;
+  color: var(--text-dim);
+  margin: 0 0 32px;
+}
+
+/* KPI bar */
+.kpi-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 24px;
+}
+.kpi-pill {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 8px 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 1px 4px rgba(80,60,20,0.06);
+}
+.kpi-pill .num {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--sage);
+}
+.kpi-pill .lbl { color: var(--text-dim); }
+
+/* ── SECTIONS ── */
+.section {
+  margin-bottom: 52px;
+  scroll-margin-top: 24px;
+}
+.section-title {
+  font-family: var(--font-serif);
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.section-title .section-num {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: normal;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+/* ── MERMAID ZONE ── */
+.mermaid-wrap {
+  position: relative;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 36px 24px 28px;
+  overflow: auto;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 420px;
+  box-shadow: 0 4px 24px rgba(80,60,20,0.08);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+  cursor: grab;
+}
+.mermaid-wrap.is-panning { cursor: grabbing; user-select: none; }
+.mermaid-wrap::-webkit-scrollbar { width: 6px; height: 6px; }
+.mermaid-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+.mermaid-wrap .mermaid { zoom: 1.3; }
+
+.zoom-controls {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  gap: 2px;
+  z-index: 10;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px;
+}
+.zoom-controls button {
+  width: 28px; height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+.zoom-controls button:hover { background: var(--border); color: var(--text); }
+
+/* ── TIMELINE ── */
+.timeline { position: relative; padding-left: 0; }
+.timeline::before {
+  content: '';
+  position: absolute;
+  left: 76px;
+  top: 0; bottom: 0;
+  width: 2px;
+  background: linear-gradient(to bottom, transparent, var(--border-bright) 5%, var(--border-bright) 95%, transparent);
+}
+.tl-group { margin-bottom: 28px; }
+.tl-group-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  padding-left: 100px;
+}
+.tl-item {
+  display: grid;
+  grid-template-columns: 72px 16px 1fr;
+  gap: 0 14px;
+  align-items: start;
+  margin-bottom: 8px;
+  min-width: 0;
+}
+.tl-time {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: right;
+  padding-top: 3px;
+  white-space: nowrap;
+}
+.tl-dot {
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+  margin-top: 4px;
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+}
+.tl-dot--feat  { background: var(--sage); }
+.tl-dot--fix   { background: var(--amber); }
+.tl-dot--refac { background: var(--olive); }
+.tl-dot--test  { background: var(--sky); }
+.tl-dot--perf  { background: #9b7dd4; }
+.tl-dot--docs  { background: var(--text-muted); }
+
+.tl-content { min-width: 0; }
+.tl-hash {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 5px;
+  margin-right: 6px;
+}
+.tl-msg {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text);
+  overflow-wrap: break-word;
+}
+.tl-msg .scope {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--sage);
+  margin-right: 4px;
+}
+.tl-detail {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 2px;
+  overflow-wrap: break-word;
+}
+
+/* ── KPI CARDS ── */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+}
+.kpi-card {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px 20px;
+  min-width: 0;
+}
+.kpi-card .kpi-num {
+  font-family: var(--font-mono);
+  font-size: 2.2rem;
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+.kpi-card .kpi-lbl {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+.kpi-card .kpi-items {
+  list-style: none;
+  padding: 0; margin: 0;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+.kpi-card .kpi-items li {
+  padding-left: 14px;
+  position: relative;
+  margin-bottom: 3px;
+}
+.kpi-card .kpi-items li::before {
+  content: '·';
+  position: absolute;
+  left: 3px;
+  color: currentColor;
+}
+.kpi--green  .kpi-num { color: var(--sage); }
+.kpi--amber  .kpi-num { color: var(--amber); }
+.kpi--blue   .kpi-num { color: var(--sky); }
+.kpi--red    .kpi-num { color: var(--rose); }
+.kpi--green { border-left: 3px solid var(--sage); }
+.kpi--amber { border-left: 3px solid var(--amber); }
+.kpi--blue  { border-left: 3px solid var(--sky); }
+.kpi--red   { border-left: 3px solid var(--rose); }
+
+/* ── DECISION LOG ── */
+.decision-list { display: flex; flex-direction: column; gap: 14px; }
+.decision {
+  display: grid;
+  grid-template-columns: 3px 1fr;
+  gap: 0 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  min-width: 0;
+}
+.decision__stripe { background: var(--sage); }
+.decision__body   { padding: 16px 18px 16px 0; min-width: 0; }
+.decision__title  { font-weight: 600; font-size: 14px; margin-bottom: 5px; overflow-wrap: break-word; }
+.decision__why    { font-size: 13px; color: var(--text-dim); margin-bottom: 5px; overflow-wrap: break-word; }
+.decision__hash   {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 6px;
+  display: inline-block;
+}
+
+/* ── MENTAL MODEL ── */
+.mental-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+@media (max-width: 720px) { .mental-grid { grid-template-columns: 1fr; } }
+.mental-item { min-width: 0; }
+.mental-item h4 {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 6px;
+  color: var(--sage-bright);
+  overflow-wrap: break-word;
+}
+.mental-item p, .mental-item li {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin: 0 0 4px;
+  overflow-wrap: break-word;
+}
+.mental-item ul { padding-left: 0; list-style: none; margin: 0; }
+.mental-item ul li {
+  padding-left: 14px;
+  position: relative;
+}
+.mental-item ul li::before { content: '›'; position: absolute; left: 0; color: var(--sage); }
+
+/* ── DEBT HOTSPOTS ── */
+.debt-list { display: flex; flex-direction: column; gap: 12px; }
+.debt-card {
+  background: color-mix(in srgb, var(--surface) 80%, var(--amber-dim) 20%);
+  border: 1px solid color-mix(in srgb, var(--border) 60%, var(--amber) 40%);
+  border-radius: 10px;
+  padding: 14px 16px;
+  min-width: 0;
+  position: relative;
+  padding-left: 18px;
+}
+.debt-card.sev-high  { border-left: 4px solid var(--rose); }
+.debt-card.sev-med   { border-left: 4px solid var(--amber); }
+.debt-card.sev-low   { border-left: 4px solid var(--sky); }
+.debt-card__title {
+  font-weight: 600;
+  font-size: 13.5px;
+  margin-bottom: 4px;
+  overflow-wrap: break-word;
+}
+.debt-card__body {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  overflow-wrap: break-word;
+}
+.debt-badge {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  margin-bottom: 5px;
+}
+.sev-high .debt-badge { background: var(--rose-dim); color: var(--rose); }
+.sev-med  .debt-badge { background: var(--amber-dim); color: var(--amber); }
+.sev-low  .debt-badge { background: var(--sky-dim); color: var(--sky); }
+.debt-fix {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--sage-bright);
+  font-style: italic;
+  overflow-wrap: break-word;
+}
+
+/* ── NEXT STEPS ── */
+.next-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+.next-card {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  min-width: 0;
+}
+.next-card__tag {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 2px 7px;
+  border-radius: 3px;
+  margin-bottom: 8px;
+  display: inline-block;
+}
+.tag--immediate { background: var(--sage-dim); color: var(--sage-bright); }
+.tag--planned   { background: var(--olive-dim); color: var(--olive); }
+.tag--blocked   { background: var(--amber-dim); color: var(--amber); }
+.next-card h4   { font-size: 13.5px; font-weight: 600; margin: 0 0 4px; overflow-wrap: break-word; }
+.next-card p    { font-size: 12.5px; color: var(--text-dim); margin: 0; overflow-wrap: break-word; }
+
+/* ── CODE INLINE ── */
+code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+}
+
+/* ── GRID OVERFLOW PROTECTION ── */
+.kpi-grid > *, .mental-grid > *, .next-grid > *, .kpi-bar > * { min-width: 0; }
+
+/* ── ARCH LEGEND ── */
+.arch-legend {
+  display: flex; flex-wrap: wrap; gap: 12px;
+  margin-top: 14px; justify-content: center;
+}
+.legend-item {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11.5px; color: var(--text-dim);
+}
+.legend-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ── FILE CHANGED CHART ── */
+.bar-chart { display: flex; flex-direction: column; gap: 7px; }
+.bar-row { display: grid; grid-template-columns: 200px 1fr 40px; gap: 8px; align-items: center; min-width: 0; }
+.bar-label { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar-track { background: var(--bg-alt); border-radius: 3px; height: 8px; min-width: 0; }
+.bar-fill  { height: 8px; border-radius: 3px; background: var(--sage); }
+.bar-val   { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); text-align: right; }
+
+@media (max-width: 600px) {
+  .bar-row { grid-template-columns: 120px 1fr 36px; }
+  .bar-label { font-size: 9.5px; }
+}
+
+/* ── FOOTER ── */
+.page-footer {
+  margin-top: 60px;
+  padding: 20px 0;
+  border-top: 1px solid var(--border);
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+</style>
+</head>
+<body>
+
+<!-- Side nav dots -->
+<nav class="sidenav" aria-label="Sections">
+  <a href="#identity"><span>Projet</span></a>
+  <a href="#architecture"><span>Architecture</span></a>
+  <a href="#activity"><span>Activité</span></a>
+  <a href="#decisions"><span>Décisions</span></a>
+  <a href="#state"><span>État</span></a>
+  <a href="#mental"><span>Mental model</span></a>
+  <a href="#debt"><span>Dette</span></a>
+  <a href="#next"><span>Suite</span></a>
+</nav>
+
+<div class="page-wrap">
+
+<!-- ══════════════════════════════════════════════════
+     HEADER
+══════════════════════════════════════════════════ -->
+<header class="page-header">
+  <div class="eyebrow">Lyra by Roxabi — Project Recap</div>
+  <h1>Journée du <em>19 mars 2026</em></h1>
+  <p class="subtitle">Concurrent dispatch · Processor registry · lyra-send skill · Streaming hardening</p>
+
+  <div class="kpi-bar">
+    <div class="kpi-pill"><span class="num">14</span><span class="lbl">commits Mar 19</span></div>
+    <div class="kpi-pill"><span class="num">2</span><span class="lbl">features majeures</span></div>
+    <div class="kpi-pill"><span class="num">+3 900</span><span class="lbl">lignes ajoutées</span></div>
+    <div class="kpi-pill"><span class="num">6</span><span class="lbl">hres 25min de dev</span></div>
+    <div class="kpi-pill"><span class="num">0.1.0</span><span class="lbl">version</span></div>
+    <div class="kpi-pill"><span class="num">33</span><span class="lbl">fichiers modifs non commitées</span></div>
+  </div>
+</header>
+
+<!-- ══════════════════════════════════════════════════
+     1 — PROJECT IDENTITY
+══════════════════════════════════════════════════ -->
+<section class="section" id="identity">
+  <h2 class="section-title"><span class="section-num">01</span> Projet</h2>
+  <div class="ve-card ve-card--hero">
+    <div class="ve-card__label">Current state</div>
+    <p style="font-family:var(--font-serif);font-size:1.05rem;margin:0 0 14px;line-height:1.6;">
+      <strong>Lyra</strong> est un moteur d'agent IA personnel — hub-and-spoke asyncio, multi-canal, multi-bot. Il fait tourner <em>ta vie numérique</em> : répond sur Telegram &amp; Discord, génère de la voix, scrape le web, alimente une vault de connaissances. <strong>Phase 1b terminée.</strong> Le moteur est stable et en production H24 sur Machine 1.
+    </p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;">
+      <div class="ve-card ve-card--recessed" style="padding:12px 14px;">
+        <div style="font-size:10px;font-family:var(--font-mono);color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Stack</div>
+        <div style="font-size:12.5px;color:var(--text-dim);">Python 3.12 · uv · asyncio<br>aiogram 3.26 · discord.py 2.4<br>Anthropic SDK · FastAPI</div>
+      </div>
+      <div class="ve-card ve-card--recessed" style="padding:12px 14px;">
+        <div style="font-size:10px;font-family:var(--font-mono);color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Deploy</div>
+        <div style="font-size:12.5px;color:var(--text-dim);">Machine 1 — Hub (RTX 3080, 24/7)<br>supervisord · lyra_telegram + lyra_discord<br>SSH deploy via <code>make deploy</code></div>
+      </div>
+      <div class="ve-card ve-card--recessed" style="padding:12px 14px;">
+        <div style="font-size:10px;font-family:var(--font-mono);color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Phase</div>
+        <div style="font-size:12.5px;color:var(--text-dim);">Post 1b · Pre-Phase 2<br>Phase Voice débloquée (#74)<br>Phase 2 = NATS + Machine 2 (#60)</div>
+      </div>
+      <div class="ve-card ve-card--recessed" style="padding:12px 14px;">
+        <div style="font-size:10px;font-family:var(--font-mono);color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">2 semaines</div>
+        <div style="font-size:12.5px;color:var(--text-dim);">433 commits · ~Mickael B. seul<br>Refacto archi complet (Mar 17)<br>2 features majeures (Mar 19)</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     2 — ARCHITECTURE
+══════════════════════════════════════════════════ -->
+<section class="section" id="architecture">
+  <h2 class="section-title"><span class="section-num">02</span> Architecture snapshot</h2>
+  <div class="ve-card ve-card--hero" style="padding:18px 20px 14px;">
+    <p style="font-size:13px;color:var(--text-dim);margin:0 0 16px;">
+      Deux nouveautés majeures ce jour : <strong>OutboundDispatcher</strong> passe en sérialisation per-scope (#364),
+      et <strong>ProcessorRegistry</strong> remplace le vieux <code>SessionCommandHandler</code> (#366).
+    </p>
+    <div class="mermaid-wrap" id="arch-wrap">
+      <div class="zoom-controls">
+        <button onclick="zoomDiagram(this, 1.2)" title="Zoom in">+</button>
+        <button onclick="zoomDiagram(this, 0.8)" title="Zoom out">&minus;</button>
+        <button onclick="resetZoom(this)" title="Reset">&#8634;</button>
+        <button onclick="openDiagramFullscreen(this)" title="Ouvrir plein écran">&#x26F6;</button>
+      </div>
+      <pre class="mermaid">
+%%{init: {'theme': 'base', 'themeVariables': {
+  'fontSize': '15px',
+  'primaryColor': '#e8f5f1',
+  'primaryBorderColor': '#2e7d6c',
+  'primaryTextColor': '#291e0c',
+  'secondaryColor': '#f0f5e0',
+  'secondaryBorderColor': '#6b7c2d',
+  'tertiaryColor': '#fdf3e3',
+  'tertiaryBorderColor': '#b86a00',
+  'lineColor': '#7a6a52',
+  'edgeLabelBackground': '#faf6ee',
+  'background': '#faf6ee'
+}}}%%
+flowchart LR
+  subgraph IN["📥 Inbound"]
+    TG["Telegram\naiogram v3"]
+    DC["Discord\ndiscord.py v2"]
+  end
+
+  subgraph CORE["⚙️ Core Pipeline"]
+    IB["InboundBus\n(bounded 100/500)"]
+    HUB["Hub\nrouting · session mgmt"]
+    POOL["Pool\nsession state"]
+    PP["PoolProcessor\ncancel · timeout · dispatch"]
+    PR["ProcessorRegistry\npre/post hooks\n🆕 #366"]
+    AG["Agent\nCliDriver · SdkDriver"]
+  end
+
+  subgraph OUT["📤 Outbound"]
+    OD["OutboundDispatcher\ncircuit breaker\nper-scope serial.\n🆕 #364"]
+    TGO["→ Telegram"]
+    DCO["→ Discord"]
+  end
+
+  subgraph PROCS["🔧 Processors"]
+    VA["/vault-add"]
+    EX["/explain"]
+    SR["/search"]
+    SU["/summarize"]
+  end
+
+  TG -- InboundMessage --> IB
+  DC -- InboundMessage --> IB
+  IB -- staging queue --> HUB
+  HUB -- get_or_create_pool --> POOL
+  POOL --> PP
+  PP -- pre hook --> PR
+  PR -.-> VA & EX & SR & SU
+  PP --> AG
+  AG -- LlmResult --> PP
+  PP -- post hook --> PR
+  PP --> OD
+  OD --> TGO & DCO
+
+  style IN fill:#e8f5f1,stroke:#2e7d6c
+  style CORE fill:#f5f8e8,stroke:#6b7c2d
+  style OUT fill:#fdf3e3,stroke:#b86a00
+  style PROCS fill:#f0edf7,stroke:#9b7dd4
+      </pre>
+    </div>
+    <div class="arch-legend">
+      <div class="legend-item"><div class="legend-dot" style="background:var(--sage)"></div>Core inbound/outbound</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--olive)"></div>Processing core</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--amber)"></div>Outbound dispatch (🆕 concurrent)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#9b7dd4"></div>Processors (🆕 registry pattern)</div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     3 — ACTIVITÉ
+══════════════════════════════════════════════════ -->
+<section class="section" id="activity">
+  <h2 class="section-title"><span class="section-num">03</span> Activité du jour</h2>
+
+  <div style="display:grid;grid-template-columns:1fr 300px;gap:20px;align-items:start;">
+    <div>
+
+  <div class="timeline">
+
+    <!-- Planning -->
+    <div class="tl-group">
+      <div class="tl-group-label">Matin — Planning & specs</div>
+      <div class="tl-item">
+        <div class="tl-time">14:25</div>
+        <div class="tl-dot tl-dot--perf"></div>
+        <div class="tl-content">
+          <span class="tl-hash">8905227</span>
+          <span class="tl-msg"><span class="scope">perf(timeouts)</span> Extend CLI idle 300s→1200s, pool TTL 1h→7 jours</span>
+          <div class="tl-detail">Évite le cold-start des sessions longues. Groundwork avant #364.</div>
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-time">14:36–39</div>
+        <div class="tl-dot tl-dot--docs"></div>
+        <div class="tl-content">
+          <span class="tl-hash">06e0ed7</span> <span class="tl-hash">40bbe6e</span> <span class="tl-hash">0242b45</span>
+          <span class="tl-msg"><span class="scope">feat/docs</span> Spec + frame + plan pour #364 concurrent outbound</span>
+          <div class="tl-detail">Approche décidée : per-scope asyncio.Queue + sérialisation, pas de NATS pour l'instant.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Streaming fixes -->
+    <div class="tl-group">
+      <div class="tl-group-label">Après-midi — Streaming hardening</div>
+      <div class="tl-item">
+        <div class="tl-time">16:05</div>
+        <div class="tl-dot tl-dot--fix"></div>
+        <div class="tl-content">
+          <span class="tl-hash">66cded2</span>
+          <span class="tl-msg"><span class="scope">fix(telegram)</span> Prevent MESSAGE_TOO_LONG during live edits</span>
+          <div class="tl-detail">Troncature des chunks de streaming avant envoi. -3 lignes nettes.</div>
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-time">16:14</div>
+        <div class="tl-dot tl-dot--fix"></div>
+        <div class="tl-content">
+          <span class="tl-hash">931e09e</span>
+          <span class="tl-msg"><span class="scope">fix(telegram)</span> Don't break chunk accumulation on intermediate edit errors</span>
+          <div class="tl-detail">Les erreurs 400 non-fatales ne tronquent plus l'accumulateur de chunks. +13/-6 lignes.</div>
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-time">16:20</div>
+        <div class="tl-dot tl-dot--fix"></div>
+        <div class="tl-content">
+          <span class="tl-hash">1a582dd</span>
+          <span class="tl-msg"><span class="scope">fix(dispatcher)</span> Don't retry streaming sends on transient errors</span>
+          <div class="tl-detail">Retry loop ne convient pas au streaming — on log et on passe. +5/-1 lignes.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Feature 1: Concurrent dispatch -->
+    <div class="tl-group">
+      <div class="tl-group-label">16h58 — Feature #364 🔑</div>
+      <div class="tl-item">
+        <div class="tl-time">16:58</div>
+        <div class="tl-dot tl-dot--feat"></div>
+        <div class="tl-content">
+          <span class="tl-hash">4547421</span>
+          <span class="tl-msg"><span class="scope">feat(core)</span> Concurrent outbound dispatching with per-scope serialization</span>
+          <div class="tl-detail"><strong>+965 lignes.</strong> <code>outbound_dispatcher.py</code> reécrit : une Queue par (platform, scope_id), un Task par scope, circuit-breaker ownership inchangé. 2 nouveaux fichiers de tests : <code>test_outbound_dispatcher_concurrent.py</code> (195L) + <code>test_outbound_dispatcher_coverage.py</code> (343L) + <code>test_outbound_errors.py</code> (237L).</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Feature 2: lyra-send -->
+    <div class="tl-group">
+      <div class="tl-group-label">17h08 — Plugin</div>
+      <div class="tl-item">
+        <div class="tl-time">17:08</div>
+        <div class="tl-dot tl-dot--feat"></div>
+        <div class="tl-content">
+          <span class="tl-hash">29bee50</span>
+          <span class="tl-msg"><span class="scope">feat(plugins)</span> Add lyra-send skill — send messages/images/voice via Lyra bots</span>
+          <div class="tl-detail"><strong>+320 lignes.</strong> Nouveau plugin <code>plugins/lyra-send/</code>. Permet à Claude de pousser proactivement du contenu vers n'importe quel user Telegram/Discord. Pool hooks ajoutés dans <code>pool_processor.py</code>.</div>
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-time">17:14</div>
+        <div class="tl-dot tl-dot--refac"></div>
+        <div class="tl-content">
+          <span class="tl-hash">23c07aa</span>
+          <span class="tl-msg"><span class="scope">refactor(core)</span> Remove SessionCommandHandler Protocol and drain superseded streams</span>
+          <div class="tl-detail">Nettoyage du vieux protocole suite au passage au ProcessorRegistry.</div>
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-time">18:21</div>
+        <div class="tl-dot tl-dot--fix"></div>
+        <div class="tl-content">
+          <span class="tl-hash">4cb629d</span>
+          <span class="tl-msg"><span class="scope">fix(config)</span> Extract Hub pool_ttl to [hub] config section</span>
+          <div class="tl-detail">Valeur hardcodée → <code>config.toml [hub]</code>. Fix des expectations de tests.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Streaming on_intermediate -->
+    <div class="tl-group">
+      <div class="tl-group-label">Soirée — Streaming callbacks</div>
+      <div class="tl-item">
+        <div class="tl-time">19:08</div>
+        <div class="tl-dot tl-dot--fix"></div>
+        <div class="tl-content">
+          <span class="tl-hash">1a70315</span>
+          <span class="tl-msg"><span class="scope">fix(streaming)</span> Fire on_intermediate callbacks during token streaming</span>
+          <div class="tl-detail">Le path <code>streaming=True</code> dans <code>simple_agent</code> bypassait <code>on_intermediate</code>. Fix dans <code>cli_protocol.py</code>, <code>cli_pool.py</code>, <code>simple_agent.py</code>, <code>cli.py</code>. +50/-5 lignes.</div>
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-time">19:42</div>
+        <div class="tl-dot tl-dot--test"></div>
+        <div class="tl-content">
+          <span class="tl-hash">ff0b97c</span>
+          <span class="tl-msg"><span class="scope">test(streaming)</span> Add tests for on_intermediate in StreamingIterator</span>
+          <div class="tl-detail"><code>test_cli_streaming_lifecycle.py</code> (36L) + <code>test_cli_streaming_parse.py</code> (182L). +236 lignes de tests.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Feature 3: Processor registry -->
+    <div class="tl-group">
+      <div class="tl-group-label">20h50 — Feature #366 🔑</div>
+      <div class="tl-item">
+        <div class="tl-time">20:50</div>
+        <div class="tl-dot tl-dot--feat"></div>
+        <div class="tl-content">
+          <span class="tl-hash">6ce0b39</span>
+          <span class="tl-msg"><span class="scope">feat(core)</span> Add processor registry and session command processors (#366)</span>
+          <div class="tl-detail">
+            <strong>+2124/-524 lignes. Commit le plus gros du jour.</strong><br>
+            Nouveau : <code>processor_registry.py</code> (139L), <code>processors/__init__.py</code>, <code>_scraping.py</code> (137L), <code>explain.py</code> (27L), <code>search.py</code> (51L), <code>summarize.py</code> (26L), <code>vault_add.py</code> (109L).<br>
+            Supprimé : <code>session_commands.py</code> (-229L).<br>
+            Tests : <code>test_processor_registry.py</code> (257L) + 3 fichiers processors (1130L total).
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /timeline -->
+    </div>
+
+    <!-- Fichiers les plus touchés -->
+    <div>
+      <div class="ve-card" style="padding:14px 16px;">
+        <div class="ve-card__label">Top fichiers modifiés (2 semaines)</div>
+        <div class="bar-chart">
+          <div class="bar-row">
+            <div class="bar-label">test_discord.py</div>
+            <div class="bar-track"><div class="bar-fill" style="width:100%"></div></div>
+            <div class="bar-val">4997</div>
+          </div>
+          <div class="bar-row">
+            <div class="bar-label">core/hub.py</div>
+            <div class="bar-track"><div class="bar-fill" style="width:89%"></div></div>
+            <div class="bar-val">4463</div>
+          </div>
+          <div class="bar-row">
+            <div class="bar-label">adapters/discord.py</div>
+            <div class="bar-track"><div class="bar-fill" style="width:87%"></div></div>
+            <div class="bar-val">4371</div>
+          </div>
+          <div class="bar-row">
+            <div class="bar-label">test_hub.py</div>
+            <div class="bar-track"><div class="bar-fill" style="width:82%"></div></div>
+            <div class="bar-val">4079</div>
+          </div>
+          <div class="bar-row">
+            <div class="bar-label">__main__.py</div>
+            <div class="bar-track"><div class="bar-fill" style="width:76%"></div></div>
+            <div class="bar-val">3798</div>
+          </div>
+          <div class="bar-row">
+            <div class="bar-label">adapters/telegram.py</div>
+            <div class="bar-track"><div class="bar-fill" style="width:67%"></div></div>
+            <div class="bar-val">3356</div>
+          </div>
+          <div class="bar-row">
+            <div class="bar-label">test_command_router.py</div>
+            <div class="bar-track"><div class="bar-fill" style="width:67%"></div></div>
+            <div class="bar-val">3308</div>
+          </div>
+          <div class="bar-row">
+            <div class="bar-label">outbound_dispatcher.py</div>
+            <div class="bar-track"><div class="bar-fill" style="width:44%"></div></div>
+            <div class="bar-val">~2200</div>
+          </div>
+        </div>
+
+        <div style="margin-top:16px;">
+          <div class="ve-card__label">Nouvelles features Mar 19</div>
+          <div style="display:flex;flex-direction:column;gap:5px;">
+            <div style="font-size:11.5px;padding:5px 8px;background:var(--sage-dim);border-radius:5px;color:var(--sage-bright);">🔀 Concurrent outbound #364</div>
+            <div style="font-size:11.5px;padding:5px 8px;background:var(--olive-dim);border-radius:5px;color:var(--olive);">🔧 ProcessorRegistry #366</div>
+            <div style="font-size:11.5px;padding:5px 8px;background:#f0edf7;border-radius:5px;color:#6b4faa;">📡 lyra-send plugin</div>
+            <div style="font-size:11.5px;padding:5px 8px;background:var(--sky-dim);border-radius:5px;color:var(--sky);">🎯 on_intermediate streaming fix</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     4 — DECISION LOG
+══════════════════════════════════════════════════ -->
+<section class="section" id="decisions">
+  <h2 class="section-title"><span class="section-num">04</span> Décisions clés</h2>
+  <div class="decision-list">
+
+    <div class="decision">
+      <div class="decision__stripe"></div>
+      <div class="decision__body">
+        <div class="decision__title">Per-scope asyncio.Queue — pas de NATS pour l'instant</div>
+        <div class="decision__why"><strong>Problème :</strong> plusieurs scopes envoyant en parallèle créaient des interleaves (messages Telegram/Discord mélangés). <strong>Solution retenue :</strong> une <code>asyncio.Queue</code> par <code>(platform, scope_id)</code> avec un Task drainer dédié — sérialisation garantie par scope, concurrence entre scopes conservée. NATS serait la bonne solution Phase 2 mais introduit une dépendance réseau lourde trop tôt. <strong>Compromis :</strong> solution in-process, pas distribuée — ok pour Phase 1.</div>
+        <span class="decision__hash">4547421 · docs: 0242b45 40bbe6e 06e0ed7</span>
+      </div>
+    </div>
+
+    <div class="decision">
+      <div class="decision__stripe" style="background:var(--olive)"></div>
+      <div class="decision__body">
+        <div class="decision__title">ProcessorRegistry remplace SessionCommandHandler Protocol</div>
+        <div class="decision__why"><strong>Problème :</strong> <code>SessionCommandHandler</code> était un Protocol monolithique — chaque nouvelle session command devait modifier le router. <strong>Solution retenue :</strong> decorator-based registry <code>@register("/cmd")</code> avec <code>BaseProcessor.pre()</code> + <code>.post()</code>. Ajouter une commande = créer un fichier dans <code>processors/</code>, zéro modif du core. <strong>Bénéfice :</strong> les réponses arrivent dans l'historique de session (follow-up questions fonctionnels).</div>
+        <span class="decision__hash">6ce0b39 · suppression: session_commands.py</span>
+      </div>
+    </div>
+
+    <div class="decision">
+      <div class="decision__stripe" style="background:#9b7dd4"></div>
+      <div class="decision__body">
+        <div class="decision__title">lyra-send comme plugin Claude Code, pas commande intégrée</div>
+        <div class="decision__why"><strong>Pourquoi plugin :</strong> lyra-send n'est utile qu'en contexte Claude Code (pas en prod Lyra). En faire un skill permet de l'appeler depuis n'importe quel projet via le marketplace, sans alourdir le runtime Lyra. <strong>Architecture :</strong> le skill interroge l'API HTTP de Lyra pour envoyer — Lyra expose un endpoint, le skill orchestre depuis Claude Code.</div>
+        <span class="decision__hash">29bee50 · plugins/lyra-send/skills/send/SKILL.md</span>
+      </div>
+    </div>
+
+    <div class="decision">
+      <div class="decision__stripe" style="background:var(--amber)"></div>
+      <div class="decision__body">
+        <div class="decision__title">Arc docs architecture séparés du CLAUDE.md (gap-analysis, current-state, target)</div>
+        <div class="decision__why"><strong>Contexte :</strong> Les docs <code>docs/architecture/current-state.md</code>, <code>gap-analysis.md</code>, <code>target-architecture.md</code> sont créés mais pas encore commités. Ils documentent le gap majeur identifié : <code>LlmProvider.stream()</code> absent (seul <code>complete()</code> existe), pas de <code>StreamProcessor</code> domain layer, type outbound <code>AsyncIterator[str]</code> pas encore <code>AsyncIterator[RenderEvent]</code>. Ces docs tracent la direction Phase 2.</div>
+        <span class="decision__hash">non commité — docs/architecture/gap-analysis.md</span>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     5 — STATE OF THINGS
+══════════════════════════════════════════════════ -->
+<section class="section" id="state">
+  <h2 class="section-title"><span class="section-num">05</span> État des lieux</h2>
+  <div class="kpi-grid">
+
+    <div class="kpi-card kpi--green">
+      <div class="kpi-lbl">Stable / Shipped</div>
+      <div class="kpi-num">8</div>
+      <ul class="kpi-items">
+        <li>Hub-and-spoke pipeline complet</li>
+        <li>Concurrent outbound dispatcher (#364)</li>
+        <li>ProcessorRegistry + 4 processors (#366)</li>
+        <li>lyra-send plugin</li>
+        <li>Token-level streaming TG + DC</li>
+        <li>AnthropicSdkDriver + ClaudeCliDriver</li>
+        <li>DB-first agent config + hot-reload</li>
+        <li>Voice TTS/STT intégré</li>
+      </ul>
+    </div>
+
+    <div class="kpi-card kpi--amber">
+      <div class="kpi-lbl">En cours / Non commité</div>
+      <div class="kpi-num">33</div>
+      <ul class="kpi-items">
+        <li>33 fichiers modifiés dans le working tree</li>
+        <li><code>cli_protocol.py</code> +163/-40 (le plus gros)</li>
+        <li><code>agent_refiner.py</code> +52/-57</li>
+        <li>Docs architecture (current-state, gap, target)</li>
+        <li>ADR 031 non commité</li>
+        <li>Branch <code>feat/369-extract-hardcoded-constants</code></li>
+      </ul>
+    </div>
+
+    <div class="kpi-card kpi--blue">
+      <div class="kpi-lbl">Planifié</div>
+      <div class="kpi-num">3</div>
+      <ul class="kpi-items">
+        <li>Phase 2 — NATS + Machine 2 (#60)</li>
+        <li>Phase Voice (#74) — débloquée</li>
+        <li><code>LlmProvider.stream()</code> + StreamProcessor</li>
+      </ul>
+    </div>
+
+    <div class="kpi-card kpi--red">
+      <div class="kpi-lbl">Bloqué / Dette</div>
+      <div class="kpi-num">2</div>
+      <ul class="kpi-items">
+        <li>#136 multi-bot registry — bloqué par #79</li>
+        <li>CVE-2025-69277 pynacl 1.5.0 — override en place mais pas propre</li>
+      </ul>
+    </div>
+
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     6 — MENTAL MODEL
+══════════════════════════════════════════════════ -->
+<section class="section" id="mental">
+  <h2 class="section-title"><span class="section-num">06</span> Mental model essentials</h2>
+  <div class="mental-grid">
+
+    <div class="ve-card ve-card--accent-sage mental-item">
+      <h4>1. InboundBus → Hub → Pool — c'est un pipeline, pas un monolithe</h4>
+      <ul>
+        <li>Chaque message entre par l'adapter → InboundBus → Hub détermine le pool_id → Pool.submit()</li>
+        <li>Chaque conversation = un Pool isolé avec sa session, son agent, son historique</li>
+        <li><code>pool_id</code> = <code>&lt;platform&gt;:&lt;bot&gt;:&lt;scope&gt;:&lt;id&gt;</code> — jamais hardcoder un scope</li>
+      </ul>
+    </div>
+
+    <div class="ve-card ve-card--accent-sage mental-item">
+      <h4>2. OutboundDispatcher : per-scope, pas per-platform</h4>
+      <ul>
+        <li>Depuis #364 : serialisation garantie <em>par scope</em> (ex. thread Discord ou chat Telegram)</li>
+        <li>Deux scopes différents peuvent envoyer en parallèle — c'est voulu</li>
+        <li>Le circuit-breaker reste par platform — une platform HS coupe tout son scope</li>
+      </ul>
+    </div>
+
+    <div class="ve-card ve-card--accent-olive mental-item">
+      <h4>3. ProcessorRegistry : decorator pattern, pas router</h4>
+      <ul>
+        <li><code>@register("/vault-add")</code> — auto-enregistrement à l'import</li>
+        <li><code>processors/__init__.py</code> importe tout — ne jamais oublier d'y ajouter un nouveau processor</li>
+        <li><code>pre()</code> enrichit le message avant LLM — <code>post()</code> fait les side-effects après réponse</li>
+      </ul>
+    </div>
+
+    <div class="ve-card ve-card--accent-olive mental-item">
+      <h4>4. Agents dans auth.db — TOMLs = seeds uniquement</h4>
+      <ul>
+        <li>Toujours <code>lyra agent init</code> après édition d'un TOML — sinon aucun effet</li>
+        <li>Le runtime lit uniquement la DB, jamais les TOMLs directement</li>
+        <li><code>lyra agent init --force</code> pour écraser une row existante</li>
+      </ul>
+    </div>
+
+    <div class="ve-card ve-card--accent-sage mental-item">
+      <h4>5. Streaming : deux chemins dans simple_agent</h4>
+      <ul>
+        <li><code>streaming=True</code> → <code>cli_protocol</code> stream tokens via <code>on_intermediate</code> callbacks</li>
+        <li>Fix du jour (#1a70315) : l'early-return bypassait ces callbacks — maintenant corrigé</li>
+        <li>Le debounce est init au 1er token, pas au démarrage — évite les edits inutiles</li>
+      </ul>
+    </div>
+
+    <div class="ve-card ve-card--accent-amber mental-item">
+      <h4>6. <code>LlmProvider</code> n'a que <code>complete()</code> — pas de <code>stream()</code></h4>
+      <ul>
+        <li>Le streaming passe par <code>on_intermediate</code> callbacks dans <code>complete()</code>, pas un vrai stream protocol</li>
+        <li>Les <code>tool_use</code> events ne sont jamais exposés à l'appelant (gap documenté)</li>
+        <li>C'est un gap connu — <code>LlmProvider.stream()</code> est dans la roadmap pré-Phase 2</li>
+      </ul>
+    </div>
+
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     7 — COGNITIVE DEBT
+══════════════════════════════════════════════════ -->
+<section class="section" id="debt">
+  <h2 class="section-title"><span class="section-num">07</span> Hotspots de dette cognitive</h2>
+  <div class="debt-list">
+
+    <div class="debt-card sev-high">
+      <div class="debt-badge">Haute</div>
+      <div class="debt-card__title"><code>src/lyra/core/cli_protocol.py</code> — +163/-40 non commités, rôle ambigu</div>
+      <div class="debt-card__body">
+        C'est le fichier le plus modifié dans le working tree actuel. <code>cli_protocol.py</code> orchestre le streaming bas-niveau entre le subprocess Claude CLI et le Pool. Avec le fix on_intermediate et les changements en cours, son contrat exact n'est pas évident. Plusieurs call sites le consomment différemment.
+      </div>
+      <div class="debt-fix">→ Ajouter un docstring de module expliquant : "Ce module gère X, pas Y. <code>on_intermediate</code> est appelé à chaque token, pas à chaque message. Le path streaming=True bypass N." Commiter les changes en cours avant de continuer.</div>
+    </div>
+
+    <div class="debt-card sev-high">
+      <div class="debt-badge">Haute</div>
+      <div class="debt-card__title">33 fichiers modifiés non commités — risque de perte de contexte</div>
+      <div class="debt-card__body">
+        Le working tree contient <code>discord_inbound.py</code>, <code>multibot_wiring.py</code>, <code>agent_refiner.py</code>, <code>pool_observer.py</code>, <code>message_pipeline.py</code>, plus une dizaine de fichiers de tests modifiés. Aucun ne correspond à une feature visible. Très probablement des reviews findings en cours (Mar 20 = 4 commits de fix post-review).
+      </div>
+      <div class="debt-fix">→ <code>git stash</code> ou commit atomique par domaine avant de switcher de sujet. Les docs architecture (current-state, gap-analysis, target-architecture) sont aussi non commités — ils devraient l'être.</div>
+    </div>
+
+    <div class="debt-card sev-med">
+      <div class="debt-badge">Moyenne</div>
+      <div class="debt-card__title"><code>processors/__init__.py</code> — import manuel obligatoire</div>
+      <div class="debt-card__body">
+        Chaque nouveau processor doit être importé dans <code>processors/__init__.py</code> pour s'auto-enregistrer. C'est un gotcha silencieux : oublier l'import = processor jamais chargé, aucune erreur.
+      </div>
+      <div class="debt-fix">→ Ajouter un commentaire explicite dans <code>__init__.py</code> : "Ajouter ici tout nouveau processor — sans cet import, le @register ne s'exécute pas." Ou utiliser pkg_resources/importlib pour l'autodiscovery.</div>
+    </div>
+
+    <div class="debt-card sev-med">
+      <div class="debt-badge">Moyenne</div>
+      <div class="debt-card__title"><code>outbound_dispatcher.py</code> — scope reap threshold non documenté</div>
+      <div class="debt-card__body">
+        La constante <code>_SCOPE_REAP_THRESHOLD</code> dans <code>outbound_errors.py</code> détermine quand un scope idle est supprimé. Sa valeur et les conséquences d'un mauvais réglage (memory leak vs GC agressif) ne sont pas documentées dans le module.
+      </div>
+      <div class="debt-fix">→ Ajouter un commentaire sur <code>_SCOPE_REAP_THRESHOLD</code> expliquant la formule (ex. "X scopes max en mémoire avant reap — calibré pour N platforms × M users concurrents").</div>
+    </div>
+
+    <div class="debt-card sev-med">
+      <div class="debt-badge">Moyenne</div>
+      <div class="debt-card__title">Gap docs non commités : current-state, gap-analysis, target-architecture</div>
+      <div class="debt-card__body">
+        Ces trois fichiers capturent l'état exact de l'architecture et les gaps vers Phase 2. Ils existent dans le working tree mais ne sont pas versionnés. Si le contexte est perdu, la direction Phase 2 sera à reconstituer.
+      </div>
+      <div class="debt-fix">→ Commiter les 3 docs + ADR 031 dans un commit <code>docs(architecture): document current state, gaps, and target for Phase 2</code>.</div>
+    </div>
+
+    <div class="debt-card sev-low">
+      <div class="debt-badge">Faible</div>
+      <div class="debt-card__title">CVE-2025-69277 pynacl — override uv actif mais non propre</div>
+      <div class="debt-card__body">
+        <code>pynacl>=1.6.2</code> est forcé via <code>[tool.uv] override-dependencies</code> et le TODO #271 est dans <code>pyproject.toml</code>. discord.py 2.7.1 confirme la compatibilité API. C'est une solution fonctionnelle mais fragile si discord.py évolue.
+      </div>
+      <div class="debt-fix">→ Surveiller la prochaine release discord.py pour retirer l'override. Ajouter au changelog Phase 2 prep.</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     8 — NEXT STEPS
+══════════════════════════════════════════════════ -->
+<section class="section" id="next">
+  <h2 class="section-title"><span class="section-num">08</span> Prochaines étapes</h2>
+  <div class="next-grid">
+
+    <div class="next-card">
+      <div class="next-card__tag tag--immediate">Immédiat</div>
+      <h4>Commiter le working tree</h4>
+      <p>33 fichiers modifiés non commités — les grouper par domaine (cli_protocol, agent, integrations, tests) et commiter. Inclure les 4 docs architecture.</p>
+    </div>
+
+    <div class="next-card">
+      <div class="next-card__tag tag--immediate">Immédiat</div>
+      <h4>feat/369 — extract hardcoded constants</h4>
+      <p>Branch ouverte. Les timeouts et pool_ttl ont été partiellement externalisés (4cb629d). Finir le sweep des constantes hardcodées dans le codebase.</p>
+    </div>
+
+    <div class="next-card">
+      <div class="next-card__tag tag--immediate">Court terme</div>
+      <h4><code>LlmProvider.stream()</code></h4>
+      <p>Gap documenté. Ajouter <code>stream()</code> au protocol + impl dans <code>AnthropicSdkDriver</code> et <code>ClaudeCliDriver</code>. Prérequis pour Phase 2 propre.</p>
+    </div>
+
+    <div class="next-card">
+      <div class="next-card__tag tag--planned">Planifié</div>
+      <h4>Phase Voice (#74)</h4>
+      <p>Débloquée depuis Phase 1b. TTS/STT de bout en bout via voiceCLI. Déjà partiellement intégré — finir le wiring et les tests e2e vocaux.</p>
+    </div>
+
+    <div class="next-card">
+      <div class="next-card__tag tag--planned">Planifié</div>
+      <h4>Phase 2 — NATS + Machine 2 (#60)</h4>
+      <p>Introduction de NATS pour la coordination inter-machines. Remplacera le per-scope asyncio.Queue par une solution distribuée. Nécessite <code>LlmProvider.stream()</code> d'abord.</p>
+    </div>
+
+    <div class="next-card">
+      <div class="next-card__tag tag--blocked">Bloqué</div>
+      <h4>#136 Multi-bot registry</h4>
+      <p>Bloqué par #79. Ne pas toucher avant résolution de #79 — risque de régressions dans le routing multi-bot.</p>
+    </div>
+
+  </div>
+</section>
+
+<footer class="page-footer">
+  Lyra by Roxabi · v0.1.0 · Recap généré le 2026-03-20 · Fenêtre: 2 semaines (433 commits)
+</footer>
+
+</div><!-- /page-wrap -->
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    themeVariables: {
+      fontSize: '15px',
+      primaryColor: '#e8f5f1',
+      primaryBorderColor: '#2e7d6c',
+      primaryTextColor: '#291e0c',
+      secondaryColor: '#f0f5e0',
+      secondaryBorderColor: '#6b7c2d',
+      tertiaryColor: '#fdf3e3',
+      tertiaryBorderColor: '#b86a00',
+      lineColor: '#7a6a52',
+      edgeLabelBackground: '#faf6ee',
+      background: '#faf6ee'
+    }
+  });
+
+  var INITIAL_ZOOM = 1.3;
+
+  function zoomDiagram(btn, factor) {
+    var wrap = btn.closest('.mermaid-wrap');
+    var target = wrap.querySelector('.mermaid');
+    var current = parseFloat(target.dataset.zoom || INITIAL_ZOOM);
+    var next = Math.min(Math.max(current * factor, 0.4), 5);
+    target.dataset.zoom = next;
+    target.style.zoom = next;
+  }
+
+  function resetZoom(btn) {
+    var wrap = btn.closest('.mermaid-wrap');
+    var target = wrap.querySelector('.mermaid');
+    target.dataset.zoom = INITIAL_ZOOM;
+    target.style.zoom = INITIAL_ZOOM;
+  }
+
+  function openDiagramFullscreen(btn) {
+    var wrap = btn.closest('.mermaid-wrap');
+    openMermaidInNewTab(wrap);
+  }
+
+  function openMermaidInNewTab(wrap) {
+    var svg = wrap.querySelector('.mermaid svg');
+    if (!svg) return;
+    var clone = svg.cloneNode(true);
+    clone.style.zoom = '';
+    clone.style.transform = '';
+    var styles = getComputedStyle(document.documentElement);
+    var bg = styles.getPropertyValue('--bg').trim() || '#f4ede0';
+    var html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' +
+      '<title>Lyra Architecture</title>' +
+      '<style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:' + bg + ';padding:40px;box-sizing:border-box;}svg{max-width:100%;max-height:90vh;height:auto;}</style>' +
+      '</head><body>' + clone.outerHTML + '</body></html>';
+    var blob = new Blob([html], {type: 'text/html'});
+    window.open(URL.createObjectURL(blob), '_blank');
+  }
+
+  document.querySelectorAll('.mermaid-wrap').forEach(function(wrap) {
+    wrap.addEventListener('wheel', function(e) {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      var target = wrap.querySelector('.mermaid');
+      var current = parseFloat(target.dataset.zoom || INITIAL_ZOOM);
+      var factor = e.deltaY < 0 ? 1.1 : 0.9;
+      var next = Math.min(Math.max(current * factor, 0.4), 5);
+      target.dataset.zoom = next;
+      target.style.zoom = next;
+    }, {passive: false});
+
+    var startX, startY, scrollL, scrollT, startTime, didPan;
+    wrap.addEventListener('mousedown', function(e) {
+      if (e.target.closest('.zoom-controls')) return;
+      wrap.classList.add('is-panning');
+      startX = e.clientX; startY = e.clientY;
+      scrollL = wrap.scrollLeft; scrollT = wrap.scrollTop;
+      startTime = Date.now(); didPan = false;
+    });
+    document.addEventListener('mousemove', function(e) {
+      if (!wrap.classList.contains('is-panning')) return;
+      var dx = e.clientX - startX, dy = e.clientY - startY;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) didPan = true;
+      wrap.scrollLeft = scrollL - dx;
+      wrap.scrollTop  = scrollT - dy;
+    });
+    document.addEventListener('mouseup', function(e) {
+      if (!wrap.classList.contains('is-panning')) return;
+      wrap.classList.remove('is-panning');
+      if (!didPan && Date.now() - startTime < 300) {
+        openMermaidInNewTab(wrap);
+      }
+    });
+  });
+</script>
+</body>
+</html>

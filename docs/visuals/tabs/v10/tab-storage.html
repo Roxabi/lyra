@@ -1,0 +1,112 @@
+<div class="section">
+  <h2 class="sh"><span class="dot"></span>File locations</h2>
+  <div class="storage-item"><div class="storage-path">~/.lyra/auth.db</div><div class="storage-desc">Primary SQLite database. Contains agents, bot mappings, sessions, runtime state. Single source of truth.</div></div>
+  <div class="storage-item"><div class="storage-path">~/projects/lyra/config.toml</div><div class="storage-desc">Machine-specific config. Bot tokens, API keys, cwd. Gitignored.</div></div>
+  <div class="storage-item"><div class="storage-path">~/projects/lyra/config.toml.example</div><div class="storage-desc">Template committed to git. No secrets.</div></div>
+  <div class="storage-item"><div class="storage-path">src/lyra/agents/*.toml</div><div class="storage-desc">Bundled seed files for agent defaults. Read only by <code>lyra agent init</code>.</div></div>
+  <div class="storage-item"><div class="storage-path">~/.lyra/agents/*.toml</div><div class="storage-desc">User-level seed overrides. Higher precedence than bundled seeds.</div></div>
+  <div class="storage-item"><div class="storage-path">~/.roxabi-vault/personas/</div><div class="storage-desc">Persona TOML files. Loaded at migration time; runtime uses <code>persona_json</code> in DB.</div></div>
+  <div class="storage-item"><div class="storage-path">~/.lyra/memory/</div><div class="storage-desc">Persistent memory files. Written by the agent, read at session start.</div></div>
+  <div class="storage-item"><div class="storage-path">src/lyra/commands/</div><div class="storage-desc">Extension command packages (formerly <code>src/lyra/plugins/</code>). Loaded by CommandLoader.</div></div>
+  <div class="storage-item"><div class="storage-path">~/projects/lyra-stack/conf.d/</div><div class="storage-desc">Symlinks to supervisor program configs. Managed by <code>make register</code>.</div></div>
+  <div class="storage-item"><div class="storage-path">~/projects/lyra/local/machines.md</div><div class="storage-desc">Machine IPs, disk layouts, SSH commands. Gitignored, not versioned.</div></div>
+</div>
+
+<div class="section">
+  <h2 class="sh"><span class="dot"></span>auth.db — agents table</h2>
+  <p>The <code>agents</code> table is the single runtime source of truth. AgentStore maintains a write-through in-memory cache keyed by <code>name</code>.</p>
+  <div class="col-list">
+    <span class="col-pill">name</span>
+    <span class="col-pill">backend</span>
+    <span class="col-pill">model</span>
+    <span class="col-pill">max_turns</span>
+    <span class="col-pill">tools_json</span>
+    <span class="col-pill">show_intermediate</span>
+    <span class="col-pill">smart_routing_json</span>
+    <span class="col-pill">plugins_json</span>
+    <span class="col-pill">memory_namespace</span>
+    <span class="col-pill">cwd</span>
+    <span class="col-pill">tts_json</span>
+    <span class="col-pill">stt_json</span>
+    <span class="col-pill">skip_permissions</span>
+    <span class="col-pill">permissions_json</span>
+    <span class="col-pill">workspaces_json</span>
+    <span class="col-pill">i18n_language</span>
+    <span class="col-pill">commands_json</span>
+    <span class="col-pill">streaming</span>
+    <span class="col-pill new">persona_json ★</span>
+    <span class="col-pill new">voice_json ★</span>
+    <span class="col-pill new">fallback_language ★</span>
+    <span class="col-pill new">patterns_json ★</span>
+    <span class="col-pill">source</span>
+    <span class="col-pill">created_at</span>
+    <span class="col-pill">updated_at</span>
+  </div>
+  <p style="margin-top:8px;font-size:.78rem;color:var(--green)">★ Added in v10 (ADR-029). COALESCE on upsert: pass null to preserve existing value.</p>
+  <div class="cb"><div class="cb-head"><span class="cb-lang">bash</span><span class="cb-lbl">Quick DB inspection</span></div><pre>sqlite3 ~/.lyra/auth.db ".tables"
+sqlite3 ~/.lyra/auth.db "SELECT name, model, updated_at FROM agents"
+sqlite3 ~/.lyra/auth.db "SELECT name, persona_json IS NOT NULL, voice_json IS NOT NULL FROM agents"</pre></div>
+</div>
+
+<div class="section">
+  <h2 class="sh"><span class="dot"></span>auth.db — bot_agent_map table <span class="badge upd">v10 updated</span></h2>
+  <p>Maps (platform, bot_id) → agent_name. Loaded into AgentStore's <code>_bot_map</code> and <code>_bot_settings</code> caches on startup.</p>
+  <div class="tbl-wrap">
+    <table class="tbl">
+      <thead><tr><th>Column</th><th>Type</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>platform</td><td>TEXT</td><td>Platform identifier: <code>telegram</code> | <code>discord</code></td></tr>
+        <tr><td>bot_id</td><td>TEXT</td><td>Platform-specific bot ID</td></tr>
+        <tr><td>agent_name</td><td>TEXT</td><td>Name of the assigned agent</td></tr>
+        <tr class="tr-new"><td>settings_json</td><td>TEXT</td><td>Per-bot settings: <code>watch_channels</code>, <code>auto_thread</code>, etc. COALESCE on upsert — null preserves existing. Updated via <code>set_bot_settings()</code>.</td></tr>
+        <tr><td>updated_at</td><td>TEXT</td><td>ISO-8601 timestamp of last update</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="section">
+  <h2 class="sh"><span class="dot"></span>auth.db — agent_runtime_state table</h2>
+  <div class="tbl-wrap">
+    <table class="tbl">
+      <thead><tr><th>Column</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>agent_name</td><td>Primary key, references agents.name</td></tr>
+        <tr><td>last_active_at</td><td>ISO-8601 timestamp of last message handled by this agent</td></tr>
+        <tr><td>updated_at</td><td>Last state change timestamp</td></tr>
+        <tr><td>pool_count</td><td>Number of active Pools currently running this agent</td></tr>
+        <tr><td>status</td><td><code>idle</code> | <code>active</code> | <code>error</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="section">
+  <h2 class="sh"><span class="dot"></span>AgentStore API</h2>
+  <div class="tbl-wrap">
+    <table class="tbl">
+      <thead><tr><th>Method</th><th>Sync/Async</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>get(name)</td><td>sync</td><td>O(1) cache lookup. Returns AgentRow or None.</td></tr>
+        <tr><td>get_all()</td><td>sync</td><td>All cached AgentRows.</td></tr>
+        <tr><td>get_bot_agent(platform, bot_id)</td><td>sync</td><td>agent_name for bot mapping, or None.</td></tr>
+        <tr><td>get_all_bot_mappings()</td><td>sync</td><td>All (platform, bot_id) → agent_name mappings.</td></tr>
+        <tr class="tr-new"><td>get_bot_settings(platform, bot_id)</td><td>sync</td><td>Parsed settings dict for bot (watch_channels, etc.), or {}.</td></tr>
+        <tr><td>upsert(row)</td><td>async</td><td>Write to DB and update cache. Bumps updated_at. COALESCE for persona_json/voice_json/patterns_json.</td></tr>
+        <tr><td>delete(name)</td><td>async</td><td>Refuses if bot still assigned (ValueError).</td></tr>
+        <tr><td>set_bot_agent(platform, bot_id, agent_name, *, settings)</td><td>async</td><td>Upsert bot mapping. settings=None preserves existing settings_json.</td></tr>
+        <tr class="tr-new"><td>set_bot_settings(platform, bot_id, settings)</td><td>async</td><td>Update settings_json only. Raises ValueError if no existing row.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="section">
+  <h2 class="sh"><span class="dot"></span>Backup strategy</h2>
+  <div class="ib warn"><div class="ib-icon"></div><div class="ib-body"><code>auth.db</code> is the single source of truth for all agent configs. Back it up before running <code>lyra agent init --force</code> or destructive DB operations.</div></div>
+  <div class="cb"><div class="cb-head"><span class="cb-lang">bash</span></div><pre># Quick backup before risky operations
+cp ~/.lyra/auth.db ~/.lyra/auth.db.bak.$(date +%Y%m%d_%H%M%S)
+
+# SQLite online backup
+sqlite3 ~/.lyra/auth.db ".backup ~/.lyra/auth.db.bak"</pre></div>
+</div>

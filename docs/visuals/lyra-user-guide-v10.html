@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Lyra — self-hosted AI agent for Telegram &amp; Discord. Multi-bot, voice-enabled, persistent memory, hot-reload config. Powered by Claude.">
+<meta property="og:title" content="Lyra — User Guide v10">
+<meta property="og:description" content="Self-hosted AI agent engine. Multi-bot, voice, persistent memory, smart routing, CommandLoader extensions.">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Lyra — User Guide v10">
+<meta name="twitter:description" content="Self-hosted AI agent for Telegram &amp; Discord. Powered by Claude.">
+<title>Lyra — User Guide v10</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lyra-user-guide-v10.css"><!-- diagram-meta:start -->
+<meta name="diagram:title"     content="Lyra — User Guide v10">
+<meta name="diagram:date"      content="2026-03-18">
+<meta name="diagram:category"  content="guide">
+<meta name="diagram:cat-label" content="User Guide">
+<meta name="diagram:color"     content="amber">
+<!-- diagram-meta:end -->
+</head>
+<body>
+
+<!-- ── Fixed nav ── -->
+<nav class="nav">
+  <span class="nav-logo">✦ Lyra <span>User Guide · v10</span></span>
+  <span class="nav-sep"></span>
+  <button class="theme-btn" id="themeBtn" title="Toggle light/dark" aria-label="Toggle theme">
+    <svg class="icon-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.22" y1="4.22" x2="7.05" y2="7.05"/><line x1="16.95" y1="16.95" x2="19.78" y2="19.78"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.22" y1="19.78" x2="7.05" y2="16.95"/><line x1="16.95" y1="7.05" x2="19.78" y2="4.22"/></svg>
+    <svg class="icon-moon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+  </button>
+</nav>
+
+<!-- ── Sticky tabs bar ── -->
+<div class="tabs-bar" id="tabsBar">
+  <button class="tab-btn" data-tab="qs">Quick Start</button>
+  <button class="tab-btn" data-tab="setup">Setup</button>
+  <button class="tab-btn" data-tab="firstuse">First Use</button>
+  <button class="tab-btn" data-tab="agents">Agents</button>
+  <button class="tab-btn" data-tab="commands">Commands</button>
+  <button class="tab-btn" data-tab="voice">Voice</button>
+  <button class="tab-btn" data-tab="memory">Memory</button>
+  <button class="tab-btn" data-tab="storage">Data &amp; Storage</button>
+  <button class="tab-btn" data-tab="arch">Architecture</button>
+  <button class="tab-btn" data-tab="routing">Routing</button>
+  <button class="tab-btn" data-tab="hp">Happy Paths</button>
+</div>
+
+<!-- ── Main content ── -->
+<main class="main">
+  <div id="qs"       class="panel"></div>
+  <div id="setup"    class="panel"></div>
+  <div id="firstuse" class="panel"></div>
+  <div id="agents"   class="panel"></div>
+  <div id="commands" class="panel"></div>
+  <div id="voice"    class="panel"></div>
+  <div id="memory"   class="panel"></div>
+  <div id="storage"  class="panel"></div>
+  <div id="arch"     class="panel"></div>
+  <div id="routing"  class="panel"></div>
+  <div id="hp"       class="panel"></div>
+</main>
+
+<footer class="site-footer">
+  <div class="footer-inner">
+    <div class="footer-brand"><span>✦ Lyra</span> by Roxabi</div>
+    <div class="footer-links">
+      <a href="https://github.com/Roxabi/lyra" target="_blank" rel="noopener">GitHub</a>
+      <span class="footer-sep">·</span>
+      <a href="https://github.com/Roxabi/lyra/issues" target="_blank" rel="noopener">Issues</a>
+    </div>
+    <div class="footer-copy">User Guide v10 · 2026-03-18 · ADR-029 DB-first · CommandLoader</div>
+  </div>
+</footer>
+
+<script src="js/user-guide-v10.js"></script>
+</body>
+</html>

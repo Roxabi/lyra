@@ -1,0 +1,1473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lyra Engine — Architecture Visual Explainer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  /* ─── RESET & BASE ─────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+
+  /* ─── TOKENS ───────────────────────────────────────────── */
+  :root {
+    --font-display: 'Space Grotesk', system-ui, sans-serif;
+    --font-body: 'Inter', system-ui, sans-serif;
+    --font-mono: 'Space Mono', 'SF Mono', Consolas, monospace;
+
+    /* Deep space palette */
+    --bg:          #060a12;
+    --bg2:         #0b1120;
+    --surface:     #111827;
+    --surface-2:   #1a2436;
+    --border:      rgba(255,255,255,0.07);
+    --border-2:    rgba(255,255,255,0.13);
+    --text:        #e2e8f0;
+    --text-dim:    #6b7a99;
+    --text-muted:  #3d4f6b;
+
+    /* Accent palette — electric */
+    --cyan:        #22d3ee;
+    --cyan-dim:    rgba(34,211,238,0.12);
+    --cyan-glow:   rgba(34,211,238,0.25);
+    --violet:      #a78bfa;
+    --violet-dim:  rgba(167,139,250,0.12);
+    --emerald:     #34d399;
+    --emerald-dim: rgba(52,211,153,0.12);
+    --amber:       #fbbf24;
+    --amber-dim:   rgba(251,191,36,0.12);
+    --rose:        #fb7185;
+    --rose-dim:    rgba(251,113,133,0.12);
+    --indigo:      #818cf8;
+    --indigo-dim:  rgba(129,140,248,0.12);
+
+    --radius:   10px;
+    --radius-lg: 16px;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 14px;
+    line-height: 1.6;
+    overflow-x: hidden;
+    background-image:
+      radial-gradient(at 15% 10%, rgba(34,211,238,0.06) 0%, transparent 45%),
+      radial-gradient(at 85% 80%, rgba(167,139,250,0.06) 0%, transparent 45%),
+      radial-gradient(circle, rgba(255,255,255,0.025) 1px, transparent 1px);
+    background-size: 100% 100%, 100% 100%, 28px 28px;
+  }
+
+  /* ─── LAYOUT ───────────────────────────────────────────── */
+  .page {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 24px 80px;
+  }
+
+  /* ─── HERO ─────────────────────────────────────────────── */
+  .hero {
+    padding: 72px 0 56px;
+    text-align: center;
+    position: relative;
+  }
+  .hero::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 50%; transform: translateX(-50%);
+    width: 600px; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border-2), transparent);
+  }
+  .hero-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    color: var(--cyan);
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+  }
+  .hero-eyebrow::before, .hero-eyebrow::after {
+    content: '';
+    width: 40px; height: 1px;
+    background: var(--cyan);
+    opacity: 0.5;
+  }
+  .hero-title {
+    font-family: var(--font-display);
+    font-size: clamp(42px, 6vw, 72px);
+    font-weight: 700;
+    letter-spacing: -2px;
+    line-height: 1.05;
+    margin-bottom: 20px;
+    background: linear-gradient(135deg, #e2e8f0 0%, var(--cyan) 50%, var(--violet) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .hero-subtitle {
+    font-size: 18px;
+    color: var(--text-dim);
+    max-width: 580px;
+    margin: 0 auto 32px;
+    line-height: 1.7;
+    font-weight: 300;
+  }
+  .hero-badges {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border: 1px solid;
+  }
+  .badge-cyan  { color: var(--cyan);    border-color: var(--cyan-dim);    background: var(--cyan-dim); }
+  .badge-violet{ color: var(--violet);  border-color: var(--violet-dim);  background: var(--violet-dim); }
+  .badge-emerald{color: var(--emerald); border-color: var(--emerald-dim); background: var(--emerald-dim); }
+  .badge-amber { color: var(--amber);   border-color: var(--amber-dim);   background: var(--amber-dim); }
+
+  /* ─── SECTION HEADERS ──────────────────────────────────── */
+  .section { margin-top: 64px; }
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 28px;
+  }
+  .section-num {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--cyan);
+    background: var(--cyan-dim);
+    border: 1px solid rgba(34,211,238,0.2);
+    border-radius: 6px;
+    padding: 4px 8px;
+    letter-spacing: 1px;
+  }
+  .section-title {
+    font-family: var(--font-display);
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: -0.5px;
+  }
+  .section-desc {
+    color: var(--text-dim);
+    font-size: 13px;
+    margin-top: 4px;
+  }
+
+  /* ─── CARDS ────────────────────────────────────────────── */
+  .ve-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 20px 24px;
+    position: relative;
+    overflow: hidden;
+  }
+  .ve-card--glow-cyan  { box-shadow: 0 0 0 1px rgba(34,211,238,0.2), 0 4px 24px rgba(34,211,238,0.06); }
+  .ve-card--glow-violet{ box-shadow: 0 0 0 1px rgba(167,139,250,0.2), 0 4px 24px rgba(167,139,250,0.06); }
+  .ve-card--glow-emerald{box-shadow: 0 0 0 1px rgba(52,211,153,0.2), 0 4px 24px rgba(52,211,153,0.06); }
+  .ve-card--glow-rose  { box-shadow: 0 0 0 1px rgba(251,113,133,0.2), 0 4px 24px rgba(251,113,133,0.06); }
+  .ve-card--glow-indigo{ box-shadow: 0 0 0 1px rgba(129,140,248,0.2), 0 4px 24px rgba(129,140,248,0.06); }
+
+  .ve-card__label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .ve-card__label::before {
+    content: '';
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 6px currentColor;
+  }
+  .ve-card__label--cyan   { color: var(--cyan); }
+  .ve-card__label--violet { color: var(--violet); }
+  .ve-card__label--emerald{ color: var(--emerald); }
+  .ve-card__label--amber  { color: var(--amber); }
+  .ve-card__label--rose   { color: var(--rose); }
+  .ve-card__label--indigo { color: var(--indigo); }
+
+  .ve-card__title {
+    font-family: var(--font-display);
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+  .ve-card__body {
+    color: var(--text-dim);
+    font-size: 13px;
+    line-height: 1.7;
+  }
+
+  /* ─── PIPELINE FLOW ────────────────────────────────────── */
+  @keyframes flow-right {
+    0%   { stroke-dashoffset: 24; opacity: 0.4; }
+    50%  { opacity: 1; }
+    100% { stroke-dashoffset: 0; opacity: 0.4; }
+  }
+  .flow-line {
+    stroke-dasharray: 6 4;
+    animation: flow-right 1.2s linear infinite;
+  }
+
+  /* ─── HAPPY PATH ────────────────────────────────────────── */
+  .happy-path {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  .happy-path-header {
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .happy-path-header-title {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--emerald);
+  }
+  .hp-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+  }
+  .hp-step:last-child { border-bottom: none; }
+  .hp-step:hover { background: rgba(255,255,255,0.02); }
+  .hp-num {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-muted);
+    min-width: 20px;
+    margin-top: 2px;
+  }
+  .hp-icon { font-size: 16px; min-width: 20px; text-align: center; }
+  .hp-content { flex: 1; }
+  .hp-func { font-family: var(--font-mono); font-size: 12px; font-weight: 700; color: var(--cyan); }
+  .hp-desc { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+
+  /* ─── GRID ──────────────────────────────────────────────── */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  @media(max-width:800px) {
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  }
+
+  /* ─── TRUST CHIPS ───────────────────────────────────────── */
+  .trust-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-top: 16px;
+  }
+  @media(max-width:700px) { .trust-grid { grid-template-columns: repeat(2,1fr); } }
+  .trust-chip {
+    border-radius: var(--radius);
+    padding: 14px 12px;
+    text-align: center;
+    border: 1px solid;
+  }
+  .trust-chip-label {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .trust-chip-desc { font-size: 11px; color: var(--text-dim); line-height: 1.5; }
+  .trust-owner   { background: rgba(251,191,36,0.08);  border-color: rgba(251,191,36,0.25);  color: var(--amber); }
+  .trust-trusted { background: rgba(52,211,153,0.08);  border-color: rgba(52,211,153,0.25);  color: var(--emerald); }
+  .trust-public  { background: rgba(129,140,248,0.08); border-color: rgba(129,140,248,0.25); color: var(--indigo); }
+  .trust-blocked { background: rgba(251,113,133,0.08); border-color: rgba(251,113,133,0.25); color: var(--rose); }
+
+  /* ─── MEMORY STACK ──────────────────────────────────────── */
+  .memory-stack { display: flex; flex-direction: column; gap: 6px; }
+  .mem-level {
+    display: grid;
+    grid-template-columns: 80px 1fr 1fr 130px 90px;
+    gap: 12px;
+    align-items: center;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 18px;
+    transition: border-color 0.15s, transform 0.15s;
+  }
+  .mem-level:hover { border-color: var(--border-2); transform: translateX(3px); }
+  .mem-badge {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-align: center;
+    padding: 6px 8px;
+    border-radius: 8px;
+    border: 1px solid;
+  }
+  .mem-name { font-family: var(--font-display); font-size: 14px; font-weight: 600; color: var(--text); }
+  .mem-storage { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
+  .mem-ttl { font-size: 11px; color: var(--text-dim); }
+  .mem-scope-pill {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    padding: 4px 8px;
+    border-radius: 999px;
+    text-align: center;
+  }
+  .mem-headers {
+    display: grid;
+    grid-template-columns: 80px 1fr 1fr 130px 90px;
+    gap: 12px;
+    padding: 8px 18px;
+    margin-bottom: 6px;
+  }
+  .mem-header-cell {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-muted);
+  }
+  @media(max-width:800px) { .mem-level { grid-template-columns: 1fr 1fr; } .mem-headers { display: none; } }
+
+  /* ─── MODEL CARDS ───────────────────────────────────────── */
+  .model-card {
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    border: 1px solid;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .model-left { display: flex; align-items: center; gap: 10px; }
+  .model-score-range {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: rgba(0,0,0,0.2);
+    min-width: 60px;
+    text-align: center;
+  }
+  .model-name { font-family: var(--font-display); font-size: 13px; font-weight: 600; }
+  .model-id   { font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+  .model-low    { background: var(--emerald-dim); border-color: rgba(52,211,153,0.25); color: var(--emerald); }
+  .model-medium { background: var(--cyan-dim);    border-color: rgba(34,211,238,0.25); color: var(--cyan); }
+  .model-high   { background: var(--violet-dim);  border-color: rgba(167,139,250,0.25); color: var(--violet); }
+
+  /* ─── SIGNAL GRID ───────────────────────────────────────── */
+  .signal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .signal-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+  .signal-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--cyan); flex-shrink: 0; }
+
+  /* ─── ISSUE CHIPS ───────────────────────────────────────── */
+  .issue-chip {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    flex: 1;
+    min-width: 180px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: border-color 0.15s, transform 0.12s;
+  }
+  .issue-chip:hover { border-color: var(--border-2); transform: translateY(-2px); }
+  .issue-number { font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: var(--text-muted); }
+  .issue-title  { font-family: var(--font-display); font-size: 14px; font-weight: 600; color: var(--text); line-height: 1.3; }
+  .issue-meta   { display: flex; gap: 6px; flex-wrap: wrap; }
+  .issue-pill {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 700;
+    padding: 3px 7px;
+    border-radius: 999px;
+    border: 1px solid;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .issue-blocker { font-size: 11px; color: var(--text-muted); font-style: italic; }
+  .dep-arrow { display: flex; align-items: center; color: var(--text-muted); font-size: 20px; flex-shrink: 0; padding: 0 2px; }
+
+  /* ─── CODE BLOCK ────────────────────────────────────────── */
+  .code-block {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 18px;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    line-height: 1.7;
+    color: #c9d1d9;
+    overflow-x: auto;
+    white-space: pre;
+    max-height: 260px;
+    overflow-y: auto;
+  }
+  .code-kw  { color: var(--violet); }
+  .code-cls { color: var(--cyan); }
+  .code-str { color: var(--amber); }
+  .code-cmt { color: #4b5e7a; font-style: italic; }
+
+  /* ─── TABLE ─────────────────────────────────────────────── */
+  table.ve-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.ve-table th {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-muted);
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  table.ve-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    vertical-align: top;
+  }
+  table.ve-table tr:last-child td { border-bottom: none; }
+  table.ve-table tr:hover td { background: rgba(255,255,255,0.02); }
+  table.ve-table td:first-child { color: var(--cyan); }
+
+  /* ─── DIVIDER ───────────────────────────────────────────── */
+  .divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border-2) 30%, var(--border-2) 70%, transparent);
+    margin: 16px 0;
+  }
+
+  /* ─── ANIMATED RING ─────────────────────────────────────── */
+  @keyframes pulse-glow { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+  .ring {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    border: 1.5px solid var(--emerald);
+    animation: pulse-glow 2s ease-in-out infinite;
+    margin-right: 8px;
+    flex-shrink: 0;
+  }
+
+  /* ─── FOOTER ────────────────────────────────────────────── */
+  .footer {
+    margin-top: 80px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .footer-left { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+  .footer-right { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+
+  /* ─── TABS ────────────────────────────────────────────────── */
+  .tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--border-2);
+    margin-bottom: 0;
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    z-index: 100;
+    padding: 20px 0 0;
+  }
+  .tab-btn {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    padding: 10px 22px;
+    border: 1px solid var(--border);
+    border-bottom: none;
+    border-radius: var(--radius) var(--radius) 0 0;
+    background: var(--surface);
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s, border-color 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .tab-btn:hover { color: var(--text); background: var(--surface-2); }
+  .tab-btn.active {
+    background: var(--bg);
+    color: var(--cyan);
+    border-color: var(--border-2);
+    position: relative;
+  }
+  .tab-btn.active::after {
+    content: '';
+    position: absolute;
+    bottom: -1px; left: 0; right: 0;
+    height: 2px;
+    background: var(--bg);
+  }
+  .tab-btn-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 5px currentColor;
+  }
+  .tab-panel { display: none; padding-top: 40px; }
+  .tab-panel.active { display: block; }
+  .diagram-wrap {
+    background: #070c18;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    padding: 0;
+  }
+</style><!-- diagram-meta:start -->
+<meta name="diagram:title"     content="Lyra Engine — Architecture Visual Explainer">
+<meta name="diagram:date"      content="2026-03-12">
+<meta name="diagram:category"  content="lyra">
+<meta name="diagram:cat-label" content="Lyra Docs">
+<meta name="diagram:color"     content="blue">
+<!-- diagram-meta:end -->
+</head>
+<body>
+<div class="page">
+
+  <!-- ═══════════════════ HERO ═══════════════════════════════ -->
+  <section class="hero">
+    <div class="hero-eyebrow">Lyra by Roxabi</div>
+    <h1 class="hero-title">Engine Architecture</h1>
+    <p class="hero-subtitle">
+      A personal AI agent — hub-and-spoke asyncio Python, routing messages from Telegram &amp; Discord through a secure, multi-model, memory-aware pipeline.
+    </p>
+    <div class="hero-badges">
+      <span class="badge badge-cyan">Python 3.12 + asyncio</span>
+      <span class="badge badge-violet">Claude Anthropic API</span>
+      <span class="badge badge-emerald">5-Level Memory</span>
+      <span class="badge badge-amber">Multi-Channel</span>
+    </div>
+  </section>
+
+  <!-- ─── TAB BAR ──────────────────────────────────────────────── -->
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="tab-1"><span class="tab-btn-dot"></span>Pipeline &amp; Docs</button>
+    <button class="tab-btn" data-tab="tab-2"><span class="tab-btn-dot"></span>Architecture Map</button>
+  </nav>
+
+  <!-- ═══════════ TAB 1 ═══════════════════════════════════════ -->
+  <div id="tab-1" class="tab-panel active">
+
+  <!-- ═══════════════════ §1 — FULL PIPELINE ═════════════════ -->
+  <section class="section">
+    <div class="section-header">
+      <span class="section-num">01</span>
+      <div>
+        <div class="section-title">Full Message Pipeline</div>
+        <div class="section-desc">From raw channel event to formatted reply — complete data flow</div>
+      </div>
+    </div>
+
+    <!-- Visual pipeline -->
+    <div style="overflow-x:auto; margin-bottom:20px;">
+      <div style="display:flex; align-items:stretch; gap:0; min-width:860px;">
+
+        <div style="flex:1; min-width:145px; background:var(--surface); border:1px solid var(--border); border-left:3px solid var(--cyan); border-radius:var(--radius) 0 0 var(--radius); padding:16px 14px; display:flex; flex-direction:column; gap:8px;">
+          <div style="font-family:var(--font-mono); font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:2px; color:var(--cyan); display:flex; align-items:center; gap:6px;"><span style="width:5px;height:5px;border-radius:50%;background:var(--cyan);box-shadow:0 0 5px var(--cyan);"></span>Adapters</div>
+          <div style="font-family:var(--font-display); font-size:14px; font-weight:600; color:var(--cyan);">Channel</div>
+          <div style="font-size:11px; color:var(--text-dim);">Translate raw events ↔ Lyra domain</div>
+          <div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:4px;">
+            <span style="font-family:var(--font-mono); font-size:9px; padding:2px 6px; border-radius:999px; border:1px solid var(--cyan-dim); background:var(--cyan-dim); color:var(--cyan);">Telegram</span>
+            <span style="font-family:var(--font-mono); font-size:9px; padding:2px 6px; border-radius:999px; border:1px solid var(--cyan-dim); background:var(--cyan-dim); color:var(--cyan);">Discord</span>
+            <span style="font-family:var(--font-mono); font-size:9px; padding:2px 6px; border-radius:999px; border:1px solid var(--border); color:var(--text-muted);">CLI</span>
+          </div>
+        </div>
+
+        <div style="display:flex; align-items:center; padding:0 2px; flex-shrink:0; z-index:1;">
+          <svg width="32" height="20" viewBox="0 0 32 20"><line x1="2" y1="10" x2="26" y2="10" stroke="var(--cyan)" stroke-width="1.5" class="flow-line"/><polyline points="22,5 28,10 22,15" stroke="var(--cyan)" stroke-width="1.5" fill="none"/></svg>
+        </div>
+
+        <div style="flex:1; min-width:130px; background:var(--surface); border:1px solid var(--border); border-left:3px solid var(--rose); border-radius:0; padding:16px 14px; display:flex; flex-direction:column; gap:8px; margin-left:-1px; border-left-color:var(--rose);">
+          <div style="font-family:var(--font-mono); font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:2px; color:var(--rose); display:flex; align-items:center; gap:6px;"><span style="width:5px;height:5px;border-radius:50%;background:var(--rose);box-shadow:0 0 5px var(--rose);"></span>Security</div>
+          <div style="font-family:var(--font-display); font-size:14px; font-weight:600; color:var(--rose);">Auth</div>
+          <div style="font-size:11px; color:var(--text-dim);">Block before Bus. TrustLevel stamped on Message.</div>
+          <div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:4px;">
+            <span style="font-family:var(--font-mono); font-size:9px; padding:2px 6px; border-radius:999px; border:1px solid rgba(251,191,36,0.25); background:rgba(251,191,36,0.08); color:var(--amber);">OWNER</span>
+            <span style="font-family:var(--font-mono); font-size:9px; padding:2px 6px; border-radius:999px; border:1px solid rgba(251,113,133,0.25); background:rgba(251,113,133,0.08); color:var(--rose);">BLOCKED</span>
+          </div>
+        </div>
+
+        <div style="display:flex; align-items:center; padding:0 2px; flex-shrink:0; z-index:1;">
+          <svg width="32" height="20" viewBox="0 0 32 20"><line x1="2" y1="10" x2="26" y2="10" stroke="var(--rose)" stroke-width="1.5" class="flow-line" style="animation-delay:0.2s"/><polyline points="22,5 28,10 22,15" stroke="var(--rose)" stroke-width="1.5" fill="none"/></svg>
+        </div>
+
+        <div style="flex:1; min-width:120px; background:var(--surface); border:1px solid var(--border); border-left:3px solid var(--violet); border-radius:0; padding:16px 14px; display:flex; flex-direction:column; gap:8px; margin-left:-1px; border-left-color:var(--violet);">
+          <div style="font-family:var(--font-mono); font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:2px; color:var(--violet); display:flex; align-items:center; gap:6px;"><span style="width:5px;height:5px;border-radius:50%;background:var(--violet);box-shadow:0 0 5px var(--violet);"></span>Core</div>
+          <div style="font-family:var(--font-display); font-size:14px; font-weight:600; color:var(--violet);">Bus</div>
+          <div style="font-size:11px; color:var(--text-dim);">asyncio.Queue(100). Backpressure.</div>
+          <div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:4px;">
+            <span style="font-family:var(--font-mono); font-size:9px; padding:2px 6px; border-radius:999px; border:1px solid var(--violet-dim); background:var(--violet-dim); color:var(--violet);">inbound</span>
+            <span style="font-family:var(--font-mono); font-size:9px; padding:2px 6px; border-radius:999px; border:1px solid var(--violet-dim); background:var(--violet-dim); color:var(--violet);">outbound</span>
+          </div>
+        </div>
+
+        <div style="display:flex; align-items:center; padding:0 2px; flex-shrink:0; z-index:1;">
+          <svg width="32" height="20" viewBox="0 0 32 20"><line x1="2" y1="10" x2="26" y2="10" stroke="var(--violet)" stroke-width="1.5" class="flow-line" style="animation-delay:0.4s"/><polyline points="22,5 28,10 22,15" stroke="var(--violet)" stroke-width="1.5" fill="none"/></svg>
+        </div>
+
+        <div style="flex:1; min-width:130px; background:var(--surface); border:1px solid var(--border); border-left:3px solid var(--indigo); border-radius:0; padding:16px 14px; display:flex; flex-direction:column; gap:8px; margin-left:-1px; border-left-color:var(--indigo);">
+          <div style="font-family:var(--font-mono); font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:2px; color:var(--indigo); display:flex; align-items:center; gap:6px;"><span style="width:5px;height:5px;border-radius:50%;background:var(--indigo);box-shadow:0 0 5px var(--indigo);"></span>Routing</div>
+          <div style="font-family:var(--font-display); font-size:14px; font-weight:600; color:var(--indigo);">Router</div>
+          <div style="font-size:11px; color:var(--text-dim);">(channel, user_id) → (agent, pool)</div>
+          <div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:4px;">
+            <span style="font-family:var(--font-mono); font-size:9px; padding:2px 6px; border-radius:999px; border:1px solid var(--indigo-dim); background:var(--indigo-dim); color:var(--indigo);">CommandParser</span>
+          </div>
+        </div>
+
+        <div style="display:flex; align-items:center; padding:0 2px; flex-shrink:0; z-index:1;">
+          <svg width="32" height="20" viewBox="0 0 32 20"><line x1="2" y1="10" x2="26" y2="10" stroke="var(--indigo)" stroke-width="1.5" class="flow-line" style="animation-delay:0.6s"/><polyline points="22,5 28,10 22,15" stroke="var(--indigo)" stroke-width="1.5" fill="none"/></svg>
+        </div>
+
+        <div style="flex:1; min-width:130px; background:var(--surface); border:1px solid var(--border); border-left:3px solid var(--amber); border-radius:0; padding:16px 14px; display:flex; flex-direction:column; gap:8px; margin-left:-1px; border-left-color:var(--amber);">
+          <div style="font-family:var(--font-mono); font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:2px; color:var(--amber); display:flex; align-items:center; gap:6px;"><span style="width:5px;height:5px;border-radius:50%;background:var(--amber);box-shadow:0 0 5px var(--amber);"></span>Agents</div>
+          <div style="font-family:var(--font-display); font-size:14px; font-weight:600; color:var(--amber);">Pool</div>
+          <div style="font-size:11px; color:var(--text-dim);">asyncio.Lock per session. Parallel across users.</div>
+          <div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:4px;">
+            <span style="font-family:var(--font-mono); font-size:9px; padding:2px 6px; border-radius:999px; border:1px solid var(--amber-dim); background:var(--amber-dim); color:var(--amber);">Lyra</span>
+            <span style="font-family:var(--font-mono); font-size:9px; padding:2px 6px; border-radius:999px; border:1px solid var(--amber-dim); background:var(--amber-dim); color:var(--amber);">Analyst</span>
+          </div>
+        </div>
+
+        <div style="display:flex; align-items:center; padding:0 2px; flex-shrink:0; z-index:1;">
+          <svg width="32" height="20" viewBox="0 0 32 20"><line x1="2" y1="10" x2="26" y2="10" stroke="var(--amber)" stroke-width="1.5" class="flow-line" style="animation-delay:0.8s"/><polyline points="22,5 28,10 22,15" stroke="var(--amber)" stroke-width="1.5" fill="none"/></svg>
+        </div>
+
+        <div style="flex:1; min-width:140px; background:var(--surface); border:1px solid var(--border); border-left:3px solid var(--emerald); border-radius:0 var(--radius) var(--radius) 0; padding:16px 14px; display:flex; flex-direction:column; gap:8px; margin-left:-1px; border-left-color:var(--emerald);">
+          <div style="font-family:var(--font-mono); font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:2px; color:var(--emerald); display:flex; align-items:center; gap:6px;"><span style="width:5px;height:5px;border-radius:50%;background:var(--emerald);box-shadow:0 0 5px var(--emerald);"></span>LLM</div>
+          <div style="font-family:var(--font-display); font-size:14px; font-weight:600; color:var(--emerald);">Wrappers</div>
+          <div style="font-size:11px; color:var(--text-dim);">ComplexityEstimator selects model tier.</div>
+          <div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:4px;">
+            <span style="font-family:var(--font-mono); font-size:9px; padding:2px 6px; border-radius:999px; border:1px solid var(--violet-dim); background:var(--violet-dim); color:var(--violet);">Anthropic</span>
+            <span style="font-family:var(--font-mono); font-size:9px; padding:2px 6px; border-radius:999px; border:1px solid var(--border); color:var(--text-muted);">Ollama</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Happy Path -->
+    <div class="happy-path">
+      <div class="happy-path-header">
+        <div class="ring">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3v2M8 11v2M3 8H5M11 8h2M4.929 4.929l1.414 1.414M9.657 9.657l1.414 1.414M4.929 11.071l1.414-1.414M9.657 6.343l1.414-1.414" stroke="var(--emerald)" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </div>
+        <span class="happy-path-header-title">Happy Path — User sends a Telegram message</span>
+      </div>
+      <div class="hp-step"><div class="hp-num">01</div><div class="hp-icon">📨</div><div class="hp-content"><div class="hp-func">TelegramAdapter.normalize()</div><div class="hp-desc">Raw update → Message(id, channel, user_id, session_id, content, trust_level, routing)</div></div></div>
+      <div class="hp-step"><div class="hp-num">02</div><div class="hp-icon">🔐</div><div class="hp-content"><div class="hp-func">AuthMiddleware.check()</div><div class="hp-desc">Lookup user_id in trust_map → BLOCKED drops silently, others pass with TrustLevel stamped</div></div></div>
+      <div class="hp-step"><div class="hp-num">03</div><div class="hp-icon">🚌</div><div class="hp-content"><div class="hp-func">Bus.inbound.put(msg)</div><div class="hp-desc">Bounded queue (maxsize=100). If full → immediate ack sent → blocking await put()</div></div></div>
+      <div class="hp-step"><div class="hp-num">04</div><div class="hp-icon">🔀</div><div class="hp-content"><div class="hp-func">Router.dispatch()</div><div class="hp-desc">Lookup (channel, user_id) → pool_id. CommandParser intercepts /commands → special agent routing</div></div></div>
+      <div class="hp-step"><div class="hp-num">05</div><div class="hp-icon">🔒</div><div class="hp-content"><div class="hp-func">AgentPool.acquire_lock()</div><div class="hp-desc">asyncio.Lock per pool_id — sequential within session, parallel across sessions</div></div></div>
+      <div class="hp-step"><div class="hp-num">06</div><div class="hp-icon">🧠</div><div class="hp-content"><div class="hp-func">MemoryManager.retrieve(user_id, session_id)</div><div class="hp-desc">L4 semantic search (SQLite BM25 + sqlite-vec) + L2 session state → context injected into prompt</div></div></div>
+      <div class="hp-step"><div class="hp-num">07</div><div class="hp-icon">⚖️</div><div class="hp-content"><div class="hp-func">ComplexityEstimator.estimate(msg)</div><div class="hp-desc">Score 0–6 signals → LOW / MEDIUM / HIGH → select Haiku / Sonnet / Opus</div></div></div>
+      <div class="hp-step"><div class="hp-num">08</div><div class="hp-icon">✨</div><div class="hp-content"><div class="hp-func">AnthropicWrapper.complete(prompt + context)</div><div class="hp-desc">Stream response. Tool calls → ToolForwardMessage maintains same session_id (agent suspended, not terminated)</div></div></div>
+      <div class="hp-step"><div class="hp-num">09</div><div class="hp-icon">💾</div><div class="hp-content"><div class="hp-func">MemoryManager.write(L1, L2)</div><div class="hp-desc">Working + session memory updated. End-of-session: flush L3 episodic Markdown + update L4 semantic index</div></div></div>
+      <div class="hp-step"><div class="hp-num">10</div><div class="hp-icon">📤</div><div class="hp-content"><div class="hp-func">TelegramAdapter.send(response)</div><div class="hp-desc">Assert routing.channel == "telegram" &amp;&amp; bot_id == self.bot_id → sendMessage(chat_id, thread_id)</div></div></div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════ §2 — SECURITY ══════════════════════ -->
+  <section class="section">
+    <div class="section-header">
+      <span class="section-num">02</span>
+      <div>
+        <div class="section-title">Security &amp; Routing Layer</div>
+        <div class="section-desc">AuthMiddleware → RoutingContext → CommandParser — four layers of trust and correctness</div>
+      </div>
+    </div>
+
+    <div class="grid-2" style="margin-bottom:16px;">
+      <div class="ve-card ve-card--glow-rose" style="border-left:3px solid var(--rose);">
+        <div class="ve-card__label ve-card__label--rose">#151 — P0 · Size S · Ready</div>
+        <div class="ve-card__title">AuthMiddleware + TrustLevel</div>
+        <div class="ve-card__body" style="margin-bottom:14px;">Auth at Adapter level — before the Bus. A BLOCKED message never reaches the queue or consumes LLM tokens.</div>
+        <div class="trust-grid">
+          <div class="trust-chip trust-owner"><div class="trust-chip-label">OWNER</div><div class="trust-chip-desc">Full access, all commands, admin ops</div></div>
+          <div class="trust-chip trust-trusted"><div class="trust-chip-label">TRUSTED</div><div class="trust-chip-desc">Normal access, standard features</div></div>
+          <div class="trust-chip trust-public"><div class="trust-chip-label">PUBLIC</div><div class="trust-chip-desc">Limited access (if enabled)</div></div>
+          <div class="trust-chip trust-blocked"><div class="trust-chip-label">BLOCKED</div><div class="trust-chip-desc">Dropped silently, never reaches Bus</div></div>
+        </div>
+      </div>
+      <div class="ve-card ve-card--glow-indigo" style="border-left:3px solid var(--indigo);">
+        <div class="ve-card__label ve-card__label--indigo">#152 — P0 · Size M · Blocks #151</div>
+        <div class="ve-card__title">RoutingContext Verification</div>
+        <div class="ve-card__body" style="margin-bottom:14px;">Every Response carries a RoutingContext populated at inbound normalization. Outbound adapter verifies channel + bot_id before sending.</div>
+        <table class="ve-table">
+          <thead><tr><th>Field</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td>channel</td><td style="color:var(--text-dim);">"telegram" | "discord" | "cli"</td></tr>
+            <tr><td>bot_id</td><td style="color:var(--text-dim);">Which bot replies (multi-bot setup)</td></tr>
+            <tr><td>chat_id</td><td style="color:var(--text-dim);">Target chat / guild / channel</td></tr>
+            <tr><td>thread_id</td><td style="color:var(--text-dim);">Forum thread or Discord thread</td></tr>
+            <tr><td>reply_to_message_id</td><td style="color:var(--text-dim);">Native threading</td></tr>
+            <tr><td>session_id</td><td style="color:var(--text-dim);">Conversation continuity key</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="ve-card" style="border-left:3px solid var(--cyan);">
+      <div class="ve-card__label ve-card__label--cyan">#153 — P1 · Size M · Blocks #152</div>
+      <div class="ve-card__title">CommandParser + Routing Table</div>
+      <div class="ve-card__body" style="margin-bottom:16px;">Prefixes <code style="font-family:var(--font-mono); background:var(--bg2); padding:1px 5px; border-radius:4px; color:var(--cyan);">/</code> and <code style="font-family:var(--font-mono); background:var(--bg2); padding:1px 5px; border-radius:4px; color:var(--cyan);">!</code> intercepted before LLM — route to specialized agents with zero token cost.</div>
+      <div class="grid-2">
+        <table class="ve-table">
+          <thead><tr><th>Command</th><th>Agent</th><th>Pool</th></tr></thead>
+          <tbody>
+            <tr><td>/imagine</td><td style="color:var(--amber);">image_agent</td><td style="color:var(--text-dim);">image_pool</td></tr>
+            <tr><td>/config</td><td style="color:var(--amber);">admin_agent</td><td style="color:var(--text-dim);">admin_pool</td></tr>
+            <tr><td>/help</td><td style="color:var(--amber);">lyra</td><td style="color:var(--text-dim);">default_pool</td></tr>
+            <tr><td>/voice</td><td style="color:var(--amber);">lyra</td><td style="color:var(--text-dim);">voice_pool</td></tr>
+          </tbody>
+        </table>
+        <div class="code-block"><span style="color:var(--violet);">class</span> <span style="color:var(--cyan);">CommandContext</span>:
+    prefix: <span style="color:var(--cyan);">str</span>   <span style="color:#4b5e7a; font-style:italic;"># "/" or "!"</span>
+    name:   <span style="color:var(--cyan);">str</span>   <span style="color:#4b5e7a; font-style:italic;"># "imagine", "help"</span>
+    args:   <span style="color:var(--cyan);">str</span>   <span style="color:#4b5e7a; font-style:italic;"># rest of message</span>
+    raw:    <span style="color:var(--cyan);">str</span>   <span style="color:#4b5e7a; font-style:italic;"># original text</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════ §3 — MEMORY ════════════════════════ -->
+  <section class="section">
+    <div class="section-header">
+      <span class="section-num">03</span>
+      <div>
+        <div class="section-title">5-Level Memory System</div>
+        <div class="section-desc">From volatile working memory to persistent semantic knowledge — strict user_id isolation throughout</div>
+      </div>
+    </div>
+
+    <div class="ve-card ve-card--glow-emerald" style="border-left:3px solid var(--emerald); margin-bottom:16px;">
+      <div class="ve-card__label ve-card__label--emerald">#83 — P1 · Extended with strict isolation + full metadata schema</div>
+      <div class="ve-card__title" style="margin-bottom:6px;">Memory Isolation Rule — Non-Negotiable</div>
+      <div class="ve-card__body">Every L4 query must include <code style="font-family:var(--font-mono); background:var(--bg2); padding:1px 6px; border-radius:4px; color:var(--rose);">WHERE user_id = :user_id</code>. L3 path always contains <code style="font-family:var(--font-mono); background:var(--bg2); padding:1px 6px; border-radius:4px; color:var(--rose);">{user_id}/</code>. No global queries ever — even for stats, aggregate by user.</div>
+    </div>
+
+    <div class="mem-headers">
+      <div class="mem-header-cell">Level</div>
+      <div class="mem-header-cell">Name</div>
+      <div class="mem-header-cell">Storage</div>
+      <div class="mem-header-cell">TTL</div>
+      <div class="mem-header-cell">Scope</div>
+    </div>
+    <div class="memory-stack">
+      <div class="mem-level">
+        <div class="mem-badge" style="color:var(--text-dim); border-color:var(--border); background:var(--surface-2);">L1</div>
+        <div><div class="mem-name">Working Memory</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Active context window</div></div>
+        <div class="mem-storage">Python dict<br>in-process</div>
+        <div class="mem-ttl">Single request<br>Volatile</div>
+        <div class="mem-scope-pill" style="background:rgba(107,122,153,0.1); color:var(--text-dim); border:1px solid var(--border);">Turn</div>
+      </div>
+      <div class="mem-level">
+        <div class="mem-badge" style="color:var(--indigo); border-color:var(--indigo-dim); background:var(--indigo-dim);">L2</div>
+        <div><div class="mem-name">Session Memory</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Multi-turn state per pool</div></div>
+        <div class="mem-storage">asyncio store<br>keyed (user_id, session_id)</div>
+        <div class="mem-ttl">Session lifetime<br>TTL configurable</div>
+        <div class="mem-scope-pill" style="background:var(--indigo-dim); color:var(--indigo); border:1px solid rgba(129,140,248,0.25);">Session</div>
+      </div>
+      <div class="mem-level">
+        <div class="mem-badge" style="color:var(--cyan); border-color:var(--cyan-dim); background:var(--cyan-dim);">L3</div>
+        <div><div class="mem-name">Episodic Memory</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Dated Markdown, human-auditable</div></div>
+        <div class="mem-storage">~/.lyra/memory/<br>episodic/{user_id}/YYYY-MM-DD/</div>
+        <div class="mem-ttl">Permanent<br>Immutable</div>
+        <div class="mem-scope-pill" style="background:var(--cyan-dim); color:var(--cyan); border:1px solid rgba(34,211,238,0.25);">Per User</div>
+      </div>
+      <div class="mem-level" style="border-color:rgba(52,211,153,0.2);">
+        <div class="mem-badge" style="color:var(--emerald); border-color:var(--emerald-dim); background:var(--emerald-dim);">L4</div>
+        <div><div class="mem-name">Semantic Memory</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Hybrid BM25 + vector search</div></div>
+        <div class="mem-storage">SQLite + BM25<br>+ sqlite-vec (embeddings)</div>
+        <div class="mem-ttl">Permanent<br>count_usage tracked</div>
+        <div class="mem-scope-pill" style="background:var(--emerald-dim); color:var(--emerald); border:1px solid rgba(52,211,153,0.25);">user_id filter</div>
+      </div>
+      <div class="mem-level">
+        <div class="mem-badge" style="color:var(--amber); border-color:var(--amber-dim); background:var(--amber-dim);">L5</div>
+        <div><div class="mem-name">Procedural Memory</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Agent capabilities &amp; learned skills</div></div>
+        <div class="mem-storage">YAML/TOML + Python<br>skills/ directory</div>
+        <div class="mem-ttl">Permanent<br>Codebase</div>
+        <div class="mem-scope-pill" style="background:var(--amber-dim); color:var(--amber); border:1px solid rgba(251,191,36,0.25);">Global</div>
+      </div>
+    </div>
+
+    <div style="margin-top:16px;">
+      <div class="code-block"><span style="color:var(--violet);">class</span> <span style="color:var(--cyan);">MemoryEntry</span>:
+    <span style="color:#4b5e7a; font-style:italic;"># ─── Identity ─────────────────────────────</span>
+    id:                    <span style="color:var(--cyan);">UUID</span>
+    user_id:               <span style="color:var(--cyan);">str</span>        <span style="color:#4b5e7a; font-style:italic;"># ← partition key ABSOLUTE — never omitted</span>
+
+    <span style="color:#4b5e7a; font-style:italic;"># ─── Sessions ─────────────────────────────</span>
+    session_id_created:    <span style="color:var(--cyan);">str</span>
+    session_id_modified:   <span style="color:var(--cyan);">str</span>
+
+    <span style="color:#4b5e7a; font-style:italic;"># ─── Content ──────────────────────────────</span>
+    level:                 <span style="color:var(--cyan);">MemoryLevel</span>   <span style="color:#4b5e7a; font-style:italic;"># L1 → L5</span>
+    content:               <span style="color:var(--cyan);">str</span>
+    embedding:             <span style="color:var(--cyan);">bytes</span>         <span style="color:#4b5e7a; font-style:italic;"># sqlite-vec (L4 only)</span>
+    tags:                  <span style="color:var(--cyan);">list[str]</span>
+
+    <span style="color:#4b5e7a; font-style:italic;"># ─── Metadata ─────────────────────────────</span>
+    created_at:            <span style="color:var(--cyan);">datetime</span>
+    updated_at:            <span style="color:var(--cyan);">datetime</span>
+    count_usage:           <span style="color:var(--cyan);">int</span>           <span style="color:#4b5e7a; font-style:italic;"># incremented on every retrieve</span>
+    count_edits:           <span style="color:var(--cyan);">int</span>           <span style="color:#4b5e7a; font-style:italic;"># incremented on every write</span>
+    confidence:            <span style="color:var(--cyan);">float</span>         <span style="color:#4b5e7a; font-style:italic;"># 0.0 → 1.0</span>
+    ttl:                   <span style="color:var(--cyan);">datetime | None</span>  <span style="color:#4b5e7a; font-style:italic;"># auto-expiry (L1/L2)</span>
+    source:                <span style="color:var(--cyan);">str</span>           <span style="color:#4b5e7a; font-style:italic;"># "user" | "agent" | "system"</span></div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════ §4 — MODEL SELECTION ═══════════════ -->
+  <section class="section">
+    <div class="section-header">
+      <span class="section-num">04</span>
+      <div>
+        <div class="section-title">ComplexityEstimator — Model Selection</div>
+        <div class="section-desc">Score 6 signals → select the cheapest model that can handle the task</div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="ve-card">
+        <div class="ve-card__label ve-card__label--cyan">Input Signals (each = +1 point)</div>
+        <div class="signal-grid">
+          <div class="signal-item"><div class="signal-dot"></div>Content &gt; 500 chars</div>
+          <div class="signal-item"><div class="signal-dot"></div>Contains code block</div>
+          <div class="signal-item"><div class="signal-dot"></div>Has attachments</div>
+          <div class="signal-item"><div class="signal-dot"></div>High-complexity command</div>
+          <div class="signal-item"><div class="signal-dot"></div>Session turn count &gt; 10</div>
+          <div class="signal-item"><div class="signal-dot"></div>Chained question pattern</div>
+        </div>
+        <div style="margin-top:14px; padding:12px 14px; background:var(--bg2); border-radius:var(--radius); border:1px solid var(--border); font-family:var(--font-mono); font-size:11px; line-height:1.8;">
+          <span style="color:var(--emerald);">score == 0</span> → <span style="color:var(--emerald);">LOW</span><br>
+          <span style="color:var(--cyan);">1 ≤ score ≤ 2</span> → <span style="color:var(--cyan);">MEDIUM</span><br>
+          <span style="color:var(--violet);">score ≥ 3</span> → <span style="color:var(--violet);">HIGH</span>
+        </div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <div class="model-card model-low">
+          <div class="model-left">
+            <div class="model-score-range">score 0</div>
+            <div><div class="model-name">Haiku 4.5</div><div class="model-id">claude-haiku-4-5-20251001</div></div>
+          </div>
+          <div style="font-size:22px;">⚡</div>
+        </div>
+        <div class="model-card model-medium">
+          <div class="model-left">
+            <div class="model-score-range">score 1–2</div>
+            <div><div class="model-name">Sonnet 4.6</div><div class="model-id">claude-sonnet-4-6</div></div>
+          </div>
+          <div style="font-size:22px;">🎯</div>
+        </div>
+        <div class="model-card model-high">
+          <div class="model-left">
+            <div class="model-score-range">score ≥ 3</div>
+            <div><div class="model-name">Opus 4.6</div><div class="model-id">claude-opus-4-6</div></div>
+          </div>
+          <div style="font-size:22px;">🧠</div>
+        </div>
+        <div style="padding:10px 14px; background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius); font-size:11px; color:var(--text-muted);">
+          <span style="color:var(--amber);">Fallback:</span> Ollama on Machine 2 (Qwen 14B Q6 or Gemma 27B Q4) — offline / cost control mode.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════ §5 — INFRASTRUCTURE ════════════════ -->
+  <section class="section">
+    <div class="section-header">
+      <span class="section-num">05</span>
+      <div>
+        <div class="section-title">Hardware Infrastructure</div>
+        <div class="section-desc">Two-machine setup — always-on hub + on-demand AI server</div>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="ve-card ve-card--glow-cyan" style="border-left:3px solid var(--cyan);">
+        <div class="ve-card__label ve-card__label--cyan">Machine 1 — Hub (24/7)</div>
+        <div class="ve-card__title">roxabituwer · 192.168.1.16</div>
+        <div class="ve-card__body" style="margin:8px 0;">Ubuntu Server 24.04 · RTX 3080 10GB · 32GB RAM</div>
+        <div class="divider"></div>
+        <table class="ve-table">
+          <tbody>
+            <tr><td>Lyra daemon</td><td style="color:var(--text-dim);">asyncio hub, Telegram, Discord, SQLite</td></tr>
+            <tr><td>TTS</td><td style="color:var(--text-dim);">voicecli (Qwen) ~5GB VRAM</td></tr>
+            <tr><td>Embeddings</td><td style="color:var(--text-dim);">nomic-embed-text ~0.5GB VRAM</td></tr>
+            <tr><td>Headroom</td><td style="color:var(--emerald);">4.5GB free → Phase 2 SLMs</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="ve-card" style="border-left:3px solid var(--violet);">
+        <div class="ve-card__label ve-card__label--violet">Machine 2 — AI Server (on-demand)</div>
+        <div class="ve-card__title">ROXABITOWER · WSL2</div>
+        <div class="ve-card__body" style="margin:8px 0;">Windows + WSL2 · RTX 5070Ti 16GB · 32GB RAM · 9800X3D 96MB L3</div>
+        <div class="divider"></div>
+        <table class="ve-table">
+          <tbody>
+            <tr><td>LLM runtime</td><td style="color:var(--text-dim);">Ollama or llama.cpp server</td></tr>
+            <tr><td>Models</td><td style="color:var(--text-dim);">Qwen 14B Q6 (~11GB) or Gemma 27B Q4 (~15GB)</td></tr>
+            <tr><td>API</td><td style="color:var(--text-dim);">FastAPI /llm (OpenAI-compatible)</td></tr>
+            <tr><td>Transport</td><td style="color:var(--text-dim);">httpx async, local network HTTP/2</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════ §6 — ROADMAP ═══════════════════════ -->
+  <section class="section">
+    <div class="section-header">
+      <span class="section-num">06</span>
+      <div>
+        <div class="section-title">Implementation Roadmap</div>
+        <div class="section-desc">Dependency chain for Phase 1b security &amp; routing issues</div>
+      </div>
+    </div>
+
+    <!-- Critical path -->
+    <div style="margin-bottom:20px;">
+      <div style="font-family:var(--font-mono); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:2px; color:var(--rose); margin-bottom:12px; display:flex; align-items:center; gap:8px;">
+        <span style="width:8px; height:8px; border-radius:50%; background:var(--rose); display:inline-block; box-shadow:0 0 6px var(--rose);"></span>
+        Critical Path (P0 → P1)
+      </div>
+      <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+        <div class="issue-chip" style="border-left:3px solid var(--rose); min-width:200px; max-width:260px; background:linear-gradient(135deg, var(--surface) 0%, rgba(251,113,133,0.04) 100%);">
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <div class="issue-number">#151</div>
+            <div style="display:flex; gap:4px;">
+              <span class="issue-pill" style="color:var(--rose); border-color:var(--rose-dim); background:var(--rose-dim);">P0</span>
+              <span class="issue-pill" style="color:var(--text-dim); border-color:var(--border); background:var(--bg2);">S</span>
+              <span class="issue-pill" style="color:var(--emerald); border-color:var(--emerald-dim); background:var(--emerald-dim);">ready</span>
+            </div>
+          </div>
+          <div class="issue-title">AuthMiddleware + TrustLevel</div>
+          <div class="issue-meta"><span class="issue-pill" style="color:var(--cyan); border-color:var(--cyan-dim); background:var(--cyan-dim);">feat(auth)</span></div>
+          <div class="issue-blocker">No blockers — start here</div>
+        </div>
+        <div class="dep-arrow" style="color:var(--rose);">→</div>
+        <div class="issue-chip" style="border-left:3px solid var(--indigo); min-width:200px; max-width:260px;">
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <div class="issue-number">#152</div>
+            <div style="display:flex; gap:4px;">
+              <span class="issue-pill" style="color:var(--rose); border-color:var(--rose-dim); background:var(--rose-dim);">P0</span>
+              <span class="issue-pill" style="color:var(--text-dim); border-color:var(--border); background:var(--bg2);">M</span>
+              <span class="issue-pill" style="color:var(--amber); border-color:var(--amber-dim); background:var(--amber-dim);">blocked</span>
+            </div>
+          </div>
+          <div class="issue-title">RoutingContext + Adapter Verification</div>
+          <div class="issue-meta"><span class="issue-pill" style="color:var(--cyan); border-color:var(--cyan-dim); background:var(--cyan-dim);">feat(routing)</span></div>
+          <div class="issue-blocker">Blocked by #151</div>
+        </div>
+        <div class="dep-arrow" style="color:var(--indigo);">→</div>
+        <div class="issue-chip" style="border-left:3px solid var(--cyan); min-width:200px; max-width:260px;">
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <div class="issue-number">#153</div>
+            <div style="display:flex; gap:4px;">
+              <span class="issue-pill" style="color:var(--amber); border-color:var(--amber-dim); background:var(--amber-dim);">P1</span>
+              <span class="issue-pill" style="color:var(--text-dim); border-color:var(--border); background:var(--bg2);">M</span>
+              <span class="issue-pill" style="color:var(--amber); border-color:var(--amber-dim); background:var(--amber-dim);">blocked</span>
+            </div>
+          </div>
+          <div class="issue-title">CommandParser + ComplexityEstimator</div>
+          <div class="issue-meta"><span class="issue-pill" style="color:var(--cyan); border-color:var(--cyan-dim); background:var(--cyan-dim);">feat(commands)</span></div>
+          <div class="issue-blocker">Blocked by #152</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Parallel -->
+    <div>
+      <div style="font-family:var(--font-mono); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:2px; color:var(--emerald); margin-bottom:12px; display:flex; align-items:center; gap:8px;">
+        <span style="width:8px; height:8px; border-radius:50%; background:var(--emerald); display:inline-block; box-shadow:0 0 6px var(--emerald);"></span>
+        Parallel Track (P1, no dependency)
+      </div>
+      <div style="display:flex; align-items:stretch; gap:16px; flex-wrap:wrap;">
+        <div class="issue-chip" style="border-left:3px solid var(--emerald); min-width:220px; max-width:340px; background:linear-gradient(135deg, var(--surface) 0%, rgba(52,211,153,0.04) 100%);">
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <div class="issue-number">#83</div>
+            <div style="display:flex; gap:4px;">
+              <span class="issue-pill" style="color:var(--amber); border-color:var(--amber-dim); background:var(--amber-dim);">P1</span>
+              <span class="issue-pill" style="color:var(--text-dim); border-color:var(--border); background:var(--bg2);">M</span>
+            </div>
+          </div>
+          <div class="issue-title">Memory Isolation + Full MemoryEntry Schema</div>
+          <div class="issue-meta"><span class="issue-pill" style="color:var(--emerald); border-color:var(--emerald-dim); background:var(--emerald-dim);">feat(memory)</span></div>
+          <div class="issue-blocker">Independent — run parallel with #151→#152→#153</div>
+          <div style="margin-top:8px; font-size:11px; color:var(--text-dim); line-height:1.6;">MemoryEntry metadata schema · strict SQL user_id isolation · count_usage/count_edits · TTL auto-purge L1/L2 · stats endpoint</div>
+        </div>
+
+        <div style="flex:1; min-width:200px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:18px 20px; display:flex; flex-direction:column; justify-content:center; gap:12px;">
+          <div style="font-family:var(--font-mono); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:2px; color:var(--text-muted);">Execution order</div>
+          <div style="display:flex; align-items:center; gap:8px; font-size:12px;">
+            <span style="font-family:var(--font-mono); color:var(--rose);">#151</span>
+            <span style="color:var(--text-muted);">→</span>
+            <span style="font-family:var(--font-mono); color:var(--indigo);">#152</span>
+            <span style="color:var(--text-muted);">→</span>
+            <span style="font-family:var(--font-mono); color:var(--cyan);">#153</span>
+          </div>
+          <div style="height:1px; background:var(--border);"></div>
+          <div style="display:flex; align-items:center; gap:8px; font-size:12px;">
+            <span style="font-family:var(--font-mono); color:var(--emerald);">#83</span>
+            <span style="color:var(--text-muted); font-size:11px;">parallel, no dependency</span>
+          </div>
+          <div style="padding:10px 12px; background:var(--bg2); border-radius:8px; border:1px solid var(--border); font-size:11px; color:var(--text-muted); line-height:1.6;">
+            <span style="color:var(--amber);">⚠</span> #151 is the prerequisite for everything — <code style="font-family:var(--font-mono); color:var(--rose);">TrustLevel</code> is stamped on every <code style="font-family:var(--font-mono); color:var(--cyan);">Message</code> and consumed by all downstream components.
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════ §7 — PHASES ════════════════════════ -->
+  <section class="section">
+    <div class="section-header">
+      <span class="section-num">07</span>
+      <div>
+        <div class="section-title">Phase Roadmap</div>
+        <div class="section-desc">From stable hub to cognitive multi-agent system</div>
+      </div>
+    </div>
+    <div class="grid-3">
+      <div class="ve-card ve-card--glow-emerald" style="border-top:3px solid var(--emerald);">
+        <div class="ve-card__label ve-card__label--emerald">Phase 1 — In Progress</div>
+        <div class="ve-card__title">Stable Hub</div>
+        <div style="display:flex; flex-direction:column; gap:6px; margin-top:12px;">
+          <div style="display:flex; gap:8px; font-size:12px; color:var(--text-dim);"><span style="color:var(--emerald); flex-shrink:0;">✓</span>asyncio bus + bounded queue</div>
+          <div style="display:flex; gap:8px; font-size:12px; color:var(--text-dim);"><span style="color:var(--emerald); flex-shrink:0;">✓</span>Telegram adapter (migrated)</div>
+          <div style="display:flex; gap:8px; font-size:12px; color:var(--text-dim);"><span style="color:var(--amber); flex-shrink:0;">→</span>AuthMiddleware #151</div>
+          <div style="display:flex; gap:8px; font-size:12px; color:var(--text-dim);"><span style="color:var(--amber); flex-shrink:0;">→</span>RoutingContext #152</div>
+          <div style="display:flex; gap:8px; font-size:12px; color:var(--text-dim);"><span style="color:var(--amber); flex-shrink:0;">→</span>Memory isolation #83</div>
+          <div style="display:flex; gap:8px; font-size:12px; color:var(--text-dim);"><span style="color:var(--text-muted); flex-shrink:0;">○</span>CommandParser #153</div>
+        </div>
+      </div>
+      <div class="ve-card" style="border-top:3px solid var(--violet);">
+        <div class="ve-card__label ve-card__label--violet">Phase 2 — Planned</div>
+        <div class="ve-card__title">Atomic SLMs</div>
+        <div style="display:flex; flex-direction:column; gap:6px; margin-top:12px;">
+          <div style="display:flex; gap:8px; font-size:12px; color:var(--text-dim);"><span style="color:var(--text-muted); flex-shrink:0;">○</span>Routing/intent SLM ~1-3B (&lt;50ms)</div>
+          <div style="display:flex; gap:8px; font-size:12px; color:var(--text-dim);"><span style="color:var(--text-muted); flex-shrink:0;">○</span>Memory relevance scorer ~1B (&lt;30ms)</div>
+          <div style="display:flex; gap:8px; font-size:12px; color:var(--text-dim);"><span style="color:var(--text-muted); flex-shrink:0;">○</span>Entity extraction NER ~3B</div>
+          <div style="display:flex; gap:8px; font-size:12px; color:var(--text-dim);"><span style="color:var(--text-muted); flex-shrink:0;">○</span>CognitiveFrame meta-language</div>
+          <div style="display:flex; gap:8px; font-size:12px; color:var(--text-dim);"><span style="color:var(--text-muted); flex-shrink:0;">○</span>Machine 2 fallback + circuit breaker</div>
+        </div>
+      </div>
+      <div class="ve-card" style="border-top:3px solid var(--cyan);">
+        <div class="ve-card__label ve-card__label--cyan">Phase 3 — Future</div>
+        <div class="ve-card__title">Advanced Features</div>
+        <div style="display:flex; flex-direction:column; gap:6px; margin-top:12px;">
+          <div style="display:flex; gap:8px; font-size:12px; color:var(--text-dim);"><span style="color:var(--text-muted); flex-shrink:0;">○</span>Hash-chained audit trail</div>
+          <div style="display:flex; gap:8px; font-size:12px; color:var(--text-dim);"><span style="color:var(--text-muted); flex-shrink:0;">○</span>Knowledge graph (networkx / kuzu)</div>
+          <div style="display:flex; gap:8px; font-size:12px; color:var(--text-dim);"><span style="color:var(--text-muted); flex-shrink:0;">○</span>Discord adapter (WebSocket)</div>
+          <div style="display:flex; gap:8px; font-size:12px; color:var(--text-dim);"><span style="color:var(--text-muted); flex-shrink:0;">○</span>HTTP adapter (FastAPI endpoint)</div>
+          <div style="display:flex; gap:8px; font-size:12px; color:var(--text-dim);"><span style="color:var(--text-muted); flex-shrink:0;">○</span>Sub-agent ReAct pattern</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  </div><!-- /tab-1 -->
+
+  <!-- ═══════════ TAB 2 — ARCHITECTURE MAP ═══════════════════ -->
+  <div id="tab-2" class="tab-panel">
+    <div style="margin-bottom:20px;">
+      <div style="font-family:var(--font-display); font-size:22px; font-weight:600; color:var(--text); letter-spacing:-0.5px; margin-bottom:6px;">Architecture Map</div>
+      <div style="font-size:13px; color:var(--text-dim);">All modules, adapters, wrappers, and memory levels — complete component diagram</div>
+    </div>
+    <div class="diagram-wrap">
+      <svg viewBox="0 0 1060 912" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;">
+        <defs>
+          <marker id="ac" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#22d3ee"/></marker>
+          <marker id="av" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#a78bfa"/></marker>
+          <marker id="ae" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#34d399"/></marker>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#fb7185"/></marker>
+          <marker id="aa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#fbbf24"/></marker>
+          <marker id="ai" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#818cf8"/></marker>
+          <pattern id="dots" x="0" y="0" width="28" height="28" patternUnits="userSpaceOnUse">
+            <circle cx="0.5" cy="0.5" r="0.8" fill="rgba(255,255,255,0.035)"/>
+          </pattern>
+          <style type="text/css">
+            @keyframes svgfl { from{stroke-dashoffset:20} to{stroke-dashoffset:0} }
+            .fl{stroke-dasharray:6 4;animation:svgfl 1.4s linear infinite}
+            .fl2{stroke-dasharray:6 4;animation:svgfl 2.1s linear infinite}
+          </style>
+        </defs>
+
+        <!-- Background -->
+        <rect width="1060" height="912" fill="#070c18"/>
+        <rect width="1060" height="912" fill="url(#dots)"/>
+        <ellipse cx="530" cy="440" rx="380" ry="320" fill="rgba(34,211,238,0.025)"/>
+
+        <!-- ═══ EXTERNAL CHANNELS (y=20..72) ═══════════════════ -->
+        <text x="45" y="14" font-family="Space Mono,monospace" font-size="8.5" font-weight="700" fill="#3d4f6b" letter-spacing="1.5">EXTERNAL CHANNELS</text>
+        <!-- Telegram -->
+        <rect x="75" y="20" width="170" height="52" rx="6" fill="#0d1f38" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="160" y="40" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="13" font-weight="600" fill="#22d3ee">Telegram</text>
+        <text x="160" y="57" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#3d5a7a">polling · webhook</text>
+        <!-- Discord -->
+        <rect x="305" y="20" width="170" height="52" rx="6" fill="#0d1f38" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="390" y="40" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="13" font-weight="600" fill="#22d3ee">Discord</text>
+        <text x="390" y="57" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#3d5a7a">gateway WebSocket</text>
+        <!-- CLI -->
+        <rect x="545" y="20" width="130" height="52" rx="6" fill="#0d1f38" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="610" y="40" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="13" font-weight="600" fill="#22d3ee">CLI</text>
+        <text x="610" y="57" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#3d5a7a">stdin · stdout</text>
+        <!-- HTTP future -->
+        <rect x="745" y="20" width="170" height="52" rx="6" fill="#0d1f38" stroke="#22d3ee" stroke-width="1.5" opacity="0.32"/>
+        <text x="830" y="40" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="13" font-weight="600" fill="#22d3ee" opacity="0.32">HTTP</text>
+        <text x="830" y="57" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#3d5a7a" opacity="0.32">FastAPI · future</text>
+
+        <!-- Arrows: Channels → Adapters -->
+        <line x1="160" y1="72" x2="157" y2="105" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#ac)" class="fl"/>
+        <line x1="390" y1="72" x2="392" y2="105" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#ac)" class="fl" style="animation-delay:.3s"/>
+        <line x1="610" y1="72" x2="612" y2="105" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#ac)" class="fl" style="animation-delay:.6s"/>
+        <line x1="830" y1="72" x2="820" y2="105" stroke="#22d3ee" stroke-width="1" marker-end="url(#ac)" opacity="0.3" class="fl" style="animation-delay:.9s"/>
+
+        <!-- ═══ CHANNEL ADAPTERS (y=105..220) ═══════════════════ -->
+        <text x="45" y="100" font-family="Space Mono,monospace" font-size="8.5" font-weight="700" fill="#3d4f6b" letter-spacing="1.5">CHANNEL ADAPTERS · normalize() · format()</text>
+        <!-- TelegramAdapter -->
+        <rect x="45" y="105" width="225" height="115" rx="8" fill="#111827" stroke="#22d3ee" stroke-width="1"/>
+        <text x="157" y="124" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" font-weight="700" fill="#22d3ee" letter-spacing="1">ADAPTER</text>
+        <text x="157" y="142" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="14" font-weight="600" fill="#e2e8f0">TelegramAdapter</text>
+        <text x="157" y="160" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#34d399">normalize(update) → Message</text>
+        <text x="157" y="176" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#34d399">format(Response) → send()</text>
+        <text x="157" y="194" text-anchor="middle" font-family="Space Mono,monospace" font-size="8.5" fill="#3d5a7a">aiogram v3 · inbound_queue</text>
+        <text x="157" y="213" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" fill="#4a5568">AuthMiddleware.check() here</text>
+        <!-- DiscordAdapter -->
+        <rect x="280" y="105" width="225" height="115" rx="8" fill="#111827" stroke="#22d3ee" stroke-width="1"/>
+        <text x="392" y="124" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" font-weight="700" fill="#22d3ee" letter-spacing="1">ADAPTER</text>
+        <text x="392" y="142" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="14" font-weight="600" fill="#e2e8f0">DiscordAdapter</text>
+        <text x="392" y="160" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#34d399">normalize(event) → Message</text>
+        <text x="392" y="176" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#34d399">format(Response) → send()</text>
+        <text x="392" y="194" text-anchor="middle" font-family="Space Mono,monospace" font-size="8.5" fill="#3d5a7a">discord.py v2 · on_message</text>
+        <text x="392" y="213" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" fill="#4a5568">AuthMiddleware.check() here</text>
+        <!-- CLIAdapter -->
+        <rect x="515" y="105" width="195" height="115" rx="8" fill="#111827" stroke="#22d3ee" stroke-width="1"/>
+        <text x="612" y="124" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" font-weight="700" fill="#22d3ee" letter-spacing="1">ADAPTER</text>
+        <text x="612" y="142" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="14" font-weight="600" fill="#e2e8f0">CLIAdapter</text>
+        <text x="612" y="160" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#34d399">normalize(stdin) → Message</text>
+        <text x="612" y="176" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#34d399">format(stdout)</text>
+        <text x="612" y="194" text-anchor="middle" font-family="Space Mono,monospace" font-size="8.5" fill="#fbbf24">TrustLevel.OWNER by default</text>
+        <!-- HTTPAdapter future -->
+        <rect x="720" y="105" width="210" height="115" rx="8" fill="#111827" stroke="#22d3ee" stroke-width="1" opacity="0.32"/>
+        <text x="825" y="124" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" font-weight="700" fill="#22d3ee" letter-spacing="1" opacity="0.32">ADAPTER · FUTURE</text>
+        <text x="825" y="142" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="14" font-weight="600" fill="#e2e8f0" opacity="0.32">HTTPAdapter</text>
+        <text x="825" y="160" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#34d399" opacity="0.32">normalize(request)</text>
+        <text x="825" y="176" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#34d399" opacity="0.32">format(Response)</text>
+        <text x="825" y="194" text-anchor="middle" font-family="Space Mono,monospace" font-size="8.5" fill="#3d5a7a" opacity="0.32">FastAPI + uvicorn</text>
+
+        <!-- Arrows: Adapters → Auth -->
+        <line x1="157" y1="220" x2="157" y2="252" stroke="#fb7185" stroke-width="1.5" marker-end="url(#ar)" class="fl"/>
+        <line x1="392" y1="220" x2="392" y2="252" stroke="#fb7185" stroke-width="1.5" marker-end="url(#ar)" class="fl" style="animation-delay:.3s"/>
+        <line x1="612" y1="220" x2="612" y2="252" stroke="#fb7185" stroke-width="1.5" marker-end="url(#ar)" class="fl" style="animation-delay:.6s"/>
+        <line x1="825" y1="220" x2="825" y2="252" stroke="#fb7185" stroke-width="1" marker-end="url(#ar)" opacity="0.3" class="fl" style="animation-delay:.9s"/>
+
+        <!-- ═══ AUTH MIDDLEWARE (y=252..296) ═══════════════════ -->
+        <text x="45" y="247" font-family="Space Mono,monospace" font-size="8.5" font-weight="700" fill="#fb7185" letter-spacing="1.5">SECURITY LAYER · before Bus</text>
+        <rect x="45" y="252" width="925" height="44" rx="8" fill="#1a0a0e" stroke="#fb7185" stroke-width="1.5"/>
+        <text x="507" y="272" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="13" font-weight="600" fill="#fb7185">AuthMiddleware</text>
+        <text x="507" y="288" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#6b3040">check(user_id) → TrustLevel  ·  OWNER · TRUSTED · PUBLIC</text>
+        <!-- BLOCKED side exit -->
+        <path d="M970,274 L1010,274" stroke="#fb7185" stroke-width="1" stroke-dasharray="3 3" marker-end="url(#ar)"/>
+        <text x="1016" y="271" font-family="Space Mono,monospace" font-size="8.5" fill="#fb7185" font-weight="700">✗ BLOCKED</text>
+        <text x="1016" y="284" font-family="Space Mono,monospace" font-size="8" fill="#4b2030">silent drop</text>
+
+        <!-- Arrow: Auth → Bus -->
+        <line x1="507" y1="296" x2="507" y2="332" stroke="#a78bfa" stroke-width="2" marker-end="url(#av)" class="fl"/>
+
+        <!-- ═══ MESSAGE BUS (y=332..372) ═══════════════════════ -->
+        <text x="45" y="327" font-family="Space Mono,monospace" font-size="8.5" font-weight="700" fill="#a78bfa" letter-spacing="1.5">MESSAGE BUS</text>
+        <rect x="45" y="332" width="925" height="40" rx="8" fill="#130e1d" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="507" y="350" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="13" font-weight="600" fill="#a78bfa">Bus</text>
+        <text x="507" y="365" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#5a4a7a">asyncio.Queue(maxsize=100)  ·  inbound / outbound  ·  backpressure: immediate ack + await put()</text>
+
+        <!-- Arrow: Bus → Router -->
+        <line x1="507" y1="372" x2="507" y2="408" stroke="#818cf8" stroke-width="2" marker-end="url(#ai)" class="fl"/>
+
+        <!-- ═══ ROUTING ENGINE (y=408..513) ══════════════════ -->
+        <text x="45" y="403" font-family="Space Mono,monospace" font-size="8.5" font-weight="700" fill="#818cf8" letter-spacing="1.5">ROUTING ENGINE</text>
+        <!-- Router -->
+        <rect x="45" y="408" width="295" height="105" rx="8" fill="#111827" stroke="#818cf8" stroke-width="1"/>
+        <text x="192" y="427" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" font-weight="700" fill="#818cf8" letter-spacing="1">ROUTER</text>
+        <text x="192" y="445" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="13" font-weight="600" fill="#e2e8f0">Router</text>
+        <text x="192" y="463" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#6b7a99">bindings: dict</text>
+        <text x="192" y="479" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#6b7a99">(ch, user_id) → (agent, pool)</text>
+        <text x="192" y="498" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#3d5a7a">lookup → session → default</text>
+        <!-- CommandParser -->
+        <rect x="360" y="408" width="295" height="105" rx="8" fill="#111827" stroke="#818cf8" stroke-width="1"/>
+        <text x="507" y="427" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" font-weight="700" fill="#818cf8" letter-spacing="1">COMMAND PARSER</text>
+        <text x="507" y="445" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="13" font-weight="600" fill="#e2e8f0">CommandParser</text>
+        <text x="507" y="463" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#6b7a99">prefixes: "/" and "!"</text>
+        <text x="507" y="479" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#6b7a99">/imagine → image_pool</text>
+        <text x="507" y="496" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#3d5a7a">/config /help /voice /doc</text>
+        <!-- ComplexityEstimator -->
+        <rect x="675" y="408" width="295" height="105" rx="8" fill="#111827" stroke="#818cf8" stroke-width="1"/>
+        <text x="822" y="427" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" font-weight="700" fill="#818cf8" letter-spacing="1">COMPLEXITY ESTIMATOR</text>
+        <text x="822" y="445" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="13" font-weight="600" fill="#e2e8f0">ComplexityEstimator</text>
+        <text x="822" y="463" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#6b7a99">score 6 signals → LOW/MED/HIGH</text>
+        <text x="822" y="479" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#34d399">LOW  → claude-haiku-4-5</text>
+        <text x="822" y="495" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#22d3ee">MED  → claude-sonnet-4-6</text>
+        <text x="822" y="511" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#a78bfa">HIGH → claude-opus-4-6</text>
+
+        <!-- Fork: Router → Pools (stem + bar + drops) -->
+        <line x1="507" y1="513" x2="507" y2="530" stroke="#fbbf24" stroke-width="1.5"/>
+        <line x1="153" y1="530" x2="861" y2="530" stroke="#fbbf24" stroke-width="1.5"/>
+        <line x1="153" y1="530" x2="153" y2="548" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#aa)"/>
+        <line x1="385" y1="530" x2="385" y2="548" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#aa)"/>
+        <line x1="617" y1="530" x2="617" y2="548" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#aa)"/>
+        <line x1="861" y1="530" x2="861" y2="548" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#aa)"/>
+
+        <!-- ═══ AGENT POOLS (y=548..658) ══════════════════════ -->
+        <text x="45" y="543" font-family="Space Mono,monospace" font-size="8.5" font-weight="700" fill="#fbbf24" letter-spacing="1.5">AGENT POOLS · asyncio.Lock per pool_id · parallel across sessions</text>
+        <!-- Pool: lyra -->
+        <rect x="45" y="548" width="217" height="110" rx="8" fill="#14120a" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="153" y="566" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" font-weight="700" fill="#fbbf24" letter-spacing="1">POOL · DEFAULT</text>
+        <text x="153" y="584" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="14" font-weight="600" fill="#e2e8f0">lyra</text>
+        <text x="153" y="602" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#6b7a99">AgentIdentity: Lyra</text>
+        <text x="153" y="618" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#6b7a99">tools: all · memory: all</text>
+        <text x="153" y="634" text-anchor="middle" font-family="Space Mono,monospace" font-size="8.5" fill="#3d5a7a">telegram · discord · cli</text>
+        <text x="153" y="650" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" fill="#4a5568">🔒 asyncio.Lock</text>
+        <!-- Pool: image -->
+        <rect x="277" y="548" width="217" height="110" rx="8" fill="#14120a" stroke="#fbbf24" stroke-width="1"/>
+        <text x="385" y="566" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" font-weight="700" fill="#fbbf24" letter-spacing="1">POOL · IMAGE</text>
+        <text x="385" y="584" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="14" font-weight="600" fill="#e2e8f0">image_agent</text>
+        <text x="385" y="602" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#6b7a99">tools: /imagine</text>
+        <text x="385" y="618" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#6b7a99">ImageCLI · VoiceCLI</text>
+        <text x="385" y="634" text-anchor="middle" font-family="Space Mono,monospace" font-size="8.5" fill="#3d5a7a">TRUSTED+</text>
+        <text x="385" y="650" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" fill="#4a5568">🔒 asyncio.Lock</text>
+        <!-- Pool: admin -->
+        <rect x="509" y="548" width="217" height="110" rx="8" fill="#14120a" stroke="#fbbf24" stroke-width="1"/>
+        <text x="617" y="566" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" font-weight="700" fill="#fbbf24" letter-spacing="1">POOL · ADMIN</text>
+        <text x="617" y="584" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="14" font-weight="600" fill="#e2e8f0">admin_agent</text>
+        <text x="617" y="602" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#6b7a99">tools: /config · /reset</text>
+        <text x="617" y="618" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#6b7a99">system control</text>
+        <text x="617" y="634" text-anchor="middle" font-family="Space Mono,monospace" font-size="8.5" fill="#fbbf24">OWNER only</text>
+        <text x="617" y="650" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" fill="#4a5568">🔒 asyncio.Lock</text>
+        <!-- Pool: voice -->
+        <rect x="741" y="548" width="229" height="110" rx="8" fill="#14120a" stroke="#fbbf24" stroke-width="1"/>
+        <text x="855" y="566" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" font-weight="700" fill="#fbbf24" letter-spacing="1">POOL · VOICE</text>
+        <text x="855" y="584" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="14" font-weight="600" fill="#e2e8f0">voice_pool</text>
+        <text x="855" y="602" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#6b7a99">tools: /voice · TTS</text>
+        <text x="855" y="618" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#6b7a99">VoiceCLI subprocess</text>
+        <text x="855" y="634" text-anchor="middle" font-family="Space Mono,monospace" font-size="8.5" fill="#3d5a7a">CWD: ~/projects/voiceCLI/</text>
+        <text x="855" y="650" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" fill="#4a5568">🔒 asyncio.Lock</text>
+
+        <!-- Tool forwarding annotation -->
+        <rect x="982" y="548" width="72" height="110" rx="6" fill="#111827" stroke="#fbbf24" stroke-width="1" stroke-dasharray="3 3"/>
+        <text x="1018" y="566" text-anchor="middle" font-family="Space Mono,monospace" font-size="7.5" fill="#fbbf24" letter-spacing="0.5">TOOL FWD</text>
+        <text x="1018" y="581" text-anchor="middle" font-family="Space Mono,monospace" font-size="7.5" fill="#6b7a99">AskUser</text>
+        <text x="1018" y="594" text-anchor="middle" font-family="Space Mono,monospace" font-size="7.5" fill="#6b7a99">Question</text>
+        <text x="1018" y="610" text-anchor="middle" font-family="Space Mono,monospace" font-size="7" fill="#3d5a7a">→ forward</text>
+        <text x="1018" y="623" text-anchor="middle" font-family="Space Mono,monospace" font-size="7" fill="#3d5a7a">→ user reply</text>
+        <text x="1018" y="636" text-anchor="middle" font-family="Space Mono,monospace" font-size="7" fill="#3d5a7a">→ same sess</text>
+        <text x="1018" y="651" text-anchor="middle" font-family="Space Mono,monospace" font-size="7" fill="#fbbf24">Lock held ↻</text>
+        <line x1="970" y1="600" x2="982" y2="600" stroke="#fbbf24" stroke-width="1" stroke-dasharray="2 2"/>
+
+        <!-- Arrows: Pools → Backends (straight vertical, each pool above its backend group) -->
+        <!-- lyra → LLM (lands in LLM frame x=45..425) -->
+        <line x1="153" y1="658" x2="153" y2="693" stroke="#34d399" stroke-width="1.5" marker-end="url(#ae)" class="fl2"/>
+        <!-- image → LLM -->
+        <line x1="385" y1="658" x2="280" y2="693" stroke="#34d399" stroke-width="1.5" marker-end="url(#ae)" class="fl2" style="animation-delay:.5s"/>
+        <!-- admin → MemManager (x=440..640) -->
+        <line x1="617" y1="658" x2="540" y2="693" stroke="#34d399" stroke-width="1.5" marker-end="url(#ae)" class="fl2" style="animation-delay:.2s"/>
+        <!-- Return arrow MemManager → pools (read context) -->
+        <line x1="510" y1="693" x2="510" y2="663" stroke="#34d399" stroke-width="1" stroke-dasharray="3 3" marker-end="url(#ae)"/>
+        <!-- voice → CLI wrappers -->
+        <line x1="855" y1="658" x2="855" y2="693" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#ac)" class="fl2" style="animation-delay:.7s"/>
+
+        <!-- ═══ BACKENDS (y=693..798) ══════════════════════════ -->
+        <text x="45" y="688" font-family="Space Mono,monospace" font-size="8.5" font-weight="700" fill="#3d4f6b" letter-spacing="1.5">BACKENDS</text>
+
+        <!-- LLM Wrappers frame -->
+        <rect x="45" y="693" width="380" height="105" rx="8" fill="none" stroke="#34d399" stroke-width="1" stroke-dasharray="5 3"/>
+        <text x="235" y="709" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" font-weight="700" fill="#34d399" letter-spacing="1">LLM WRAPPERS</text>
+        <!-- AnthropicWrapper -->
+        <rect x="55" y="713" width="175" height="75" rx="6" fill="#0f1e13" stroke="#34d399" stroke-width="1"/>
+        <text x="142" y="730" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" fill="#34d399" letter-spacing="0.5">CLOUD · PRIMARY</text>
+        <text x="142" y="748" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="13" font-weight="600" fill="#e2e8f0">AnthropicWrapper</text>
+        <text x="142" y="765" text-anchor="middle" font-family="Space Mono,monospace" font-size="8.5" fill="#6b7a99">claude-sonnet-4-6</text>
+        <text x="142" y="781" text-anchor="middle" font-family="Space Mono,monospace" font-size="8.5" fill="#3d5a7a">streaming · tool_use</text>
+        <!-- Machine 2 dashed box -->
+        <rect x="237" y="707" width="182" height="90" rx="6" fill="rgba(167,139,250,0.04)" stroke="#a78bfa" stroke-width="1" stroke-dasharray="4 3"/>
+        <text x="328" y="718" text-anchor="middle" font-family="Space Mono,monospace" font-size="7.5" fill="#a78bfa" letter-spacing="0.5">MACHINE 2 · on-demand</text>
+        <!-- OllamaWrapper -->
+        <rect x="244" y="713" width="168" height="75" rx="6" fill="#0e0d1a" stroke="#a78bfa" stroke-width="1"/>
+        <text x="328" y="730" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" fill="#a78bfa" letter-spacing="0.5">LOCAL · FALLBACK</text>
+        <text x="328" y="748" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="13" font-weight="600" fill="#e2e8f0">OllamaWrapper</text>
+        <text x="328" y="765" text-anchor="middle" font-family="Space Mono,monospace" font-size="8.5" fill="#6b7a99">Qwen 14B · Gemma 27B</text>
+        <text x="328" y="781" text-anchor="middle" font-family="Space Mono,monospace" font-size="8.5" fill="#3d5a7a">OpenAI-compat /llm API</text>
+
+        <!-- MemoryManager center -->
+        <rect x="440" y="693" width="200" height="105" rx="8" fill="#0f1e16" stroke="#34d399" stroke-width="1.5"/>
+        <text x="540" y="712" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" font-weight="700" fill="#34d399" letter-spacing="1">MEMORY MANAGER</text>
+        <text x="540" y="730" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="13" font-weight="600" fill="#e2e8f0">MemoryManager</text>
+        <text x="540" y="748" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#34d399">retrieve(user_id, query)</text>
+        <text x="540" y="764" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#34d399">write(user_id, content)</text>
+        <text x="540" y="780" text-anchor="middle" font-family="Space Mono,monospace" font-size="8.5" fill="#3d5a7a">strict user_id isolation</text>
+        <text x="540" y="793" text-anchor="middle" font-family="Space Mono,monospace" font-size="8.5" fill="#3d5a7a">L1 read · L4 semantic search</text>
+
+        <!-- CLI Wrappers frame -->
+        <rect x="658" y="693" width="312" height="105" rx="8" fill="none" stroke="#22d3ee" stroke-width="1" stroke-dasharray="5 3"/>
+        <text x="814" y="709" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" font-weight="700" fill="#22d3ee" letter-spacing="1">CLI WRAPPERS</text>
+        <!-- VoiceCLIWrapper -->
+        <rect x="667" y="713" width="294" height="42" rx="6" fill="#0a1820" stroke="#22d3ee" stroke-width="1"/>
+        <text x="814" y="730" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="13" font-weight="600" fill="#e2e8f0">VoiceCLIWrapper</text>
+        <text x="814" y="748" text-anchor="middle" font-family="Space Mono,monospace" font-size="8.5" fill="#3d5a7a">voicecli --chunked  ·  CWD: ~/projects/voiceCLI/</text>
+        <!-- EmbeddingCLIWrapper future -->
+        <rect x="667" y="760" width="294" height="33" rx="6" fill="#0a1820" stroke="#22d3ee" stroke-width="1" opacity="0.4"/>
+        <text x="814" y="776" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="12" font-weight="600" fill="#e2e8f0" opacity="0.4">EmbeddingCLIWrapper</text>
+        <text x="814" y="789" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" fill="#3d5a7a" opacity="0.4">nomic-embed-text · future</text>
+
+        <!-- Arrows: MemManager → Memory levels (stem → bar → drops) -->
+        <line x1="540" y1="798" x2="540" y2="818" stroke="#34d399" stroke-width="1.5" class="fl2"/>
+        <line x1="132" y1="818" x2="880" y2="818" stroke="#34d399" stroke-width="1" stroke-dasharray="3 3"/>
+        <line x1="132" y1="818" x2="132" y2="835" stroke="#34d399" stroke-width="1" marker-end="url(#ae)"/>
+        <line x1="319" y1="818" x2="319" y2="835" stroke="#34d399" stroke-width="1" marker-end="url(#ae)" style="animation-delay:.2s"/>
+        <line x1="507" y1="818" x2="507" y2="835" stroke="#34d399" stroke-width="1" marker-end="url(#ae)" style="animation-delay:.4s"/>
+        <line x1="693" y1="818" x2="693" y2="835" stroke="#34d399" stroke-width="1" marker-end="url(#ae)" style="animation-delay:.6s"/>
+        <line x1="880" y1="818" x2="880" y2="835" stroke="#34d399" stroke-width="1" marker-end="url(#ae)" style="animation-delay:.8s"/>
+
+        <!-- ═══ MEMORY SYSTEM (y=835..907) ══════════════════ -->
+        <text x="45" y="830" font-family="Space Mono,monospace" font-size="8.5" font-weight="700" fill="#34d399" letter-spacing="1.5">MEMORY SYSTEM · WHERE user_id = :user_id on every L4 query</text>
+        <!-- L1 Working -->
+        <rect x="45" y="835" width="175" height="70" rx="6" fill="#111827" stroke="rgba(107,122,153,0.4)" stroke-width="1"/>
+        <text x="132" y="853" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" font-weight="700" fill="#6b7a99">L1 · WORKING</text>
+        <text x="132" y="871" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="12" font-weight="600" fill="#e2e8f0">Working Mem</text>
+        <text x="132" y="888" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" fill="#3d5a7a">Python dict · in-process</text>
+        <text x="132" y="900" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" fill="#3d5a7a">volatile · single turn</text>
+        <!-- L2 Session -->
+        <rect x="232" y="835" width="175" height="70" rx="6" fill="#111827" stroke="rgba(129,140,248,0.45)" stroke-width="1"/>
+        <text x="319" y="853" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" font-weight="700" fill="#818cf8">L2 · SESSION</text>
+        <text x="319" y="871" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="12" font-weight="600" fill="#e2e8f0">Session Mem</text>
+        <text x="319" y="888" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" fill="#3d5a7a">asyncio · (uid, sid)</text>
+        <text x="319" y="900" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" fill="#3d5a7a">TTL · session lifetime</text>
+        <!-- L3 Episodic -->
+        <rect x="419" y="835" width="176" height="70" rx="6" fill="#111827" stroke="rgba(34,211,238,0.4)" stroke-width="1"/>
+        <text x="507" y="853" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" font-weight="700" fill="#22d3ee">L3 · EPISODIC</text>
+        <text x="507" y="871" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="12" font-weight="600" fill="#e2e8f0">Episodic Mem</text>
+        <text x="507" y="888" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" fill="#3d5a7a">Markdown · {user_id}/</text>
+        <text x="507" y="900" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" fill="#3d5a7a">permanent · auditable</text>
+        <!-- L4 Semantic (highlight - primary) -->
+        <rect x="607" y="835" width="175" height="70" rx="6" fill="#0f1e16" stroke="rgba(52,211,153,0.6)" stroke-width="1.5"/>
+        <text x="694" y="853" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" font-weight="700" fill="#34d399">L4 · SEMANTIC</text>
+        <text x="694" y="871" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="12" font-weight="600" fill="#e2e8f0">Semantic Mem</text>
+        <text x="694" y="888" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" fill="#3d5a7a">SQLite + BM25 + sqlite-vec</text>
+        <text x="694" y="900" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" fill="#34d399">WHERE user_id = ?</text>
+        <!-- L5 Procedural -->
+        <rect x="794" y="835" width="176" height="70" rx="6" fill="#111827" stroke="rgba(251,191,36,0.4)" stroke-width="1"/>
+        <text x="882" y="853" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" font-weight="700" fill="#fbbf24">L5 · PROCEDURAL</text>
+        <text x="882" y="871" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="12" font-weight="600" fill="#e2e8f0">Procedural Mem</text>
+        <text x="882" y="888" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" fill="#3d5a7a">YAML/TOML + Python</text>
+        <text x="882" y="900" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" fill="#3d5a7a">skills/ · global · no user data</text>
+      </svg>
+    </div><!-- /diagram-wrap -->
+
+    <!-- Legend -->
+    <div style="margin-top:20px; display:flex; flex-wrap:wrap; gap:16px; padding:16px 20px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); font-family:var(--font-mono); font-size:11px;">
+      <div style="color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:1px; align-self:center;">Legend</div>
+      <div style="display:flex; align-items:center; gap:6px;"><span style="width:24px; height:2px; background:var(--cyan); display:inline-block;"></span><span style="color:var(--text-dim);">Channel flow (animated)</span></div>
+      <div style="display:flex; align-items:center; gap:6px;"><span style="width:24px; height:2px; background:var(--rose); display:inline-block;"></span><span style="color:var(--text-dim);">Security gate</span></div>
+      <div style="display:flex; align-items:center; gap:6px;"><span style="width:24px; height:2px; background:var(--violet); display:inline-block;"></span><span style="color:var(--text-dim);">Bus / core</span></div>
+      <div style="display:flex; align-items:center; gap:6px;"><span style="width:24px; height:2px; background:var(--amber); display:inline-block;"></span><span style="color:var(--text-dim);">Agent routing</span></div>
+      <div style="display:flex; align-items:center; gap:6px;"><span style="width:24px; height:2px; background:var(--emerald); display:inline-block;"></span><span style="color:var(--text-dim);">Memory read/write</span></div>
+      <div style="display:flex; align-items:center; gap:6px;"><span style="width:20px; height:2px; background:var(--violet); display:inline-block; opacity:0.5; border-top:1px dashed var(--violet);"></span><span style="color:var(--text-dim);">Machine 2 boundary (on-demand)</span></div>
+      <div style="display:flex; align-items:center; gap:6px;"><span style="color:var(--text-muted);">opacity: 30%</span><span style="color:var(--text-dim);">= planned / future</span></div>
+    </div>
+  </div><!-- /tab-2 -->
+
+  <!-- ═══════════════════ FOOTER ═════════════════════════════ -->
+  <div class="footer">
+    <div class="footer-left">Lyra Engine — Architecture Visual Explainer · 2026-03-12 · staging branch</div>
+    <div class="footer-right">
+      <span class="badge badge-emerald">engine-overview.md</span>
+      <span class="badge badge-cyan">security-routing.md</span>
+      <span class="badge badge-violet">ARCHITECTURE.md</span>
+    </div>
+  </div>
+
+</div>
+<script>
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(btn.dataset.tab).classList.add('active');
+    });
+  });
+</script>
+</body>
+</html>

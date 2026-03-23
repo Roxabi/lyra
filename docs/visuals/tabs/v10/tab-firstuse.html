@@ -1,0 +1,52 @@
+<div class="section">
+  <h2 class="sh"><span class="dot"></span>Sending your first message</h2>
+  <p>Open Telegram and message the bot associated with your <code>lyra_default</code> agent. Any text message starts a conversation. Lyra creates a Pool for your chat ID and assigns the configured agent.</p>
+  <div class="ib tip"><div class="ib-icon"></div><div class="ib-body">In a group chat, Lyra only responds to messages that mention the bot's @username or reply to one of its messages — it doesn't eavesdrop on all messages by default. Discord watch channels are the exception — see the Commands tab.</div></div>
+</div>
+
+<div class="section">
+  <h2 class="sh"><span class="dot"></span>Built-in session commands</h2>
+  <p>These work in any conversation regardless of which agent is active.</p>
+  <div class="tbl-wrap">
+    <table class="tbl">
+      <thead><tr><th>Command</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td>/new</td><td>Clear conversation history and start fresh</td></tr>
+        <tr><td>/add &lt;text&gt;</td><td>Append text to the system prompt for this session</td></tr>
+        <tr><td>/explain</td><td>Ask the agent to explain its last response in simpler terms</td></tr>
+        <tr><td>/summarize</td><td>Get a summary of the conversation so far</td></tr>
+        <tr><td>/status</td><td>Show current agent, model, tools, and circuit state</td></tr>
+        <tr><td>/help</td><td>List all available commands — split into Commands and Plugins sections</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="ib note"><div class="ib-icon"></div><div class="ib-body"><code>/add</code>, <code>/explain</code>, and <code>/summarize</code> are registered by <code>AnthropicAgent</code> only. They're not available for <code>SimpleAgent</code> (claude-cli backend) agents.</div></div>
+</div>
+
+<div class="section">
+  <h2 class="sh"><span class="dot"></span>Understanding the response lifecycle</h2>
+  <ol class="steps">
+    <li><div class="step-body"><span class="step-title">Message arrives at adapter</span>Telegram or Discord adapter receives the webhook / poll update and wraps it in an <code>InboundMessage</code>. Native platform commands are handled here before the message reaches Hub.</div></li>
+    <li><div class="step-body"><span class="step-title">InboundBus queues it</span>The adapter pushes to the platform's async queue. Each platform has one queue; backpressure is handled here.</div></li>
+    <li><div class="step-body"><span class="step-title">Hub dispatches to Pool</span>Hub looks up (or creates) the Pool for this scope_id. Pool holds the conversation history and circuit state.</div></li>
+    <li><div class="step-body"><span class="step-title">AgentBase hot-reload check</span>On every message, <code>_maybe_reload_config()</code> compares the cached <code>updated_at</code> string against AgentStore. If changed, config is rebuilt from the DB row — no restart needed. Then <code>_maybe_reload_plugins()</code> reloads extension commands if needed.</div></li>
+    <li><div class="step-body"><span class="step-title">Agent generates response</span>The agent calls the LLM API, runs tools, streams tokens back to adapters. Multi-turn tool use is handled transparently.</div></li>
+    <li><div class="step-body"><span class="step-title">OutboundDispatcher delivers</span>Response is queued in the per-bot outbound queue. Retries on transient failures. Circuit breaker opens after sustained errors.</div></li>
+  </ol>
+</div>
+
+<div class="section">
+  <h2 class="sh"><span class="dot"></span>Troubleshooting a silent bot</h2>
+  <div class="cb"><div class="cb-head"><span class="cb-lang">bash</span></div><pre># Check if daemons are running
+make lyra status
+
+# Tail live logs (stdout)
+make lyra logs
+
+# Check for errors
+make lyra errors
+
+# Verify agent is in DB
+lyra agent list
+lyra agent show lyra_default</pre></div>
+</div>

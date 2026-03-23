@@ -1,0 +1,143 @@
+<div class="panel-inner">
+
+  <div class="section">
+    <div class="sec-label sec-label--cyan">How Others Do It</div>
+
+    <div class="plat-grid">
+      <div class="plat-card plat-card--openai">
+        <div class="plat-name">OpenAI Voice Agents</div>
+        <div class="plat-pattern">Two separate instruction layers</div>
+        <div class="plat-arch">Agent instructions        Speech API
+├── identity             ├── voice: "alloy"
+├── demeanor             ├── model: "gpt-4o-mini-tts"
+├── tone                 └── instructions:
+├── enthusiasm                "accent, pacing,
+├── formality                  emotion, delivery"
+├── emotion level
+└── pacing</div>
+        <div class="plat-insight">Two <code>instructions</code> fields — one for agent reasoning, one for Speech API delivery. Personality is <strong>duplicated</strong> across both manually.</div>
+      </div>
+
+      <div class="plat-card plat-card--livekit">
+        <div class="plat-name">LiveKit Agents</div>
+        <div class="plat-pattern">OOP class separation</div>
+        <div class="plat-arch">Agent(                   AgentSession(
+  instructions="..."       vad=silero.VAD(),
+  tools=[...]              stt=STT("deepgram"),
+)                          llm=LLM("gpt-4.1"),
+                           tts=TTS("cartesia",
+                             voice="9626c31c")
+                         )</div>
+        <div class="plat-insight">Clean split: <code>Agent</code> = personality/logic, <code>AgentSession</code> = audio pipeline. Same agent reusable across different voice configs.</div>
+      </div>
+
+      <div class="plat-card plat-card--vapi">
+        <div class="plat-name">Vapi</div>
+        <div class="plat-pattern">Three-module orchestration</div>
+        <div class="plat-arch">Transcriber ←→ Model  ←→ Voice
+(STT config)    (LLM +     (TTS config)
+ provider        system      provider
+ language        prompt      voice ID
+ model           persona     speed
+                 guardrails)</div>
+        <div class="plat-insight">Personality lives entirely in LLM system prompt. Voice is a separate provider config. The orchestrator connects them but <strong>fields never cross</strong>.</div>
+      </div>
+
+      <div class="plat-card plat-card--elevenlabs">
+        <div class="plat-name">ElevenLabs Agents</div>
+        <div class="plat-pattern">System prompt + voice sliders</div>
+        <div class="plat-arch">System Prompt            Voice Config
+├── personality traits   ├── voice ID
+├── goals                ├── stability (0.3–0.85)
+├── guardrails           ├── similarity
+└── role definition      └── speed (0.9–1.1x)</div>
+        <div class="plat-insight">Personality is narrative text in the prompt. Voice is purely <strong>technical sliders</strong>. No shared fields.</div>
+      </div>
+
+      <div class="plat-card plat-card--retell">
+        <div class="plat-name">Retell AI</div>
+        <div class="plat-pattern">Sectioned dashboard config</div>
+        <div class="plat-arch">Global Prompt    Voice        Speech
+├── persona      ├── voice ID ├── responsiveness
+├── identity     ├── speed    ├── interruption
+├── guardrails   └── dynamic  ├── backchanneling
+└── behavior         speed    └── pronunciation</div>
+        <div class="plat-insight">Three distinct sections. Persona is prompt-only. Voice and Speech are separate technical configs.</div>
+      </div>
+
+      <div class="plat-card plat-card--sillytavern">
+        <div class="plat-name">SillyTavern</div>
+        <div class="plat-pattern">Complete store separation</div>
+        <div class="plat-arch">Character Card            TTS Extension
+├── name                  ├── voice mapping
+├── description              (per character)
+├── personality summary   └── provider settings
+├── scenario                 (in settings.json,
+└── example dialogues         NOT in card)</div>
+        <div class="plat-insight">Personality is purely narrative in the character card. TTS voice mapping lives in a <strong>completely separate store</strong>.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="sec-label sec-label--cyan">Comparative Matrix</div>
+
+    <div class="cmp-wrap">
+      <table class="cmp">
+        <thead>
+          <tr>
+            <th class="plat">Platform</th>
+            <th class="pers">Personality Store</th>
+            <th class="voic">Voice Store</th>
+            <th class="shar">Shared Fields?</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="plat" style="color:var(--green)">OpenAI</td>
+            <td>System prompt <code>instructions</code></td>
+            <td>Speech API <code>voice</code> + separate <code>instructions</code></td>
+            <td class="shar"><span class="badge badge--no">No</span></td>
+          </tr>
+          <tr>
+            <td class="plat" style="color:#818cf8">LiveKit</td>
+            <td><code>Agent(instructions=)</code></td>
+            <td><code>AgentSession(tts=)</code></td>
+            <td class="shar"><span class="badge badge--no">No</span></td>
+          </tr>
+          <tr>
+            <td class="plat" style="color:#f472b6">Vapi</td>
+            <td>LLM module system prompt</td>
+            <td>Voice module provider config</td>
+            <td class="shar"><span class="badge badge--no">No</span></td>
+          </tr>
+          <tr>
+            <td class="plat" style="color:var(--amber)">ElevenLabs</td>
+            <td>System prompt (narrative)</td>
+            <td>Voice ID + stability / similarity / speed</td>
+            <td class="shar"><span class="badge badge--no">No</span></td>
+          </tr>
+          <tr>
+            <td class="plat" style="color:var(--cyan)">Retell AI</td>
+            <td>Global Prompt section</td>
+            <td>Voice + Speech sections</td>
+            <td class="shar"><span class="badge badge--no">No</span></td>
+          </tr>
+          <tr>
+            <td class="plat" style="color:var(--core)">SillyTavern</td>
+            <td>Character card (text fields)</td>
+            <td>TTS extension (settings.json)</td>
+            <td class="shar"><span class="badge badge--no">No</span></td>
+          </tr>
+          <tr class="lyra-row">
+            <td class="plat" style="color:var(--core)">Lyra (proposed)</td>
+            <td>Core + LLM-only → system prompt</td>
+            <td>Core + Voice-only → TTS instruct</td>
+            <td class="shar"><span class="badge badge--novel">Novel</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>

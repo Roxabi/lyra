@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- diagram-meta:start -->
+  <meta name="diagram:title"     content="The Forge Flow → What We Steal for Lyra">
+  <meta name="diagram:date"      content="2026-03-21">
+  <meta name="diagram:category"  content="analysis">
+  <meta name="diagram:cat-label" content="Analysis">
+  <meta name="diagram:color"     content="purple">
+  <!-- diagram-meta:end -->
+  <title>The Forge Flow → What We Steal for Lyra</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --surface-2: #f1f5f9;
+      --border: rgba(0,0,0,0.08);
+      --border-bright: rgba(0,0,0,0.15);
+      --text: #0f172a;
+      --text-dim: #64748b;
+      --teal: #0d9488;
+      --teal-dim: rgba(13,148,136,0.09);
+      --emerald: #059669;
+      --emerald-dim: rgba(5,150,105,0.09);
+      --amber: #d97706;
+      --amber-dim: rgba(217,119,6,0.09);
+      --rose: #e11d48;
+      --rose-dim: rgba(225,29,72,0.08);
+      --slate: #475569;
+      --font-body: 'IBM Plex Sans', system-ui, sans-serif;
+      --font-mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0b0f18;
+        --surface: #131b27;
+        --surface-2: #1a2535;
+        --border: rgba(255,255,255,0.07);
+        --border-bright: rgba(255,255,255,0.13);
+        --text: #e2e8f0;
+        --text-dim: #94a3b8;
+        --teal: #14b8a6;
+        --teal-dim: rgba(20,184,166,0.12);
+        --emerald: #34d399;
+        --emerald-dim: rgba(52,211,153,0.12);
+        --amber: #fbbf24;
+        --amber-dim: rgba(251,191,36,0.12);
+        --rose: #fb7185;
+        --rose-dim: rgba(251,113,133,0.12);
+        --slate: #94a3b8;
+      }
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      background-image:
+        radial-gradient(at 10% 0%, var(--teal-dim) 0%, transparent 45%),
+        radial-gradient(at 90% 100%, var(--emerald-dim) 0%, transparent 45%);
+      color: var(--text);
+      font-family: var(--font-body);
+      line-height: 1.65;
+      min-height: 100vh;
+    }
+    .page { max-width: 1080px; margin: 0 auto; padding: 40px 24px 80px; }
+
+    /* ── Hero ── */
+    .hero {
+      padding: 52px 0 44px;
+      border-bottom: 2px solid var(--border);
+      margin-bottom: 48px;
+    }
+    .hero-kicker {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--teal-dim); border: 1px solid rgba(13,148,136,0.25);
+      border-radius: 20px; padding: 4px 14px; margin-bottom: 16px;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.1em;
+      text-transform: uppercase; color: var(--teal); font-family: var(--font-mono);
+    }
+    @media (prefers-color-scheme: dark) {
+      .hero-kicker { border-color: rgba(20,184,166,0.3); }
+    }
+    .hero h1 {
+      font-size: clamp(32px, 5vw, 56px); font-weight: 700; letter-spacing: -0.02em;
+      line-height: 1.1; margin-bottom: 14px; color: var(--text);
+    }
+    .hero h1 em { color: var(--teal); font-style: normal; }
+    .hero-sub { font-size: 16px; color: var(--text-dim); max-width: 600px; margin-bottom: 28px; }
+    .hero-counts {
+      display: flex; gap: 32px; flex-wrap: wrap;
+    }
+    .hero-count { display: flex; flex-direction: column; }
+    .hero-count-num { font-size: 28px; font-weight: 700; color: var(--teal); font-family: var(--font-mono); line-height: 1; }
+    .hero-count-label { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+
+    /* ── Sections ── */
+    .section { margin-bottom: 52px; }
+    .section-header {
+      display: flex; align-items: center; gap: 14px; margin-bottom: 20px;
+      padding-bottom: 14px; border-bottom: 1px solid var(--border);
+    }
+    .section-tier {
+      display: flex; align-items: center; justify-content: center;
+      width: 36px; height: 36px; border-radius: 10px;
+      font-size: 18px; flex-shrink: 0;
+    }
+    .section-header h2 { font-size: 22px; font-weight: 700; }
+    .section-header p { font-size: 13px; color: var(--text-dim); margin-top: 2px; }
+
+    /* ── Cards ── */
+    .pattern-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+    .pattern-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 22px 24px;
+      display: flex; flex-direction: column; gap: 14px;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .pattern-card:hover {
+      border-color: var(--border-bright);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+    }
+    @media (prefers-color-scheme: dark) {
+      .pattern-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+    }
+    .card-top { display: flex; align-items: flex-start; gap: 12px; }
+    .card-icon { font-size: 22px; flex-shrink: 0; line-height: 1.3; }
+    .card-title { font-size: 16px; font-weight: 700; margin-bottom: 2px; }
+    .card-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+
+    /* ── What/How split ── */
+    .wh-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .wh-box { background: var(--surface-2); border-radius: 8px; padding: 12px 14px; border: 1px solid var(--border); }
+    .wh-label { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; font-family: var(--font-mono); margin-bottom: 6px; }
+    .wh-text { font-size: 12px; color: var(--text-dim); line-height: 1.55; }
+    .wh-text strong { color: var(--text); font-weight: 600; }
+
+    /* ── Badges ── */
+    .badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 9px; border-radius: 5px;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.05em;
+      font-family: var(--font-mono); text-transform: uppercase;
+    }
+    .badge-emerald { background: var(--emerald-dim); color: var(--emerald); border: 1px solid rgba(5,150,105,0.2); }
+    .badge-amber   { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(217,119,6,0.2); }
+    .badge-rose    { background: var(--rose-dim); color: var(--rose); border: 1px solid rgba(225,29,72,0.2); }
+    .badge-teal    { background: var(--teal-dim); color: var(--teal); border: 1px solid rgba(13,148,136,0.2); }
+    .badge-slate   { background: rgba(71,85,105,0.09); color: var(--slate); border: 1px solid rgba(71,85,105,0.18); }
+    @media (prefers-color-scheme: dark) {
+      .badge-emerald { border-color: rgba(52,211,153,0.25); }
+      .badge-amber   { border-color: rgba(251,191,36,0.25); }
+      .badge-rose    { border-color: rgba(251,113,133,0.25); }
+      .badge-teal    { border-color: rgba(20,184,166,0.25); }
+    }
+
+    /* ── Project target tags ── */
+    .target-tag {
+      font-size: 11px; padding: 2px 8px; border-radius: 4px;
+      font-family: var(--font-mono); border: 1px solid var(--border);
+      color: var(--text-dim); background: var(--surface-2);
+    }
+
+    code {
+      font-family: var(--font-mono); font-size: 12px;
+      background: var(--surface-2); border: 1px solid var(--border-bright);
+      border-radius: 4px; padding: 1px 6px; color: var(--teal);
+    }
+
+    /* ── Summary matrix ── */
+    .matrix-wrap {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 14px; overflow: hidden;
+    }
+    table.matrix { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .matrix th {
+      text-align: left; padding: 11px 16px;
+      background: var(--surface-2); color: var(--text-dim);
+      font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
+      text-transform: uppercase; font-family: var(--font-mono);
+      border-bottom: 1px solid var(--border);
+    }
+    .matrix td { padding: 11px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    .matrix tr:last-child td { border-bottom: none; }
+    .matrix tr:hover td { background: rgba(0,0,0,0.02); }
+    @media (prefers-color-scheme: dark) {
+      .matrix tr:hover td { background: rgba(255,255,255,0.02); }
+    }
+    .matrix .pattern-name { font-weight: 600; }
+    .matrix .check { color: var(--emerald); font-size: 15px; }
+    .matrix .dot    { color: var(--text-dim); font-size: 15px; }
+
+    /* ── Snippet box ── */
+    .snippet {
+      background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 12px 14px;
+      font-family: var(--font-mono); font-size: 12px;
+      color: var(--text-dim); line-height: 1.7;
+    }
+    .snippet .k  { color: var(--teal); }
+    .snippet .v  { color: var(--amber); }
+    .snippet .c  { color: var(--text-dim); }
+    .snippet .s  { color: var(--emerald); }
+
+    /* ── Misc ── */
+    .mb-16 { margin-bottom: 16px; }
+    .mb-24 { margin-bottom: 24px; }
+    .section-label {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.12em;
+      text-transform: uppercase; color: var(--text-dim); font-family: var(--font-mono);
+      margin-bottom: 16px;
+    }
+    .section-label::before { content: '// '; color: var(--teal); }
+    .divider { height: 1px; background: var(--border); margin: 40px 0; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="hero-kicker">🔬 Competitive Analysis</div>
+    <h1>The Forge Flow →<br><em>What We Steal</em> for Lyra</h1>
+    <p class="hero-sub">TFF is a production-quality Claude Code plugin with smart orchestration patterns. Here's the full breakdown of what's worth adopting — mapped to effort and target project.</p>
+    <div class="hero-counts">
+      <div class="hero-count"><span class="hero-count-num">4</span><span class="hero-count-label">Quick wins (days)</span></div>
+      <div class="hero-count"><span class="hero-count-num">4</span><span class="hero-count-label">Strategic upgrades (weeks)</span></div>
+      <div class="hero-count"><span class="hero-count-num">2</span><span class="hero-count-label">Future investments (months)</span></div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════ -->
+  <!-- SECTION 1: QUICK WINS -->
+  <!-- ══════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-tier" style="background:var(--emerald-dim);">🟢</div>
+      <div>
+        <h2>Quick Wins</h2>
+        <p>Adopt as-is or with minor changes. No new tooling required — pure prompt/convention upgrades.</p>
+      </div>
+    </div>
+    <div class="pattern-grid">
+
+      <!-- 1. Agent Status Protocol -->
+      <div class="pattern-card" style="border-top:3px solid var(--emerald);">
+        <div class="card-top">
+          <div class="card-icon">📡</div>
+          <div>
+            <div class="card-title">Agent Status Protocol</div>
+            <div class="card-tags">
+              <span class="badge badge-emerald">quick win</span>
+              <span class="target-tag">dev-core</span>
+              <span class="target-tag">roxabi-plugins</span>
+            </div>
+          </div>
+        </div>
+        <div class="wh-grid">
+          <div class="wh-box">
+            <div class="wh-label" style="color:var(--text-dim);">TFF does</div>
+            <div class="wh-text">Every sub-agent MUST return one of: <strong>DONE</strong>, <strong>DONE_WITH_CONCERNS</strong>, <strong>NEEDS_CONTEXT</strong>, <strong>BLOCKED</strong>. The orchestrator branches on these — not on a guess.</div>
+          </div>
+          <div class="wh-box">
+            <div class="wh-label" style="color:var(--teal);">We adopt</div>
+            <div class="wh-text">Add the 4-status protocol to every dev-core sub-agent prompt. Orchestrator workflows (implement, code-review, fix) branch on the returned status explicitly.</div>
+          </div>
+        </div>
+        <div class="snippet">
+          <span class="k">DONE</span>          — criteria met, tests pass, files changed<br>
+          <span class="k">DONE_WITH_CONCERNS</span> — done but agent has doubts<br>
+          <span class="k">NEEDS_CONTEXT</span>  — missing info, re-dispatch with more<br>
+          <span class="k">BLOCKED</span>        — fundamental problem, escalate
+        </div>
+      </div>
+
+      <!-- 2. Self-Review Checklist -->
+      <div class="pattern-card" style="border-top:3px solid var(--emerald);">
+        <div class="card-top">
+          <div class="card-icon">✅</div>
+          <div>
+            <div class="card-title">Self-Review Checklist</div>
+            <div class="card-tags">
+              <span class="badge badge-emerald">quick win</span>
+              <span class="target-tag">dev-core agents</span>
+            </div>
+          </div>
+        </div>
+        <div class="wh-grid">
+          <div class="wh-box">
+            <div class="wh-label" style="color:var(--text-dim);">TFF does</div>
+            <div class="wh-text">Before reporting DONE, every agent mentally runs: <strong>Completeness</strong> (did I implement everything?), <strong>Quality</strong> (is this my best work?), <strong>Discipline</strong> (no overbuilding?), <strong>Verification</strong> (evidence, not assumptions).</div>
+          </div>
+          <div class="wh-box">
+            <div class="wh-label" style="color:var(--teal);">We adopt</div>
+            <div class="wh-text">Add the 4-axis checklist as a closing block in every dev-core agent definition: backend-dev, fixer, tester, frontend-dev. One short paragraph, big impact on output quality.</div>
+          </div>
+        </div>
+        <div class="snippet">
+          <span class="c">## Before reporting DONE, verify:</span><br>
+          <span class="k">Completeness:</span> <span class="s">all requirements met, edge cases handled</span><br>
+          <span class="k">Quality:</span>      <span class="s">clean, clear names, maintainable</span><br>
+          <span class="k">Discipline:</span>   <span class="s">YAGNI — only what was asked</span><br>
+          <span class="k">Verification:</span> <span class="s">evidence only — no "should work"</span>
+        </div>
+      </div>
+
+      <!-- 3. Skill = Knowledge / Agent = Role -->
+      <div class="pattern-card" style="border-top:3px solid var(--emerald);">
+        <div class="card-top">
+          <div class="card-icon">🧩</div>
+          <div>
+            <div class="card-title">Formalize the WHO / HOW Split</div>
+            <div class="card-tags">
+              <span class="badge badge-emerald">quick win</span>
+              <span class="target-tag">roxabi-plugins</span>
+              <span class="target-tag">docs</span>
+            </div>
+          </div>
+        </div>
+        <div class="wh-grid">
+          <div class="wh-box">
+            <div class="wh-label" style="color:var(--text-dim);">TFF does</div>
+            <div class="wh-text">TFF explicitly articulates: <strong>Skills = knowledge fragments</strong> teaching HOW. <strong>Agents = roles</strong> defining WHO does the work. These are orthogonal and independently composable.</div>
+          </div>
+          <div class="wh-box">
+            <div class="wh-label" style="color:var(--teal);">We adopt</div>
+            <div class="wh-text">Our plugin system already follows this but we haven't documented it. Add a "Skills vs Agents" section to roxabi-plugins README and marketplace.json. Makes onboarding faster.</div>
+          </div>
+        </div>
+        <div class="snippet">
+          <span class="c"># Skills teach HOW</span><br>
+          <span class="k">hexagonal-architecture</span>.md<br>
+          <span class="k">test-driven-development</span>.md<br><br>
+          <span class="c"># Agents define WHO</span><br>
+          <span class="k">backend-dev</span>   <span class="c">→ loads hexagonal + tdd skills</span><br>
+          <span class="k">tester</span>        <span class="c">→ loads tdd skill only</span>
+        </div>
+      </div>
+
+      <!-- 4. Skill Drafter Agent -->
+      <div class="pattern-card" style="border-top:3px solid var(--emerald);">
+        <div class="card-top">
+          <div class="card-icon">🛠️</div>
+          <div>
+            <div class="card-title">Skill Drafter + Detect-Patterns</div>
+            <div class="card-tags">
+              <span class="badge badge-emerald">quick win</span>
+              <span class="target-tag">roxabi-plugins</span>
+            </div>
+          </div>
+        </div>
+        <div class="wh-grid">
+          <div class="wh-box">
+            <div class="wh-label" style="color:var(--text-dim);">TFF does</div>
+            <div class="wh-text">Two dedicated commands: <code>/tff:suggest-skills</code> (AI analyzes completed work, proposes skill fragments) and <code>/tff:detect-patterns</code> (finds recurring code patterns worth extracting).</div>
+          </div>
+          <div class="wh-box">
+            <div class="wh-label" style="color:var(--teal);">We adopt</div>
+            <div class="wh-text">Add a <strong>tff-skill-drafter</strong>-style agent to dev-core. When a dev session uncovers a reusable pattern, the agent drafts a new skill TOML. Feeds our plugin ecosystem organically.</div>
+          </div>
+        </div>
+        <div class="snippet">
+          <span class="c"># After completing a feature:</span><br>
+          <span class="k">/suggest-skills</span><br>
+          <span class="c">→ agent analyzes commit diff</span><br>
+          <span class="c">→ identifies reusable fragments</span><br>
+          <span class="c">→ drafts skill .md in roxabi-plugins</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════ -->
+  <!-- SECTION 2: STRATEGIC UPGRADES -->
+  <!-- ══════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-tier" style="background:var(--amber-dim);">🟡</div>
+      <div>
+        <h2>Strategic Upgrades</h2>
+        <p>Requires design work and iteration but uses existing infrastructure. High leverage.</p>
+      </div>
+    </div>
+    <div class="pattern-grid">
+
+      <!-- 5. Wave Execution in dev-core:implement -->
+      <div class="pattern-card" style="border-top:3px solid var(--amber);">
+        <div class="card-top">
+          <div class="card-icon">〰️</div>
+          <div>
+            <div class="card-title">Wave Execution in dev-core:implement</div>
+            <div class="card-tags">
+              <span class="badge badge-amber">medium effort</span>
+              <span class="target-tag">dev-core:implement</span>
+              <span class="target-tag">dev-core:plan</span>
+            </div>
+          </div>
+        </div>
+        <div class="wh-grid">
+          <div class="wh-box">
+            <div class="wh-label" style="color:var(--text-dim);">TFF does</div>
+            <div class="wh-text">Tasks in a plan are topologically sorted. Dependencies are tracked explicitly. Independent tasks in each wave are dispatched to parallel agents. Checkpointed after every wave.</div>
+          </div>
+          <div class="wh-box">
+            <div class="wh-label" style="color:var(--teal);">We adopt</div>
+            <div class="wh-text">dev-core:plan should output a dependency graph. dev-core:implement should read it, compute waves, and spawn agents in parallel per wave. Currently we spawn sequentially.</div>
+          </div>
+        </div>
+        <div class="snippet">
+          <span class="c"># Plan output adds deps:</span><br>
+          <span class="k">T01:</span> <span class="s">deps=[]</span>  <span class="c">→ Wave 0</span><br>
+          <span class="k">T02:</span> <span class="s">deps=[]</span>  <span class="c">→ Wave 0 (parallel)</span><br>
+          <span class="k">T03:</span> <span class="s">deps=[T01,T02]</span> <span class="c">→ Wave 1</span><br>
+          <span class="k">T04:</span> <span class="s">deps=[T01]</span>   <span class="c">→ Wave 1 (parallel)</span>
+        </div>
+      </div>
+
+      <!-- 6. Spec-Reviewer Stage -->
+      <div class="pattern-card" style="border-top:3px solid var(--amber);">
+        <div class="card-top">
+          <div class="card-icon">🎯</div>
+          <div>
+            <div class="card-title">Spec-Reviewer Before Code-Reviewer</div>
+            <div class="card-tags">
+              <span class="badge badge-amber">medium effort</span>
+              <span class="target-tag">dev-core:code-review</span>
+              <span class="target-tag">dev-core:fix</span>
+            </div>
+          </div>
+        </div>
+        <div class="wh-grid">
+          <div class="wh-box">
+            <div class="wh-label" style="color:var(--text-dim);">TFF does</div>
+            <div class="wh-text">On <code>/tff:ship</code>, <strong>spec-reviewer</strong> runs first — checks every acceptance criterion against the actual code. Only if this passes does <strong>code-reviewer</strong> run for quality.</div>
+          </div>
+          <div class="wh-box">
+            <div class="wh-label" style="color:var(--teal);">We adopt</div>
+            <div class="wh-text">dev-core:code-review currently jumps straight to quality. Add a Stage 0 spec-compliance pass: reads acceptance criteria from the issue/spec, checks implementation. Saves wasted quality reviews on incomplete work.</div>
+          </div>
+        </div>
+        <div class="snippet">
+          <span class="c"># Updated /code-review flow:</span><br>
+          <span class="k">Stage 0:</span> <span class="s">spec-reviewer — criteria met?</span><br>
+          <span class="c">           ↓ if pass:</span><br>
+          <span class="k">Stage 1:</span> <span class="s">code-reviewer — quality</span><br>
+          <span class="k">Stage 2:</span> <span class="s">security-auditor (always)</span>
+        </div>
+      </div>
+
+      <!-- 7. Checkpoint Pattern -->
+      <div class="pattern-card" style="border-top:3px solid var(--amber);">
+        <div class="card-top">
+          <div class="card-icon">💾</div>
+          <div>
+            <div class="card-title">Checkpoint / Resume Pattern</div>
+            <div class="card-tags">
+              <span class="badge badge-amber">medium effort</span>
+              <span class="target-tag">dev-core:implement</span>
+              <span class="target-tag">dev-core:dev</span>
+            </div>
+          </div>
+        </div>
+        <div class="wh-grid">
+          <div class="wh-box">
+            <div class="wh-label" style="color:var(--text-dim);">TFF does</div>
+            <div class="wh-text">After each wave completes, TFF writes <code>CHECKPOINT.md</code> with: completed tasks, current wave, worktree state. <code>/tff:resume</code> reads it and continues exactly where it left off.</div>
+          </div>
+          <div class="wh-box">
+            <div class="wh-label" style="color:var(--teal);">We adopt</div>
+            <div class="wh-text">dev-core:implement and dev-core:dev should write <code>artifacts/checkpoint.md</code> after each significant step. Long sessions (F-full tier) can resume mid-implementation without losing context.</div>
+          </div>
+        </div>
+        <div class="snippet">
+          <span class="c"># artifacts/checkpoint.md</span><br>
+          <span class="k">session:</span>   <span class="s">2026-03-21T14:22</span><br>
+          <span class="k">issue:</span>     <span class="s">#42 — auth module</span><br>
+          <span class="k">wave:</span>      <span class="s">1 of 3</span><br>
+          <span class="k">completed:</span> <span class="s">[T01, T02]</span><br>
+          <span class="k">remaining:</span> <span class="s">[T03, T04, T05]</span>
+        </div>
+      </div>
+
+      <!-- 8. Orchestrator Anti-Patterns (formal doc) -->
+      <div class="pattern-card" style="border-top:3px solid var(--amber);">
+        <div class="card-top">
+          <div class="card-icon">🎭</div>
+          <div>
+            <div class="card-title">Orchestrator Pattern — Formalized</div>
+            <div class="card-tags">
+              <span class="badge badge-amber">medium effort</span>
+              <span class="target-tag">roxabi-plugins</span>
+              <span class="target-tag">dev-core docs</span>
+            </div>
+          </div>
+        </div>
+        <div class="wh-grid">
+          <div class="wh-box">
+            <div class="wh-label" style="color:var(--text-dim);">TFF does</div>
+            <div class="wh-text">Workflows follow strict rules: only 5 step types — <strong>Check, Spawn, Handle, Transition, Suggest</strong>. No reading codebases, no implementing, no decisions in the orchestrator itself.</div>
+          </div>
+          <div class="wh-box">
+            <div class="wh-label" style="color:var(--teal);">We adopt</div>
+            <div class="wh-text">Our skills already thin-orchestrate but some drift. Add the 5-step model + anti-patterns to CLAUDE.md and to the roxabi-plugins skill authoring guide. Prevents bloated skill files.</div>
+          </div>
+        </div>
+        <div class="snippet">
+          <span class="c"># Every workflow step is exactly one of:</span><br>
+          <span class="k">Check</span>      <span class="c">→ read state</span><br>
+          <span class="k">Spawn</span>      <span class="c">→ dispatch Agent</span><br>
+          <span class="k">Handle</span>     <span class="c">→ process result</span><br>
+          <span class="k">Transition</span> <span class="c">→ update state</span><br>
+          <span class="k">Suggest</span>    <span class="c">→ show next step</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════ -->
+  <!-- SECTION 3: FUTURE INVESTMENTS -->
+  <!-- ══════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-tier" style="background:var(--rose-dim);">🔴</div>
+      <div>
+        <h2>Future Investments</h2>
+        <p>Significant tooling or architectural change. Worth tracking — not worth rushing.</p>
+      </div>
+    </div>
+    <div class="pattern-grid">
+
+      <!-- 9. Dual State for 2ndBrain -->
+      <div class="pattern-card" style="border-top:3px solid var(--rose);">
+        <div class="card-top">
+          <div class="card-icon">🧠</div>
+          <div>
+            <div class="card-title">Dual State — Markdown + SQLite Status</div>
+            <div class="card-tags">
+              <span class="badge badge-rose">heavy investment</span>
+              <span class="target-tag">2ndBrain</span>
+              <span class="target-tag">lyra knowledge</span>
+            </div>
+          </div>
+        </div>
+        <div class="wh-grid">
+          <div class="wh-box">
+            <div class="wh-label" style="color:var(--text-dim);">TFF does</div>
+            <div class="wh-text">Content lives in markdown (human-editable, git-diffable). Status, IDs, and dependency graph live in Dolt (queryable, structured). Neither source is authoritative for the other's domain.</div>
+          </div>
+          <div class="wh-box">
+            <div class="wh-label" style="color:var(--teal);">We adopt</div>
+            <div class="wh-text">2ndBrain already uses markdown + SQLite. The concept of <strong>content in markdown, metadata in DB</strong> is exactly what roxabi-vault does. We could formalize the sync rules: vault is authoritative for tags/status, markdown is authoritative for body content.</div>
+          </div>
+        </div>
+        <div class="snippet">
+          <span class="c"># 2ndBrain dual state</span><br>
+          <span class="k">vault.db</span>  <span class="c">← status, tags, links (db wins)</span><br>
+          <span class="k">notes/*.md</span> <span class="c">← content body (md wins)</span><br>
+          <span class="k">sync</span>      <span class="c">← bd-style CLI: vault sync</span>
+        </div>
+      </div>
+
+      <!-- 10. Beads / Dolt for structured task tracking -->
+      <div class="pattern-card" style="border-top:3px solid var(--rose);">
+        <div class="card-top">
+          <div class="card-icon">🫧</div>
+          <div>
+            <div class="card-title">Beads / Dolt — Structured Task Tracker</div>
+            <div class="card-tags">
+              <span class="badge badge-rose">heavy investment</span>
+              <span class="target-tag">dev-core</span>
+            </div>
+          </div>
+        </div>
+        <div class="wh-grid">
+          <div class="wh-box">
+            <div class="wh-label" style="color:var(--text-dim);">TFF does</div>
+            <div class="wh-text">Beads gives atomic task claiming (<code>bd update --claim</code>), <code>bd ready --json</code> for unblocked tasks, dependency-aware scheduling, and Dolt's version-controlled SQL for full history.</div>
+          </div>
+          <div class="wh-box">
+            <div class="wh-label" style="color:var(--teal);">We adopt</div>
+            <div class="wh-text">GitHub Issues + dev-core handles this today, but lacks atomic claiming and dependency-aware "what's ready" queries. Worth evaluating beads as a dev-core backend once wave execution is proven in.</div>
+          </div>
+        </div>
+        <div class="snippet">
+          <span class="c"># Beads advantages vs GitHub Issues:</span><br>
+          <span class="k">bd ready</span>     <span class="c">→ only unblocked tasks</span><br>
+          <span class="k">bd update --claim</span> <span class="c">→ atomic assign + start</span><br>
+          <span class="k">dolt diff</span>    <span class="c">→ versioned task history</span><br>
+          <span class="k">offline</span>      <span class="c">→ no GitHub API needed</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ══════════════════════════════════════════════ -->
+  <!-- SUMMARY MATRIX -->
+  <!-- ══════════════════════════════════════════════ -->
+  <div class="section-label">Adoption Matrix</div>
+  <div class="matrix-wrap">
+    <table class="matrix">
+      <thead><tr>
+        <th>Pattern</th>
+        <th>Effort</th>
+        <th>dev-core</th>
+        <th>roxabi-plugins</th>
+        <th>lyra</th>
+        <th>2ndBrain</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td class="pattern-name">Agent Status Protocol</td>
+          <td><span class="badge badge-emerald">quick</span></td>
+          <td class="check">✓</td><td class="check">✓</td><td class="dot">·</td><td class="dot">·</td>
+        </tr>
+        <tr>
+          <td class="pattern-name">Self-Review Checklist</td>
+          <td><span class="badge badge-emerald">quick</span></td>
+          <td class="check">✓</td><td class="check">✓</td><td class="dot">·</td><td class="dot">·</td>
+        </tr>
+        <tr>
+          <td class="pattern-name">WHO/HOW Split (formalize)</td>
+          <td><span class="badge badge-emerald">quick</span></td>
+          <td class="dot">·</td><td class="check">✓</td><td class="dot">·</td><td class="dot">·</td>
+        </tr>
+        <tr>
+          <td class="pattern-name">Skill Drafter + Detect Patterns</td>
+          <td><span class="badge badge-emerald">quick</span></td>
+          <td class="check">✓</td><td class="check">✓</td><td class="dot">·</td><td class="dot">·</td>
+        </tr>
+        <tr>
+          <td class="pattern-name">Wave Execution</td>
+          <td><span class="badge badge-amber">medium</span></td>
+          <td class="check">✓</td><td class="dot">·</td><td class="dot">·</td><td class="dot">·</td>
+        </tr>
+        <tr>
+          <td class="pattern-name">Spec-Reviewer Stage</td>
+          <td><span class="badge badge-amber">medium</span></td>
+          <td class="check">✓</td><td class="dot">·</td><td class="dot">·</td><td class="dot">·</td>
+        </tr>
+        <tr>
+          <td class="pattern-name">Checkpoint / Resume</td>
+          <td><span class="badge badge-amber">medium</span></td>
+          <td class="check">✓</td><td class="dot">·</td><td class="dot">·</td><td class="dot">·</td>
+        </tr>
+        <tr>
+          <td class="pattern-name">Orchestrator Pattern (docs)</td>
+          <td><span class="badge badge-amber">medium</span></td>
+          <td class="check">✓</td><td class="check">✓</td><td class="dot">·</td><td class="dot">·</td>
+        </tr>
+        <tr>
+          <td class="pattern-name">Dual State (markdown + DB)</td>
+          <td><span class="badge badge-rose">heavy</span></td>
+          <td class="dot">·</td><td class="dot">·</td><td class="dot">·</td><td class="check">✓</td>
+        </tr>
+        <tr>
+          <td class="pattern-name">Beads / Dolt integration</td>
+          <td><span class="badge badge-rose">heavy</span></td>
+          <td class="check">✓</td><td class="dot">·</td><td class="dot">·</td><td class="dot">·</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div style="margin-top:32px;padding:20px 24px;background:var(--teal-dim);border:1px solid rgba(13,148,136,0.2);border-radius:12px;">
+    <div style="font-size:12px;font-weight:700;color:var(--teal);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;">Recommended First Sprint</div>
+    <p style="font-size:14px;color:var(--text-dim);line-height:1.7;">Start with <strong style="color:var(--text);">Agent Status Protocol</strong> + <strong style="color:var(--text);">Self-Review Checklist</strong> — they require only prompt edits in dev-core agent definitions and will immediately improve the quality and debuggability of every sub-agent call. Then schedule <strong style="color:var(--text);">Wave Execution</strong> as the next dev-core:implement feature — it's the single highest-leverage architectural upgrade.</p>
+  </div>
+
+</div><!-- .page -->
+</body>
+</html>

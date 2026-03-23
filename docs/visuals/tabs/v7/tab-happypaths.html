@@ -1,0 +1,659 @@
+  <div class="page-title">Happy Paths</div>
+  <div class="page-sub">26 end-to-end scenarios — complete coverage from trigger to response</div>
+
+  <div style="text-align:center;">
+    <div class="hp-hero-stats">
+      <div class="hp-hero-stat"><div class="hp-hero-stat-num">26</div><div class="hp-hero-stat-label">Scenarios</div></div>
+      <div class="hp-hero-stat"><div class="hp-hero-stat-num">7</div><div class="hp-hero-stat-label">Categories</div></div>
+      <div class="hp-hero-stat"><div class="hp-hero-stat-num">2</div><div class="hp-hero-stat-label">Channels</div></div>
+      <div class="hp-hero-stat"><div class="hp-hero-stat-num">&infin;</div><div class="hp-hero-stat-label">Context</div></div>
+    </div>
+  </div>
+
+  <!-- Architecture Overview (hand-crafted SVG) -->
+  <!-- Component legend -->
+  <div class="hp-legend-strip">
+    <div class="hp-legend-item"><div class="hp-legend-dot" style="background:var(--hp-adapter)"></div>Adapter</div>
+    <div class="hp-legend-item"><div class="hp-legend-dot" style="background:var(--hp-bus)"></div>InboundBus</div>
+    <div class="hp-legend-item"><div class="hp-legend-dot" style="background:var(--hp-hub)"></div>Hub</div>
+    <div class="hp-legend-item"><div class="hp-legend-dot" style="background:var(--hp-pool)"></div>Pool</div>
+    <div class="hp-legend-item"><div class="hp-legend-dot" style="background:var(--hp-agent)"></div>Agent</div>
+    <div class="hp-legend-item"><div class="hp-legend-dot" style="background:var(--hp-llm)"></div>LLM</div>
+    <div class="hp-legend-item"><div class="hp-legend-dot" style="background:var(--hp-dispatch)"></div>Dispatch</div>
+    <div class="hp-legend-item"><div class="hp-legend-dot" style="background:#94a3b8"></div>Store / Vault</div>
+  </div>
+
+  <!-- ═══ 1. CORE MESSAGE FLOWS ═══ -->
+  <div class="hp-cat-section hp-cat" data-cat="core">
+    <div class="hp-cat-header" onclick="this.classList.toggle('collapsed')">
+      <div class="hp-cat-icon">💬</div>
+      <div class="hp-cat-meta">
+        <div class="hp-cat-name">Core Message Flows</div>
+        <div class="hp-cat-desc">inbound → processing → outbound, four variations</div>
+      </div>
+      <div class="hp-cat-badge">4 scenarios</div>
+      <span class="hp-cat-toggle">▼</span>
+    </div>
+    <div class="hp-scenario-grid">
+
+      <!-- S1 -->
+      <div class="hp-scenario-card">
+        <div class="hp-scenario-top">
+          <span class="hp-scenario-num">#01</span>
+          <div><div class="hp-scenario-title">Basic Text Message</div><div class="hp-scenario-desc">The canonical happy path — every other flow builds on this</div></div>
+        </div>
+        <div class="hp-flow-pipe">
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-trigger"><span class="hp-step-tag">user</span><span class="hp-step-label">Text msg</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-adapter"><span class="hp-step-tag">adapter</span><span class="hp-step-label">receive</span><span class="hp-step-sub">TG / Discord</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-bus"><span class="hp-step-tag">bus</span><span class="hp-step-label">InboundBus</span><span class="hp-step-sub">enqueue</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-hub"><span class="hp-step-tag">hub</span><span class="hp-step-label">Hub</span><span class="hp-step-sub">dispatch</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-pool"><span class="hp-step-tag">pool</span><span class="hp-step-label">Pool</span><span class="hp-step-sub">run_turn</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-agent"><span class="hp-step-tag">agent</span><span class="hp-step-label">Agent</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-llm"><span class="hp-step-tag">llm</span><span class="hp-step-label">LLM call</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-dispatch"><span class="hp-step-tag">dispatch</span><span class="hp-step-label">dispatch_response</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-output"><span class="hp-step-tag">output</span><span class="hp-step-label">Text reply</span><span class="hp-step-sub">adapter.send</span></div></div>
+        </div>
+      </div>
+
+      <!-- S2 -->
+      <div class="hp-scenario-card">
+        <div class="hp-scenario-top">
+          <span class="hp-scenario-num">#02</span>
+          <div><div class="hp-scenario-title">Streaming Text</div><div class="hp-scenario-desc">LLM token stream → debounced edits → message updates in-place (80ms window)</div></div>
+        </div>
+        <div class="hp-flow-pipe">
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-trigger"><span class="hp-step-tag">user</span><span class="hp-step-label">Text msg</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-hub"><span class="hp-step-tag">hub</span><span class="hp-step-label">dispatch_streaming</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-llm"><span class="hp-step-tag">llm</span><span class="hp-step-label">stream tokens</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-dispatch"><span class="hp-step-tag">dispatch</span><span class="hp-step-label">debounce 80ms</span><span class="hp-step-sub">buffer chunks</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-adapter"><span class="hp-step-tag">adapter</span><span class="hp-step-label">edit_message</span><span class="hp-step-sub">in loop</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-output"><span class="hp-step-tag">output</span><span class="hp-step-label">Live updates</span><span class="hp-step-sub">edits in-place</span></div></div>
+        </div>
+      </div>
+
+      <!-- S3 -->
+      <div class="hp-scenario-card">
+        <div class="hp-scenario-top">
+          <span class="hp-scenario-num">#03</span>
+          <div><div class="hp-scenario-title">Markdown Formatting</div><div class="hp-scenario-desc">Platform-aware rendering: telegramify_markdown → MarkdownV2 on TG, native on Discord</div></div>
+        </div>
+        <div class="hp-flow-pipe">
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-llm"><span class="hp-step-tag">llm</span><span class="hp-step-label">MD response</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-dispatch"><span class="hp-step-tag">dispatch</span><span class="hp-step-label">platform check</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-adapter"><span class="hp-step-tag">telegram</span><span class="hp-step-label">telegramify</span><span class="hp-step-sub">→ MarkdownV2</span></div></div>
+          <div class="hp-flow-arrow" style="color:var(--textdim);font-family:var(--font-mono);font-size:10px;padding:0 8px;">OR</div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-adapter"><span class="hp-step-tag">discord</span><span class="hp-step-label">native MD</span><span class="hp-step-sub">pass-through</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-output"><span class="hp-step-tag">output</span><span class="hp-step-label">Formatted msg</span><span class="hp-step-sub">bold / code / links</span></div></div>
+        </div>
+      </div>
+
+      <!-- S4 -->
+      <div class="hp-scenario-card">
+        <div class="hp-scenario-top">
+          <span class="hp-scenario-num">#04</span>
+          <div><div class="hp-scenario-title">Typing Indicator</div><div class="hp-scenario-desc">Parallel loop spawned on receive, auto-cancelled on send (TG: 5s, Discord: 8s)</div></div>
+        </div>
+        <div class="hp-flow-pipe">
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-trigger"><span class="hp-step-tag">user</span><span class="hp-step-label">msg received</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-adapter"><span class="hp-step-tag">adapter</span><span class="hp-step-label">spawn typing</span><span class="hp-step-sub">asyncio.create_task</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box" style="border-color:rgba(255,255,255,0.1)"><span class="hp-step-tag" style="color:var(--textdim)">parallel</span><span class="hp-step-label">typing loop</span><span class="hp-step-sub">TG 5s / DC 8s</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-llm"><span class="hp-step-tag">llm</span><span class="hp-step-label">response ready</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-dispatch"><span class="hp-step-tag">dispatch</span><span class="hp-step-label">cancel task</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-output"><span class="hp-step-tag">output</span><span class="hp-step-label">send reply</span></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 2. COMMANDS ═══ -->
+  <div class="hp-cat-section hp-cat" data-cat="cmd">
+    <div class="hp-cat-header collapsed" onclick="this.classList.toggle('collapsed')">
+      <div class="hp-cat-icon">⌨️</div>
+      <div class="hp-cat-meta">
+        <div class="hp-cat-name">Commands</div>
+        <div class="hp-cat-desc">command parsing, routing, plugins, sessions, workspace</div>
+      </div>
+      <div class="hp-cat-badge">5 scenarios</div>
+      <span class="hp-cat-toggle">▼</span>
+    </div>
+    <div class="hp-scenario-grid">
+
+      <!-- S5 -->
+      <div class="hp-scenario-card">
+        <div class="hp-scenario-top">
+          <span class="hp-scenario-num">#05</span>
+          <div><div class="hp-scenario-title">Builtin Command</div><div class="hp-scenario-desc">/help, /clear, /config, /stop — handled without Pool or LLM</div></div>
+        </div>
+        <div class="hp-flow-pipe">
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-trigger"><span class="hp-step-tag">user</span><span class="hp-step-label">/help</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-bus"><span class="hp-step-tag">bus</span><span class="hp-step-label">CommandParser</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-hub"><span class="hp-step-tag">router</span><span class="hp-step-label">CommandRouter</span><span class="hp-step-sub">builtin match</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-agent"><span class="hp-step-tag">handler</span><span class="hp-step-label">builtin fn</span><span class="hp-step-sub">no LLM</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-output"><span class="hp-step-tag">output</span><span class="hp-step-label">Command reply</span></div></div>
+        </div>
+      </div>
+
+      <!-- S6 -->
+      <div class="hp-scenario-card">
+        <div class="hp-scenario-top">
+          <span class="hp-scenario-num">#06</span>
+          <div><div class="hp-scenario-title">Plugin Command</div><div class="hp-scenario-desc">/echo hello — CommandRouter dynamically imports plugin handler module</div></div>
+        </div>
+        <div class="hp-flow-pipe">
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-trigger"><span class="hp-step-tag">user</span><span class="hp-step-label">/echo hello</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-hub"><span class="hp-step-tag">router</span><span class="hp-step-label">CommandRouter</span><span class="hp-step-sub">plugin match</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-pool"><span class="hp-step-tag">loader</span><span class="hp-step-label">PluginLoader</span><span class="hp-step-sub">dynamic import</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-agent"><span class="hp-step-tag">plugin</span><span class="hp-step-label">plugin.handle()</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-output"><span class="hp-step-tag">output</span><span class="hp-step-label">Plugin result</span></div></div>
+        </div>
+      </div>
+
+      <!-- S7 -->
+      <div class="hp-scenario-card">
+        <div class="hp-scenario-top">
+          <span class="hp-scenario-num">#07</span>
+          <div><div class="hp-scenario-title">Session Command</div><div class="hp-scenario-desc">/add, /explain, /summarize + URL → isolated pool scope → vault_add</div></div>
+        </div>
+        <div class="hp-flow-pipe">
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-trigger"><span class="hp-step-tag">user</span><span class="hp-step-label">/add https://…</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-hub"><span class="hp-step-tag">router</span><span class="hp-step-label">session:add</span><span class="hp-step-sub">isolated scope</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-pool"><span class="hp-step-tag">pool</span><span class="hp-step-label">new Pool</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-llm"><span class="hp-step-tag">llm</span><span class="hp-step-label">fetch + digest</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box" style="background:rgba(148,163,184,0.04);border-color:rgba(148,163,184,0.2)"><span class="hp-step-tag" style="color:#94a3b8">vault</span><span class="hp-step-label">vault_add</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-output"><span class="hp-step-tag">output</span><span class="hp-step-label">Saved reply</span></div></div>
+        </div>
+      </div>
+
+      <!-- S8 -->
+      <div class="hp-scenario-card">
+        <div class="hp-scenario-top">
+          <span class="hp-scenario-num">#08</span>
+          <div><div class="hp-scenario-title">Bare URL Rewrite</div><div class="hp-scenario-desc">Plain URL detected → auto-rewritten to /add &lt;url&gt; → session command flow</div></div>
+        </div>
+        <div class="hp-flow-pipe">
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-trigger"><span class="hp-step-tag">user</span><span class="hp-step-label">https://…</span><span class="hp-step-sub">bare URL</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-bus"><span class="hp-step-tag">pre-proc</span><span class="hp-step-label">URL detect</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-hub"><span class="hp-step-tag">rewrite</span><span class="hp-step-label">/add &lt;url&gt;</span><span class="hp-step-sub">auto-inject</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-pool"><span class="hp-step-tag">flow</span><span class="hp-step-label">→ #07</span><span class="hp-step-sub">session cmd</span></div></div>
+        </div>
+      </div>
+
+      <!-- S9 -->
+      <div class="hp-scenario-card">
+        <div class="hp-scenario-top">
+          <span class="hp-scenario-num">#09</span>
+          <div><div class="hp-scenario-title">Workspace Switch</div><div class="hp-scenario-desc">/folder ~/projects/foo → CliPool cwd override → subprocess respawn in new dir</div></div>
+        </div>
+        <div class="hp-flow-pipe">
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-trigger"><span class="hp-step-tag">user</span><span class="hp-step-label">/folder ~/path</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-hub"><span class="hp-step-tag">router</span><span class="hp-step-label">workspace cmd</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-pool"><span class="hp-step-tag">pool</span><span class="hp-step-label">CliPool</span><span class="hp-step-sub">cwd override</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-agent"><span class="hp-step-tag">agent</span><span class="hp-step-label">subprocess kill</span><span class="hp-step-sub">+ respawn</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-output"><span class="hp-step-tag">output</span><span class="hp-step-label">Switched</span><span class="hp-step-sub">new cwd active</span></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 3. AUDIO / VOICE ═══ -->
+  <div class="hp-cat-section hp-cat" data-cat="audio">
+    <div class="hp-cat-header collapsed" onclick="this.classList.toggle('collapsed')">
+      <div class="hp-cat-icon">🎙️</div>
+      <div class="hp-cat-meta">
+        <div class="hp-cat-name">Audio / Voice</div>
+        <div class="hp-cat-desc">STT input, TTS output, Discord WebRTC voice</div>
+      </div>
+      <div class="hp-cat-badge">3 scenarios</div>
+      <span class="hp-cat-toggle">▼</span>
+    </div>
+    <div class="hp-scenario-grid">
+
+      <!-- S10 -->
+      <div class="hp-scenario-card">
+        <div class="hp-scenario-top">
+          <span class="hp-scenario-num">#10</span>
+          <div><div class="hp-scenario-title">Voice Input (STT)</div><div class="hp-scenario-desc">Voice message → download → Whisper transcribe → injected as text → normal flow</div></div>
+        </div>
+        <div class="hp-flow-pipe">
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-trigger"><span class="hp-step-tag">user</span><span class="hp-step-label">Voice msg</span><span class="hp-step-sub">OGG/OPUS</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-adapter"><span class="hp-step-tag">adapter</span><span class="hp-step-label">download</span><span class="hp-step-sub">get_file()</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box" style="background:var(--pinkdim);border-color:var(--pinkb)"><span class="hp-step-tag" style="color:var(--pink)">stt</span><span class="hp-step-label">Whisper</span><span class="hp-step-sub">transcribe</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-bus"><span class="hp-step-tag">inject</span><span class="hp-step-label">[Voice] text</span><span class="hp-step-sub">into bus</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-pool"><span class="hp-step-tag">flow</span><span class="hp-step-label">→ #01</span><span class="hp-step-sub">text flow</span></div></div>
+        </div>
+      </div>
+
+      <!-- S11 -->
+      <div class="hp-scenario-card">
+        <div class="hp-scenario-top">
+          <span class="hp-scenario-num">#11</span>
+          <div><div class="hp-scenario-title">Voice Output (TTS)</div><div class="hp-scenario-desc">/voice hello → Agent text → voicecli Qwen TTS → WAV→OGG encode → send_voice</div></div>
+        </div>
+        <div class="hp-flow-pipe">
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-trigger"><span class="hp-step-tag">user</span><span class="hp-step-label">/voice hello</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-llm"><span class="hp-step-tag">llm</span><span class="hp-step-label">Agent response</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box" style="background:var(--pinkdim);border-color:var(--pinkb)"><span class="hp-step-tag" style="color:var(--pink)">tts</span><span class="hp-step-label">voicecli</span><span class="hp-step-sub">Qwen TTS</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box" style="background:rgba(148,163,184,0.04);border-color:rgba(148,163,184,0.2)"><span class="hp-step-tag" style="color:#94a3b8">encode</span><span class="hp-step-label">WAV → OGG</span><span class="hp-step-sub">ffmpeg</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-adapter"><span class="hp-step-tag">adapter</span><span class="hp-step-label">send_voice</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-output"><span class="hp-step-tag">output</span><span class="hp-step-label">Voice message</span></div></div>
+        </div>
+      </div>
+
+      <!-- S12 -->
+      <div class="hp-scenario-card">
+        <div class="hp-scenario-top">
+          <span class="hp-scenario-num">#12</span>
+          <div><div class="hp-scenario-title">Discord Voice Channel</div><div class="hp-scenario-desc">/voice in VC → TTS → PCMQueueSource → VoiceClient.play → WebRTC stream</div></div>
+        </div>
+        <div class="hp-flow-pipe">
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-trigger"><span class="hp-step-tag">user</span><span class="hp-step-label">/voice in VC</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box" style="background:var(--pinkdim);border-color:var(--pinkb)"><span class="hp-step-tag" style="color:var(--pink)">tts</span><span class="hp-step-label">TTS → PCM</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-pool"><span class="hp-step-tag">queue</span><span class="hp-step-label">PCMQueueSource</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-adapter"><span class="hp-step-tag">discord</span><span class="hp-step-label">VoiceClient.play</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-output"><span class="hp-step-tag">output</span><span class="hp-step-label">WebRTC stream</span><span class="hp-step-sub">live audio</span></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 4. SESSION & MEMORY ═══ -->
+  <div class="hp-cat-section hp-cat" data-cat="session">
+    <div class="hp-cat-header collapsed" onclick="this.classList.toggle('collapsed')">
+      <div class="hp-cat-icon">🧠</div>
+      <div class="hp-cat-meta">
+        <div class="hp-cat-name">Session &amp; Memory</div>
+        <div class="hp-cat-desc">context accumulation, reset, eviction, cross-session recall, compaction</div>
+      </div>
+      <div class="hp-cat-badge">5 scenarios</div>
+      <span class="hp-cat-toggle">▼</span>
+    </div>
+    <div class="hp-scenario-grid">
+
+      <!-- S13 -->
+      <div class="hp-scenario-card">
+        <div class="hp-scenario-top">
+          <span class="hp-scenario-num">#13</span>
+          <div><div class="hp-scenario-title">Multi-Turn Conversation</div><div class="hp-scenario-desc">Same scope → Pool accumulates sdk_history → LLM sees full conversation context</div></div>
+        </div>
+        <div class="hp-flow-pipe">
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-trigger"><span class="hp-step-tag">user</span><span class="hp-step-label">msg N</span><span class="hp-step-sub">same scope</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-pool"><span class="hp-step-tag">pool</span><span class="hp-step-label">existing Pool</span><span class="hp-step-sub">same session_id</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-agent"><span class="hp-step-tag">agent</span><span class="hp-step-label">sdk_history</span><span class="hp-step-sub">append turn</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-llm"><span class="hp-step-tag">llm</span><span class="hp-step-label">full context</span><span class="hp-step-sub">all N turns</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-output"><span class="hp-step-tag">output</span><span class="hp-step-label">Coherent reply</span></div></div>
+        </div>
+      </div>
+
+      <!-- S14 -->
+      <div class="hp-scenario-card">
+        <div class="hp-scenario-top">
+          <span class="hp-scenario-num">#14</span>
+          <div><div class="hp-scenario-title">Session Reset</div><div class="hp-scenario-desc">/clear → Pool.reset_session() → kill subprocess → fresh UUID, clean history</div></div>
+        </div>
+        <div class="hp-flow-pipe">
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-trigger"><span class="hp-step-tag">user</span><span class="hp-step-label">/clear</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-pool"><span class="hp-step-tag">pool</span><span class="hp-step-label">reset_session()</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-agent"><span class="hp-step-tag">agent</span><span class="hp-step-label">kill subprocess</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-pool"><span class="hp-step-tag">pool</span><span class="hp-step-label">new UUID</span><span class="hp-step-sub">history cleared</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-output"><span class="hp-step-tag">output</span><span class="hp-step-label">Cleared</span></div></div>
+        </div>
+      </div>
+
+      <!-- S15 -->
+      <div class="hp-scenario-card">
+        <div class="hp-scenario-top">
+          <span class="hp-scenario-num">#15</span>
+          <div><div class="hp-scenario-title">Pool Eviction</div><div class="hp-scenario-desc">Idle &gt; 1h → agent.flush_session → L3 snapshot to vault → pool removed from map</div></div>
+        </div>
+        <div class="hp-flow-pipe">
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-trigger"><span class="hp-step-tag">timer</span><span class="hp-step-label">idle &gt; 1h</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-pool"><span class="hp-step-tag">pool</span><span class="hp-step-label">eviction check</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-agent"><span class="hp-step-tag">agent</span><span class="hp-step-label">flush_session</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box" style="background:rgba(148,163,184,0.04);border-color:rgba(148,163,184,0.2)"><span class="hp-step-tag" style="color:#94a3b8">vault</span><span class="hp-step-label">L3 snapshot</span><span class="hp-step-sub">persist to disk</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-hub"><span class="hp-step-tag">pool mgr</span><span class="hp-step-label">remove pool</span><span class="hp-step-sub">free memory</span></div></div>
+        </div>
+      </div>
+
+      <!-- S16 -->
+      <div class="hp-scenario-card">
+        <div class="hp-scenario-top">
+          <span class="hp-scenario-num">#16</span>
+          <div><div class="hp-scenario-title">Cross-Session Recall</div><div class="hp-scenario-desc">Known user → MemoryManager.recall() → L3 semantic search → injected in system prompt</div></div>
+        </div>
+        <div class="hp-flow-pipe">
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-trigger"><span class="hp-step-tag">user</span><span class="hp-step-label">new session</span><span class="hp-step-sub">known user</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-agent"><span class="hp-step-tag">memory</span><span class="hp-step-label">MemoryManager</span><span class="hp-step-sub">.recall()</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box" style="background:rgba(148,163,184,0.04);border-color:rgba(148,163,184,0.2)"><span class="hp-step-tag" style="color:#94a3b8">vault</span><span class="hp-step-label">L3 search</span><span class="hp-step-sub">semantic similarity</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-pool"><span class="hp-step-tag">inject</span><span class="hp-step-label">system prompt</span><span class="hp-step-sub">memory context</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-llm"><span class="hp-step-tag">llm</span><span class="hp-step-label">aware of past</span></div></div>
+        </div>
+      </div>
+
+      <!-- S17 -->
+      <div class="hp-scenario-card">
+        <div class="hp-scenario-top">
+          <span class="hp-scenario-num">#17</span>
+          <div><div class="hp-scenario-title">L0 Compaction</div><div class="hp-scenario-desc">sdk_history &gt; 160k tokens → summarize old turns → trim to last 10 → continue</div></div>
+        </div>
+        <div class="hp-flow-pipe">
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-trigger"><span class="hp-step-tag">trigger</span><span class="hp-step-label">&gt;160k tokens</span><span class="hp-step-sub">sdk_history</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-agent"><span class="hp-step-tag">agent</span><span class="hp-step-label">compaction</span><span class="hp-step-sub">detect threshold</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-llm"><span class="hp-step-tag">llm</span><span class="hp-step-label">summarize</span><span class="hp-step-sub">old turns</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-pool"><span class="hp-step-tag">pool</span><span class="hp-step-label">trim history</span><span class="hp-step-sub">keep last 10</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-output"><span class="hp-step-tag">state</span><span class="hp-step-label">compacted</span><span class="hp-step-sub">context preserved</span></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 5. ROUTING & RESILIENCE ═══ -->
+  <div class="hp-cat-section hp-cat" data-cat="routing">
+    <div class="hp-cat-header collapsed" onclick="this.classList.toggle('collapsed')">
+      <div class="hp-cat-icon">🔀</div>
+      <div class="hp-cat-meta">
+        <div class="hp-cat-name">Routing &amp; Resilience</div>
+        <div class="hp-cat-desc">smart model selection, rate limiting, backpressure, circuit breaker</div>
+      </div>
+      <div class="hp-cat-badge">4 scenarios</div>
+      <span class="hp-cat-toggle">▼</span>
+    </div>
+    <div class="hp-scenario-grid">
+
+      <!-- S18 -->
+      <div class="hp-scenario-card">
+        <div class="hp-scenario-top">
+          <span class="hp-scenario-num">#18</span>
+          <div><div class="hp-scenario-title">Smart Routing</div><div class="hp-scenario-desc">ComplexityClassifier scores TRIVIAL → COMPLEX → model tier selected automatically</div></div>
+        </div>
+        <div class="hp-flow-pipe">
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-trigger"><span class="hp-step-tag">msg</span><span class="hp-step-label">any message</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-hub"><span class="hp-step-tag">classifier</span><span class="hp-step-label">Complexity</span><span class="hp-step-sub">TRIVIAL/SIMPLE</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-hub"><span class="hp-step-tag">classifier</span><span class="hp-step-label">Complexity</span><span class="hp-step-sub">MODERATE/COMPLEX</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-pool"><span class="hp-step-tag">select</span><span class="hp-step-label">model tier</span><span class="hp-step-sub">fast / powerful</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-llm"><span class="hp-step-tag">llm</span><span class="hp-step-label">routed call</span></div></div>
+        </div>
+      </div>
+
+      <!-- S19 -->
+      <div class="hp-scenario-card">
+        <div class="hp-scenario-top">
+          <span class="hp-scenario-num">#19</span>
+          <div><div class="hp-scenario-title">Rate Limiting</div><div class="hp-scenario-desc">User exceeds 20 msgs/60s sliding window → DROP message + notify user</div></div>
+        </div>
+        <div class="hp-flow-pipe">
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-trigger"><span class="hp-step-tag">user</span><span class="hp-step-label">&gt;20 msg/60s</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-bus"><span class="hp-step-tag">rl</span><span class="hp-step-label">sliding window</span><span class="hp-step-sub">check count</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box" style="background:var(--reddim);border-color:rgba(248,113,113,0.25)"><span class="hp-step-tag" style="color:var(--red)">drop</span><span class="hp-step-label">DROP msg</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-output"><span class="hp-step-tag">notify</span><span class="hp-step-label">rate limit msg</span><span class="hp-step-sub">user informed</span></div></div>
+        </div>
+      </div>
+
+      <!-- S20 -->
+      <div class="hp-scenario-card">
+        <div class="hp-scenario-top">
+          <span class="hp-scenario-num">#20</span>
+          <div><div class="hp-scenario-title">Bus Backpressure</div><div class="hp-scenario-desc">Queue full (500 items) → ack user immediately → blocking await until slot frees</div></div>
+        </div>
+        <div class="hp-flow-pipe">
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-trigger"><span class="hp-step-tag">user</span><span class="hp-step-label">new message</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-bus"><span class="hp-step-tag">bus</span><span class="hp-step-label">queue full</span><span class="hp-step-sub">500 items</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-adapter"><span class="hp-step-tag">ack</span><span class="hp-step-label">ack user</span><span class="hp-step-sub">queued reply</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-bus"><span class="hp-step-tag">await</span><span class="hp-step-label">blocking wait</span><span class="hp-step-sub">until slot frees</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-hub"><span class="hp-step-tag">drain</span><span class="hp-step-label">enqueue</span><span class="hp-step-sub">slot available</span></div></div>
+        </div>
+      </div>
+
+      <!-- S21 -->
+      <div class="hp-scenario-card">
+        <div class="hp-scenario-top">
+          <span class="hp-scenario-num">#21</span>
+          <div><div class="hp-scenario-title">Circuit Breaker</div><div class="hp-scenario-desc">5+ consecutive LLM failures → OPEN (fail-fast) → HALF_OPEN (probe) → CLOSED</div></div>
+        </div>
+        <div class="hp-flow-pipe">
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-trigger"><span class="hp-step-tag">failures</span><span class="hp-step-label">5+ errors</span><span class="hp-step-sub">LLM consecutive</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box" style="background:var(--reddim);border-color:rgba(248,113,113,0.25)"><span class="hp-step-tag" style="color:var(--red)">OPEN</span><span class="hp-step-label">OPEN state</span><span class="hp-step-sub">fail-fast</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box" style="background:var(--orangedim);border-color:var(--orangeb)"><span class="hp-step-tag" style="color:var(--orange)">probe</span><span class="hp-step-label">HALF_OPEN</span><span class="hp-step-sub">test probe</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-llm"><span class="hp-step-tag">llm</span><span class="hp-step-label">probe call</span><span class="hp-step-sub">success?</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-output"><span class="hp-step-tag">CLOSED</span><span class="hp-step-label">CLOSED</span><span class="hp-step-sub">restored</span></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 6. AUTH & MULTI-BOT ═══ -->
+  <div class="hp-cat-section hp-cat" data-cat="auth">
+    <div class="hp-cat-header collapsed" onclick="this.classList.toggle('collapsed')">
+      <div class="hp-cat-icon">🔐</div>
+      <div class="hp-cat-meta">
+        <div class="hp-cat-name">Auth &amp; Multi-Bot</div>
+        <div class="hp-cat-desc">trust levels, multi-bot isolation, reply thread routing</div>
+      </div>
+      <div class="hp-cat-badge">3 scenarios</div>
+      <span class="hp-cat-toggle">▼</span>
+    </div>
+    <div class="hp-scenario-grid">
+
+      <!-- S22 -->
+      <div class="hp-scenario-card">
+        <div class="hp-scenario-top">
+          <span class="hp-scenario-num">#22</span>
+          <div><div class="hp-scenario-title">Auth Check</div><div class="hp-scenario-desc">Every inbound → AuthMiddleware assigns OWNER / TRUSTED / PUBLIC / BLOCKED</div></div>
+        </div>
+        <div class="hp-flow-pipe">
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-trigger"><span class="hp-step-tag">inbound</span><span class="hp-step-label">any message</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-bus"><span class="hp-step-tag">middleware</span><span class="hp-step-label">AuthMiddleware</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box" style="background:var(--greendim);border-color:var(--greenb)"><span class="hp-step-tag" style="color:var(--green)">trust</span><span class="hp-step-label">OWNER</span><span class="hp-step-sub">full access</span></div></div>
+          <div class="hp-flow-arrow" style="color:var(--textdim);font-family:var(--font-mono);font-size:9px;padding:0 6px;">/</div>
+          <div class="hp-flow-step"><div class="hp-step-box" style="background:rgba(96,165,250,0.06);border-color:rgba(96,165,250,0.2)"><span class="hp-step-tag" style="color:#60a5fa">trust</span><span class="hp-step-label">TRUSTED</span></div></div>
+          <div class="hp-flow-arrow" style="color:var(--textdim);font-family:var(--font-mono);font-size:9px;padding:0 6px;">/</div>
+          <div class="hp-flow-step"><div class="hp-step-box" style="background:var(--orangedim);border-color:var(--orangeb)"><span class="hp-step-tag" style="color:var(--orange)">trust</span><span class="hp-step-label">PUBLIC</span></div></div>
+          <div class="hp-flow-arrow" style="color:var(--textdim);font-family:var(--font-mono);font-size:9px;padding:0 6px;">/</div>
+          <div class="hp-flow-step"><div class="hp-step-box" style="background:var(--reddim);border-color:rgba(248,113,113,0.2)"><span class="hp-step-tag" style="color:var(--red)">trust</span><span class="hp-step-label">BLOCKED</span><span class="hp-step-sub">drop silently</span></div></div>
+        </div>
+      </div>
+
+      <!-- S23 -->
+      <div class="hp-scenario-card">
+        <div class="hp-scenario-top">
+          <span class="hp-scenario-num">#23</span>
+          <div><div class="hp-scenario-title">Multi-Bot Same Channel</div><div class="hp-scenario-desc">2 bots in Discord → each routes via (platform, bot_id) key → separate pools, isolated threads</div></div>
+        </div>
+        <div class="hp-flow-pipe">
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-trigger"><span class="hp-step-tag">discord</span><span class="hp-step-label">2 bots active</span><span class="hp-step-sub">same channel</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-adapter"><span class="hp-step-tag">adapter</span><span class="hp-step-label">bot_id tag</span><span class="hp-step-sub">on inbound</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-hub"><span class="hp-step-tag">route</span><span class="hp-step-label">(platform, bot_id)</span><span class="hp-step-sub">compound key</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-pool"><span class="hp-step-tag">pool A</span><span class="hp-step-label">Bot 1 Pool</span></div></div>
+          <div class="hp-flow-arrow" style="color:var(--textdim);font-family:var(--font-mono);font-size:9px;padding:0 6px;">+</div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-pool"><span class="hp-step-tag">pool B</span><span class="hp-step-label">Bot 2 Pool</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-output"><span class="hp-step-tag">output</span><span class="hp-step-label">Isolated replies</span></div></div>
+        </div>
+      </div>
+
+      <!-- S24 -->
+      <div class="hp-scenario-card">
+        <div class="hp-scenario-top">
+          <span class="hp-scenario-num">#24</span>
+          <div><div class="hp-scenario-title">Reply Threading</div><div class="hp-scenario-desc">User replies to bot message → ContextResolver → lookup reply_to_id in turns.db → correct pool</div></div>
+        </div>
+        <div class="hp-flow-pipe">
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-trigger"><span class="hp-step-tag">user</span><span class="hp-step-label">reply to bot</span><span class="hp-step-sub">reply_to_id set</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-hub"><span class="hp-step-tag">ctx</span><span class="hp-step-label">ContextResolver</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box" style="background:rgba(148,163,184,0.04);border-color:rgba(148,163,184,0.2)"><span class="hp-step-tag" style="color:#94a3b8">db</span><span class="hp-step-label">turns.db</span><span class="hp-step-sub">lookup reply_to_id</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-pool"><span class="hp-step-tag">route</span><span class="hp-step-label">correct pool</span><span class="hp-step-sub">thread resolved</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-output"><span class="hp-step-tag">output</span><span class="hp-step-label">In-thread reply</span></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 7. MEDIA & OBSERVABILITY ═══ -->
+  <div class="hp-cat-section hp-cat" data-cat="media">
+    <div class="hp-cat-header collapsed" onclick="this.classList.toggle('collapsed')">
+      <div class="hp-cat-icon">📎</div>
+      <div class="hp-cat-meta">
+        <div class="hp-cat-name">Media &amp; Observability</div>
+        <div class="hp-cat-desc">attachments with vision, turn logging to SQLite</div>
+      </div>
+      <div class="hp-cat-badge">2 scenarios</div>
+      <span class="hp-cat-toggle">▼</span>
+    </div>
+    <div class="hp-scenario-grid">
+
+      <!-- S25 -->
+      <div class="hp-scenario-card">
+        <div class="hp-scenario-top">
+          <span class="hp-scenario-num">#25</span>
+          <div><div class="hp-scenario-title">Attachments</div><div class="hp-scenario-desc">Image/video/file → Adapter extracts → Attachment objects → Agent with vision → rendered output</div></div>
+        </div>
+        <div class="hp-flow-pipe">
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-trigger"><span class="hp-step-tag">user</span><span class="hp-step-label">image/file</span><span class="hp-step-sub">attachment</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-adapter"><span class="hp-step-tag">adapter</span><span class="hp-step-label">extract</span><span class="hp-step-sub">Attachment[]</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-bus"><span class="hp-step-tag">bus</span><span class="hp-step-label">Message + attachments</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-agent"><span class="hp-step-tag">agent</span><span class="hp-step-label">vision model</span><span class="hp-step-sub">image + text</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-llm"><span class="hp-step-tag">llm</span><span class="hp-step-label">multimodal</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-output"><span class="hp-step-tag">output</span><span class="hp-step-label">Rendered reply</span></div></div>
+        </div>
+      </div>
+
+      <!-- S26 -->
+      <div class="hp-scenario-card">
+        <div class="hp-scenario-top">
+          <span class="hp-scenario-num">#26</span>
+          <div><div class="hp-scenario-title">Turn Logging</div><div class="hp-scenario-desc">Every processed message → TurnStore fire-and-forget → turns.db (pool_id, session_id, role, content)</div></div>
+        </div>
+        <div class="hp-flow-pipe">
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-trigger"><span class="hp-step-tag">any</span><span class="hp-step-label">processed msg</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-pool"><span class="hp-step-tag">pool</span><span class="hp-step-label">TurnStore</span><span class="hp-step-sub">fire-and-forget</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box" style="background:rgba(148,163,184,0.04);border-color:rgba(148,163,184,0.2)"><span class="hp-step-tag" style="color:#94a3b8">db</span><span class="hp-step-label">turns.db</span><span class="hp-step-sub">SQLite write</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box" style="background:rgba(148,163,184,0.04);border-color:rgba(148,163,184,0.2)"><span class="hp-step-tag" style="color:#94a3b8">fields</span><span class="hp-step-label">pool_id</span><span class="hp-step-sub">+ session_id</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box" style="background:rgba(148,163,184,0.04);border-color:rgba(148,163,184,0.2)"><span class="hp-step-tag" style="color:#94a3b8">fields</span><span class="hp-step-label">role / content</span><span class="hp-step-sub">timestamped</span></div></div>
+          <div class="hp-flow-arrow"><svg viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4"/></svg></div>
+          <div class="hp-flow-step"><div class="hp-step-box hp-step-output"><span class="hp-step-tag">state</span><span class="hp-step-label">logged async</span><span class="hp-step-sub">non-blocking</span></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+
+</main>
+
+<footer class="site-footer">
+  <div class="footer-inner">
+    <div class="footer-brand">✦ Lyra</div>
+    <div class="footer-links">
+      <a href="https://github.com/Roxabi/lyra" target="_blank" rel="noopener">GitHub</a>
+      <span class="footer-sep">·</span>
+      <a href="https://github.com/Roxabi/lyra/issues" target="_blank" rel="noopener">Issues</a>
+      <span class="footer-sep">·</span>
+      <a href="https://github.com/Roxabi/lyra/discussions" target="_blank" rel="noopener">Discussions</a>
+    </div>

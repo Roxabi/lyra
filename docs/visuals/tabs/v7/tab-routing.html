@@ -1,0 +1,309 @@
+  <div class="page-title">Command Routing</div>
+  <div class="page-sub">How messages dispatch from raw platform event through 6 ordered layers to handler, LLM, or error — and why <code>!</code> behaves differently from <code>/</code>.</div>
+
+  <!-- / vs ! prefix comparison -->
+  <div class="section-title">The two prefixes</div>
+  <div class="platform-grid">
+    <div class="pc" style="background:linear-gradient(160deg,rgba(139,92,246,0.10) 0%,transparent 60%);padding:22px;">
+      <div class="ph">
+        <div class="pi" style="background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.35);font-size:24px;font-weight:800;font-family:var(--font-mono);color:var(--accentbr);width:42px;height:42px;">/</div>
+        <div><div class="pn" style="color:var(--accentbr);">Strict mode</div><div class="ps">Hard command — / prefix</div></div>
+      </div>
+      <div class="checklist">
+        <div class="ci"><div class="dot g"></div><div><strong>Known command</strong> → dispatched to registered handler</div></div>
+        <div class="ci"><div class="dot" style="background:var(--red)"></div><div><strong>Unknown command</strong> → returns <code>"Unknown command: /foo"</code> error immediately</div></div>
+        <div class="ci"><div class="dot" style="background:var(--textdim)"></div><div>LLM never sees an unrecognised / command</div></div>
+      </div>
+    </div>
+    <div class="pc dc" style="padding:22px;">
+      <div class="ph">
+        <div class="pi" style="background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.35);font-size:24px;font-weight:800;font-family:var(--font-mono);color:var(--green);width:42px;height:42px;">!</div>
+        <div><div class="pn" style="color:var(--green);">Soft mode</div><div class="ps">Fallthrough allowed — ! prefix</div></div>
+      </div>
+      <div class="checklist">
+        <div class="ci"><div class="dot g"></div><div><strong>Known command</strong> → dispatched identically to <code>/</code> — same registry, same handler</div></div>
+        <div class="ci"><div class="dot g"></div><div><strong>Unknown command</strong> → router returns <code>None</code> → hub falls through to LLM pool</div></div>
+        <div class="ci"><div class="dot" style="background:var(--textdim)"></div><div>Only error behavior differs — same command set, same dispatch order</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SVG ROUTING MAP -->
+  <div class="section-title" style="margin-top:28px;">Routing architecture map</div>
+  <div style="font-size:12px;color:var(--textdim);margin-bottom:12px;">Full dispatch pipeline from platform event to outcome — all 6 layers, in order.</div>
+  <div class="diagram-wrap">
+    <svg viewBox="0 0 960 575" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;">
+      <defs>
+        <marker id="rc-ac" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#22d3ee"/></marker>
+        <marker id="rc-av" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#a78bfa"/></marker>
+        <marker id="rc-ae" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#34d399"/></marker>
+        <marker id="rc-ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#f87171"/></marker>
+        <marker id="rc-aa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#fbbf24"/></marker>
+        <marker id="rc-ai" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#818cf8"/></marker>
+        <marker id="rc-adc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#5865f2"/></marker>
+        <pattern id="rc-g" x="0" y="0" width="28" height="28" patternUnits="userSpaceOnUse">
+          <circle cx="0.5" cy="0.5" r="0.8" fill="rgba(255,255,255,0.025)"/>
+        </pattern>
+      </defs>
+
+      <!-- Background -->
+      <rect width="960" height="575" fill="#07090f"/>
+      <rect width="960" height="575" fill="url(#rc-g)"/>
+      <ellipse cx="480" cy="290" rx="420" ry="260" fill="rgba(139,92,246,0.015)"/>
+
+      <!-- ═══ PLATFORM CHANNELS (y=12-65) ═══════════════════════════ -->
+      <text x="20" y="10" font-family="Space Mono,monospace" font-size="8" font-weight="700" fill="#3d4f6b" letter-spacing="1.5">PLATFORM CHANNELS</text>
+      <rect x="20"  y="14" width="435" height="51" rx="7" fill="#091626" stroke="#26a5e4" stroke-width="1.5"/>
+      <text x="237" y="36" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="14" font-weight="600" fill="#26a5e4">Telegram</text>
+      <text x="237" y="55" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#2a5a8a">aiogram v3 · polling + webhook</text>
+      <rect x="505" y="14" width="435" height="51" rx="7" fill="#0b0c26" stroke="#5865f2" stroke-width="1.5"/>
+      <text x="722" y="36" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="14" font-weight="600" fill="#7c84f8">Discord</text>
+      <text x="722" y="55" text-anchor="middle" font-family="Space Mono,monospace" font-size="9" fill="#3a3a7a">discord.py v2 · gateway WebSocket</text>
+
+      <!-- Channels → Adapters -->
+      <line x1="237" y1="65" x2="237" y2="82" stroke="#26a5e4" stroke-width="1.5" marker-end="url(#rc-ac)" class="svgfl"/>
+      <line x1="722" y1="65" x2="722" y2="82" stroke="#5865f2" stroke-width="1.5" marker-end="url(#rc-adc)" class="svgfl" style="animation-delay:.3s"/>
+
+      <!-- ═══ ADAPTER LAYER (y=84-167) ═══════════════════════════════ -->
+      <text x="20" y="81" font-family="Space Mono,monospace" font-size="8" font-weight="700" fill="#5865f2" letter-spacing="1.5">ADAPTER LAYER · adapters/telegram.py · adapters/discord.py</text>
+      <!-- Discord pre-routing (left) -->
+      <rect x="20" y="84" width="435" height="83" rx="8" fill="#0c0e28" stroke="#5865f2" stroke-width="1.2"/>
+      <text x="237" y="102" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" font-weight="700" fill="#7c84f8" letter-spacing="1">DISCORD PRE-ROUTING · guild-only · before mention filter</text>
+      <text x="237" y="120" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="13" font-weight="600" fill="#e2e8f0">DiscordAdapter._handle_voice_command()</text>
+      <text x="237" y="138" text-anchor="middle" font-family="Space Mono,monospace" font-size="8.5" fill="#fbbf24">!join / !join stay → VoiceSessionManager</text>
+      <text x="237" y="153" text-anchor="middle" font-family="Space Mono,monospace" font-size="8.5" fill="#fbbf24">!leave → disconnect voice channel</text>
+      <text x="237" y="166" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" fill="#4a5568">adapters/discord.py lines 343–369 · never reaches hub router</text>
+      <!-- All-adapter pass-through (right) -->
+      <rect x="505" y="84" width="435" height="83" rx="8" fill="#111827" stroke="#818cf8" stroke-width="1.2"/>
+      <text x="722" y="102" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" font-weight="700" fill="#818cf8" letter-spacing="1">ALL ADAPTERS → HUB · all other messages</text>
+      <text x="722" y="120" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="13" font-weight="600" fill="#e2e8f0">normalize(event) → InboundMessage</text>
+      <text x="722" y="138" text-anchor="middle" font-family="Space Mono,monospace" font-size="8.5" fill="#6b7a99">AuthMiddleware.check() · push to hub.inbound_bus</text>
+      <text x="722" y="153" text-anchor="middle" font-family="Space Mono,monospace" font-size="8.5" fill="#6b7a99">hub.py: _MessageProcessor._process_message()</text>
+      <text x="722" y="166" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" fill="#4a5568">hub.py lines 1067–1083</text>
+
+      <!-- Converge both adapters → CommandParser -->
+      <line x1="237" y1="167" x2="237" y2="177" stroke="#818cf8" stroke-width="1.2"/>
+      <line x1="722" y1="167" x2="722" y2="177" stroke="#818cf8" stroke-width="1.5" marker-end="url(#rc-ai)" class="svgfl" style="animation-delay:.2s"/>
+      <line x1="237" y1="177" x2="722" y2="177" stroke="#818cf8" stroke-width="1"/>
+
+      <!-- ═══ COMMAND PARSER (y=183-233) ═══════════════════════════════ -->
+      <text x="20" y="180" font-family="Space Mono,monospace" font-size="8" font-weight="700" fill="#818cf8" letter-spacing="1.5">COMMAND PARSER · command_parser.py · COMMAND_PREFIXES = ("/", "!")</text>
+      <rect x="20" y="183" width="920" height="50" rx="8" fill="#141827" stroke="#818cf8" stroke-width="1.2"/>
+      <text x="480" y="202" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" font-weight="700" fill="#818cf8" letter-spacing="1">COMMAND PARSER</text>
+      <text x="480" y="220" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="13" font-weight="600" fill="#e2e8f0">CommandParser.parse() → CommandContext(prefix, name, args)</text>
+      <text x="480" y="231" text-anchor="middle" font-family="Space Mono,monospace" font-size="8.5" fill="#6b7a99">detects "/" or "!" prefix  ·  router.prepare() auto-rewrites bare URLs → /add &lt;url&gt;</text>
+
+      <!-- Parser → Router -->
+      <line x1="480" y1="233" x2="480" y2="249" stroke="#a78bfa" stroke-width="2" marker-end="url(#rc-av)" class="svgfl"/>
+
+      <!-- ═══ COMMAND ROUTER (y=252-302) ══════════════════════════════ -->
+      <text x="20" y="249" font-family="Space Mono,monospace" font-size="8" font-weight="700" fill="#a78bfa" letter-spacing="1.5">HUB · COMMAND ROUTER · command_router.py lines 63–310 · hub.py:1146–1176</text>
+      <rect x="20" y="252" width="920" height="50" rx="8" fill="#1a1030" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="480" y="271" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" font-weight="700" fill="#a78bfa" letter-spacing="1">COMMAND ROUTER</text>
+      <text x="480" y="289" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="13" font-weight="600" fill="#e2e8f0">CommandRouter.dispatch() — ordered lookup · first match wins</text>
+      <text x="480" y="301" text-anchor="middle" font-family="Space Mono,monospace" font-size="8.5" fill="#6b7a99">is_command() → _dispatch_command() → Response | None  ·  None → _submit_to_pool()</text>
+
+      <!-- Router → fan-out bar → 6 columns -->
+      <line x1="480" y1="302" x2="480" y2="318" stroke="#a78bfa" stroke-width="1.5"/>
+      <line x1="93"  y1="318" x2="868" y2="318" stroke="#a78bfa" stroke-width="1"/>
+      <line x1="93"  y1="318" x2="93"  y2="330" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#rc-ac)"/>
+      <line x1="248" y1="318" x2="248" y2="330" stroke="#06b6d4" stroke-width="1.5" marker-end="url(#rc-ac)"/>
+      <line x1="403" y1="318" x2="403" y2="330" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#rc-av)"/>
+      <line x1="558" y1="318" x2="558" y2="330" stroke="#818cf8" stroke-width="1.5" marker-end="url(#rc-ai)"/>
+      <line x1="713" y1="318" x2="713" y2="330" stroke="#8b5cf6" stroke-width="1.5" marker-end="url(#rc-av)"/>
+      <line x1="868" y1="318" x2="868" y2="330" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#rc-aa)"/>
+
+      <!-- ═══ DISPATCH COLUMNS (y=330-460) ═══════════════════════════ -->
+      <text x="20" y="327" font-family="Space Mono,monospace" font-size="8" font-weight="700" fill="#3d4f6b" letter-spacing="1.5">DISPATCH ORDER · steps 1→6 · first match wins · any step: return Response</text>
+
+      <!-- Col 1: URL Rewrite (x=20 w=145 h=130) center=93 -->
+      <rect x="20" y="330" width="145" height="130" rx="7" fill="#07191a" stroke="#22d3ee" stroke-width="1.2"/>
+      <text x="93" y="348" text-anchor="middle" font-family="Space Mono,monospace" font-size="7" font-weight="700" fill="#22d3ee" letter-spacing="1">STEP 1 · URL</text>
+      <text x="93" y="364" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="12" font-weight="700" fill="#e2e8f0">URL Rewrite</text>
+      <text x="93" y="381" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" fill="#22d3ee">bare https://...</text>
+      <text x="93" y="395" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" fill="#34d399">→ /add &lt;url&gt;</text>
+      <text x="93" y="413" text-anchor="middle" font-family="Space Mono,monospace" font-size="7.5" fill="#3d5a7a">_BARE_URL_RE</text>
+      <text x="93" y="427" text-anchor="middle" font-family="Space Mono,monospace" font-size="7.5" fill="#3d5a7a">command_router.py</text>
+      <text x="93" y="441" text-anchor="middle" font-family="Space Mono,monospace" font-size="7" fill="#4a5568">lines 247–248</text>
+      <text x="93" y="455" text-anchor="middle" font-family="Space Mono,monospace" font-size="7" fill="#22d3ee">→ then step 4</text>
+
+      <!-- Col 2: Builtins (x=175 w=145 h=130) center=248 -->
+      <rect x="175" y="330" width="145" height="130" rx="7" fill="#081a1f" stroke="#06b6d4" stroke-width="1.2"/>
+      <text x="248" y="348" text-anchor="middle" font-family="Space Mono,monospace" font-size="7" font-weight="700" fill="#06b6d4" letter-spacing="1">STEP 2 · BUILTIN</text>
+      <text x="248" y="364" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="12" font-weight="700" fill="#e2e8f0">Builtins</text>
+      <text x="248" y="381" text-anchor="middle" font-family="Space Mono,monospace" font-size="7.5" fill="#06b6d4">/help /stop /clear /new</text>
+      <text x="248" y="394" text-anchor="middle" font-family="Space Mono,monospace" font-size="7.5" fill="#6b7a99">/config /circuit</text>
+      <text x="248" y="407" text-anchor="middle" font-family="Space Mono,monospace" font-size="7.5" fill="#6b7a99">/routing /folder /cd</text>
+      <text x="248" y="423" text-anchor="middle" font-family="Space Mono,monospace" font-size="7.5" fill="#3d5a7a">_DEFAULT_BUILTINS</text>
+      <text x="248" y="436" text-anchor="middle" font-family="Space Mono,monospace" font-size="7.5" fill="#3d5a7a">command_router.py</text>
+      <text x="248" y="449" text-anchor="middle" font-family="Space Mono,monospace" font-size="7" fill="#4a5568">lines 68–90</text>
+      <text x="248" y="456" text-anchor="middle" font-family="Space Mono,monospace" font-size="7" fill="#06b6d4">↓ inline handler</text>
+
+      <!-- Col 3: Workspaces (x=330 w=145 h=130) center=403 -->
+      <rect x="330" y="330" width="145" height="130" rx="7" fill="#130d26" stroke="#a78bfa" stroke-width="1.2"/>
+      <text x="403" y="348" text-anchor="middle" font-family="Space Mono,monospace" font-size="7" font-weight="700" fill="#a78bfa" letter-spacing="1">STEP 3 · WORKSPACE</text>
+      <text x="403" y="364" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="12" font-weight="700" fill="#e2e8f0">Workspaces</text>
+      <text x="403" y="381" text-anchor="middle" font-family="Space Mono,monospace" font-size="7.5" fill="#a78bfa">dynamic from TOML</text>
+      <text x="403" y="394" text-anchor="middle" font-family="Space Mono,monospace" font-size="7.5" fill="#6b7a99">/lyra /projects …</text>
+      <text x="403" y="407" text-anchor="middle" font-family="Space Mono,monospace" font-size="7.5" fill="#6b7a99">→ pool.switch_workspace()</text>
+      <text x="403" y="421" text-anchor="middle" font-family="Space Mono,monospace" font-size="7.5" fill="#3d5a7a">persists for pool lifetime</text>
+      <text x="403" y="435" text-anchor="middle" font-family="Space Mono,monospace" font-size="7.5" fill="#3d5a7a">command_router.py</text>
+      <text x="403" y="449" text-anchor="middle" font-family="Space Mono,monospace" font-size="7" fill="#4a5568">lines 124–130</text>
+      <text x="403" y="456" text-anchor="middle" font-family="Space Mono,monospace" font-size="7" fill="#a78bfa">↓ async switch cwd</text>
+
+      <!-- Col 4: Session (x=485 w=145 h=130) center=558 -->
+      <rect x="485" y="330" width="145" height="130" rx="7" fill="#0d0e26" stroke="#818cf8" stroke-width="1.2"/>
+      <text x="558" y="348" text-anchor="middle" font-family="Space Mono,monospace" font-size="7" font-weight="700" fill="#818cf8" letter-spacing="1">STEP 4 · SESSION</text>
+      <text x="558" y="364" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="12" font-weight="700" fill="#e2e8f0">Session Cmds</text>
+      <text x="558" y="381" text-anchor="middle" font-family="Space Mono,monospace" font-size="7.5" fill="#818cf8">/add /explain</text>
+      <text x="558" y="394" text-anchor="middle" font-family="Space Mono,monospace" font-size="7.5" fill="#818cf8">/summarize /search</text>
+      <text x="558" y="408" text-anchor="middle" font-family="Space Mono,monospace" font-size="7.5" fill="#6b7a99">isolated LLM call</text>
+      <text x="558" y="421" text-anchor="middle" font-family="Space Mono,monospace" font-size="7" fill="#6b7a99">pool='session:X'</text>
+      <text x="558" y="435" text-anchor="middle" font-family="Space Mono,monospace" font-size="7" fill="#3d5a7a">session_commands.py</text>
+      <text x="558" y="449" text-anchor="middle" font-family="Space Mono,monospace" font-size="7" fill="#4a5568">never pollutes history</text>
+      <text x="558" y="456" text-anchor="middle" font-family="Space Mono,monospace" font-size="7" fill="#818cf8">↓ isolated LLM</text>
+
+      <!-- Col 5: Plugins (x=640 w=145 h=130) center=713 -->
+      <rect x="640" y="330" width="145" height="130" rx="7" fill="#120c26" stroke="#8b5cf6" stroke-width="1.2"/>
+      <text x="713" y="348" text-anchor="middle" font-family="Space Mono,monospace" font-size="7" font-weight="700" fill="#8b5cf6" letter-spacing="1">STEP 5 · PLUGIN</text>
+      <text x="713" y="364" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="12" font-weight="700" fill="#e2e8f0">Plugins</text>
+      <text x="713" y="381" text-anchor="middle" font-family="Space Mono,monospace" font-size="7.5" fill="#8b5cf6">/echo /svc …custom</text>
+      <text x="713" y="394" text-anchor="middle" font-family="Space Mono,monospace" font-size="7.5" fill="#6b7a99">plugin.toml decl.</text>
+      <text x="713" y="407" text-anchor="middle" font-family="Space Mono,monospace" font-size="7.5" fill="#6b7a99">enabled per-agent</text>
+      <text x="713" y="421" text-anchor="middle" font-family="Space Mono,monospace" font-size="7.5" fill="#3d5a7a">hot-reload</text>
+      <text x="713" y="435" text-anchor="middle" font-family="Space Mono,monospace" font-size="7.5" fill="#3d5a7a">plugin_loader.py</text>
+      <text x="713" y="449" text-anchor="middle" font-family="Space Mono,monospace" font-size="7" fill="#4a5568">lines 82–250</text>
+      <text x="713" y="456" text-anchor="middle" font-family="Space Mono,monospace" font-size="7" fill="#8b5cf6">↓ inline handler</text>
+
+      <!-- Col 6: Passthrough (x=795 w=145 h=130) center=868 -->
+      <rect x="795" y="330" width="145" height="130" rx="7" fill="#1a1208" stroke="#f59e0b" stroke-width="1.5"/>
+      <text x="868" y="348" text-anchor="middle" font-family="Space Mono,monospace" font-size="7" font-weight="700" fill="#f59e0b" letter-spacing="1">STEP 6 · PASSTHRU</text>
+      <text x="868" y="364" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="12" font-weight="700" fill="#e2e8f0">Passthrough</text>
+      <text x="868" y="381" text-anchor="middle" font-family="Space Mono,monospace" font-size="7.5" fill="#f59e0b">/voice</text>
+      <text x="868" y="394" text-anchor="middle" font-family="Space Mono,monospace" font-size="7.5" fill="#6b7a99">rewrite modality=voice</text>
+      <text x="868" y="407" text-anchor="middle" font-family="Space Mono,monospace" font-size="7.5" fill="#6b7a99">→ LLM → TTS</text>
+      <text x="868" y="421" text-anchor="middle" font-family="Space Mono,monospace" font-size="7.5" fill="#6b7a99">→ OGG/Opus audio</text>
+      <text x="868" y="435" text-anchor="middle" font-family="Space Mono,monospace" font-size="7.5" fill="#3d5a7a">agent.py:641</text>
+      <text x="868" y="449" text-anchor="middle" font-family="Space Mono,monospace" font-size="7" fill="#4a5568">lines 797–824</text>
+      <text x="868" y="456" text-anchor="middle" font-family="Space Mono,monospace" font-size="7" fill="#f59e0b">↓ LLM → TTS</text>
+
+      <!-- ═══ OUTCOME CONNECTORS ═══════════════════════════════════════ -->
+      <!-- Fan-in from all 6 col bottoms → horizontal bar at y=473 -->
+      <line x1="93"  y1="460" x2="93"  y2="473" stroke="#22d3ee" stroke-width="1"/>
+      <line x1="248" y1="460" x2="248" y2="473" stroke="#06b6d4" stroke-width="1"/>
+      <line x1="403" y1="460" x2="403" y2="473" stroke="#a78bfa" stroke-width="1"/>
+      <line x1="558" y1="460" x2="558" y2="473" stroke="#818cf8" stroke-width="1"/>
+      <line x1="713" y1="460" x2="713" y2="473" stroke="#8b5cf6" stroke-width="1"/>
+      <line x1="868" y1="460" x2="868" y2="473" stroke="#f59e0b" stroke-width="1"/>
+      <!-- Horizontal bar -->
+      <line x1="93" y1="473" x2="868" y2="473" stroke="#3d4f6b" stroke-width="1"/>
+      <!-- Three drops from bar to outcome boxes -->
+      <line x1="170" y1="473" x2="170" y2="485" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#rc-ac)"/>
+      <line x1="480" y1="473" x2="480" y2="485" stroke="#34d399" stroke-width="2"   marker-end="url(#rc-ae)" class="svgfl2"/>
+      <line x1="795" y1="473" x2="795" y2="485" stroke="#f87171" stroke-width="1.5" marker-end="url(#rc-ar)"/>
+
+      <!-- ! fallthrough side path (dashed, left side) -->
+      <line x1="20"  y1="277" x2="6"   y2="277" stroke="#34d399" stroke-width="1" stroke-dasharray="3 3"/>
+      <line x1="6"   y1="277" x2="6"   y2="526" stroke="#34d399" stroke-width="1" stroke-dasharray="3 3"/>
+      <line x1="6"   y1="526" x2="322" y2="526" stroke="#34d399" stroke-width="1.5" marker-end="url(#rc-ae)" stroke-dasharray="3 3"/>
+      <text x="11" y="420" font-family="Space Mono,monospace" font-size="7" fill="#34d399" opacity="0.8" writing-mode="tb">! + unknown → LLM fallthrough</text>
+
+      <!-- / unknown side path (dashed, right side) -->
+      <line x1="940" y1="277" x2="954" y2="277" stroke="#f87171" stroke-width="1" stroke-dasharray="3 3"/>
+      <line x1="954" y1="277" x2="954" y2="526" stroke="#f87171" stroke-width="1" stroke-dasharray="3 3"/>
+      <line x1="954" y1="526" x2="940" y2="526" stroke="#f87171" stroke-width="1.5" marker-end="url(#rc-ar)" stroke-dasharray="3 3"/>
+      <text x="949" y="310" font-family="Space Mono,monospace" font-size="7" fill="#f87171" opacity="0.8" writing-mode="tb">/ + unknown → error</text>
+
+      <!-- ═══ OUTCOMES (y=485-555) ══════════════════════════════════════ -->
+      <text x="20" y="483" font-family="Space Mono,monospace" font-size="8" font-weight="700" fill="#3d4f6b" letter-spacing="1.5">OUTCOMES · hub.py:1169–1176</text>
+
+      <!-- Outcome 1: Response (x=20 w=295) -->
+      <rect x="20" y="487" width="295" height="72" rx="7" fill="#0a1a1e" stroke="#22d3ee" stroke-width="1.2"/>
+      <text x="167" y="505" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" font-weight="700" fill="#22d3ee" letter-spacing="1">MATCHED COMMAND</text>
+      <text x="167" y="522" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="12" font-weight="600" fill="#e2e8f0">→ Response → Adapter → User</text>
+      <text x="167" y="538" text-anchor="middle" font-family="Space Mono,monospace" font-size="7.5" fill="#6b7a99">Builtin · Workspace · Plugin</text>
+      <text x="167" y="551" text-anchor="middle" font-family="Space Mono,monospace" font-size="7" fill="#3d5a7a">zero LLM tokens for builtin &amp; plugin</text>
+
+      <!-- Outcome 2: LLM Pool (x=325 w=310) -->
+      <rect x="325" y="487" width="310" height="72" rx="7" fill="#0a1f10" stroke="#10b981" stroke-width="1.5"/>
+      <text x="480" y="505" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" font-weight="700" fill="#10b981" letter-spacing="1">LLM POOL</text>
+      <text x="480" y="522" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="12" font-weight="600" fill="#e2e8f0">_submit_to_pool() → AnthropicAgent</text>
+      <text x="480" y="538" text-anchor="middle" font-family="Space Mono,monospace" font-size="7.5" fill="#34d399">normal text · ! fallthrough · session · passthrough</text>
+      <text x="480" y="551" text-anchor="middle" font-family="Space Mono,monospace" font-size="7" fill="#3d5a7a">Response.speak=True → TTS → OGG/Opus</text>
+
+      <!-- Outcome 3: Error (x=645 w=295) -->
+      <rect x="645" y="487" width="295" height="72" rx="7" fill="#1a0808" stroke="#f87171" stroke-width="1.2"/>
+      <text x="792" y="505" text-anchor="middle" font-family="Space Mono,monospace" font-size="8" font-weight="700" fill="#f87171" letter-spacing="1">/ PREFIX · NO MATCH</text>
+      <text x="792" y="522" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="12" font-weight="600" fill="#e2e8f0">"Unknown command: /foo"</text>
+      <text x="792" y="538" text-anchor="middle" font-family="Space Mono,monospace" font-size="7.5" fill="#6b7a99">Type /help for available commands</text>
+      <text x="792" y="551" text-anchor="middle" font-family="Space Mono,monospace" font-size="7" fill="#3d5a7a">command_router.py lines 286–294</text>
+    </svg>
+  </div>
+
+  <!-- SVG Legend -->
+  <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:14px;padding:10px 16px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;font-family:var(--font-mono);font-size:11px;">
+    <div style="color:var(--textdim);font-weight:700;text-transform:uppercase;letter-spacing:1px;align-self:center;">Legend</div>
+    <div style="display:flex;align-items:center;gap:6px;"><span style="width:22px;height:2px;background:#5865f2;display:inline-block;"></span><span style="color:var(--textdim);">Discord adapter</span></div>
+    <div style="display:flex;align-items:center;gap:6px;"><span style="width:22px;height:2px;background:#a78bfa;display:inline-block;"></span><span style="color:var(--textdim);">Hub / Router</span></div>
+    <div style="display:flex;align-items:center;gap:6px;"><span style="width:22px;height:2px;background:#06b6d4;display:inline-block;"></span><span style="color:var(--textdim);">Builtins</span></div>
+    <div style="display:flex;align-items:center;gap:6px;"><span style="width:22px;height:2px;background:#818cf8;display:inline-block;"></span><span style="color:var(--textdim);">Session commands</span></div>
+    <div style="display:flex;align-items:center;gap:6px;"><span style="width:22px;height:2px;background:#8b5cf6;display:inline-block;"></span><span style="color:var(--textdim);">Plugins</span></div>
+    <div style="display:flex;align-items:center;gap:6px;"><span style="width:22px;height:2px;background:#f59e0b;display:inline-block;"></span><span style="color:var(--textdim);">Passthrough / Voice</span></div>
+    <div style="display:flex;align-items:center;gap:6px;"><span style="width:22px;height:2px;background:#10b981;display:inline-block;"></span><span style="color:var(--textdim);">LLM pool</span></div>
+    <div style="display:flex;align-items:center;gap:6px;"><span style="width:22px;height:2px;background:#f87171;display:inline-block;"></span><span style="color:var(--textdim);">Error path</span></div>
+    <div style="display:flex;align-items:center;gap:6px;"><span style="width:22px;height:2px;background:#34d399;display:inline-block;border-top:2px dashed #34d399;background:transparent;"></span><span style="color:var(--textdim);">! fallthrough</span></div>
+  </div>
+
+  <!-- Decision table -->
+  <div class="section-title">Where does a new command go?</div>
+  <div class="card" style="padding:0;">
+    <table class="tbl">
+      <thead><tr><th>Scenario</th><th>Layer</th><th>How to add it</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Affects session or bot state (clear history, change workspace)</td>
+          <td><span class="badge builtin">Hub Builtin</span></td>
+          <td>Add to <code>_DEFAULT_BUILTINS</code> in <code>command_router.py</code> + implement handler method</td>
+        </tr>
+        <tr>
+          <td>Isolated LLM task that must not pollute chat history</td>
+          <td><span class="badge plugin">Session</span></td>
+          <td>Add handler in <code>session_commands.py</code>, register in <code>CommandRouter._session_commands</code></td>
+        </tr>
+        <tr>
+          <td>Feature togglable per-agent, hot-reloadable without restart</td>
+          <td><span class="badge plugin">Plugin</span></td>
+          <td>Create <code>plugins/myname/plugin.toml</code> + <code>handlers.py</code>, enable in agent TOML</td>
+        </tr>
+        <tr>
+          <td>Needs LLM reasoning but user wants /-like entry syntax</td>
+          <td><span class="badge admin">Passthrough</span></td>
+          <td>Call <code>router.register_passthrough("name")</code> in <code>agent.py</code>, rewrite message before pool</td>
+        </tr>
+        <tr>
+          <td>Discord voice channel control (guild-only, stateful, before mention filter)</td>
+          <td><span class="badge phase2">Adapter</span></td>
+          <td>Add to <code>_handle_voice_command()</code> in <code>adapters/discord.py</code> before mention filter</td>
+        </tr>
+        <tr>
+          <td>User wants command syntax but fallthrough to LLM is acceptable</td>
+          <td><span class="badge builtin">! Prefix</span></td>
+          <td>Nothing to add — user types <code>!anything</code> and router falls through automatically</td>
+        </tr>
+        <tr>
+          <td>Everything else</td>
+          <td><span class="badge builtin">LLM Pool</span></td>
+          <td>No command needed — plain text routes straight to LLM agent</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="ib warn" style="margin-top:20px;">
+    <span class="ico">⚠️</span>
+    <div class="bd"><strong>No native platform command menus.</strong> Lyra does not call Telegram's <code>setMyCommands()</code> or Discord's <code>app_commands</code> tree. All routing is application-level text parsing — the same command set works on both platforms, plugins hot-reload without Discord tree resync. Adding Telegram autocomplete (cosmetic only): <code>bot.set_my_commands([BotCommand(...)])</code> at startup.</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     TAB 11 — HAPPY PATHS

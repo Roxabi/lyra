@@ -1,0 +1,1557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lyra — End-to-End Happy Paths</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Source+Code+Pro:wght@400;600&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+mermaid.initialize({
+  startOnLoad: true,
+  theme: 'base',
+  themeVariables: {
+    primaryColor: '#2a2a4a',
+    primaryTextColor: '#f5f0e8',
+    primaryBorderColor: '#d4a574',
+    lineColor: '#7d8c6e',
+    secondaryColor: '#1a1a2e',
+    tertiaryColor: '#2a2a4a',
+    noteBkgColor: '#2a2a4a',
+    noteTextColor: '#f5f0e8',
+    actorBkg: '#2a2a4a',
+    actorBorder: '#d4a574',
+    actorTextColor: '#f5f0e8',
+    signalColor: '#d4a574',
+    signalTextColor: '#f5f0e8',
+    labelBoxBkgColor: '#1a1a2e',
+    labelBoxBorderColor: '#d4a574',
+    labelTextColor: '#f5f0e8',
+    loopTextColor: '#d4a574',
+    activationBorderColor: '#d4a574',
+    activationBkgColor: '#2a2a4a',
+    sequenceNumberColor: '#f5f0e8',
+    fontFamily: 'Source Code Pro, monospace',
+    fontSize: '13px'
+  },
+  flowchart: { curve: 'basis', padding: 15 },
+  sequence: { mirrorActors: false, bottomMarginAdj: 2, actorMargin: 60, messageMargin: 30 }
+});
+</script>
+<style>
+:root {
+  --navy: #1a1a2e;
+  --navy-mid: #222240;
+  --navy-light: #2a2a4a;
+  --gold: #d4a574;
+  --gold-dim: #b8926a;
+  --sage: #7d8c6e;
+  --sage-light: #95a880;
+  --rose: #c17c74;
+  --rose-light: #d4918a;
+  --cream: #f5f0e8;
+  --cream-dim: #e8e0d4;
+  --text: #ddd8d0;
+  --text-dim: #a09888;
+  --blue: #6b8cce;
+  --blue-dim: #4a6a9e;
+  --teal: #5a9e8f;
+  --teal-dim: #3d7a6c;
+  --purple: #9b7cc4;
+  --purple-dim: #7a5ea0;
+  --amber: #c4a04e;
+  --amber-dim: #a08030;
+  --emerald: #5aaa7a;
+  --emerald-dim: #3d8a5e;
+  --slate: #8a8a9e;
+  --slate-dim: #6a6a80;
+  --radius: 6px;
+  --shadow: 0 2px 12px rgba(0,0,0,0.4);
+  --shadow-lg: 0 4px 24px rgba(0,0,0,0.5);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: 'Lora', Georgia, serif;
+  background: var(--navy);
+  color: var(--text);
+  line-height: 1.7;
+  min-height: 100vh;
+}
+h1, h2, h3, h4 { font-family: 'Playfair Display', Georgia, serif; color: var(--cream); }
+code, pre, .mono { font-family: 'Source Code Pro', monospace; }
+a { color: var(--gold); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ---- HEADER ---- */
+.header {
+  text-align: center;
+  padding: 4rem 2rem 3rem;
+  border-bottom: 1px solid rgba(212,165,116,0.2);
+  background: linear-gradient(180deg, #12122a 0%, var(--navy) 100%);
+}
+.header .label {
+  font-family: 'Source Code Pro', monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--gold-dim);
+  margin-bottom: 0.5rem;
+}
+.header h1 {
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  font-style: italic;
+  font-weight: 400;
+  margin-bottom: 0.5rem;
+}
+.header .subtitle {
+  font-size: 1.1rem;
+  color: var(--text-dim);
+}
+
+/* ---- NAV ---- */
+nav {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(26,26,46,0.95);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid rgba(212,165,116,0.15);
+  padding: 0.6rem 1rem;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+nav a {
+  display: inline-block;
+  font-family: 'Source Code Pro', monospace;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  padding: 0.3rem 0.8rem;
+  border-radius: var(--radius);
+  transition: all 0.2s;
+}
+nav a:hover { background: var(--navy-light); color: var(--gold); text-decoration: none; }
+
+/* ---- SECTIONS ---- */
+.container { max-width: 1400px; margin: 0 auto; padding: 0 1.5rem; }
+section { padding: 3rem 0; border-bottom: 1px solid rgba(212,165,116,0.1); }
+section h2 { font-size: 1.8rem; margin-bottom: 1.5rem; }
+section h3 { font-size: 1.3rem; margin-bottom: 1rem; color: var(--cream-dim); }
+
+/* ---- ARCHITECTURE OVERVIEW ---- */
+.arch-diagram {
+  background: var(--navy-mid);
+  border: 1px solid rgba(212,165,116,0.2);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  margin: 1.5rem 0;
+  overflow-x: auto;
+}
+
+/* ---- CATEGORY BADGES ---- */
+.category-badge {
+  display: inline-block;
+  font-family: 'Source Code Pro', monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.6rem;
+  border-radius: 3px;
+  margin-right: 0.5rem;
+}
+.cat-core { background: var(--blue-dim); color: #c8d8f0; }
+.cat-commands { background: var(--teal-dim); color: #c0e8d8; }
+.cat-audio { background: var(--purple-dim); color: #d8c8f0; }
+.cat-session { background: var(--amber-dim); color: #e8d8a0; }
+.cat-routing { background: rgba(193,124,116,0.3); color: var(--rose-light); }
+.cat-auth { background: rgba(138,138,158,0.3); color: #b8b8d0; }
+.cat-media { background: var(--emerald-dim); color: #c0e8d0; }
+
+/* ---- CARD GRID ---- */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: 1.2rem;
+  margin-top: 1rem;
+}
+.card {
+  background: var(--navy-mid);
+  border: 1px solid rgba(212,165,116,0.15);
+  border-radius: var(--radius);
+  padding: 1.2rem;
+  transition: all 0.25s;
+  min-width: 0;
+}
+.card:hover {
+  border-color: var(--gold-dim);
+  box-shadow: var(--shadow);
+  transform: translateY(-2px);
+}
+.card .num {
+  font-family: 'Source Code Pro', monospace;
+  font-size: 0.7rem;
+  color: var(--gold-dim);
+  letter-spacing: 0.1em;
+}
+.card h4 {
+  font-size: 1.05rem;
+  margin: 0.3rem 0 0.5rem;
+}
+.card .trigger {
+  font-family: 'Source Code Pro', monospace;
+  font-size: 0.78rem;
+  color: var(--sage-light);
+  margin-bottom: 0.6rem;
+}
+.card .flow {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+}
+.card .flow .arrow { color: var(--gold-dim); }
+
+/* ---- DETAILED DIAGRAMS ---- */
+.diagram-section {
+  background: var(--navy-mid);
+  border: 1px solid rgba(212,165,116,0.15);
+  border-radius: var(--radius);
+  margin: 1.5rem 0;
+  overflow: hidden;
+}
+.diagram-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.8rem 1.2rem;
+  border-bottom: 1px solid rgba(212,165,116,0.1);
+  cursor: pointer;
+}
+.diagram-header h4 { font-size: 1rem; }
+.diagram-controls {
+  display: flex;
+  gap: 0.4rem;
+}
+.diagram-controls button {
+  background: var(--navy-light);
+  border: 1px solid rgba(212,165,116,0.2);
+  color: var(--text-dim);
+  font-family: 'Source Code Pro', monospace;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.diagram-controls button:hover { color: var(--gold); border-color: var(--gold-dim); }
+.diagram-body {
+  padding: 1rem;
+  overflow-x: auto;
+  min-width: 0;
+}
+.diagram-body .mermaid { min-width: 0; overflow-wrap: break-word; }
+
+/* ---- TABLES ---- */
+.table-wrap {
+  overflow-x: auto;
+  margin: 1rem 0;
+  border: 1px solid rgba(212,165,116,0.15);
+  border-radius: var(--radius);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+th {
+  background: var(--navy-light);
+  color: var(--gold);
+  font-family: 'Source Code Pro', monospace;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.6rem 0.5rem;
+  text-align: left;
+  border-bottom: 2px solid rgba(212,165,116,0.3);
+  white-space: nowrap;
+}
+td {
+  padding: 0.5rem;
+  border-bottom: 1px solid rgba(212,165,116,0.08);
+  vertical-align: top;
+}
+tr:hover td { background: rgba(212,165,116,0.04); }
+.matrix-cell { text-align: center; font-size: 0.9rem; }
+.matrix-dot { color: var(--gold); }
+.matrix-empty { color: rgba(160,152,136,0.2); }
+.rotate-header {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  transform: rotate(180deg);
+  min-height: 80px;
+  padding: 0.3rem !important;
+  font-size: 0.65rem !important;
+}
+
+/* ---- STATE MACHINES ---- */
+.state-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+.state-card {
+  background: var(--navy-mid);
+  border: 1px solid rgba(212,165,116,0.15);
+  border-radius: var(--radius);
+  padding: 1.2rem;
+}
+.state-card h4 { margin-bottom: 0.8rem; }
+
+/* ---- MODAL ---- */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.8);
+  z-index: 1000;
+  padding: 2rem;
+  overflow: auto;
+}
+.modal-overlay.active { display: flex; align-items: center; justify-content: center; }
+.modal-content {
+  background: var(--navy-mid);
+  border: 1px solid var(--gold-dim);
+  border-radius: var(--radius);
+  padding: 2rem;
+  max-width: 95vw;
+  max-height: 90vh;
+  overflow: auto;
+  position: relative;
+}
+.modal-close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.8rem;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+.modal-close:hover { color: var(--gold); }
+
+/* ---- PRINT ---- */
+@media print {
+  body { background: #fff; color: #222; }
+  nav, .diagram-controls, .modal-overlay { display: none !important; }
+  .card, .diagram-section, .state-card { break-inside: avoid; border-color: #ccc; }
+  h1, h2, h3, h4, th { color: #222; }
+  .header { background: none; border-bottom: 2px solid #222; }
+}
+
+/* ---- DARK/LIGHT ---- */
+@media (prefers-color-scheme: light) {
+  :root {
+    --navy: #f8f5f0;
+    --navy-mid: #ffffff;
+    --navy-light: #f0ebe4;
+    --text: #333;
+    --text-dim: #666;
+    --cream: #1a1a2e;
+    --cream-dim: #333;
+  }
+  nav { background: rgba(248,245,240,0.95); }
+  th { background: #f0ebe4; }
+}
+</style><!-- diagram-meta:start -->
+<meta name="diagram:title"     content="Lyra — End-to-End Happy Paths">
+<meta name="diagram:date"      content="2026-03-15">
+<meta name="diagram:category"  content="lyra">
+<meta name="diagram:cat-label" content="Lyra Docs">
+<meta name="diagram:color"     content="blue">
+<!-- diagram-meta:end -->
+</head>
+<body>
+
+<!-- ============================================================ -->
+<!-- HEADER                                                        -->
+<!-- ============================================================ -->
+<div class="header">
+  <div class="label">Scenario Map</div>
+  <h1>Lyra — End-to-End Happy Paths</h1>
+  <p class="subtitle">Complete reference of all 26 happy path scenarios &middot; Hub-and-spoke asyncio architecture</p>
+</div>
+
+<!-- ============================================================ -->
+<!-- NAV                                                           -->
+<!-- ============================================================ -->
+<nav>
+  <a href="#architecture">Architecture</a>
+  <a href="#core">Core Flows</a>
+  <a href="#commands">Commands</a>
+  <a href="#audio">Audio / Voice</a>
+  <a href="#session">Session &amp; Memory</a>
+  <a href="#routing">Routing &amp; Resilience</a>
+  <a href="#auth">Auth &amp; Multi-Bot</a>
+  <a href="#media">Media &amp; Observability</a>
+  <a href="#detailed">Detailed Diagrams</a>
+  <a href="#states">State Machines</a>
+  <a href="#matrix">Component Matrix</a>
+  <a href="#summary">Data Flow Summary</a>
+</nav>
+
+<!-- ============================================================ -->
+<!-- MODAL                                                         -->
+<!-- ============================================================ -->
+<div class="modal-overlay" id="modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal-content">
+    <button class="modal-close" onclick="closeModal()">&times;</button>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<div class="container">
+
+<!-- ============================================================ -->
+<!-- 1. ARCHITECTURE OVERVIEW                                      -->
+<!-- ============================================================ -->
+<section id="architecture">
+  <h2>Architecture Overview</h2>
+  <p>Hub-and-spoke with per-platform inbound/outbound queues, per-scope pools, and stateless singleton agents.</p>
+  <div class="arch-diagram">
+    <pre class="mermaid">
+flowchart LR
+  subgraph Adapters["Channel Adapters"]
+    TG["Telegram\n(aiogram v3\nwebhook)"]
+    DC["Discord\n(discord.py v2\ngateway)"]
+  end
+
+  subgraph Inbound["Inbound Layer"]
+    TGQ["tg_inbound\nQueue(100)"]
+    DCQ["dc_inbound\nQueue(100)"]
+    STAGING["Staging\nQueue(500)"]
+  end
+
+  subgraph Core["Hub Core"]
+    AUTH["AuthMiddleware\nTrustLevel"]
+    RL["RateLimiter\n20msg/60s"]
+    CR["ContextResolver\nreply_to lookup"]
+    BIND["resolve_binding()\nRoutingKey -> Pool"]
+    CMD["CommandRouter\nbuiltins + plugins\n+ session cmds"]
+    POOL["Pool\nper-scope\nasyncio.Task"]
+  end
+
+  subgraph Agent["Agent Layer"]
+    AG["AgentBase\nstateless singleton"]
+    LLM["LlmProvider\nSmartRouting\nCircuitBreaker"]
+    MEM["MemoryManager\nL0/L1/L3"]
+  end
+
+  subgraph Outbound["Outbound Layer"]
+    OD_TG["OutboundDispatcher\nTelegram"]
+    OD_DC["OutboundDispatcher\nDiscord"]
+  end
+
+  subgraph Side["Side Services"]
+    STT["STTService\nvoicecli\nfaster-whisper"]
+    TTS["TTSService\nvoicecli\nQwen"]
+    TS["TurnStore\nturns.db L1"]
+    CB["CircuitBreaker\nCLOSED/OPEN/HALF"]
+  end
+
+  TG --> TGQ --> STAGING
+  DC --> DCQ --> STAGING
+  STAGING --> AUTH --> RL --> CR --> BIND
+  BIND --> CMD
+  BIND --> POOL
+  POOL --> AG --> LLM
+  AG --> MEM
+  AG --> OD_TG --> TG
+  AG --> OD_DC --> DC
+  STT -.-> STAGING
+  TTS -.-> OD_TG
+  TTS -.-> OD_DC
+  POOL -.-> TS
+  LLM -.-> CB
+    </pre>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 2. CORE MESSAGE FLOWS (1-4)                                   -->
+<!-- ============================================================ -->
+<section id="core">
+  <h2><span class="category-badge cat-core">Core</span> Core Message Flows</h2>
+  <div class="card-grid">
+
+    <div class="card">
+      <div class="num">SCENARIO 01</div>
+      <h4>Basic Text Message</h4>
+      <div class="trigger">Trigger: User sends a text message in Telegram or Discord</div>
+      <div class="flow">User <span class="arrow">&rarr;</span> Adapter._on_message() <span class="arrow">&rarr;</span> normalize() <span class="arrow">&rarr;</span> _start_typing()
+<span class="arrow">&rarr;</span> push_to_hub_guarded() <span class="arrow">&rarr;</span> InboundBus.put(platform, msg)
+<span class="arrow">&rarr;</span> Feeder <span class="arrow">&rarr;</span> Staging Queue <span class="arrow">&rarr;</span> Hub.run()
+<span class="arrow">&rarr;</span> _is_rate_limited() <span class="arrow">&rarr;</span> resolve_binding()
+<span class="arrow">&rarr;</span> get_or_create_pool() <span class="arrow">&rarr;</span> pool.submit(msg)
+<span class="arrow">&rarr;</span> _process_loop() <span class="arrow">&rarr;</span> agent.process(msg, pool)
+<span class="arrow">&rarr;</span> LlmProvider.complete() <span class="arrow">&rarr;</span> Response
+<span class="arrow">&rarr;</span> dispatch_response() <span class="arrow">&rarr;</span> OutboundDispatcher.enqueue()
+<span class="arrow">&rarr;</span> _worker_loop() <span class="arrow">&rarr;</span> adapter.send()
+<span class="arrow">&rarr;</span> _cancel_typing() <span class="arrow">&rarr;</span> bot.send_message()</div>
+    </div>
+
+    <div class="card">
+      <div class="num">SCENARIO 02</div>
+      <h4>Streaming Text Response</h4>
+      <div class="trigger">Trigger: Agent returns AsyncIterator[str] from process()</div>
+      <div class="flow">Same intake as #1 <span class="arrow">&rarr;</span> agent.process() returns AsyncIterator
+<span class="arrow">&rarr;</span> dispatch_streaming(msg, chunks)
+<span class="arrow">&rarr;</span> OutboundDispatcher.enqueue_streaming()
+<span class="arrow">&rarr;</span> adapter.send_streaming(msg, chunks)
+<span class="arrow">&rarr;</span> Send placeholder message <span class="arrow">&rarr;</span> _cancel_typing()
+<span class="arrow">&rarr;</span> Debounce loop (TG: 500ms, DC: 1s)
+<span class="arrow">&rarr;</span> edit_message_text() on each tick
+<span class="arrow">&rarr;</span> Final edit with complete text
+<span class="arrow">&rarr;</span> Overflow chunks as follow-up messages</div>
+    </div>
+
+    <div class="card">
+      <div class="num">SCENARIO 03</div>
+      <h4>Markdown Formatting</h4>
+      <div class="trigger">Trigger: LLM response contains markdown</div>
+      <div class="flow">Response text with markdown
+<span class="arrow">&rarr;</span> Telegram: _render_text()
+  <span class="arrow">&rarr;</span> telegramify_markdown (markdownify)
+  <span class="arrow">&rarr;</span> MarkdownV2 parse_mode
+  <span class="arrow">&rarr;</span> chunk_text(text, 4096)
+<span class="arrow">&rarr;</span> Discord: _render_text()
+  <span class="arrow">&rarr;</span> Native markdown (no conversion)
+  <span class="arrow">&rarr;</span> chunk_text(text, 2000)</div>
+    </div>
+
+    <div class="card">
+      <div class="num">SCENARIO 04</div>
+      <h4>Typing Indicator</h4>
+      <div class="trigger">Trigger: Message received by adapter</div>
+      <div class="flow">_on_message() received
+<span class="arrow">&rarr;</span> _start_typing(chat_id) immediately
+  <span class="arrow">&rarr;</span> TG: _typing_worker() sends chat_action every 3s
+  <span class="arrow">&rarr;</span> DC: _discord_typing_worker() uses channel.typing() ctx mgr
+<span class="arrow">&rarr;</span> Processing happens (agent, LLM...)
+<span class="arrow">&rarr;</span> send() or send_streaming() called
+<span class="arrow">&rarr;</span> _cancel_typing(chat_id) at start of send
+<span class="arrow">&rarr;</span> Drop safety: on_drop cancels if msg dropped</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 3. COMMANDS (5-9)                                             -->
+<!-- ============================================================ -->
+<section id="commands">
+  <h2><span class="category-badge cat-commands">Commands</span> Commands</h2>
+  <div class="card-grid">
+
+    <div class="card">
+      <div class="num">SCENARIO 05</div>
+      <h4>Builtin Command</h4>
+      <div class="trigger">Trigger: /help, /clear, /config, /stop, /circuit, /routing</div>
+      <div class="flow">User sends /help
+<span class="arrow">&rarr;</span> CommandParser.parse() <span class="arrow">&rarr;</span> CommandContext
+<span class="arrow">&rarr;</span> Hub pipeline: is_command() = true
+<span class="arrow">&rarr;</span> CommandRouter.dispatch(msg, pool)
+<span class="arrow">&rarr;</span> _dispatch_builtin("help", ...)
+<span class="arrow">&rarr;</span> _help() builds listing of all commands
+<span class="arrow">&rarr;</span> Response(content) <span class="arrow">&rarr;</span> dispatch_response()</div>
+    </div>
+
+    <div class="card">
+      <div class="num">SCENARIO 06</div>
+      <h4>Plugin Command</h4>
+      <div class="trigger">Trigger: /echo hello, /search query</div>
+      <div class="flow">User sends /echo hello
+<span class="arrow">&rarr;</span> CommandParser.parse() <span class="arrow">&rarr;</span> CommandContext
+<span class="arrow">&rarr;</span> CommandRouter.dispatch()
+<span class="arrow">&rarr;</span> Not builtin, not session cmd
+<span class="arrow">&rarr;</span> PluginLoader.get_commands(enabled_plugins)
+<span class="arrow">&rarr;</span> handler = plugin_handlers["/echo"]
+<span class="arrow">&rarr;</span> asyncio.wait_for(handler(msg, pool, args), timeout)
+<span class="arrow">&rarr;</span> Response <span class="arrow">&rarr;</span> dispatch_response()</div>
+    </div>
+
+    <div class="card">
+      <div class="num">SCENARIO 07</div>
+      <h4>Session Command (/add URL)</h4>
+      <div class="trigger">Trigger: /add https://example.com</div>
+      <div class="flow">/add URL
+<span class="arrow">&rarr;</span> CommandRouter.dispatch()
+<span class="arrow">&rarr;</span> _session_handlers["/add"] found
+<span class="arrow">&rarr;</span> _dispatch_session("/add", args, msg, pool)
+<span class="arrow">&rarr;</span> session_driver (isolated LlmProvider, no pool history)
+<span class="arrow">&rarr;</span> scrape_url(url) via web-intel subprocess
+<span class="arrow">&rarr;</span> LLM summary of scraped content
+<span class="arrow">&rarr;</span> vault_add() to knowledge base
+<span class="arrow">&rarr;</span> Response("Saved: title")</div>
+    </div>
+
+    <div class="card">
+      <div class="num">SCENARIO 08</div>
+      <h4>Bare URL Rewrite</h4>
+      <div class="trigger">Trigger: Plain URL as message text</div>
+      <div class="flow">User sends "https://example.com" (no command prefix)
+<span class="arrow">&rarr;</span> CommandRouter.prepare(msg)
+<span class="arrow">&rarr;</span> _BARE_URL_RE.fullmatch(text.strip()) = true
+<span class="arrow">&rarr;</span> _rewrite_bare_url(msg)
+<span class="arrow">&rarr;</span> Synthetic CommandContext(prefix="/", name="add", args=url)
+<span class="arrow">&rarr;</span> Flows into session command path (#7)</div>
+    </div>
+
+    <div class="card">
+      <div class="num">SCENARIO 09</div>
+      <h4>Workspace Switch</h4>
+      <div class="trigger">Trigger: /folder ~/proj or /workspace_name</div>
+      <div class="flow">/folder ~/projects/lyra
+<span class="arrow">&rarr;</span> CommandRouter.dispatch()
+<span class="arrow">&rarr;</span> _cmd_folder(msg, args, pool) — admin-only check
+<span class="arrow">&rarr;</span> Path.expanduser().resolve() <span class="arrow">&rarr;</span> validate is_dir()
+<span class="arrow">&rarr;</span> pool.switch_workspace(cwd)
+  <span class="arrow">&rarr;</span> sdk_history.clear(), history.clear()
+  <span class="arrow">&rarr;</span> _switch_workspace_fn(cwd) — CliPool kills/respawns subprocess
+<span class="arrow">&rarr;</span> Response("cwd -> /home/.../lyra")</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 4. AUDIO / VOICE (10-12)                                      -->
+<!-- ============================================================ -->
+<section id="audio">
+  <h2><span class="category-badge cat-audio">Audio</span> Audio / Voice</h2>
+  <div class="card-grid">
+
+    <div class="card">
+      <div class="num">SCENARIO 10</div>
+      <h4>Voice Input (STT)</h4>
+      <div class="trigger">Trigger: User sends a voice message</div>
+      <div class="flow">Voice message arrives
+<span class="arrow">&rarr;</span> Adapter._on_voice_message()
+<span class="arrow">&rarr;</span> _download_audio(file_id) — size check vs LYRA_MAX_AUDIO_BYTES
+<span class="arrow">&rarr;</span> normalize_audio() <span class="arrow">&rarr;</span> InboundAudio envelope
+<span class="arrow">&rarr;</span> push_to_hub_guarded(inbound_audio_bus, ...)
+<span class="arrow">&rarr;</span> Hub audio consumer loop
+<span class="arrow">&rarr;</span> STTService.transcribe(path) — voicecli faster-whisper
+  <span class="arrow">&rarr;</span> Personal vocab from ~/.voicecli/voicecli.vocab
+<span class="arrow">&rarr;</span> is_whisper_noise() check
+<span class="arrow">&rarr;</span> Inject as InboundMessage(text=transcription)
+<span class="arrow">&rarr;</span> Normal text processing flow (#1)</div>
+    </div>
+
+    <div class="card">
+      <div class="num">SCENARIO 11</div>
+      <h4>Voice Output (TTS)</h4>
+      <div class="trigger">Trigger: Agent response requires TTS output</div>
+      <div class="flow">Agent produces text response
+<span class="arrow">&rarr;</span> Hub detects TTS route (agent tts config)
+<span class="arrow">&rarr;</span> TTSService.synthesize(text)
+  <span class="arrow">&rarr;</span> voicecli generate_async() — Qwen TTS engine
+  <span class="arrow">&rarr;</span> WAV output + _wav_duration_ms()
+  <span class="arrow">&rarr;</span> ffmpeg WAV <span class="arrow">&rarr;</span> OGG/Opus (48kHz mono)
+  <span class="arrow">&rarr;</span> _wav_waveform_b64() — 256-byte amplitude array
+<span class="arrow">&rarr;</span> SynthesisResult(audio_bytes, mime, duration, waveform)
+<span class="arrow">&rarr;</span> OutboundAudio envelope
+<span class="arrow">&rarr;</span> OutboundDispatcher.enqueue_audio()
+<span class="arrow">&rarr;</span> adapter.render_audio()
+  <span class="arrow">&rarr;</span> TG: bot.send_voice() (voice bubble)
+  <span class="arrow">&rarr;</span> DC: IS_VOICE_MESSAGE flag (8192) + OGG</div>
+    </div>
+
+    <div class="card">
+      <div class="num">SCENARIO 12</div>
+      <h4>Discord Voice Channel</h4>
+      <div class="trigger">Trigger: !join in Discord guild</div>
+      <div class="flow">User in voice channel sends !join
+<span class="arrow">&rarr;</span> _handle_voice_command() <span class="arrow">&rarr;</span> cmd.name == "join"
+<span class="arrow">&rarr;</span> _handle_join_command()
+<span class="arrow">&rarr;</span> VoiceSessionManager.join(guild, channel, mode)
+  <span class="arrow">&rarr;</span> VoiceMode.TRANSIENT or PERSISTENT
+  <span class="arrow">&rarr;</span> voice_client.connect()
+<span class="arrow">&rarr;</span> TTS output routed to voice:
+  <span class="arrow">&rarr;</span> OutboundDispatcher.enqueue_voice_stream()
+  <span class="arrow">&rarr;</span> adapter.render_voice_stream()
+  <span class="arrow">&rarr;</span> VoiceSessionManager.stream(guild_id, chunks)
+  <span class="arrow">&rarr;</span> PCM playback via VoiceClient</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 5. SESSION & MEMORY (13-17)                                   -->
+<!-- ============================================================ -->
+<section id="session">
+  <h2><span class="category-badge cat-session">Session</span> Session &amp; Memory</h2>
+  <div class="card-grid">
+
+    <div class="card">
+      <div class="num">SCENARIO 13</div>
+      <h4>Multi-turn Conversation</h4>
+      <div class="trigger">Trigger: Multiple messages in the same scope</div>
+      <div class="flow">Msg 1 <span class="arrow">&rarr;</span> Pool created, session_id = UUID
+<span class="arrow">&rarr;</span> pool.append(msg) — user_id, medium, message_count set
+<span class="arrow">&rarr;</span> agent.process() <span class="arrow">&rarr;</span> LLM sees sdk_history (deque)
+<span class="arrow">&rarr;</span> pool.extend_sdk_history(new_messages)
+
+Msg 2 <span class="arrow">&rarr;</span> Same pool (same scope_id)
+<span class="arrow">&rarr;</span> pool.submit() <span class="arrow">&rarr;</span> debouncer.collect()
+<span class="arrow">&rarr;</span> agent.process() — LLM sees accumulated sdk_history
+<span class="arrow">&rarr;</span> max_sdk_history = 50, popleft() on overflow</div>
+    </div>
+
+    <div class="card">
+      <div class="num">SCENARIO 14</div>
+      <h4>Session Reset (/clear)</h4>
+      <div class="trigger">Trigger: /clear or /new command</div>
+      <div class="flow">/clear
+<span class="arrow">&rarr;</span> CommandRouter._cmd_clear(pool)
+<span class="arrow">&rarr;</span> pool.sdk_history.clear()
+<span class="arrow">&rarr;</span> pool.history.clear()
+<span class="arrow">&rarr;</span> pool.reset_session()
+  <span class="arrow">&rarr;</span> _session_reset_fn() callback
+  <span class="arrow">&rarr;</span> CliPool.reset() — kills subprocess, new session_id
+<span class="arrow">&rarr;</span> Response("Conversation history cleared. Starting fresh.")</div>
+    </div>
+
+    <div class="card">
+      <div class="num">SCENARIO 15</div>
+      <h4>Pool Eviction (TTL)</h4>
+      <div class="trigger">Trigger: Pool idle > POOL_TTL (3600s default)</div>
+      <div class="flow">Hub.get_or_create_pool() called
+<span class="arrow">&rarr;</span> _evict_stale_pools() — throttled: skip if &lt; TTL/10 elapsed
+<span class="arrow">&rarr;</span> Scan pools: pool.is_idle AND (now - pool.last_active) > TTL
+<span class="arrow">&rarr;</span> For each stale pool:
+  <span class="arrow">&rarr;</span> pools.pop(pid)
+  <span class="arrow">&rarr;</span> agent.flush_session(pool, "idle")
+    <span class="arrow">&rarr;</span> _summarize_session() via LLM
+    <span class="arrow">&rarr;</span> MemoryManager.upsert_session(snap, summary)
+    <span class="arrow">&rarr;</span> _schedule_extraction() — concept/preference extraction
+<span class="arrow">&rarr;</span> Pool removed from memory</div>
+    </div>
+
+    <div class="card">
+      <div class="num">SCENARIO 16</div>
+      <h4>Cross-session Memory Recall</h4>
+      <div class="trigger">Trigger: Known user starts a new session</div>
+      <div class="flow">New pool created for known user
+<span class="arrow">&rarr;</span> agent._ensure_system_prompt(pool) — first turn
+<span class="arrow">&rarr;</span> MemoryManager.recall(user_id, namespace, first_msg, budget)
+  <span class="arrow">&rarr;</span> DB query: sessions WHERE user_id matches (last 5)
+  <span class="arrow">&rarr;</span> FTS5 concept search in namespace:user_id scope
+  <span class="arrow">&rarr;</span> Freshness filter: _is_stale() with FRESHNESS_TTL_DAYS
+  <span class="arrow">&rarr;</span> _fetch_preferences(user_id) — sorted by staleness
+  <span class="arrow">&rarr;</span> Token-budgeted [MEMORY] + [PREFERENCES] blocks
+<span class="arrow">&rarr;</span> Injected into system prompt for LLM context</div>
+    </div>
+
+    <div class="card">
+      <div class="num">SCENARIO 17</div>
+      <h4>L0 Compaction</h4>
+      <div class="trigger">Trigger: sdk_history exceeds 80% of COMPACT_THRESHOLD (200k tokens)</div>
+      <div class="flow">After each turn: agent.compact(pool) called
+<span class="arrow">&rarr;</span> Token count of sdk_history > 80% of 200k
+<span class="arrow">&rarr;</span> _summarize_session() — LLM generates conversation summary
+<span class="arrow">&rarr;</span> MemoryManager.upsert_session(snap, summary, status="partial")
+  <span class="arrow">&rarr;</span> L3 partial snapshot written
+<span class="arrow">&rarr;</span> sdk_history replaced with:
+  [summary_turn] + last 10 turns
+<span class="arrow">&rarr;</span> Working memory reduced, context preserved</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 6. ROUTING & RESILIENCE (18-21)                               -->
+<!-- ============================================================ -->
+<section id="routing">
+  <h2><span class="category-badge cat-routing">Resilience</span> Routing &amp; Resilience</h2>
+  <div class="card-grid">
+
+    <div class="card">
+      <div class="num">SCENARIO 18</div>
+      <h4>Smart Routing</h4>
+      <div class="trigger">Trigger: Every message processed by LlmProvider</div>
+      <div class="flow">Message text arrives at SmartRoutingDecorator
+<span class="arrow">&rarr;</span> ComplexityClassifier.classify(text)
+  <span class="arrow">&rarr;</span> TRIVIAL: &le;3 words, greeting pattern
+  <span class="arrow">&rarr;</span> SIMPLE: &le;2 words, no keywords
+  <span class="arrow">&rarr;</span> MODERATE: explain/summarize keywords
+  <span class="arrow">&rarr;</span> COMPLEX: analyze/implement/refactor keywords
+<span class="arrow">&rarr;</span> SmartRoutingConfig maps complexity to model
+<span class="arrow">&rarr;</span> RoutingDecision logged to history deque
+<span class="arrow">&rarr;</span> Wrapped provider.complete() called with routed model
+<span class="arrow">&rarr;</span> Stack: CircuitBreaker -> SmartRouting -> Retry -> Driver</div>
+    </div>
+
+    <div class="card">
+      <div class="num">SCENARIO 19</div>
+      <h4>Rate Limiting</h4>
+      <div class="trigger">Trigger: User sends >20 messages in 60 seconds</div>
+      <div class="flow">Hub.run() receives message from staging queue
+<span class="arrow">&rarr;</span> _is_rate_limited(msg)
+  <span class="arrow">&rarr;</span> Key: (platform, bot_id, user_id) — per-user
+  <span class="arrow">&rarr;</span> Sliding window: deque of timestamps
+  <span class="arrow">&rarr;</span> Evict timestamps outside current window
+  <span class="arrow">&rarr;</span> len(timestamps) >= RATE_LIMIT (20)
+<span class="arrow">&rarr;</span> Returns True: message DROPPED
+<span class="arrow">&rarr;</span> notify user: "Too many messages, please wait"
+<span class="arrow">&rarr;</span> Inactive-user entries cleaned when deque empties</div>
+    </div>
+
+    <div class="card">
+      <div class="num">SCENARIO 20</div>
+      <h4>Bus Backpressure</h4>
+      <div class="trigger">Trigger: Platform inbound queue full (maxsize=100)</div>
+      <div class="flow">Adapter calls push_to_hub_guarded()
+<span class="arrow">&rarr;</span> InboundBus.put(platform, msg) — put_nowait()
+<span class="arrow">&rarr;</span> QueueFull raised
+<span class="arrow">&rarr;</span> Adapter sends ack to user: "message received, ~Xs wait"
+<span class="arrow">&rarr;</span> Staging queue (500): feeder drains platform queue
+<span class="arrow">&rarr;</span> QueueDepthExceeded event emitted when staging > threshold
+<span class="arrow">&rarr;</span> QueueDepthNormal emitted when depth returns below threshold</div>
+    </div>
+
+    <div class="card">
+      <div class="num">SCENARIO 21</div>
+      <h4>Circuit Breaker</h4>
+      <div class="trigger">Trigger: 5+ consecutive LLM/platform failures</div>
+      <div class="flow">Provider call fails
+<span class="arrow">&rarr;</span> CircuitBreaker.record_failure()
+<span class="arrow">&rarr;</span> _failure_count++ (in CLOSED state)
+<span class="arrow">&rarr;</span> failure_count >= failure_threshold (5)
+<span class="arrow">&rarr;</span> State: CLOSED -> OPEN, _opened_at = now
+
+Subsequent calls:
+<span class="arrow">&rarr;</span> cb.is_open() = True <span class="arrow">&rarr;</span> fast-fail, DROP
+
+After recovery_timeout (60s):
+<span class="arrow">&rarr;</span> OPEN -> HALF_OPEN
+<span class="arrow">&rarr;</span> One probe call allowed (_probe_in_flight)
+<span class="arrow">&rarr;</span> Success: HALF_OPEN -> CLOSED, counters reset
+<span class="arrow">&rarr;</span> Failure: HALF_OPEN -> OPEN, timer reset</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 7. AUTH & MULTI-BOT (22-24)                                   -->
+<!-- ============================================================ -->
+<section id="auth">
+  <h2><span class="category-badge cat-auth">Auth</span> Auth &amp; Multi-Bot</h2>
+  <div class="card-grid">
+
+    <div class="card">
+      <div class="num">SCENARIO 22</div>
+      <h4>Auth Check</h4>
+      <div class="trigger">Trigger: Every inbound message, before normalization</div>
+      <div class="flow">Message arrives at adapter._on_message()
+<span class="arrow">&rarr;</span> user_id = str(msg.from_user.id)
+<span class="arrow">&rarr;</span> auth.check(user_id, roles=[...])
+  <span class="arrow">&rarr;</span> 1. BLOCKED check first (even public cmds denied)
+  <span class="arrow">&rarr;</span> 2. Public command bypass (/join)
+  <span class="arrow">&rarr;</span> 3. AuthStore lookup (OWNER/TRUSTED/BLOCKED)
+  <span class="arrow">&rarr;</span> 4. Role map lookup (Discord roles -> TrustLevel)
+  <span class="arrow">&rarr;</span> 5. Default fallback from config
+<span class="arrow">&rarr;</span> BLOCKED: silently drop, log auth_reject
+<span class="arrow">&rarr;</span> OWNER/TRUSTED/PUBLIC: normalize() + continue
+<span class="arrow">&rarr;</span> trust_level attached to InboundMessage</div>
+    </div>
+
+    <div class="card">
+      <div class="num">SCENARIO 23</div>
+      <h4>Multi-bot Same Channel</h4>
+      <div class="trigger">Trigger: 2 bots configured for same platform/channel</div>
+      <div class="flow">Two bots registered: (TELEGRAM, "lyra"), (TELEGRAM, "aryl")
+<span class="arrow">&rarr;</span> Each has its own adapter, webhook endpoint, auth
+<span class="arrow">&rarr;</span> Inbound: separate RoutingKey per bot_id
+<span class="arrow">&rarr;</span> resolve_binding(): (platform, bot_id, scope_id)
+<span class="arrow">&rarr;</span> Separate pools: telegram:lyra:chat:555 vs telegram:aryl:chat:555
+<span class="arrow">&rarr;</span> Outbound: OutboundDispatcher per (platform, bot_id)
+  <span class="arrow">&rarr;</span> _verify_routing() ensures platform+bot_id match
+  <span class="arrow">&rarr;</span> Response never sent by wrong bot
+<span class="arrow">&rarr;</span> Discord: _owned_threads prevents cross-bot replies</div>
+    </div>
+
+    <div class="card">
+      <div class="num">SCENARIO 24</div>
+      <h4>Reply Threading</h4>
+      <div class="trigger">Trigger: User replies to a bot message</div>
+      <div class="flow">User replies to bot message (reply_to_id set)
+<span class="arrow">&rarr;</span> ContextResolver.resolve(reply_to_id)
+  <span class="arrow">&rarr;</span> Query conversation_turns WHERE reply_message_id = ?
+  <span class="arrow">&rarr;</span> Returns ResolvedSession(session_id, pool_id)
+<span class="arrow">&rarr;</span> Hub uses resolved pool_id to route to correct pool
+<span class="arrow">&rarr;</span> pool.resume_session(session_id) if different session
+  <span class="arrow">&rarr;</span> _session_resume_fn() callback for CLI backend
+<span class="arrow">&rarr;</span> Conversation continues in correct context
+<span class="arrow">&rarr;</span> Graceful fallback: if DB absent, uses default routing</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 8. MEDIA & OBSERVABILITY (25-26)                              -->
+<!-- ============================================================ -->
+<section id="media">
+  <h2><span class="category-badge cat-media">Media</span> Media &amp; Observability</h2>
+  <div class="card-grid">
+
+    <div class="card">
+      <div class="num">SCENARIO 25</div>
+      <h4>Attachments (Image/Video/File)</h4>
+      <div class="trigger">Trigger: User sends photo, document, video, sticker</div>
+      <div class="flow">Media message arrives
+<span class="arrow">&rarr;</span> _extract_attachments(msg) in adapter
+  <span class="arrow">&rarr;</span> TG: photo (largest), document, video, animation, sticker
+  <span class="arrow">&rarr;</span> DC: message.attachments (filtered: non-audio)
+<span class="arrow">&rarr;</span> Attachment(type, url/path/bytes, mime_type, filename)
+<span class="arrow">&rarr;</span> Attached to InboundMessage.attachments[]
+<span class="arrow">&rarr;</span> Agent processes with attachment context
+<span class="arrow">&rarr;</span> Outbound: OutboundAttachment envelope
+<span class="arrow">&rarr;</span> OutboundDispatcher.enqueue_attachment()
+<span class="arrow">&rarr;</span> adapter.render_attachment()
+  <span class="arrow">&rarr;</span> TG: send_photo/send_video/send_document
+  <span class="arrow">&rarr;</span> DC: discord.File + messageable.send()</div>
+    </div>
+
+    <div class="card">
+      <div class="num">SCENARIO 26</div>
+      <h4>Turn Logging (L1)</h4>
+      <div class="trigger">Trigger: Every user and assistant turn</div>
+      <div class="flow">Pool._process_one() processes message
+<span class="arrow">&rarr;</span> pool.append(msg) — user turn
+  <span class="arrow">&rarr;</span> _log_turn_async(role="user", content=msg.text)
+<span class="arrow">&rarr;</span> Agent produces response
+<span class="arrow">&rarr;</span> _log_turn_async(role="assistant", content=response.content)
+<span class="arrow">&rarr;</span> Both fire-and-forget via asyncio.create_task
+<span class="arrow">&rarr;</span> TurnStore.log_turn() writes to turns.db
+  <span class="arrow">&rarr;</span> Pool_id, session_id, role, platform, user_id
+  <span class="arrow">&rarr;</span> message_id, reply_message_id, timestamp
+<span class="arrow">&rarr;</span> Query: get_turns(pool_id, user_id, limit)</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 9. DETAILED SEQUENCE DIAGRAMS                                 -->
+<!-- ============================================================ -->
+<section id="detailed">
+  <h2>Detailed Flow Diagrams</h2>
+  <p>Expanded sequence diagrams for the most complex scenarios.</p>
+
+  <!-- Scenario 1: Basic Text Message -->
+  <div class="diagram-section">
+    <div class="diagram-header" onclick="toggleDiagram(this)">
+      <h4>#1 Basic Text Message — Full Sequence</h4>
+      <div class="diagram-controls">
+        <button onclick="event.stopPropagation();expandDiagram(this)">Expand</button>
+      </div>
+    </div>
+    <div class="diagram-body" style="display:none">
+      <pre class="mermaid">
+sequenceDiagram
+    actor User
+    participant Adapter as TG/DC Adapter
+    participant Auth as AuthMiddleware
+    participant Bus as InboundBus
+    participant Hub
+    participant Pool
+    participant Agent as AgentBase
+    participant LLM as LlmProvider
+    participant OD as OutboundDispatcher
+
+    User->>Adapter: Send text message
+    Adapter->>Auth: check(user_id, roles)
+    Auth-->>Adapter: TrustLevel (OWNER/TRUSTED/PUBLIC)
+    Adapter->>Adapter: normalize() -> InboundMessage
+    Adapter->>Adapter: _start_typing(chat_id)
+    Adapter->>Bus: push_to_hub_guarded()
+    Bus->>Bus: put(platform, msg) -> platform queue
+    Bus->>Bus: feeder drains to staging queue
+    Hub->>Bus: await get() from staging
+    Hub->>Hub: _is_rate_limited(msg)
+    Hub->>Hub: resolve_binding(msg)
+    Hub->>Hub: get_or_create_pool(pool_id, agent)
+    Hub->>Pool: pool.submit(msg)
+    Pool->>Pool: _process_loop() -> debouncer.collect()
+    Pool->>Agent: agent.process(msg, pool)
+    Agent->>LLM: complete(pool_id, text, model_cfg, prompt)
+    LLM-->>Agent: LlmResult(result, session_id)
+    Agent-->>Pool: Response(content)
+    Pool->>Hub: dispatch_response(msg, response)
+    Hub->>OD: enqueue(msg, outbound)
+    OD->>OD: _verify_routing()
+    OD->>Adapter: adapter.send(msg, outbound)
+    Adapter->>Adapter: _cancel_typing(chat_id)
+    Adapter->>User: bot.send_message(text, MarkdownV2)
+    Pool->>Pool: _log_turn_async (fire-and-forget)
+      </pre>
+    </div>
+  </div>
+
+  <!-- Scenario 2: Streaming -->
+  <div class="diagram-section">
+    <div class="diagram-header" onclick="toggleDiagram(this)">
+      <h4>#2 Streaming Text Response — Full Sequence</h4>
+      <div class="diagram-controls">
+        <button onclick="event.stopPropagation();expandDiagram(this)">Expand</button>
+      </div>
+    </div>
+    <div class="diagram-body" style="display:none">
+      <pre class="mermaid">
+sequenceDiagram
+    actor User
+    participant Adapter as TG/DC Adapter
+    participant Pool
+    participant Agent as AgentBase
+    participant LLM as LlmProvider
+    participant OD as OutboundDispatcher
+
+    Pool->>Agent: agent.process(msg, pool)
+    Agent->>LLM: complete() returns AsyncIterator
+    LLM-->>Agent: AsyncIterator[str]
+    Agent-->>Pool: AsyncIterator[str]
+    Pool->>OD: dispatch_streaming(msg, chunks)
+    OD->>Adapter: send_streaming(msg, chunks, outbound)
+    Adapter->>User: send placeholder message
+    Adapter->>Adapter: _cancel_typing()
+
+    loop Every 500ms (TG) / 1s (DC)
+        Adapter->>Adapter: accumulate chunks
+        Adapter->>User: edit_message_text(accumulated)
+    end
+
+    Adapter->>User: final edit (complete text)
+    Note over Adapter,User: Overflow chunks sent as follow-up messages
+      </pre>
+    </div>
+  </div>
+
+  <!-- Scenario 10: Voice Input STT -->
+  <div class="diagram-section">
+    <div class="diagram-header" onclick="toggleDiagram(this)">
+      <h4>#10 Voice Input (STT) — Full Sequence</h4>
+      <div class="diagram-controls">
+        <button onclick="event.stopPropagation();expandDiagram(this)">Expand</button>
+      </div>
+    </div>
+    <div class="diagram-body" style="display:none">
+      <pre class="mermaid">
+sequenceDiagram
+    actor User
+    participant Adapter as TG/DC Adapter
+    participant AudioBus as InboundAudioBus
+    participant Hub
+    participant STT as STTService
+    participant Bus as InboundBus
+    participant Pool
+
+    User->>Adapter: Voice message (OGG)
+    Adapter->>Adapter: _on_voice_message()
+    Adapter->>Adapter: auth.check(user_id)
+    Adapter->>Adapter: _download_audio(file_id)
+    Note over Adapter: Size check: LYRA_MAX_AUDIO_BYTES
+    Adapter->>Adapter: normalize_audio() -> InboundAudio
+    Adapter->>Adapter: _start_typing(chat_id)
+    Adapter->>AudioBus: push_to_hub_guarded(audio_bus, msg)
+    Hub->>AudioBus: audio consumer loop
+    Hub->>Hub: Write audio to temp file
+    Hub->>STT: transcribe(temp_path)
+    STT->>STT: voicecli transcribe (faster-whisper)
+    Note over STT: personal vocab from ~/.voicecli/voicecli.vocab
+    STT-->>Hub: TranscriptionResult(text, language, duration)
+    Hub->>Hub: is_whisper_noise(text) check
+    Hub->>Bus: Inject InboundMessage(text=transcription)
+    Bus->>Pool: Normal text flow continues
+      </pre>
+    </div>
+  </div>
+
+  <!-- Scenario 11: TTS -->
+  <div class="diagram-section">
+    <div class="diagram-header" onclick="toggleDiagram(this)">
+      <h4>#11 Voice Output (TTS) — Full Sequence</h4>
+      <div class="diagram-controls">
+        <button onclick="event.stopPropagation();expandDiagram(this)">Expand</button>
+      </div>
+    </div>
+    <div class="diagram-body" style="display:none">
+      <pre class="mermaid">
+sequenceDiagram
+    actor User
+    participant Agent as AgentBase
+    participant Hub
+    participant TTS as TTSService
+    participant OD as OutboundDispatcher
+    participant Adapter as TG/DC Adapter
+
+    Agent-->>Hub: Response text (TTS-enabled agent)
+    Hub->>TTS: synthesize(text, language)
+    TTS->>TTS: voicecli generate_async (Qwen)
+    TTS->>TTS: WAV output
+    TTS->>TTS: _wav_duration_ms(path)
+    TTS->>TTS: _wav_waveform_b64(path) [256 bytes]
+    TTS->>TTS: ffmpeg WAV -> OGG/Opus (48kHz mono)
+    TTS-->>Hub: SynthesisResult(bytes, mime, dur, waveform)
+    Hub->>Hub: Build OutboundAudio envelope
+    Hub->>OD: enqueue_audio(inbound, audio)
+    OD->>Adapter: render_audio(audio, inbound)
+    alt Telegram
+        Adapter->>User: bot.send_voice(voice=BufferedInputFile)
+    else Discord
+        Adapter->>User: HTTP POST /channels/id/messages (IS_VOICE_MESSAGE=8192)
+    end
+      </pre>
+    </div>
+  </div>
+
+  <!-- Scenario 13: Multi-turn -->
+  <div class="diagram-section">
+    <div class="diagram-header" onclick="toggleDiagram(this)">
+      <h4>#13 Multi-turn Conversation — Full Sequence</h4>
+      <div class="diagram-controls">
+        <button onclick="event.stopPropagation();expandDiagram(this)">Expand</button>
+      </div>
+    </div>
+    <div class="diagram-body" style="display:none">
+      <pre class="mermaid">
+sequenceDiagram
+    actor User
+    participant Pool
+    participant Agent as AgentBase
+    participant LLM as LlmProvider
+    participant Memory as MemoryManager
+
+    Note over Pool: session_id = UUID, message_count = 0
+    User->>Pool: Message 1
+    Pool->>Pool: append(msg) — set user_id, medium
+    Pool->>Agent: _ensure_system_prompt(pool)
+    Agent->>Memory: recall(user_id, namespace, first_msg)
+    Memory-->>Agent: [MEMORY] + [PREFERENCES] blocks
+    Agent->>Agent: build_system_prompt(pool)
+    Agent->>LLM: complete(text, messages=sdk_history)
+    LLM-->>Agent: LlmResult
+    Pool->>Pool: extend_sdk_history(new_messages)
+    Pool->>Pool: message_count = 1
+
+    User->>Pool: Message 2
+    Pool->>Pool: append(msg) — message_count = 2
+    Agent->>LLM: complete(text, messages=sdk_history)
+    Note over LLM: Sees full conversation context
+    LLM-->>Agent: LlmResult
+    Pool->>Pool: extend_sdk_history()
+    Agent->>Agent: compact(pool) check threshold
+
+    Note over Pool: sdk_history capped at max=50 via popleft()
+      </pre>
+    </div>
+  </div>
+
+  <!-- Scenario 16: Cross-session Memory -->
+  <div class="diagram-section">
+    <div class="diagram-header" onclick="toggleDiagram(this)">
+      <h4>#16 Cross-session Memory Recall — Full Sequence</h4>
+      <div class="diagram-controls">
+        <button onclick="event.stopPropagation();expandDiagram(this)">Expand</button>
+      </div>
+    </div>
+    <div class="diagram-body" style="display:none">
+      <pre class="mermaid">
+sequenceDiagram
+    participant Pool
+    participant Agent as AgentBase
+    participant Memory as MemoryManager
+    participant DB as SQLite (vault)
+
+    Pool->>Agent: _ensure_system_prompt(pool)
+    Agent->>Memory: recall(user_id, namespace, first_msg, token_budget=1000)
+    Memory->>DB: SELECT sessions WHERE user_id + agent_namespace (LIMIT 5)
+    DB-->>Memory: user_sessions[]
+    Memory->>DB: FTS5 search(first_msg) in namespace:user_id
+    DB-->>Memory: concepts[]
+    Memory->>Memory: Freshness filter (_is_stale + FRESHNESS_TTL_DAYS)
+    Memory->>Memory: Sort: fresh_entries + stale_entries
+    Memory->>Memory: Token budget: line by line, ~4 chars/token
+    Memory->>DB: _fetch_preferences(user_id, namespace)
+    DB-->>Memory: preferences[] sorted by staleness
+    Memory-->>Agent: "[MEMORY]\n..." + "[PREFERENCES]\n..."
+    Agent->>Agent: Inject into system prompt
+      </pre>
+    </div>
+  </div>
+
+  <!-- Scenario 18: Smart Routing -->
+  <div class="diagram-section">
+    <div class="diagram-header" onclick="toggleDiagram(this)">
+      <h4>#18 Smart Routing — Full Sequence</h4>
+      <div class="diagram-controls">
+        <button onclick="event.stopPropagation();expandDiagram(this)">Expand</button>
+      </div>
+    </div>
+    <div class="diagram-body" style="display:none">
+      <pre class="mermaid">
+sequenceDiagram
+    participant Agent as AgentBase
+    participant SR as SmartRoutingDecorator
+    participant CC as ComplexityClassifier
+    participant CB as CircuitBreaker
+    participant Retry as RetryDecorator
+    participant Driver as AnthropicSdkDriver
+
+    Agent->>SR: complete(pool_id, text, model_cfg, ...)
+    SR->>CC: classify(text)
+    alt TRIVIAL (greeting, <=3 words)
+        CC-->>SR: (TRIVIAL, "greeting/short")
+    else SIMPLE (<=2 words)
+        CC-->>SR: (SIMPLE, "very short")
+    else MODERATE (explain/summarize keywords)
+        CC-->>SR: (MODERATE, "explain keyword")
+    else COMPLEX (analyze/implement/refactor)
+        CC-->>SR: (COMPLEX, "complex keywords")
+    end
+    SR->>SR: Map complexity -> model via SmartRoutingConfig
+    SR->>SR: Log RoutingDecision to history deque
+    SR->>CB: is_open() check
+    CB-->>SR: false (CLOSED)
+    SR->>Retry: complete(text, routed_model_cfg)
+    Retry->>Driver: complete(text, model_cfg)
+    Driver-->>Retry: LlmResult
+    alt retryable error
+        Retry->>Driver: retry with backoff
+    end
+    Retry-->>SR: LlmResult
+    SR-->>Agent: LlmResult
+      </pre>
+    </div>
+  </div>
+
+  <!-- Scenario 21: Circuit Breaker -->
+  <div class="diagram-section">
+    <div class="diagram-header" onclick="toggleDiagram(this)">
+      <h4>#21 Circuit Breaker — Full State Sequence</h4>
+      <div class="diagram-controls">
+        <button onclick="event.stopPropagation();expandDiagram(this)">Expand</button>
+      </div>
+    </div>
+    <div class="diagram-body" style="display:none">
+      <pre class="mermaid">
+sequenceDiagram
+    participant Caller
+    participant CB as CircuitBreaker
+    participant Provider
+
+    Note over CB: State: CLOSED, failures=0
+
+    loop Failures 1-4
+        Caller->>CB: is_open()
+        CB-->>Caller: false
+        Caller->>Provider: call()
+        Provider-->>Caller: ERROR
+        Caller->>CB: record_failure()
+        Note over CB: failures++
+    end
+
+    Caller->>Provider: call() — failure #5
+    Provider-->>Caller: ERROR
+    Caller->>CB: record_failure()
+    Note over CB: failures=5 >= threshold -> OPEN
+    Note over CB: _opened_at = now
+
+    Caller->>CB: is_open()
+    CB-->>Caller: true (FAST-FAIL)
+    Note over Caller: Request dropped immediately
+
+    Note over CB: 60s recovery_timeout elapses...
+
+    Caller->>CB: is_open()
+    Note over CB: elapsed >= recovery_timeout -> HALF_OPEN
+    CB-->>Caller: false (probe slot granted)
+    Caller->>Provider: probe call
+    alt Probe succeeds
+        Caller->>CB: record_success()
+        Note over CB: HALF_OPEN -> CLOSED, counters reset
+    else Probe fails
+        Caller->>CB: record_failure()
+        Note over CB: HALF_OPEN -> OPEN, timer reset
+    end
+      </pre>
+    </div>
+  </div>
+
+</section>
+
+<!-- ============================================================ -->
+<!-- 10. STATE MACHINES                                            -->
+<!-- ============================================================ -->
+<section id="states">
+  <h2>State Machines</h2>
+  <div class="state-grid">
+
+    <div class="state-card">
+      <h4>Pool Lifecycle</h4>
+      <div class="arch-diagram">
+        <pre class="mermaid">
+stateDiagram-v2
+    [*] --> Created: get_or_create_pool()
+    Created --> Active: pool.submit(msg)
+    Active --> Active: new message (_touch)
+    Active --> Idle: _process_loop exits
+    Idle --> Active: pool.submit(msg)
+    Idle --> Evicted: TTL expired (3600s)
+    Evicted --> [*]: flush_session() -> L3 write
+    Active --> Reset: /clear command
+    Reset --> Active: next message
+        </pre>
+      </div>
+    </div>
+
+    <div class="state-card">
+      <h4>Circuit Breaker</h4>
+      <div class="arch-diagram">
+        <pre class="mermaid">
+stateDiagram-v2
+    [*] --> CLOSED
+    CLOSED --> CLOSED: success (no-op)
+    CLOSED --> CLOSED: failure (count < 5)
+    CLOSED --> OPEN: failure count >= 5
+    OPEN --> OPEN: all calls fast-fail
+    OPEN --> HALF_OPEN: recovery_timeout (60s) elapsed
+    HALF_OPEN --> CLOSED: probe success (reset counters)
+    HALF_OPEN --> OPEN: probe failure (reset timer)
+        </pre>
+      </div>
+    </div>
+
+    <div class="state-card">
+      <h4>Session Lifecycle</h4>
+      <div class="arch-diagram">
+        <pre class="mermaid">
+stateDiagram-v2
+    [*] --> New: Pool created, UUID assigned
+    New --> Active: First message (user_id, medium set)
+    Active --> Active: Messages accumulate in sdk_history
+    Active --> Compacted: sdk_history > 80% of 200k tokens
+    Compacted --> Active: summary + last 10 turns
+    Active --> Flushed: Pool evicted OR /clear
+    Compacted --> Flushed: Pool evicted
+    Flushed --> [*]: L3 snapshot + extraction tasks
+    Flushed --> Recalled: Same user, new session
+    Recalled --> Active: [MEMORY] + [PREFERENCES] injected
+        </pre>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 11. COMPONENT x SCENARIO MATRIX                               -->
+<!-- ============================================================ -->
+<section id="matrix">
+  <h2>Component &times; Scenario Matrix</h2>
+  <p>Which components participate in which scenarios.</p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Component</th>
+          <th class="rotate-header">1. Basic Text</th>
+          <th class="rotate-header">2. Streaming</th>
+          <th class="rotate-header">3. Markdown</th>
+          <th class="rotate-header">4. Typing</th>
+          <th class="rotate-header">5. Builtin Cmd</th>
+          <th class="rotate-header">6. Plugin Cmd</th>
+          <th class="rotate-header">7. Session Cmd</th>
+          <th class="rotate-header">8. Bare URL</th>
+          <th class="rotate-header">9. Workspace</th>
+          <th class="rotate-header">10. STT</th>
+          <th class="rotate-header">11. TTS</th>
+          <th class="rotate-header">12. Voice Ch.</th>
+          <th class="rotate-header">13. Multi-turn</th>
+          <th class="rotate-header">14. /clear</th>
+          <th class="rotate-header">15. Eviction</th>
+          <th class="rotate-header">16. Recall</th>
+          <th class="rotate-header">17. Compaction</th>
+          <th class="rotate-header">18. Smart Rte</th>
+          <th class="rotate-header">19. Rate Limit</th>
+          <th class="rotate-header">20. Backpres.</th>
+          <th class="rotate-header">21. Circuit Br.</th>
+          <th class="rotate-header">22. Auth</th>
+          <th class="rotate-header">23. Multi-bot</th>
+          <th class="rotate-header">24. Reply Thr.</th>
+          <th class="rotate-header">25. Attachments</th>
+          <th class="rotate-header">26. Turn Log</th>
+        </tr>
+      </thead>
+      <tbody id="matrix-body">
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 12. DATA FLOW SUMMARY                                         -->
+<!-- ============================================================ -->
+<section id="summary">
+  <h2>Data Flow Summary</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Name</th>
+          <th>Trigger</th>
+          <th>Processing Steps</th>
+          <th>Output</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>1</td><td>Basic Text Message</td><td>User sends text</td><td>Adapter -> Auth -> Bus -> Hub -> Pool -> Agent -> LLM -> dispatch_response</td><td>Text reply</td></tr>
+        <tr><td>2</td><td>Streaming Response</td><td>Agent returns AsyncIterator</td><td>Same intake -> dispatch_streaming -> placeholder -> edit loop -> final edit</td><td>Message updates in place</td></tr>
+        <tr><td>3</td><td>Markdown Formatting</td><td>Response with markdown</td><td>TG: telegramify_markdown -> MarkdownV2; DC: native</td><td>Formatted message</td></tr>
+        <tr><td>4</td><td>Typing Indicator</td><td>Message received</td><td>_start_typing -> background task -> cancelled on send()</td><td>Typing animation</td></tr>
+        <tr><td>5</td><td>Builtin Command</td><td>/help, /clear, /config, /stop</td><td>CommandParser -> CommandRouter -> _dispatch_builtin</td><td>Command response</td></tr>
+        <tr><td>6</td><td>Plugin Command</td><td>/echo, /search</td><td>CommandRouter -> PluginLoader -> handler(msg, pool, args)</td><td>Plugin response</td></tr>
+        <tr><td>7</td><td>Session Command</td><td>/add URL</td><td>CommandRouter -> session_driver -> scrape_url -> LLM -> vault_add</td><td>Saved to vault</td></tr>
+        <tr><td>8</td><td>Bare URL Rewrite</td><td>Plain URL message</td><td>prepare() -> _BARE_URL_RE -> rewrite to /add -> session flow</td><td>Auto-saved URL</td></tr>
+        <tr><td>9</td><td>Workspace Switch</td><td>/folder, /workspace_name</td><td>admin check -> pool.switch_workspace -> clear history -> respawn</td><td>cwd changed</td></tr>
+        <tr><td>10</td><td>Voice Input (STT)</td><td>Voice message</td><td>Download -> STTService.transcribe (whisper) -> inject text -> normal flow</td><td>Text reply to voice</td></tr>
+        <tr><td>11</td><td>Voice Output (TTS)</td><td>TTS-enabled agent</td><td>voicecli generate -> WAV -> OGG/Opus -> render_audio</td><td>Voice note</td></tr>
+        <tr><td>12</td><td>Discord Voice Channel</td><td>!join command</td><td>VoiceSessionManager.join -> TTS -> render_voice_stream -> VoiceClient</td><td>Voice playback</td></tr>
+        <tr><td>13</td><td>Multi-turn Conversation</td><td>Multiple messages</td><td>Pool accumulates sdk_history -> LLM sees full context</td><td>Contextual replies</td></tr>
+        <tr><td>14</td><td>Session Reset</td><td>/clear command</td><td>clear history -> pool.reset_session -> kill subprocess</td><td>Fresh session</td></tr>
+        <tr><td>15</td><td>Pool Eviction</td><td>Idle > TTL (1h)</td><td>_evict_stale_pools -> flush_session -> L3 snapshot -> remove pool</td><td>Memory freed</td></tr>
+        <tr><td>16</td><td>Memory Recall</td><td>Known user new session</td><td>recall() -> sessions + FTS5 concepts + preferences -> system prompt</td><td>Context-aware response</td></tr>
+        <tr><td>17</td><td>L0 Compaction</td><td>sdk_history > 160k tokens</td><td>_summarize_session -> L3 partial -> replace with summary + last 10</td><td>Reduced context</td></tr>
+        <tr><td>18</td><td>Smart Routing</td><td>Every LLM call</td><td>ComplexityClassifier -> map to model -> RoutingDecision logged</td><td>Cost-optimized model</td></tr>
+        <tr><td>19</td><td>Rate Limiting</td><td>>20 msgs/60s per user</td><td>Sliding window -> drop + notify</td><td>Rate limit notice</td></tr>
+        <tr><td>20</td><td>Bus Backpressure</td><td>Queue full (100)</td><td>QueueFull -> ack to user -> blocking await</td><td>Delayed processing</td></tr>
+        <tr><td>21</td><td>Circuit Breaker</td><td>5+ consecutive failures</td><td>CLOSED -> OPEN (fast-fail) -> HALF_OPEN (probe) -> CLOSED</td><td>Graceful degradation</td></tr>
+        <tr><td>22</td><td>Auth Check</td><td>Every message</td><td>check(user_id, roles) -> store/role_map/default -> TrustLevel</td><td>Allow or drop</td></tr>
+        <tr><td>23</td><td>Multi-bot Same Channel</td><td>2 bots configured</td><td>Separate adapters/pools/dispatchers per (platform, bot_id)</td><td>Isolated conversations</td></tr>
+        <tr><td>24</td><td>Reply Threading</td><td>Reply to bot message</td><td>ContextResolver -> conversation_turns lookup -> correct pool</td><td>Context-correct reply</td></tr>
+        <tr><td>25</td><td>Attachments</td><td>Image/video/file sent</td><td>_extract_attachments -> Attachment objects -> render_attachment</td><td>Media response</td></tr>
+        <tr><td>26</td><td>Turn Logging</td><td>Every turn</td><td>_log_turn_async (fire-and-forget) -> TurnStore -> turns.db</td><td>Audit trail</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+</div><!-- .container -->
+
+<footer style="text-align:center;padding:3rem 1rem;color:var(--text-dim);font-size:0.85rem;border-top:1px solid rgba(212,165,116,0.1);">
+  Lyra by Roxabi &middot; Generated from codebase analysis &middot; 26 E2E Happy Path Scenarios
+</footer>
+
+<script>
+// Matrix data
+const components = [
+  'Adapter', 'InboundBus', 'Hub', 'Pool', 'Agent', 'LLM', 'CommandRouter',
+  'STT', 'TTS', 'Memory', 'TurnStore', 'Auth', 'CircuitBreaker', 'RateLimiter',
+  'OutboundDispatcher', 'ContextResolver'
+];
+const matrix = {
+  'Adapter':           [1,1,1,1,1,1,1,1,0,1,1,1,0,0,0,0,0,0,0,1,0,1,1,0,1,0],
+  'InboundBus':        [1,1,0,0,1,1,1,1,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1,0],
+  'Hub':               [1,1,0,0,1,1,1,1,0,1,1,0,0,0,1,0,0,0,1,1,0,0,1,1,1,0],
+  'Pool':              [1,1,0,0,0,1,0,0,1,0,0,0,1,1,1,0,1,0,0,0,0,0,1,1,0,1],
+  'Agent':             [1,1,0,0,0,0,0,0,0,0,0,0,1,0,1,1,1,1,0,0,0,0,0,0,0,0],
+  'LLM':               [1,1,0,0,0,0,1,0,0,0,0,0,1,0,0,0,1,1,0,0,1,0,0,0,0,0],
+  'CommandRouter':     [0,0,0,0,1,1,1,1,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0],
+  'STT':               [0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  'TTS':               [0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  'Memory':            [0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,1,1,0,0,0,0,0,0,0,0,0],
+  'TurnStore':         [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1],
+  'Auth':              [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0],
+  'CircuitBreaker':    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,0,0,0,0,0],
+  'RateLimiter':       [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0],
+  'OutboundDispatcher':[1,1,0,0,1,1,1,1,1,0,1,1,0,0,0,0,0,0,0,0,1,0,1,0,1,0],
+  'ContextResolver':   [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0],
+};
+
+const tbody = document.getElementById('matrix-body');
+components.forEach(comp => {
+  const tr = document.createElement('tr');
+  const tdName = document.createElement('td');
+  tdName.style.fontFamily = "'Source Code Pro', monospace";
+  tdName.style.fontSize = '0.78rem';
+  tdName.style.whiteSpace = 'nowrap';
+  tdName.textContent = comp;
+  tr.appendChild(tdName);
+  const row = matrix[comp];
+  row.forEach(val => {
+    const td = document.createElement('td');
+    td.className = 'matrix-cell';
+    if (val) {
+      td.innerHTML = '<span class="matrix-dot">&bull;</span>';
+    } else {
+      td.innerHTML = '<span class="matrix-empty">&middot;</span>';
+    }
+    tr.appendChild(td);
+  });
+  tbody.appendChild(tr);
+});
+
+// Diagram toggle
+function toggleDiagram(header) {
+  const body = header.nextElementSibling;
+  body.style.display = body.style.display === 'none' ? 'block' : 'none';
+}
+
+// Expand diagram in modal
+function expandDiagram(btn) {
+  const section = btn.closest('.diagram-section');
+  const body = section.querySelector('.diagram-body');
+  const title = section.querySelector('h4').textContent;
+  const clone = body.cloneNode(true);
+  clone.style.display = 'block';
+  const modal = document.getElementById('modal');
+  const modalBody = document.getElementById('modal-body');
+  modalBody.innerHTML = '<h3 style="margin-bottom:1rem;">' + title + '</h3>';
+  modalBody.appendChild(clone);
+  modal.classList.add('active');
+  // Re-render mermaid in modal
+  import('https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs').then(m => {
+    m.default.run({ nodes: clone.querySelectorAll('.mermaid') });
+  });
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('active');
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeModal();
+});
+
+// Auto-expand all diagrams on load for initial render
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.diagram-body').forEach(el => {
+    el.style.display = 'block';
+  });
+});
+</script>
+</body>
+</html>

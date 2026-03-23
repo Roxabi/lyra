@@ -1,0 +1,97 @@
+<div class="main">
+
+  <div class="section">
+    <div class="sh"><span class="dot"></span> Prefix Routing</div>
+    <div class="grid2">
+      <div class="card card--accent">
+        <div class="card-label"><span class="dot"></span> / prefix — bot commands</div>
+        <div class="card-title">Intercepted by adapter</div>
+        <p style="margin:0;font-size:.82rem">Parsed before the LLM. Executes local handler. Examples: <code>/help</code>, <code>/reset</code>, <code>/model</code>, <code>/workspace</code>.</p>
+      </div>
+      <div class="card card--amber">
+        <div class="card-label"><span class="dot"></span> ! prefix — passthrough</div>
+        <div class="card-title">Forwarded to LLM</div>
+        <p style="margin:0;font-size:.82rem">Bypasses command parsing entirely. The full message including <code>!</code> is sent to the backend as-is. Useful for prompts that start with <code>/</code>.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="sh"><span class="dot"></span> Routing Flow</div>
+    <div class="routing-flow">
+      <div class="routing-row"><span class="rn">1</span><span class="rl">Incoming message</span><span class="rt">raw text from adapter</span></div>
+      <div class="routing-row amb"><span class="rn">2</span><span class="rl">Starts with <code>/</code>?</span><span class="rt">→ command parser</span></div>
+      <div class="routing-row"><span class="rn">3</span><span class="rl">Known command?</span><span class="rt">→ local handler → reply</span></div>
+      <div class="routing-row ros"><span class="rn">4</span><span class="rl">Unknown command</span><span class="rt">→ "unknown command" or forward to LLM if passthroughs match</span></div>
+      <div class="routing-row"><span class="rn">5</span><span class="rl">No prefix / <code>!</code> prefix</span><span class="rt">→ agent pool → backend → response</span></div>
+    </div>
+
+    <div class="ib note"><span class="ib-icon"></span><div class="ib-body">
+      <strong>Session commands</strong> (#341) attach to a session via reply-to message. <code>/add</code>, <code>/explain</code>, <code>/summarize</code> resume the correct <code>message_index</code> session when used as a reply.
+    </div></div>
+  </div>
+
+  <div class="section">
+    <div class="sh"><span class="dot"></span> Command Reference</div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>Command</th><th>Category</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td>/help</td><td>Info</td><td>Show available commands. Split into Commands + Plugins sections (#345).</td></tr>
+          <tr><td>/reset</td><td>Session</td><td>Clear conversation history and start a new session.</td></tr>
+          <tr><td>/history</td><td>Session</td><td>Show recent conversation turns.</td></tr>
+          <tr><td>/add &lt;text&gt;</td><td>Session</td><td>Append to the last session message. Use as reply for correct routing.</td></tr>
+          <tr><td>/explain</td><td>Session</td><td>Ask the agent to explain the last response. Reply-based routing.</td></tr>
+          <tr><td>/summarize</td><td>Session</td><td>Summarize the conversation so far. Reply-based routing.</td></tr>
+          <tr><td>/model [name]</td><td>Settings</td><td>View or switch the active model for this session.</td></tr>
+          <tr><td>/agent [name]</td><td>Settings</td><td>View current agent or switch to a named agent.</td></tr>
+          <tr><td>/workspace &lt;key&gt;</td><td>Settings</td><td>Override <code>cwd</code> with a named workspace from <code>workspaces_json</code>.</td></tr>
+          <tr><td>/voice [on|off]</td><td>Voice</td><td>Toggle voice I/O for this session.</td></tr>
+          <tr><td>/lang &lt;code&gt;</td><td>Settings</td><td>Set response language (e.g. <code>fr</code>, <code>ja</code>). Falls back to <code>fallback_language</code>.</td></tr>
+          <tr><td>/status</td><td>Info</td><td>Show agent, model, backend, session, and pool status.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="sh"><span class="dot"></span> Inline Flow Example</div>
+    <p>How a <code>/workspace</code> command resolves:</p>
+    <div class="flow">
+      <span class="fn acc">/workspace lyra</span>
+      <span class="fa">→</span>
+      <span class="fn">lookup workspaces_json</span>
+      <span class="fa">→</span>
+      <span class="fn grn">cwd = ~/projects/lyra</span>
+      <span class="fa">→</span>
+      <span class="fn">pool updated</span>
+      <span class="fa">→</span>
+      <span class="fn acc">confirmed</span>
+    </div>
+
+    <p>How a session command routes via reply:</p>
+    <div class="flow">
+      <span class="fn">reply-to msg</span>
+      <span class="fa">→</span>
+      <span class="fn acc">message_index lookup</span>
+      <span class="fa">→</span>
+      <span class="fn">session ID resolved</span>
+      <span class="fa">→</span>
+      <span class="fn grn">/add / /explain / /summarize</span>
+      <span class="fa">→</span>
+      <span class="fn">correct pool</span>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="sh"><span class="dot"></span> Passthroughs</div>
+    <div class="ib plum"><span class="ib-icon"></span><div class="ib-body">
+      <strong>Agent-level passthrough list.</strong> Commands in <code>passthroughs_json</code> are forwarded directly to the LLM without local processing — useful for agent-specific slash commands that should be interpreted by the model rather than the adapter.
+    </div></div>
+    <div class="cb">
+      <div class="cb-head"><span class="cb-lang">json</span><span class="cb-lbl">passthroughs_json example</span></div>
+      <pre><span class="jk">"passthroughs_json"</span>: [<span class="jv">"/think"</span>, <span class="jv">"/brainstorm"</span>, <span class="jv">"/outline"</span>]</pre>
+    </div>
+  </div>
+
+</div>

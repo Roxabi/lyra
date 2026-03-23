@@ -1,0 +1,96 @@
+
+  <div class="ib new"><div class="ib-icon"></div><div class="ib-body"><strong>ADR-029 — DB-first agent config.</strong> As of v8 the SQLite <code>agents</code> table is the single runtime source of truth. TOMLs are seed-only. <code>lyra agent create</code> writes to the DB directly — no TOML is created. Hot-reload uses <code>updated_at</code> polling instead of file mtime.</div></div>
+
+  <div class="section">
+    <h2 class="sh"><span class="dot"></span>What is an agent?</h2>
+    <p>An agent is a named configuration that binds a <strong>system prompt</strong>, a <strong>model</strong>, a set of <strong>tools</strong>, and optional <strong>persona</strong> to a conversational identity. When a bot receives a message, it looks up its assigned agent by name from the DB and passes the message to a Pool running that agent.</p>
+    <p>Agents are stateless singletons — their configuration is shared across all concurrent conversations. Conversation state (history, circuit) lives in the Pool, not the agent.</p>
+  </div>
+
+  <div class="section">
+    <h2 class="sh"><span class="dot"></span>Agent config fields</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>Field</th><th>Required</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td>name</td><td><span class="badge req">req</span></td><td>Unique agent identifier (snake_case). Used in config.toml bot assignments.</td></tr>
+          <tr><td>model</td><td><span class="badge req">req</span></td><td>LLM model string e.g. <code>claude-sonnet-4-6</code></td></tr>
+          <tr><td>system_prompt</td><td><span class="badge req">req</span></td><td>Static system prompt injected into every conversation</td></tr>
+          <tr><td>tools</td><td><span class="badge opt">opt</span></td><td>List of tool names to enable e.g. <code>["Bash", "Read", "Skill"]</code></td></tr>
+          <tr><td>persona</td><td><span class="badge opt">opt</span></td><td>Name of a <code>.persona.toml</code> file to load (voice, style overrides)</td></tr>
+          <tr><td>max_turns</td><td><span class="badge opt">opt</span></td><td>Max agentic turns before auto-stopping. Default: 10</td></tr>
+          <tr><td>workspaces</td><td><span class="badge opt">opt</span></td><td>Named directories exposed as <code>/workspace &lt;key&gt;</code> commands (override cwd)</td></tr>
+          <tr><td>platform</td><td><span class="badge opt">opt</span></td><td>Restrict agent to one platform: <code>telegram</code> | <code>discord</code></td></tr>
+          <tr><td>provider</td><td><span class="badge opt">opt</span></td><td>Backend: <code>anthropic</code> (default) | <code>claude-cli</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2 class="sh"><span class="dot"></span>TOML files vs DB — what goes where</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>Source</th><th>Role</th><th>Read at runtime?</th></tr></thead>
+        <tbody>
+          <tr><td>src/lyra/agents/*.toml</td><td>Seed files — versioned defaults</td><td>No — only via <code>lyra agent init</code></td></tr>
+          <tr><td>~/.lyra/auth.db (agents table)</td><td>Runtime source of truth</td><td>Yes — on every message</td></tr>
+          <tr><td>*.persona.toml</td><td>Voice / style overlays</td><td>Yes — loaded when agent reloads</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="ib warn"><div class="ib-icon"></div><div class="ib-body"><strong>DB takes precedence.</strong> Editing a TOML file after <code>lyra agent init</code> has no effect until you run <code>lyra agent init --force</code>. The running daemon reads from the DB only.</div></div>
+  </div>
+
+  <div class="section">
+    <h2 class="sh"><span class="dot"></span>CLI reference</h2>
+
+    <h3>Creating agents <span class="badge new">v8 updated</span></h3>
+    <div class="cb"><div class="cb-head"><span class="cb-lang">bash</span><span class="cb-lbl">DB-first (v8 — no TOML created)</span></div><pre>lyra agent create my_agent \
+  --model claude-sonnet-4-6 \
+  --system-prompt "You are a helpful assistant." \
+  --tools Read,Bash,Skill</pre></div>
+    <div class="ib new"><div class="ib-icon"></div><div class="ib-body"><strong>No TOML, no init step.</strong> <code>lyra agent create</code> calls <code>AgentStore.upsert()</code> directly. The agent is immediately available to the daemon on the next message. You do not need to run <code>lyra agent init</code> afterward.</div></div>
+
+    <h3>Seeding from TOML (first-time setup)</h3>
+    <div class="cb"><div class="cb-head"><span class="cb-lang">bash</span></div><pre>lyra agent init              # seed DB from src/lyra/agents/*.toml (skips existing)
+lyra agent init --force      # overwrite existing DB rows from TOMLs</pre></div>
+    <p>Use <code>init</code> once on a new machine, or after updating seed TOMLs that you want to push to the DB.</p>
+
+    <h3>Viewing agents</h3>
+    <div class="cb"><div class="cb-head"><span class="cb-lang">bash</span></div><pre>lyra agent list              # all agents in DB
+lyra agent show my_agent     # full config for one agent</pre></div>
+
+    <h3>Editing agents <span class="badge upd">hot-reload</span></h3>
+    <div class="cb"><div class="cb-head"><span class="cb-lang">bash</span></div><pre>lyra agent edit my_agent     # interactive editor, writes to DB</pre></div>
+    <p>After saving, <code>upsert()</code> bumps the <code>updated_at</code> timestamp. The running daemon picks up the change on the next inbound message — no restart needed.</p>
+
+    <h3>Assignment and deletion</h3>
+    <div class="cb"><div class="cb-head"><span class="cb-lang">bash</span></div><pre>lyra agent assign my_agent --platform telegram --bot &lt;bot_id&gt;
+lyra agent validate my_agent   # check config for errors
+lyra agent delete my_agent     # refuses if a bot is still assigned</pre></div>
+  </div>
+
+  <div class="section">
+    <h2 class="sh"><span class="dot"></span>Hot-reload mechanics</h2>
+    <p>On every inbound message, <code>AgentBase._maybe_reload()</code> runs:</p>
+    <ol class="steps">
+      <li><div class="step-body"><span class="step-title">Fetch cached row</span>Calls <code>AgentStore.get(name)</code> — an O(1) dict lookup. No DB query; no file stat.</div></li>
+      <li><div class="step-body"><span class="step-title">Compare updated_at</span>Compares <code>row.updated_at</code> (ISO-8601 string) to the locally cached value. If equal, nothing happens.</div></li>
+      <li><div class="step-body"><span class="step-title">Rebuild config</span>If changed, calls <code>agent_row_to_config(row)</code> to deserialize the DB row into an <code>Agent</code> dataclass. This is the only deserialization path at runtime.</div></li>
+      <li><div class="step-body"><span class="step-title">Reload persona</span>If the row has a <code>persona</code> field, <code>load_persona(row.persona)</code> reads the <code>.persona.toml</code> file and composes it into the new config.</div></li>
+    </ol>
+    <div class="ib tip"><div class="ib-icon"></div><div class="ib-body">Hot-reload is <strong>lazy and per-message</strong> — there is no background polling timer. At personal-scale message volumes, one O(1) dict lookup per message is negligible.</div></div>
+    <div class="ib warn"><div class="ib-icon"></div><div class="ib-body"><strong>Persona-only changes don't trigger reload.</strong> If you edit a <code>.persona.toml</code> file on disk, the daemon won't pick it up automatically. You must also run <code>lyra agent edit &lt;name&gt;</code> (save any field) or <code>lyra agent init --force &lt;name&gt;</code> to bump <code>updated_at</code> and trigger the reload path.</div></div>
+  </div>
+
+  <div class="section">
+    <h2 class="sh"><span class="dot"></span>Persona files</h2>
+    <p>A persona file (<code>*.persona.toml</code>) overlays voice/style settings on top of the agent config. It is still file-based and is loaded when the agent reloads from the DB row.</p>
+    <div class="cb"><div class="cb-head"><span class="cb-lang">toml</span><span class="cb-lbl">example.persona.toml</span></div><pre>[persona]
+name = "Lyra"
+voice = "warm, concise, British English"
+avoid = ["em dash", "filler phrases"]
+signature = ""   # optional sign-off</pre></div>
+    <p>Persona files remain under <code>src/lyra/personas/</code> and are not stored in the DB. They are referenced by name in the agent's <code>persona</code> field.</p>
+  </div>

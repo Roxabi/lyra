@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lyra User Guide v8</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lyra-user-guide-v8.css"><!-- diagram-meta:start -->
+<meta name="diagram:title"     content="Lyra User Guide v8">
+<meta name="diagram:date"      content="2026-03-18">
+<meta name="diagram:category"  content="guide">
+<meta name="diagram:cat-label" content="User Guide">
+<meta name="diagram:color"     content="amber">
+<meta name="diagram:badges"    content="split">
+<!-- diagram-meta:end -->
+</head>
+<body>
+<div class="layout">
+
+<header class="header">
+  <div>
+    <div class="logo"><span class="brand">Lyra</span> by Roxabi <span class="vsub">v8</span></div>
+    <div class="tagline">Personal AI Agent Engine — User Guide</div>
+  </div>
+  <div class="whats-new">
+    <div class="wn-title">What's new in v8</div>
+    <ul>
+      <li><strong>DB-first agent config</strong> (ADR-029)</li>
+      <li><code>lyra agent create</code> writes DB directly — no TOML</li>
+      <li>Hot-reload via <code>updated_at</code> polling, not file mtime</li>
+      <li>Persona changes require <code>edit</code> or <code>init --force</code></li>
+    </ul>
+  </div>
+</header>
+
+<nav class="tabs" role="tablist">
+  <button class="tab active" data-tab="qs">Quick Start</button>
+  <button class="tab" data-tab="setup">Setup</button>
+  <button class="tab" data-tab="firstuse">First Use</button>
+  <button class="tab" data-tab="agents">Agents</button>
+  <button class="tab" data-tab="commands">Commands</button>
+  <button class="tab" data-tab="voice">Voice</button>
+  <button class="tab" data-tab="memory">Memory</button>
+  <button class="tab" data-tab="storage">Data &amp; Storage</button>
+  <button class="tab" data-tab="arch">Architecture</button>
+  <button class="tab" data-tab="routing">Routing</button>
+  <button class="tab" data-tab="hp">Happy Paths</button>
+</nav>
+
+<div id="qs"       class="tc active"></div>
+<div id="setup"    class="tc"></div>
+<div id="firstuse" class="tc"></div>
+<div id="agents"   class="tc"></div>
+<div id="commands" class="tc"></div>
+<div id="voice"    class="tc"></div>
+<div id="memory"   class="tc"></div>
+<div id="storage"  class="tc"></div>
+<div id="arch"     class="tc"></div>
+<div id="routing"  class="tc"></div>
+<div id="hp"       class="tc"></div>
+
+<div class="footnote">Lyra by Roxabi · User Guide v8 · Generated 2026-03-17 · ADR-029 DB-first agent config</div>
+
+</div><!-- /layout -->
+<script src="js/user-guide-v8.js"></script>
+</body>
+</html>

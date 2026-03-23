@@ -52,9 +52,6 @@ These modules did not move into subdirs:
   `runtime_config.py`, `session_lifecycle.py`, `stream_processor.py`,
   `tool_display_config.py`, `workspace_commands.py`, `builtin_commands.py`,
   `cli_pool.py`, `cli_pool_worker.py`, `cli_protocol.py`
-- **Compat shims**: flat files like `agent_store.py`, `auth_store.py`, `turn_store.py`,
-  etc. re-export from the new subdirs for backwards compatibility.
-
 ## Key protocols
 
 ### ChannelAdapter (`hub/hub_protocol.py`)
@@ -129,4 +126,5 @@ from lyra.core.stores.agent_store import AgentRow
 - Do NOT add platform-specific code to `core/` — that belongs in `adapters/`.
 - Do NOT construct `pool_id` strings manually. Use `RoutingKey.to_pool_id()`.
 - Do NOT raise exceptions from `Guard.check()` — return a `Rejection` instead.
-- Do NOT import from compat shims in new code — import from the subpackage directly.
+- Do NOT import from old flat-core paths — always import from the subpackage directly
+  (e.g. `from lyra.core.stores.agent_store import AgentStore`, not `lyra.core.agent_store`).

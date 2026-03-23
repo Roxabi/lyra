@@ -127,7 +127,7 @@ class TestLoadCircuitConfigTomlOverrides:
         )
 
         raw = _load_raw_config()
-        registry, admin_ids = _load_circuit_config(raw)
+        _, admin_ids = _load_circuit_config(raw)
 
         # Assert
         assert "telegram:tg:user:1" in admin_ids

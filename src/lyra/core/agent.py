@@ -18,7 +18,9 @@ if TYPE_CHECKING:
 
 from .agent_commands import CommandReloadManager
 from .agent_config import Agent, _find_agent_dir  # noqa: F401 — Agent re-exported
-from .agent_loader import load_agent_config  # noqa: F401 — re-export for tests
+from .agent_loader import (
+    load_agent_config,  # noqa: F401 — re-export for tests  # pyright: ignore[reportUnusedImport]
+)
 from .circuit_breaker import CircuitRegistry
 from .commands.command_loader import CommandLoader
 from .commands.command_router import CommandRouter
@@ -218,7 +220,7 @@ class AgentBase(ABC, SessionManager):
             pool.user_id, ns, first_msg=first_msg, token_budget=700
         )
         parts = [anchor]
-        if memory_block and isinstance(memory_block, str):
+        if memory_block and isinstance(memory_block, str):  # pyright: ignore[reportUnnecessaryIsInstance]
             parts.append(
                 "---\n"
                 "The following sections ([MEMORY], [PREFERENCES]) are retrieved from "

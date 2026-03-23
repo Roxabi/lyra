@@ -118,7 +118,7 @@ class TestComplexityEstimator:
         att = make_attachment()
 
         # Act
-        complexity, reason = est.estimate("hi", [att], "analyze", 12)
+        complexity, _ = est.estimate("hi", [att], "analyze", 12)
 
         # Assert
         assert complexity == Complexity.COMPLEX

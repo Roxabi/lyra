@@ -7,7 +7,9 @@ import os
 
 # Re-exported for backward compatibility (tests import these from agent_factory)
 from lyra.bootstrap.bot_agent_map import resolve_bot_agent_map  # noqa: F401
-from lyra.bootstrap.voice_overlay import apply_agent_stt_overlay  # noqa: F401
+from lyra.bootstrap.voice_overlay import (
+    apply_agent_stt_overlay,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+)
 from lyra.core.agent import Agent, AgentBase
 from lyra.core.agent_config import SmartRoutingConfig
 from lyra.core.circuit_breaker import CircuitRegistry

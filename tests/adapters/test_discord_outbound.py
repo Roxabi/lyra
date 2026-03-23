@@ -10,9 +10,7 @@ import pytest
 
 from lyra.adapters.discord import _ALLOW_ALL
 from lyra.core.message import (
-    Attachment,  # noqa: F401
     Button,
-    CodeBlock,  # noqa: F401
     OutboundMessage,
 )
 

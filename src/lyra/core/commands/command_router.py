@@ -162,7 +162,7 @@ class CommandRouter:
             result.append((name, desc, self._is_admin_only(desc)))
         # Processor commands registered via ProcessorRegistry (issue #363)
         try:
-            import lyra.core.processors  # noqa: F401
+            import lyra.core.processors  # noqa: F401  # pyright: ignore[reportUnusedImport]
             from lyra.core.processor_registry import registry as _proc_registry
 
             for cmd, desc in _proc_registry.descriptions().items():

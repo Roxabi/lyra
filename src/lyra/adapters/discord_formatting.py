@@ -90,7 +90,7 @@ def render_text(text: str, max_length: int = 2000) -> list[str]:
     return chunk_text(text, max_length)
 
 
-def render_buttons(buttons: list) -> discord.ui.View | None:
+def render_buttons(buttons: list[Any]) -> discord.ui.View | None:
     """Convert list[Button] to discord.ui.View, or None if empty."""
     if not buttons:
         return None

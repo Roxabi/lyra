@@ -182,7 +182,7 @@ class TestOutboundDispatcherCircuitBreaker:
             await dispatcher.stop()
 
     async def test_stop_cancels_worker(self) -> None:
-        adapter, dispatcher = _make_adapter()
+        _, dispatcher = _make_adapter()
         await dispatcher.start()
         assert dispatcher._worker is not None
         await dispatcher.stop()

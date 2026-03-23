@@ -95,7 +95,7 @@ class AnthropicAgent(AgentBase):
         on the normal pool flow, so responses land in pool history and enable
         follow-up questions.
         """
-        import lyra.core.processors  # noqa: F401 — trigger self-registration
+        import lyra.core.processors  # noqa: F401 — trigger self-registration  # pyright: ignore[reportUnusedImport]
         from lyra.core.processor_registry import registry
         from lyra.integrations.base import SessionTools
         from lyra.integrations.vault_cli import VaultCli

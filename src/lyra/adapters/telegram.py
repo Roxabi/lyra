@@ -30,12 +30,12 @@ from lyra.adapters.telegram_normalize import (
     normalize_audio as _normalize_audio_impl,
 )
 from lyra.adapters.telegram_outbound import (
-    _typing_loop,  # noqa: F401 — re-exported for tests
+    _typing_loop,  # noqa: F401 — re-exported for tests  # pyright: ignore[reportUnusedImport]
     _typing_worker,
     send as _send_impl,
     send_streaming as _send_streaming_impl,
 )
-from lyra.core.auth import _ALLOW_ALL, _DENY_ALL, AuthMiddleware  # noqa: F401 — re-exported for tests and external callers
+from lyra.core.auth import _ALLOW_ALL, _DENY_ALL, AuthMiddleware  # noqa: F401 — re-exported for tests and external callers  # pyright: ignore[reportUnusedImport]
 from lyra.core.authenticator import Authenticator
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.guard import BlockedGuard, GuardChain
@@ -179,7 +179,7 @@ class TelegramAdapter:
             "/webhooks/telegram/{bot_id}",
             dependencies=[Depends(verifier)],
         )
-        async def handle_update(bot_id: str, request: Request) -> dict:
+        async def handle_update(bot_id: str, request: Request) -> dict[str, Any]:
             if bot_id != self._bot_id:
                 raise HTTPException(status_code=404, detail="Not Found")
             from aiogram.types import Update
@@ -191,7 +191,7 @@ class TelegramAdapter:
             return {"ok": True}
 
         @self.app.get("/status", dependencies=[Depends(verifier)])
-        async def get_status() -> dict:
+        async def get_status() -> dict[str, Any]:
             ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             if self._circuit_registry is None:
                 return {"services": {}, "timestamp": ts}
@@ -210,7 +210,7 @@ class TelegramAdapter:
         )
 
     @property
-    def _typing_tasks(self) -> dict[int, asyncio.Task]:
+    def _typing_tasks(self) -> dict[int, asyncio.Task[None]]:
         """Expose the internal task dict — used by tests and outbound submodules."""
         return self._typing._tasks
 
@@ -228,7 +228,7 @@ class TelegramAdapter:
     def _render_text(self, text: str) -> list[str]:
         return _render_text_impl(text)
 
-    def _render_buttons(self, buttons: list) -> object | None:
+    def _render_buttons(self, buttons: list[Any]) -> object | None:
         return _render_buttons_impl(buttons)
 
     async def _on_message(self, msg: Any) -> None:

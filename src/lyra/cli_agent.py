@@ -83,5 +83,5 @@ def _list_from_dir(
 # Register commands from sub-modules (import triggers @agent_app.command())
 # ---------------------------------------------------------------------------
 
-import lyra.cli_agent_create as _create  # noqa: E402, F401
-import lyra.cli_agent_crud as _crud  # noqa: E402, F401
+import lyra.cli_agent_create as _create  # noqa: E402, F401  # pyright: ignore[reportUnusedImport]
+import lyra.cli_agent_crud as _crud  # noqa: E402, F401  # pyright: ignore[reportUnusedImport]

@@ -59,7 +59,7 @@ class _ProcessEntry:
         return self.proc.returncode is None
 
 
-class _CliPoolWorker:
+class _CliPoolWorker:  # pyright: ignore[reportUnusedClass]
     """Base class providing spawn/kill worker methods for CliPool.
 
     Subclasses must initialise:

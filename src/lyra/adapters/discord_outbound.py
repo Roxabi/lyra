@@ -31,7 +31,7 @@ STREAMING_EDIT_INTERVAL = 1.0
 
 
 async def _discord_typing_worker(  # noqa: C901 — retry + error branches
-    resolve_channel: Callable,
+    resolve_channel: Callable[..., Any],
     channel_id: int,
 ) -> None:
     """Hold Discord typing indicator for channel_id until cancelled.
@@ -286,7 +286,7 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: tool-su
                     )
                     last_tool_edit = now
 
-            elif isinstance(event, TextRenderEvent) and event.is_final:
+            elif event.is_final:
                 final_text = event.text
                 is_error_turn = event.is_error
     except Exception as exc:

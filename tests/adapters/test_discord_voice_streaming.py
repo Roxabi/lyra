@@ -142,7 +142,7 @@ class TestVSMStream:
     ) -> None:
         # Arrange — is_playing() returns True
         vsm = _make_vsm()
-        session, vc, source = _make_voice_session(is_playing=True)
+        session, vc, _ = _make_voice_session(is_playing=True)
         vsm._sessions["1"] = session
 
         async def chunks() -> AsyncIterator[OutboundAudioChunk]:
@@ -160,7 +160,7 @@ class TestVSMStream:
     async def test_stream_is_final_calls_push_eof(self) -> None:
         # Arrange
         vsm = _make_vsm()
-        session, vc, _ = _make_voice_session(is_playing=False)
+        session, _, _ = _make_voice_session(is_playing=False)
         vsm._sessions["1"] = session
         new_source = MagicMock(spec=PCMQueueSource)
 
@@ -182,9 +182,7 @@ class TestVSMStream:
         # Arrange — PERSISTENT so leave() doesn't add a second push_eof call;
         # no chunk has is_final=True, so only the finally safety net fires.
         vsm = _make_vsm()
-        session, vc, _ = _make_voice_session(
-            mode=VoiceMode.PERSISTENT, is_playing=False
-        )
+        session, _, _ = _make_voice_session(mode=VoiceMode.PERSISTENT, is_playing=False)
         vsm._sessions["1"] = session
         new_source = MagicMock(spec=PCMQueueSource)
 
@@ -205,9 +203,7 @@ class TestVSMStream:
     async def test_stream_transient_autoleave(self) -> None:
         # Arrange — TRANSIENT mode should trigger vsm.leave() after stream ends
         vsm = _make_vsm()
-        session, vc, source = _make_voice_session(
-            mode=VoiceMode.TRANSIENT, is_playing=False
-        )
+        session, _, _ = _make_voice_session(mode=VoiceMode.TRANSIENT, is_playing=False)
         vsm._sessions["1"] = session
         vsm.leave = AsyncMock()
 
@@ -224,9 +220,7 @@ class TestVSMStream:
     async def test_stream_persistent_no_autoleave(self) -> None:
         # Arrange — PERSISTENT mode must NOT call leave()
         vsm = _make_vsm()
-        session, vc, source = _make_voice_session(
-            mode=VoiceMode.PERSISTENT, is_playing=False
-        )
+        session, _, _ = _make_voice_session(mode=VoiceMode.PERSISTENT, is_playing=False)
         vsm._sessions["1"] = session
         vsm.leave = AsyncMock()
 

@@ -237,7 +237,7 @@ class PoolProcessor:
                 # pool_processor also imports message.
                 # Python caches modules in sys.modules after the first import,
                 # so this is effectively free (one dict lookup) on every call.
-                import lyra.core.processors  # noqa: F401 — registers processors via @register decorators
+                import lyra.core.processors  # noqa: F401 — registers processors via @register decorators  # pyright: ignore[reportUnusedImport]
                 from lyra.core.processor_registry import registry as _proc_registry
 
                 _cmd_name = f"{msg.command.prefix}{msg.command.name}"
@@ -260,7 +260,7 @@ class PoolProcessor:
                         return
 
         result = agent.process(msg, pool, on_intermediate=_intermediate_cb)
-        if not isinstance(result, collections.abc.AsyncIterator):
+        if not isinstance(result, collections.abc.AsyncIterator):  # pyright: ignore[reportUnnecessaryIsInstance]
             # Regular coroutine — await to get the actual result
             try:
                 result = await result  # type: ignore[assignment]  # coroutine → Response|AsyncIterator
@@ -361,12 +361,12 @@ class PoolProcessor:
         else:
             pool._ctx.record_circuit_success()
             # Update session_id with the real Claude CLI session UUID (#316).
-            if isinstance(result, Response):
+            if isinstance(result, Response):  # pyright: ignore[reportUnnecessaryIsInstance]
                 _cli_session_id = result.metadata.get("session_id")
                 if _cli_session_id:
                     pool.session_id = _cli_session_id
             # Attach deferred turn-logging callback after adapter sends (#316).
-            if isinstance(result, Response):
+            if isinstance(result, Response):  # pyright: ignore[reportUnnecessaryIsInstance]
                 _content = result.content
 
                 def _log_turn(outbound: OutboundMessage) -> None:

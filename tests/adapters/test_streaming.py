@@ -136,7 +136,7 @@ class TestTelegramStreaming:
         assert fallback_call.kwargs.get("parse_mode") == "MarkdownV2"
 
     async def test_stores_reply_message_id_in_outbound(self) -> None:
-        adapter, bot = self._make_adapter()
+        adapter, _ = self._make_adapter()
         msg = make_tg_message()
         outbound = OutboundMessage.from_text("")
 
@@ -153,7 +153,7 @@ class TestTelegramStreaming:
         bot.send_message.assert_awaited_once()
 
     async def test_mid_stream_error_stores_reply_message_id(self) -> None:
-        adapter, bot = self._make_adapter()
+        adapter, _ = self._make_adapter()
         msg = make_tg_message()
         outbound = OutboundMessage.from_text("")
 
@@ -237,7 +237,7 @@ class TestTelegramStreaming:
 
     async def test_intermediate_outbound_restarts_typing(self) -> None:
         """When outbound.intermediate=True, _start_typing is called after send."""
-        adapter, bot = self._make_adapter()
+        adapter, _ = self._make_adapter()
         msg = make_tg_message()
         from lyra.core.message import OutboundMessage
 
@@ -327,7 +327,7 @@ class TestDiscordStreaming:
         assert last_edit.kwargs["content"] == "Hello world!"
 
     async def test_mid_stream_error_appends_interrupted(self) -> None:
-        adapter, channel, placeholder = self._make_adapter()
+        adapter, _, placeholder = self._make_adapter()
         msg = make_dc_message()
 
         # send_streaming now re-raises after the final edit so OutboundDispatcher
@@ -340,7 +340,7 @@ class TestDiscordStreaming:
         assert last_edit is not None
 
     async def test_stores_reply_message_id_in_outbound(self) -> None:
-        adapter, channel, placeholder = self._make_adapter()
+        adapter, _, placeholder = self._make_adapter()
         placeholder.id = 777
         msg = make_dc_message()
         outbound = OutboundMessage.from_text("")
@@ -350,7 +350,7 @@ class TestDiscordStreaming:
         assert outbound.metadata["reply_message_id"] == 777
 
     async def test_mid_stream_error_stores_reply_message_id(self) -> None:
-        adapter, channel, placeholder = self._make_adapter()
+        adapter, _, placeholder = self._make_adapter()
         placeholder.id = 777
         msg = make_dc_message()
         outbound = OutboundMessage.from_text("")
@@ -361,7 +361,7 @@ class TestDiscordStreaming:
         assert outbound.metadata["reply_message_id"] == 777
 
     async def test_truncates_at_discord_max(self) -> None:
-        adapter, channel, placeholder = self._make_adapter()
+        adapter, _, placeholder = self._make_adapter()
         msg = make_dc_message()
 
         async def long_events():
@@ -374,7 +374,7 @@ class TestDiscordStreaming:
 
     async def test_tool_summary_uses_embed(self) -> None:
         """ToolSummaryRenderEvent -> placeholder.edit(embed=...) called."""
-        adapter, channel, placeholder = self._make_adapter()
+        adapter, _, placeholder = self._make_adapter()
         msg = make_dc_message()
 
         async def tool_events():
@@ -391,7 +391,7 @@ class TestDiscordStreaming:
 
     async def test_tool_summary_then_text_sends_new_message(self) -> None:
         """After ToolSummaryRenderEvent, TextRenderEvent sent as new channel message."""
-        adapter, channel, placeholder = self._make_adapter()
+        adapter, channel, _ = self._make_adapter()
         msg = make_dc_message()
 
         async def tool_then_text():
@@ -404,7 +404,7 @@ class TestDiscordStreaming:
 
     async def test_is_error_prefixes_error_marker(self) -> None:
         """TextRenderEvent(is_error=True) -> Discord message prefixed with ❌."""
-        adapter, channel, placeholder = self._make_adapter()
+        adapter, _, placeholder = self._make_adapter()
         msg = make_dc_message()
 
         async def error_turn():
@@ -420,7 +420,7 @@ class TestDiscordStreaming:
 
     async def test_intermediate_outbound_restarts_typing(self) -> None:
         """When outbound.intermediate=True, _start_typing is called after send."""
-        adapter, channel, placeholder = self._make_adapter()
+        adapter, _, _ = self._make_adapter()
         msg = make_dc_message()
         from lyra.core.message import OutboundMessage
 
@@ -433,7 +433,7 @@ class TestDiscordStreaming:
 
     async def test_is_error_with_stream_error_edits_placeholder(self) -> None:
         """is_error=True final event + exception → placeholder edited with ❌."""
-        adapter, channel, placeholder = self._make_adapter()
+        adapter, _, placeholder = self._make_adapter()
         msg = make_dc_message()
 
         async def error_with_final():

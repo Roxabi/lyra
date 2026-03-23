@@ -10,10 +10,6 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-import pytest  # noqa: F401 — collected by pytest
-
-from lyra.core.trust import TrustLevel  # noqa: F401
-
 
 class TestTelegramAttachments:
     """TelegramAdapter.normalize() extracts non-audio attachments."""

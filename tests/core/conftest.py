@@ -20,7 +20,7 @@ from lyra.core.commands.command_parser import CommandParser
 from lyra.core.commands.command_router import CommandRouter
 from lyra.core.hub import Hub
 from lyra.core.hub.message_pipeline import (
-    MessagePipeline,  # noqa: F401 — re-exported for tests
+    MessagePipeline,  # noqa: F401 — re-exported for tests  # pyright: ignore[reportUnusedImport]
 )
 from lyra.core.message import (
     Attachment,

@@ -35,7 +35,7 @@ def cfg(**kw) -> ToolDisplayConfig:
     defaults = dict(
         names_threshold=3, group_threshold=3, bash_max_len=60, throttle_ms=0
     )
-    return ToolDisplayConfig(**{**defaults, **kw})
+    return ToolDisplayConfig(**{**defaults, **kw})  # pyright: ignore[reportArgumentType]
 
 
 # ---------------------------------------------------------------------------

@@ -9,8 +9,8 @@ from unittest.mock import AsyncMock, MagicMock
 from lyra.core.agent import Agent
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.hub import Hub
+from lyra.core.hub.message_pipeline import Action, MessagePipeline
 from lyra.core.message import InboundMessage, Platform, Response
-from lyra.core.message_pipeline import Action, MessagePipeline
 from lyra.core.pool import Pool
 from tests.core.conftest import (
     _make_hub,

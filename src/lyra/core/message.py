@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from lyra.core.trust import TrustLevel
 
 if TYPE_CHECKING:
-    from lyra.core.command_parser import CommandContext
+    from lyra.core.commands.command_parser import CommandContext
 
 # Shared user-facing fallback for unhandled agent or dispatch errors.
 GENERIC_ERROR_REPLY = "Something went wrong. Please try again."

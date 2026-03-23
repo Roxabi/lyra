@@ -14,13 +14,13 @@ from pathlib import Path
 
 import pytest
 
-from lyra.core.command_loader import CommandLoader
-from lyra.core.command_registry import (
+from lyra.core.commands.command_loader import CommandLoader
+from lyra.core.commands.command_registry import (
     CommandParam,
     PlatformCommand,
     collect_commands,
 )
-from lyra.core.command_router import CommandRouter
+from lyra.core.commands.command_router import CommandRouter
 
 # ---------------------------------------------------------------------------
 # collect_commands() unit tests

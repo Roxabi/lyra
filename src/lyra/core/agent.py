@@ -20,8 +20,8 @@ from .agent_commands import CommandReloadManager
 from .agent_config import Agent, _find_agent_dir  # noqa: F401 — Agent re-exported
 from .agent_loader import load_agent_config  # noqa: F401 — re-export for tests
 from .circuit_breaker import CircuitRegistry
-from .command_loader import CommandLoader
-from .command_router import CommandRouter
+from .commands.command_loader import CommandLoader
+from .commands.command_router import CommandRouter
 from .message import InboundMessage, Response
 from .messages import MessageManager
 from .pool import Pool

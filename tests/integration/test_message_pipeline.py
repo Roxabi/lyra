@@ -26,8 +26,8 @@ from typing import Any
 
 import pytest
 
+from lyra.core.hub.message_pipeline import Action, MessagePipeline
 from lyra.core.message import Platform
-from lyra.core.message_pipeline import Action, MessagePipeline
 from tests.core.conftest import (
     _make_hub,
     _MockAdapter,

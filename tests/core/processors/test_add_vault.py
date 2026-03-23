@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.core.command_parser import CommandContext
+from lyra.core.commands.command_parser import CommandContext
 from lyra.core.message import InboundMessage
 from lyra.core.processors.add_vault import _NOTE_CATEGORY, _NOTE_TYPE, AddVaultProcessor
 from lyra.core.trust import TrustLevel

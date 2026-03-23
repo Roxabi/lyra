@@ -11,15 +11,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from .agent import AgentBase
-    from .memory import SessionSnapshot
-    from .stores.turn_store import TurnStore
+    from ..agent import AgentBase
+    from ..memory import SessionSnapshot
+    from ..stores.turn_store import TurnStore
 
-from .debouncer import DEFAULT_DEBOUNCE_MS, MessageDebouncer
-from .message import InboundMessage, OutboundMessage, Response
+from ..debouncer import DEFAULT_DEBOUNCE_MS, MessageDebouncer
+from ..message import InboundMessage, OutboundMessage, Response
+from ..render_events import RenderEvent
 from .pool_observer import PoolObserver
 from .pool_processor import PoolProcessor
-from .render_events import RenderEvent
 
 log = logging.getLogger(__name__)
 
@@ -260,7 +260,7 @@ class Pool:
         self._observer.append(msg, session_id=self.session_id)
 
     def snapshot(self, agent_namespace: str) -> "SessionSnapshot":
-        from .memory import SessionSnapshot
+        from ..memory import SessionSnapshot
 
         return SessionSnapshot(
             session_id=self.session_id,

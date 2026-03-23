@@ -14,9 +14,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from lyra.core.command_loader import CommandLoader
-from lyra.core.command_parser import CommandParser
-from lyra.core.command_router import CommandRouter
+from lyra.core.commands.command_loader import CommandLoader
+from lyra.core.commands.command_parser import CommandParser
+from lyra.core.commands.command_router import CommandRouter
 from lyra.core.message import InboundMessage, Response
 from lyra.core.pool import Pool
 from lyra.core.trust import TrustLevel

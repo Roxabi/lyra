@@ -14,8 +14,8 @@ import asyncio
 import dataclasses
 from unittest.mock import AsyncMock, MagicMock
 
+from lyra.core.hub.outbound_dispatcher import OutboundDispatcher
 from lyra.core.message import InboundMessage, OutboundMessage
-from lyra.core.outbound_dispatcher import OutboundDispatcher
 
 from .conftest import make_dispatcher_msg
 

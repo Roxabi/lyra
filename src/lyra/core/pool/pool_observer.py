@@ -7,9 +7,9 @@ from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
-    from .message import InboundMessage
-    from .stores.message_index import MessageIndex
-    from .stores.turn_store import TurnStore
+    from ..message import InboundMessage
+    from ..stores.message_index import MessageIndex
+    from ..stores.turn_store import TurnStore
 
 log = logging.getLogger(__name__)
 

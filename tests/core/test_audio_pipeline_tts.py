@@ -210,7 +210,7 @@ class TestDispatchResponseAgentTTSE2E:
         from lyra.core import Agent
         from lyra.core.agent import AgentBase
         from lyra.core.agent_config import AgentTTSConfig
-        from lyra.core.hub_protocol import ChannelAdapter
+        from lyra.core.hub.hub_protocol import ChannelAdapter
         from lyra.tts import SynthesisResult
 
         # Arrange — concrete agent with custom TTS

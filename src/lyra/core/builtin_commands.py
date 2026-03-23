@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from lyra.llm.smart_routing import SmartRoutingDecorator
 
     from .circuit_breaker import CircuitRegistry
-    from .command_loader import CommandLoader
+    from .commands.command_loader import CommandLoader
     from .messages import MessageManager
     from .runtime_config import RuntimeConfigHolder
 

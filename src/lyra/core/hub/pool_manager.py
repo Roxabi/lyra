@@ -7,7 +7,7 @@ import logging
 import time
 from typing import TYPE_CHECKING
 
-from .pool import Pool
+from ..pool import Pool
 
 if TYPE_CHECKING:
     from .hub import Hub

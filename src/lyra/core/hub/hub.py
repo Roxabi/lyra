@@ -5,8 +5,11 @@ import logging
 import time
 from typing import TYPE_CHECKING
 
-from .agent import AgentBase
-from .audio_pipeline import AudioPipeline
+from ..agent import AgentBase
+from ..audio_pipeline import AudioPipeline
+from ..inbound_bus import InboundBus
+from ..message import InboundAudio, InboundMessage, Platform
+from ..pool import Pool
 from .hub_outbound import HubOutboundMixin
 from .hub_protocol import (  # noqa: F401 — public re-export
     Binding,
@@ -14,30 +17,27 @@ from .hub_protocol import (  # noqa: F401 — public re-export
     RoutingKey,
 )
 from .hub_rate_limit import RateLimiter
-from .inbound_bus import InboundBus
-from .message import InboundAudio, InboundMessage, Platform
 from .message_pipeline import (  # noqa: F401 — public re-export (Action)
     Action,
     MessagePipeline,
     PipelineResult,
 )
-from .pool import Pool
 from .pool_manager import PoolManager
 
 if TYPE_CHECKING:
     from collections import deque
 
-    from ..stt import STTService
-    from ..tts import TTSService
-    from .circuit_breaker import CircuitRegistry
-    from .cli_pool import CliPool
-    from .memory import MemoryManager
-    from .messages import MessageManager
+    from ...stt import STTService
+    from ...tts import TTSService
+    from ..circuit_breaker import CircuitRegistry
+    from ..cli_pool import CliPool
+    from ..memory import MemoryManager
+    from ..messages import MessageManager
+    from ..stores.message_index import MessageIndex
+    from ..stores.pairing import PairingManager
+    from ..stores.prefs_store import PrefsStore
+    from ..stores.turn_store import TurnStore
     from .outbound_dispatcher import OutboundDispatcher
-    from .stores.message_index import MessageIndex
-    from .stores.pairing import PairingManager
-    from .stores.prefs_store import PrefsStore
-    from .stores.turn_store import TurnStore
 
 log = logging.getLogger(__name__)
 

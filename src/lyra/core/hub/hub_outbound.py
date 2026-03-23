@@ -14,27 +14,27 @@ from typing import TYPE_CHECKING, Any
 
 from lyra.errors import ProviderError
 
-from .message import OutboundMessage, Platform, Response
-from .render_events import TextRenderEvent
+from ..message import OutboundMessage, Platform, Response
+from ..render_events import TextRenderEvent
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-    from ..tts import TTSService
-    from .agent import AgentBase
-    from .agent_config import AgentTTSConfig
-    from .audio_pipeline import AudioPipeline
-    from .circuit_breaker import CircuitRegistry
-    from .hub_protocol import ChannelAdapter
-    from .message import (
+    from ...tts import TTSService
+    from ..agent import AgentBase
+    from ..agent_config import AgentTTSConfig
+    from ..audio_pipeline import AudioPipeline
+    from ..circuit_breaker import CircuitRegistry
+    from ..message import (
         InboundMessage,
         OutboundAttachment,
         OutboundAudio,
         OutboundAudioChunk,
     )
-    from .messages import MessageManager
+    from ..messages import MessageManager
+    from ..render_events import RenderEvent
+    from .hub_protocol import ChannelAdapter
     from .outbound_dispatcher import OutboundDispatcher
-    from .render_events import RenderEvent
 
 log = logging.getLogger(__name__)
 

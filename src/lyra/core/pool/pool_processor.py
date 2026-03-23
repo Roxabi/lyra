@@ -14,13 +14,13 @@ import time
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .agent import AgentBase
-    from .message import InboundMessage
+    from ..agent import AgentBase
+    from ..message import InboundMessage
     from .pool import Pool
 
 from lyra.core.render_events import RenderEvent, TextRenderEvent
 
-from .message import GENERIC_ERROR_REPLY, OutboundMessage, Response
+from ..message import GENERIC_ERROR_REPLY, OutboundMessage, Response
 
 log = logging.getLogger(__name__)
 

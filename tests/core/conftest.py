@@ -17,10 +17,13 @@ from lyra.core.agent_store import AgentRow, AgentStore
 from lyra.core.auth_store import AuthStore
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.cli_pool import _ProcessEntry
-from lyra.core.command_loader import CommandLoader
-from lyra.core.command_parser import CommandParser
-from lyra.core.command_router import CommandRouter
+from lyra.core.commands.command_loader import CommandLoader
+from lyra.core.commands.command_parser import CommandParser
+from lyra.core.commands.command_router import CommandRouter
 from lyra.core.hub import Hub
+from lyra.core.hub.message_pipeline import (
+    MessagePipeline,  # noqa: F401 — re-exported for tests
+)
 from lyra.core.message import (
     Attachment,
     InboundAudio,
@@ -29,9 +32,6 @@ from lyra.core.message import (
     Platform,
     Response,
     RoutingContext,
-)
-from lyra.core.message_pipeline import (
-    MessagePipeline,  # noqa: F401 — re-exported for tests
 )
 from lyra.core.pairing import PairingConfig, PairingManager
 from lyra.core.pool import Pool

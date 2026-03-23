@@ -1,4 +1,4 @@
-"""Tests for lyra.core.pool_observer.PoolObserver.
+"""Tests for lyra.core.pool.pool_observer.PoolObserver.
 
 Covers:
 - turn logging (log_turn_async) with/without TurnStore
@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.core.pool_observer import PoolObserver
+from lyra.core.pool.pool_observer import PoolObserver
 from tests.core.conftest import make_inbound_message
 
 # ---------------------------------------------------------------------------

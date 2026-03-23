@@ -69,7 +69,7 @@ class TestRegisterAll:
                 return_value=mock_cred_store,
             ),
             patch(
-                "lyra.core.command_loader.CommandLoader",
+                "lyra.core.commands.command_loader.CommandLoader",
                 return_value=mock_plugin_loader,
             ),
             patch("lyra.cli_setup._register_telegram_bot", mock_register),
@@ -102,7 +102,10 @@ class TestRegisterAll:
             patch(
                 "lyra.core.credential_store.CredentialStore", return_value=AsyncMock()
             ),
-            patch("lyra.core.command_loader.CommandLoader", return_value=MagicMock()),
+            patch(
+                "lyra.core.commands.command_loader.CommandLoader",
+                return_value=MagicMock(),
+            ),
         ):
             await _register_all(str(empty_config))
 
@@ -125,7 +128,7 @@ class TestRegisterAll:
                 return_value=mock_cred_store,
             ),
             patch(
-                "lyra.core.command_loader.CommandLoader",
+                "lyra.core.commands.command_loader.CommandLoader",
                 return_value=MagicMock(
                     get_command_descriptions=MagicMock(return_value={})
                 ),
@@ -151,7 +154,7 @@ class TestRegisterAll:
                 return_value=mock_cred_store,
             ),
             patch(
-                "lyra.core.command_loader.CommandLoader",
+                "lyra.core.commands.command_loader.CommandLoader",
                 return_value=mock_plugin_loader,
             ),
             patch("lyra.cli_setup._register_telegram_bot", mock_register),

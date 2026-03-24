@@ -7,7 +7,10 @@
 
 <div class="cb">
   <div class="cb-head"><span class="cb-lang">bash</span><span class="cb-lbl">lyra server</span></div>
-  <pre><span class="cmd">lyra start</span>            <span class="cmt"># start all configured adapters (telegram + discord)</span></pre>
+  <pre><span class="cmd">lyra start</span>            <span class="cmt"># start all configured adapters (telegram + discord)</span>
+
+<span class="cmd">lyra setup commands</span>                    <span class="cmt"># register slash commands with Telegram (one-time)</span>
+<span class="cmd">lyra setup commands -c prod.toml</span>       <span class="cmt"># use a specific config file</span></pre>
 </div>
 <div class="ib note" style="margin-top:8px;">
   <span class="ib-icon">&#x1F4CC;</span>

@@ -36,7 +36,7 @@
       <div class="msg u"><div class="mb">/help</div></div>
       <div class="msg b tg">
         <div class="mn tg">&#x2708;&#xFE0F; @YourBot</div>
-        <div class="mb"><strong>Commands</strong><br>/help &middot; /clear &middot; /new &middot; /stop<br>/voice &lt;text&gt; &middot; /echo &lt;text&gt;<br>/workspace &lt;key&gt;<br><br><strong>Plugins</strong><br>/search &middot; /add &middot; /explain</div>
+        <div class="mb"><strong>Commands</strong><br>/help &middot; /clear &middot; /new &middot; /stop<br>/voice &lt;text&gt; &middot; /echo &lt;text&gt;<br>/workspace &lt;key&gt;<br><br><strong>Extensions</strong><br>/search &middot; /add &middot; /explain</div>
       </div>
     </div>
     <div class="ib note" style="margin-top:8px;">
@@ -88,7 +88,7 @@
 <div class="section-title">Native commands are adapter-level</div>
 <div class="ib tip">
   <span class="ico">&#x26A1;</span>
-  <div class="bd"><strong>Commands are handled at the adapter level — zero LLM tokens consumed.</strong> When a message starts with <code>/</code>, the CommandRouter dispatches it to the matching handler before the agent sees it. <code>/help</code> shows both <strong>Commands</strong> (built-in) and <strong>Plugins</strong> (loaded via CommandLoader) sections.</div>
+  <div class="bd"><strong>Commands are handled at the adapter level — zero LLM tokens consumed.</strong> When a message starts with <code>/</code>, the CommandRouter dispatches it to the matching handler before the agent sees it. <code>/help</code> shows both <strong>Commands</strong> (built-in) and <strong>Extensions</strong> (loaded via CommandLoader) sections.</div>
 </div>
 
 <div class="section-title">Message flow</div>

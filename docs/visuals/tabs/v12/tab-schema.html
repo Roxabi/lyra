@@ -286,7 +286,7 @@
         <span class="kw">pass</span>  <span class="sc"># column already exists &rarr; skip silently</span>
 
 <span class="sc"># After schema migration: populate new #343 columns from legacy values</span>
-_populate_343(conn)  <span class="sc"># persona &rarr; persona_json, tts_json+stt_json &rarr; voice_json</span></pre>
+_populate_343(conn)  <span class="sc"># persona &rarr; persona_json, populate fallback_language</span></pre>
 </div>
 <div class="grid3" style="margin-top:12px;">
   <div class="card" style="border-color:var(--greenb);">

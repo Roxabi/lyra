@@ -69,7 +69,7 @@
   </div>
   <div class="routing-row">
     <span class="rn">5</span>
-    <span class="rl"><strong>CommandLoader extensions</strong> — plugin commands</span>
+    <span class="rl"><strong>CommandLoader extensions</strong> — extension commands</span>
     <span class="rt">commands/ directory</span>
   </div>
   <div class="routing-row" style="border-color:var(--greenb);background:var(--greendim);">
@@ -177,7 +177,7 @@
       <tr><td><code>/help</code></td><td>Layer 2 — builtin</td><td>Builtin command handler, returns help text</td></tr>
       <tr><td><code>/workspace lyra</code></td><td>Layer 3 — workspace</td><td>Sets Pool cwd, may fall through to agent</td></tr>
       <tr><td><code>/vault-add &lt;url&gt;</code></td><td>Layer 4 — session</td><td>Isolated LLM call, saves to vault</td></tr>
-      <tr><td><code>/echo hello</code></td><td>Layer 5 — CommandLoader</td><td>Plugin handler executes</td></tr>
+      <tr><td><code>/echo hello</code></td><td>Layer 5 — CommandLoader</td><td>Extension handler executes</td></tr>
       <tr><td><code>!unknown</code></td><td>Layer 5 &#x2192; Layer 6</td><td>No match in registry &#x2192; falls through to LLM</td></tr>
       <tr><td><code>/unknown</code></td><td>Layer 2&#x2013;5 (all miss)</td><td>Returns error: "Unknown command: /unknown"</td></tr>
       <tr><td>plain text</td><td>Layer 6 — LLM fallthrough</td><td>Agent pool generates response directly</td></tr>

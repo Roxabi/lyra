@@ -203,7 +203,7 @@ h4 { font-size:13px; font-weight:700; color:var(--text); margin-bottom:8px; }
 }
 .card:hover { border-color:var(--borderbr); }
 .card-title { font-weight:700; font-size:14px; color:var(--text); margin-bottom:10px; display:flex; align-items:center; gap:6px; }
-.card-label { font-family:var(--font-mono); font-size:10px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--textdim); margin-bottom:4px; display:flex; align-items:center; gap:6px; }
+.card-label { font-family:var(--font); font-size:10px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--textdim); margin-bottom:4px; display:flex; align-items:center; gap:6px; }
 .grid2 { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:14px; }
 .grid3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
 .grid4 { display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:14px; }
@@ -272,7 +272,7 @@ code { font-family:var(--font-mono); font-size:12px; background:var(--surface2);
 .badge { display:inline-block; padding:2px 7px; border-radius:100px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; }
 .badge.admin  { background:var(--orangedim); color:var(--orange); border:1px solid var(--orangeb); }
 .badge.builtin{ background:var(--greendim);  color:var(--green);  border:1px solid var(--greenb); }
-.badge.plugin { background:var(--accentdim); color:var(--accentbr); border:1px solid var(--borderbr); }
+.badge.ext { background:var(--accentdim); color:var(--accentbr); border:1px solid var(--borderbr); }
 .badge.session { background:var(--plumdim); color:var(--plum); border:1px solid var(--plumb); }
 .badge.dynamic { background:var(--tealdim); color:var(--teal); border:1px solid var(--tealb); }
 .badge.built  { background:var(--greendim);  color:var(--green);  border:1px solid var(--greenb); }
@@ -459,7 +459,7 @@ code { font-family:var(--font-mono); font-size:12px; background:var(--surface2);
 }
 .hp-cat-meta { flex: 1; }
 .hp-cat-name { font-family: var(--font-head); font-size: 17px; font-weight: 800; color: var(--hp-cat); line-height: 1.2; }
-.hp-cat-desc { font-size: 11px; color: var(--textdim); font-family: var(--font-mono); margin-top: 2px; }
+.hp-cat-desc { font-size: 11px; color: var(--textdim); font-family: var(--font); margin-top: 2px; }
 .hp-cat-badge {
   font-family: var(--font-mono); font-size: 10px; font-weight: 600; padding: 3px 8px;
   border-radius: 100px; letter-spacing: .08em;
@@ -486,7 +486,7 @@ code { font-family:var(--font-mono); font-size:12px; background:var(--surface2);
   border-radius: 6px; padding: 2px 6px; white-space: nowrap; flex-shrink: 0; letter-spacing: .06em;
 }
 .hp-scenario-title { font-size: 13px; font-weight: 700; color: var(--text); letter-spacing: -.2px; line-height: 1.3; }
-.hp-scenario-desc { font-size: 11px; color: var(--textdim); font-family: var(--font-mono); margin-top: 2px; line-height: 1.5; }
+.hp-scenario-desc { font-size: 11px; color: var(--textdim); font-family: var(--font); margin-top: 2px; line-height: 1.5; }
 .hp-flow-pipe { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; row-gap: 6px; }
 .hp-flow-step { display: flex; align-items: center; gap: 0; flex-shrink: 0; }
 .hp-step-box {
@@ -504,7 +504,7 @@ code { font-family:var(--font-mono); font-size:12px; background:var(--surface2);
 .hp-step-box.hp-step-trigger .hp-step-tag { color: var(--hp-cat); }
 .hp-step-box.hp-step-output .hp-step-tag { color: var(--green); }
 .hp-step-label { font-size: 11px; font-weight: 600; color: var(--text); line-height: 1.2; }
-.hp-step-sub { font-size: 9px; color: var(--textdim); font-family: var(--font-mono); line-height: 1.2; text-align: center; }
+.hp-step-sub { font-size: 9px; color: var(--textdim); font-family: var(--font); line-height: 1.2; text-align: center; }
 .hp-flow-arrow { display: flex; align-items: center; padding: 0 3px; color: var(--textfaint); flex-shrink: 0; }
 .hp-flow-arrow svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .hp-step-adapter  { border-color: rgba(6,182,212,0.25) !important; }

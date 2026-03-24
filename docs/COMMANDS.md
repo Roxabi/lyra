@@ -125,7 +125,7 @@ Incoming message
   │    7. ! prefix + unknown → return None → fall through to LLM
   │    8. / prefix + unknown → return "Unknown command" error
   │
-  └─ _submit_to_pool() → LLM agent (if no command matched, or fallthrough)
+  └─ pool.submit(msg) → LLM agent (if no command matched, or fallthrough)
 ```
 
 ### Where should a new command go?
@@ -238,7 +238,7 @@ class SessionCommandHandler(Protocol):
 
 ## Workspace Commands
 
-Workspaces are named directory shortcuts defined in the agent TOML under `[workspaces]`. Each key becomes a `/keyname` slash command that sets the working directory for the Claude subprocess in that conversation scope.
+Workspaces are named directory shortcuts defined in the agent TOML under `[workspaces]`. Each key is accessible via `/workspace <key>`, which sets the working directory for the Claude subprocess in that conversation scope.
 
 ### Configuration
 
@@ -407,7 +407,7 @@ handler = "cmd_mycmd"
 
 **Layer 2 — `handlers.py`** (implements the handler)
 ```python
-async def cmd_mycmd(args: list[str], msg: InboundMessage) -> Response:
+async def cmd_mycmd(msg: InboundMessage, pool: Pool, args: list[str]) -> Response:
     return Response(content=f"You said: {' '.join(args)}")
 ```
 

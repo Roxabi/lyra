@@ -102,7 +102,11 @@ lyra --help
 
 ## Configuration
 
-All configuration is via `.env` (copy `.env.example` to get started). Key variables:
+Configuration uses two files:
+- `config.toml` — bot instances, auth rules, adapter settings, and machine-wide defaults (copy `config.toml.example` to get started)
+- `.env` — secrets and environment variables: tokens, API keys, STT model size (copy `.env.example` to get started)
+
+Key `.env` variables:
 
 **Telegram**
 
@@ -111,14 +115,14 @@ All configuration is via `.env` (copy `.env.example` to get started). Key variab
 | `TELEGRAM_TOKEN` | ✅ | Bot token from [@BotFather](https://t.me/BotFather) |
 | `TELEGRAM_BOT_USERNAME` | optional | Bot username (e.g. `lyra_bot`) — defaults to `lyra_bot` |
 | `TELEGRAM_WEBHOOK_SECRET` | ✅ | Any random string — used to verify webhook payloads |
-| `TELEGRAM_ADMIN_CHAT_ID` | optional | Chat ID that receives owner-level trust |
+| _(see `config.toml`)_ | — | Admin user IDs are set in `config.toml` under `[[auth.telegram_bots]] owner_users = [ID]` |
 
 **Discord**
 
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `DISCORD_TOKEN` | ✅ | Bot token from Discord Developer Portal |
-| `DISCORD_AUTO_THREAD` | optional | Auto-create threads for replies (`true`/`false`) |
+| _(see `config.toml`)_ | — | `auto_thread` is configured in `config.toml` under `[[discord.bots]] auto_thread = true` |
 
 **LLM & Config**
 

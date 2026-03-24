@@ -33,16 +33,16 @@
     <table class="tbl">
       <thead><tr><th>Command</th><th>Description</th><th>Type</th></tr></thead>
       <tbody>
-        <tr><td><code>/help</code></td><td>List available commands (split into Commands + Plugins sections)</td><td><span class="badge builtin">builtin</span></td></tr>
+        <tr><td><code>/help</code></td><td>List available commands (split into Commands + Extensions sections)</td><td><span class="badge builtin">builtin</span></td></tr>
         <tr><td><code>/clear</code></td><td>Clear conversation history + reset Claude session</td><td><span class="badge builtin">builtin</span></td></tr>
         <tr><td><code>/new</code></td><td>Alias for /clear</td><td><span class="badge builtin">builtin</span></td></tr>
         <tr><td><code>/stop</code></td><td>Cancel current processing turn</td><td><span class="badge builtin">builtin</span></td></tr>
-        <tr><td><code>/voice &lt;prompt&gt;</code></td><td>Route prompt through LLM with voice hint; reply as TTS audio</td><td><span class="badge plugin">plugin</span></td></tr>
-        <tr><td><code>/echo &lt;text&gt;</code></td><td>Echo back text — useful for testing routing</td><td><span class="badge plugin">plugin</span></td></tr>
+        <tr><td><code>/voice &lt;prompt&gt;</code></td><td>Route prompt through LLM with voice hint; reply as TTS audio</td><td><span class="badge ext">ext</span></td></tr>
+        <tr><td><code>/echo &lt;text&gt;</code></td><td>Echo back text — useful for testing routing</td><td><span class="badge ext">ext</span></td></tr>
         <tr><td><code>/vault-add &lt;url&gt;</code></td><td>Scrape URL, extract title + tags, save to vault (isolated LLM call)</td><td><span class="badge session">session</span></td></tr>
         <tr><td><code>/explain &lt;url&gt;</code></td><td>Scrape URL and explain content in plain language</td><td><span class="badge session">session</span></td></tr>
         <tr><td><code>/summarize &lt;url&gt;</code></td><td>Scrape URL and return 3–5 bullet-point summary</td><td><span class="badge session">session</span></td></tr>
-        <tr><td><code>/search &lt;query&gt;</code></td><td>Search vault — returns matching entries</td><td><span class="badge plugin">plugin</span></td></tr>
+        <tr><td><code>/search &lt;query&gt;</code></td><td>Search vault — returns matching entries</td><td><span class="badge ext">ext</span></td></tr>
         <tr><td><code>/config</code></td><td>Show or set runtime agent config</td><td><span class="badge admin">admin</span></td></tr>
         <tr><td><code>/circuit</code></td><td>Show circuit breaker status</td><td><span class="badge admin">admin</span></td></tr>
         <tr><td><code>/routing</code></td><td>Show smart routing decisions (model tier selected)</td><td><span class="badge admin">admin</span></td></tr>
@@ -52,10 +52,10 @@
         <tr><td><code>/lang &lt;code&gt;</code></td><td>Set response language for this session (e.g. <code>fr</code>, <code>ja</code>)</td><td><span class="badge builtin">builtin</span></td></tr>
         <tr><td><code>/agent [name]</code></td><td>View current agent or switch to a named agent</td><td><span class="badge admin">admin</span></td></tr>
         <tr><td><code>/status</code></td><td>Show agent, model, backend, session, and pool status</td><td><span class="badge admin">admin</span></td></tr>
-        <tr><td><code>/invite</code></td><td>Generate a pairing code</td><td><span class="badge plugin">plugin</span> <span class="badge admin">admin</span></td></tr>
-        <tr><td><code>/join &lt;code&gt;</code></td><td>Redeem a pairing code</td><td><span class="badge plugin">plugin</span></td></tr>
-        <tr><td><code>/unpair &lt;user&gt;</code></td><td>Revoke a user's paired session</td><td><span class="badge plugin">plugin</span> <span class="badge admin">admin</span></td></tr>
-        <tr><td><code>/svc &lt;action&gt; [svc]</code></td><td>Manage supervisor services: status, restart, start, stop</td><td><span class="badge plugin">plugin</span> <span class="badge admin">admin</span></td></tr>
+        <tr><td><code>/invite</code></td><td>Generate a pairing code</td><td><span class="badge ext">ext</span> <span class="badge admin">admin</span></td></tr>
+        <tr><td><code>/join &lt;code&gt;</code></td><td>Redeem a pairing code</td><td><span class="badge ext">ext</span></td></tr>
+        <tr><td><code>/unpair &lt;user&gt;</code></td><td>Revoke a user's paired session</td><td><span class="badge ext">ext</span> <span class="badge admin">admin</span></td></tr>
+        <tr><td><code>/svc &lt;action&gt; [svc]</code></td><td>Manage supervisor services: status, restart, start, stop</td><td><span class="badge ext">ext</span> <span class="badge admin">admin</span></td></tr>
       </tbody>
     </table>
   </div></div>
@@ -175,7 +175,7 @@
       <text x="100" y="228" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#6b7a99">builtin handler</text>
       <text x="100" y="242" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#6b7a99">workspace switch</text>
       <text x="100" y="256" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#6b7a99">session cmd</text>
-      <text x="100" y="268" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#6b7a99">plugin handler</text>
+      <text x="100" y="268" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#6b7a99">ext handler</text>
       <line x1="80" y1="165" x2="80" y2="192" stroke="#10b981" stroke-width="1.5" marker-end="url(#cmd-ae)"/>
 
       <!-- Response → User -->

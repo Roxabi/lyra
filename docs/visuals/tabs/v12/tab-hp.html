@@ -168,7 +168,7 @@
     <div class="hp-cat-icon">&#x2F;</div>
     <div class="hp-cat-meta">
       <div class="hp-cat-name">Commands</div>
-      <div class="hp-cat-desc">builtin, workspace, plugin, strict vs soft prefix</div>
+      <div class="hp-cat-desc">builtin, workspace, extension, strict vs soft prefix</div>
     </div>
     <div class="hp-cat-badge">5 scenarios</div>
     <span class="hp-cat-toggle">&#x25BC;</span>
@@ -181,7 +181,7 @@
         <span class="hp-scenario-num">#06</span>
         <div>
           <div class="hp-scenario-title">/help (builtin)</div>
-          <div class="hp-scenario-desc">Returns Commands + Plugins sections — no LLM involved</div>
+          <div class="hp-scenario-desc">Returns Commands + Extensions sections — no LLM involved</div>
         </div>
       </div>
       <div class="hp-flow-pipe">
@@ -220,8 +220,8 @@
       <div class="hp-scenario-top">
         <span class="hp-scenario-num">#08</span>
         <div>
-          <div class="hp-scenario-title">/echo (plugin command)</div>
-          <div class="hp-scenario-desc">CommandLoader extension — plugin registered in commands/ directory</div>
+          <div class="hp-scenario-title">/echo (extension command)</div>
+          <div class="hp-scenario-desc">CommandLoader extension — registered in commands/ directory</div>
         </div>
       </div>
       <div class="hp-flow-pipe">
@@ -229,7 +229,7 @@
         <div class="hp-flow-arrow"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
         <div class="hp-flow-step"><div class="hp-step-box hp-step-hub"><span class="hp-step-tag">hub</span><span class="hp-step-label">Layer 5</span><span class="hp-step-sub">CommandLoader</span></div></div>
         <div class="hp-flow-arrow"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
-        <div class="hp-flow-step"><div class="hp-step-box hp-step-agent"><span class="hp-step-tag">plugin</span><span class="hp-step-label">echo handler</span></div></div>
+        <div class="hp-flow-step"><div class="hp-step-box hp-step-agent"><span class="hp-step-tag">ext</span><span class="hp-step-label">echo handler</span></div></div>
         <div class="hp-flow-arrow"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
         <div class="hp-flow-step"><div class="hp-step-box hp-step-output"><span class="hp-step-tag">output</span><span class="hp-step-label">"hello"</span><span class="hp-step-sub">no LLM</span></div></div>
       </div>

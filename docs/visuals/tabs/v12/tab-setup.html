@@ -182,23 +182,23 @@
   </div>
 </div>
 
-<div class="section-title">Plugins &amp; environment</div>
+<div class="section-title">Extensions &amp; environment</div>
 <div class="grid2">
   <div>
-    <h4>[plugins] config</h4>
+    <h4>[plugins] — extension config</h4>
     <div class="cb">
       <div class="cb-head"><span class="cb-lang">toml</span><span class="cb-file">config.toml</span></div>
       <pre><span class="sm">[plugins]</span>
 <span class="sm">enabled</span> = [<span class="ss">"echo"</span>, <span class="ss">"search"</span>]
 <span class="sc"># search enables /search + /add + /explain + /summarize</span></pre>
     </div>
-    <div style="font-size:12px;color:var(--textdim);margin-top:6px;">CommandLoader (#345) discovers both built-in commands and loaded plugins. <code>/help</code> shows both sections.</div>
+    <div style="font-size:12px;color:var(--textdim);margin-top:6px;">CommandLoader (#345) discovers both built-in commands and loaded extensions. <code>/help</code> shows both sections.</div>
   </div>
   <div>
     <h4>Key environment variables</h4>
     <div class="cb">
       <div class="cb-head"><span class="cb-lang">bash</span><span class="cb-file">.env</span></div>
-      <pre><span class="sc"># Knowledge vault root (used by search plugin)</span>
+      <pre><span class="sc"># Knowledge vault root (used by search extension)</span>
 <span class="sm">ROXABI_VAULT_DIR</span>=<span class="ss">~/.roxabi-vault</span>
 
 <span class="sc"># Override default health port</span>

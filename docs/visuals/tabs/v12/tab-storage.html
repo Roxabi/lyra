@@ -52,7 +52,7 @@
       <div class="sc-sub"><code>~/.lyra/auth.db</code></div>
       <div class="path-row">
         <div class="path-item"><span class="path-label">bot_secrets</span><div><div class="path-val">Encrypted bot tokens (Fernet)</div></div></div>
-        <div class="path-item"><span class="path-label">agents</span><div><div class="path-val">Agent configs — persona_json, voice_json, model, tools, fallback_language, patterns_json, passthroughs_json</div></div></div>
+        <div class="path-item"><span class="path-label">agents</span><div><div class="path-val">Agent configs — persona_json, tts_json, stt_json, model, tools, fallback_language, patterns_json, passthroughs_json</div></div></div>
         <div class="path-item"><span class="path-label">bot_agent_map</span><div><div class="path-val">Bot → agent assignments</div></div></div>
         <div class="path-item"><span class="path-label">grants</span><div><div class="path-val">Trust levels per user (PUBLIC / TRUSTED / OWNER)</div></div></div>
         <div class="path-item"><span class="path-label">user_prefs</span><div><div class="path-val">Per-user TTS/STT settings (language, voice)</div></div></div>
@@ -177,7 +177,7 @@
       <div class="sc-title">What is never stored in plaintext</div>
       <div class="sc-sub">Data that stays ephemeral or encrypted</div>
       <div class="path-row">
-        <div class="path-item"><span class="path-label">TTS output</span><div><div class="path-val">In-memory only — never written to disk</div></div></div>
+        <div class="path-item"><span class="path-label">TTS output</span><div><div class="path-val">Writes temporary WAV + OGG files to <code>~/.lyra/tmp/</code> during synthesis, then cleans up after bytes are read</div></div></div>
         <div class="path-item"><span class="path-label">Bot tokens</span><div><div class="path-val">Never logged — only Fernet-encrypted at rest</div></div></div>
         <div class="path-item"><span class="path-label">Auth cache</span><div><div class="path-val">In-memory dict (write-through to SQLite)</div></div></div>
         <div class="path-item"><span class="path-label">Webhooks</span><div><div class="path-val">HMAC signature verified on every inbound request</div></div></div>
@@ -197,7 +197,7 @@
         <tr><td><strong>App logs</strong></td><td>Rolling (50 MB total)</td><td>Python RotatingFileHandler</td></tr>
         <tr><td><strong>Supervisor logs</strong></td><td>Rolling (30 MB total)</td><td>supervisord auto-rotation</td></tr>
         <tr><td><strong>STT audio temp</strong></td><td>Seconds (after transcription)</td><td>Lyra (deleted post-process)</td></tr>
-        <tr><td><strong>TTS audio</strong></td><td>Never written to disk</td><td>GC (in-memory)</td></tr>
+        <tr><td><strong>TTS audio</strong></td><td>Temporary WAV + OGG in <code>~/.lyra/tmp/</code></td><td>Lyra (deleted after bytes are read)</td></tr>
         <tr><td><strong>Memory vault — fact</strong></td><td>60 days</td><td>roxabi-vault (FRESHNESS_TTL_DAYS)</td></tr>
         <tr><td><strong>Memory vault — preference</strong></td><td>30 days</td><td>roxabi-vault</td></tr>
         <tr><td><strong>Memory vault — concept:decision</strong></td><td>Permanent</td><td>Manual</td></tr>

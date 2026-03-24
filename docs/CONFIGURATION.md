@@ -177,7 +177,7 @@ enabled = ["echo"]
 
 **What does NOT belong here:** `cwd`, `workspaces` — machine-specific, live in `config.toml [defaults]`.
 
-> **Note:** `lyra agent create` writes directly to the DB via `AgentStore.upsert()`. No TOML file is created and no `lyra agent init` step is required.
+> **Note:** `lyra agent create` is an interactive wizard that scaffolds a new agent TOML file (prompts for location: `~/.lyra/agents/` or `src/lyra/agents/`). After creating the TOML, run `lyra agent init` to import it into the DB.
 
 ---
 

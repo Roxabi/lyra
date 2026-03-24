@@ -93,12 +93,12 @@
   <div class="section-title">Language resolution priority</div>
   <div class="ib stack">
     <span class="ico">🔗</span>
-    <div class="bd"><strong>Resolution order (highest wins):</strong> <span style="color:var(--accentbr);">user pref</span> (<code>/lang &lt;code&gt;</code> or per-user in auth.db) → <span style="color:var(--teal);">agent <code>persona_json.language</code></span> → <span style="color:var(--orange);">agent <code>fallback_language</code> column</span> → <span style="color:var(--textdim);">voicecli global defaults</span> (voicecli.toml). Each level overrides the next.</div>
+    <div class="bd"><strong>Resolution order (highest wins):</strong> <span style="color:var(--accentbr);">user pref</span> (<code>/lang &lt;code&gt;</code> or per-user in auth.db) → <span style="color:var(--teal);">agent <code>tts_json.language</code></span> → <span style="color:var(--orange);">agent <code>fallback_language</code> column</span> → <span style="color:var(--textdim);">voicecli global defaults</span> (voicecli.toml). Each level overrides the next.</div>
   </div>
   <div class="flow" style="margin-top:12px;">
     <div class="fn a">/lang &lt;code&gt; session</div>
     <div class="fa">→</div>
-    <div class="fn t">persona_json.language</div>
+    <div class="fn t">tts_json.language</div>
     <div class="fa">→</div>
     <div class="fn o">fallback_language col</div>
     <div class="fa">→</div>

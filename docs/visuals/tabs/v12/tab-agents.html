@@ -169,7 +169,7 @@
       <div class="ci"><div class="dot" style="background:var(--orange)"></div><div><code>tools</code> &mdash; tool allowlist</div></div>
       <div class="ci"><div class="dot" style="background:var(--orange)"></div><div><code>commands_json</code> &mdash; CommandLoader config (#345)</div></div>
       <div class="ci"><div class="dot" style="background:var(--orange)"></div><div><code>passthroughs_json</code> &mdash; commands forwarded to LLM</div></div>
-      <div class="ci"><div class="dot" style="background:var(--orange)"></div><div><code>plugins_json</code> &mdash; enabled plugins list</div></div>
+      <div class="ci"><div class="dot" style="background:var(--orange)"></div><div><code>plugins_json</code> &mdash; enabled extensions list</div></div>
       <div class="ci"><div class="dot" style="background:var(--orange)"></div><div><code>smart_routing_json</code> &mdash; routing config</div></div>
       <div class="ci"><div class="dot" style="background:var(--orange)"></div><div><code>workspaces_json</code> &mdash; workspace &rarr; cwd mappings</div></div>
       <div class="ci"><div class="dot" style="background:var(--orange)"></div><div><code>patterns_json</code> &mdash; trigger patterns (#343)</div></div>
@@ -217,7 +217,7 @@
     <thead><tr><th>Level</th><th>Access</th><th>Config key</th></tr></thead>
     <tbody>
       <tr><td><span class="badge admin">owner</span></td><td>Full access — all commands including admin-only. Auto-admin.</td><td><code>owner_users = [ID]</code></td></tr>
-      <tr><td><span class="badge plugin">trusted</span></td><td>Can chat with bot. Cannot run admin commands.</td><td><code>trusted_users / trusted_roles</code></td></tr>
+      <tr><td><span class="badge ext">trusted</span></td><td>Can chat with bot. Cannot run admin commands.</td><td><code>trusted_users / trusted_roles</code></td></tr>
       <tr><td><span class="badge builtin">public</span></td><td>Everyone can interact (no allow-list check).</td><td><code>default = "trusted"</code></td></tr>
       <tr><td><span class="badge phase3">blocked</span></td><td>Messages silently ignored.</td><td><code>default = "blocked"</code></td></tr>
     </tbody>

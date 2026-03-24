@@ -1,6 +1,6 @@
 # Lyra — Brand Book
 
-**Version:** 2.0 (2026-03-18)
+**Version:** 2.1 (2026-03-24)
 **Status:** Authoritative. Replaces `BRAND-IDENTITY.md` (v1) for all forward-looking decisions.
 **Scope:** Marketing, product copy, visual design, and agent persona.
 
@@ -293,6 +293,37 @@ Never: anthropomorphism that implies awareness Lyra does not have, possessivenes
 - Spark White is text on dark. Never reverse (white background) unless producing a monochrome lockup.
 - Do not introduce new colours without updating this table.
 
+### Light Mode
+
+A light theme is authorized for **documentation and technical guides**. The light palette adapts the core forge tokens for readability on light surfaces:
+
+- Backgrounds shift to warm stone tones (`#fafaf9`, `#f4f4f0`).
+- Forge Orange darkens to `#c2410c` to maintain contrast on light backgrounds.
+- Text shifts to near-black (`#1c1917`); secondary text to warm gray (`#57534e`).
+
+The logo uses its monochrome (dark-on-light) lockup in light mode — the diamond mark recolours to `#c2410c` with full stroke opacity.
+
+Light mode is **not authorized** for marketing and landing surfaces — those remain dark-only.
+
+### Extended Palette (Documentation)
+
+Documentation surfaces and technical diagrams may use additional semantic colours beyond the 8 core brand tokens. These are **utility colours**, not brand colours — scoped to documentation only.
+
+| Token | Hex | Role |
+|-------|-----|------|
+| Teal | `#06b6d4` | Status: built / active, architecture nodes |
+| Green | `#10b981` | Status: success, built-in badges |
+| Amber | `#f59e0b` | Status: phase 2 / warning |
+| Red | `#f87171` | Status: phase 3 / error |
+| Pink | `#ec4899` | LLM / audio components |
+| Plum | `#a855f7` | Session / identity |
+| Telegram Blue | `#26a5e4` | Platform: Telegram |
+| Discord Purple | `#5865f2` | Platform: Discord |
+
+Syntax highlighting colours (used in code blocks only) are exempt from this table — they follow standard editor themes.
+
+Do not use utility colours in marketing, landing, or brand surfaces. In documentation, utility colours must not compete with Forge Orange for visual hierarchy.
+
 ### Typography
 
 | Role | Font | Weight | Usage |
@@ -321,7 +352,7 @@ A **diamond / crystal form** resting on an **anvil base** with **spark particles
 - Spark particles may be removed at very small sizes (below 48px).
 - The FORGE submark may be removed when the wordmark alone is sufficient.
 - Do not change the Forge Orange accent to any other colour.
-- No light-mode inversion — use the monochrome (white-on-dark) lockup on light surfaces.
+- On light surfaces, use the monochrome dark-on-light lockup (diamond recoloured to `#c2410c`). See "Light Mode" above.
 
 ### Animation Principles
 
@@ -400,4 +431,4 @@ All files in `lyra/brand/`:
 
 ---
 
-*Lyra by Roxabi — brand-book.md — 2026-03-18*
+*Lyra by Roxabi — brand-book.md — 2026-03-24*

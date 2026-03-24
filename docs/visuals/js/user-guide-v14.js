@@ -230,24 +230,33 @@ function glitchReveal(el, delayMs) {
   }
   document.body.removeChild(measurer);
 
-  // Build character slots — spaces stay as plain text nodes, letters get fixed-width spans
+  // Build character slots — group letters into nowrap word spans so words don't break mid-line
   var slots = [];
   el.innerHTML = '';
   el.style.visibility = '';
-  for (var j = 0; j < len; j++) {
-    if (target[j] === ' ') {
+  var words = target.split(' ');
+  var charIdx = 0;
+  for (var w = 0; w < words.length; w++) {
+    if (w > 0) {
       el.appendChild(document.createTextNode(' '));
-      slots.push(null);
-    } else {
+      slots.push(null); // slot for the space
+      charIdx++; // skip the space in charWidths
+    }
+    var wordWrap = document.createElement('span');
+    wordWrap.style.whiteSpace = 'nowrap';
+    wordWrap.style.display = 'inline';
+    for (var c = 0; c < words[w].length; c++) {
       var span = document.createElement('span');
       span.style.display = 'inline-block';
-      span.style.width = charWidths[j] + 'px';
+      span.style.width = charWidths[charIdx] + 'px';
       span.style.textAlign = 'center';
       span.style.overflow = 'hidden';
       span.textContent = GLITCH_CHARS[Math.floor(Math.random() * GLITCH_CHARS.length)];
-      el.appendChild(span);
+      wordWrap.appendChild(span);
       slots.push(span);
+      charIdx++;
     }
+    el.appendChild(wordWrap);
   }
   el.style.opacity = '1';
 

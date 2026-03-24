@@ -1,0 +1,241 @@
+<div class="page-title">Agents</div>
+<div class="page-sub">Create, edit, and manage agents. DB-first — TOML files are seed sources only.</div>
+
+<div class="ib note" style="margin-bottom:20px;">
+  <span class="ico">&#x1F4BE;</span>
+  <div class="bd"><strong>AgentStore — SQLite, DB-first.</strong> Agent config lives in <code>~/.lyra/auth.db</code>. TOML files (<code>~/.lyra/agents/</code> or <code>src/lyra/agents/</code>) are <em>seed sources only</em> — import them with <code>lyra agent init</code>. Startup reads the DB only. Hot-reload polls <code>updated_at</code> on each agent row — no restart needed for persona/voice changes.</div>
+</div>
+
+<div class="section-title">Create / update an agent</div>
+<div class="steps">
+  <div class="step">
+    <div class="step-n"><span>1</span></div>
+    <div class="step-body">
+      <div class="step-label">Scaffold a new agent TOML</div>
+      <div class="cb"><pre><span class="scmd">lyra</span> agent create my_agent   <span class="sc"># interactive wizard &rarr; writes TOML</span></pre></div>
+      <div class="ib note" style="margin-top:8px;">
+        <span class="ico">&#x1F4C1;</span>
+        <div class="bd"><strong>User overrides:</strong> Place a file at <code>~/.lyra/agents/my_agent.toml</code> to override the system default without touching the repo. User-level files take precedence during seed.</div>
+      </div>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-n"><span>2</span></div>
+    <div class="step-body">
+      <div class="step-label">Edit the TOML — v12 fields</div>
+      <div class="cb">
+        <div class="cb-head"><span class="cb-lang">toml</span><span class="cb-file">src/lyra/agents/my_agent.toml</span></div>
+        <pre><span class="sm">[agent]</span>
+<span class="sm">name</span>             = <span class="ss">"my_agent"</span>
+<span class="sm">memory_namespace</span> = <span class="ss">"my_agent"</span>
+<span class="sm">show_intermediate</span>= <span class="sk">true</span>
+<span class="sm">streaming</span>        = <span class="sn">1</span>          <span class="sc"># token streaming (#321)</span>
+
+<span class="sc"># Inline persona — replaces legacy persona string (#343 · ADR-029)</span>
+<span class="sm">[agent.persona_json]</span>
+<span class="sm">name</span>         = <span class="ss">"Lyra"</span>
+<span class="sm">role</span>         = <span class="ss">"Personal AI Assistant"</span>
+<span class="sm">instructions</span> = <span class="ss">"You are Lyra, a precise and helpful assistant..."</span>
+<span class="sm">language</span>     = <span class="ss">"en"</span>
+<span class="sm">style</span>        = <span class="ss">"concise"</span>
+
+<span class="sm">fallback_language</span> = <span class="ss">"en"</span>  <span class="sc"># used when locale detection fails (#343)</span>
+
+<span class="sm">[tts]</span>
+<span class="sm">engine</span>   = <span class="ss">"qwen-fast"</span>     <span class="sc"># qwen | qwen-fast | chatterbox</span>
+<span class="sm">voice</span>    = <span class="ss">"Ono_Anna"</span>
+<span class="sm">language</span> = <span class="ss">"French"</span>
+<span class="sm">chunked</span>  = <span class="sk">true</span>
+
+<span class="sm">[stt]</span>
+<span class="sm">language_detection_threshold</span> = <span class="sn">0.95</span>
+<span class="sm">language_fallback</span>            = <span class="ss">"en"</span>
+
+<span class="sc"># Trigger patterns for smart routing (#343)</span>
+<span class="sm">[agent.patterns_json]</span>
+<span class="sm">code</span>    = [<span class="ss">"write.*code"</span>, <span class="ss">"implement"</span>, <span class="ss">"refactor"</span>]
+<span class="sm">search</span>  = [<span class="ss">"find"</span>, <span class="ss">"search for"</span>, <span class="ss">"look up"</span>]
+
+<span class="sm">[model]</span>
+<span class="sm">backend</span>  = <span class="ss">"claude-cli"</span>
+<span class="sm">model</span>    = <span class="ss">"claude-sonnet-4-6"</span>
+<span class="sm">max_turns</span>= <span class="sn">10</span>
+<span class="sm">tools</span>    = [<span class="ss">"Read"</span>, <span class="ss">"Grep"</span>, <span class="ss">"Glob"</span>, <span class="ss">"WebFetch"</span>, <span class="ss">"WebSearch"</span>]
+<span class="sm">skip_permissions</span> = <span class="sk">true</span>
+
+<span class="sm">[agent.smart_routing]</span>       <span class="sc"># requires backend = "anthropic-sdk"</span>
+<span class="sm">enabled</span> = <span class="sk">false</span>
+
+<span class="sm">[plugins]</span>
+<span class="sm">enabled</span> = [<span class="ss">"echo"</span>, <span class="ss">"search"</span>]
+
+<span class="sm">[workspaces]</span>
+<span class="sm">lyra</span>     = <span class="ss">"~/projects/lyra"</span>
+<span class="sm">projects</span> = <span class="ss">"~/projects"</span>
+
+<span class="sc"># Commands loaded by CommandLoader (#345)</span>
+<span class="sm">[commands]</span>
+<span class="sm">enabled</span> = [<span class="ss">"help"</span>, <span class="ss">"clear"</span>, <span class="ss">"workspace"</span>]
+
+<span class="sc"># Passthroughs: commands forwarded direct to LLM (no special handling)</span>
+<span class="sm">[passthroughs]</span>
+<span class="sm">enabled</span> = [<span class="ss">"ask"</span>, <span class="ss">"q"</span>]</pre>
+      </div>
+      <div class="ib warn" style="margin-top:8px;">
+        <span class="ico">&#x1F4E6;</span>
+        <div class="bd"><strong>Legacy fields:</strong> <code>persona</code> (text string) still works — auto-migrated to <code>persona_json</code> on <code>AgentStore.connect()</code>. Use <code>[tts]</code> / <code>[stt]</code> sections (mapped to <code>tts_json</code> / <code>stt_json</code>) for voice config.</div>
+      </div>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-n"><span>3</span></div>
+    <div class="step-body">
+      <div class="step-label">Import into DB</div>
+      <div class="cb"><pre><span class="scmd">lyra</span> agent init          <span class="sc"># seed DB from TOML files (skip if exists)</span>
+<span class="scmd">lyra</span> agent init <span class="sf">--force</span>  <span class="sc"># overwrite existing DB rows with TOML values</span></pre></div>
+      <div class="ib tip" style="margin-top:8px;">
+        <span class="ico">&#x1F501;</span>
+        <div class="bd"><strong>COALESCE upsert:</strong> On <code>init --force</code>, <code>persona_json</code>, <code>patterns_json</code>, and <code>passthroughs_json</code> use <code>COALESCE(new, existing)</code> — a <code>NULL</code> value in the TOML preserves the existing DB value rather than overwriting it.</div>
+      </div>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-n"><span>4</span></div>
+    <div class="step-body">
+      <div class="step-label">Assign agent to bot</div>
+      <div class="cb"><pre><span class="scmd">lyra</span> agent assign my_agent <span class="sf">--platform</span> telegram <span class="sf">--bot</span> my_bot
+<span class="sc"># Creates row in bot_agent_map table</span>
+
+<span class="scmd">lyra</span> start   <span class="sc"># or: make lyra</span></pre></div>
+      <div class="ib note" style="margin-top:8px;">
+        <span class="ico">&#x1F517;</span>
+        <div class="bd">Alternatively, wire the agent in <code>config.toml</code> via <code>[[telegram.bots]] bot_id = "my_bot" agent = "my_agent"</code>. Both approaches write to <code>bot_agent_map</code>.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section-title">Agent config pipeline</div>
+<div class="flow" style="margin:12px 0;">
+  <div class="fn">~/.lyra/agents/&lt;name&gt;.toml</div>
+  <div class="fa">&#x25B8;</div>
+  <div class="fn">src/lyra/agents/&lt;name&gt;.toml</div>
+  <div class="fa">&#x25B8; lyra agent init &#x25B8;</div>
+  <div class="fn a">auth.db (AgentStore)</div>
+  <div class="fa">&#x2190; runtime reads here</div>
+</div>
+<div class="text-hint" style="margin-bottom:6px;">User TOML wins over system TOML during seed. After import, DB is authoritative. Hot-reload polls <code>updated_at</code> — two-stage: <code>_maybe_reload_config()</code> + <code>_maybe_reload_plugins()</code>.</div>
+
+<div class="section-title">CLI commands</div>
+<div class="tbl-wrap">
+  <table class="tbl">
+    <thead><tr><th>Command</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>lyra agent init</code></td><td>Seed DB from TOML files (safe — skips existing rows)</td></tr>
+      <tr><td><code>lyra agent init --force</code></td><td>Overwrite existing DB rows from TOML. COALESCE for JSON fields.</td></tr>
+      <tr><td><code>lyra agent create &lt;name&gt;</code></td><td>Interactive wizard &rarr; scaffold TOML at appropriate path</td></tr>
+      <tr><td><code>lyra agent list</code></td><td>List all agents in DB with backend, model, source, bot assignments</td></tr>
+      <tr><td><code>lyra agent show &lt;name&gt;</code></td><td>Full config dump from DB — all JSON fields expanded</td></tr>
+      <tr><td><code>lyra agent edit &lt;name&gt;</code></td><td>Edit interactively in DB. Bumps <code>updated_at</code> &rarr; triggers hot-reload.</td></tr>
+      <tr><td><code>lyra agent validate &lt;name&gt;</code></td><td>Validate config against schema (backend, JSON arrays, smart routing)</td></tr>
+      <tr><td><code>lyra agent assign &lt;name&gt; --platform &lt;p&gt; --bot &lt;id&gt;</code></td><td>Assign agent to bot. Creates row in <code>bot_agent_map</code>.</td></tr>
+      <tr><td><code>lyra agent unassign --platform &lt;p&gt; --bot &lt;id&gt;</code></td><td>Remove assignment. Bot reverts to default agent.</td></tr>
+      <tr><td><code>lyra agent delete &lt;name&gt;</code></td><td>Delete from DB. Refuses if any bot is still assigned.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="section-title">Editable fields</div>
+<div class="grid2">
+  <div class="card" style="border-color:var(--greenb);">
+    <div class="card-title" style="color:var(--green);">Via <code>lyra agent edit</code></div>
+    <div class="checklist">
+      <div class="ci"><div class="dot g"></div><div><code>backend</code> &mdash; claude-cli | anthropic-sdk</div></div>
+      <div class="ci"><div class="dot g"></div><div><code>model</code> &mdash; e.g. claude-sonnet-4-6</div></div>
+      <div class="ci"><div class="dot g"></div><div><code>max_turns</code> &mdash; integer</div></div>
+      <div class="ci"><div class="dot g"></div><div><code>show_intermediate</code> &mdash; true/false</div></div>
+      <div class="ci"><div class="dot g"></div><div><code>cwd</code> &mdash; working directory</div></div>
+      <div class="ci"><div class="dot g"></div><div><code>memory_namespace</code> &mdash; memory isolation key</div></div>
+      <div class="ci"><div class="dot g"></div><div><code>i18n_language</code> &mdash; response language (default: en)</div></div>
+      <div class="ci"><div class="dot g"></div><div><code>streaming</code> &mdash; 0/1 token-level streaming (#321)</div></div>
+      <div class="ci"><div class="dot g"></div><div><code>persona_json</code> &mdash; inline persona (name, role, instructions…)</div></div>
+      <div class="ci"><div class="dot g"></div><div><code>tts_json / stt_json</code> &mdash; TTS and STT config (#343)</div></div>
+      <div class="ci"><div class="dot g"></div><div><code>fallback_language</code> &mdash; locale fallback (#343)</div></div>
+    </div>
+  </div>
+  <div class="card" style="border-color:var(--orangeb);">
+    <div class="card-title" style="color:var(--orange);">Via TOML + <code>init --force</code></div>
+    <div class="checklist">
+      <div class="ci"><div class="dot" style="background:var(--orange)"></div><div><code>tools</code> &mdash; tool allowlist</div></div>
+      <div class="ci"><div class="dot" style="background:var(--orange)"></div><div><code>commands_json</code> &mdash; CommandLoader config (#345)</div></div>
+      <div class="ci"><div class="dot" style="background:var(--orange)"></div><div><code>passthroughs_json</code> &mdash; commands forwarded to LLM</div></div>
+      <div class="ci"><div class="dot" style="background:var(--orange)"></div><div><code>plugins_json</code> &mdash; enabled extensions list</div></div>
+      <div class="ci"><div class="dot" style="background:var(--orange)"></div><div><code>smart_routing_json</code> &mdash; routing config</div></div>
+      <div class="ci"><div class="dot" style="background:var(--orange)"></div><div><code>workspaces_json</code> &mdash; workspace &rarr; cwd mappings</div></div>
+      <div class="ci"><div class="dot" style="background:var(--orange)"></div><div><code>patterns_json</code> &mdash; trigger patterns (#343)</div></div>
+      <div class="ci"><div class="dot" style="background:var(--orange)"></div><div><code>skip_permissions</code> &mdash; bypass CLI permission prompts</div></div>
+      <div class="ci"><div class="dot" style="background:var(--orange)"></div><div><code>permissions_json</code> &mdash; permission scope list</div></div>
+    </div>
+    <div class="ib warn" style="margin-top:10px;">
+      <span class="ico">&#x1F4CC;</span>
+      <div class="bd"><code>cwd</code> is machine-specific — always set it in <code>config.toml [defaults]</code>, not in the agent TOML. Workspaces each become accessible via <code>/workspace &lt;key&gt;</code>.</div>
+    </div>
+  </div>
+</div>
+
+<div class="section-title">Multi-bot — N agents &times; N bots</div>
+<div class="card" style="margin-bottom:16px;">
+  <div class="card-title">Two bots with different personas</div>
+  <div class="cb">
+    <div class="cb-head"><span class="cb-lang">toml</span><span class="cb-file">config.toml</span></div>
+    <pre><span class="sc"># Bot 1: Lyra — general assistant</span>
+<span class="sc"># lyra bot add --platform telegram --bot-id lyra</span>
+<span class="sm">[[telegram.bots]]</span>
+<span class="sm">bot_id</span> = <span class="ss">"lyra"</span>
+<span class="sm">agent</span>  = <span class="ss">"lyra_default"</span>
+
+<span class="sc"># Bot 2: Aryl — different model/persona</span>
+<span class="sc"># lyra bot add --platform telegram --bot-id aryl</span>
+<span class="sm">[[telegram.bots]]</span>
+<span class="sm">bot_id</span> = <span class="ss">"aryl"</span>
+<span class="sm">agent</span>  = <span class="ss">"aryl_default"</span>
+
+<span class="sm">[[auth.telegram_bots]]</span>
+<span class="sm">bot_id</span>      = <span class="ss">"lyra"</span>
+<span class="sm">default</span>     = <span class="ss">"blocked"</span>
+<span class="sm">owner_users</span> = [<span class="sn">123456789</span>]
+
+<span class="sm">[[auth.telegram_bots]]</span>
+<span class="sm">bot_id</span>  = <span class="ss">"aryl"</span>
+<span class="sm">default</span> = <span class="ss">"trusted"</span>   <span class="sc"># public bot — anyone can chat</span></pre>
+  </div>
+</div>
+
+<div class="section-title">Auth trust levels</div>
+<div class="tbl-wrap">
+  <table class="tbl">
+    <thead><tr><th>Level</th><th>Access</th><th>Config key</th></tr></thead>
+    <tbody>
+      <tr><td><span class="badge admin">owner</span></td><td>Full access — all commands including admin-only. Auto-admin.</td><td><code>owner_users = [ID]</code></td></tr>
+      <tr><td><span class="badge ext">trusted</span></td><td>Can chat with bot. Cannot run admin commands.</td><td><code>trusted_users / trusted_roles</code></td></tr>
+      <tr><td><span class="badge builtin">public</span></td><td>Everyone can interact (no allow-list check).</td><td><code>default = "trusted"</code></td></tr>
+      <tr><td><span class="badge phase3">blocked</span></td><td>Messages silently ignored.</td><td><code>default = "blocked"</code></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="section-title">LLM Backends</div>
+<div class="grid3">
+  <div class="card" style="border-color:var(--greenb);">
+    <div class="card-title" style="color:var(--green);">claude-cli <span class="badge builtin">default</span></div>
+    <div class="text-hint">Spawns <code>claude</code> as a subprocess. Requires Claude Code CLI + active subscription. Supports streaming, tools, max_turns.</div>
+  </div>
+  <div class="card" style="border-color:var(--orangeb);">
+    <div class="card-title" style="color:var(--orange);">anthropic-sdk</div>
+    <div class="text-hint">Direct Anthropic API via SDK. Set <code>ANTHROPIC_API_KEY</code> in .env. Enables smart routing (haiku/sonnet/opus per complexity).</div>
+  </div>
+  <div class="card" style="border-color:var(--tealb);">
+    <div class="card-title" style="color:var(--teal);">ollama</div>
+    <div class="text-hint">Local LLM via Ollama HTTP API. Set <code>backend = "ollama"</code> and <code>model = "llama3"</code> (or any pulled model). Your data never leaves the machine.</div>
+  </div>
+</div>

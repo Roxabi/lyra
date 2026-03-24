@@ -1,0 +1,212 @@
+
+<div class="page-title">Routing</div>
+<div class="page-sub">Command dispatch, prefix handling, 6-layer routing pipeline, and circuit breaker.</div>
+
+<!-- Prefix routing -->
+<div class="section-title">The Two Prefixes</div>
+
+<div class="platform-grid">
+  <div class="pc" style="background:linear-gradient(160deg,rgba(139,92,246,0.10) 0%,transparent 60%);padding:22px;">
+    <div class="ph">
+      <div class="pi" style="background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.35);font-size:24px;font-weight:800;font-family:var(--font-mono);color:var(--plum);width:42px;height:42px;display:flex;align-items:center;justify-content:center;">/</div>
+      <div>
+        <div class="pn" style="color:var(--plum);">Strict mode</div>
+        <div class="ps">Hard command — / prefix</div>
+      </div>
+    </div>
+    <div class="checklist">
+      <div class="ci"><div class="dot g"></div><div><strong>Known command</strong> &#x2192; dispatched to registered handler immediately</div></div>
+      <div class="ci"><div class="dot" style="background:var(--red)"></div><div><strong>Unknown command</strong> &#x2192; returns <code>"Unknown command: /foo"</code> error — LLM never invoked</div></div>
+      <div class="ci"><div class="dot" style="background:var(--textdim)"></div><div>No fallthrough. Strict contract — unknown / commands always error.</div></div>
+    </div>
+  </div>
+  <div class="pc dc" style="padding:22px;">
+    <div class="ph">
+      <div class="pi" style="background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.35);font-size:24px;font-weight:800;font-family:var(--font-mono);color:var(--green);width:42px;height:42px;display:flex;align-items:center;justify-content:center;">!</div>
+      <div>
+        <div class="pn" style="color:var(--green);">Soft mode</div>
+        <div class="ps">Fallthrough allowed — ! prefix</div>
+      </div>
+    </div>
+    <div class="checklist">
+      <div class="ci"><div class="dot g"></div><div><strong>Known command</strong> &#x2192; dispatched identically to <code>/</code> — same registry, same handler</div></div>
+      <div class="ci"><div class="dot g"></div><div><strong>Unknown command</strong> &#x2192; router returns <code>None</code> &#x2192; falls through to LLM pool</div></div>
+      <div class="ci"><div class="dot" style="background:var(--textdim)"></div><div>Only error behavior differs. Same command set, same dispatch order.</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="ib note" style="margin-top:14px;">
+  <span class="ico">&#x1F4AC;</span>
+  <div class="bd">
+    <strong>Plain text</strong> bypasses the command router entirely and goes directly to the LLM pool. No prefix = no command check.
+  </div>
+</div>
+
+<!-- 6-layer dispatch pipeline -->
+<div class="section-title">6-Layer Dispatch Pipeline</div>
+
+<div class="routing-flow">
+  <div class="routing-row" style="border-color:var(--dcb);background:var(--dcdim);">
+    <span class="rn" style="color:var(--dc);">1</span>
+    <span class="rl"><strong>Native platform commands</strong> — handled at adapter level</span>
+    <span class="rt">before entering Hub</span>
+  </div>
+  <div class="routing-row">
+    <span class="rn">2</span>
+    <span class="rl"><strong>Builtin commands</strong> — <code>/help</code>, <code>/clear</code>, <code>/stop</code>, <code>/new</code></span>
+    <span class="rt">always registered</span>
+  </div>
+  <div class="routing-row">
+    <span class="rn">3</span>
+    <span class="rl"><strong>Workspace commands</strong> — <code>/workspace &lt;key&gt;</code></span>
+    <span class="rt">sets cwd for pool</span>
+  </div>
+  <div class="routing-row">
+    <span class="rn">4</span>
+    <span class="rl"><strong>Session commands</strong> — <code>/vault-add</code>, <code>/explain</code>, <code>/summarize</code></span>
+    <span class="rt">isolated LLM call</span>
+  </div>
+  <div class="routing-row">
+    <span class="rn">5</span>
+    <span class="rl"><strong>CommandLoader extensions</strong> — extension commands</span>
+    <span class="rt">commands/ directory</span>
+  </div>
+  <div class="routing-row" style="border-color:var(--greenb);background:var(--greendim);">
+    <span class="rn" style="color:var(--green);">6</span>
+    <span class="rl"><strong>LLM pool fallthrough</strong> — agent generates response</span>
+    <span class="rt">final destination</span>
+  </div>
+</div>
+
+<div class="ib tip" style="margin-top:14px;">
+  <span class="ico">&#x2139;</span>
+  <div class="bd">
+    <strong>Layer 1 (native platform commands)</strong> is new in v12. Discord voice commands like <code>!join</code> and <code>!leave</code> are handled directly in the adapter — they never reach the Hub router.
+  </div>
+</div>
+
+<!-- Scope ID resolution -->
+<div class="section-title">Scope ID Resolution</div>
+
+<p style="font-size:13px;color:var(--textdim);margin-bottom:12px;">The <code>scope_id</code> is the unique conversation identity. It determines which Pool handles a message.</p>
+
+<div class="tbl-wrap">
+  <table class="tbl">
+    <thead>
+      <tr><th>Platform</th><th>Context</th><th>scope_id format</th><th>Notes</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Telegram</td>
+        <td>Group / channel</td>
+        <td><code>chat:&lt;chat_id&gt;</code></td>
+        <td>All users in the chat share one Pool</td>
+      </tr>
+      <tr>
+        <td>Telegram</td>
+        <td>DM</td>
+        <td><code>dm:&lt;user_id&gt;</code></td>
+        <td>Private, one Pool per user</td>
+      </tr>
+      <tr>
+        <td>Telegram</td>
+        <td>Forum topic</td>
+        <td><code>chat:&lt;chat_id&gt;:topic:&lt;topic_id&gt;</code></td>
+        <td>Each topic is an isolated scope</td>
+      </tr>
+      <tr>
+        <td>Discord</td>
+        <td>Guild channel</td>
+        <td><code>channel:&lt;channel_id&gt;</code></td>
+        <td>Per-channel shared Pool</td>
+      </tr>
+      <tr>
+        <td>Discord</td>
+        <td>Thread</td>
+        <td><code>thread:&lt;thread_id&gt;</code></td>
+        <td>Thread ID = scope for session continuity</td>
+      </tr>
+      <tr>
+        <td>Discord</td>
+        <td>DM</td>
+        <td><code>dm:&lt;user_id&gt;</code></td>
+        <td>Private, one Pool per user</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="ib new" style="margin-top:10px;">
+  <span class="ico">&#x2605;</span>
+  <div class="bd">
+    <strong>Discord thread support.</strong> When <code>auto_thread: true</code>, each new watch-channel conversation creates a thread. The thread ID is used as scope_id, giving full session isolation per-conversation even within the same channel.
+  </div>
+</div>
+
+<!-- Circuit breaker -->
+<div class="section-title">Circuit Breaker</div>
+
+<p style="font-size:13px;color:var(--textdim);margin-bottom:14px;">Per-user rate limiting with three states. Prevents cascade failures from a single user's repeated errors.</p>
+
+<div class="grid3">
+  <div class="card card--green">
+    <div class="card-title" style="color:var(--green);">CLOSED</div>
+    <p style="font-size:13px;color:var(--textdim);margin:0;">Normal operation. All messages processed. Failure counter increments on backend errors. Circuit opens when threshold is reached.</p>
+  </div>
+  <div class="card" style="border-color:var(--orangeb);">
+    <div class="card-title" style="color:var(--orange);">OPEN</div>
+    <p style="font-size:13px;color:var(--textdim);margin:0;">Too many failures. Messages rejected immediately — <strong>user notified</strong> with a clear message. After cooldown period, transitions to HALF&#x2011;OPEN.</p>
+  </div>
+  <div class="card card--teal">
+    <div class="card-title" style="color:var(--teal);">HALF-OPEN</div>
+    <p style="font-size:13px;color:var(--textdim);margin:0;">Probe mode. One message allowed through. Success &#x2192; back to CLOSED. Failure &#x2192; back to OPEN. Auto-recovery without restart.</p>
+  </div>
+</div>
+
+<!-- Decision table -->
+<div class="section-title">Routing Decision Table</div>
+
+<div class="tbl-wrap">
+  <table class="tbl">
+    <thead>
+      <tr><th>Input</th><th>Layer fires</th><th>Outcome</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>!join</code> (Discord guild)</td><td>Layer 1 — adapter</td><td>Discord voice session start, never reaches Hub</td></tr>
+      <tr><td><code>/help</code></td><td>Layer 2 — builtin</td><td>Builtin command handler, returns help text</td></tr>
+      <tr><td><code>/workspace lyra</code></td><td>Layer 3 — workspace</td><td>Sets Pool cwd, may fall through to agent</td></tr>
+      <tr><td><code>/vault-add &lt;url&gt;</code></td><td>Layer 4 — session</td><td>Isolated LLM call, saves to vault</td></tr>
+      <tr><td><code>/echo hello</code></td><td>Layer 5 — CommandLoader</td><td>Extension handler executes</td></tr>
+      <tr><td><code>!unknown</code></td><td>Layer 5 &#x2192; Layer 6</td><td>No match in registry &#x2192; falls through to LLM</td></tr>
+      <tr><td><code>/unknown</code></td><td>Layer 2&#x2013;5 (all miss)</td><td>Returns error: "Unknown command: /unknown"</td></tr>
+      <tr><td>plain text</td><td>Layer 6 — LLM fallthrough</td><td>Agent pool generates response directly</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- CommandRouter patterns_json -->
+<div class="section-title">CommandRouter patterns_json</div>
+
+<p style="font-size:13px;color:var(--textdim);margin-bottom:12px;">Each agent can configure URL auto-rewrite rules and custom command patterns via <code>patterns_json</code> in the DB.</p>
+
+<div class="cb">
+  <div class="cb-head"><span class="cb-lang">json</span><span class="cb-lbl">agents.patterns_json</span></div>
+  <pre>{
+  <span class="jk">"bare_url"</span>: <span class="jn">true</span>,            <span class="cmt">// auto-rewrite bare URLs → /vault-add &lt;url&gt;</span>
+  <span class="jk">"patterns"</span>: [
+    {
+      <span class="jk">"match"</span>: <span class="jv">"^https://github\\.com"</span>,
+      <span class="jk">"rewrite"</span>: <span class="jv">"/gh {url}"</span>         <span class="cmt">// custom rewrite for GitHub URLs</span>
+    }
+  ]
+}</pre>
+</div>
+
+<div class="ib note">
+  <span class="ico">&#x1F517;</span>
+  <div class="bd">
+    <code>bare_url</code> opt-in is per-agent. When <code>true</code>, any message containing only a URL (no other text) is automatically rewritten to <code>/vault-add &lt;url&gt;</code> before routing. Useful for watch channels that process links.
+  </div>
+</div>
+

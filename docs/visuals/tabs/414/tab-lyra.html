@@ -44,9 +44,9 @@
     <div class="sec-label sec-label--green">After — Three-Way Taxonomy</div>
 
     <div class="legend">
-      <div class="legend-item"><div class="legend-dot" style="background:var(--core)"></div>Core (both)</div>
-      <div class="legend-item"><div class="legend-dot" style="background:var(--llm)"></div>LLM-only</div>
-      <div class="legend-item"><div class="legend-dot" style="background:var(--voice)"></div>Voice-only</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--forge)"></div>Core (both)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--cyan)"></div>LLM-only</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--ember)"></div>Voice-only</div>
     </div>
 
     <div class="tax-grid">
@@ -87,39 +87,39 @@
       <div class="flow-wrap__title">Proposed Data Flow</div>
       <svg class="flow-svg" viewBox="0 0 1000 340" fill="none" xmlns="http://www.w3.org/2000/svg">
         <rect x="20" y="140" width="130" height="60" rx="8" fill="var(--s2)" stroke="var(--dim)" stroke-width="1"/>
-        <text x="85" y="165" text-anchor="middle" fill="var(--text)" font-family="Space Mono, monospace" font-size="11" font-weight="700">DB</text>
-        <text x="85" y="183" text-anchor="middle" fill="var(--dim)" font-family="Space Mono, monospace" font-size="9">single source</text>
+        <text x="85" y="165" text-anchor="middle" fill="var(--text)" font-family="JetBrains Mono, monospace" font-size="11" font-weight="700">DB</text>
+        <text x="85" y="183" text-anchor="middle" fill="var(--dim)" font-family="JetBrains Mono, monospace" font-size="9">single source</text>
         <line x1="150" y1="155" x2="220" y2="70" stroke="var(--core)" stroke-width="1.5" stroke-dasharray="4 3"/>
         <line x1="150" y1="170" x2="220" y2="170" stroke="var(--llm)" stroke-width="1.5" stroke-dasharray="4 3"/>
         <line x1="150" y1="185" x2="220" y2="270" stroke="var(--voice)" stroke-width="1.5" stroke-dasharray="4 3"/>
         <rect x="220" y="40" width="180" height="60" rx="8" fill="var(--coredim)" stroke="var(--corebr)" stroke-width="1.5"/>
         <circle cx="236" cy="63" r="4" fill="var(--core)"/>
-        <text x="248" y="67" fill="var(--core)" font-family="Space Mono, monospace" font-size="10" font-weight="700">CORE</text>
+        <text x="248" y="67" fill="var(--core)" font-family="JetBrains Mono, monospace" font-size="10" font-weight="700">CORE</text>
         <text x="232" y="87" fill="var(--dim)" font-family="Inter, sans-serif" font-size="9">personality · emotion · speed · accent</text>
         <rect x="220" y="140" width="180" height="60" rx="8" fill="var(--llmdim)" stroke="var(--llmbr)" stroke-width="1.5"/>
         <circle cx="236" cy="163" r="4" fill="var(--llm)"/>
-        <text x="248" y="167" fill="var(--llm)" font-family="Space Mono, monospace" font-size="10" font-weight="700">LLM-ONLY</text>
+        <text x="248" y="167" fill="var(--llm)" font-family="JetBrains Mono, monospace" font-size="10" font-weight="700">LLM-ONLY</text>
         <text x="232" y="187" fill="var(--faint)" font-family="Inter, sans-serif" font-size="9" font-style="italic">TBD in spec</text>
         <rect x="220" y="240" width="180" height="60" rx="8" fill="var(--voicedim)" stroke="var(--voicebr)" stroke-width="1.5"/>
         <circle cx="236" cy="263" r="4" fill="var(--voice)"/>
-        <text x="248" y="267" fill="var(--voice)" font-family="Space Mono, monospace" font-size="10" font-weight="700">VOICE-ONLY</text>
+        <text x="248" y="267" fill="var(--voice)" font-family="JetBrains Mono, monospace" font-size="10" font-weight="700">VOICE-ONLY</text>
         <text x="232" y="287" fill="var(--dim)" font-family="Inter, sans-serif" font-size="9">engine · voice · exaggeration · ...</text>
         <path d="M400,60 C480,60 500,40 560,40" stroke="var(--core)" stroke-width="1.5" fill="none" marker-end="url(#a1)"/>
         <path d="M400,80 C480,80 500,270 560,270" stroke="var(--core)" stroke-width="1.5" fill="none" marker-end="url(#a1)"/>
         <path d="M400,170 C480,170 500,55 560,55" stroke="var(--llm)" stroke-width="1.5" fill="none" marker-end="url(#a2)"/>
         <path d="M400,270 C440,270 500,280 560,280" stroke="var(--voice)" stroke-width="1.5" fill="none" marker-end="url(#a3)"/>
         <rect x="560" y="15" width="200" height="60" rx="8" fill="var(--s2)" stroke="var(--corebr)" stroke-width="1.5"/>
-        <text x="660" y="42" text-anchor="middle" fill="var(--text)" font-family="Space Mono, monospace" font-size="10" font-weight="700">LLM System Prompt</text>
+        <text x="660" y="42" text-anchor="middle" fill="var(--text)" font-family="JetBrains Mono, monospace" font-size="10" font-weight="700">LLM System Prompt</text>
         <text x="660" y="60" text-anchor="middle" fill="var(--dim)" font-family="Inter, sans-serif" font-size="9">how the agent writes</text>
         <rect x="560" y="250" width="200" height="60" rx="8" fill="var(--s2)" stroke="var(--voicebr)" stroke-width="1.5"/>
-        <text x="660" y="277" text-anchor="middle" fill="var(--text)" font-family="Space Mono, monospace" font-size="10" font-weight="700">TTS Instruct</text>
+        <text x="660" y="277" text-anchor="middle" fill="var(--text)" font-family="JetBrains Mono, monospace" font-size="10" font-weight="700">TTS Instruct</text>
         <text x="660" y="295" text-anchor="middle" fill="var(--dim)" font-family="Inter, sans-serif" font-size="9">how the agent sounds</text>
         <line x1="760" y1="45" x2="830" y2="45" stroke="var(--faint)" stroke-width="1" marker-end="url(#a4)"/>
         <line x1="760" y1="280" x2="830" y2="280" stroke="var(--faint)" stroke-width="1" marker-end="url(#a4)"/>
         <rect x="830" y="25" width="150" height="40" rx="20" fill="var(--greendim)" stroke="var(--greenbr)" stroke-width="1"/>
-        <text x="905" y="50" text-anchor="middle" fill="var(--green)" font-family="Space Mono, monospace" font-size="10">Coherent Text</text>
+        <text x="905" y="50" text-anchor="middle" fill="var(--green)" font-family="JetBrains Mono, monospace" font-size="10">Coherent Text</text>
         <rect x="830" y="260" width="150" height="40" rx="20" fill="var(--greendim)" stroke="var(--greenbr)" stroke-width="1"/>
-        <text x="905" y="285" text-anchor="middle" fill="var(--green)" font-family="Space Mono, monospace" font-size="10">Coherent Voice</text>
+        <text x="905" y="285" text-anchor="middle" fill="var(--green)" font-family="JetBrains Mono, monospace" font-size="10">Coherent Voice</text>
         <defs>
           <marker id="a1" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="none" stroke="var(--core)" stroke-width="1.5"/></marker>
           <marker id="a2" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="none" stroke="var(--llm)" stroke-width="1.5"/></marker>
@@ -127,7 +127,7 @@
           <marker id="a4" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="none" stroke="var(--faint)" stroke-width="1.5"/></marker>
         </defs>
         <rect x="830" y="130" width="150" height="50" rx="8" fill="var(--greendim)" stroke="var(--greenbr)" stroke-width="1" stroke-dasharray="4 3" opacity=".6"/>
-        <text x="905" y="152" text-anchor="middle" fill="var(--green)" font-family="Space Mono, monospace" font-size="9" font-weight="700" letter-spacing="2">ALIGNED</text>
+        <text x="905" y="152" text-anchor="middle" fill="var(--green)" font-family="JetBrains Mono, monospace" font-size="9" font-weight="700" letter-spacing="2">ALIGNED</text>
         <text x="905" y="169" text-anchor="middle" fill="var(--dim)" font-family="Inter, sans-serif" font-size="9">writes ≈ speaks</text>
         <path d="M955,65 Q975,65 975,130" stroke="var(--greenbr)" stroke-width="1" fill="none"/>
         <path d="M955,260 Q975,260 975,180" stroke="var(--greenbr)" stroke-width="1" fill="none"/>

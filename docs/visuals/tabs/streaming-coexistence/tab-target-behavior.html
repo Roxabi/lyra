@@ -1,0 +1,114 @@
+<div class="hero">
+  <div class="hero-eyebrow">Tab 4 — Target Behavior</div>
+  <h1>All three features, always on</h1>
+  <p>One unified mode where streaming, intermediate &#9203; messages, and tool recap cards all coexist — on both Telegram and Discord.</p>
+</div>
+
+<div class="callout green" style="margin-bottom:24px">
+  <strong style="color:var(--green)">Target state:</strong> <code>streaming=True</code> + <code>show_intermediate=True</code> + <code>on_intermediate</code> wired into the streaming driver. Single code path, no trade-off.
+</div>
+
+<div class="grid-2">
+  <!-- Telegram demo -->
+  <div class="card green">
+    <div class="card-title green"><span>&#x1F4F1;</span> Telegram — target</div>
+    <div class="chat-window">
+      <div class="chat-header">
+        <span class="chat-dot" style="background:var(--green)"></span>
+        <span style="font-size:12px;color:var(--text-dim)">Lyra</span>
+      </div>
+      <div class="chat-body">
+        <div class="msg-row user">
+          <div class="avatar user">M</div>
+          <div class="bubble user-bubble">Quel est le dernier commit sur le projet lyra ?</div>
+        </div>
+        <div class="msg-row">
+          <div class="avatar bot">L</div>
+          <div class="bubble intermediate">&#9203; Let me check the git history&hellip;</div>
+        </div>
+        <div class="msg-row">
+          <div class="avatar bot">L</div>
+          <div class="bubble tool-recap" style="min-width:200px">
+            <div class="tool-recap-title">&#x1F527; Tools &middot; 2 used</div>
+            <div class="tool-line">&#x1F41A; <span style="font-size:11px">git log --oneline -5</span></div>
+            <div class="tool-line">&#x1F4D6; <span style="font-size:11px">Read: CLAUDE.md</span></div>
+            <div class="tool-line" style="color:var(--text-faint)">&#x1F441; 3 reads (silent)</div>
+            <div style="font-size:10px;color:var(--green);margin-top:6px">&#10003; complete</div>
+          </div>
+        </div>
+        <div class="msg-row">
+          <div class="avatar bot">L</div>
+          <div class="bubble bot-bubble">Le dernier commit est <code style="font-size:11px;color:var(--cyan)">298dff1 fix(voice)</code> — il y a 2h par Mickael.</div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+      <span class="status-badge ok">&#10003; Intermediate &#9203;</span>
+      <span class="status-badge ok">&#10003; Tool recap</span>
+      <span class="status-badge ok">&#10003; Streaming UI</span>
+    </div>
+  </div>
+
+  <!-- Discord demo -->
+  <div class="card pink">
+    <div class="card-title pink"><span>&#x1F4AC;</span> Discord — target</div>
+    <div class="chat-window">
+      <div class="chat-header" style="background:#313338;border-color:#1e1f22">
+        <span class="chat-dot" style="background:#23a55a"></span>
+        <span style="font-size:12px;color:#b5bac1">Lyra</span>
+        <span style="font-size:11px;color:#6d6f78;margin-left:auto">BOT</span>
+      </div>
+      <div class="chat-body" style="background:#313338">
+        <div class="msg-row user">
+          <div class="avatar user">M</div>
+          <div class="bubble user-bubble" style="background:rgba(34,211,238,0.08);border-color:rgba(34,211,238,0.15)">Quel est le dernier commit sur le projet lyra ?</div>
+        </div>
+        <div class="msg-row">
+          <div class="avatar bot">L</div>
+          <div class="bubble intermediate">&#9203; Let me check the git history&hellip;</div>
+        </div>
+        <!-- Discord embed for tool recap -->
+        <div class="msg-row">
+          <div class="avatar bot">L</div>
+          <div style="background:#2b2d31;border:1px solid #3f4147;border-left:4px solid var(--forge);border-radius:4px;padding:12px;max-width:260px;font-size:12px">
+            <div style="color:var(--forge);font-weight:700;font-size:11px;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.06em;font-family:var(--font-mono)">&#x1F527; Tools &middot; 2 used</div>
+            <div style="color:#b5bac1;margin:2px 0">&#x1F41A; git log --oneline -5</div>
+            <div style="color:#b5bac1;margin:2px 0">&#x1F4D6; Read: CLAUDE.md</div>
+            <div style="color:#4e505d;margin:2px 0;font-size:11px">&#x1F441; 3 reads (silent)</div>
+            <div style="color:var(--green);font-size:10px;margin-top:6px">&#10003; complete</div>
+          </div>
+        </div>
+        <div class="msg-row">
+          <div class="avatar bot">L</div>
+          <div class="bubble bot-bubble">Le dernier commit est <code style="font-size:11px;color:var(--cyan)">298dff1 fix(voice)</code> — il y a 2h.</div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+      <span class="status-badge ok">&#10003; Intermediate &#9203;</span>
+      <span class="status-badge ok">&#10003; Tool embed</span>
+      <span class="status-badge ok">&#10003; Streaming UI</span>
+    </div>
+  </div>
+</div>
+
+<!-- Text-only turn -->
+<div class="mt-24">
+  <div class="section-title">Edge case — text-only turn (no tools used)</div>
+  <div class="grid-2">
+    <div class="card forge">
+      <div style="font-size:12px;font-weight:600;margin-bottom:12px;color:var(--text-dim)">When Claude answers without using any tools:</div>
+      <div class="chat-window">
+        <div class="chat-header"><span class="chat-dot" style="background:var(--green)"></span><span style="font-size:12px;color:var(--text-dim)">Lyra</span></div>
+        <div class="chat-body" style="min-height:160px">
+          <div class="msg-row user"><div class="avatar user">M</div><div class="bubble user-bubble">C'est quoi une closure en JS ?</div></div>
+          <div class="msg-row"><div class="avatar bot">L</div><div class="bubble bot-bubble">Une closure est une fonction qui capture les variables de son scope parent&hellip;</div></div>
+        </div>
+      </div>
+      <div style="margin-top:10px;font-size:12px;color:var(--text-faint)">No tool recap emitted (StreamProcessor has no ToolUseLlmEvent). Placeholder edited directly with final text.</div>
+    </div>
+    <div class="note" style="margin-top:0;align-self:center">
+      <strong>No change in UX</strong> for text-only turns — the placeholder gets edited with the final text directly, same as today with streaming=True. The difference only shows when Claude uses tools or has multiple agentic turns.
+    </div>
+  </div>
+</div>

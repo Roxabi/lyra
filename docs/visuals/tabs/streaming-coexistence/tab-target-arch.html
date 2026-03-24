@@ -1,0 +1,104 @@
+<div class="hero">
+  <div class="hero-eyebrow">Tab 5 — Target Architecture</div>
+  <h1>One path to rule them all</h1>
+  <p>Unify on <code>streaming=True</code> and wire <code>on_intermediate</code> into the streaming driver. No more fork.</p>
+</div>
+
+<!-- Option A -->
+<div class="card green mb-16" style="margin-bottom:16px">
+  <div class="card-title green">Option A — Wire on_intermediate into streaming driver (minimal change)</div>
+
+  <div style="font-size:13px;color:var(--text-dim);margin-bottom:16px">
+    Keep the existing fork but fix both sides: always use streaming + pass <code>on_intermediate</code> through to <code>cli_protocol.py</code>.
+  </div>
+
+  <div class="arch-wrap">
+    <div class="gap-col">
+      <div class="arch-row">
+        <div class="arch-node grey">pool_processor<br>_process_one()</div>
+        <div class="arch-arrow">&rarr;</div>
+        <div class="arch-node grey">SimpleAgent<br>.process()</div>
+        <div class="arch-arrow">&rarr;</div>
+        <div class="arch-node green">provider.stream(<br>on_intermediate=cb<br>&larr; NEW</div>
+        <div class="arch-arrow">&rarr;</div>
+        <div class="arch-node cyan">AsyncIterator<br>[LlmEvent]</div>
+        <div class="arch-arrow">&rarr;</div>
+        <div class="arch-node cyan">StreamProcessor<br>.process()</div>
+      </div>
+      <div class="arch-row">
+        <div style="width:340px;flex-shrink:0"></div>
+        <div class="arch-arrow" style="transform:rotate(90deg)">&darr;</div>
+      </div>
+      <div class="arch-row" style="margin-left:340px">
+        <div class="arch-node green">ClaudeCliDriver<br>send_streaming(<br>on_intermediate=cb<br>&larr; NEW</div>
+        <div class="arch-arrow">&rarr;</div>
+        <div class="arch-node green">cli_protocol<br>parse assistant<br>boundaries &larr; NEW</div>
+        <div class="arch-arrow">&rarr;</div>
+        <div class="arch-node amber">fires cb() as<br>&#9203; side-channel</div>
+      </div>
+      <div class="arch-row">
+        <div class="arch-node cyan">AsyncIterator<br>[RenderEvent]</div>
+        <div class="arch-arrow">&rarr;</div>
+        <div class="arch-node cyan">dispatch_<br>streaming()</div>
+        <div class="arch-arrow">&rarr;</div>
+        <div class="arch-node cyan">send_streaming()</div>
+        <div class="arch-arrow">&rarr;</div>
+        <div class="arch-node green">Platform API<br>&#10003; all features</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:16px">
+    <div style="font-size:12px;font-weight:700;color:var(--green);margin-bottom:8px">Changes required:</div>
+    <table>
+      <thead><tr><th>File</th><th>Change</th></tr></thead>
+      <tbody>
+        <tr><td><code style="font-size:11px">src/lyra/llm/drivers/cli.py</code></td><td style="font-size:12px">Pass <code>on_intermediate</code> to <code>send_streaming()</code> (line 85)</td></tr>
+        <tr><td><code style="font-size:11px">src/lyra/core/cli_pool.py</code></td><td style="font-size:12px">Accept <code>on_intermediate</code> in <code>send_streaming()</code> and thread to protocol</td></tr>
+        <tr><td><code style="font-size:11px">src/lyra/core/cli_protocol.py</code></td><td style="font-size:12px">Parse "assistant" event boundaries in streaming iterator, fire <code>on_intermediate</code></td></tr>
+        <tr><td><code style="font-size:11px">src/lyra/core/simple_agent.py</code></td><td style="font-size:12px">Pass <code>on_intermediate</code> to <code>provider.stream()</code></td></tr>
+        <tr><td><code style="font-size:11px">Agent DB / TOML</code></td><td style="font-size:12px">Set <code>streaming=true</code> for lyra_default + aryl_default</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout green" style="margin-top:12px">
+    <strong style="color:var(--green)">Minimal blast radius.</strong> Streaming path already works. Intermediate messages need NDJSON turn-boundary parsing in the streaming iterator (same logic as non-streaming <code>read_until_result()</code>, just async).
+  </div>
+</div>
+
+<!-- Option B -->
+<div class="card forge">
+  <div class="card-title forge">Option B — IntermediateRenderEvent in the RenderEvent stream (clean abstraction)</div>
+  <div style="font-size:13px;color:var(--text-dim);margin-bottom:16px">
+    Add a new event type to the RenderEvent union. StreamProcessor emits it when a multi-turn boundary is detected. Adapters handle it natively. No side-channel callback needed.
+  </div>
+
+  <div class="arch-wrap">
+    <div class="arch-row">
+      <div class="arch-node grey">LlmEvent<br>stream</div>
+      <div class="arch-arrow">&rarr;</div>
+      <div class="arch-node forge">StreamProcessor<br>+ turn boundary<br>detection &larr; NEW</div>
+      <div class="arch-arrow">&rarr;</div>
+      <div class="arch-node forge">AsyncIterator[<br>RenderEvent<br>+ IntermediateRenderEvent<br>&larr; NEW]</div>
+      <div class="arch-arrow">&rarr;</div>
+      <div class="arch-node forge">adapter<br>send_streaming()<br>handles new type<br>&larr; NEW</div>
+    </div>
+  </div>
+
+  <div style="margin-top:16px">
+    <div style="font-size:12px;font-weight:700;color:var(--forge);margin-bottom:8px">New event type:</div>
+    <div class="code-block" style="font-size:11px">
+<span class="cm"># render_events.py — add new variant</span>
+<span class="kw">@dataclass</span>(frozen=<span class="v-green">True</span>)
+<span class="kw">class</span> <span class="fn">IntermediateRenderEvent</span>:
+    text: str           <span class="cm"># the &#9203; turn text</span>
+    turn_index: int     <span class="cm"># which agentic turn this is</span>
+
+RenderEvent = TextRenderEvent | ToolSummaryRenderEvent | IntermediateRenderEvent</div>
+  </div>
+
+  <div class="callout forge" style="margin-top:12px">
+    <strong style="color:var(--forge)">Cleaner architecture.</strong> All features expressed as RenderEvent variants. No side-channel callbacks. Adapters handle everything in one <code>async for event in events</code> loop. More work upfront but better long-term.
+  </div>
+</div>

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- diagram-meta:start -->
+<meta name="diagram:title"     content="Lyra — Streaming × Intermediate × Tool Recap">
+<meta name="diagram:date"      content="2026-03-24">
+<meta name="diagram:category"  content="analysis">
+<meta name="diagram:cat-label" content="Analysis">
+<meta name="diagram:color"     content="orange">
+<!-- diagram-meta:end -->
+<title>Lyra — Streaming Coexistence Analysis</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/streaming-coexistence.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-brand">
+    <span class="nav-wordmark">LYRA</span>
+    <span class="nav-sep"></span>
+    <span class="nav-label">Stream Analysis</span>
+  </div>
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="behavior">
+      <span class="tab-dot" style="background:var(--forge)"></span> Current Behavior
+    </button>
+    <button class="tab-btn" data-tab="arch">
+      <span class="tab-dot" style="background:var(--ember)"></span> Architecture
+    </button>
+    <button class="tab-btn" data-tab="flow">
+      <span class="tab-dot" style="background:var(--cyan)"></span> Flow &amp; Objects
+    </button>
+    <button class="tab-btn" data-tab="target-behavior">
+      <span class="tab-dot" style="background:var(--green)"></span> Target Behavior
+    </button>
+    <button class="tab-btn" data-tab="target-arch">
+      <span class="tab-dot" style="background:var(--forge)"></span> Target Arch
+    </button>
+    <button class="tab-btn" data-tab="target-flow">
+      <span class="tab-dot" style="background:var(--amber)"></span> Target Flow
+    </button>
+    <button class="tab-btn" data-tab="gap">
+      <span class="tab-dot" style="background:var(--red)"></span> Gap Analysis
+    </button>
+    <button class="tab-btn" data-tab="roots">
+      <span class="tab-dot" style="background:var(--red)"></span> Root Causes
+    </button>
+  </div>
+  <button class="theme-btn" aria-label="Toggle theme">&#9681; light</button>
+</nav>
+
+<div id="behavior"        class="tc active"></div>
+<div id="arch"             class="tc"></div>
+<div id="flow"             class="tc"></div>
+<div id="target-behavior"  class="tc"></div>
+<div id="target-arch"      class="tc"></div>
+<div id="target-flow"      class="tc"></div>
+<div id="gap"              class="tc"></div>
+<div id="roots"            class="tc"></div>
+
+<footer class="site-footer">
+  Lyra — Streaming Coexistence Analysis &middot; 2026-03-24
+</footer>
+
+<script src="js/streaming-coexistence.js"></script>
+</body>
+</html>

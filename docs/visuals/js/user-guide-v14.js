@@ -48,16 +48,32 @@ var FORGE_LOADER = '<div class="forge-loader">'
   + '<span class="forge-loader-text">Forging…</span>'
   + '</div>';
 
-// ── Lazy content loading ──────────────────────────
+// ── Lazy content loading with decreasing forge loader ──
+var tabsOpened = 0;
+function getLoaderDelay() {
+  // 1.2s → 0.5s over the first ~8 tabs
+  var delay = Math.max(500, 1200 - tabsOpened * 100);
+  tabsOpened++;
+  return delay;
+}
+
 async function loadPanel(panel) {
   var src = panel.dataset.src;
   if (!src || panel.dataset.loaded === 'ok') return;
-  // Show forge loader
+  // Show forge loader with decreasing minimum display time
   panel.innerHTML = FORGE_LOADER;
+  var minDelay = getLoaderDelay();
+  var loadStart = Date.now();
   try {
     var r = await fetch(src);
     if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
-    panel.innerHTML = await r.text();
+    var content = await r.text();
+    // Wait remaining delay so the anvil animation is visible
+    var elapsed = Date.now() - loadStart;
+    if (elapsed < minDelay) {
+      await new Promise(function(resolve) { setTimeout(resolve, minDelay - elapsed); });
+    }
+    panel.innerHTML = content;
     panel.dataset.loaded = 'ok';
   } catch (e) {
     panel.dataset.loaded = 'error';

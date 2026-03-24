@@ -26,18 +26,42 @@ const readingGuide = document.querySelector('.reading-guide');
 const tabsBar      = document.getElementById('tabsBar');
 const tabsWrap     = document.getElementById('tabsWrap');
 
+// ── Forge loader SVG ──────────────────────────────
+var FORGE_LOADER = '<div class="forge-loader">'
+  + '<svg viewBox="0 0 80 60" xmlns="http://www.w3.org/2000/svg" class="forge-loader-svg">'
+  // anvil body
+  + '<rect x="20" y="32" width="40" height="10" rx="2" fill="#2a2a35" stroke="#3a3a45" stroke-width="0.8"/>'
+  + '<rect x="28" y="42" width="24" height="6" rx="1" fill="#1f2937" stroke="#2a2a35" stroke-width="0.6"/>'
+  // anvil top highlight
+  + '<line x1="22" y1="32" x2="58" y2="32" stroke="#e85d04" stroke-width="0.5" opacity="0.4"/>'
+  // hammer
+  + '<rect x="36" y="16" width="8" height="14" rx="1.5" fill="#2a2a35" stroke="#3a3a45" stroke-width="0.6">'
+  +   '<animateTransform attributeName="transform" type="rotate" values="0 40 30;-12 40 30;0 40 30" dur="0.6s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1"/>'
+  + '</rect>'
+  // sparks — 5 particles burst on each hammer strike
+  + '<circle cx="40" cy="32" r="1.2" fill="#e85d04"><animate attributeName="cy" values="32;12;4" dur="0.6s" repeatCount="indefinite"/><animate attributeName="cx" values="40;34;30" dur="0.6s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;0.9;0" dur="0.6s" repeatCount="indefinite"/></circle>'
+  + '<circle cx="40" cy="32" r="1" fill="#f97316"><animate attributeName="cy" values="32;16;8" dur="0.6s" begin="0.05s" repeatCount="indefinite"/><animate attributeName="cx" values="40;46;52" dur="0.6s" begin="0.05s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;0.8;0" dur="0.6s" begin="0.05s" repeatCount="indefinite"/></circle>'
+  + '<circle cx="40" cy="32" r="0.8" fill="#fafafa"><animate attributeName="cy" values="32;14;2" dur="0.6s" begin="0.1s" repeatCount="indefinite"/><animate attributeName="cx" values="40;42;44" dur="0.6s" begin="0.1s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;0.7;0" dur="0.6s" begin="0.1s" repeatCount="indefinite"/></circle>'
+  + '<circle cx="40" cy="32" r="1" fill="#e85d04"><animate attributeName="cy" values="32;18;10" dur="0.6s" begin="0.08s" repeatCount="indefinite"/><animate attributeName="cx" values="40;36;28" dur="0.6s" begin="0.08s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;0.6;0" dur="0.6s" begin="0.08s" repeatCount="indefinite"/></circle>'
+  + '<circle cx="40" cy="32" r="0.7" fill="#fafafa"><animate attributeName="cy" values="32;20;14" dur="0.6s" begin="0.12s" repeatCount="indefinite"/><animate attributeName="cx" values="40;48;56" dur="0.6s" begin="0.12s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;0.5;0" dur="0.6s" begin="0.12s" repeatCount="indefinite"/></circle>'
+  + '</svg>'
+  + '<span class="forge-loader-text">Forging…</span>'
+  + '</div>';
+
 // ── Lazy content loading ──────────────────────────
 async function loadPanel(panel) {
-  const src = panel.dataset.src;
+  var src = panel.dataset.src;
   if (!src || panel.dataset.loaded === 'ok') return;
+  // Show forge loader
+  panel.innerHTML = FORGE_LOADER;
   try {
-    const r = await fetch(src);
-    if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+    var r = await fetch(src);
+    if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
     panel.innerHTML = await r.text();
     panel.dataset.loaded = 'ok';
   } catch (e) {
     panel.dataset.loaded = 'error';
-    panel.innerHTML = `<div style="padding:2rem;color:var(--textdim)">Failed to load ${src}: ${e.message}</div>`;
+    panel.innerHTML = '<div style="padding:2rem;color:var(--textdim)">Failed to load ' + src + ': ' + e.message + '</div>';
   }
 }
 
@@ -175,6 +199,19 @@ if (navLogo) {
   navLogo.addEventListener('click', function(e) {
     e.preventDefault();
     switchTab('qs');
+  });
+}
+
+// ── Reduced motion — pause SVG animations ────────
+if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  document.querySelectorAll('.hero-mark animate, .hero-mark animateMotion, .hero-mark animateTransform').forEach(function(el) {
+    el.setAttribute('dur', '0.001s');
+    el.setAttribute('repeatCount', '1');
+  });
+  // Also skip hero text stagger — show immediately
+  document.querySelectorAll('.hero-title, .hero-sub, .hero-ctas').forEach(function(el) {
+    el.style.opacity = '1';
+    el.style.animation = 'none';
   });
 }
 

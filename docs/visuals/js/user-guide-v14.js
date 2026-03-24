@@ -161,8 +161,8 @@ if (heroCta) {
     // If already on QS tab, scroll to content; otherwise switch to QS
     var activeTab = document.querySelector('.tab-btn.active');
     if (activeTab && activeTab.dataset.tab === 'qs') {
-      var panel = document.getElementById('tab-qs');
-      if (panel) panel.scrollIntoView({ behavior: 'smooth' });
+      var rg = document.querySelector('.reading-guide') || document.querySelector('.tabs-wrap');
+      if (rg) rg.scrollIntoView({ behavior: 'smooth' });
     } else {
       switchTab('qs');
     }
@@ -175,6 +175,15 @@ if (navLogo) {
   navLogo.addEventListener('click', function(e) {
     e.preventDefault();
     switchTab('qs');
+  });
+}
+
+// ── Scroll down button ───────────────────────────
+var scrollBtn = document.getElementById('heroScroll');
+if (scrollBtn) {
+  scrollBtn.addEventListener('click', function() {
+    var target = document.querySelector('.reading-guide') || document.querySelector('.tabs-wrap');
+    if (target) target.scrollIntoView({ behavior: 'smooth' });
   });
 }
 

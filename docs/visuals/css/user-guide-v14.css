@@ -717,7 +717,6 @@ strong { color:var(--text); font-weight:600; }
   min-height: 100dvh;
   padding: calc(var(--nav-h) + 32px) 24px 80px;
   display: flex; align-items: center; justify-content: center;
-  text-align: center;
   position: relative;
   z-index: 1;
   overflow: hidden;
@@ -773,7 +772,7 @@ strong { color:var(--text); font-weight:600; }
   font-weight: 800; line-height: 1.08;
   color: var(--text);
   text-transform: uppercase;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.08em;
   margin-bottom: 16px;
 }
 

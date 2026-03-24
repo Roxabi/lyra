@@ -164,6 +164,14 @@ body::before {
 .nav-icon-link:hover { color:var(--text); border-color:var(--borderbr); background:var(--accentdim); }
 .nav-icon { width:16px; height:16px; }
 .nav-sep { flex:1; }
+@media (max-width: 480px) {
+  .nav { padding: 0 12px; gap: 8px; }
+  .nav-version { display: none; }
+  .nav-logo { font-size: 16px; gap: 5px; }
+  .nav-mark { width: 24px; height: 20px; }
+  .nav-icon-link { width: 30px; height: 30px; }
+  .theme-btn { width: 30px; height: 30px; font-size: 14px; }
+}
 .theme-btn {
   display:flex; align-items:center; justify-content:center;
   width:34px; height:34px; border-radius:8px; border:1px solid var(--border);

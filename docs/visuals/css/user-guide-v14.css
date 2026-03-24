@@ -217,12 +217,6 @@ body::before {
 .tabs-mobile:focus-visible { outline: 2px solid var(--accentbr); outline-offset: -2px; }
 .tabs-mobile optgroup { font-weight: 700; color: var(--textdim); }
 .tabs-mobile option { font-weight: 500; color: var(--text); background: var(--bg2); }
-@media (max-width: 700px) {
-  .tabs-mobile { display: block; }
-  .tabs-bar { display: none; }
-  .tabs-wrap::before, .tabs-wrap::after { display: none; }
-}
-
 .tabs-bar {
   height:var(--tab-h);
   background: var(--bg2);
@@ -230,6 +224,11 @@ body::before {
   display:flex; align-items:stretch; overflow-x:auto; gap:2px; padding:6px 8px;
 }
 .tabs-bar::-webkit-scrollbar { display:none; }
+@media (max-width: 700px) {
+  .tabs-mobile { display: block; }
+  .tabs-bar { display: none; }
+  .tabs-wrap::before, .tabs-wrap::after { display: none; }
+}
 .tab-btn {
   display:flex; align-items:center; gap:6px; padding:0 16px;
   border:none; background:transparent; cursor:pointer;

@@ -8,13 +8,15 @@ name = "aryl_default"
 memory_namespace = "aryl"
 permissions = []
 persona = "aryl_default"
-show_intermediate = true
+show_intermediate = true   # show ⏳-prefixed intermediate turns
+show_tool_recap = true     # show 🔧 tool summary card after tool use
 
 [model]
 backend = "claude-cli"
 model = "claude-haiku-4-5-20251001"
 # max_turns omitted → None (unlimited). Set a positive int to cap tool-use turns.
 tools = ["Read", "Grep", "Glob", "WebFetch", "WebSearch"]
+streaming = true
 
 [agent.smart_routing]
 # Smart routing selects the cheapest model capable of handling each message.

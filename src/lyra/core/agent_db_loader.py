@@ -194,6 +194,7 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — each branch handles one opti
         i18n_language=i18n_language,
         smart_routing=smart_routing,
         show_intermediate=row.show_intermediate,
+        show_tool_recap=row.show_tool_recap,
         workspaces=workspaces,
         tts=agent_tts,
         stt=agent_stt,

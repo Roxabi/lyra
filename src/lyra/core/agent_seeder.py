@@ -77,6 +77,7 @@ def _parse_toml(path: Path) -> AgentRow | None:
     tools_json = json.dumps(_m("tools", []))
     persona = agent_section.get("persona")
     show_intermediate = agent_section.get("show_intermediate", False)
+    show_tool_recap = agent_section.get("show_tool_recap", True)
     smart_routing = agent_section.get("smart_routing")
     smart_routing_json = json.dumps(smart_routing) if smart_routing else None
     # plugins may live under [plugins].enabled (wizard) or [agent].plugins (legacy)
@@ -123,6 +124,7 @@ def _parse_toml(path: Path) -> AgentRow | None:
         tools_json=tools_json,
         persona=persona,
         show_intermediate=show_intermediate,
+        show_tool_recap=show_tool_recap,
         smart_routing_json=smart_routing_json,
         plugins_json=plugins_json,
         memory_namespace=memory_namespace,

@@ -44,6 +44,7 @@ class AgentRow:
     i18n_language: str = "en"
     commands_json: str | None = None
     streaming: bool = False
+    show_tool_recap: bool = True  # show 🔧-prefixed tool summary card after tool use
     # #343 — DB-first agent config
     persona_json: str | None = None
     fallback_language: str = "en"
@@ -55,7 +56,7 @@ class AgentRow:
 
     @classmethod
     def from_db_row(cls, row: tuple) -> "AgentRow":  # type: ignore[type-arg]
-        """Construct an AgentRow from a raw aiosqlite SELECT tuple (26 columns)."""
+        """Construct an AgentRow from a raw aiosqlite SELECT tuple (28 columns)."""
         (
             name,
             backend,
@@ -84,6 +85,7 @@ class AgentRow:
             fallback_language,
             patterns_json,
             passthroughs_json,
+            show_tool_recap,
         ) = row
         return cls(
             name=name,
@@ -105,6 +107,9 @@ class AgentRow:
             i18n_language=i18n_language or "en",
             commands_json=commands_json,
             streaming=bool(streaming),
+            show_tool_recap=(
+                bool(show_tool_recap) if show_tool_recap is not None else True
+            ),
             persona_json=persona_json,
             fallback_language=fallback_language or "en",
             patterns_json=patterns_json,

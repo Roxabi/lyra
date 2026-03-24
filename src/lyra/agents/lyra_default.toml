@@ -10,6 +10,7 @@ memory_namespace = "lyra"
 permissions = []
 persona = "lyra_default"
 show_intermediate = true   # show ⏳-prefixed intermediate turns
+show_tool_recap = true     # show 🔧 tool summary card after tool use
 
 [model]
 # backend: "claude-cli" uses the Claude Code subscription (stream-json protocol)
@@ -21,6 +22,7 @@ model = "claude-sonnet-4-6"
 # To disable all tools: tools = [] and ensure --allowedTools is passed (see cli_pool.py)
 tools = ["Read", "Grep", "Glob", "WebFetch", "WebSearch"]
 skip_permissions = true
+streaming = true
 
 # [prompt]
 # system = "..."     # Optional: raw string overrides persona composition

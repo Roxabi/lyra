@@ -230,19 +230,24 @@ function glitchReveal(el, delayMs) {
   }
   document.body.removeChild(measurer);
 
-  // Build fixed-width character slots — each locked to its target char's width
+  // Build character slots — spaces stay as plain text nodes, letters get fixed-width spans
   var slots = [];
   el.innerHTML = '';
   el.style.visibility = '';
   for (var j = 0; j < len; j++) {
-    var span = document.createElement('span');
-    span.style.display = 'inline-block';
-    span.style.width = charWidths[j] + 'px';
-    span.style.textAlign = 'center';
-    span.style.overflow = 'hidden';
-    span.textContent = target[j] === ' ' ? '\u00A0' : GLITCH_CHARS[Math.floor(Math.random() * GLITCH_CHARS.length)];
-    el.appendChild(span);
-    slots.push(span);
+    if (target[j] === ' ') {
+      el.appendChild(document.createTextNode(' '));
+      slots.push(null);
+    } else {
+      var span = document.createElement('span');
+      span.style.display = 'inline-block';
+      span.style.width = charWidths[j] + 'px';
+      span.style.textAlign = 'center';
+      span.style.overflow = 'hidden';
+      span.textContent = GLITCH_CHARS[Math.floor(Math.random() * GLITCH_CHARS.length)];
+      el.appendChild(span);
+      slots.push(span);
+    }
   }
   el.style.opacity = '1';
 

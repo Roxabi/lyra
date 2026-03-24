@@ -121,6 +121,10 @@ function switchTab(target, updateHash) {
     history.replaceState(null, '', '#' + target);
   }
 
+  // Sync mobile dropdown
+  var mobileSelect = document.getElementById('tabsMobile');
+  if (mobileSelect) mobileSelect.value = target;
+
   // Scroll active tab into view
   var activeBtn = document.getElementById('btn-' + target);
   if (activeBtn && tabsBar) {
@@ -134,6 +138,12 @@ function switchTab(target, updateHash) {
 tabBtns.forEach(function(tb) {
   tb.addEventListener('click', function() { switchTab(tb.dataset.tab); });
 });
+
+// Mobile dropdown handler
+var tabsMobile = document.getElementById('tabsMobile');
+if (tabsMobile) {
+  tabsMobile.addEventListener('change', function() { switchTab(this.value); });
+}
 
 // ── Keyboard navigation within tablist ────────────
 if (tabsBar) {

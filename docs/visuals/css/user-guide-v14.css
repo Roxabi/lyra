@@ -204,6 +204,25 @@ body::before {
 .tabs-wrap.scroll-left::before  { opacity:1; }
 .tabs-wrap.scroll-right::after  { opacity:1; }
 
+/* Mobile tab dropdown */
+.tabs-mobile {
+  display: none; width: 100%; height: var(--tab-h);
+  padding: 0 16px; border: none; border-bottom: 1px solid var(--border);
+  background: var(--bg2); color: var(--text);
+  font-family: var(--font); font-size: 14px; font-weight: 600;
+  cursor: pointer; appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 16px center;
+}
+.tabs-mobile:focus-visible { outline: 2px solid var(--accentbr); outline-offset: -2px; }
+.tabs-mobile optgroup { font-weight: 700; color: var(--textdim); }
+.tabs-mobile option { font-weight: 500; color: var(--text); background: var(--bg2); }
+@media (max-width: 700px) {
+  .tabs-mobile { display: block; }
+  .tabs-bar { display: none; }
+  .tabs-wrap::before, .tabs-wrap::after { display: none; }
+}
+
 .tabs-bar {
   height:var(--tab-h);
   background: var(--bg2);

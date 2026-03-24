@@ -601,6 +601,30 @@
 </div>
 
 <div class="tabs-wrap" id="tabsWrap">
+  <select class="tabs-mobile" id="tabsMobile" aria-label="Documentation sections">
+    <optgroup label="Getting Started">
+      <option value="qs" selected>Quick Start</option>
+      <option value="setup">Setup</option>
+      <option value="firstuse">First Use</option>
+    </optgroup>
+    <optgroup label="Usage">
+      <option value="commands">Commands</option>
+      <option value="agents">Agents</option>
+      <option value="voice">Voice &amp; Persona</option>
+      <option value="memory">Memory</option>
+    </optgroup>
+    <optgroup label="Reference">
+      <option value="schema">DB Schema</option>
+      <option value="storage">Data &amp; Storage</option>
+      <option value="discord">Discord</option>
+      <option value="cli">CLI Reference</option>
+    </optgroup>
+    <optgroup label="Internals">
+      <option value="arch">Architecture</option>
+      <option value="routing">Routing</option>
+      <option value="hp">Happy Paths</option>
+    </optgroup>
+  </select>
   <div class="tabs-bar" id="tabsBar" role="tablist" aria-label="Documentation sections">
     <!-- Getting Started -->
     <button class="tab-btn active" role="tab" id="btn-qs"       aria-selected="true"  aria-controls="tab-qs"       tabindex="0"  data-tab="qs">Quick Start</button>

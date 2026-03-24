@@ -285,8 +285,7 @@ function glitchReveal(el, delayMs) {
         requestAnimationFrame(tick);
       } else if (!settled) {
         settled = true;
-        // Replace spans with plain text for clean final state
-        el.textContent = target;
+        // Leave spans in place — already showing correct chars
       }
     }
     requestAnimationFrame(tick);

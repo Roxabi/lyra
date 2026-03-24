@@ -38,7 +38,10 @@
     "voicecli",
     "pyromark",
     "pocket-tts",
-    "sentencepiece"
+    "sentencepiece",
+    "PyMuPDF",
+    "pyphen",
+    "angelique"
   ],
   "overrides": {}
 }

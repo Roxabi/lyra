@@ -679,13 +679,11 @@ strong { color:var(--text); font-weight:600; }
 }
 .hero-title {
   font-family: var(--font-head); font-size: clamp(2rem, 5vw, 3.5rem);
-  font-weight: 800; line-height: 1.1; color: #fff;
-  background: linear-gradient(135deg, #fff 30%, var(--accentbr));
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  font-weight: 800; line-height: 1.1;
+  color: var(--accent);
 }
 [data-theme="light"] .hero-title {
-  background: linear-gradient(135deg, var(--text) 30%, var(--accent));
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  color: var(--accent);
 }
 [data-theme="light"] .hero {
   background: radial-gradient(ellipse 60% 50% at 50% 30%, rgba(194,65,12,0.06) 0%, transparent 70%);

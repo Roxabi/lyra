@@ -796,7 +796,8 @@ strong { color:var(--text); font-weight:600; }
   filter: drop-shadow(0 0 24px rgba(232,93,4,0.45)) drop-shadow(0 0 64px rgba(232,93,4,0.18));
 }
 [data-theme="light"] .hero-mark {
-  filter: drop-shadow(0 0 18px rgba(194,65,12,0.3)) drop-shadow(0 0 48px rgba(194,65,12,0.1));
+  filter: drop-shadow(0 0 18px rgba(194,65,12,0.3)) drop-shadow(0 0 48px rgba(194,65,12,0.1))
+         brightness(1.8) contrast(1.1) saturate(1.2);
 }
 
 /* Title — Spark White, uppercase, one dominant headline */

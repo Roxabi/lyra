@@ -1,0 +1,158 @@
+<div class="page-title">First Use</div>
+<div class="page-sub">Send your first message. Platform-specific chat interactions and what happens under the hood.</div>
+
+<div class="platform-grid">
+  <div class="pc tg">
+    <div class="ph">
+      <div class="pi tg">&#x2708;&#xFE0F;</div>
+      <div>
+        <div class="pn tg">Telegram</div>
+        <div class="ps">aiogram v3 &middot; long-polling</div>
+      </div>
+    </div>
+    <div class="checklist">
+      <div class="ci"><div class="dot tg"></div><div>Open a <strong>DM with your bot</strong> &mdash; type anything</div></div>
+      <div class="ci"><div class="dot tg"></div><div>No @mention needed in DMs</div></div>
+      <div class="ci"><div class="dot tg"></div><div>In groups: bot responds to <strong>@mentions</strong> only</div></div>
+      <div class="ci"><div class="dot tg"></div><div>Typing indicator shown while processing</div></div>
+      <div class="ci"><div class="dot tg"></div><div><strong>Reply to a message</strong> &rarr; resumes that session</div></div>
+      <div class="ci"><div class="dot tg"></div><div>Forum topics: each topic is an isolated scope</div></div>
+    </div>
+    <div class="chat">
+      <div class="msg u"><div class="mb">Hello! Who are you?</div></div>
+      <div class="msg b tg">
+        <div class="mn tg">&#x2708;&#xFE0F; @YourBot</div>
+        <div class="mb">Hi! I'm Lyra — your personal intelligence hub. I remember our previous conversations. What are you working on?</div>
+      </div>
+      <div class="msg u"><div class="mb">&#x1F3A4; <em>[voice message]</em></div></div>
+      <div class="msg b tg">
+        <div class="mn tg">&#x2708;&#xFE0F; @YourBot</div>
+        <div class="mb">&#x1F4DD; "What time is the meeting?"</div>
+      </div>
+      <div class="msg b tg">
+        <div class="mn tg">&#x2708;&#xFE0F; @YourBot</div>
+        <div class="mb">&#x1F50A; "The meeting is at 3pm tomorrow..."</div>
+      </div>
+      <div class="msg u"><div class="mb">/help</div></div>
+      <div class="msg b tg">
+        <div class="mn tg">&#x2708;&#xFE0F; @YourBot</div>
+        <div class="mb"><strong>Commands</strong><br>/help &middot; /clear &middot; /new &middot; /stop<br>/voice &lt;text&gt; &middot; /echo &lt;text&gt;<br>/workspace &lt;key&gt;<br><br><strong>Extensions</strong><br>/search &middot; /add &middot; /explain</div>
+      </div>
+    </div>
+    <div class="ib note" style="margin-top:8px;">
+      <span class="ico">&#x1F3A4;</span>
+      <div class="bd"><strong>STT echo:</strong> Voice messages are transcribed and the text is echoed back before the agent processes it. Requires <code>STT_MODEL_SIZE</code> to be set.</div>
+    </div>
+  </div>
+
+  <div class="pc dc">
+    <div class="ph">
+      <div class="pi dc">&#x1F3AE;</div>
+      <div>
+        <div class="pn dc">Discord</div>
+        <div class="ps">discord.py v2 &middot; gateway WebSocket</div>
+      </div>
+    </div>
+    <div class="checklist">
+      <div class="ci"><div class="dot dc"></div><div><strong>@mention your bot</strong>: <code>@YourBot hello!</code></div></div>
+      <div class="ci"><div class="dot dc"></div><div>With <code>auto_thread=true</code>: bot creates a thread &rarr; replies inside</div></div>
+      <div class="ci"><div class="dot dc"></div><div>Each thread = isolated pool &rarr; parallel conversations in same channel</div></div>
+      <div class="ci"><div class="dot dc"></div><div>Typing indicator shown while processing</div></div>
+      <div class="ci"><div class="dot dc"></div><div>Messages auto-split at 2000 chars (Discord limit)</div></div>
+      <div class="ci"><div class="dot dc"></div><div>Watch channels bypass mention filter entirely (#347)</div></div>
+    </div>
+    <div class="chat">
+      <div class="msg u"><div class="mb">@YourBot what's 2+2?</div></div>
+      <div class="msg b dc">
+        <div class="mn dc">&#x1F3AE; YourBot &mdash; in #general / thread</div>
+        <div class="mb">2 + 2 = 4. Anything else?</div>
+      </div>
+      <div class="msg u"><div class="mb">/workspace lyra what's the last commit?</div></div>
+      <div class="msg b dc">
+        <div class="mn dc">&#x1F3AE; YourBot</div>
+        <div class="mb">Switched workspace &rarr; <strong>lyra</strong> (~/projects/lyra).<br><br>Last commit: <em>feat(agents): add persona_json + voice_json columns</em></div>
+      </div>
+      <div class="msg u"><div class="mb">https://github.com/Roxabi/lyra/issues/347</div></div>
+      <div class="msg b dc">
+        <div class="mn dc">&#x1F3AE; YourBot</div>
+        <div class="mb">Saved to vault: "Watch channels bypass mention filter" &mdash; tagged #discord #feature</div>
+      </div>
+    </div>
+    <div class="ib note" style="margin-top:8px;">
+      <span class="ico">&#x25C9;</span>
+      <div class="bd"><strong>Watch channels (#347):</strong> Discord channels listed in <code>settings_json.watch_channels</code> on the bot-agent mapping bypass the @mention filter, auto-create threads, and auto-process pasted links.</div>
+    </div>
+  </div>
+</div>
+
+<div class="section-title">Native commands are adapter-level</div>
+<div class="ib tip">
+  <span class="ico">&#x26A1;</span>
+  <div class="bd"><strong>Commands are handled at the adapter level — zero LLM tokens consumed.</strong> When a message starts with <code>/</code>, the CommandRouter dispatches it to the matching handler before the agent sees it. <code>/help</code> shows both <strong>Commands</strong> (built-in) and <strong>Extensions</strong> (loaded via CommandLoader) sections.</div>
+</div>
+
+<div class="section-title">Message flow</div>
+<div class="card">
+  <div class="cb" style="margin:0;">
+    <div class="cb-head"><span class="cb-lang">flow</span></div>
+    <pre><span class="sn">1.</span> Adapter receives message &rarr; normalizes to <span class="sv">InboundMessage</span>(platform, bot_id, scope_id, text, …)
+<span class="sn">2.</span> Enqueued on per-platform asyncio Queue (bounded=100, immediate ACK when full)
+<span class="sn">3.</span> InboundBus staging queue &rarr; Hub.run_loop()
+<span class="sn">4.</span> Hub: resolve_binding(platform, bot_id, scope_id) &rarr; agent="lyra_default"
+<span class="sn">5.</span> Pool created/reused for this scope — one Pool = one isolated conversation
+<span class="sn">6a.</span> text starts with "/" &rarr; CommandRouter.dispatch() &rarr; handler &rarr; response  <span class="sc">(zero tokens!)</span>
+<span class="sn">6b.</span> normal text &rarr; agent.process(msg, pool) &rarr; LLM backend (claude subprocess or SDK)
+<span class="sn">7.</span> OutboundDispatcher: verify routing &rarr; deliver reply to originating channel only</pre>
+  </div>
+</div>
+
+<div class="section-title">Scope isolation</div>
+<div class="grid2">
+  <div class="card">
+    <div class="card-title">RoutingKey format</div>
+    <div class="cb"><pre><span class="sc"># (platform, bot_id, scope_id) &rarr; (agent, pool_id)</span>
+telegram &middot; lyra &middot; chat:555   &rarr; pool telegram:lyra:chat:555
+discord  &middot; lyra &middot; thread:888 &rarr; pool discord:lyra:thread:888</pre></div>
+    <div class="text-hint" style="margin-top:8px;">Two different bots talking to the same user in the same channel have completely isolated conversation history.</div>
+  </div>
+  <div class="card">
+    <div class="card-title">Scope ID extraction</div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>Context</th><th>Scope ID</th></tr></thead>
+        <tbody>
+          <tr><td style="color:var(--tg)">TG DM / group</td><td><code>chat:{chat_id}</code></td></tr>
+          <tr><td style="color:var(--tg)">TG forum topic</td><td><code>chat:{id}:topic:{id}</code></td></tr>
+          <tr><td style="color:var(--dc)">Discord thread</td><td><code>thread:{thread_id}</code></td></tr>
+          <tr><td style="color:var(--dc)">Discord channel</td><td><code>channel:{channel_id}</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="section-title">Token streaming</div>
+<div class="ib stack">
+  <span class="ico">&#x27F3;</span>
+  <div class="bd"><strong>New in v12 (#321).</strong> When <code>streaming = 1</code> on an agent row, responses stream token-by-token from the LLM backend to the adapter. Telegram: message is edited in-place as tokens arrive. Discord: first message chunk sent, then edited. Enable per-agent via <code>lyra agent edit &lt;name&gt;</code> &rarr; set <code>streaming</code>.</div>
+</div>
+
+<div class="section-title">Runtime troubleshooting</div>
+<div class="grid2">
+  <div class="card">
+    <div class="card-title">Bot not responding</div>
+    <div style="font-size:13px;color:var(--textdim);">Check <code>owner_users</code> in config.toml — if your user ID is missing, the bot silently ignores messages. Verify with <code>lyra config show</code>.</div>
+  </div>
+  <div class="card">
+    <div class="card-title">Agent not found on startup</div>
+    <div style="font-size:13px;color:var(--textdim);">Run <code>lyra agent init</code> to seed the DB from TOML files. Check <code>lyra agent list</code> to confirm agents are loaded.</div>
+  </div>
+  <div class="card">
+    <div class="card-title">Memory / vault not working</div>
+    <div style="font-size:13px;color:var(--textdim);">Ensure <code>ROXABI_VAULT_DIR</code> is set in .env or the default <code>~/.roxabi-vault/</code> exists. Check <code>lyra agent show &lt;name&gt;</code> for memory_namespace.</div>
+  </div>
+  <div class="card">
+    <div class="card-title">Streaming shows garbled output</div>
+    <div style="font-size:13px;color:var(--textdim);">Verify <code>streaming = 1</code> in the agent DB row. Discord and Telegram handle streaming differently — check adapter logs with <code>make lyra logs</code>.</div>
+  </div>
+</div>

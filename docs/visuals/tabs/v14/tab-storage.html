@@ -1,0 +1,209 @@
+
+  <div class="page-title">Data &amp; Storage</div>
+  <div class="page-sub">Directory tree, SQLite databases, logs, voice assets, and config files.</div>
+
+  <div class="ib stack">
+    <span class="ico">🗺️</span>
+    <div class="bd"><strong>Two root vaults:</strong> <code>~/.lyra/</code> for credentials &amp; auth, <code>~/.roxabi-vault/</code> for memory &amp; sessions. Everything else is in standard system locations.</div>
+  </div>
+
+  <!-- ── Directory tree ─────────────────────────────── -->
+  <div class="section-title">Directory tree</div>
+  <div class="tree-block"><span class="td">~/.lyra/</span>
+├── <span class="tf">auth.db</span>            <span class="tc"># bot credentials + agents (AgentStore) + grants + prefs</span>
+├── <span class="tf">turns.db</span>           <span class="tc"># raw conversation turns (L1 audit trail)</span>
+├── <span class="tf">pairing.db</span>         <span class="tc"># invite codes (auto-expire)</span>
+├── <span class="tf">keyring.key</span>        <span class="tc"># Fernet encryption key (chmod 600)</span>
+├── <span class="td">agents/</span>            <span class="tc"># user-level agent overrides (machine-specific, gitignored)</span>
+│   └── <span class="tf">&lt;name&gt;.toml</span>    <span class="tc"># higher precedence than src/lyra/agents/</span>
+└── <span class="td">logs/</span>
+    ├── <span class="tf">YYYYMMDD_HHMMSS_lyra.log</span>   <span class="tc"># rolling (10 MB × 5)</span>
+    └── <span class="tf">monitor.log</span>                <span class="tc"># monitoring daemon (5 MB × 3)</span>
+
+<span class="td">~/.roxabi-vault/</span>           <span class="tc"># override with $ROXABI_VAULT_DIR</span>
+├── <span class="tc">[SQLite + FTS index]</span>       <span class="tc"># memory vault (roxabi-vault manages)</span>
+└── <span class="td">personas/</span>              <span class="tc"># persona definitions (referenced by agents)</span>
+
+<span class="td">~/.claude/projects/</span>
+└── <span class="td">&lt;cwd-slug&gt;/</span>
+    └── <span class="tf">&lt;session_id&gt;.jsonl</span>     <span class="tc"># Claude session history (per pool)</span>
+
+<span class="td">~/projects/lyra/supervisor/logs/</span>
+├── <span class="tf">lyra_telegram.log</span>          <span class="tc"># stdout (10 MB × 3)</span>
+├── <span class="tf">lyra_telegram_error.log</span>    <span class="tc"># stderr (5 MB × 3)</span>
+├── <span class="tf">lyra_discord.log</span>
+└── <span class="tf">lyra_discord_error.log</span>
+
+<span class="td">~/projects/lyra-stack/logs/</span>
+├── <span class="tf">supervisord.log</span>            <span class="tc"># process manager (10 MB × 3)</span>
+├── <span class="tf">voicecli_stt.log</span>
+└── <span class="tf">voicecli_tts.log</span>
+
+<span class="td">/tmp/</span> or <span class="tk">$LYRA_AUDIO_TMP</span>
+└── <span class="tf">lyra_audio_XXXXXX.ogg</span>      <span class="tc"># temp audio (deleted after send)</span></div>
+
+  <!-- ── Storage map ────────────────────────────────── -->
+  <div class="section-title">Storage map</div>
+  <div class="storage-map">
+
+    <div class="storage-card">
+      <div class="sc-icon">🔐</div>
+      <div class="sc-title">auth.db</div>
+      <div class="sc-sub"><code>~/.lyra/auth.db</code></div>
+      <div class="path-row">
+        <div class="path-item"><span class="path-label">bot_secrets</span><div><div class="path-val">Encrypted bot tokens (Fernet)</div></div></div>
+        <div class="path-item"><span class="path-label">agents</span><div><div class="path-val">Agent configs — persona_json, tts_json, stt_json, model, tools, fallback_language, patterns_json, passthroughs_json</div></div></div>
+        <div class="path-item"><span class="path-label">bot_agent_map</span><div><div class="path-val">Bot → agent assignments</div></div></div>
+        <div class="path-item"><span class="path-label">grants</span><div><div class="path-val">Trust levels per user (PUBLIC / TRUSTED / OWNER)</div></div></div>
+        <div class="path-item"><span class="path-label">user_prefs</span><div><div class="path-val">Per-user TTS/STT settings (language, voice)</div></div></div>
+      </div>
+      <div class="retention-row"><span class="ret-label">Retention</span><span class="ret-val">Permanent — manual deletion only</span></div>
+    </div>
+
+    <div class="storage-card" style="border-color:var(--orangeb);">
+      <div class="sc-icon">📜</div>
+      <div class="sc-title">turns.db</div>
+      <div class="sc-sub"><code>~/.lyra/turns.db</code> &nbsp;·&nbsp; L1 memory layer</div>
+      <div class="path-row">
+        <div class="path-item"><span class="path-label">table</span><div><div class="path-val">conversation_turns — every user + assistant message</div></div></div>
+        <div class="path-item"><span class="path-label">columns</span><div><div class="path-val">pool_id, session_id, role, platform, user_id, content, message_id, reply_message_id, timestamp, metadata</div></div></div>
+        <div class="path-item"><span class="path-label">indices</span><div><div class="path-val">pool_id, session_id, user_id, timestamp</div></div></div>
+      </div>
+      <div class="retention-row"><span class="ret-label">Retention</span><span class="ret-val">Permanent — conversation audit trail</span></div>
+    </div>
+
+    <div class="storage-card" style="border-color:var(--tealb);">
+      <div class="sc-icon">🧠</div>
+      <div class="sc-title">roxabi-vault</div>
+      <div class="sc-sub"><code>~/.roxabi-vault/</code> &nbsp;·&nbsp; <code>$ROXABI_VAULT_DIR</code></div>
+      <div class="path-row">
+        <div class="path-item"><span class="path-label">entries</span><div><div class="path-val">Memory entries + FTS5 index (L3 semantic)</div></div></div>
+        <div class="path-item"><span class="path-label">snapshots</span><div><div class="path-val">Pool state at flush (embedded session summaries)</div></div></div>
+        <div class="path-item"><span class="path-label">personas/</span><div><div class="path-val">Persona definitions referenced by agents</div></div></div>
+      </div>
+      <div class="retention-row"><span class="ret-label">Retention</span><span class="ret-val">concept:decision = permanent · fact = 60 d · preference = 30 d</span></div>
+    </div>
+
+    <div class="storage-card">
+      <div class="sc-icon">🔗</div>
+      <div class="sc-title">pairing.db</div>
+      <div class="sc-sub"><code>~/.lyra/pairing.db</code></div>
+      <div class="path-row">
+        <div class="path-item"><span class="path-label">pairing_codes</span><div><div class="path-val">Invite codes with hash, expiry, rate-limiting</div></div></div>
+      </div>
+      <div class="retention-row"><span class="ret-label">Retention</span><span class="ret-val">Auto-expire (default 3600 s TTL)</span></div>
+    </div>
+
+    <div class="storage-card">
+      <div class="sc-icon">📋</div>
+      <div class="sc-title">logs/</div>
+      <div class="sc-sub"><code>~/.lyra/logs/</code> and supervisor logs</div>
+      <div class="path-row">
+        <div class="path-item"><span class="path-label">app log</span><div><div class="path-val">YYYYMMDD_HHMMSS_lyra.log — rolling 10 MB × 5</div></div></div>
+        <div class="path-item"><span class="path-label">monitor</span><div><div class="path-val">monitor.log — rolling 5 MB × 3</div></div></div>
+        <div class="path-item"><span class="path-label">supervisor</span><div><div class="path-val">lyra_telegram.log, lyra_discord.log (stdout + stderr)</div></div></div>
+      </div>
+      <div class="retention-row"><span class="ret-label">Retention</span><span class="ret-val">Rolling — Python RotatingFileHandler</span></div>
+    </div>
+
+    <div class="storage-card">
+      <div class="sc-icon">⚙️</div>
+      <div class="sc-title">Config files</div>
+      <div class="sc-sub">config.toml + .env</div>
+      <div class="path-row">
+        <div class="path-item"><span class="path-label">config.toml</span><div><div class="path-val">./config.toml — bots, auth, routing, pairing, circuit breaker (gitignored)</div></div></div>
+        <div class="path-item"><span class="path-label">.env</span><div><div class="path-val">./.env — tokens, secrets, paths, model sizes (gitignored)</div></div></div>
+        <div class="path-item"><span class="path-label">resolution</span><div><div class="path-val">LYRA_CONFIG env var → config.toml in cwd → empty defaults</div></div></div>
+      </div>
+      <div class="retention-row"><span class="ret-label">Versioned</span><span class="ret-val">gitignored — machine-specific</span></div>
+    </div>
+
+  </div>
+
+  <!-- ── Database columns summary ───────────────────── -->
+  <div class="section-title">Database columns — agents table</div>
+  <div class="ib note">
+    <span class="ico">&#x1F4CB;</span>
+    <div class="bd"><strong>Full schema reference:</strong> The agents table has 28 columns including <code>persona_json</code>, <code>tts_json</code>, <code>stt_json</code>, <code>fallback_language</code>, <code>patterns_json</code>, <code>passthroughs_json</code>, and <code>show_tool_recap</code>. See the <strong>DB Schema</strong> tab for the complete column listing.</div>
+  </div>
+
+  <!-- ── Environment variables ──────────────────────── -->
+  <div class="section-title">Environment variables</div>
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">Core config</div>
+      <table class="tbl">
+        <thead><tr><th>Variable</th><th>Default / Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>LYRA_CONFIG</code></td><td>Override path to config.toml</td></tr>
+          <tr><td><code>LYRA_MESSAGES_CONFIG</code></td><td>Override path to messages.toml</td></tr>
+          <tr><td><code>ROXABI_VAULT_DIR</code></td><td><code>~/.roxabi-vault/</code> — memory vault root</td></tr>
+          <tr><td><code>LYRA_AUDIO_TMP</code></td><td><code>/tmp/</code> — temp dir for STT audio</td></tr>
+          <tr><td><code>LYRA_MAX_AUDIO_BYTES</code></td><td><code>5242880</code> (5 MB)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-title">Voice / STT / TTS</div>
+      <table class="tbl">
+        <thead><tr><th>Variable</th><th>Default / Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>STT_MODEL_SIZE</code></td><td>Omit to disable STT; <code>small</code> in .env.example</td></tr>
+          <tr><td><code>STT_DEVICE</code></td><td><code>auto</code> — cpu | cuda | auto</td></tr>
+          <tr><td><code>STT_COMPUTE_TYPE</code></td><td><code>auto</code> — float16 | int8 | auto</td></tr>
+          <tr><td><code>TTS_VOICE</code></td><td>voicecli global default voice</td></tr>
+          <tr><td><code>TTS_LANGUAGE</code></td><td>voicecli global default language</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── Security & encryption ──────────────────────── -->
+  <div class="section-title">Security &amp; encryption</div>
+  <div class="storage-map">
+    <div class="storage-card">
+      <div class="sc-icon">🗝️</div>
+      <div class="sc-title">keyring.key</div>
+      <div class="sc-sub"><code>~/.lyra/keyring.key</code></div>
+      <div class="path-row">
+        <div class="path-item"><span class="path-label">Algorithm</span><div><div class="path-val">Fernet (AES-128-CBC + HMAC-SHA256)</div></div></div>
+        <div class="path-item"><span class="path-label">Permissions</span><div><div class="path-val">chmod 600 — owner read/write only</div></div></div>
+        <div class="path-item"><span class="path-label">Used for</span><div><div class="path-val">Encrypting bot tokens stored in auth.db</div></div></div>
+      </div>
+      <div class="retention-row"><span class="ret-label">Warning</span><span class="ret-val">Permanent — losing this key = losing all credentials</span></div>
+    </div>
+    <div class="storage-card">
+      <div class="sc-icon">🛡️</div>
+      <div class="sc-title">What is never stored in plaintext</div>
+      <div class="sc-sub">Data that stays ephemeral or encrypted</div>
+      <div class="path-row">
+        <div class="path-item"><span class="path-label">TTS output</span><div><div class="path-val">Writes temporary WAV + OGG files to <code>~/.lyra/tmp/</code> during synthesis, then cleans up after bytes are read</div></div></div>
+        <div class="path-item"><span class="path-label">Bot tokens</span><div><div class="path-val">Never logged — only Fernet-encrypted at rest</div></div></div>
+        <div class="path-item"><span class="path-label">Auth cache</span><div><div class="path-val">In-memory dict (write-through to SQLite)</div></div></div>
+        <div class="path-item"><span class="path-label">Webhooks</span><div><div class="path-val">HMAC signature verified on every inbound request</div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Retention policies ─────────────────────────── -->
+  <div class="section-title">Retention policies</div>
+  <div class="card" style="padding:0;">
+    <table class="tbl">
+      <thead><tr><th>Data</th><th>Retention</th><th>Who cleans up</th></tr></thead>
+      <tbody>
+        <tr><td><strong>auth.db / keyring</strong></td><td>Permanent</td><td>Manual — <code>rm -rf ~/.lyra/</code></td></tr>
+        <tr><td><strong>turns.db</strong></td><td>Permanent</td><td>Manual — conversation audit trail</td></tr>
+        <tr><td><strong>pairing.db codes</strong></td><td>TTL (default 3600 s)</td><td>Automatic on next query</td></tr>
+        <tr><td><strong>App logs</strong></td><td>Rolling (50 MB total)</td><td>Python RotatingFileHandler</td></tr>
+        <tr><td><strong>Supervisor logs</strong></td><td>Rolling (30 MB total)</td><td>supervisord auto-rotation</td></tr>
+        <tr><td><strong>STT audio temp</strong></td><td>Seconds (after transcription)</td><td>Lyra (deleted post-process)</td></tr>
+        <tr><td><strong>TTS audio</strong></td><td>Temporary WAV + OGG in <code>~/.lyra/tmp/</code></td><td>Lyra (deleted after bytes are read)</td></tr>
+        <tr><td><strong>Memory vault — fact</strong></td><td>60 days</td><td>roxabi-vault (FRESHNESS_TTL_DAYS)</td></tr>
+        <tr><td><strong>Memory vault — preference</strong></td><td>30 days</td><td>roxabi-vault</td></tr>
+        <tr><td><strong>Memory vault — concept:decision</strong></td><td>Permanent</td><td>Manual</td></tr>
+        <tr><td><strong>Claude sessions</strong></td><td>Permanent</td><td>Manual — <code>rm ~/.claude/projects/…</code></td></tr>
+        <tr><td><strong>Whisper model cache</strong></td><td>Permanent</td><td>Manual — voiceCLI prune</td></tr>
+      </tbody>
+    </table>
+  </div>
+

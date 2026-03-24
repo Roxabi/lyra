@@ -766,13 +766,25 @@ strong { color:var(--text); font-weight:600; }
   display: flex; flex-direction: column; align-items: flex-start;
 }
 
-/* Subtitle + CTAs appear together after glitch settles */
+/* Subtitle + CTAs flicker in after glitch settles */
 .hero-sub-reveal, .hero-ctas-reveal {
   opacity: 0;
-  animation: revealFade .4s ease-out 5.0s forwards;
+  animation: revealFlicker .6s step-end 5.0s forwards;
 }
-@keyframes revealFade {
-  to { opacity: 1; }
+@keyframes revealFlicker {
+  0%   { opacity: 0; }
+  10%  { opacity: 0.7; }
+  15%  { opacity: 0; }
+  25%  { opacity: 0.9; }
+  30%  { opacity: 0.1; }
+  40%  { opacity: 0.8; }
+  45%  { opacity: 0; }
+  55%  { opacity: 1; }
+  60%  { opacity: 0.4; }
+  70%  { opacity: 1; }
+  75%  { opacity: 0.6; }
+  85%  { opacity: 1; }
+  100% { opacity: 1; }
 }
 
 /* RIGHT: mark container */

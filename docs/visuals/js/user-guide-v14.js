@@ -312,7 +312,7 @@ function glitchReveal(el, delayMs) {
 var glitchEl = document.querySelector('[data-glitch]');
 if (glitchEl) {
   glitchEl.style.opacity = '0';
-  glitchReveal(glitchEl, 3000); // start at 3s (after diamond crystallizes)
+  glitchReveal(glitchEl, 1400); // start at 1.4s (when diamond crystallizes)
 }
 
 // ── Reduced motion — skip all animations ─────────

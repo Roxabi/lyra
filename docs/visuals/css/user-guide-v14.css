@@ -769,7 +769,7 @@ strong { color:var(--text); font-weight:600; }
 /* Subtitle + CTAs flicker in after glitch settles */
 .hero-sub-reveal, .hero-ctas-reveal {
   opacity: 0;
-  animation: revealFlicker .6s step-end 4.4s forwards;
+  animation: revealFlicker .6s step-end 2.8s forwards;
 }
 @keyframes revealFlicker {
   0%   { opacity: 0; }

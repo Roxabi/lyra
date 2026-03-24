@@ -281,7 +281,7 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: tool-su
                 ):
                     embed = _build_tool_embed(event)
                     await _discord_send_with_retry(
-                        lambda e=embed: placeholder.edit(embed=e),
+                        lambda e=embed: placeholder.edit(content="", embed=e),
                         label="Tool summary embed",
                     )
                     last_tool_edit = now

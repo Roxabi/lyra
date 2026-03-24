@@ -1,43 +1,32 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 170" role="img">
-      <title>Lyra — Favicon (Diamond) Dark</title>
-      <defs>
-        <linearGradient id="nm-dF" x1="0.5" y1="0" x2="0.5" y2="1">
-          <stop offset="0%" stop-color="#2a1808"/>
-          <stop offset="40%" stop-color="#1a0f06"/>
-          <stop offset="100%" stop-color="#0d0d14"/>
-        </linearGradient>
-        <linearGradient id="nm-tF" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stop-color="#fafafa" stop-opacity="0.14"/>
-          <stop offset="100%" stop-color="#e85d04" stop-opacity="0.06"/>
-        </linearGradient>
-        <linearGradient id="nm-lF" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stop-color="#e85d04" stop-opacity="0.18"/>
-          <stop offset="100%" stop-color="#0a0a0f" stop-opacity="0"/>
-        </linearGradient>
-        <linearGradient id="nm-rF" x1="1" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#f97316" stop-opacity="0.10"/>
-          <stop offset="100%" stop-color="#0a0a0f" stop-opacity="0"/>
-        </linearGradient>
-        <radialGradient id="nm-cG" cx="50%" cy="55%" r="50%">
-          <stop offset="0%" stop-color="#f97316" stop-opacity="0.85"/>
-          <stop offset="40%" stop-color="#e85d04" stop-opacity="0.45"/>
-          <stop offset="100%" stop-color="#e85d04" stop-opacity="0"/>
-        </radialGradient>
-      </defs>
-      <g>
-        <polygon points="120,14 182,82 156,142 120,158 84,142 58,82"
-          fill="url(#nm-dF)" opacity="1"/>
-        <polygon points="120,14 58,82 182,82"
-          fill="url(#nm-tF)" opacity="1"/>
-        <polygon points="120,14 58,82 84,142 120,100"
-          fill="url(#nm-lF)" opacity="1"/>
-        <polygon points="120,14 182,82 156,142 120,100"
-          fill="url(#nm-rF)" opacity="1"/>
-        <polygon points="58,82 84,142 120,158 120,100"
-          fill="#1a0e06" fill-opacity="0.7" opacity="1"/>
-        <polygon points="182,82 156,142 120,158 120,100"
-          fill="#12100a" fill-opacity="0.65" opacity="1"/>
-        <circle cx="120" cy="95" r="58" fill="url(#nm-cG)" opacity="1"/>
-        <circle cx="120" cy="95" r="3.5" fill="#fafafa" opacity="1"/>
-      </g>
-    </svg>
+  <title>Lyra — Favicon (Diamond) Dark</title>
+  <defs>
+    <linearGradient id="fd-dF" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#e85d04" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="#b34500" stop-opacity="0.5"/>
+    </linearGradient>
+    <radialGradient id="fd-cG" cx="50%" cy="50%" r="45%">
+      <stop offset="0%" stop-color="#f97316" stop-opacity="1"/>
+      <stop offset="50%" stop-color="#e85d04" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#e85d04" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <g>
+    <!-- Outline for shape visibility at small sizes -->
+    <polygon points="120,14 182,82 156,142 120,158 84,142 58,82"
+      fill="url(#fd-dF)" stroke="#e85d04" stroke-width="4" stroke-opacity="0.6"/>
+    <!-- Top facet — brightest -->
+    <polygon points="120,14 58,82 182,82" fill="#f97316" fill-opacity="0.25"/>
+    <!-- Left facet -->
+    <polygon points="120,14 58,82 84,142 120,100" fill="#e85d04" fill-opacity="0.35"/>
+    <!-- Right facet -->
+    <polygon points="120,14 182,82 156,142 120,100" fill="#f97316" fill-opacity="0.25"/>
+    <!-- Bottom facets -->
+    <polygon points="58,82 84,142 120,158 120,100" fill="#e85d04" fill-opacity="0.2"/>
+    <polygon points="182,82 156,142 120,158 120,100" fill="#b34500" fill-opacity="0.18"/>
+    <!-- Core glow -->
+    <circle cx="120" cy="88" r="50" fill="url(#fd-cG)"/>
+    <!-- Hub dot -->
+    <circle cx="120" cy="88" r="8" fill="#fafafa" opacity="0.9"/>
+  </g>
+</svg>

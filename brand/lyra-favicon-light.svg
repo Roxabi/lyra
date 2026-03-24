@@ -2,36 +2,24 @@
   <title>Lyra — Favicon (Diamond) Light</title>
   <defs>
     <linearGradient id="fl-dF" x1="0.5" y1="0" x2="0.5" y2="1">
-      <stop offset="0%" stop-color="#d4a574"/>
-      <stop offset="40%" stop-color="#b8845a"/>
-      <stop offset="100%" stop-color="#8b5e3c"/>
+      <stop offset="0%" stop-color="#c2410c" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#9a3308" stop-opacity="0.6"/>
     </linearGradient>
-    <linearGradient id="fl-tF" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.35"/>
-      <stop offset="100%" stop-color="#c2410c" stop-opacity="0.15"/>
-    </linearGradient>
-    <linearGradient id="fl-lF" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#c2410c" stop-opacity="0.45"/>
-      <stop offset="100%" stop-color="#8b5e3c" stop-opacity="0.05"/>
-    </linearGradient>
-    <linearGradient id="fl-rF" x1="1" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#c2410c" stop-opacity="0.35"/>
-      <stop offset="100%" stop-color="#8b5e3c" stop-opacity="0.05"/>
-    </linearGradient>
-    <radialGradient id="fl-cG" cx="50%" cy="55%" r="50%">
-      <stop offset="0%" stop-color="#c2410c" stop-opacity="0.95"/>
-      <stop offset="35%" stop-color="#c2410c" stop-opacity="0.60"/>
+    <radialGradient id="fl-cG" cx="50%" cy="50%" r="45%">
+      <stop offset="0%" stop-color="#c2410c" stop-opacity="1"/>
+      <stop offset="50%" stop-color="#c2410c" stop-opacity="0.6"/>
       <stop offset="100%" stop-color="#c2410c" stop-opacity="0"/>
     </radialGradient>
   </defs>
   <g>
-    <polygon points="120,14 182,82 156,142 120,158 84,142 58,82" fill="url(#fl-dF)"/>
-    <polygon points="120,14 58,82 182,82" fill="url(#fl-tF)"/>
-    <polygon points="120,14 58,82 84,142 120,100" fill="url(#fl-lF)"/>
-    <polygon points="120,14 182,82 156,142 120,100" fill="url(#fl-rF)"/>
-    <polygon points="58,82 84,142 120,158 120,100" fill="#9e7050" fill-opacity="0.6"/>
-    <polygon points="182,82 156,142 120,158 120,100" fill="#8a6040" fill-opacity="0.55"/>
-    <circle cx="120" cy="95" r="58" fill="url(#fl-cG)"/>
-    <circle cx="120" cy="95" r="3.5" fill="#1c1917"/>
+    <polygon points="120,14 182,82 156,142 120,158 84,142 58,82"
+      fill="url(#fl-dF)" stroke="#c2410c" stroke-width="4" stroke-opacity="0.6"/>
+    <polygon points="120,14 58,82 182,82" fill="#c2410c" fill-opacity="0.2"/>
+    <polygon points="120,14 58,82 84,142 120,100" fill="#c2410c" fill-opacity="0.3"/>
+    <polygon points="120,14 182,82 156,142 120,100" fill="#c2410c" fill-opacity="0.22"/>
+    <polygon points="58,82 84,142 120,158 120,100" fill="#9a3308" fill-opacity="0.18"/>
+    <polygon points="182,82 156,142 120,158 120,100" fill="#9a3308" fill-opacity="0.15"/>
+    <circle cx="120" cy="88" r="50" fill="url(#fl-cG)"/>
+    <circle cx="120" cy="88" r="8" fill="#1c1917" opacity="0.9"/>
   </g>
 </svg>

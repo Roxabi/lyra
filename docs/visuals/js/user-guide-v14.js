@@ -212,10 +212,18 @@ function glitchReveal(el, delayMs) {
   var startTime = null;
   var settled = false;
 
-  // Start with all scrambled
-  el.textContent = target.split('').map(function(c) {
-    return c === ' ' ? ' ' : GLITCH_CHARS[Math.floor(Math.random() * GLITCH_CHARS.length)];
-  }).join('');
+  // Build fixed-width character slots to prevent layout shift
+  var slots = [];
+  el.innerHTML = '';
+  for (var j = 0; j < len; j++) {
+    var span = document.createElement('span');
+    span.style.display = 'inline-block';
+    span.style.width = target[j] === ' ' ? '0.35em' : '1ch';
+    span.style.textAlign = 'center';
+    span.textContent = target[j] === ' ' ? '\u00A0' : GLITCH_CHARS[Math.floor(Math.random() * GLITCH_CHARS.length)];
+    el.appendChild(span);
+    slots.push(span);
+  }
   el.style.opacity = '1';
 
   setTimeout(function() {
@@ -224,28 +232,26 @@ function glitchReveal(el, delayMs) {
       var elapsed = ts - startTime;
       var progress = Math.min(elapsed / duration, 1);
 
-      var chars = [];
       for (var i = 0; i < len; i++) {
         var ch = target[i];
-        if (ch === ' ') { chars.push(' '); continue; }
-        // Each char settles left-to-right with a 3-char window
+        if (ch === ' ') continue;
         var charStart = i / len;
         var charEnd = Math.min((i + 3) / len, 1);
         var charProgress = Math.max(0, Math.min(1, (progress - charStart) / (charEnd - charStart)));
         if (charProgress >= 1) {
-          chars.push(ch);
+          slots[i].textContent = ch;
         } else if (Math.random() < 0.8 * (1 - charProgress)) {
-          chars.push(GLITCH_CHARS[Math.floor(Math.random() * GLITCH_CHARS.length)]);
+          slots[i].textContent = GLITCH_CHARS[Math.floor(Math.random() * GLITCH_CHARS.length)];
         } else {
-          chars.push(ch);
+          slots[i].textContent = ch;
         }
       }
-      el.textContent = chars.join('');
 
       if (progress < 1) {
         requestAnimationFrame(tick);
       } else if (!settled) {
         settled = true;
+        // Replace spans with plain text for clean final state
         el.textContent = target;
       }
     }

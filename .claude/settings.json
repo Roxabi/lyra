@@ -11,9 +11,16 @@
     "roxabi-vault@roxabi-vault-marketplace": true,
     "typescript-lsp@claude-plugins-official": true,
     "pyright-lsp@claude-plugins-official": true,
-    "visual-explainer@roxabi-marketplace": true
+    "visual-explainer@visual-explainer-marketplace": true
   },
   "extraKnownMarketplaces": {
+    "visual-explainer-marketplace": {
+      "source": {
+        "source": "github",
+        "repo": "nicobailon/visual-explainer"
+      },
+      "autoUpdate": true
+    },
     "roxabi-marketplace": {
       "source": {
         "source": "github",

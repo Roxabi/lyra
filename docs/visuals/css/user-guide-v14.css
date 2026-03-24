@@ -766,15 +766,13 @@ strong { color:var(--text); font-weight:600; }
   display: flex; flex-direction: column; align-items: flex-start;
 }
 
-/* Subtitle + CTAs fade-in after glitch settles */
+/* Subtitle + CTAs appear together after glitch settles */
 .hero-sub-reveal, .hero-ctas-reveal {
-  opacity: 0; transform: translateY(16px);
-  animation: revealSlideUp .5s cubic-bezier(0.22,1,0.36,1) forwards;
+  opacity: 0;
+  animation: revealFade .4s ease-out 5.0s forwards;
 }
-.hero-sub-reveal  { animation-delay: 5.0s; }
-.hero-ctas-reveal { animation-delay: 5.4s; }
-@keyframes revealSlideUp {
-  to { opacity: 1; transform: translateY(0); }
+@keyframes revealFade {
+  to { opacity: 1; }
 }
 
 /* RIGHT: mark container */

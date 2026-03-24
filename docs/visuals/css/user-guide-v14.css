@@ -761,22 +761,30 @@ strong { color:var(--text); font-weight:600; }
   align-items: center; width: 100%; padding: 0 24px;
 }
 
-/* LEFT: text block — staggered entrance */
+/* LEFT: text block — word-by-word bounce entrance */
 .hero-text {
   display: flex; flex-direction: column; align-items: flex-start;
 }
 .hero-title {
-  opacity:0; animation: heroTextIn .6s cubic-bezier(0.22,1,0.36,1) 3.2s forwards;
+  display: flex; flex-wrap: wrap; gap: 0 0.28em;
 }
 .hero-sub {
-  opacity:0; animation: heroTextIn .6s cubic-bezier(0.22,1,0.36,1) 3.6s forwards;
+  display: flex; flex-wrap: wrap; gap: 0 0.3em;
 }
-.hero-ctas {
-  opacity:0; animation: heroTextIn .6s cubic-bezier(0.22,1,0.36,1) 4.0s forwards;
+
+/* Word bounce — spring-like entrance per word */
+.hw {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(36px);
+  animation: wordBounce .55s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  animation-delay: calc(3.0s + var(--i) * 0.18s);
 }
-@keyframes heroTextIn {
-  from { opacity:0; transform:translateY(12px); }
-  to   { opacity:1; transform:translateY(0); }
+@keyframes wordBounce {
+  0%   { opacity: 0; transform: translateY(36px); }
+  60%  { opacity: 1; transform: translateY(-4px); }
+  80%  { transform: translateY(2px); }
+  100% { opacity: 1; transform: translateY(0); }
 }
 
 /* RIGHT: mark container */
@@ -859,7 +867,8 @@ strong { color:var(--text); font-weight:600; }
   .hero-inner { grid-template-columns: 1fr; gap: 32px; text-align: center; }
   .hero-text { align-items: center; }
   .hero-mark { width: 160px; height: 160px; }
-  .hero-title { letter-spacing: 0.01em; }
+  .hero-title { letter-spacing: 0.01em; justify-content: center; }
+  .hero-sub { justify-content: center; }
   .hero-sub { margin-bottom: 24px; }
   .hero-ctas { justify-content: center; flex-direction: column; align-items: center; }
   .hero-btn { width: 100%; max-width: 280px; justify-content: center; }

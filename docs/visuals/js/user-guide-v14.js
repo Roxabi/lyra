@@ -208,9 +208,10 @@ if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     el.setAttribute('dur', '0.001s');
     el.setAttribute('repeatCount', '1');
   });
-  // Also skip hero text stagger — show immediately
-  document.querySelectorAll('.hero-title, .hero-sub, .hero-ctas').forEach(function(el) {
+  // Also skip hero word bounce — show immediately
+  document.querySelectorAll('.hw').forEach(function(el) {
     el.style.opacity = '1';
+    el.style.transform = 'none';
     el.style.animation = 'none';
   });
 }

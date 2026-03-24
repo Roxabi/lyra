@@ -202,14 +202,76 @@ if (navLogo) {
   });
 }
 
-// ── Reduced motion — pause SVG animations ────────
+// ── Glitch text decode — Black Mirror style ──────
+var GLITCH_CHARS = "!@#$%^&*()_+-=[]{}|;:',.<>?/~`0123456789";
+function glitchReveal(el, delayMs) {
+  var target = el.getAttribute('data-glitch');
+  if (!target) return;
+  var len = target.length;
+  var duration = 2000; // 2s settle
+  var startTime = null;
+  var settled = false;
+
+  // Start with all scrambled
+  el.textContent = target.split('').map(function(c) {
+    return c === ' ' ? ' ' : GLITCH_CHARS[Math.floor(Math.random() * GLITCH_CHARS.length)];
+  }).join('');
+  el.style.opacity = '1';
+
+  setTimeout(function() {
+    function tick(ts) {
+      if (!startTime) startTime = ts;
+      var elapsed = ts - startTime;
+      var progress = Math.min(elapsed / duration, 1);
+
+      var chars = [];
+      for (var i = 0; i < len; i++) {
+        var ch = target[i];
+        if (ch === ' ') { chars.push(' '); continue; }
+        // Each char settles left-to-right with a 3-char window
+        var charStart = i / len;
+        var charEnd = Math.min((i + 3) / len, 1);
+        var charProgress = Math.max(0, Math.min(1, (progress - charStart) / (charEnd - charStart)));
+        if (charProgress >= 1) {
+          chars.push(ch);
+        } else if (Math.random() < 0.8 * (1 - charProgress)) {
+          chars.push(GLITCH_CHARS[Math.floor(Math.random() * GLITCH_CHARS.length)]);
+        } else {
+          chars.push(ch);
+        }
+      }
+      el.textContent = chars.join('');
+
+      if (progress < 1) {
+        requestAnimationFrame(tick);
+      } else if (!settled) {
+        settled = true;
+        el.textContent = target;
+      }
+    }
+    requestAnimationFrame(tick);
+  }, delayMs);
+}
+
+// Launch glitch on hero title after logo animation
+var glitchEl = document.querySelector('[data-glitch]');
+if (glitchEl) {
+  glitchEl.style.opacity = '0';
+  glitchReveal(glitchEl, 3000); // start at 3s (after diamond crystallizes)
+}
+
+// ── Reduced motion — skip all animations ─────────
 if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
   document.querySelectorAll('.hero-mark animate, .hero-mark animateMotion, .hero-mark animateTransform').forEach(function(el) {
     el.setAttribute('dur', '0.001s');
     el.setAttribute('repeatCount', '1');
   });
-  // Also skip hero word bounce — show immediately
-  document.querySelectorAll('.hw').forEach(function(el) {
+  // Show text immediately
+  if (glitchEl) {
+    glitchEl.textContent = glitchEl.getAttribute('data-glitch');
+    glitchEl.style.opacity = '1';
+  }
+  document.querySelectorAll('.hero-sub-reveal, .hero-ctas-reveal').forEach(function(el) {
     el.style.opacity = '1';
     el.style.transform = 'none';
     el.style.animation = 'none';

@@ -328,12 +328,14 @@ Do not use utility colours in marketing, landing, or brand surfaces. In document
 
 | Role | Font | Weight | Usage |
 |------|------|--------|-------|
-| Headings / Wordmark | Outfit | 800 | Hero text, section titles, wordmark — impact and maker energy |
+| Display / Hero title | Chakra Petch | 600 / 700 | Hero headlines, landing page titles — angular, technical, forge energy |
+| Headings / Wordmark | Outfit | 800 | Section titles, wordmark, nav — impact and maker energy |
 | Body | Inter | 400 / 500 | All prose, descriptions, UI labels |
 | Code / Tagline / Technical | JetBrains Mono | 400 / 500 | CLI commands, config values, file paths, the submark "FORGE" label |
 
 **Rules:**
-- Outfit 800 only at display sizes. It is heavy — use it for one dominant headline per composition, not body copy.
+- Chakra Petch is the display font for hero-level headlines only. Its angular, industrial character reinforces the forge metaphor at large sizes. Use it for one dominant headline per composition. Do not use it for body copy or section titles.
+- Outfit 800 only at display sizes. It is heavy — use it for section titles, the wordmark, and navigation. Not body copy.
 - Inter is the workhorse. All flowing prose, all captions, all UI text.
 - JetBrains Mono for technical context only. Never use it for general emphasis or decoration.
 

@@ -2,9 +2,9 @@
   <div class="page-title">Voice &amp; Persona</div>
   <div class="page-sub">STT via Whisper, TTS via voicecli, per-agent tts_json and persona_json configuration.</div>
 
-  <div class="ib warn" style="margin-bottom:20px;">
-    <span class="ico">&#x26A0;&#xFE0F;</span>
-    <div class="bd"><strong>STT (speech-to-text) is live.</strong> TTS (text-to-speech replies) is coming in the next release — blocked by <code>#167</code> (TTSService wrapper). The TTS sections below document the target design.</div>
+  <div class="ib tip" style="margin-bottom:20px;">
+    <span class="ico">&#x2705;</span>
+    <div class="bd"><strong>Both STT and TTS are live.</strong> STT via Whisper (voicecli stt-serve). TTS via Qwen/Chatterbox (voicecli serve). Full voice round-trip: voice message in &rarr; transcribe &rarr; LLM &rarr; TTS &rarr; audio reply out.</div>
   </div>
 
   <!-- ── STT — Speech to text ───────────────────────── -->
@@ -43,7 +43,7 @@
   </div>
 
   <!-- ── Per-agent voice config ─────────────────────── -->
-  <div class="section-title">Per-agent voice &amp; persona config <span class="badge phase2">coming soon</span></div>
+  <div class="section-title">Per-agent voice &amp; persona config</div>
   <div class="ib stack">
     <span class="ico">🆕</span>
     <div class="bd"><strong>DB-first in v12 (#343).</strong> <code>persona_json</code>, <code>tts_json</code>, and <code>stt_json</code> are stored directly in the <code>agents</code> table. Edit with <code>lyra agent edit &lt;name&gt;</code> — changes hot-reload without restart.</div>
@@ -189,7 +189,7 @@
   </div>
 
   <!-- ── Discord voice commands ─────────────────────── -->
-  <div class="section-title">Discord voice commands <span class="badge phase2">coming soon</span></div>
+  <div class="section-title">Discord voice commands</div>
   <div class="card">
     <div class="card-title">Join / leave a voice channel</div>
     <div class="cb" style="margin-top:0;">
@@ -216,7 +216,7 @@
   </div>
 
   <!-- ── Voice stream dispatch ──────────────────────── -->
-  <div class="section-title">Voice stream dispatch <span class="badge phase2">coming soon</span></div>
+  <div class="section-title">Voice stream dispatch</div>
   <div class="card">
     <div class="card-title">Discord voice channel TTS pipeline</div>
     <div class="cb" style="margin-top:0;">

@@ -158,7 +158,14 @@ var heroCta = document.getElementById('heroGetStarted');
 if (heroCta) {
   heroCta.addEventListener('click', function(e) {
     e.preventDefault();
-    switchTab('qs');
+    // If already on QS tab, scroll to content; otherwise switch to QS
+    var activeTab = document.querySelector('.tab-btn.active');
+    if (activeTab && activeTab.dataset.tab === 'qs') {
+      var panel = document.getElementById('tab-qs');
+      if (panel) panel.scrollIntoView({ behavior: 'smooth' });
+    } else {
+      switchTab('qs');
+    }
   });
 }
 

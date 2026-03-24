@@ -726,11 +726,31 @@ strong { color:var(--text); font-weight:600; }
   position: relative;
   z-index: 1;
   background:
-    radial-gradient(ellipse 60% 50% at 50% 25%, var(--accentdim) 0%, transparent 65%),
-    radial-gradient(ellipse 40% 35% at 75% 80%, var(--tealdim) 0%, transparent 60%);
+    radial-gradient(ellipse 50% 45% at 50% 35%, rgba(232,93,4,0.12) 0%, transparent 60%);
+  overflow: hidden;
+}
+/* Angular forge lines — subtle diagonal strokes behind the hero */
+.hero::before {
+  content:''; position:absolute; inset:0; pointer-events:none; z-index:0;
+  background:
+    linear-gradient(135deg, transparent 42%, rgba(232,93,4,0.04) 42.5%, rgba(232,93,4,0.04) 43%, transparent 43.5%),
+    linear-gradient(135deg, transparent 56%, rgba(232,93,4,0.03) 56.5%, rgba(232,93,4,0.03) 57%, transparent 57.5%),
+    linear-gradient(-45deg, transparent 68%, rgba(249,115,22,0.025) 68.5%, rgba(249,115,22,0.025) 69%, transparent 69.5%);
+}
+/* Ember glow pulse — the forge's persistent readiness */
+.hero::after {
+  content:''; position:absolute; z-index:0;
+  width:280px; height:280px; border-radius:50%;
+  top:50%; left:50%; transform:translate(-50%,-50%);
+  background: radial-gradient(circle, rgba(232,93,4,0.15) 0%, rgba(232,93,4,0.05) 40%, transparent 70%);
+  animation: emberPulse 4s ease-in-out infinite;
+}
+@keyframes emberPulse {
+  0%, 100% { opacity:0.6; transform:translate(-50%,-50%) scale(1); }
+  50%      { opacity:1;   transform:translate(-50%,-50%) scale(1.08); }
 }
 .hero-inner {
-  max-width: 720px; margin: 0 auto;
+  max-width: 720px; margin: 0 auto; position: relative; z-index: 1;
   display: flex; flex-direction: column; align-items: center; gap: 20px;
 }
 .hero-badge {
@@ -759,19 +779,23 @@ strong { color:var(--text); font-weight:600; }
 .hero-title {
   font-family: var(--font-head); font-size: clamp(2rem, 5vw, 3.5rem);
   font-weight: 800; line-height: 1.1;
-  background: linear-gradient(135deg, var(--text) 30%, var(--accentbr));
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--accent);
 }
 [data-theme="light"] .hero-title {
-  background: linear-gradient(135deg, var(--text) 40%, var(--accent));
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--accent);
 }
 [data-theme="light"] .hero {
   background:
-    radial-gradient(ellipse 60% 50% at 50% 25%, rgba(194,65,12,0.06) 0%, transparent 65%),
-    radial-gradient(ellipse 40% 35% at 75% 80%, rgba(8,145,178,0.04) 0%, transparent 60%);
+    radial-gradient(ellipse 50% 45% at 50% 35%, rgba(194,65,12,0.06) 0%, transparent 60%);
+}
+[data-theme="light"] .hero::before {
+  background:
+    linear-gradient(135deg, transparent 42%, rgba(194,65,12,0.035) 42.5%, rgba(194,65,12,0.035) 43%, transparent 43.5%),
+    linear-gradient(135deg, transparent 56%, rgba(194,65,12,0.025) 56.5%, rgba(194,65,12,0.025) 57%, transparent 57.5%),
+    linear-gradient(-45deg, transparent 68%, rgba(194,65,12,0.02) 68.5%, rgba(194,65,12,0.02) 69%, transparent 69.5%);
+}
+[data-theme="light"] .hero::after {
+  background: radial-gradient(circle, rgba(194,65,12,0.08) 0%, rgba(194,65,12,0.03) 40%, transparent 70%);
 }
 [data-theme="light"] .hero-badge { color: var(--accent); background: rgba(194,65,12,0.1); }
 [data-theme="light"] .hero-feat { color: var(--text); background: #fff; border-color: rgba(0,0,0,0.1); }

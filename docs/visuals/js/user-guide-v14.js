@@ -212,14 +212,34 @@ function glitchReveal(el, delayMs) {
   var startTime = null;
   var settled = false;
 
-  // Build fixed-width character slots to prevent layout shift
+  // Measure each target character's real width in the actual font
+  el.textContent = target;
+  el.style.opacity = '0';
+  el.style.visibility = 'hidden';
+  // Force layout so we can measure
+  var cs = getComputedStyle(el);
+  var measurer = document.createElement('span');
+  measurer.style.cssText = 'font:' + cs.font + ';font-weight:' + cs.fontWeight
+    + ';letter-spacing:' + cs.letterSpacing + ';text-transform:' + cs.textTransform
+    + ';position:absolute;visibility:hidden;white-space:pre;';
+  document.body.appendChild(measurer);
+  var charWidths = [];
+  for (var m = 0; m < len; m++) {
+    measurer.textContent = target[m];
+    charWidths.push(measurer.getBoundingClientRect().width);
+  }
+  document.body.removeChild(measurer);
+
+  // Build fixed-width character slots — each locked to its target char's width
   var slots = [];
   el.innerHTML = '';
+  el.style.visibility = '';
   for (var j = 0; j < len; j++) {
     var span = document.createElement('span');
     span.style.display = 'inline-block';
-    span.style.width = target[j] === ' ' ? '0.35em' : '1ch';
+    span.style.width = charWidths[j] + 'px';
     span.style.textAlign = 'center';
+    span.style.overflow = 'hidden';
     span.textContent = target[j] === ' ' ? '\u00A0' : GLITCH_CHARS[Math.floor(Math.random() * GLITCH_CHARS.length)];
     el.appendChild(span);
     slots.push(span);

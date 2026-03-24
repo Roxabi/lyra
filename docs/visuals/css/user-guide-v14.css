@@ -768,8 +768,9 @@ strong { color:var(--text); font-weight:600; }
 
 /* Title — Spark White, uppercase, one dominant headline */
 .hero-title {
-  font-family: var(--font-head); font-size: clamp(2rem, 5vw, 3.8rem);
-  font-weight: 800; line-height: 1.05;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: clamp(2rem, 5vw, 3.8rem);
+  font-weight: 700; line-height: 1.05;
   color: var(--text);
   text-transform: uppercase;
   letter-spacing: 0.02em;

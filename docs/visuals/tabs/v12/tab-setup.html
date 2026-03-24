@@ -1,0 +1,214 @@
+<div class="page-title">Setup</div>
+<div class="page-sub">Start modes, bot tokens, supervisor configs, and config.toml schema.</div>
+
+<div class="section-title">Start modes</div>
+<div class="grid2">
+  <div class="card" style="border-color:var(--greenb);">
+    <div class="card-title" style="color:var(--green);">lyra start (direct)</div>
+    <div class="cb"><pre><span class="scmd">lyra</span> start
+<span class="sc"># or: python -m lyra --adapter all</span></pre></div>
+    <div style="font-size:12px;color:var(--textdim);margin-top:6px;">Starts all configured adapters (Telegram + Discord) in the foreground. Good for development and quick testing. Ctrl+C to stop.</div>
+  </div>
+  <div class="card" style="border-color:var(--accentb,var(--borderbr));">
+    <div class="card-title" style="color:var(--accentbr);">make lyra (supervisor)</div>
+    <div class="cb"><pre><span class="scmd">make</span> lyra          <span class="sc"># start lyra_telegram + lyra_discord</span>
+<span class="scmd">make</span> lyra reload   <span class="sc"># restart both adapters</span>
+<span class="scmd">make</span> lyra status   <span class="sc"># status of both</span>
+<span class="scmd">make</span> lyra logs     <span class="sc"># tail lyra_telegram stdout</span>
+<span class="scmd">make</span> lyra errors   <span class="sc"># tail lyra_telegram stderr</span></pre></div>
+    <div style="font-size:12px;color:var(--textdim);margin-top:6px;">Recommended for production. Delegates to lyra-stack supervisord. Adapters restart independently.</div>
+  </div>
+</div>
+<div class="ib note" style="margin-top:4px;">
+  <span class="ico">&#x1F4CC;</span>
+  <div class="bd">Single-adapter mode: <code>python -m lyra --adapter telegram</code> or <code>--adapter discord</code>. Discord is skipped even if configured in the other case.</div>
+</div>
+
+<div class="section-title">Bot token setup</div>
+<div class="grid2">
+  <div class="card" style="border-color:var(--tgb);">
+    <div class="card-title" style="color:var(--tg);">
+      <span class="tg">Telegram</span> &mdash; via @BotFather
+    </div>
+    <div class="checklist">
+      <div class="ci"><div class="dot tg"></div><div>Open Telegram &rarr; search <code>@BotFather</code></div></div>
+      <div class="ci"><div class="dot tg"></div><div>Send <code>/newbot</code> &rarr; choose display name &amp; username</div></div>
+      <div class="ci"><div class="dot tg"></div><div>Copy token &rarr; run <code>lyra bot add --platform telegram --bot-id lyra</code></div></div>
+      <div class="ci"><div class="dot tg"></div><div>Your numeric ID &rarr; get from <code>@userinfobot</code></div></div>
+      <div class="ci"><div class="dot tg"></div><div>Set <code>owner_users = [YOUR_TG_ID]</code> in <code>config.toml</code></div></div>
+    </div>
+    <div class="cb" style="margin-top:12px;">
+      <div class="cb-head"><span class="cb-lang">bash</span></div>
+      <pre><span class="scmd">lyra</span> bot add <span class="sf">--platform</span> <span class="ss">telegram</span> <span class="sf">--bot-id</span> <span class="ss">lyra</span>
+<span class="sc"># Prompts for token → encrypted in auth.db</span>
+<span class="scmd">lyra</span> bot list   <span class="sc"># verify</span></pre>
+    </div>
+  </div>
+  <div class="card" style="border-color:var(--dcb);">
+    <div class="card-title" style="color:var(--dc);">
+      <span class="dc">Discord</span> &mdash; via Developer Portal
+    </div>
+    <div class="checklist">
+      <div class="ci"><div class="dot dc"></div><div><code>discord.com/developers</code> &rarr; New Application</div></div>
+      <div class="ci"><div class="dot dc"></div><div>Bot tab &rarr; Reset Token &rarr; run <code>lyra bot add --platform discord --bot-id lyra</code></div></div>
+      <div class="ci"><div class="dot dc"></div><div>Enable <strong>Message Content Intent</strong> &larr; required!</div></div>
+      <div class="ci"><div class="dot dc"></div><div>OAuth2 &rarr; scope <code>bot</code> &rarr; Send Messages &rarr; invite URL</div></div>
+      <div class="ci"><div class="dot dc"></div><div>Your ID: Settings &rarr; Advanced &rarr; Developer Mode &rarr; right-click name</div></div>
+    </div>
+    <div class="cb" style="margin-top:12px;">
+      <div class="cb-head"><span class="cb-lang">bash</span></div>
+      <pre><span class="scmd">lyra</span> bot add <span class="sf">--platform</span> <span class="ss">discord</span> <span class="sf">--bot-id</span> <span class="ss">lyra</span>
+<span class="sc"># Prompts for token → encrypted in auth.db</span>
+<span class="scmd">lyra</span> bot list   <span class="sc"># verify</span></pre>
+    </div>
+  </div>
+</div>
+
+<div class="section-title">Supervisor configuration</div>
+<div style="font-size:13px;color:var(--textdim);margin-bottom:12px;">For production, adapters run as independent supervisor processes — each can restart without affecting the other. Configs live in the lyra repo; <code>lyra-stack/conf.d/</code> holds only symlinks.</div>
+<div class="grid2">
+  <div class="card">
+    <div class="card-title">supervisor/lyra_telegram.conf</div>
+    <div class="cb">
+      <div class="cb-head"><span class="cb-lang">ini</span></div>
+      <pre><span class="sm">[program:lyra_telegram]</span>
+<span class="sm">command</span>     = <span class="ss">run.sh --adapter telegram</span>
+<span class="sm">environment</span> = <span class="ss">LYRA_HEALTH_PORT="8443"</span>
+<span class="sm">autostart</span>   = <span class="sk">true</span>
+<span class="sm">autorestart</span> = <span class="sk">true</span>
+<span class="sm">stdout_logfile</span> = <span class="ss">logs/lyra_telegram.log</span>
+<span class="sm">stderr_logfile</span> = <span class="ss">logs/lyra_telegram_err.log</span></pre>
+    </div>
+    <div style="font-size:12px;color:var(--textdim);margin-top:6px;">Health endpoint on port 8443.</div>
+  </div>
+  <div class="card">
+    <div class="card-title">supervisor/lyra_discord.conf</div>
+    <div class="cb">
+      <div class="cb-head"><span class="cb-lang">ini</span></div>
+      <pre><span class="sm">[program:lyra_discord]</span>
+<span class="sm">command</span>     = <span class="ss">run.sh --adapter discord</span>
+<span class="sm">environment</span> = <span class="ss">LYRA_HEALTH_PORT="8444"</span>
+<span class="sm">autostart</span>   = <span class="sk">true</span>
+<span class="sm">autorestart</span> = <span class="sk">true</span>
+<span class="sm">stdout_logfile</span> = <span class="ss">logs/lyra_discord.log</span>
+<span class="sm">stderr_logfile</span> = <span class="ss">logs/lyra_discord_err.log</span></pre>
+    </div>
+    <div style="font-size:12px;color:var(--textdim);margin-top:6px;">Health endpoint on port 8444.</div>
+  </div>
+</div>
+<div class="ib note" style="margin-top:8px;">
+  <span class="ico">&#x1F517;</span>
+  <div class="bd"><code>run.sh</code> sources <code>.env</code> before launching the Python process — secrets never live in supervisor conf files. Register symlinks with <code>make register</code> from the lyra repo.</div>
+</div>
+<div class="cb" style="margin-top:12px;">
+  <div class="cb-head"><span class="cb-lang">bash</span></div>
+  <pre><span class="sc"># One-time: clone lyra-stack alongside lyra, then register</span>
+<span class="scmd">git</span> clone https://github.com/Roxabi/lyra-stack ~/projects/lyra-stack
+<span class="scmd">cd</span> ~/projects/lyra
+<span class="scmd">make</span> register         <span class="sc"># creates symlinks in lyra-stack/conf.d/</span>
+
+<span class="scmd">cd</span> ~/projects/lyra-stack
+<span class="scmd">make</span> start            <span class="sc"># start supervisord (idempotent)</span>
+<span class="scmd">make</span> ps               <span class="sc"># status of all programs</span>
+
+<span class="sc"># Deploy to production (Machine 1)</span>
+<span class="scmd">make</span> deploy           <span class="sc"># git pull → pytest → supervisorctl restart</span>
+<span class="scmd">make</span> remote status    <span class="sc"># check remote supervisor status</span></pre>
+</div>
+
+<div class="section-title">config.toml schema</div>
+<div class="grid2">
+  <div>
+    <h4>Minimal single-bot config</h4>
+    <div class="cb">
+      <div class="cb-head"><span class="cb-lang">toml</span><span class="cb-file">config.toml</span></div>
+      <pre><span class="sm">[admin]</span>
+<span class="sm">user_ids</span> = []   <span class="sc"># extra cross-platform admins</span>
+
+<span class="sm">[[auth.telegram_bots]]</span>
+<span class="sm">bot_id</span>      = <span class="ss">"lyra"</span>
+<span class="sm">default</span>     = <span class="ss">"blocked"</span>
+<span class="sm">owner_users</span> = [<span class="sn">YOUR_TG_ID</span>]
+
+<span class="sm">[[auth.discord_bots]]</span>
+<span class="sm">bot_id</span>      = <span class="ss">"lyra"</span>
+<span class="sm">default</span>     = <span class="ss">"blocked"</span>
+<span class="sm">owner_users</span> = [<span class="sn">YOUR_DC_ID</span>]
+
+<span class="sm">[defaults]</span>
+<span class="sm">cwd</span> = <span class="ss">"~/projects"</span>
+<span class="sm">[defaults.workspaces]</span>
+<span class="sm">lyra</span> = <span class="ss">"~/projects/lyra"</span></pre>
+    </div>
+  </div>
+  <div>
+    <h4>Multi-bot explicit wiring</h4>
+    <div class="cb">
+      <div class="cb-head"><span class="cb-lang">toml</span><span class="cb-file">config.toml</span></div>
+      <pre><span class="sc"># Tokens resolved from CredentialStore (auth.db)</span>
+<span class="sm">[[telegram.bots]]</span>
+<span class="sm">bot_id</span> = <span class="ss">"lyra"</span>
+<span class="sm">agent</span>  = <span class="ss">"lyra_default"</span>
+
+<span class="sm">[[discord.bots]]</span>
+<span class="sm">bot_id</span>      = <span class="ss">"lyra"</span>
+<span class="sm">auto_thread</span> = <span class="sk">true</span>
+<span class="sm">agent</span>       = <span class="ss">"lyra_default"</span>
+
+<span class="sm">[[auth.telegram_bots]]</span>
+<span class="sm">bot_id</span>      = <span class="ss">"lyra"</span>
+<span class="sm">default</span>     = <span class="ss">"blocked"</span>
+<span class="sm">owner_users</span> = [<span class="sn">YOUR_TG_ID</span>]
+
+<span class="sm">[[auth.discord_bots]]</span>
+<span class="sm">bot_id</span>      = <span class="ss">"lyra"</span>
+<span class="sm">default</span>     = <span class="ss">"blocked"</span>
+<span class="sm">owner_users</span> = [<span class="sn">YOUR_DC_ID</span>]</pre>
+    </div>
+  </div>
+</div>
+
+<div class="section-title">Agent TOML search locations</div>
+<div class="grid2">
+  <div class="card" style="border-color:var(--accentb,var(--borderbr));">
+    <div class="card-label"><span class="dot" style="background:var(--accentbr);margin-top:0;"></span> User-level (higher precedence)</div>
+    <div class="card-title"><code>~/.lyra/agents/</code></div>
+    <div style="font-size:13px;color:var(--textdim);">Machine-specific overrides. Gitignored. Takes priority over bundled defaults during <code>lyra agent init</code>.</div>
+  </div>
+  <div class="card" style="border-color:var(--border);">
+    <div class="card-label"><span class="dot" style="background:var(--textdim);margin-top:0;"></span> System defaults (lower precedence)</div>
+    <div class="card-title"><code>src/lyra/agents/</code></div>
+    <div style="font-size:13px;color:var(--textdim);">Bundled in the repo. Committed. Loaded only when no user override exists for that agent name.</div>
+  </div>
+</div>
+
+<div class="section-title">Plugins &amp; environment</div>
+<div class="grid2">
+  <div>
+    <h4>[plugins] config</h4>
+    <div class="cb">
+      <div class="cb-head"><span class="cb-lang">toml</span><span class="cb-file">config.toml</span></div>
+      <pre><span class="sm">[plugins]</span>
+<span class="sm">enabled</span> = [<span class="ss">"echo"</span>, <span class="ss">"search"</span>]
+<span class="sc"># search enables /search + /add + /explain + /summarize</span></pre>
+    </div>
+    <div style="font-size:12px;color:var(--textdim);margin-top:6px;">CommandLoader (#345) discovers both built-in commands and loaded plugins. <code>/help</code> shows both sections.</div>
+  </div>
+  <div>
+    <h4>Key environment variables</h4>
+    <div class="cb">
+      <div class="cb-head"><span class="cb-lang">bash</span><span class="cb-file">.env</span></div>
+      <pre><span class="sc"># Knowledge vault root (used by search plugin)</span>
+<span class="sm">ROXABI_VAULT_DIR</span>=<span class="ss">~/.roxabi-vault</span>
+
+<span class="sc"># Override default health port</span>
+<span class="sm">LYRA_HEALTH_PORT</span>=<span class="ss">8443</span>
+
+<span class="sc"># STT model size (small | medium | large)</span>
+<span class="sm">STT_MODEL_SIZE</span>=<span class="ss">small</span>
+
+<span class="sc"># API key (only if backend="anthropic-sdk")</span>
+<span class="sm">ANTHROPIC_API_KEY</span>=<span class="ss">sk-ant-...</span></pre>
+    </div>
+  </div>
+</div>

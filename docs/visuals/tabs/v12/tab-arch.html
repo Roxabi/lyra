@@ -1,0 +1,408 @@
+
+<div class="page-title">Architecture</div>
+<div class="page-sub">Hub-and-spoke asyncio engine. Stateless agents over stateful pools.</div>
+
+<!-- High-level message flow -->
+<div class="section-title">Message Flow</div>
+
+<div class="flow">
+  <span class="fn tg">User</span>
+  <span class="fa">&#x2192;</span>
+  <span class="fn">Adapter</span>
+  <span class="fa">&#x2192;</span>
+  <span class="fn o">InboundBus</span>
+  <span class="fa">&#x2192;</span>
+  <span class="fn g">Hub</span>
+  <span class="fa">&#x2192;</span>
+  <span class="fn a">Pool</span>
+  <span class="fa">&#x2192;</span>
+  <span class="fn">Agent</span>
+  <span class="fa">&#x2192;</span>
+  <span class="fn" style="border-color:var(--pinkb);color:var(--pink);">LLM Backend</span>
+  <span class="fa">&#x2192;</span>
+  <span class="fn t">OutboundDispatcher</span>
+  <span class="fa">&#x2192;</span>
+  <span class="fn">Adapter</span>
+  <span class="fa">&#x2192;</span>
+  <span class="fn tg">User</span>
+</div>
+
+<div class="flow" style="margin-top:6px;">
+  <span class="fn tg">Voice msg</span>
+  <span class="fa">&#x2192;</span>
+  <span class="fn">Adapter</span>
+  <span class="fa">&#x2192;</span>
+  <span class="fn" style="border-color:var(--pinkb);color:var(--pink);">STT (Whisper)</span>
+  <span class="fa">&#x2192;</span>
+  <span class="fn g">transcript</span>
+  <span class="fa">&#x2192;</span>
+  <span class="fn a">normal flow</span>
+  <span class="fa">&#x2192;</span>
+  <span class="fn" style="border-color:var(--pinkb);color:var(--pink);">TTS (Chatterbox)</span>
+  <span class="fa">&#x2192;</span>
+  <span class="fn tg">audio reply</span>
+</div>
+
+<!-- Architecture Map -->
+<div class="section-title">Architecture Map</div>
+  <div class="ib note" style="margin-bottom:14px;">
+    <span class="ico">&#128161;</span>
+    <div class="bd">
+      <strong>Do LLM responses flow through InboundBus?</strong>
+      <strong>No.</strong> The InboundBus is strictly one-way: <code>Adapter &rarr; per-platform Queue &rarr; staging Queue &rarr; Hub.run()</code>.
+      LLM responses take a completely separate return path: <code>Agent &rarr; Pool &rarr; Hub.dispatch_response() &rarr; OutboundDispatcher &rarr; Adapter.send()</code>.
+    </div>
+  </div>
+
+  <div class="diagram-wrap">
+    <svg viewBox="0 0 960 740" xmlns="http://www.w3.org/2000/svg" role="img" style="width:100%;height:auto;display:block;min-height:500px;">
+      <title>Lyra architecture map — hub-and-spoke asyncio engine with adapters, inbound bus, hub, pools, agents, and outbound dispatchers</title>
+      <defs>
+        <marker id="ac" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#22d3ee"/></marker>
+        <marker id="av" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#f97316"/></marker>
+        <marker id="ae" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#34d399"/></marker>
+        <marker id="aa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#fbbf24"/></marker>
+        <marker id="ap" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#ec4899"/></marker>
+        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#fb7185"/></marker>
+        <marker id="atg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#26a5e4"/></marker>
+        <marker id="adc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#5865f2"/></marker>
+        <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#60a5fa"/></marker>
+        <pattern id="dotgrid" x="0" y="0" width="28" height="28" patternUnits="userSpaceOnUse">
+          <circle cx="0.5" cy="0.5" r="0.8" fill="rgba(255,255,255,0.03)"/>
+        </pattern>
+      </defs>
+
+      <rect width="960" height="740" fill="#0a0a0f"/>
+      <rect width="960" height="740" fill="url(#dotgrid)"/>
+      <ellipse cx="480" cy="370" rx="400" ry="280" fill="rgba(232,93,4,0.02)"/>
+      <ellipse cx="200" cy="200" rx="220" ry="180" fill="rgba(249,115,22,0.015)"/>
+
+      <!-- CHANNEL ADAPTERS -->
+      <text x="40" y="11" font-family="JetBrains Mono,monospace" font-size="8" font-weight="700" fill="#7d8590" letter-spacing="1.5">EXTERNAL CHANNELS</text>
+      <rect x="60" y="18" width="380" height="55" rx="7" fill="#091626" stroke="#26a5e4" stroke-width="1.5"/>
+      <text x="250" y="40" text-anchor="middle" font-family="Outfit,sans-serif" font-size="14" font-weight="700" fill="#26a5e4">TelegramAdapter</text>
+      <text x="250" y="57" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#5b9bd5">aiogram v3 &middot; normalize() &middot; send()</text>
+      <text x="250" y="69" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#8b95a3">inbound_queue (maxsize=100)</text>
+      <rect x="520" y="18" width="380" height="55" rx="7" fill="#0b0c26" stroke="#5865f2" stroke-width="1.5"/>
+      <text x="710" y="40" text-anchor="middle" font-family="Outfit,sans-serif" font-size="14" font-weight="700" fill="#5865f2">DiscordAdapter</text>
+      <text x="710" y="57" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#7b7bc0">discord.py v2 &middot; normalize() &middot; send()</text>
+      <text x="710" y="69" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#8b95a3">inbound_queue (maxsize=100)</text>
+
+      <line x1="250" y1="73" x2="250" y2="110" stroke="#26a5e4" stroke-width="1.5" marker-end="url(#atg)" class="svgfl"/>
+      <line x1="710" y1="73" x2="710" y2="110" stroke="#5865f2" stroke-width="1.5" marker-end="url(#adc)" class="svgfl" style="animation-delay:.3s"/>
+
+      <!-- INBOUND BUS -->
+      <text x="40" y="107" font-family="JetBrains Mono,monospace" font-size="8" font-weight="700" fill="#f97316" letter-spacing="1.5">INBOUND BUS &middot; one-way IN</text>
+      <rect x="40" y="110" width="880" height="50" rx="8" fill="#1a0e06" stroke="#f97316" stroke-width="1.5"/>
+      <rect x="55" y="118" width="170" height="34" rx="5" fill="#0f1120" stroke="#26a5e4" stroke-width="0.8"/>
+      <text x="140" y="133" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" font-weight="600" fill="#26a5e4">tg_queue (100)</text>
+      <text x="140" y="146" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="7.5" fill="#8b95a3">feeder task</text>
+      <rect x="240" y="118" width="170" height="34" rx="5" fill="#0f1120" stroke="#5865f2" stroke-width="0.8"/>
+      <text x="325" y="133" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" font-weight="600" fill="#5865f2">dc_queue (100)</text>
+      <text x="325" y="146" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="7.5" fill="#8b95a3">feeder task</text>
+      <line x1="225" y1="135" x2="240" y2="135" stroke="#f97316" stroke-width="1" marker-end="url(#av)"/>
+      <line x1="410" y1="135" x2="430" y2="135" stroke="#f97316" stroke-width="1" marker-end="url(#av)"/>
+      <rect x="430" y="118" width="240" height="34" rx="5" fill="#1a1008" stroke="#f97316" stroke-width="1"/>
+      <text x="550" y="133" text-anchor="middle" font-family="Outfit,sans-serif" font-size="11" font-weight="700" fill="#f97316">Staging Queue (500)</text>
+      <text x="550" y="146" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="7.5" fill="#a8873a">single consumer: hub.run()</text>
+      <rect x="695" y="118" width="210" height="34" rx="5" fill="#1a0f14" stroke="#ec4899" stroke-width="0.8" stroke-dasharray="3 2"/>
+      <text x="800" y="133" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" font-weight="600" fill="#ec4899">InboundAudioBus</text>
+      <text x="800" y="146" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="7.5" fill="#8b95a3">separate &middot; _audio_loop()</text>
+
+      <line x1="480" y1="160" x2="480" y2="194" stroke="#f97316" stroke-width="2" marker-end="url(#av)" class="svgfl"/>
+
+      <!-- HUB + PIPELINE -->
+      <text x="40" y="191" font-family="JetBrains Mono,monospace" font-size="8" font-weight="700" fill="#f59e0b" letter-spacing="1.5">HUB &middot; ROUTING &middot; PIPELINE</text>
+      <rect x="40" y="194" width="280" height="100" rx="8" fill="#14120a" stroke="#f59e0b" stroke-width="1.5"/>
+      <text x="180" y="213" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" font-weight="700" fill="#f59e0b" letter-spacing="1">HUB</text>
+      <text x="180" y="231" text-anchor="middle" font-family="Outfit,sans-serif" font-size="14" font-weight="700" fill="#fafafa">Hub.run()</text>
+      <text x="180" y="249" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#9ca3af">adapter_registry</text>
+      <text x="180" y="264" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#9ca3af">agent_registry &middot; bindings</text>
+      <text x="180" y="279" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#7d8590">dispatch_response() &middot; shutdown()</text>
+      <rect x="340" y="194" width="280" height="100" rx="8" fill="#18181f" stroke="#f59e0b" stroke-width="1"/>
+      <text x="480" y="213" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" font-weight="700" fill="#f59e0b" letter-spacing="1">MESSAGE PIPELINE</text>
+      <text x="480" y="231" text-anchor="middle" font-family="Outfit,sans-serif" font-size="13" font-weight="700" fill="#fafafa">MessagePipeline</text>
+      <text x="480" y="249" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#34d399">validate &rarr; rate_limit</text>
+      <text x="480" y="264" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#34d399">resolve_binding &rarr; is_command?</text>
+      <text x="480" y="279" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#9ca3af">submit_to_pool()</text>
+      <rect x="640" y="194" width="280" height="100" rx="8" fill="#18181f" stroke="#60a5fa" stroke-width="1"/>
+      <text x="780" y="213" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" font-weight="700" fill="#60a5fa" letter-spacing="1">COMMAND ROUTER</text>
+      <text x="780" y="231" text-anchor="middle" font-family="Outfit,sans-serif" font-size="13" font-weight="700" fill="#fafafa">CommandRouter</text>
+      <text x="780" y="249" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#9ca3af">/help /clear /new /stop</text>
+      <text x="780" y="264" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#9ca3af">/config /circuit (admin)</text>
+      <text x="780" y="279" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#fbbf24">/workspace &rarr; switch cwd</text>
+
+      <line x1="320" y1="244" x2="340" y2="244" stroke="#f59e0b" stroke-width="1.5" marker-end="url(#aa)"/>
+      <line x1="620" y1="244" x2="640" y2="244" stroke="#60a5fa" stroke-width="1" marker-end="url(#ab)" stroke-dasharray="4 2"/>
+
+      <!-- Fork to Pools -->
+      <line x1="480" y1="294" x2="480" y2="310" stroke="#fbbf24" stroke-width="1.5"/>
+      <line x1="130" y1="310" x2="830" y2="310" stroke="#fbbf24" stroke-width="1.5"/>
+      <line x1="130" y1="310" x2="130" y2="330" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#aa)"/>
+      <line x1="370" y1="310" x2="370" y2="330" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#aa)"/>
+      <line x1="600" y1="310" x2="600" y2="330" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#aa)"/>
+      <line x1="830" y1="310" x2="830" y2="330" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#aa)"/>
+
+      <!-- POOLS -->
+      <text x="40" y="326" font-family="JetBrains Mono,monospace" font-size="8" font-weight="700" fill="#fbbf24" letter-spacing="1.5">POOLS &middot; one per scope &middot; parallel across &middot; sequential within</text>
+      <rect x="40" y="330" width="220" height="100" rx="8" fill="#14120a" stroke="#fbbf24" stroke-width="1.5"/>
+      <text x="150" y="349" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" font-weight="700" fill="#fbbf24" letter-spacing="1">POOL &middot; tg scope</text>
+      <text x="150" y="367" text-anchor="middle" font-family="Outfit,sans-serif" font-size="13" font-weight="700" fill="#fafafa">Pool A</text>
+      <text x="150" y="384" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8.5" fill="#9ca3af">tg:lyra:chat:12345</text>
+      <text x="150" y="400" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8.5" fill="#9ca3af">history &middot; debouncer</text>
+      <text x="150" y="416" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#7d8590">cancel-in-flight &middot; session_id</text>
+      <rect x="280" y="330" width="220" height="100" rx="8" fill="#14120a" stroke="#fbbf24" stroke-width="1"/>
+      <text x="390" y="349" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" font-weight="700" fill="#fbbf24" letter-spacing="1">POOL &middot; dc thread</text>
+      <text x="390" y="367" text-anchor="middle" font-family="Outfit,sans-serif" font-size="13" font-weight="700" fill="#fafafa">Pool B</text>
+      <text x="390" y="384" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8.5" fill="#9ca3af">dc:lyra:thread:67890</text>
+      <text x="390" y="400" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8.5" fill="#9ca3af">history &middot; debouncer</text>
+      <text x="390" y="416" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#7d8590">cancel-in-flight &middot; session_id</text>
+      <rect x="520" y="330" width="220" height="100" rx="8" fill="#14120a" stroke="#fbbf24" stroke-width="1"/>
+      <text x="630" y="349" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" font-weight="700" fill="#fbbf24" letter-spacing="1">POOL &middot; tg forum</text>
+      <text x="630" y="367" text-anchor="middle" font-family="Outfit,sans-serif" font-size="13" font-weight="700" fill="#fafafa">Pool C</text>
+      <text x="630" y="384" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8.5" fill="#9ca3af">tg:lyra:chat:N:topic:M</text>
+      <text x="630" y="400" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8.5" fill="#9ca3af">history &middot; debouncer</text>
+      <text x="630" y="416" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#7d8590">cancel-in-flight &middot; session_id</text>
+      <rect x="760" y="330" width="160" height="100" rx="8" fill="#18181f" stroke="#fbbf24" stroke-width="1" stroke-dasharray="4 3" opacity="0.55"/>
+      <text x="840" y="380" text-anchor="middle" font-family="Outfit,sans-serif" font-size="20" font-weight="700" fill="#fbbf24" opacity="0.55">&middot;&middot;&middot;</text>
+      <text x="840" y="400" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#7d8590" opacity="0.55">N pools, one per</text>
+      <text x="840" y="412" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#7d8590" opacity="0.55">unique scope_id</text>
+
+      <line x1="150" y1="430" x2="150" y2="460" stroke="#34d399" stroke-width="1.5" marker-end="url(#ae)" class="svgfl2"/>
+      <line x1="390" y1="430" x2="310" y2="460" stroke="#34d399" stroke-width="1.5" marker-end="url(#ae)" class="svgfl2" style="animation-delay:.3s"/>
+      <line x1="630" y1="430" x2="500" y2="460" stroke="#34d399" stroke-width="1.5" marker-end="url(#ae)" class="svgfl2" style="animation-delay:.6s"/>
+
+      <!-- AGENT + LLM -->
+      <text x="40" y="456" font-family="JetBrains Mono,monospace" font-size="8" font-weight="700" fill="#34d399" letter-spacing="1.5">AGENT &middot; stateless singleton &middot; LLM PROVIDERS</text>
+      <rect x="40" y="460" width="260" height="100" rx="8" fill="#0f1e13" stroke="#34d399" stroke-width="1.5"/>
+      <text x="170" y="479" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" font-weight="700" fill="#34d399" letter-spacing="1">AGENT (immutable)</text>
+      <text x="170" y="497" text-anchor="middle" font-family="Outfit,sans-serif" font-size="14" font-weight="700" fill="#fafafa">AgentBase.process()</text>
+      <text x="170" y="515" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#34d399">build_system_prompt()</text>
+      <text x="170" y="530" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#9ca3af">plugins &middot; persona &middot; memory</text>
+      <text x="170" y="545" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#7d8590">flush_session() &middot; compact()</text>
+      <rect x="320" y="460" width="200" height="100" rx="8" fill="#0f1e16" stroke="#34d399" stroke-width="1"/>
+      <text x="420" y="479" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" font-weight="700" fill="#34d399" letter-spacing="1">CLAUDE CLI (default)</text>
+      <text x="420" y="497" text-anchor="middle" font-family="Outfit,sans-serif" font-size="13" font-weight="700" fill="#fafafa">ClaudeCliDriver</text>
+      <text x="420" y="515" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#9ca3af">subprocess &middot; stream-json</text>
+      <text x="420" y="530" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#9ca3af">max_turns &middot; tools</text>
+      <text x="420" y="545" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#7d8590">cancellation via SIGTERM</text>
+      <rect x="540" y="460" width="200" height="100" rx="8" fill="#0e1118" stroke="#f97316" stroke-width="1"/>
+      <text x="640" y="479" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" font-weight="700" fill="#f97316" letter-spacing="1">ANTHROPIC SDK</text>
+      <text x="640" y="497" text-anchor="middle" font-family="Outfit,sans-serif" font-size="13" font-weight="700" fill="#fafafa">AnthropicSdkDriver</text>
+      <text x="640" y="515" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#9ca3af">API streaming &middot; tool_use</text>
+      <text x="640" y="530" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#f97316">enables smart routing</text>
+      <text x="640" y="545" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#7d8590">haiku / sonnet / opus</text>
+      <rect x="760" y="460" width="160" height="100" rx="8" fill="#0f1e16" stroke="#34d399" stroke-width="1"/>
+      <text x="840" y="479" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" font-weight="700" fill="#34d399" letter-spacing="1">MEMORY</text>
+      <text x="840" y="497" text-anchor="middle" font-family="Outfit,sans-serif" font-size="12" font-weight="700" fill="#fafafa">MemoryManager</text>
+      <text x="840" y="515" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8.5" fill="#34d399">recall() &middot; upsert()</text>
+      <text x="840" y="530" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#9ca3af">L0 working + L1 turns</text>
+      <text x="840" y="545" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#9ca3af">L3 semantic (FTS5+vec)</text>
+
+      <!-- OUTBOUND PATH -->
+      <text x="40" y="572" font-family="JetBrains Mono,monospace" font-size="8" font-weight="700" fill="#22d3ee" letter-spacing="1.5">OUTBOUND &middot; completely separate from InboundBus &middot; fire-and-forget</text>
+      <line x1="170" y1="560" x2="170" y2="590" stroke="#22d3ee" stroke-width="2" marker-end="url(#ac)" class="svgfl"/>
+      <text x="185" y="578" font-family="JetBrains Mono,monospace" font-size="7.5" fill="#22d3ee">Response</text>
+
+      <rect x="40" y="590" width="880" height="44" rx="8" fill="#14120a" stroke="#f59e0b" stroke-width="1.5"/>
+      <text x="480" y="608" text-anchor="middle" font-family="Outfit,sans-serif" font-size="13" font-weight="700" fill="#f59e0b">Hub.dispatch_response() / dispatch_streaming() / dispatch_audio()</text>
+      <text x="480" y="625" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8.5" fill="#9ca3af">routes to OutboundDispatcher for (platform, bot_id) &middot; fire-and-forget enqueue</text>
+
+      <line x1="480" y1="634" x2="480" y2="648" stroke="#22d3ee" stroke-width="1.5"/>
+      <line x1="250" y1="648" x2="710" y2="648" stroke="#22d3ee" stroke-width="1.5"/>
+      <line x1="250" y1="648" x2="250" y2="662" stroke="#26a5e4" stroke-width="1.5" marker-end="url(#atg)"/>
+      <line x1="480" y1="648" x2="480" y2="662" stroke="#ec4899" stroke-width="1.5" marker-end="url(#ap)"/>
+      <line x1="710" y1="648" x2="710" y2="662" stroke="#5865f2" stroke-width="1.5" marker-end="url(#adc)"/>
+
+      <!-- OUTBOUND DISPATCHERS -->
+      <text x="40" y="659" font-family="JetBrains Mono,monospace" font-size="8" font-weight="700" fill="#22d3ee" letter-spacing="1.5">ONE DISPATCHER PER (platform, bot_id) &middot; retry 1s/2s/4s &middot; circuit breaker</text>
+      <rect x="60" y="662" width="380" height="68" rx="8" fill="#091626" stroke="#26a5e4" stroke-width="1.5"/>
+      <text x="250" y="680" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" font-weight="700" fill="#26a5e4" letter-spacing="1">TG OUTBOUND DISPATCHER</text>
+      <text x="250" y="696" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#9ca3af">_worker_loop() &middot; CircuitBreaker &middot; retry 1s/2s/4s</text>
+      <text x="250" y="712" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#26a5e4">adapter.send() &rarr; Telegram API</text>
+      <text x="250" y="725" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#7d8590">send &middot; send_streaming &middot; render_audio</text>
+      <rect x="460" y="662" width="180" height="68" rx="8" fill="#1a0f14" stroke="#ec4899" stroke-width="1" stroke-dasharray="3 2"/>
+      <text x="550" y="680" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" font-weight="700" fill="#ec4899" letter-spacing="0.5">AUDIO DISPATCH</text>
+      <text x="550" y="696" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#9ca3af">dispatch_audio_stream()</text>
+      <text x="550" y="712" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#9ca3af">dispatch_voice_stream()</text>
+      <text x="550" y="725" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#ec4899">render_audio_stream()</text>
+      <rect x="660" y="662" width="260" height="68" rx="8" fill="#0b0c26" stroke="#5865f2" stroke-width="1.5"/>
+      <text x="790" y="680" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" font-weight="700" fill="#5865f2" letter-spacing="1">DC OUTBOUND DISPATCHER</text>
+      <text x="790" y="696" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#9ca3af">_worker_loop() &middot; CircuitBreaker &middot; retry 1s/2s/4s</text>
+      <text x="790" y="712" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#5865f2">adapter.send() &rarr; Discord API</text>
+      <text x="790" y="725" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#7d8590">send &middot; send_streaming &middot; render_voice</text>
+    </svg>
+  </div>
+
+<!-- Core modules -->
+<div class="section-title">Core Modules</div>
+
+<div class="grid4">
+  <div class="card">
+    <div class="card-label">
+      <span class="dot" style="background:var(--green);"></span>
+      <span style="color:var(--green);">core</span>
+    </div>
+    <div class="card-title" style="font-family:var(--font-mono);font-size:12px;">src/lyra/core/</div>
+    <p style="font-size:12px;color:var(--textdim);margin:0;">Hub, Pool, InboundMessage / OutboundMessage types, routing logic, auth middleware, AgentStore (SQLite WAL + write-through cache).</p>
+  </div>
+  <div class="card">
+    <div class="card-label">
+      <span class="dot" style="background:var(--teal);"></span>
+      <span style="color:var(--teal);">adapters</span>
+    </div>
+    <div class="card-title" style="font-family:var(--font-mono);font-size:12px;">src/lyra/adapters/</div>
+    <p style="font-size:12px;color:var(--textdim);margin:0;">Telegram (python-telegram-bot, long-poll + webhook) and Discord (discord.py, gateway WebSocket, watch channels) adapter implementations.</p>
+  </div>
+  <div class="card">
+    <div class="card-label">
+      <span class="dot" style="background:var(--accentbr);"></span>
+      <span style="color:var(--accentbr);">commands</span>
+    </div>
+    <div class="card-title" style="font-family:var(--font-mono);font-size:12px;">src/lyra/commands/</div>
+    <p style="font-size:12px;color:var(--textdim);margin:0;">CommandRouter, builtin commands (/help, /clear, /stop, /new), session commands (/add, /explain, /summarize — isolated LLM), CommandLoader extension system.</p>
+  </div>
+  <div class="card">
+    <div class="card-label">
+      <span class="dot" style="background:var(--pink);"></span>
+      <span style="color:var(--pink);">backends</span>
+    </div>
+    <div class="card-title" style="font-family:var(--font-mono);font-size:12px;">src/lyra/backends/</div>
+    <p style="font-size:12px;color:var(--textdim);margin:0;">LLM backend drivers: claude-cli (subprocess, streaming #321), ollama (local HTTP API), openai-compat (any OpenAI-compatible endpoint).</p>
+  </div>
+  <div class="card">
+    <div class="card-label">
+      <span class="dot" style="background:var(--plum);"></span>
+      <span style="color:var(--plum);">agents</span>
+    </div>
+    <div class="card-title" style="font-family:var(--font-mono);font-size:12px;">src/lyra/agents/</div>
+    <p style="font-size:12px;color:var(--textdim);margin:0;">Bundled system agent TOML files. Seed sources only — imported into <code>~/.lyra/auth.db</code> via <code>lyra agent init</code>. Runtime reads DB exclusively.</p>
+  </div>
+</div>
+
+<!-- Queue topology -->
+<div class="section-title">Queue Topology</div>
+
+<div class="queue-cards">
+  <div class="queue-card qc-in">
+    <div class="queue-card__title" style="color:var(--teal);">Inbound Queue</div>
+    <div class="queue-card__meta">
+      <strong>Type:</strong> InboundMessage envelope<br>
+      <strong>Scope:</strong> Per-channel, bounded capacity<br>
+      <strong>Owner:</strong> InboundBus<br>
+      Adapters push normalized events here. Hub consumes and dispatches to the correct Pool based on scope_id resolution.
+    </div>
+  </div>
+  <div class="queue-card qc-audio">
+    <div class="queue-card__title" style="color:var(--pink);">Audio Queue</div>
+    <div class="queue-card__meta">
+      <strong>Types:</strong> InboundAudio / OutboundAudio<br>
+      <strong>Pipeline:</strong> STT (Whisper) &#x2192; text &#x2192; normal flow<br>
+      <strong>TTS:</strong> Chatterbox, async encode<br>
+      Decoupled from the main message queue. STT/TTS processing happens off the main event loop.
+    </div>
+  </div>
+  <div class="queue-card qc-out">
+    <div class="queue-card__title" style="color:var(--accentbr);">Outbound Queue</div>
+    <div class="queue-card__meta">
+      <strong>Owner:</strong> OutboundDispatcher<br>
+      <strong>Mode:</strong> Fire-and-forget with retry<br>
+      <strong>Streaming:</strong> Token-level chunks (#321)<br>
+      Receives completed responses (or token chunks) and delivers to the originating adapter with back-pressure and retry logic.
+    </div>
+  </div>
+</div>
+
+<!-- Swim lanes -->
+<div class="section-title">Inbound vs Outbound Swim Lanes</div>
+
+<div class="swim-lanes">
+  <div class="swim-lane swim-lane--in">
+    <div class="swim-lane__title">
+      <span class="sldot" style="background:var(--teal);"></span>
+      <span style="color:var(--teal);">Inbound Path</span>
+    </div>
+    <ul class="step-list step-list--in">
+      <li><span class="num">1</span><span>Platform event arrives at adapter (Telegram long-poll or Discord gateway)</span></li>
+      <li><span class="num">2</span><span>Adapter normalizes to <code>InboundMessage(platform, bot_id, scope_id, user_id, text)</code></span></li>
+      <li><span class="num">3</span><span>AuthMiddleware checks user access level against <code>config.toml</code></span></li>
+      <li><span class="num">4</span><span>Message pushed to InboundBus (per-channel bounded queue)</span></li>
+      <li><span class="num">5</span><span>Hub consumes queue, resolves scope_id &#x2192; Pool (create if absent)</span></li>
+      <li><span class="num">6</span><span>CommandRouter checks prefix — dispatches to builtin / session / LLM pool</span></li>
+      <li><span class="num">7</span><span>Pool.run_turn() invokes Agent with history + circuit breaker check</span></li>
+    </ul>
+  </div>
+  <div class="swim-lane swim-lane--out">
+    <div class="swim-lane__title">
+      <span class="sldot" style="background:var(--accentbr);"></span>
+      <span style="color:var(--accentbr);">Outbound Path</span>
+    </div>
+    <ul class="step-list step-list--out">
+      <li><span class="num">1</span><span>Agent produces response (full text or token stream if <code>streaming=true</code>)</span></li>
+      <li><span class="num">2</span><span>Response pushed to OutboundDispatcher queue (fire-and-forget)</span></li>
+      <li><span class="num">3</span><span>Streaming: dispatcher debounces tokens (80ms window) before sending edit</span></li>
+      <li><span class="num">4</span><span>Dispatcher calls <code>adapter.send_message()</code> or <code>adapter.edit_message()</code></span></li>
+      <li><span class="num">5</span><span>Platform-specific formatting: <code>telegramify_markdown</code> for TG, native MD for Discord</span></li>
+      <li><span class="num">6</span><span>Retry on transient platform errors (rate limit, network timeout)</span></li>
+      <li><span class="num">7</span><span>Message delivered to user. Pool retains history for next turn.</span></li>
+    </ul>
+  </div>
+</div>
+
+<!-- Key architectural decisions -->
+<div class="section-title">Key Architectural Decisions</div>
+
+<div class="grid2">
+  <div class="ib note">
+    <span class="ib-icon">&#x1F9E9;</span>
+    <div class="ib-body">
+      <strong>Stateless agents / stateful pools.</strong> Agent objects hold no mutable state. All conversation history, circuit state, and session index live in the Pool. A Pool is created per scope_id on first message and evicted after inactivity.
+    </div>
+  </div>
+  <div class="ib tip">
+    <span class="ib-icon">&#x26A1;</span>
+    <div class="ib-body">
+      <strong>Sequential per-user, parallel cross-user.</strong> Each Pool processes one message at a time (ordered guarantees, no interleaved responses). Different Pools run concurrently via asyncio — no global lock.
+    </div>
+  </div>
+  <div class="ib note">
+    <span class="ib-icon">&#x1F4CF;</span>
+    <div class="ib-body">
+      <strong>300-line gate.</strong> All source files are kept to &#x2264;300 LOC. Larger modules are decomposed (#395&#x2013;#410). Enforced by CI. Keeps every file reviewable in a single pass.
+    </div>
+  </div>
+  <div class="ib tip">
+    <span class="ib-icon">&#x1F4BE;</span>
+    <div class="ib-body">
+      <strong>DB-first agent config (ADR-029).</strong> Runtime reads exclusively from <code>~/.lyra/auth.db</code>. TOML files are seed sources only. Hot-reload via <code>updated_at</code> polling — no restart required for config changes.
+    </div>
+  </div>
+</div>
+
+<!-- Deployment topology -->
+<div class="section-title">Deployment Topology</div>
+<p style="font-size:13px;color:var(--textdim);margin-bottom:14px;">Lyra runs on any Linux or WSL2 machine with Python 3.12+. A single machine is enough — add more to split workloads.</p>
+
+<div class="grid3">
+  <div class="card card--teal">
+    <div class="card-label"><span class="dot" style="background:var(--teal);"></span> Hub machine</div>
+    <div class="card-title" style="color:var(--teal);">Always-on · 24/7</div>
+    <p style="font-size:.82rem;color:var(--textdim);margin:0;">Runs the Lyra server, adapters, and memory. Managed by <code>supervisord</code>. Any Linux box, Raspberry Pi, or cloud VM works.</p>
+  </div>
+  <div class="card card--plum">
+    <div class="card-label"><span class="dot" style="background:var(--plum);"></span> GPU machine (optional)</div>
+    <div class="card-title" style="color:var(--plum);">On-demand · LLM / Voice</div>
+    <p style="font-size:.82rem;color:var(--textdim);margin:0;">Offload local LLM inference or voice (STT/TTS) to a GPU-equipped machine. Connected via NATS or HTTP. Only needed for local models.</p>
+  </div>
+  <div class="card" style="border-color:var(--border);">
+    <div class="card-label"><span class="dot" style="background:var(--textdim);"></span> Dev machine (optional)</div>
+    <div class="card-title">Development · testing</div>
+    <p style="font-size:.82rem;color:var(--textdim);margin:0;">Run Lyra locally for development. Deploy to the hub via <code>make deploy</code> (git pull &rarr; pytest &rarr; restart). Any OS with Python 3.12+.</p>
+  </div>
+</div>
+
+<div class="ib tip" style="margin-top:12px;">
+  <span class="ib-icon">&#x1F4A1;</span>
+  <div class="ib-body"><strong>Single-machine is the default.</strong> Most setups run everything on one box. The multi-machine split is optional — useful when you want 24/7 uptime on a low-power hub while keeping GPU workloads on a separate machine.</div>
+</div>
+

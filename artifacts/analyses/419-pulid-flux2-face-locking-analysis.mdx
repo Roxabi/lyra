@@ -28,7 +28,9 @@ involves a separate model conversion step. ComfyUI is currently the only practic
 
 **Blackwell caveat:** RTX 5070 Ti uses CUDA sm_120 — requires PyTorch nightly cu128 (or cu130+),
 not stable PyTorch. xformers must NOT be installed (silently downgrades PyTorch). First-run PTX JIT
-compilation takes 30+ minutes. Python 3.11–3.12 required.
+compilation takes 30+ minutes. Python 3.11–3.12 required. **Pop!_OS (native Linux) removes all
+WSL2-specific friction** — CUDA installs directly via apt/runfile, ComfyUI runs without bridging,
+`localhost:8188` works directly. Blackwell driver requirements still apply regardless of OS.
 
 ## Outcome
 
@@ -96,7 +98,7 @@ Output is separate from imageCLI — no `.md` prompt integration.
 - Con: Only one workload can hold the GPU at a time — ComfyUI and imageCLI must not run concurrently
   (OOM). Operator discipline or a lockfile required.
 - Con: Machine 2-bound — peaks at ~14–16 GB VRAM. Cannot run on Machine 1 (RTX 3080, 10 GB).
-- Con: Blackwell WSL2 setup friction — PyTorch nightly cu128, no xformers, 30+ min first JIT compile.
+- Con: Blackwell setup friction — PyTorch nightly cu128 required (sm_120), no xformers, 30+ min first JIT compile. Pop!_OS removes WSL2-specific friction; native CUDA install is cleaner.
 
 **Rough scope:** M (0.5d install + config, 0.5d workflow design, 0.5d eval + generation)
 
@@ -126,63 +128,94 @@ Keeps everything in imageCLI: `.md` prompt files, consistent CLI UX, single tool
 
 ---
 
-### Shape C: Face LoRA training (ai-toolkit — long-term complement)
+### Shape C: Face LoRA training (ai-toolkit — long-term complement, optional)
 
-Train a face-identity LoRA using ai-toolkit on Machine 2. Use ComfyUI face-locked outputs as the
-training dataset (resolves the chicken-and-egg dependency). Load LoRA into imageCLI or ComfyUI for
-future runs.
+Train a face-identity LoRA using ai-toolkit. Use Shape A outputs as training dataset. Load LoRA
+into imageCLI or ComfyUI for future runs.
 
-**Dataset requirements (researched):**
+**Shape A is a valid permanent workflow — Shape C is an upgrade, not a requirement.** The break-even
+is roughly 10–15 generated images of the same subject; any ongoing avatar campaign exceeds it.
 
-| Dimension | Recommendation |
-|-----------|---------------|
-| **Image count** | 25–50 curated images (floor: 20; sweet spot: 40–50) |
-| **Head angles** | ≥5 distinct: front, ¾ left, ¾ right, profile, slight up/down |
-| **Expressions** | ≥4: neutral, subtle smile, full smile, serious/focused |
-| **Lighting** | ≥4: soft studio, natural window, hard rim, low-key |
-| **Distance** | Mix: tight portrait (head+shoulders) + medium (waist up) + 1-2 full body |
-| **Background** | Varied — prevents background leakage into identity |
-| **What to avoid** | Near-duplicate frames, watermarks, heavy filters, accessories that occlude face |
-| **Captions** | Unique trigger word + `photo of [trigger]`. Do NOT describe facial features. Caption dropout ~0.05 |
+| | Shape A — PuLID | Shape C — LoRA |
+|---|---|---|
+| Per generation | ~45–90s (face encoder overhead) | Normal Flux speed (~30–60s) |
+| VRAM | ~14–16 GB (at ceiling) | ~12–13 GB (comfortable) |
+| Face fidelity | "Same person" to human eyes | ~97% identity recognition |
+| Pose variation | Stiff — mirrors reference angle | Free — any angle |
+| Hair variation | Very sticky to reference | Free |
+| Heavy stylization (anime, illustration) | Weakens noticeably | Holds well |
+| Maintenance | Zero | Zero (after training) |
+| When to choose | Bootstrap; low volume; rapid iteration | Ongoing campaign; style diversity; max fidelity |
 
-**Training config (ai-toolkit on RTX 5070 Ti, 16GB GDDR7):**
+**Dataset: 25–30 images, diversity beats quantity.**
+16 well-curated images can outperform 110 near-duplicates. Practical floor: ~15 images.
 
-| Parameter | Value |
-|-----------|-------|
-| Base model | `flux2-klein-4B` ← not 9B (needs 32GB+), not flux1-dev (too big for 16GB BF16) |
-| Resolution | 1024×1024 |
-| LoRA rank | 16 (start); 32 if underfitting; 8 if collapsing |
-| Steps | 3,000–5,000 (face identity; 50–90 repeats/image) |
-| Quantization | 4-bit BnB (nf4) — gets model to ~9 GB base footprint |
-| Memory tricks | `--gradient_checkpointing`, `--cache_latents`, `--use_8bit_adam`, pre-compute text embeddings |
-| Trainer | **ai-toolkit (ostris)** — explicit 16GB flux2-klein-4B guide; most active for Flux2 |
+| Dimension | Target | Why |
+|-----------|--------|-----|
+| Head angles | ≥5: front, ¾L, ¾R, profile, slight tilt | 3D face geometry coverage |
+| Expressions | ≥4: neutral, subtle smile, full smile, serious | Expression ≠ identity |
+| Lighting | ≥4: soft studio, natural window, hard rim, low-key | Prevents lighting leakage |
+| Distance | Mix portrait + medium + 1–2 full body | Scale independence |
+| Background | Varied | Prevents BG leakage into trigger |
+| Avoid | Near-duplicates, watermarks, face-occluding accessories | Dedup with perceptual hash |
 
-**Training time on RTX 5070 Ti (estimated):**
-- RTX 5070 Ti ≈ 30% faster than RTX 4090 in Flux workflows
-- RTX 4090 baseline: ~700 steps / 41 min (QLoRA, 512×768)
-- Extrapolated 5070 Ti: ~700 steps / ~30 min → **3,000 steps ≈ 2h, 5,000 steps ≈ 3–4h**
-- LoRA output size: ~100 MB
+**Caption strategy — the #1 quality lever (more impactful than image count):**
+- Format: `"a photo of lyraface, [expression], [lighting], [background]"`
+- Describe **everything changeable**: expression, lighting, hair color, clothing, BG
+- Describe **nothing about the face** (bone structure, eye shape, jaw) — leave un-described so
+  face features bind tightly to the trigger word
+- Caption dropout: 0.05 — random drops build inference robustness
+- Use natural language prose, not SD-style tags (Flux was trained on prose)
+- Example: LoRA trained on 22 photos all wearing glasses, "glasses" never captioned → correctly
+  generates without glasses when prompted. Identity captured, accessories not.
 
-**Known issue:** As of early 2026, LoRA loading in ComfyUI for Flux2-klein-4B has a bug where LoRAs
-"have very weak/no visible effect" at strength 1.0 (ComfyUI issue #11975). This is actively being
-patched. Loading via Diffusers/imageCLI may be more stable.
+**Training config (ai-toolkit, RTX 5070 Ti, 16GB, Pop!_OS):**
+
+| Parameter | Value | Note |
+|-----------|-------|------|
+| Base | `flux2-klein-4B` | Only model that trains comfortably in 16GB |
+| Resolution | 1024×1024 | Standard; drop to 896 if OOM at rank 64 |
+| LoRA rank | **32** | Face sweet spot — 16 too soft, 64 overfits small datasets |
+| linear_alpha | 32 | alpha = rank is Flux standard |
+| Steps | **2,000–3,000** | ~25 images; peak typically at 60–75% of total |
+| Checkpoint saves | every 250 steps | Always pick best checkpoint — final step ≠ best |
+| Learning rate | **1e-4 exactly** | Flux2 hypersensitive — 2e-4 destroys images |
+| Optimizer | AdamW 8-bit | 75% optimizer VRAM reduction |
+| Quantization | 4-bit BnB (nf4) | Gets transformer to ~9 GB |
+| `cache_latents_to_disk` | true | Unloads VAE, saves ~2 GB |
+| `gradient_checkpointing` | true | Standard for 16GB |
+| `sample_steps` | 8 | Klein Base uses 8-step inference, not 20–30 |
+| `weight_decay` | 0.01 | Prevents weight collapse specific to Flux2 |
+
+**Training time on RTX 5070 Ti:** 2,000 steps ≈ **~1.5h** · 3,000 steps ≈ **~2h** · output ~50 MB
+
+**Checkpoint selection:** Evaluate steps 1,500 / 2,000 / 2,500 / 3,000 with these 4 test prompts:
+1. `"a photo of lyraface, neutral expression"` — baseline identity
+2. `"a photo of lyraface, smiling, outdoor"` — expression variation
+3. `"lyraface looking to the left"` — pose variation (reveals rigidity)
+4. `"anime illustration of lyraface"` — style transfer resistance
+
+**Common failure modes:**
+- **Identity baking:** Every output identical regardless of prompt → earlier checkpoint, fewer steps
+- **Identity leak:** Accessories/BG from training bleed into outputs → better captions
+- **Anatomical distortion:** Eyes misaligned, jaw warped at high steps → use step 2,000–2,500
+- **Learning rate disaster:** Never use LR > 1e-4 with Flux2. Do not copy SD1.5/SDXL configs.
+
+**Known issue:** ComfyUI LoRA loading for Flux2-klein-4B currently buggy (ComfyUI #11975 — LoRAs
+show no effect at strength 1.0). Use imageCLI/Diffusers to load the trained LoRA.
 
 **Trade-offs:**
-- Pro: Highest face fidelity. Once trained, LoRA is deterministic across prompts.
-- Pro: No runtime overhead from face encoder. Runs entirely within imageCLI / Diffusers — removes
-  ComfyUI dependency long-term.
-- Pro: Chicken-and-egg resolved: Shape A generates the diverse face-locked images that become the
-  training dataset.
-- Con: Requires 25–50 curated training images first (generated via Shape A).
-- Con: 3–4h training run, ~100 MB storage. Risk of overfitting if dataset lacks diversity.
-- Con: LoRA locks to face at training time — adjustments require retraining.
-- Con: ComfyUI LoRA loading bug for Flux2-klein still being patched (use imageCLI/Diffusers path).
+- Pro: ~97% identity recognition; free pose/hair variation; normal Flux speed; comfortable VRAM
+- Pro: Runs entirely in imageCLI — removes ComfyUI dependency long-term
+- Pro: Shape A output resolves the chicken-and-egg dependency
+- Con: Requires ~25–30 curated images and ~2h training first
+- Con: Face baked at training time — significant change requires retraining
 
-**Rough scope:** M (sequenced after Shape A; ~0.5d dataset prep + 0.5d training + 0.5d evaluation)
+**Rough scope:** M (sequenced after Shape A: ~0.5d curation + ~2h training + ~0.5d eval)
 
-**Note:** Shape C is a **long-term complement**, not merely a fallback. The sequence is:
-Shape A generates variations + training dataset → Shape C trains LoRA → future runs operate
-entirely within imageCLI, no ComfyUI needed.
+**Note:** Shape C is a **long-term complement**, not a replacement. Sequence:
+Shape A (one-time) → generates variations + training dataset → Shape C trains LoRA (~2h) →
+future runs in imageCLI, no ComfyUI, no VRAM ceiling.
 
 ---
 
@@ -202,9 +235,9 @@ flowchart TD
         F --> D
     end
 
-    subgraph ShapeC["Phase 2 — Shape C: Face LoRA Training"]
-        E --> G[Curate 25-50 training images\nfrom Shape A output]
-        G --> H[Train LoRA — ai-toolkit\nflux2-klein-4B, rank 16, 3k-5k steps\n~3-4h on RTX 5070 Ti]
+    subgraph ShapeC["Phase 2 — Shape C: Face LoRA (optional upgrade)"]
+        E --> G[Curate 25-30 training images\nfrom Shape A output]
+        G --> H[Train LoRA — ai-toolkit\nflux2-klein-4B, rank 32, 2k-3k steps\n~2h on RTX 5070 Ti]
         H --> I{LoRA quality?}
         I -->|✅ Good| J[Load in imageCLI / Diffusers\nFuture runs — no ComfyUI needed]
         I -->|❌ Overfit/underfit| K[Adjust rank, steps, dataset\nRetrain]

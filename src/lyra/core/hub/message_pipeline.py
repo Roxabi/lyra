@@ -365,6 +365,7 @@ class MessagePipeline:
                     pool_id,
                     last_sid,
                 )
+                return ResumeStatus.SKIPPED
             else:
                 log.info(
                     "last-session-resume: resuming %r for pool %r",

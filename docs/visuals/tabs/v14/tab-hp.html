@@ -406,12 +406,12 @@
       <div class="hp-scenario-top">
         <span class="hp-scenario-num">#15</span>
         <div>
-          <div class="hp-scenario-title">/add URL &#x2192; vault</div>
+          <div class="hp-scenario-title">/vault-add URL &#x2192; vault</div>
           <div class="hp-scenario-desc">Session command — isolated LLM call fetches and indexes the URL</div>
         </div>
       </div>
       <div class="hp-flow-pipe">
-        <div class="hp-flow-step"><div class="hp-step-box hp-step-trigger"><span class="hp-step-tag">user</span><span class="hp-step-label">/add &lt;url&gt;</span></div></div>
+        <div class="hp-flow-step"><div class="hp-step-box hp-step-trigger"><span class="hp-step-tag">user</span><span class="hp-step-label">/vault-add &lt;url&gt;</span></div></div>
         <div class="hp-flow-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
         <div class="hp-flow-step"><div class="hp-step-box hp-step-hub"><span class="hp-step-tag">hub</span><span class="hp-step-label">Layer 4</span><span class="hp-step-sub">session cmd</span></div></div>
         <div class="hp-flow-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
@@ -429,7 +429,7 @@
         <span class="hp-scenario-num">#16</span>
         <div>
           <div class="hp-scenario-title">Bare URL Auto-rewrite</div>
-          <div class="hp-scenario-desc">bare_url: true in patterns_json → URL-only message rewritten to /add</div>
+          <div class="hp-scenario-desc">bare_url: true in patterns_json &#x2192; URL-only message rewritten to /vault-add</div>
         </div>
       </div>
       <div class="hp-flow-pipe">
@@ -437,7 +437,7 @@
         <div class="hp-flow-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
         <div class="hp-flow-step"><div class="hp-step-box hp-step-hub"><span class="hp-step-tag">hub</span><span class="hp-step-label">patterns_json</span><span class="hp-step-sub">bare_url match</span></div></div>
         <div class="hp-flow-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
-        <div class="hp-flow-step"><div class="hp-step-box hp-step-hub"><span class="hp-step-tag">hub</span><span class="hp-step-label">rewrite</span><span class="hp-step-sub">/add &lt;url&gt;</span></div></div>
+        <div class="hp-flow-step"><div class="hp-step-box hp-step-hub"><span class="hp-step-tag">hub</span><span class="hp-step-label">rewrite</span><span class="hp-step-sub">/vault-add &lt;url&gt;</span></div></div>
         <div class="hp-flow-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
         <div class="hp-flow-step"><div class="hp-step-box hp-step-agent" style="border-color:var(--neutral);"><span class="hp-step-tag" style="color:var(--neutral);">vault</span><span class="hp-step-label">save entry</span></div></div>
         <div class="hp-flow-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>

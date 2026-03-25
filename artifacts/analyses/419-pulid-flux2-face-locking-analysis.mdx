@@ -26,6 +26,10 @@ The canonical upstream (`ToTheBeginning/PuLID`) targets Flux.1-dev. The only non
 (`nunchaku/pipeline_flux_pulid`) requires 4-bit Nunchaku quantisation, not `Flux2KleinPipeline`, and
 involves a separate model conversion step. ComfyUI is currently the only practical path.
 
+**Blackwell caveat:** RTX 5070 Ti uses CUDA sm_120 — requires PyTorch nightly cu128 (or cu130+),
+not stable PyTorch. xformers must NOT be installed (silently downgrades PyTorch). First-run PTX JIT
+compilation takes 30+ minutes. Python 3.11–3.12 required.
+
 ## Outcome
 
 A repeatable, documented workflow where:
@@ -44,9 +48,34 @@ quality tuning can each expand by 0.5d in adverse conditions.
 
 ---
 
+## Face-lock Model Landscape (2025–2026)
+
+Researched alternatives beyond PuLID for Flux-based face identity preservation:
+
+| Model | Flux support | Face fidelity | Prompt adherence | VRAM | Notes |
+|-------|-------------|---------------|-----------------|------|-------|
+| **PuLID Flux2** (`iFayens`) | ✅ Flux2-klein "Best" | Highest | Medium | ~14–16 GB w/ Klein | Only Flux2-klein-native option |
+| **InstantID** (InstantX) | ⚠️ Experimental | High | Good | Unknown (high) | Squinted-eye artifacts; good angles; mirrors source pose |
+| **IP-Adapter FaceID** (InstantX) | ✅ Flux.1-dev | Medium | Best | Lowest | Fastest; 5-10% fidelity sacrifice |
+| **ACE++** (Alibaba, Feb 2025) | ✅ Flux.1-Fill-dev | High (inpainting) | Good | Moderate | Best for obstructed faces + bg swap; different use case |
+| **HyperLoRA** | Limited | Medium | Best | Low | Best text adherence; weakest identity |
+
+**Verdict:** `iFayens/ComfyUI-PuLID-Flux2` remains the correct choice. No other tool explicitly
+targets Flux2-klein with identity locking. ACE++ is worth a separate evaluation if the use case
+shifts toward inpainting/background replacement.
+
+**PuLID Flux2 settings guidance (from community + repo):**
+- Recommended strength: **0.6** (range 0–5, default 1). Higher = more rigid identity, less prompt adherence.
+- Three methods: `fidelity` (strong lock), `neutral` (balanced), `style` (softer).
+- `start_at` / `end_at` sliders: control which denoising steps receive injection. Narrowing to mid-steps
+  (e.g. 0.0–0.6) can improve prompt adherence while retaining face lock.
+- Known issue: training scripts removed from the node due to instability (v0.5.0).
+
+---
+
 ## Shapes
 
-### Shape A: ComfyUI + PuLID Flux2 node (as proposed)
+### Shape A: ComfyUI + PuLID Flux2 node (recommended primary)
 
 Install ComfyUI on Machine 2 alongside imageCLI. Install `iFayens/ComfyUI-PuLID-Flux2` custom node.
 Build a face-lock workflow: load `flux2-klein` + PuLID attention injection, feed
@@ -56,18 +85,18 @@ ComfyUI manages model loading, VRAM orchestration, and the generation loop. Work
 Output is separate from imageCLI — no `.md` prompt integration.
 
 **Trade-offs:**
-- Pro: Best-tested path for Flux2-klein + PuLID. The node explicitly targets Flux2. ComfyUI's model
-  caching and VRAM management are mature. Rich community workflows to reference.
-- Pro: Visual workflow editor useful for iterating on face-lock strength vs prompt adherence trade-off.
+- Pro: Only well-documented face-lock path for flux2-klein. Node explicitly targets Flux2-klein "Best."
+- Pro: Visual workflow editor useful for iterating strength vs prompt adherence. Rich community
+  workflows to reference.
 - Pro: Zero code changes to imageCLI.
-- Con: Parallel toolchain — two separate image gen stacks on Machine 2. ComfyUI is ~2GB install + deps.
+- Con: Parallel toolchain — two separate image gen stacks on Machine 2.
 - Con: Workflows are JSON, not `.md` prompt files. Prompt patterns must be captured in portable `.md`
   files alongside ComfyUI JSON to avoid locking knowledge inside the node editor.
 - Con: No CLI integration — manual node-editor interaction required per run.
 - Con: Only one workload can hold the GPU at a time — ComfyUI and imageCLI must not run concurrently
-  (OOM). A simple lockfile or operator discipline is required.
-- Con: Machine 2-bound — this workload peaks at ~14–16 GB VRAM and cannot run on Machine 1
-  (RTX 3080, 10 GB) without switching to a lower-VRAM model variant.
+  (OOM). Operator discipline or a lockfile required.
+- Con: Machine 2-bound — peaks at ~14–16 GB VRAM. Cannot run on Machine 1 (RTX 3080, 10 GB).
+- Con: Blackwell WSL2 setup friction — PyTorch nightly cu128, no xformers, 30+ min first JIT compile.
 
 **Rough scope:** M (0.5d install + config, 0.5d workflow design, 0.5d eval + generation)
 
@@ -97,27 +126,63 @@ Keeps everything in imageCLI: `.md` prompt files, consistent CLI UX, single tool
 
 ---
 
-### Shape C: LoRA face training (ai-toolkit, skip zero-shot)
+### Shape C: Face LoRA training (ai-toolkit — long-term complement)
 
-Train a face-identity LoRA using ai-toolkit on Machine 2. Provide ~15-20 diverse reference
-images (would need to generate these first). Training time ~1–2h. Load LoRA in imageCLI
-(if diffusers LoRA loading is supported for flux2-klein) or in ComfyUI.
+Train a face-identity LoRA using ai-toolkit on Machine 2. Use ComfyUI face-locked outputs as the
+training dataset (resolves the chicken-and-egg dependency). Load LoRA into imageCLI or ComfyUI for
+future runs.
+
+**Dataset requirements (researched):**
+
+| Dimension | Recommendation |
+|-----------|---------------|
+| **Image count** | 25–50 curated images (floor: 20; sweet spot: 40–50) |
+| **Head angles** | ≥5 distinct: front, ¾ left, ¾ right, profile, slight up/down |
+| **Expressions** | ≥4: neutral, subtle smile, full smile, serious/focused |
+| **Lighting** | ≥4: soft studio, natural window, hard rim, low-key |
+| **Distance** | Mix: tight portrait (head+shoulders) + medium (waist up) + 1-2 full body |
+| **Background** | Varied — prevents background leakage into identity |
+| **What to avoid** | Near-duplicate frames, watermarks, heavy filters, accessories that occlude face |
+| **Captions** | Unique trigger word + `photo of [trigger]`. Do NOT describe facial features. Caption dropout ~0.05 |
+
+**Training config (ai-toolkit on RTX 5070 Ti, 16GB GDDR7):**
+
+| Parameter | Value |
+|-----------|-------|
+| Base model | `flux2-klein-4B` ← not 9B (needs 32GB+), not flux1-dev (too big for 16GB BF16) |
+| Resolution | 1024×1024 |
+| LoRA rank | 16 (start); 32 if underfitting; 8 if collapsing |
+| Steps | 3,000–5,000 (face identity; 50–90 repeats/image) |
+| Quantization | 4-bit BnB (nf4) — gets model to ~9 GB base footprint |
+| Memory tricks | `--gradient_checkpointing`, `--cache_latents`, `--use_8bit_adam`, pre-compute text embeddings |
+| Trainer | **ai-toolkit (ostris)** — explicit 16GB flux2-klein-4B guide; most active for Flux2 |
+
+**Training time on RTX 5070 Ti (estimated):**
+- RTX 5070 Ti ≈ 30% faster than RTX 4090 in Flux workflows
+- RTX 4090 baseline: ~700 steps / 41 min (QLoRA, 512×768)
+- Extrapolated 5070 Ti: ~700 steps / ~30 min → **3,000 steps ≈ 2h, 5,000 steps ≈ 3–4h**
+- LoRA output size: ~100 MB
+
+**Known issue:** As of early 2026, LoRA loading in ComfyUI for Flux2-klein-4B has a bug where LoRAs
+"have very weak/no visible effect" at strength 1.0 (ComfyUI issue #11975). This is actively being
+patched. Loading via Diffusers/imageCLI may be more stable.
 
 **Trade-offs:**
-- Pro: Highest face fidelity. Once trained, LoRA is deterministic and works across prompts.
-- Pro: No runtime overhead from face encoder during inference. Runs entirely within imageCLI /
-  Diffusers — removes the ComfyUI dependency long-term.
-- Con: Requires generating a diverse set of training images first (we have only 1 finalist —
-  need ~15-20 diverse crops/angles). Chicken-and-egg — but Shape A naturally solves this: use
-  ComfyUI face-locked variations as the LoRA training dataset.
-- Con: Training time (1–2h), storage (~100MB LoRA), risk of overfitting on sparse reference data.
-- Con: LoRA locks to a specific face at training time — hard to adjust without retraining.
+- Pro: Highest face fidelity. Once trained, LoRA is deterministic across prompts.
+- Pro: No runtime overhead from face encoder. Runs entirely within imageCLI / Diffusers — removes
+  ComfyUI dependency long-term.
+- Pro: Chicken-and-egg resolved: Shape A generates the diverse face-locked images that become the
+  training dataset.
+- Con: Requires 25–50 curated training images first (generated via Shape A).
+- Con: 3–4h training run, ~100 MB storage. Risk of overfitting if dataset lacks diversity.
+- Con: LoRA locks to face at training time — adjustments require retraining.
+- Con: ComfyUI LoRA loading bug for Flux2-klein still being patched (use imageCLI/Diffusers path).
 
-**Rough scope:** M (but sequenced after Shape A generates training data)
+**Rough scope:** M (sequenced after Shape A; ~0.5d dataset prep + 0.5d training + 0.5d evaluation)
 
-**Note:** Shape C is a **long-term complement**, not merely a fallback. Shapes A and C are
-sequenced, not mutually exclusive: A generates the variations and training data → C trains the LoRA
-→ future runs no longer need ComfyUI.
+**Note:** Shape C is a **long-term complement**, not merely a fallback. The sequence is:
+Shape A generates variations + training dataset → Shape C trains LoRA → future runs operate
+entirely within imageCLI, no ComfyUI needed.
 
 ---
 
@@ -125,60 +190,54 @@ sequenced, not mutually exclusive: A generates the variations and training data 
 
 ```mermaid
 flowchart TD
-    START([Start: 006-just-solved-1024.png]) --> A
+    START([006-just-solved-1024.png]) --> A
 
-    subgraph ShapeA["Shape A — ComfyUI (Recommended)"]
-        A[Install ComfyUI + PuLID Flux2 node] --> B[Design face-lock workflow]
-        B --> C{Evaluate quality}
-        C -->|Good| D[Generate variations batch]
-        C -->|Insufficient| E[LoRA fallback path]
+    subgraph ShapeA["Phase 1 — Shape A: ComfyUI + PuLID Flux2"]
+        A[Install ComfyUI on Machine 2\nPyTorch nightly cu128, no xformers] --> B
+        B[Install iFayens/ComfyUI-PuLID-Flux2\nInsightFace + EVA-CLIP] --> C
+        C[Build face-lock workflow\nstrength 0.6, method: fidelity] --> D
+        D{Quality gate\nface fidelity OK?}
+        D -->|✅ Pass| E[Generate variations batch\nexpressions, lighting, contexts]
+        D -->|❌ Fail| F[Tune: strength, start_at/end_at\nor switch method: neutral/style]
+        F --> D
     end
 
-    subgraph ShapeB["Shape B — imageCLI engine (Risky)"]
-        F[Spike: PuLID Flux2-klein compat?] --> G{Ported?}
-        G -->|Yes| H[Add pulid-flux2 engine]
-        G -->|No| A
+    subgraph ShapeC["Phase 2 — Shape C: Face LoRA Training"]
+        E --> G[Curate 25-50 training images\nfrom Shape A output]
+        G --> H[Train LoRA — ai-toolkit\nflux2-klein-4B, rank 16, 3k-5k steps\n~3-4h on RTX 5070 Ti]
+        H --> I{LoRA quality?}
+        I -->|✅ Good| J[Load in imageCLI / Diffusers\nFuture runs — no ComfyUI needed]
+        I -->|❌ Overfit/underfit| K[Adjust rank, steps, dataset\nRetrain]
+        K --> I
     end
 
-    subgraph ShapeC["Shape C — LoRA-first"]
-        E --> I[Generate ~15-20 training images]
-        I --> J[Train LoRA — ai-toolkit, 1-2h]
-        J --> K[Load LoRA → generate variations]
-    end
-
-    D --> DONE([Variations + prompt docs])
-    K --> DONE
-    H --> C
+    J --> DONE([Face-locked variations\n+ documented prompts\n+ imageCLI LoRA path])
 ```
 
-**Recommended path: Shape A now → Shape C later (sequenced, not mutually exclusive).**
+**Recommended path: Shape A now → Shape C sequenced after.**
 
 Shape A (ComfyUI) is the only practical path today:
-- `iFayens/ComfyUI-PuLID-Flux2` is the sole well-documented face-lock path for `flux2-klein`.
-  No standalone Python alternative exists without porting ComfyUI internals.
-- Setup cost is modest (~0.5d). ComfyUI stack is isolated — zero impact on imageCLI.
-- Parallel-toolchain concern is real but acceptable for an offline brand asset workflow.
-  GPU mutex (one workload at a time) is managed by operator discipline / lockfile.
+- Sole well-documented face-lock solution for `flux2-klein`. No standalone Python alternative exists.
+- Setup cost is modest (~0.5d). Isolated from imageCLI — no code changes needed.
+- Parallel-toolchain concern is acceptable for an offline brand asset workflow.
+- GPU mutex (one workload at a time) managed by operator discipline / lockfile.
 
-Shape B (imageCLI engine) is deferred indefinitely. The primary blocker is the absence of any
-standalone Python PuLID-Flux2 API — not just compatibility risk. Revisit only if the upstream
+Shape B (imageCLI engine) deferred indefinitely — no Python API to wrap. Revisit only if upstream
 publishes a Diffusers adapter for Flux2-klein.
 
-Shape C (LoRA) is sequenced after Shape A. Shape A generates the face-locked variations that
-become the LoRA training dataset, resolving the chicken-and-egg dependency. Once the LoRA is
-trained, future avatar runs can operate entirely within imageCLI without ComfyUI.
+Shape C (LoRA) sequenced after Shape A. Shape A output becomes training data. Long-term, Shape C
+removes the ComfyUI dependency entirely and restores single-toolchain operation.
 
-**VRAM note:** ComfyUI + flux2-klein + PuLID face encoder peaks at **~14–16 GB** (at the 16 GB
-ceiling on Machine 2). Mitigations for OOM: cap resolution at 1024×1024, use FP8/GGUF Klein
-weights in ComfyUI if available, disable `torch.compile`, enable `--lowvram` mode. Machine 1
-(RTX 3080, 10 GB) cannot run this workload.
+**VRAM note:** ComfyUI + flux2-klein + PuLID peaks at **~14–16 GB** (at Machine 2's ceiling).
+OOM mitigations: cap resolution at 1024×1024; use FP8/GGUF Klein weights in ComfyUI if available;
+disable `torch.compile`; enable `--lowvram`. Machine 1 (RTX 3080, 10 GB) cannot run this workload.
 
 ### Files impacted
 
 | Area | What changes |
 |------|-------------|
-| `~/projects/lyra/brand/prompts/avatar-final/` | New face-locked variation prompt files |
+| `brand/prompts/avatar-final/` | New face-locked variation prompt `.md` files |
 | `brand/concepts/avatar-final/` | New generated variation images |
-| `brand/AVATAR-PLAYBOOK.md` | Document face-lock workflow + best prompt patterns |
-| ComfyUI install (new) | `~/ComfyUI/` or `/opt/ComfyUI/` on Machine 2 |
-| imageCLI | No changes (Shape A path) |
+| `brand/AVATAR-PLAYBOOK.md` | Face-lock workflow, best prompt patterns, LoRA training notes |
+| ComfyUI install (new) | `~/ComfyUI/` on Machine 2 |
+| imageCLI | No changes for Shape A; LoRA loading additions for Shape C |

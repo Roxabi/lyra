@@ -1,0 +1,259 @@
+<!-- Tab: Resume Paths -->
+<div class="section-header">
+  <div class="section-icon">🔁</div>
+  <div>
+    <h2>Session Resume Paths</h2>
+    <p>Three ordered paths to resume a Claude session — priority, triggers, guards, failure modes, and the ResumeStatus returned</p>
+  </div>
+</div>
+
+<!-- Decision flowchart SVG -->
+<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1.25rem;overflow-x:auto;margin-bottom:1.5rem;">
+<svg viewBox="0 0 900 420" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:900px;font-family:Inter,sans-serif;">
+  <defs>
+    <marker id="ra" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#e85d04"/></marker>
+    <marker id="ra-g" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#10b981"/></marker>
+    <marker id="ra-r" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#f87171"/></marker>
+    <marker id="ra-a" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#f59e0b"/></marker>
+  </defs>
+
+  <!-- START -->
+  <rect x="360" y="5" width="180" height="36" rx="18" fill="rgba(232,93,4,.15)" stroke="#e85d04" stroke-width="1.5"/>
+  <text x="450" y="28" text-anchor="middle" font-size="11" font-weight="600" fill="#e85d04">_resolve_context()</text>
+
+  <!-- Arrow down -->
+  <line x1="450" y1="41" x2="450" y2="62" stroke="#e85d04" stroke-width="1.5" marker-end="url(#ra)"/>
+
+  <!-- Diamond: reply_to_id? -->
+  <polygon points="450,62 530,92 450,122 370,92" fill="rgba(6,182,212,.1)" stroke="#06b6d4" stroke-width="1.5"/>
+  <text x="450" y="88" text-anchor="middle" font-size="10" fill="#06b6d4">reply_to_id</text>
+  <text x="450" y="101" text-anchor="middle" font-size="10" fill="#06b6d4">present?</text>
+
+  <!-- YES → Path 1 -->
+  <line x1="530" y1="92" x2="660" y2="92" stroke="#06b6d4" stroke-width="1.5" marker-end="url(#ra)"/>
+  <text x="590" y="88" font-size="9" fill="#06b6d4">YES</text>
+  <rect x="660" y="76" width="130" height="32" rx="6" fill="rgba(6,182,212,.1)" stroke="#06b6d4" stroke-width="1.2"/>
+  <text x="725" y="89" text-anchor="middle" font-size="10" font-weight="600" fill="#06b6d4">PATH 1</text>
+  <text x="725" y="102" text-anchor="middle" font-size="9" fill="#6b7280">MessageIndex.resolve()</text>
+  <line x1="790" y1="92" x2="820" y2="92" stroke="#10b981" stroke-width="1.5" marker-end="url(#ra-g)"/>
+  <rect x="820" y="79" width="72" height="25" rx="12" fill="rgba(16,185,129,.15)" stroke="#10b981" stroke-width="1"/>
+  <text x="856" y="96" text-anchor="middle" font-size="9" font-weight="600" fill="#10b981">RESUMED</text>
+
+  <!-- NO → down -->
+  <line x1="450" y1="122" x2="450" y2="148" stroke="#e85d04" stroke-width="1.5" marker-end="url(#ra)"/>
+  <text x="457" y="140" font-size="9" fill="#6b7280">NO</text>
+
+  <!-- Diamond: thread_session_id? -->
+  <polygon points="450,148 540,178 450,208 360,178" fill="rgba(168,85,247,.1)" stroke="#a855f7" stroke-width="1.5"/>
+  <text x="450" y="174" text-anchor="middle" font-size="10" fill="#a855f7">thread_session</text>
+  <text x="450" y="187" text-anchor="middle" font-size="10" fill="#a855f7">_id present?</text>
+
+  <!-- YES → Path 2 -->
+  <line x1="540" y1="178" x2="640" y2="178" stroke="#a855f7" stroke-width="1.5" marker-end="url(#ra)"/>
+  <text x="585" y="174" font-size="9" fill="#a855f7">YES</text>
+  <rect x="640" y="160" width="140" height="36" rx="6" fill="rgba(168,85,247,.1)" stroke="#a855f7" stroke-width="1.2"/>
+  <text x="710" y="174" text-anchor="middle" font-size="10" font-weight="600" fill="#a855f7">PATH 2</text>
+  <text x="710" y="188" text-anchor="middle" font-size="9" fill="#6b7280">ThreadStore + file check</text>
+
+  <!-- Path 2: file exists? -->
+  <line x1="780" y1="178" x2="820" y2="178" stroke="#e85d04" stroke-width="1.2" marker-end="url(#ra)"/>
+  <polygon points="842,155 887,178 842,201 797,178" fill="rgba(236,72,153,.1)" stroke="#ec4899" stroke-width="1.2"/>
+  <text x="842" y="175" text-anchor="middle" font-size="8.5" fill="#ec4899">.jsonl</text>
+  <text x="842" y="187" text-anchor="middle" font-size="8.5" fill="#ec4899">exists?</text>
+
+  <!-- YES: RESUMED -->
+  <line x1="887" y1="178" x2="920" y2="178" stroke="#10b981" stroke-width="1.2" marker-end="url(#ra-g)"/>
+  <rect x="920" y="165" width="72" height="25" rx="12" fill="rgba(16,185,129,.15)" stroke="#10b981" stroke-width="1"/>
+  <text x="956" y="182" text-anchor="middle" font-size="9" font-weight="600" fill="#10b981">RESUMED</text>
+
+  <!-- NO: fall to Path 3 -->
+  <line x1="842" y1="201" x2="842" y2="240" stroke="#f87171" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#ra-r)"/>
+  <text x="850" y="225" font-size="8" fill="#f87171">⚠ .jsonl missing</text>
+  <!-- arrow back to path 3 -->
+  <line x1="842" y1="240" x2="620" y2="240" stroke="#f87171" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="620" y1="240" x2="620" y2="265" stroke="#f87171" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#ra-r)"/>
+
+  <!-- NO → down to path 3 check -->
+  <line x1="450" y1="208" x2="450" y2="230" stroke="#e85d04" stroke-width="1.5" marker-end="url(#ra)"/>
+  <text x="457" y="224" font-size="9" fill="#6b7280">NO</text>
+
+  <!-- Diamond: pool.is_idle + turn_store? -->
+  <polygon points="450,230 555,265 450,300 345,265" fill="rgba(16,185,129,.1)" stroke="#10b981" stroke-width="1.5"/>
+  <text x="450" y="261" text-anchor="middle" font-size="10" fill="#10b981">pool.is_idle &amp;</text>
+  <text x="450" y="274" text-anchor="middle" font-size="10" fill="#10b981">turn_store?</text>
+
+  <!-- YES → Path 3 block -->
+  <line x1="555" y1="265" x2="620" y2="265" stroke="#10b981" stroke-width="1.5" marker-end="url(#ra-g)"/>
+  <text x="582" y="261" font-size="9" fill="#10b981">YES</text>
+  <rect x="620" y="249" width="150" height="32" rx="6" fill="rgba(16,185,129,.1)" stroke="#10b981" stroke-width="1.2"/>
+  <text x="695" y="262" text-anchor="middle" font-size="10" font-weight="600" fill="#10b981">PATH 3</text>
+  <text x="695" y="275" text-anchor="middle" font-size="9" fill="#6b7280">TurnStore.get_last_session()</text>
+
+  <!-- Path 3 sub-decisions -->
+  <line x1="770" y1="265" x2="810" y2="265" stroke="#10b981" stroke-width="1.2" marker-end="url(#ra-g)"/>
+  <!-- Diamond: last_sid == pool.session_id? -->
+  <polygon points="842,242 892,265 842,288 792,265" fill="rgba(245,158,11,.1)" stroke="#f59e0b" stroke-width="1.2"/>
+  <text x="842" y="261" text-anchor="middle" font-size="8" fill="#f59e0b">already on</text>
+  <text x="842" y="273" text-anchor="middle" font-size="8" fill="#f59e0b">session?</text>
+  <!-- YES → SKIPPED (FIXED) -->
+  <line x1="892" y1="265" x2="920" y2="265" stroke="#f59e0b" stroke-width="1.2" marker-end="url(#ra-a)"/>
+  <rect x="920" y="252" width="72" height="25" rx="12" fill="rgba(245,158,11,.15)" stroke="#f59e0b" stroke-width="1"/>
+  <text x="956" y="269" text-anchor="middle" font-size="9" font-weight="600" fill="#f59e0b">SKIPPED</text>
+  <text x="956" y="282" text-anchor="middle" font-size="7" fill="#10b981">✅ FIXED #415</text>
+
+  <!-- NO → try resume + file check ... simplified -->
+  <line x1="842" y1="288" x2="842" y2="308" stroke="#10b981" stroke-width="1.2" marker-end="url(#ra-g)"/>
+  <text x="850" y="303" font-size="8" fill="#10b981">NO: resume_session()</text>
+  <!-- RESUMED -->
+  <rect x="790" y="308" width="108" height="24" rx="12" fill="rgba(16,185,129,.15)" stroke="#10b981" stroke-width="1"/>
+  <text x="844" y="324" text-anchor="middle" font-size="9" font-weight="600" fill="#10b981">RESUMED</text>
+
+  <!-- NO (pool busy or no store) -->
+  <line x1="450" y1="300" x2="450" y2="340" stroke="#e85d04" stroke-width="1.5" marker-end="url(#ra)"/>
+  <text x="330" y="319" font-size="9" fill="#6b7280">NO / group chat</text>
+
+  <!-- FRESH vs SKIPPED diamond -->
+  <polygon points="450,340 530,368 450,396 370,368" fill="rgba(248,113,113,.1)" stroke="#f87171" stroke-width="1.5"/>
+  <text x="450" y="364" text-anchor="middle" font-size="9" fill="#f87171">path2</text>
+  <text x="450" y="377" text-anchor="middle" font-size="9" fill="#f87171">attempted?</text>
+
+  <!-- YES → FRESH -->
+  <line x1="530" y1="368" x2="600" y2="368" stroke="#f87171" stroke-width="1.5" marker-end="url(#ra-r)"/>
+  <text x="562" y="364" font-size="9" fill="#f87171">YES</text>
+  <rect x="600" y="355" width="72" height="25" rx="12" fill="rgba(248,113,113,.15)" stroke="#f87171" stroke-width="1"/>
+  <text x="636" y="372" text-anchor="middle" font-size="9" font-weight="600" fill="#f87171">FRESH</text>
+  <text x="636" y="386" text-anchor="middle" font-size="7.5" fill="#f87171">⚠️ warning sent</text>
+
+  <!-- NO → SKIPPED -->
+  <line x1="370" y1="368" x2="290" y2="368" stroke="#f59e0b" stroke-width="1.5" marker-end="url(#ra-a)"/>
+  <text x="326" y="364" font-size="9" fill="#f59e0b">NO</text>
+  <rect x="218" y="355" width="72" height="25" rx="12" fill="rgba(245,158,11,.15)" stroke="#f59e0b" stroke-width="1"/>
+  <text x="254" y="372" text-anchor="middle" font-size="9" font-weight="600" fill="#f59e0b">SKIPPED</text>
+</svg>
+</div>
+
+<!-- Detailed path descriptions -->
+<div class="resume-tree">
+
+  <!-- Path 1 -->
+  <div class="resume-path">
+    <div class="resume-path-header">
+      <div class="path-num p1">1</div>
+      <div>
+        <div class="resume-path-title">reply-to-resume</div>
+        <div class="resume-path-subtitle">Highest priority — user explicitly replies to an assistant message</div>
+      </div>
+      <div class="path-status"><span class="pill pill-teal">MessageIndex</span></div>
+    </div>
+    <div class="resume-path-body">
+      <div class="path-block">
+        <div class="path-block-label">Trigger</div>
+        <div class="path-block-content"><code>msg.reply_to_id is not None</code> AND pool is not busy AND not group chat</div>
+      </div>
+      <div class="path-block">
+        <div class="path-block-label">Store read</div>
+        <div class="path-block-content"><code>MessageIndex.resolve(pool_id, reply_to_id)</code> → session_id in O(1) PK lookup</div>
+      </div>
+      <div class="path-block">
+        <div class="path-block-label">Returns</div>
+        <div class="path-block-content"><span class="pill pill-green">RESUMED</span> — or falls through if message_id not indexed</div>
+      </div>
+      <div class="ok-block">
+        ✅ <span>Cleanest path. No file check needed. Works even when the subprocess is still alive. Correctly resumes the exact session the user was replying to.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Path 2 -->
+  <div class="resume-path">
+    <div class="resume-path-header">
+      <div class="path-num p2">2</div>
+      <div>
+        <div class="resume-path-title">thread-session-resume</div>
+        <div class="resume-path-subtitle">Discord only — threads carry their session in the DB</div>
+      </div>
+      <div class="path-status"><span class="pill pill-plum">ThreadStore</span></div>
+    </div>
+    <div class="resume-path-body">
+      <div class="path-block">
+        <div class="path-block-label">Trigger</div>
+        <div class="path-block-content"><code>platform_meta["thread_session_id"]</code> present — injected by Discord adapter on thread messages</div>
+      </div>
+      <div class="path-block">
+        <div class="path-block-label">Store reads</div>
+        <div class="path-block-content">
+          1. <code>ThreadStore.get_session(thread_id, bot_id)</code> → (session_id, pool_id)<br>
+          2. <code>pool.resume_session(session_id)</code> → <code>resume_and_reset()</code> → <code>_session_file_exists()</code>
+        </div>
+      </div>
+      <div class="path-block">
+        <div class="path-block-label">Returns</div>
+        <div class="path-block-content"><span class="pill pill-green">RESUMED</span> if file exists, else falls through to Path 3 with <code>path2_attempted=True</code></div>
+      </div>
+      <div class="warn-block">
+        ⚠️ <span><strong>Timing bug:</strong> <code>_session_file_exists()</code> globs <code>~/.claude/projects/*/{session_id}.jsonl</code>. In <code>--input-format stream-json</code> mode, the .jsonl is written when the subprocess <em>exits</em> — not during streaming. So if the subprocess is still alive (normal case), this check returns <code>False</code> and Path 2 silently fails even when context is intact. Fix: bypass file check if subprocess for that session is alive. (→ finding #5)</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Path 3 -->
+  <div class="resume-path">
+    <div class="resume-path-header">
+      <div class="path-num p3">3</div>
+      <div>
+        <div class="resume-path-title">last-active-session</div>
+        <div class="resume-path-subtitle">Fallback — last assistant turn's session for this pool</div>
+      </div>
+      <div class="path-status"><span class="pill pill-green">TurnStore</span></div>
+    </div>
+    <div class="resume-path-body">
+      <div class="path-block">
+        <div class="path-block-label">Trigger</div>
+        <div class="path-block-content"><code>pool.is_idle</code> AND <code>turn_store is not None</code> AND NOT group chat</div>
+      </div>
+      <div class="path-block">
+        <div class="path-block-label">Store read</div>
+        <div class="path-block-content"><code>TurnStore.get_last_session(pool_id)</code> → most recent assistant turn's session_id (index scan)</div>
+      </div>
+      <div class="path-block">
+        <div class="path-block-label">Guards</div>
+        <div class="path-block-content">
+          Guard 1: <code>last_sid is None</code> → SKIPPED (no prior turn)<br>
+          Guard 2: <code>last_sid == pool.session_id</code> → <span class="pill pill-green">SKIPPED ✅ FIXED</span><br>
+          Otherwise: <code>pool.resume_session(last_sid)</code> + file check
+        </div>
+      </div>
+      <div class="ok-block">
+        ✅ <span><strong>Bug #415 fixed:</strong> Guard 2 (<code>last_sid == pool.session_id</code>) now explicitly returns <code>SKIPPED</code> instead of falling through to <code>FRESH</code>. This eliminates the spurious ⚠️ warning sent to users when the pool is already on the correct session.</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ResumeStatus enum legend -->
+<div class="subsection-title">ResumeStatus enum</div>
+<div class="resume-status-legend">
+  <div class="rs-chip">
+    <div class="rs-dot" style="background:var(--green);"></div>
+    <strong style="color:var(--green);">RESUMED</strong> — session successfully set in <code>_resume_session_ids[pool_id]</code> for next spawn. No user notification.
+  </div>
+  <div class="rs-chip">
+    <div class="rs-dot" style="background:var(--amber);"></div>
+    <strong style="color:var(--amber);">SKIPPED</strong> — nothing to do (pool already on session, group chat safety skip, no prior turns). No user notification.
+  </div>
+  <div class="rs-chip">
+    <div class="rs-dot" style="background:var(--red);"></div>
+    <strong style="color:var(--red);">FRESH</strong> — no session could be resumed. <code>_notify_session_fallthrough()</code> → sends ⚠️ "Couldn't resume your previous session — starting fresh" to the user.
+  </div>
+</div>
+
+<!-- Root cause of bug #415 explained -->
+<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1.1rem 1.25rem;margin-top:1.5rem;">
+  <div class="subsection-title" style="margin-top:0;">Root cause of bug #415 — false-positive ⚠️ warnings</div>
+  <div style="font-size:.82rem;color:var(--text-muted);line-height:1.7;">
+    <p>Scenario: pool has session <code>a73c10d6</code>. User sends a new message. Path 2 tries to resume <code>a73c10d6</code> → <code>_session_file_exists()</code> returns <code>False</code> (subprocess still alive, .jsonl not flushed) → falls to Path 3 → <code>get_last_session()</code> returns <code>a73c10d6</code> → guard fires: <code>last_sid == pool.session_id</code>.</p>
+    <p style="margin-top:.5rem;"><strong style="color:var(--red);">Before fix:</strong> Guard logged at DEBUG, fell through to <code>return FRESH if path2_attempted else SKIPPED</code>. Since <code>path2_attempted=True</code>, returned <code>FRESH</code> → sent ⚠️ to user, even though context was fine (the subprocess was alive and <code>_resume_session_ids</code> still had the right value).</p>
+    <p style="margin-top:.5rem;"><strong style="color:var(--green);">After fix:</strong> Guard now <code>return ResumeStatus.SKIPPED</code> explicitly. No spurious warning. The actual spawn still uses the correct session from <code>_resume_session_ids</code>.</p>
+  </div>
+</div>

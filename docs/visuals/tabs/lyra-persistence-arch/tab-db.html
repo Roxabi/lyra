@@ -1,0 +1,343 @@
+<!-- Tab: DB Map -->
+<div class="section-header">
+  <div class="section-icon">🗄</div>
+  <div>
+    <h2>Database Map</h2>
+    <p>Every .db file, schema, managing stores, and purpose — including Claude CLI sessions and the vault</p>
+  </div>
+</div>
+
+<div class="db-grid">
+
+  <!-- auth.db -->
+  <div class="db-card" style="border-top: 3px solid var(--db-auth);">
+    <div class="db-card-header">
+      <div class="db-dot" style="background: var(--db-auth);"></div>
+      <span class="db-card-title">auth.db</span>
+      <span class="db-badge" style="color: var(--db-auth); border-color: rgba(245,158,11,.4);">⚠ OVERLOADED</span>
+    </div>
+    <div class="db-card-body">
+      <div class="managed-by">
+        Managed by:
+        <span class="store-tag">ThreadStore</span>
+        <span class="store-tag">AuthStore</span>
+        <span class="store-tag">AgentStore</span>
+        <span class="store-tag">CredentialStore</span>
+        <span class="store-tag">PrefsStore</span>
+      </div>
+      <p class="db-desc">A single SQLite file carrying 5 distinct concerns: auth grants, agent configs, bot secrets, Discord thread state, and user preferences. Shared write-through cache across stores.</p>
+      <hr class="divider">
+
+      <div class="table-section-label">AuthStore → grants</div>
+      <table class="schema-table">
+        <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td class="col-name">id<span class="col-badge pk">PK</span></td><td class="col-type">INTEGER</td><td class="col-note">auto</td></tr>
+          <tr><td class="col-name">identity_key<span class="col-badge idx">UNIQUE</span></td><td class="col-type">TEXT</td><td class="col-note">platform:user_id</td></tr>
+          <tr><td class="col-name">trust_level</td><td class="col-type">TEXT</td><td class="col-note">TRUSTED/BLOCKED/…</td></tr>
+          <tr><td class="col-name">expires_at<span class="col-badge opt">?</span></td><td class="col-type">TEXT</td><td class="col-note">NULL = permanent</td></tr>
+          <tr><td class="col-name">granted_by</td><td class="col-type">TEXT</td><td class="col-note">who issued</td></tr>
+          <tr><td class="col-name">source</td><td class="col-type">TEXT</td><td class="col-note">config/pairing/cli</td></tr>
+          <tr><td class="col-name">created_at</td><td class="col-type">TEXT</td><td class="col-note">ISO datetime</td></tr>
+        </tbody>
+      </table>
+
+      <div class="table-section-label">ThreadStore → discord_threads</div>
+      <table class="schema-table">
+        <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td class="col-name">thread_id<span class="col-badge pk">PK</span></td><td class="col-type">TEXT</td><td class="col-note">Discord snowflake</td></tr>
+          <tr><td class="col-name">bot_id<span class="col-badge pk">PK</span></td><td class="col-type">TEXT</td><td class="col-note">e.g. "lyra"</td></tr>
+          <tr><td class="col-name">session_id<span class="col-badge opt">?</span></td><td class="col-type">TEXT</td><td class="col-note">current Claude session</td></tr>
+          <tr><td class="col-name">pool_id<span class="col-badge opt">?</span></td><td class="col-type">TEXT</td><td class="col-note">discord:lyra:thread:…</td></tr>
+          <tr><td class="col-name">channel_id</td><td class="col-type">TEXT</td><td class="col-note">parent channel</td></tr>
+          <tr><td class="col-name">guild_id<span class="col-badge opt">?</span></td><td class="col-note col-type">TEXT</td><td class="col-note">server ID</td></tr>
+          <tr><td class="col-name">created_at / updated_at</td><td class="col-type">TEXT</td><td class="col-note">timestamps</td></tr>
+        </tbody>
+      </table>
+
+      <div class="table-section-label">AgentStore → agents</div>
+      <table class="schema-table">
+        <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td class="col-name">name<span class="col-badge pk">PK</span></td><td class="col-type">TEXT</td><td class="col-note">e.g. "lyra"</td></tr>
+          <tr><td class="col-name">backend / model</td><td class="col-type">TEXT</td><td class="col-note">provider + model id</td></tr>
+          <tr><td class="col-name">max_turns</td><td class="col-type">INTEGER</td><td class="col-note">default 10</td></tr>
+          <tr><td class="col-name">tools_json / plugins_json</td><td class="col-type">JSON</td><td class="col-note">tool & plugin lists</td></tr>
+          <tr><td class="col-name">persona_json</td><td class="col-type">JSON</td><td class="col-note">voice/personality</td></tr>
+          <tr><td class="col-name">memory_namespace</td><td class="col-type">TEXT</td><td class="col-note">vault namespace</td></tr>
+          <tr><td class="col-name">streaming</td><td class="col-type">BOOL</td><td class="col-note">0/1</td></tr>
+          <tr><td class="col-name">skip_permissions / permissions_json</td><td class="col-type">JSON</td><td class="col-note">tool permissions</td></tr>
+          <tr><td class="col-name">workspaces_json</td><td class="col-type">JSON</td><td class="col-note">/workspace &lt;key&gt;</td></tr>
+          <tr><td class="col-name">tts_json / stt_json / voice_json</td><td class="col-type">JSON</td><td class="col-note">audio settings</td></tr>
+          <tr><td class="col-name">…(15+ more columns)</td><td class="col-type">TEXT/JSON</td><td class="col-note">i18n, commands, etc.</td></tr>
+        </tbody>
+      </table>
+
+      <div class="table-section-label">AgentStore → bot_agent_map</div>
+      <table class="schema-table">
+        <tbody>
+          <tr><td class="col-name">platform<span class="col-badge pk">PK</span></td><td class="col-type">TEXT</td><td class="col-note">telegram/discord</td></tr>
+          <tr><td class="col-name">bot_id<span class="col-badge pk">PK</span></td><td class="col-type">TEXT</td><td class="col-note">bot identifier</td></tr>
+          <tr><td class="col-name">agent_name<span class="col-badge fk">FK→agents</span></td><td class="col-type">TEXT</td><td class="col-note"></td></tr>
+          <tr><td class="col-name">settings_json</td><td class="col-type">JSON</td><td class="col-note">per-bot overrides</td></tr>
+        </tbody>
+      </table>
+
+      <div class="table-section-label">AgentStore → agent_runtime_state</div>
+      <table class="schema-table">
+        <tbody>
+          <tr><td class="col-name">agent_name<span class="col-badge pk">PK</span></td><td class="col-type">TEXT</td><td class="col-note"></td></tr>
+          <tr><td class="col-name">status</td><td class="col-type">TEXT</td><td class="col-note">idle/active</td></tr>
+          <tr><td class="col-name">pool_count</td><td class="col-type">INTEGER</td><td class="col-note">active pools</td></tr>
+          <tr><td class="col-name">last_active_at / updated_at</td><td class="col-type">TEXT</td><td class="col-note"></td></tr>
+        </tbody>
+      </table>
+
+      <div class="table-section-label">CredentialStore → bot_secrets</div>
+      <table class="schema-table">
+        <tbody>
+          <tr><td class="col-name">id<span class="col-badge pk">PK</span></td><td class="col-type">INTEGER</td><td class="col-note"></td></tr>
+          <tr><td class="col-name">platform / bot_id<span class="col-badge idx">UNIQUE</span></td><td class="col-type">TEXT</td><td class="col-note"></td></tr>
+          <tr><td class="col-name">token<span class="col-badge enc">ENCRYPTED</span></td><td class="col-type">TEXT</td><td class="col-note">Fernet symmetric</td></tr>
+          <tr><td class="col-name">webhook_secret<span class="col-badge enc">ENCRYPTED</span><span class="col-badge opt">?</span></td><td class="col-type">TEXT</td><td class="col-note"></td></tr>
+        </tbody>
+      </table>
+
+      <div class="table-section-label">PrefsStore → user_prefs</div>
+      <table class="schema-table">
+        <tbody>
+          <tr><td class="col-name">user_id<span class="col-badge pk">PK</span></td><td class="col-type">TEXT</td><td class="col-note"></td></tr>
+          <tr><td class="col-name">key<span class="col-badge pk">PK</span></td><td class="col-type">TEXT</td><td class="col-note">tts_language, voice…</td></tr>
+          <tr><td class="col-name">value</td><td class="col-type">TEXT</td><td class="col-note"></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- turns.db -->
+  <div class="db-card" style="border-top: 3px solid var(--db-turns);">
+    <div class="db-card-header">
+      <div class="db-dot" style="background: var(--db-turns);"></div>
+      <span class="db-card-title">turns.db</span>
+      <span class="db-badge l1">L1 Memory</span>
+    </div>
+    <div class="db-card-body">
+      <div class="managed-by">Managed by: <span class="store-tag">TurnStore</span></div>
+      <p class="db-desc">Append-only turn ledger. Every message exchanged — both user inputs and assistant replies. The source of truth for <code>get_last_session()</code>, context recall, and audit. Called "L1 Memory" in code because it's the raw layer before semantic extraction.</p>
+      <hr class="divider">
+
+      <div class="table-section-label">conversation_turns</div>
+      <table class="schema-table">
+        <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td class="col-name">id<span class="col-badge pk">PK</span></td><td class="col-type">INTEGER</td><td class="col-note">AUTOINCREMENT</td></tr>
+          <tr><td class="col-name">pool_id<span class="col-badge idx">IDX</span></td><td class="col-type">TEXT</td><td class="col-note">discord:lyra:thread:…</td></tr>
+          <tr><td class="col-name">session_id<span class="col-badge idx">IDX</span></td><td class="col-type">TEXT</td><td class="col-note">Claude CLI session UUID</td></tr>
+          <tr><td class="col-name">role</td><td class="col-type">TEXT</td><td class="col-note">user / assistant</td></tr>
+          <tr><td class="col-name">platform</td><td class="col-type">TEXT</td><td class="col-note">discord / telegram</td></tr>
+          <tr><td class="col-name">user_id</td><td class="col-type">TEXT</td><td class="col-note">platform user ID</td></tr>
+          <tr><td class="col-name">content</td><td class="col-type">TEXT</td><td class="col-note">full message text</td></tr>
+          <tr><td class="col-name">message_id<span class="col-badge opt">?</span></td><td class="col-type">TEXT</td><td class="col-note">platform msg snowflake</td></tr>
+          <tr><td class="col-name">reply_message_id<span class="col-badge opt">?</span></td><td class="col-type">TEXT</td><td class="col-note">set AFTER dispatch</td></tr>
+          <tr><td class="col-name">timestamp</td><td class="col-type">TEXT</td><td class="col-note">ISO datetime</td></tr>
+          <tr><td class="col-name">metadata</td><td class="col-type">JSON</td><td class="col-note">extra context</td></tr>
+        </tbody>
+      </table>
+      <br>
+      <div style="display:flex;gap:.4rem;flex-wrap:wrap;">
+        <span class="pill pill-teal">idx(session_id, timestamp)</span>
+        <span class="pill pill-teal">idx(pool_id, timestamp)</span>
+      </div>
+      <br>
+      <div style="background:rgba(6,182,212,.06);border:1px solid rgba(6,182,212,.2);border-radius:6px;padding:.6rem .8rem;font-size:.76rem;color:var(--text-muted);margin-top:.5rem;">
+        <strong style="color:var(--teal);">Key query:</strong> <code>get_last_session(pool_id)</code> → SELECT session_id WHERE role='assistant' ORDER BY timestamp DESC LIMIT 1<br>
+        <strong style="color:var(--teal);">Also:</strong> <code>get_turns(pool_id, user_id, limit=50)</code> → capped at 500 rows, newest-first
+      </div>
+      <div style="background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.2);border-radius:6px;padding:.6rem .8rem;font-size:.76rem;color:var(--text-muted);margin-top:.5rem;">
+        <strong style="color:var(--red);">Note:</strong> A "Lyra session" is NOT a first-class entity here. Sessions are implicit — inferred from the <code>session_id</code> column on turns. No sessions table exists. (→ Architecture finding #7)
+      </div>
+    </div>
+  </div>
+
+  <!-- message_index.db -->
+  <div class="db-card" style="border-top: 3px solid var(--db-msgidx);">
+    <div class="db-card-header">
+      <div class="db-dot" style="background: var(--db-msgidx);"></div>
+      <span class="db-card-title">message_index.db</span>
+      <span class="db-badge" style="color:var(--green);border-color:rgba(16,185,129,.4);">Path 1</span>
+    </div>
+    <div class="db-card-body">
+      <div class="managed-by">Managed by: <span class="store-tag">MessageIndex</span></div>
+      <p class="db-desc">Maps every platform message ID → (session_id, pool_id). Powers the highest-priority resume path: when a user replies to an assistant message, Lyra looks up that message's session in O(1) and resumes it exactly.</p>
+      <hr class="divider">
+
+      <div class="table-section-label">message_index</div>
+      <table class="schema-table">
+        <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td class="col-name">pool_id</td><td class="col-type">TEXT</td><td class="col-note">routing key</td></tr>
+          <tr><td class="col-name">platform_msg_id<span class="col-badge pk">PK</span></td><td class="col-type">TEXT</td><td class="col-note">Discord/Telegram snowflake</td></tr>
+          <tr><td class="col-name">session_id</td><td class="col-type">TEXT</td><td class="col-note">Claude session UUID</td></tr>
+          <tr><td class="col-name">role</td><td class="col-type">TEXT</td><td class="col-note">user / assistant</td></tr>
+          <tr><td class="col-name">created_at<span class="col-badge idx">IDX</span></td><td class="col-type">TEXT</td><td class="col-note">for cleanup_older_than()</td></tr>
+        </tbody>
+      </table>
+      <br>
+      <div style="display:flex;gap:.4rem;">
+        <span class="pill pill-green">idx(pool_id, created_at)</span>
+      </div>
+      <br>
+      <div style="background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.2);border-radius:6px;padding:.6rem .8rem;font-size:.76rem;color:var(--text-muted);margin-top:.5rem;">
+        <strong style="color:var(--green);">Key query:</strong> <code>resolve(pool_id, platform_msg_id)</code> → PK lookup → session_id<br>
+        <strong style="color:var(--green);">Cleanup:</strong> <code>cleanup_older_than(days)</code> — must be called manually (→ finding #9)
+      </div>
+    </div>
+  </div>
+
+  <!-- pairing.db -->
+  <div class="db-card" style="border-top: 3px solid var(--db-pairing);">
+    <div class="db-card-header">
+      <div class="db-dot" style="background: var(--db-pairing);"></div>
+      <span class="db-card-title">pairing.db</span>
+    </div>
+    <div class="db-card-body">
+      <div class="managed-by">Managed by: <span class="store-tag">PairingStore</span></div>
+      <p class="db-desc">Short-lived invite code management. Admin generates a code → user /joins with it → code validated in a BEGIN IMMEDIATE transaction → trust grant written to AuthStore. Cross-platform account linking.</p>
+      <hr class="divider">
+
+      <div class="table-section-label">pairing_codes</div>
+      <table class="schema-table">
+        <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td class="col-name">id<span class="col-badge pk">PK</span></td><td class="col-type">INTEGER</td><td class="col-note"></td></tr>
+          <tr><td class="col-name">code_hash<span class="col-badge idx">UNIQUE</span></td><td class="col-type">TEXT</td><td class="col-note">SHA-256 of plaintext</td></tr>
+          <tr><td class="col-name">created_by</td><td class="col-type">TEXT</td><td class="col-note">admin identity_key</td></tr>
+          <tr><td class="col-name">expires_at</td><td class="col-type">TEXT</td><td class="col-note">TTL-based expiry</td></tr>
+          <tr><td class="col-name">attempt_count</td><td class="col-type">INTEGER</td><td class="col-note">brute-force guard</td></tr>
+        </tbody>
+      </table>
+
+      <div class="table-section-label" style="display:flex;align-items:center;gap:.4rem;">
+        paired_sessions <span class="col-badge dep">DEPRECATED #245</span>
+      </div>
+      <table class="schema-table">
+        <tbody>
+          <tr><td class="col-name" style="opacity:.5;">identity_key<span class="col-badge idx">UNIQUE</span></td><td class="col-type" style="opacity:.5;">TEXT</td><td class="col-note"><span style="color:var(--red);">⚠ DDL still exists, table still created on connect but never used. Grants now go to auth.db → grants.</span></td></tr>
+        </tbody>
+      </table>
+      <br>
+      <div style="background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.2);border-radius:6px;padding:.6rem .8rem;font-size:.76rem;color:var(--red);">
+        <strong>Issue:</strong> <code>paired_sessions</code> DDL is still in <code>pairing.py</code> and runs on every <code>connect()</code>. The table is empty but takes up schema space and misleads readers. Remove from DDL + add migration to DROP it. (→ finding #3)
+      </div>
+    </div>
+  </div>
+
+  <!-- agents.db -->
+  <div class="db-card" style="border-top: 3px solid var(--db-dead); opacity:.7;">
+    <div class="db-card-header">
+      <div class="db-dot" style="background: var(--db-dead);"></div>
+      <span class="db-card-title">agents.db</span>
+      <span class="db-badge dead">DEAD</span>
+    </div>
+    <div class="db-card-body">
+      <div class="managed-by" style="color:var(--text-dim);">No managing store — file exists, no tables</div>
+      <p class="db-desc" style="color:var(--text-dim);">Legacy file. Agent configs were migrated to <code>auth.db → agents</code>. This file is never connected by any store. It wastes an open file descriptor on every startup.</p>
+      <hr class="divider">
+      <div style="background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.2);border-radius:6px;padding:.6rem .8rem;font-size:.76rem;color:var(--red);">
+        <strong>Fix:</strong> Delete the file. Remove any connection attempts in bootstrap. (→ critical finding #1)
+      </div>
+    </div>
+  </div>
+
+  <!-- Claude CLI sessions -->
+  <div class="db-card" style="border-top: 3px solid var(--db-claude);">
+    <div class="db-card-header">
+      <div class="db-dot" style="background: var(--db-claude);"></div>
+      <span class="db-card-title">~/.claude/projects/*/*.jsonl</span>
+      <span class="db-badge external">EXTERNAL</span>
+    </div>
+    <div class="db-card-body">
+      <div class="managed-by">Managed by: <span class="store-tag" style="color:var(--orange);">Claude CLI (external)</span></div>
+      <p class="db-desc">NOT a Lyra DB. Written by the Claude CLI subprocess. One file per Claude session — filename = session UUID. Contains the full conversation JSONL that Claude uses for <code>--resume</code>.</p>
+      <hr class="divider">
+      <table class="schema-table">
+        <tbody>
+          <tr><td class="col-name">Path pattern</td><td class="col-note" colspan="2"><code>~/.claude/projects/-home-…/&lt;session_uuid&gt;.jsonl</code></td></tr>
+          <tr><td class="col-name">Written when</td><td class="col-note" colspan="2">When the subprocess <strong>exits</strong> (stream-json mode flushes on exit, not during streaming)</td></tr>
+          <tr><td class="col-name">Read by Lyra</td><td class="col-note" colspan="2"><code>_session_file_exists()</code> → glob <code>*/{session_id}.jsonl</code></td></tr>
+          <tr><td class="col-name">Resume arg</td><td class="col-note" colspan="2"><code>claude --resume &lt;session_uuid&gt;</code> → CLI loads the JSONL</td></tr>
+        </tbody>
+      </table>
+      <div style="background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.2);border-radius:6px;padding:.6rem .8rem;font-size:.76rem;color:var(--red);margin-top:.75rem;">
+        <strong>Timing bug:</strong> In <code>--input-format stream-json</code> mode, the .jsonl is NOT written while the subprocess is alive. So <code>_session_file_exists()</code> always returns <code>False</code> for the current active session, causing spurious resume failures even when context is intact. (→ finding #5)
+      </div>
+    </div>
+  </div>
+
+  <!-- roxabi-vault -->
+  <div class="db-card" style="border-top: 3px solid var(--db-vault);">
+    <div class="db-card-header">
+      <div class="db-dot" style="background: var(--db-vault);"></div>
+      <span class="db-card-title">~/.roxabi-vault/ (AsyncMemoryDB)</span>
+      <span class="db-badge" style="color:var(--pink);border-color:rgba(236,72,153,.4);">SEMANTIC</span>
+    </div>
+    <div class="db-card-body">
+      <div class="managed-by">Managed by: <span class="store-tag">MemoryManager</span> via roxabi-vault SDK</div>
+      <p class="db-desc">Structured semantic long-term memory. NOT a raw turn log. Extracted by the agent after sessions end — facts about users, preferences, concepts, contacts. Freshness-aware with per-type TTL thresholds.</p>
+      <hr class="divider">
+      <table class="schema-table">
+        <thead><tr><th>Entry type</th><th>Key fields</th><th>Freshness</th></tr></thead>
+        <tbody>
+          <tr><td class="col-name">session_summary</td><td class="col-note">namespace, user_id, summary text</td><td class="col-note">per FRESHNESS_TTL_DAYS</td></tr>
+          <tr><td class="col-name">concept</td><td class="col-note">mention_count, relations[], staleness</td><td class="col-note">reset if stale</td></tr>
+          <tr><td class="col-name">preference</td><td class="col-note">strength (ramps to 1.0)</td><td class="col-note">reset if stale</td></tr>
+          <tr><td class="col-name">identity_anchor</td><td class="col-note">namespace, text</td><td class="col-note">permanent</td></tr>
+          <tr><td class="col-name">contact</td><td class="col-note">user_id, medium, namespace</td><td class="col-note">permanent</td></tr>
+        </tbody>
+      </table>
+      <div style="background:rgba(236,72,153,.06);border:1px solid rgba(236,72,153,.2);border-radius:6px;padding:.6rem .8rem;font-size:.76rem;color:var(--text-muted);margin-top:.75rem;">
+        <strong style="color:var(--pink);">Key flows:</strong><br>
+        <strong>Read:</strong> <code>recall(user_id, namespace, first_msg, token_budget=1000)</code> → 5 recent sessions + concepts → injected into prompt<br>
+        <strong>Write:</strong> <code>upsert_session/concept/preference(SessionSnapshot, data)</code> → fires async AFTER session ends<br>
+        <strong style="color:var(--amber);">Gap:</strong> No FK to session_id in turns.db → can't trace which memory came from which session (→ finding #8)
+      </div>
+    </div>
+  </div>
+
+  <!-- _resume_session_ids -->
+  <div class="db-card" style="border-top: 3px solid var(--text-dim); border-style: dashed;">
+    <div class="db-card-header">
+      <div class="db-dot" style="background: var(--text-dim);"></div>
+      <span class="db-card-title">_resume_session_ids</span>
+      <span class="db-badge dead">IN-MEMORY</span>
+    </div>
+    <div class="db-card-body">
+      <div class="managed-by">Lives in: <span class="store-tag">CliPoolWorkerMixin</span></div>
+      <p class="db-desc">An in-memory Python dict: <code>pool_id → session_id</code>. This is the single source of truth for what <code>--resume</code> arg the next Claude CLI spawn uses. Populated by <code>_try_auto_resume()</code> after each turn and by the reaper before killing idle processes.</p>
+      <hr class="divider">
+      <table class="schema-table">
+        <tbody>
+          <tr><td class="col-name">Type</td><td class="col-note" colspan="2"><code>dict[str, str]</code> in Python process memory</td></tr>
+          <tr><td class="col-name">Written by</td><td class="col-note" colspan="2"><code>_try_auto_resume()</code> post-turn, reaper pre-kill</td></tr>
+          <tr><td class="col-name">Read by</td><td class="col-note" colspan="2"><code>_spawn()</code> → <code>dict.pop(pool_id)</code></td></tr>
+          <tr><td class="col-name">Survives restart?</td><td class="col-note" colspan="2"><strong style="color:var(--red);">❌ Lost</strong> — recovery via Path 3 + file check (fragile)</td></tr>
+        </tbody>
+      </table>
+      <div style="background:rgba(249,115,22,.07);border:1px solid rgba(249,115,22,.2);border-radius:6px;padding:.6rem .8rem;font-size:.76rem;color:var(--amber);margin-top:.75rem;">
+        <strong>Finding:</strong> This is the weakest durability link in the resume chain. If Lyra crashes between turns, the next spawn starts fresh even if the .jsonl exists. (→ finding #4)
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- DB relationship summary -->
+<div class="subsection-title">How the stores relate</div>
+<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1.2rem 1.5rem;font-size:.82rem;line-height:1.8;color:var(--text-muted);">
+  <p><span style="color:var(--amber);">auth.db</span> is the config+state monolith. It is NOT normalized across concerns — one file owns grants, agent configs, tokens, Discord thread pointers, and user prefs. This is the primary architectural debt.</p>
+  <p style="margin-top:.5rem;"><span style="color:var(--teal);">turns.db</span> feeds Path 3 resume (<code>get_last_session</code>) and is the audit trail. It is purely append-only — reads are always O(log n) via index scan.</p>
+  <p style="margin-top:.5rem;"><span style="color:var(--green);">message_index.db</span> is the most targeted: one purpose, one table, O(1) PK lookup. The cleanest store in the codebase.</p>
+  <p style="margin-top:.5rem;"><span style="color:var(--plum);">pairing.db</span> carries a deprecated table in its DDL — schema confusion without functional impact.</p>
+  <p style="margin-top:.5rem;"><span style="color:var(--pink);">roxabi-vault</span> is a fully separate system. Lyra treats it as a black-box SDK. No FK linkage to Lyra's other DBs.</p>
+</div>

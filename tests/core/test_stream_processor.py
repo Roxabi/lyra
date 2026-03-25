@@ -75,7 +75,9 @@ class TestStreamProcessor:
     # ------------------------------------------------------------------
 
     async def test_single_edit(self) -> None:
-        """Single Edit: mid-turn ToolSummary + final ToolSummary + TextRenderEvent."""
+        """Single Edit with show_intermediate=True (default):
+        intermediate text + mid-turn ToolSummary + final ToolSummary + TextRenderEvent.
+        """
         # Arrange
         processor = StreamProcessor(cfg())
         events = async_events(
@@ -89,7 +91,38 @@ class TestStreamProcessor:
         # Act
         result = await collect(processor.process(events))
 
+        # Assert — 4 events: intermediate text, mid-turn summary, final summary, text
+        # show_intermediate=True (default): flushes text before the tool call.
+        assert len(result) == 4
+        inter, mid, final, text = result
+        assert isinstance(inter, TextRenderEvent)
+        assert inter.text == "Refactoring..."
+        assert inter.is_final is False
+        assert isinstance(mid, ToolSummaryRenderEvent)
+        assert mid.is_complete is False
+        assert isinstance(final, ToolSummaryRenderEvent)
+        assert final.is_complete is True
+        assert isinstance(text, TextRenderEvent)
+        assert text.is_final is True
+        assert text.text == ""  # pending_text was flushed before the tool call
+
+    async def test_single_edit_no_intermediate(self) -> None:
+        """Single Edit with show_intermediate=False: text held until final event."""
+        # Arrange
+        processor = StreamProcessor(cfg(), show_intermediate=False)
+        events = async_events(
+            TextLlmEvent(text="Refactoring..."),
+            ToolUseLlmEvent(
+                tool_name="Edit", tool_id="t1", input={"path": "src/foo.py"}
+            ),
+            ResultLlmEvent(is_error=False, duration_ms=50),
+        )
+
+        # Act
+        result = await collect(processor.process(events))
+
         # Assert — 3 events: mid-turn summary, final summary, text
+        # show_intermediate=False keeps text accumulated until ResultLlmEvent.
         assert len(result) == 3
         mid, final, text = result
         assert isinstance(mid, ToolSummaryRenderEvent)

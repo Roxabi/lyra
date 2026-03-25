@@ -44,10 +44,19 @@ class StreamProcessor:
     config:
         Controls display thresholds, bash truncation, throttle window, and
         which tool names surface in the summary card.
+    show_intermediate:
+        When ``True`` (default), text that the model emits *before* a tool
+        call is flushed as ``TextRenderEvent(is_final=False)`` so adapters
+        can display it progressively.  When ``False``, that pre-tool text is
+        still accumulated and emitted as part of the final
+        ``TextRenderEvent(is_final=True)``, matching the legacy behaviour.
     """
 
-    def __init__(self, config: ToolDisplayConfig) -> None:
+    def __init__(
+        self, config: ToolDisplayConfig, *, show_intermediate: bool = True
+    ) -> None:
         self._config = config
+        self._show_intermediate = show_intermediate
 
         # --- per-file accumulator ---
         self._files: dict[str, FileEditSummary] = {}
@@ -90,8 +99,11 @@ class StreamProcessor:
         Yields
         ------
         RenderEvent
+            When ``show_intermediate=True``, ``TextRenderEvent(is_final=False)``
+            is emitted for any text that precedes a tool call (inter-tool text).
             ``ToolSummaryRenderEvent`` mid-turn (throttled) and at turn end
-            (unconditional), followed by ``TextRenderEvent`` at turn end.
+            (unconditional), followed by ``TextRenderEvent(is_final=True)`` at
+            turn end.
         """
         self._mark_consumed()
         _result_received = False
@@ -100,9 +112,8 @@ class StreamProcessor:
                 self._pending_text += event.text
 
             elif isinstance(event, ToolUseLlmEvent):
-                self._accumulate(event)
-                if self._should_emit() and self._has_any_tool_events():
-                    yield self._emit_snapshot()
+                async for render_event in self._handle_tool_event(event):
+                    yield render_event
 
             elif isinstance(event, ResultLlmEvent):  # pyright: ignore[reportUnnecessaryIsInstance]
                 _result_received = True
@@ -120,6 +131,24 @@ class StreamProcessor:
                 yield self._emit_snapshot(is_complete=True)
             if self._pending_text:
                 yield TextRenderEvent(text=self._pending_text, is_final=False)
+
+    async def _handle_tool_event(
+        self, event: ToolUseLlmEvent
+    ) -> AsyncGenerator[RenderEvent, None]:
+        """Handle a single ``ToolUseLlmEvent``, yielding any resulting ``RenderEvent``s.
+
+        Flushes pending text as an intermediate event when ``show_intermediate``
+        is enabled, then accumulates the tool call and emits a throttled
+        ``ToolSummaryRenderEvent`` if the window has elapsed.
+        """
+        # Flush any text accumulated before this tool call so adapters
+        # can show inter-tool text progressively (show_intermediate gate).
+        if self._show_intermediate and self._pending_text:
+            yield TextRenderEvent(text=self._pending_text, is_final=False)
+            self._pending_text = ""
+        self._accumulate(event)
+        if self._should_emit() and self._has_any_tool_events():
+            yield self._emit_snapshot()
 
     # ------------------------------------------------------------------
     # Internal helpers

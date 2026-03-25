@@ -230,6 +230,8 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: tool-su
 
     had_tool_events = False
     last_tool_edit: float | None = None
+    last_intermediate_edit: float | None = None
+    intermediate_text: str = ""
     final_text: str | None = None
     is_error_turn: bool = False
     stream_error: Exception | None = None
@@ -258,9 +260,30 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: tool-su
                     except Exception as edit_exc:
                         log.debug("Tool summary edit skipped: %s", edit_exc)
 
-            elif isinstance(event, TextRenderEvent) and event.is_final:  # pyright: ignore[reportUnnecessaryIsInstance]
-                final_text = event.text
-                is_error_turn = event.is_error
+            elif isinstance(event, TextRenderEvent):  # pyright: ignore[reportUnnecessaryIsInstance]
+                if event.is_final:
+                    final_text = event.text
+                    is_error_turn = event.is_error
+                else:
+                    # Intermediate text (between tool calls) — edit placeholder
+                    # with accumulated text, debounced at STREAMING_EDIT_INTERVAL.
+                    intermediate_text += event.text
+                    now = time.monotonic()
+                    if (
+                        last_intermediate_edit is None
+                        or (now - last_intermediate_edit) >= STREAMING_EDIT_INTERVAL
+                    ):
+                        try:
+                            rendered = _render_text(intermediate_text)
+                            await adapter.bot.edit_message_text(
+                                chat_id=chat_id,
+                                message_id=placeholder.message_id,
+                                text=rendered[0],
+                                parse_mode="MarkdownV2",
+                            )
+                            last_intermediate_edit = now
+                        except Exception as edit_exc:
+                            log.debug("Intermediate text edit skipped: %s", edit_exc)
     except Exception as exc:
         stream_error = exc
         log.exception("Stream interrupted")

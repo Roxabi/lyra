@@ -245,6 +245,8 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: tool-su
 
     had_tool_events = False
     last_tool_edit: float | None = None
+    last_intermediate_edit: float | None = None
+    intermediate_text: str = ""
     final_text: str | None = None
     is_error_turn: bool = False
     stream_error: Exception | None = None
@@ -266,9 +268,25 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: tool-su
                     )
                     last_tool_edit = now
 
-            elif isinstance(event, TextRenderEvent) and event.is_final:  # pyright: ignore[reportUnnecessaryIsInstance]
-                final_text = event.text
-                is_error_turn = event.is_error
+            elif isinstance(event, TextRenderEvent):  # pyright: ignore[reportUnnecessaryIsInstance]
+                if event.is_final:
+                    final_text = event.text
+                    is_error_turn = event.is_error
+                else:
+                    # Intermediate text (between tool calls) — edit placeholder
+                    # with accumulated text, debounced at STREAMING_EDIT_INTERVAL.
+                    intermediate_text += event.text
+                    now = time.monotonic()
+                    if (
+                        last_intermediate_edit is None
+                        or (now - last_intermediate_edit) >= STREAMING_EDIT_INTERVAL
+                    ):
+                        display = intermediate_text[-DISCORD_MAX_LENGTH:]
+                        await _discord_send_with_retry(
+                            lambda d=display: placeholder.edit(content=d, embed=None),
+                            label="Intermediate text edit",
+                        )
+                        last_intermediate_edit = now
     except Exception as exc:
         stream_error = exc
         log.exception("Stream interrupted")

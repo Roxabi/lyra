@@ -252,7 +252,10 @@ class SimpleAgent(AgentBase):
                 model_cfg,
                 pool._system_prompt or self.config.system_prompt,
             )
-            processor = StreamProcessor(config=self._tool_display_config)
+            processor = StreamProcessor(
+                config=self._tool_display_config,
+                show_intermediate=self.config.show_intermediate,
+            )
             return processor.process(stream_iter)
 
         # Use injected callback only if show_intermediate is enabled

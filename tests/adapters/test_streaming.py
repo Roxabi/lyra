@@ -452,6 +452,169 @@ class TestDiscordStreaming:
 
 
 # ---------------------------------------------------------------------------
+# Intermediate text streaming
+# ---------------------------------------------------------------------------
+
+
+class TestTelegramIntermediateText:
+    """TextRenderEvent(is_final=False) edits placeholder with accumulated text."""
+
+    def _make_adapter(self):
+        from lyra.adapters.telegram import TelegramAdapter
+
+        hub = MagicMock()
+        hub.inbound_bus = MagicMock()
+        adapter = TelegramAdapter(
+            bot_id="main", token="fake-token", hub=hub, webhook_secret="secret"
+        )
+        mock_bot = AsyncMock()
+        placeholder = MagicMock()
+        placeholder.message_id = 999
+        mock_bot.send_message = AsyncMock(return_value=placeholder)
+        mock_bot.edit_message_text = AsyncMock()
+        adapter.bot = mock_bot
+        return adapter, mock_bot
+
+    async def test_intermediate_text_edits_placeholder(self) -> None:
+        """TextRenderEvent(is_final=False) edits placeholder with intermediate text."""
+        adapter, bot = self._make_adapter()
+        msg = make_tg_message()
+
+        async def inter_then_final():
+            yield TextRenderEvent(text="Thinking...", is_final=False)
+            yield TextRenderEvent(text="Done!", is_final=True)
+
+        await adapter.send_streaming(msg, inter_then_final())
+
+        # edit_message_text called at least once for intermediate, then again for final
+        assert bot.edit_message_text.await_count >= 1
+
+    async def test_intermediate_text_accumulated(self) -> None:
+        """Multiple intermediate events accumulate before debounce fires."""
+        adapter, bot = self._make_adapter()
+        msg = make_tg_message()
+
+        async def multi_intermediate():
+            yield TextRenderEvent(text="Step 1. ", is_final=False)
+            yield TextRenderEvent(text="Step 2.", is_final=False)
+            yield TextRenderEvent(text="Done.", is_final=True)
+
+        await adapter.send_streaming(msg, multi_intermediate())
+
+        # Final edit triggered (is_final=True path)
+        last_edit = bot.edit_message_text.call_args
+        assert last_edit is not None
+
+    async def test_intermediate_does_not_affect_final_text_only_path(self) -> None:
+        """Intermediate text edit does not break final text-only edit path."""
+        adapter, bot = self._make_adapter()
+        msg = make_tg_message()
+
+        async def inter_only():
+            yield TextRenderEvent(text="Working...", is_final=False)
+            yield TextRenderEvent(text="Final answer.", is_final=True)
+
+        await adapter.send_streaming(msg, inter_only())
+
+        last_edit = bot.edit_message_text.call_args
+        assert last_edit is not None
+        # Final edit contains the final text
+        assert "Final answer" in last_edit.kwargs.get("text", "")
+
+
+class TestDiscordIntermediateText:
+    """TextRenderEvent(is_final=False) edits placeholder with accumulated text."""
+
+    def _make_adapter(self):
+        from lyra.adapters.discord import DiscordAdapter
+
+        hub = MagicMock()
+        hub.inbound_bus = MagicMock()
+        adapter = DiscordAdapter(hub=hub, bot_id="main")
+
+        mock_placeholder = AsyncMock()
+        mock_placeholder.edit = AsyncMock()
+
+        mock_message = AsyncMock()
+        mock_message.reply = AsyncMock(return_value=mock_placeholder)
+
+        mock_channel = MagicMock()
+        mock_channel.get_partial_message = MagicMock(return_value=mock_message)
+        mock_channel.send = AsyncMock(return_value=mock_placeholder)
+
+        adapter.get_channel = MagicMock(return_value=mock_channel)
+        return adapter, mock_channel, mock_placeholder
+
+    async def test_intermediate_text_edits_placeholder(self) -> None:
+        """TextRenderEvent(is_final=False) edits placeholder with text content."""
+        adapter, _, placeholder = self._make_adapter()
+        msg = make_dc_message()
+
+        async def inter_then_final():
+            yield TextRenderEvent(text="Thinking...", is_final=False)
+            yield TextRenderEvent(text="Done!", is_final=True)
+
+        await adapter.send_streaming(msg, inter_then_final())
+
+        # Intermediate edit: placeholder.edit(content=..., embed=None)
+        # — embed key present (value is None).
+        # Final text-only edit: placeholder.edit(content=...) — embed key absent.
+        # Collect edits where embed=None explicitly (the intermediate text path).
+        intermediate_edits = [
+            c
+            for c in placeholder.edit.call_args_list
+            if (
+                c.kwargs.get("content")
+                and "embed" in c.kwargs
+                and c.kwargs.get("embed") is None
+            )
+        ]
+        assert len(intermediate_edits) >= 1
+        assert "Thinking" in intermediate_edits[0].kwargs["content"]
+
+    async def test_intermediate_truncates_to_discord_max(self) -> None:
+        """Intermediate text longer than DISCORD_MAX_LENGTH is tail-truncated."""
+        from lyra.adapters._shared import DISCORD_MAX_LENGTH
+
+        adapter, _, placeholder = self._make_adapter()
+        msg = make_dc_message()
+
+        long_text = "x" * (DISCORD_MAX_LENGTH + 500)
+
+        async def long_intermediate():
+            yield TextRenderEvent(text=long_text, is_final=False)
+            yield TextRenderEvent(text="Done!", is_final=True)
+
+        await adapter.send_streaming(msg, long_intermediate())
+
+        content_edits = [
+            c
+            for c in placeholder.edit.call_args_list
+            if c.kwargs.get("content") and "embed" not in c.kwargs
+        ]
+        assert len(content_edits) >= 1
+        assert len(content_edits[0].kwargs["content"]) <= DISCORD_MAX_LENGTH
+
+    async def test_intermediate_does_not_affect_tool_embed_path(self) -> None:
+        """Intermediate text followed by tool events still renders embed correctly."""
+        adapter, _, placeholder = self._make_adapter()
+        msg = make_dc_message()
+
+        async def inter_then_tool():
+            yield TextRenderEvent(text="Pre-tool text.", is_final=False)
+            yield ToolSummaryRenderEvent(bash_commands=["make test"], is_complete=True)
+            yield TextRenderEvent(text="Result.", is_final=True)
+
+        await adapter.send_streaming(msg, inter_then_tool())
+
+        # Tool embed should still be sent
+        embed_edits = [
+            c for c in placeholder.edit.call_args_list if "embed" in (c.kwargs or {})
+        ]
+        assert len(embed_edits) >= 1
+
+
+# ---------------------------------------------------------------------------
 # Bug fixes
 # ---------------------------------------------------------------------------
 

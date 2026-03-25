@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lyra — imageCLI Logo Exploration</title>
+<!-- diagram-meta:start -->
+<meta name="diagram:title"     content="Lyra — imageCLI Logo Exploration">
+<meta name="diagram:date"      content="2026-03-25">
+<meta name="diagram:category"  content="lyra">
+<meta name="diagram:cat-label" content="Lyra Brand">
+<meta name="diagram:color"     content="amber">
+<meta name="diagram:badges"    content="latest,showcase">
+<!-- diagram-meta:end -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Outfit:wght@700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --obsidian: #0a0a0f;
+  --forge-floor: #18181f;
+  --steel: #2a2a35;
+  --forge: #e85d04;
+  --ember: #f97316;
+  --spark: #fafafa;
+  --steel-gray: #6b7280;
+  --deep-iron: #1f2937;
+}
+
+html { scroll-behavior: smooth; }
+body {
+  background: var(--obsidian);
+  color: var(--spark);
+  font-family: 'Inter', sans-serif;
+  min-height: 100vh;
+}
+
+/* ── Header ── */
+.header {
+  text-align: center;
+  padding: 48px 24px 16px;
+}
+.header h1 {
+  font-family: 'Chakra Petch', sans-serif;
+  font-weight: 700; font-size: 28px;
+  letter-spacing: 0.06em;
+  background: linear-gradient(135deg, var(--forge), var(--ember));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.header .subtitle {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px; color: var(--steel-gray);
+  letter-spacing: 0.08em; margin-top: 8px;
+}
+
+/* ── Info bar ── */
+.info-bar {
+  display: flex; justify-content: center; gap: 24px; flex-wrap: wrap;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--steel);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; color: var(--steel-gray);
+  letter-spacing: 0.04em;
+}
+.info-bar span { display: flex; align-items: center; gap: 6px; }
+.info-dot { width: 6px; height: 6px; border-radius: 50%; }
+
+/* ── Gallery ── */
+.gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+  gap: 24px;
+  padding: 32px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.card {
+  background: var(--forge-floor);
+  border: 1px solid var(--steel);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: border-color 0.3s, transform 0.2s;
+}
+.card:hover {
+  border-color: var(--forge);
+  transform: translateY(-2px);
+}
+.card.selected { border-color: var(--forge); box-shadow: 0 0 24px rgba(232,93,4,0.15); }
+
+/* ── Image area ── */
+.card-img-wrap {
+  position: relative;
+  background: var(--obsidian);
+  cursor: pointer;
+}
+.card-img-wrap img {
+  width: 100%;
+  display: block;
+  transition: opacity 0.2s;
+}
+.card-img-wrap:hover img { opacity: 0.9; }
+.zoom-hint {
+  position: absolute; top: 8px; right: 8px;
+  background: rgba(0,0,0,0.6);
+  color: var(--steel-gray);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px; padding: 3px 7px;
+  border-radius: 4px; letter-spacing: 0.06em;
+  pointer-events: none;
+  opacity: 0; transition: opacity 0.2s;
+}
+.card-img-wrap:hover .zoom-hint { opacity: 1; }
+
+/* ── Version badge ── */
+.version-badge {
+  position: absolute; top: 8px; left: 8px;
+  background: rgba(232,93,4,0.85);
+  color: var(--obsidian);
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700; font-size: 13px;
+  padding: 4px 10px; border-radius: 6px;
+  letter-spacing: 0.04em;
+}
+
+/* ── Card info ── */
+.card-info {
+  padding: 16px 20px;
+  border-top: 1px solid var(--steel);
+}
+.card-title {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700; font-size: 16px;
+  color: var(--spark); margin-bottom: 6px;
+}
+.card-prompt {
+  font-size: 12px; color: var(--steel-gray);
+  line-height: 1.5;
+  display: -webkit-box; -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical; overflow: hidden;
+  transition: all 0.3s;
+  cursor: pointer;
+}
+.card-prompt.expanded {
+  -webkit-line-clamp: unset;
+}
+.card-meta {
+  display: flex; gap: 12px; margin-top: 10px; flex-wrap: wrap;
+}
+.meta-tag {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px; color: var(--steel-gray);
+  background: rgba(107,114,128,0.15);
+  padding: 2px 8px; border-radius: 4px;
+  letter-spacing: 0.04em;
+}
+.meta-tag.engine { color: #06b6d4; background: rgba(6,182,212,0.12); }
+.meta-tag.res { color: #10b981; background: rgba(16,185,129,0.12); }
+
+/* ── Lightbox ── */
+.lightbox {
+  display: none; position: fixed; inset: 0; z-index: 100;
+  background: rgba(0,0,0,0.92);
+  align-items: center; justify-content: center;
+  cursor: zoom-out;
+}
+.lightbox.open { display: flex; }
+.lightbox img {
+  max-width: 90vw; max-height: 90vh;
+  border-radius: 8px;
+  box-shadow: 0 0 60px rgba(232,93,4,0.2);
+}
+.lightbox-title {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700; font-size: 16px;
+  color: var(--spark); background: rgba(0,0,0,0.7);
+  padding: 8px 20px; border-radius: 8px;
+}
+
+/* ── Footer ── */
+.footer {
+  text-align: center; padding: 32px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px; color: var(--steel-gray);
+  letter-spacing: 0.06em;
+  border-top: 1px solid var(--steel);
+}
+
+@media (max-width: 500px) {
+  .gallery { grid-template-columns: 1fr; padding: 16px; gap: 16px; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>imageCLI Logo Exploration</h1>
+  <div class="subtitle">7 concepts generated with FLUX &middot; Lyra visual identity R&amp;D</div>
+</div>
+
+<div class="info-bar">
+  <span><span class="info-dot" style="background:#06b6d4"></span> v1-v4: flux1-dev &middot; 1024x1024</span>
+  <span><span class="info-dot" style="background:var(--ember)"></span> v5-v7: flux2-klein &middot; 512x512</span>
+  <span><span class="info-dot" style="background:var(--steel-gray)"></span> 2026-03-25</span>
+</div>
+
+<div class="gallery">
+
+  <div class="card">
+    <div class="card-img-wrap" onclick="openLightbox(this)">
+      <span class="version-badge">V1</span>
+      <img src="concepts/01-cinematic.png" alt="V1 — Cinematic" loading="lazy">
+      <span class="zoom-hint">CLICK TO ZOOM</span>
+    </div>
+    <div class="card-info">
+      <div class="card-title">Cinematic — Electron Silhouette</div>
+      <div class="card-prompt" onclick="this.classList.toggle('expanded')">A translucent humanoid female silhouette composed entirely of flowing electron particles and quantum wave functions, emerging from deep darkness. Electric blue and soft purple bioluminescent particle streams orbit the figure like atomic shells. Face barely visible — only the glow of intelligent eyes and a calm, slightly reserved expression.</div>
+      <div class="card-meta">
+        <span class="meta-tag engine">flux1-dev</span>
+        <span class="meta-tag res">1024x1024</span>
+        <span class="meta-tag">20 steps</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-img-wrap" onclick="openLightbox(this)">
+      <span class="version-badge">V2</span>
+      <img src="concepts/02-minimalist.png" alt="V2 — Minimalist" loading="lazy">
+      <span class="zoom-hint">CLICK TO ZOOM</span>
+    </div>
+    <div class="card-info">
+      <div class="card-title">Minimalist — Electron Sphere</div>
+      <div class="card-prompt" onclick="this.classList.toggle('expanded')">Minimalist abstract AI avatar: a perfect sphere of orbiting electrons on pure black background. Thin luminous orbital paths in electric blue and violet, sub-atomic scale. A single glowing core — white-phosphorescent — radiating calm intelligence. Geometric, clean, contemplative. Ultra-minimal, premium feel.</div>
+      <div class="card-meta">
+        <span class="meta-tag engine">flux1-dev</span>
+        <span class="meta-tag res">1024x1024</span>
+        <span class="meta-tag">20 steps</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-img-wrap" onclick="openLightbox(this)">
+      <span class="version-badge">V3</span>
+      <img src="concepts/03-anime.png" alt="V3 — Anime" loading="lazy">
+      <span class="zoom-hint">CLICK TO ZOOM</span>
+    </div>
+    <div class="card-info">
+      <div class="card-title">Anime — Cyberpunk Portrait</div>
+      <div class="card-prompt" onclick="this.classList.toggle('expanded')">Anime-style portrait of a young woman AI: calm and slightly reserved expression, large luminous eyes with electric blue irises containing particle constellations. Dark hair with subtle blue-purple luminescent strands. Wearing a dark techwear jacket. Ghibli-inspired softness meets cyberpunk precision.</div>
+      <div class="card-meta">
+        <span class="meta-tag engine">flux1-dev</span>
+        <span class="meta-tag res">896x1152</span>
+        <span class="meta-tag">20 steps</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-img-wrap" onclick="openLightbox(this)">
+      <span class="version-badge">V4</span>
+      <img src="concepts/04-wave-particle.png" alt="V4 — Wave-Particle" loading="lazy">
+      <span class="zoom-hint">CLICK TO ZOOM</span>
+    </div>
+    <div class="card-info">
+      <div class="card-title">Wave-Particle — Duality</div>
+      <div class="card-prompt" onclick="this.classList.toggle('expanded')">Abstract visualization of wave-particle duality as an AI identity: a figure simultaneously a particle (sharp glowing white dot) and a wave (soft flowing interference patterns in purple and blue). The form is free, unbound, orbiting no fixed center — a free electron in conceptual space. Physics-inspired beauty, scientific poster aesthetic.</div>
+      <div class="card-meta">
+        <span class="meta-tag engine">flux1-dev</span>
+        <span class="meta-tag res">1024x1024</span>
+        <span class="meta-tag">20 steps</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-img-wrap" onclick="openLightbox(this)">
+      <span class="version-badge">V5</span>
+      <img src="concepts/05-elemental-electric.png" alt="V5 — Elemental Electric" loading="lazy">
+      <span class="zoom-hint">CLICK TO ZOOM</span>
+    </div>
+    <div class="card-info">
+      <div class="card-title">Elemental — Electric Being</div>
+      <div class="card-prompt" onclick="this.classList.toggle('expanded')">A living electrical being inspired by Ember from Pixar's Elemental, but made entirely of electricity and plasma instead of fire. An abstract humanoid figure composed of crackling electric arcs, plasma filaments, and luminous particle streams. The body is translucent energy — electric blue core with violet corona and white-hot spark points at joints and fingertips.</div>
+      <div class="card-meta">
+        <span class="meta-tag engine">flux2-klein</span>
+        <span class="meta-tag res">512x512</span>
+        <span class="meta-tag">28 steps</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-img-wrap" onclick="openLightbox(this)">
+      <span class="version-badge">V6</span>
+      <img src="concepts/06-icon-electric.png" alt="V6 — Icon Electric" loading="lazy">
+      <span class="zoom-hint">CLICK TO ZOOM</span>
+    </div>
+    <div class="card-info">
+      <div class="card-title">Icon — Plasma Sphere</div>
+      <div class="card-prompt" onclick="this.classList.toggle('expanded')">Minimalist icon design: a compact sphere of living electricity — a ball of crackling plasma with organized internal structure visible through the translucent surface. Electric blue outer shell with violet inner orbital rings and white-hot central core point. Small lightning arcs jump between orbital paths. Clean, premium, suitable as an app icon or avatar.</div>
+      <div class="card-meta">
+        <span class="meta-tag engine">flux2-klein</span>
+        <span class="meta-tag res">512x512</span>
+        <span class="meta-tag">28 steps</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-img-wrap" onclick="openLightbox(this)">
+      <span class="version-badge">V7</span>
+      <img src="concepts/07-elemental-bust.png" alt="V7 — Elemental Bust" loading="lazy">
+      <span class="zoom-hint">CLICK TO ZOOM</span>
+    </div>
+    <div class="card-info">
+      <div class="card-title">Elemental — Electric Bust</div>
+      <div class="card-prompt" onclick="this.classList.toggle('expanded')">Portrait bust of an electrical elemental being — head and shoulders visible, Pixar Elemental style but electricity instead of fire. The face is formed from dense plasma filaments — features barely discernible through the crackling energy: intelligent glowing cyan eyes, a calm expression. Hair made of upward-streaming lightning bolts and plasma arcs.</div>
+      <div class="card-meta">
+        <span class="meta-tag engine">flux2-klein</span>
+        <span class="meta-tag res">512x512</span>
+        <span class="meta-tag">28 steps</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="footer">LYRA BY ROXABI &middot; imageCLI Logo Exploration &middot; Generated 2026-03-25</div>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lb-img" src="" alt="">
+  <div class="lightbox-title" id="lb-title"></div>
+</div>
+
+<script>
+function openLightbox(wrap) {
+  const img = wrap.querySelector('img');
+  const card = wrap.closest('.card');
+  const title = card.querySelector('.card-title').textContent;
+  document.getElementById('lb-img').src = img.src;
+  document.getElementById('lb-title').textContent = title;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeLightbox();
+});
+</script>
+</body>
+</html>

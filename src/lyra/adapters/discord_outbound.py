@@ -173,31 +173,11 @@ async def send(  # noqa: C901 — attachment loop adds branches
 
 def _build_tool_embed(event: ToolSummaryRenderEvent) -> "discord.Embed":
     """Build a Discord embed from a ToolSummaryRenderEvent."""
+    from lyra.core.tool_recap_format import format_tool_lines
+
     title = "🔧 Done ✅" if event.is_complete else "🔧 Working…"
     color = discord.Color.green() if event.is_complete else discord.Color.blue()
-    lines: list[str] = []
-    if event.files:
-        grouped = len(event.files) >= 3
-        if grouped:
-            total = sum(f.count for f in event.files.values())
-            lines.append(f"✏️ {len(event.files)} files · {total} edits")
-        else:
-            for summary in event.files.values():
-                label = (
-                    ", ".join(summary.edits) if summary.edits else f"×{summary.count}"
-                )
-                lines.append(f"✏️ `{summary.path}` ({label})")
-    for cmd in event.bash_commands:
-        lines.append(f"💻 `{cmd}`")
-    for url in event.web_fetches:
-        lines.append(f"🌐 {url}")
-    for agent in event.agent_calls:
-        lines.append(f"🤖 {agent}")
-    sc = event.silent_counts
-    silent = sc.reads + sc.greps + sc.globs
-    if silent:
-        lines.append(f"🔍 {silent} silent")
-    description = "\n".join(lines) or "\u200b"  # zero-width space for empty embed
+    description = "\n".join(format_tool_lines(event)) or "\u200b"
     return discord.Embed(title=title, description=description, color=color)
 
 

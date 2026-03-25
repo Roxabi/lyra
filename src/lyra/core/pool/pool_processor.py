@@ -291,15 +291,20 @@ class PoolProcessor:
             # Save original ref before wrapping — session_id lives on the original.
             _result_iter_for_sid = result
             _content_parts: list[str] = []
+            _cfg = getattr(agent, "config", None)
+            _emit_tool_recap = _cfg.show_tool_recap if _cfg is not None else True
 
             async def _capture() -> collections.abc.AsyncGenerator[RenderEvent, None]:
                 # S4: _result_iter_for_sid yields RenderEvent from StreamProcessor.
                 # Collect TextRenderEvent.text for turn logging; forward all events.
+                # When show_tool_recap is False, ToolSummaryRenderEvent is filtered out.
                 try:
                     async for event in _result_iter_for_sid:
                         if isinstance(event, TextRenderEvent):
                             _content_parts.append(event.text)
-                        # ToolSummaryRenderEvent: forwarded, not logged as text
+                        elif not _emit_tool_recap:
+                            # ToolSummaryRenderEvent — suppress when recap is disabled
+                            continue
                         yield event
                 finally:
                     _aclose = getattr(_result_iter_for_sid, "aclose", None)

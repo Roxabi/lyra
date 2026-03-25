@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lyra — Text Animation Showcase</title>
+<!-- diagram-meta:start -->
+<meta name="diagram:title"     content="Lyra — Text Animation Showcase">
+<meta name="diagram:date"      content="2026-03-24">
+<meta name="diagram:category"  content="guide">
+<meta name="diagram:cat-label" content="Reference">
+<meta name="diagram:color"     content="amber">
+<meta name="diagram:badges"    content="showcase">
+<!-- diagram-meta:end -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Outfit:wght@700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0a0a0f; --bg2: #101018; --surface: #18181f; --surface2: #1f2937;
+  --border: rgba(255,255,255,0.07); --borderbr: rgba(232,93,4,0.35);
+  --text: #fafafa; --textdim: #6b7280; --accent: #e85d04; --accentbr: #f97316;
+  --accentdim: rgba(232,93,4,0.10);
+  --font: 'Inter', system-ui, sans-serif;
+  --font-head: 'Outfit', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-display: 'Chakra Petch', system-ui, sans-serif;
+}
+[data-theme="light"] {
+  --bg: #fafaf9; --bg2: #f4f4f0; --surface: #ffffff; --surface2: #f1f0ec;
+  --border: rgba(0,0,0,0.08); --borderbr: rgba(232,93,4,0.3);
+  --text: #1c1917; --textdim: #57534e; --accent: #c2410c; --accentbr: #e85d04;
+  --accentdim: rgba(194,65,12,0.08);
+}
+body {
+  font-family: var(--font); background: var(--bg); color: var(--text);
+  line-height: 1.6; transition: background .2s, color .2s;
+}
+.nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100; height: 56px;
+  background: rgba(10,10,15,0.88); backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; padding: 0 20px; gap: 12px;
+}
+[data-theme="light"] .nav { background: rgba(250,250,249,0.92); }
+.nav-title {
+  font-family: var(--font-head); font-size: 16px; font-weight: 800; color: var(--accentbr);
+}
+[data-theme="light"] .nav-title { color: var(--accent); }
+.nav-sep { flex: 1; }
+.theme-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--surface); cursor: pointer; font-size: 16px; transition: all .2s;
+}
+.theme-btn:hover { border-color: var(--borderbr); background: var(--accentdim); }
+
+.page { padding: 80px 24px 64px; max-width: 900px; margin: 0 auto; }
+.page-title {
+  font-family: var(--font-head); font-size: 28px; font-weight: 800;
+  color: var(--text); margin-bottom: 6px;
+}
+.page-sub { font-size: 14px; color: var(--textdim); margin-bottom: 32px; }
+
+/* ── Demo cards ──────────────────────────────── */
+.demos { display: flex; flex-direction: column; gap: 20px; }
+.demo-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  overflow: hidden; transition: border-color .2s;
+}
+.demo-card:hover { border-color: var(--borderbr); }
+.demo-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px; border-bottom: 1px solid var(--border);
+}
+.demo-name {
+  font-family: var(--font-head); font-size: 15px; font-weight: 700; color: var(--text);
+}
+.demo-tag {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  color: var(--accentbr); background: var(--accentdim); border: 1px solid var(--borderbr);
+  padding: 2px 8px; border-radius: 100px; letter-spacing: .06em;
+}
+[data-theme="light"] .demo-tag { color: var(--accent); }
+.demo-stage {
+  padding: 40px 24px; display: flex; flex-direction: column; align-items: flex-start; gap: 16px;
+  min-height: 140px;
+}
+.demo-line1 {
+  font-family: var(--font-mono); font-size: 13px; font-weight: 500;
+  color: var(--accentbr); letter-spacing: 0.06em;
+}
+[data-theme="light"] .demo-line1 { color: var(--accent); }
+.demo-btns { display: flex; gap: 10px; }
+.demo-btn-p {
+  display: inline-flex; align-items: center; padding: 10px 24px; border-radius: 8px;
+  font-family: var(--font); font-size: 14px; font-weight: 600;
+  background: var(--accent); color: #fff; border: 1px solid var(--accent);
+  text-decoration: none; cursor: default;
+}
+.demo-btn-s {
+  display: inline-flex; align-items: center; padding: 10px 24px; border-radius: 8px;
+  font-family: var(--font); font-size: 14px; font-weight: 600;
+  background: transparent; color: var(--textdim); border: 1px solid var(--border);
+  text-decoration: none; cursor: default;
+}
+.replay {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+  color: var(--textdim); background: var(--surface2); border: 1px solid var(--border);
+  padding: 5px 12px; border-radius: 6px; cursor: pointer; letter-spacing: .04em;
+  transition: all .15s;
+}
+.replay:hover { color: var(--text); border-color: var(--borderbr); }
+
+/* ── Animation styles ────────────────────────── */
+
+/* 1. Fade */
+.anim-fade .demo-line1, .anim-fade .demo-btns {
+  opacity: 0; animation: a-fade .4s ease-out forwards;
+}
+@keyframes a-fade { to { opacity: 1; } }
+
+/* 2. Blur unfade */
+.anim-blur .demo-line1, .anim-blur .demo-btns {
+  opacity: 0; filter: blur(8px); animation: a-blur .5s ease-out forwards;
+}
+@keyframes a-blur { to { opacity: 1; filter: blur(0); } }
+
+/* 3. Flicker */
+.anim-flicker .demo-line1, .anim-flicker .demo-btns {
+  opacity: 0; animation: a-flicker .6s step-end forwards;
+}
+@keyframes a-flicker {
+  0%   { opacity: 0; }
+  10%  { opacity: 0.7; }
+  15%  { opacity: 0; }
+  25%  { opacity: 0.9; }
+  30%  { opacity: 0.1; }
+  40%  { opacity: 0.8; }
+  45%  { opacity: 0; }
+  55%  { opacity: 1; }
+  60%  { opacity: 0.4; }
+  70%  { opacity: 1; }
+  75%  { opacity: 0.6; }
+  85%  { opacity: 1; }
+  100% { opacity: 1; }
+}
+
+/* 4. Scale reveal */
+.anim-scale .demo-line1, .anim-scale .demo-btns {
+  opacity: 0; transform: scale(0.85); animation: a-scale .4s cubic-bezier(0.22,1,0.36,1) forwards;
+}
+@keyframes a-scale { to { opacity: 1; transform: scale(1); } }
+
+/* 5. Clip reveal (left wipe) */
+.anim-clip .demo-line1, .anim-clip .demo-btns {
+  clip-path: inset(0 100% 0 0); animation: a-clip .5s cubic-bezier(0.22,1,0.36,1) forwards;
+}
+@keyframes a-clip { to { clip-path: inset(0 0 0 0); } }
+
+/* 6. Letter spacing */
+.anim-spacing .demo-line1, .anim-spacing .demo-btns {
+  opacity: 0; letter-spacing: 0.5em; animation: a-spacing .5s cubic-bezier(0.22,1,0.36,1) forwards;
+}
+@keyframes a-spacing { to { opacity: 1; letter-spacing: 0.06em; } }
+
+/* 7. Typewriter */
+.anim-typewriter .demo-line1 {
+  overflow: hidden; white-space: nowrap; border-right: 2px solid var(--accentbr);
+  width: 0; animation: a-type 1.2s steps(35) forwards, a-blink .6s step-end 3 forwards;
+}
+.anim-typewriter .demo-btns {
+  opacity: 0; animation: a-fade .4s ease-out 1.3s forwards;
+}
+@keyframes a-type { to { width: 100%; } }
+@keyframes a-blink {
+  50% { border-color: transparent; }
+}
+
+/* 8. Glitch decode */
+.anim-glitch .demo-line1, .anim-glitch .demo-btns {
+  opacity: 0;
+}
+
+/* Stagger buttons slightly after text */
+.demo-stage .demo-btns { animation-delay: 0.1s; }
+.anim-typewriter .demo-btns { animation-delay: 1.3s; }
+
+@media (max-width: 640px) {
+  .demo-stage { padding: 28px 16px; }
+  .demo-btns { flex-direction: column; }
+}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <span class="nav-title">Lyra</span>
+  <span style="font-family:var(--font-mono);font-size:11px;color:var(--textdim);">Text Animation Showcase</span>
+  <span class="nav-sep"></span>
+  <button class="theme-btn" id="themeBtn" aria-label="Toggle theme">&#x1F319;</button>
+</nav>
+
+<div class="page">
+  <div class="page-title">Text Animations</div>
+  <div class="page-sub">8 non-movement reveal effects for subtitle + CTAs. Click replay to see each one.</div>
+
+  <div class="demos">
+
+    <div class="demo-card" data-anim="fade">
+      <div class="demo-header">
+        <span class="demo-name">1. Fade</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span class="demo-tag">CSS only</span>
+          <button class="replay" data-replay="fade">replay</button>
+        </div>
+      </div>
+      <div class="demo-stage anim-fade">
+        <div class="demo-line1">Lyra — open source · self-hosted</div>
+        <div class="demo-btns"><span class="demo-btn-p">Get Started</span><span class="demo-btn-s">View on GitHub →</span></div>
+      </div>
+    </div>
+
+    <div class="demo-card" data-anim="blur">
+      <div class="demo-header">
+        <span class="demo-name">2. Blur Unfade</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span class="demo-tag">CSS only</span>
+          <button class="replay" data-replay="blur">replay</button>
+        </div>
+      </div>
+      <div class="demo-stage anim-blur">
+        <div class="demo-line1">Lyra — open source · self-hosted</div>
+        <div class="demo-btns"><span class="demo-btn-p">Get Started</span><span class="demo-btn-s">View on GitHub →</span></div>
+      </div>
+    </div>
+
+    <div class="demo-card" data-anim="flicker">
+      <div class="demo-header">
+        <span class="demo-name">3. Flicker</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span class="demo-tag">CSS only</span>
+          <button class="replay" data-replay="flicker">replay</button>
+        </div>
+      </div>
+      <div class="demo-stage anim-flicker">
+        <div class="demo-line1">Lyra — open source · self-hosted</div>
+        <div class="demo-btns"><span class="demo-btn-p">Get Started</span><span class="demo-btn-s">View on GitHub →</span></div>
+      </div>
+    </div>
+
+    <div class="demo-card" data-anim="scale">
+      <div class="demo-header">
+        <span class="demo-name">4. Scale Reveal</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span class="demo-tag">CSS only</span>
+          <button class="replay" data-replay="scale">replay</button>
+        </div>
+      </div>
+      <div class="demo-stage anim-scale">
+        <div class="demo-line1">Lyra — open source · self-hosted</div>
+        <div class="demo-btns"><span class="demo-btn-p">Get Started</span><span class="demo-btn-s">View on GitHub →</span></div>
+      </div>
+    </div>
+
+    <div class="demo-card" data-anim="clip">
+      <div class="demo-header">
+        <span class="demo-name">5. Clip Reveal (Left Wipe)</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span class="demo-tag">CSS only</span>
+          <button class="replay" data-replay="clip">replay</button>
+        </div>
+      </div>
+      <div class="demo-stage anim-clip">
+        <div class="demo-line1">Lyra — open source · self-hosted</div>
+        <div class="demo-btns"><span class="demo-btn-p">Get Started</span><span class="demo-btn-s">View on GitHub →</span></div>
+      </div>
+    </div>
+
+    <div class="demo-card" data-anim="spacing">
+      <div class="demo-header">
+        <span class="demo-name">6. Letter Spacing</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span class="demo-tag">CSS only</span>
+          <button class="replay" data-replay="spacing">replay</button>
+        </div>
+      </div>
+      <div class="demo-stage anim-spacing">
+        <div class="demo-line1">Lyra — open source · self-hosted</div>
+        <div class="demo-btns"><span class="demo-btn-p">Get Started</span><span class="demo-btn-s">View on GitHub →</span></div>
+      </div>
+    </div>
+
+    <div class="demo-card" data-anim="typewriter">
+      <div class="demo-header">
+        <span class="demo-name">7. Typewriter</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span class="demo-tag">CSS only</span>
+          <button class="replay" data-replay="typewriter">replay</button>
+        </div>
+      </div>
+      <div class="demo-stage anim-typewriter">
+        <div class="demo-line1">Lyra — open source · self-hosted</div>
+        <div class="demo-btns"><span class="demo-btn-p">Get Started</span><span class="demo-btn-s">View on GitHub →</span></div>
+      </div>
+    </div>
+
+    <div class="demo-card" data-anim="glitch">
+      <div class="demo-header">
+        <span class="demo-name">8. Glitch Decode</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span class="demo-tag">JS driven</span>
+          <button class="replay" data-replay="glitch">replay</button>
+        </div>
+      </div>
+      <div class="demo-stage anim-glitch">
+        <div class="demo-line1" data-glitch-demo="Lyra — open source · self-hosted">Lyra — open source · self-hosted</div>
+        <div class="demo-btns"><span class="demo-btn-p">Get Started</span><span class="demo-btn-s">View on GitHub →</span></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// Theme toggle
+var root = document.documentElement;
+var btn = document.getElementById('themeBtn');
+var saved = localStorage.getItem('lyra-anim-showcase-theme') || 'dark';
+root.setAttribute('data-theme', saved);
+btn.textContent = saved === 'dark' ? '\u{1F319}' : '\u{2600}\u{FE0F}';
+btn.addEventListener('click', function() {
+  var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  root.setAttribute('data-theme', next);
+  btn.textContent = next === 'dark' ? '\u{1F319}' : '\u{2600}\u{FE0F}';
+  localStorage.setItem('lyra-anim-showcase-theme', next);
+});
+
+// Glitch decode
+var GLITCH_CHARS = "!@#$%^&*()_+-=[]{}|;:',.<>?/~`0123456789";
+function runGlitch(el) {
+  var target = el.getAttribute('data-glitch-demo');
+  if (!target) return;
+  var len = target.length;
+  var startTime = null;
+  el.textContent = target.split('').map(function(c) {
+    return c === ' ' ? ' ' : GLITCH_CHARS[Math.floor(Math.random() * GLITCH_CHARS.length)];
+  }).join('');
+  el.style.opacity = '1';
+  function tick(ts) {
+    if (!startTime) startTime = ts;
+    var progress = Math.min((ts - startTime) / 1200, 1);
+    var chars = [];
+    for (var i = 0; i < len; i++) {
+      var ch = target[i];
+      if (ch === ' ') { chars.push(' '); continue; }
+      var cp = Math.max(0, Math.min(1, (progress - i/len) / (3/len)));
+      if (cp >= 1) chars.push(ch);
+      else if (Math.random() < 0.8 * (1 - cp)) chars.push(GLITCH_CHARS[Math.floor(Math.random() * GLITCH_CHARS.length)]);
+      else chars.push(ch);
+    }
+    el.textContent = chars.join('');
+    if (progress < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+// Initial glitch run
+var glitchEl = document.querySelector('[data-glitch-demo]');
+if (glitchEl) {
+  var btnsEl = glitchEl.closest('.demo-stage').querySelector('.demo-btns');
+  runGlitch(glitchEl);
+  btnsEl.style.opacity = '0';
+  setTimeout(function() { btnsEl.style.opacity = '1'; btnsEl.style.transition = 'opacity .3s'; }, 1300);
+}
+
+// Replay buttons
+document.querySelectorAll('.replay').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    var animType = btn.getAttribute('data-replay');
+    var card = btn.closest('.demo-card');
+    var stage = card.querySelector('.demo-stage');
+    var cls = 'anim-' + animType;
+
+    // Reset animation
+    stage.classList.remove(cls);
+    stage.offsetHeight; // force reflow
+    stage.classList.add(cls);
+
+    // Special handling for glitch
+    if (animType === 'glitch') {
+      var gel = stage.querySelector('[data-glitch-demo]');
+      var gbtns = stage.querySelector('.demo-btns');
+      gbtns.style.opacity = '0';
+      gbtns.style.transition = 'none';
+      runGlitch(gel);
+      setTimeout(function() { gbtns.style.transition = 'opacity .3s'; gbtns.style.opacity = '1'; }, 1300);
+    }
+  });
+});
+</script>
+
+</body>
+</html>

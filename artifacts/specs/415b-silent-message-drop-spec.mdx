@@ -1,0 +1,249 @@
+---
+title: "Second message silently dropped — 0ms, no response"
+issue: 415
+sub: b
+tier: F-lite
+status: draft
+---
+
+## Context
+
+Sub-bug (b) of #415. After 415a's fresh spawn creates a new in-memory session
+(with a new `pool.session_id`), the next user message is silently dropped: the
+pipeline completes in 0ms with no response dispatched and no error logged.
+
+This is a direct consequence of 415a: the fresh spawn updates `pool.session_id`
+to the new CLI session UUID, which then gets persisted to TurnStore via
+`PoolObserver.log_turn_async()`. When the second message arrives,
+`_resolve_context()` Path 3 sees `last_sid == pool.session_id` and short-circuits,
+skipping all session work. The message is then submitted to a pool whose CLI
+subprocess is in a broken state (dead or not accepting input), resulting in a 0ms
+no-op completion.
+
+## Goal
+
+Ensure that no message is ever silently dropped: if a pool's CLI process is dead
+or produces no output, the user receives an error response and the failure is
+logged.
+
+## Users
+
+All Lyra users on CLI-backed agents (SimpleAgent + ClaudeCliDriver). Affects
+both Telegram and Discord adapters. The bug manifests as the bot going silent
+after the first message in a new session -- the second message gets no reply at
+all, with no indication of failure.
+
+## Expected Behavior
+
+When a message is submitted to a pool whose session file does not exist on disk:
+
+1. `_resolve_context()` Path 3 should **not** short-circuit just because
+   `last_sid == pool.session_id`. The guard must also verify the session is
+   actually viable (CLI process alive, session file on disk).
+
+2. If `_process_one` / `_guarded_process_one` completes with empty content or
+   in suspiciously fast time (<100ms for a CLI round-trip), it should log a
+   WARNING and the user should receive an error response rather than silence.
+
+## Current Behavior
+
+Trace through the exact code path on the second message:
+
+1. **Message arrives** at `MessagePipeline.process()` (line 103,
+   `message_pipeline.py`).
+
+2. **`_submit_to_pool()`** (line 380) is called. `configure_pool()` wires
+   callbacks (line 409-410). Then `_resolve_context()` is called (line 412).
+
+3. **`_resolve_context()` Path 3** (line 355-376, `message_pipeline.py`):
+   - `pool.is_idle` is True (previous task finished).
+   - `self._hub._turn_store` is not None.
+   - `get_last_session(pool_id)` returns the session UUID that was logged during
+     the first message's turn (via `PoolObserver.log_turn_async()`).
+   - **Line 362**: `last_sid == pool.session_id` evaluates to **True** because
+     `pool.session_id` was updated to the CLI session UUID during the first
+     message's `_process_one()` (at `pool_processor.py:370-371`).
+   - **Line 363-368**: The guard logs "already on session" at DEBUG level and
+     returns `ResumeStatus.SKIPPED`. No resume is attempted. No session file
+     check is performed.
+
+4. **`_submit_to_pool()` returns** `PipelineResult(action=SUBMIT_TO_POOL, pool=pool)`.
+
+5. **`pool.submit(msg)`** is called (from Hub). The message enters the inbox.
+   `PoolProcessor.process_loop()` starts.
+
+6. **`_guarded_process_one()`** (line 147, `pool_processor.py`): The message is
+   passed to `_process_one()`, which calls `agent.process()` →
+   `SimpleAgent.process()` → `self._provider.complete()` or `.stream()`.
+
+7. **`CliPool.send()` / `send_streaming()`** (lines 103-173 / 175-237,
+   `cli_pool.py`): The entry check at line 124/190 finds `entry` is not None.
+   But `entry.is_alive()` returns False (the process died or was reaped). So a
+   fresh spawn is attempted -- **but the spawn does not use `--resume`** because
+   `_resume_session_ids` was not populated (Path 3 skipped the resume). The new
+   process starts a fresh session, and the original message's context is lost.
+
+   Alternatively, if the process is alive but its stdin pipe is broken, the
+   `send_and_read()` call returns `CliResult(error="Process stdin is None")` or
+   `CliResult(error="Timeout writing to subprocess stdin")`, which
+   `SimpleAgent.process()` translates to a generic error Response at line 292.
+   This would show an error to the user -- but the 0ms timing suggests the
+   process was already dead and the error path was not hit cleanly.
+
+   The 0ms completion most likely means the process died, `send()` returned an
+   error `CliResult` immediately, and `SimpleAgent.process()` returned a generic
+   error `Response` with empty content -- which `_process_one` dispatched as a
+   silent empty message that the adapter discarded.
+
+8. **`_guarded_process_one()`** logs "agent completed: duration_ms=0" at INFO
+   level (line 165-170, `pool_processor.py`). No warning is emitted despite the
+   suspiciously fast completion and absent response content.
+
+## Root Cause
+
+Two independent defects combine to produce silent message loss:
+
+### 1. Path 3 guard short-circuit (message_pipeline.py:362-368)
+
+The guard at line 362:
+
+```python
+elif last_sid == pool.session_id:
+    log.debug(
+        "last-session-resume: pool %r already on session %r",
+        pool_id,
+        last_sid,
+    )
+    return ResumeStatus.SKIPPED
+```
+
+This assumes that if TurnStore's last session matches `pool.session_id`, the pool
+is healthy and on the correct session. But this is false when:
+
+- The session file has been pruned from disk (Claude CLI garbage collection).
+- The CLI subprocess that held the session has died.
+- The session was created by a fresh spawn (415a) but the process has since
+  exited.
+
+The guard checks **identity** (same UUID) but not **viability** (process alive,
+session file exists).
+
+### 2. No safety net for 0ms / empty responses (pool_processor.py:147-210)
+
+`_guarded_process_one()` logs the completion at INFO level regardless of whether
+the response contained any content or completed suspiciously fast. There is no
+check for:
+
+- Response with empty/no content dispatched to the user.
+- Completion in <100ms (a real CLI round-trip takes seconds minimum).
+- The combination of both, which almost certainly indicates a broken backend.
+
+`SimpleAgent.process()` does log a warning for empty replies at line 302-307
+(`simple_agent.py`), but it still returns the empty `Response`. The empty
+response is dispatched to the adapter, which silently discards it (most adapters
+skip empty messages).
+
+## Proposed Solution
+
+### Fix 1: Path 3 guard -- add viability check
+
+**Approach: Add a session file existence check before short-circuiting.**
+
+When `last_sid == pool.session_id`, verify the session is viable before skipping.
+The cheapest viable check is `_session_file_exists()`, which is already
+implemented in `CliPoolWorkerMixin` (line 170-172, `cli_pool_worker.py`). The
+pipeline does not have direct access to `CliPool`, but it does have access to the
+agent via `self._hub.agent_registry`.
+
+Recommended implementation:
+
+```python
+elif last_sid == pool.session_id:
+    # Session IDs match — but verify the session is still viable.
+    # If the session file was pruned or the process died, fall through
+    # to let the pool start fresh rather than silently dropping.
+    _agent = self._hub.agent_registry.get(pool.agent_name)
+    _alive = (
+        _agent.is_backend_alive(pool.pool_id)
+        if _agent is not None
+        else True  # assume alive for non-CLI agents
+    )
+    if _alive:
+        log.debug(
+            "last-session-resume: pool %r already on session %r",
+            pool_id,
+            last_sid,
+        )
+        return ResumeStatus.SKIPPED
+    log.warning(
+        "last-session-resume: pool %r session %r matches but backend is dead"
+        " — skipping guard (will start fresh)",
+        pool_id,
+        last_sid,
+    )
+    # Fall through: do not return SKIPPED. The pool will start fresh
+    # on next send() because CliPool._spawn() is called when entry
+    # is None or dead.
+```
+
+This uses `AgentBase.is_backend_alive()` (line 229-235, `agent.py`) which is
+already implemented and delegates to `CliPool.is_alive()`. No new methods
+needed.
+
+**Why not remove the guard entirely?** The guard serves a real purpose: it
+prevents unnecessary `resume_session()` calls (which kill and respawn the CLI
+process) when the pool is already on the correct session. Removing it would cause
+a process restart on every message.
+
+**Why not check session file existence?** The `_session_file_exists()` method
+lives on `CliPoolWorkerMixin`, not accessible from the pipeline. We would need to
+thread it through `AgentBase` or `Pool`. `is_backend_alive()` is already
+available and is the more relevant check -- a dead backend is the actual failure
+mode, not a missing session file.
+
+### Fix 2: Empty/fast response safety net
+
+**Approach: Add a warning + user notification in `_guarded_process_one()`.**
+
+After `_process_one()` completes successfully (line 164, `pool_processor.py`),
+check duration and whether a meaningful response was dispatched:
+
+```python
+_duration_ms = (time.monotonic() - _start) * 1000
+if _duration_ms < 100:
+    log.warning(
+        "agent completed suspiciously fast: agent=%s pool=%s duration_ms=%.0f"
+        " — possible dead backend or empty response",
+        pool.agent_name,
+        pool.pool_id,
+        _duration_ms,
+    )
+```
+
+This is a **diagnostic logging** improvement only. The actual fix for the silent
+drop is Fix 1 (preventing the broken state in the first place). The fast
+completion warning ensures that if any other code path produces a similar
+failure mode in the future, it will be visible in logs.
+
+No retry or user notification is added here because:
+- If Fix 1 is in place, this path should not be reachable for the 415b scenario.
+- Retrying at this layer risks infinite loops if the backend is persistently dead.
+- The existing error handling in `SimpleAgent.process()` (line 272-295) already
+  produces user-facing error messages for `CliResult.error` cases. The problem is
+  that those cases were not being reached.
+
+## Files to Modify
+
+| File | Change |
+|------|--------|
+| `src/lyra/core/hub/message_pipeline.py` | Path 3 guard: add `is_backend_alive()` check before short-circuit (line 362) |
+| `src/lyra/core/pool/pool_processor.py` | Add fast-completion warning after line 170 in `_guarded_process_one()` |
+
+## Success Criteria
+
+- [ ] Second message after a fresh spawn receives a response (not silently dropped)
+- [ ] If CLI backend is dead when Path 3 guard fires, the guard does not short-circuit and logs a WARNING
+- [ ] Completion in <100ms is logged as WARNING with "suspiciously fast" in the message
+- [ ] Existing Path 3 optimization is preserved: when backend IS alive and session matches, resume is still skipped (no unnecessary process restarts)
+- [ ] No regression in Path 1 (reply-to-resume) or Path 2 (thread-session-resume) behavior
+- [ ] `test_message_pipeline.py` covers the new guard behavior (dead backend + matching session_id)

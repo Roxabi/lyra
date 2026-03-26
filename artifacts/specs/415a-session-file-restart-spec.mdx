@@ -1,0 +1,240 @@
+---
+title: "Session file not found after restart — context lost"
+issue: 415
+sub: a
+tier: F-lite
+status: draft
+---
+
+## Context
+
+Sub-bug (a) of #415 — thread session not resumed after restart.
+
+After a daemon restart, users who continue a conversation in a Discord thread
+(or a Telegram DM with prior context) lose all prior session history. Instead
+of resuming the previous Claude session, Lyra spawns a fresh process and the
+user sees "Couldn't resume your previous session — starting fresh."
+
+The root cause was identified during analysis: `_session_file_exists()` in
+`cli_pool_worker.py` requires a `.jsonl` file on disk under
+`~/.claude/projects/`, but persistent `--input-format stream-json` Claude CLI
+processes do not flush the session JSONL until the process exits cleanly.
+When Lyra is restarted (SIGTERM → process killed), the session file may not
+have been flushed, so it is missing from disk. All three resume paths in
+`_resolve_context()` ultimately call `pool.resume_session()` →
+`CliPool.resume_and_reset()`, which rejects the resume because
+`_session_file_exists()` returns `False`.
+
+## Goal
+
+Ensure that session resume succeeds after a daemon restart when the session ID
+is known in durable storage (ThreadStore or TurnStore), even if the Claude CLI
+`.jsonl` file was never flushed to disk.
+
+## Users
+
+All users on Discord threads and Telegram DMs who have an active conversation
+and experience a daemon restart (deploy, crash, supervisord reload). The
+conversation thread loses all context and the user must re-explain their
+request from scratch.
+
+## Expected Behavior
+
+1. Lyra restarts (clean or crash).
+2. User sends a message in a Discord thread that had an active session before
+   restart.
+3. Discord adapter retrieves `thread_session_id` from ThreadStore (SQLite) and
+   injects it into `platform_meta`.
+4. `_resolve_context()` Path 2 calls `pool.resume_session(thread_session_id)`.
+5. `pool.resume_session()` delegates to `CliPool.resume_and_reset()`.
+6. `resume_and_reset()` validates the session ID format, then checks whether
+   the session can be resumed. The `.jsonl` file may not be on disk because
+   the previous process was killed, but the Claude CLI `--resume` flag
+   gracefully handles this case by starting a session with that ID (Claude
+   CLI creates the file if absent).
+7. The process is spawned with `--resume <session_id>`.
+8. Claude CLI either successfully loads the session from its own storage or
+   starts fresh under that session ID. Either way, subsequent turns are
+   appended to the same session file, and future restarts succeed.
+
+For Path 3 (Telegram DMs / channels), the same flow applies with the session
+ID retrieved from TurnStore instead of ThreadStore.
+
+## Current Behavior
+
+1. Lyra restarts.
+2. User sends a message in a thread with a prior session.
+3. Discord adapter retrieves `thread_session_id` from ThreadStore.
+4. `_resolve_context()` Path 2 calls `pool.resume_session(thread_session_id)`.
+5. `CliPool.resume_and_reset()` calls `self._session_file_exists(session_id)`
+   at line 273 of `cli_pool.py`.
+6. `_session_file_exists()` (`cli_pool_worker.py:170-172`) globs
+   `~/.claude/projects/*/<session_id>.jsonl` — finds nothing because the
+   persistent CLI process was killed before flushing.
+7. `resume_and_reset()` returns `False` and logs a "not on disk — falling
+   through (Tier-2)" warning.
+8. Path 2 falls through to Path 3.
+9. Path 3 calls `TurnStore.get_last_session()`, gets the same session ID,
+   calls `pool.resume_session()` again — same file check fails again.
+10. `_resolve_context()` returns `ResumeStatus.FRESH`.
+11. User sees the fallthrough notice and Claude starts a completely new session
+    with no prior context.
+
+The same failure occurs for the `_maybe_preserve_session()` path in
+`cli_pool_worker.py:174-192`: when the idle reaper or `_kill()` tries to
+preserve a session for later auto-resume, the file check also fails, so the
+session ID is silently dropped from `_resume_session_ids`.
+
+## Root Cause
+
+`_session_file_exists()` at `cli_pool_worker.py:170-172`:
+
+```python
+def _session_file_exists(self, session_id: str) -> bool:
+    return any(_CLAUDE_PROJECTS.glob(f"*/{session_id}.jsonl"))
+```
+
+This check was added as a safety guard to prevent passing invalid or stale
+session IDs to `--resume`. However, it has a false-negative problem: persistent
+`--input-format stream-json` processes buffer session data and only flush the
+`.jsonl` file on clean exit. When the process is killed (restart, crash,
+SIGTERM), no `.jsonl` file is written. The session is still valid in Claude
+CLI's internal state — passing `--resume <session_id>` to a new process works
+correctly even when the file does not exist on disk — but `_session_file_exists`
+blocks the resume before the CLI ever gets a chance to try.
+
+This also affects `_maybe_preserve_session()` (`cli_pool_worker.py:174-192`),
+which gates preservation on the same `_session_file_exists()` check. During
+graceful shutdown or idle reaper eviction, valid session IDs are discarded
+because the file has not been flushed yet.
+
+## Proposed Solution
+
+**Option A: Consult TurnStore as fallback when `.jsonl` is not on disk.**
+
+Add a secondary lookup: if the `.jsonl` is not found, check whether the
+session ID exists in TurnStore (which persists every turn to SQLite in
+real-time). This proves the session was real and active.
+
+Rejected: `_session_file_exists` and `_maybe_preserve_session` are synchronous
+methods on `CliPoolWorkerMixin` and have no access to TurnStore. Threading
+TurnStore through the mixin would be architecturally invasive and violate the
+current separation (CliPool is infra, TurnStore is in pool/observer layer).
+
+**Option B: Remove the file check from `resume_and_reset()` entirely.**
+
+Claude CLI handles `--resume <nonexistent_session>` gracefully — it simply
+starts a new session. The session ID format is already validated by
+`_SESSION_ID_RE` (UUID format check) at line 266-271, which guards against
+garbage input. The file check adds no safety for valid UUIDs that came from
+ThreadStore or TurnStore.
+
+Concern: `_maybe_preserve_session()` also uses the file check. If we remove
+the check there too, we might preserve session IDs for processes that never
+produced any turns (e.g., spawned but errored before first exchange). However,
+this is harmless: `_resume_session_ids` is a one-shot dict consumed by
+`_spawn()`, and if the session truly has no history, Claude CLI simply starts
+fresh under that ID — no worse than today.
+
+**Option C: Remove file check from `resume_and_reset()` only, keep it in
+`_maybe_preserve_session()`.**
+
+A middle ground: the explicit resume path (called by _resolve_context when a
+durable store provides the session ID) skips the file check because the caller
+already validated existence via ThreadStore or TurnStore. The implicit
+preservation path (idle reaper, graceful kill) keeps the file check as a guard
+against preserving sessions that never produced output.
+
+Concern: this still loses sessions in `_maybe_preserve_session()` when the
+process was killed before flushing. However, this is less critical than Option
+B's concern because `_maybe_preserve_session` is a best-effort optimization
+for the _same_ process lifetime. After a restart, the durable stores (Path 2
+and Path 3) provide the session ID independently of `_resume_session_ids`.
+
+### Recommendation: Option B
+
+Option B is the simplest and most correct fix. The rationale:
+
+1. **The file check is the wrong guard.** The real invariant is "is this a
+   valid session ID that Claude CLI can use?" — and that is already enforced
+   by `_SESSION_ID_RE` (UUID format). Whether a `.jsonl` exists on disk is an
+   implementation detail of Claude CLI's session storage, not a reliable
+   indicator of session validity.
+
+2. **Claude CLI is tolerant.** Passing `--resume <valid-uuid-with-no-file>`
+   does not crash or error — it starts a new session under that ID. The worst
+   case is identical to today's fallback (fresh session), but with the upside
+   that sessions whose files DO exist in Claude's internal storage will be
+   properly resumed.
+
+3. **Both callsites benefit.** Removing the check from both
+   `resume_and_reset()` and `_maybe_preserve_session()` means session IDs
+   survive both explicit resume (Path 2/3) and implicit preservation (reaper,
+   graceful kill). This eliminates the entire class of "file not flushed"
+   bugs.
+
+4. **Minimal diff.** The change is a two-line deletion in
+   `_session_file_exists` usage sites (or removal of the method entirely),
+   plus updating one log message.
+
+### Implementation
+
+**File: `src/lyra/core/cli_pool.py`**
+
+In `resume_and_reset()` (lines 260-297), remove the `_session_file_exists`
+check at lines 273-279:
+
+```python
+# REMOVE these lines:
+if not self._session_file_exists(session_id):
+    log.warning(
+        "[pool:%s] resume_and_reset: session %r not on disk — falling through (Tier-2)",
+        pool_id,
+        session_id,
+    )
+    return False
+```
+
+Keep the `_SESSION_ID_RE` format check (lines 266-272) — that guard remains
+valid.
+
+**File: `src/lyra/core/cli_pool_worker.py`**
+
+In `_maybe_preserve_session()` (lines 174-192), remove the
+`_session_file_exists` condition from the guard:
+
+```python
+# BEFORE (line 182-186):
+if (
+    preserve_session
+    and entry.session_id
+    and self._session_file_exists(entry.session_id)
+):
+
+# AFTER:
+if preserve_session and entry.session_id:
+```
+
+Update the log message in `_sync_evict_entry()` docstring (lines 194-210) to
+remove the mention of "session file exists on disk".
+
+**Optionally** remove or deprecate `_session_file_exists()` entirely since it
+has no remaining callers. If kept for future diagnostic use, add a docstring
+noting it is unreliable for persistent `--input-format stream-json` processes.
+
+## Success Criteria
+
+- [ ] After daemon restart, a message in a Discord thread with a prior session
+      triggers `resume_and_reset()` returning `True` (not `False`)
+- [ ] After daemon restart, Claude CLI is spawned with `--resume <session_id>`
+      for the thread's stored session
+- [ ] User does NOT see "Couldn't resume your previous session" for threads
+      that had an active session before restart
+- [ ] Path 3 (TurnStore last-session fallback) also resumes successfully after
+      restart for Telegram DMs
+- [ ] Idle reaper eviction preserves session IDs for later resume even when
+      `.jsonl` has not been flushed
+- [ ] Invalid session IDs (non-UUID format) are still rejected by the
+      `_SESSION_ID_RE` guard in `resume_and_reset()`
+- [ ] Existing tests in `test_cli_pool.py` and `test_message_pipeline.py`
+      pass (update mocks if needed to remove `_session_file_exists` stubs)

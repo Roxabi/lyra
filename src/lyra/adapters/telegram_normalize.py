@@ -79,11 +79,25 @@ def _extract_attachments(msg: Any) -> list[Attachment]:
     return result
 
 
-def _make_scope_id(chat_id: int, topic_id: int | None) -> str:
-    """Build the canonical scope_id for a Telegram chat/topic."""
+def _make_scope_id(
+    chat_id: int,
+    topic_id: int | None,
+    *,
+    user_id: str,
+    is_group: bool,
+) -> str:
+    """Build the canonical scope_id for a Telegram chat/topic.
+
+    In shared spaces (groups, supergroups) the scope includes the user
+    identity so that each user gets their own pool (#356).
+    """
+    from lyra.core.scope import user_scoped
+
     if topic_id is not None:
-        return f"chat:{chat_id}:topic:{topic_id}"
-    return f"chat:{chat_id}"
+        base = f"chat:{chat_id}:topic:{topic_id}"
+    else:
+        base = f"chat:{chat_id}"
+    return user_scoped(base, user_id) if is_group else base
 
 
 def _build_routing(  # noqa: PLR0913 — groups related metadata fields
@@ -143,7 +157,10 @@ def normalize(
 
     chat_id: int = raw.chat.id
     topic_id: int | None = raw.message_thread_id
-    scope_id = _make_scope_id(chat_id, topic_id)
+    user_id = f"tg:user:{raw.from_user.id}"
+    scope_id = _make_scope_id(
+        chat_id, topic_id, user_id=user_id, is_group=is_group
+    )
 
     text = raw.text or getattr(raw, "caption", None) or ""
     # Strip @mention prefix so content reaches the agent clean (align with Discord)
@@ -153,8 +170,6 @@ def normalize(
     timestamp = raw.date
     if timestamp.tzinfo is None:
         timestamp = timestamp.replace(tzinfo=timezone.utc)
-
-    user_id = f"tg:user:{raw.from_user.id}"
 
     log.debug(
         "Normalizing message from user_id=%s in chat_id=%s",
@@ -212,7 +227,11 @@ def normalize_audio(
         )
     chat_id: int = raw.chat.id
     topic_id: int | None = getattr(raw, "message_thread_id", None)
-    scope_id = _make_scope_id(chat_id, topic_id)
+    is_group = raw.chat.type != "private"
+    user_id = f"tg:user:{raw.from_user.id}"
+    scope_id = _make_scope_id(
+        chat_id, topic_id, user_id=user_id, is_group=is_group
+    )
     voice = raw.voice or raw.audio or getattr(raw, "video_note", None)
     duration_ms: int | None = None
     if voice is not None:
@@ -223,9 +242,7 @@ def normalize_audio(
     timestamp = raw.date
     if timestamp.tzinfo is None:
         timestamp = timestamp.replace(tzinfo=timezone.utc)
-    user_id = f"tg:user:{raw.from_user.id}"
     message_id = getattr(raw, "message_id", None)
-    is_group = raw.chat.type != "private"
     platform_meta, routing = _build_routing(
         adapter, chat_id, topic_id, message_id, scope_id, is_group
     )

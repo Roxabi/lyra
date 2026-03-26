@@ -302,12 +302,7 @@ class MessagePipeline:
                 pool_id, str(msg.reply_to_id)
             )
             if session_id is not None:
-                if msg.platform_meta.get("is_group"):
-                    log.info(
-                        "reply-to-resume: group chat"
-                        " — skipping resume (cross-user risk)",
-                    )
-                elif not pool.is_idle:
+                if not pool.is_idle:
                     log.info(
                         "reply-to-resume: pool %r busy — skipping resume of session %r",
                         pool_id,
@@ -347,11 +342,9 @@ class MessagePipeline:
                 thread_session_id,
             )
 
-        # Path 3: last-active-session — skip group chats (cross-user risk).
-        # Always SKIPPED for group chats regardless of path2_attempted: the resume
-        # was a deliberate safety skip, not a failure, so no notification is warranted.
-        if msg.platform_meta.get("is_group"):
-            return ResumeStatus.SKIPPED
+        # Path 3: last-active-session.
+        # Group-chat is_group guards removed (#356) — scope_id is now user-scoped
+        # in shared spaces, so each user has their own pool by construction.
         if pool.is_idle and self._hub._turn_store is not None:
             last_sid = await self._hub._turn_store.get_last_session(pool_id)
             if last_sid is None:

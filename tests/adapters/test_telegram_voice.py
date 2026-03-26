@@ -258,7 +258,7 @@ def test_normalize_audio_private_chat_scope_id() -> None:
 
 
 def test_normalize_audio_topic_chat_scope_id() -> None:
-    """Topic chat → scope_id='chat:<id>:topic:<topic_id>'."""
+    """Topic chat → scope_id includes topic AND user suffix (#356)."""
     from lyra.core.trust import TrustLevel
 
     adapter, _ = _make_adapter()
@@ -266,7 +266,7 @@ def test_normalize_audio_topic_chat_scope_id() -> None:
     result = adapter.normalize_audio(
         msg, b"x", "audio/ogg", trust_level=TrustLevel.TRUSTED
     )
-    assert result.scope_id == "chat:42:topic:7"
+    assert result.scope_id == "chat:42:topic:7:user:tg:user:7"
 
 
 # ---------------------------------------------------------------------------

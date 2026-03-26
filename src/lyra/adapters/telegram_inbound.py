@@ -117,7 +117,10 @@ async def handle_voice_message(adapter: TelegramAdapter, msg: Any) -> None:
     chat_id: int = msg.chat.id
     message_id: int | None = msg.message_id
     user_id = f"tg:user:{msg.from_user.id}"
-    scope_id = _make_scope_id(chat_id, msg.message_thread_id)
+    is_group = msg.chat.type != "private"
+    scope_id = _make_scope_id(
+        chat_id, msg.message_thread_id, user_id=user_id, is_group=is_group
+    )
     log.info(
         "audio_received",
         extra={

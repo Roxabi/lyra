@@ -137,6 +137,21 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
                 "Failed to create Discord thread for message id=%s",
                 message.id,
             )
+            # Discord may have created the thread despite the error —
+            # recover thread_id to keep scope_id consistent.
+            if hasattr(message, "thread") and message.thread is not None:
+                resolved_thread_id = message.thread.id
+                adapter._owned_threads.add(message.thread.id)
+                if adapter._thread_store is not None:
+                    asyncio.ensure_future(
+                        persist_thread_claim(
+                            adapter._thread_store,
+                            thread_id=message.thread.id,
+                            bot_id=adapter._bot_id,
+                            channel_id=message.channel.id,
+                            guild_id=getattr(message.guild, "id", None),
+                        )
+                    )
 
     # Claim an existing thread when directly mentioned inside it.
     if _is_mention and isinstance(message.channel, discord.Thread):

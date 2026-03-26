@@ -200,6 +200,60 @@ class TestDiscordAutoThread:
         # Assert — message still processed (bus.put called)
         hub.inbound_bus.put.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_auto_thread_exception_recovers_partial_thread(self) -> None:
+        """create_thread() raises but Discord created the thread: recover thread_id."""
+        from lyra.adapters.discord import DiscordAdapter
+
+        # Arrange
+        hub = MagicMock()
+        hub.inbound_bus = MagicMock()
+        hub.inbound_bus.put = MagicMock()
+
+        adapter = DiscordAdapter(
+            hub=hub,
+            bot_id="main",
+            intents=discord.Intents.none(),
+            auto_thread=True,
+            auth=_ALLOW_ALL,
+        )
+        bot_user = SimpleNamespace(id=999, bot=True)
+        adapter._bot_user = bot_user
+
+        # create_thread raises — but the message has a .thread attached
+        # (Discord created it despite the timeout/error)
+        create_thread_mock = AsyncMock(side_effect=Exception("timeout after create"))
+        partial_thread = SimpleNamespace(id=8888)
+
+        discord_msg = SimpleNamespace(
+            guild=SimpleNamespace(id=111),
+            channel=SimpleNamespace(
+                id=333,
+                send=AsyncMock(),
+                type=SimpleNamespace(name="text"),
+                create_thread=AsyncMock(),
+            ),
+            author=SimpleNamespace(
+                id=42, name="Alice", display_name="Alice", bot=False
+            ),
+            content="<@999> help me",
+            created_at=datetime.now(timezone.utc),
+            id=555,
+            mentions=[bot_user],
+            create_thread=create_thread_mock,
+            thread=partial_thread,  # Discord attached the thread despite the error
+        )
+
+        # Act — must not raise
+        await adapter.on_message(discord_msg)
+
+        # Assert — message processed with recovered thread scope
+        hub.inbound_bus.put.assert_called_once()
+        _platform_arg, hub_msg = hub.inbound_bus.put.call_args[0]
+        assert hub_msg.scope_id == "thread:8888"
+        assert hub_msg.platform_meta["thread_id"] == 8888
+        assert 8888 in adapter._owned_threads
+
     def test_discord_config_auto_thread_default_true(self) -> None:
         """DiscordConfig() has auto_thread=True by default (S5-5)."""
         from lyra.adapters.discord import DiscordConfig

@@ -15,13 +15,13 @@ pytestmark = pytest.mark.skipif(
     reason="voicecli not installed (optional voice extra)",
 )
 
-from lyra.tts import (
+from lyra.tts import (  # noqa: E402
     SynthesisResult,
     TTSConfig,
     TTSService,
 )
 
-from .conftest import make_chunked_result, write_minimal_wav
+from .conftest import make_chunked_result, write_minimal_wav  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # TTSService.synthesize() — delegates to voiceCLI

@@ -426,6 +426,8 @@ class TestResolveContextResumeStatus:
         pool._session_resume_fn = _rejected_resume  # type: ignore[attr-defined]
 
         _base = make_inbound_message(scope_id="chat:42:user:tg:user:alice")
+        # is_group in platform_meta no longer affects the pipeline path since #356
+        # — included here only to document that it is now inert.
         _meta = {
             **_base.platform_meta,
             "thread_session_id": "tss-dead",
@@ -437,6 +439,38 @@ class TestResolveContextResumeStatus:
         status = await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
 
         assert status == ResumeStatus.FRESH
+
+    async def test_path3_last_active_works_with_user_scoped_pool(self) -> None:
+        """Path 3: last-active-session works with user-scoped pool_id (#356)."""
+        pool_id = "telegram:main:chat:42:user:tg:user:alice"
+        hub = _make_hub()
+        pool = hub.get_or_create_pool(pool_id, "lyra")
+
+        resumed: list[str] = []
+
+        async def _fake_resume(sid: str) -> bool:
+            resumed.append(sid)
+            return True
+
+        pool._session_resume_fn = _fake_resume  # type: ignore[attr-defined]
+
+        class _FakeTurnStore:
+            async def get_last_session(self, pid: str) -> str | None:
+                return "sess-alice-last" if pid == pool_id else None
+
+            async def close(self) -> None:
+                pass
+
+        hub._turn_store = _FakeTurnStore()  # type: ignore[attr-defined]
+
+        _base = make_inbound_message(scope_id="chat:42:user:tg:user:alice")
+        msg = dataclasses.replace(_base, platform_meta={**_base.platform_meta, "is_group": True})
+        pipeline = MessagePipeline(hub)
+
+        status = await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
+
+        assert status == ResumeStatus.RESUMED
+        assert resumed == ["sess-alice-last"]
 
 
 # -------------------------------------------------------------------

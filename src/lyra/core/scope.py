@@ -18,6 +18,9 @@ def user_scoped(scope_id: str, user_id: str) -> str:
     Call this from an adapter's ``normalize()`` when the message originates
     from a shared space (Telegram group, Discord guild channel, etc.).
 
+    **Not idempotent** — calling twice produces a corrupted scope_id.
+    Callers must ensure this is called exactly once per shared-space message.
+
     >>> user_scoped("chat:42", "tg:user:1")
     'chat:42:user:tg:user:1'
     """

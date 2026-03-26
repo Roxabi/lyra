@@ -343,6 +343,31 @@ def test_normalize_group_chat_user_scoped_scope_id() -> None:
     assert msg.user_id == "tg:user:42"
 
 
+def test_normalize_group_chat_no_mention_still_user_scoped() -> None:
+    """Group chat without @mention → scope_id still includes user_id suffix."""
+    from lyra.adapters.telegram import TelegramAdapter
+
+    hub = MagicMock()
+    adapter = TelegramAdapter(
+        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+    )
+
+    aiogram_msg = SimpleNamespace(
+        chat=SimpleNamespace(id=456, type="group"),
+        from_user=SimpleNamespace(id=42, full_name="Alice", is_bot=False),
+        text="hello everyone",
+        date=datetime.now(timezone.utc),
+        message_thread_id=None,
+        message_id=99,
+        entities=None,
+    )
+
+    msg = adapter.normalize(aiogram_msg)
+
+    assert msg.scope_id == "chat:456:user:tg:user:42"
+    assert msg.is_mention is False
+
+
 def test_normalize_forum_topic_user_scoped_scope_id() -> None:
     """Forum topic in supergroup → scope_id includes topic AND user_id suffix."""
     from lyra.adapters.telegram import TelegramAdapter

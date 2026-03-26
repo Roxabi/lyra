@@ -14,8 +14,6 @@ from typing import TYPE_CHECKING
 
 from lyra.core.agent import Agent, AgentBase
 from lyra.core.agent_config import ModelConfig
-
-_AGENTS_DIR = Path(__file__).resolve().parent
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import InboundMessage, Response
 from lyra.core.messages import MessageManager
@@ -23,6 +21,8 @@ from lyra.core.pool import Pool
 from lyra.core.runtime_config import RuntimeConfig, RuntimeConfigHolder
 from lyra.llm.base import LlmProvider
 from lyra.stt import is_whisper_noise
+
+_AGENTS_DIR = Path(__file__).resolve().parent
 
 if TYPE_CHECKING:
     from lyra.core.stores.agent_store import AgentStore

@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import json as _json
-import tomllib
 from pathlib import Path
 
 import typer

@@ -189,7 +189,7 @@ class AgentStore(SqliteStore):
         log.info("_populate_343: migrated %d agent(s)", migrated)
 
     async def _rebuild_346(self, db: aiosqlite.Connection) -> None:
-        """Table rebuild (#346): drop old columns (persona, tts_json, stt_json, i18n_language).
+        """Table rebuild (#346): drop deprecated columns.
 
         Merges tts_json + stt_json → voice_json, then rebuilds the table without
         the four deprecated columns. Idempotent — checks for old column presence.

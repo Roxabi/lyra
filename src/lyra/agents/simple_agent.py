@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from lyra.core.agent import Agent, AgentBase
-_AGENTS_DIR = Path(__file__).resolve().parent
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
@@ -28,6 +27,8 @@ from lyra.core.stream_processor import StreamProcessor
 from lyra.core.tool_display_config import ToolDisplayConfig
 from lyra.llm.base import LlmProvider
 from lyra.stt import is_whisper_noise
+
+_AGENTS_DIR = Path(__file__).resolve().parent
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable

@@ -30,8 +30,8 @@ def make_row(**kwargs) -> AgentRow:
         name="lyra_default",
         backend="anthropic-sdk",
         model="claude-haiku-4-5-20251001",
-        persona="lyra",
-        tts_json='{"voice": "echo"}',
+        persona_json='{"identity": {"display_name": "Lyra"}}',
+        voice_json='{"tts": {"voice": "echo"}, "stt": {}}',
         plugins_json='["plugin_a"]',
         patterns_json='{"bare_url": true}',
     )
@@ -240,7 +240,7 @@ class TestRunSession:
             # Second call: no patch yet
             "Got it. Any other changes?",
             # Third call: patch block
-            'All done!\n<<PATCH>>\n{"persona": "aryl"}\n<<END_PATCH>>',
+            'All done!\n<<PATCH>>\n{"persona_json": "{\\"identity\\": {\\"display_name\\": \\"Aryl\\"}}"}\n<<END_PATCH>>',
         ]
 
         mock_io = MagicMock(spec=TerminalIO)
@@ -252,7 +252,7 @@ class TestRunSession:
         result = refiner.run_session(mock_io)
 
         # Assert
-        assert result.fields == {"persona": "aryl"}
+        assert result.fields == {"persona_json": '{"identity": {"display_name": "Aryl"}}'}
         # Assert driver was called for greeting + the 2 loop turns
         assert mock_driver.chat.call_count == 3
         assert mock_io.prompt.call_count == 2

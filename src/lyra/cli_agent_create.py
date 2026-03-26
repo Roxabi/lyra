@@ -11,7 +11,10 @@ import tomli_w
 import typer
 
 from lyra.cli_agent import _AGENTS_DIR_OPT, _parse_tools, agent_app
-from lyra.core.agent_config import _SYSTEM_AGENTS_DIR, _USER_AGENTS_DIR, AGENTS_DIR
+
+_USER_AGENTS_DIR = Path.home() / ".lyra" / "agents"
+_SYSTEM_AGENTS_DIR = Path(__file__).resolve().parent / "agents"
+AGENTS_DIR = _SYSTEM_AGENTS_DIR
 
 # ---------------------------------------------------------------------------
 # Helpers

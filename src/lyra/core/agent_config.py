@@ -8,12 +8,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .commands.command_router import CommandConfig
 
-# Agent config directories — resolution order: user → system
-_USER_AGENTS_DIR = Path.home() / ".lyra" / "agents"
-_SYSTEM_AGENTS_DIR = Path(__file__).resolve().parent.parent / "agents"
-_AGENTS_DIR = _SYSTEM_AGENTS_DIR  # backward-compat alias (tests import this)
-AGENTS_DIR = _SYSTEM_AGENTS_DIR  # public alias (system defaults)
-
 _VALID_BACKENDS: frozenset[str] = frozenset({"claude-cli", "ollama", "anthropic-sdk"})
 _MAX_PROMPT_BYTES = 64 * 1024  # 64 KB
 
@@ -35,21 +29,6 @@ _WORKSPACE_BUILTIN_CONFLICTS = frozenset(
         "search",
     }
 )
-
-
-def _find_agent_dir(name: str, agents_dir: Path | None) -> Path:
-    """Resolve the directory that owns <name>.toml.
-
-    Resolution order:
-        1. Explicit agents_dir (tests / overrides)
-        2. ~/.lyra/agents/   — user-level config (gitignored, machine-specific)
-        3. src/lyra/agents/  — system defaults (versioned)
-    """
-    if agents_dir is not None:
-        return agents_dir
-    if (_USER_AGENTS_DIR / f"{name}.toml").exists():
-        return _USER_AGENTS_DIR
-    return _SYSTEM_AGENTS_DIR
 
 
 @dataclass(frozen=True)
@@ -104,46 +83,8 @@ class SmartRoutingConfig:
 
 
 @dataclass(frozen=True)
-class IdentityConfig:
-    name: str
-    tagline: str = ""
-    creator: str = ""
-    role: str = ""
-    goal: str = ""
-
-
-@dataclass(frozen=True)
-class PersonalityConfig:
-    traits: tuple[str, ...] = ()
-    communication_style: str = ""
-    tone: str = ""
-    humor: str = ""
-
-
-@dataclass(frozen=True)
-class ExpertiseConfig:
-    areas: tuple[str, ...] = ()
-    instructions: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
-class VoiceConfig:
-    speaking_style: str = ""
-    pace: str = ""
-    warmth: str = ""
-
-
-@dataclass(frozen=True)
-class PersonaConfig:
-    identity: IdentityConfig
-    personality: PersonalityConfig = field(default_factory=PersonalityConfig)
-    expertise: ExpertiseConfig = field(default_factory=ExpertiseConfig)
-    voice: VoiceConfig = field(default_factory=VoiceConfig)
-
-
-@dataclass(frozen=True)
 class AgentTTSConfig:
-    """Per-agent TTS defaults parsed from [tts] section in agent TOML.
+    """Per-agent TTS defaults.
 
     All fields optional — None means use voicecli global defaults.
     Passed per-call to TTSService.synthesize() at voice generation time.
@@ -166,7 +107,7 @@ class AgentTTSConfig:
 
 @dataclass(frozen=True)
 class AgentSTTConfig:
-    """Per-agent STT detection params parsed from [stt] section in agent TOML.
+    """Per-agent STT detection params.
 
     All fields optional — None means use voicecli global defaults.
     Merged into STTConfig at startup in __main__.py.
@@ -179,11 +120,7 @@ class AgentSTTConfig:
 
 @dataclass(frozen=True)
 class AgentVoiceConfig:
-    """Unified per-agent voice config wrapping TTS + STT typed configs (#343).
-
-    Replaces separate Agent.tts and Agent.stt fields. Both old fields are kept
-    during the PR1 transition period and removed in PR3.
-    """
+    """Unified per-agent voice config wrapping TTS + STT typed configs (#343)."""
 
     tts: AgentTTSConfig = field(default_factory=AgentTTSConfig)
     stt: AgentSTTConfig = field(default_factory=AgentSTTConfig)
@@ -200,14 +137,11 @@ class Agent:
     permissions: tuple[str, ...] = field(default=())
     commands: dict[str, CommandConfig] = field(default_factory=dict)
     commands_enabled: tuple[str, ...] = field(default=())  # empty = default-open
-    persona: PersonaConfig | None = None
     i18n_language: str = "en"
     smart_routing: SmartRoutingConfig | None = None
     show_intermediate: bool = False  # show ⏳-prefixed intermediate turns to the user
     show_tool_recap: bool = True  # show 🔧-prefixed tool summary card after tool use
     workspaces: dict[str, Path] = field(default_factory=dict)
-    tts: AgentTTSConfig | None = None  # deprecated — use voice.tts (PR1 compat)
-    stt: AgentSTTConfig | None = None  # deprecated — use voice.stt (PR1 compat)
     voice: AgentVoiceConfig | None = None  # #343 — unified voice config
     patterns: dict[str, bool] = field(default_factory=dict)  # #345 — rewrite rules
     passthroughs: tuple[str, ...] = field(default=())  # commands forwarded to LLM

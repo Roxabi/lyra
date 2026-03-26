@@ -23,30 +23,27 @@ def _utc_now_iso() -> str:
 
 @dataclass
 class AgentRow:
-    """One row from the agents table."""
+    """One row from the agents table (24 columns after #346 cleanup)."""
 
     name: str
     backend: str
     model: str
     max_turns: int | None = None  # None = unlimited (stored as 0 in DB)
     tools_json: str = "[]"
-    persona: str | None = None
     show_intermediate: bool = False
     smart_routing_json: str | None = None
     plugins_json: str = "[]"
     memory_namespace: str | None = None
     cwd: str | None = None
-    tts_json: str | None = None
-    stt_json: str | None = None
     skip_permissions: bool = False
     permissions_json: str = "[]"
     workspaces_json: str | None = None
-    i18n_language: str = "en"
     commands_json: str | None = None
     streaming: bool = False
-    show_tool_recap: bool = True  # show 🔧-prefixed tool summary card after tool use
+    show_tool_recap: bool = True
     # #343 — DB-first agent config
     persona_json: str | None = None
+    voice_json: str | None = None  # {"tts": {...}, "stt": {...}}
     fallback_language: str = "en"
     patterns_json: str | None = None
     passthroughs_json: str | None = None
@@ -56,14 +53,13 @@ class AgentRow:
 
     @classmethod
     def from_db_row(cls, row: tuple) -> "AgentRow":  # type: ignore[type-arg]
-        """Construct an AgentRow from a raw aiosqlite SELECT tuple (28 columns)."""
+        """Construct an AgentRow from a raw aiosqlite SELECT tuple (24 columns)."""
         (
             name,
             backend,
             model,
             max_turns,
             tools_json,
-            persona,
             show_intermediate,
             smart_routing_json,
             plugins_json,
@@ -72,16 +68,13 @@ class AgentRow:
             source,
             created_at,
             updated_at,
-            tts_json,
-            stt_json,
             skip_permissions,
             permissions_json,
             workspaces_json,
-            i18n_language,
             commands_json,
             streaming,
             persona_json,
-            _voice_json,  # deprecated — kept in DB but no longer used
+            voice_json,
             fallback_language,
             patterns_json,
             passthroughs_json,
@@ -93,24 +86,21 @@ class AgentRow:
             model=model,
             max_turns=max_turns or None,  # 0 sentinel in DB → None (unlimited)
             tools_json=tools_json,
-            persona=persona,
             show_intermediate=bool(show_intermediate),
             smart_routing_json=smart_routing_json,
             plugins_json=plugins_json,
             memory_namespace=memory_namespace,
             cwd=cwd,
-            tts_json=tts_json,
-            stt_json=stt_json,
             skip_permissions=bool(skip_permissions),
             permissions_json=permissions_json or "[]",
             workspaces_json=workspaces_json,
-            i18n_language=i18n_language or "en",
             commands_json=commands_json,
             streaming=bool(streaming),
             show_tool_recap=(
                 bool(show_tool_recap) if show_tool_recap is not None else True
             ),
             persona_json=persona_json,
+            voice_json=voice_json,
             fallback_language=fallback_language or "en",
             patterns_json=patterns_json,
             passthroughs_json=passthroughs_json,

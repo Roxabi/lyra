@@ -37,7 +37,7 @@ from lyra.config import (
     TelegramMultiConfig,
 )
 from lyra.core.agent import Agent
-from lyra.core.agent_loader import agent_row_to_config, load_agent_config
+from lyra.core.agent_loader import agent_row_to_config
 from lyra.core.auth import AuthMiddleware
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.cli_pool import CliPool
@@ -98,7 +98,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
         )
         agent_names: set[str] = set(bot_agent_map.values())
 
-        # Load all agent configs (DB-first, TOML fallback)
+        # Load all agent configs from DB
         agent_configs: dict[str, Agent] = {}
         for n in sorted(agent_names):
             row = stores.agent.get(n)
@@ -107,16 +107,11 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
                     row, instance_overrides=_build_agent_overrides(raw_config, n)
                 )
             else:
-                try:
-                    agent_configs[n] = load_agent_config(
-                        n, instance_overrides=_build_agent_overrides(raw_config, n)
-                    )
-                except Exception as exc:  # noqa: BLE001
-                    log.error("Failed to load agent %r: %s — skipping", n, exc)
+                log.error("Agent %r not found in DB — skipping", n)
         if not agent_configs:
             sys.exit(
                 "No agent configs could be loaded — run 'lyra agent init' to seed the"
-                " agents table, or ensure agents/*.toml files exist"
+                " agents table"
             )
         first_agent_name = next(iter(sorted(agent_configs)))
         first_agent_config = agent_configs[first_agent_name]

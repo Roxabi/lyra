@@ -17,10 +17,8 @@ if TYPE_CHECKING:
     from .stores.agent_store import AgentStore
 
 from .agent_commands import CommandReloadManager
-from .agent_config import Agent, _find_agent_dir  # noqa: F401 — Agent re-exported
-from .agent_loader import (
-    load_agent_config,  # noqa: F401 — re-export for tests  # pyright: ignore[reportUnusedImport]
-)
+from .agent_config import Agent  # noqa: F401 — Agent re-exported
+from .agent_db_loader import agent_row_to_config  # noqa: F401 — re-export
 from .circuit_breaker import CircuitRegistry
 from .commands.command_loader import CommandLoader
 from .commands.command_router import CommandRouter
@@ -60,8 +58,6 @@ class AgentBase(ABC, SessionManager):
         self._instance_overrides: dict = instance_overrides or {}
         self._compact_context_tokens = compact_context_tokens
         self.config = config
-        self._agents_dir = _find_agent_dir(config.name, agents_dir)
-        self._config_path = self._agents_dir / f"{config.name}.toml"
         # #343 — DB-first hot-reload: track DB updated_at instead of TOML mtime
         self._agent_store = agent_store
         self._last_db_updated_at: str | None = None

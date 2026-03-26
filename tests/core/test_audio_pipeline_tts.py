@@ -119,7 +119,7 @@ class TestResolveAgentTTS:
         """_resolve_agent_tts returns the agent's tts config for a bound message."""
         from lyra.core import Agent
         from lyra.core.agent import AgentBase
-        from lyra.core.agent_config import AgentTTSConfig
+        from lyra.core.agent_config import AgentTTSConfig, AgentVoiceConfig
 
         # Arrange — build a concrete AgentBase subclass
         class FakeAgent(AgentBase):
@@ -131,7 +131,7 @@ class TestResolveAgentTTS:
             name="test-agent",
             system_prompt="",
             memory_namespace="test-agent",
-            tts=agent_tts,
+            voice=AgentVoiceConfig(tts=agent_tts),
         )
         fake_agent = FakeAgent(cfg)
 
@@ -209,7 +209,7 @@ class TestDispatchResponseAgentTTSE2E:
         """Voice-modality dispatch_response synthesizes audio with agent_tts."""
         from lyra.core import Agent
         from lyra.core.agent import AgentBase
-        from lyra.core.agent_config import AgentTTSConfig
+        from lyra.core.agent_config import AgentTTSConfig, AgentVoiceConfig
         from lyra.core.hub.hub_protocol import ChannelAdapter
         from lyra.tts import SynthesisResult
 
@@ -223,7 +223,7 @@ class TestDispatchResponseAgentTTSE2E:
             name="e2e-agent",
             system_prompt="",
             memory_namespace="e2e-agent",
-            tts=agent_tts,
+            voice=AgentVoiceConfig(tts=agent_tts),
         )
         fake_agent = FakeAgent(cfg)
 

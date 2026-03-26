@@ -5,14 +5,16 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import json as _json
-import tomllib
 from pathlib import Path
 
 import typer
 
 from lyra.cli_agent import _AGENTS_DIR_OPT, _connect_store, _list_from_dir, agent_app
-from lyra.core.agent_config import _SYSTEM_AGENTS_DIR, _USER_AGENTS_DIR, _VALID_BACKENDS
-from lyra.core.agent_loader import load_agent_config
+from lyra.core.agent_config import _VALID_BACKENDS
+
+# Agent TOML directories for seeding
+_USER_AGENTS_DIR = Path.home() / ".lyra" / "agents"
+_SYSTEM_AGENTS_DIR = Path(__file__).resolve().parent / "agents"
 
 
 @agent_app.command(name="init")
@@ -108,26 +110,7 @@ def validate(  # noqa: C901, PLR0915
     name: str = typer.Argument(..., help="Agent name to validate."),
     agents_dir: Path | None = _AGENTS_DIR_OPT,
 ) -> None:
-    """Validate an agent config from DB (or TOML if --agents-dir)."""
-    if agents_dir is not None:  # Legacy TOML validation path
-        try:
-            cfg = load_agent_config(name, agents_dir=agents_dir)
-        except FileNotFoundError as e:
-            typer.echo(f"Error: {e}")
-            raise typer.Exit(1)
-        except (ValueError, tomllib.TOMLDecodeError) as e:
-            typer.echo(f"Error: schema error — {e}")
-            raise typer.Exit(1)
-        typer.echo("Schema: OK")
-        if cfg.smart_routing and cfg.smart_routing.enabled:
-            if cfg.model_config.backend != "anthropic-sdk":
-                typer.echo(
-                    f"Warning: smart_routing.enabled=true"
-                    f" but backend={cfg.model_config.backend!r} — will be ignored"
-                )
-            else:
-                typer.echo("smart_routing: enabled (anthropic-sdk OK)")
-        return
+    """Validate an agent config from DB."""
 
     async def _run() -> None:  # noqa: C901
         store = await _connect_store()
@@ -249,11 +232,10 @@ def edit(name: str = typer.Argument(..., help="Agent name to edit.")) -> None:
                 "backend",
                 "model",
                 "max_turns",
-                "persona",
                 "show_intermediate",
                 "cwd",
                 "memory_namespace",
-                "i18n_language",
+                "fallback_language",
             ]
             new_vals: dict = {}
             for field_name in editable:
@@ -270,11 +252,14 @@ def edit(name: str = typer.Argument(..., help="Agent name to edit.")) -> None:
                     else:
                         new_vals[field_name] = v
 
-            # TTS editing sub-section
-            existing_tts = _json.loads(row.tts_json) if row.tts_json else None
+            # Voice editing sub-section
+            existing_voice = _json.loads(row.voice_json) if row.voice_json else None
+            existing_tts = existing_voice.get("tts") if existing_voice else None
             updated_tts = _edit_tts_section(existing_tts)
             if updated_tts is not None:
-                new_vals["tts_json"] = _json.dumps(updated_tts)
+                voice_obj = existing_voice or {"tts": {}, "stt": {}}
+                voice_obj["tts"] = updated_tts
+                new_vals["voice_json"] = _json.dumps(voice_obj)
 
             if not new_vals:
                 typer.echo("No changes.")

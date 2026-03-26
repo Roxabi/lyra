@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -92,6 +92,8 @@ class TestAuthConfig:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Missing discord auth is allowed when telegram is configured."""
+        from lyra.core.agent_models import AgentRow
+
         patch_auth_config_test(monkeypatch)
         # Use the multi-bot format (telegram_bots) since load_multibot_config
         # now routes through _bootstrap_multibot even for legacy-style configs.
@@ -103,11 +105,28 @@ class TestAuthConfig:
                 "auth": {"telegram_bots": [{"bot_id": "main", "default": "public"}]},
             },
         )
-        # Sentinel: if we reach load_agent_config, auth validation passed.
+        # Make the fake agent store return a row so agent_row_to_config is reached
+        _fake_row = AgentRow(
+            name="lyra_default",
+            backend="claude-cli",
+            model="claude-sonnet-4-5",
+        )
+        import lyra.bootstrap.multibot_stores as stores_mod_local
+
+        _fake_agent_store = MagicMock()
+        _fake_agent_store.connect = AsyncMock()
+        _fake_agent_store.close = AsyncMock()
+        _fake_agent_store.get_bot_agent = MagicMock(return_value=None)
+        _fake_agent_store.get = MagicMock(return_value=_fake_row)
+        _fake_agent_store.set_bot_agent = AsyncMock()
+        monkeypatch.setattr(
+            stores_mod_local, "AgentStore", lambda **kwargs: _fake_agent_store
+        )
+        # Sentinel: if we reach agent_row_to_config, auth validation passed.
         monkeypatch.setattr(
             multibot_mod,
-            "load_agent_config",
-            lambda name, **kw: (_ for _ in ()).throw(SystemExit("past_auth")),
+            "agent_row_to_config",
+            lambda row, **kw: (_ for _ in ()).throw(SystemExit("past_auth")),
         )
         stop = asyncio.Event()
         stop.set()

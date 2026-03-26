@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from lyra.core.agent import Agent, AgentBase
-from lyra.core.agent_config import _AGENTS_DIR
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
@@ -28,6 +27,8 @@ from lyra.core.stream_processor import StreamProcessor
 from lyra.core.tool_display_config import ToolDisplayConfig
 from lyra.llm.base import LlmProvider
 from lyra.stt import is_whisper_noise
+
+_AGENTS_DIR = Path(__file__).resolve().parent
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable
@@ -52,7 +53,7 @@ class SimpleAgent(AgentBase):
         await cli_pool.start()
 
         provider = ClaudeCliDriver(cli_pool)
-        agent_config = load_agent_config("lyra_default")
+        agent_config = agent_row_to_config(store.get("lyra_default"))
         agent = SimpleAgent(agent_config, provider)
         hub.register_agent(agent)
     """

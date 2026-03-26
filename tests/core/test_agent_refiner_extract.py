@@ -30,7 +30,7 @@ class TestExtractPatchValid:
 
     def test_extract_patch_returns_patch_from_valid_block(self) -> None:
         # Arrange
-        text = 'Some text <<PATCH>>\n{"tts_json": "test"}\n<<END_PATCH>>'
+        text = 'Some text <<PATCH>>\n{"voice_json": "test"}\n<<END_PATCH>>'
 
         # Act
         result = AgentRefiner._extract_patch(text)
@@ -38,7 +38,7 @@ class TestExtractPatchValid:
         # Assert
         assert result is not None
         assert isinstance(result, RefinementPatch)
-        assert result.fields == {"tts_json": "test"}
+        assert result.fields == {"voice_json": "test"}
 
     def test_extract_patch_with_multiple_fields(self) -> None:
         # Arrange
@@ -56,21 +56,21 @@ class TestExtractPatchValid:
         assert result.fields["streaming"] is True
 
     def test_extract_patch_inline_block(self) -> None:
-        # Arrange — patch block on a single line
-        text = '<<PATCH>>{"persona": "aryl"}<<END_PATCH>>'
+        # Arrange -- patch block on a single line
+        text = '<<PATCH>>{"persona_json": "aryl"}<<END_PATCH>>'
 
         # Act
         result = AgentRefiner._extract_patch(text)
 
         # Assert
         assert result is not None
-        assert result.fields == {"persona": "aryl"}
+        assert result.fields == {"persona_json": "aryl"}
 
     def test_extract_patch_with_surrounding_text(self) -> None:
         # Arrange
         text = (
             "I'll update the following fields:\n"
-            '<<PATCH>>\n{"i18n_language": "fr"}\n<<END_PATCH>>\n'
+            '<<PATCH>>\n{"fallback_language": "fr"}\n<<END_PATCH>>\n'
             "Please confirm these changes."
         )
 
@@ -79,7 +79,7 @@ class TestExtractPatchValid:
 
         # Assert
         assert result is not None
-        assert result.fields == {"i18n_language": "fr"}
+        assert result.fields == {"fallback_language": "fr"}
 
 
 # ---------------------------------------------------------------------------
@@ -148,7 +148,7 @@ class TestExtractPatchMultiLine:
         text = (
             "I'll update the model and persona.\n"
             "<<PATCH>>\n"
-            '{\n  "model": "claude-opus-4-6",\n  "persona": "aryl"\n}\n'
+            '{\n  "model": "claude-opus-4-6",\n  "persona_json": "aryl"\n}\n'
             "<<END_PATCH>>\n"
             "These changes will take effect on restart."
         )
@@ -158,7 +158,7 @@ class TestExtractPatchMultiLine:
 
         # Assert
         assert result is not None
-        assert result.fields == {"model": "claude-opus-4-6", "persona": "aryl"}
+        assert result.fields == {"model": "claude-opus-4-6", "persona_json": "aryl"}
 
     def test_extract_patch_handles_json_with_boolean_values(self) -> None:
         # Arrange — JSON with booleans (a common LLM output pattern)

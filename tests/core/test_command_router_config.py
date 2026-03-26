@@ -43,6 +43,7 @@ def make_config_router(
         command_loader=loader,
         enabled_plugins=[],
         runtime_config_holder=holder,
+        runtime_config_path=tmp_path / "lyra_runtime.toml",
     )
 
 
@@ -111,10 +112,9 @@ class TestConfigCommand:
 
     @pytest.mark.asyncio
     async def test_config_set_valid_param(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         """Admin /config style=detailed → sets param, returns 'Updated:...'"""
-        monkeypatch.setattr("lyra.core.agent_config._AGENTS_DIR", tmp_path)
         router = make_config_router(tmp_path)
         msg = make_config_msg(
             user_id="tg:user:42", content="/config style=detailed", is_admin=True
@@ -141,10 +141,9 @@ class TestConfigCommand:
 
     @pytest.mark.asyncio
     async def test_config_reset_all(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         """Admin /config reset → 'Runtime config reset to defaults.'"""
-        monkeypatch.setattr("lyra.core.agent_config._AGENTS_DIR", tmp_path)
         router = make_config_router(tmp_path)
         msg = make_config_msg(
             user_id="tg:user:42", content="/config reset", is_admin=True
@@ -157,10 +156,9 @@ class TestConfigCommand:
 
     @pytest.mark.asyncio
     async def test_config_reset_single_key(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         """Admin /config reset style → 'Reset: style = (default). Saved.'"""
-        monkeypatch.setattr("lyra.core.agent_config._AGENTS_DIR", tmp_path)
         router = make_config_router(tmp_path)
         msg = make_config_msg(
             user_id="tg:user:42", content="/config reset style", is_admin=True

@@ -18,7 +18,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from lyra.core.agent import Agent, AgentBase, load_agent_config
+from lyra.core.agent import Agent, AgentBase
 from lyra.core.commands.command_loader import CommandLoader
 from lyra.core.commands.command_router import CommandRouter
 from lyra.core.message import (
@@ -40,30 +40,6 @@ TOML_PATH = (
     / "messages.toml"
 )
 
-
-def make_minimal_toml(extra: str = "") -> str:
-    """Return a minimal valid agent TOML string."""
-    import textwrap
-
-    return textwrap.dedent(
-        f"""
-        [agent]
-        name = "test_agent"
-        memory_namespace = "test"
-        permissions = []
-
-        [model]
-        backend = "claude-cli"
-        model = "claude-haiku-4-5-20251001"
-        max_turns = 10
-        tools = []
-
-        [prompt]
-        system = "You are a test agent."
-
-        {extra}
-        """
-    ).strip()
 
 
 # ---------------------------------------------------------------------------
@@ -197,14 +173,17 @@ class TestHotReloadUpdatesCommands:
             ) -> Response:
                 return Response(content="ok")
 
+        from lyra.core.agent_config import ModelConfig
+
         (tmp_path / "plugins").mkdir()
         plugins_dir = make_echo_plugin_dir(tmp_path / "plugins")
 
-        toml_content = make_minimal_toml()
-        toml_path = tmp_path / "test_agent.toml"
-        toml_path.write_text(toml_content)
-
-        config = load_agent_config("test_agent", agents_dir=tmp_path)
+        config = Agent(
+            name="test_agent",
+            system_prompt="You are a test agent.",
+            memory_namespace="test",
+            model_config=ModelConfig(backend="claude-cli", model="claude-haiku-4-5-20251001"),
+        )
         agent = ConcreteAgent(config, agents_dir=tmp_path, plugins_dir=plugins_dir)
 
         agent._command_loader.load("echo")

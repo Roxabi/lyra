@@ -1,21 +1,24 @@
-"""Tests for /circuit command and TOML plugins config parsing (SC-15, issue #66).
+"""Tests for /circuit command and agent config behavior (SC-15, issue #66).
 
 Covers:
-  Slice 4 — /circuit command (TestCircuitCommandAdminCheck,
+  Slice 4 -- /circuit command (TestCircuitCommandAdminCheck,
              TestCircuitCommandOpenState, TestCircuitCommandNoRegistry)
-  Slice 5 — TOML plugins config parsing (TestPluginsConfigFromToml)
+  Slice 5 -- Agent config: plugins + commands (TestPluginsConfig)
+
+The TOML loading path (load_agent_config) was removed in #346.
+Tests that exercised TOML loading have been rewritten to use AgentRow +
+agent_row_to_config.
 """
 
 from __future__ import annotations
 
+import json
 import tempfile
-import textwrap
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
-from lyra.core.agent import load_agent_config
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.commands.command_loader import CommandLoader
 from lyra.core.commands.command_parser import CommandParser
@@ -26,29 +29,6 @@ from lyra.core.trust import TrustLevel
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def make_minimal_toml(extra: str = "") -> str:
-    """Return a minimal valid agent TOML string."""
-    return textwrap.dedent(
-        f"""
-        [agent]
-        name = "test_agent"
-        memory_namespace = "test"
-        permissions = []
-
-        [model]
-        backend = "claude-cli"
-        model = "claude-haiku-4-5-20251001"
-        max_turns = 10
-        tools = []
-
-        [prompt]
-        system = "You are a test agent."
-
-        {extra}
-        """
-    ).strip()
 
 
 def make_registry_with_open(open_service: str) -> CircuitRegistry:
@@ -102,7 +82,7 @@ def make_circuit_msg(
 
 
 # ---------------------------------------------------------------------------
-# Slice 4 — /circuit command (SC-15)
+# Slice 4 -- /circuit command (SC-15)
 # ---------------------------------------------------------------------------
 
 
@@ -111,7 +91,7 @@ class TestCircuitCommandAdminCheck:
 
     @pytest.mark.asyncio
     async def test_circuit_command_denied_for_non_admin(self) -> None:
-        """SC-15: Non-admin sender → 'This command is admin-only.'"""
+        """SC-15: Non-admin sender -> 'This command is admin-only.'"""
         registry = CircuitRegistry()
         registry.register(CircuitBreaker("anthropic"))
         router = make_circuit_router(registry=registry)
@@ -124,7 +104,7 @@ class TestCircuitCommandAdminCheck:
 
     @pytest.mark.asyncio
     async def test_circuit_command_returns_table_for_admin(self) -> None:
-        """SC-15: Admin sender → gets formatted status table with all circuits."""
+        """SC-15: Admin sender -> gets formatted status table with all circuits."""
         registry = CircuitRegistry()
         for name in ("anthropic", "telegram", "discord", "hub"):
             registry.register(CircuitBreaker(name))
@@ -142,7 +122,7 @@ class TestCircuitCommandAdminCheck:
 
     @pytest.mark.asyncio
     async def test_circuit_command_denied_when_not_admin(self) -> None:
-        """SC-15: msg.is_admin=False → /circuit denied (fail-closed)."""
+        """SC-15: msg.is_admin=False -> /circuit denied (fail-closed)."""
         registry = CircuitRegistry()
         registry.register(CircuitBreaker("anthropic"))
         router = make_circuit_router(registry=registry)
@@ -172,11 +152,11 @@ class TestCircuitCommandOpenState:
 
 
 class TestCircuitCommandNoRegistry:
-    """Missing registry → informational 'not configured' message (SC-15)."""
+    """Missing registry -> informational 'not configured' message (SC-15)."""
 
     @pytest.mark.asyncio
     async def test_circuit_command_no_registry(self) -> None:
-        """No circuit_registry → 'Circuit breaker not configured.'"""
+        """No circuit_registry -> 'Circuit breaker not configured.'"""
         router = make_circuit_router(registry=None)
         msg = make_circuit_msg(user_id="tg:user:42", is_admin=True)
 
@@ -187,50 +167,61 @@ class TestCircuitCommandNoRegistry:
 
 
 # ---------------------------------------------------------------------------
-# Slice 5 — TOML plugins config parsing
+# Slice 5 -- Agent config: plugins + commands via AgentRow
 # ---------------------------------------------------------------------------
 
 
-class TestPluginsConfigFromToml:
-    """load_agent_config() parses the [plugins] TOML section."""
+class TestPluginsConfig:
+    """agent_row_to_config() parses plugins_json and commands_json from AgentRow."""
 
-    def test_commands_enabled_from_toml(self, tmp_path: Path) -> None:
-        toml_content = make_minimal_toml(
-            extra=textwrap.dedent(
-                """
-                [plugins]
-                enabled = ["echo", "weather"]
-                """
-            )
+    def test_commands_enabled_from_agent_row(self) -> None:
+        from lyra.core.agent_db_loader import agent_row_to_config
+        from lyra.core.agent_models import AgentRow
+
+        row = AgentRow(
+            name="test_agent",
+            backend="claude-cli",
+            model="claude-haiku-4-5-20251001",
+            plugins_json=json.dumps(["echo", "weather"]),
         )
-        (tmp_path / "test_agent.toml").write_text(toml_content)
 
-        agent = load_agent_config("test_agent", agents_dir=tmp_path)
+        agent = agent_row_to_config(row)
 
         assert agent.commands_enabled == ("echo", "weather")
 
-    def test_commands_enabled_defaults_to_empty(self, tmp_path: Path) -> None:
-        toml_content = make_minimal_toml()
-        (tmp_path / "test_agent.toml").write_text(toml_content)
+    def test_commands_enabled_defaults_to_empty(self) -> None:
+        from lyra.core.agent_db_loader import agent_row_to_config
+        from lyra.core.agent_models import AgentRow
 
-        agent = load_agent_config("test_agent", agents_dir=tmp_path)
+        row = AgentRow(
+            name="test_agent",
+            backend="claude-cli",
+            model="claude-haiku-4-5-20251001",
+        )
 
-        # Absent [plugins] section → empty tuple (default-open)
+        agent = agent_row_to_config(row)
+
+        # Absent plugins_json -> empty tuple (default-open)
         assert agent.commands_enabled == ()
 
-    def test_command_config_still_parsed_for_builtins(self, tmp_path: Path) -> None:
-        toml_content = make_minimal_toml(
-            extra=textwrap.dedent(
-                """
-                [commands."/help"]
-                builtin = true
-                description = "List available commands"
-                """
-            )
-        )
-        (tmp_path / "test_agent.toml").write_text(toml_content)
+    def test_command_config_parsed_from_commands_json(self) -> None:
+        from lyra.core.agent_db_loader import agent_row_to_config
+        from lyra.core.agent_models import AgentRow
 
-        agent = load_agent_config("test_agent", agents_dir=tmp_path)
+        commands_data = {
+            "/help": {
+                "builtin": True,
+                "description": "List available commands",
+            }
+        }
+        row = AgentRow(
+            name="test_agent",
+            backend="claude-cli",
+            model="claude-haiku-4-5-20251001",
+            commands_json=json.dumps(commands_data),
+        )
+
+        agent = agent_row_to_config(row)
 
         assert hasattr(agent, "commands")
         assert "/help" in agent.commands

@@ -161,8 +161,6 @@ ssh yourname@<MACHINE_1_IP> "
 
 ## Step 7 — Clone lyra-stack and run setup
 
-This single command clones all repos, installs dependencies, registers services, scaffolds config, and starts everything:
-
 ```bash
 ssh yourname@<MACHINE_1_IP>
 
@@ -175,16 +173,19 @@ cd ~/projects/lyra-stack && make setup
 
 `make setup` will:
 1. Check prerequisites (git, uv, supervisord, claude, GitHub SSH)
-2. Clone lyra and voiceCLI → `~/projects/`
-3. `uv sync` in each project
-4. `make register` in each (creates supervisor symlinks)
+2. Clone and install **lyra** (core — always installed)
+3. Prompt for optional modules:
+   - **voiceCLI** — TTS/STT (requires NVIDIA GPU, ~3GB)
+   - **diagrams** — gallery server with live-reload
+   - **imageCLI** — image generation CLI
+   - **roxabi-vault** — knowledge vault
+4. `make register` for each daemon service
 5. Create log directories (`~/.local/state/*/logs/`)
-6. Symlink `voicecli` to `~/.local/bin/`
-7. Scaffold `.env` and `config.toml` from examples
-8. Seed agents into the DB (`lyra agent init`)
-9. Start supervisord
+6. Scaffold `.env` and `config.toml` from examples
+7. Seed agents into the DB (`lyra agent init`)
+8. Start supervisord
 
-For optional modules (imageCLI, roxabi-vault):
+To install all optional modules without prompts:
 ```bash
 make setup ARGS=--all
 ```
@@ -315,12 +316,12 @@ ssh -i ~/.ssh/lyra_agent lyra@<MACHINE_1_IP> "id && git --version"
 | Admin access | `ssh yourname@<IP>` |
 | Agent access | `ssh -i ~/.ssh/lyra_agent lyra@<IP>` (optional) |
 | Lyra project | `~/projects/lyra/` |
-| VoiceCLI project | `~/projects/voiceCLI/` |
+| VoiceCLI project | `~/projects/voiceCLI/` (if installed) |
 | Supervisor hub | `~/projects/lyra-stack/` |
-| Config | `~/projects/lyra/.env` + `config.toml` |
-| Credentials | `~/.lyra/auth.db` (encrypted) |
+| Config | `~/projects/lyra/config.toml` |
+| Credentials | `~/.lyra/auth.db` (encrypted, via `lyra bot add`) |
 | Logs | `~/.local/state/lyra/logs/` |
-| GPU | `nvidia-smi` ✓ |
+| Diagrams | `~/.agent/diagrams/` (if installed) |
 | Firewall | UFW, SSH only |
 
 **Daily commands** (from `~/projects/lyra-stack`):

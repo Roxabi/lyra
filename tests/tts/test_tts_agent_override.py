@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import importlib
 import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
+
+pytestmark = pytest.mark.skipif(
+    importlib.util.find_spec("voicecli") is None,
+    reason="voicecli not installed (optional voice extra)",
+)
 
 from lyra.core.agent_builder import _build_tts_from_dict
 from lyra.core.agent_config import AgentTTSConfig

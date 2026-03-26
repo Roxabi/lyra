@@ -19,8 +19,6 @@ dependencies = [
     "python-dotenv>=1.0",
     # Agent backends
     "anthropic>=0.49",
-    # STT (via voiceCLI)
-    "voicecli",
     "typer>=0.14",
     "tomli-w>=1.0",
     "telegramify-markdown>=1.1.0",
@@ -32,6 +30,9 @@ lyra = "lyra.cli:lyra_main"
 lyra-agent = "lyra.cli:agent_main"
 
 [project.optional-dependencies]
+voice = [
+    "voicecli",  # TTS (Qwen, Chatterbox) + STT (faster-whisper) — requires NVIDIA GPU
+]
 
 [build-system]
 requires = ["hatchling"]

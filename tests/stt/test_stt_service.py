@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -12,6 +13,11 @@ from lyra.stt import (
     TranscriptionResult,
     is_whisper_noise,
     load_stt_config,
+)
+
+_has_voicecli = importlib.util.find_spec("voicecli") is not None
+requires_voicecli = pytest.mark.skipif(
+    not _has_voicecli, reason="voicecli not installed (optional voice extra)"
 )
 
 # ---------------------------------------------------------------------------
@@ -90,6 +96,7 @@ def _make_vc_result(text="Hello world", language: str | None = "en", segments=No
     return result
 
 
+@requires_voicecli
 @pytest.mark.asyncio
 async def test_transcribe_returns_transcription_result():
     svc = STTService(STTConfig(model_size="large-v3-turbo"))
@@ -110,6 +117,7 @@ async def test_transcribe_returns_transcription_result():
     mock_t.assert_called_once()
 
 
+@requires_voicecli
 @pytest.mark.asyncio
 async def test_transcribe_passes_vocab_as_prompt():
     svc = STTService(STTConfig(model_size="large-v3-turbo"))
@@ -127,6 +135,7 @@ async def test_transcribe_passes_vocab_as_prompt():
     assert kwargs.get("initial_prompt") == "Lyra, Roxabi."
 
 
+@requires_voicecli
 @pytest.mark.asyncio
 async def test_transcribe_none_language_becomes_unknown():
     svc = STTService(STTConfig(model_size="large-v3-turbo"))
@@ -144,6 +153,7 @@ async def test_transcribe_none_language_becomes_unknown():
     assert result.language == "unknown"
 
 
+@requires_voicecli
 @pytest.mark.asyncio
 async def test_transcribe_empty_segments_duration_zero():
     svc = STTService(STTConfig(model_size="large-v3-turbo"))
@@ -161,6 +171,7 @@ async def test_transcribe_empty_segments_duration_zero():
     assert result.duration_seconds == 0.0
 
 
+@requires_voicecli
 @pytest.mark.asyncio
 async def test_transcribe_propagates_error():
     svc = STTService(STTConfig(model_size="large-v3-turbo"))
@@ -203,6 +214,7 @@ def test_stt_config_accepts_detection_fields():
     assert cfg.language_fallback == "en"
 
 
+@requires_voicecli
 def test_transcribe_sync_passes_detection_threshold():
     """_transcribe_sync passes non-None detection params to _transcribe()."""
     cfg = STTConfig(
@@ -231,6 +243,7 @@ def test_transcribe_sync_passes_detection_threshold():
     assert "language_detection_segments" not in captured_kwargs
 
 
+@requires_voicecli
 def test_transcribe_sync_no_detection_params_when_none():
     """_transcribe_sync does not pass detection params when all are None."""
     cfg = STTConfig(model_size="large-v3-turbo")

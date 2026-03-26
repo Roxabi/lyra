@@ -173,9 +173,9 @@ class TestLoadCliPoolConfig:
         from lyra.bootstrap.config import _load_cli_pool_config
 
         result = _load_cli_pool_config({})
-        assert result["idle_ttl"] == 1200
-        assert result["default_timeout"] == 1200
-        assert result["turn_timeout"] is None
+        assert result.idle_ttl == 1200
+        assert result.default_timeout == 1200
+        assert result.turn_timeout is None
 
     def test_overrides_from_toml(self) -> None:
         """SC-1: TOML values override defaults."""
@@ -189,9 +189,9 @@ class TestLoadCliPoolConfig:
             }
         }
         result = _load_cli_pool_config(raw)
-        assert result["idle_ttl"] == 600
-        assert result["default_timeout"] == 120
-        assert result["turn_timeout"] == 300
+        assert result.idle_ttl == 600
+        assert result.default_timeout == 120
+        assert result.turn_timeout == 300
 
     def test_partial_override_keeps_defaults(self) -> None:
         """SC-1: Only turn_timeout set → idle_ttl and default_timeout keep defaults."""
@@ -199,9 +199,9 @@ class TestLoadCliPoolConfig:
 
         raw = {"cli_pool": {"turn_timeout": 600}}
         result = _load_cli_pool_config(raw)
-        assert result["idle_ttl"] == 1200
-        assert result["default_timeout"] == 1200
-        assert result["turn_timeout"] == 600
+        assert result.idle_ttl == 1200
+        assert result.default_timeout == 1200
+        assert result.turn_timeout == 600
 
 
 # ---------------------------------------------------------------------------
@@ -217,8 +217,8 @@ class TestLoadPoolConfig:
         from lyra.bootstrap.config import _load_pool_config
 
         result = _load_pool_config({})
-        assert result["max_sdk_history"] == 50
-        assert result["safe_dispatch_timeout"] == 10.0
+        assert result.max_sdk_history == 50
+        assert result.safe_dispatch_timeout == 10.0
 
     def test_overrides_from_toml(self) -> None:
         """TOML values override defaults."""
@@ -226,8 +226,8 @@ class TestLoadPoolConfig:
 
         raw = {"pool": {"max_sdk_history": 100, "safe_dispatch_timeout": 30.0}}
         result = _load_pool_config(raw)
-        assert result["max_sdk_history"] == 100
-        assert result["safe_dispatch_timeout"] == 30.0
+        assert result.max_sdk_history == 100
+        assert result.safe_dispatch_timeout == 30.0
 
     def test_partial_override_keeps_defaults(self) -> None:
         """Only max_sdk_history set → safe_dispatch_timeout keeps default."""
@@ -235,8 +235,8 @@ class TestLoadPoolConfig:
 
         raw = {"pool": {"max_sdk_history": 200}}
         result = _load_pool_config(raw)
-        assert result["max_sdk_history"] == 200
-        assert result["safe_dispatch_timeout"] == 10.0
+        assert result.max_sdk_history == 200
+        assert result.safe_dispatch_timeout == 10.0
 
 
 # ---------------------------------------------------------------------------
@@ -252,8 +252,8 @@ class TestLoadLlmConfig:
         from lyra.bootstrap.config import _load_llm_config
 
         result = _load_llm_config({})
-        assert result["max_retries"] == 3
-        assert result["backoff_base"] == 1.0
+        assert result.max_retries == 3
+        assert result.backoff_base == 1.0
 
     def test_overrides_from_toml(self) -> None:
         """TOML values override defaults."""
@@ -261,8 +261,8 @@ class TestLoadLlmConfig:
 
         raw = {"llm": {"max_retries": 5, "backoff_base": 2.0}}
         result = _load_llm_config(raw)
-        assert result["max_retries"] == 5
-        assert result["backoff_base"] == 2.0
+        assert result.max_retries == 5
+        assert result.backoff_base == 2.0
 
     def test_partial_override_keeps_defaults(self) -> None:
         """Only max_retries set → backoff_base keeps default."""
@@ -270,8 +270,8 @@ class TestLoadLlmConfig:
 
         raw = {"llm": {"max_retries": 10}}
         result = _load_llm_config(raw)
-        assert result["max_retries"] == 10
-        assert result["backoff_base"] == 1.0
+        assert result.max_retries == 10
+        assert result.backoff_base == 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -287,9 +287,9 @@ class TestLoadInboundBusConfig:
         from lyra.bootstrap.config import _load_inbound_bus_config
 
         result = _load_inbound_bus_config({})
-        assert result["queue_depth_threshold"] == 100
-        assert result["staging_maxsize"] == 500
-        assert result["platform_queue_maxsize"] == 100
+        assert result.queue_depth_threshold == 100
+        assert result.staging_maxsize == 500
+        assert result.platform_queue_maxsize == 100
 
     def test_overrides_from_toml(self) -> None:
         """TOML values override defaults."""
@@ -303,9 +303,9 @@ class TestLoadInboundBusConfig:
             }
         }
         result = _load_inbound_bus_config(raw)
-        assert result["queue_depth_threshold"] == 200
-        assert result["staging_maxsize"] == 1000
-        assert result["platform_queue_maxsize"] == 50
+        assert result.queue_depth_threshold == 200
+        assert result.staging_maxsize == 1000
+        assert result.platform_queue_maxsize == 50
 
     def test_partial_override_keeps_defaults(self) -> None:
         """Only staging_maxsize set → other keys keep defaults."""
@@ -313,9 +313,9 @@ class TestLoadInboundBusConfig:
 
         raw = {"inbound_bus": {"staging_maxsize": 2000}}
         result = _load_inbound_bus_config(raw)
-        assert result["staging_maxsize"] == 2000
-        assert result["queue_depth_threshold"] == 100
-        assert result["platform_queue_maxsize"] == 100
+        assert result.staging_maxsize == 2000
+        assert result.queue_depth_threshold == 100
+        assert result.platform_queue_maxsize == 100
 
 
 # ---------------------------------------------------------------------------
@@ -331,8 +331,8 @@ class TestLoadDebouncerConfig:
         from lyra.bootstrap.config import _load_debouncer_config
 
         result = _load_debouncer_config({})
-        assert result["default_debounce_ms"] == 300
-        assert result["max_merged_chars"] == 4096
+        assert result.default_debounce_ms == 300
+        assert result.max_merged_chars == 4096
 
     def test_overrides_from_toml(self) -> None:
         """TOML values override defaults."""
@@ -340,8 +340,8 @@ class TestLoadDebouncerConfig:
 
         raw = {"debouncer": {"default_debounce_ms": 500, "max_merged_chars": 8192}}
         result = _load_debouncer_config(raw)
-        assert result["default_debounce_ms"] == 500
-        assert result["max_merged_chars"] == 8192
+        assert result.default_debounce_ms == 500
+        assert result.max_merged_chars == 8192
 
     def test_partial_override_keeps_defaults(self) -> None:
         """Only max_merged_chars set → default_debounce_ms keeps default."""
@@ -349,5 +349,5 @@ class TestLoadDebouncerConfig:
 
         raw = {"debouncer": {"max_merged_chars": 1024}}
         result = _load_debouncer_config(raw)
-        assert result["max_merged_chars"] == 1024
-        assert result["default_debounce_ms"] == 300
+        assert result.max_merged_chars == 1024
+        assert result.default_debounce_ms == 300

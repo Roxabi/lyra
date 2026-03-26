@@ -104,7 +104,8 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
             row = stores.agent.get(n)
             if row is not None:
                 agent_configs[n] = agent_row_to_config(
-                    row, instance_overrides=_build_agent_overrides(raw_config, n)
+                    row,
+                    instance_overrides=_build_agent_overrides(raw_config, n).model_dump(),
                 )
             else:
                 log.error("Agent %r not found in DB — skipping", n)
@@ -154,18 +155,18 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
             pairing_manager=pm,
             stt=stt_service,
             tts=tts_service,
-            debounce_ms=debouncer_cfg["default_debounce_ms"],
+            debounce_ms=debouncer_cfg.default_debounce_ms,
             prefs_store=stores.prefs,
-            turn_timeout=cli_pool_cfg["turn_timeout"],
-            pool_ttl=hub_cfg["pool_ttl"],
-            rate_limit=hub_cfg["rate_limit"],
-            rate_window=hub_cfg["rate_window"],
-            max_sdk_history=pool_cfg["max_sdk_history"],
-            safe_dispatch_timeout=pool_cfg["safe_dispatch_timeout"],
-            staging_maxsize=inbound_bus_cfg["staging_maxsize"],
-            platform_queue_maxsize=inbound_bus_cfg["platform_queue_maxsize"],
-            queue_depth_threshold=inbound_bus_cfg["queue_depth_threshold"],
-            max_merged_chars=debouncer_cfg["max_merged_chars"],
+            turn_timeout=cli_pool_cfg.turn_timeout,
+            pool_ttl=hub_cfg.pool_ttl,
+            rate_limit=hub_cfg.rate_limit,
+            rate_window=hub_cfg.rate_window,
+            max_sdk_history=pool_cfg.max_sdk_history,
+            safe_dispatch_timeout=pool_cfg.safe_dispatch_timeout,
+            staging_maxsize=inbound_bus_cfg.staging_maxsize,
+            platform_queue_maxsize=inbound_bus_cfg.platform_queue_maxsize,
+            queue_depth_threshold=inbound_bus_cfg.queue_depth_threshold,
+            max_merged_chars=debouncer_cfg.max_merged_chars,
         )
         hub.set_turn_store(stores.turn)
         hub.set_message_index(stores.message_index)
@@ -175,14 +176,14 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
         for cfg in agent_configs.values():
             if cfg.model_config.backend == "claude-cli":
                 cli_pool = CliPool(
-                    idle_ttl=cli_pool_cfg["idle_ttl"],
-                    default_timeout=cli_pool_cfg["default_timeout"],
-                    reaper_interval=cli_pool_cfg["reaper_interval"],
-                    kill_timeout=cli_pool_cfg["kill_timeout"],
-                    read_buffer_bytes=cli_pool_cfg["read_buffer_bytes"],
-                    stdin_drain_timeout=cli_pool_cfg["stdin_drain_timeout"],
-                    max_idle_retries=cli_pool_cfg["max_idle_retries"],
-                    intermediate_timeout=cli_pool_cfg["intermediate_timeout"],
+                    idle_ttl=cli_pool_cfg.idle_ttl,
+                    default_timeout=cli_pool_cfg.default_timeout,
+                    reaper_interval=cli_pool_cfg.reaper_interval,
+                    kill_timeout=cli_pool_cfg.kill_timeout,
+                    read_buffer_bytes=cli_pool_cfg.read_buffer_bytes,
+                    stdin_drain_timeout=cli_pool_cfg.stdin_drain_timeout,
+                    max_idle_retries=cli_pool_cfg.max_idle_retries,
+                    intermediate_timeout=cli_pool_cfg.intermediate_timeout,
                 )
                 await cli_pool.start()
                 break

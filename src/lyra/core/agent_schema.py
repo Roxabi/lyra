@@ -99,9 +99,11 @@ _AGENT_COLUMNS = (
 
 _SELECT_AGENTS = f"SELECT {_AGENT_COLUMNS} FROM agents"
 
+_N_AGENT_COLS = len([c.strip() for c in _AGENT_COLUMNS.split(",") if c.strip()])
+
 _UPSERT_AGENT = (
     f"INSERT INTO agents ({_AGENT_COLUMNS}) "
-    f"VALUES ({', '.join(['?'] * 24)}) "
+    f"VALUES ({', '.join(['?'] * _N_AGENT_COLS)}) "
     "ON CONFLICT(name) DO UPDATE SET "
     "backend=excluded.backend, "
     "model=excluded.model, "
@@ -155,8 +157,8 @@ WHERE voice_json IS NULL AND (tts_json IS NOT NULL OR stt_json IS NOT NULL);
 UPDATE agents SET fallback_language = i18n_language
 WHERE fallback_language = 'en' AND i18n_language != 'en';
 
--- Step 3: rebuild table without old columns
-CREATE TABLE agents_346 (
+-- Step 3: rebuild table without old columns (IF NOT EXISTS for crash recovery)
+CREATE TABLE IF NOT EXISTS agents_346 (
     name TEXT PRIMARY KEY,
     backend TEXT NOT NULL,
     model TEXT NOT NULL,
@@ -183,7 +185,7 @@ CREATE TABLE agents_346 (
     show_tool_recap INTEGER NOT NULL DEFAULT 1
 );
 
-INSERT INTO agents_346 (
+INSERT OR IGNORE INTO agents_346 (
     name, backend, model, max_turns, tools_json,
     show_intermediate, smart_routing_json, plugins_json,
     memory_namespace, cwd, source, created_at, updated_at,

@@ -464,7 +464,8 @@ class TestResolveContextResumeStatus:
         hub._turn_store = _FakeTurnStore()  # type: ignore[attr-defined]
 
         _base = make_inbound_message(scope_id="chat:42:user:tg:user:alice")
-        msg = dataclasses.replace(_base, platform_meta={**_base.platform_meta, "is_group": True})
+        _meta = {**_base.platform_meta, "is_group": True}
+        msg = dataclasses.replace(_base, platform_meta=_meta)
         pipeline = MessagePipeline(hub)
 
         status = await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]

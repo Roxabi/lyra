@@ -252,8 +252,7 @@ class TestEvictionSessionPreserve:
         hub._pool_manager._last_eviction_check = 0.0
 
         # Evict: session_id preserved before entry removed (SC3)
-        with patch.object(cli_pool, "_session_file_exists", return_value=True):
-            hub.get_or_create_pool("pool-2", "test-agent")
+        hub.get_or_create_pool("pool-2", "test-agent")
 
         assert cli_pool._resume_session_ids.get("pool-1") == "sess-evict-resume"
         assert "pool-1" not in cli_pool._entries
@@ -270,31 +269,6 @@ class TestEvictionSessionPreserve:
         assert cmd_args[cmd_args.index("--resume") + 1] == "sess-evict-resume"
         # One-shot: intent consumed after spawn
         assert cli_pool._resume_session_ids.get("pool-1") is None
-
-    @pytest.mark.asyncio()
-    async def test_eviction_no_session_preserved_when_file_missing(self) -> None:
-        """Session file absent at eviction time → _resume_session_ids not populated."""
-        hub = _make_hub(pool_ttl=0.1)
-        cli_pool = CliPool()
-        hub.cli_pool = cli_pool
-
-        entry = _ProcessEntry(
-            proc=make_fake_proc([]),
-            pool_id="pool-1",
-            model_config=DEFAULT_MODEL,
-            session_id="sess-gone",
-        )
-        cli_pool._entries["pool-1"] = entry
-
-        hub.get_or_create_pool("pool-1", "test-agent")
-        hub.pools["pool-1"]._last_active = time.monotonic() - 1.0
-        hub._pool_manager._last_eviction_check = 0.0
-
-        with patch.object(cli_pool, "_session_file_exists", return_value=False):
-            hub.get_or_create_pool("pool-2", "test-agent")
-
-        assert cli_pool._resume_session_ids.get("pool-1") is None
-        assert "pool-1" not in cli_pool._entries
 
     @pytest.mark.asyncio()
     async def test_flush_pool_does_not_call_sync_evict_entry(self) -> None:

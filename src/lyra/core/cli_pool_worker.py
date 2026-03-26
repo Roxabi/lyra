@@ -38,9 +38,6 @@ def _find_project_root() -> Path:
 # cwd for the claude subprocess — lyra project root
 _LYRA_ROOT = _find_project_root()
 
-# Claude CLI session files live at ~/.claude/projects/<cwd-slug>/<session_id>.jsonl
-_CLAUDE_PROJECTS = Path.home() / ".claude" / "projects"
-
 
 @dataclass
 class _ProcessEntry:
@@ -167,23 +164,19 @@ class CliPoolWorkerMixin:
         log.info("[pool:%s] spawned (PID=%d)", pool_id, proc.pid)
         return entry
 
-    def _session_file_exists(self, session_id: str) -> bool:
-        """Return True if a Claude session JSONL file exists for this session_id."""
-        return any(_CLAUDE_PROJECTS.glob(f"*/{session_id}.jsonl"))
-
     def _maybe_preserve_session(
         self, pool_id: str, entry: _ProcessEntry, *, preserve_session: bool
     ) -> None:
-        """Write session_id to _resume_session_ids if all three conditions hold.
+        """Write session_id to _resume_session_ids if both conditions hold.
 
         Shared by _kill and _sync_evict_entry — single definition of the
         preservation contract so both callers stay in sync automatically.
+
+        Note: the session file existence check was removed (#415) because
+        stream-json mode does not flush .jsonl while the subprocess is alive,
+        causing spurious resume failures after restart.
         """
-        if (
-            preserve_session
-            and entry.session_id
-            and self._session_file_exists(entry.session_id)
-        ):
+        if preserve_session and entry.session_id:
             self._resume_session_ids[pool_id] = entry.session_id  # type: ignore[attr-defined]
             log.debug(
                 "[pool:%s] preserving session %s for auto-resume",
@@ -195,9 +188,9 @@ class CliPoolWorkerMixin:
         """Sync counterpart to _kill for use in synchronous eviction paths.
 
         Pops the entry and cwd_override immediately within a single synchronous
-        frame (no event-loop yield). If preserve_session=True, entry.session_id is
-        set, and the session file exists on disk, stores session_id in
-        _resume_session_ids for one-shot pickup by the next _spawn().
+        frame (no event-loop yield). If preserve_session=True and entry.session_id
+        is set, stores session_id in _resume_session_ids for one-shot pickup by
+        the next _spawn().
 
         Does NOT terminate the process — once the entry is removed from _entries,
         the idle reaper's snapshot will not include this pool_id, so the orphaned

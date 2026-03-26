@@ -134,10 +134,10 @@ class TestReplyToResumePipeline:
 
         assert resumed == []
 
-    async def test_no_resume_in_group_chat(self) -> None:
-        """Group chat guard prevents resume (cross-user risk)."""
-        pool_id = "telegram:main:chat:42"
-        mi = _StubMessageIndex({(pool_id, "tg-msg-55"): "sess-group"})
+    async def test_reply_to_resume_works_in_group_with_user_scoped_pool(self) -> None:
+        """Reply-to-resume works in groups now that pool_id is user-scoped (#356)."""
+        pool_id = "telegram:main:chat:42:user:tg:user:alice"
+        mi = _StubMessageIndex({(pool_id, "tg-msg-55"): "sess-alice"})
         hub = _make_hub()
         hub._message_index = mi  # type: ignore[assignment]
 
@@ -145,12 +145,13 @@ class TestReplyToResumePipeline:
 
         resumed: list[str] = []
 
-        async def _fake_resume(sid: str) -> None:
+        async def _fake_resume(sid: str) -> bool:
             resumed.append(sid)
+            return True
 
         pool._session_resume_fn = _fake_resume  # type: ignore[attr-defined]
 
-        _base = make_inbound_message(scope_id="chat:42")
+        _base = make_inbound_message(scope_id="chat:42:user:tg:user:alice")
         msg = dataclasses.replace(
             _base,
             reply_to_id="tg-msg-55",
@@ -158,10 +159,11 @@ class TestReplyToResumePipeline:
         )
         pipeline = MessagePipeline(hub)
 
-        await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
+        status = await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
 
         assert mi.resolve_calls == [(pool_id, "tg-msg-55")]
-        assert resumed == []
+        assert resumed == ["sess-alice"]
+        assert status == ResumeStatus.RESUMED
 
     async def test_no_resume_when_message_index_none(self) -> None:
         """When hub._message_index is None, Path 1 is skipped entirely."""
@@ -407,14 +409,14 @@ class TestResolveContextResumeStatus:
 
         assert status == ResumeStatus.SKIPPED
 
-    async def test_path2_rejected_group_chat_returns_skipped(self) -> None:
-        """Path 2 rejected in a group chat → SKIPPED (silent, no notification).
+    async def test_path2_rejected_group_chat_returns_fresh(self) -> None:
+        """Path 2 rejected in a group chat → FRESH (no is_group guard since #356).
 
-        Group-chat resume is a deliberate safety skip regardless of whether
-        path 2 was attempted — broadcasting session-state into a shared channel
-        would leak per-user context to all participants.
+        With user-scoped pool_ids, group chats no longer need is_group guards.
+        Path 2 rejection falls through to Path 3, and without a TurnStore
+        this returns FRESH (user should be notified of fresh start).
         """
-        pool_id = "telegram:main:chat:42"
+        pool_id = "telegram:main:chat:42:user:tg:user:alice"
         hub = _make_hub()
         pool = hub.get_or_create_pool(pool_id, "lyra")
 
@@ -423,7 +425,9 @@ class TestResolveContextResumeStatus:
 
         pool._session_resume_fn = _rejected_resume  # type: ignore[attr-defined]
 
-        _base = make_inbound_message(scope_id="chat:42")
+        _base = make_inbound_message(scope_id="chat:42:user:tg:user:alice")
+        # is_group in platform_meta no longer affects the pipeline path since #356
+        # — included here only to document that it is now inert.
         _meta = {
             **_base.platform_meta,
             "thread_session_id": "tss-dead",
@@ -434,7 +438,40 @@ class TestResolveContextResumeStatus:
 
         status = await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
 
-        assert status == ResumeStatus.SKIPPED
+        assert status == ResumeStatus.FRESH
+
+    async def test_path3_last_active_works_with_user_scoped_pool(self) -> None:
+        """Path 3: last-active-session works with user-scoped pool_id (#356)."""
+        pool_id = "telegram:main:chat:42:user:tg:user:alice"
+        hub = _make_hub()
+        pool = hub.get_or_create_pool(pool_id, "lyra")
+
+        resumed: list[str] = []
+
+        async def _fake_resume(sid: str) -> bool:
+            resumed.append(sid)
+            return True
+
+        pool._session_resume_fn = _fake_resume  # type: ignore[attr-defined]
+
+        class _FakeTurnStore:
+            async def get_last_session(self, pid: str) -> str | None:
+                return "sess-alice-last" if pid == pool_id else None
+
+            async def close(self) -> None:
+                pass
+
+        hub._turn_store = _FakeTurnStore()  # type: ignore[attr-defined]
+
+        _base = make_inbound_message(scope_id="chat:42:user:tg:user:alice")
+        _meta = {**_base.platform_meta, "is_group": True}
+        msg = dataclasses.replace(_base, platform_meta=_meta)
+        pipeline = MessagePipeline(hub)
+
+        status = await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
+
+        assert status == ResumeStatus.RESUMED
+        assert resumed == ["sess-alice-last"]
 
 
 # -------------------------------------------------------------------

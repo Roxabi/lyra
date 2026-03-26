@@ -70,7 +70,7 @@ def test_normalize_audio_attachment_fields() -> None:
     )
     assert isinstance(result, InboundAudio)
     assert result.id.startswith("discord:dc:user:42:")
-    assert result.scope_id == "channel:333"
+    assert result.scope_id == "channel:333:user:dc:user:42"
     assert result.mime_type == "audio/ogg"
     assert result.duration_ms is None
     assert result.file_id is None
@@ -90,7 +90,7 @@ def test_normalize_audio_channel_scope_id() -> None:
     result = adapter.normalize_audio(
         msg, b"x", "audio/ogg", trust_level=TrustLevel.TRUSTED
     )
-    assert result.scope_id == "channel:333"
+    assert result.scope_id == "channel:333:user:dc:user:42"
 
 
 def test_normalize_audio_thread_scope_id() -> None:

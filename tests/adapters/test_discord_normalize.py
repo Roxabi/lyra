@@ -41,7 +41,7 @@ def test_normalize_builds_correct_discord_context() -> None:
 
     assert isinstance(msg, InboundMessage)
     assert msg.platform == "discord"
-    assert msg.scope_id == "channel:333"
+    assert msg.scope_id == "channel:333:user:dc:user:42"
     assert msg.platform_meta["guild_id"] == 111
     assert msg.platform_meta["channel_id"] == 333
     assert msg.platform_meta["message_id"] == 555
@@ -328,3 +328,123 @@ def test_discord_token_not_in_logs(
         assert secret_token not in record.getMessage(), (
             f"Token found in log at {record.levelname}: {record.getMessage()!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# #356 — user-scoped scope_id in shared spaces
+# ---------------------------------------------------------------------------
+
+
+def test_normalize_guild_channel_user_scoped_scope_id() -> None:
+    """Guild text channel → scope_id includes user_id suffix."""
+    from lyra.adapters.discord import DiscordAdapter
+    from lyra.core.message import InboundMessage
+
+    hub = MagicMock()
+    adapter = DiscordAdapter(
+        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+    )
+    adapter._bot_user = SimpleNamespace(id=999, bot=True)
+
+    discord_msg = SimpleNamespace(
+        guild=SimpleNamespace(id=111),
+        channel=SimpleNamespace(id=333, send=AsyncMock()),
+        author=SimpleNamespace(id=42, name="Alice", display_name="Alice", bot=False),
+        content="hello",
+        created_at=datetime.now(timezone.utc),
+        id=555,
+        mentions=[],
+    )
+
+    msg = adapter.normalize(discord_msg)
+
+    assert isinstance(msg, InboundMessage)
+    assert msg.scope_id == "channel:333:user:dc:user:42"
+    assert msg.user_id == "dc:user:42"
+
+
+def test_normalize_dm_scope_id_unchanged() -> None:
+    """Discord DM (guild=None) → scope_id has no user suffix (regression)."""
+    from lyra.adapters.discord import DiscordAdapter
+
+    hub = MagicMock()
+    adapter = DiscordAdapter(
+        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+    )
+    adapter._bot_user = SimpleNamespace(id=999, bot=True)
+
+    discord_msg = SimpleNamespace(
+        guild=None,
+        channel=SimpleNamespace(id=777, send=AsyncMock()),
+        author=SimpleNamespace(id=42, name="Alice", display_name="Alice", bot=False),
+        content="hello",
+        created_at=datetime.now(timezone.utc),
+        id=555,
+        mentions=[],
+    )
+
+    msg = adapter.normalize(discord_msg)
+
+    assert msg.scope_id == "channel:777"
+
+
+def test_normalize_thread_scope_id_unchanged() -> None:
+    """Discord thread → scope_id uses thread: prefix, no user suffix (regression)."""
+    from lyra.adapters.discord import DiscordAdapter
+
+    hub = MagicMock()
+    adapter = DiscordAdapter(
+        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+    )
+    adapter._bot_user = SimpleNamespace(id=999, bot=True)
+
+    discord_msg = SimpleNamespace(
+        guild=SimpleNamespace(id=111),
+        channel=discord.Thread.__new__(discord.Thread),
+        author=SimpleNamespace(id=42, name="Alice", display_name="Alice", bot=False),
+        content="hello",
+        created_at=datetime.now(timezone.utc),
+        id=555,
+        mentions=[],
+    )
+    # Simulate thread channel with id
+    discord_msg.channel.id = 888
+
+    msg = adapter.normalize(discord_msg, thread_id=888)
+
+    assert msg.scope_id == "thread:888"
+
+
+def test_two_users_same_guild_channel_get_distinct_pool_ids() -> None:
+    """Two users in the same guild channel → distinct scope_ids → distinct pool_ids."""
+    from lyra.adapters.discord import DiscordAdapter
+    from lyra.core.hub.hub_protocol import RoutingKey
+    from lyra.core.message import Platform
+
+    hub = MagicMock()
+    adapter = DiscordAdapter(
+        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+    )
+    adapter._bot_user = SimpleNamespace(id=999, bot=True)
+
+    def _make_guild_msg(user_id: int, user_name: str) -> object:
+        return SimpleNamespace(
+            guild=SimpleNamespace(id=111),
+            channel=SimpleNamespace(id=333, send=AsyncMock()),
+            author=SimpleNamespace(
+                id=user_id, name=user_name, display_name=user_name, bot=False
+            ),
+            content="hello",
+            created_at=datetime.now(timezone.utc),
+            id=555,
+            mentions=[],
+        )
+
+    msg_alice = adapter.normalize(_make_guild_msg(1, "Alice"))
+    msg_bob = adapter.normalize(_make_guild_msg(2, "Bob"))
+
+    assert msg_alice.scope_id != msg_bob.scope_id
+
+    key_alice = RoutingKey(Platform.DISCORD, "main", msg_alice.scope_id)
+    key_bob = RoutingKey(Platform.DISCORD, "main", msg_bob.scope_id)
+    assert key_alice.to_pool_id() != key_bob.to_pool_id()

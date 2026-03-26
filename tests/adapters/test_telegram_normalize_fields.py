@@ -231,7 +231,7 @@ def test_normalize_captures_topic_and_message_id_for_forum() -> None:
     assert msg.platform_meta["topic_id"] == 99
     assert msg.platform_meta["message_id"] == 777
     assert msg.platform_meta["is_group"] is True
-    assert msg.scope_id == "chat:456:topic:99"
+    assert msg.scope_id == "chat:456:topic:99:user:tg:user:42"
 
 
 def test_normalize_empty_text() -> None:
@@ -309,3 +309,144 @@ def test_normalize_reply_to_id_none_when_no_reply() -> None:
     msg = adapter.normalize(aiogram_msg)
 
     assert msg.reply_to_id is None
+
+
+# ---------------------------------------------------------------------------
+# #356 — user-scoped scope_id in shared spaces
+# ---------------------------------------------------------------------------
+
+
+def test_normalize_group_chat_user_scoped_scope_id() -> None:
+    """Group chat → scope_id includes user_id suffix."""
+    from lyra.adapters.telegram import TelegramAdapter
+
+    hub = MagicMock()
+    adapter = TelegramAdapter(
+        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+    )
+    adapter._bot_username = "lyra_bot"
+
+    entity = SimpleNamespace(type="mention", offset=0, length=9)
+    aiogram_msg = SimpleNamespace(
+        chat=SimpleNamespace(id=456, type="group"),
+        from_user=SimpleNamespace(id=42, full_name="Alice", is_bot=False),
+        text="@lyra_bot hello",
+        date=datetime.now(timezone.utc),
+        message_thread_id=None,
+        message_id=99,
+        entities=[entity],
+    )
+
+    msg = adapter.normalize(aiogram_msg)
+
+    assert msg.scope_id == "chat:456:user:tg:user:42"
+    assert msg.user_id == "tg:user:42"
+
+
+def test_normalize_group_chat_no_mention_still_user_scoped() -> None:
+    """Group chat without @mention → scope_id still includes user_id suffix."""
+    from lyra.adapters.telegram import TelegramAdapter
+
+    hub = MagicMock()
+    adapter = TelegramAdapter(
+        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+    )
+
+    aiogram_msg = SimpleNamespace(
+        chat=SimpleNamespace(id=456, type="group"),
+        from_user=SimpleNamespace(id=42, full_name="Alice", is_bot=False),
+        text="hello everyone",
+        date=datetime.now(timezone.utc),
+        message_thread_id=None,
+        message_id=99,
+        entities=None,
+    )
+
+    msg = adapter.normalize(aiogram_msg)
+
+    assert msg.scope_id == "chat:456:user:tg:user:42"
+    assert msg.is_mention is False
+
+
+def test_normalize_forum_topic_user_scoped_scope_id() -> None:
+    """Forum topic in supergroup → scope_id includes topic AND user_id suffix."""
+    from lyra.adapters.telegram import TelegramAdapter
+
+    hub = MagicMock()
+    adapter = TelegramAdapter(
+        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+    )
+    adapter._bot_username = "lyra_bot"
+
+    entity = SimpleNamespace(type="mention", offset=0, length=9)
+    aiogram_msg = SimpleNamespace(
+        chat=SimpleNamespace(id=456, type="supergroup"),
+        from_user=SimpleNamespace(id=42, full_name="Alice", is_bot=False),
+        text="@lyra_bot hello",
+        date=datetime.now(timezone.utc),
+        message_thread_id=7,
+        message_id=99,
+        entities=[entity],
+    )
+
+    msg = adapter.normalize(aiogram_msg)
+
+    assert msg.scope_id == "chat:456:topic:7:user:tg:user:42"
+
+
+def test_normalize_private_chat_scope_id_unchanged() -> None:
+    """Private chat → scope_id has no user suffix (regression)."""
+    from lyra.adapters.telegram import TelegramAdapter
+
+    hub = MagicMock()
+    adapter = TelegramAdapter(
+        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+    )
+
+    aiogram_msg = SimpleNamespace(
+        chat=SimpleNamespace(id=123, type="private"),
+        from_user=SimpleNamespace(id=42, full_name="Alice", is_bot=False),
+        text="hello",
+        date=datetime.now(timezone.utc),
+        message_thread_id=None,
+        message_id=99,
+        entities=None,
+    )
+
+    msg = adapter.normalize(aiogram_msg)
+
+    assert msg.scope_id == "chat:123"
+
+
+def test_two_users_same_group_get_distinct_pool_ids() -> None:
+    """Two users in the same group → distinct scope_ids → distinct pool_ids."""
+    from lyra.adapters.telegram import TelegramAdapter
+    from lyra.core.hub.hub_protocol import RoutingKey
+    from lyra.core.message import Platform
+
+    hub = MagicMock()
+    adapter = TelegramAdapter(
+        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+    )
+    adapter._bot_username = "lyra_bot"
+
+    def _make_group_msg(user_id: int, user_name: str) -> object:
+        entity = SimpleNamespace(type="mention", offset=0, length=9)
+        return SimpleNamespace(
+            chat=SimpleNamespace(id=456, type="group"),
+            from_user=SimpleNamespace(id=user_id, full_name=user_name, is_bot=False),
+            text="@lyra_bot hi",
+            date=datetime.now(timezone.utc),
+            message_thread_id=None,
+            message_id=99,
+            entities=[entity],
+        )
+
+    msg_alice = adapter.normalize(_make_group_msg(1, "Alice"))
+    msg_bob = adapter.normalize(_make_group_msg(2, "Bob"))
+
+    assert msg_alice.scope_id != msg_bob.scope_id
+
+    key_alice = RoutingKey(Platform.TELEGRAM, "main", msg_alice.scope_id)
+    key_bob = RoutingKey(Platform.TELEGRAM, "main", msg_bob.scope_id)
+    assert key_alice.to_pool_id() != key_bob.to_pool_id()

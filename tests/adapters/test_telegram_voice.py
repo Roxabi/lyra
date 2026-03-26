@@ -257,16 +257,28 @@ def test_normalize_audio_private_chat_scope_id() -> None:
     assert result.scope_id == "chat:42"
 
 
-def test_normalize_audio_topic_chat_scope_id() -> None:
-    """Topic chat → scope_id='chat:<id>:topic:<topic_id>'."""
+def test_normalize_audio_group_chat_user_scoped_scope_id() -> None:
+    """Group chat (no topic) → scope_id includes user suffix (#356)."""
     from lyra.core.trust import TrustLevel
 
     adapter, _ = _make_adapter()
-    msg = _make_voice_msg(chat_id=42, topic_id=7, chat_type="supergroup")
+    msg = _make_voice_msg(chat_id=42, chat_type="group")
     result = adapter.normalize_audio(
         msg, b"x", "audio/ogg", trust_level=TrustLevel.TRUSTED
     )
-    assert result.scope_id == "chat:42:topic:7"
+    assert result.scope_id == "chat:42:user:tg:user:7"
+
+
+def test_normalize_audio_topic_chat_scope_id() -> None:
+    """Topic chat → scope_id includes topic AND user suffix (#356)."""
+    from lyra.core.trust import TrustLevel
+
+    adapter, _ = _make_adapter()
+    msg = _make_voice_msg(chat_id=42, topic_id=7, user_id=99, chat_type="supergroup")
+    result = adapter.normalize_audio(
+        msg, b"x", "audio/ogg", trust_level=TrustLevel.TRUSTED
+    )
+    assert result.scope_id == "chat:42:topic:7:user:tg:user:99"
 
 
 # ---------------------------------------------------------------------------

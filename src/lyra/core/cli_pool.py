@@ -260,8 +260,8 @@ class CliPool(CliPoolWorkerMixin):
     async def resume_and_reset(self, pool_id: str, session_id: str) -> bool:
         """Kill process; next _spawn() uses --resume <session_id> (one-shot).
 
-        Returns True if the resume was accepted, False if skipped (invalid id,
-        pruned session file, or process already on that session).
+        Returns True if the resume was accepted, False if skipped (invalid id
+        or process already on that session).
         """
         if not _SESSION_ID_RE.match(session_id):
             log.warning(
@@ -269,13 +269,6 @@ class CliPool(CliPoolWorkerMixin):
                 pool_id,
                 session_id,
             )  # noqa: E501
-            return False
-        if not self._session_file_exists(session_id):
-            log.warning(
-                "[pool:%s] resume_and_reset: session %r not on disk — falling through (Tier-2)",  # noqa: E501
-                pool_id,
-                session_id,
-            )
             return False
         # If the live process already holds this session, skip kill+respawn.
         entry = self._entries.get(pool_id)

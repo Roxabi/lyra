@@ -144,30 +144,12 @@ class TestCliPoolResumeAndReset:
 
         _SESS = "abcdef01-2345-6789-abcd-ef0123456789"
 
-        # Act — patch _session_file_exists to simulate a live session file
-        with patch.object(pool, "_session_file_exists", return_value=True):
-            await pool.resume_and_reset("pool:tg:chat:1", _SESS)  # type: ignore[attr-defined]
+        # Act
+        await pool.resume_and_reset("pool:tg:chat:1", _SESS)  # type: ignore[attr-defined]
 
         # Assert — session stored for next spawn AND process killed
         assert pool._resume_session_ids.get("pool:tg:chat:1") == _SESS  # type: ignore[attr-defined]
         assert "pool:tg:chat:1" not in pool._entries
-
-    async def test_resume_and_reset_skips_when_session_file_missing(self) -> None:
-        """If session file is gone from disk, resume_and_reset is a no-op (Tier-2)."""
-        pool = CliPool()
-        proc = make_fake_proc([])
-        entry = _ProcessEntry(
-            proc=proc, pool_id="pool:tg:chat:1", model_config=DEFAULT_MODEL
-        )
-        pool._entries["pool:tg:chat:1"] = entry
-
-        # Act — session file does not exist on disk
-        with patch.object(pool, "_session_file_exists", return_value=False):
-            await pool.resume_and_reset("pool:tg:chat:1", "sess-pruned")  # type: ignore[attr-defined]
-
-        # Assert — no kill, no resume intent stored
-        assert "pool:tg:chat:1" in pool._entries
-        assert pool._resume_session_ids.get("pool:tg:chat:1") is None  # type: ignore[attr-defined]
 
     async def test_spawn_consumes_resume_session_id_and_passes_to_cmd(self) -> None:
         """_spawn() pops _resume_session_ids and passes --resume to CLI (one-shot)."""
@@ -271,7 +253,7 @@ class TestEagerCleanupOnTerminated:
 class TestKillPreservesSession:
     """_kill() preserves session_id in _resume_session_ids when appropriate."""
 
-    async def test_kill_preserves_session_when_file_exists(self) -> None:
+    async def test_kill_preserves_session(self) -> None:
         pool = CliPool()
         proc = make_fake_proc([])
         entry = _ProcessEntry(
@@ -282,8 +264,7 @@ class TestKillPreservesSession:
         )
         pool._entries["pool-1"] = entry
 
-        with patch.object(pool, "_session_file_exists", return_value=True):
-            await pool._kill("pool-1")
+        await pool._kill("pool-1")
 
         assert pool._resume_session_ids.get("pool-1") == "sess-abc123-deadbeef"
 
@@ -298,8 +279,7 @@ class TestKillPreservesSession:
         )
         pool._entries["pool-1"] = entry
 
-        with patch.object(pool, "_session_file_exists", return_value=True):
-            await pool._kill("pool-1", preserve_session=False)
+        await pool._kill("pool-1", preserve_session=False)
 
         assert pool._resume_session_ids.get("pool-1") is None
 
@@ -314,24 +294,7 @@ class TestKillPreservesSession:
         )
         pool._entries["pool-1"] = entry
 
-        with patch.object(pool, "_session_file_exists", return_value=True):
-            await pool._kill("pool-1")
-
-        assert pool._resume_session_ids.get("pool-1") is None
-
-    async def test_kill_does_not_preserve_when_session_file_missing(self) -> None:
-        pool = CliPool()
-        proc = make_fake_proc([])
-        entry = _ProcessEntry(
-            proc=proc,
-            pool_id="pool-1",
-            model_config=DEFAULT_MODEL,
-            session_id="sess-abc123-deadbeef",
-        )
-        pool._entries["pool-1"] = entry
-
-        with patch.object(pool, "_session_file_exists", return_value=False):
-            await pool._kill("pool-1")
+        await pool._kill("pool-1")
 
         assert pool._resume_session_ids.get("pool-1") is None
 
@@ -347,12 +310,9 @@ class TestKillPreservesSession:
         pool._entries["p1"] = entry
 
         terminated_result = CliResult(error="Process terminated unexpectedly")
-        with (
-            patch(
-                "lyra.core.cli_pool.send_and_read",
-                new=AsyncMock(return_value=terminated_result),
-            ),
-            patch.object(pool, "_session_file_exists", return_value=True),
+        with patch(
+            "lyra.core.cli_pool.send_and_read",
+            new=AsyncMock(return_value=terminated_result),
         ):
             await pool.send("p1", "hello", DEFAULT_MODEL)
 
@@ -369,8 +329,7 @@ class TestKillPreservesSession:
         )
         pool._entries["p1"] = entry
 
-        with patch.object(pool, "_session_file_exists", return_value=True):
-            await pool.switch_cwd("p1", tmp_path)
+        await pool.switch_cwd("p1", tmp_path)
 
         assert pool._resume_session_ids.get("p1") is None
 
@@ -385,8 +344,7 @@ class TestKillPreservesSession:
         )
         pool._entries["p1"] = entry
 
-        with patch.object(pool, "_session_file_exists", return_value=True):
-            await pool.reset("p1")
+        await pool.reset("p1")
 
         assert pool._resume_session_ids.get("p1") is None
 
@@ -437,8 +395,8 @@ class TestReaperSkipsLockedEntries:
 class TestSyncEvictEntry:
     """_sync_evict_entry() pops entry + cwd_override; preserves session_id iff conditions hold."""  # noqa: E501
 
-    def test_sync_evict_entry_preserves_session_when_file_exists(self) -> None:
-        """preserve_session=True + session_id set + file exists → _resume_session_ids populated."""  # noqa: E501
+    def test_sync_evict_entry_preserves_session(self) -> None:
+        """preserve_session=True + session_id set → _resume_session_ids populated."""
         pool = CliPool()
         proc = make_fake_proc([])
         entry = _ProcessEntry(
@@ -450,15 +408,14 @@ class TestSyncEvictEntry:
         pool._entries["pool-1"] = entry
         pool._cwd_overrides["pool-1"] = Path("/tmp/cwd")
 
-        with patch.object(pool, "_session_file_exists", return_value=True):
-            pool._sync_evict_entry("pool-1", preserve_session=True)
+        pool._sync_evict_entry("pool-1", preserve_session=True)
 
         assert pool._resume_session_ids.get("pool-1") == "sess-abc123-deadbeef"
         assert "pool-1" not in pool._entries
         assert "pool-1" not in pool._cwd_overrides
 
     def test_sync_evict_entry_no_preserve_when_preserve_false(self) -> None:
-        """preserve_session=False → _resume_session_ids not written even if file exists."""  # noqa: E501
+        """preserve_session=False → _resume_session_ids not written."""
         pool = CliPool()
         proc = make_fake_proc([])
         entry = _ProcessEntry(
@@ -470,8 +427,7 @@ class TestSyncEvictEntry:
         pool._entries["pool-1"] = entry
         pool._cwd_overrides["pool-1"] = Path("/tmp/cwd")
 
-        with patch.object(pool, "_session_file_exists", return_value=True):
-            pool._sync_evict_entry("pool-1", preserve_session=False)
+        pool._sync_evict_entry("pool-1", preserve_session=False)
 
         assert pool._resume_session_ids.get("pool-1") is None
         assert "pool-1" not in pool._entries
@@ -490,28 +446,7 @@ class TestSyncEvictEntry:
         pool._entries["pool-1"] = entry
         pool._cwd_overrides["pool-1"] = Path("/tmp/cwd")
 
-        with patch.object(pool, "_session_file_exists", return_value=True):
-            pool._sync_evict_entry("pool-1")
-
-        assert pool._resume_session_ids.get("pool-1") is None
-        assert "pool-1" not in pool._entries
-        assert "pool-1" not in pool._cwd_overrides
-
-    def test_sync_evict_entry_no_preserve_when_file_missing(self) -> None:
-        """Session file absent → _resume_session_ids not written."""
-        pool = CliPool()
-        proc = make_fake_proc([])
-        entry = _ProcessEntry(
-            proc=proc,
-            pool_id="pool-1",
-            model_config=DEFAULT_MODEL,
-            session_id="sess-abc123-deadbeef",
-        )
-        pool._entries["pool-1"] = entry
-        pool._cwd_overrides["pool-1"] = Path("/tmp/cwd")
-
-        with patch.object(pool, "_session_file_exists", return_value=False):
-            pool._sync_evict_entry("pool-1")
+        pool._sync_evict_entry("pool-1")
 
         assert pool._resume_session_ids.get("pool-1") is None
         assert "pool-1" not in pool._entries

@@ -113,29 +113,28 @@ ssh-copy-id yourname@<MACHINE_1_IP>
 
 ---
 
-## Step 5 — Run the setup script
+## Step 5 — Run the provisioning script
 
 ```bash
 ssh yourname@<MACHINE_1_IP>
-curl -fsSL https://raw.githubusercontent.com/Roxabi/lyra/main/setup.sh | ADMIN_USER=yourname bash
-```
-
-Or with an explicit username override:
-```bash
-ADMIN_USER=yourname bash setup.sh
+curl -fsSL https://raw.githubusercontent.com/Roxabi/lyra-stack/main/scripts/provision.sh | ADMIN_USER=yourname bash
 ```
 
 The script handles:
-- System update
-- Base packages (git, curl, htop, nvtop…)
+- System update + base packages (git, curl, htop, ffmpeg, build-essential, python3-dev…)
 - NVIDIA drivers
 - SSH hardening (key-only, no root login)
 - UFW firewall (SSH only)
 - fail2ban
 - GRUB default Linux + Windows detection
 - `lyra` agent account (restricted shell, no sudo)
+- GitHub SSH host key in `known_hosts`
+- uv (Python package manager)
+- supervisord (process manager)
+- Node.js + Claude Code CLI
+- Git global config (interactive prompt)
 
-If NVIDIA drivers were installed, reboot:
+If NVIDIA drivers were installed, reboot and reconnect:
 ```bash
 sudo reboot
 ```
@@ -145,27 +144,148 @@ sudo reboot
 ## Step 6 — Verify
 
 ```bash
-# GPU
-ssh yourname@<MACHINE_1_IP> "nvidia-smi"
-
-# Swap
-ssh yourname@<MACHINE_1_IP> "free -h"
-# If swap shows 0: sudo mkswap /dev/nvme0n1p6 && sudo swapon /dev/nvme0n1p6
-# Then persist: echo '/dev/nvme0n1p6 none swap sw 0 0' | sudo tee -a /etc/fstab
-
-# Full checkup
 ssh yourname@<MACHINE_1_IP> "
   lsb_release -d
   nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader
   free -h | grep -E 'Mem|Swap'
   df -h /
   systemctl is-active ssh fail2ban
+  uv --version
+  supervisord --version
+  claude --version
+  ssh -T git@github.com 2>&1 | head -1
 "
 ```
 
 ---
 
-## Step 7 — Set up lyra agent account
+## Step 7 — Clone lyra-stack and run setup
+
+This single command clones all repos, installs dependencies, registers services, scaffolds config, and starts everything:
+
+```bash
+ssh yourname@<MACHINE_1_IP>
+
+# Add your GitHub SSH key if not already done
+# https://github.com/settings/keys → paste output of: cat ~/.ssh/id_ed25519.pub
+
+git clone git@github.com:Roxabi/lyra-stack.git ~/projects/lyra-stack
+cd ~/projects/lyra-stack && make setup
+```
+
+`make setup` will:
+1. Check prerequisites (git, uv, supervisord, claude, GitHub SSH)
+2. Clone lyra and voiceCLI → `~/projects/`
+3. `uv sync` in each project
+4. `make register` in each (creates supervisor symlinks)
+5. Create log directories (`~/.local/state/*/logs/`)
+6. Symlink `voicecli` to `~/.local/bin/`
+7. Scaffold `.env` and `config.toml` from examples
+8. Seed agents into the DB (`lyra agent init`)
+9. Start supervisord
+
+For optional modules (imageCLI, roxabi-vault):
+```bash
+make setup ARGS=--all
+```
+
+---
+
+## Step 8 — Configure
+
+The setup scaffolded `.env` and `config.toml` from examples. Now fill in your values:
+
+### Bot tokens (`.env`)
+
+```bash
+cd ~/projects/lyra
+nano .env
+```
+
+**Telegram:**
+1. Message [@BotFather](https://t.me/BotFather) on Telegram
+2. `/newbot` → choose a name and username
+3. Copy the token → `TELEGRAM_TOKEN`
+4. The username (without @) → `TELEGRAM_BOT_USERNAME`
+5. Generate a random webhook secret → `TELEGRAM_WEBHOOK_SECRET`
+
+**Discord:**
+1. Go to [Discord Developer Portal](https://discord.com/developers/applications) → New Application
+2. Bot tab → Reset Token → copy → `DISCORD_TOKEN`
+3. Enable **Message Content Intent** under Privileged Gateway Intents
+4. OAuth2 → URL Generator → scopes: `bot` → permissions: `Send Messages`, `Read Message History`
+5. Use the generated URL to invite the bot to your server
+
+### Auth config (`config.toml`)
+
+```bash
+nano config.toml
+```
+
+Fill in your user IDs in the `owner_users` arrays:
+- Telegram ID: message [@userinfobot](https://t.me/userinfobot) on Telegram
+- Discord ID: Settings → Advanced → Developer Mode → right-click your username → Copy User ID
+
+### Store bot tokens in the credential store
+
+```bash
+lyra bot add
+```
+
+This encrypts and stores the tokens in `~/.lyra/auth.db`.
+
+---
+
+## Step 9 — Authenticate Claude CLI
+
+```bash
+claude
+```
+
+Follow the prompts to authenticate. Lyra uses Claude Code as its LLM backend — it spawns `claude --input-format stream-json` as a subprocess.
+
+---
+
+## Step 10 — Start Lyra
+
+```bash
+cd ~/projects/lyra-stack
+make lyra reload
+make ps
+```
+
+You should see:
+```
+lyra_telegram    RUNNING   pid 12345, uptime 0:00:10
+lyra_discord     RUNNING   pid 12346, uptime 0:00:10
+voicecli_tts     RUNNING   pid 12347, uptime 0:00:10
+voicecli_stt     RUNNING   pid 12348, uptime 0:00:10
+```
+
+Check the logs:
+```bash
+make lyra logs      # tail Telegram adapter stdout
+make lyra errlogs   # tail stderr (where INFO/ERROR logs go)
+```
+
+---
+
+## Step 11 — Send your first message
+
+**Telegram:** Open a DM with your bot and type anything. Lyra will respond.
+
+**Discord:** @mention your bot in a channel: `@YourBot hello!`
+
+What happens under the hood:
+1. The adapter normalizes your message into an `InboundMessage` object
+2. It goes onto the hub's async bus (`asyncio.Queue`)
+3. The hub resolves the routing (wildcard binding → your user gets an isolated pool)
+4. `SimpleAgent` sends the text to a persistent `claude` subprocess
+5. The response is dispatched back to the originating platform
+
+---
+
+## Step 12 — Set up lyra agent account (optional)
 
 Generate a dedicated SSH key for the agent on Machine 2:
 
@@ -184,8 +304,6 @@ Test:
 ssh -i ~/.ssh/lyra_agent lyra@<MACHINE_1_IP> "id && git --version"
 ```
 
-Expected: `uid=1001(lyra) ... git version 2.x`
-
 ---
 
 ## Final state
@@ -193,277 +311,32 @@ Expected: `uid=1001(lyra) ... git version 2.x`
 | What | Where |
 |------|-------|
 | Admin access | `ssh yourname@<IP>` |
-| Agent access | `ssh -i ~/.ssh/lyra_agent lyra@<IP>` |
+| Agent access | `ssh -i ~/.ssh/lyra_agent lyra@<IP>` (optional) |
+| Lyra project | `~/projects/lyra/` |
+| VoiceCLI project | `~/projects/voiceCLI/` |
+| Supervisor hub | `~/projects/lyra-stack/` |
+| Config | `~/projects/lyra/.env` + `config.toml` |
+| Credentials | `~/.lyra/auth.db` (encrypted) |
+| Logs | `~/.local/state/lyra/logs/` |
 | GPU | `nvidia-smi` ✓ |
-| GRUB | Linux default, Windows on F11 |
 | Firewall | UFW, SSH only |
-| SSH keys | `~/.ssh/id_ed25519` (admin), `~/.ssh/lyra_agent` (agent) |
 
-Machine 1 is ready to run Lyra by Roxabi.
-
----
-
-## Step 8 — Clone the repo & install dependencies
-
+**Daily commands** (from `~/projects/lyra-stack`):
 ```bash
-ssh yourname@<MACHINE_1_IP>
-
-# Clone (use SSH if you imported your GitHub key)
-git clone git@github.com:Roxabi/lyra.git ~/lyra
-cd ~/lyra
-
-# Install uv (Python package manager)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-source ~/.bashrc
-
-# Install all dependencies (runtime + dev)
-uv sync --all-extras
-
-# Activate the virtual environment (or add .venv/bin to your PATH)
-source ~/lyra/.venv/bin/activate
-# Alternative: add to ~/.bashrc → export PATH="$HOME/lyra/.venv/bin:$PATH"
-```
-
-Verify:
-```bash
-uv run python -c "from lyra.core.hub import Hub; print('Hub OK')"
-lyra --version
+make ps              # status of all services
+make lyra reload     # restart lyra
+make lyra logs       # tail logs
+make deploy          # pull latest + restart (from Machine 2)
 ```
 
 ---
 
-## Step 9 — Configure environment variables
+## Local demo without tokens
 
-Copy the example and fill in your tokens:
-
-```bash
-cp .env.example .env
-nano .env
-```
-
-Required variables for running Lyra with real adapters:
+You can test the hub routing without any platform tokens:
 
 ```bash
-# Telegram — get from @BotFather on Telegram
-TELEGRAM_TOKEN=123456:ABC-DEF...
-TELEGRAM_BOT_USERNAME=your_bot_username
-TELEGRAM_WEBHOOK_SECRET=a-random-secret-string
-
-# Discord — get from https://discord.com/developers/applications
-DISCORD_TOKEN=your-discord-bot-token
-```
-
-**Telegram setup:**
-1. Message [@BotFather](https://t.me/BotFather) on Telegram
-2. `/newbot` → choose a name and username
-3. Copy the token → `TELEGRAM_TOKEN`
-4. The username (without @) → `TELEGRAM_BOT_USERNAME`
-5. Generate a random webhook secret → `TELEGRAM_WEBHOOK_SECRET`
-
-**Discord setup:**
-1. Go to [Discord Developer Portal](https://discord.com/developers/applications) → New Application
-2. Bot tab → Reset Token → copy → `DISCORD_TOKEN`
-3. Enable **Message Content Intent** under Privileged Gateway Intents
-4. OAuth2 → URL Generator → scopes: `bot` → permissions: `Send Messages`, `Read Message History`
-5. Use the generated URL to invite the bot to your server
-
----
-
-## Step 9b — Create config.toml (auth config)
-
-`config.toml` is required to start Lyra with networked adapters. It is gitignored — never committed.
-
-```bash
-cp config.toml.example config.toml
-nano config.toml
-```
-
-Fill in your user IDs. Lyra supports two config schemas — single-bot (simple) and multi-bot:
-
-**Single-bot (default)** — one bot per platform, tokens from env vars:
-
-```toml
-[admin]
-# owner_users are automatically admin — only add extra IDs here if needed.
-user_ids = []
-
-[auth.telegram]
-default = "blocked"
-owner_users = [YOUR_TELEGRAM_ID]   # numeric — get from @userinfobot on Telegram
-trusted_users = []                 # numeric Telegram IDs (can interact, cannot admin)
-
-[auth.discord]
-default = "blocked"
-owner_users = [YOUR_DISCORD_ID]    # numeric — Settings → Advanced → Developer Mode → right-click username
-trusted_roles = []                 # numeric Discord role snowflake IDs (trusted access)
-```
-
-**Multi-bot** — multiple bots per platform, each mapped to a different agent:
-
-```toml
-[[telegram.bots]]
-bot_id = "lyra"
-token = "env:TELEGRAM_TOKEN"
-bot_username = "env:TELEGRAM_BOT_USERNAME"
-webhook_secret = "env:TELEGRAM_WEBHOOK_SECRET"
-agent = "lyra_default"
-
-[[discord.bots]]
-bot_id = "lyra"
-token = "env:DISCORD_TOKEN"
-auto_thread = true
-agent = "lyra_default"
-
-[[auth.telegram_bots]]
-bot_id = "lyra"
-default = "blocked"
-owner_users = [YOUR_TELEGRAM_ID]
-
-[[auth.discord_bots]]
-bot_id = "lyra"
-default = "blocked"
-owner_users = [YOUR_DISCORD_ID]
-```
-
-See `config.toml.example` for a full multi-bot example with multiple bots.
-
-> **Note:** `owner_users` in each adapter section are automatically granted admin privileges. You do not need to duplicate them in `[admin].user_ids`.
-
-> **See also:** For a full guide on running and customizing multiple bots, see [MULTI-BOT.md](MULTI-BOT.md).
-
-At least one bot (Telegram or Discord) must be configured. A missing platform logs a warning and skips that adapter — Lyra still starts with the remaining ones.
-
----
-
-## Step 10 — Run the tests
-
-```bash
-cd ~/lyra
-uv run pytest -v
-```
-
-All tests should pass. They use mocks — no tokens or network required.
-
----
-
-## Step 11 — Start Lyra
-
-```bash
-cd ~/lyra
-lyra start
-```
-
-You should see:
-```
-INFO lyra.__main__: Agent loaded: name=lyra_default model=claude-haiku-4-5-20251001 backend=claude-cli
-INFO lyra.__main__: Lyra started — adapters: telegram, discord, health on :8443.
-INFO lyra.adapters.discord: Discord bot ready: YourBot#1234 (id=...)
-```
-
-Stop with **Ctrl+C** (graceful shutdown).
-
-> **Note:** The `claude` CLI must be installed and authenticated on the machine.
-> Lyra spawns `claude --input-format stream-json` as a subprocess — it uses your
-> Claude Code subscription, not an API key.
-
----
-
-## Step 12 — Send your first message
-
-**Telegram:** Open a DM with your bot and type anything. Lyra will respond.
-
-**Discord:** @mention your bot in a channel: `@YourBot hello!`
-
-What happens under the hood:
-1. The adapter normalizes your message into an `InboundMessage` object
-2. It goes onto the hub's async bus (`asyncio.Queue`)
-3. The hub resolves the routing (wildcard binding → your user gets an isolated pool)
-4. `SimpleAgent` sends the text to a persistent `claude` subprocess
-5. The response is dispatched back to the originating platform
-
----
-
-## Step 13 — Local demo without tokens
-
-You can test the hub routing without any platform tokens. Save this as `demo.py` at the project root:
-
-```python
-"""Minimal demo: hub + echo agent + fake adapter — no tokens needed."""
-
-import asyncio
-from datetime import datetime, timezone
-
-from lyra.core.agent import Agent, AgentBase
-from lyra.core.hub import Hub
-from lyra.core.message import InboundMessage, OutboundMessage, Platform, Response
-from lyra.core.pool import Pool
-
-
-class EchoAgent(AgentBase):
-    """Echoes back whatever the user sends."""
-
-    async def process(self, msg: InboundMessage, pool: Pool) -> Response:
-        return Response(content=f"Echo: {msg.text}")
-
-
-class FakeAdapter:
-    """Prints responses to stdout instead of sending to a platform."""
-
-    def __init__(self) -> None:
-        self.responses: list[OutboundMessage] = []
-
-    async def send(self, original_msg: InboundMessage, outbound: OutboundMessage) -> None:
-        self.responses.append(outbound)
-        print(f"  <- {outbound.to_text()}")
-
-
-async def main() -> None:
-    hub = Hub()
-
-    # Wire up
-    agent = EchoAgent(Agent(name="echo", system_prompt="", memory_namespace="test"))
-    hub.register_agent(agent)
-
-    adapter = FakeAdapter()
-    hub.register_adapter(Platform.TELEGRAM, "main", adapter)
-    hub.register_binding(Platform.TELEGRAM, "main", "*", "echo", "telegram:main:*")
-
-    # Start per-platform inbound queues, then hub consumer
-    await hub.inbound_bus.start()
-    hub_task = asyncio.create_task(hub.run())
-
-    # Simulate messages
-    for text in ["Hello Lyra!", "How does routing work?", "Goodbye"]:
-        msg = InboundMessage(
-            id=f"demo-{text[:5]}",
-            platform="telegram",
-            bot_id="main",
-            scope_id="chat:123",
-            user_id="tg:user:42",
-            user_name="Mickael",
-            is_mention=True,
-            text=text,
-            text_raw=text,
-            timestamp=datetime.now(timezone.utc),
-            platform_meta={"chat_id": 123},
-        )
-        print(f"  -> {text}")
-        hub.inbound_bus.put(Platform.TELEGRAM, msg)
-
-    # Let the hub process all messages
-    await hub.bus.join()
-
-    print(f"\nDone — {len(adapter.responses)} messages routed successfully.")
-    hub_task.cancel()
-    await hub.inbound_bus.stop()
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
-```
-
-Run it:
-```bash
+cd ~/projects/lyra
 uv run python demo.py
 ```
 
@@ -479,4 +352,4 @@ Expected output:
 Done — 3 messages routed successfully.
 ```
 
-This validates the full message path: bus -> rate limiter -> binding resolver -> pool -> agent -> adapter dispatch.
+This validates the full message path: bus → rate limiter → binding resolver → pool → agent → adapter dispatch.

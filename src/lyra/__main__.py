@@ -119,10 +119,10 @@ async def _main(*, adapter: str = "all", _stop: asyncio.Event | None = None) -> 
 
 
 def _setup_logging() -> None:
-    """Configure logging: console + rotating file in ~/.lyra/logs/."""
+    """Configure logging: console + rotating file in ~/.local/state/lyra/logs/."""
     fmt = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 
-    log_dir = Path.home() / ".lyra" / "logs"
+    log_dir = Path.home() / ".local" / "state" / "lyra" / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")

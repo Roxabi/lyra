@@ -148,7 +148,7 @@ register:
 	@ln -sf "$(abspath supervisor/conf.d/lyra_telegram.conf)" "$(LYRA_STACK_DIR)/conf.d/lyra_telegram.conf"
 	@ln -sf "$(abspath supervisor/conf.d/lyra_discord.conf)"  "$(LYRA_STACK_DIR)/conf.d/lyra_discord.conf"
 	@if [ -L "$(LYRA_STACK_DIR)/conf.d/lyra.conf" ]; then rm "$(LYRA_STACK_DIR)/conf.d/lyra.conf"; fi
-	@mkdir -p supervisor/logs
+	@mkdir -p "$(HOME)/.local/state/lyra/logs"
 	@if [ -S "$(LYRA_STACK_DIR)/supervisor.sock" ]; then \
 		$(SUPERVISORCTL) reread && $(SUPERVISORCTL) update; \
 	fi

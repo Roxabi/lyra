@@ -13,7 +13,7 @@ Machine 1 (roxabituwer, 192.168.1.16)
 ├── symlinked into: ~/projects/lyra-stack/conf.d/lyra.conf
 ├── working directory: ~/projects/lyra/
 ├── env file: ~/projects/lyra/.env
-└── logs: ~/.lyra/logs/ (rotating, 10 MB × 5 files)
+└── logs: ~/.local/state/lyra/logs/ (rotating, 10 MB × 5 files)
 ```
 
 ## Prerequisites
@@ -156,7 +156,7 @@ make lyra logs     # tail stdout
 
 ## 5. Enable debug logging
 
-Lyra writes rotating logs to `~/.lyra/logs/`. The log level defaults to `INFO`. To enable debug output, set `LOG_LEVEL` in `.env` and add support in `_setup_logging()`:
+Lyra writes rotating logs to `~/.local/state/lyra/logs/`. The log level defaults to `INFO`. To enable debug output, set `LOG_LEVEL` in `.env` and add support in `_setup_logging()`:
 
 ```bash
 # ~/.lyra/.env

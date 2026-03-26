@@ -22,10 +22,10 @@ log = logging.getLogger("lyra.monitoring")
 
 
 def _setup_monitor_logging() -> None:
-    """Configure logging to ~/.lyra/logs/monitor.log."""
+    """Configure logging to ~/.local/state/lyra/logs/monitor.log."""
     fmt = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 
-    log_dir = Path.home() / ".lyra" / "logs"
+    log_dir = Path.home() / ".local" / "state" / "lyra" / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
 
     log_file = log_dir / "monitor.log"

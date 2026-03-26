@@ -12,7 +12,7 @@ The `pool_id` is the de-facto correlation key to reconstruct a request's lifecyc
 
 | Where | Format |
 |-------|--------|
-| `~/.lyra/logs/{YYYYMMDD_HHMMSS}_lyra.log` | Rotating file, UTC-stamped at startup |
+| `~/.local/state/lyra/logs/{YYYYMMDD_HHMMSS}_lyra.log` | Rotating file, UTC-stamped at startup |
 | stdout | Mirror of file output |
 
 **Rotation policy:** 10 MB per file, 5 backups kept (~50 MB total).
@@ -36,7 +36,7 @@ The `pool_id` is a stable string that identifies a conversation scope and appear
 To reconstruct a full request lifecycle, grep the log file for its pool_id:
 
 ```bash
-grep "pool:telegram:main:chat:123456" ~/.lyra/logs/*.log
+grep "pool:telegram:main:chat:123456" ~/.local/state/lyra/logs/*.log
 ```
 
 ---

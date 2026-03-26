@@ -9,7 +9,7 @@ source "$HOME/.local/bin/env" 2>/dev/null || true  # uv
 PROJECT_DIR="$HOME/projects/lyra"
 SUPERVISOR_DIR="$PROJECT_DIR/supervisor"
 SUPERVISORCTL="$SUPERVISOR_DIR/scripts/supervisorctl.sh"
-LOG_FILE="$HOME/.lyra/logs/deploy.log"
+LOG_FILE="$HOME/.local/state/lyra/logs/deploy.log"
 
 mkdir -p "$(dirname "$LOG_FILE")"
 

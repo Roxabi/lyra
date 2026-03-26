@@ -72,7 +72,7 @@ class ModelConfig(BaseModel):
             and self.tools == other.tools
             and self.skip_permissions == other.skip_permissions
             and self.streaming == other.streaming
-            # cwd intentionally excluded — it is spawn-routing config, not model identity
+            # cwd excluded — spawn-routing config, not model identity
         )
 
     def __hash__(self) -> int:

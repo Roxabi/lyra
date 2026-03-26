@@ -92,7 +92,9 @@ def load_monitoring_config(config_path: str | None = None) -> MonitoringConfig:
         pass
 
     monitoring_raw = raw.get("monitoring", {})
-    monitoring_section: dict[str, object] = monitoring_raw if isinstance(monitoring_raw, dict) else {}
+    monitoring_section: dict[str, object] = (
+        monitoring_raw if isinstance(monitoring_raw, dict) else {}
+    )
 
     # Load secrets from env vars
     telegram_token = os.environ.get("TELEGRAM_TOKEN", "")

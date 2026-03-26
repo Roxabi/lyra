@@ -140,7 +140,9 @@ def _build_provider_registry(
     Returns (registry, smart_routing_decorator_or_None) so the routing
     decorator's history is accessible to the /routing admin command.
     """
-    shared = _build_shared_base_providers(circuit_registry, cli_pool, llm_cfg or LlmConfig())
+    shared = _build_shared_base_providers(
+        circuit_registry, cli_pool, llm_cfg or LlmConfig()
+    )
     return _build_per_agent_registry(shared, smart_routing_config)
 
 

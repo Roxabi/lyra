@@ -103,9 +103,9 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
         for n in sorted(agent_names):
             row = stores.agent.get(n)
             if row is not None:
+                overrides = _build_agent_overrides(raw_config, n)
                 agent_configs[n] = agent_row_to_config(
-                    row,
-                    instance_overrides=_build_agent_overrides(raw_config, n).model_dump(),
+                    row, instance_overrides=overrides.model_dump()
                 )
             else:
                 log.error("Agent %r not found in DB — skipping", n)

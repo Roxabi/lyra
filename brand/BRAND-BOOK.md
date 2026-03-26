@@ -4,6 +4,9 @@
 **Status:** Authoritative. Replaces `BRAND-IDENTITY.md` (v1) for all forward-looking decisions.
 **Scope:** Marketing, product copy, visual design, and agent persona.
 
+<!-- Exploration archive: ~/.agent/lyra/brand/ (logo iterations, concept PNGs, galleries, prompts) -->
+<!-- See ~/projects/docs/adr/001-exploration-artifacts-location.md for the convention -->
+
 ---
 
 ## 1. Brand Overview

@@ -31,6 +31,7 @@
     "029-db-first-agent-config-and-hot-reload",
     "030-tool-provider-protocol-for-session-commands",
     "032-llmevent-streamprocessor-renderevent-hexagonal-streaming",
-    "033-pulid-flux2-face-lock-strategy"
+    "033-pulid-flux2-face-lock-strategy",
+    "034-brand-asset-pipeline-structure"
   ]
 }

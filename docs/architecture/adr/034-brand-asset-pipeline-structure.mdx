@@ -1,0 +1,231 @@
+---
+title: "ADR-034: Brand Asset Pipeline Structure"
+description: Structured directory convention and git strategy for the brand/ exploration-to-selection pipeline, replacing the current ad-hoc accumulation of 600+ uncommitted files.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+The `brand/` directory has accumulated 600+ uncommitted files across several ad-hoc exploration sessions: ~320 concept PNGs, ~350 markdown prompt files, ~30 static HTML galleries, logo GIFs, SVG favicons, a Flux batch generation script, and a new `brand/generated/` output directory. The `.gitignore` already excludes `brand/concepts/**` image files, but has no pattern for the other categories.
+
+The workflow that produced this state has three distinct phases that are currently not separated structurally:
+
+1. **Exploration** — generate many candidates quickly (prompts + AI image output)
+2. **Review** — compare candidates, open HTML galleries, decide what to keep
+3. **Selection / promotion** — one or two winners become permanent brand assets
+
+Without structural separation, the pain is:
+- Every file looks equally important; there is no signal for what was decided vs. what was discarded
+- `git status` is always noisy; diffs are meaningless
+- Galleries multiply because each session produces a new static HTML file rather than updating a shared view
+- Prompt files have no phase annotation — a prompt that produced the final avatar looks identical to a discarded experiment
+- "Clean up" requires manually reconstructing which session produced which files
+
+The project is personal and solo. Solutions must stay pragmatic — no build pipeline, no database, no mandatory CI step.
+
+## Options Considered
+
+### Option A: Directory-phase convention only
+
+Restructure `brand/` into three top-level phase directories:
+
+```
+brand/
+  exploration/        # everything generated during exploration — NOT committed
+    concepts/         # renamed from brand/concepts/
+    prompts/          # renamed from brand/prompts/ (exploration batches)
+    galleries/        # per-session HTML galleries
+    generated/        # Flux batch output
+  selected/           # promoted winners — committed
+    assets/           # final PNGs, SVGs, GIFs
+    prompts/          # prompt files that produced selected assets (provenance)
+    galleries/        # single living gallery per asset class
+  docs/               # committed brand documents
+    BRAND-BOOK.md
+    BRAND-EXPLORATION-PLAYBOOK.md
+    AVATAR-PLAYBOOK.md
+    AGENT-META-PROMPT.md
+    lyra-logo-brief.json
+```
+
+`.gitignore` additions:
+```
+brand/exploration/
+brand/selected/assets/*.png
+brand/selected/assets/*.jpg
+brand/selected/assets/*.gif
+```
+
+Committed files: `brand/docs/**`, `brand/selected/prompts/**`, `brand/selected/galleries/**`, all SVGs, all scripts.
+
+- **Pros:** Zero tooling. A single `mv` sweep establishes the convention. Immediately legible.
+- **Cons:** Promotion is a manual `mv` with no record of the decision. The "why was this selected" is lost unless the prompt file is edited. A gallery HTML in `selected/` still goes stale as assets change.
+
+### Option B: Manifest-driven pipeline (JSON selection record)
+
+Keep the directory structure of Option A and add a `brand/manifest.json` that is the authoritative record of every selected asset:
+
+```jsonc
+{
+  "schema_version": "1.0",
+  "assets": [
+    {
+      "id": "lyra-avatar-v1",
+      "type": "avatar",
+      "status": "selected",           // "selected" | "archived" | "superseded"
+      "file": "selected/assets/006-just-solved-1024.png",
+      "prompt": "selected/prompts/avatar-final/006-just-solved-1024.md",
+      "selected_at": "2026-03-24",
+      "notes": "Expression anchor: just-solved quiet smile. Studio key + Forge Orange rim."
+    },
+    {
+      "id": "lyra-mark-dark",
+      "type": "logo-mark",
+      "status": "selected",
+      "file": "selected/assets/lyra-mark-dark.svg",
+      "prompt": null,
+      "selected_at": "2026-03-20",
+      "notes": "SVG mark — hand-coded from brief, no AI generation."
+    }
+  ]
+}
+```
+
+The manifest is committed. `generate-logos.py` (or a future `brand-gallery.py`) reads it to render a single authoritative gallery HTML rather than spawning a new one per session.
+
+- **Pros:** Decisions are recorded with date + rationale. A single gallery script stays evergreen. Future agents can read the manifest to understand what is decided vs. in-flight. Provenance chain is complete (selected asset → prompt → session).
+- **Cons:** Requires discipline to update the manifest after each selection. One more file to maintain. Overkill if selections are rare.
+
+### Option C: Git branch per exploration session
+
+Keep `main` clean (only docs + selected assets). Each exploration session runs on a short-lived branch (`brand/explore-avatar-v3`, `brand/explore-logo-lyre-mark`). Merge only the selected assets back to main; delete the branch.
+
+- **Pros:** Git history becomes the exploration record. No manual manifest upkeep. Branch name is the session label.
+- **Cons:** With 600 files already uncommitted (and thus branchless), this strategy cannot reclaim the past without a large cleanup commit. Switching branches during an active generation session (Flux running on GPU) is disruptive. Most exploration output is binary images — git diffs are useless and git history does not help with "show me all the rejected avatars" queries.
+
+## Decision
+
+**Option B — manifest-driven pipeline, with Option A's directory structure as its physical layout.**
+
+The directory structure is the load-bearing piece for day-to-day legibility. The manifest adds just enough structured metadata to answer "what was selected and why" without requiring a database or build step.
+
+Concretely:
+
+**Directory layout:**
+
+```
+brand/
+  exploration/          # gitignored (entire subtree)
+    concepts/           # AI-generated concept PNGs (formerly brand/concepts/)
+    prompts/            # exploration prompt batches (formerly brand/prompts/)
+    galleries/          # per-session HTML files (formerly brand/*.html exploration)
+    generated/          # Flux batch output (formerly brand/generated/)
+  selected/             # committed
+    assets/             # winners: SVGs always committed; PNGs/GIFs gitignored by pattern
+    prompts/            # prompt files that produced selected assets (committed)
+    galleries/          # one gallery per asset class, generated from manifest (committed)
+  docs/                 # committed brand documents
+    BRAND-BOOK.md
+    BRAND-EXPLORATION-PLAYBOOK.md
+    AVATAR-PLAYBOOK.md
+    AGENT-META-PROMPT.md
+    lyra-logo-brief.json
+  generate-logos.py     # committed utility script
+  manifest.json         # committed selection record
+```
+
+**Gitignore additions (append to existing `.gitignore`):**
+
+```gitignore
+# Brand exploration artifacts — not versioned
+brand/exploration/
+
+# Selected binary assets — large; committed by exception only (use git add -f)
+brand/selected/assets/*.png
+brand/selected/assets/*.jpg
+brand/selected/assets/*.gif
+```
+
+SVG files under `selected/assets/` are committed unconditionally (they are text, small, and load-bearing for the running app).
+
+**Manifest contract (`brand/manifest.json`):**
+
+```jsonc
+{
+  "schema_version": "1.0",
+  "assets": [
+    {
+      "id": "<unique-kebab-id>",
+      "type": "avatar | logo-mark | logo-full | favicon | logo-gif | other",
+      "status": "selected | superseded | archived",
+      "file": "selected/assets/<filename>",
+      "prompt": "selected/prompts/<path-to-prompt>.md | null",
+      "selected_at": "YYYY-MM-DD",
+      "notes": "<one-line decision rationale>"
+    }
+  ]
+}
+```
+
+**Promotion workflow (after exploration session):**
+
+1. Pick winner(s) from `exploration/`.
+2. `mv` file to `selected/assets/`.
+3. `mv` its prompt to `selected/prompts/` (preserving the subdirectory structure).
+4. Append entry to `manifest.json`.
+5. Commit: `brand: promote <id> to selected`.
+
+**Gallery strategy:**
+
+Replace the current proliferation of static HTML galleries with two evergreen galleries:
+
+- `selected/galleries/brand-gallery.html` — reads `manifest.json` (or uses relative asset paths) to show all selected assets with their metadata.
+- `selected/galleries/concepts-index.html` — optional; a lightweight index pointing to exploration batches by directory name (not by file enumeration).
+
+The existing `generate-logos.py` script is the model for gallery generation. It should be extended (or a companion `brand-gallery.py` added) to regenerate `brand-gallery.html` from the manifest on demand.
+
+**Cleanup sweep for the current state:**
+
+1. Create `brand/exploration/concepts/`, `brand/exploration/prompts/`, `brand/exploration/galleries/`, `brand/exploration/generated/`.
+2. `mv brand/concepts/* brand/exploration/concepts/`
+3. `mv brand/prompts/* brand/exploration/prompts/`
+4. `mv brand/generated/* brand/exploration/generated/`
+5. Move all per-session HTML galleries (`*-gallery.html`, `forge-*.html`, `lyra-visual-directions*.html`, etc.) to `brand/exploration/galleries/`.
+6. Move brand docs to `brand/docs/`.
+7. Identify selected assets (favicons, logo marks, logo GIFs, the six logo PNGs A–F, avatar `006-just-solved-1024.png`, roxabi-plugins assets) and move to `brand/selected/assets/`.
+8. Copy their prompt files to `brand/selected/prompts/`.
+9. Write `brand/manifest.json` with one entry per selected asset.
+10. Update `.gitignore`.
+11. Commit: `brand: restructure into exploration/selected/docs pipeline`.
+
+The six logo PNGs (A–F) and the avatar PNG are large binaries. Decide at cleanup time whether to commit them explicitly (`git add -f`) or accept gitignore exclusion (they can be regenerated from their prompts + `generate-logos.py`).
+
+**Prompt file format (no change):**
+
+The existing YAML frontmatter convention (`engine`, `width`, `height`, `steps`, `guidance`, `negative_prompt`) is retained as-is. The manifest `prompt` field links to the file; no frontmatter additions are required for the manifest to function.
+
+## Consequences
+
+### Positive
+
+- `git status` becomes meaningful: only docs, scripts, SVGs, and the manifest appear as tracked changes.
+- The "what is decided" question has a single authoritative answer: `manifest.json`.
+- Exploration sessions can generate freely into `brand/exploration/` without polluting commits.
+- Gallery generation is idempotent: run `brand-gallery.py` any time to regenerate from the manifest.
+- New agents running brand work can read `manifest.json` to understand what is already settled before generating.
+- The promotion step (`mv` + manifest append + commit) is a deliberate act that records the decision with a date and rationale.
+
+### Negative
+
+- A one-time cleanup sweep is required to sort the 600+ existing files. This is a ~30-minute manual session.
+- The manifest must be updated at promotion time; forgetting produces drift between the `selected/` directory and the record.
+- Binary assets excluded from git cannot be recovered from history if the exploration directory is deleted. This is acceptable: they can be regenerated from the committed prompt files.
+
+### Neutral
+
+- The `brand/exploration/` directory is ephemeral by design. It is not backed up via git. If exploration output matters, the user should retain it on disk or archive it externally before cleanup.
+- `lyra-logo-brief.json` is the authoritative logo specification. It moves to `brand/docs/` but otherwise does not change.
+- The `roxabi-plugins` brand assets currently in `brand/` root are selected assets for a different project. They move to `brand/selected/assets/roxabi-plugins/` with corresponding manifest entries.

@@ -107,7 +107,7 @@ in `config.toml [defaults]`, NOT in agent TOML.
 - Do NOT add store or DB logic to agent implementation files — that belongs in `core/`.
 - Do NOT read TOML files at runtime from within agent classes — use `AgentStore`.
 - Do NOT hardcode model names or backend selection in agent classes — read from
-  `Agent.model_config` (populated from DB/TOML).
+  `Agent.llm_config` (populated from DB/TOML).
 - Do NOT set `cwd` in agent TOML — it is machine-specific and belongs in `config.toml`.
 - Do NOT add platform-specific code to agent implementations — adapters handle that.
 - Do NOT enable smart routing with `backend = "claude-cli"` — unsupported combination.

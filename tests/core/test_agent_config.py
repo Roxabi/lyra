@@ -40,3 +40,18 @@ class TestModelConfig:
     def test_cwd_accepts_path(self, tmp_path: Path) -> None:
         cfg = ModelConfig(cwd=tmp_path)
         assert cfg.cwd == tmp_path
+
+    def test_eq_ignores_cwd_difference(self) -> None:
+        a = ModelConfig(cwd=Path("/a"))
+        b = ModelConfig(cwd=Path("/b"))
+        assert a == b
+
+    def test_eq_detects_model_difference(self) -> None:
+        a = ModelConfig(model="haiku")
+        b = ModelConfig(model="opus")
+        assert a != b
+
+    def test_hash_ignores_cwd(self) -> None:
+        a = ModelConfig(cwd=Path("/a"))
+        b = ModelConfig(cwd=Path("/b"))
+        assert hash(a) == hash(b)

@@ -90,10 +90,11 @@ class DebouncerConfig(BaseModel):
 class AgentOverrideConfig(BaseModel):
     """Typed output of _build_agent_overrides().
 
-    Uses extra="allow" because agent-specific TOML keys vary per agent.
+    Uses extra="ignore" — only cwd, persona, workspaces are consumed; extra keys
+    are silently discarded.
     """
 
-    model_config = ConfigDict(frozen=True, extra="allow")
+    model_config = ConfigDict(frozen=True, extra="ignore")
 
     cwd: str | None = None
     persona: str | None = None

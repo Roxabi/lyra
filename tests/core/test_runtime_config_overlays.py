@@ -272,3 +272,15 @@ class TestEffectiveConfigFrozen:
         # Act / Assert
         with pytest.raises(ValidationError):
             effective.model = "something-else"  # type: ignore[misc]
+
+
+class TestSetParamPreservesUnrelatedFields:
+    """set_param() leaves all other fields unchanged."""
+
+    def test_set_param_preserves_unrelated_fields(self) -> None:
+        rc = RuntimeConfig(temperature=0.1, language="de", model="haiku")
+        result = set_param(rc, "style", "detailed")
+        assert result.style == "detailed"
+        assert result.temperature == 0.1
+        assert result.language == "de"
+        assert result.model == "haiku"

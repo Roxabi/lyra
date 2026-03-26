@@ -90,10 +90,14 @@ class RuntimeConfig(BaseModel):
 
     def save(self, path: Path) -> None:
         """Write only non-default values to a flat TOML file."""
+        from pydantic_core import PydanticUndefinedType  # noqa: PLC0415
+
         data: dict[str, object] = {}
         for key in _VALID_PARAMS:
             field_info = RuntimeConfig.model_fields.get(key)
             default = field_info.default if field_info is not None else None
+            if isinstance(default, PydanticUndefinedType):
+                continue
             value = getattr(self, key)
             if value != default:
                 data[key] = value

@@ -189,7 +189,7 @@ class SmartRoutingDecorator:
         self._classifier = classifier or ComplexityClassifier()
         self._estimator = ComplexityEstimator(
             text_classifier=self._classifier,
-            high_complexity_commands=getattr(config, "high_complexity_commands", ()),
+            high_complexity_commands=config.high_complexity_commands,
         )
         self._history: deque[RoutingDecision] = deque(maxlen=config.history_size)
         self.capabilities: dict[str, Any] = inner.capabilities

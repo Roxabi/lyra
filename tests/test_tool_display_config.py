@@ -80,7 +80,7 @@ class TestToolDisplayConfigDefaults:
         cfg1 = ToolDisplayConfig()
         cfg2 = ToolDisplayConfig()
         # Assert — contents are equal but not the same object
-        assert cfg1.show == cfg2.show
+        assert cfg1.show is not cfg2.show
 
 
 # ---------------------------------------------------------------------------

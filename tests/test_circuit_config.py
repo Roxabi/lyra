@@ -351,3 +351,44 @@ class TestLoadDebouncerConfig:
         result = _load_debouncer_config(raw)
         assert result.max_merged_chars == 1024
         assert result.default_debounce_ms == 300
+
+
+# ---------------------------------------------------------------------------
+# _build_agent_overrides (#411)
+# ---------------------------------------------------------------------------
+
+
+class TestBuildAgentOverrides:
+    def test_defaults_only(self) -> None:
+        from lyra.bootstrap.config import _build_agent_overrides
+
+        raw = {"defaults": {"cwd": "/tmp"}}
+        result = _build_agent_overrides(raw, "test")
+        assert result.cwd == "/tmp"
+
+    def test_agent_specific_wins(self) -> None:
+        from lyra.bootstrap.config import _build_agent_overrides
+
+        raw = {
+            "defaults": {"cwd": "/default"},
+            "agents": {"myagent": {"cwd": "/specific"}},
+        }
+        result = _build_agent_overrides(raw, "myagent")
+        assert result.cwd == "/specific"
+
+    def test_workspace_deep_merge(self) -> None:
+        from lyra.bootstrap.config import _build_agent_overrides
+
+        raw = {
+            "defaults": {"workspaces": {"a": "/a", "b": "/b"}},
+            "agents": {"myagent": {"workspaces": {"b": "/b2", "c": "/c"}}},
+        }
+        result = _build_agent_overrides(raw, "myagent")
+        assert result.workspaces == {"a": "/a", "b": "/b2", "c": "/c"}
+
+    def test_empty_config(self) -> None:
+        from lyra.bootstrap.config import _build_agent_overrides
+
+        result = _build_agent_overrides({}, "nonexistent")
+        assert result.cwd is None
+        assert result.workspaces == {}

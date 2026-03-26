@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from pydantic import BaseModel
+
 if TYPE_CHECKING:
     from lyra.core.agent_config import AgentTTSConfig
 
@@ -27,8 +29,7 @@ class SynthesisResult:
     waveform_b64: str | None = None  # 256-byte amplitude array, base64
 
 
-@dataclass
-class TTSConfig:
+class TTSConfig(BaseModel):
     engine: str | None = None  # TTS_ENGINE env var
     voice: str | None = None  # TTS_VOICE env var
     language: str | None = None  # TTS_LANGUAGE env var

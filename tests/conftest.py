@@ -182,7 +182,7 @@ def patch_bootstrap_common(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
             name=row.name if hasattr(row, "name") else "lyra_default",
             system_prompt="test",
             memory_namespace="test",
-            model_config=ModelConfig(backend="claude-cli"),
+            llm_config=ModelConfig(backend="claude-cli"),
         ),
     )
     monkeypatch.setattr(
@@ -284,7 +284,7 @@ def patch_all(
             name=row.name,
             system_prompt="test",
             memory_namespace="test",
-            model_config=ModelConfig(backend="claude-cli"),
+            llm_config=ModelConfig(backend="claude-cli"),
         ),
     )
     monkeypatch.setattr(

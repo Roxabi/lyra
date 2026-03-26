@@ -184,7 +184,7 @@ class AnthropicAgent(AgentBase):
                 backend="anthropic-sdk",
                 model=effective.model,
                 max_turns=effective.max_turns,
-                tools=self.config.model_config.tools,
+                tools=self.config.llm_config.tools,
             )
 
             try:

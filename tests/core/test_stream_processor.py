@@ -423,7 +423,7 @@ class TestStreamProcessor:
     async def test_web_fetch_hidden_when_show_false(self) -> None:
         """WebFetch is silently dropped when show['web_fetch']=False."""
         # Arrange
-        config = ToolDisplayConfig.from_dict({"show": {"web_fetch": False}})
+        config = ToolDisplayConfig.model_validate({"show": {"web_fetch": False}})
         processor = StreamProcessor(config)
         events = async_events(
             ToolUseLlmEvent(

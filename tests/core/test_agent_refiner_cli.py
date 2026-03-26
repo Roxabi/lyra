@@ -240,7 +240,9 @@ class TestRunSession:
             # Second call: no patch yet
             "Got it. Any other changes?",
             # Third call: patch block
-            'All done!\n<<PATCH>>\n{"persona_json": "{\\"identity\\": {\\"display_name\\": \\"Aryl\\"}}"}\n<<END_PATCH>>',
+            "All done!\n<<PATCH>>\n"
+            '{"persona_json": "{\\"identity\\": {\\"display_name\\": \\"Aryl\\"}}"}'
+            "\n<<END_PATCH>>",
         ]
 
         mock_io = MagicMock(spec=TerminalIO)
@@ -252,7 +254,9 @@ class TestRunSession:
         result = refiner.run_session(mock_io)
 
         # Assert
-        assert result.fields == {"persona_json": '{"identity": {"display_name": "Aryl"}}'}
+        assert result.fields == {
+            "persona_json": '{"identity": {"display_name": "Aryl"}}'
+        }
         # Assert driver was called for greeting + the 2 loop turns
         assert mock_driver.chat.call_count == 3
         assert mock_io.prompt.call_count == 2

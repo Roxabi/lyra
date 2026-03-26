@@ -104,7 +104,8 @@ class TestAgentEditCommand:
         _seed_agent(db_path, name="edit-update", model="claude-sonnet-4-6")
 
         # Act -- fields: backend, model, max_turns, persona_json,
-        # show_intermediate, cwd, memory_namespace, fallback_language (blank = keep current)
+        # show_intermediate, cwd, memory_namespace, fallback_language
+        # (blank = keep current)
         # Provide new model on 2nd prompt; leave all others blank; "N" for TTS init
         inputs = "\n".join(["", "claude-opus-4-6", "", "", "", "", "", "N"]) + "\n"
         result = runner.invoke(agent_app, ["edit", "edit-update"], input=inputs)

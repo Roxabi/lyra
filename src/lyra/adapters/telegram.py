@@ -7,12 +7,12 @@ import hmac
 import logging
 import os
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request
+from pydantic import BaseModel, ConfigDict
 
 if TYPE_CHECKING:
     from lyra.core.hub import Hub
@@ -53,8 +53,9 @@ from lyra.core.messages import MessageManager
 log = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True)
-class TelegramConfig:
+class TelegramConfig(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     token: str
     webhook_secret: str
 

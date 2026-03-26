@@ -251,7 +251,9 @@ class TestBotMapExtra:
 class TestVoiceJsonColumns:
     """AgentRow voice_json column: upsert, warm cache, seed_from_toml."""
 
-    async def test_upsert_and_get_with_voice_json(self, agent_store: AgentStore) -> None:
+    async def test_upsert_and_get_with_voice_json(
+        self, agent_store: AgentStore
+    ) -> None:
         # Arrange
         voice_data = {
             "tts": {"engine": "chatterbox", "voice": "en-US-1", "chunked": True},

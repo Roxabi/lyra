@@ -89,7 +89,7 @@ def make_config() -> Agent:
         name="lyra",
         system_prompt="",
         memory_namespace="lyra",
-        model_config=ModelConfig(
+        llm_config=ModelConfig(
             backend="anthropic-sdk",
             model="claude-sonnet-4-5",
             max_turns=10,

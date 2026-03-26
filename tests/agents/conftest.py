@@ -85,7 +85,7 @@ def make_config() -> Agent:
         name="lyra",
         system_prompt="You are Lyra.",
         memory_namespace="lyra",
-        model_config=ModelConfig(),
+        llm_config=ModelConfig(),
     )
 
 

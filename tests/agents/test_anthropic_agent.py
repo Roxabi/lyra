@@ -65,7 +65,7 @@ def make_config(
         name="lyra",
         system_prompt=system_prompt,
         memory_namespace="lyra",
-        model_config=ModelConfig(
+        llm_config=ModelConfig(
             backend=backend,
             model="claude-sonnet-4-5",
             max_turns=max_turns,

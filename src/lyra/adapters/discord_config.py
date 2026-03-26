@@ -1,16 +1,18 @@
-"""Discord configuration dataclass and loader."""
+"""Discord configuration model and loader."""
 
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+
+from pydantic import BaseModel, ConfigDict, Field
 
 _AUTO_THREAD_TRUE = frozenset({"1", "true", "yes", "on"})
 
 
-@dataclass(frozen=True)
-class DiscordConfig:
-    token: str = field(repr=False)
+class DiscordConfig(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    token: str = Field(repr=False)
     auto_thread: bool = True
 
 

@@ -71,8 +71,7 @@ class SimpleAgent(AgentBase):
         agent_store: "AgentStore | None" = None,
         tool_display_config: ToolDisplayConfig | None = None,
     ) -> None:
-        # S4: use ToolDisplayConfig.defaults() until S5 (#386) wires TOML loading
-        self._tool_display_config = tool_display_config or ToolDisplayConfig.defaults()
+        self._tool_display_config = tool_display_config or ToolDisplayConfig()
         resolved_agents_dir = agents_dir or _AGENTS_DIR
         rc = (
             runtime_config
@@ -235,7 +234,7 @@ class SimpleAgent(AgentBase):
         else:
             text = msg.text
 
-        model_cfg = self.config.model_config
+        model_cfg = self.config.llm_config
 
         log.debug(
             "[agent:%s][pool:%s] processing message (%d chars)",

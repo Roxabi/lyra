@@ -1,4 +1,4 @@
-"""Configuration dataclasses and constants for the Lyra pairing system.
+"""Configuration models and constants for the Lyra pairing system.
 
 Extracted from pairing.py (epic #293) — contains PairingError, PairingConfig,
 SQL DDL, shared constants, and pure utility helpers.
@@ -7,8 +7,9 @@ SQL DDL, shared constants, and pure utility helpers.
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass, fields
 from datetime import datetime, timezone
+
+from pydantic import BaseModel, ConfigDict
 
 
 class PairingError(Exception):
@@ -40,9 +41,10 @@ CREATE TABLE IF NOT EXISTS pairing_codes (
 # ---------------------------------------------------------------------------
 
 
-@dataclass(frozen=True)
-class PairingConfig:
+class PairingConfig(BaseModel):
     """Immutable configuration for the pairing system."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
 
     alphabet: str = _SAFE_ALPHABET
     code_length: int = 8
@@ -52,16 +54,6 @@ class PairingConfig:
     rate_limit_attempts: int = 5
     rate_limit_window: int = 300
     enabled: bool = False
-
-    @classmethod
-    def from_dict(cls, data: dict) -> PairingConfig:
-        """Create PairingConfig from a dict (e.g. TOML [pairing] section).
-
-        Missing keys use field defaults.
-        """
-        known = {f.name for f in fields(cls)}
-        filtered = {k: v for k, v in data.items() if k in known}
-        return cls(**filtered)
 
 
 # ---------------------------------------------------------------------------

@@ -39,10 +39,10 @@ from .conftest import (
 
 
 class TestPairingConfig:
-    """PairingConfig.from_dict() — AC4."""
+    """PairingConfig.model_validate() — AC4."""
 
     def test_from_dict_with_empty_dict_uses_defaults(self) -> None:
-        cfg = PairingConfig.from_dict({})
+        cfg = PairingConfig.model_validate({})
         assert cfg.enabled is False
         assert cfg.code_length == 8
         assert cfg.ttl_seconds == 3600
@@ -52,7 +52,7 @@ class TestPairingConfig:
         assert cfg.rate_limit_window == 300
 
     def test_from_dict_with_overrides(self) -> None:
-        cfg = PairingConfig.from_dict(
+        cfg = PairingConfig.model_validate(
             {
                 "enabled": True,
                 "code_length": 12,
@@ -73,7 +73,7 @@ class TestPairingConfig:
 
     def test_from_dict_ignores_unknown_keys(self) -> None:
         # Should not raise; unknown keys are silently ignored.
-        cfg = PairingConfig.from_dict({"unknown_key": "value", "enabled": True})
+        cfg = PairingConfig.model_validate({"unknown_key": "value", "enabled": True})
         assert cfg.enabled is True
 
 

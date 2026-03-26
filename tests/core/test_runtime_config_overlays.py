@@ -1,22 +1,22 @@
 """Tests for RuntimeConfig overlay behaviour (issue #135).
 
 Covers:
-  RuntimeConfig dataclass — default values, mutability
-  overlay()              — style, language, extra_instructions, model, max_steps,
-                           temperature, EffectiveConfig frozen
+  RuntimeConfig BaseModel — default values, immutability (frozen=True)
+  overlay()               — style, language, extra_instructions, model, max_steps,
+                            temperature, EffectiveConfig frozen
 """
 
 from __future__ import annotations
 
-from dataclasses import FrozenInstanceError
-
 import pytest
+from pydantic import ValidationError
 
 from lyra.core.agent import Agent
 from lyra.core.agent_config import ModelConfig
 from lyra.core.runtime_config import (
     _STYLE_INSTRUCTIONS,
     RuntimeConfig,
+    set_param,
 )
 
 # ---------------------------------------------------------------------------
@@ -30,7 +30,7 @@ def base_agent() -> Agent:
         name="test",
         system_prompt="Base prompt",
         memory_namespace="test",
-        model_config=ModelConfig(model="claude-haiku-4-5-20251001", max_turns=10),
+        llm_config=ModelConfig(model="claude-haiku-4-5-20251001", max_turns=10),
     )
 
 
@@ -69,17 +69,19 @@ class TestRuntimeConfigDefaults:
         rc = RuntimeConfig()
         assert rc.extra_instructions == ""
 
-    def test_fields_are_mutable(self) -> None:
-        # Arrange
+    def test_fields_are_immutable(self) -> None:
+        # RuntimeConfig is now a frozen Pydantic BaseModel; direct mutation raises.
+        # Updates must go through set_param() which returns a new instance.
         rc = RuntimeConfig()
 
-        # Act — should not raise
-        rc.style = "detailed"
-        rc.temperature = 0.5
+        # Direct mutation must raise
+        with pytest.raises((ValidationError, TypeError)):
+            rc.style = "detailed"  # type: ignore[misc]
 
-        # Assert
-        assert rc.style == "detailed"
-        assert rc.temperature == 0.5
+        # Correct way: use set_param to obtain an updated copy
+        updated = set_param(rc, "style", "detailed")
+        assert updated.style == "detailed"
+        assert rc.style == "concise"  # original unchanged
 
 
 # ---------------------------------------------------------------------------
@@ -208,7 +210,7 @@ class TestOverlayModel:
         effective = rc.overlay(base_agent)
 
         # Assert
-        assert effective.model == base_agent.model_config.model
+        assert effective.model == base_agent.llm_config.model
 
     def test_model_override(self, base_agent: Agent) -> None:
         # Arrange
@@ -232,7 +234,7 @@ class TestOverlayMaxSteps:
         effective = rc.overlay(base_agent)
 
         # Assert
-        assert effective.max_turns == base_agent.model_config.max_turns
+        assert effective.max_turns == base_agent.llm_config.max_turns
 
     def test_max_steps_override(self, base_agent: Agent) -> None:
         # Arrange
@@ -268,5 +270,17 @@ class TestEffectiveConfigFrozen:
         effective = rc.overlay(base_agent)
 
         # Act / Assert
-        with pytest.raises(FrozenInstanceError):
+        with pytest.raises(ValidationError):
             effective.model = "something-else"  # type: ignore[misc]
+
+
+class TestSetParamPreservesUnrelatedFields:
+    """set_param() leaves all other fields unchanged."""
+
+    def test_set_param_preserves_unrelated_fields(self) -> None:
+        rc = RuntimeConfig(temperature=0.1, language="de", model="haiku")
+        result = set_param(rc, "style", "detailed")
+        assert result.style == "detailed"
+        assert result.temperature == 0.1
+        assert result.language == "de"
+        assert result.model == "haiku"

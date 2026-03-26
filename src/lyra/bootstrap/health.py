@@ -111,9 +111,9 @@ def create_health_app(hub: Hub) -> FastAPI:
             "model": rc.model,
             "max_steps": rc.max_steps,
             "extra_instructions": rc.extra_instructions,
-            "effective_model": rc.model or agent_obj.config.model_config.model,
+            "effective_model": rc.model or agent_obj.config.llm_config.model,
             "effective_max_steps": (
-                rc.max_steps or agent_obj.config.model_config.max_turns
+                rc.max_steps or agent_obj.config.llm_config.max_turns
             ),
         }
 

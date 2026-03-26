@@ -18,8 +18,9 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass, field
 from typing import Any
+
+from pydantic import BaseModel, ConfigDict
 
 from lyra.adapters.discord import DiscordConfig, load_discord_config
 from lyra.adapters.telegram import TelegramConfig, load_config
@@ -58,25 +59,27 @@ def _resolve_value(value: str) -> str:
     return value
 
 
-@dataclass(frozen=True)
-class TelegramBotConfig:
+class TelegramBotConfig(BaseModel):
     """Configuration for a single Telegram bot instance.
 
     Credentials (token, webhook_secret) are NOT stored here — they are resolved
     at bootstrap time from CredentialStore.
     """
 
+    model_config = ConfigDict(frozen=True)
+
     bot_id: str
     agent: str = "lyra_default"
 
 
-@dataclass(frozen=True)
-class DiscordBotConfig:
+class DiscordBotConfig(BaseModel):
     """Configuration for a single Discord bot instance.
 
     Credentials (token) are NOT stored here — they are resolved at bootstrap
     time from CredentialStore.
     """
+
+    model_config = ConfigDict(frozen=True)
 
     bot_id: str
     auto_thread: bool = True
@@ -84,18 +87,16 @@ class DiscordBotConfig:
     thread_hot_hours: int = 36
 
 
-@dataclass
-class TelegramMultiConfig:
+class TelegramMultiConfig(BaseModel):
     """Parsed [telegram] section: list of bot configs."""
 
-    bots: list[TelegramBotConfig] = field(default_factory=list)
+    bots: list[TelegramBotConfig] = []
 
 
-@dataclass
-class DiscordMultiConfig:
+class DiscordMultiConfig(BaseModel):
     """Parsed [discord] section: list of bot configs."""
 
-    bots: list[DiscordBotConfig] = field(default_factory=list)
+    bots: list[DiscordBotConfig] = []
 
 
 def _parse_telegram_bots(raw: dict[str, Any]) -> list[TelegramBotConfig]:

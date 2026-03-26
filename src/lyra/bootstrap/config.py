@@ -7,25 +7,110 @@ import os
 import re
 import tomllib
 from pathlib import Path
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict
 
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.messages import MessageManager
-from lyra.core.stores.pairing import PairingConfig
+from lyra.core.stores.pairing_config import PairingConfig
 from lyra.core.tool_display_config import ToolDisplayConfig
 
 log = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Pydantic config section models (#411)
+# ---------------------------------------------------------------------------
+
+
+class CliPoolConfig(BaseModel):
+    """Typed [cli_pool] config section."""
+
+    model_config = ConfigDict(frozen=True)
+
+    idle_ttl: int = 1200
+    default_timeout: int = 1200
+    turn_timeout: float | None = None
+    reaper_interval: int = 60
+    kill_timeout: float = 5.0
+    read_buffer_bytes: int = 1024 * 1024
+    stdin_drain_timeout: float = 10.0
+    max_idle_retries: int = 3
+    intermediate_timeout: float = 5.0
+
+
+class HubConfig(BaseModel):
+    """Typed [hub] config section."""
+
+    model_config = ConfigDict(frozen=True)
+
+    pool_ttl: float = 604800.0
+    rate_limit: int = 20
+    rate_window: int = 60
+
+
+class PoolConfig(BaseModel):
+    """Typed [pool] config section."""
+
+    model_config = ConfigDict(frozen=True)
+
+    max_sdk_history: int = 50
+    safe_dispatch_timeout: float = 10.0
+
+
+class LlmConfig(BaseModel):
+    """Typed [llm] config section."""
+
+    model_config = ConfigDict(frozen=True)
+
+    max_retries: int = 3
+    backoff_base: float = 1.0
+
+
+class InboundBusConfig(BaseModel):
+    """Typed [inbound_bus] config section."""
+
+    model_config = ConfigDict(frozen=True)
+
+    queue_depth_threshold: int = 100
+    staging_maxsize: int = 500
+    platform_queue_maxsize: int = 100
+
+
+class DebouncerConfig(BaseModel):
+    """Typed [debouncer] config section."""
+
+    model_config = ConfigDict(frozen=True)
+
+    default_debounce_ms: int = 300
+    max_merged_chars: int = 4096
+
+
+class AgentOverrideConfig(BaseModel):
+    """Typed output of _build_agent_overrides().
+
+    Uses extra="ignore" — only cwd, persona, workspaces are consumed; extra keys
+    are silently discarded.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    cwd: str | None = None
+    persona: str | None = None
+    workspaces: dict[str, str] = {}
 
 _CB_DEFAULTS: dict[str, int] = {"failure_threshold": 5, "recovery_timeout": 60}
 _CB_SERVICES = ("anthropic", "telegram", "discord", "hub")
 _ADMIN_ID_PATTERN = re.compile(r"^(tg|dc):user:\d+$")
 
 
-def _load_raw_config(config_path: str | None = None) -> dict:
+def _load_raw_config(config_path: str | None = None) -> dict[str, Any]:
     """Open and parse config.toml once; return the raw dict.
 
     Resolution order: $LYRA_CONFIG env var → 'config.toml' in cwd → empty dict.
     """
-    raw: dict = {}
+    raw: dict[str, Any] = {}
     path = config_path or os.environ.get("LYRA_CONFIG", "config.toml")
     try:
         with open(path, "rb") as f:
@@ -36,33 +121,33 @@ def _load_raw_config(config_path: str | None = None) -> dict:
     return raw
 
 
-def _build_agent_overrides(raw: dict, name: str) -> dict:
+def _build_agent_overrides(raw: dict[str, Any], name: str) -> AgentOverrideConfig:
     """Build instance-level overrides for an agent from config.toml.
 
     Merges [defaults] with [agents.<name>], with agent-specific values winning.
     Provides machine-specific fallbacks for cwd, persona, and workspaces that
     are not versioned in agents/*.toml.
     """
-    defaults: dict = raw.get("defaults", {})
-    agent_specific: dict = raw.get("agents", {}).get(name, {})
+    defaults: dict[str, Any] = raw.get("defaults", {})
+    agent_specific: dict[str, Any] = raw.get("agents", {}).get(name, {})
     merged = {**defaults, **agent_specific}
     # workspaces need a deep merge: defaults provide base, agent-specific keys win
-    ws_defaults = defaults.get("workspaces", {})
-    ws_agent = agent_specific.get("workspaces", {})
+    ws_defaults: dict[str, str] = defaults.get("workspaces", {})
+    ws_agent: dict[str, str] = agent_specific.get("workspaces", {})
     if ws_defaults or ws_agent:
         merged["workspaces"] = {**ws_defaults, **ws_agent}
-    return merged
+    return AgentOverrideConfig.model_validate(merged)
 
 
 def _load_circuit_config(
-    raw: dict,
+    raw: dict[str, Any],
 ) -> tuple[CircuitRegistry, frozenset[str]]:
     """Load [circuit_breaker.*] and [admin] sections from raw config dict.
 
     Returns (CircuitRegistry with 4 named CBs, frozenset of admin user_ids).
     Missing sections → all defaults.
     """
-    cb_section = raw.get("circuit_breaker", {})
+    cb_section: dict[str, Any] = raw.get("circuit_breaker", {})
     registry = CircuitRegistry()
     for name in _CB_SERVICES:
         cfg: dict[str, int] = {**_CB_DEFAULTS, **cb_section.get(name, {})}
@@ -85,13 +170,13 @@ def _load_circuit_config(
     return registry, admin_ids
 
 
-def _load_pairing_config(raw: dict) -> PairingConfig:
+def _load_pairing_config(raw: dict[str, Any]) -> PairingConfig:
     """Load [pairing] section from raw config dict. Missing section → all defaults."""
-    pairing_section: dict = raw.get("pairing", {})
-    return PairingConfig.from_dict(pairing_section)
+    pairing_section: dict[str, Any] = raw.get("pairing", {})
+    return PairingConfig.model_validate(pairing_section)
 
 
-def _load_tool_display_config(raw: dict) -> ToolDisplayConfig:
+def _load_tool_display_config(raw: dict[str, Any]) -> ToolDisplayConfig:
     """Load [tool_display] section from raw config dict. Missing section → all defaults.
 
     Keys (all optional)
@@ -103,121 +188,38 @@ def _load_tool_display_config(raw: dict) -> ToolDisplayConfig:
 
     [tool_display.show]   — per-tool visibility overrides (merged with defaults)
     """
-    section: dict = raw.get("tool_display", {})
-    return ToolDisplayConfig.from_dict(section)
+    section: dict[str, Any] = raw.get("tool_display", {})
+    return ToolDisplayConfig.model_validate(section)
 
 
-def _load_cli_pool_config(raw: dict) -> dict:
-    """Load [cli_pool] section from raw config dict. Missing keys → defaults.
-
-    Keys
-    ----
-    idle_ttl              : int   — idle process eviction TTL in seconds (default: 1200)
-    default_timeout       : int   — per-readline idle timeout in seconds (default: 1200)
-    turn_timeout          : float | None — pool turn timeout (default: None)
-    reaper_interval       : int   — idle reaper sleep interval in seconds (default: 60)
-    kill_timeout          : float — process exit wait timeout (default: 5)
-    read_buffer_bytes     : int   — asyncio subprocess stdout buffer (default: 1 MB)
-    stdin_drain_timeout   : float — stdin drain timeout in seconds (default: 10.0)
-    max_idle_retries      : int   — max readline retries on timeout (default: 3)
-    intermediate_timeout  : float — on_intermediate callback timeout (default: 5.0)
-    """
-    section: dict = raw.get("cli_pool", {})
-    return {
-        "idle_ttl": section.get("idle_ttl", 1200),
-        # effective max idle = default_timeout × max_idle_retries
-        "default_timeout": section.get("default_timeout", 1200),
-        "turn_timeout": (
-            float(section["turn_timeout"])
-            if section.get("turn_timeout") is not None
-            else None
-        ),
-        "reaper_interval": int(section.get("reaper_interval", 60)),
-        "kill_timeout": float(section.get("kill_timeout", 5.0)),
-        "read_buffer_bytes": int(section.get("read_buffer_bytes", 1024 * 1024)),
-        "stdin_drain_timeout": float(section.get("stdin_drain_timeout", 10.0)),
-        "max_idle_retries": int(section.get("max_idle_retries", 3)),
-        "intermediate_timeout": float(section.get("intermediate_timeout", 5.0)),
-    }
+def _load_cli_pool_config(raw: dict[str, Any]) -> CliPoolConfig:
+    """Load [cli_pool] section from raw config dict. Missing keys → defaults."""
+    return CliPoolConfig.model_validate(raw.get("cli_pool", {}))
 
 
-def _load_hub_config(raw: dict) -> dict:
-    """Load [hub] section from raw config dict. Missing keys → defaults.
-
-    Keys
-    ----
-    pool_ttl     : float  — idle pool eviction TTL in seconds (default: 604800 / 7 days)
-    rate_limit   : int    — max messages per rate window per user (default: 20)
-    rate_window  : int    — rate window duration in seconds (default: 60)
-    """
-    section: dict = raw.get("hub", {})
-    return {
-        "pool_ttl": float(section.get("pool_ttl", 604800.0)),
-        "rate_limit": int(section.get("rate_limit", 20)),
-        "rate_window": int(section.get("rate_window", 60)),
-    }
+def _load_hub_config(raw: dict[str, Any]) -> HubConfig:
+    """Load [hub] section from raw config dict. Missing keys → defaults."""
+    return HubConfig.model_validate(raw.get("hub", {}))
 
 
-def _load_pool_config(raw: dict) -> dict:
-    """Load [pool] section from raw config dict. Missing keys → defaults.
-
-    Keys
-    ----
-    max_sdk_history      : int   — max SDK history entries per pool (default: 50)
-    safe_dispatch_timeout: float — dispatch_response timeout (default: 10.0)
-    """
-    section: dict = raw.get("pool", {})
-    return {
-        "max_sdk_history": int(section.get("max_sdk_history", 50)),
-        "safe_dispatch_timeout": float(section.get("safe_dispatch_timeout", 10.0)),
-    }
+def _load_pool_config(raw: dict[str, Any]) -> PoolConfig:
+    """Load [pool] section from raw config dict. Missing keys → defaults."""
+    return PoolConfig.model_validate(raw.get("pool", {}))
 
 
-def _load_llm_config(raw: dict) -> dict:
-    """Load [llm] section from raw config dict. Missing keys → defaults.
-
-    Keys
-    ----
-    max_retries  : int   — RetryDecorator max retries on transient failures (default: 3)
-    backoff_base : float — RetryDecorator exponential backoff base (default: 1.0)
-    """
-    section: dict = raw.get("llm", {})
-    return {
-        "max_retries": int(section.get("max_retries", 3)),
-        "backoff_base": float(section.get("backoff_base", 1.0)),
-    }
+def _load_llm_config(raw: dict[str, Any]) -> LlmConfig:
+    """Load [llm] section from raw config dict. Missing keys → defaults."""
+    return LlmConfig.model_validate(raw.get("llm", {}))
 
 
-def _load_inbound_bus_config(raw: dict) -> dict:
-    """Load [inbound_bus] section from raw config dict. Missing keys → defaults.
-
-    Keys
-    ----
-    queue_depth_threshold  : int — staging depth warning threshold (default: 100)
-    staging_maxsize        : int — staging queue capacity (default: 500)
-    platform_queue_maxsize : int — per-platform queue capacity (default: 100)
-    """
-    section: dict = raw.get("inbound_bus", {})
-    return {
-        "queue_depth_threshold": int(section.get("queue_depth_threshold", 100)),
-        "staging_maxsize": int(section.get("staging_maxsize", 500)),
-        "platform_queue_maxsize": int(section.get("platform_queue_maxsize", 100)),
-    }
+def _load_inbound_bus_config(raw: dict[str, Any]) -> InboundBusConfig:
+    """Load [inbound_bus] section from raw config dict. Missing keys → defaults."""
+    return InboundBusConfig.model_validate(raw.get("inbound_bus", {}))
 
 
-def _load_debouncer_config(raw: dict) -> dict:
-    """Load [debouncer] section from raw config dict. Missing keys → defaults.
-
-    Keys
-    ----
-    default_debounce_ms : int — rapid-message aggregation window in ms (default: 300)
-    max_merged_chars    : int — max combined text length after merge (default: 4096)
-    """
-    section: dict = raw.get("debouncer", {})
-    return {
-        "default_debounce_ms": int(section.get("default_debounce_ms", 300)),
-        "max_merged_chars": int(section.get("max_merged_chars", 4096)),
-    }
+def _load_debouncer_config(raw: dict[str, Any]) -> DebouncerConfig:
+    """Load [debouncer] section from raw config dict. Missing keys → defaults."""
+    return DebouncerConfig.model_validate(raw.get("debouncer", {}))
 
 
 def _load_messages(language: str = "en") -> MessageManager:

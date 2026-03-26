@@ -1,4 +1,5 @@
-"""Tests for persona config, load_persona, compose_system_prompt, and agent+persona integration.
+"""Tests for persona config, load_persona, compose_system_prompt, and agent+persona
+integration.
 
 The TOML agent loading path (load_agent_config) was removed in #346.
 Tests that tested the agent TOML + persona integration have been removed.

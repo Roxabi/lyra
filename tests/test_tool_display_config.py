@@ -2,28 +2,27 @@
 
 from __future__ import annotations
 
-import dataclasses
-
 import pytest
+from pydantic import ValidationError
 
 from lyra.bootstrap.config import _load_tool_display_config
 from lyra.core.tool_display_config import ToolDisplayConfig
 
 # ---------------------------------------------------------------------------
-# ToolDisplayConfig.defaults()
+# ToolDisplayConfig() — default construction
 # ---------------------------------------------------------------------------
 
 
 class TestToolDisplayConfigDefaults:
     def test_returns_tool_display_config_instance(self) -> None:
         # Act
-        cfg = ToolDisplayConfig.defaults()
+        cfg = ToolDisplayConfig()
         # Assert
         assert isinstance(cfg, ToolDisplayConfig)
 
     def test_numeric_defaults(self) -> None:
         # Arrange / Act
-        cfg = ToolDisplayConfig.defaults()
+        cfg = ToolDisplayConfig()
         # Assert
         assert cfg.names_threshold == 3
         assert cfg.group_threshold == 3
@@ -44,63 +43,63 @@ class TestToolDisplayConfigDefaults:
             "glob",
         }
         # Act
-        cfg = ToolDisplayConfig.defaults()
+        cfg = ToolDisplayConfig()
         # Assert
         assert set(cfg.show.keys()) == expected_keys
 
     def test_show_defaults_true_for_visible_tools(self) -> None:
         # Act
-        cfg = ToolDisplayConfig.defaults()
+        cfg = ToolDisplayConfig()
         # Assert
         for key in ("edit", "write", "bash", "web_fetch", "web_search", "agent"):
             assert cfg.show[key] is True, f"Expected show[{key!r}] to be True"
 
     def test_show_defaults_false_for_silent_tools(self) -> None:
         # Act
-        cfg = ToolDisplayConfig.defaults()
+        cfg = ToolDisplayConfig()
         # Assert
         for key in ("read", "grep", "glob"):
             assert cfg.show[key] is False, f"Expected show[{key!r}] to be False"
 
     def test_defaults_is_frozen(self) -> None:
         # Arrange
-        cfg = ToolDisplayConfig.defaults()
-        # Act / Assert — frozen dataclass raises FrozenInstanceError on mutation
-        with pytest.raises(dataclasses.FrozenInstanceError):
+        cfg = ToolDisplayConfig()
+        # Act / Assert — Pydantic frozen model raises ValidationError on mutation
+        with pytest.raises((ValidationError, TypeError)):
             cfg.names_threshold = 99  # type: ignore[misc]
 
     def test_show_is_read_only(self) -> None:
         # Arrange — show is MappingProxyType; key mutation must raise TypeError
-        cfg = ToolDisplayConfig.defaults()
+        cfg = ToolDisplayConfig()
         # Act / Assert
         with pytest.raises(TypeError):
             cfg.show["bash"] = False  # type: ignore[index]
 
     def test_show_dict_instances_are_independent(self) -> None:
         # Arrange — each instance must get its own MappingProxyType (no shared ref)
-        cfg1 = ToolDisplayConfig.defaults()
-        cfg2 = ToolDisplayConfig.defaults()
-        # Assert
+        cfg1 = ToolDisplayConfig()
+        cfg2 = ToolDisplayConfig()
+        # Assert — contents are equal but not the same object
         assert cfg1.show is not cfg2.show
 
 
 # ---------------------------------------------------------------------------
-# ToolDisplayConfig.from_dict()
+# ToolDisplayConfig.model_validate()
 # ---------------------------------------------------------------------------
 
 
 class TestToolDisplayConfigFromDict:
     def test_empty_dict_returns_defaults(self) -> None:
         # Act
-        cfg = ToolDisplayConfig.from_dict({})
+        cfg = ToolDisplayConfig.model_validate({})
         # Assert
-        assert cfg == ToolDisplayConfig.defaults()
+        assert cfg == ToolDisplayConfig()
 
     def test_partial_overrides_keep_remaining_defaults(self) -> None:
         # Arrange
         data = {"names_threshold": 5}
         # Act
-        cfg = ToolDisplayConfig.from_dict(data)
+        cfg = ToolDisplayConfig.model_validate(data)
         # Assert
         assert cfg.names_threshold == 5
         assert cfg.group_threshold == 3  # default preserved
@@ -116,7 +115,7 @@ class TestToolDisplayConfigFromDict:
             "throttle_ms": 500,
         }
         # Act
-        cfg = ToolDisplayConfig.from_dict(data)
+        cfg = ToolDisplayConfig.model_validate(data)
         # Assert
         assert cfg.names_threshold == 10
         assert cfg.group_threshold == 7
@@ -127,7 +126,7 @@ class TestToolDisplayConfigFromDict:
         # Arrange — flip "read" to True, keep everything else
         data = {"show": {"read": True}}
         # Act
-        cfg = ToolDisplayConfig.from_dict(data)
+        cfg = ToolDisplayConfig.model_validate(data)
         # Assert
         assert cfg.show["read"] is True  # overridden
         assert cfg.show["grep"] is False  # default preserved
@@ -151,7 +150,7 @@ class TestToolDisplayConfigFromDict:
         }
         data = {"show": all_false}
         # Act
-        cfg = ToolDisplayConfig.from_dict(data)
+        cfg = ToolDisplayConfig.model_validate(data)
         # Assert
         assert all(not v for v in cfg.show.values())
 
@@ -162,53 +161,53 @@ class TestToolDisplayConfigFromDict:
             "unknown_key": "oops",
             "show": {"unknown_tool": True},
         }
-        # Act — should not raise
-        cfg = ToolDisplayConfig.from_dict(data)
-        # Assert — known keys parsed, unknown tolerated
+        # Act — should not raise (extra="ignore" drops unknown top-level keys;
+        # show validator merges show dict including unknown tool names)
+        cfg = ToolDisplayConfig.model_validate(data)
+        # Assert — known keys parsed, unknown tool merged into show dict
         assert cfg.names_threshold == 2
         assert "unknown_tool" in cfg.show  # merged into show dict as-is
 
     def test_invalid_string_for_numeric_field_raises_value_error(self) -> None:
         # Arrange — non-numeric value for a threshold field
         data = {"names_threshold": "fast"}
-        # Act / Assert — documents that int() raises ValueError on bad input;
-        # guards against a future try/except silently swallowing this
-        with pytest.raises(ValueError):
-            ToolDisplayConfig.from_dict(data)
+        # Act / Assert — Pydantic raises ValidationError on bad input
+        with pytest.raises((ValueError, ValidationError)):
+            ToolDisplayConfig.model_validate(data)
 
     def test_names_threshold_zero_raises_value_error(self) -> None:
         # Arrange
         data = {"names_threshold": 0}
         # Act / Assert
-        with pytest.raises(ValueError, match="names_threshold"):
-            ToolDisplayConfig.from_dict(data)
+        with pytest.raises((ValueError, ValidationError), match="names_threshold"):
+            ToolDisplayConfig.model_validate(data)
 
     def test_group_threshold_zero_raises_value_error(self) -> None:
         # Arrange
         data = {"group_threshold": 0}
         # Act / Assert
-        with pytest.raises(ValueError, match="group_threshold"):
-            ToolDisplayConfig.from_dict(data)
+        with pytest.raises((ValueError, ValidationError), match="group_threshold"):
+            ToolDisplayConfig.model_validate(data)
 
     def test_bash_max_len_zero_raises_value_error(self) -> None:
         # Arrange
         data = {"bash_max_len": 0}
         # Act / Assert
-        with pytest.raises(ValueError, match="bash_max_len"):
-            ToolDisplayConfig.from_dict(data)
+        with pytest.raises((ValueError, ValidationError), match="bash_max_len"):
+            ToolDisplayConfig.model_validate(data)
 
     def test_throttle_ms_negative_raises_value_error(self) -> None:
         # Arrange
         data = {"throttle_ms": -1}
         # Act / Assert
-        with pytest.raises(ValueError, match="throttle_ms"):
-            ToolDisplayConfig.from_dict(data)
+        with pytest.raises((ValueError, ValidationError), match="throttle_ms"):
+            ToolDisplayConfig.model_validate(data)
 
     def test_throttle_ms_zero_is_valid(self) -> None:
         # Arrange — throttle_ms=0 means "no throttle"; explicitly allowed (>= 0)
         data = {"throttle_ms": 0}
         # Act
-        cfg = ToolDisplayConfig.from_dict(data)
+        cfg = ToolDisplayConfig.model_validate(data)
         # Assert
         assert cfg.throttle_ms == 0
 
@@ -221,11 +220,11 @@ class TestToolDisplayConfigFromDict:
 class TestLoadToolDisplayConfig:
     def test_absent_section_returns_defaults(self) -> None:
         # Arrange — raw config with no [tool_display] key
-        raw: dict = {}
+        raw: dict[str, object] = {}
         # Act
         cfg = _load_tool_display_config(raw)
         # Assert
-        assert cfg == ToolDisplayConfig.defaults()
+        assert cfg == ToolDisplayConfig()
 
     def test_present_section_parsed(self) -> None:
         # Arrange
@@ -268,4 +267,4 @@ class TestLoadToolDisplayConfig:
         # Act
         cfg = _load_tool_display_config(raw)
         # Assert
-        assert cfg == ToolDisplayConfig.defaults()
+        assert cfg == ToolDisplayConfig()

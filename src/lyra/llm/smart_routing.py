@@ -8,7 +8,6 @@ Stack position: CircuitBreaker → SmartRouting → Retry → Driver
 
 from __future__ import annotations
 
-import dataclasses
 import logging
 import re
 import time
@@ -190,7 +189,7 @@ class SmartRoutingDecorator:
         self._classifier = classifier or ComplexityClassifier()
         self._estimator = ComplexityEstimator(
             text_classifier=self._classifier,
-            high_complexity_commands=getattr(config, "high_complexity_commands", ()),
+            high_complexity_commands=config.high_complexity_commands,
         )
         self._history: deque[RoutingDecision] = deque(maxlen=config.history_size)
         self.capabilities: dict[str, Any] = inner.capabilities
@@ -245,7 +244,7 @@ class SmartRoutingDecorator:
 
             target_model = self._config.routing_table.get(complexity, original_model)
             if target_model != original_model:
-                routed_cfg = dataclasses.replace(model_cfg, model=target_model)
+                routed_cfg = model_cfg.model_copy(update={"model": target_model})
         except Exception:
             log.warning(
                 "Smart routing classifier failed, falling back to default model",

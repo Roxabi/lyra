@@ -60,7 +60,7 @@ def _make_agent_config() -> Agent:
         name="lyra",
         system_prompt="You are Lyra.",
         memory_namespace="lyra",
-        model_config=ModelConfig(
+        llm_config=ModelConfig(
             backend="anthropic-sdk",
             model="claude-3-5-haiku-20241022",
         ),

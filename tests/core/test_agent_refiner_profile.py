@@ -95,7 +95,9 @@ class TestReadProfile:
 
     def test_read_profile_parses_voice_json(self) -> None:
         # Arrange
-        row = make_row(voice_json='{"tts": {"voice": "echo", "engine": "qwen-fast"}, "stt": {}}')
+        row = make_row(
+            voice_json='{"tts": {"voice": "echo", "engine": "qwen-fast"}, "stt": {}}'
+        )
         store = make_store(row)
         refiner = AgentRefiner("lyra_default", store)
 
@@ -103,7 +105,9 @@ class TestReadProfile:
         ctx = refiner.read_profile()
 
         # Assert -- voice_json is passed through as raw string
-        assert ctx.voice_json == '{"tts": {"voice": "echo", "engine": "qwen-fast"}, "stt": {}}'
+        assert ctx.voice_json == (
+            '{"tts": {"voice": "echo", "engine": "qwen-fast"}, "stt": {}}'
+        )
 
     def test_read_profile_returns_frozen_context(self) -> None:
         # Arrange
@@ -160,7 +164,9 @@ class TestRefinementPatch:
         # Arrange
         existing = make_row()
         new_persona = '{"identity": {"display_name": "Aryl"}}'
-        patch = RefinementPatch(fields={"model": "claude-opus-4-6", "persona_json": new_persona})
+        patch = RefinementPatch(
+            fields={"model": "claude-opus-4-6", "persona_json": new_persona}
+        )
 
         # Act
         updated = patch.to_agent_row(existing)
@@ -276,5 +282,10 @@ class TestRefinementPatchValidation:
 
     def test_valid_fields_accepted(self) -> None:
         # Should not raise -- model and persona_json are in REFINABLE_FIELDS
-        patch = RefinementPatch(fields={"model": "claude-opus-4-6", "persona_json": '{"identity": {"display_name": "Lyra"}}'})
+        patch = RefinementPatch(
+            fields={
+                "model": "claude-opus-4-6",
+                "persona_json": '{"identity": {"display_name": "Lyra"}}',
+            }
+        )
         assert patch.fields["model"] == "claude-opus-4-6"

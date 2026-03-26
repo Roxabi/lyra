@@ -53,7 +53,7 @@ def make_agent(provider: object) -> SimpleAgent:
         name="lyra",
         system_prompt="You are Lyra.",
         memory_namespace="lyra",
-        model_config=ModelConfig(),
+        llm_config=ModelConfig(),
     )
     return SimpleAgent(config, provider)  # type: ignore[arg-type]
 
@@ -160,7 +160,7 @@ class TestSimpleAgentOnIntermediate:
             system_prompt="You are Lyra.",
             memory_namespace="lyra",
             show_intermediate=show_intermediate,
-            model_config=ModelConfig(),
+            llm_config=ModelConfig(),
         )
 
         async def fake_complete(
@@ -229,7 +229,7 @@ def make_streaming_agent(provider: object, streaming: bool = True) -> SimpleAgen
         name="lyra",
         system_prompt="You are Lyra.",
         memory_namespace="lyra",
-        model_config=ModelConfig(streaming=streaming),
+        llm_config=ModelConfig(streaming=streaming),
     )
     return SimpleAgent(config, provider)  # type: ignore[arg-type]
 

@@ -46,7 +46,7 @@ async def seed_from_toml(
     return 1
 
 
-def _parse_toml(path: Path) -> AgentRow | None:
+def _parse_toml(path: Path) -> AgentRow | None:  # noqa: PLR0915 — TOML parsing with many independent fields
     """Parse an agent TOML file and return an :class:`AgentRow`, or *None* on error."""
     try:
         with open(path, "rb") as f:

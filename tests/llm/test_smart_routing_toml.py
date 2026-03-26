@@ -53,3 +53,15 @@ complex  = "claude-opus-4-6"
         assert config.routing_table[Complexity.SIMPLE] == "claude-haiku-4-5-20251001"
         assert config.routing_table[Complexity.MODERATE] == "claude-sonnet-4-6"
         assert config.routing_table[Complexity.COMPLEX] == "claude-opus-4-6"
+
+
+def test_routing_table_json_roundtrip() -> None:
+    cfg = SmartRoutingConfig(
+        enabled=True,
+        routing_table={Complexity.TRIVIAL: "haiku", Complexity.COMPLEX: "opus"},
+    )
+    dumped = cfg.model_dump(mode="json")
+    assert isinstance(list(dumped["routing_table"].keys())[0], str)
+    restored = SmartRoutingConfig.model_validate(dumped)
+    assert restored.routing_table[Complexity.TRIVIAL] == "haiku"
+    assert restored.routing_table[Complexity.COMPLEX] == "opus"

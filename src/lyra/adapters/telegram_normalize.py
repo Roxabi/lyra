@@ -13,6 +13,7 @@ from lyra.core.message import (
     Platform,
     RoutingContext,
 )
+from lyra.core.scope import user_scoped
 from lyra.core.trust import TrustLevel
 
 if TYPE_CHECKING:
@@ -91,8 +92,6 @@ def _make_scope_id(
     In shared spaces (groups, supergroups) the scope includes the user
     identity so that each user gets their own pool (#356).
     """
-    from lyra.core.scope import user_scoped
-
     if topic_id is not None:
         base = f"chat:{chat_id}:topic:{topic_id}"
     else:

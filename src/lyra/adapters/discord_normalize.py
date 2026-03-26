@@ -14,6 +14,7 @@ from lyra.core.message import (
     Platform,
     RoutingContext,
 )
+from lyra.core.scope import user_scoped
 from lyra.core.trust import TrustLevel
 
 if TYPE_CHECKING:
@@ -63,8 +64,6 @@ def normalize(  # noqa: PLR0913 — all kwargs are platform-specific routing con
     user_id = f"dc:user:{raw.author.id}"
     is_guild_channel = raw.guild is not None and not resolved_thread_id
     if is_guild_channel:
-        from lyra.core.scope import user_scoped
-
         scope_id = user_scoped(scope_id, user_id)
 
     # Detect channel type

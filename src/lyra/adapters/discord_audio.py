@@ -13,6 +13,7 @@ from lyra.core.message import (
     Platform,
     RoutingContext,
 )
+from lyra.core.scope import user_scoped
 
 if TYPE_CHECKING:
     from lyra.adapters.discord import DiscordAdapter
@@ -69,6 +70,10 @@ def normalize_audio(
     is_thread = isinstance(raw.channel, discord.Thread)
     scope_id = f"thread:{raw.channel.id}" if is_thread else f"channel:{raw.channel.id}"
     user_id = f"dc:user:{raw.author.id}"
+    # User-scope guild channels for audio too (#356).
+    is_guild_channel = raw.guild is not None and not is_thread
+    if is_guild_channel:
+        scope_id = user_scoped(scope_id, user_id)
     timestamp = raw.created_at
     platform_meta = {
         "guild_id": raw.guild.id if raw.guild else None,

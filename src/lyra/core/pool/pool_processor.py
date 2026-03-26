@@ -23,6 +23,9 @@ from ..render_events import RenderEvent, TextRenderEvent
 
 log = logging.getLogger(__name__)
 
+# Below this threshold, log a warning for possible dead backend or empty response.
+_MIN_EXPECTED_DURATION_MS = 100
+
 
 class PoolProcessor:
     """Async processing engine for a Pool.
@@ -169,10 +172,10 @@ class PoolProcessor:
                 pool.pool_id,
                 _duration_ms,
             )
-            if _duration_ms < 100:
+            if _duration_ms < _MIN_EXPECTED_DURATION_MS:
                 log.warning(
-                    "agent completed suspiciously fast: agent=%s pool=%s duration_ms=%.0f"
-                    " — possible dead backend or empty response",
+                    "agent suspiciously fast: agent=%s pool=%s"
+                    " duration_ms=%.0f — possible dead backend",
                     pool.agent_name,
                     pool.pool_id,
                     _duration_ms,

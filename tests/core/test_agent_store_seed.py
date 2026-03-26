@@ -1,4 +1,8 @@
-"""AgentStore seed, bot-map reconnect, and TTS/STT column tests."""
+"""AgentStore seed, bot-map reconnect, and voice_json column tests.
+
+After #346, AgentRow no longer has persona, tts_json, stt_json, i18n_language.
+Voice data lives in voice_json = '{"tts": {...}, "stt": {...}}'.
+"""
 
 from __future__ import annotations
 
@@ -15,7 +19,7 @@ from .conftest import make_agent_row, make_store
 
 
 class TestSeedFromToml:
-    """AgentStore.seed_from_toml() — TOML import, idempotency, force, bad files."""
+    """AgentStore.seed_from_toml() -- TOML import, idempotency, force, bad files."""
 
     def _write_toml(self, path: Path, name: str = "seeded-agent") -> Path:
         """Write a minimal valid agent TOML to path and return the file path."""
@@ -58,11 +62,11 @@ show_intermediate = false
         try:
             toml_file = self._write_toml(tmp_path, "idem-agent")
 
-            # Act — seed twice
+            # Act -- seed twice
             await store.seed_from_toml(toml_file)
             count = await store.seed_from_toml(toml_file)
 
-            # Assert — second call inserts 0 rows
+            # Assert -- second call inserts 0 rows
             assert count == 0
         finally:
             await store.close()
@@ -83,7 +87,6 @@ show_intermediate = false
                 model=existing.model,
                 max_turns=existing.max_turns,
                 tools_json=existing.tools_json,
-                persona=existing.persona,
                 show_intermediate=existing.show_intermediate,
                 smart_routing_json=existing.smart_routing_json,
                 plugins_json=existing.plugins_json,
@@ -95,7 +98,7 @@ show_intermediate = false
             row_modified = store.get("force-agent")
             assert row_modified is not None and row_modified.backend == "openai"
 
-            # Act — seed with force=True must restore TOML values
+            # Act -- seed with force=True must restore TOML values
             count = await store.seed_from_toml(toml_file, force=True)
 
             # Assert
@@ -112,16 +115,16 @@ show_intermediate = false
             garbage_file = tmp_path / "garbage.toml"
             garbage_file.write_text("this is [[[not valid toml", encoding="utf-8")
 
-            # Act — must not raise
+            # Act -- must not raise
             count = await store.seed_from_toml(garbage_file)
 
-            # Assert — 0 rows imported, no exception
+            # Assert -- 0 rows imported, no exception
             assert count == 0
         finally:
             await store.close()
 
     async def test_seed_name_from_model_section(self, tmp_path: Path) -> None:
-        # Arrange — TOML has [model].name but no [agent].name
+        # Arrange -- TOML has [model].name but no [agent].name
         store = await make_store(tmp_path)
         try:
             toml_file = tmp_path / "model-named.toml"
@@ -149,7 +152,7 @@ tools = []
             await store.close()
 
     async def test_seed_skips_toml_without_name(self, tmp_path: Path) -> None:
-        # Arrange — TOML has [agent] section but no name key and no [model] section
+        # Arrange -- TOML has [agent] section but no name key and no [model] section
         store = await make_store(tmp_path)
         try:
             toml_file = tmp_path / "nameless.toml"
@@ -165,7 +168,7 @@ model = "claude-3-5-haiku-20241022"
             # Act
             count = await store.seed_from_toml(toml_file)
 
-            # Assert — no name found, must return 0 and not insert anything
+            # Assert -- no name found, must return 0 and not insert anything
             assert count == 0
             assert store.get_all() == []
         finally:
@@ -203,17 +206,17 @@ class TestBotMapExtra:
                 )
             )
 
-            # Act — assign then reassign
+            # Act -- assign then reassign
             await store.set_bot_agent("telegram", "b1", "agent-a")
             await store.set_bot_agent("telegram", "b1", "agent-b")
 
-            # Assert — cache reflects the new assignment
+            # Assert -- cache reflects the new assignment
             assert store.get_bot_agent("telegram", "b1") == "agent-b"
         finally:
             await store.close()
 
     async def test_bot_map_warm_on_reconnect(self, tmp_path: Path) -> None:
-        # Arrange — set mapping in store1, close it
+        # Arrange -- set mapping in store1, close it
         db_path = tmp_path / "auth.db"
         store1 = AgentStore(db_path=str(db_path))
         await store1.connect()
@@ -228,36 +231,37 @@ class TestBotMapExtra:
         await store1.set_bot_agent("telegram", "bot-reconnect", "mapped-agent")
         await store1.close()
 
-        # Act — open fresh store against same DB
+        # Act -- open fresh store against same DB
         store2 = AgentStore(db_path=str(db_path))
         await store2.connect()
         try:
             result = store2.get_bot_agent("telegram", "bot-reconnect")
 
-            # Assert — bot map was warmed from DB
+            # Assert -- bot map was warmed from DB
             assert result == "mapped-agent"
         finally:
             await store2.close()
 
 
 # ---------------------------------------------------------------------------
-# TestTTSSTTColumns
+# TestVoiceJsonColumns
 # ---------------------------------------------------------------------------
 
 
-class TestTTSSTTColumns:
-    """AgentRow tts_json / stt_json columns: upsert, warm cache, seed_from_toml."""
+class TestVoiceJsonColumns:
+    """AgentRow voice_json column: upsert, warm cache, seed_from_toml."""
 
-    async def test_upsert_and_get_with_tts_stt(self, agent_store: AgentStore) -> None:
+    async def test_upsert_and_get_with_voice_json(self, agent_store: AgentStore) -> None:
         # Arrange
-        tts_data = {"engine": "chatterbox", "voice": "en-US-1", "chunked": True}
-        stt_data = {"language_detection_threshold": 0.8, "language_fallback": "en"}
+        voice_data = {
+            "tts": {"engine": "chatterbox", "voice": "en-US-1", "chunked": True},
+            "stt": {"language_detection_threshold": 0.8, "language_fallback": "en"},
+        }
         row = AgentRow(
             name="tts-agent",
             backend="anthropic-sdk",
             model="claude-3-5-haiku-20241022",
-            tts_json=json.dumps(tts_data),
-            stt_json=json.dumps(stt_data),
+            voice_json=json.dumps(voice_data),
         )
 
         # Act
@@ -266,57 +270,55 @@ class TestTTSSTTColumns:
 
         # Assert
         assert result is not None
-        assert result.tts_json is not None
-        assert result.stt_json is not None
-        assert json.loads(result.tts_json) == tts_data
-        assert json.loads(result.stt_json) == stt_data
+        assert result.voice_json is not None
+        parsed = json.loads(result.voice_json)
+        assert parsed["tts"]["engine"] == "chatterbox"
+        assert parsed["stt"]["language_fallback"] == "en"
 
-    async def test_upsert_null_tts_stt(self, agent_store: AgentStore) -> None:
-        # Arrange — no tts_json / stt_json (nullable columns default to None)
-        row = make_agent_row("no-tts-agent")
+    async def test_upsert_null_voice_json(self, agent_store: AgentStore) -> None:
+        # Arrange -- no voice_json (nullable column defaults to None)
+        row = make_agent_row("no-voice-agent")
 
         # Act
         await agent_store.upsert(row)
-        result = agent_store.get("no-tts-agent")
+        result = agent_store.get("no-voice-agent")
 
         # Assert
         assert result is not None
-        assert result.tts_json is None
-        assert result.stt_json is None
+        assert result.voice_json is None
 
-    async def test_tts_stt_warm_on_reconnect(self, tmp_path: Path) -> None:
-        # Arrange — write tts/stt row in store1, close it
+    async def test_voice_json_warm_on_reconnect(self, tmp_path: Path) -> None:
+        # Arrange -- write voice_json row in store1, close it
         db_path = tmp_path / "auth.db"
         store1 = AgentStore(db_path=str(db_path))
         await store1.connect()
-        tts_data = {"voice": "en-GB-2"}
+        voice_data = {"tts": {"voice": "en-GB-2"}, "stt": {}}
         row = AgentRow(
-            name="reconnect-tts-agent",
+            name="reconnect-voice-agent",
             backend="anthropic-sdk",
             model="claude-3-5-haiku-20241022",
-            tts_json=json.dumps(tts_data),
-            stt_json=None,
+            voice_json=json.dumps(voice_data),
             source="db",
         )
         await store1.upsert(row)
         await store1.close()
 
-        # Act — open fresh store against same DB
+        # Act -- open fresh store against same DB
         store2 = AgentStore(db_path=str(db_path))
         await store2.connect()
         try:
-            result = store2.get("reconnect-tts-agent")
+            result = store2.get("reconnect-voice-agent")
 
-            # Assert — tts_json must survive round-trip through DB
+            # Assert -- voice_json must survive round-trip through DB
             assert result is not None
-            assert result.tts_json is not None
-            assert json.loads(result.tts_json) == tts_data
-            assert result.stt_json is None
+            assert result.voice_json is not None
+            parsed = json.loads(result.voice_json)
+            assert parsed["tts"]["voice"] == "en-GB-2"
         finally:
             await store2.close()
 
     async def test_seed_from_toml_with_tts_stt(self, tmp_path: Path) -> None:
-        # Arrange — TOML with [tts] and [stt] sections
+        # Arrange -- TOML with [tts] and [stt] sections -> merged into voice_json
         store = await make_store(tmp_path)
         try:
             toml_file = tmp_path / "tts-agent.toml"
@@ -344,25 +346,23 @@ language_fallback = "en"
             # Act
             count = await store.seed_from_toml(toml_file)
 
-            # Assert
+            # Assert -- seeder merges [tts] + [stt] into voice_json
             assert count == 1
             result = store.get("tts-seeded-agent")
             assert result is not None
-            assert result.tts_json is not None
-            assert result.stt_json is not None
-            tts = json.loads(result.tts_json)
-            stt = json.loads(result.stt_json)
-            assert tts["engine"] == "chatterbox"
-            assert tts["voice"] == "en-US-1"
-            assert tts["chunked"] is True
-            assert tts["chunk_size"] == 200
-            assert stt["language_detection_threshold"] == 0.75
-            assert stt["language_fallback"] == "en"
+            assert result.voice_json is not None
+            voice = json.loads(result.voice_json)
+            assert voice["tts"]["engine"] == "chatterbox"
+            assert voice["tts"]["voice"] == "en-US-1"
+            assert voice["tts"]["chunked"] is True
+            assert voice["tts"]["chunk_size"] == 200
+            assert voice["stt"]["language_detection_threshold"] == 0.75
+            assert voice["stt"]["language_fallback"] == "en"
         finally:
             await store.close()
 
     async def test_seed_from_toml_no_tts_stt_is_null(self, tmp_path: Path) -> None:
-        # Arrange — TOML without [tts] or [stt] sections
+        # Arrange -- TOML without [tts] or [stt] sections
         store = await make_store(tmp_path)
         try:
             toml_file = tmp_path / "plain-agent.toml"
@@ -380,9 +380,8 @@ model = "claude-3-5-haiku-20241022"
             await store.seed_from_toml(toml_file)
             result = store.get("plain-agent")
 
-            # Assert — missing sections → NULL columns
+            # Assert -- missing sections -> NULL voice_json
             assert result is not None
-            assert result.tts_json is None
-            assert result.stt_json is None
+            assert result.voice_json is None
         finally:
             await store.close()

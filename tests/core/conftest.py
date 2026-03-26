@@ -418,7 +418,6 @@ def make_agent_row(name: str = "test-agent") -> AgentRow:
         model="claude-3-5-haiku-20241022",
         max_turns=10,
         tools_json="[]",
-        persona=None,
         show_intermediate=False,
         smart_routing_json=None,
         plugins_json="[]",

@@ -1,23 +1,72 @@
+"""Persona loading and system prompt composition.
+
+load_persona() and compose_system_prompt() are kept for the _populate_343
+migration in AgentStore (upgrading old DBs). New code should use
+compose_system_prompt_from_json() which reads from persona_json.
+"""
+
 from __future__ import annotations
 
 import os
 import re
 import tomllib
+from dataclasses import dataclass, field
 from pathlib import Path
 
-from .agent_config import (
-    _MAX_PROMPT_BYTES,
-    ExpertiseConfig,
-    IdentityConfig,
-    PersonaConfig,
-    PersonalityConfig,
-    VoiceConfig,
-)
+_MAX_PROMPT_BYTES = 64 * 1024  # 64 KB
 
 _VAULT_DIR = Path(
     os.environ.get("ROXABI_VAULT_DIR", str(Path.home() / ".roxabi-vault"))
 )
 _PERSONAS_DIR = _VAULT_DIR / "personas"
+
+
+# ---------------------------------------------------------------------------
+# Persona dataclasses (kept for migration; not used by new code)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class IdentityConfig:
+    name: str
+    tagline: str = ""
+    creator: str = ""
+    role: str = ""
+    goal: str = ""
+
+
+@dataclass(frozen=True)
+class PersonalityConfig:
+    traits: tuple[str, ...] = ()
+    communication_style: str = ""
+    tone: str = ""
+    humor: str = ""
+
+
+@dataclass(frozen=True)
+class ExpertiseConfig:
+    areas: tuple[str, ...] = ()
+    instructions: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class VoiceConfig:
+    speaking_style: str = ""
+    pace: str = ""
+    warmth: str = ""
+
+
+@dataclass(frozen=True)
+class PersonaConfig:
+    identity: IdentityConfig
+    personality: PersonalityConfig = field(default_factory=PersonalityConfig)
+    expertise: ExpertiseConfig = field(default_factory=ExpertiseConfig)
+    voice: VoiceConfig = field(default_factory=VoiceConfig)
+
+
+# ---------------------------------------------------------------------------
+# TOML-based persona loading (kept for _populate_343 migration)
+# ---------------------------------------------------------------------------
 
 
 def load_persona(name: str, personas_dir: Path | None = None) -> PersonaConfig:
@@ -133,6 +182,11 @@ def compose_system_prompt(persona: PersonaConfig) -> str:  # noqa: C901 — many
         )
 
     return composed
+
+
+# ---------------------------------------------------------------------------
+# JSON-based prompt composition (primary path after #343)
+# ---------------------------------------------------------------------------
 
 
 def compose_system_prompt_from_json(persona_dict: dict) -> str:  # noqa: C901

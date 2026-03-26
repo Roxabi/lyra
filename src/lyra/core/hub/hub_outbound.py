@@ -70,10 +70,7 @@ class HubOutboundMixin:
                 binding.agent_name,
             )
             return None
-        # #343 — prefer voice.tts, fall back to agent.tts for transition
-        if agent.config.voice is not None:
-            return agent.config.voice.tts
-        return agent.config.tts  # PR3-remove: dual-read transition
+        return agent.config.voice.tts if agent.config.voice is not None else None
 
     def _resolve_agent_fallback_language(self, msg: "InboundMessage") -> str | None:
         """Resolve per-agent fallback_language from the message's binding (#343)."""

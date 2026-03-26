@@ -75,7 +75,6 @@ def _parse_toml(path: Path) -> AgentRow | None:
     _mt = _m("max_turns", None)
     max_turns = None if not _mt else int(_mt)  # 0 or absent → None (unlimited)
     tools_json = json.dumps(_m("tools", []))
-    persona = agent_section.get("persona")
     show_intermediate = agent_section.get("show_intermediate", False)
     show_tool_recap = agent_section.get("show_tool_recap", True)
     smart_routing = agent_section.get("smart_routing")
@@ -89,20 +88,30 @@ def _parse_toml(path: Path) -> AgentRow | None:
     skip_permissions = bool(_m("skip_permissions", False))
     streaming = bool(_m("streaming", False))
 
-    # Serialize [tts] and [stt] sections to JSON (None if section absent)
+    # Build voice_json from [tts] and [stt] sections
     tts_section = data.get("tts")
-    tts_json = json.dumps(tts_section) if tts_section is not None else None
     stt_section = data.get("stt")
-    stt_json = json.dumps(stt_section) if stt_section is not None else None
+    voice_json: str | None = None
+    if tts_section is not None or stt_section is not None:
+        voice_obj: dict = {}
+        if tts_section is not None:
+            voice_obj["tts"] = tts_section
+        else:
+            voice_obj["tts"] = {}
+        if stt_section is not None:
+            voice_obj["stt"] = stt_section
+        else:
+            voice_obj["stt"] = {}
+        voice_json = json.dumps(voice_obj)
 
-    # New fields: permissions, workspaces, i18n, commands
+    # Permissions, workspaces, i18n, commands
     permissions_json = json.dumps(agent_section.get("permissions", []))
     workspaces_section = data.get("workspaces")
     workspaces_json = (
         json.dumps(workspaces_section) if workspaces_section is not None else None
     )
     i18n_section = data.get("i18n", {})
-    i18n_language = i18n_section.get("default_language", "en")
+    fallback_language = i18n_section.get("default_language", "en")
     commands_section = data.get("commands")
     commands_json = (
         json.dumps(commands_section) if commands_section is not None else None
@@ -122,20 +131,18 @@ def _parse_toml(path: Path) -> AgentRow | None:
         model=model,
         max_turns=max_turns,
         tools_json=tools_json,
-        persona=persona,
         show_intermediate=show_intermediate,
         show_tool_recap=show_tool_recap,
         smart_routing_json=smart_routing_json,
         plugins_json=plugins_json,
         memory_namespace=memory_namespace,
         cwd=cwd,
-        tts_json=tts_json,
-        stt_json=stt_json,
+        voice_json=voice_json,
         skip_permissions=skip_permissions,
         streaming=streaming,
         permissions_json=permissions_json,
         workspaces_json=workspaces_json,
-        i18n_language=i18n_language,
+        fallback_language=fallback_language,
         commands_json=commands_json,
         patterns_json=patterns_json,
         passthroughs_json=passthroughs_json,

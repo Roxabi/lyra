@@ -30,8 +30,8 @@ def make_row(**kwargs) -> AgentRow:
         name="lyra_default",
         backend="anthropic-sdk",
         model="claude-haiku-4-5-20251001",
-        persona="lyra",
-        tts_json='{"voice": "echo"}',
+        persona_json='{"identity": {"display_name": "Lyra"}}',
+        voice_json='{"tts": {"voice": "echo"}, "stt": {}}',
         plugins_json='["plugin_a"]',
         patterns_json='{"bare_url": true}',
     )
@@ -67,7 +67,7 @@ class TestReadProfile:
         # Assert
         assert ctx.agent_name == "lyra_default"
         assert ctx.model == "claude-haiku-4-5-20251001"
-        assert ctx.persona == "lyra"
+        assert ctx.persona_json == '{"identity": {"display_name": "Lyra"}}'
         assert ctx.plugins == ["plugin_a"]
         assert ctx.patterns == {"bare_url": True}
 
@@ -93,17 +93,17 @@ class TestReadProfile:
         assert ctx.plugins == []
         assert ctx.patterns == {}
 
-    def test_read_profile_parses_tts_json(self) -> None:
+    def test_read_profile_parses_voice_json(self) -> None:
         # Arrange
-        row = make_row(tts_json='{"voice": "echo", "engine": "qwen-fast"}')
+        row = make_row(voice_json='{"tts": {"voice": "echo", "engine": "qwen-fast"}, "stt": {}}')
         store = make_store(row)
         refiner = AgentRefiner("lyra_default", store)
 
         # Act
         ctx = refiner.read_profile()
 
-        # Assert — tts_json is passed through as raw string
-        assert ctx.tts_json == '{"voice": "echo", "engine": "qwen-fast"}'
+        # Assert -- voice_json is passed through as raw string
+        assert ctx.voice_json == '{"tts": {"voice": "echo", "engine": "qwen-fast"}, "stt": {}}'
 
     def test_read_profile_returns_frozen_context(self) -> None:
         # Arrange
@@ -147,26 +147,27 @@ class TestRefinementPatch:
         # Act
         updated = patch.to_agent_row(existing)
 
-        # Assert — patched field changed
+        # Assert -- patched field changed
         assert updated.model == "claude-opus-4-6"
-        # Assert — all other fields unchanged
+        # Assert -- all other fields unchanged
         assert updated.name == existing.name
         assert updated.backend == existing.backend
-        assert updated.persona == existing.persona
-        assert updated.tts_json == existing.tts_json
+        assert updated.persona_json == existing.persona_json
+        assert updated.voice_json == existing.voice_json
         assert updated.plugins_json == existing.plugins_json
 
     def test_to_agent_row_applies_multiple_fields(self) -> None:
         # Arrange
         existing = make_row()
-        patch = RefinementPatch(fields={"model": "claude-opus-4-6", "persona": "aryl"})
+        new_persona = '{"identity": {"display_name": "Aryl"}}'
+        patch = RefinementPatch(fields={"model": "claude-opus-4-6", "persona_json": new_persona})
 
         # Act
         updated = patch.to_agent_row(existing)
 
         # Assert
         assert updated.model == "claude-opus-4-6"
-        assert updated.persona == "aryl"
+        assert updated.persona_json == new_persona
         assert updated.name == existing.name
 
     def test_to_agent_row_does_not_mutate_original(self) -> None:
@@ -274,6 +275,6 @@ class TestRefinementPatchValidation:
             RefinementPatch(fields={"nonexistent_field": "value"})
 
     def test_valid_fields_accepted(self) -> None:
-        # Should not raise — model and persona are in REFINABLE_FIELDS
-        patch = RefinementPatch(fields={"model": "claude-opus-4-6", "persona": "lyra"})
+        # Should not raise -- model and persona_json are in REFINABLE_FIELDS
+        patch = RefinementPatch(fields={"model": "claude-opus-4-6", "persona_json": '{"identity": {"display_name": "Lyra"}}'})
         assert patch.fields["model"] == "claude-opus-4-6"

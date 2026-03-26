@@ -1,15 +1,20 @@
-"""Tests for AgentTTSConfig/AgentSTTConfig dataclasses, TOML parsing,
-and STT overlay."""
+"""Tests for AgentTTSConfig/AgentSTTConfig dataclasses, AgentRow voice_json
+deserialization, and STT overlay.
+
+The TOML loading path (load_agent_config) was removed in #346.
+Tests that exercised TOML loading have been rewritten to use AgentRow +
+agent_row_to_config.
+"""
 
 from __future__ import annotations
 
-from pathlib import Path
+import json
 
 import pytest
 
 
 class TestAgentTTSConfig:
-    """T08 — AgentTTSConfig dataclass must exist with all-optional fields."""
+    """T08 -- AgentTTSConfig dataclass must exist with all-optional fields."""
 
     def test_agent_tts_config_all_optional(self):
         from lyra.core.agent_config import AgentTTSConfig
@@ -29,124 +34,82 @@ class TestAgentTTSConfig:
         assert cfg.language_fallback is None
 
 
-class TestLoadAgentConfigTTSSTT:
-    """T09 — load_agent_config parses [tts]/[stt] TOML sections."""
+class TestAgentRowToConfigTTSSTT:
+    """T09 -- agent_row_to_config parses voice_json into Agent.voice."""
 
-    def test_load_agent_config_parses_tts_section(self, tmp_path: Path, monkeypatch):
-        """[tts] section in agent TOML is parsed into AgentTTSConfig."""
-        toml_content = """
-[agent]
-name = "x"
+    def _make_row(self, voice_json=None):
+        from lyra.core.agent_models import AgentRow
 
-[model]
-backend = "claude-cli"
-model = "test-model"
-max_turns = 5
+        return AgentRow(
+            name="x",
+            backend="anthropic-sdk",
+            model="claude-3-5-haiku-20241022",
+            voice_json=voice_json,
+        )
 
-[tts]
-engine = "qwen-fast"
-voice = "Ono_Anna"
-language = "French"
-"""
-        (tmp_path / "x.toml").write_text(toml_content)
-        monkeypatch.chdir(tmp_path)
-        from lyra.core.agent_loader import load_agent_config
+    def test_voice_json_with_tts_section(self):
+        """voice_json with tts data is parsed into Agent.voice.tts."""
+        from lyra.core.agent_db_loader import agent_row_to_config
 
-        agent = load_agent_config("x", agents_dir=tmp_path)
-        assert agent.tts is not None
-        assert agent.tts.engine == "qwen-fast"
-        assert agent.tts.voice == "Ono_Anna"
-        assert agent.tts.language == "French"
+        voice_data = {"tts": {"engine": "qwen-fast", "voice": "Ono_Anna", "language": "French"}, "stt": {}}
+        row = self._make_row(voice_json=json.dumps(voice_data))
+        agent = agent_row_to_config(row)
+        assert agent.voice is not None
+        assert agent.voice.tts.engine == "qwen-fast"
+        assert agent.voice.tts.voice == "Ono_Anna"
+        assert agent.voice.tts.language == "French"
 
-    def test_load_agent_config_parses_stt_section(self, tmp_path: Path, monkeypatch):
-        """[stt] section in agent TOML is parsed into AgentSTTConfig."""
-        toml_content = """
-[agent]
-name = "x"
+    def test_voice_json_with_stt_section(self):
+        """voice_json with stt data is parsed into Agent.voice.stt."""
+        from lyra.core.agent_db_loader import agent_row_to_config
 
-[model]
-backend = "claude-cli"
-model = "test-model"
-max_turns = 5
+        voice_data = {"tts": {}, "stt": {"language_detection_threshold": 0.9, "language_fallback": "en"}}
+        row = self._make_row(voice_json=json.dumps(voice_data))
+        agent = agent_row_to_config(row)
+        assert agent.voice is not None
+        assert agent.voice.stt.language_detection_threshold == 0.9
+        assert agent.voice.stt.language_fallback == "en"
+        assert agent.voice.stt.language_detection_segments is None
 
-[stt]
-language_detection_threshold = 0.9
-language_fallback = "en"
-"""
-        (tmp_path / "x.toml").write_text(toml_content)
-        monkeypatch.chdir(tmp_path)
-        from lyra.core.agent_loader import load_agent_config
+    def test_no_voice_json_produces_none(self):
+        """Agent without voice_json -> .voice is None."""
+        from lyra.core.agent_db_loader import agent_row_to_config
 
-        agent = load_agent_config("x", agents_dir=tmp_path)
-        assert agent.stt is not None
-        assert agent.stt.language_detection_threshold == 0.9
-        assert agent.stt.language_fallback == "en"
-        assert agent.stt.language_detection_segments is None
-
-    def test_load_agent_config_missing_tts_stt_sections(
-        self, tmp_path: Path, monkeypatch
-    ):
-        """Agent without [tts]/[stt] sections -> .tts and .stt are None."""
-        toml_content = """
-[agent]
-name = "x"
-
-[model]
-backend = "claude-cli"
-model = "test-model"
-max_turns = 5
-"""
-        (tmp_path / "x.toml").write_text(toml_content)
-        monkeypatch.chdir(tmp_path)
-        from lyra.core.agent_loader import load_agent_config
-
-        agent = load_agent_config("x", agents_dir=tmp_path)
-        assert agent.tts is None
-        assert agent.stt is None
+        row = self._make_row(voice_json=None)
+        agent = agent_row_to_config(row)
+        assert agent.voice is None
 
 
-class TestLoadAgentConfigTTSNewFields:
-    """T6 — load_agent_config parses exaggeration and cfg_weight from [tts] TOML."""
+class TestAgentRowToConfigTTSNewFields:
+    """T6 -- agent_row_to_config parses exaggeration and cfg_weight from voice_json."""
 
-    def test_tts_exaggeration_and_cfg_weight_from_toml(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """[tts] section with exaggeration + cfg_weight is parsed into float fields."""
-        # Arrange
-        toml_content = """
-[agent]
-name = "x"
+    def test_tts_exaggeration_and_cfg_weight(self) -> None:
+        """voice_json with exaggeration + cfg_weight is parsed into float fields."""
+        from lyra.core.agent_db_loader import agent_row_to_config
+        from lyra.core.agent_models import AgentRow
 
-[model]
-backend = "claude-cli"
-model = "test-model"
-max_turns = 5
+        voice_data = {"tts": {"exaggeration": 0.7, "cfg_weight": 0.3}, "stt": {}}
+        row = AgentRow(
+            name="x",
+            backend="anthropic-sdk",
+            model="claude-3-5-haiku-20241022",
+            voice_json=json.dumps(voice_data),
+        )
+        agent = agent_row_to_config(row)
 
-[tts]
-exaggeration = 0.7
-cfg_weight = 0.3
-"""
-        (tmp_path / "x.toml").write_text(toml_content)
-        monkeypatch.chdir(tmp_path)
-        from lyra.core.agent_loader import load_agent_config
-
-        # Act
-        agent = load_agent_config("x", agents_dir=tmp_path)
-
-        # Assert
-        assert agent.tts is not None
-        assert agent.tts.exaggeration == pytest.approx(0.7)
-        assert agent.tts.cfg_weight == pytest.approx(0.3)
-        assert agent.tts.engine is None  # not set — defaults preserved
+        assert agent.voice is not None
+        assert agent.voice.tts.exaggeration == pytest.approx(0.7)
+        assert agent.voice.tts.cfg_weight == pytest.approx(0.3)
+        assert agent.voice.tts.engine is None  # not set -- defaults preserved
 
 
 # ---------------------------------------------------------------------------
-# SC-8 — apply_agent_stt_overlay helper
+# SC-8 -- apply_agent_stt_overlay helper
 # ---------------------------------------------------------------------------
 
 
 class TestApplyAgentSTTOverlay:
-    """SC-8 — apply_agent_stt_overlay merges AgentSTTConfig into STTConfig."""
+    """SC-8 -- apply_agent_stt_overlay merges AgentSTTConfig into STTConfig."""
 
     def test_none_agent_stt_returns_stt_cfg_unchanged(self):
         from lyra.bootstrap.agent_factory import apply_agent_stt_overlay

@@ -5,8 +5,11 @@ from __future__ import annotations
 import dataclasses
 import logging
 import os
+from typing import TYPE_CHECKING
 
-from lyra.core.agent import Agent
+if TYPE_CHECKING:
+    from lyra.core.agent_config import Agent
+
 from lyra.core.agent_config import AgentSTTConfig
 from lyra.stt import STTConfig, STTService, load_stt_config
 from lyra.tts import TTSService, load_tts_config
@@ -39,18 +42,12 @@ def apply_agent_stt_overlay(
     return stt_cfg
 
 
-def init_stt(first_agent_config: Agent) -> STTService | None:
+def init_stt(first_agent_config: "Agent") -> STTService | None:
     """Initialise STT service if STT_MODEL_SIZE is set."""
     if not os.environ.get("STT_MODEL_SIZE"):
         return None
     try:
-        # #343 — prefer voice.stt, fall back to agent.stt
-        # PR3-remove: dual-read transition
-        agent_stt = (
-            first_agent_config.voice.stt
-            if first_agent_config.voice
-            else first_agent_config.stt
-        )
+        agent_stt = first_agent_config.voice.stt if first_agent_config.voice else None
         stt_cfg = apply_agent_stt_overlay(agent_stt, load_stt_config())
         stt_service = STTService(stt_cfg)
         log.info("STT enabled: model=%s (via voiceCLI)", stt_cfg.model_size)
@@ -65,7 +62,7 @@ def init_tts(
     """Initialise TTS service from global env-var defaults.
 
     Per-agent TTS config is resolved at synthesis time via
-    Hub.dispatch_response() → resolve_binding() → agent.config.tts.
+    Hub.dispatch_response() → resolve_binding() → agent.config.voice.tts.
     """
     voice_responses = os.environ.get("LYRA_VOICE_RESPONSES", "1") != "0"
     if stt_service is None or not voice_responses:

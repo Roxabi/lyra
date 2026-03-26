@@ -166,7 +166,7 @@ def _config_set(
     runtime_config_path: Path | None,
     on_debounce_change: "Callable[[int], None] | None",
 ) -> Response:
-    from lyra.core.agent_config import _AGENTS_DIR
+    _AGENTS_DIR = Path(__file__).resolve().parent.parent / "agents"
     from lyra.core.runtime_config import set_param
 
     rc = holder.value
@@ -195,7 +195,7 @@ def _config_reset(
     holder: "RuntimeConfigHolder",
     runtime_config_path: Path | None,
 ) -> Response:
-    from lyra.core.agent_config import _AGENTS_DIR
+    _AGENTS_DIR = Path(__file__).resolve().parent.parent / "agents"
     from lyra.core.runtime_config import RuntimeConfig
 
     runtime_file = runtime_config_path or (_AGENTS_DIR / "lyra_runtime.toml")

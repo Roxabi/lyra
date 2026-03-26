@@ -10,7 +10,7 @@ from click.testing import Result
 from typer.testing import CliRunner
 
 from lyra.cli import agent_app as app  # type: ignore[import-not-found]
-from lyra.core.agent_loader import load_agent_config
+from lyra.core.agent_seeder import _parse_toml
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -62,23 +62,24 @@ class TestCreate:
     """Tests for `lyra-agent create`."""
 
     def test_happy_path_writes_toml(self, tmp_path: Path) -> None:
-        """Happy path: wizard writes a valid TOML that load_agent_config can load."""
+        """Happy path: wizard writes a valid TOML that _parse_toml can parse."""
         # Arrange
         name = "myagent"
 
         # Act
         result = _invoke_create(tmp_path, _HAPPY_PATH_INPUT)
 
-        # Assert — exit code must be 0
+        # Assert -- exit code must be 0
         assert result.exit_code == 0, result.output
 
-        # Assert — TOML file was written
+        # Assert -- TOML file was written
         toml_path = tmp_path / f"{name}.toml"
         assert toml_path.exists(), f"Expected {toml_path} to be created"
 
-        # Assert — load_agent_config can parse the written file without error
-        agent = load_agent_config(name, agents_dir=tmp_path)
-        assert agent.name == name
+        # Assert -- _parse_toml can parse the written file without error
+        row = _parse_toml(toml_path)
+        assert row is not None
+        assert row.name == name
 
     def test_invalid_name_rejected(self, tmp_path: Path) -> None:
         """Names with invalid chars are rejected with exit code 1."""

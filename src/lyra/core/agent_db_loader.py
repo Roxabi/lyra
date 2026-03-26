@@ -26,11 +26,7 @@ from .agent_config import (
     ModelConfig,
     SmartRoutingConfig,
 )
-from .persona import (
-    compose_system_prompt,
-    compose_system_prompt_from_json,
-    load_persona,
-)
+from .persona import compose_system_prompt_from_json
 
 log = logging.getLogger(__name__)
 
@@ -41,9 +37,7 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — each branch handles one opti
 ) -> "Agent":
     """Convert an AgentRow (from AgentStore cache) into an Agent config dataclass.
 
-    Mirrors load_agent_config() logic but reads from AgentRow instead of TOML.
-    Machine-local instance_overrides are applied with the same priority as in
-    load_agent_config(): TOML/DB value wins, overrides fill gaps.
+    This is the single loading path — TOML loading was removed in #346.
     """
     overrides: dict = instance_overrides or {}
 
@@ -66,26 +60,11 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — each branch handles one opti
         streaming=row.streaming,
     )
 
-    # #343 — Persona: persona_json first, then old persona column fallback
-    persona = None
+    # Persona: always from persona_json (inline JSON)
     system_prompt = ""
     if row.persona_json:
         persona_dict = json.loads(row.persona_json)
         system_prompt = compose_system_prompt_from_json(persona_dict)
-    else:
-        # Fallback: load from persona file via old persona column
-        persona_name = row.persona or overrides.get("persona")
-        if persona_name:
-            try:
-                persona = load_persona(persona_name)
-            except Exception as exc:  # noqa: BLE001
-                log.warning(
-                    "Agent %r: failed to load persona %r -- %s",
-                    row.name,
-                    persona_name,
-                    exc,
-                )
-        system_prompt = compose_system_prompt(persona) if persona else ""
 
     # Smart routing
     smart_routing: SmartRoutingConfig | None = None
@@ -101,35 +80,38 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — each branch handles one opti
 
     memory_namespace = row.memory_namespace or row.name
 
-    # Voice config: read directly from tts_json / stt_json (single source of truth)
+    # Voice config: read from voice_json ({"tts": {...}, "stt": {...}})
     voice: AgentVoiceConfig | None = None
-    agent_tts: AgentTTSConfig | None = None
-    agent_stt: AgentSTTConfig | None = None
-    if row.tts_json:
-        tts_data: dict = json.loads(row.tts_json)
-        _tts_known = {f.name for f in AgentTTSConfig.__dataclass_fields__.values()}
-        _tts_extra = set(tts_data) - _tts_known
-        if _tts_extra:
-            log.warning(
-                "agent_row_to_config(%s): unknown tts_json keys: %s",
-                row.name,
-                _tts_extra,
-            )
-        agent_tts = _build_tts_from_dict(tts_data)
+    if row.voice_json:
+        voice_data: dict = json.loads(row.voice_json)
+        tts_data = voice_data.get("tts", {})
+        stt_data = voice_data.get("stt", {})
 
-    if row.stt_json:
-        stt_data: dict = json.loads(row.stt_json)
-        _stt_known = {f.name for f in AgentSTTConfig.__dataclass_fields__.values()}
-        _stt_extra = set(stt_data) - _stt_known
-        if _stt_extra:
-            log.warning(
-                "agent_row_to_config(%s): unknown stt_json keys: %s",
-                row.name,
-                _stt_extra,
-            )
-        agent_stt = _build_stt_from_dict(stt_data)
+        agent_tts: AgentTTSConfig | None = None
+        agent_stt: AgentSTTConfig | None = None
 
-    if agent_tts or agent_stt:
+        if tts_data:
+            _tts_known = {f.name for f in AgentTTSConfig.__dataclass_fields__.values()}
+            _tts_extra = set(tts_data) - _tts_known
+            if _tts_extra:
+                log.warning(
+                    "agent_row_to_config(%s): unknown voice_json.tts keys: %s",
+                    row.name,
+                    _tts_extra,
+                )
+            agent_tts = _build_tts_from_dict(tts_data)
+
+        if stt_data:
+            _stt_known = {f.name for f in AgentSTTConfig.__dataclass_fields__.values()}
+            _stt_extra = set(stt_data) - _stt_known
+            if _stt_extra:
+                log.warning(
+                    "agent_row_to_config(%s): unknown voice_json.stt keys: %s",
+                    row.name,
+                    _stt_extra,
+                )
+            agent_stt = _build_stt_from_dict(stt_data)
+
         voice = AgentVoiceConfig(
             tts=agent_tts or AgentTTSConfig(),
             stt=agent_stt or AgentSTTConfig(),
@@ -147,18 +129,15 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — each branch handles one opti
         else {}
     )
 
-    # #343 — fallback_language: new column first, then old i18n_language
-    i18n_language = _validate_i18n_language(
-        row.fallback_language or row.i18n_language or "en", row.name
-    )
+    # fallback_language
+    i18n_language = _validate_i18n_language(row.fallback_language or "en", row.name)
 
-    # #343 — bridge fallback_language into STT language_fallback if not set
+    # Bridge fallback_language into STT language_fallback if not set
     if voice and voice.stt.language_fallback is None and i18n_language:
         import dataclasses
 
         patched_stt = dataclasses.replace(voice.stt, language_fallback=i18n_language)
         voice = AgentVoiceConfig(tts=voice.tts, stt=patched_stt)
-        agent_stt = patched_stt
 
     # Patterns: configurable rewrite rules (#345)
     if row.patterns_json:
@@ -190,14 +169,11 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — each branch handles one opti
         permissions=permissions,
         commands=commands,
         commands_enabled=tuple(plugins),
-        persona=persona,
         i18n_language=i18n_language,
         smart_routing=smart_routing,
         show_intermediate=row.show_intermediate,
         show_tool_recap=row.show_tool_recap,
         workspaces=workspaces,
-        tts=agent_tts,
-        stt=agent_stt,
         voice=voice,
         patterns=patterns,
         passthroughs=passthroughs,

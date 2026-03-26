@@ -14,7 +14,6 @@ from .agent_config import (
     AgentVoiceConfig,
     Complexity,
     ModelConfig,
-    PersonaConfig,
     SmartRoutingConfig,
 )
 
@@ -25,12 +24,12 @@ log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Shared validation helpers (used by both TOML + DB loading paths)
+# Shared validation helpers
 # ---------------------------------------------------------------------------
 
 
 def _validate_backend_model(backend: str, model: str, agent_name: str) -> None:
-    """Shared validation for backend and model values (TOML + DB paths)."""
+    """Shared validation for backend and model values."""
     if backend not in _VALID_BACKENDS:
         raise ValueError(
             f"Invalid backend {backend!r} for agent {agent_name!r}: "
@@ -71,12 +70,12 @@ def _validate_i18n_language(raw: str, agent_name: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Shared builder helpers (used by both TOML + DB loading paths)
+# Shared builder helpers
 # ---------------------------------------------------------------------------
 
 
 def _build_smart_routing_from_dict(sr_data: dict) -> SmartRoutingConfig:
-    """Build a SmartRoutingConfig from a parsed dict (shared by TOML + DB paths)."""
+    """Build a SmartRoutingConfig from a parsed dict."""
     sr_models = sr_data.get("models", {})
     routing_table: dict[Complexity, str] = {}
     for level in Complexity:
@@ -93,7 +92,7 @@ def _build_smart_routing_from_dict(sr_data: dict) -> SmartRoutingConfig:
 
 
 def _build_tts_from_dict(tts_data: dict) -> AgentTTSConfig:
-    """Build an AgentTTSConfig from a parsed dict (shared by TOML + DB paths)."""
+    """Build an AgentTTSConfig from a parsed dict."""
     return AgentTTSConfig(
         engine=tts_data.get("engine"),
         voice=tts_data.get("voice"),
@@ -114,7 +113,7 @@ def _build_tts_from_dict(tts_data: dict) -> AgentTTSConfig:
 
 
 def _build_stt_from_dict(stt_data: dict) -> AgentSTTConfig:
-    """Build an AgentSTTConfig from a parsed dict (shared by TOML + DB paths)."""
+    """Build an AgentSTTConfig from a parsed dict."""
     return AgentSTTConfig(
         language_detection_threshold=stt_data.get("language_detection_threshold"),
         language_detection_segments=stt_data.get("language_detection_segments"),
@@ -123,7 +122,7 @@ def _build_stt_from_dict(stt_data: dict) -> AgentSTTConfig:
 
 
 def _build_commands_from_dict(commands_data: dict) -> dict:
-    """Build a commands dict from a parsed dict (shared by TOML + DB paths)."""
+    """Build a commands dict from a parsed dict."""
     from .commands.command_router import CommandConfig  # local: avoids cycle
 
     commands = {}
@@ -140,10 +139,7 @@ def _resolve_workspaces_lenient(
     workspaces_raw: dict,
     agent_name: str,
 ) -> dict[str, Path]:
-    """Resolve workspace paths, logging warnings and skipping invalid entries.
-
-    Used by the DB loading path (agent_row_to_config).
-    """
+    """Resolve workspace paths, logging warnings and skipping invalid entries."""
     workspaces: dict[str, Path] = {}
     for key, raw_path in workspaces_raw.items():
         if not re.match(r"^[a-zA-Z0-9_-]+$", key):
@@ -176,7 +172,7 @@ def _resolve_workspaces_lenient(
 
 
 # ---------------------------------------------------------------------------
-# Final Agent assembly (shared by both TOML + DB loading paths)
+# Final Agent assembly
 # ---------------------------------------------------------------------------
 
 
@@ -189,23 +185,16 @@ def _assemble_agent(  # noqa: PLR0913 — one param per Agent field
     permissions: tuple[str, ...],
     commands: dict[str, "CommandConfig"],
     commands_enabled: tuple[str, ...],
-    persona: PersonaConfig | None,
     i18n_language: str,
     smart_routing: SmartRoutingConfig | None,
     show_intermediate: bool,
     show_tool_recap: bool = True,
     workspaces: dict[str, Path],
-    tts: AgentTTSConfig | None,
-    stt: AgentSTTConfig | None,
-    voice: "AgentVoiceConfig | None" = None,
+    voice: AgentVoiceConfig | None = None,
     patterns: dict[str, bool] | None = None,
     passthroughs: tuple[str, ...] | None = None,
 ) -> Agent:
-    """Instantiate an Agent from already-resolved fields.
-
-    Both TOML and DB loading paths call this for final construction,
-    eliminating the duplicated Agent(...) call.
-    """
+    """Instantiate an Agent from already-resolved fields."""
     return Agent(
         name=name,
         system_prompt=system_prompt,
@@ -214,14 +203,11 @@ def _assemble_agent(  # noqa: PLR0913 — one param per Agent field
         permissions=permissions,
         commands=commands,
         commands_enabled=commands_enabled,
-        persona=persona,
         i18n_language=i18n_language,
         smart_routing=smart_routing,
         show_intermediate=show_intermediate,
         show_tool_recap=show_tool_recap,
         workspaces=workspaces,
-        tts=tts,
-        stt=stt,
         voice=voice,
         patterns=patterns or {},
         passthroughs=passthroughs or (),

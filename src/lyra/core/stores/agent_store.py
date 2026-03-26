@@ -20,6 +20,7 @@ from ..agent_schema import (
     _CREATE_AGENTS,
     _CREATE_BOT_AGENT_MAP,
     _MIGRATE_AGENTS,
+    _REBUILD_346_DROP_OLD_COLUMNS,
     _SELECT_AGENTS,
     _UPSERT_AGENT,
 )
@@ -72,6 +73,8 @@ class AgentStore(SqliteStore):
             await db.commit()
             # #343 — data migration: populate new columns from old
             await self._populate_343(db)
+            # #346 — table rebuild: drop old columns
+            await self._rebuild_346(db)
             await self._warm_cache()
         except Exception:
             log.exception("AgentStore.connect() setup failed; closing connection")
@@ -110,7 +113,16 @@ class AgentStore(SqliteStore):
 
         Populate persona_json and fallback_language from old columns.
         Idempotent — each column is only written when NULL.
+        Skips gracefully if old columns have already been dropped (#346).
         """
+        # Check if old columns still exist
+        cols = set()
+        async with db.execute("PRAGMA table_info(agents)") as cur:
+            async for row in cur:
+                cols.add(row[1])
+        if "persona" not in cols:
+            return  # already rebuilt by _rebuild_346
+
         from ..persona import load_persona
 
         async with db.execute(
@@ -176,6 +188,24 @@ class AgentStore(SqliteStore):
         await db.commit()
         log.info("_populate_343: migrated %d agent(s)", migrated)
 
+    async def _rebuild_346(self, db: aiosqlite.Connection) -> None:
+        """Table rebuild (#346): drop old columns (persona, tts_json, stt_json, i18n_language).
+
+        Merges tts_json + stt_json → voice_json, then rebuilds the table without
+        the four deprecated columns. Idempotent — checks for old column presence.
+        """
+        cols = set()
+        async with db.execute("PRAGMA table_info(agents)") as cur:
+            async for row in cur:
+                cols.add(row[1])
+        if "persona" not in cols:
+            return  # already rebuilt
+
+        log.info("_rebuild_346: dropping old columns (persona, tts_json, stt_json, i18n_language)")
+        await db.executescript(_REBUILD_346_DROP_OLD_COLUMNS)
+        await db.commit()
+        log.info("_rebuild_346: table rebuild complete")
+
     async def close(self) -> None:
         """Close the database connection and clear caches."""
         if self._db is not None:
@@ -221,8 +251,9 @@ class AgentStore(SqliteStore):
     async def upsert(self, row: AgentRow) -> None:
         """Insert or update an agent row in DB and cache.
 
-        Note: ``persona_json`` and ``patterns_json`` use COALESCE in the
-        ON CONFLICT clause — passing None preserves the existing DB value.
+        Note: ``persona_json``, ``voice_json``, and ``patterns_json`` use
+        COALESCE in the ON CONFLICT clause — passing None preserves the
+        existing DB value.
         """
         db = self._require_db()
         now = _utc_now_iso()
@@ -234,7 +265,6 @@ class AgentStore(SqliteStore):
                 row.model,
                 row.max_turns or 0,  # None (unlimited) → 0 sentinel for NOT NULL
                 row.tools_json,
-                row.persona,
                 1 if row.show_intermediate else 0,
                 row.smart_routing_json,
                 row.plugins_json,
@@ -243,16 +273,13 @@ class AgentStore(SqliteStore):
                 row.source,
                 row.created_at,
                 now,
-                row.tts_json,
-                row.stt_json,
                 1 if row.skip_permissions else 0,
                 row.permissions_json,
                 row.workspaces_json,
-                row.i18n_language,
                 row.commands_json,
                 1 if row.streaming else 0,
                 row.persona_json,
-                None,  # voice_json — deprecated, always NULL
+                row.voice_json,
                 row.fallback_language,
                 row.patterns_json,
                 row.passthroughs_json,
@@ -268,22 +295,19 @@ class AgentStore(SqliteStore):
             model=row.model,
             max_turns=row.max_turns,
             tools_json=row.tools_json,
-            persona=row.persona,
             show_intermediate=row.show_intermediate,
             smart_routing_json=row.smart_routing_json,
             plugins_json=row.plugins_json,
             memory_namespace=row.memory_namespace,
             cwd=row.cwd,
-            tts_json=row.tts_json,
-            stt_json=row.stt_json,
             skip_permissions=row.skip_permissions,
             permissions_json=row.permissions_json,
             workspaces_json=row.workspaces_json,
-            i18n_language=row.i18n_language,
             commands_json=row.commands_json,
             streaming=row.streaming,
             show_tool_recap=row.show_tool_recap,
             persona_json=row.persona_json,
+            voice_json=row.voice_json,
             fallback_language=row.fallback_language,
             patterns_json=row.patterns_json,
             passthroughs_json=row.passthroughs_json,

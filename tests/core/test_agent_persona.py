@@ -1,4 +1,9 @@
-"""Tests for persona config, load_persona, compose_system_prompt, and agent+persona integration."""  # noqa: E501
+"""Tests for persona config, load_persona, compose_system_prompt, and agent+persona integration.
+
+The TOML agent loading path (load_agent_config) was removed in #346.
+Tests that tested the agent TOML + persona integration have been removed.
+Persona dataclasses live in persona.py (not agent_config.py).
+"""
 
 from __future__ import annotations
 
@@ -6,15 +11,15 @@ from pathlib import Path
 
 import pytest
 
-from lyra.core.agent_config import (
+from lyra.core.persona import (
     ExpertiseConfig,
     IdentityConfig,
     PersonaConfig,
     PersonalityConfig,
     VoiceConfig,
+    compose_system_prompt,
+    load_persona,
 )
-from lyra.core.agent_loader import load_agent_config
-from lyra.core.persona import compose_system_prompt, load_persona
 
 
 class TestPersonaConfig:
@@ -169,78 +174,8 @@ class TestComposeSystemPrompt:
             compose_system_prompt(persona)
 
 
-class TestLoadAgentConfigWithPersona:
-    def test_persona_only_composes_prompt(self, tmp_path: Path) -> None:
-        """Agent TOML with persona only -> composed prompt from vault."""
-        personas_dir = tmp_path / "personas"
-        personas_dir.mkdir()
-        (personas_dir / "mybot.persona.toml").write_text("""\
-[identity]
-name = "MyBot"
-tagline = "a helpful bot"
-creator = "TestCo"
-goal = "Help everyone."
-
-[personality]
-traits = ["friendly"]
-""")
-        (tmp_path / "myagent.toml").write_text("""\
-[agent]
-memory_namespace = "myagent"
-persona = "mybot"
-""")
-        agent = load_agent_config(
-            "myagent",
-            agents_dir=tmp_path,
-            personas_dir=personas_dir,
-        )
-        assert agent.persona is not None
-        assert agent.persona.identity.name == "MyBot"
-        assert "MyBot" in agent.system_prompt
-        assert agent.system_prompt.startswith("You are")
-
-    def test_persona_plus_raw_prompt_uses_raw(self, tmp_path: Path) -> None:
-        """Agent TOML with persona + [prompt].system -> raw prompt wins."""
-        personas_dir = tmp_path / "personas"
-        personas_dir.mkdir()
-        (personas_dir / "mybot.persona.toml").write_text("""\
-[identity]
-name = "MyBot"
-""")
-        (tmp_path / "myagent.toml").write_text("""\
-[agent]
-memory_namespace = "myagent"
-persona = "mybot"
-
-[prompt]
-system = "You are a custom bot."
-""")
-        agent = load_agent_config(
-            "myagent",
-            agents_dir=tmp_path,
-            personas_dir=personas_dir,
-        )
-        assert agent.persona is not None
-        assert agent.system_prompt == "You are a custom bot."
-
-    def test_no_persona_uses_raw_prompt(self, tmp_path: Path) -> None:
-        """Agent TOML without persona -> persona is None, raw prompt used."""
-        (tmp_path / "myagent.toml").write_text("""\
-[agent]
-memory_namespace = "myagent"
-
-[prompt]
-system = "You are a plain bot."
-""")
-        agent = load_agent_config("myagent", agents_dir=tmp_path)
-        assert agent.persona is None
-        assert agent.system_prompt == "You are a plain bot."
-
-
 def test_lyra_default_persona_has_turn_closure_instruction() -> None:
     """Composed system prompt includes turn-closure instruction (#373)."""
-    from lyra.core.persona import compose_system_prompt, load_persona
-
     fixture_dir = Path(__file__).parent.parent / "fixtures" / "personas"
     persona = load_persona("lyra_default", personas_dir=fixture_dir)
     prompt = compose_system_prompt(persona)

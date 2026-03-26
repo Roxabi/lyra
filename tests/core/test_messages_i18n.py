@@ -1,10 +1,14 @@
-"""Tests for MessageManager — i18n language resolution and hot-reload
+"""Tests for MessageManager -- i18n language resolution and hot-reload
 (SC-11e, SC-11f, SC-6).
 
 Covers:
-  V2 (T2.3) — SC-11e: FR language resolution
-               SC-11f: reading [i18n] default_language from agent TOML
-  V4 (T4.5) — SC-6:  hot-reload preserves msg_manager on CommandRouter rebuild
+  V2 (T2.3) -- SC-11e: FR language resolution
+               SC-11f: reading fallback_language from AgentRow
+  V4 (T4.5) -- SC-6:  hot-reload preserves msg_manager on CommandRouter rebuild
+
+The TOML loading path (load_agent_config) was removed in #346.
+Tests that exercised TOML loading have been rewritten to use AgentRow +
+agent_row_to_config.
 """
 
 from __future__ import annotations
@@ -16,7 +20,7 @@ from lyra.core.messages import MessageManager
 from .conftest import MESSAGES_TOML_PATH
 
 # ---------------------------------------------------------------------------
-# V2 — SC-11e: FR language resolution
+# V2 -- SC-11e: FR language resolution
 # ---------------------------------------------------------------------------
 
 
@@ -50,7 +54,7 @@ class TestFrenchLanguageResolution:
         # Act
         result = mm.get("backpressure_ack", platform="telegram")
 
-        # Assert — FR platform-specific string returned
+        # Assert -- FR platform-specific string returned
         assert "Traitement" in result
 
     def test_fr_discord_adapter_backpressure(self) -> None:
@@ -80,99 +84,74 @@ class TestFrenchLanguageResolution:
         # Act
         result = mm.get("unknown_command", command_name="/foo")
 
-        # Assert — FR template rendered with substitution
+        # Assert -- FR template rendered with substitution
         assert "/foo" in result
 
 
 # ---------------------------------------------------------------------------
-# V2 — SC-11f: Reading [i18n] default_language from agent TOML
+# V2 -- SC-11f: Reading fallback_language from AgentRow
 # ---------------------------------------------------------------------------
 
 
 class TestAgentI18nLanguage:
-    """SC-11f: load_agent_config() reads [i18n] default_language."""
+    """SC-11f: agent_row_to_config() reads fallback_language from AgentRow."""
 
-    def test_i18n_language_defaults_to_en(self, tmp_path: Path) -> None:
-        # Arrange — minimal TOML without [i18n] section
-        toml_content = b"""
-[agent]
-memory_namespace = "test"
+    def test_i18n_language_defaults_to_en(self) -> None:
+        # Arrange -- AgentRow without explicit fallback_language (defaults to "en")
+        from lyra.core.agent_db_loader import agent_row_to_config
+        from lyra.core.agent_models import AgentRow
 
-[model]
-backend = "claude-cli"
-
-[prompt]
-system = "You are a test assistant."
-"""
-        (tmp_path / "nolangage.toml").write_bytes(toml_content)
-        from lyra.core.agent_loader import load_agent_config
+        row = AgentRow(
+            name="nolangage",
+            backend="anthropic-sdk",
+            model="claude-3-5-haiku-20241022",
+        )
 
         # Act
-        cfg = load_agent_config("nolangage", agents_dir=tmp_path)
+        cfg = agent_row_to_config(row)
 
-        # Assert — defaults to "en" when [i18n] section is absent
+        # Assert -- defaults to "en" when fallback_language is default
         assert cfg.i18n_language == "en"
 
-    def test_i18n_language_reads_fr_from_toml(self, tmp_path: Path) -> None:
-        # Arrange — TOML with [i18n] default_language = "fr"
-        toml_content = b"""
-[agent]
-memory_namespace = "test"
+    def test_i18n_language_reads_fr(self) -> None:
+        # Arrange -- AgentRow with fallback_language = "fr"
+        from lyra.core.agent_db_loader import agent_row_to_config
+        from lyra.core.agent_models import AgentRow
 
-[model]
-backend = "claude-cli"
-
-[prompt]
-system = "Tu es un assistant de test."
-
-[i18n]
-default_language = "fr"
-"""
-        (tmp_path / "frenchagent.toml").write_bytes(toml_content)
-        from lyra.core.agent_loader import load_agent_config
+        row = AgentRow(
+            name="frenchagent",
+            backend="anthropic-sdk",
+            model="claude-3-5-haiku-20241022",
+            fallback_language="fr",
+        )
 
         # Act
-        cfg = load_agent_config("frenchagent", agents_dir=tmp_path)
+        cfg = agent_row_to_config(row)
 
         # Assert
         assert cfg.i18n_language == "fr"
 
-    def test_i18n_language_explicit_en(self, tmp_path: Path) -> None:
-        # Arrange — TOML explicitly sets "en"
-        toml_content = b"""
-[prompt]
-system = "test"
+    def test_i18n_language_explicit_en(self) -> None:
+        # Arrange -- AgentRow explicitly sets "en"
+        from lyra.core.agent_db_loader import agent_row_to_config
+        from lyra.core.agent_models import AgentRow
 
-[i18n]
-default_language = "en"
-"""
-        (tmp_path / "enagent.toml").write_bytes(toml_content)
-        from lyra.core.agent_loader import load_agent_config
+        row = AgentRow(
+            name="enagent",
+            backend="anthropic-sdk",
+            model="claude-3-5-haiku-20241022",
+            fallback_language="en",
+        )
 
         # Act
-        cfg = load_agent_config("enagent", agents_dir=tmp_path)
+        cfg = agent_row_to_config(row)
 
         # Assert
         assert cfg.i18n_language == "en"
 
-    def test_lyra_default_agent_has_i18n_language(self) -> None:
-        # Arrange — load the real default agent config with fixture persona
-        from pathlib import Path
-
-        from lyra.core.agent_loader import load_agent_config
-
-        fixtures_dir = Path(__file__).resolve().parent.parent / "fixtures" / "personas"
-
-        # Act
-        cfg = load_agent_config("lyra_default", personas_dir=fixtures_dir)
-
-        # Assert — field must exist with a valid value
-        assert hasattr(cfg, "i18n_language")
-        assert cfg.i18n_language in ("en", "fr")  # or whatever the default is
-
 
 # ---------------------------------------------------------------------------
-# V4 — SC-6: Hot-reload preserves msg_manager
+# V4 -- SC-6: Hot-reload preserves msg_manager
 # ---------------------------------------------------------------------------
 
 
@@ -185,24 +164,11 @@ class TestHotReloadPreservesMsgManager:
         """msg_manager survives CommandRouter rebuild on config hot-reload."""
         from unittest.mock import MagicMock
 
-        from lyra.core.agent import AgentBase, load_agent_config
+        from lyra.core.agent import AgentBase, Agent
+        from lyra.core.agent_config import ModelConfig
         from lyra.core.agent_models import AgentRow
         from lyra.core.message import InboundMessage, Response
         from lyra.core.pool import Pool
-
-        # Arrange — write a minimal agent TOML
-        toml_content = b"""
-[agent]
-memory_namespace = "test"
-
-[model]
-backend = "claude-cli"
-
-[prompt]
-system = "You are a test assistant."
-"""
-        toml_path = tmp_path / "reloadtest.toml"
-        toml_path.write_bytes(toml_content)
 
         # Create a concrete subclass of AgentBase for testing
         class ConcreteAgent(AgentBase):
@@ -211,7 +177,12 @@ system = "You are a test assistant."
             ) -> Response:
                 return Response(content="ok")
 
-        config = load_agent_config("reloadtest", agents_dir=tmp_path)
+        config = Agent(
+            name="reloadtest",
+            system_prompt="You are a test assistant.",
+            memory_namespace="test",
+            model_config=ModelConfig(backend="claude-cli"),
+        )
         mm = MessageManager(MESSAGES_TOML_PATH)
 
         # Mock agent_store to simulate DB-based hot-reload (#343)
@@ -237,7 +208,7 @@ system = "You are a test assistant."
         old_cr = agent.command_router
         agent._maybe_reload()
 
-        # Assert — command_router rebuilt (new object); msg_manager preserved
+        # Assert -- command_router rebuilt (new object); msg_manager preserved
         assert agent.command_router is not old_cr
         assert agent.command_router._msg_manager is not None
         assert agent.command_router._msg_manager is mm
@@ -248,24 +219,11 @@ system = "You are a test assistant."
         """msg_manager survives CommandRouter rebuild on plugin hot-reload."""
         import os
 
-        from lyra.core.agent import AgentBase, load_agent_config
+        from lyra.core.agent import AgentBase, Agent
+        from lyra.core.agent_config import ModelConfig
         from lyra.core.commands.command_router import CommandRouter
         from lyra.core.message import InboundMessage, Response
         from lyra.core.pool import Pool
-
-        # Arrange — write minimal agent TOML
-        toml_content = b"""
-[agent]
-memory_namespace = "test"
-
-[model]
-backend = "claude-cli"
-
-[prompt]
-system = "test"
-"""
-        toml_path = tmp_path / "pluginreload.toml"
-        toml_path.write_bytes(toml_content)
 
         # Create a plugins directory with a minimal echo plugin
         plugins_dir = tmp_path / "plugins"
@@ -295,7 +253,12 @@ system = "test"
             ) -> Response:
                 return Response(content="ok")
 
-        config = load_agent_config("pluginreload", agents_dir=tmp_path)
+        config = Agent(
+            name="pluginreload",
+            system_prompt="test",
+            memory_namespace="test",
+            model_config=ModelConfig(backend="claude-cli"),
+        )
         mm = MessageManager(MESSAGES_TOML_PATH)
         agent = ConcreteAgent(
             config,
@@ -315,7 +278,7 @@ system = "test"
             msg_manager=mm,
         )
 
-        # Act — simulate plugin handlers.py change (content + mtime)
+        # Act -- simulate plugin handlers.py change (content + mtime)
         old_cr = agent.command_router
         handlers_path.write_text(
             "from lyra.core.message import Response, InboundMessage\n"
@@ -330,23 +293,18 @@ system = "test"
 
         agent._maybe_reload()
 
-        # Assert — command_router rebuilt; msg_manager preserved
+        # Assert -- command_router rebuilt; msg_manager preserved
         assert agent.command_router is not old_cr
         assert agent.command_router._msg_manager is not None
         assert agent.command_router._msg_manager is mm
 
     def test_msg_manager_none_when_not_injected(self, tmp_path: Path) -> None:
         """When msg_manager is not passed, command_router._msg_manager is None
-        (backward-compatible with existing code paths — SC-9)."""
-        from lyra.core.agent import AgentBase, load_agent_config
+        (backward-compatible with existing code paths -- SC-9)."""
+        from lyra.core.agent import AgentBase, Agent
+        from lyra.core.agent_config import ModelConfig
         from lyra.core.message import InboundMessage, Response
         from lyra.core.pool import Pool
-
-        toml_content = b"""
-[prompt]
-system = "test"
-"""
-        (tmp_path / "noinjection.toml").write_bytes(toml_content)
 
         class ConcreteAgent(AgentBase):
             async def process(
@@ -354,9 +312,14 @@ system = "test"
             ) -> Response:
                 return Response(content="ok")
 
-        config = load_agent_config("noinjection", agents_dir=tmp_path)
-        # No msg_manager= argument passed — backward-compatible path
+        config = Agent(
+            name="noinjection",
+            system_prompt="test",
+            memory_namespace="noinjection",
+            model_config=ModelConfig(backend="claude-cli"),
+        )
+        # No msg_manager= argument passed -- backward-compatible path
         agent = ConcreteAgent(config, agents_dir=tmp_path)
 
-        # Assert — None when not injected (existing tests continue to pass)
+        # Assert -- None when not injected (existing tests continue to pass)
         assert agent.command_router._msg_manager is None

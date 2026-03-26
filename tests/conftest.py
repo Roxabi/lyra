@@ -140,7 +140,7 @@ def make_fake_stores(
 def patch_bootstrap_common(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     """Patch shared bootstrap dependencies.
 
-    Patches: auth_store, load_dotenv, load_agent_config, adapters.
+    Patches: auth_store, load_dotenv, agent stores, adapters.
 
     Returns fake_auth_store so callers can assert on it.
     """
@@ -156,7 +156,10 @@ def patch_bootstrap_common(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     fake_agent_store.connect = AsyncMock()
     fake_agent_store.close = AsyncMock()
     fake_agent_store.get_bot_agent = MagicMock(return_value=None)
-    fake_agent_store.get = MagicMock(return_value=None)
+    # Return a fake AgentRow so agent_row_to_config can be reached
+    _fake_agent_row = MagicMock()
+    _fake_agent_row.name = "lyra_default"
+    fake_agent_store.get = MagicMock(return_value=_fake_agent_row)
     fake_agent_store.set_bot_agent = AsyncMock()
     monkeypatch.setattr(stores_mod, "AgentStore", lambda **kwargs: fake_agent_store)
 
@@ -172,16 +175,6 @@ def patch_bootstrap_common(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
 
     monkeypatch.setattr(multibot_mod, "_resolve_bot_agent_map", _fake_resolve)
 
-    monkeypatch.setattr(
-        multibot_mod,
-        "load_agent_config",
-        lambda name, **kw: Agent(
-            name=name,
-            system_prompt="test",
-            memory_namespace="test",
-            model_config=ModelConfig(backend="claude-cli"),
-        ),
-    )
     monkeypatch.setattr(
         multibot_mod,
         "agent_row_to_config",

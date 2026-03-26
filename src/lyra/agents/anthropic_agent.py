@@ -13,7 +13,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from lyra.core.agent import Agent, AgentBase
-from lyra.core.agent_config import _AGENTS_DIR, ModelConfig
+from lyra.core.agent_config import ModelConfig
+
+_AGENTS_DIR = Path(__file__).resolve().parent
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import InboundMessage, Response
 from lyra.core.messages import MessageManager

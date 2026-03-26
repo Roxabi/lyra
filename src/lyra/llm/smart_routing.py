@@ -245,7 +245,7 @@ class SmartRoutingDecorator:
 
             target_model = self._config.routing_table.get(complexity, original_model)
             if target_model != original_model:
-                routed_cfg = dataclasses.replace(model_cfg, model=target_model)
+                routed_cfg = model_cfg.model_copy(update={"model": target_model})
         except Exception:
             log.warning(
                 "Smart routing classifier failed, falling back to default model",

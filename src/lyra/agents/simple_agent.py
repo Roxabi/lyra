@@ -235,7 +235,7 @@ class SimpleAgent(AgentBase):
         else:
             text = msg.text
 
-        model_cfg = self.config.model_config
+        model_cfg = self.config.llm_config
 
         log.debug(
             "[agent:%s][pool:%s] processing message (%d chars)",

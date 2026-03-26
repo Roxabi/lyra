@@ -88,10 +88,10 @@ class RuntimeConfig:
         system_prompt = "\n\n".join(parts)
 
         return EffectiveConfig(
-            model=self.model or base.model_config.model,
+            model=self.model or base.llm_config.model,
             temperature=self.temperature,
             system_prompt=system_prompt,
-            max_turns=self.max_steps or base.model_config.max_turns,
+            max_turns=self.max_steps or base.llm_config.max_turns,
         )
 
     def save(self, path: Path) -> None:

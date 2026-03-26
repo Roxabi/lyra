@@ -181,7 +181,7 @@ class TestHotReloadPreservesMsgManager:
             name="reloadtest",
             system_prompt="You are a test assistant.",
             memory_namespace="test",
-            model_config=ModelConfig(backend="claude-cli"),
+            llm_config=ModelConfig(backend="claude-cli"),
         )
         mm = MessageManager(MESSAGES_TOML_PATH)
 
@@ -257,7 +257,7 @@ class TestHotReloadPreservesMsgManager:
             name="pluginreload",
             system_prompt="test",
             memory_namespace="test",
-            model_config=ModelConfig(backend="claude-cli"),
+            llm_config=ModelConfig(backend="claude-cli"),
         )
         mm = MessageManager(MESSAGES_TOML_PATH)
         agent = ConcreteAgent(
@@ -316,7 +316,7 @@ class TestHotReloadPreservesMsgManager:
             name="noinjection",
             system_prompt="test",
             memory_namespace="noinjection",
-            model_config=ModelConfig(backend="claude-cli"),
+            llm_config=ModelConfig(backend="claude-cli"),
         )
         # No msg_manager= argument passed -- backward-compatible path
         agent = ConcreteAgent(config, agents_dir=tmp_path)

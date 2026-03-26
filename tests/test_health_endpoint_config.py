@@ -41,7 +41,7 @@ class TestConfigEndpoint:
             name="lyra_default",
             system_prompt="You are Lyra.",
             memory_namespace="lyra",
-            model_config=ModelConfig(
+            llm_config=ModelConfig(
                 backend="anthropic-sdk",
                 model="claude-sonnet-4-5",
                 max_turns=10,

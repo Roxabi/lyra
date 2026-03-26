@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 from .agent_commands import CommandReloadManager
 from .agent_config import Agent  # noqa: F401 — Agent re-exported
-from .agent_db_loader import agent_row_to_config  # noqa: F401 — re-export
+from .agent_db_loader import agent_row_to_config  # noqa: F401  # pyright: ignore[reportUnusedImport]
 from .circuit_breaker import CircuitRegistry
 from .commands.command_loader import CommandLoader
 from .commands.command_router import CommandRouter
@@ -133,8 +133,8 @@ class AgentBase(ABC, SessionManager):
                 log.info(
                     "Hot-reloaded config for agent %r from DB (model: %s -> %s)",
                     self.config.name,
-                    self.config.model_config.model,
-                    new_config.model_config.model,
+                    self.config.llm_config.model,
+                    new_config.llm_config.model,
                 )
                 self.config = new_config
                 self._rebuild_command_router()

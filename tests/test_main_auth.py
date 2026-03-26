@@ -27,7 +27,7 @@ class TestAgentFactory:
             name="test",
             system_prompt="",
             memory_namespace="test",
-            model_config=ModelConfig(backend="claude-cli"),
+            llm_config=ModelConfig(backend="claude-cli"),
         )
         cli_pool = MagicMock()
         agent = agent_factory_mod._create_agent(config, cli_pool)
@@ -43,7 +43,7 @@ class TestAgentFactory:
             name="test",
             system_prompt="",
             memory_namespace="test",
-            model_config=ModelConfig(backend="anthropic-sdk"),
+            llm_config=ModelConfig(backend="anthropic-sdk"),
         )
         agent = agent_factory_mod._create_agent(config, None)
         assert isinstance(agent, AnthropicAgent)
@@ -53,7 +53,7 @@ class TestAgentFactory:
             name="test",
             system_prompt="",
             memory_namespace="test",
-            model_config=ModelConfig(backend="unknown"),
+            llm_config=ModelConfig(backend="unknown"),
         )
         with pytest.raises(ValueError, match="Unknown backend"):
             agent_factory_mod._create_agent(config, None)
@@ -63,7 +63,7 @@ class TestAgentFactory:
             name="test",
             system_prompt="",
             memory_namespace="test",
-            model_config=ModelConfig(backend="claude-cli"),
+            llm_config=ModelConfig(backend="claude-cli"),
         )
         with pytest.raises(RuntimeError, match="CliPool required"):
             agent_factory_mod._create_agent(config, None)

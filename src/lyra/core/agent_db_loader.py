@@ -91,7 +91,7 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — each branch handles one opti
         agent_stt: AgentSTTConfig | None = None
 
         if tts_data:
-            _tts_known = {f.name for f in AgentTTSConfig.__dataclass_fields__.values()}
+            _tts_known = set(AgentTTSConfig.model_fields)
             _tts_extra = set(tts_data) - _tts_known
             if _tts_extra:
                 log.warning(
@@ -102,7 +102,7 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — each branch handles one opti
             agent_tts = _build_tts_from_dict(tts_data)
 
         if stt_data:
-            _stt_known = {f.name for f in AgentSTTConfig.__dataclass_fields__.values()}
+            _stt_known = set(AgentSTTConfig.model_fields)
             _stt_extra = set(stt_data) - _stt_known
             if _stt_extra:
                 log.warning(
@@ -134,9 +134,7 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — each branch handles one opti
 
     # Bridge fallback_language into STT language_fallback if not set
     if voice and voice.stt.language_fallback is None and i18n_language:
-        import dataclasses
-
-        patched_stt = dataclasses.replace(voice.stt, language_fallback=i18n_language)
+        patched_stt = voice.stt.model_copy(update={"language_fallback": i18n_language})
         voice = AgentVoiceConfig(tts=voice.tts, stt=patched_stt)
 
     # Patterns: configurable rewrite rules (#345)
@@ -165,7 +163,7 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — each branch handles one opti
         name=row.name,
         system_prompt=system_prompt,
         memory_namespace=memory_namespace,
-        model_config=model_cfg,
+        llm_config=model_cfg,
         permissions=permissions,
         commands=commands,
         commands_enabled=tuple(plugins),

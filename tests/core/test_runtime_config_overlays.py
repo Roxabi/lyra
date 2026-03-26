@@ -30,7 +30,7 @@ def base_agent() -> Agent:
         name="test",
         system_prompt="Base prompt",
         memory_namespace="test",
-        model_config=ModelConfig(model="claude-haiku-4-5-20251001", max_turns=10),
+        llm_config=ModelConfig(model="claude-haiku-4-5-20251001", max_turns=10),
     )
 
 
@@ -208,7 +208,7 @@ class TestOverlayModel:
         effective = rc.overlay(base_agent)
 
         # Assert
-        assert effective.model == base_agent.model_config.model
+        assert effective.model == base_agent.llm_config.model
 
     def test_model_override(self, base_agent: Agent) -> None:
         # Arrange
@@ -232,7 +232,7 @@ class TestOverlayMaxSteps:
         effective = rc.overlay(base_agent)
 
         # Assert
-        assert effective.max_turns == base_agent.model_config.max_turns
+        assert effective.max_turns == base_agent.llm_config.max_turns
 
     def test_max_steps_override(self, base_agent: Agent) -> None:
         # Arrange

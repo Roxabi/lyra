@@ -156,7 +156,7 @@ def _create_agent(  # noqa: PLR0913 — factory with optional overrides for each
     agent_store: AgentStore | None = None,
 ) -> AgentBase:
     """Select agent implementation based on backend config."""
-    backend = config.model_config.backend
+    backend = config.llm_config.backend
     if backend == "anthropic-sdk":
         from lyra.agents.anthropic_agent import AnthropicAgent
 
@@ -234,8 +234,8 @@ def _resolve_agents(  # noqa: PLR0913
         log.info(
             "Agent loaded: name=%s model=%s backend=%s",
             agent_config.name,
-            agent_config.model_config.model,
-            agent_config.model_config.backend,
+            agent_config.llm_config.model,
+            agent_config.llm_config.backend,
         )
         # Layer per-agent decorators (SmartRoutingDecorator) on top of the
         # shared base so each agent's routing config is applied independently.
@@ -243,13 +243,13 @@ def _resolve_agents(  # noqa: PLR0913
         if (
             sr_config is not None
             and sr_config.enabled
-            and agent_config.model_config.backend != "anthropic-sdk"
+            and agent_config.llm_config.backend != "anthropic-sdk"
         ):
             log.warning(
                 "agent %r: smart_routing.enabled=true but backend=%r — "
                 "smart routing only applies to anthropic-sdk",
                 name,
-                agent_config.model_config.backend,
+                agent_config.llm_config.backend,
             )
         per_agent_registry, per_agent_routing = _build_per_agent_registry(
             shared_providers, smart_routing_config=sr_config

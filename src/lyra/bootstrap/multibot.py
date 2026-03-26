@@ -174,7 +174,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
         # Build cli_pool if any agent needs it
         cli_pool: CliPool | None = None
         for cfg in agent_configs.values():
-            if cfg.model_config.backend == "claude-cli":
+            if cfg.llm_config.backend == "claude-cli":
                 cli_pool = CliPool(
                     idle_ttl=cli_pool_cfg.idle_ttl,
                     default_timeout=cli_pool_cfg.default_timeout,

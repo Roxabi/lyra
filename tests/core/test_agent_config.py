@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from lyra.core.agent_config import ModelConfig
 
@@ -29,7 +30,7 @@ class TestModelConfig:
 
     def test_frozen(self) -> None:
         cfg = ModelConfig()
-        with pytest.raises(AttributeError):
+        with pytest.raises(ValidationError):
             cfg.backend = "ollama"  # type: ignore[misc]
 
     def test_cwd_defaults_to_none(self) -> None:

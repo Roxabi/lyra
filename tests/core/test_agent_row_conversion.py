@@ -88,6 +88,7 @@ class TestAgentRowToConfigTTSSTT:
         row = self._make_row(voice_json=json.dumps(voice_data))
         agent = agent_row_to_config(row)
 
+        assert agent.voice is not None
         assert isinstance(agent.voice.tts, AgentTTSConfig)
         assert agent.voice.tts.engine == "chatterbox"
         assert agent.voice.tts.voice == "en-GB-2"

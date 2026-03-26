@@ -1,0 +1,124 @@
+---
+title: "Epic: Parallel sub-issue orchestration"
+issue: 416
+status: approved
+tier: F-full
+date: 2026-03-26
+---
+
+## Problem
+
+The dev-core workflow (`/dev #N`) is already ~98% autonomous — once an epic is well-defined and analysed, each sub-issue runs through triage → frame → spec → plan → implement → PR → validate → review → fix with the user mostly clicking "continue" at each gate. The remaining 2% are fixes that aren't auto-fixable, where a human decision is genuinely needed.
+
+**The bottleneck is the human in the loop pressing "continue".** Today this means:
+1. Manually decomposing the epic into sub-issues on GitHub
+2. Manually opening a separate Claude Code CLI session per sub-issue
+3. Clicking "continue" through each gate in each session sequentially
+4. No isolation between sessions (shared working directory)
+5. No completion signal — sessions go silent when done
+
+**The vision:** Lyra drives the entire epic lifecycle as an autonomous operator. Once an epic is defined:
+1. Lyra reads the epic spec and creates sub-issues on GitHub (decomposition)
+2. Spawns one Claude Code CLI session per sub-issue (each in an isolated worktree)
+3. Auto-advances through dev-core gates where the answer is deterministic
+4. Escalates to the human via Telegram when a genuine decision is needed
+5. Handles PR conflicts by spawning a conflict-resolution sub-agent
+6. Aggregates results and notifies at key milestones
+
+The human walks away and gets pings.
+
+**Why now:** dev-core already manages worktrees per issue. Lyra already has Channels for inter-process communication and a Telegram adapter for notifications. The pieces exist — they just need wiring.
+
+## Who
+
+- **Primary:** Mickael — sole developer, working from both ROXABITOWER (local) and roxabituwer (production hub). Wants to spawn an epic from either machine, walk away, and get Telegram pings as sub-issues complete.
+- **Secondary:** Deferred. Future Lyra users who adopt dev-core may benefit, but multi-user design is explicitly not in scope for this epic.
+
+## User Journeys
+
+**Happy path:** Mickael runs `/epic #N` → Lyra creates sub-issues → spawns sessions → auto-advances gates → sends Telegram ping per completed sub-issue → final summary when all done. Mickael reviews merged PRs at leisure.
+
+**Exception path:** Sub-issue #N+2 fails validation. Lyra sends a Telegram notification: "Sub-issue #N+2 blocked — validation failed (3 test failures). Action needed." Mickael can reply to investigate, override, or skip. Other sub-issues continue independently.
+
+**Mid-flight intervention:** Mickael sees a Telegram ping that #N+3 is heading in the wrong direction. He replies with a cancel/override command. The orchestrator stops that sub-issue's session, marks it for manual review, and continues the rest.
+
+**Orchestrator crash recovery:** The orchestrator restarts mid-epic. It reads durable state (SQLite), detects which sub-issues have open worktrees/branches/PRs, and resumes monitoring. Sub-issue CLI sessions that were running may need to be re-spawned.
+
+## Constraints
+
+- **Lyra-only:** Must work within Lyra's existing asyncio architecture, Channels system, and Telegram adapter. No new external dependencies or separate orchestration tools. Pluggable orchestrator interface is a future concern — not in scope.
+- **Local + production:** Claude Code CLI is available on both machines. Orchestrator runs wherever invoked; completion signals and notifications route through Lyra to Telegram.
+- **Reuse dev-core worktrees:** dev-core's `/implement` already creates isolated worktrees per issue — reuse that pattern.
+- **Single supervisord:** The orchestrator is a long-running asyncio task within Lyra, not a new daemon. No new supervisord entry needed.
+- **API key propagation:** `cli_pool_worker.py` uses an env allowlist (`_SAFE_ENV_KEYS`) that does not include `ANTHROPIC_API_KEY`. Orchestrated subprocesses must have this key propagated explicitly.
+- **Concurrency cap:** Parallel sub-issue sessions must be bounded by a `max_concurrent_sessions` setting to avoid exhausting file descriptors and Anthropic API rate limits.
+- **Session resumption:** Orchestration state must survive orchestrator restarts. Durable state in SQLite (Lyra already uses `aiosqlite`).
+
+## Slices
+
+| Slice | Description | Notes |
+|-------|-------------|-------|
+| 0 — Epic decomposition | Read epic spec, create sub-issues on GitHub with parent/child relationships | Pre-condition for all other slices |
+| 1 — Process lifecycle manager | Spawn, track, kill sub-issue CLI sessions in isolated worktrees | Infrastructure layer — extends `CliPool` pattern |
+| 2 — Gate advancement engine | Read CLI output, detect gates, decide auto-advance vs. escalate | Application layer — needs machine-readable gate contract |
+| 3 — Conflict resolution agent | Spawn sub-agent to rebase/resolve when a PR is blocked by conflicts | Recursive orchestrator pattern |
+| 4 — Notification & aggregation | Telegram notifications at milestones, final summary, mid-flight intervention | Uses existing Telegram adapter |
+
+## Out of Scope
+
+- Mobile UI / Dispatch-style app — Lyra Telegram is the notification layer.
+- Multi-user orchestration — single-user, single-epic-at-a-time.
+- Pluggable orchestrator interface — Lyra is the orchestrator for this epic. Abstraction deferred to future work.
+
+## Complexity
+
+**Tier: F-full** — Two distinct architectural problems intersect: (a) **process lifecycle management** (spawn/track/kill sub-issue sessions — infrastructure layer, extends `CliPool`) and (b) **gate advancement logic** (read output, decide, inject response — application layer, new use case). Both span multiple domains: CLI spawning, worktree management, Channels signaling, GitHub API, Telegram notifications, and cross-machine routing.
+
+Signals observed:
+- Multi-domain: CLI spawning, worktree management, Channels, GitHub API, Telegram, dev-core gate logic
+- New pattern: Lyra as autonomous dev-core operator (not just notification layer)
+- Two distinct architectural layers (lifecycle management vs gate advancement)
+- Epic label on issue
+
+## Open Questions (for /analyze)
+
+**Machine-readable gate contract (highest priority):**
+- Currently gates are prose prompts to a human. For auto-advancement, does dev-core need to emit structured signals (JSON annotations: gate name, expected responses)?
+- Or does the orchestrator parse Claude's free-text output to detect gate state?
+- This decision gates the entire orchestration design.
+
+**Gate auto-advancement boundary:**
+- Which dev-core gates can be safely auto-advanced? Under what conditions?
+- Is this a hardcoded allowlist of gate names? A confidence heuristic? A human-authored policy in agent TOML?
+- Concrete list needed: triage (always auto), frame approval (never auto), spec approval (?), plan approval (?), implement (always auto), PR creation (always auto), etc.
+
+**Communication model (follow established A2A patterns):**
+- Research common A2A patterns (Google A2A protocol, OpenAI Swarm, CrewAI, AutoGen, etc.)
+- Architect's initial recommendation: Supervisor/Worker over InboundBus — orchestrator as a programmatic user posting synthetic `InboundMessage` events. Validate this in analysis.
+- Avoid direct CLI-to-CLI stdin injection — breaks security contract (all messages must be authenticated `InboundMessage` with verified `trust_level`).
+
+**Health monitoring:**
+- How to detect a sub-process is blocked (waiting for a gate decision)?
+- How to detect a sub-process needs a human decision vs. can be auto-advanced?
+- How to detect a sub-process is done?
+- How to detect a sub-process is bugged/stuck (not just waiting)?
+- What is the failure policy when a sub-issue exceeds `max_turns`? (retry / notify human / mark failed)
+
+**Failure propagation:**
+- If sub-issue #N+2 fails permanently, does the orchestrator continue #N+3? Block dependent issues only? Block everything?
+- What is the recovery model for partial epic completion?
+
+**Cross-machine signaling:**
+- How does the orchestrator on Machine 2 signal Lyra on Machine 1? Existing `httpx` inter-machine channel?
+- Does Lyra need a new authenticated endpoint for orchestration events?
+- What happens when the originating machine goes offline mid-orchestration?
+
+**Orchestration state:**
+- SQLite table for epic/sub-issue state (Lyra already uses `aiosqlite`).
+- Must survive restarts. Must be queryable from both machines.
+- Constraints: needs to track per-sub-issue status, current gate, worktree path, PID, last activity.
+
+**Conflict resolution:**
+- When a PR is blocked by conflicts, how does the conflict-resolution agent get spawned?
+- Does it rebase in the existing worktree or create a new one?
+- What if resolution fails? (escalate to human)

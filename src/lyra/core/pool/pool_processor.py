@@ -162,12 +162,21 @@ class PoolProcessor:
                 )
             else:
                 await self._process_one(msg, agent)
+            _duration_ms = (time.monotonic() - _start) * 1000
             log.info(
                 "agent completed: agent=%s pool=%s duration_ms=%.0f",
                 pool.agent_name,
                 pool.pool_id,
-                (time.monotonic() - _start) * 1000,
+                _duration_ms,
             )
+            if _duration_ms < 100:
+                log.warning(
+                    "agent completed suspiciously fast: agent=%s pool=%s duration_ms=%.0f"
+                    " — possible dead backend or empty response",
+                    pool.agent_name,
+                    pool.pool_id,
+                    _duration_ms,
+                )
         except asyncio.TimeoutError:
             log.warning(
                 "pool %s: turn timeout after %.0fs — killing backend",

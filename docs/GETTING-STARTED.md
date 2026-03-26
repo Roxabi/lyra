@@ -249,11 +249,21 @@ Follow the prompts to authenticate. Lyra uses Claude Code as its LLM backend —
 
 ---
 
-## Step 10 — Start Lyra
+## Step 10 — Enable auto-start on boot
+
+```bash
+# Enable the systemd user unit + linger (runs without login session)
+systemctl --user enable lyra-stack.service
+loginctl enable-linger $USER
+
+# Start now
+systemctl --user start lyra-stack
+```
+
+## Step 11 — Verify services
 
 ```bash
 cd ~/projects/lyra-stack
-make lyra reload
 make ps
 ```
 
@@ -273,7 +283,7 @@ make lyra errlogs   # tail stderr (where INFO/ERROR logs go)
 
 ---
 
-## Step 11 — Send your first message
+## Step 12 — Send your first message
 
 **Telegram:** Open a DM with your bot and type anything. Lyra will respond.
 
@@ -288,7 +298,7 @@ What happens under the hood:
 
 ---
 
-## Step 12 — Set up lyra agent account (optional)
+## Step 13 — Set up lyra agent account (optional)
 
 Generate a dedicated SSH key for the agent on Machine 2:
 
@@ -321,7 +331,7 @@ ssh -i ~/.ssh/lyra_agent lyra@<MACHINE_1_IP> "id && git --version"
 | Config | `~/projects/lyra/config.toml` |
 | Credentials | `~/.lyra/auth.db` (encrypted, via `lyra bot add`) |
 | Logs | `~/.local/state/lyra/logs/` |
-| Diagrams | `~/.agent/diagrams/` (if installed) |
+| Diagrams | `~/.agent/` (if installed) |
 | Firewall | UFW, SSH only |
 
 **Daily commands** (from `~/projects/lyra-stack`):

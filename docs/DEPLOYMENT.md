@@ -4,11 +4,12 @@ Running Lyra as a managed service on Machine 1 (Ubuntu Server 24.04).
 
 ## Overview
 
-Lyra runs as a single Python process managed by **supervisord** via `lyra-stack`. All daemons (lyra, voicecli_tts, voicecli_stt) are managed by a single supervisord instance.
+Lyra runs as a single Python process managed by **supervisord** via `lyra-stack`. All daemons (lyra, voicecli_tts, voicecli_stt) are managed by a single supervisord instance. A **systemd user unit** (`lyra-stack.service`) with linger ensures everything auto-starts on boot — no login session required.
 
 ```
 Machine 1 (roxabituwer, 192.168.1.16)
-├── supervisord (lyra-stack)
+├── systemd user unit: lyra-stack.service (auto-start, linger enabled)
+│   └── supervisord (lyra-stack)
 ├── lyra program config: ~/projects/lyra/supervisor/lyra.conf
 ├── symlinked into: ~/projects/lyra-stack/conf.d/lyra.conf
 ├── working directory: ~/projects/lyra/
@@ -219,6 +220,31 @@ make remote reload    # restart Lyra
 make remote logs      # tail stdout logs
 make remote errors    # tail stderr logs
 ```
+
+---
+
+## 9. systemd auto-start
+
+The `lyra-stack.service` systemd user unit manages supervisord lifecycle on boot.
+
+```bash
+# Check unit status
+systemctl --user status lyra-stack
+
+# Enable auto-start (already done on provisioned machines)
+systemctl --user enable lyra-stack.service
+loginctl enable-linger $USER
+
+# Restart all services via systemd
+systemctl --user restart lyra-stack
+
+# View systemd journal
+journalctl --user -eu lyra-stack.service --no-pager -n 50
+```
+
+> **Note:** `start.sh` and `supervisorctl.sh` use full paths to
+> `$HOME/.local/bin/supervisord` and `$HOME/.local/bin/supervisorctl`
+> because systemd does not include `~/.local/bin` on PATH.
 
 ---
 

@@ -360,12 +360,27 @@ class MessagePipeline:
                     pool_id,
                 )
             elif last_sid == pool.session_id:
-                log.debug(
-                    "last-session-resume: pool %r already on session %r",
+                # Session IDs match — but verify the session is still viable.
+                _agent = self._hub.agent_registry.get(pool.agent_name)
+                _alive = (
+                    _agent.is_backend_alive(pool.pool_id)
+                    if _agent is not None
+                    else True  # assume alive for non-CLI agents
+                )
+                if _alive:
+                    log.debug(
+                        "last-session-resume: pool %r already on session %r",
+                        pool_id,
+                        last_sid,
+                    )
+                    return ResumeStatus.SKIPPED
+                log.warning(
+                    "last-session-resume: pool %r session %r matches but backend is dead"
+                    " — skipping guard (will start fresh)",
                     pool_id,
                     last_sid,
                 )
-                return ResumeStatus.SKIPPED
+                # Fall through: do not return SKIPPED
             else:
                 log.info(
                     "last-session-resume: resuming %r for pool %r",

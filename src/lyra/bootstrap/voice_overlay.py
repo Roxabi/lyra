@@ -24,22 +24,19 @@ def apply_agent_stt_overlay(
     """Overlay non-None fields from AgentSTTConfig onto STTConfig.
 
     None fields in agent_stt are skipped — voicecli global defaults remain in effect.
-    Returns an updated STTConfig (via dataclasses.replace).
+    Returns an updated STTConfig (via model_copy).
     """
     if agent_stt is None:
         return stt_cfg
     a = agent_stt
+    updates: dict[str, object] = {}
     if a.language_detection_threshold is not None:
-        stt_cfg = dataclasses.replace(
-            stt_cfg, language_detection_threshold=a.language_detection_threshold
-        )
+        updates["language_detection_threshold"] = a.language_detection_threshold
     if a.language_detection_segments is not None:
-        stt_cfg = dataclasses.replace(
-            stt_cfg, language_detection_segments=a.language_detection_segments
-        )
+        updates["language_detection_segments"] = a.language_detection_segments
     if a.language_fallback is not None:
-        stt_cfg = dataclasses.replace(stt_cfg, language_fallback=a.language_fallback)
-    return stt_cfg
+        updates["language_fallback"] = a.language_fallback
+    return stt_cfg.model_copy(update=updates) if updates else stt_cfg
 
 
 def init_stt(first_agent_config: "Agent") -> STTService | None:

@@ -8,6 +8,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from pydantic import BaseModel
+
 log = logging.getLogger(__name__)
 
 WHISPER_NOISE_TOKENS = {"[music]", "[applause]", "[laughter]", "[silence]", "[noise]"}
@@ -20,8 +22,7 @@ class TranscriptionResult:
     duration_seconds: float
 
 
-@dataclass
-class STTConfig:
+class STTConfig(BaseModel):
     model_size: str
     language_detection_threshold: float | None = None
     language_detection_segments: int | None = None

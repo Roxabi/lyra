@@ -193,32 +193,12 @@ make setup ARGS=--all
 
 ## Step 8 — Configure
 
-The setup scaffolded `.env` and `config.toml` from examples. Now fill in your values:
+The setup scaffolded `.env` and `config.toml` from examples. Three things to fill in:
 
-### Bot tokens (`.env`)
+### 1. Auth config (`config.toml`)
 
 ```bash
 cd ~/projects/lyra
-nano .env
-```
-
-**Telegram:**
-1. Message [@BotFather](https://t.me/BotFather) on Telegram
-2. `/newbot` → choose a name and username
-3. Copy the token → `TELEGRAM_TOKEN`
-4. The username (without @) → `TELEGRAM_BOT_USERNAME`
-5. Generate a random webhook secret → `TELEGRAM_WEBHOOK_SECRET`
-
-**Discord:**
-1. Go to [Discord Developer Portal](https://discord.com/developers/applications) → New Application
-2. Bot tab → Reset Token → copy → `DISCORD_TOKEN`
-3. Enable **Message Content Intent** under Privileged Gateway Intents
-4. OAuth2 → URL Generator → scopes: `bot` → permissions: `Send Messages`, `Read Message History`
-5. Use the generated URL to invite the bot to your server
-
-### Auth config (`config.toml`)
-
-```bash
 nano config.toml
 ```
 
@@ -226,13 +206,35 @@ Fill in your user IDs in the `owner_users` arrays:
 - Telegram ID: message [@userinfobot](https://t.me/userinfobot) on Telegram
 - Discord ID: Settings → Advanced → Developer Mode → right-click your username → Copy User ID
 
-### Store bot tokens in the credential store
+### 2. Create your bots
+
+**Telegram:**
+1. Message [@BotFather](https://t.me/BotFather) on Telegram → `/newbot`
+2. Note the token and username
+
+**Discord:**
+1. Go to [Discord Developer Portal](https://discord.com/developers/applications) → New Application
+2. Bot tab → Reset Token → note the token
+3. Enable **Message Content Intent** under Privileged Gateway Intents
+4. OAuth2 → URL Generator → scopes: `bot` → permissions: `Send Messages`, `Read Message History`
+5. Use the generated URL to invite the bot to your server
+
+### 3. Store bot tokens in the credential store
+
+Bot tokens are **not** stored in `.env`. They go into the encrypted credential store:
 
 ```bash
-lyra bot add
+lyra bot add --platform telegram --bot-id lyra
+# Prompts for: token, bot_username, webhook_secret
+
+lyra bot add --platform discord --bot-id lyra
+# Prompts for: token
 ```
 
 This encrypts and stores the tokens in `~/.lyra/auth.db`.
+
+> **Note:** `.env` is for non-secret config only (TTS engine, STT model size, monitoring settings).
+> See `.env.example` for all available options.
 
 ---
 

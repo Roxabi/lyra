@@ -164,7 +164,7 @@ class TestHotReloadPreservesMsgManager:
         """msg_manager survives CommandRouter rebuild on config hot-reload."""
         from unittest.mock import MagicMock
 
-        from lyra.core.agent import AgentBase, Agent
+        from lyra.core.agent import Agent, AgentBase
         from lyra.core.agent_config import ModelConfig
         from lyra.core.agent_models import AgentRow
         from lyra.core.message import InboundMessage, Response
@@ -219,7 +219,7 @@ class TestHotReloadPreservesMsgManager:
         """msg_manager survives CommandRouter rebuild on plugin hot-reload."""
         import os
 
-        from lyra.core.agent import AgentBase, Agent
+        from lyra.core.agent import Agent, AgentBase
         from lyra.core.agent_config import ModelConfig
         from lyra.core.commands.command_router import CommandRouter
         from lyra.core.message import InboundMessage, Response
@@ -301,7 +301,7 @@ class TestHotReloadPreservesMsgManager:
     def test_msg_manager_none_when_not_injected(self, tmp_path: Path) -> None:
         """When msg_manager is not passed, command_router._msg_manager is None
         (backward-compatible with existing code paths -- SC-9)."""
-        from lyra.core.agent import AgentBase, Agent
+        from lyra.core.agent import Agent, AgentBase
         from lyra.core.agent_config import ModelConfig
         from lyra.core.message import InboundMessage, Response
         from lyra.core.pool import Pool

@@ -10,7 +10,6 @@ import asyncio
 from pathlib import Path
 
 import pytest
-from click.testing import Result
 from typer.testing import CliRunner
 
 from lyra.cli import agent_app as app  # type: ignore[import-not-found]

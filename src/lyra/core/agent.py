@@ -18,7 +18,9 @@ if TYPE_CHECKING:
 
 from .agent_commands import CommandReloadManager
 from .agent_config import Agent  # noqa: F401 — Agent re-exported
-from .agent_db_loader import agent_row_to_config  # noqa: F401  # pyright: ignore[reportUnusedImport]
+from .agent_db_loader import (
+    agent_row_to_config,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+)
 from .circuit_breaker import CircuitRegistry
 from .commands.command_loader import CommandLoader
 from .commands.command_router import CommandRouter

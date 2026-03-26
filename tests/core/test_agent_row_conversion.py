@@ -7,7 +7,6 @@ Voice data lives in voice_json = '{"tts": {...}, "stt": {...}}'.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 

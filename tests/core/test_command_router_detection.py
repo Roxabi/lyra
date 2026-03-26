@@ -182,7 +182,9 @@ class TestHotReloadUpdatesCommands:
             name="test_agent",
             system_prompt="You are a test agent.",
             memory_namespace="test",
-            llm_config=ModelConfig(backend="claude-cli", model="claude-haiku-4-5-20251001"),
+            llm_config=ModelConfig(
+                backend="claude-cli", model="claude-haiku-4-5-20251001"
+            ),
         )
         agent = ConcreteAgent(config, agents_dir=tmp_path, plugins_dir=plugins_dir)
 

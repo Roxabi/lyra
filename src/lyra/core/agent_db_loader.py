@@ -133,7 +133,7 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — each branch handles one opti
         voice = AgentVoiceConfig(
             tts=agent_tts or AgentTTSConfig(),
             stt=agent_stt or AgentSTTConfig(),
-            )
+        )
 
     # Permissions from DB
     permissions: tuple[str, ...] = tuple(

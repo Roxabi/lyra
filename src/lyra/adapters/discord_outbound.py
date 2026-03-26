@@ -244,6 +244,7 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: tool-su
         return
 
     had_tool_events = False
+    had_intermediate_text = False
     last_tool_edit: float | None = None
     last_intermediate_edit: float | None = None
     intermediate_text: str = ""
@@ -255,18 +256,23 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: tool-su
         async for event in events:
             if isinstance(event, ToolSummaryRenderEvent):
                 had_tool_events = True
-                now = time.monotonic()
-                if (
-                    event.is_complete
-                    or last_tool_edit is None
-                    or (now - last_tool_edit) >= STREAMING_EDIT_INTERVAL
-                ):
-                    embed = _build_tool_embed(event)
-                    await _discord_send_with_retry(
-                        lambda e=embed: placeholder.edit(content="", embed=e),
-                        label="Tool summary embed",
-                    )
-                    last_tool_edit = now
+                # Don't overwrite intermediate text that is already visible in
+                # the placeholder — the tool summary would erase what the user
+                # can see.  The summary is still captured; the final text is
+                # delivered as a new message (had_tool_events=True path below).
+                if not had_intermediate_text:
+                    now = time.monotonic()
+                    if (
+                        event.is_complete
+                        or last_tool_edit is None
+                        or (now - last_tool_edit) >= STREAMING_EDIT_INTERVAL
+                    ):
+                        embed = _build_tool_embed(event)
+                        await _discord_send_with_retry(
+                            lambda e=embed: placeholder.edit(content="", embed=e),
+                            label="Tool summary embed",
+                        )
+                        last_tool_edit = now
 
             elif isinstance(event, TextRenderEvent):  # pyright: ignore[reportUnnecessaryIsInstance]
                 if event.is_final:
@@ -287,6 +293,7 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: tool-su
                             label="Intermediate text edit",
                         )
                         last_intermediate_edit = now
+                        had_intermediate_text = True
     except Exception as exc:
         stream_error = exc
         log.exception("Stream interrupted")

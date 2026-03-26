@@ -384,9 +384,9 @@ class TestDiscordStreaming:
             yield TextRenderEvent(text="Done.", is_final=True)
 
         await adapter.send_streaming(msg, tool_events())
-        # embed edit called at least once
+        # embed edit called at least once (embed is a non-None discord.Embed object)
         edit_calls = placeholder.edit.call_args_list
-        embed_edits = [c for c in edit_calls if "embed" in (c.kwargs or {})]
+        embed_edits = [c for c in edit_calls if c.kwargs.get("embed") is not None]
         assert len(embed_edits) >= 1
 
     async def test_tool_summary_then_text_sends_new_message(self) -> None:
@@ -595,9 +595,16 @@ class TestDiscordIntermediateText:
         assert len(content_edits) >= 1
         assert len(content_edits[0].kwargs["content"]) <= DISCORD_MAX_LENGTH
 
-    async def test_intermediate_does_not_affect_tool_embed_path(self) -> None:
-        """Intermediate text followed by tool events still renders embed correctly."""
-        adapter, _, placeholder = self._make_adapter()
+    async def test_intermediate_text_not_overwritten_by_tool_embed(self) -> None:
+        """Tool embed must NOT overwrite intermediate text already shown in placeholder.
+
+        Regression: when intermediate text was displayed first, a subsequent
+        ToolSummaryRenderEvent would edit the same placeholder and erase the text
+        the user could see.  The fix suppresses tool-summary edits once
+        had_intermediate_text=True, so the placeholder keeps showing the text
+        and the final response arrives as a new message.
+        """
+        adapter, channel, placeholder = self._make_adapter()
         msg = make_dc_message()
 
         async def inter_then_tool():
@@ -607,11 +614,19 @@ class TestDiscordIntermediateText:
 
         await adapter.send_streaming(msg, inter_then_tool())
 
-        # Tool embed should still be sent
+        # Tool embed must NOT appear — it would overwrite the intermediate text.
+        # NOTE: intermediate-text edits use embed=None to clear any existing embed,
+        # so we only count calls where embed is a non-None object.
         embed_edits = [
-            c for c in placeholder.edit.call_args_list if "embed" in (c.kwargs or {})
+            c for c in placeholder.edit.call_args_list
+            if c.kwargs.get("embed") is not None
         ]
-        assert len(embed_edits) >= 1
+        assert len(embed_edits) == 0, (
+            "Tool summary embed must not overwrite intermediate text in the placeholder"
+        )
+
+        # Final text must be sent as a new message (had_tool_events=True path).
+        assert channel.send.await_count >= 1
 
 
 # ---------------------------------------------------------------------------

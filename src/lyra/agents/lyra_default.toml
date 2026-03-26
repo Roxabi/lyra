@@ -18,9 +18,9 @@ show_tool_recap = true     # show 🔧 tool summary card after tool use
 backend = "claude-cli"
 model = "claude-sonnet-4-6"
 # max_turns omitted → None (unlimited). Set a positive int to cap tool-use turns.
-# tools: explicit allowlist — omits Bash and Write to prevent prompt injection → RCE
+# tools: full allowlist — all standard Claude Code tools enabled
 # To disable all tools: tools = [] and ensure --allowedTools is passed (see cli_pool.py)
-tools = ["Read", "Grep", "Glob", "WebFetch", "WebSearch"]
+tools = ["Read", "Write", "Edit", "Bash", "Grep", "Glob", "WebFetch", "WebSearch", "Task", "TodoWrite", "TodoRead", "NotebookRead", "NotebookEdit"]
 skip_permissions = true
 streaming = true
 

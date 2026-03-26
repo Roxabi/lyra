@@ -76,7 +76,12 @@ class TestStreamProcessor:
 
     async def test_single_edit(self) -> None:
         """Single Edit with show_intermediate=True (default):
-        intermediate text + mid-turn ToolSummary + final ToolSummary + TextRenderEvent.
+        intermediate text + final ToolSummary + TextRenderEvent.
+
+        When intermediate text is flushed before a tool call, the mid-turn
+        ToolSummaryRenderEvent is intentionally suppressed so adapters have time
+        to display the text before the tool card overwrites it.  The summary is
+        still emitted unconditionally by ResultLlmEvent.
         """
         # Arrange
         processor = StreamProcessor(cfg())
@@ -91,15 +96,14 @@ class TestStreamProcessor:
         # Act
         result = await collect(processor.process(events))
 
-        # Assert — 4 events: intermediate text, mid-turn summary, final summary, text
-        # show_intermediate=True (default): flushes text before the tool call.
-        assert len(result) == 4
-        inter, mid, final, text = result
+        # Assert — 3 events: intermediate text, final summary, final text
+        # Mid-turn ToolSummaryRenderEvent is suppressed when intermediate text
+        # was just flushed (avoids immediately overwriting the text).
+        assert len(result) == 3
+        inter, final, text = result
         assert isinstance(inter, TextRenderEvent)
         assert inter.text == "Refactoring..."
         assert inter.is_final is False
-        assert isinstance(mid, ToolSummaryRenderEvent)
-        assert mid.is_complete is False
         assert isinstance(final, ToolSummaryRenderEvent)
         assert final.is_complete is True
         assert isinstance(text, TextRenderEvent)

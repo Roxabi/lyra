@@ -229,6 +229,7 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: tool-su
         return
 
     had_tool_events = False
+    had_intermediate_text = False
     last_tool_edit: float | None = None
     last_intermediate_edit: float | None = None
     intermediate_text: str = ""
@@ -240,25 +241,30 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: tool-su
         async for event in events:
             if isinstance(event, ToolSummaryRenderEvent):
                 had_tool_events = True
-                tool_text = _format_tool_summary(event)
-                now = time.monotonic()
-                # Always edit on is_complete; otherwise respect debounce
-                if (
-                    event.is_complete
-                    or last_tool_edit is None
-                    or (now - last_tool_edit) >= STREAMING_EDIT_INTERVAL
-                ):
-                    try:
-                        rendered = _render_text(tool_text)
-                        await adapter.bot.edit_message_text(
-                            chat_id=chat_id,
-                            message_id=placeholder.message_id,
-                            text=rendered[0],
-                            parse_mode="MarkdownV2",
-                        )
-                        last_tool_edit = now
-                    except Exception as edit_exc:
-                        log.debug("Tool summary edit skipped: %s", edit_exc)
+                # Don't overwrite intermediate text that is already visible in
+                # the placeholder — the tool summary would erase what the user
+                # can see.  The summary is still captured; the final text is
+                # delivered as a new message (had_tool_events=True path below).
+                if not had_intermediate_text:
+                    tool_text = _format_tool_summary(event)
+                    now = time.monotonic()
+                    # Always edit on is_complete; otherwise respect debounce
+                    if (
+                        event.is_complete
+                        or last_tool_edit is None
+                        or (now - last_tool_edit) >= STREAMING_EDIT_INTERVAL
+                    ):
+                        try:
+                            rendered = _render_text(tool_text)
+                            await adapter.bot.edit_message_text(
+                                chat_id=chat_id,
+                                message_id=placeholder.message_id,
+                                text=rendered[0],
+                                parse_mode="MarkdownV2",
+                            )
+                            last_tool_edit = now
+                        except Exception as edit_exc:
+                            log.debug("Tool summary edit skipped: %s", edit_exc)
 
             elif isinstance(event, TextRenderEvent):  # pyright: ignore[reportUnnecessaryIsInstance]
                 if event.is_final:
@@ -282,6 +288,7 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: tool-su
                                 parse_mode="MarkdownV2",
                             )
                             last_intermediate_edit = now
+                            had_intermediate_text = True
                         except Exception as edit_exc:
                             log.debug("Intermediate text edit skipped: %s", edit_exc)
     except Exception as exc:

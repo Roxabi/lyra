@@ -204,7 +204,7 @@ class Agent:
     i18n_language: str = "en"
     smart_routing: SmartRoutingConfig | None = None
     show_intermediate: bool = False  # show ⏳-prefixed intermediate turns to the user
-    show_tool_recap: bool = True    # show 🔧-prefixed tool summary card after tool use
+    show_tool_recap: bool = True  # show 🔧-prefixed tool summary card after tool use
     workspaces: dict[str, Path] = field(default_factory=dict)
     tts: AgentTTSConfig | None = None  # deprecated — use voice.tts (PR1 compat)
     stt: AgentSTTConfig | None = None  # deprecated — use voice.stt (PR1 compat)

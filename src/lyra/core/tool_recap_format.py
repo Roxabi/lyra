@@ -29,6 +29,7 @@ _BASH_GROUP_THRESHOLD = 3
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _sanitize_code(text: str) -> str:
     """Strip backticks so text can be safely wrapped in inline code."""
     return text.replace("`", "")
@@ -52,9 +53,7 @@ def _format_files(event: ToolSummaryRenderEvent) -> list[str]:
         return []
     if len(event.files) >= 3:
         total = sum(f.count for f in event.files.values())
-        return [
-            f"\u270f\ufe0f {len(event.files)} files \u00b7 {total} edits"
-        ]
+        return [f"\u270f\ufe0f {len(event.files)} files \u00b7 {total} edits"]
     lines: list[str] = []
     for summary in event.files.values():
         if summary.edits:
@@ -74,8 +73,7 @@ def _format_bash(event: ToolSummaryRenderEvent) -> list[str]:
     if len(cmds) >= _BASH_GROUP_THRESHOLD:
         return [f"\U0001f4bb {_plural(len(cmds), 'command')}"]
     return [
-        f"\U0001f4bb `{_sanitize_code(_truncate(c, _BASH_DISPLAY_MAX))}`"
-        for c in cmds
+        f"\U0001f4bb `{_sanitize_code(_truncate(c, _BASH_DISPLAY_MAX))}`" for c in cmds
     ]
 
 
@@ -97,6 +95,7 @@ def _format_silent(event: ToolSummaryRenderEvent) -> list[str]:
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def format_tool_lines(event: ToolSummaryRenderEvent) -> list[str]:
     """Build the tool-recap body lines shared by all outbound adapters."""

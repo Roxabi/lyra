@@ -140,14 +140,29 @@ class StreamProcessor:
         Flushes pending text as an intermediate event when ``show_intermediate``
         is enabled, then accumulates the tool call and emits a throttled
         ``ToolSummaryRenderEvent`` if the window has elapsed.
+
+        When intermediate text is flushed, the ``ToolSummaryRenderEvent`` is
+        intentionally skipped for this iteration so adapters have time to display
+        the text before the tool card overwrites it.  The summary will still be
+        emitted by the next tool event (once the throttle window elapses) or
+        unconditionally by the final ``ResultLlmEvent``.
         """
         # Flush any text accumulated before this tool call so adapters
         # can show inter-tool text progressively (show_intermediate gate).
+        flushed_intermediate = False
         if self._show_intermediate and self._pending_text:
             yield TextRenderEvent(text=self._pending_text, is_final=False)
             self._pending_text = ""
+            flushed_intermediate = True
         self._accumulate(event)
-        if self._should_emit() and self._has_any_tool_events():
+        # Skip the immediate tool snapshot when we just flushed intermediate text —
+        # emitting both back-to-back causes adapters to overwrite the text with the
+        # tool card before the user can see it.
+        if (
+            not flushed_intermediate
+            and self._should_emit()
+            and self._has_any_tool_events()
+        ):
             yield self._emit_snapshot()
 
     # ------------------------------------------------------------------

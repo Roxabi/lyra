@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import importlib
+import importlib.util
 import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -14,11 +14,11 @@ pytestmark = pytest.mark.skipif(
     reason="voicecli not installed (optional voice extra)",
 )
 
-from lyra.core.agent_builder import _build_tts_from_dict
-from lyra.core.agent_config import AgentTTSConfig
-from lyra.tts import TTSConfig, TTSService
+from lyra.core.agent_builder import _build_tts_from_dict  # noqa: E402
+from lyra.core.agent_config import AgentTTSConfig  # noqa: E402
+from lyra.tts import TTSConfig, TTSService  # noqa: E402
 
-from .conftest import make_chunked_result, write_minimal_wav
+from .conftest import make_chunked_result, write_minimal_wav  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # AgentTTSConfig — new fields (exaggeration, cfg_weight)

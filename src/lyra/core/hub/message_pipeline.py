@@ -375,12 +375,13 @@ class MessagePipeline:
                     )
                     return ResumeStatus.SKIPPED
                 log.warning(
-                    "last-session-resume: pool %r session %r matches but backend is dead"
-                    " — skipping guard (will start fresh)",
+                    "last-session-resume: pool %r session %r matches"
+                    " but backend is dead — skipping guard",
                     pool_id,
                     last_sid,
                 )
-                # Fall through: do not return SKIPPED
+                # Fall through: backend is dead — do not treat as "already on session".
+                # The pool will start fresh on the next send() call.
             else:
                 log.info(
                     "last-session-resume: resuming %r for pool %r",

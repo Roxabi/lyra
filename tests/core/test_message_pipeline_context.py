@@ -438,6 +438,94 @@ class TestResolveContextResumeStatus:
 
 
 # -------------------------------------------------------------------
+# T7.3 — Path 3 dead-backend guard (#415)
+# -------------------------------------------------------------------
+
+
+class TestPath3DeadBackendGuard:
+    """Path 3: last_sid == pool.session_id + dead backend falls through (#415)."""
+
+    async def test_path3_falls_through_when_backend_dead_and_session_matches(
+        self,
+    ) -> None:
+        """last_sid == pool.session_id + is_backend_alive() False → NOT SKIPPED.
+
+        The dead-backend guard must not return SKIPPED immediately when the
+        pool's current session_id matches the stored last session but the
+        backend is dead.  With path2_attempted=True (a thread_session_id was
+        present but rejected), the final result must be FRESH — not SKIPPED.
+        """
+        pool_id = "telegram:main:chat:42"
+        hub = _make_hub()
+        pool = hub.get_or_create_pool(pool_id, "lyra")
+
+        # Path 2: thread_session_id present but rejected (returns False).
+        async def _rejected_resume(sid: str) -> bool:
+            return False
+
+        pool._session_resume_fn = _rejected_resume  # type: ignore[attr-defined]
+
+        # Override is_backend_alive to simulate a dead backend
+        agent = hub.agent_registry.get("lyra")
+        assert agent is not None
+        agent.is_backend_alive = lambda _pool_id: False  # type: ignore[method-assign]
+
+        class _FakeTurnStore:
+            async def get_last_session(self, pid: str) -> str | None:
+                return pool.session_id  # matches pool.session_id exactly
+
+            async def close(self) -> None:
+                pass
+
+        hub._turn_store = _FakeTurnStore()  # type: ignore[attr-defined]
+
+        _base = make_inbound_message(scope_id="chat:42")
+        _meta = {**_base.platform_meta, "thread_session_id": "tss-dead"}
+        msg = dataclasses.replace(_base, platform_meta=_meta)
+        pipeline = MessagePipeline(hub)
+
+        status = await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
+
+        # If the dead-backend guard had returned SKIPPED at the inner check,
+        # the result would be SKIPPED.  Falling through gives FRESH because
+        # path2 was attempted but rejected.
+        assert status == ResumeStatus.FRESH
+
+    async def test_path3_skips_when_backend_alive_and_session_matches(
+        self,
+    ) -> None:
+        """last_sid == pool.session_id + is_backend_alive() True → SKIPPED.
+
+        When the backend is alive and the session_id already matches, the guard
+        correctly returns SKIPPED (pool is already on the right session).
+        """
+        pool_id = "telegram:main:chat:42"
+        hub = _make_hub()
+        pool = hub.get_or_create_pool(pool_id, "lyra")
+
+        # _NullAgent inherits is_backend_alive → True (default)
+        agent = hub.agent_registry.get("lyra")
+        assert agent is not None
+        assert agent.is_backend_alive(pool_id) is True
+
+        class _FakeTurnStore:
+            async def get_last_session(self, pid: str) -> str | None:
+                return pool.session_id  # matches pool.session_id exactly
+
+            async def close(self) -> None:
+                pass
+
+        hub._turn_store = _FakeTurnStore()  # type: ignore[attr-defined]
+
+        msg = make_inbound_message(scope_id="chat:42")
+        pipeline = MessagePipeline(hub)
+
+        status = await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
+
+        assert status == ResumeStatus.SKIPPED
+
+
+# -------------------------------------------------------------------
 # T7.2 — _submit_to_pool notification on FRESH (#380)
 # -------------------------------------------------------------------
 

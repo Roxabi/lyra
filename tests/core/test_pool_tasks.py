@@ -7,7 +7,8 @@ Spec trace: S4-1, S4-2, S4-3, S4-4, S4-5, S4-6, S4-7
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import MagicMock
+import logging
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -332,3 +333,61 @@ class TestPoolExceptionHandling:
         ][1]
         content = second_call_response.content
         assert "good" in content.lower() or content != ""
+
+
+# ---------------------------------------------------------------------------
+# Fast-completion warning (#415)
+# ---------------------------------------------------------------------------
+
+
+class TestFastCompletionWarning:
+    """Agent completing in <100 ms logs a WARNING 'suspiciously fast' (#415)."""
+
+    @pytest.mark.asyncio
+    async def test_guarded_process_fast_completion_logs_warning(
+        self, pool: Pool, ctx_mock: MagicMock, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Agent completes in <100ms → WARNING log containing 'suspiciously fast'.
+
+        FastAgent returns immediately so the measured duration is always <100ms
+        in practice.  We force it by pinning the two monotonic() calls inside
+        _guarded_process_one to 0.0 and 0.01 (10 ms), making the threshold
+        check deterministic regardless of host load.
+        """
+        import time as _real_time
+
+        agent = FastAgent()
+        ctx_mock._agents["test_agent"] = agent
+        msg = make_msg("hello")
+
+        # Replace time.monotonic inside pool_processor with a controlled version
+        # that returns a fixed start time and a fixed end time 10 ms later.
+        # Calls beyond the first two delegate to the real implementation so
+        # that asyncio internals (loop.time()) are unaffected.
+        _start_value = _real_time.monotonic()
+        _calls: list[float] = []
+
+        def _controlled_monotonic() -> float:
+            idx = len(_calls)
+            if idx == 0:
+                result = _start_value
+            elif idx == 1:
+                result = _start_value + 0.01  # 10 ms — below 100 ms threshold
+            else:
+                result = _real_time.monotonic()
+            _calls.append(result)
+            return result
+
+        with caplog.at_level(logging.WARNING, logger="lyra.core.pool_processor"):
+            with patch(
+                "lyra.core.pool.pool_processor.time",
+                monotonic=_controlled_monotonic,
+            ):
+                pool.submit(msg)
+                await _drain(pool)
+
+        assert any(
+            "suspiciously fast" in r.message
+            for r in caplog.records
+            if r.levelno == logging.WARNING
+        )

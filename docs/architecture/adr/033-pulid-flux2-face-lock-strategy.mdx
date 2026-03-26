@@ -1,0 +1,169 @@
+---
+title: "ADR-033: PuLID Flux2 face-lock strategy for Lyra avatar (issue #419)"
+description: How to achieve consistent face identity in FLUX.2-klein-4B avatar images — ComfyUI node vs imageCLI engine extension vs LoRA training.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+Issue #419: generate avatar images with a locked face identity using the existing
+FLUX.2-klein-4B pipeline on Machine 2 (RTX 5070 Ti, 16 GB VRAM, WSL2).
+
+`iFayens/ComfyUI-PuLID-Flux2` is the only publicly available PuLID implementation
+that explicitly targets the FLUX.2 family (Klein + Dev). It uses InsightFace
+(AntelopeV2) for face detection and EVA-CLIP (EVA02-CLIP-L-14-336, ~800 MB) for
+visual feature extraction, injecting identity tokens into the transformer's double
+blocks.
+
+Three integration shapes were considered. The analysis that drove this ADR was
+reviewed against the actual `flux2_klein.py` source (`vram_gb = 12.0`, bfloat16,
+`Flux2KleinPipeline` from HuggingFace Diffusers) and live VRAM issue reports from
+the ComfyUI community.
+
+## Options Considered
+
+### Option A: ComfyUI + PuLID Flux2 node (Shape A)
+
+Install ComfyUI as a parallel toolchain on Machine 2. Install
+`iFayens/ComfyUI-PuLID-Flux2` as a custom node. Run face-locked generation via the
+ComfyUI workflow editor.
+
+- **Pros:**
+  - Sole well-tested integration path for PuLID + FLUX.2-klein-4B; the node ships
+    explicit Klein support and auto-detects the model variant.
+  - No modifications to imageCLI required.
+  - Visual workflow editor is appropriate for an occasional brand-image task.
+  - Consistent with ADR-010 (Install + Wrap + Declare): ComfyUI is a system tool,
+    no forking or vendoring needed.
+- **Cons:**
+  - Parallel toolchain with separate Python env, model cache, and VRAM management.
+  - VRAM budget is genuinely tight (see VRAM analysis below).
+  - ComfyUI's VRAM manager and imageCLI's `Flux2KleinPipeline` cannot safely
+    coexist in the same GPU session; only one can run at a time.
+
+### Option B: PuLID as imageCLI engine extension (Shape B)
+
+Add a `pulid_flux2` engine to imageCLI, accepting `--reference-image`, wrapping
+PuLID + `Flux2KleinPipeline` in a single Diffusers pipeline.
+
+- **Pros:**
+  - Single toolchain; face-lock accessible via existing `imagecli generate` CLI.
+  - Type-checked, library-first — consistent with the Python-first paradigm.
+- **Cons:**
+  - `iFayens/ComfyUI-PuLID-Flux2` is a ComfyUI custom node only; it has no
+    published standalone Python API and no Diffusers adapter.
+  - The canonical `ToTheBeginning/PuLID` repository supports Flux.1-dev but not
+    FLUX.2-klein at this time.
+  - Nunchaku's `pipeline_flux_pulid` does have a Python API but targets its own
+    4-bit quantised model format, not the standard `Flux2KleinPipeline`.
+  - Implementing the EVA-CLIP + InsightFace + PuLID attention injection from
+    scratch (or by porting the ComfyUI node) is high-effort and creates an
+    unmaintained internal fork of a rapidly-evolving upstream.
+  - VRAM risk is the same as Shape A (see below); the engine would need its own
+    preflight check override.
+
+### Option C: LoRA training with ai-toolkit (Shape C)
+
+Train a face LoRA (~1-2 hours, ~15-20 training images required) then apply it at
+inference time with `Flux2KleinPipeline`.
+
+- **Pros:**
+  - Highest fidelity once trained; no per-image latency overhead.
+  - Fully within Diffusers; no new dependencies.
+  - LoRA checkpoints are reusable across prompts indefinitely.
+- **Cons:**
+  - Chicken-and-egg at bootstrap: only one reference image currently available;
+    training with fewer than ~15 diverse images produces identity drift.
+  - ai-toolkit training on FLUX.2 requires ~20-24 GB VRAM at bf16; viable on
+    Machine 2 only with aggressive quantisation of the training run, adding
+    additional setup overhead.
+  - LoRA commits identity globally — it cannot be toggled per-generation the way
+    a reference-image method can.
+
+## Decision
+
+**Shape A (ComfyUI + PuLID Flux2 node) is the primary path.**
+
+It is the only integration with verified FLUX.2-klein-4B compatibility today.
+The parallel-toolchain concern is acceptable because avatar generation is a
+periodic brand task, not a continuous pipeline; the two tools are never run
+simultaneously.
+
+**Shape C (LoRA training) is the long-term complement**, not a fallback.
+Once a sufficient image dataset exists (~15-20 diverse reference images), a face
+LoRA makes the identity portable to imageCLI and removes the ComfyUI dependency.
+The two approaches are not mutually exclusive.
+
+Shape B is deferred until a stable standalone Python API for PuLID + FLUX.2 is
+published (either from `iFayens`, `ToTheBeginning/PuLID`, or Diffusers upstream).
+
+## Consequences
+
+### Positive
+
+- Immediate path to consistent face identity using the only proven integration.
+- No modifications to imageCLI codebase; zero risk of breaking existing engines.
+- ComfyUI operates as a contained system tool per ADR-010.
+
+### Negative
+
+- Two separate GPU tools on Machine 2 must not run concurrently; operator
+  discipline or a mutex (e.g. a lock file) is required.
+- VRAM headroom is ~2-4 GB only; attention maps at high resolution or large
+  batch sizes may trigger OOM. Recommended mitigations:
+  - Target 1024x1024 max resolution.
+  - Use GGUF/FP8 quantised Klein weights in ComfyUI if available.
+  - Disable `torch.compile` in ComfyUI (no warmup overhead, saves ~200 MB peak).
+  - Keep `--lowvram` flag available.
+
+### Neutral
+
+- Shape C (LoRA) becomes viable once a reference image dataset is assembled; the
+  two approaches run independently and complement each other.
+- If `iFayens/ComfyUI-PuLID-Flux2` publishes a standalone Python API, Shape B
+  becomes a direct imageCLI PR with low risk.
+
+## VRAM Analysis (corrected)
+
+The analysis's "12-13 GB + 1-2 GB = ~14 GB, fits in 16 GB" claim requires
+qualification:
+
+| Component | VRAM |
+|-----------|------|
+| `Flux2KleinPipeline` bf16 (declared `vram_gb = 12.0`) | ~12 GB |
+| EVA02-CLIP-L-14-336 (face encoder) | ~0.8-1.0 GB |
+| InsightFace / AntelopeV2 (face detection, CPU-offloadable) | ~0.3-0.5 GB GPU (or 0 if CPU) |
+| PuLID model weights (`pulid_flux_v0.9.1.safetensors`) | ~0.5-1.0 GB |
+| PyTorch activation peaks during attention injection | ~0.5-1.5 GB |
+| **Total estimated peak** | **~14-16 GB** |
+
+The 16 GB total is a ceiling, not a comfortable operating point. Community reports
+show FLUX.2-klein-4B alone can spike above 13 GB during KV-cache expansion at
+high resolution. Adding PuLID places the system within 0-2 GB of the hardware
+limit.
+
+The analysis's "fits in 16 GB" conclusion is directionally correct but optimistic.
+It should be qualified: fits at 1024x1024 with careful settings; OOM risk exists
+at larger resolutions or with `torch.compile` active in ComfyUI.
+
+The analysis's "1-2 GB" PuLID overhead range is slightly low; ~2-3 GB is more
+accurate when accounting for activation peaks during identity injection.
+
+## Architectural note on Shape B risk
+
+The analysis correctly identifies the compatibility risk for Shape B, but the
+primary blocker is not VRAM — it is the absence of a stable public Python API for
+PuLID + FLUX.2-klein. Building on ComfyUI node internals would produce a fragile
+internal fork. This risk is higher than stated and should be the lead reason for
+deferral, with VRAM as a secondary concern.
+
+## Applies to
+
+| Concern | Owner |
+|---------|-------|
+| ComfyUI install + PuLID Flux2 node | Machine 2 setup |
+| LoRA dataset assembly | Brand / design workflow |
+| imageCLI Shape B — watch upstream | imageCLI engine layer |

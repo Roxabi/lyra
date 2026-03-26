@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lyra — Cyberpunk Architecture Gallery</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0a0a0f; color: #e0e0e0; font-family: 'Inter', sans-serif; padding: 48px 24px 64px; min-height: 100vh; }
+header { text-align: center; margin-bottom: 12px; }
+header h1 { font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 32px; color: #fafafa; margin-bottom: 6px; letter-spacing: 0.06em; }
+header .brand-sub { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #e85d04; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 10px; }
+header .meta { font-size: 12px; color: #6b7280; font-family: 'JetBrains Mono', monospace; }
+.direction-tag { display: inline-block; margin: 18px auto 36px; padding: 6px 16px; border: 1px solid #2a2a35; border-radius: 20px; font-size: 11px; font-family: 'JetBrains Mono', monospace; color: #6b7280; background: #18181f; }
+.direction-tag span { color: #e85d04; }
+
+/* Reference section */
+.section { max-width: 1400px; margin: 0 auto 16px; padding: 0 2px; display: flex; align-items: center; gap: 14px; }
+.section h2 { font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 15px; color: #fafafa; white-space: nowrap; }
+.section .tag { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #e85d04; background: rgba(232,93,4,0.12); border: 1px solid rgba(232,93,4,0.3); padding: 2px 8px; border-radius: 4px; }
+.section .line { flex: 1; height: 1px; background: #2a2a35; }
+.section .desc { font-size: 11px; color: #6b7280; font-family: 'JetBrains Mono', monospace; white-space: nowrap; }
+
+/* Reference card — full width */
+.ref-wrap { max-width: 1400px; margin: 0 auto 40px; }
+.ref-card { background: #18181f; border: 2px solid #e85d04; border-radius: 12px; overflow: hidden; cursor: pointer; position: relative; transition: box-shadow 0.2s; }
+.ref-card:hover { box-shadow: 0 8px 40px rgba(232,93,4,0.3); }
+.ref-card img { width: 100%; display: block; background: #0a0a0f; }
+.ref-card .badge { position: absolute; top: 10px; left: 12px; z-index: 2; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #fafafa; background: rgba(232,93,4,0.9); padding: 3px 9px; border-radius: 4px; }
+.ref-card .info { padding: 12px 16px 14px; display: flex; align-items: center; gap: 12px; }
+.ref-card .label { font-size: 13px; font-weight: 600; color: #fafafa; }
+.ref-card .style-desc { font-size: 11px; color: #6b7280; font-family: 'JetBrains Mono', monospace; }
+.favorite-pill { font-size: 10px; font-family: 'JetBrains Mono', monospace; color: #e85d04; border: 1px solid rgba(232,93,4,0.4); padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+
+/* Variation grid — 2 columns (wide cards) */
+.grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; max-width: 1400px; margin: 0 auto; }
+@media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+.card { background: #18181f; border: 1px solid #2a2a35; border-radius: 12px; overflow: hidden; cursor: pointer; position: relative; transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s; }
+.card:hover { border-color: #e85d04; transform: translateY(-3px); box-shadow: 0 8px 32px rgba(232,93,4,0.18); }
+.badge { position: absolute; top: 8px; left: 10px; z-index: 2; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #fafafa; background: rgba(10,10,15,0.85); padding: 2px 7px; border-radius: 4px; border: 1px solid #2a2a35; }
+.card img { width: 100%; display: block; background: #0a0a0f; }
+.info { padding: 12px 14px 14px; }
+.info .label { font-size: 12px; font-weight: 600; color: #fafafa; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.info .style-desc { font-size: 10px; color: #6b7280; font-family: 'JetBrains Mono', monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Lightbox */
+.lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.97); z-index: 1000; flex-direction: column; justify-content: center; align-items: center; }
+.lightbox.open { display: flex; }
+.lb-img { max-width: 92vw; max-height: 80vh; border-radius: 10px; object-fit: contain; display: block; border: 1px solid #2a2a35; }
+.lb-caption { margin-top: 18px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #6b7280; text-align: center; }
+.lb-btn { position: absolute; top: 50%; transform: translateY(-50%); font-size: 40px; color: #2a2a35; cursor: pointer; padding: 16px 24px; user-select: none; line-height: 1; transition: color 0.15s; }
+.lb-btn:hover { color: #e85d04; }
+.lb-prev { left: 12px; } .lb-next { right: 12px; }
+.lb-close { position: absolute; top: 18px; right: 22px; font-size: 22px; color: #6b7280; cursor: pointer; transition: color 0.15s; }
+.lb-close:hover { color: #fafafa; }
+footer { text-align: center; margin-top: 56px; font-size: 11px; color: #2a2a35; font-family: 'JetBrains Mono', monospace; }
+footer span { color: #e85d04; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand-sub">Lyra by Roxabi</div>
+  <h1>Architecture — Cyberpunk Dark</h1>
+  <p class="meta">Based on #295 · 8 variations · darker + more cyberpunk · 1024×576 · click to enlarge</p>
+</header>
+<div style="text-align:center">
+  <span class="direction-tag">neon rain · glitch · void · data matrix · HUD · megacity · noir · lava forge · based on <span>#295</span></span>
+</div>
+
+<!-- Reference -->
+<div class="section" style="margin-top:8px">
+  <span class="tag">#295</span>
+  <h2>Reference — Night Glow</h2>
+  <div class="line"></div>
+  <span class="desc">the favorite · night atmosphere · cozy cyberpunk</span>
+</div>
+<div class="ref-wrap">
+  <div class="ref-card" onclick="open295()">
+    <span class="badge">#295</span>
+    <img src="concepts/295-iso-multiagent-night-glow.png" alt="Night Glow Reference">
+    <div class="info">
+      <div>
+        <div class="label">Iso Multi-Agent — Night Glow</div>
+        <div class="style-desc">nighttime · amber diamond · neon data streams · cozy cyberpunk · 1024×576</div>
+      </div>
+      <span class="favorite-pill" style="margin-left:auto">⭐ FAVORITE</span>
+    </div>
+  </div>
+</div>
+
+<!-- Variations -->
+<div class="section">
+  <span class="tag">DARKER</span>
+  <h2>Cyberpunk Variations</h2>
+  <div class="line"></div>
+  <span class="desc">8 concepts · more dark · more cyberpunk</span>
+</div>
+<div class="grid" id="gallery"></div>
+
+<div class="lightbox" id="lightbox">
+  <span class="lb-close" id="lb-close">✕</span>
+  <span class="lb-btn lb-prev" id="lb-prev">&#x2039;</span>
+  <span class="lb-btn lb-next" id="lb-next">&#x203a;</span>
+  <img class="lb-img" id="lb-img" src="" alt="">
+  <div class="lb-caption" id="lb-caption"></div>
+</div>
+
+<footer>Generated with <span>Flux</span> · Lyra brand exploration · 2026-03-25</footer>
+
+<script>
+const IMAGES = [
+  { num: 312, src: "concepts/312-arch-cyberpunk-rain.png",     label: "Cyberpunk Rain",       style: "neon rain streaks · puddle reflections · dark cables · forge orange" },
+  { num: 313, src: "concepts/313-arch-cyberpunk-glitch.png",   label: "Cyberpunk Glitch",     style: "chromatic aberration · scan lines · data corruption · RGB split" },
+  { num: 314, src: "concepts/314-arch-cyberpunk-void.png",     label: "Cyberpunk Void",       style: "95% black · wireframe edges only · neon orange outline · Tron-dark" },
+  { num: 315, src: "concepts/315-arch-cyberpunk-matrix.png",   label: "Cyberpunk Matrix",     style: "amber data rain cascade · forge-orange digital rain · hub as source" },
+  { num: 316, src: "concepts/316-arch-cyberpunk-hud.png",      label: "Cyberpunk HUD",        style: "holographic HUD rings · targeting reticles · AR interface overlay" },
+  { num: 317, src: "concepts/317-arch-cyberpunk-megacity.png", label: "Cyberpunk Megacity",   style: "hub floating above city · Blade Runner scale · neon skyline backdrop" },
+  { num: 318, src: "concepts/318-arch-cyberpunk-neon-noir.png",label: "Cyberpunk Neon Noir",  style: "film noir chiaroscuro · single spotlight · deep shadow · 80% dark" },
+  { num: 319, src: "concepts/319-arch-cyberpunk-lava.png",     label: "Cyberpunk Lava Forge", style: "lava cracks in platform · volcanic ember drift · hellscape forge dark" },
+];
+
+// ALL images for lightbox (ref + variations)
+const ALL = [
+  { num: 295, src: "concepts/295-iso-multiagent-night-glow.png", label: "Iso Multi-Agent — Night Glow", style: "nighttime · amber diamond · neon data streams · cozy cyberpunk" },
+  ...IMAGES
+];
+
+(function () {
+  const gallery  = document.getElementById('gallery');
+  const lightbox = document.getElementById('lightbox');
+  const lbImg    = document.getElementById('lb-img');
+  const lbCap    = document.getElementById('lb-caption');
+  let current = 0;
+
+  // Build variation cards
+  IMAGES.forEach((item) => {
+    const globalIdx = ALL.findIndex(i => i.num === item.num);
+    const num = String(item.num).padStart(3, '0');
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML =
+      '<span class="badge">#' + num + '</span>' +
+      '<img src="' + item.src + '" alt="' + item.label + '" loading="lazy">' +
+      '<div class="info">' +
+        '<div class="label">' + item.label + '</div>' +
+        '<div class="style-desc">' + item.style + '</div>' +
+      '</div>';
+    card.addEventListener('click', () => openLb(globalIdx));
+    gallery.appendChild(card);
+  });
+
+  function open295() { openLb(0); }
+  window.open295 = open295;
+
+  function openLb(i) {
+    current = i;
+    const item = ALL[i];
+    lbImg.src = item.src;
+    lbImg.alt = item.label;
+    lbCap.textContent = '#' + String(item.num).padStart(3,'0') + ' ' + item.label + ' — ' + item.style;
+    lightbox.classList.add('open');
+  }
+  function close() { lightbox.classList.remove('open'); }
+  function nav(dir) { openLb((current + dir + ALL.length) % ALL.length); }
+
+  document.getElementById('lb-close').addEventListener('click', close);
+  document.getElementById('lb-prev').addEventListener('click', (e) => { e.stopPropagation(); nav(-1); });
+  document.getElementById('lb-next').addEventListener('click', (e) => { e.stopPropagation(); nav(1); });
+  lightbox.addEventListener('click', (e) => { if (e.target === lightbox) close(); });
+  document.addEventListener('keydown', (e) => {
+    if (!lightbox.classList.contains('open')) return;
+    if (e.key === 'Escape')     close();
+    if (e.key === 'ArrowLeft')  nav(-1);
+    if (e.key === 'ArrowRight') nav(1);
+  });
+}());
+</script>
+</body>
+</html>

@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict
 
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.messages import MessageManager
-from lyra.core.stores.pairing import PairingConfig
+from lyra.core.stores.pairing_config import PairingConfig
 from lyra.core.tool_display_config import ToolDisplayConfig
 
 log = logging.getLogger(__name__)
@@ -172,7 +172,7 @@ def _load_circuit_config(
 def _load_pairing_config(raw: dict[str, Any]) -> PairingConfig:
     """Load [pairing] section from raw config dict. Missing section → all defaults."""
     pairing_section: dict[str, Any] = raw.get("pairing", {})
-    return PairingConfig.from_dict(pairing_section)
+    return PairingConfig.model_validate(pairing_section)
 
 
 def _load_tool_display_config(raw: dict[str, Any]) -> ToolDisplayConfig:
@@ -188,7 +188,7 @@ def _load_tool_display_config(raw: dict[str, Any]) -> ToolDisplayConfig:
     [tool_display.show]   — per-tool visibility overrides (merged with defaults)
     """
     section: dict[str, Any] = raw.get("tool_display", {})
-    return ToolDisplayConfig.from_dict(section)
+    return ToolDisplayConfig.model_validate(section)
 
 
 def _load_cli_pool_config(raw: dict[str, Any]) -> CliPoolConfig:

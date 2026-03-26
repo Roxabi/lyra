@@ -8,7 +8,6 @@ Stack position: CircuitBreaker → SmartRouting → Retry → Driver
 
 from __future__ import annotations
 
-import dataclasses
 import logging
 import re
 import time

@@ -5,9 +5,10 @@ from __future__ import annotations
 import logging
 import re
 import tomllib
-from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from pydantic import BaseModel, ConfigDict
 
 if TYPE_CHECKING:
     from lyra.core.agent import Agent
@@ -24,15 +25,6 @@ _STYLE_INSTRUCTIONS: dict[str, str] = {
     ),
     "friendly": "Be warm and conversational. Use an approachable, casual tone.",
 }
-_DEFAULTS: dict[str, object] = {
-    "style": "concise",
-    "language": "auto",
-    "temperature": 0.7,
-    "model": None,
-    "max_steps": None,
-    "extra_instructions": "",
-    "debounce_ms": 300,
-}
 _VALID_PARAMS = {
     "style",
     "language",
@@ -44,9 +36,10 @@ _VALID_PARAMS = {
 }
 
 
-@dataclass(frozen=True)
-class EffectiveConfig:
+class EffectiveConfig(BaseModel):
     """Resolved configuration used by AnthropicAgent for a single process() call."""
+
+    model_config = ConfigDict(frozen=True)
 
     model: str
     temperature: float
@@ -54,12 +47,13 @@ class EffectiveConfig:
     max_turns: int | None  # None = unlimited
 
 
-@dataclass
-class RuntimeConfig:
+class RuntimeConfig(BaseModel):
     """Mutable overlay for AnthropicAgent parameters.
 
-    Fields mirror _DEFAULTS. Defaults produce no-op overlay behaviour.
+    Fields mirror _VALID_PARAMS. Defaults produce no-op overlay behaviour.
     """
+
+    model_config = ConfigDict(frozen=True)
 
     style: str = "concise"
     language: str = "auto"
@@ -97,7 +91,9 @@ class RuntimeConfig:
     def save(self, path: Path) -> None:
         """Write only non-default values to a flat TOML file."""
         data: dict[str, object] = {}
-        for key, default in _DEFAULTS.items():
+        for key in _VALID_PARAMS:
+            field_info = RuntimeConfig.model_fields.get(key)
+            default = field_info.default if field_info is not None else None
             value = getattr(self, key)
             if value != default:
                 data[key] = value
@@ -154,10 +150,12 @@ class RuntimeConfig:
             raise ValueError(f"Unknown config key: {key!r}")
         if instance is None:
             instance = cls()
-        return replace(instance, **{key: _DEFAULTS[key]})
+        field_info = cls.model_fields.get(key)
+        default = field_info.default if field_info is not None else None
+        return instance.model_copy(update={key: default})
 
 
-def _write_flat_toml(data: dict) -> str:
+def _write_flat_toml(data: dict[str, object]) -> str:
     """Serialize a flat dict to TOML string. Caller must filter out None values."""
     lines = []
     for key, value in data.items():
@@ -171,7 +169,7 @@ def _write_flat_toml(data: dict) -> str:
 def set_param(rc: RuntimeConfig, key: str, value: str) -> RuntimeConfig:  # noqa: C901 — one validation branch per config key; inherently linear
     """Validate and apply a single key=value update to RuntimeConfig.
 
-    Returns a new RuntimeConfig instance via dataclasses.replace().
+    Returns a new RuntimeConfig instance via model_copy().
     Raises ValueError on unknown key or invalid value.
     """
     if key not in _VALID_PARAMS:
@@ -242,7 +240,7 @@ def set_param(rc: RuntimeConfig, key: str, value: str) -> RuntimeConfig:  # noqa
             )
         parsed = value
 
-    return replace(rc, **{key: parsed})
+    return rc.model_copy(update={key: parsed})
 
 
 class RuntimeConfigHolder:

@@ -100,22 +100,15 @@ reportPrivateUsage = "none"
 # Confirmed by manual audit 2026-03-23: all 48 src hits are dynamic registrations
 # or private module helpers called through the module's public entry point.
 reportUnusedFunction = "none"
-#
-# ── Temporary debt — remove after Wave 4 TypedDict annotation sprint ──────────
-# (tracked in https://github.com/Roxabi/lyra/issues/411)
-#
-# All six rules cascade from dict[str, Any] produced by JSON/TOML config loading.
-# Fix: replace raw dicts with TypedDicts at every config loading site, then
-# re-enable these rules one by one. Until then they generate ~3 000 false positives.
+# ── Wave 4 progress (#411) — config loading migrated to Pydantic ─────────────
+# Rules below still generate errors from non-config `dict[str, Any]` patterns
+# in business logic and tests. Re-enable incrementally as those sites are typed.
 reportUnknownVariableType = "none"
 reportUnknownMemberType = "none"
 reportUnknownArgumentType = "none"
 reportUnknownParameterType = "none"
 reportMissingParameterType = "none"
 reportUnknownLambdaType = "none"
-#
-# reportMissingTypeArgument: bare dict/list/tuple annotations throughout the
-# codebase. Fix alongside the TypedDict sprint above.
 reportMissingTypeArgument = "none"
 
 [tool.ruff]

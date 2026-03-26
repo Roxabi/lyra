@@ -1,14 +1,15 @@
-"""Configuration dataclass for tool-call display in streaming responses.
+"""Configuration model for tool-call display in streaming responses.
 
 Loaded by bootstrap from the ``[tool_display]`` section of config.toml.
-When the section is absent, ``ToolDisplayConfig.defaults()`` is used.
+When the section is absent, ``ToolDisplayConfig()`` is used (all defaults).
 """
 
 from __future__ import annotations
 
-import dataclasses
-from dataclasses import dataclass, field, fields
 from types import MappingProxyType
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, field_validator
 
 # Canonical show-key names (lowercase).  StreamProcessor normalises tool_name
 # to lowercase before lookup.
@@ -25,8 +26,7 @@ _DEFAULT_SHOW: dict[str, bool] = {
 }
 
 
-@dataclass(frozen=True)
-class ToolDisplayConfig:
+class ToolDisplayConfig(BaseModel):
     """Immutable configuration controlling how tool calls are rendered during streaming.
 
     Attributes
@@ -51,86 +51,77 @@ class ToolDisplayConfig:
         (silent).  Mutation raises ``TypeError``.
     """
 
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
     names_threshold: int = 3
     group_threshold: int = 3
     bash_max_len: int = 60
     throttle_ms: int = 2000
-    show: MappingProxyType[str, bool] = field(
-        default_factory=lambda: MappingProxyType(dict(_DEFAULT_SHOW))
-    )
+    # Stored as dict[str, bool] for Pydantic compatibility; exposed as
+    # MappingProxyType via the .show property to preserve read-only semantics.
+    _show: dict[str, bool] = {}
 
-    def __post_init__(self) -> None:
-        """Validate numeric fields on construction.
+    def __init__(self, **data: Any) -> None:
+        show_raw: Any = data.pop("show", None)
+        super().__init__(**data)
+        if show_raw is None:
+            merged = dict(_DEFAULT_SHOW)
+        elif isinstance(show_raw, MappingProxyType):
+            merged = dict(show_raw)
+        else:
+            overrides: dict[str, bool] = {k: bool(v) for k, v in show_raw.items()}
+            merged = {**_DEFAULT_SHOW, **overrides}
+        object.__setattr__(self, "_show", merged)
 
-        Raises
-        ------
-        ValueError
-            If any numeric field is out of its acceptable range.
-        """
-        if self.names_threshold < 1:
-            raise ValueError(
-                f"names_threshold must be >= 1, got {self.names_threshold}"
-            )
-        if self.group_threshold < 1:
-            raise ValueError(
-                f"group_threshold must be >= 1, got {self.group_threshold}"
-            )
-        if self.bash_max_len < 1:
-            raise ValueError(f"bash_max_len must be >= 1, got {self.bash_max_len}")
-        if self.throttle_ms < 0:
-            raise ValueError(f"throttle_ms must be >= 0, got {self.throttle_ms}")
+    @property
+    def show(self) -> MappingProxyType[str, bool]:
+        """Read-only view of the tool-name → visibility map."""
+        return MappingProxyType(self._show)
 
+    @field_validator("names_threshold")
     @classmethod
-    def defaults(cls) -> ToolDisplayConfig:
-        """Return a ``ToolDisplayConfig`` populated with hardcoded defaults.
+    def _validate_names_threshold(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError(f"names_threshold must be >= 1, got {v}")
+        return v
 
-        Used as the interim config when the ``[tool_display]`` section is absent
-        from ``config.toml``, and during S4 integration before S5 is merged.
-        """
-        return cls()
-
+    @field_validator("group_threshold")
     @classmethod
-    def from_dict(cls, data: dict) -> ToolDisplayConfig:
-        """Build a ``ToolDisplayConfig`` from a raw TOML section dict.
+    def _validate_group_threshold(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError(f"group_threshold must be >= 1, got {v}")
+        return v
 
-        Only recognised keys are used; unknown keys are silently ignored.
-        ``[tool_display.show]`` sub-table is merged with the defaults so that
-        any keys omitted in config.toml keep their default values.
+    @field_validator("bash_max_len")
+    @classmethod
+    def _validate_bash_max_len(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError(f"bash_max_len must be >= 1, got {v}")
+        return v
 
-        Args:
-            data: Raw dict from the ``[tool_display]`` TOML section.
-                  An empty dict returns ``ToolDisplayConfig.defaults()``.
+    @field_validator("throttle_ms")
+    @classmethod
+    def _validate_throttle_ms(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError(f"throttle_ms must be >= 0, got {v}")
+        return v
 
-        Raises:
-            ValueError: If a numeric field value cannot be coerced to ``int``,
-                        or if a numeric field is out of its valid range.
-        """
-        if not data:
-            return cls.defaults()
-
-        # Use the authoritative dataclasses API rather than relying on CPython's
-        # implementation detail of scalar field defaults being set as class attrs.
-        _field_defaults = {
-            f.name: f.default
-            for f in fields(cls)
-            if f.default is not dataclasses.MISSING
-        }
-
-        show_overrides: dict[str, bool] = data.get("show", {})
-        # Coerce all show values to bool — guards programmatic callers passing
-        # integers or other truthy values into a field typed dict[str, bool].
-        merged_show = MappingProxyType(
-            {k: bool(v) for k, v in {**_DEFAULT_SHOW, **show_overrides}.items()}
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, ToolDisplayConfig):
+            return NotImplemented
+        return (
+            self.names_threshold == other.names_threshold
+            and self.group_threshold == other.group_threshold
+            and self.bash_max_len == other.bash_max_len
+            and self.throttle_ms == other.throttle_ms
+            and self._show == other._show
         )
 
-        return cls(
-            names_threshold=int(
-                data.get("names_threshold", _field_defaults["names_threshold"])
-            ),
-            group_threshold=int(
-                data.get("group_threshold", _field_defaults["group_threshold"])
-            ),
-            bash_max_len=int(data.get("bash_max_len", _field_defaults["bash_max_len"])),
-            throttle_ms=int(data.get("throttle_ms", _field_defaults["throttle_ms"])),
-            show=merged_show,
-        )
+    def __hash__(self) -> int:
+        return hash((
+            self.names_threshold,
+            self.group_threshold,
+            self.bash_max_len,
+            self.throttle_ms,
+            tuple(sorted(self._show.items())),
+        ))

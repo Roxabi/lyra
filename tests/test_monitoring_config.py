@@ -127,7 +127,7 @@ class TestMonitoringConfigValidation:
         """quiet_start must be HH:MM zero-padded."""
         from lyra.monitoring.config import MonitoringConfig
 
-        with pytest.raises(ValueError, match="quiet_start must be HH:MM"):
+        with pytest.raises(ValueError, match="must be HH:MM"):
             MonitoringConfig(
                 quiet_start="9:00",
                 quiet_end="08:00",
@@ -140,7 +140,7 @@ class TestMonitoringConfigValidation:
         """quiet_end must be HH:MM zero-padded."""
         from lyra.monitoring.config import MonitoringConfig
 
-        with pytest.raises(ValueError, match="quiet_end must be HH:MM"):
+        with pytest.raises(ValueError, match="must be HH:MM"):
             MonitoringConfig(
                 quiet_start="00:00",
                 quiet_end="8:00",

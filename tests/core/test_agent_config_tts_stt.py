@@ -51,7 +51,10 @@ class TestAgentRowToConfigTTSSTT:
         """voice_json with tts data is parsed into Agent.voice.tts."""
         from lyra.core.agent_db_loader import agent_row_to_config
 
-        voice_data = {"tts": {"engine": "qwen-fast", "voice": "Ono_Anna", "language": "French"}, "stt": {}}
+        voice_data = {
+            "tts": {"engine": "qwen-fast", "voice": "Ono_Anna", "language": "French"},
+            "stt": {},
+        }
         row = self._make_row(voice_json=json.dumps(voice_data))
         agent = agent_row_to_config(row)
         assert agent.voice is not None
@@ -63,7 +66,10 @@ class TestAgentRowToConfigTTSSTT:
         """voice_json with stt data is parsed into Agent.voice.stt."""
         from lyra.core.agent_db_loader import agent_row_to_config
 
-        voice_data = {"tts": {}, "stt": {"language_detection_threshold": 0.9, "language_fallback": "en"}}
+        voice_data = {
+            "tts": {},
+            "stt": {"language_detection_threshold": 0.9, "language_fallback": "en"},
+        }
         row = self._make_row(voice_json=json.dumps(voice_data))
         agent = agent_row_to_config(row)
         assert agent.voice is not None

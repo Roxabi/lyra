@@ -201,7 +201,10 @@ class AgentStore(SqliteStore):
         if "persona" not in cols:
             return  # already rebuilt
 
-        log.info("_rebuild_346: dropping old columns (persona, tts_json, stt_json, i18n_language)")
+        log.info(
+            "_rebuild_346: dropping old columns"
+            " (persona, tts_json, stt_json, i18n_language)"
+        )
         await db.executescript(_REBUILD_346_DROP_OLD_COLUMNS)
         await db.commit()
         log.info("_rebuild_346: table rebuild complete")

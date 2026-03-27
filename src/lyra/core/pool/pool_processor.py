@@ -226,9 +226,16 @@ class PoolProcessor:
         pool = self._pool
         pool.append(msg)
 
-        # Inject voice modality when pool.voice_mode is on — must happen
-        # before _original_msg is captured so dispatch_streaming sees it.
-        if pool.voice_mode and msg.modality != "voice":
+        # Inject voice modality — must happen before _original_msg is
+        # captured so dispatch_streaming sees it.  Covers:
+        #   - pool.voice_mode toggle (/voice → /text)
+        #   - /voice <prompt> one-shot (agent rewrites text internally,
+        #     but _original_msg needs modality set here)
+        #   - voice messages (modality already "voice" from audio pipeline)
+        if msg.modality != "voice" and (
+            pool.voice_mode
+            or (msg.text and msg.text.strip().lower().startswith("/voice "))
+        ):
             import dataclasses
 
             msg = dataclasses.replace(msg, modality="voice")

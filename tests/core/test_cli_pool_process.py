@@ -37,7 +37,7 @@ class TestCliPoolBuildCmd:
         assert "stream-json" in cmd
         assert "--model" in cmd
         idx = cmd.index("--model")
-        assert cmd[idx + 1] == "claude-sonnet-4-5"
+        assert cmd[idx + 1] == "claude-opus-4-6"
         # max_turns=None (default) → unlimited, --max-turns flag omitted
         assert "--max-turns" not in cmd
         assert "--allowedTools" not in cmd

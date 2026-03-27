@@ -19,7 +19,7 @@ class TestModelConfig:
     def test_defaults(self) -> None:
         cfg = ModelConfig()
         assert cfg.backend == "claude-cli"
-        assert cfg.model == "claude-sonnet-4-5"
+        assert cfg.model == "claude-opus-4-6"
         assert cfg.max_turns is None  # None = unlimited (default)
         assert cfg.tools == ()
 

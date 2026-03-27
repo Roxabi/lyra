@@ -1,5 +1,5 @@
 #!/bin/bash
-# Deploy script for Machine 1 — pull latest main, install deps, restart Lyra.
+# Deploy script for Machine 1 — pull latest staging, install deps, restart Lyra.
 # Called by: systemd timer (auto) or `make deploy` (manual from Machine 2).
 set -euo pipefail
 
@@ -18,7 +18,7 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
 cd "$PROJECT_DIR"
 
 # Fetch latest
-git fetch origin main 2>&1 | tee -a "$LOG_FILE"
+git fetch origin staging 2>&1 | tee -a "$LOG_FILE"
 
 # Check if there are new commits
 LOCAL=$(git rev-parse HEAD)
@@ -32,7 +32,7 @@ fi
 log "New version detected: $LOCAL -> $REMOTE"
 
 # Pull
-git pull origin main 2>&1 | tee -a "$LOG_FILE"
+git pull origin staging 2>&1 | tee -a "$LOG_FILE"
 
 # Install/update deps
 uv sync --all-extras --frozen 2>&1 | tee -a "$LOG_FILE"

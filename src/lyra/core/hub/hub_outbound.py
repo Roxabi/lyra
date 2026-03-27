@@ -227,10 +227,33 @@ class HubOutboundMixin:
         if dispatcher is not None:
             dispatcher.enqueue_streaming(msg, chunks, outbound)
             self._last_processed_at = time.monotonic()
-            if _voice_done is not None:
-                # Dispatcher consumes chunks asynchronously in its worker;
-                # wait for the tee iterator to finish so text is fully collected.
-                await _voice_done.wait()
+            # Voice TTS: don't block here — fire TTS as a background task
+            # that waits for the tee to finish independently.  Blocking on
+            # _voice_done.wait() caused the pool processor to hang when the
+            # dispatcher's scope lock was held by a prior stream (#TTS-fix).
+            if _should_speak and _voice_done is not None:
+                _vp = _voice_parts
+                _vd = _voice_done
+
+                async def _deferred_tts() -> None:
+                    await _vd.wait()  # type: ignore[union-attr]
+                    full_text = "".join(_vp or []).strip()
+                    if full_text:
+                        agent_tts = self._resolve_agent_tts(msg)
+                        fallback_lang = self._resolve_agent_fallback_language(msg)
+                        await self._audio_pipeline.synthesize_and_dispatch_audio(
+                            msg,
+                            full_text,
+                            agent_tts=agent_tts,
+                            fallback_language=fallback_lang,
+                        )
+
+                task = asyncio.create_task(
+                    _deferred_tts(), name=f"tts:{msg.id}"
+                )
+                self._memory_tasks.add(task)
+                task.add_done_callback(self._memory_tasks.discard)
+                return
         else:
             adapter = self.adapter_registry.get((platform, msg.bot_id))
             if adapter is None:

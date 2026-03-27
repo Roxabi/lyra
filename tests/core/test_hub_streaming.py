@@ -273,14 +273,18 @@ class TestDispatchStreaming:
             yield TextRenderEvent(text=" world", is_final=True)
 
         try:
+            # dispatch_streaming returns immediately (non-blocking for voice
+            # with dispatcher); TTS fires as a background task.
             await asyncio.wait_for(hub.dispatch_streaming(msg, gen()), timeout=5.0)
+            # Wait for the dispatcher to consume the stream and TTS to fire.
+            if hub._memory_tasks:
+                await asyncio.wait_for(
+                    asyncio.gather(*hub._memory_tasks), timeout=5.0
+                )
         finally:
             await dispatcher.stop()
 
         assert streamed == ["Hello", " world"]
-
-        if hub._memory_tasks:
-            await asyncio.gather(*hub._memory_tasks)
         hub._audio_pipeline.synthesize_and_dispatch_audio.assert_awaited_once_with(
             msg, "Hello world", agent_tts=None, fallback_language=None
         )

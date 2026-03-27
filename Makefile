@@ -170,8 +170,8 @@ remote:
 	  start)   ssh $(MACHINE1) "$$SCTL start $$PROGS" ;; \
 	  stop)    ssh $(MACHINE1) "$$SCTL stop $$PROGS" ;; \
 	  status)  ssh $(MACHINE1) "$$SCTL status $$PROGS" ;; \
-	  logs)    ssh $(MACHINE1) "$$SCTL tail -f $$(echo $$PROGS | awk '{print \$$1}')" ;; \
-	  errors)  ssh $(MACHINE1) "$$SCTL tail -f $$(echo $$PROGS | awk '{print \$$1}') stderr" ;; \
+	  logs)    FIRST=$${PROGS%% *}; ssh $(MACHINE1) "$$SCTL tail -f $$FIRST" ;; \
+	  errors)  FIRST=$${PROGS%% *}; ssh $(MACHINE1) "$$SCTL tail -f $$FIRST stderr" ;; \
 	  *) echo "Unknown action: $$ACTION"; exit 1 ;; \
 	esac
 

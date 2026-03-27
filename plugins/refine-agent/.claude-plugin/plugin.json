@@ -2,5 +2,7 @@
   "name": "refine-agent",
   "version": "0.1.0",
   "description": "Conversationally refine Lyra agent profiles — persona, voice, passthroughs, model.",
-  "skills": ["skills/refine-agent"]
+  "author": {
+    "name": "Roxabi"
+  }
 }

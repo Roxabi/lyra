@@ -43,6 +43,10 @@ class ClaudeCliDriver:
         """
         return await self._pool.resume_and_reset(pool_id, session_id)
 
+    def link_lyra_session(self, pool_id: str, lyra_session_id: str) -> None:
+        """Register the current Lyra session for CLI session mapping."""
+        self._pool.link_lyra_session(pool_id, lyra_session_id)
+
     def is_alive(self, pool_id: str) -> bool:
         """Delegate liveness check to CliPool."""
         return self._pool.is_alive(pool_id)

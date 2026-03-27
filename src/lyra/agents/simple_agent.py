@@ -236,6 +236,11 @@ class SimpleAgent(AgentBase):
 
         model_cfg = self.config.llm_config
 
+        # Link Lyra session → CLI session so reply-to-resume works.
+        _link = getattr(self._provider, "link_lyra_session", None)
+        if _link is not None:
+            _link(pool.pool_id, pool.session_id)
+
         log.debug(
             "[agent:%s][pool:%s] processing message (%d chars)",
             self.name,

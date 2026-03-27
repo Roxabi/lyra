@@ -84,25 +84,44 @@ class CliPool(CliPoolWorkerMixin):
         self._cwd_overrides: dict[str, Path] = {}
         self._resume_session_ids: dict[str, str] = {}
         self._last_sweep_at: float | None = None
-        # Persistent CLI session store — maps pool_id → Claude CLI session_id.
-        # Survives daemon restarts so --resume uses the correct CLI session,
-        # not Lyra's internal session UUID.
+        # Persistent CLI session store — survives daemon restarts so --resume
+        # uses the correct CLI session, not Lyra's internal session UUID.
+        # Structure: {"by_pool": {pool_id: cli_sid}, "by_session": {lyra_sid: cli_sid}}
         self._cli_sessions_path = (
             (session_store_dir or Path.home() / ".lyra") / "cli_sessions.json"
         )
-        self._cli_sessions: dict[str, str] = self._load_cli_sessions()
+        self._cli_sessions: dict[str, dict[str, str]] = self._load_cli_sessions()
+        # In-memory mapping of pool_id → current Lyra session UUID.
+        # Updated by link_lyra_session() before each send, so the
+        # _on_session_update callback can record {lyra_sid → cli_sid}.
+        self._lyra_sessions: dict[str, str] = {}
 
-    def _load_cli_sessions(self) -> dict[str, str]:
+    def _load_cli_sessions(self) -> dict[str, dict[str, str]]:
         try:
-            return json.loads(self._cli_sessions_path.read_text())
+            data = json.loads(self._cli_sessions_path.read_text())
         except (FileNotFoundError, json.JSONDecodeError, OSError):
-            return {}
+            return {"by_pool": {}, "by_session": {}}
+        # Migrate from old flat format (pool_id → cli_sid).
+        if "by_pool" not in data:
+            return {"by_pool": data, "by_session": {}}
+        return data
+
+    def link_lyra_session(self, pool_id: str, lyra_session_id: str) -> None:
+        """Associate the current Lyra session UUID with *pool_id*.
+
+        Called by the agent before each send so the persist callback can
+        map ``lyra_session_id → cli_session_id`` (for reply-to-resume).
+        """
+        self._lyra_sessions[pool_id] = lyra_session_id
 
     def _persist_cli_session(self, pool_id: str, cli_session_id: str) -> None:
-        """Persist a pool_id → CLI session_id mapping to disk."""
+        """Persist pool_id → CLI session_id (and lyra_sid → CLI) to disk."""
         if not cli_session_id or not _SESSION_ID_RE.match(cli_session_id):
             return
-        self._cli_sessions[pool_id] = cli_session_id
+        self._cli_sessions["by_pool"][pool_id] = cli_session_id
+        lyra_sid = self._lyra_sessions.get(pool_id)
+        if lyra_sid:
+            self._cli_sessions["by_session"][lyra_sid] = cli_session_id
         try:
             self._cli_sessions_path.parent.mkdir(parents=True, exist_ok=True)
             self._cli_sessions_path.write_text(
@@ -347,7 +366,11 @@ class CliPool(CliPoolWorkerMixin):
         CLI session, invalid id, or process already on that session).
         """
         # Translate Lyra session → CLI session from the persistent store.
-        cli_sid = self._cli_sessions.get(pool_id)
+        # Try exact Lyra-session mapping first (reply-to-resume), then
+        # fall back to latest CLI session for the pool (last-active-resume).
+        cli_sid = self._cli_sessions.get("by_session", {}).get(
+            session_id
+        ) or self._cli_sessions.get("by_pool", {}).get(pool_id)
         if cli_sid is None:
             log.info(
                 "[pool:%s] resume_and_reset: no persisted CLI session"

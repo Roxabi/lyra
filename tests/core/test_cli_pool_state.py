@@ -147,7 +147,8 @@ class TestCliPoolResumeAndReset:
 
         # Pre-populate the persistent CLI session store (simulates a prior
         # successful interaction that persisted the real CLI session ID).
-        pool._cli_sessions["pool:tg:chat:1"] = _CLI_SESS
+        pool._cli_sessions["by_pool"]["pool:tg:chat:1"] = _CLI_SESS
+        pool._cli_sessions["by_session"][_LYRA_SESS] = _CLI_SESS
 
         # Act — pipeline passes the Lyra session; resume_and_reset looks up
         # the CLI session from the persistent store.

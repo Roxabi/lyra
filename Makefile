@@ -1,19 +1,13 @@
-ifeq (lyra,$(firstword $(MAKECMDGOALS)))
-  LYRA_CMD := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
-  $(eval $(LYRA_CMD):;@:)
-endif
-
 ifeq (remote,$(firstword $(MAKECMDGOALS)))
   REMOTE_CMD := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
   $(eval $(REMOTE_CMD):;@:)
-endif
-
-ifeq (telegram,$(firstword $(MAKECMDGOALS)))
+else ifeq (lyra,$(firstword $(MAKECMDGOALS)))
+  LYRA_CMD := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
+  $(eval $(LYRA_CMD):;@:)
+else ifeq (telegram,$(firstword $(MAKECMDGOALS)))
   TELEGRAM_CMD := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
   $(eval $(TELEGRAM_CMD):;@:)
-endif
-
-ifeq (discord,$(firstword $(MAKECMDGOALS)))
+else ifeq (discord,$(firstword $(MAKECMDGOALS)))
   DISCORD_CMD := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
   $(eval $(DISCORD_CMD):;@:)
 endif
@@ -45,6 +39,7 @@ endef
 
 .PHONY: lyra telegram discord register deploy remote test lint typecheck format
 
+ifneq (remote,$(firstword $(MAKECMDGOALS)))
 lyra:
 ifeq ($(LYRA_CMD),stop)
 	$(ensure_hub)
@@ -126,6 +121,8 @@ else
 	@$(SUPERVISORCTL) $(DISCORD_CMD) lyra_discord
 endif
 
+endif # ifneq remote
+
 register:
 	@echo "Registering lyra with lyra-stack..."
 	@if [ ! -d "$(LYRA_STACK_DIR)" ]; then \
@@ -148,9 +145,35 @@ deploy:
 	@echo "Deploying to Machine 1 ($(MACHINE1))..."
 	@ssh $(MACHINE1) "cd $(MACHINE1_DIR) && bash scripts/deploy.sh"
 
+REMOTE_SCTL := ~/projects/lyra-stack/scripts/supervisorctl.sh
+
+# make remote [service] [action]
+#   Services: lyra, telegram, discord, tts, stt (default: all)
+#   Actions:  reload, start, stop, status, logs, errors (default: status)
 remote:
 	$(require_machine1)
-	@ssh $(MACHINE1) "cd $(MACHINE1_DIR) && make lyra $(REMOTE_CMD)"
+	@SVC="$(word 1,$(REMOTE_CMD))"; \
+	ACTION="$(word 2,$(REMOTE_CMD))"; \
+	SCTL="$(REMOTE_SCTL)"; \
+	case "$$SVC" in \
+	  lyra)     PROGS="lyra_telegram lyra_discord" ;; \
+	  telegram) PROGS="lyra_telegram" ;; \
+	  discord)  PROGS="lyra_discord" ;; \
+	  tts)      PROGS="voicecli_tts" ;; \
+	  stt)      PROGS="voicecli_stt" ;; \
+	  reload|start|stop|status|logs|errors|"") \
+	    ACTION="$$SVC"; PROGS="lyra_telegram lyra_discord voicecli_tts voicecli_stt" ;; \
+	  *) echo "Unknown service: $$SVC"; exit 1 ;; \
+	esac; \
+	case "$${ACTION:-status}" in \
+	  reload)  ssh $(MACHINE1) "$$SCTL restart $$PROGS" ;; \
+	  start)   ssh $(MACHINE1) "$$SCTL start $$PROGS" ;; \
+	  stop)    ssh $(MACHINE1) "$$SCTL stop $$PROGS" ;; \
+	  status)  ssh $(MACHINE1) "$$SCTL status $$PROGS" ;; \
+	  logs)    ssh $(MACHINE1) "$$SCTL tail -f $$(echo $$PROGS | awk '{print \$$1}')" ;; \
+	  errors)  ssh $(MACHINE1) "$$SCTL tail -f $$(echo $$PROGS | awk '{print \$$1}') stderr" ;; \
+	  *) echo "Unknown action: $$ACTION"; exit 1 ;; \
+	esac
 
 test:
 	uv run pytest -v

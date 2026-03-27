@@ -150,6 +150,8 @@ class AgentTTSConfig(BaseModel):
     chunk_size: int | None = None
     exaggeration: float | None = None
     cfg_weight: float | None = None
+    languages: list[str] | None = None  # detection candidates, e.g. ["fr", "en"]
+    default_language: str | None = None  # fallback when detection fails
 
 
 class AgentSTTConfig(BaseModel):

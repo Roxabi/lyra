@@ -22,7 +22,7 @@ git fetch origin staging 2>&1 | tee -a "$LOG_FILE"
 
 # Check if there are new commits
 LOCAL=$(git rev-parse HEAD)
-REMOTE=$(git rev-parse origin/main)
+REMOTE=$(git rev-parse origin/staging)
 
 if [ "$LOCAL" = "$REMOTE" ]; then
     log "Already up to date ($LOCAL)"

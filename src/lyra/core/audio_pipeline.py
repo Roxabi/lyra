@@ -54,7 +54,7 @@ def _detect_language(
     """
     if not languages:
         return default_language
-    if len(text) < 20:
+    if len(text) < 10:
         return default_language
     lower = text.lower()
     best_lang = default_language

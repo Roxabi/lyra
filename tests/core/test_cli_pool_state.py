@@ -133,7 +133,7 @@ class TestCliPoolResumeAndReset:
     """CliPool.resume_and_reset() stores session_id for next spawn (T3.4, SC-5)."""
 
     async def test_resume_and_reset_sets_session_id(self) -> None:
-        """After resume_and_reset(), session stored and process killed."""
+        """After resume_and_reset(), CLI session stored and process killed."""
         pool = CliPool()
         proc = make_fake_proc([])
         # Pre-populate a live entry so _kill has something to terminate
@@ -142,13 +142,19 @@ class TestCliPoolResumeAndReset:
         )
         pool._entries["pool:tg:chat:1"] = entry
 
-        _SESS = "abcdef01-2345-6789-abcd-ef0123456789"
+        _CLI_SESS = "abcdef01-2345-6789-abcd-ef0123456789"
+        _LYRA_SESS = "11111111-2222-3333-4444-555555555555"
 
-        # Act
-        await pool.resume_and_reset("pool:tg:chat:1", _SESS)  # type: ignore[attr-defined]
+        # Pre-populate the persistent CLI session store (simulates a prior
+        # successful interaction that persisted the real CLI session ID).
+        pool._cli_sessions["pool:tg:chat:1"] = _CLI_SESS
 
-        # Assert — session stored for next spawn AND process killed
-        assert pool._resume_session_ids.get("pool:tg:chat:1") == _SESS  # type: ignore[attr-defined]
+        # Act — pipeline passes the Lyra session; resume_and_reset looks up
+        # the CLI session from the persistent store.
+        await pool.resume_and_reset("pool:tg:chat:1", _LYRA_SESS)  # type: ignore[attr-defined]
+
+        # Assert — CLI session stored for next spawn AND process killed
+        assert pool._resume_session_ids.get("pool:tg:chat:1") == _CLI_SESS  # type: ignore[attr-defined]
         assert "pool:tg:chat:1" not in pool._entries
 
     async def test_spawn_consumes_resume_session_id_and_passes_to_cmd(self) -> None:

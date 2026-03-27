@@ -212,12 +212,15 @@ async def read_until_result(  # noqa: C901, PLR0915
             if msg_type == "result":
                 if not session_id:
                     session_id = data.get("session_id", "")
-                if session_id and entry.session_id != session_id:
-                    entry.session_id = session_id
+                if session_id:
+                    entry.update_session_id(session_id)
                 if pending_intermediate is not None:
                     result_text = pending_intermediate
                 else:
                     result_text = data.get("result") or "\n\n".join(result_parts)
+                # CLI puts detailed errors in errors[] (e.g. "No conversation found")
+                errors = data.get("errors", [])
+                error_detail = errors[0] if errors else ""
                 log.info(
                     "[pool:%s] response: %d chars, %dms",
                     pool_id,
@@ -233,7 +236,9 @@ async def read_until_result(  # noqa: C901, PLR0915
                             session_id=session_id or "",
                             warning="Response truncated (max turns reached)",
                         )
-                    return CliResult(error=result_text or "Unknown error from Claude")
+                    return CliResult(
+                        error=error_detail or result_text or "Unknown error from Claude",
+                    )
 
                 return CliResult(result=result_text, session_id=session_id or "")
 
@@ -343,7 +348,8 @@ class StreamingIterator:
 
             if msg_type == "system" and data.get("subtype") == "init":
                 self.session_id = data.get("session_id", "") or None
-                entry.session_id = self.session_id or entry.session_id  # type: ignore[union-attr]
+                if self.session_id:
+                    entry.update_session_id(self.session_id)  # type: ignore[union-attr]
                 log.debug(
                     "[pool:%s] streaming init: session=%s",
                     self._pool_id,
@@ -390,12 +396,13 @@ class StreamingIterator:
                 sid = data.get("session_id", "")
                 if sid:
                     self.session_id = sid
-                    if entry.session_id != sid:  # type: ignore[union-attr]
-                        entry.session_id = sid  # type: ignore[union-attr]
+                    entry.update_session_id(sid)  # type: ignore[union-attr]
                 is_error = data.get("is_error", False)
                 if is_error:
+                    errors = data.get("errors", [])
                     self.error = (
-                        data.get("result")
+                        errors[0] if errors
+                        else data.get("result")
                         or data.get("subtype")
                         or "Unknown streaming error"
                     )

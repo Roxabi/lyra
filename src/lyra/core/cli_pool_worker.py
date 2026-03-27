@@ -10,6 +10,7 @@ import asyncio
 import logging
 import os
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -48,12 +49,28 @@ class _ProcessEntry:
     model_config: ModelConfig
     system_prompt: str = ""
     session_id: str | None = None
+    resumed_from: str | None = None  # session_id passed to --resume at spawn
     turn_count: int = 0
     last_activity: float = field(default_factory=time.time)
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    _on_session_update: Callable[[str, str], None] | None = field(
+        default=None, repr=False
+    )
 
     def is_alive(self) -> bool:
         return self.proc.returncode is None
+
+    def update_session_id(self, sid: str | None) -> None:
+        """Set session_id and fire the persist callback if changed."""
+        if sid and sid != self.session_id:
+            self.session_id = sid
+            if self._on_session_update is not None:
+                try:
+                    self._on_session_update(self.pool_id, sid)
+                except Exception:
+                    log.debug(
+                        "[pool:%s] session update callback failed", self.pool_id
+                    )
 
 
 class CliPoolWorkerMixin:
@@ -154,11 +171,15 @@ class CliPoolWorkerMixin:
             log.error("[pool:%s] failed to spawn: %s", pool_id, exc)
             return None
 
+        # Wire the session persist callback if the subclass provides it.
+        _persist_fn = getattr(self, "_persist_cli_session", None)
         entry = _ProcessEntry(
             proc=proc,
             pool_id=pool_id,
             model_config=model_config,
             system_prompt=system_prompt,
+            resumed_from=resume_session_id,
+            _on_session_update=_persist_fn,
         )
         self._entries[pool_id] = entry  # type: ignore[attr-defined]
         log.info("[pool:%s] spawned (PID=%d)", pool_id, proc.pid)
@@ -178,6 +199,10 @@ class CliPoolWorkerMixin:
         """
         if preserve_session and entry.session_id:
             self._resume_session_ids[pool_id] = entry.session_id  # type: ignore[attr-defined]
+            # Also persist to disk so the session survives daemon restarts.
+            _persist = getattr(self, "_persist_cli_session", None)
+            if _persist is not None:
+                _persist(pool_id, entry.session_id)
             log.debug(
                 "[pool:%s] preserving session %s for auto-resume",
                 pool_id,

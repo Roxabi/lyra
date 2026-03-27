@@ -132,6 +132,7 @@ The script handles:
 - uv (Python package manager)
 - supervisord (process manager)
 - Node.js + Claude Code CLI
+- agent-browser (headless browser for Claude Code)
 - Git global config (interactive prompt)
 
 If NVIDIA drivers were installed, reboot and reconnect:
@@ -184,7 +185,7 @@ cd ~/projects/lyra-stack && make setup
 6. Scaffold `.env` and `config.toml` from examples
 7. Seed agents into the DB (`lyra agent init`)
 8. Install Claude Code plugins:
-   - **Mandatory:** `web-intel`, `lyra-send`, `refine-agent`
+   - **Mandatory:** `web-intel`, `agent-browser`, `lyra-send`, `refine-agent`
    - **Conditional:** `voice-cli` (auto-installed if voiceCLI was installed)
    - **Optional (prompted):** `dev-core`, `visual-explainer`, `compress`
 9. Start supervisord

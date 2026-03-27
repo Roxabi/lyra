@@ -83,6 +83,8 @@ class CommandRouter:
             ("folder", "Switch working directory: /folder ~/projects/foo"),
             ("cd", "Alias for /folder"),
             ("workspace", "Switch workspace: /workspace <name> [question] | ls"),
+            ("voice", "Enable voice mode (TTS replies) for this session"),
+            ("text", "Disable voice mode (text-only replies)"),
         ]
     }
 
@@ -273,6 +275,16 @@ class CommandRouter:
                 self._runtime_config_path,
                 self._on_debounce_change,
             )
+        if command_name == "/voice":
+            if args:
+                return None  # /voice <prompt> → passthrough to agent
+            if pool is not None:
+                pool.voice_mode = True
+            return Response(content="Voice mode on — replies will be spoken.")
+        if command_name == "/text":
+            if pool is not None:
+                pool.voice_mode = False
+            return Response(content="Voice mode off — text-only replies.")
         builtin = self._builtins.get(command_name)
         if builtin and builtin.builtin:
             return Response(

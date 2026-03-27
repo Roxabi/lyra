@@ -111,6 +111,7 @@ class Pool:
         self.session_start: datetime = datetime.now(UTC)
         self.message_count: int = 0
         self._system_prompt: str = ""
+        self.voice_mode: bool = False
         self._last_msg: InboundMessage | None = None
         self._observer = PoolObserver(
             pool_id=pool_id,

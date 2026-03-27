@@ -26,6 +26,29 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
+def _detect_language(text: str) -> str | None:
+    """Detect FR vs EN from text. Returns ISO 639-1 code or None.
+
+    Simple heuristic: count common French marker words. If enough are
+    found, return "fr"; otherwise "en" (default). Only these two
+    languages are supported — returns None for very short text.
+    """
+    if len(text) < 20:
+        return None
+    lower = text.lower()
+    _FR_MARKERS = (
+        " je ", " tu ", " il ", " elle ", " nous ", " vous ", " ils ",
+        " de ", " du ", " te ", " me ", " se ", " ce ", " ne ",
+        " est ", " sont ", " avec ", " dans ", " pour ", " que ", " qui ",
+        " une ", " des ", " les ", " pas ", " cette ", " mais ", " aussi ",
+        " très ", " bien ", " tout ", " peut ", " fait ", " plus ",
+        " sur ", " mon ", " ton ", " son ", " votre ", " notre ",
+        "c'est", "j'ai", "l'on", "n'est", "qu'il", "d'un", "d'une",
+    )
+    hits = sum(1 for m in _FR_MARKERS if m in lower)
+    return "fr" if hits >= 2 else "en"
+
+
 class AudioPipeline:
     """Drain InboundAudioBus, transcribe via STT, re-enqueue as text."""
 
@@ -260,6 +283,11 @@ class AudioPipeline:
             else:
                 # No PrefsStore — pass detected language directly (S1 behavior)
                 lang = msg.language
+
+            # Fallback: detect language from response text when STT didn't
+            # provide one (e.g. /voice mode with typed text).
+            if lang is None and text:
+                lang = _detect_language(text)
 
             result = await self._hub._tts.synthesize(
                 text,

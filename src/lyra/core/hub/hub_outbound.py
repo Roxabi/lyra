@@ -72,6 +72,24 @@ class HubOutboundMixin:
             return None
         return agent.config.voice.tts if agent.config.voice is not None else None
 
+    def _resolve_pool(self, msg: "InboundMessage") -> Any:
+        """Resolve pool from message routing (for session-level state)."""
+        from .hub_protocol import RoutingKey
+
+        key = RoutingKey(Platform(msg.platform), msg.bot_id, msg.scope_id)
+        pool_id = key.to_pool_id()
+        return self._pool_manager.pools.get(pool_id) if hasattr(self, "_pool_manager") else None  # type: ignore[attr-defined]
+
+    def _tts_language_kwargs(self, msg: "InboundMessage") -> dict:
+        """Build session_language + on_language_detected kwargs for TTS."""
+        pool = self._resolve_pool(msg)
+        if pool is None:
+            return {}
+        return {
+            "session_language": pool.last_detected_language,
+            "on_language_detected": lambda lang: setattr(pool, "last_detected_language", lang),
+        }
+
     def _resolve_agent_fallback_language(self, msg: "InboundMessage") -> str | None:
         """Resolve per-agent fallback_language from the message's binding (#343)."""
         binding = self.resolve_binding(msg)
@@ -173,6 +191,7 @@ class HubOutboundMixin:
                         text,
                         agent_tts=agent_tts,
                         fallback_language=fallback_lang,
+                        **self._tts_language_kwargs(msg),
                     ),
                     name=f"tts:{msg.id}",
                 )
@@ -246,6 +265,7 @@ class HubOutboundMixin:
                             full_text,
                             agent_tts=agent_tts,
                             fallback_language=fallback_lang,
+                            **self._tts_language_kwargs(msg),
                         )
 
                 task = asyncio.create_task(
@@ -300,6 +320,7 @@ class HubOutboundMixin:
                         full_text,
                         agent_tts=agent_tts,
                         fallback_language=fallback_lang,
+                        **self._tts_language_kwargs(msg),
                     ),
                     name=f"tts:{msg.id}",
                 )

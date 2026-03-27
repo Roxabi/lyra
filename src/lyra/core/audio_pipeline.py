@@ -7,6 +7,7 @@ import logging
 import os
 import tempfile
 from pathlib import Path
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from .message import (
@@ -263,6 +264,8 @@ class AudioPipeline:
         *,
         agent_tts: "AgentTTSConfig | None" = None,
         fallback_language: str | None = None,
+        on_language_detected: "Callable[[str], None] | None" = None,
+        session_language: str | None = None,
     ) -> None:
         """Synthesize TTS audio for a voice response and dispatch it.
 
@@ -308,8 +311,12 @@ class AudioPipeline:
             # provide one (e.g. /voice mode with typed text).
             if lang is None and text:
                 _langs = agent_tts.languages if agent_tts else None
-                _default = agent_tts.default_language if agent_tts else None
+                _default = session_language or (
+                    agent_tts.default_language if agent_tts else None
+                )
                 lang = _detect_language(text, languages=_langs, default_language=_default)
+                if lang is not None and on_language_detected is not None:
+                    on_language_detected(lang)
 
             result = await self._hub._tts.synthesize(
                 text,

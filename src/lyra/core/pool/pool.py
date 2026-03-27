@@ -112,6 +112,7 @@ class Pool:
         self.message_count: int = 0
         self._system_prompt: str = ""
         self.voice_mode: bool = False
+        self.last_detected_language: str | None = None
         self._last_msg: InboundMessage | None = None
         self._observer = PoolObserver(
             pool_id=pool_id,

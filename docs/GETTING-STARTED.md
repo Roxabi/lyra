@@ -183,9 +183,13 @@ cd ~/projects/lyra-stack && make setup
 5. Create log directories (`~/.local/state/*/logs/`)
 6. Scaffold `.env` and `config.toml` from examples
 7. Seed agents into the DB (`lyra agent init`)
-8. Start supervisord
+8. Install Claude Code plugins:
+   - **Mandatory:** `web-intel`, `lyra-send`, `refine-agent`
+   - **Conditional:** `voice-cli` (auto-installed if voiceCLI was installed)
+   - **Optional (prompted):** `dev-core`, `visual-explainer`, `compress`
+9. Start supervisord
 
-To install all optional modules without prompts:
+To install all optional modules and plugins without prompts:
 ```bash
 make setup ARGS=--all
 ```

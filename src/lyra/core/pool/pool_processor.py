@@ -225,6 +225,14 @@ class PoolProcessor:
         """Run agent.process and dispatch result (streaming or non-streaming)."""
         pool = self._pool
         pool.append(msg)
+
+        # Inject voice modality when pool.voice_mode is on — must happen
+        # before _original_msg is captured so dispatch_streaming sees it.
+        if pool.voice_mode and msg.modality != "voice":
+            import dataclasses
+
+            msg = dataclasses.replace(msg, modality="voice")
+
         _ensure_fn = getattr(agent, "_ensure_system_prompt", None)
         if _ensure_fn is not None:
             await _ensure_fn(pool)  # S3 — cache system prompt

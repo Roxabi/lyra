@@ -188,10 +188,6 @@ class SimpleAgent(AgentBase):
         _voice_rewritten = self._handle_voice_command(msg)
         if _voice_rewritten is not None:
             msg = _voice_rewritten
-        elif pool.voice_mode and msg.modality != "voice":
-            import dataclasses
-
-            msg = dataclasses.replace(msg, modality="voice")
 
         # Handle audio messages — attachments with type="audio"
         audio_attachment = next((a for a in msg.attachments if a.type == "audio"), None)

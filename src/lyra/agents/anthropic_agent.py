@@ -234,10 +234,6 @@ class AnthropicAgent(AgentBase):
         _voice_rewritten = self._handle_voice_command(msg)
         if _voice_rewritten is not None:
             msg = _voice_rewritten
-        elif pool.voice_mode and msg.modality != "voice":
-            import dataclasses
-
-            msg = dataclasses.replace(msg, modality="voice")
         response = await self._process_llm(msg, pool, on_intermediate=on_intermediate)
         if msg.modality == "voice":
             response.speak = True

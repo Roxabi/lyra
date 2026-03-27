@@ -52,7 +52,7 @@ class ModelConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     backend: str = "claude-cli"
-    model: str = "claude-sonnet-4-5"
+    model: str = "claude-opus-4-6"
     max_turns: int | None = None  # None = unlimited (0 sentinel in DB)
     tools: tuple[str, ...] = ()
     # cwd is spawn-routing config, not model identity.

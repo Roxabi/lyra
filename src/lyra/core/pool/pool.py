@@ -72,6 +72,7 @@ class Pool:
         max_sdk_history: int = 50,
         safe_dispatch_timeout: float = 10.0,
         max_merged_chars: int = 4096,
+        cancel_on_new_message: bool = False,
     ) -> None:
         self.pool_id = pool_id
         self.agent_name = agent_name
@@ -101,6 +102,7 @@ class Pool:
         else:
             self._turn_timeout = None
         self._debouncer = MessageDebouncer(debounce_ms, max_merged_chars)
+        self._cancel_on_new_message: bool = cancel_on_new_message
         self._inbox: asyncio.Queue[InboundMessage] = asyncio.Queue()
         self._current_task: asyncio.Task | None = None
         self._inflight_stream_outbound: OutboundMessage | None = None
@@ -174,6 +176,22 @@ class Pool:
     def debounce_ms(self, value: int) -> None:
         """Update debounce window on the live debouncer."""
         self._debouncer.debounce_ms = value
+
+    @property
+    def cancel_on_new_message(self) -> bool:
+        """Whether a new message cancels an in-flight LLM turn (cancel-in-flight).
+
+        Default is False: new messages queue naturally and are processed after
+        the current turn finishes.  Set to True to restore legacy cancel-in-flight
+        behaviour where a new message aborts the ongoing turn and re-dispatches
+        the merged context.
+        """
+        return self._cancel_on_new_message
+
+    @cancel_on_new_message.setter
+    def cancel_on_new_message(self, value: bool) -> None:
+        """Toggle cancel-in-flight on the live pool (takes effect on next turn)."""
+        self._cancel_on_new_message = value
 
     @property
     def last_active(self) -> float:

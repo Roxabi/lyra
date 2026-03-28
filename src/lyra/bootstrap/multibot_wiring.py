@@ -134,20 +134,27 @@ async def wire_discord_adapters(  # noqa: PLR0913 — wiring requires all deps
         dc_token, _ = dc_creds
 
         watch_channels: frozenset[int] = frozenset()
+        vault_channels: frozenset[int] = frozenset()
         if agent_store is not None:
             bot_settings = agent_store.get_bot_settings("discord", bot_cfg.bot_id)
-            raw_ids = bot_settings.get("watch_channels", [])
-            valid_ids: list[int] = []
-            for ch in raw_ids:
-                try:
-                    valid_ids.append(int(ch))
-                except (ValueError, TypeError):
-                    log.warning(
-                        "watch_channels: invalid channel id %r for bot %r — skipping",
-                        ch,
-                        bot_cfg.bot_id,
-                    )
-            watch_channels = frozenset(valid_ids)
+
+            def _parse_channel_ids(key: str) -> frozenset[int]:
+                raw_ids = bot_settings.get(key, [])
+                valid: list[int] = []
+                for ch in raw_ids:
+                    try:
+                        valid.append(int(ch))
+                    except (ValueError, TypeError):
+                        log.warning(
+                            "%s: invalid channel id %r for bot %r — skipping",
+                            key,
+                            ch,
+                            bot_cfg.bot_id,
+                        )
+                return frozenset(valid)
+
+            watch_channels = _parse_channel_ids("watch_channels")
+            vault_channels = _parse_channel_ids("vault_channels")
 
         adapter = DiscordAdapter(
             hub=hub,
@@ -159,6 +166,7 @@ async def wire_discord_adapters(  # noqa: PLR0913 — wiring requires all deps
             auth=auth,
             thread_store=thread_store,
             watch_channels=watch_channels,
+            vault_channels=vault_channels,
         )
         hub.register_adapter(Platform.DISCORD, bot_cfg.bot_id, adapter)
 

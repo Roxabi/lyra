@@ -85,6 +85,7 @@ class DebouncerConfig(BaseModel):
 
     default_debounce_ms: int = 300
     max_merged_chars: int = 4096
+    cancel_on_new_message: bool = False
 
 
 class AgentOverrideConfig(BaseModel):

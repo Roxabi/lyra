@@ -99,6 +99,7 @@ class CommandRouter:
         runtime_config_path: Path | None = None,
         smart_routing_decorator: "SmartRoutingDecorator | None" = None,
         on_debounce_change: Callable[[int], None] | None = None,
+        on_cancel_change: Callable[[bool], None] | None = None,
         workspaces: dict[str, Path] | None = None,
         patterns: dict[str, bool] | None = None,
         pattern_configs: dict[str, dict] | None = None,
@@ -115,6 +116,7 @@ class CommandRouter:
         self._runtime_config_path = runtime_config_path
         self._smart_routing = smart_routing_decorator
         self._on_debounce_change = on_debounce_change
+        self._on_cancel_change = on_cancel_change
         self._workspaces: dict[str, Path] = workspaces or {}
         self._patterns: dict[str, bool] = patterns or {}
         self._pattern_configs: dict[str, dict] = (
@@ -274,6 +276,7 @@ class CommandRouter:
                 self._runtime_config_holder,
                 self._runtime_config_path,
                 self._on_debounce_change,
+                self._on_cancel_change,
             )
         if command_name == "/voice":
             if args:

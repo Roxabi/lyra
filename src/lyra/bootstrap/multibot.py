@@ -156,6 +156,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
             stt=stt_service,
             tts=tts_service,
             debounce_ms=debouncer_cfg.default_debounce_ms,
+            cancel_on_new_message=debouncer_cfg.cancel_on_new_message,
             prefs_store=stores.prefs,
             turn_timeout=cli_pool_cfg.turn_timeout,
             pool_ttl=hub_cfg.pool_ttl,

@@ -33,6 +33,7 @@ _VALID_PARAMS = {
     "max_steps",
     "extra_instructions",
     "debounce_ms",
+    "cancel_on_new_message",
 }
 
 
@@ -62,6 +63,7 @@ class RuntimeConfig(BaseModel):
     max_steps: int | None = None
     extra_instructions: str = ""
     debounce_ms: int = 300
+    cancel_on_new_message: bool = False
 
     def overlay(self, base: Agent) -> EffectiveConfig:
         """Build EffectiveConfig by merging this overlay on top of base Agent config."""
@@ -165,6 +167,8 @@ def _write_flat_toml(data: dict[str, object]) -> str:
     for key, value in data.items():
         if isinstance(value, str):
             lines.append(f'{key} = "{value}"')
+        elif isinstance(value, bool):
+            lines.append(f"{key} = {'true' if value else 'false'}")
         elif isinstance(value, (int, float)):
             lines.append(f"{key} = {value}")
     return "\n".join(lines) + "\n" if lines else ""
@@ -235,6 +239,16 @@ def set_param(rc: RuntimeConfig, key: str, value: str) -> RuntimeConfig:  # noqa
         if iv < 0 or iv > 5000:
             raise ValueError(f"debounce_ms must be between 0 and 5000, got {iv}")
         parsed = iv
+
+    elif key == "cancel_on_new_message":
+        if value.lower() in ("true", "1", "yes", "on"):
+            parsed = True
+        elif value.lower() in ("false", "0", "no", "off"):
+            parsed = False
+        else:
+            raise ValueError(
+                f"cancel_on_new_message must be true or false, got {value!r}"
+            )
 
     else:
         # extra_instructions — accept as-is, but cap length to avoid bloating context

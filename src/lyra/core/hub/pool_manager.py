@@ -40,6 +40,7 @@ class PoolManager:
                 max_sdk_history=self._hub._max_sdk_history,
                 safe_dispatch_timeout=self._hub._safe_dispatch_timeout,
                 max_merged_chars=self._hub._max_merged_chars,
+                cancel_on_new_message=self._hub._cancel_on_new_message,
             )
             if self._hub._turn_store is not None:
                 new_pool._observer.register_turn_store(self._hub._turn_store)
@@ -97,3 +98,9 @@ class PoolManager:
         self._hub._debounce_ms = ms
         for pool in self.pools.values():
             pool.debounce_ms = ms
+
+    def set_cancel_on_new_message(self, enabled: bool) -> None:
+        """Toggle cancel-in-flight on all live pools and future pools."""
+        self._hub._cancel_on_new_message = enabled
+        for pool in self.pools.values():
+            pool.cancel_on_new_message = enabled

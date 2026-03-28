@@ -72,6 +72,7 @@ class Hub(HubOutboundMixin):
         stt: "STTService | None" = None,
         tts: "TTSService | None" = None,
         debounce_ms: int = 0,
+        cancel_on_new_message: bool = False,
         prefs_store: "PrefsStore | None" = None,
         turn_timeout: float | None = None,
         max_sdk_history: int = MAX_SDK_HISTORY,
@@ -104,6 +105,7 @@ class Hub(HubOutboundMixin):
         self._tts: TTSService | None = tts
         self._pool_ttl = pool_ttl
         self._debounce_ms = debounce_ms
+        self._cancel_on_new_message = cancel_on_new_message
         self._rate_limiter = RateLimiter(rate_limit, rate_window)
         self._start_time: float = time.monotonic()
         self._last_processed_at: float | None = None
@@ -137,6 +139,8 @@ class Hub(HubOutboundMixin):
         router = getattr(agent, "command_router", None)
         if router is not None and hasattr(router, "_on_debounce_change"):
             router._on_debounce_change = self.set_debounce_ms
+        if router is not None and hasattr(router, "_on_cancel_change"):
+            router._on_cancel_change = self.set_cancel_on_new_message
 
     def set_memory(self, manager: MemoryManager) -> None:
         self._memory = manager
@@ -222,6 +226,9 @@ class Hub(HubOutboundMixin):
 
     def set_debounce_ms(self, ms: int) -> None:
         self._pool_manager.set_debounce_ms(ms)
+
+    def set_cancel_on_new_message(self, enabled: bool) -> None:
+        self._pool_manager.set_cancel_on_new_message(enabled)
 
     def get_agent(self, name: str) -> AgentBase | None:
         return self.agent_registry.get(name)

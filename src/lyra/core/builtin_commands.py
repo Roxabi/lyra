@@ -130,6 +130,7 @@ def config_command(  # noqa: PLR0913 — mirrors original DI surface
     runtime_config_holder: "RuntimeConfigHolder | None",
     runtime_config_path: Path | None,
     on_debounce_change: "Callable[[int], None] | None",
+    on_cancel_change: "Callable[[bool], None] | None" = None,
 ) -> Response:
     """Dispatch /config show/set/reset."""
     if denied := require_admin(msg):
@@ -141,7 +142,8 @@ def config_command(  # noqa: PLR0913 — mirrors original DI surface
     if args[0] == "reset":
         return _config_reset(args[1:], runtime_config_holder, runtime_config_path)
     return _config_set(
-        args, runtime_config_holder, runtime_config_path, on_debounce_change
+        args, runtime_config_holder, runtime_config_path, on_debounce_change,
+        on_cancel_change,
     )
 
 
@@ -156,6 +158,7 @@ def _config_show(holder: "RuntimeConfigHolder") -> Response:
     extra = rc.extra_instructions or "(none)"
     lines.append(f"  {'extra_instructions':<20} {extra}")
     lines.append(f"  {'debounce_ms':<20} {rc.debounce_ms}")
+    lines.append(f"  {'cancel_on_new_message':<20} {rc.cancel_on_new_message}")
     lines.append("─" * 35)
     return Response(content="\n".join(lines))
 
@@ -165,6 +168,7 @@ def _config_set(
     holder: "RuntimeConfigHolder",
     runtime_config_path: Path | None,
     on_debounce_change: "Callable[[int], None] | None",
+    on_cancel_change: "Callable[[bool], None] | None" = None,
 ) -> Response:
     _AGENTS_DIR = Path(__file__).resolve().parent.parent / "agents"
     from lyra.core.runtime_config import set_param
@@ -186,6 +190,8 @@ def _config_set(
     holder.value = rc
     if rc.debounce_ms != old_rc.debounce_ms and on_debounce_change:
         on_debounce_change(rc.debounce_ms)
+    if rc.cancel_on_new_message != old_rc.cancel_on_new_message and on_cancel_change:
+        on_cancel_change(rc.cancel_on_new_message)
     summary = f"Updated: {', '.join(updates)}\nSaved to {runtime_file.name}"
     return Response(content=summary)
 

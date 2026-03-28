@@ -84,7 +84,16 @@ class PoolProcessor:
         buffer: list[InboundMessage],
         agent: AgentBase,
     ) -> InboundMessage:
-        """Run agent.process(), cancelling and re-dispatching if new messages arrive."""
+        """Run agent.process(), with optional cancel-in-flight on new messages.
+
+        Default mode (cancel_on_new_message=False): awaits the agent to completion;
+        any messages that arrive during processing queue naturally in pool._inbox and
+        are picked up by the next process_loop() iteration.
+
+        Cancel-in-flight mode (cancel_on_new_message=True): races the agent against
+        the inbox; a new message aborts the ongoing turn, merges the context, and
+        re-dispatches from scratch.
+        """
         pool = self._pool
 
         while True:
@@ -92,6 +101,18 @@ class PoolProcessor:
                 self._guarded_process_one(msg, agent),
                 name=f"agent:{pool.pool_id}",
             )
+
+            if not pool.cancel_on_new_message:
+                # "Let it finish" mode — new messages accumulate in inbox and are
+                # consumed naturally by the next process_loop() iteration.
+                await agent_task
+                if agent_task.cancelled():
+                    raise asyncio.CancelledError
+                return msg
+
+            # ----------------------------------------------------------------
+            # Cancel-in-flight mode: race agent against next inbox message.
+            # ----------------------------------------------------------------
             inbox_waiter = asyncio.create_task(
                 pool._inbox.get(), name=f"inbox:{pool.pool_id}"
             )

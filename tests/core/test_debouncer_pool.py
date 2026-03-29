@@ -152,6 +152,7 @@ class TestPoolCancelInFlight:
             agent_name="test_agent",
             ctx=ctx,
             debounce_ms=50,
+            cancel_on_new_message=True,
         )
 
         # Submit first message — agent starts slow processing.

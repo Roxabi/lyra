@@ -78,7 +78,9 @@ class HubOutboundMixin:
 
         key = RoutingKey(Platform(msg.platform), msg.bot_id, msg.scope_id)
         pool_id = key.to_pool_id()
-        return self._pool_manager.pools.get(pool_id) if hasattr(self, "_pool_manager") else None  # type: ignore[attr-defined]
+        if hasattr(self, "_pool_manager"):
+            return self._pool_manager.pools.get(pool_id)  # type: ignore[attr-defined]
+        return None
 
     def _tts_language_kwargs(self, msg: "InboundMessage") -> dict:
         """Build session_language + on_language_detected kwargs for TTS."""
@@ -87,7 +89,11 @@ class HubOutboundMixin:
             return {}
         return {
             "session_language": pool.last_detected_language,
-            "on_language_detected": lambda lang: setattr(pool, "last_detected_language", lang),
+            "on_language_detected": lambda lang: setattr(
+                pool,
+                "last_detected_language",
+                lang,
+            ),
         }
 
     def _resolve_agent_fallback_language(self, msg: "InboundMessage") -> str | None:
@@ -268,9 +274,7 @@ class HubOutboundMixin:
                             **self._tts_language_kwargs(msg),
                         )
 
-                task = asyncio.create_task(
-                    _deferred_tts(), name=f"tts:{msg.id}"
-                )
+                task = asyncio.create_task(_deferred_tts(), name=f"tts:{msg.id}")
                 self._memory_tasks.add(task)
                 task.add_done_callback(self._memory_tasks.discard)
                 return

@@ -157,9 +157,7 @@ def normalize(
     chat_id: int = raw.chat.id
     topic_id: int | None = raw.message_thread_id
     user_id = f"tg:user:{raw.from_user.id}"
-    scope_id = _make_scope_id(
-        chat_id, topic_id, user_id=user_id, is_group=is_group
-    )
+    scope_id = _make_scope_id(chat_id, topic_id, user_id=user_id, is_group=is_group)
 
     text = raw.text or getattr(raw, "caption", None) or ""
     # Strip @mention prefix so content reaches the agent clean (align with Discord)
@@ -228,9 +226,7 @@ def normalize_audio(
     topic_id: int | None = getattr(raw, "message_thread_id", None)
     is_group = raw.chat.type != "private"
     user_id = f"tg:user:{raw.from_user.id}"
-    scope_id = _make_scope_id(
-        chat_id, topic_id, user_id=user_id, is_group=is_group
-    )
+    scope_id = _make_scope_id(chat_id, topic_id, user_id=user_id, is_group=is_group)
     voice = raw.voice or raw.audio or getattr(raw, "video_note", None)
     duration_ms: int | None = None
     if voice is not None:

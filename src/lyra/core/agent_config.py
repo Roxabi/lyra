@@ -76,15 +76,17 @@ class ModelConfig(BaseModel):
         )
 
     def __hash__(self) -> int:
-        return hash((
-            self.backend,
-            self.model,
-            self.max_turns,
-            self.tools,
-            self.skip_permissions,
-            self.streaming,
-            # cwd intentionally excluded
-        ))
+        return hash(
+            (
+                self.backend,
+                self.model,
+                self.max_turns,
+                self.tools,
+                self.skip_permissions,
+                self.streaming,
+                # cwd intentionally excluded
+            )
+        )
 
 
 class Complexity(Enum):
@@ -108,9 +110,7 @@ class SmartRoutingConfig(BaseModel):
 
     @field_validator("routing_table", mode="before")
     @classmethod
-    def _coerce_routing_table_keys(
-        cls, v: object
-    ) -> dict[Complexity, str]:
+    def _coerce_routing_table_keys(cls, v: object) -> dict[Complexity, str]:
         """Convert string keys to Complexity enum values when loading from JSON."""
         if not isinstance(v, dict):
             return v  # type: ignore[return-value]

@@ -13,7 +13,7 @@ from lyra.adapters.discord import _ALLOW_ALL
 
 
 class TestVaultChannels:
-    """Vault channel feature: messages in designated channels are auto-saved to vault."""
+    """Vault channel feature: messages in designated channels are saved."""
 
     @pytest.mark.asyncio
     async def test_vault_channel_message_processed_without_mention(self) -> None:
@@ -182,7 +182,7 @@ class TestVaultChannels:
 
     @pytest.mark.asyncio
     async def test_vault_channel_thread_message_not_treated_as_vault(self) -> None:
-        """Thread messages in a vault channel are excluded (threads are not channels)."""
+        """Thread messages in a vault channel are excluded."""
         from lyra.adapters.discord import DiscordAdapter
 
         hub = MagicMock()
@@ -214,7 +214,7 @@ class TestVaultChannels:
             mentions=[],
         )
 
-        # Not processed — no mention, not owned thread, vault channel check excludes threads
+        # Not processed — vault channel check excludes threads
         await adapter.on_message(discord_msg)
 
         hub.inbound_bus.put.assert_not_called()

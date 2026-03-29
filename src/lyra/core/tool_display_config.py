@@ -118,10 +118,12 @@ class ToolDisplayConfig(BaseModel):
         )
 
     def __hash__(self) -> int:
-        return hash((
-            self.names_threshold,
-            self.group_threshold,
-            self.bash_max_len,
-            self.throttle_ms,
-            tuple(sorted(self._show.items())),
-        ))
+        return hash(
+            (
+                self.names_threshold,
+                self.group_threshold,
+                self.bash_max_len,
+                self.throttle_ms,
+                tuple(sorted(self._show.items())),
+            )
+        )

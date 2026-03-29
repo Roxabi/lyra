@@ -88,8 +88,8 @@ class CliPool(CliPoolWorkerMixin):
         # uses the correct CLI session, not Lyra's internal session UUID.
         # Structure: {"by_pool": {pool_id: cli_sid}, "by_session": {lyra_sid: cli_sid}}
         self._cli_sessions_path = (
-            (session_store_dir or Path.home() / ".lyra") / "cli_sessions.json"
-        )
+            session_store_dir or Path.home() / ".lyra"
+        ) / "cli_sessions.json"
         self._cli_sessions: dict[str, dict[str, str]] = self._load_cli_sessions()
         # In-memory mapping of pool_id → current Lyra session UUID.
         # Updated by link_lyra_session() before each send, so the
@@ -124,13 +124,9 @@ class CliPool(CliPoolWorkerMixin):
             self._cli_sessions["by_session"][lyra_sid] = cli_session_id
         try:
             self._cli_sessions_path.parent.mkdir(parents=True, exist_ok=True)
-            self._cli_sessions_path.write_text(
-                json.dumps(self._cli_sessions, indent=2)
-            )
+            self._cli_sessions_path.write_text(json.dumps(self._cli_sessions, indent=2))
         except OSError:
-            log.warning(
-                "[pool:%s] failed to persist CLI session to disk", pool_id
-            )
+            log.warning("[pool:%s] failed to persist CLI session to disk", pool_id)
 
     async def start(self) -> None:
         """Start the idle reaper background task."""
@@ -149,7 +145,7 @@ class CliPool(CliPoolWorkerMixin):
             await self._kill(pool_id)
         log.info("CliPool stopped")
 
-    async def send(
+    async def send(  # noqa: C901
         self,
         pool_id: str,
         message: str,
@@ -247,7 +243,7 @@ class CliPool(CliPoolWorkerMixin):
     # the asyncio child watcher plenty of time to set proc.returncode.
     _STALE_RESUME_CHECK_DELAY = 0.05
 
-    async def send_streaming(
+    async def send_streaming(  # noqa: C901
         self,
         pool_id: str,
         message: str,
@@ -312,11 +308,7 @@ class CliPool(CliPoolWorkerMixin):
             # Stale resume guard: if this process was spawned with --resume,
             # briefly yield to let the event loop process a potential child-exit
             # signal.  The CLI exits in ~1ms when the session doesn't exist.
-            if (
-                _attempt == 0
-                and entry.resumed_from
-                and entry.turn_count == 0
-            ):
+            if _attempt == 0 and entry.resumed_from and entry.turn_count == 0:
                 await asyncio.sleep(self._STALE_RESUME_CHECK_DELAY)
                 if not entry.is_alive():
                     log.warning(
@@ -391,8 +383,7 @@ class CliPool(CliPoolWorkerMixin):
         entry = self._entries.get(pool_id)
         if entry is not None and entry.is_alive() and entry.session_id == cli_sid:
             log.info(
-                "[pool:%s] resume_and_reset: process already on CLI session"
-                " %s — no-op",
+                "[pool:%s] resume_and_reset: process already on CLI session %s — no-op",
                 pool_id,
                 cli_sid,
             )

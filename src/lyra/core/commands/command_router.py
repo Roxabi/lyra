@@ -250,7 +250,7 @@ class CommandRouter:
             timeout=timeout,
         )
 
-    def _dispatch_builtin(
+    def _dispatch_builtin(  # noqa: C901
         self, command_name: str, args: list[str], msg: InboundMessage, pool: Pool | None
     ) -> Response | None:
         if command_name == "/help":

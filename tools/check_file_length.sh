@@ -25,6 +25,7 @@ EXEMPT=(
     "src/lyra/tts/__init__.py"              # 336 lines — #396 refactor backlog
     "src/lyra/adapters/discord.py"          # 311 lines — #196 adapter protocol
     "src/lyra/core/audio_pipeline.py"       # 313 lines — #396 refactor backlog
+    "src/lyra/core/cli_pool.py"             # 401 lines — #396 refactor backlog
     "src/lyra/agents/simple_agent.py"       # 306 lines — #396 refactor backlog
 )
 

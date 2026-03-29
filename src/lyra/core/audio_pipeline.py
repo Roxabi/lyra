@@ -6,8 +6,8 @@ import asyncio
 import logging
 import os
 import tempfile
-from pathlib import Path
 from collections.abc import Callable
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .message import (
@@ -29,13 +29,53 @@ log = logging.getLogger(__name__)
 
 _LANG_MARKERS: dict[str, tuple[str, ...]] = {
     "fr": (
-        " je ", " tu ", " il ", " elle ", " nous ", " vous ", " ils ",
-        " de ", " du ", " te ", " me ", " se ", " ce ", " ne ",
-        " est ", " sont ", " avec ", " dans ", " pour ", " que ", " qui ",
-        " une ", " des ", " les ", " pas ", " cette ", " mais ", " aussi ",
-        " très ", " bien ", " tout ", " peut ", " fait ", " plus ",
-        " sur ", " mon ", " ton ", " son ", " votre ", " notre ",
-        "c'est", "j'ai", "l'on", "n'est", "qu'il", "d'un", "d'une",
+        " je ",
+        " tu ",
+        " il ",
+        " elle ",
+        " nous ",
+        " vous ",
+        " ils ",
+        " de ",
+        " du ",
+        " te ",
+        " me ",
+        " se ",
+        " ce ",
+        " ne ",
+        " est ",
+        " sont ",
+        " avec ",
+        " dans ",
+        " pour ",
+        " que ",
+        " qui ",
+        " une ",
+        " des ",
+        " les ",
+        " pas ",
+        " cette ",
+        " mais ",
+        " aussi ",
+        " très ",
+        " bien ",
+        " tout ",
+        " peut ",
+        " fait ",
+        " plus ",
+        " sur ",
+        " mon ",
+        " ton ",
+        " son ",
+        " votre ",
+        " notre ",
+        "c'est",
+        "j'ai",
+        "l'on",
+        "n'est",
+        "qu'il",
+        "d'un",
+        "d'une",
     ),
 }
 
@@ -257,7 +297,7 @@ class AudioPipeline:
         )
         await self._hub.dispatch_response(synthetic, Response(content=content))
 
-    async def synthesize_and_dispatch_audio(
+    async def synthesize_and_dispatch_audio(  # noqa: PLR0913
         self,
         msg: InboundMessage,
         text: str,
@@ -314,7 +354,11 @@ class AudioPipeline:
                 _default = session_language or (
                     agent_tts.default_language if agent_tts else None
                 )
-                lang = _detect_language(text, languages=_langs, default_language=_default)
+                lang = _detect_language(
+                    text,
+                    languages=_langs,
+                    default_language=_default,
+                )
                 if lang is not None and on_language_detected is not None:
                     on_language_detected(lang)
 

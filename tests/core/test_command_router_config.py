@@ -111,9 +111,7 @@ class TestConfigCommand:
         assert "extra_instructions" in response.content
 
     @pytest.mark.asyncio
-    async def test_config_set_valid_param(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_config_set_valid_param(self, tmp_path: Path) -> None:
         """Admin /config style=detailed → sets param, returns 'Updated:...'"""
         router = make_config_router(tmp_path)
         msg = make_config_msg(
@@ -140,9 +138,7 @@ class TestConfigCommand:
         assert "Unknown config key" in response.content
 
     @pytest.mark.asyncio
-    async def test_config_reset_all(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_config_reset_all(self, tmp_path: Path) -> None:
         """Admin /config reset → 'Runtime config reset to defaults.'"""
         router = make_config_router(tmp_path)
         msg = make_config_msg(
@@ -155,9 +151,7 @@ class TestConfigCommand:
         assert "Runtime config reset to defaults." in response.content
 
     @pytest.mark.asyncio
-    async def test_config_reset_single_key(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_config_reset_single_key(self, tmp_path: Path) -> None:
         """Admin /config reset style → 'Reset: style = (default). Saved.'"""
         router = make_config_router(tmp_path)
         msg = make_config_msg(

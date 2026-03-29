@@ -74,10 +74,7 @@ def _list_from_dir(
             typer.echo(f"  [warn] skipped {toml_file.name}: {e}", err=True)
             continue
         source = f"  {source_label}" if source_label else ""
-        typer.echo(
-            f"{name:<16} {backend:<16} "
-            f"{model:<34} {sr_status:<14}{source}"
-        )
+        typer.echo(f"{name:<16} {backend:<16} {model:<34} {sr_status:<14}{source}")
         printed.add(agent_name)
     return printed
 

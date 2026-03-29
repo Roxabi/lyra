@@ -101,6 +101,7 @@ class AgentOverrideConfig(BaseModel):
     persona: str | None = None
     workspaces: dict[str, str] = {}
 
+
 _CB_DEFAULTS: dict[str, int] = {"failure_threshold": 5, "recovery_timeout": 60}
 _CB_SERVICES = ("anthropic", "telegram", "discord", "hub")
 _ADMIN_ID_PATTERN = re.compile(r"^(tg|dc):user:\d+$")

@@ -108,7 +108,13 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
         not _is_dm and not _is_thread and message.channel.id in adapter._vault_channels
     )
 
-    _should_process = _is_dm or _is_mention or _in_owned_thread or _is_watch_channel or _is_vault_channel
+    _should_process = (
+        _is_dm
+        or _is_mention
+        or _in_owned_thread
+        or _is_watch_channel
+        or _is_vault_channel
+    )
     if not _should_process:
         return
 
@@ -209,9 +215,7 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
     # AddVaultProcessor handles it automatically via the normal command pipeline.
     if _is_vault_channel and hub_msg.text:
         hub_msg = dataclasses.replace(hub_msg, text=f"/add-vault {hub_msg.text}")
-        log.debug(
-            "vault_channel: rewrote message %s as /add-vault command", hub_msg.id
-        )
+        log.debug("vault_channel: rewrote message %s as /add-vault command", hub_msg.id)
 
     # Inject stored session + persistence callback into platform_meta.
     _meta_updates: dict[str, Any] = {}

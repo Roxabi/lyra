@@ -68,9 +68,7 @@ class _ProcessEntry:
                 try:
                     self._on_session_update(self.pool_id, sid)
                 except Exception:
-                    log.debug(
-                        "[pool:%s] session update callback failed", self.pool_id
-                    )
+                    log.debug("[pool:%s] session update callback failed", self.pool_id)
 
 
 class CliPoolWorkerMixin:

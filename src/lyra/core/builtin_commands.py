@@ -142,7 +142,10 @@ def config_command(  # noqa: PLR0913 — mirrors original DI surface
     if args[0] == "reset":
         return _config_reset(args[1:], runtime_config_holder, runtime_config_path)
     return _config_set(
-        args, runtime_config_holder, runtime_config_path, on_debounce_change,
+        args,
+        runtime_config_holder,
+        runtime_config_path,
+        on_debounce_change,
         on_cancel_change,
     )
 

@@ -278,9 +278,7 @@ class TestDispatchStreaming:
             await asyncio.wait_for(hub.dispatch_streaming(msg, gen()), timeout=5.0)
             # Wait for the dispatcher to consume the stream and TTS to fire.
             if hub._memory_tasks:
-                await asyncio.wait_for(
-                    asyncio.gather(*hub._memory_tasks), timeout=5.0
-                )
+                await asyncio.wait_for(asyncio.gather(*hub._memory_tasks), timeout=5.0)
         finally:
             await dispatcher.stop()
 

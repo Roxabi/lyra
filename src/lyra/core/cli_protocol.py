@@ -237,7 +237,9 @@ async def read_until_result(  # noqa: C901, PLR0915
                             warning="Response truncated (max turns reached)",
                         )
                     return CliResult(
-                        error=error_detail or result_text or "Unknown error from Claude",
+                        error=(
+                            error_detail or result_text or "Unknown error from Claude"
+                        ),
                     )
 
                 return CliResult(result=result_text, session_id=session_id or "")
@@ -401,7 +403,8 @@ class StreamingIterator:
                 if is_error:
                     errors = data.get("errors", [])
                     self.error = (
-                        errors[0] if errors
+                        errors[0]
+                        if errors
                         else data.get("result")
                         or data.get("subtype")
                         or "Unknown streaming error"

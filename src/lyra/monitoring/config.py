@@ -52,9 +52,7 @@ class MonitoringConfig(BaseModel):
     @classmethod
     def _validate_service_name(cls, v: str) -> str:
         if not _SERVICE_NAME_RE.match(v):
-            raise ValueError(
-                f"service_name must match [a-zA-Z0-9_@.-]+, got {v!r}"
-            )
+            raise ValueError(f"service_name must match [a-zA-Z0-9_@.-]+, got {v!r}")
         return v
 
     @field_validator("health_endpoint_url")

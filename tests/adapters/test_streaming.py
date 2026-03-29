@@ -618,7 +618,8 @@ class TestDiscordIntermediateText:
         # NOTE: intermediate-text edits use embed=None to clear any existing embed,
         # so we only count calls where embed is a non-None object.
         embed_edits = [
-            c for c in placeholder.edit.call_args_list
+            c
+            for c in placeholder.edit.call_args_list
             if c.kwargs.get("embed") is not None
         ]
         assert len(embed_edits) == 0, (

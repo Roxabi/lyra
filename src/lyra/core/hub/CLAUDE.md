@@ -18,6 +18,9 @@ and outbound dispatcher.
 | `pool_manager.py` | `PoolManager` — pool lifecycle: create, evict stale, flush |
 | `outbound_dispatcher.py` | `OutboundDispatcher` — per-adapter outbound queue and dispatch |
 | `outbound_errors.py` | Outbound error types and retry helpers |
+| `pipeline_events.py` | Typed frozen dataclass events for pipeline telemetry (#432) |
+| `event_bus.py` | `PipelineEventBus` — fire-and-forget fan-out to subscriber queues (#432) |
+| `audit_consumer.py` | `AuditConsumer` — structured JSON audit logger for pipeline events (#432) |
 
 ## Why pool_manager.py is in hub/ (not pool/)
 

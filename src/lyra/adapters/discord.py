@@ -143,9 +143,15 @@ class DiscordAdapter(discord.Client):
             self._cancel_typing(send_to_id)
 
     async def close(self) -> None:
-        """Cancel pending typing tasks and drain voice sessions before closing."""
+        """Cancel pending typing tasks, drain voice, close ThreadStore."""
         await self._typing.cancel_all()
         await self._vsm.leave_all()
+        # Close adapter-owned ThreadStore (#417 / S4)
+        if self._thread_store is not None:
+            try:
+                await self._thread_store.close()
+            except Exception:
+                log.exception("Failed to close ThreadStore for bot %s", self._bot_id)
         await super().close()
 
     async def on_ready(self) -> None:

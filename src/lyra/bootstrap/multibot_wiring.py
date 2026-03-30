@@ -25,6 +25,9 @@ from lyra.core.stores.pairing import PairingManager
 from lyra.core.stores.thread_store import ThreadStore
 from lyra.errors import MissingCredentialsError
 
+# Default vault dir for discord.db (#417 / S4)
+_DEFAULT_VAULT_DIR = os.path.expanduser("~/.lyra")
+
 log = logging.getLogger(__name__)
 
 
@@ -105,8 +108,8 @@ async def wire_discord_adapters(  # noqa: PLR0913 — wiring requires all deps
     cred_store: CredentialStore,
     circuit_registry: CircuitRegistry,
     msg_manager: MessageManager,
-    thread_store: ThreadStore,
     agent_store: AgentStore | None = None,
+    vault_dir: str | None = None,
 ) -> tuple[
     list[tuple[DiscordAdapter, DiscordBotConfig, str]],
     list[OutboundDispatcher],
@@ -155,6 +158,13 @@ async def wire_discord_adapters(  # noqa: PLR0913 — wiring requires all deps
 
             watch_channels = _parse_channel_ids("watch_channels")
             vault_channels = _parse_channel_ids("vault_channels")
+
+        # Each adapter owns its ThreadStore connection to discord.db (#417/S4)
+        from pathlib import Path
+
+        _vault = Path(vault_dir or os.environ.get("LYRA_VAULT_DIR", _DEFAULT_VAULT_DIR))
+        thread_store = ThreadStore(db_path=_vault / "discord.db")
+        await thread_store.connect()
 
         adapter = DiscordAdapter(
             hub=hub,

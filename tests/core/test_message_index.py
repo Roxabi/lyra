@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 
 from lyra.core.stores.message_index import MessageIndex
@@ -76,3 +78,43 @@ class TestMessageIndex:
         await store.upsert("pool:tg:main", "msg-bot", "sess-1", "assistant")
         assert await store.resolve("pool:tg:main", "msg-user") == "sess-1"
         assert await store.resolve("pool:tg:main", "msg-bot") == "sess-1"
+
+
+class TestMessageIndexStartupPrune:
+    """Tests for startup pruning behaviour (#417 / S1)."""
+
+    async def test_cleanup_removes_old_keeps_recent(self, tmp_path):
+        """Entries older than retention_days are deleted; recent ones survive."""
+        s = MessageIndex(db_path=tmp_path / "mi_prune.db")
+        await s.connect()
+
+        old_ts = (datetime.now(UTC) - timedelta(days=91)).isoformat()
+        recent_ts = (datetime.now(UTC) - timedelta(days=1)).isoformat()
+
+        # Insert old entries directly to bypass upsert's _now_iso()
+        db = s._require_db()
+        _sql = (
+            "INSERT INTO message_index"
+            " (pool_id, platform_msg_id, session_id, role, created_at)"
+            " VALUES (?, ?, ?, ?, ?)"
+        )
+        await db.execute(
+            _sql, ("pool:tg:main", "msg-old-1", "sess-old-1", "user", old_ts)
+        )
+        await db.execute(
+            _sql, ("pool:tg:main", "msg-old-2", "sess-old-2", "assistant", old_ts)
+        )
+        # Insert a recent entry via direct SQL so we control its timestamp too
+        await db.execute(
+            _sql, ("pool:tg:main", "msg-recent", "sess-recent", "user", recent_ts)
+        )
+        await db.commit()
+
+        pruned = await s.cleanup_older_than(90)
+
+        assert pruned == 2
+        assert await s.resolve("pool:tg:main", "msg-old-1") is None
+        assert await s.resolve("pool:tg:main", "msg-old-2") is None
+        assert await s.resolve("pool:tg:main", "msg-recent") == "sess-recent"
+
+        await s.close()

@@ -71,6 +71,7 @@ class MemoryManagerUpserts:
             message_count=snap.message_count,
             source_turns=snap.source_turns,
             status=status,
+            source_session_id=snap.session_id,  # queryable metadata (#417 / S5)
         )
 
     async def upsert_contact(self, user_id: str, medium: str, namespace: str) -> None:

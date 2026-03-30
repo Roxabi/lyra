@@ -1,8 +1,16 @@
-"""Store lifecycle helpers for multibot bootstrap."""
+"""Store lifecycle helpers for multibot bootstrap.
+
+#417 — auth.db split: AgentStore, CredentialStore, PrefsStore now connect to
+config.db.  ThreadStore connects to discord.db (owned by the Discord adapter
+after S4 lands).  AuthStore remains on auth.db (grants only).
+"""
 
 from __future__ import annotations
 
 import logging
+import shutil
+import sqlite3
+import tempfile
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,21 +21,236 @@ from lyra.core.stores.auth_store import AuthStore
 from lyra.core.stores.credential_store import CredentialStore, LyraKeyring
 from lyra.core.stores.message_index import MessageIndex
 from lyra.core.stores.prefs_store import PrefsStore
-from lyra.core.stores.thread_store import ThreadStore
 from lyra.core.stores.turn_store import TurnStore
 
 log = logging.getLogger(__name__)
 
+# Tables migrated from auth.db → config.db (#417 / S3)
+_CONFIG_TABLES = (
+    "agents",
+    "bot_agent_map",
+    "agent_runtime_state",
+    "bot_secrets",
+    "user_prefs",
+)
+
+_SENTINEL_DDL = (
+    "CREATE TABLE IF NOT EXISTS _migration_complete"
+    " (migrated_at TEXT NOT NULL)"
+)
+
+
+def _has_sentinel(db_path: Path) -> bool:
+    """Check whether config.db has the _migration_complete sentinel."""
+    if not db_path.exists():
+        return False
+    try:
+        with sqlite3.connect(str(db_path)) as conn:
+            cur = conn.execute(
+                "SELECT name FROM sqlite_master"
+                " WHERE type='table' AND name='_migration_complete'"
+            )
+            if not cur.fetchone():
+                return False
+            cur = conn.execute("SELECT 1 FROM _migration_complete LIMIT 1")
+            return cur.fetchone() is not None
+    except sqlite3.Error:
+        return False
+
+
+def _migrate_to_config_db(vault_dir: Path) -> None:
+    """Copy config tables from auth.db to config.db (synchronous, atomic).
+
+    Writes to a temporary file first, then renames atomically to prevent
+    partial migration on crash. A ``_migration_complete`` sentinel row is
+    written last so a partial file (no sentinel) can be detected and retried.
+    """
+    auth_path = vault_dir / "auth.db"
+    config_path = vault_dir / "config.db"
+
+    if not auth_path.exists():
+        log.warning("auth.db not found at %s — skipping migration", auth_path)
+        return
+
+    # Write to temp file in same dir (same filesystem → atomic rename)
+    fd, tmp_path_str = tempfile.mkstemp(
+        dir=str(vault_dir), prefix=".config_db_migrate_", suffix=".db"
+    )
+    tmp_path = Path(tmp_path_str)
+    try:
+        import os
+
+        os.close(fd)
+
+        # Open auth.db read-only, create temp config.db
+        src = sqlite3.connect(str(auth_path))
+        dst = sqlite3.connect(str(tmp_path))
+        dst.execute("PRAGMA journal_mode=WAL")
+
+        for table in _CONFIG_TABLES:
+            # Read schema from auth.db
+            row = src.execute(
+                "SELECT sql FROM sqlite_master"
+                " WHERE type='table' AND name=?",
+                (table,),
+            ).fetchone()
+            if row is None:
+                log.debug("Table %s not found in auth.db — skipping", table)
+                continue
+            # Create table in config.db
+            dst.execute(row[0])
+            # Copy all rows
+            cols_cur = src.execute(f"PRAGMA table_info({table})")  # noqa: S608
+            col_names = [r[1] for r in cols_cur.fetchall()]
+            col_list = ", ".join(col_names)
+            placeholders = ", ".join("?" for _ in col_names)
+            rows = src.execute(f"SELECT {col_list} FROM {table}").fetchall()  # noqa: S608
+            if rows:
+                dst.executemany(
+                    f"INSERT OR IGNORE INTO {table} ({col_list})"  # noqa: S608
+                    f" VALUES ({placeholders})",
+                    rows,
+                )
+            log.debug("Migrated %d rows for table %s", len(rows), table)
+
+        # Copy indices that belong to migrated tables
+        idx_rows = src.execute(
+            "SELECT sql FROM sqlite_master"
+            " WHERE type='index' AND sql IS NOT NULL AND tbl_name IN (%s)"
+            % ",".join("?" for _ in _CONFIG_TABLES),
+            _CONFIG_TABLES,
+        ).fetchall()
+        for (idx_sql,) in idx_rows:
+            try:
+                dst.execute(idx_sql)
+            except sqlite3.OperationalError:
+                pass  # index may already exist from CREATE TABLE
+
+        # Sentinel — marks migration as complete
+        dst.execute(_SENTINEL_DDL)
+        dst.execute(
+            "INSERT INTO _migration_complete (migrated_at) VALUES (datetime('now'))"
+        )
+        dst.commit()
+        src.close()
+        dst.close()
+
+        # Atomic rename
+        shutil.move(str(tmp_path), str(config_path))
+        log.warning(
+            "auth.db split: migrated %d tables to config.db (auth.db tombstones kept)",
+            len(_CONFIG_TABLES),
+        )
+    except Exception:
+        # Clean up temp file on failure
+        tmp_path.unlink(missing_ok=True)
+        raise
+
+
+def _migrate_threads_to_discord_db(vault_dir: Path) -> None:
+    """Copy discord_threads from auth.db to discord.db (atomic rename).
+
+    Same pattern as _migrate_to_config_db — temp file + atomic rename.
+    """
+    auth_path = vault_dir / "auth.db"
+    discord_path = vault_dir / "discord.db"
+
+    if not auth_path.exists():
+        return
+
+    fd, tmp_path_str = tempfile.mkstemp(
+        dir=str(vault_dir), prefix=".discord_db_migrate_", suffix=".db"
+    )
+    tmp_path = Path(tmp_path_str)
+    try:
+        import os
+
+        os.close(fd)
+        src = sqlite3.connect(str(auth_path))
+        dst = sqlite3.connect(str(tmp_path))
+        dst.execute("PRAGMA journal_mode=WAL")
+
+        row = src.execute(
+            "SELECT sql FROM sqlite_master"
+            " WHERE type='table' AND name='discord_threads'"
+        ).fetchone()
+        if row is None:
+            src.close()
+            dst.close()
+            tmp_path.unlink(missing_ok=True)
+            return
+
+        dst.execute(row[0])
+        cols_cur = src.execute("PRAGMA table_info(discord_threads)")
+        col_names = [r[1] for r in cols_cur.fetchall()]
+        col_list = ", ".join(col_names)
+        placeholders = ", ".join("?" for _ in col_names)
+        rows = src.execute(f"SELECT {col_list} FROM discord_threads").fetchall()  # noqa: S608
+        if rows:
+            dst.executemany(
+                f"INSERT OR IGNORE INTO discord_threads ({col_list})"  # noqa: S608
+                f" VALUES ({placeholders})",
+                rows,
+            )
+
+        # Sentinel
+        dst.execute(_SENTINEL_DDL)
+        dst.execute(
+            "INSERT INTO _migration_complete (migrated_at) VALUES (datetime('now'))"
+        )
+        dst.commit()
+        src.close()
+        dst.close()
+
+        shutil.move(str(tmp_path), str(discord_path))
+        log.warning(
+            "ThreadStore migration: moved %d rows to discord.db", len(rows)
+        )
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise
+
+
+def _ensure_discord_db(vault_dir: Path) -> None:
+    """Migration guard: ensure discord.db exists for ThreadStore (#417 / S4)."""
+    discord_path = vault_dir / "discord.db"
+
+    if discord_path.exists() and not _has_sentinel(discord_path):
+        log.warning("Partial discord.db detected — deleting and re-migrating")
+        discord_path.unlink()
+
+    if not discord_path.exists():
+        _migrate_threads_to_discord_db(vault_dir)
+
+
+def _ensure_config_db(vault_dir: Path) -> None:
+    """Migration guard: ensure config.db exists and is complete.
+
+    - Missing config.db → run migration from auth.db
+    - Partial config.db (no sentinel) → delete and re-migrate
+    - Complete config.db → no-op
+    """
+    config_path = vault_dir / "config.db"
+
+    if config_path.exists() and not _has_sentinel(config_path):
+        log.warning("Partial config.db detected — deleting and re-migrating")
+        config_path.unlink()
+
+    if not config_path.exists():
+        _migrate_to_config_db(vault_dir)
+
 
 @dataclass
 class StoreBundle:
-    """All persistent stores needed by the multibot bootstrap."""
+    """All persistent stores needed by the multibot bootstrap.
+
+    ThreadStore is NOT included — owned by the Discord adapter (#417 / S4).
+    """
 
     auth: AuthStore
     cred: CredentialStore
     agent: AgentStore
     turn: TurnStore
-    thread: ThreadStore
     prefs: PrefsStore
     message_index: MessageIndex
 
@@ -36,14 +259,18 @@ class StoreBundle:
 async def open_stores(vault_dir: Path) -> AsyncIterator[StoreBundle]:
     """Open every store, yield a *StoreBundle*, and close on exit.
 
+    Runs the auth.db → config.db migration guard before opening stores (#417).
     The finally block closes each store that was successfully opened,
     regardless of which later store (if any) failed to connect.
     """
+    # Migration guards (#417)
+    _ensure_config_db(vault_dir)
+    _ensure_discord_db(vault_dir)
+
     auth_store: AuthStore | None = None
     cred_store: CredentialStore | None = None
     agent_store: AgentStore | None = None
     turn_store: TurnStore | None = None
-    thread_store: ThreadStore | None = None
     prefs_store: PrefsStore | None = None
     message_index_store: MessageIndex | None = None
     try:
@@ -52,21 +279,20 @@ async def open_stores(vault_dir: Path) -> AsyncIterator[StoreBundle]:
 
         keyring = LyraKeyring.load_or_create(vault_dir / "keyring.key")
         cred_store = CredentialStore(
-            db_path=vault_dir / "auth.db",
+            db_path=vault_dir / "config.db",
             keyring=keyring,
         )
         await cred_store.connect()
 
-        agent_store = AgentStore(db_path=vault_dir / "auth.db")
+        agent_store = AgentStore(db_path=vault_dir / "config.db")
         await agent_store.connect()
 
         turn_store = TurnStore(db_path=vault_dir / "turns.db")
         await turn_store.connect()
 
-        thread_store = ThreadStore(db_path=vault_dir / "auth.db")
-        await thread_store.connect()
+        # ThreadStore is NOT opened here — owned by the Discord adapter (#417/S4)
 
-        prefs_store = PrefsStore(db_path=vault_dir / "auth.db")
+        prefs_store = PrefsStore(db_path=vault_dir / "config.db")
         await prefs_store.connect()
 
         message_index_store = MessageIndex(db_path=vault_dir / "message_index.db")
@@ -77,7 +303,6 @@ async def open_stores(vault_dir: Path) -> AsyncIterator[StoreBundle]:
             cred=cred_store,
             agent=agent_store,
             turn=turn_store,
-            thread=thread_store,
             prefs=prefs_store,
             message_index=message_index_store,
         )
@@ -87,7 +312,6 @@ async def open_stores(vault_dir: Path) -> AsyncIterator[StoreBundle]:
             auth_store,
             agent_store,
             turn_store,
-            thread_store,
             prefs_store,
             message_index_store,
         )

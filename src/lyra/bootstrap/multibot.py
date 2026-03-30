@@ -26,26 +26,23 @@ from lyra.bootstrap.config import (
     _load_pool_config,
 )
 from lyra.bootstrap.multibot_stores import open_stores
+from lyra.bootstrap.multibot_lifecycle import run_lifecycle
 from lyra.bootstrap.multibot_wiring import (
-    run_lifecycle,
+    _build_bot_auths,
     wire_discord_adapters,
     wire_telegram_adapters,
 )
 from lyra.bootstrap.voice_overlay import init_stt, init_tts
 from lyra.config import (
-    DiscordBotConfig,
     DiscordMultiConfig,
-    TelegramBotConfig,
     TelegramMultiConfig,
 )
 from lyra.core.agent import Agent
 from lyra.core.agent_loader import agent_row_to_config
-from lyra.core.auth import AuthMiddleware
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.cli_pool import CliPool
 from lyra.core.hub import Hub
 from lyra.core.hub.event_bus import PipelineEventBus
-from lyra.core.stores.auth_store import AuthStore
 from lyra.core.stores.pairing import PairingManager, set_pairing_manager
 
 log = logging.getLogger(__name__)
@@ -251,55 +248,3 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
             cli_pool,
             _stop,
         )
-
-
-def _build_bot_auths(
-    raw_config: dict,
-    tg_multi_cfg: TelegramMultiConfig,
-    dc_multi_cfg: DiscordMultiConfig,
-    auth_store: AuthStore,
-    admin_user_ids: frozenset[str] = frozenset(),
-) -> tuple[
-    list[tuple[TelegramBotConfig, AuthMiddleware]],
-    list[tuple[DiscordBotConfig, AuthMiddleware]],
-]:
-    """Build (bot_cfg, auth) pairs for each platform, skipping bots without auth."""
-    tg_bot_auths: list[tuple[TelegramBotConfig, AuthMiddleware]] = []
-    dc_bot_auths: list[tuple[DiscordBotConfig, AuthMiddleware]] = []
-
-    try:
-        for bot_cfg in tg_multi_cfg.bots:
-            auth = AuthMiddleware.from_bot_config(
-                raw_config,
-                "telegram",
-                bot_cfg.bot_id,
-                store=auth_store,
-                admin_user_ids=admin_user_ids,
-            )
-            if auth is None:
-                log.warning(
-                    "telegram bot_id=%r has no auth config — skipping",
-                    bot_cfg.bot_id,
-                )
-                continue
-            tg_bot_auths.append((bot_cfg, auth))
-
-        for bot_cfg in dc_multi_cfg.bots:
-            auth = AuthMiddleware.from_bot_config(
-                raw_config,
-                "discord",
-                bot_cfg.bot_id,
-                store=auth_store,
-                admin_user_ids=admin_user_ids,
-            )
-            if auth is None:
-                log.warning(
-                    "discord bot_id=%r has no auth config — skipping",
-                    bot_cfg.bot_id,
-                )
-                continue
-            dc_bot_auths.append((bot_cfg, auth))
-    except ValueError as exc:
-        sys.exit(str(exc))
-
-    return tg_bot_auths, dc_bot_auths

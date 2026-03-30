@@ -245,7 +245,7 @@ def patch_all(
     _mock_auth_cls.from_bot_config = MagicMock(
         side_effect=lambda *a, **kw: next(_bot_auth_results)
     )
-    monkeypatch.setattr(multibot_mod, "AuthMiddleware", _mock_auth_cls)
+    monkeypatch.setattr(wiring_mod, "AuthMiddleware", _mock_auth_cls)
 
     _fake_auth_store = MagicMock()
     _fake_auth_store.connect = AsyncMock()

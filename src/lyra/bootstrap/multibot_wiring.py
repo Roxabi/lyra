@@ -2,27 +2,27 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
-import signal
+import sys
 from pathlib import Path
-
-import uvicorn
 
 from lyra.adapters.discord import DiscordAdapter
 from lyra.adapters.telegram import TelegramAdapter
-from lyra.bootstrap.health import create_health_app
-from lyra.config import DiscordBotConfig, TelegramBotConfig
+from lyra.config import (
+    DiscordBotConfig,
+    DiscordMultiConfig,
+    TelegramBotConfig,
+    TelegramMultiConfig,
+)
 from lyra.core.auth import AuthMiddleware
 from lyra.core.circuit_breaker import CircuitRegistry
-from lyra.core.cli_pool import CliPool
 from lyra.core.hub import Hub, OutboundDispatcher, RoutingKey
 from lyra.core.message import Platform
 from lyra.core.messages import MessageManager
 from lyra.core.stores.agent_store import AgentStore
+from lyra.core.stores.auth_store import AuthStore
 from lyra.core.stores.credential_store import CredentialStore
-from lyra.core.stores.pairing import PairingManager
 from lyra.core.stores.thread_store import ThreadStore
 from lyra.errors import MissingCredentialsError
 
@@ -218,99 +218,53 @@ async def wire_discord_adapters(  # noqa: PLR0913, C901 — wiring requires all 
     return adapters, dispatchers
 
 
-async def run_lifecycle(  # noqa: PLR0913, C901 — lifecycle orchestration
-    hub: Hub,
-    tg_adapters: list,
-    tg_dispatchers: list,
-    dc_adapters: list[tuple],
-    dc_dispatchers: list,
-    pm: PairingManager | None,
-    cli_pool: CliPool | None,
-    _stop: asyncio.Event | None,
-) -> None:
-    """Start all buses/dispatchers/adapters, wait for stop, then tear down."""
-    await hub.inbound_bus.start()
-    await hub.inbound_audio_bus.start()
-    for d in tg_dispatchers:
-        await d.start()
-    for d in dc_dispatchers:
-        await d.start()
+def _build_bot_auths(
+    raw_config: dict,
+    tg_multi_cfg: TelegramMultiConfig,
+    dc_multi_cfg: DiscordMultiConfig,
+    auth_store: AuthStore,
+    admin_user_ids: frozenset[str] = frozenset(),
+) -> tuple[
+    list[tuple[TelegramBotConfig, AuthMiddleware]],
+    list[tuple[DiscordBotConfig, AuthMiddleware]],
+]:
+    """Build (bot_cfg, auth) pairs for each platform, skipping bots without auth."""
+    tg_bot_auths: list[tuple[TelegramBotConfig, AuthMiddleware]] = []
+    dc_bot_auths: list[tuple[DiscordBotConfig, AuthMiddleware]] = []
 
-    health_port = int(os.environ.get("LYRA_HEALTH_PORT", "8443"))
-    health_app = create_health_app(hub)
-    health_config = uvicorn.Config(
-        health_app, host="127.0.0.1", port=health_port, log_level="warning"
-    )
-    health_server = uvicorn.Server(health_config)
-
-    stop = _stop if _stop is not None else asyncio.Event()
-    if _stop is None:
-        _loop = asyncio.get_running_loop()
-        _loop.add_signal_handler(signal.SIGINT, stop.set)
-        _loop.add_signal_handler(signal.SIGTERM, stop.set)
-
-    from lyra.bootstrap.utils import _log_task_failure
-
-    tasks = [
-        asyncio.create_task(hub.run(), name="hub"),
-        asyncio.create_task(hub._audio_pipeline.run(), name="hub-audio"),
-        asyncio.create_task(health_server.serve(), name="health"),
-    ]
-
-    # Wire audit consumer for pipeline telemetry (#432).
-    if hub._event_bus is not None:
-        from lyra.core.hub.audit_consumer import AuditConsumer
-
-        _audit_queue = hub._event_bus.subscribe()
-        _audit_consumer = AuditConsumer(_audit_queue)
-        _audit_task = asyncio.create_task(
-            _audit_consumer.run(), name="audit-consumer"
-        )
-        _audit_task.add_done_callback(_log_task_failure)
-        tasks.append(_audit_task)
-    for tg_adapter in tg_adapters:
-        tasks.append(
-            asyncio.create_task(
-                tg_adapter.dp.start_polling(tg_adapter.bot, handle_signals=False),
-                name=f"telegram:{tg_adapter._bot_id}",
+    try:
+        for bot_cfg in tg_multi_cfg.bots:
+            auth = AuthMiddleware.from_bot_config(
+                raw_config,
+                "telegram",
+                bot_cfg.bot_id,
+                store=auth_store,
+                admin_user_ids=admin_user_ids,
             )
-        )
-    for dc_adapter, dc_bot_cfg, dc_token in dc_adapters:
-        _dc_task = asyncio.create_task(
-            dc_adapter.start(dc_token),
-            name=f"discord:{dc_bot_cfg.bot_id}",
-        )
-        _dc_task.add_done_callback(_log_task_failure)
-        tasks.append(_dc_task)
+            if auth is None:
+                log.warning(
+                    "telegram bot_id=%r has no auth config — skipping",
+                    bot_cfg.bot_id,
+                )
+                continue
+            tg_bot_auths.append((bot_cfg, auth))
 
-    tg_active = [f"telegram:{a._bot_id}" for a in tg_adapters]
-    dc_active = [f"discord:{c.bot_id}" for _, c, _ in dc_adapters]
-    active = tg_active + dc_active
-    log.info(
-        "Lyra started — adapters: %s, health on :%d.",
-        ", ".join(active) if active else "none",
-        health_port,
-    )
+        for bot_cfg in dc_multi_cfg.bots:
+            auth = AuthMiddleware.from_bot_config(
+                raw_config,
+                "discord",
+                bot_cfg.bot_id,
+                store=auth_store,
+                admin_user_ids=admin_user_ids,
+            )
+            if auth is None:
+                log.warning(
+                    "discord bot_id=%r has no auth config — skipping",
+                    bot_cfg.bot_id,
+                )
+                continue
+            dc_bot_auths.append((bot_cfg, auth))
+    except ValueError as exc:
+        sys.exit(str(exc))
 
-    await stop.wait()
-
-    log.info("Shutdown signal received \u2014 stopping\u2026")
-    for task in tasks:
-        task.cancel()
-    await asyncio.gather(*tasks, return_exceptions=True)
-    await hub.inbound_bus.stop()
-    await hub.inbound_audio_bus.stop()
-    for d in tg_dispatchers:
-        await d.stop()
-    for d in dc_dispatchers:
-        await d.stop()
-    for dc_adapter, _, _dc_tok in dc_adapters:
-        await dc_adapter.close()
-    if pm is not None:
-        await pm.close()
-    if cli_pool is not None:
-        active_ids = cli_pool.get_active_pool_ids()
-        if active_ids:
-            await hub.notify_shutdown_inflight(active_ids)
-        await cli_pool.stop()
-    log.info("Lyra stopped.")
+    return tg_bot_auths, dc_bot_auths

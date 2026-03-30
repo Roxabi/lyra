@@ -82,7 +82,8 @@ async def test_synthesize_with_agent_tts_forwards_all_fields():
         ogg_path = tmp_ogg.name
 
     converter = _make_ogg_converter(ogg_path)
-    svc = TTSService(TTSConfig(engine="global_engine", voice="global_voice"), converter=converter)
+    cfg = TTSConfig(engine="global_engine", voice="global_voice")
+    svc = TTSService(cfg, converter=converter)
 
     write_minimal_wav(wav_path)
 
@@ -134,7 +135,10 @@ async def test_synthesize_agent_tts_merge_order():
         ogg_path = tmp_ogg.name
 
     converter = _make_ogg_converter(ogg_path)
-    svc = TTSService(TTSConfig(engine="global", voice="global_v", language="English"), converter=converter)
+    cfg = TTSConfig(
+        engine="global", voice="global_v", language="English",
+    )
+    svc = TTSService(cfg, converter=converter)
 
     write_minimal_wav(wav_path)
 
@@ -199,7 +203,8 @@ async def test_synthesize_agent_tts_none_uses_global_defaults():
         ogg_path = tmp_ogg.name
 
     converter = _make_ogg_converter(ogg_path)
-    svc = TTSService(TTSConfig(engine="global_eng", voice="global_vox"), converter=converter)
+    cfg = TTSConfig(engine="global_eng", voice="global_vox")
+    svc = TTSService(cfg, converter=converter)
 
     write_minimal_wav(wav_path)
 

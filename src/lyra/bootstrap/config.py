@@ -88,6 +88,14 @@ class DebouncerConfig(BaseModel):
     cancel_on_new_message: bool = False
 
 
+class LoggingConfig(BaseModel):
+    """Typed [logging] config section (#270)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    json_file: bool = True
+
+
 class EventBusConfig(BaseModel):
     """Typed [event_bus] config section (#432)."""
 
@@ -256,6 +264,11 @@ def _load_inbound_bus_config(raw: dict[str, Any]) -> InboundBusConfig:
 def _load_debouncer_config(raw: dict[str, Any]) -> DebouncerConfig:
     """Load [debouncer] section from raw config dict. Missing keys → defaults."""
     return DebouncerConfig.model_validate(raw.get("debouncer", {}))
+
+
+def _load_logging_config(raw: dict[str, Any]) -> LoggingConfig:
+    """Load [logging] section from raw config dict. Missing keys → defaults."""
+    return LoggingConfig.model_validate(raw.get("logging", {}))
 
 
 def _load_event_bus_config(raw: dict[str, Any]) -> EventBusConfig:

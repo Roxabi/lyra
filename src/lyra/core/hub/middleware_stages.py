@@ -18,6 +18,7 @@ from ..message import (
     Platform,
     Response,
 )
+from ..trace import TraceContext
 from .message_pipeline import (
     _DROP,
     Action,
@@ -29,6 +30,23 @@ from .pipeline_events import CommandDispatched, MessageDropped
 log = logging.getLogger(__name__)
 
 _command_parser = CommandParser()
+
+
+class TraceMiddleware:
+    """Stage 0: generate a per-turn trace_id and store it in contextvars (#270).
+
+    Must be first in the pipeline so that all downstream middleware,
+    pool workers, and agent calls inherit the trace context.
+    """
+
+    async def __call__(
+        self,
+        msg: InboundMessage,
+        ctx: PipelineContext,
+        next: Next,
+    ) -> PipelineResult:
+        TraceContext.set_trace_id(TraceContext.generate())
+        return await next(msg, ctx)
 
 
 class ValidatePlatformMiddleware:
@@ -173,6 +191,7 @@ class CreatePoolMiddleware:
             ctx.binding.agent_name,
         )
         ctx.pool = pool
+        TraceContext.set_pool_id(ctx.binding.pool_id)
         ctx.trace(
             "pool",
             "agent_selected",

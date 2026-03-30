@@ -27,7 +27,9 @@ from lyra.adapters.telegram import (
 )
 from lyra.bootstrap.config import (
     _load_circuit_config,
+    _load_logging_config,
     _load_raw_config,
+    LoggingConfig,
 )
 from lyra.bootstrap.multibot import _bootstrap_multibot
 from lyra.config import (
@@ -118,9 +120,18 @@ async def _main(*, adapter: str = "all", _stop: asyncio.Event | None = None) -> 
         sys.exit(str(exc))
 
 
-def _setup_logging() -> None:
-    """Configure logging: console + rotating file in ~/.local/state/lyra/logs/."""
+def _setup_logging(log_config: LoggingConfig | None = None) -> None:
+    """Configure logging: console + rotating file in ~/.local/state/lyra/logs/.
+
+    Uses explicit handler construction (not ``basicConfig``) to guarantee
+    formatter and filter attachment.  When ``log_config.json_file`` is True
+    the file handler emits JSONL; console always stays plaintext.
+    """
+    from lyra.core.trace import JsonFormatter, TraceIdFilter
+
     fmt = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+    if log_config is None:
+        log_config = LoggingConfig()
 
     log_dir = Path.home() / ".local" / "state" / "lyra" / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -128,23 +139,35 @@ def _setup_logging() -> None:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     log_file = log_dir / f"{stamp}_lyra.log"
 
+    trace_filter = TraceIdFilter()
+
     file_handler = RotatingFileHandler(
         log_file,
         maxBytes=10 * 1024 * 1024,
         backupCount=5,  # 10 MB per file, 5 backups
     )
-    file_handler.setFormatter(logging.Formatter(fmt))
+    if log_config.json_file:
+        file_handler.setFormatter(JsonFormatter())
+    else:
+        file_handler.setFormatter(logging.Formatter(fmt))
+    file_handler.addFilter(trace_filter)
 
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(logging.Formatter(fmt))
+    console_handler.addFilter(trace_filter)
 
-    logging.basicConfig(level=logging.INFO, handlers=[file_handler, console_handler])
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    root.addHandler(file_handler)
+    root.addHandler(console_handler)
 
     logging.getLogger(__name__).info("Logging to %s", log_file)
 
 
 def main() -> None:
-    _setup_logging()
+    raw_config = _load_raw_config()
+    log_config = _load_logging_config(raw_config)
+    _setup_logging(log_config)
     parsed = _parse_args()
     asyncio.run(_main(adapter=parsed.adapter))
 

@@ -116,7 +116,7 @@ async def test_on_message_enqueues_audio_on_audio_bus() -> None:
     hub = MagicMock()
     hub.inbound_bus = MagicMock()
     hub.inbound_audio_bus = MagicMock()
-    hub.inbound_audio_bus.put = MagicMock()
+    hub.inbound_audio_bus.put = AsyncMock()
     adapter = DiscordAdapter(
         hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
     )

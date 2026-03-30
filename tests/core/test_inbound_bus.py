@@ -60,20 +60,20 @@ class TestInboundBusRegistration:
         bus = LocalBus()
         assert bus.qsize(Platform.TELEGRAM) == 0
 
-    def test_put_increments_qsize(self) -> None:
+    async def test_put_increments_qsize(self) -> None:
         bus = LocalBus()
         bus.register(Platform.TELEGRAM, maxsize=10)
         msg = _make_msg(Platform.TELEGRAM)
-        bus.put(Platform.TELEGRAM, msg)
+        await bus.put(Platform.TELEGRAM, msg)
         assert bus.qsize(Platform.TELEGRAM) == 1
 
-    def test_put_raises_queue_full(self) -> None:
+    async def test_put_raises_queue_full(self) -> None:
         bus = LocalBus()
         bus.register(Platform.TELEGRAM, maxsize=1)
         msg = _make_msg(Platform.TELEGRAM)
-        bus.put(Platform.TELEGRAM, msg)
+        await bus.put(Platform.TELEGRAM, msg)
         with pytest.raises(asyncio.QueueFull):
-            bus.put(Platform.TELEGRAM, msg)
+            await bus.put(Platform.TELEGRAM, msg)
 
 
 class TestInboundBusFeeder:
@@ -84,7 +84,7 @@ class TestInboundBusFeeder:
 
         try:
             msg = _make_msg(Platform.TELEGRAM)
-            bus.put(Platform.TELEGRAM, msg)
+            await bus.put(Platform.TELEGRAM, msg)
 
             # Wait for feeder to forward to staging
             received = await asyncio.wait_for(bus.get(), timeout=0.5)
@@ -103,12 +103,12 @@ class TestInboundBusFeeder:
             dc_msg = _make_msg(Platform.DISCORD)
 
             # Fill telegram queue
-            bus.put(Platform.TELEGRAM, tg_msg)
+            await bus.put(Platform.TELEGRAM, tg_msg)
             with pytest.raises(asyncio.QueueFull):
-                bus.put(Platform.TELEGRAM, tg_msg)
+                await bus.put(Platform.TELEGRAM, tg_msg)
 
             # Discord queue unaffected — put succeeds (not raises QueueFull)
-            bus.put(Platform.DISCORD, dc_msg)
+            await bus.put(Platform.DISCORD, dc_msg)
         finally:
             await bus.stop()
 

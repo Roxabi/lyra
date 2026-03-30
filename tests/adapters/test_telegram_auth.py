@@ -181,13 +181,13 @@ class TestTelegramAuth:
 
         hub = MagicMock()
         hub.inbound_bus = MagicMock()
-        hub.inbound_bus.put = MagicMock()
+        hub.inbound_bus.put = AsyncMock()
         adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub, auth=auth)
         adapter.bot = AsyncMock()
 
         await adapter._on_message(_make_aiogram_msg())
 
-        hub.inbound_bus.put.assert_called_once()
+        hub.inbound_bus.put.assert_awaited_once()
         _platform, msg = hub.inbound_bus.put.call_args[0]
         assert msg.trust_level == TrustLevel.TRUSTED
         assert msg.is_admin is False
@@ -208,13 +208,13 @@ class TestTelegramAuth:
 
         hub = MagicMock()
         hub.inbound_bus = MagicMock()
-        hub.inbound_bus.put = MagicMock()
+        hub.inbound_bus.put = AsyncMock()
         adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub, auth=auth)
         adapter.bot = AsyncMock()
 
         await adapter._on_message(_make_aiogram_msg())
 
-        hub.inbound_bus.put.assert_called_once()
+        hub.inbound_bus.put.assert_awaited_once()
         _platform, msg = hub.inbound_bus.put.call_args[0]
         assert msg.is_admin is True
 
@@ -265,13 +265,13 @@ class TestTelegramAuth:
 
         hub = MagicMock()
         hub.inbound_bus = MagicMock()
-        hub.inbound_bus.put = MagicMock()
+        hub.inbound_bus.put = AsyncMock()
         adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub, auth=auth)
         adapter.bot = AsyncMock()
 
         await adapter._on_message(_make_aiogram_msg())
 
-        hub.inbound_bus.put.assert_called_once()
+        hub.inbound_bus.put.assert_awaited_once()
         _platform, msg = hub.inbound_bus.put.call_args[0]
         assert msg.trust_level == TrustLevel.PUBLIC
         assert msg.is_admin is False

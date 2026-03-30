@@ -322,7 +322,7 @@ class TestOnMessageVoiceCommandWiring:
         # Arrange — !join in a guild text channel should NOT reach hub.inbound_bus
         hub = MagicMock()
         hub.inbound_bus = MagicMock()
-        hub.inbound_bus.put_nowait = MagicMock()
+        hub.inbound_bus.put = AsyncMock()
         adapter = DiscordAdapter(hub=hub, bot_id="main")
         adapter._auth = _ALLOW_ALL  # permit the message
         # Mock _handle_voice_command to return True (simulates voice command handled)
@@ -343,4 +343,4 @@ class TestOnMessageVoiceCommandWiring:
         await adapter.on_message(message)
 
         # Assert — hub inbound bus was NOT called
-        hub.inbound_bus.put_nowait.assert_not_called()
+        hub.inbound_bus.put.assert_not_called()

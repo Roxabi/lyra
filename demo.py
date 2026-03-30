@@ -60,7 +60,7 @@ async def main() -> None:
             trust_level=TrustLevel.TRUSTED,
         )
         print(f"  -> {text}")
-        hub.inbound_bus.put(Platform.TELEGRAM, msg)
+        await hub.inbound_bus.put(Platform.TELEGRAM, msg)
 
     # Let the hub process all messages
     while hub.inbound_bus.staging_qsize() > 0:

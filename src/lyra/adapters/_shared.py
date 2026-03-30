@@ -94,7 +94,7 @@ async def push_to_hub_guarded(  # noqa: PLR0913 — each arg is a distinct guard
             return
 
     try:
-        inbound_bus.put(platform, msg)
+        await inbound_bus.put(platform, msg)
     except asyncio.QueueFull:
         if on_drop is not None:
             on_drop()

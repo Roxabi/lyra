@@ -170,12 +170,14 @@ def build_default_pipeline(
         CreatePoolMiddleware,
         RateLimitMiddleware,
         ResolveBindingMiddleware,
+        TraceMiddleware,
         ValidatePlatformMiddleware,
     )
     from .middleware_submit import SubmitToPoolMiddleware
 
     return MiddlewarePipeline(
         [
+            TraceMiddleware(),
             ValidatePlatformMiddleware(),
             RateLimitMiddleware(),
             ResolveBindingMiddleware(),

@@ -5,15 +5,12 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-import pytest
-
 from lyra.bootstrap.multibot_stores import (
     _atomic_table_copy,
     _ensure_config_db,
     _ensure_discord_db,
     _has_sentinel,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

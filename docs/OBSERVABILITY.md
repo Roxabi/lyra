@@ -2,9 +2,9 @@
 
 ## Overview
 
-Lyra uses **plaintext rotating file logs** as the primary observability mechanism, complemented by a **raw turn store** (SQLite audit trail) for conversation persistence.
-There is no distributed tracing framework (no OpenTelemetry) and no structured JSON logs.
-The `pool_id` is the de-facto correlation key to reconstruct a request's lifecycle across log lines.
+Lyra uses **structured JSON file logs** with **per-turn trace IDs** as the primary observability mechanism, complemented by a **raw turn store** (SQLite audit trail) for conversation persistence.
+There is no distributed tracing framework (no OpenTelemetry).
+Each inbound turn receives a unique `trace_id` (UUID4) that propagates through the full async call chain via `contextvars`. The `pool_id` remains the conversation-scope correlation key.
 
 ---
 
@@ -13,30 +13,52 @@ The `pool_id` is the de-facto correlation key to reconstruct a request's lifecyc
 | Where | Format |
 |-------|--------|
 | `~/.local/state/lyra/logs/{YYYYMMDD_HHMMSS}_lyra.log` | Rotating file, UTC-stamped at startup |
-| stdout | Mirror of file output |
+| stdout | Mirror of file output (plaintext) |
 
 **Rotation policy:** 10 MB per file, 5 backups kept (~50 MB total).
 **Level:** `INFO` by default.
-**Format:** `%(asctime)s %(levelname)s %(name)s: %(message)s`
+**File format:** JSONL (one JSON object per line) when `json_file = true` (default). Fields: `timestamp`, `level`, `logger`, `message`, `trace_id` (when set), `pool_id` (when set).
+**Console format:** `%(asctime)s %(levelname)s %(name)s: %(message)s` (plaintext, unchanged).
 
-Configured in `src/lyra/__main__.py` — `_setup_logging()`.
+Configured in `src/lyra/__main__.py` — `_setup_logging()`. Toggle JSON with `[logging] json_file = true` in `config.toml`.
+
+---
+
+## Trace IDs
+
+Each inbound message turn receives a unique `trace_id` (UUID4) generated in `TraceMiddleware` (Stage 0 of the middleware pipeline). The ID propagates via `contextvars.ContextVar` through the entire async call chain — middleware stages, pool submission, agent dispatch, LLM call, and response dispatch — without any explicit parameter threading.
+
+A `TraceIdFilter` (attached to all logging handlers at startup) reads `trace_id` and `pool_id` from context vars and injects them into every `LogRecord`. No existing log call sites need modification.
+
+To isolate a single turn's log lines:
+
+```bash
+# JSON file logs (default)
+jq 'select(.trace_id == "abc-123-...")' ~/.local/state/lyra/logs/*.log
+
+# Or grep for the trace_id
+grep '"trace_id":"abc-123-..."' ~/.local/state/lyra/logs/*.log
+```
+
+**Scope boundary:** Log lines emitted in `Hub.run()` outside of pipeline processing (e.g., the main loop itself) do not carry a `trace_id`. Only per-turn processing is traced.
+
+Implemented in `src/lyra/core/trace.py`. See #270.
 
 ---
 
 ## Correlation: the `pool_id`
 
-There are no trace IDs or correlation IDs.
-The `pool_id` is a stable string that identifies a conversation scope and appears consistently across all log lines for a given request:
+The `pool_id` is a stable string that identifies a conversation scope and appears in both file and console logs:
 
 ```
 {platform}:{bot_id}:{scope_type}:{scope_id}
 # e.g. telegram:main:chat:123456
 ```
 
-To reconstruct a full request lifecycle, grep the log file for its pool_id:
+To reconstruct a full conversation scope:
 
 ```bash
-grep "pool:telegram:main:chat:123456" ~/.local/state/lyra/logs/*.log
+grep "telegram:main:chat:123456" ~/.local/state/lyra/logs/*.log
 ```
 
 ---
@@ -128,7 +150,7 @@ Config keys (in `config.toml` under `[monitoring]`):
 
 | Gap | Tracking |
 |-----|---------|
-| No end-to-end trace IDs | — |
-| No structured/JSON logs | — |
+| No end-to-end trace IDs | ✅ Resolved in #270 |
+| No structured/JSON logs | ✅ Resolved in #270 |
 | No message content capture in file logs | Captured in Turn Store (L1, #67 ✅) |
 | No OpenTelemetry integration | — |

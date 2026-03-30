@@ -18,6 +18,7 @@ from ..message import (
     Platform,
     Response,
 )
+from ..trace import TraceContext
 from .message_pipeline import (
     _DROP,
     Action,
@@ -29,6 +30,22 @@ from .pipeline_events import CommandDispatched, MessageDropped
 log = logging.getLogger(__name__)
 
 _command_parser = CommandParser()
+
+
+class TraceMiddleware:
+    """Stage 0: generate a per-turn trace_id and store it in contextvars (#270)."""
+
+    async def __call__(
+        self,
+        msg: InboundMessage,
+        ctx: PipelineContext,
+        next: Next,
+    ) -> PipelineResult:
+        token = TraceContext.set_trace_id(TraceContext.generate())
+        try:
+            return await next(msg, ctx)
+        finally:
+            TraceContext.reset_trace_id(token)
 
 
 class ValidatePlatformMiddleware:
@@ -173,6 +190,7 @@ class CreatePoolMiddleware:
             ctx.binding.agent_name,
         )
         ctx.pool = pool
+        pool_id_token = TraceContext.set_pool_id(ctx.binding.pool_id)
         ctx.trace(
             "pool",
             "agent_selected",
@@ -195,7 +213,10 @@ class CreatePoolMiddleware:
         if ctx.router and hasattr(ctx.router, "prepare"):
             msg = ctx.router.prepare(msg)
 
-        return await next(msg, ctx)
+        try:
+            return await next(msg, ctx)
+        finally:
+            TraceContext.reset_pool_id(pool_id_token)
 
 
 class CommandMiddleware:

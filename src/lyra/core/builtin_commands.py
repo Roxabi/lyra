@@ -39,7 +39,7 @@ def require_admin(msg: InboundMessage) -> "Response | None":
     return None
 
 
-def help_command(
+def help_command(  # noqa: PLR0913
     builtins: Mapping[str, object],
     session_handlers: "Mapping[str, object] | None",
     command_loader: "CommandLoader",

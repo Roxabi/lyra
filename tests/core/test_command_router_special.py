@@ -447,11 +447,10 @@ class TestSessionCommands:
     def test_help_hides_processor_commands_without_passthroughs(
         self, tmp_path: Path
     ) -> None:
-        """Processor commands only appear in /help when registered as passthroughs (#359)."""
-        from tests.helpers import reload_processors
-
+        """Processor cmds only in /help when registered as passthroughs (#359)."""
         from lyra.core.builtin_commands import help_command
         from lyra.core.processor_registry import registry as proc_registry
+        from tests.helpers import reload_processors
 
         reload_processors()
         registered = sorted(proc_registry.commands())

@@ -11,16 +11,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from lyra.core.hub.message_pipeline import Action, PipelineResult, ResumeStatus
 from lyra.core.hub.middleware import (
-    CommandMiddleware,
-    CreatePoolMiddleware,
     MiddlewarePipeline,
     PipelineContext,
-    RateLimitMiddleware,
-    ResolveBindingMiddleware,
-    SubmitToPoolMiddleware,
-    ValidatePlatformMiddleware,
     build_default_pipeline,
 )
+from lyra.core.hub.middleware_stages import (
+    CommandMiddleware,
+    CreatePoolMiddleware,
+    RateLimitMiddleware,
+    ResolveBindingMiddleware,
+    ValidatePlatformMiddleware,
+)
+from lyra.core.hub.middleware_submit import SubmitToPoolMiddleware
 from lyra.core.message import Platform, Response
 from tests.core.conftest import _make_hub, make_inbound_message
 

@@ -165,13 +165,14 @@ class CommandRouter:
         )
         for name, desc in plugin_descs.items():
             result.append((name, desc, self._is_admin_only(desc)))
-        # Processor commands registered via ProcessorRegistry (issue #363)
+        # Processor commands — only include those registered as passthroughs (#359).
         try:
             importlib.import_module("lyra.core.processors")  # trigger self-registration
             from lyra.core.processor_registry import registry as _proc_registry
 
             for cmd, desc in _proc_registry.descriptions().items():
-                result.append((cmd, desc, False))
+                if cmd in self._passthroughs:
+                    result.append((cmd, desc, False))
         except Exception:
             pass
         return sorted(result)

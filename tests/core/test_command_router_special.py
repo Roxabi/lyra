@@ -444,42 +444,85 @@ class TestSessionCommands:
         assert "/mything" in response.content
         assert "Does the thing" in response.content
 
-    def test_help_hides_processor_commands_without_passthroughs(
+    def test_help_filters_processor_commands_by_passthroughs(
         self, tmp_path: Path
     ) -> None:
-        """Processor cmds only in /help when registered as passthroughs (#359)."""
+        """Processor cmds gated by passthroughs in /help (#359)."""
         from lyra.core.builtin_commands import help_command
-        from lyra.core.processor_registry import registry as proc_registry
-        from tests.helpers import reload_processors
+        from lyra.core.processor_registry import ProcessorEntry, registry
 
-        reload_processors()
-        registered = sorted(proc_registry.commands())
-        assert registered, "processor registry should have at least one command"
-        sample_cmd = registered[0]
-
-        router = make_router(tmp_path)
-
-        # Without passthroughs — processor commands should NOT appear
-        response_no_pt = help_command(
-            router._builtins,
-            router._session_handlers,
-            router._command_loader,
-            router._enabled_plugins,
-            router._msg_manager,
-            passthroughs=frozenset(),
+        # Hermetic: register fake processors, clean up after.
+        registry._entries["/fake-a"] = ProcessorEntry(
+            processor_cls=type("A", (), {}), description="Fake A"
         )
-        assert sample_cmd not in response_no_pt.content
-
-        # With passthroughs — only registered ones appear
-        response_with_pt = help_command(
-            router._builtins,
-            router._session_handlers,
-            router._command_loader,
-            router._enabled_plugins,
-            router._msg_manager,
-            passthroughs=frozenset({sample_cmd}),
+        registry._entries["/fake-b"] = ProcessorEntry(
+            processor_cls=type("B", (), {}), description="Fake B"
         )
-        assert sample_cmd in response_with_pt.content
+        try:
+            router = make_router(tmp_path)
+
+            # passthroughs=None → show all (backward compat)
+            resp_none = help_command(
+                router._builtins,
+                router._session_handlers,
+                router._command_loader,
+                router._enabled_plugins,
+                router._msg_manager,
+            )
+            assert "/fake-a" in resp_none.content
+            assert "/fake-b" in resp_none.content
+
+            # Empty passthroughs → hide all processor commands
+            resp_empty = help_command(
+                router._builtins,
+                router._session_handlers,
+                router._command_loader,
+                router._enabled_plugins,
+                router._msg_manager,
+                passthroughs=frozenset(),
+            )
+            assert "/fake-a" not in resp_empty.content
+            assert "/fake-b" not in resp_empty.content
+
+            # Selective passthroughs → only matching ones appear
+            resp_one = help_command(
+                router._builtins,
+                router._session_handlers,
+                router._command_loader,
+                router._enabled_plugins,
+                router._msg_manager,
+                passthroughs=frozenset({"/fake-a"}),
+            )
+            assert "/fake-a" in resp_one.content
+            assert "/fake-b" not in resp_one.content
+        finally:
+            registry._entries.pop("/fake-a", None)
+            registry._entries.pop("/fake-b", None)
+
+    @pytest.mark.asyncio
+    async def test_help_dispatch_passes_passthroughs(
+        self, tmp_path: Path
+    ) -> None:
+        """Router dispatch /help passes passthroughs to help_command (#359)."""
+        from lyra.core.processor_registry import ProcessorEntry, registry
+
+        registry._entries["/fake-pt"] = ProcessorEntry(
+            processor_cls=type("PT", (), {}), description="Fake PT"
+        )
+        try:
+            router = make_router(tmp_path)
+            msg = make_message_with_command("/help")
+
+            # Not registered as passthrough → should not appear
+            resp = await router.dispatch(msg, pool=None)
+            assert "/fake-pt" not in resp.content
+
+            # Register as passthrough → should appear
+            router.register_passthrough("fake-pt")
+            resp2 = await router.dispatch(msg, pool=None)
+            assert "/fake-pt" in resp2.content
+        finally:
+            registry._entries.pop("/fake-pt", None)
 
     def test_session_args_passed_to_handler(self, tmp_path: Path) -> None:
         import asyncio as _asyncio

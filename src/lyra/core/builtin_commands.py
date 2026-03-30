@@ -60,7 +60,7 @@ def help_command(  # noqa: PLR0913
             lines.append(f"  {cmd_name} — {desc}")
     # Include processor registry commands only when the agent registered them
     # as passthroughs (i.e. _session_tools built successfully). Issue #359.
-    _active_passthroughs = passthroughs or frozenset()
+    # passthroughs=None → show all (backward compat); empty frozenset → show none.
     try:
         importlib.import_module("lyra.core.processors")  # trigger self-registration
         from lyra.core.processor_registry import registry as _proc_registry
@@ -68,7 +68,7 @@ def help_command(  # noqa: PLR0913
         proc_descs = _proc_registry.descriptions()
         if proc_descs:
             for cmd_name, desc in sorted(proc_descs.items()):
-                if cmd_name in _active_passthroughs:
+                if passthroughs is None or cmd_name in passthroughs:
                     lines.append(f"  {cmd_name} — {desc or '(no description)'}")
     except Exception:
         pass

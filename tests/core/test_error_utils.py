@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock
 
 from lyra.core.error_utils import safe_error_response
 from lyra.core.message import GENERIC_ERROR_REPLY, Response

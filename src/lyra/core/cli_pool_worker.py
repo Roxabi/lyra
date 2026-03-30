@@ -52,7 +52,8 @@ class _ProcessEntry:
     system_prompt: str = ""
     session_id: str | None = None
     resumed_from: str | None = None  # session_id passed to --resume at spawn
-    prompt_file: str | None = None  # tmpfile path for --system-prompt-file (cleaned up on kill)
+    # tmpfile for --system-prompt-file (cleaned on kill)
+    prompt_file: str | None = None
     turn_count: int = 0
     last_activity: float = field(default_factory=time.time)
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock)

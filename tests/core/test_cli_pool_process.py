@@ -84,7 +84,8 @@ class TestCliPoolBuildCmd:
         from pathlib import Path
 
         pool = CliPool()
-        cmd, prompt_file = pool._build_cmd(DEFAULT_MODEL, system_prompt="You are helpful.")
+        prompt = "You are helpful."
+        cmd, prompt_file = pool._build_cmd(DEFAULT_MODEL, system_prompt=prompt)
         try:
             assert "--system-prompt-file" in cmd
             idx = cmd.index("--system-prompt-file")

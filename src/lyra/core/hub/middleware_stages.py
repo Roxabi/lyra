@@ -45,8 +45,11 @@ class TraceMiddleware:
         ctx: PipelineContext,
         next: Next,
     ) -> PipelineResult:
-        TraceContext.set_trace_id(TraceContext.generate())
-        return await next(msg, ctx)
+        token = TraceContext.set_trace_id(TraceContext.generate())
+        try:
+            return await next(msg, ctx)
+        finally:
+            TraceContext.reset_trace_id(token)
 
 
 class ValidatePlatformMiddleware:
@@ -191,7 +194,7 @@ class CreatePoolMiddleware:
             ctx.binding.agent_name,
         )
         ctx.pool = pool
-        TraceContext.set_pool_id(ctx.binding.pool_id)
+        pool_id_token = TraceContext.set_pool_id(ctx.binding.pool_id)
         ctx.trace(
             "pool",
             "agent_selected",
@@ -214,7 +217,10 @@ class CreatePoolMiddleware:
         if ctx.router and hasattr(ctx.router, "prepare"):
             msg = ctx.router.prepare(msg)
 
-        return await next(msg, ctx)
+        try:
+            return await next(msg, ctx)
+        finally:
+            TraceContext.reset_pool_id(pool_id_token)
 
 
 class CommandMiddleware:

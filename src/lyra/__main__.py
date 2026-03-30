@@ -37,6 +37,7 @@ from lyra.config import (
     TelegramMultiConfig,
     load_multibot_config,
 )
+from lyra.core.trace import JsonFormatter, TraceIdFilter
 from lyra.errors import KeyringError, MissingCredentialsError
 
 log = logging.getLogger(__name__)
@@ -127,8 +128,6 @@ def _setup_logging(log_config: LoggingConfig | None = None) -> None:
     formatter and filter attachment.  When ``log_config.json_file`` is True
     the file handler emits JSONL; console always stays plaintext.
     """
-    from lyra.core.trace import JsonFormatter, TraceIdFilter
-
     fmt = "%(asctime)s %(levelname)s %(name)s: %(message)s"
     if log_config is None:
         log_config = LoggingConfig()
@@ -157,7 +156,10 @@ def _setup_logging(log_config: LoggingConfig | None = None) -> None:
     console_handler.addFilter(trace_filter)
 
     root = logging.getLogger()
+    if root.handlers:
+        return  # already configured — avoid duplicate handlers
     root.setLevel(logging.INFO)
+    root.addFilter(trace_filter)
     root.addHandler(file_handler)
     root.addHandler(console_handler)
 

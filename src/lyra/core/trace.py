@@ -37,12 +37,20 @@ class TraceContext:
         return _trace_id.set(value)
 
     @staticmethod
+    def reset_trace_id(token: Token[str]) -> None:
+        _trace_id.reset(token)
+
+    @staticmethod
     def get_pool_id() -> str | None:
         return _pool_id.get(None)
 
     @staticmethod
     def set_pool_id(value: str) -> Token[str]:
         return _pool_id.set(value)
+
+    @staticmethod
+    def reset_pool_id(token: Token[str]) -> None:
+        _pool_id.reset(token)
 
 
 class TraceIdFilter(logging.Filter):
@@ -67,20 +75,12 @@ class TraceIdFilter(logging.Filter):
 
 
 class JsonFormatter(logging.Formatter):
-    """Emit one JSON object per line from an explicit field allowlist.
+    """Emit one JSON object per line with fields: timestamp, level, logger,
+    message, trace_id, pool_id, exception, stack_info.
 
     Fields whose value is empty string are omitted from the output to keep
     JSON clean (e.g. ``trace_id`` is absent for startup log lines).
     """
-
-    FIELD_ALLOWLIST: tuple[str, ...] = (
-        "timestamp",
-        "level",
-        "logger",
-        "message",
-        "trace_id",
-        "pool_id",
-    )
 
     def format(self, record: logging.LogRecord) -> str:
         # Ensure the message is fully interpolated.
@@ -95,9 +95,12 @@ class JsonFormatter(logging.Formatter):
             "message": record.message,
         }
 
-        # Append exception text to message if present.
+        # Exception and stack_info as separate fields (not in message).
         if record.exc_text:
-            obj["message"] = obj["message"] + "\n" + record.exc_text
+            obj["exception"] = record.exc_text
+
+        if record.stack_info:
+            obj["stack_info"] = self.formatStack(record.stack_info)
 
         # Add context var fields only when non-empty.
         trace_id = getattr(record, "trace_id", "")

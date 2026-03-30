@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import logging.handlers
 from contextvars import copy_context
 
 from lyra.bootstrap.config import LoggingConfig, _load_logging_config
@@ -84,8 +85,8 @@ class TestJsonFormatter:
         obj = json.loads(fmt.format(record))
         assert obj["message"] == "hello world count=42"
 
-    def test_exception_included_in_message(self) -> None:
-        """Exception text should be appended to the message field."""
+    def test_exception_in_separate_field(self) -> None:
+        """Exception text should be in a separate 'exception' field."""
         try:
             raise ValueError("boom")
         except ValueError:
@@ -105,7 +106,8 @@ class TestJsonFormatter:
         record.pool_id = ""  # type: ignore[attr-defined]
         fmt = JsonFormatter()
         obj = json.loads(fmt.format(record))
-        assert "ValueError: boom" in obj["message"]
+        assert obj["message"] == "something failed"
+        assert "ValueError: boom" in obj["exception"]
 
     def test_one_line_per_record(self) -> None:
         """Each formatted record must be a single line (JSONL)."""
@@ -113,6 +115,38 @@ class TestJsonFormatter:
         record = self._make_record()
         line = fmt.format(record)
         assert "\n" not in line
+
+    def test_one_line_per_record_with_exception(self) -> None:
+        """JSONL invariant holds even with multi-line exception tracebacks."""
+        try:
+            raise RuntimeError("multi\nline\nerror")
+        except RuntimeError:
+            import sys
+            exc_info = sys.exc_info()
+
+        record = logging.LogRecord(
+            name="test",
+            level=logging.ERROR,
+            pathname="",
+            lineno=0,
+            msg="fail",
+            args=(),
+            exc_info=exc_info,
+        )
+        record.trace_id = ""  # type: ignore[attr-defined]
+        record.pool_id = ""  # type: ignore[attr-defined]
+        fmt = JsonFormatter()
+        line = fmt.format(record)
+        assert "\n" not in line
+        obj = json.loads(line)
+        assert "exception" in obj
+
+    def test_non_ascii_message(self) -> None:
+        """Non-ASCII messages are preserved (ensure_ascii=False)."""
+        fmt = JsonFormatter()
+        record = self._make_record(msg="Привет мир 🌍")
+        obj = json.loads(fmt.format(record))
+        assert obj["message"] == "Привет мир 🌍"
 
     def test_integration_with_filter(self) -> None:
         """TraceIdFilter + JsonFormatter work together end-to-end."""
@@ -145,6 +179,76 @@ class TestJsonFormatter:
 # ──────────────────────────────────────────────────────────────────────
 # LoggingConfig
 # ──────────────────────────────────────────────────────────────────────
+
+
+class TestSetupLogging:
+    """Tests for _setup_logging wiring (#270)."""
+
+    def test_json_file_true_attaches_json_formatter(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setattr("lyra.__main__.Path.home", lambda: tmp_path)
+        import lyra.__main__ as main_mod
+
+        # Clear any existing root handlers
+        root = logging.getLogger()
+        original_handlers = root.handlers[:]
+        root.handlers.clear()
+        try:
+            main_mod._setup_logging(LoggingConfig(json_file=True))
+            file_handler = next(
+                h for h in root.handlers
+                if isinstance(h, logging.handlers.RotatingFileHandler)
+            )
+            assert isinstance(file_handler.formatter, JsonFormatter)
+        finally:
+            root.handlers[:] = original_handlers
+
+    def test_json_file_false_attaches_plain_formatter(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setattr("lyra.__main__.Path.home", lambda: tmp_path)
+        import lyra.__main__ as main_mod
+
+        root = logging.getLogger()
+        original_handlers = root.handlers[:]
+        root.handlers.clear()
+        try:
+            main_mod._setup_logging(LoggingConfig(json_file=False))
+            file_handler = next(
+                h for h in root.handlers
+                if isinstance(h, logging.handlers.RotatingFileHandler)
+            )
+            assert not isinstance(file_handler.formatter, JsonFormatter)
+        finally:
+            root.handlers[:] = original_handlers
+
+    def test_trace_filter_attached_to_root(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setattr("lyra.__main__.Path.home", lambda: tmp_path)
+        import lyra.__main__ as main_mod
+
+        root = logging.getLogger()
+        original_handlers = root.handlers[:]
+        original_filters = root.filters[:]
+        root.handlers.clear()
+        root.filters.clear()
+        try:
+            main_mod._setup_logging(LoggingConfig())
+            assert any(isinstance(f, TraceIdFilter) for f in root.filters)
+        finally:
+            root.handlers[:] = original_handlers
+            root.filters[:] = original_filters
+
+    def test_duplicate_call_does_not_add_handlers(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setattr("lyra.__main__.Path.home", lambda: tmp_path)
+        import lyra.__main__ as main_mod
+
+        root = logging.getLogger()
+        original_handlers = root.handlers[:]
+        root.handlers.clear()
+        try:
+            main_mod._setup_logging(LoggingConfig())
+            count_after_first = len(root.handlers)
+            main_mod._setup_logging(LoggingConfig())
+            assert len(root.handlers) == count_after_first
+        finally:
+            root.handlers[:] = original_handlers
 
 
 class TestLoggingConfig:

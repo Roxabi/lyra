@@ -31,7 +31,7 @@ from lyra.core.render_events import (
     ToolSummaryRenderEvent,
 )
 from lyra.core.tool_display_config import ToolDisplayConfig
-from lyra.llm.events import LlmEvent, ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
+from lyra.llm.events import LlmEvent, TextLlmEvent, ToolUseLlmEvent
 
 
 class StreamProcessor:
@@ -115,7 +115,7 @@ class StreamProcessor:
                 async for render_event in self._handle_tool_event(event):
                     yield render_event
 
-            elif isinstance(event, ResultLlmEvent):  # pyright: ignore[reportUnnecessaryIsInstance]
+            else:  # ResultLlmEvent
                 _result_received = True
                 if self._has_any_tool_events():
                     yield self._emit_snapshot(is_complete=True)

@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator, Awaitable, Callable
+
 import pytest
+
+from lyra.core.message import InboundMessage, Response
+from lyra.core.pool import Pool
+from lyra.core.render_events import RenderEvent
 
 
 class TestAgentMemoryInjection:
@@ -22,8 +28,8 @@ class TestAgentMemoryInjection:
         )
 
         class ConcreteAgent(AgentBase):
-            async def process(self, msg, pool, *, on_intermediate=None):  # type: ignore[override]
-                pass
+            async def process(self, msg: InboundMessage, pool: Pool, *, on_intermediate: Callable[[str], Awaitable[None]] | None = None) -> Response | AsyncIterator[RenderEvent]:
+                return Response(content="")
 
         agent = ConcreteAgent(config)
         assert agent._memory is None  # FAILS until _memory field is added
@@ -40,8 +46,8 @@ class TestAgentMemoryInjection:
         )
 
         class ConcreteAgent(AgentBase):
-            async def process(self, msg, pool, *, on_intermediate=None):  # type: ignore[override]
-                pass
+            async def process(self, msg: InboundMessage, pool: Pool, *, on_intermediate: Callable[[str], Awaitable[None]] | None = None) -> Response | AsyncIterator[RenderEvent]:
+                return Response(content="")
 
         agent = ConcreteAgent(config)
         mock_mm = MagicMock()
@@ -74,8 +80,8 @@ class TestAgentEnsureSystemPrompt:
         )
 
         class ConcreteAgent(AgentBase):
-            async def process(self, msg, pool, *, on_intermediate=None):  # type: ignore[override]
-                pass
+            async def process(self, msg: InboundMessage, pool: Pool, *, on_intermediate: Callable[[str], Awaitable[None]] | None = None) -> Response | AsyncIterator[RenderEvent]:
+                return Response(content="")
 
         agent = ConcreteAgent(config)
         # _memory is None — static fallback
@@ -100,8 +106,8 @@ class TestAgentEnsureSystemPrompt:
         )
 
         class ConcreteAgent(AgentBase):
-            async def process(self, msg, pool, *, on_intermediate=None):  # type: ignore[override]
-                pass
+            async def process(self, msg: InboundMessage, pool: Pool, *, on_intermediate: Callable[[str], Awaitable[None]] | None = None) -> Response | AsyncIterator[RenderEvent]:
+                return Response(content="")
 
         agent = ConcreteAgent(config)
         mock_mm = AsyncMock()
@@ -140,8 +146,8 @@ class TestAgentFlushSession:
         config = Agent(name="lyra", system_prompt="", memory_namespace="lyra")
 
         class ConcreteAgent(AgentBase):
-            async def process(self, msg, pool, *, on_intermediate=None):  # type: ignore[override]
-                pass
+            async def process(self, msg: InboundMessage, pool: Pool, *, on_intermediate: Callable[[str], Awaitable[None]] | None = None) -> Response | AsyncIterator[RenderEvent]:
+                return Response(content="")
 
         agent = ConcreteAgent(config)
         assert agent._memory is None
@@ -164,8 +170,8 @@ class TestAgentFlushSession:
         config = Agent(name="lyra", system_prompt="", memory_namespace="lyra")
 
         class ConcreteAgent(AgentBase):
-            async def process(self, msg, pool, *, on_intermediate=None):  # type: ignore[override]
-                pass
+            async def process(self, msg: InboundMessage, pool: Pool, *, on_intermediate: Callable[[str], Awaitable[None]] | None = None) -> Response | AsyncIterator[RenderEvent]:
+                return Response(content="")
 
         agent = ConcreteAgent(config)
         mock_mm = AsyncMock()
@@ -206,8 +212,8 @@ class TestAgentCompact:
         config = Agent(name="lyra", system_prompt="", memory_namespace="lyra")
 
         class ConcreteAgent(AgentBase):
-            async def process(self, msg, pool, *, on_intermediate=None):  # type: ignore[override]
-                pass
+            async def process(self, msg: InboundMessage, pool: Pool, *, on_intermediate: Callable[[str], Awaitable[None]] | None = None) -> Response | AsyncIterator[RenderEvent]:
+                return Response(content="")
 
         agent = ConcreteAgent(config)
         mock_mm = AsyncMock()
@@ -232,8 +238,8 @@ class TestAgentCompact:
         config = Agent(name="lyra", system_prompt="", memory_namespace="lyra")
 
         class ConcreteAgent(AgentBase):
-            async def process(self, msg, pool, *, on_intermediate=None):  # type: ignore[override]
-                pass
+            async def process(self, msg: InboundMessage, pool: Pool, *, on_intermediate: Callable[[str], Awaitable[None]] | None = None) -> Response | AsyncIterator[RenderEvent]:
+                return Response(content="")
 
         # Use a small compact_context_tokens so 5 entries of 100 chars each
         # (~125 tokens) exceed the 80-token threshold (0.8 * 100).

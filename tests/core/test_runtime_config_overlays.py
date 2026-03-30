@@ -76,7 +76,7 @@ class TestRuntimeConfigDefaults:
 
         # Direct mutation must raise
         with pytest.raises((ValidationError, TypeError)):
-            rc.style = "detailed"  # type: ignore[misc]
+            setattr(rc, "style", "detailed")
 
         # Correct way: use set_param to obtain an updated copy
         updated = set_param(rc, "style", "detailed")
@@ -271,7 +271,7 @@ class TestEffectiveConfigFrozen:
 
         # Act / Assert
         with pytest.raises(ValidationError):
-            effective.model = "something-else"  # type: ignore[misc]
+            setattr(effective, "model", "something-else")
 
 
 class TestSetParamPreservesUnrelatedFields:

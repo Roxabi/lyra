@@ -56,11 +56,11 @@ class STTService:
 
     def _transcribe_sync(self, path: str) -> TranscriptionResult:
         try:
-            from voicecli.config import (  # type: ignore[import-untyped]
+            from voicecli.config import (
                 load_vocab,
                 vocab_to_prompt,
             )
-            from voicecli.transcribe import (  # type: ignore[import-untyped]
+            from voicecli.transcribe import (
                 transcribe as _transcribe,
             )
 

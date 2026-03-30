@@ -12,7 +12,7 @@ import json
 import logging
 from pathlib import Path
 
-from roxabi_vault import AsyncMemoryDB  # type: ignore[import-untyped]
+from roxabi_vault import AsyncMemoryDB
 
 from lyra.core.memory_freshness import age_str, is_stale
 from lyra.core.memory_schema import apply_schema_compat

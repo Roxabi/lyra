@@ -4,10 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import re
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
 from lyra.core import Hub, Pool
+
+if TYPE_CHECKING:
+    from lyra.core.agent import AgentBase
+    from lyra.core.hub.hub_protocol import ChannelAdapter
 from lyra.core.circuit_breaker import CircuitBreaker
 from lyra.core.message import (
     InboundMessage,
@@ -63,8 +68,8 @@ async def test_anthropic_circuit_open_sends_fast_fail_and_skips_agent() -> None:
 
             return gen()
 
-    hub.register_adapter(Platform.TELEGRAM, "main", CapturingAdapter())  # type: ignore[arg-type]
-    hub.register_agent(MockStreamingAgent())  # type: ignore[arg-type]
+    hub.register_adapter(Platform.TELEGRAM, "main", cast("ChannelAdapter", CapturingAdapter()))
+    hub.register_agent(cast("AgentBase", MockStreamingAgent()))
     hub.register_binding(Platform.TELEGRAM, "main", "*", "test", "telegram:main:*")
 
     # Act — put one message on bus and let hub process it
@@ -128,8 +133,8 @@ async def test_anthropic_circuit_open_includes_retry_after() -> None:
 
             return gen()
 
-    hub.register_adapter(Platform.TELEGRAM, "main", CapturingAdapter())  # type: ignore[arg-type]
-    hub.register_agent(MockStreamingAgent())  # type: ignore[arg-type]
+    hub.register_adapter(Platform.TELEGRAM, "main", cast("ChannelAdapter", CapturingAdapter()))
+    hub.register_agent(cast("AgentBase", MockStreamingAgent()))
     hub.register_binding(Platform.TELEGRAM, "main", "*", "test", "telegram:main:*")
 
     # Act

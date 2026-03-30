@@ -5,6 +5,7 @@ tool loop, system prompt.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -22,11 +23,11 @@ from tests.helpers import reload_processors
 # ---------------------------------------------------------------------------
 
 
-def _extract_system_prompt(call_args: object) -> str:
+def _extract_system_prompt(call_args: Any) -> str:
     """Extract system_prompt from provider.complete() call args."""
-    if len(call_args.args) > 3:  # type: ignore[union-attr]
-        return call_args.args[3]  # type: ignore[union-attr]
-    return call_args.kwargs.get("system_prompt", "")  # type: ignore[union-attr]
+    if len(call_args.args) > 3:
+        return call_args.args[3]
+    return call_args.kwargs.get("system_prompt", "")
 
 
 def make_message(text: str = "hello") -> InboundMessage:

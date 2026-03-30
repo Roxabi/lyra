@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from enum import Enum
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, field_serializer, field_validator
 
@@ -110,10 +111,12 @@ class SmartRoutingConfig(BaseModel):
 
     @field_validator("routing_table", mode="before")
     @classmethod
-    def _coerce_routing_table_keys(cls, v: object) -> dict[Complexity, str]:
+    def _coerce_routing_table_keys(
+        cls, v: Any
+    ) -> dict[Complexity, str]:
         """Convert string keys to Complexity enum values when loading from JSON."""
         if not isinstance(v, dict):
-            return v  # type: ignore[return-value]
+            return v
         result: dict[Complexity, str] = {}
         for key, val in v.items():
             if isinstance(key, str):

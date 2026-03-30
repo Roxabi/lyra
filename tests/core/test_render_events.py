@@ -5,6 +5,8 @@ Source: src/lyra/core/render_events.py
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from lyra.core.render_events import (
@@ -36,7 +38,7 @@ class TestSilentCounts:
     def test_frozen(self) -> None:
         sc = SilentCounts(reads=1)
         with pytest.raises((AttributeError, TypeError)):
-            sc.reads = 5  # type: ignore[misc]
+            setattr(sc, "reads", 5)
 
     def test_equality(self) -> None:
         assert SilentCounts(reads=1) == SilentCounts(reads=1)
@@ -74,7 +76,7 @@ class TestFileEditSummary:
     def test_frozen(self) -> None:
         s = FileEditSummary(path="a.py")
         with pytest.raises((AttributeError, TypeError)):
-            s.path = "b.py"  # type: ignore[misc]
+            setattr(s, "path", "b.py")
 
     def test_equality(self) -> None:
         a = FileEditSummary(path="x.py", edits=["f"], count=1)
@@ -98,7 +100,8 @@ class TestFileEditSummary:
         """Mutating the original's edits after snapshot() does not affect the snap."""
         s = FileEditSummary(path="x.py", edits=["fn_a"], count=1)
         snap = s.snapshot()
-        s.edits.append("fn_b")  # type: ignore[union-attr]  # mutate original
+        assert s.edits is not None
+        s.edits.append("fn_b")  # mutate original
         assert snap.edits == ["fn_a"]
 
 
@@ -115,13 +118,14 @@ class TestTextRenderEvent:
 
     def test_is_final_is_required(self) -> None:
         """is_final has no default — callers must be explicit about finality."""
+        kwargs: dict[str, Any] = {"text": "partial"}
         with pytest.raises(TypeError):
-            TextRenderEvent(text="partial")  # type: ignore[call-arg]
+            TextRenderEvent(**kwargs)  # missing is_final
 
     def test_frozen(self) -> None:
         e = TextRenderEvent(text="x", is_final=True)
         with pytest.raises((AttributeError, TypeError)):
-            e.text = "y"  # type: ignore[misc]
+            setattr(e, "text", "y")
 
     def test_equality(self) -> None:
         a = TextRenderEvent(text="hi", is_final=True)
@@ -180,7 +184,7 @@ class TestToolSummaryRenderEvent:
     def test_frozen(self) -> None:
         e = ToolSummaryRenderEvent()
         with pytest.raises((AttributeError, TypeError)):
-            e.is_complete = True  # type: ignore[misc]
+            setattr(e, "is_complete", True)
 
     def test_equality(self) -> None:
         a = ToolSummaryRenderEvent(bash_commands=["ls"])

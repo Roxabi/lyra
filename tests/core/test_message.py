@@ -16,13 +16,19 @@ def test_outbound_message_importable() -> None:
     """OutboundMessage, Button, CodeBlock, Attachment, ContentPart must be
     importable from lyra.core.message."""
     # Arrange / Act / Assert — ImportError is the expected RED failure
-    from lyra.core.message import (  # noqa: F401
-        Attachment,  # pyright: ignore[reportUnusedImport]
-        Button,  # pyright: ignore[reportUnusedImport]
-        CodeBlock,  # pyright: ignore[reportUnusedImport]
-        ContentPart,  # pyright: ignore[reportUnusedImport]
-        OutboundMessage,  # pyright: ignore[reportUnusedImport]
+    from lyra.core.message import (
+        Attachment,
+        Button,
+        CodeBlock,
+        ContentPart,
+        OutboundMessage,
     )
+
+    assert Attachment is not None
+    assert Button is not None
+    assert CodeBlock is not None
+    assert ContentPart is not None
+    assert OutboundMessage is not None
 
 
 def test_from_text_factory() -> None:
@@ -112,10 +118,16 @@ def test_to_text_multi_part() -> None:
 def test_outbound_importable_from_core() -> None:
     """OutboundMessage, Button, CodeBlock, Attachment, ContentPart must be
     importable from lyra.core (the package __init__ re-exports)."""
-    from lyra.core import (  # noqa: F401
-        Attachment,  # pyright: ignore[reportUnusedImport]
-        Button,  # pyright: ignore[reportUnusedImport]
-        CodeBlock,  # pyright: ignore[reportUnusedImport]
-        ContentPart,  # pyright: ignore[reportUnusedImport]
-        OutboundMessage,  # pyright: ignore[reportUnusedImport]
+    from lyra.core import (
+        Attachment,
+        Button,
+        CodeBlock,
+        ContentPart,
+        OutboundMessage,
     )
+
+    assert Attachment is not None
+    assert Button is not None
+    assert CodeBlock is not None
+    assert ContentPart is not None
+    assert OutboundMessage is not None

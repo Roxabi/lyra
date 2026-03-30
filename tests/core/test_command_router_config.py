@@ -71,7 +71,7 @@ def make_config_msg(
         },
         trust_level=TrustLevel.TRUSTED,
         is_admin=is_admin,
-        command=_parser.parse(content),  # type: ignore[call-arg]
+        command=_parser.parse(content),
     )
 
 

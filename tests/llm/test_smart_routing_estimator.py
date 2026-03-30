@@ -11,7 +11,7 @@ from lyra.core.commands.command_parser import CommandContext
 from lyra.core.message import Attachment, InboundMessage
 from lyra.core.trust import TrustLevel
 from lyra.llm.smart_routing import (
-    ComplexityEstimator,  # type: ignore[attr-defined]  # not yet implemented (#153)
+    ComplexityEstimator,
     SmartRoutingDecorator,
 )
 
@@ -136,7 +136,7 @@ class TestSmartRoutingDecoratorWithMsg:
         decorator = SmartRoutingDecorator(inner, config)
 
         # Act — msg=None is backward compat (#153 S2 not yet implemented)
-        result = await decorator.complete(  # type: ignore[call-arg]
+        result = await decorator.complete(
             "pool1",
             "hi",
             make_model_cfg(),
@@ -172,7 +172,7 @@ class TestSmartRoutingDecoratorWithMsg:
         decorator = SmartRoutingDecorator(inner, config)
 
         # Act — msg= param not yet implemented (#153 S2)
-        await decorator.complete(  # type: ignore[call-arg]
+        await decorator.complete(
             "pool1",
             "hi",
             make_model_cfg(),
@@ -203,7 +203,7 @@ class TestSmartRoutingDecoratorWithMsg:
             text_raw="/analyze",
             trust_level=TrustLevel.OWNER,
             timestamp=datetime.now(timezone.utc),
-            command=cmd,  # type: ignore[call-arg]  # field added in #153
+            command=cmd,
         )
         inner = _make_inner()
         config = SmartRoutingConfig(
@@ -215,12 +215,12 @@ class TestSmartRoutingDecoratorWithMsg:
                 Complexity.COMPLEX: "claude-opus-4-6",
             },
             history_size=50,
-            high_complexity_commands=("analyze",),  # type: ignore[call-arg]  # field added in #153
+            high_complexity_commands=("analyze",),
         )
         decorator = SmartRoutingDecorator(inner, config)
 
         # Act — msg= param not yet implemented (#153 S2)
-        await decorator.complete(  # type: ignore[call-arg]
+        await decorator.complete(
             "pool1",
             "/analyze",
             make_model_cfg(),
@@ -250,7 +250,7 @@ class TestSmartRoutingDecoratorWithMsg:
             text_raw="!analyze",
             trust_level=TrustLevel.OWNER,
             timestamp=datetime.now(timezone.utc),
-            command=bang_cmd,  # type: ignore[call-arg]
+            command=bang_cmd,
         )
         inner = _make_inner()
         config = SmartRoutingConfig(
@@ -262,12 +262,12 @@ class TestSmartRoutingDecoratorWithMsg:
                 Complexity.COMPLEX: "claude-opus-4-6",
             },
             history_size=50,
-            high_complexity_commands=("analyze",),  # type: ignore[call-arg]
+            high_complexity_commands=("analyze",),
         )
         decorator = SmartRoutingDecorator(inner, config)
 
         # Act
-        await decorator.complete(  # type: ignore[call-arg]
+        await decorator.complete(
             "pool1",
             "!analyze",
             make_model_cfg(),

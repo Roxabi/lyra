@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from typing import Any
 
 __all__ = [
     "AgentRow",
@@ -52,7 +53,7 @@ class AgentRow:
     updated_at: str = field(default_factory=_utc_now_iso)
 
     @classmethod
-    def from_db_row(cls, row: tuple) -> "AgentRow":  # type: ignore[type-arg]
+    def from_db_row(cls, row: tuple[Any, ...]) -> "AgentRow":
         """Construct an AgentRow from a raw aiosqlite SELECT tuple (24 columns)."""
         (
             name,

@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import contextmanager
 from pathlib import Path
+from typing import cast
 from unittest.mock import patch
 
 import pytest
@@ -111,7 +112,7 @@ def _assert_ok(result: object, *, label: str = "") -> None:
     """Assert exit_code == 0 with a readable failure message."""
     from click.testing import Result  # local import for type only
 
-    r: Result = result  # type: ignore[assignment]
+    r = cast(Result, result)
     prefix = f"[{label}] " if label else ""
     assert r.exit_code == 0, f"{prefix}Expected exit 0, got {r.exit_code}:\n{r.output}"
 

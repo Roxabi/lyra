@@ -284,11 +284,11 @@ class TestDiscordOutboundMessage:
         reply_calls: list[dict] = []
         send_calls: list[dict] = []
 
-        async def capture_reply(*args, **kwargs):  # type: ignore[return]
+        async def capture_reply(*args: object, **kwargs: object) -> SimpleNamespace:
             reply_calls.append(dict(kwargs))
             return SimpleNamespace(id=len(reply_calls))
 
-        async def capture_send(*args, **kwargs):  # type: ignore[return]
+        async def capture_send(*args: object, **kwargs: object) -> SimpleNamespace:
             send_calls.append(dict(kwargs))
             return SimpleNamespace(id=100 + len(send_calls))
 

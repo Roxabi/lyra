@@ -5,10 +5,15 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+from typing import TYPE_CHECKING, cast
 from unittest.mock import patch
 
 from lyra.core.hub.message_pipeline import Action, MessagePipeline, ResumeStatus
 from tests.core.conftest import _make_hub, make_inbound_message
+
+if TYPE_CHECKING:
+    from lyra.core.stores.message_index import MessageIndex
+    from lyra.core.stores.turn_store import TurnStore
 
 # -------------------------------------------------------------------
 # Stub
@@ -43,21 +48,22 @@ class TestReplyToResumePipeline:
         pool_id = "telegram:main:chat:42"
         mi = _StubMessageIndex({(pool_id, "tg-msg-99"): "sess-1"})
         hub = _make_hub()
-        hub._message_index = mi  # type: ignore[assignment]
+        hub._message_index = cast("MessageIndex", mi)
         pool = hub.get_or_create_pool(pool_id, "lyra")
 
         resumed: list[str] = []
 
-        async def _fake_resume(sid: str) -> None:
+        async def _fake_resume(sid: str) -> bool:
             resumed.append(sid)
+            return True
 
-        pool._session_resume_fn = _fake_resume  # type: ignore[attr-defined]
+        pool._session_resume_fn = _fake_resume
 
         _base = make_inbound_message(scope_id="chat:42")
         msg = dataclasses.replace(_base, reply_to_id="tg-msg-99")
         pipeline = MessagePipeline(hub)
 
-        await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
+        await pipeline._resolve_context(msg, pool, pool_id)
 
         assert resumed == ["sess-1"]
 
@@ -65,7 +71,7 @@ class TestReplyToResumePipeline:
         """When msg.reply_to_id is None, MessageIndex is never called."""
         mi = _StubMessageIndex()
         hub = _make_hub()
-        hub._message_index = mi  # type: ignore[assignment]
+        hub._message_index = cast("MessageIndex", mi)
         pool_id = "telegram:main:chat:42"
         pool = hub.get_or_create_pool(pool_id, "lyra")
 
@@ -73,7 +79,7 @@ class TestReplyToResumePipeline:
         assert msg.reply_to_id is None
 
         pipeline = MessagePipeline(hub)
-        await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
+        await pipeline._resolve_context(msg, pool, pool_id)
 
         assert mi.resolve_calls == []
 
@@ -82,21 +88,22 @@ class TestReplyToResumePipeline:
         pool_id = "telegram:main:chat:42"
         mi = _StubMessageIndex()  # empty — resolve returns None
         hub = _make_hub()
-        hub._message_index = mi  # type: ignore[assignment]
+        hub._message_index = cast("MessageIndex", mi)
         pool = hub.get_or_create_pool(pool_id, "lyra")
 
         resumed: list[str] = []
 
-        async def _fake_resume(sid: str) -> None:
+        async def _fake_resume(sid: str) -> bool:
             resumed.append(sid)
+            return True
 
-        pool._session_resume_fn = _fake_resume  # type: ignore[attr-defined]
+        pool._session_resume_fn = _fake_resume
 
         _base = make_inbound_message(scope_id="chat:42")
         msg = dataclasses.replace(_base, reply_to_id="tg-msg-77")
         pipeline = MessagePipeline(hub)
 
-        await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
+        await pipeline._resolve_context(msg, pool, pool_id)
 
         assert mi.resolve_calls == [(pool_id, "tg-msg-77")]
         assert resumed == []
@@ -106,24 +113,25 @@ class TestReplyToResumePipeline:
         pool_id = "telegram:main:chat:42"
         mi = _StubMessageIndex({(pool_id, "tg-msg-88"): "sess-busy"})
         hub = _make_hub()
-        hub._message_index = mi  # type: ignore[assignment]
+        hub._message_index = cast("MessageIndex", mi)
 
         pool = hub.get_or_create_pool(pool_id, "lyra")
         pool._current_task = asyncio.create_task(asyncio.sleep(10))
 
         resumed: list[str] = []
 
-        async def _fake_resume(sid: str) -> None:
+        async def _fake_resume(sid: str) -> bool:
             resumed.append(sid)
+            return True
 
-        pool._session_resume_fn = _fake_resume  # type: ignore[attr-defined]
+        pool._session_resume_fn = _fake_resume
 
         _base = make_inbound_message(scope_id="chat:42")
         msg = dataclasses.replace(_base, reply_to_id="tg-msg-88")
         pipeline = MessagePipeline(hub)
 
         try:
-            await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
+            await pipeline._resolve_context(msg, pool, pool_id)
         finally:
             pool._current_task.cancel()
             try:
@@ -139,7 +147,7 @@ class TestReplyToResumePipeline:
         pool_id = "telegram:main:chat:42:user:tg:user:alice"
         mi = _StubMessageIndex({(pool_id, "tg-msg-55"): "sess-alice"})
         hub = _make_hub()
-        hub._message_index = mi  # type: ignore[assignment]
+        hub._message_index = cast("MessageIndex", mi)
 
         pool = hub.get_or_create_pool(pool_id, "lyra")
 
@@ -149,7 +157,7 @@ class TestReplyToResumePipeline:
             resumed.append(sid)
             return True
 
-        pool._session_resume_fn = _fake_resume  # type: ignore[attr-defined]
+        pool._session_resume_fn = _fake_resume
 
         _base = make_inbound_message(scope_id="chat:42:user:tg:user:alice")
         msg = dataclasses.replace(
@@ -159,7 +167,7 @@ class TestReplyToResumePipeline:
         )
         pipeline = MessagePipeline(hub)
 
-        status = await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
+        status = await pipeline._resolve_context(msg, pool, pool_id)
 
         assert mi.resolve_calls == [(pool_id, "tg-msg-55")]
         assert resumed == ["sess-alice"]
@@ -174,16 +182,17 @@ class TestReplyToResumePipeline:
 
         resumed: list[str] = []
 
-        async def _fake_resume(sid: str) -> None:
+        async def _fake_resume(sid: str) -> bool:
             resumed.append(sid)
+            return True
 
-        pool._session_resume_fn = _fake_resume  # type: ignore[attr-defined]
+        pool._session_resume_fn = _fake_resume
 
         _base = make_inbound_message(scope_id="chat:42")
         msg = dataclasses.replace(_base, reply_to_id="tg-msg-42")
         pipeline = MessagePipeline(hub)
 
-        await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
+        await pipeline._resolve_context(msg, pool, pool_id)
 
         assert resumed == []
 
@@ -200,21 +209,22 @@ class TestResolveContextMessageIndex:
         pool_id = "telegram:main:chat:42"
         mi = _StubMessageIndex({(pool_id, "msg-100"): "sess-abc"})
         hub = _make_hub()
-        hub._message_index = mi  # type: ignore[assignment]
+        hub._message_index = cast("MessageIndex", mi)
         pool = hub.get_or_create_pool(pool_id, "lyra")
 
         resumed: list[str] = []
 
-        async def _fake_resume(sid: str) -> None:
+        async def _fake_resume(sid: str) -> bool:
             resumed.append(sid)
+            return True
 
-        pool._session_resume_fn = _fake_resume  # type: ignore[attr-defined]
+        pool._session_resume_fn = _fake_resume
 
         _base = make_inbound_message(scope_id="chat:42")
         msg = dataclasses.replace(_base, reply_to_id="msg-100")
         pipeline = MessagePipeline(hub)
 
-        await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
+        await pipeline._resolve_context(msg, pool, pool_id)
 
         assert mi.resolve_calls == [(pool_id, "msg-100")]
         assert resumed == ["sess-abc"]
@@ -224,7 +234,7 @@ class TestResolveContextMessageIndex:
         pool_id = "telegram:main:chat:42"
         mi = _StubMessageIndex()  # empty
         hub = _make_hub()
-        hub._message_index = mi  # type: ignore[assignment]
+        hub._message_index = cast("MessageIndex", mi)
         pool = hub.get_or_create_pool(pool_id, "lyra")
 
         _base = make_inbound_message(scope_id="chat:42")
@@ -232,7 +242,7 @@ class TestResolveContextMessageIndex:
         pipeline = MessagePipeline(hub)
 
         # Should not raise — falls through to Path 3
-        await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
+        await pipeline._resolve_context(msg, pool, pool_id)
 
         assert mi.resolve_calls == [(pool_id, "unknown-msg")]
 
@@ -241,23 +251,24 @@ class TestResolveContextMessageIndex:
         pool_id = "telegram:main:chat:42"
         mi = _StubMessageIndex({(pool_id, "msg-busy"): "sess-x"})
         hub = _make_hub()
-        hub._message_index = mi  # type: ignore[assignment]
+        hub._message_index = cast("MessageIndex", mi)
         pool = hub.get_or_create_pool(pool_id, "lyra")
         pool._current_task = asyncio.create_task(asyncio.sleep(10))
 
         resumed: list[str] = []
 
-        async def _fake_resume(sid: str) -> None:
+        async def _fake_resume(sid: str) -> bool:
             resumed.append(sid)
+            return True
 
-        pool._session_resume_fn = _fake_resume  # type: ignore[attr-defined]
+        pool._session_resume_fn = _fake_resume
 
         _base = make_inbound_message(scope_id="chat:42")
         msg = dataclasses.replace(_base, reply_to_id="msg-busy")
         pipeline = MessagePipeline(hub)
 
         try:
-            await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
+            await pipeline._resolve_context(msg, pool, pool_id)
         finally:
             pool._current_task.cancel()
             try:
@@ -282,19 +293,19 @@ class TestResolveContextResumeStatus:
         pool_id = "telegram:main:chat:42"
         mi = _StubMessageIndex({(pool_id, "tg-99"): "sess-p1"})
         hub = _make_hub()
-        hub._message_index = mi  # type: ignore[assignment]
+        hub._message_index = cast("MessageIndex", mi)
         pool = hub.get_or_create_pool(pool_id, "lyra")
 
         async def _fake_resume(sid: str) -> bool:
             return True
 
-        pool._session_resume_fn = _fake_resume  # type: ignore[attr-defined]
+        pool._session_resume_fn = _fake_resume
 
         _base = make_inbound_message(scope_id="chat:42")
         msg = dataclasses.replace(_base, reply_to_id="tg-99")
         pipeline = MessagePipeline(hub)
 
-        status = await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
+        status = await pipeline._resolve_context(msg, pool, pool_id)
 
         assert status == ResumeStatus.RESUMED
 
@@ -307,14 +318,14 @@ class TestResolveContextResumeStatus:
         async def _fake_resume(sid: str) -> bool:
             return True
 
-        pool._session_resume_fn = _fake_resume  # type: ignore[attr-defined]
+        pool._session_resume_fn = _fake_resume
 
         _base = make_inbound_message(scope_id="chat:42")
         _meta = {**_base.platform_meta, "thread_session_id": "tss-1"}
         msg = dataclasses.replace(_base, platform_meta=_meta)
         pipeline = MessagePipeline(hub)
 
-        status = await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
+        status = await pipeline._resolve_context(msg, pool, pool_id)
 
         assert status == ResumeStatus.RESUMED
 
@@ -327,14 +338,14 @@ class TestResolveContextResumeStatus:
         async def _fake_resume(sid: str) -> bool:
             return False  # session pruned / invalid
 
-        pool._session_resume_fn = _fake_resume  # type: ignore[attr-defined]
+        pool._session_resume_fn = _fake_resume
 
         _base = make_inbound_message(scope_id="chat:42")
         _meta = {**_base.platform_meta, "thread_session_id": "tss-dead"}
         msg = dataclasses.replace(_base, platform_meta=_meta)
         pipeline = MessagePipeline(hub)
 
-        status = await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
+        status = await pipeline._resolve_context(msg, pool, pool_id)
 
         assert status == ResumeStatus.FRESH
 
@@ -351,7 +362,7 @@ class TestResolveContextResumeStatus:
             # First call (path 2) fails; second call (path 3) succeeds.
             return len(resume_calls) > 1
 
-        pool._session_resume_fn = _fake_resume  # type: ignore[attr-defined]
+        pool._session_resume_fn = _fake_resume
 
         class _FakeTurnStore:
             async def get_last_session(self, pid: str) -> str | None:
@@ -360,14 +371,14 @@ class TestResolveContextResumeStatus:
             async def close(self) -> None:
                 pass
 
-        hub._turn_store = _FakeTurnStore()  # type: ignore[attr-defined]
+        hub._turn_store = cast("TurnStore", _FakeTurnStore())
 
         _base = make_inbound_message(scope_id="chat:42")
         _meta = {**_base.platform_meta, "thread_session_id": "tss-dead"}
         msg = dataclasses.replace(_base, platform_meta=_meta)
         pipeline = MessagePipeline(hub)
 
-        status = await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
+        status = await pipeline._resolve_context(msg, pool, pool_id)
 
         assert status == ResumeStatus.RESUMED
         assert len(resume_calls) == 2  # path 2 + path 3
@@ -381,7 +392,7 @@ class TestResolveContextResumeStatus:
         msg = make_inbound_message(scope_id="chat:42")
         pipeline = MessagePipeline(hub)
 
-        status = await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
+        status = await pipeline._resolve_context(msg, pool, pool_id)
 
         assert status == ResumeStatus.SKIPPED
 
@@ -398,7 +409,7 @@ class TestResolveContextResumeStatus:
         pipeline = MessagePipeline(hub)
 
         try:
-            status = await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
+            status = await pipeline._resolve_context(msg, pool, pool_id)
         finally:
             pool._current_task.cancel()
             try:
@@ -423,7 +434,7 @@ class TestResolveContextResumeStatus:
         async def _rejected_resume(sid: str) -> bool:
             return False
 
-        pool._session_resume_fn = _rejected_resume  # type: ignore[attr-defined]
+        pool._session_resume_fn = _rejected_resume
 
         _base = make_inbound_message(scope_id="chat:42:user:tg:user:alice")
         # is_group in platform_meta no longer affects the pipeline path since #356
@@ -436,7 +447,7 @@ class TestResolveContextResumeStatus:
         msg = dataclasses.replace(_base, platform_meta=_meta)
         pipeline = MessagePipeline(hub)
 
-        status = await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
+        status = await pipeline._resolve_context(msg, pool, pool_id)
 
         assert status == ResumeStatus.FRESH
 
@@ -452,7 +463,7 @@ class TestResolveContextResumeStatus:
             resumed.append(sid)
             return True
 
-        pool._session_resume_fn = _fake_resume  # type: ignore[attr-defined]
+        pool._session_resume_fn = _fake_resume
 
         class _FakeTurnStore:
             async def get_last_session(self, pid: str) -> str | None:
@@ -461,14 +472,14 @@ class TestResolveContextResumeStatus:
             async def close(self) -> None:
                 pass
 
-        hub._turn_store = _FakeTurnStore()  # type: ignore[attr-defined]
+        hub._turn_store = cast("TurnStore", _FakeTurnStore())
 
         _base = make_inbound_message(scope_id="chat:42:user:tg:user:alice")
         _meta = {**_base.platform_meta, "is_group": True}
         msg = dataclasses.replace(_base, platform_meta=_meta)
         pipeline = MessagePipeline(hub)
 
-        status = await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
+        status = await pipeline._resolve_context(msg, pool, pool_id)
 
         assert status == ResumeStatus.RESUMED
         assert resumed == ["sess-alice-last"]
@@ -500,12 +511,12 @@ class TestPath3DeadBackendGuard:
         async def _rejected_resume(sid: str) -> bool:
             return False
 
-        pool._session_resume_fn = _rejected_resume  # type: ignore[attr-defined]
+        pool._session_resume_fn = _rejected_resume
 
         # Override is_backend_alive to simulate a dead backend
         agent = hub.agent_registry.get("lyra")
         assert agent is not None
-        agent.is_backend_alive = lambda _pool_id: False  # type: ignore[method-assign]
+        object.__setattr__(agent, "is_backend_alive", lambda _pool_id: False)
 
         class _FakeTurnStore:
             async def get_last_session(self, pid: str) -> str | None:
@@ -514,14 +525,14 @@ class TestPath3DeadBackendGuard:
             async def close(self) -> None:
                 pass
 
-        hub._turn_store = _FakeTurnStore()  # type: ignore[attr-defined]
+        hub._turn_store = cast("TurnStore", _FakeTurnStore())
 
         _base = make_inbound_message(scope_id="chat:42")
         _meta = {**_base.platform_meta, "thread_session_id": "tss-dead"}
         msg = dataclasses.replace(_base, platform_meta=_meta)
         pipeline = MessagePipeline(hub)
 
-        status = await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
+        status = await pipeline._resolve_context(msg, pool, pool_id)
 
         # If the dead-backend guard had returned SKIPPED at the inner check,
         # the result would be SKIPPED.  Falling through gives FRESH because
@@ -552,12 +563,12 @@ class TestPath3DeadBackendGuard:
             async def close(self) -> None:
                 pass
 
-        hub._turn_store = _FakeTurnStore()  # type: ignore[attr-defined]
+        hub._turn_store = cast("TurnStore", _FakeTurnStore())
 
         msg = make_inbound_message(scope_id="chat:42")
         pipeline = MessagePipeline(hub)
 
-        status = await pipeline._resolve_context(msg, pool, pool_id)  # type: ignore[attr-defined]
+        status = await pipeline._resolve_context(msg, pool, pool_id)
 
         assert status == ResumeStatus.SKIPPED
 
@@ -579,7 +590,7 @@ class TestNotifySessionFallthrough:
         async def _rejected_resume(sid: str) -> bool:
             return False
 
-        pool._session_resume_fn = _rejected_resume  # type: ignore[attr-defined]
+        pool._session_resume_fn = _rejected_resume
 
         _base = make_inbound_message(scope_id="chat:42")
         _meta = {**_base.platform_meta, "thread_session_id": "tss-dead"}
@@ -597,7 +608,7 @@ class TestNotifySessionFallthrough:
             from lyra.core.message import Platform
 
             key = RoutingKey(Platform("telegram"), "main", "chat:42")
-            result = await pipeline._submit_to_pool(msg, pool, key)  # type: ignore[attr-defined]
+            result = await pipeline._submit_to_pool(msg, pool, key)
 
         assert result.action == Action.SUBMIT_TO_POOL
         assert len(notify_calls) == 1
@@ -614,7 +625,7 @@ class TestNotifySessionFallthrough:
         async def _accepted_resume(sid: str) -> bool:
             return True
 
-        pool._session_resume_fn = _accepted_resume  # type: ignore[attr-defined]
+        pool._session_resume_fn = _accepted_resume
 
         _base = make_inbound_message(scope_id="chat:42")
         _meta = {**_base.platform_meta, "thread_session_id": "tss-live"}
@@ -632,7 +643,7 @@ class TestNotifySessionFallthrough:
             from lyra.core.message import Platform
 
             key = RoutingKey(Platform("telegram"), "main", "chat:42")
-            result = await pipeline._submit_to_pool(msg, pool, key)  # type: ignore[attr-defined]
+            result = await pipeline._submit_to_pool(msg, pool, key)
 
         assert result.action == Action.SUBMIT_TO_POOL
         assert notify_calls == []
@@ -657,7 +668,7 @@ class TestNotifySessionFallthrough:
             from lyra.core.message import Platform
 
             key = RoutingKey(Platform("telegram"), "main", "chat:42")
-            result = await pipeline._submit_to_pool(msg, pool, key)  # type: ignore[attr-defined]
+            result = await pipeline._submit_to_pool(msg, pool, key)
 
         assert result.action == Action.SUBMIT_TO_POOL
         assert notify_calls == []

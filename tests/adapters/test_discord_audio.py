@@ -223,7 +223,7 @@ async def test_on_message_does_not_call_normalize_audio_for_non_audio() -> None:
         called = True
         return original(m, ab, mt, trust_level=trust_level)
 
-    adapter.normalize_audio = spy  # type: ignore[method-assign]
+    object.__setattr__(adapter, "normalize_audio", spy)
 
     await adapter.on_message(msg)
 

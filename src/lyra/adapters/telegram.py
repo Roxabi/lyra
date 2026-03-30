@@ -30,12 +30,13 @@ from lyra.adapters.telegram_normalize import (
     normalize_audio as _normalize_audio_impl,
 )
 from lyra.adapters.telegram_outbound import (
-    _typing_loop,  # noqa: F401 — re-exported for tests  # pyright: ignore[reportUnusedImport]
+    _typing_loop as _typing_loop,  # noqa: F401
     _typing_worker,
     send as _send_impl,
     send_streaming as _send_streaming_impl,
 )
-from lyra.core.auth import _ALLOW_ALL, _DENY_ALL, AuthMiddleware  # noqa: F401 — re-exported for tests and external callers  # pyright: ignore[reportUnusedImport]
+from lyra.core.auth import _ALLOW_ALL as _ALLOW_ALL, _DENY_ALL as _DENY_ALL, AuthMiddleware as AuthMiddleware  # noqa: F401
+
 from lyra.core.authenticator import Authenticator
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.guard import BlockedGuard, GuardChain

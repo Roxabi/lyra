@@ -129,7 +129,7 @@ async def test_send_cancels_typing_task_at_start() -> None:
         cancelled_ids.append(send_to_id)
         original_cancel(send_to_id)
 
-    adapter._cancel_typing = spy_cancel  # type: ignore[method-assign]
+    object.__setattr__(adapter, "_cancel_typing", spy_cancel)
 
     await adapter.send(
         make_dc_inbound_msg(is_mention=False), OutboundMessage.from_text("hi")
@@ -166,7 +166,7 @@ async def test_send_streaming_cancels_typing_task_at_start() -> None:
         cancelled_ids.append(send_to_id)
         original_cancel(send_to_id)
 
-    adapter._cancel_typing = spy_cancel  # type: ignore[method-assign]
+    object.__setattr__(adapter, "_cancel_typing", spy_cancel)
 
     async def _chunks() -> AsyncIterator[TextRenderEvent]:
         yield TextRenderEvent(text="hello", is_final=False)

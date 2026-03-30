@@ -7,6 +7,7 @@ transcript length cap, inbound bus full.
 from __future__ import annotations
 
 import asyncio
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -14,6 +15,9 @@ from lyra.core.hub import Hub
 from lyra.core.message import InboundMessage, Platform, Response
 from lyra.core.trust import TrustLevel
 from tests.core.conftest import FakeSTT, make_audio, make_inbound_message
+
+if TYPE_CHECKING:
+    from lyra.stt import STTService
 
 # ---------------------------------------------------------------------------
 # File-local helpers
@@ -43,12 +47,12 @@ class TestAudioPipelineTrustLevel:
     @pytest.mark.asyncio()
     async def test_blocked_audio_is_dropped(self):
         stt = FakeSTT()
-        hub = Hub(stt=stt)  # type: ignore[arg-type]
+        hub = Hub(stt=cast("STTService", stt))
         hub.inbound_bus.register(Platform.TELEGRAM, maxsize=10)
         hub.inbound_audio_bus.register(Platform.TELEGRAM, maxsize=10)
 
         capture = _DispatchCapture()
-        hub.dispatch_response = capture  # type: ignore[assignment]
+        object.__setattr__(hub, "dispatch_response", capture)
 
         # Blocked audio
         audio = make_audio(trust_level=TrustLevel.BLOCKED)
@@ -88,12 +92,12 @@ class TestAudioPipelineRateLimit:
     async def test_rate_limited_audio_gets_reply(self):
         stt = FakeSTT()
         # rate_limit=1 means second audio from same user triggers limit
-        hub = Hub(stt=stt, rate_limit=1, rate_window=60)  # type: ignore[arg-type]
+        hub = Hub(stt=cast("STTService", stt), rate_limit=1, rate_window=60)
         hub.inbound_bus.register(Platform.TELEGRAM, maxsize=10)
         hub.inbound_audio_bus.register(Platform.TELEGRAM, maxsize=10)
 
         capture = _DispatchCapture()
-        hub.dispatch_response = capture  # type: ignore[assignment]
+        object.__setattr__(hub, "dispatch_response", capture)
 
         # First audio consumes the rate allowance
         audio1 = make_audio(audio_id="audio-1")
@@ -136,12 +140,12 @@ class TestAudioPipelineSlashInjection:
     @pytest.mark.asyncio()
     async def test_slash_transcript_rejected(self, transcript: str):
         stt = FakeSTT(text=transcript)
-        hub = Hub(stt=stt)  # type: ignore[arg-type]
+        hub = Hub(stt=cast("STTService", stt))
         hub.inbound_bus.register(Platform.TELEGRAM, maxsize=10)
         hub.inbound_audio_bus.register(Platform.TELEGRAM, maxsize=10)
 
         capture = _DispatchCapture()
-        hub.dispatch_response = capture  # type: ignore[assignment]
+        object.__setattr__(hub, "dispatch_response", capture)
 
         audio = make_audio()
         hub.inbound_audio_bus.put(Platform.TELEGRAM, audio)
@@ -170,11 +174,11 @@ class TestAudioPipelineTranscriptCap:
     async def test_long_transcript_truncated(self):
         long_text = "a" * 3000
         stt = FakeSTT(text=long_text)
-        hub = Hub(stt=stt)  # type: ignore[arg-type]
+        hub = Hub(stt=cast("STTService", stt))
         hub.inbound_bus.register(Platform.TELEGRAM, maxsize=10)
         hub.inbound_audio_bus.register(Platform.TELEGRAM, maxsize=10)
 
-        hub.dispatch_response = lambda msg, resp: asyncio.sleep(0)  # type: ignore[assignment]
+        object.__setattr__(hub, "dispatch_response", lambda msg, resp: asyncio.sleep(0))
 
         audio = make_audio()
         hub.inbound_audio_bus.put(Platform.TELEGRAM, audio)
@@ -204,7 +208,7 @@ class TestAudioPipelineBusFull:
     @pytest.mark.asyncio()
     async def test_bus_full_drops_message(self):
         stt = FakeSTT()
-        hub = Hub(stt=stt)  # type: ignore[arg-type]
+        hub = Hub(stt=cast("STTService", stt))
         # Per-platform queue with maxsize=1 — will be full after one item
         hub.inbound_bus.register(Platform.TELEGRAM, maxsize=1)
         hub.inbound_audio_bus.register(Platform.TELEGRAM, maxsize=10)
@@ -214,7 +218,7 @@ class TestAudioPipelineBusFull:
         async def capture(msg, resp):
             dispatched.append((msg, resp))
 
-        hub.dispatch_response = capture  # type: ignore[assignment]
+        object.__setattr__(hub, "dispatch_response", capture)
 
         # Fill the per-platform queue (don't start bus — no feeder to drain)
         filler = make_inbound_message()

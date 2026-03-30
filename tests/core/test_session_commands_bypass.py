@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Generator
 from datetime import datetime, timezone
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -227,7 +228,7 @@ class TestNoProcessorForRegularMessage:
         await _drain(pool)
 
         # Assert
-        tools.vault.add.assert_not_called()  # type: ignore[attr-defined]
+        cast("AsyncMock", tools.vault.add).assert_not_called()
 
 
 # ---------------------------------------------------------------------------

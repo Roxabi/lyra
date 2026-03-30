@@ -11,6 +11,7 @@ and Telegram adapter MIME routing (V4 of issue #167).
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -23,6 +24,8 @@ from lyra.core.message import InboundMessage, OutboundAudio, Response
 from lyra.core.pool import Pool
 from lyra.core.runtime_config import RuntimeConfig
 from lyra.core.trust import TrustLevel
+from lyra.adapters.telegram import TelegramAdapter
+from lyra.tts import TTSService
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -95,7 +98,7 @@ class TestHandleVoiceCommand:
             config=_make_agent_config(),
             provider=_make_mock_provider(),
             runtime_config=RuntimeConfig(),
-            tts=tts,  # type: ignore[arg-type]
+            tts=cast(TTSService | None, tts),
         )
 
     def test_returns_rewritten_message_with_voice_modality(self) -> None:
@@ -150,7 +153,7 @@ class TestAnthropicAgentVoiceCommand:
             config=_make_agent_config(),
             provider=_make_mock_provider(),
             runtime_config=RuntimeConfig(),
-            tts=tts,  # type: ignore[arg-type]
+            tts=cast(TTSService | None, tts),
         )
 
     @pytest.mark.asyncio
@@ -236,7 +239,7 @@ class TestSimpleAgentVoiceCommand:
             config=_make_agent_config(),
             provider=_make_mock_provider(),
             runtime_config=RuntimeConfig(),
-            tts=tts,  # type: ignore[arg-type]
+            tts=cast(TTSService | None, tts),
         )
 
     @pytest.mark.asyncio
@@ -280,8 +283,8 @@ class TestTelegramAdapterRenderAudio:
     based on MIME type.
     """
 
-    def _make_adapter(self) -> object:
-        from lyra.adapters.telegram import _ALLOW_ALL, TelegramAdapter
+    def _make_adapter(self) -> TelegramAdapter:
+        from lyra.adapters.telegram import _ALLOW_ALL
 
         hub = MagicMock()
         adapter = TelegramAdapter(
@@ -300,9 +303,7 @@ class TestTelegramAdapterRenderAudio:
     async def test_render_audio_wav_uses_send_audio(self) -> None:
         """OutboundAudio(mime_type="audio/wav") calls send_audio(), not send_voice()."""
         # Arrange
-        from lyra.adapters.telegram import TelegramAdapter
-
-        adapter: TelegramAdapter = self._make_adapter()  # type: ignore[assignment]
+        adapter = self._make_adapter()
         inbound = self._make_inbound()
         audio_msg = OutboundAudio(
             audio_bytes=b"wav_data",
@@ -314,18 +315,17 @@ class TestTelegramAdapterRenderAudio:
         await adapter.render_audio(audio_msg, inbound)
 
         # Assert
-        adapter.bot.send_audio.assert_awaited_once()  # type: ignore[attr-defined]
-        adapter.bot.send_voice.assert_not_awaited()  # type: ignore[attr-defined]
-        call_kwargs = adapter.bot.send_audio.call_args.kwargs  # type: ignore[attr-defined]
+        assert isinstance(adapter.bot, AsyncMock)
+        adapter.bot.send_audio.assert_awaited_once()
+        adapter.bot.send_voice.assert_not_awaited()
+        call_kwargs = adapter.bot.send_audio.call_args.kwargs
         assert call_kwargs["chat_id"] == 42
 
     @pytest.mark.asyncio
     async def test_render_audio_ogg_uses_send_voice(self) -> None:
         """OutboundAudio(mime_type="audio/ogg") calls send_voice(), not send_audio()."""
         # Arrange
-        from lyra.adapters.telegram import TelegramAdapter
-
-        adapter: TelegramAdapter = self._make_adapter()  # type: ignore[assignment]
+        adapter = self._make_adapter()
         inbound = self._make_inbound()
         audio_msg = OutboundAudio(
             audio_bytes=b"ogg_data",
@@ -337,18 +337,17 @@ class TestTelegramAdapterRenderAudio:
         await adapter.render_audio(audio_msg, inbound)
 
         # Assert
-        adapter.bot.send_voice.assert_awaited_once()  # type: ignore[attr-defined]
-        adapter.bot.send_audio.assert_not_awaited()  # type: ignore[attr-defined]
-        call_kwargs = adapter.bot.send_voice.call_args.kwargs  # type: ignore[attr-defined]
+        assert isinstance(adapter.bot, AsyncMock)
+        adapter.bot.send_voice.assert_awaited_once()
+        adapter.bot.send_audio.assert_not_awaited()
+        call_kwargs = adapter.bot.send_voice.call_args.kwargs
         assert call_kwargs["chat_id"] == 42
 
     @pytest.mark.asyncio
     async def test_render_audio_mpeg_uses_send_audio(self) -> None:
         """OutboundAudio(mime_type="audio/mpeg") calls send_audio(), not send_voice()."""  # noqa: E501
         # Arrange
-        from lyra.adapters.telegram import TelegramAdapter
-
-        adapter: TelegramAdapter = self._make_adapter()  # type: ignore[assignment]
+        adapter = self._make_adapter()
         inbound = self._make_inbound()
         audio_msg = OutboundAudio(
             audio_bytes=b"mp3_data",
@@ -360,7 +359,8 @@ class TestTelegramAdapterRenderAudio:
         await adapter.render_audio(audio_msg, inbound)
 
         # Assert
-        adapter.bot.send_audio.assert_awaited_once()  # type: ignore[attr-defined]
-        adapter.bot.send_voice.assert_not_awaited()  # type: ignore[attr-defined]
-        call_kwargs = adapter.bot.send_audio.call_args.kwargs  # type: ignore[attr-defined]
+        assert isinstance(adapter.bot, AsyncMock)
+        adapter.bot.send_audio.assert_awaited_once()
+        adapter.bot.send_voice.assert_not_awaited()
+        call_kwargs = adapter.bot.send_audio.call_args.kwargs
         assert call_kwargs["chat_id"] == 42

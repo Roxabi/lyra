@@ -104,4 +104,4 @@ class TestCommandContextImmutability:
 
         # Act / Assert — frozen dataclass must raise on attribute assignment
         with pytest.raises((AttributeError, TypeError)):
-            ctx.name = "other"  # type: ignore[misc]
+            setattr(ctx, "name", "other")

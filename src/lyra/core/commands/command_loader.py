@@ -164,7 +164,8 @@ class CommandLoader:
             )
         module = importlib.util.module_from_spec(spec)
         sys.modules[f"lyra.commands.{name}.handlers"] = module
-        spec.loader.exec_module(module)  # type: ignore[union-attr]  # guarded by None check above
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
 
         handlers: dict[str, AsyncHandler] = {}
         for cmd in manifest.commands:
@@ -215,7 +216,8 @@ class CommandLoader:
                 f"Cannot reload plugin '{name}': "
                 f"importlib spec is None for {handlers_path}"
             )
-        spec.loader.exec_module(existing.module)  # type: ignore[union-attr]
+        assert spec.loader is not None
+        spec.loader.exec_module(existing.module)
 
         handlers: dict[str, AsyncHandler] = {}
         for cmd in manifest.commands:

@@ -27,7 +27,7 @@ class StreamingAgent:
 
     name = "test_agent"
 
-    async def process(  # type: ignore[override]
+    async def process(
         self,
         _msg: InboundMessage,
         _pool: Pool,
@@ -45,7 +45,7 @@ class FailingStreamingAgent:
 
     name = "test_agent"
 
-    async def process(  # type: ignore[override]
+    async def process(
         self,
         _msg: InboundMessage,
         _pool: Pool,
@@ -64,7 +64,7 @@ class EmptyStreamingAgent:
 
     name = "test_agent"
 
-    async def process(  # type: ignore[override]
+    async def process(
         self,
         _msg: InboundMessage,
         _pool: Pool,
@@ -188,12 +188,13 @@ class TestPoolResumeSession:
         pool = Pool("p1", "agent", ctx=ctx)
         called_with: list[str] = []
 
-        async def _fake_resume(sid: str) -> None:
+        async def _fake_resume(sid: str) -> bool:
             called_with.append(sid)
+            return True
 
-        pool._session_resume_fn = _fake_resume  # type: ignore[attr-defined]
+        pool._session_resume_fn = _fake_resume
 
-        await pool.resume_session("sess-xyz")  # type: ignore[attr-defined]
+        await pool.resume_session("sess-xyz")
 
         assert called_with == ["sess-xyz"]
 
@@ -204,7 +205,7 @@ class TestPoolResumeSession:
         pool = Pool("p1", "agent", ctx=ctx)
         # _session_resume_fn is None by default
 
-        await pool.resume_session("sess-xyz")  # type: ignore[attr-defined]
+        await pool.resume_session("sess-xyz")
 
     async def test_resume_session_resets_session_persisted(self) -> None:
         """resume_session() resets _session_persisted when resume is accepted (#341)."""
@@ -212,9 +213,9 @@ class TestPoolResumeSession:
         pool = Pool("p1", "agent", ctx=ctx)
         pool._observer._session_persisted = True  # simulate already persisted
         # Provide a callback that accepts the resume (CLI pool behaviour)
-        pool._session_resume_fn = AsyncMock(return_value=True)  # type: ignore[attr-defined]
+        pool._session_resume_fn = AsyncMock(return_value=True)
 
-        await pool.resume_session("sess-new")  # type: ignore[attr-defined]
+        await pool.resume_session("sess-new")
 
         assert pool._observer._session_persisted is False
 
@@ -274,7 +275,7 @@ class TestPoolStreaming:
             if kw.get("role") == "assistant":
                 log_calls.append(str(kw.get("content", "")))
 
-        pool._observer.log_turn_async = _capture_turn  # type: ignore[method-assign]
+        object.__setattr__(pool._observer, "log_turn_async", _capture_turn)
 
         msg = make_msg("fail stream")
 
@@ -308,7 +309,7 @@ class TestPoolStreaming:
             if kw.get("role") == "assistant":
                 logged.append(str(kw.get("content", "")))
 
-        pool._observer.log_turn_async = _capture_turn  # type: ignore[method-assign]
+        object.__setattr__(pool._observer, "log_turn_async", _capture_turn)
 
         msg = make_msg("log content test")
         pool.submit(msg)
@@ -334,7 +335,7 @@ class TestPoolStreaming:
             if kw.get("role") == "assistant":
                 logged.append(str(kw.get("content", "MISSING")))
 
-        pool._observer.log_turn_async = _capture_turn  # type: ignore[method-assign]
+        object.__setattr__(pool._observer, "log_turn_async", _capture_turn)
 
         msg = make_msg("empty stream test")
         pool.submit(msg)
@@ -351,7 +352,7 @@ class TestPoolStreaming:
         class SlowStreamingAgent:
             name = "test_agent"
 
-            async def process(  # type: ignore[override]
+            async def process(
                 self,
                 _msg: InboundMessage,
                 _pool: Pool,
@@ -379,7 +380,7 @@ class TestPoolStreaming:
             if kw.get("role") == "assistant":
                 logged.append(str(kw.get("content", "")))
 
-        pool._observer.log_turn_async = _capture_turn  # type: ignore[method-assign]
+        object.__setattr__(pool._observer, "log_turn_async", _capture_turn)
 
         # Act: submit message and let it complete normally (supersede scenario is
         # covered by the inflight mechanism; here we verify content is captured)
@@ -398,26 +399,28 @@ class TestPoolStreaming:
         class _IteratorWithSessionId:
             """Async iterator wrapper that allows arbitrary attribute assignment."""
 
+            session_id: str
+
             def __init__(
                 self, inner: collections.abc.AsyncIterator[TextRenderEvent]
             ) -> None:
                 self._inner = inner
 
-            def __aiter__(self) -> collections.abc.AsyncIterator[TextRenderEvent]:
-                return self  # type: ignore[return-value]
+            def __aiter__(self) -> _IteratorWithSessionId:
+                return self
 
             async def __anext__(self) -> TextRenderEvent:
                 return await self._inner.__anext__()
 
             async def aclose(self) -> None:
                 _close = getattr(self._inner, "aclose", None)
-                if callable(_close):
-                    await _close()  # type: ignore[misc]
+                if _close is not None:
+                    await _close()
 
         class SessionIdStreamingAgent:
             name = "test_agent"
 
-            async def process(  # type: ignore[override]
+            async def process(
                 self,
                 _msg: InboundMessage,
                 _pool: Pool,
@@ -428,8 +431,8 @@ class TestPoolStreaming:
                     yield TextRenderEvent(text="hello", is_final=True)
 
                 it = _IteratorWithSessionId(_gen())
-                it.session_id = "session-from-iterator"  # type: ignore[attr-defined]
-                return it  # type: ignore[return-value]
+                it.session_id = "session-from-iterator"
+                return it
 
         agent = SessionIdStreamingAgent()
         ctx = _make_ctx_mock({"test_agent": agent})

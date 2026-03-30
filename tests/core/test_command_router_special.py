@@ -14,7 +14,11 @@ from __future__ import annotations
 import asyncio
 import dataclasses as _dataclasses
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
+
+if TYPE_CHECKING:
+    from lyra.core.hub.hub_protocol import ChannelAdapter
 
 import pytest
 
@@ -145,7 +149,7 @@ class TestBangPrefixFallthrough:
             ) -> None:
                 pass
 
-        hub.register_adapter(Platform.TELEGRAM, "main", SilentAdapter())  # type: ignore[arg-type]
+        hub.register_adapter(Platform.TELEGRAM, "main", cast("ChannelAdapter", SilentAdapter()))
         hub.register_binding(
             Platform.TELEGRAM, "main", "chat:42", "lyra", "telegram:main:chat:42"
         )

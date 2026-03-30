@@ -34,7 +34,7 @@ def _make_admin_msg(
         text_raw=text,
         trust_level=TrustLevel.TRUSTED,
         is_admin=is_admin,
-        command=_cmd_parser.parse(text),  # type: ignore[call-arg]  # field added in #153
+        command=_cmd_parser.parse(text),
     )
 
 
@@ -62,7 +62,8 @@ class TestRoutingCommand:
         resp = await router.dispatch(msg)
 
         # Assert
-        assert "admin-only" in resp.content  # type: ignore[union-attr]
+        assert resp is not None
+        assert "admin-only" in resp.content
 
     async def test_routing_not_configured(self) -> None:
         """When no smart routing decorator, inform user."""
@@ -74,7 +75,8 @@ class TestRoutingCommand:
         resp = await router.dispatch(msg)
 
         # Assert
-        assert "not configured" in resp.content  # type: ignore[union-attr]
+        assert resp is not None
+        assert "not configured" in resp.content
 
     async def test_routing_empty_history(self) -> None:
         """When history is empty, show appropriate message."""
@@ -89,7 +91,8 @@ class TestRoutingCommand:
         resp = await router.dispatch(msg)
 
         # Assert
-        assert "No routing decisions" in resp.content  # type: ignore[union-attr]
+        assert resp is not None
+        assert "No routing decisions" in resp.content
 
     async def test_routing_shows_history(self) -> None:
         """After routing, /routing shows decisions."""
@@ -105,6 +108,7 @@ class TestRoutingCommand:
         resp = await router.dispatch(msg)
 
         # Assert
-        assert "trivial" in resp.content  # type: ignore[union-attr]
-        assert "haiku" in resp.content  # type: ignore[union-attr]
-        assert "1 decisions" in resp.content  # type: ignore[union-attr]
+        assert resp is not None
+        assert "trivial" in resp.content
+        assert "haiku" in resp.content
+        assert "1 decisions" in resp.content

@@ -8,7 +8,7 @@ import logging
 log = logging.getLogger(__name__)
 
 
-def _log_task_failure(task: asyncio.Task) -> None:  # type: ignore[type-arg]
+def _log_task_failure(task: asyncio.Task[object]) -> None:
     """Done callback — logs adapter task failures (e.g. Discord LoginFailure)."""
     if task.cancelled():
         return

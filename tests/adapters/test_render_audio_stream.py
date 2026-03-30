@@ -67,8 +67,8 @@ async def _multi_chunk() -> AsyncIterator[OutboundAudioChunk]:
 
 
 async def _empty_stream() -> AsyncIterator[OutboundAudioChunk]:
-    return
-    yield  # type: ignore[misc]  # make it an async generator
+    return  # empty async generator
+    yield  # pragma: no cover — unreachable, makes this an async generator
 
 
 async def _error_stream() -> AsyncIterator[OutboundAudioChunk]:

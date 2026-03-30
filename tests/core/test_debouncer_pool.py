@@ -144,7 +144,7 @@ class TestPoolCancelInFlight:
             # Second call: fast — combined message
             return await original_process(msg, pool, on_intermediate=on_intermediate)
 
-        agent.process = _slow_then_fast  # type: ignore[assignment]
+        object.__setattr__(agent, "process", _slow_then_fast)
 
         ctx = _make_ctx_mock({"test_agent": agent})
         pool = Pool(

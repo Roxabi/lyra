@@ -38,7 +38,7 @@ def test_session_snapshot_is_frozen():
         source_turns=5,
     )
     with pytest.raises(FrozenInstanceError):
-        snap.user_id = "x"  # type: ignore[misc]
+        setattr(snap, "user_id", "x")
 
 
 # ---------------------------------------------------------------------------

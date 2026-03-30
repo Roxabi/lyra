@@ -8,6 +8,8 @@ Covers:
 
 from __future__ import annotations
 
+from typing import Any
+
 import asyncio
 from pathlib import Path
 
@@ -146,11 +148,13 @@ class TestReload:
         updated_handler = loader._loaded["hotplugin"].handlers["/greet"]
         assert updated_handler is not original_handler
 
-        # Verify by calling the new handler (cast to Any to avoid strict type check
-        # on the synthetic None msg/pool used in this unit test)
+        # Verify by calling the new handler — pass None as msg/pool since the
+        # handler body only returns a string and never touches them.
+        _none_msg: Any = None
+        _none_pool: Any = None
 
         result = asyncio.get_event_loop().run_until_complete(
-            updated_handler(None, None, [])  # type: ignore[arg-type]
+            updated_handler(_none_msg, _none_pool, [])
         )
         assert result == "updated"
 
@@ -313,4 +317,4 @@ class TestPerAgentConfig:
 
         # Assert — PluginManifest is a frozen dataclass; mutation raises
         with pytest.raises(AttributeError):
-            manifest.name = "tampered"  # type: ignore[misc]
+            setattr(manifest, "name", "tampered")

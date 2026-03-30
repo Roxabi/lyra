@@ -23,7 +23,7 @@ class TestParseArgs:
     def test_no_args_defaults_to_all(self) -> None:
         """_parse_args() with no arguments returns adapter='all'."""
         # Arrange / Act
-        result = main_mod._parse_args([])  # type: ignore[attr-defined]
+        result = main_mod._parse_args([])
 
         # Assert
         assert result.adapter == "all"
@@ -31,7 +31,7 @@ class TestParseArgs:
     def test_adapter_telegram(self) -> None:
         """_parse_args(['--adapter', 'telegram']) returns adapter='telegram'."""
         # Arrange / Act
-        result = main_mod._parse_args(["--adapter", "telegram"])  # type: ignore[attr-defined]
+        result = main_mod._parse_args(["--adapter", "telegram"])
 
         # Assert
         assert result.adapter == "telegram"
@@ -39,7 +39,7 @@ class TestParseArgs:
     def test_adapter_discord(self) -> None:
         """_parse_args(['--adapter', 'discord']) returns adapter='discord'."""
         # Arrange / Act
-        result = main_mod._parse_args(["--adapter", "discord"])  # type: ignore[attr-defined]
+        result = main_mod._parse_args(["--adapter", "discord"])
 
         # Assert
         assert result.adapter == "discord"
@@ -47,7 +47,7 @@ class TestParseArgs:
     def test_adapter_all_explicit(self) -> None:
         """_parse_args(['--adapter', 'all']) returns adapter='all'."""
         # Arrange / Act
-        result = main_mod._parse_args(["--adapter", "all"])  # type: ignore[attr-defined]
+        result = main_mod._parse_args(["--adapter", "all"])
 
         # Assert
         assert result.adapter == "all"
@@ -56,7 +56,7 @@ class TestParseArgs:
         """_parse_args(['--adapter', 'invalid']) raises SystemExit."""
         # Arrange / Act / Assert
         with pytest.raises(SystemExit):
-            main_mod._parse_args(["--adapter", "invalid"])  # type: ignore[attr-defined]
+            main_mod._parse_args(["--adapter", "invalid"])
 
 
 # ---------------------------------------------------------------------------
@@ -108,7 +108,7 @@ class TestMainAdapterFiltering:
         stop.set()
 
         # Act
-        await main_mod._main(adapter="telegram", _stop=stop)  # type: ignore[call-arg]
+        await main_mod._main(adapter="telegram", _stop=stop)
 
         # Assert
         assert len(captured_dc_cfg) == 1
@@ -161,7 +161,7 @@ class TestMainAdapterFiltering:
         stop.set()
 
         # Act
-        await main_mod._main(adapter="discord", _stop=stop)  # type: ignore[call-arg]
+        await main_mod._main(adapter="discord", _stop=stop)
 
         # Assert
         assert len(captured_tg_cfg) == 1
@@ -214,7 +214,7 @@ class TestMainAdapterFiltering:
         stop.set()
 
         # Act
-        await main_mod._main(adapter="all", _stop=stop)  # type: ignore[call-arg]
+        await main_mod._main(adapter="all", _stop=stop)
 
         # Assert: both lists preserved unchanged
         assert len(captured_tg_cfg) == 1

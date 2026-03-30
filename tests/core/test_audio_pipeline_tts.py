@@ -7,7 +7,9 @@ _resolve_agent_tts binding resolution, dispatch_response e2e TTS call.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -15,8 +17,13 @@ import pytest
 from lyra.core.agent_config import AgentTTSConfig
 from lyra.core.hub import Hub
 from lyra.core.message import InboundMessage, Platform, Response
+from lyra.core.pool import Pool
+from lyra.core.render_events import RenderEvent
 from lyra.core.trust import TrustLevel
 from tests.core.conftest import FakeSTT
+
+if TYPE_CHECKING:
+    from lyra.stt import STTService
 
 # ---------------------------------------------------------------------------
 # T2: synthesize_and_dispatch_audio forwards agent_tts
@@ -42,9 +49,9 @@ class TestSynthesizeDispatchAgentTTS:
             )
         )
 
-        hub = Hub(stt=FakeSTT())  # type: ignore[arg-type]
+        hub = Hub(stt=cast("STTService", FakeSTT()))
         hub._tts = mock_tts
-        hub.dispatch_audio = AsyncMock()  # type: ignore[method-assign]
+        object.__setattr__(hub, "dispatch_audio", AsyncMock())
 
         msg = InboundMessage(
             id="msg-tts-1",
@@ -82,9 +89,9 @@ class TestSynthesizeDispatchAgentTTS:
             )
         )
 
-        hub = Hub(stt=FakeSTT())  # type: ignore[arg-type]
+        hub = Hub(stt=cast("STTService", FakeSTT()))
         hub._tts = mock_tts
-        hub.dispatch_audio = AsyncMock()  # type: ignore[method-assign]
+        object.__setattr__(hub, "dispatch_audio", AsyncMock())
 
         msg = InboundMessage(
             id="msg-tts-2",
@@ -123,8 +130,8 @@ class TestResolveAgentTTS:
 
         # Arrange — build a concrete AgentBase subclass
         class FakeAgent(AgentBase):
-            async def process(self, msg, pool, *, on_intermediate=None):  # type: ignore[override]
-                pass
+            async def process(self, msg: InboundMessage, pool: Pool, *, on_intermediate: Callable[[str], Awaitable[None]] | None = None) -> Response | AsyncIterator[RenderEvent]:
+                return Response(content="")
 
         agent_tts = AgentTTSConfig(engine="agent_eng", voice="agent_vox")
         cfg = Agent(
@@ -135,7 +142,7 @@ class TestResolveAgentTTS:
         )
         fake_agent = FakeAgent(cfg)
 
-        hub = Hub(stt=FakeSTT())  # type: ignore[arg-type]
+        hub = Hub(stt=cast("STTService", FakeSTT()))
         hub.agent_registry["test-agent"] = fake_agent
 
         # Register a binding: platform=telegram, bot=main, scope=chat:42 → test-agent
@@ -173,7 +180,7 @@ class TestResolveAgentTTS:
 
     def test_resolve_agent_tts_returns_none_without_binding(self):
         """_resolve_agent_tts returns None when no binding matches the message."""
-        hub = Hub(stt=FakeSTT())  # type: ignore[arg-type]
+        hub = Hub(stt=cast("STTService", FakeSTT()))
 
         msg = InboundMessage(
             id="msg-resolve-2",
@@ -215,8 +222,8 @@ class TestDispatchResponseAgentTTSE2E:
 
         # Arrange — concrete agent with custom TTS
         class FakeAgent(AgentBase):
-            async def process(self, msg, pool, *, on_intermediate=None):  # type: ignore[override]
-                pass
+            async def process(self, msg: InboundMessage, pool: Pool, *, on_intermediate: Callable[[str], Awaitable[None]] | None = None) -> Response | AsyncIterator[RenderEvent]:
+                return Response(content="")
 
         agent_tts = AgentTTSConfig(engine="e2e_eng", voice="e2e_vox")
         cfg = Agent(
@@ -228,7 +235,7 @@ class TestDispatchResponseAgentTTSE2E:
         fake_agent = FakeAgent(cfg)
 
         # Build hub with mock TTS
-        hub = Hub(stt=FakeSTT())  # type: ignore[arg-type]
+        hub = Hub(stt=cast("STTService", FakeSTT()))
         mock_tts = MagicMock()
         mock_tts.synthesize = AsyncMock(
             return_value=SynthesisResult(

@@ -295,13 +295,13 @@ class TestCliPoolLifecycle:
         pool = CliPool()
         assert pool._reaper_task is None
         await pool.start()
-        assert pool._reaper_task is not None
+        # Use getattr to bypass pyright's narrowing from prior `is None` assert
+        reaper_task: asyncio.Task[None] | None = getattr(pool, "_reaper_task")
+        assert reaper_task is not None
         # Clean up
-        reaper = pool._reaper_task
-        assert reaper is not None
-        reaper.cancel()
+        reaper_task.cancel()
         try:
-            await reaper  # type: ignore[misc]
+            await reaper_task
         except asyncio.CancelledError:
             pass
 

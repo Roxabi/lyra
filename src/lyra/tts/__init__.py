@@ -268,7 +268,7 @@ class TTSService:
 
         Returns OGG/Opus audio with duration_ms and waveform_b64 populated.
         """
-        from voicecli import generate_async  # type: ignore[import-untyped]
+        from voicecli import generate_async
 
         tts_tmp = Path.home() / ".lyra" / "tmp"
         tts_tmp.mkdir(parents=True, exist_ok=True)

@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 from .agent_commands import CommandReloadManager
 from .agent_config import Agent  # noqa: F401 — Agent re-exported
 from .agent_db_loader import (
-    agent_row_to_config,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+    agent_row_to_config as agent_row_to_config,  # noqa: F401
 )
 from .circuit_breaker import CircuitRegistry
 from .commands.command_loader import CommandLoader
@@ -218,7 +218,7 @@ class AgentBase(ABC, SessionManager):
             pool.user_id, ns, first_msg=first_msg, token_budget=700
         )
         parts = [anchor]
-        if memory_block and isinstance(memory_block, str):  # pyright: ignore[reportUnnecessaryIsInstance]
+        if memory_block:
             parts.append(
                 "---\n"
                 "The following sections ([MEMORY], [PREFERENCES]) are retrieved from "

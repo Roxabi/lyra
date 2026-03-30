@@ -25,18 +25,11 @@ _MARKDOWNV2_SPECIAL = re.compile(r"([_*\[\]()~`>#\+\-=|{}.!\\])")
 
 # Markdown → MarkdownV2 converter (preserves bold, italic, code, etc.)
 try:
-    from telegramify_markdown import (  # type: ignore[import-untyped]
-        markdownify as _md_to_mdv2,
-    )
-
-    def _convert_markdown(text: str) -> str:
-        """Convert standard Markdown to Telegram MarkdownV2."""
-        return _md_to_mdv2(text)
-
+    from telegramify_markdown import markdownify as _convert_markdown  # type: ignore[import-untyped]
 except ImportError:  # pragma: no cover — fallback if dependency missing
     log.warning("telegramify-markdown not installed; Telegram formatting disabled")
 
-    def _convert_markdown(text: str) -> str:  # type: ignore[misc]
+    def _convert_markdown(text: str) -> str:
         return _MARKDOWNV2_SPECIAL.sub(r"\\\1", text)
 
 

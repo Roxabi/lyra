@@ -51,7 +51,7 @@ class TestRoutingContext:
     def test_frozen(self) -> None:
         rc = RoutingContext(platform="telegram", bot_id="main", scope_id="chat:123")
         with pytest.raises(AttributeError):
-            rc.platform = "discord"  # type: ignore[misc]
+            setattr(rc, "platform", "discord")
 
     def test_with_all_fields(self) -> None:
         meta = {"chat_id": 123, "topic_id": 456}

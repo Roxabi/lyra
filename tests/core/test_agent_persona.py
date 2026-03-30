@@ -28,7 +28,7 @@ class TestPersonaConfig:
         identity = IdentityConfig(name="TestBot")
         persona = PersonaConfig(identity=identity)
         with pytest.raises(AttributeError):
-            persona.identity = IdentityConfig(name="Other")  # type: ignore[misc]
+            setattr(persona, "identity", IdentityConfig(name="Other"))
 
     def test_all_fields_accessible(self) -> None:
         identity = IdentityConfig(

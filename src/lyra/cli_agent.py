@@ -6,6 +6,8 @@ sub-modules that register their commands on ``agent_app``.
 
 from __future__ import annotations
 
+import importlib
+
 import os
 from pathlib import Path
 from typing import Optional
@@ -83,5 +85,5 @@ def _list_from_dir(
 # Register commands from sub-modules (import triggers @agent_app.command())
 # ---------------------------------------------------------------------------
 
-import lyra.cli_agent_create as _create  # noqa: E402, F401  # pyright: ignore[reportUnusedImport]
-import lyra.cli_agent_crud as _crud  # noqa: E402, F401  # pyright: ignore[reportUnusedImport]
+importlib.import_module("lyra.cli_agent_create")  # noqa: E402 â registers commands via @agent_app.command()
+importlib.import_module("lyra.cli_agent_crud")  # noqa: E402 â registers commands via @agent_app.command()

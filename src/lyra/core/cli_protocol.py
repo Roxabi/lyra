@@ -297,7 +297,8 @@ class StreamingIterator:
             return self._pending.popleft()
 
         entry = self._entry
-        proc = entry.proc  # type: ignore[union-attr]
+        assert entry is not None
+        proc = entry.proc
         if proc.stdout is None:
             self._done = True
             raise StopAsyncIteration
@@ -311,7 +312,7 @@ class StreamingIterator:
                     proc.stdout.readline(), timeout=self._default_timeout
                 )
             except asyncio.TimeoutError:
-                if not entry.is_alive():  # type: ignore[union-attr]
+                if not entry.is_alive():
                     log.warning(
                         "[pool:%s] process died during streaming idle wait",
                         self._pool_id,
@@ -351,7 +352,7 @@ class StreamingIterator:
             if msg_type == "system" and data.get("subtype") == "init":
                 self.session_id = data.get("session_id", "") or None
                 if self.session_id:
-                    entry.update_session_id(self.session_id)  # type: ignore[union-attr]
+                    entry.update_session_id(self.session_id)
                 log.debug(
                     "[pool:%s] streaming init: session=%s",
                     self._pool_id,
@@ -398,7 +399,7 @@ class StreamingIterator:
                 sid = data.get("session_id", "")
                 if sid:
                     self.session_id = sid
-                    entry.update_session_id(sid)  # type: ignore[union-attr]
+                    entry.update_session_id(sid)
                 is_error = data.get("is_error", False)
                 if is_error:
                     errors = data.get("errors", [])

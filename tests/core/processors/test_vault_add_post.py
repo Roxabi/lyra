@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 from lyra.core.commands.command_parser import CommandContext
@@ -82,8 +83,8 @@ class TestVaultAddProcessorPost:
         result = await proc.post(msg, response)
 
         # Assert
-        tools.vault.add.assert_called_once()  # type: ignore[attr-defined]
-        call_kwargs = tools.vault.add.call_args  # type: ignore[attr-defined]
+        cast(Any, tools.vault).add.assert_called_once()
+        call_kwargs = cast(Any, tools.vault).add.call_args
         assert call_kwargs.args[0] == "My Page"  # title
         assert "tech" in call_kwargs.args[1]  # tags list
         assert "python" in call_kwargs.args[1]
@@ -161,7 +162,7 @@ class TestVaultAddProcessorPost:
 
         # Assert
         assert result is response
-        tools.vault.add.assert_not_called()  # type: ignore[attr-defined]
+        cast(Any, tools.vault).add.assert_not_called()
 
     async def test_response_content_preserved_on_vault_success(self) -> None:
         # Arrange
@@ -198,7 +199,7 @@ class TestVaultAddProcessorPost:
         await proc.post(msg, response)
 
         # Assert — URL used as fallback title
-        call_args = tools.vault.add.call_args  # type: ignore[attr-defined]
+        call_args = cast(Any, tools.vault).add.call_args
         assert call_args.args[0] == url
 
     async def test_empty_tags_when_no_tags_line(self) -> None:
@@ -216,7 +217,7 @@ class TestVaultAddProcessorPost:
         await proc.post(msg, response)
 
         # Assert — empty tags list passed
-        call_args = tools.vault.add.call_args  # type: ignore[attr-defined]
+        call_args = cast(Any, tools.vault).add.call_args
         assert call_args.args[1] == []
 
 
@@ -261,11 +262,11 @@ class TestVaultAddProcessorConcurrency:
         )
 
         # Assert — each vault received exactly one call with the correct URL
-        tools_a.vault.add.assert_called_once()  # type: ignore[attr-defined]
-        tools_b.vault.add.assert_called_once()  # type: ignore[attr-defined]
+        cast(Any, tools_a.vault).add.assert_called_once()
+        cast(Any, tools_b.vault).add.assert_called_once()
 
-        call_a = tools_a.vault.add.call_args  # type: ignore[attr-defined]
-        call_b = tools_b.vault.add.call_args  # type: ignore[attr-defined]
+        call_a = cast(Any, tools_a.vault).add.call_args
+        call_b = cast(Any, tools_b.vault).add.call_args
 
         assert call_a.args[2] == "https://example-a.com"
         assert call_b.args[2] == "https://example-b.com"
@@ -301,8 +302,8 @@ class TestVaultAddProcessorConcurrency:
         )
 
         # Assert — titles come from each processor's own response
-        call_a = tools_a.vault.add.call_args  # type: ignore[attr-defined]
-        call_b = tools_b.vault.add.call_args  # type: ignore[attr-defined]
+        call_a = cast(Any, tools_a.vault).add.call_args
+        call_b = cast(Any, tools_b.vault).add.call_args
 
         assert call_a.args[0] == "Alpha Title"
         assert call_b.args[0] == "Beta Title"

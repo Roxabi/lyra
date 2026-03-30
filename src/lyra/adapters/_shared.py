@@ -13,8 +13,8 @@ import asyncio
 import logging
 import os
 import re
-from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING
+from collections.abc import Awaitable, Callable, Coroutine
+from typing import TYPE_CHECKING, Any
 
 # Re-exports from _shared_audio — importers can use either module.
 from lyra.adapters._shared_audio import (
@@ -33,6 +33,7 @@ from lyra.core.message import (
 )
 
 if TYPE_CHECKING:
+    from lyra.core.inbound_bus import InboundBus
     from lyra.core.messages import MessageManager
 
 __all__ = [
@@ -58,7 +59,7 @@ log = logging.getLogger(__name__)
 
 async def push_to_hub_guarded(  # noqa: PLR0913 — each arg is a distinct guard/callback dependency
     *,
-    inbound_bus: object,
+    inbound_bus: "InboundBus[Any]",
     platform: Platform,
     msg: InboundMessage | InboundAudio,
     circuit_registry: CircuitRegistry | None,
@@ -93,7 +94,7 @@ async def push_to_hub_guarded(  # noqa: PLR0913 — each arg is a distinct guard
             return
 
     try:
-        inbound_bus.put(platform, msg)  # type: ignore[attr-defined]
+        inbound_bus.put(platform, msg)
     except asyncio.QueueFull:
         if on_drop is not None:
             on_drop()
@@ -231,13 +232,13 @@ class TypingTaskManager:
     def __init__(self) -> None:
         self._tasks: dict[int, asyncio.Task[None]] = {}
 
-    def start(self, chat_id: int, coro_factory: Callable[[], Awaitable[None]]) -> None:
+    def start(self, chat_id: int, coro_factory: Callable[[], Coroutine[Any, Any, None]]) -> None:
         """Cancel any existing task for *chat_id* and start a new one."""
         existing = self._tasks.pop(chat_id, None)
         if existing and not existing.done():
             existing.cancel()
         self._tasks[chat_id] = asyncio.create_task(
-            coro_factory(),  # type: ignore[arg-type]
+            coro_factory(),
             name=f"typing:{chat_id}",
         )
 

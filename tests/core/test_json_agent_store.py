@@ -450,7 +450,9 @@ show_intermediate = false
             source="manual",
         )
         await json_agent_store.upsert(modified)
-        assert json_agent_store.get("force-agent").backend == "openai"  # type: ignore[union-attr]
+        _row = json_agent_store.get("force-agent")
+        assert _row is not None
+        assert _row.backend == "openai"
 
         # Act — seed with force=True must restore TOML values
         count = await json_agent_store.seed_from_toml(toml_file, force=True)

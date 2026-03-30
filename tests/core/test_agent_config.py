@@ -31,7 +31,7 @@ class TestModelConfig:
     def test_frozen(self) -> None:
         cfg = ModelConfig()
         with pytest.raises(ValidationError):
-            cfg.backend = "ollama"  # type: ignore[misc]
+            setattr(cfg, "backend", "ollama")
 
     def test_cwd_defaults_to_none(self) -> None:
         cfg = ModelConfig()

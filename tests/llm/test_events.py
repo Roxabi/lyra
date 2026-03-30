@@ -31,7 +31,7 @@ class TestTextLlmEvent:
     def test_frozen(self) -> None:
         e = TextLlmEvent(text="hello")
         with pytest.raises((AttributeError, TypeError)):
-            e.text = "world"  # type: ignore[misc]
+            setattr(e, "text", "world")
 
     def test_equality(self) -> None:
         assert TextLlmEvent(text="a") == TextLlmEvent(text="a")
@@ -67,7 +67,7 @@ class TestToolUseLlmEvent:
     def test_frozen(self) -> None:
         e = ToolUseLlmEvent(tool_name="Edit", tool_id="t1")
         with pytest.raises((AttributeError, TypeError)):
-            e.tool_name = "Bash"  # type: ignore[misc]
+            setattr(e, "tool_name", "Bash")
 
     def test_equality(self) -> None:
         a = ToolUseLlmEvent(tool_name="Edit", tool_id="t1", input={})
@@ -110,7 +110,7 @@ class TestResultLlmEvent:
     def test_frozen(self) -> None:
         e = ResultLlmEvent(is_error=False, duration_ms=500)
         with pytest.raises((AttributeError, TypeError)):
-            e.is_error = True  # type: ignore[misc]
+            setattr(e, "is_error", True)
 
     def test_equality(self) -> None:
         a = ResultLlmEvent(is_error=False, duration_ms=500, cost_usd=None)

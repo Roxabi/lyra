@@ -57,8 +57,7 @@ class TestTelegramOutboundMessage:
         adapter = _make_telegram_adapter()
 
         # Act
-        chunks = adapter._render_text("")  # type: ignore[attr-defined]
-
+        chunks = adapter._render_text("")
         # Assert
         assert chunks == []
 
@@ -68,8 +67,7 @@ class TestTelegramOutboundMessage:
         adapter = _make_telegram_adapter()
 
         # Act
-        chunks = adapter._render_text("hello_world")  # type: ignore[attr-defined]
-
+        chunks = adapter._render_text("hello_world")
         # Assert
         assert chunks == [r"hello\_world"]
 
@@ -82,8 +80,7 @@ class TestTelegramOutboundMessage:
         adapter = _make_telegram_adapter()
 
         # Act
-        chunks = adapter._render_text("hello world")  # type: ignore[attr-defined]
-
+        chunks = adapter._render_text("hello world")
         # Assert
         assert chunks == ["hello world"]
 
@@ -94,8 +91,7 @@ class TestTelegramOutboundMessage:
         text = "x" * 5000
 
         # Act
-        chunks = adapter._render_text(text)  # type: ignore[attr-defined]
-
+        chunks = adapter._render_text(text)
         # Assert
         assert len(chunks) == 2
         assert all(len(c) <= 4096 for c in chunks)
@@ -106,8 +102,7 @@ class TestTelegramOutboundMessage:
         adapter = _make_telegram_adapter()
 
         # Act
-        result = adapter._render_buttons([])  # type: ignore[attr-defined]
-
+        result = adapter._render_buttons([])
         # Assert
         assert result is None
 
@@ -119,8 +114,7 @@ class TestTelegramOutboundMessage:
         adapter = _make_telegram_adapter()
 
         # Act
-        result = adapter._render_buttons([Button("Yes", "yes")])  # type: ignore[attr-defined]
-
+        result = adapter._render_buttons([Button("Yes", "yes")])
         # Assert
         assert isinstance(result, InlineKeyboardMarkup)
 
@@ -133,7 +127,7 @@ class TestTelegramOutboundMessage:
 
         calls: list[dict] = []
 
-        async def capture_send(**kwargs):  # type: ignore[return]
+        async def capture_send(**kwargs: object) -> MagicMock:
             calls.append(dict(kwargs))
             m = MagicMock()
             m.message_id = len(calls)

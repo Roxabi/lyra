@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Generator
 from datetime import datetime, timezone
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -128,8 +129,9 @@ class TestProcessorPostCalledAfterLLM:
         await _drain(pool)
 
         # Assert — vault.add was called exactly once
-        tools.vault.add.assert_called_once()  # type: ignore[attr-defined]
-        call_args = tools.vault.add.call_args  # type: ignore[attr-defined]
+        _vault_add = cast("AsyncMock", tools.vault.add)
+        _vault_add.assert_called_once()
+        call_args = _vault_add.call_args
         assert call_args.args[2] == "https://example.com"  # url positional arg
 
     async def test_vault_add_receives_parsed_title_and_tags(self) -> None:
@@ -164,7 +166,7 @@ class TestProcessorPostCalledAfterLLM:
         await _drain(pool)
 
         # Assert — title and tags come from the LLM response
-        call_args = tools.vault.add.call_args  # type: ignore[attr-defined]
+        call_args = cast("AsyncMock", tools.vault.add).call_args
         assert call_args.args[0] == "My Page"  # title
         assert "tech" in call_args.args[1]  # tags
         assert "web" in call_args.args[1]

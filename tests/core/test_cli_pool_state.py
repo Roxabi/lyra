@@ -152,16 +152,16 @@ class TestCliPoolResumeAndReset:
 
         # Act — pipeline passes the Lyra session; resume_and_reset looks up
         # the CLI session from the persistent store.
-        await pool.resume_and_reset("pool:tg:chat:1", _LYRA_SESS)  # type: ignore[attr-defined]
+        await pool.resume_and_reset("pool:tg:chat:1", _LYRA_SESS)
 
         # Assert — CLI session stored for next spawn AND process killed
-        assert pool._resume_session_ids.get("pool:tg:chat:1") == _CLI_SESS  # type: ignore[attr-defined]
+        assert pool._resume_session_ids.get("pool:tg:chat:1") == _CLI_SESS
         assert "pool:tg:chat:1" not in pool._entries
 
     async def test_spawn_consumes_resume_session_id_and_passes_to_cmd(self) -> None:
         """_spawn() pops _resume_session_ids and passes --resume to CLI (one-shot)."""
         pool = CliPool()
-        pool._resume_session_ids["pool:resume:1"] = "sess-abc"  # type: ignore[attr-defined]
+        pool._resume_session_ids["pool:resume:1"] = "sess-abc"
         proc = make_fake_proc([INIT_LINE, ASSISTANT_LINE, RESULT_LINE])
 
         # Act — patch subprocess so no real process is started
@@ -173,7 +173,7 @@ class TestCliPoolResumeAndReset:
         assert "--resume" in cmd_args
         assert cmd_args[cmd_args.index("--resume") + 1] == "sess-abc"
         # Assert — one-shot: intent consumed after spawn
-        assert pool._resume_session_ids.get("pool:resume:1") is None  # type: ignore[attr-defined]
+        assert pool._resume_session_ids.get("pool:resume:1") is None
 
 
 # ---------------------------------------------------------------------------

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 from lyra.core.commands.command_parser import CommandContext
@@ -73,7 +74,7 @@ class TestSearchProcessorPre:
         # Assert
         assert "asyncio" in enriched.text
         assert "Found: article about asyncio" in enriched.text
-        tools.vault.search.assert_called_once_with(  # type: ignore[attr-defined]
+        cast(Any, tools.vault).search.assert_called_once_with(
             "asyncio", timeout=25.0
         )
 
@@ -120,7 +121,7 @@ class TestSearchProcessorPre:
 
         # Assert
         assert "Usage:" in result.text
-        tools.vault.search.assert_not_called()  # type: ignore[attr-defined]
+        cast(Any, tools.vault).search.assert_not_called()
 
     async def test_query_from_text_when_no_command(self) -> None:
         # Arrange — message with no parsed command, query comes from text field
@@ -133,7 +134,7 @@ class TestSearchProcessorPre:
 
         # Assert
         assert "python asyncio" in enriched.text
-        tools.vault.search.assert_called_once_with(  # type: ignore[attr-defined]
+        cast(Any, tools.vault).search.assert_called_once_with(
             "python asyncio", timeout=25.0
         )
 
@@ -165,4 +166,4 @@ class TestSearchProcessorPre:
 
         # Assert
         assert "Usage:" in result.text
-        tools.vault.search.assert_not_called()  # type: ignore[attr-defined]
+        cast(Any, tools.vault).search.assert_not_called()

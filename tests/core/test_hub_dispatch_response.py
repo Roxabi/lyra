@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, cast
+
 import pytest
 
 from lyra.core import Hub, Response
@@ -12,6 +14,9 @@ from lyra.core.message import (
     Platform,
 )
 from tests.core.conftest import make_inbound_message
+
+if TYPE_CHECKING:
+    from lyra.core.hub.hub_protocol import ChannelAdapter
 
 # ---------------------------------------------------------------------------
 # T5 — dispatch_response
@@ -37,7 +42,7 @@ class TestDispatchResponse:
             ) -> None:
                 pass
 
-        hub.register_adapter(Platform.TELEGRAM, "main", CapturingAdapter())  # type: ignore[arg-type]
+        hub.register_adapter(Platform.TELEGRAM, "main", cast("ChannelAdapter", CapturingAdapter()))
         msg = make_inbound_message(platform="telegram", bot_id="main")
         response = Response(content="pong")
         await hub.dispatch_response(msg, response)
@@ -69,7 +74,7 @@ class TestDispatchResponse:
             ) -> None:
                 pass
 
-        hub.register_adapter(Platform.TELEGRAM, "main", DummyAdapter())  # type: ignore[arg-type]
+        hub.register_adapter(Platform.TELEGRAM, "main", cast("ChannelAdapter", DummyAdapter()))
         assert hub._last_processed_at is None
         msg = make_inbound_message(platform="telegram", bot_id="main")
         await hub.dispatch_response(msg, Response(content="ok"))
@@ -111,7 +116,7 @@ class TestDispatchAttachment:
             ) -> None:
                 sent.append((attachment, inbound))
 
-        hub.register_adapter(Platform.TELEGRAM, "main", CapturingAdapter())  # type: ignore[arg-type]
+        hub.register_adapter(Platform.TELEGRAM, "main", cast("ChannelAdapter", CapturingAdapter()))
         msg = make_inbound_message(platform="telegram", bot_id="main")
         attachment = OutboundAttachment(
             data=b"img", type="image", mime_type="image/png"
@@ -148,7 +153,7 @@ class TestDispatchAttachment:
             ) -> None:
                 pass
 
-        hub.register_adapter(Platform.TELEGRAM, "main", DummyAdapter())  # type: ignore[arg-type]
+        hub.register_adapter(Platform.TELEGRAM, "main", cast("ChannelAdapter", DummyAdapter()))
         assert hub._last_processed_at is None
         msg = make_inbound_message(platform="telegram", bot_id="main")
         attachment = OutboundAttachment(
@@ -184,7 +189,7 @@ async def test_dispatch_response_accepts_outbound_message() -> None:
         ) -> None:
             pass
 
-    hub.register_adapter(Platform.TELEGRAM, "main", MockAdapterV2())  # type: ignore[arg-type]
+    hub.register_adapter(Platform.TELEGRAM, "main", cast("ChannelAdapter", MockAdapterV2()))
     msg = make_inbound_message(platform="telegram", bot_id="main")
     outbound = OutboundMessage.from_text("hi")
 
@@ -199,13 +204,13 @@ async def test_dispatch_response_accepts_legacy_response() -> None:
     """hub.dispatch_response() must still accept a plain Response for backward
     compatibility — no call-site changes required at pool.py (issue #138, U5)."""
     hub = Hub()
-    received: list[Response] = []
+    received: list[OutboundMessage] = []
 
     class LegacyCapturingAdapter:
         async def send(
             self, original_msg: InboundMessage, outbound: OutboundMessage
         ) -> None:
-            received.append(outbound)  # type: ignore[arg-type]
+            received.append(outbound)
 
         async def send_streaming(
             self,
@@ -215,12 +220,11 @@ async def test_dispatch_response_accepts_legacy_response() -> None:
         ) -> None:
             pass
 
-    hub.register_adapter(Platform.TELEGRAM, "main", LegacyCapturingAdapter())  # type: ignore[arg-type]
+    hub.register_adapter(Platform.TELEGRAM, "main", cast("ChannelAdapter", LegacyCapturingAdapter()))
     msg = make_inbound_message(platform="telegram", bot_id="main")
 
     await hub.dispatch_response(msg, Response(content="hi"))
 
     assert len(received) == 1
     result = received[0]
-    content = result.content if isinstance(result, Response) else result.content  # type: ignore[union-attr]
-    assert "hi" in str(content)
+    assert "hi" in str(result.content)

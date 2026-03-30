@@ -77,7 +77,7 @@ def make_circuit_msg(
         },
         trust_level=TrustLevel.TRUSTED,
         is_admin=is_admin,
-        command=_parser.parse("/circuit"),  # type: ignore[call-arg]
+        command=_parser.parse("/circuit"),
     )
 
 

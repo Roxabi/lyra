@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -26,7 +27,7 @@ def _restore_event_loop():  # noqa: F841  # autouse fixture
 
 def make_row(**kwargs) -> AgentRow:
     """Minimal AgentRow for testing."""
-    defaults = dict(
+    defaults: dict[str, Any] = dict(
         name="lyra_default",
         backend="anthropic-sdk",
         model="claude-haiku-4-5-20251001",
@@ -36,7 +37,7 @@ def make_row(**kwargs) -> AgentRow:
         patterns_json='{"bare_url": true}',
     )
     defaults.update(kwargs)
-    return AgentRow(**defaults)  # type: ignore[arg-type]
+    return AgentRow(**defaults)
 
 
 def make_store(row: AgentRow | None = None) -> MagicMock:

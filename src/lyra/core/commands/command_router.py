@@ -7,10 +7,11 @@ Processor commands (pre/post hooks into the pool flow) live in processor_registr
 from __future__ import annotations
 
 import asyncio
+import importlib
 import logging
 import re
 import tomllib
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -59,7 +60,7 @@ class CommandConfig:
 class SessionCommandEntry:
     """Registry entry for a session command handler."""
 
-    handler: object  # AsyncHandler: (msg, driver, tools, args, timeout) -> Response
+    handler: Callable[..., Awaitable[Response]]
     tools: object  # SessionTools
     description: str = ""
     timeout: float = 30.0
@@ -166,7 +167,7 @@ class CommandRouter:
             result.append((name, desc, self._is_admin_only(desc)))
         # Processor commands registered via ProcessorRegistry (issue #363)
         try:
-            import lyra.core.processors  # noqa: F401  # pyright: ignore[reportUnusedImport]
+            importlib.import_module("lyra.core.processors")  # trigger self-registration
             from lyra.core.processor_registry import registry as _proc_registry
 
             for cmd, desc in _proc_registry.descriptions().items():
@@ -213,7 +214,7 @@ class CommandRouter:
     def register_session_command(
         self,
         name: str,
-        handler: object,
+        handler: Callable[..., Awaitable[Response]],
         *,
         tools: object,
         description: str = "",
@@ -332,7 +333,7 @@ class CommandRouter:
 
             try:
                 return await _asyncio.wait_for(
-                    session_entry.handler(  # type: ignore[operator]
+                    session_entry.handler(
                         msg,
                         self._session_driver,
                         session_entry.tools,

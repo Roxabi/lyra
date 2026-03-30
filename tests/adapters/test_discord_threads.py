@@ -259,7 +259,7 @@ class TestDiscordAutoThread:
         from lyra.adapters.discord import DiscordConfig
 
         # Arrange / Act
-        config = DiscordConfig(token="dummy-token")  # type: ignore[call-arg]
+        config = DiscordConfig(token="dummy-token")
 
         # Assert
         assert config.auto_thread is True

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from typing import TYPE_CHECKING, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -12,6 +13,9 @@ from lyra.core.cli_pool import CliPool, _ProcessEntry
 from lyra.core.hub import Hub
 from lyra.core.message import Platform
 from lyra.core.pool import Pool
+
+if TYPE_CHECKING:
+    from lyra.core.agent import AgentBase
 from tests.core.conftest_cli_pool import (
     _PATCH_TARGET,
     ASSISTANT_LINE,
@@ -62,7 +66,7 @@ class TestFlushPool:
     async def test_flush_calls_agent_flush_session(self):
         hub = _make_hub()
         agent = _StubAgent()
-        hub.register_agent(agent)  # type: ignore[arg-type]
+        hub.register_agent(cast("AgentBase", agent))
 
         pool = hub.get_or_create_pool("pool-1", "test-agent")
         pool.user_id = "alice"  # simulate that a message was received
@@ -86,7 +90,7 @@ class TestFlushPool:
     async def test_flush_skips_agent_without_flush_session(self):
         hub = _make_hub()
         agent = _AgentNoFlush()
-        hub.register_agent(agent)  # type: ignore[arg-type]
+        hub.register_agent(cast("AgentBase", agent))
 
         pool = hub.get_or_create_pool("pool-1", "sdk-agent")
         pool.user_id = "alice"
@@ -99,7 +103,7 @@ class TestFlushPool:
     async def test_flush_skips_zero_message_pool(self):
         hub = _make_hub()
         agent = _StubAgent()
-        hub.register_agent(agent)  # type: ignore[arg-type]
+        hub.register_agent(cast("AgentBase", agent))
 
         # Pool with user_id="" (no messages received)
         hub.get_or_create_pool("pool-1", "test-agent")
@@ -127,7 +131,7 @@ class TestSetDebounceMs:
     def test_updates_existing_pools(self):
         hub = _make_hub(debounce_ms=100)
         agent = _StubAgent()
-        hub.register_agent(agent)  # type: ignore[arg-type]
+        hub.register_agent(cast("AgentBase", agent))
 
         pool1 = hub.get_or_create_pool("pool-1", "test-agent")
         pool2 = hub.get_or_create_pool("pool-2", "test-agent")
@@ -141,7 +145,7 @@ class TestSetDebounceMs:
     def test_new_pools_use_updated_value(self):
         hub = _make_hub(debounce_ms=100)
         agent = _StubAgent()
-        hub.register_agent(agent)  # type: ignore[arg-type]
+        hub.register_agent(cast("AgentBase", agent))
 
         hub.set_debounce_ms(500)
         pool = hub.get_or_create_pool("pool-1", "test-agent")
@@ -160,7 +164,7 @@ class TestEvictionFlushSession:
     async def test_eviction_calls_flush_session(self):
         hub = _make_hub(pool_ttl=0.1)
         agent = _StubAgent()
-        hub.register_agent(agent)  # type: ignore[arg-type]
+        hub.register_agent(cast("AgentBase", agent))
 
         pool = hub.get_or_create_pool("pool-1", "test-agent")
         pool.user_id = "alice"  # simulate message received
@@ -185,7 +189,7 @@ class TestEvictionFlushSession:
     async def test_eviction_skips_zero_message_pool(self):
         hub = _make_hub(pool_ttl=0.1)
         agent = _StubAgent()
-        hub.register_agent(agent)  # type: ignore[arg-type]
+        hub.register_agent(cast("AgentBase", agent))
 
         pool = hub.get_or_create_pool("pool-1", "test-agent")
         # user_id="" — no messages, should not flush
@@ -201,7 +205,7 @@ class TestEvictionFlushSession:
     async def test_eviction_cleans_cli_pool_entries(self):
         hub = _make_hub(pool_ttl=0.1)
         agent = _StubAgent()
-        hub.register_agent(agent)  # type: ignore[arg-type]
+        hub.register_agent(cast("AgentBase", agent))
 
         cli_pool = MagicMock()
         hub.cli_pool = cli_pool

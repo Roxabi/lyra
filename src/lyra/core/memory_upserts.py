@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from lyra.core.memory_freshness import is_stale
 from lyra.core.memory_types import SessionSnapshot
@@ -24,19 +25,26 @@ class MemoryManagerUpserts:
     ``MemoryManager.__init__``).
     """
 
+    if TYPE_CHECKING:
+        from roxabi_vault import AsyncMemoryDB
+
+        _db: AsyncMemoryDB
+
+        async def get_identity_anchor(self, namespace: str) -> str | None: ...
+
     # -- Identity anchor (write) -------------------------------------------
 
     async def save_identity_anchor(self, namespace: str, text: str) -> None:
-        existing = await self.get_identity_anchor(namespace)  # type: ignore[attr-defined]
+        existing = await self.get_identity_anchor(namespace)
         if existing is None:
-            await self._db.save_entry(  # type: ignore[attr-defined]
+            await self._db.save_entry(
                 content=text,
                 type="anchor",
                 title="IDENTITY_ANCHOR",
                 namespace=namespace,
             )
         else:
-            db = self._db._db_or_raise()  # type: ignore[attr-defined]
+            db = self._db._db_or_raise()
             await db.execute(
                 "UPDATE entries SET content=?, updated_at=datetime('now')"
                 " WHERE type='anchor' AND namespace=? AND title='IDENTITY_ANCHOR'",
@@ -52,7 +60,7 @@ class MemoryManagerUpserts:
         summary: str,
         status: str = "final",
     ) -> None:
-        await self._db.upsert_session(  # type: ignore[attr-defined]
+        await self._db.upsert_session(
             snap.session_id,
             summary,
             user_id=snap.user_id,
@@ -66,7 +74,7 @@ class MemoryManagerUpserts:
         )
 
     async def upsert_contact(self, user_id: str, medium: str, namespace: str) -> None:
-        db = self._db._db_or_raise()  # type: ignore[attr-defined]
+        db = self._db._db_or_raise()
         async with db.execute(
             "SELECT id FROM entries WHERE type='contact'"
             " AND json_extract(metadata,'$.user_id')=? AND namespace=?",
@@ -86,7 +94,7 @@ class MemoryManagerUpserts:
                 (meta, row[0]),
             )
         else:
-            await self._db.save_entry(  # type: ignore[attr-defined]
+            await self._db.save_entry(
                 content=user_id,
                 type="contact",
                 title=user_id,
@@ -109,7 +117,7 @@ class MemoryManagerUpserts:
                 list(data.keys()),
             )
             return
-        db = self._db._db_or_raise()  # type: ignore[attr-defined]
+        db = self._db._db_or_raise()
         async with db.execute(
             "SELECT id, metadata, updated_at FROM entries"
             " WHERE type='concept' AND namespace=?"
@@ -161,7 +169,7 @@ class MemoryManagerUpserts:
                 "first_mentioned": now.isoformat(),
                 "last_mentioned": now.isoformat(),
             }
-            await self._db.save_entry(  # type: ignore[attr-defined]
+            await self._db.save_entry(
                 content=data["content"],
                 type="concept",
                 title=name,
@@ -178,7 +186,7 @@ class MemoryManagerUpserts:
                 list(data.keys()),
             )
             return
-        db = self._db._db_or_raise()  # type: ignore[attr-defined]
+        db = self._db._db_or_raise()
         async with db.execute(
             "SELECT id, metadata FROM entries"
             " WHERE type='preference' AND namespace=?"
@@ -219,7 +227,7 @@ class MemoryManagerUpserts:
                 "user_id": snap.user_id,
                 "source_session_id": snap.session_id,
             }
-            await self._db.save_entry(  # type: ignore[attr-defined]
+            await self._db.save_entry(
                 content=data.get("content", name),
                 type="preference",
                 title=name,

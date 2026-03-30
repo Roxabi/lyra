@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING, cast
 from unittest.mock import AsyncMock, MagicMock
+
+if TYPE_CHECKING:
+    from lyra.llm.base import LlmProvider
 
 from lyra.agents.simple_agent import SimpleAgent
 from lyra.core.agent import Agent
@@ -55,7 +59,7 @@ def make_agent(provider: object) -> SimpleAgent:
         memory_namespace="lyra",
         llm_config=ModelConfig(),
     )
-    return SimpleAgent(config, provider)  # type: ignore[arg-type]
+    return SimpleAgent(config, cast("LlmProvider", provider))
 
 
 # ---------------------------------------------------------------------------
@@ -178,7 +182,7 @@ class TestSimpleAgentOnIntermediate:
         provider = MagicMock()
         provider.complete = fake_complete
         provider.is_alive = MagicMock(return_value=True)
-        agent = SimpleAgent(config, provider)  # type: ignore[arg-type]
+        agent = SimpleAgent(config, cast("LlmProvider", provider))
         return agent, provider
 
     async def test_show_intermediate_false_passes_none_to_provider(self) -> None:
@@ -231,7 +235,7 @@ def make_streaming_agent(provider: object, streaming: bool = True) -> SimpleAgen
         memory_namespace="lyra",
         llm_config=ModelConfig(streaming=streaming),
     )
-    return SimpleAgent(config, provider)  # type: ignore[arg-type]
+    return SimpleAgent(config, cast("LlmProvider", provider))
 
 
 class TestSimpleAgentStreaming:

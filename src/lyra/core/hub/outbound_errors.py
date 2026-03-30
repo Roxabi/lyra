@@ -119,14 +119,14 @@ async def try_notify_user(
             chat_id: int | None = msg.platform_meta.get("chat_id")
             if chat_id is None:
                 return
-            await adapter.bot.send_message(chat_id=chat_id, text=text)  # type: ignore[attr-defined]
+            await adapter.bot.send_message(chat_id=chat_id, text=text)
         elif platform_name == "discord":
             thread_id: int | None = msg.platform_meta.get("thread_id")
             channel_id: int | None = msg.platform_meta.get("channel_id")
             send_to_id = thread_id if thread_id is not None else channel_id
             if send_to_id is None:
                 return
-            channel = await adapter._resolve_channel(send_to_id)  # type: ignore[attr-defined]
+            channel = await adapter._resolve_channel(send_to_id)
             await channel.send(text)
         else:
             log.debug(

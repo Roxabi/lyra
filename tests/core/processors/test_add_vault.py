@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 from lyra.core.commands.command_parser import CommandContext
@@ -74,7 +75,7 @@ class TestAddVaultProcessorPreHappyPath:
         await proc.pre(msg)
 
         # Assert
-        tools.vault.add.assert_called_once()  # type: ignore[attr-defined]
+        cast(Any, tools.vault).add.assert_called_once()
 
     async def test_saves_with_correct_category_and_type(self) -> None:
         # Arrange
@@ -82,7 +83,7 @@ class TestAddVaultProcessorPreHappyPath:
         proc = AddVaultProcessor(tools)
         msg = make_msg(command_args="Some note content")
         calls = []
-        tools.vault.add = AsyncMock(side_effect=lambda *a, **kw: calls.append((a, kw)))  # type: ignore[attr-defined]
+        cast(Any, tools.vault).add = AsyncMock(side_effect=lambda *a, **kw: calls.append((a, kw)))
 
         # Act
         await proc.pre(msg)
@@ -99,7 +100,7 @@ class TestAddVaultProcessorPreHappyPath:
         proc = AddVaultProcessor(tools)
         msg = make_msg(command_args=long_note)
         calls = []
-        tools.vault.add = AsyncMock(side_effect=lambda *a, **kw: calls.append((a, kw)))  # type: ignore[attr-defined]
+        cast(Any, tools.vault).add = AsyncMock(side_effect=lambda *a, **kw: calls.append((a, kw)))
 
         # Act
         await proc.pre(msg)
@@ -115,7 +116,7 @@ class TestAddVaultProcessorPreHappyPath:
         proc = AddVaultProcessor(tools)
         msg = make_msg(command_args=note)
         calls = []
-        tools.vault.add = AsyncMock(side_effect=lambda *a, **kw: calls.append((a, kw)))  # type: ignore[attr-defined]
+        cast(Any, tools.vault).add = AsyncMock(side_effect=lambda *a, **kw: calls.append((a, kw)))
 
         # Act
         await proc.pre(msg)
@@ -159,7 +160,7 @@ class TestAddVaultProcessorPreHappyPath:
         proc = AddVaultProcessor(tools)
         msg = make_msg(command_args=oversized)
         calls = []
-        tools.vault.add = AsyncMock(side_effect=lambda *a, **kw: calls.append((a, kw)))  # type: ignore[attr-defined]
+        cast(Any, tools.vault).add = AsyncMock(side_effect=lambda *a, **kw: calls.append((a, kw)))
 
         # Act
         await proc.pre(msg)
@@ -193,7 +194,7 @@ class TestAddVaultProcessorPreHappyPath:
         proc = AddVaultProcessor(tools)
         msg = make_msg(command_args="Some note")
         calls = []
-        tools.vault.add = AsyncMock(side_effect=lambda *a, **kw: calls.append((a, kw)))  # type: ignore[attr-defined]
+        cast(Any, tools.vault).add = AsyncMock(side_effect=lambda *a, **kw: calls.append((a, kw)))
 
         # Act
         await proc.pre(msg)
@@ -208,7 +209,7 @@ class TestAddVaultProcessorPreHappyPath:
         proc = AddVaultProcessor(tools)
         msg = make_msg(command_args="Some note")
         calls = []
-        tools.vault.add = AsyncMock(side_effect=lambda *a, **kw: calls.append((a, kw)))  # type: ignore[attr-defined]
+        cast(Any, tools.vault).add = AsyncMock(side_effect=lambda *a, **kw: calls.append((a, kw)))
 
         # Act
         await proc.pre(msg)
@@ -235,7 +236,7 @@ class TestAddVaultProcessorPreMissingContent:
 
         # Assert
         assert "Usage:" in result.text
-        tools.vault.add.assert_not_called()  # type: ignore[attr-defined]
+        cast(Any, tools.vault).add.assert_not_called()
 
     async def test_whitespace_only_args_returns_usage_message(self) -> None:
         # Arrange
@@ -248,7 +249,7 @@ class TestAddVaultProcessorPreMissingContent:
 
         # Assert
         assert "Usage:" in result.text
-        tools.vault.add.assert_not_called()  # type: ignore[attr-defined]
+        cast(Any, tools.vault).add.assert_not_called()
 
     async def test_usage_message_includes_command_name(self) -> None:
         # Arrange
@@ -323,7 +324,7 @@ class TestAddVaultProcessorPreTextFallback:
             command_args="",
         )
         calls = []
-        tools.vault.add = AsyncMock(side_effect=lambda *a, **kw: calls.append((a, kw)))  # type: ignore[attr-defined]
+        cast(Any, tools.vault).add = AsyncMock(side_effect=lambda *a, **kw: calls.append((a, kw)))
 
         # Act
         await proc.pre(msg)
@@ -346,7 +347,7 @@ class TestVaultCliCategoryAndType:
         proc = AddVaultProcessor(tools)
         msg = make_msg(command_args="Test note for category check")
         calls = []
-        tools.vault.add = AsyncMock(side_effect=lambda *a, **kw: calls.append((a, kw)))  # type: ignore[attr-defined]
+        cast(Any, tools.vault).add = AsyncMock(side_effect=lambda *a, **kw: calls.append((a, kw)))
 
         # Act
         await proc.pre(msg)

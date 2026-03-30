@@ -5,12 +5,16 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
 from lyra.core.hub import Hub
 from lyra.core.message import InboundAudio, InboundMessage, Platform, Response
 from lyra.core.trust import TrustLevel
+
+if TYPE_CHECKING:
+    from lyra.stt import STTService
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -72,7 +76,7 @@ class FailingSTT:
 def hub_with_stt():
     """Hub with a FakeSTT and registered telegram platform."""
     stt = FakeSTT()
-    hub = Hub(stt=stt)  # type: ignore[arg-type]
+    hub = Hub(stt=cast("STTService", stt))
     hub.inbound_bus.register(Platform.TELEGRAM, maxsize=10)
     hub.inbound_audio_bus.register(Platform.TELEGRAM, maxsize=10)
     return hub, stt
@@ -102,7 +106,7 @@ class TestAudioLoopTranscription:
         hub.inbound_audio_bus.put(Platform.TELEGRAM, audio)
 
         # Stub dispatch_response so the echo reply doesn't raise KeyError
-        hub.dispatch_response = lambda msg, resp: asyncio.sleep(0)  # type: ignore[assignment]
+        object.__setattr__(hub, "dispatch_response", lambda msg, resp: asyncio.sleep(0))
 
         await hub.inbound_bus.start()
         await hub.inbound_audio_bus.start()
@@ -141,7 +145,7 @@ class TestAudioLoopNoSTT:
             dispatched.append((msg, response))
             done.set()
 
-        hub.dispatch_response = capture_dispatch  # type: ignore[assignment]
+        object.__setattr__(hub, "dispatch_response", capture_dispatch)
 
         await hub.inbound_audio_bus.start()
         task = asyncio.create_task(hub._audio_pipeline.run())
@@ -162,7 +166,7 @@ class TestAudioLoopSTTFailure:
     @pytest.mark.asyncio()
     async def test_stt_error_dispatches_failed_reply(self):
         stt = FailingSTT()
-        hub = Hub(stt=stt)  # type: ignore[arg-type]
+        hub = Hub(stt=cast("STTService", stt))
         hub.inbound_bus.register(Platform.TELEGRAM, maxsize=10)
         hub.inbound_audio_bus.register(Platform.TELEGRAM, maxsize=10)
 
@@ -176,7 +180,7 @@ class TestAudioLoopSTTFailure:
             dispatched.append((msg, response))
             done.set()
 
-        hub.dispatch_response = capture_dispatch  # type: ignore[assignment]
+        object.__setattr__(hub, "dispatch_response", capture_dispatch)
 
         await hub.inbound_audio_bus.start()
         task = asyncio.create_task(hub._audio_pipeline.run())
@@ -197,7 +201,7 @@ class TestAudioLoopNoise:
     @pytest.mark.asyncio()
     async def test_noise_dispatches_noise_reply(self, noise_text: str):
         stt = FakeSTT(text=noise_text)
-        hub = Hub(stt=stt)  # type: ignore[arg-type]
+        hub = Hub(stt=cast("STTService", stt))
         hub.inbound_bus.register(Platform.TELEGRAM, maxsize=10)
         hub.inbound_audio_bus.register(Platform.TELEGRAM, maxsize=10)
 
@@ -211,7 +215,7 @@ class TestAudioLoopNoise:
             dispatched.append((msg, response))
             done.set()
 
-        hub.dispatch_response = capture_dispatch  # type: ignore[assignment]
+        object.__setattr__(hub, "dispatch_response", capture_dispatch)
 
         await hub.inbound_audio_bus.start()
         task = asyncio.create_task(hub._audio_pipeline.run())
@@ -289,12 +293,12 @@ class TestProcessAudioItemPropagatesLanguage:
 
         stt.transcribe = transcribe_with_lang
 
-        hub = Hub(stt=stt)  # type: ignore[arg-type]
+        hub = Hub(stt=cast("STTService", stt))
         hub.inbound_bus.register(Platform.TELEGRAM, maxsize=10)
         hub.inbound_audio_bus.register(Platform.TELEGRAM, maxsize=10)
 
         # Stub dispatch_response so the echo reply doesn't raise KeyError
-        hub.dispatch_response = lambda msg, resp: asyncio.sleep(0)  # type: ignore[assignment]
+        object.__setattr__(hub, "dispatch_response", lambda msg, resp: asyncio.sleep(0))
 
         audio = _make_audio()
         hub.inbound_audio_bus.put(Platform.TELEGRAM, audio)
@@ -323,7 +327,7 @@ class TestAudioLoopTaskDone:
         hub.inbound_audio_bus.put(Platform.TELEGRAM, audio)
 
         # Stub dispatch_response so the echo reply doesn't raise KeyError
-        hub.dispatch_response = lambda msg, resp: asyncio.sleep(0)  # type: ignore[assignment]
+        object.__setattr__(hub, "dispatch_response", lambda msg, resp: asyncio.sleep(0))
 
         await hub.inbound_bus.start()
         await hub.inbound_audio_bus.start()

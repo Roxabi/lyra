@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from lyra.cli import agent_app  # type: ignore[import-not-found]
+from lyra.cli import agent_app
 from lyra.core.stores.agent_store import AgentRow, AgentStore
 
 # ---------------------------------------------------------------------------
@@ -278,7 +278,8 @@ class TestAgentEditTTS:
 
         updated = asyncio.run(_check())
         assert updated is not None
-        voice = json.loads(updated.voice_json)  # type: ignore[arg-type]
+        assert updated.voice_json is not None
+        voice = json.loads(updated.voice_json)
         tts = voice["tts"]
         assert tts["voice"] == "new-voice"
         assert tts["engine"] == "qwen"  # unchanged
@@ -312,7 +313,8 @@ class TestAgentEditTTS:
 
         updated = asyncio.run(_check())
         assert updated is not None
-        voice = json.loads(updated.voice_json)  # type: ignore[arg-type]
+        assert updated.voice_json is not None
+        voice = json.loads(updated.voice_json)
         assert voice["tts"].get("engine") == "qwen"
 
     def test_edit_tts_float_fields_stored_as_float(
@@ -342,7 +344,8 @@ class TestAgentEditTTS:
 
         updated = asyncio.run(_check())
         assert updated is not None
-        voice = json.loads(updated.voice_json)  # type: ignore[arg-type]
+        assert updated.voice_json is not None
+        voice = json.loads(updated.voice_json)
         tts = voice["tts"]
         assert isinstance(tts["exaggeration"], float)
         assert isinstance(tts["cfg_weight"], float)
@@ -383,5 +386,6 @@ class TestAgentEditTTS:
         updated = asyncio.run(_check())
         assert updated is not None
         # voice_json.tts should not have gained an exaggeration field
-        voice = json.loads(updated.voice_json)  # type: ignore[arg-type]
+        assert updated.voice_json is not None
+        voice = json.loads(updated.voice_json)
         assert "exaggeration" not in voice["tts"]

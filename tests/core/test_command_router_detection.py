@@ -14,7 +14,11 @@ from __future__ import annotations
 import asyncio
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
+
+if TYPE_CHECKING:
+    from lyra.core.hub.hub_protocol import ChannelAdapter
 
 import pytest
 
@@ -101,7 +105,9 @@ class TestDispatchHelp:
         router = make_router(tmp_path)
         msg = make_message(content="/help")
         response = await router.dispatch(msg)
-        assert "List available commands" in response.content  # type: ignore[union-attr]
+        assert response is not None
+        assert response.content is not None
+        assert "List available commands" in response.content
 
 
 class TestDispatchUnknownCommand:
@@ -146,7 +152,9 @@ class TestDispatchRoutesToPlugin:
         router = make_router(tmp_path, enabled=[])
         msg = make_message(content="/echo hi")
         response = await router.dispatch(msg)
-        assert "unknown command" in response.content.lower()  # type: ignore[union-attr]
+        assert response is not None
+        assert response.content is not None
+        assert "unknown command" in response.content.lower()
 
     @pytest.mark.asyncio
     async def test_dispatch_plugin_without_pool_raises(self, tmp_path: Path) -> None:
@@ -243,7 +251,7 @@ class TestPassthroughNonCommandInHub:
             ) -> None:
                 pass
 
-        hub.register_adapter(Platform.TELEGRAM, "main", CapturingAdapter())  # type: ignore[arg-type]
+        hub.register_adapter(Platform.TELEGRAM, "main", cast("ChannelAdapter", CapturingAdapter()))
         hub.register_binding(
             Platform.TELEGRAM, "main", "chat:42", "lyra", "telegram:main:chat:42"
         )
@@ -289,7 +297,7 @@ class TestPassthroughNonCommandInHub:
             ) -> None:
                 pass
 
-        hub.register_adapter(Platform.TELEGRAM, "main", CapturingAdapter())  # type: ignore[arg-type]
+        hub.register_adapter(Platform.TELEGRAM, "main", cast("ChannelAdapter", CapturingAdapter()))
         hub.register_binding(
             Platform.TELEGRAM, "main", "chat:42", "lyra", "telegram:main:chat:42"
         )

@@ -7,6 +7,7 @@ import json as _json
 from dataclasses import dataclass as _dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -176,7 +177,7 @@ def make_message(
         },
         trust_level=TrustLevel.TRUSTED,
         is_admin=is_admin,
-        command=cmd_ctx,  # type: ignore[call-arg]  # field added in #153
+        command=cmd_ctx,
     )
 
 
@@ -672,9 +673,9 @@ class _NullAgent(AgentBase):
         return Response(content="ok")
 
 
-def _make_hub(**kwargs: object) -> Hub:
+def _make_hub(**kwargs: Any) -> Hub:
     """Build a Hub with an agent, adapter, and binding pre-wired."""
-    hub = Hub(**kwargs)  # type: ignore[arg-type]
+    hub = Hub(**kwargs)
 
     agent = _NullAgent(
         Agent(
@@ -685,8 +686,10 @@ def _make_hub(**kwargs: object) -> Hub:
     )
     hub.register_agent(agent)
 
+    from lyra.core.hub.hub_protocol import ChannelAdapter
+
     adapter = _MockAdapter()
-    hub.register_adapter(Platform.TELEGRAM, "main", adapter)  # type: ignore[arg-type]
+    hub.register_adapter(Platform.TELEGRAM, "main", cast(ChannelAdapter, adapter))
     hub.register_binding(
         Platform.TELEGRAM,
         "main",
@@ -833,7 +836,7 @@ async def _cleanup_pairing_state(tmp_path: Path):
     """Reset pairing global and close all PairingManagers/AuthStores after each test."""
     from lyra.core.stores.pairing import set_pairing_manager
 
-    _cleanup_pairing_state.tmp_path = tmp_path  # type: ignore[attr-defined]
+    setattr(_cleanup_pairing_state, "tmp_path", tmp_path)
     yield
     set_pairing_manager(None)
     for pm in _open_pairing_managers:

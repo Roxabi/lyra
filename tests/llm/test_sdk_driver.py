@@ -7,10 +7,11 @@ Source: src/lyra/llm/drivers/sdk.py
 from __future__ import annotations
 
 import types
+from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
 from lyra.core.agent_config import ModelConfig
-from lyra.llm.drivers.sdk import (  # type: ignore[reportMissingImports]
+from lyra.llm.drivers.sdk import (
     AnthropicSdkDriver,
 )
 from lyra.llm.events import ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
@@ -507,7 +508,7 @@ class TestAnthropicSdkDriverCapabilities:
 # ---------------------------------------------------------------------------
 
 
-async def _async_iter(items: list[str]):  # type: ignore[return]
+async def _async_iter(items: list[str]) -> AsyncIterator[str]:
     """Yield items as an async iterator (simulates text_stream)."""
     for item in items:
         yield item

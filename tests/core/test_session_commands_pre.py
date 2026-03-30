@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Generator
 from datetime import datetime, timezone
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -295,4 +296,4 @@ class TestPreExceptionDispatchesErrorResponse:
         await _drain(pool)
 
         # Assert — vault.add never called
-        tools.vault.add.assert_not_called()  # type: ignore[attr-defined]
+        cast("AsyncMock", tools.vault.add).assert_not_called()

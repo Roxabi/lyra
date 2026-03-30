@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 import pytest
 from pydantic import ValidationError
 
@@ -66,14 +68,14 @@ class TestToolDisplayConfigDefaults:
         cfg = ToolDisplayConfig()
         # Act / Assert — Pydantic frozen model raises ValidationError on mutation
         with pytest.raises((ValidationError, TypeError)):
-            cfg.names_threshold = 99  # type: ignore[misc]
+            setattr(cfg, "names_threshold", 99)
 
     def test_show_is_read_only(self) -> None:
         # Arrange — show is MappingProxyType; key mutation must raise TypeError
         cfg = ToolDisplayConfig()
         # Act / Assert
         with pytest.raises(TypeError):
-            cfg.show["bash"] = False  # type: ignore[index]
+            cast("dict[str, Any]", cfg.show)["bash"] = False
 
     def test_show_dict_instances_are_independent(self) -> None:
         # Arrange — each instance must get its own MappingProxyType (no shared ref)

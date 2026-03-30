@@ -274,7 +274,7 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: tool-su
                         )
                         last_tool_edit = now
 
-            elif isinstance(event, TextRenderEvent):  # pyright: ignore[reportUnnecessaryIsInstance]
+            else:  # TextRenderEvent
                 if event.is_final:
                     final_text = event.text
                     is_error_turn = event.is_error

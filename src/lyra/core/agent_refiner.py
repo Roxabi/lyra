@@ -137,11 +137,11 @@ class SdkLlmProvider:
             model=self._model,
             max_tokens=2048,
             system=system,
-            messages=messages,  # type: ignore[arg-type]
+            messages=messages,  # type: ignore[arg-type]  # anthropic SDK expects MessageParam
         )
         for block in response.content:
             if hasattr(block, "text"):
-                return block.text  # type: ignore[union-attr]
+                return block.text  # type: ignore[union-attr]  # ContentBlock with text attr
         return ""
 
 
@@ -184,8 +184,8 @@ class AgentRefiner:
             persona_json=row.persona_json,
             voice_json=row.voice_json,
             model=row.model,
-            passthroughs=json.loads(row.passthroughs_json)  # type: ignore[attr-defined]
-            if getattr(row, "passthroughs_json", None)
+            passthroughs=json.loads(row.passthroughs_json)
+            if row.passthroughs_json is not None
             else [],
             patterns=json.loads(row.patterns_json) if row.patterns_json else {},
             plugins=json.loads(row.plugins_json) if row.plugins_json else [],

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -78,7 +79,8 @@ class TestAgent:
     def test_agent_base_cannot_be_instantiated_directly(self) -> None:
         config = Agent(name="lyra", system_prompt="", memory_namespace="lyra")
         with pytest.raises(TypeError):
-            AgentBase(config)  # type: ignore[abstract]
+            cls: Any = AgentBase
+            cls(config)  # deliberately testing runtime TypeError
 
 
 # ---------------------------------------------------------------------------

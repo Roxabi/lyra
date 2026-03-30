@@ -183,7 +183,7 @@ async def render_attachment(
 
     if reply_to_id is not None:
         try:
-            ref_msg = await messageable.fetch_message(reply_to_id)  # type: ignore[attr-defined]
+            ref_msg = await messageable.fetch_message(reply_to_id)
             await ref_msg.reply(content=content or None, file=file_obj)
             return
         except Exception:

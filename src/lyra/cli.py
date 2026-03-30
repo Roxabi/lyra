@@ -30,10 +30,14 @@ from lyra.cli_setup import setup_app
 # Version
 # ---------------------------------------------------------------------------
 
-try:
-    _VERSION = importlib.metadata.version("lyra")
-except importlib.metadata.PackageNotFoundError:
-    _VERSION = "0.0.0-dev"  # pyright: ignore[reportConstantRedefinition]
+def _get_version() -> str:
+    try:
+        return importlib.metadata.version("lyra")
+    except importlib.metadata.PackageNotFoundError:
+        return "0.0.0-dev"
+
+
+_VERSION = _get_version()
 
 # ---------------------------------------------------------------------------
 # App tree

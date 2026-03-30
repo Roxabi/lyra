@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from ..render_events import RenderEvent
     from .hub_protocol import ChannelAdapter
     from .outbound_dispatcher import OutboundDispatcher
+    from .pool_manager import PoolManager
 
 log = logging.getLogger(__name__)
 
@@ -53,6 +54,7 @@ class HubOutboundMixin:
         _memory_tasks: set[asyncio.Task]
         _last_processed_at: float | None
         agent_registry: dict[str, AgentBase]
+        _pool_manager: PoolManager
 
         def resolve_binding(
             self, msg: InboundMessage
@@ -78,9 +80,7 @@ class HubOutboundMixin:
 
         key = RoutingKey(Platform(msg.platform), msg.bot_id, msg.scope_id)
         pool_id = key.to_pool_id()
-        if hasattr(self, "_pool_manager"):
-            return self._pool_manager.pools.get(pool_id)  # type: ignore[attr-defined]
-        return None
+        return self._pool_manager.pools.get(pool_id) if hasattr(self, "_pool_manager") else None
 
     def _tts_language_kwargs(self, msg: "InboundMessage") -> dict:
         """Build session_language + on_language_detected kwargs for TTS."""
@@ -232,11 +232,11 @@ class HubOutboundMixin:
                 try:
                     async for event in _raw:
                         if isinstance(event, TextRenderEvent):
-                            _voice_parts.append(event.text)  # type: ignore[union-attr]
+                            _voice_parts.append(event.text)
                         # ToolSummaryRenderEvent: skip — voice only needs text
                         yield event
                 finally:
-                    _voice_done.set()  # type: ignore[union-attr]
+                    _voice_done.set()
 
             chunks = _tee()
 
@@ -259,9 +259,10 @@ class HubOutboundMixin:
             if _should_speak and _voice_done is not None:
                 _vp = _voice_parts
                 _vd = _voice_done
+                assert _vd is not None
 
                 async def _deferred_tts() -> None:
-                    await _vd.wait()  # type: ignore[union-attr]
+                    await _vd.wait()
                     full_text = "".join(_vp or []).strip()
                     if full_text:
                         agent_tts = self._resolve_agent_tts(msg)

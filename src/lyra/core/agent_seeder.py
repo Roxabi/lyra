@@ -7,7 +7,7 @@ import logging
 import re
 import tomllib
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from .agent_models import AgentRow
 
@@ -67,7 +67,7 @@ def _parse_toml(path: Path) -> AgentRow | None:  # noqa: PLR0915 — TOML parsin
         return None
 
     # Fields may live under [model] (wizard-generated) or [agent] (legacy).
-    def _m(key: str, default=None):  # type: ignore[no-untyped-def]
+    def _m(key: str, default: Any = None) -> Any:
         return model_section.get(key) or agent_section.get(key, default)
 
     backend = _m("backend", "anthropic-sdk")

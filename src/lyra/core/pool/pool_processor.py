@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import collections.abc
+import importlib
 import contextlib
 import logging
 import time
@@ -284,7 +285,7 @@ class PoolProcessor:
                 # pool_processor also imports message.
                 # Python caches modules in sys.modules after the first import,
                 # so this is effectively free (one dict lookup) on every call.
-                import lyra.core.processors  # noqa: F401 — registers processors via @register decorators  # pyright: ignore[reportUnusedImport]
+                importlib.import_module("lyra.core.processors")  # registers processors via @register decorators
                 from lyra.core.processor_registry import registry as _proc_registry
 
                 _cmd_name = f"{msg.command.prefix}{msg.command.name}"
@@ -310,7 +311,7 @@ class PoolProcessor:
         if not isinstance(result, collections.abc.AsyncIterator):  # pyright: ignore[reportUnnecessaryIsInstance]
             # Regular coroutine — await to get the actual result
             try:
-                result = await result  # type: ignore[assignment]  # coroutine → Response|AsyncIterator
+                result = await result  # type: ignore[misc]  # coroutine → Response|AsyncIterator
             except Exception as exc:
                 pool._ctx.record_circuit_failure(exc)
                 raise
@@ -359,7 +360,7 @@ class PoolProcessor:
                     if callable(_aclose):
                         await _aclose()  # type: ignore[misc]
 
-            result = _capture()  # type: ignore[assignment]
+            result = _capture()  # type: ignore[assignment]  # AsyncGenerator is a subtype of AsyncIterator
 
             # Bug 1 (#316): pass an OutboundMessage so the adapter can write
             # reply_message_id on it; attach a callback for deferred turn logging.

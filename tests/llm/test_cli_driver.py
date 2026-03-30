@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock
 from lyra.core.agent_config import ModelConfig
 from lyra.core.cli_pool import CliResult
 from lyra.llm.base import LlmResult
-from lyra.llm.drivers.cli import ClaudeCliDriver  # type: ignore[reportMissingImports]
+from lyra.llm.drivers.cli import ClaudeCliDriver
 
 # ---------------------------------------------------------------------------
 # Helpers

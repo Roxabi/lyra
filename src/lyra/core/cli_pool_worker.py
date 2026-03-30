@@ -10,9 +10,10 @@ import asyncio
 import logging
 import os
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from .agent_config import ModelConfig
 
@@ -84,6 +85,18 @@ class CliPoolWorkerMixin:
     - ``self._read_buffer_bytes: int``
     """
 
+    if TYPE_CHECKING:
+        _entries: dict[str, _ProcessEntry]
+        _cwd_overrides: dict[str, Path]
+        _resume_session_ids: dict[str, str]
+        _default_timeout: int
+        _kill_timeout: float
+        _reaper_interval: int
+        _read_buffer_bytes: int
+        _idle_ttl: int
+        _last_sweep_at: float | None
+        _on_reap: Callable[[str, str], Coroutine[Any, Any, None]] | None
+
     def _build_cmd(
         self,
         model_config: ModelConfig,
@@ -129,11 +142,11 @@ class CliPoolWorkerMixin:
         self, pool_id: str, model_config: ModelConfig, system_prompt: str = ""
     ) -> _ProcessEntry | None:
         spawn_cwd = (
-            self._cwd_overrides.get(pool_id)  # type: ignore[attr-defined]
+            self._cwd_overrides.get(pool_id)
             or model_config.cwd
             or _LYRA_ROOT
         )
-        resume_session_id = self._resume_session_ids.pop(pool_id, None)  # type: ignore[attr-defined]
+        resume_session_id = self._resume_session_ids.pop(pool_id, None)
         cmd = self._build_cmd(
             model_config,
             session_id=resume_session_id,
@@ -162,7 +175,7 @@ class CliPoolWorkerMixin:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=str(spawn_cwd),
-                limit=self._read_buffer_bytes,  # type: ignore[attr-defined]  # prevents LimitOverrunError
+                limit=self._read_buffer_bytes,  # prevents LimitOverrunError
                 env=env,
             )
         except Exception as exc:
@@ -179,7 +192,7 @@ class CliPoolWorkerMixin:
             resumed_from=resume_session_id,
             _on_session_update=_persist_fn,
         )
-        self._entries[pool_id] = entry  # type: ignore[attr-defined]
+        self._entries[pool_id] = entry
         log.info("[pool:%s] spawned (PID=%d)", pool_id, proc.pid)
         return entry
 
@@ -196,7 +209,7 @@ class CliPoolWorkerMixin:
         causing spurious resume failures after restart.
         """
         if preserve_session and entry.session_id:
-            self._resume_session_ids[pool_id] = entry.session_id  # type: ignore[attr-defined]
+            self._resume_session_ids[pool_id] = entry.session_id
             # Also persist to disk so the session survives daemon restarts.
             _persist = getattr(self, "_persist_cli_session", None)
             if _persist is not None:
@@ -219,15 +232,15 @@ class CliPoolWorkerMixin:
         the idle reaper's snapshot will not include this pool_id, so the orphaned
         process persists until natural idle-timeout or parent exit.
         """
-        entry = self._entries.pop(pool_id, None)  # type: ignore[attr-defined]
-        self._cwd_overrides.pop(pool_id, None)  # type: ignore[attr-defined]
+        entry = self._entries.pop(pool_id, None)
+        self._cwd_overrides.pop(pool_id, None)
         if entry is None:
             return
         self._maybe_preserve_session(pool_id, entry, preserve_session=preserve_session)
 
     async def _kill(self, pool_id: str, *, preserve_session: bool = True) -> None:
-        entry = self._entries.pop(pool_id, None)  # type: ignore[attr-defined]
-        self._cwd_overrides.pop(pool_id, None)  # type: ignore[attr-defined]
+        entry = self._entries.pop(pool_id, None)
+        self._cwd_overrides.pop(pool_id, None)
         if entry is None:
             return
         self._maybe_preserve_session(pool_id, entry, preserve_session=preserve_session)
@@ -237,7 +250,7 @@ class CliPoolWorkerMixin:
                 try:
                     await asyncio.wait_for(
                         entry.proc.wait(),
-                        timeout=self._kill_timeout,  # type: ignore[attr-defined]
+                        timeout=self._kill_timeout,
                     )
                 except asyncio.TimeoutError:
                     entry.proc.kill()
@@ -249,16 +262,16 @@ class CliPoolWorkerMixin:
     async def _idle_reaper(self) -> None:
         while True:
             try:
-                await asyncio.sleep(self._reaper_interval)  # type: ignore[attr-defined]
-                self._last_sweep_at = time.monotonic()  # type: ignore[attr-defined]
+                await asyncio.sleep(self._reaper_interval)
+                self._last_sweep_at = time.monotonic()
                 now = time.time()
-                snapshot = list(self._entries.items())  # type: ignore[attr-defined]  # snapshot before async _kill
+                snapshot = list(self._entries.items())  # snapshot before async _kill
                 to_kill = [
                     (pool_id, entry)
                     for pool_id, entry in snapshot
                     if not entry.is_alive()
                     or (
-                        (now - entry.last_activity) > self._idle_ttl  # type: ignore[attr-defined]
+                        (now - entry.last_activity) > self._idle_ttl
                         and not entry._lock.locked()
                     )
                 ]
@@ -267,9 +280,9 @@ class CliPoolWorkerMixin:
                     log.info("[pool:%s] reaping %s process", pool_id, reason)
                     await self._kill(pool_id)
                     # Fire-and-forget notification for idle evictions
-                    if self._on_reap and reason == "idle":  # type: ignore[attr-defined]
+                    if self._on_reap and reason == "idle":
                         _t = asyncio.create_task(
-                            self._on_reap(pool_id, reason)  # type: ignore[attr-defined]
+                            self._on_reap(pool_id, reason)
                         )
                         _t.add_done_callback(
                             lambda t, pid=pool_id: (

@@ -137,7 +137,7 @@ class PoolObserver:
         with contextlib.suppress(RuntimeError):
             if self._turn_logger is not None:
                 _coro = self._turn_logger(session_id, msg)
-                asyncio.create_task(_coro)  # type: ignore[arg-type]
+                asyncio.ensure_future(_coro)
         self.log_turn_async(
             role="user",
             platform=str(msg.platform),

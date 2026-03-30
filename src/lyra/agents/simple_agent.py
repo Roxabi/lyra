@@ -8,6 +8,8 @@ not hardcoded here.
 
 from __future__ import annotations
 
+import importlib
+
 import html
 import logging
 from pathlib import Path
@@ -114,7 +116,7 @@ class SimpleAgent(AgentBase):
 
     def _register_session_commands(self) -> None:
         """Store SessionTools; register processor cmds as passthroughs (B2, #363)."""
-        import lyra.core.processors  # noqa: F401 — trigger self-registration  # pyright: ignore[reportUnusedImport]
+        importlib.import_module("lyra.core.processors")  # trigger self-registration
         from lyra.core.processor_registry import registry
         from lyra.integrations.base import SessionTools
         from lyra.integrations.vault_cli import VaultCli

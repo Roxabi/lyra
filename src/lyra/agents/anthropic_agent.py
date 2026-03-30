@@ -7,6 +7,8 @@ backend = "anthropic-sdk" in agent TOML config.
 
 from __future__ import annotations
 
+import importlib
+
 import html
 import logging
 from pathlib import Path
@@ -97,7 +99,7 @@ class AnthropicAgent(AgentBase):
         on the normal pool flow, so responses land in pool history and enable
         follow-up questions.
         """
-        import lyra.core.processors  # noqa: F401 — trigger self-registration  # pyright: ignore[reportUnusedImport]
+        importlib.import_module("lyra.core.processors")  # trigger self-registration
         from lyra.core.processor_registry import registry
         from lyra.integrations.base import SessionTools
         from lyra.integrations.vault_cli import VaultCli
@@ -139,12 +141,11 @@ class AnthropicAgent(AgentBase):
 
         # outer try: temp-file cleanup (ADR-013)
         try:
-            if _audio is not None and self._stt is not None:
-                stt_result = await self._stt.transcribe(tmp_path)  # type: ignore[arg-type]
+            if tmp_path is not None and self._stt is not None:
+                stt_result = await self._stt.transcribe(tmp_path)
                 if is_whisper_noise(stt_result.text):
-                    if tmp_path is not None:
-                        tmp_path.unlink(missing_ok=True)
-                        tmp_path = None  # prevent double-unlink in outer finally
+                    tmp_path.unlink(missing_ok=True)
+                    tmp_path = None  # prevent double-unlink in outer finally
                     _noise_msg = (
                         self._msg_manager.get("stt_noise")
                         if self._msg_manager

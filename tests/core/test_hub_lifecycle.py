@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator, Awaitable, Callable
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from lyra.core import Agent, AgentBase, Hub, Pool
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
-from lyra.core.message import InboundMessage
+from lyra.core.message import InboundMessage, Response
+from lyra.core.render_events import RenderEvent
 from tests.core.conftest import make_inbound_message
 
 # ---------------------------------------------------------------------------
@@ -131,13 +133,11 @@ class TestHubMemoryFields:
         """register_agent() must inject hub._memory into the agent's _memory."""
         hub = Hub()
         mock_mm = MagicMock()
-        hub._memory = mock_mm  # type: ignore[attr-defined]
+        object.__setattr__(hub, "_memory", mock_mm)
 
         class ConcreteAgent(AgentBase):
-            async def process(  # type: ignore[override]
-                self, msg: InboundMessage, pool: Pool, *, on_intermediate=None
-            ):
-                pass
+            async def process(self, msg: InboundMessage, pool: Pool, *, on_intermediate: Callable[[str], Awaitable[None]] | None = None) -> Response | AsyncIterator[RenderEvent]:
+                return Response(content="")
 
         config = Agent(name="lyra", system_prompt="", memory_namespace="lyra")
         agent = ConcreteAgent(config)
@@ -151,10 +151,8 @@ class TestHubMemoryFields:
         (memory not configured)."""
 
         class ConcreteAgent(AgentBase):
-            async def process(  # type: ignore[override]
-                self, msg: InboundMessage, pool: Pool, *, on_intermediate=None
-            ):
-                pass
+            async def process(self, msg: InboundMessage, pool: Pool, *, on_intermediate: Callable[[str], Awaitable[None]] | None = None) -> Response | AsyncIterator[RenderEvent]:
+                return Response(content="")
 
         hub = Hub()
         config = Agent(name="lyra", system_prompt="", memory_namespace="lyra")
@@ -176,7 +174,7 @@ class TestHubEvictFlushTask:
         """Evicting a pool that has at least one message must schedule a flush task."""
         hub = Hub(pool_ttl=1)
         mock_mm = AsyncMock()
-        hub._memory = mock_mm  # type: ignore[attr-defined]
+        object.__setattr__(hub, "_memory", mock_mm)
 
         # Register a mock agent with flush_session so eviction creates a task
         mock_agent = MagicMock()
@@ -187,11 +185,11 @@ class TestHubEvictFlushTask:
         pool = hub.get_or_create_pool("p_flush", "agent")
         pool._last_active -= 5  # force stale
         # Simulate the pool having had a message (user_id is set)
-        pool.user_id = "u1"  # type: ignore[attr-defined]
+        pool.user_id = "u1"
 
         # Reset throttle and trigger eviction scan
         hub._pool_manager._last_eviction_check = 0.0
-        hub._pool_manager._evict_stale_pools()  # type: ignore[attr-defined]
+        hub._pool_manager._evict_stale_pools()
 
         # Eviction must schedule a flush task for the pool with messages
         assert len(hub._memory_tasks) >= 1

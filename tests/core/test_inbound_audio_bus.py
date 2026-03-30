@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
+from typing import cast
 
 import pytest
 
@@ -37,7 +38,7 @@ class TestInboundAudioBusRegistration:
 
     def test_register_after_start_raises(self) -> None:
         bus = InboundAudioBus()
-        bus._feeders[Platform.TELEGRAM] = asyncio.Future()  # type: ignore[assignment]
+        bus._feeders[Platform.TELEGRAM] = cast("asyncio.Task[None]", asyncio.Future())
         with pytest.raises(RuntimeError, match="after start"):
             bus.register(Platform.DISCORD)
 

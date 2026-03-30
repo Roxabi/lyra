@@ -209,7 +209,7 @@ class TestPoolTimeout:
         import logging
 
         agent = SlowAgent()
-        agent.is_backend_alive = lambda pool_id: False  # type: ignore[method-assign]
+        object.__setattr__(agent, "is_backend_alive", lambda pool_id: False)
         ctx_mock._agents["test_agent"] = agent
         msg = make_msg()
 

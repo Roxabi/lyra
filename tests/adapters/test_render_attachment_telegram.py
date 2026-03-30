@@ -55,7 +55,7 @@ class TestOutboundAttachment:
     def test_frozen(self) -> None:
         att = OutboundAttachment(data=b"x", type="image", mime_type="image/png")
         with pytest.raises(AttributeError):
-            att.type = "video"  # type: ignore[misc]
+            setattr(att, "type", "video")
 
 
 # ---------------------------------------------------------------------------

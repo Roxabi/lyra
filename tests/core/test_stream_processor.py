@@ -30,12 +30,12 @@ async def async_events(*evts) -> AsyncIterator:
         yield e
 
 
-def cfg(**kw) -> ToolDisplayConfig:
+def cfg(**kw: object) -> ToolDisplayConfig:
     """Base config: throttle_ms=0 (disabled). Override via kw."""
-    defaults = dict(
+    defaults: dict[str, object] = dict(
         names_threshold=3, group_threshold=3, bash_max_len=60, throttle_ms=0
     )
-    return ToolDisplayConfig(**{**defaults, **kw})  # pyright: ignore[reportArgumentType]
+    return ToolDisplayConfig.model_validate({**defaults, **kw})
 
 
 # ---------------------------------------------------------------------------

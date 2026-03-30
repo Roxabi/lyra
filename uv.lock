@@ -2138,7 +2138,7 @@ wheels = [
 [[package]]
 name = "roxabi-vault"
 version = "0.1.0"
-source = { git = "https://github.com/Roxabi/roxabi-vault.git?branch=staging#b200ad265732389c830b64f7a12dfa0f1d612df5" }
+source = { git = "https://github.com/Roxabi/roxabi-vault.git?branch=staging#d8517eddea79ce535af52f668e020324a899efbb" }
 dependencies = [
     { name = "aiosqlite" },
 ]
@@ -2681,7 +2681,7 @@ wheels = [
 [[package]]
 name = "voicecli"
 version = "0.2.0"
-source = { git = "https://github.com/Roxabi/voiceCLI.git?branch=staging#37b3f5da03981c1b870ea84289290765140f88c6" }
+source = { git = "https://github.com/Roxabi/voiceCLI.git?branch=staging#10752029e69d5e15785dfe7be969b66ebf04af21" }
 dependencies = [
     { name = "chatterbox-tts" },
     { name = "faster-qwen3-tts" },

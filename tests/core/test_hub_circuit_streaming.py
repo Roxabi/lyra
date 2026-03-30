@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
 from lyra.core import Agent, AgentBase, Hub, Pool, Response
 from lyra.core.circuit_breaker import CircuitBreaker
+
+if TYPE_CHECKING:
+    from lyra.core.hub.hub_protocol import ChannelAdapter
 from lyra.core.message import (
     InboundMessage,
     OutboundMessage,
@@ -52,8 +56,8 @@ async def test_hub_records_success_on_clean_streaming() -> None:
 
             return gen()
 
-    hub.register_adapter(Platform.TELEGRAM, "main", SilentAdapter())  # type: ignore[arg-type]
-    hub.register_agent(CleanStreamingAgent())  # type: ignore[arg-type]
+    hub.register_adapter(Platform.TELEGRAM, "main", cast("ChannelAdapter", SilentAdapter()))
+    hub.register_agent(cast("AgentBase", CleanStreamingAgent()))
     hub.register_binding(Platform.TELEGRAM, "main", "*", "test", "telegram:main:*")
 
     # Act
@@ -111,8 +115,8 @@ async def test_mid_stream_failure_records_anthropic_failure() -> None:
 
             return gen()
 
-    hub.register_adapter(Platform.TELEGRAM, "main", SilentAdapter())  # type: ignore[arg-type]
-    hub.register_agent(FailingStreamAgent())  # type: ignore[arg-type]
+    hub.register_adapter(Platform.TELEGRAM, "main", cast("ChannelAdapter", SilentAdapter()))
+    hub.register_agent(cast("AgentBase", FailingStreamAgent()))
     hub.register_binding(Platform.TELEGRAM, "main", "*", "test", "telegram:main:*")
 
     # Act
@@ -169,8 +173,8 @@ async def test_hub_circuit_opens_after_threshold() -> None:
 
             return gen()
 
-    hub.register_adapter(Platform.TELEGRAM, "main", SilentAdapter())  # type: ignore[arg-type]
-    hub.register_agent(AlwaysFailStreamAgent())  # type: ignore[arg-type]
+    hub.register_adapter(Platform.TELEGRAM, "main", cast("ChannelAdapter", SilentAdapter()))
+    hub.register_agent(cast("AgentBase", AlwaysFailStreamAgent()))
     hub.register_binding(Platform.TELEGRAM, "main", "*", "test", "telegram:main:*")
 
     # Act — enqueue 2 messages to trip the threshold
@@ -233,7 +237,9 @@ async def test_hub_msg_manager_injection_generic_on_agent_failure() -> None:
             chunks: object,
             outbound=None,
         ) -> None:
-            async for _ in chunks:  # type: ignore[union-attr]
+            from collections.abc import AsyncIterator as _AI
+
+            async for _ in cast("_AI[object]", chunks):
                 pass
 
     class FailingAgent(AgentBase):
@@ -244,7 +250,7 @@ async def test_hub_msg_manager_injection_generic_on_agent_failure() -> None:
 
     config = Agent(name="failing", system_prompt="", memory_namespace="test")
     hub.register_agent(FailingAgent(config))
-    hub.register_adapter(Platform.TELEGRAM, "main", CapturingAdapter())  # type: ignore[arg-type]
+    hub.register_adapter(Platform.TELEGRAM, "main", cast("ChannelAdapter", CapturingAdapter()))
     hub.register_binding(
         Platform.TELEGRAM, "main", "chat:42", "failing", "telegram:main:chat:42"
     )

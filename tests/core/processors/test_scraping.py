@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import socket
 from datetime import datetime, timezone
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -323,7 +324,7 @@ class TestScrapingProcessorTruncation:
 
         # Assert
         assert "Usage:" in result.text
-        tools.scraper.scrape.assert_not_called()  # type: ignore[attr-defined]
+        cast(Any, tools.scraper).scrape.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

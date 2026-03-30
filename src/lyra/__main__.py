@@ -20,10 +20,10 @@ from dotenv import load_dotenv
 # The bootstrap modules import these directly; tests that patch main_mod.*
 # must also patch the bootstrap module namespace (see tests/test_main.py).
 from lyra.adapters.discord import (
-    DiscordAdapter,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+    DiscordAdapter as DiscordAdapter,  # noqa: F401
 )
 from lyra.adapters.telegram import (
-    TelegramAdapter,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+    TelegramAdapter as TelegramAdapter,  # noqa: F401
 )
 from lyra.bootstrap.config import (
     _load_circuit_config,

@@ -197,12 +197,12 @@ Polling mode (the default) requires no inbound ports beyond SSH.
 
 ## 8. Remote control from Machine 2 (Makefile)
 
-Machine connection is read from `.env` (with hardcoded fallbacks):
+Machine connection is read from `.env`:
 
 ```bash
-# .env (Machine 2)
-MACHINE1_HOST=mickael@192.168.1.16
-MACHINE1_DIR=~/projects/lyra
+# .env (on your dev machine)
+DEPLOY_HOST=user@your-hub-ip          # SSH user@host for production hub
+DEPLOY_DIR=~/projects/lyra            # project path on the production host
 ```
 
 ### Deploy (pull + test + restart)

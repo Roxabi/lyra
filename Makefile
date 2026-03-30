@@ -29,12 +29,12 @@ define ensure_hub
 	fi
 endef
 
-MACHINE1 := $(shell grep '^MACHINE1_HOST=' .env 2>/dev/null | cut -d= -f2)
-MACHINE1_DIR := $(shell grep '^MACHINE1_DIR=' .env 2>/dev/null | cut -d= -f2)
+DEPLOY_HOST := $(shell grep '^DEPLOY_HOST=' .env 2>/dev/null | cut -d= -f2)
+DEPLOY_DIR := $(shell grep '^DEPLOY_DIR=' .env 2>/dev/null | cut -d= -f2)
 
 define require_machine1
-	@[ -n "$(MACHINE1)" ] || { echo "Error: MACHINE1_HOST not set in .env"; exit 1; }
-	@[ -n "$(MACHINE1_DIR)" ] || { echo "Error: MACHINE1_DIR not set in .env"; exit 1; }
+	@[ -n "$(DEPLOY_HOST)" ] || { echo "Error: DEPLOY_HOST not set in .env"; exit 1; }
+	@[ -n "$(DEPLOY_DIR)" ] || { echo "Error: DEPLOY_DIR not set in .env"; exit 1; }
 endef
 
 .PHONY: lyra telegram discord monitor register deploy remote test lint typecheck format
@@ -182,8 +182,8 @@ register:
 
 deploy:
 	$(require_machine1)
-	@echo "Deploying to Machine 1 ($(MACHINE1))..."
-	@ssh $(MACHINE1) "cd $(MACHINE1_DIR) && bash scripts/deploy.sh"
+	@echo "Deploying to Machine 1 ($(DEPLOY_HOST))..."
+	@ssh $(DEPLOY_HOST) "cd $(DEPLOY_DIR) && bash scripts/deploy.sh"
 
 REMOTE_SCTL := ~/projects/lyra-stack/scripts/supervisorctl.sh
 
@@ -206,12 +206,12 @@ remote:
 	  *) echo "Unknown service: $$SVC"; exit 1 ;; \
 	esac; \
 	case "$${ACTION:-status}" in \
-	  reload)  ssh $(MACHINE1) "$$SCTL restart $$PROGS" ;; \
-	  start)   ssh $(MACHINE1) "$$SCTL start $$PROGS" ;; \
-	  stop)    ssh $(MACHINE1) "$$SCTL stop $$PROGS" ;; \
-	  status)  ssh $(MACHINE1) "$$SCTL status $$PROGS" ;; \
-	  logs)    FIRST=$${PROGS%% *}; ssh $(MACHINE1) "$$SCTL tail -f $$FIRST" ;; \
-	  errors)  FIRST=$${PROGS%% *}; ssh $(MACHINE1) "$$SCTL tail -f $$FIRST stderr" ;; \
+	  reload)  ssh $(DEPLOY_HOST) "$$SCTL restart $$PROGS" ;; \
+	  start)   ssh $(DEPLOY_HOST) "$$SCTL start $$PROGS" ;; \
+	  stop)    ssh $(DEPLOY_HOST) "$$SCTL stop $$PROGS" ;; \
+	  status)  ssh $(DEPLOY_HOST) "$$SCTL status $$PROGS" ;; \
+	  logs)    FIRST=$${PROGS%% *}; ssh $(DEPLOY_HOST) "$$SCTL tail -f $$FIRST" ;; \
+	  errors)  FIRST=$${PROGS%% *}; ssh $(DEPLOY_HOST) "$$SCTL tail -f $$FIRST stderr" ;; \
 	  *) echo "Unknown action: $$ACTION"; exit 1 ;; \
 	esac
 

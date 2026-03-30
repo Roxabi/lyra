@@ -183,8 +183,8 @@ Send these directly in Telegram or Discord:
 Machine connection is configured in `.env` (see `.env.example`):
 
 ```bash
-MACHINE1_HOST=mickael@192.168.1.16
-MACHINE1_DIR=~/projects/lyra
+DEPLOY_HOST=user@your-hub-ip          # SSH target for production
+DEPLOY_DIR=~/projects/lyra            # project path on production
 ```
 
 | Command | Description |

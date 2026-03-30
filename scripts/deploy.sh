@@ -59,6 +59,13 @@ if [ -d "$VOICE_DIR/.git" ]; then
         git pull origin staging 2>&1 | tee -a "$LOG_FILE"
         uv sync --frozen 2>&1 | tee -a "$LOG_FILE"
         VOICE_UPDATED=true
+
+        # Also update voiceCLI inside Lyra's .venv so the library stays in sync
+        log "Re-locking voiceCLI in Lyra..."
+        cd "$LYRA_DIR"
+        uv lock --upgrade-package voicecli 2>&1 | tee -a "$LOG_FILE"
+        uv sync --all-extras --frozen 2>&1 | tee -a "$LOG_FILE"
+        LYRA_UPDATED=true
     fi
 fi
 

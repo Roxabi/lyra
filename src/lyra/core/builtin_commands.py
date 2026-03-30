@@ -45,6 +45,7 @@ def help_command(
     command_loader: "CommandLoader",
     enabled_plugins: list[str],
     msg_manager: "MessageManager | None",
+    passthroughs: "frozenset[str] | None" = None,
 ) -> Response:
     """Return a listing of all available commands, grouped by section."""
     header = msg_manager.get("help_header") if msg_manager else "Available commands:"
@@ -57,7 +58,9 @@ def help_command(
         for cmd_name, entry in sorted(session_handlers.items()):
             desc = getattr(entry, "description", "") or "(no description)"
             lines.append(f"  {cmd_name} — {desc}")
-    # Include processor registry commands (issue #363 — session_handlers is now empty)
+    # Include processor registry commands only when the agent registered them
+    # as passthroughs (i.e. _session_tools built successfully). Issue #359.
+    _active_passthroughs = passthroughs or frozenset()
     try:
         importlib.import_module("lyra.core.processors")  # trigger self-registration
         from lyra.core.processor_registry import registry as _proc_registry
@@ -65,7 +68,8 @@ def help_command(
         proc_descs = _proc_registry.descriptions()
         if proc_descs:
             for cmd_name, desc in sorted(proc_descs.items()):
-                lines.append(f"  {cmd_name} — {desc or '(no description)'}")
+                if cmd_name in _active_passthroughs:
+                    lines.append(f"  {cmd_name} — {desc or '(no description)'}")
     except Exception:
         pass
     plugin_handlers = command_loader.get_commands(enabled_plugins)

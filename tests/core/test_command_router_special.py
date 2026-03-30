@@ -444,6 +444,44 @@ class TestSessionCommands:
         assert "/mything" in response.content
         assert "Does the thing" in response.content
 
+    def test_help_hides_processor_commands_without_passthroughs(
+        self, tmp_path: Path
+    ) -> None:
+        """Processor commands only appear in /help when registered as passthroughs (#359)."""
+        from tests.helpers import reload_processors
+
+        from lyra.core.builtin_commands import help_command
+        from lyra.core.processor_registry import registry as proc_registry
+
+        reload_processors()
+        registered = sorted(proc_registry.commands())
+        assert registered, "processor registry should have at least one command"
+        sample_cmd = registered[0]
+
+        router = make_router(tmp_path)
+
+        # Without passthroughs — processor commands should NOT appear
+        response_no_pt = help_command(
+            router._builtins,
+            router._session_handlers,
+            router._command_loader,
+            router._enabled_plugins,
+            router._msg_manager,
+            passthroughs=frozenset(),
+        )
+        assert sample_cmd not in response_no_pt.content
+
+        # With passthroughs — only registered ones appear
+        response_with_pt = help_command(
+            router._builtins,
+            router._session_handlers,
+            router._command_loader,
+            router._enabled_plugins,
+            router._msg_manager,
+            passthroughs=frozenset({sample_cmd}),
+        )
+        assert sample_cmd in response_with_pt.content
+
     def test_session_args_passed_to_handler(self, tmp_path: Path) -> None:
         import asyncio as _asyncio
         from unittest.mock import MagicMock

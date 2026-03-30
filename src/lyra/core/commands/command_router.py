@@ -261,6 +261,7 @@ class CommandRouter:
                 self._command_loader,
                 self._enabled_plugins,
                 self._msg_manager,
+                passthroughs=frozenset(self._passthroughs),
             )
         if command_name == "/circuit":
             return builtin_commands.circuit_status(msg, self._circuit_registry)

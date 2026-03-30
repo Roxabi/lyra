@@ -22,7 +22,7 @@ from .message_pipeline import (  # noqa: F401 — public re-export (Action)
     MessagePipeline,
     PipelineResult,
 )
-from .middleware import MiddlewarePipeline, build_default_pipeline
+from .middleware import build_default_pipeline
 from .pool_manager import PoolManager
 
 if TYPE_CHECKING:

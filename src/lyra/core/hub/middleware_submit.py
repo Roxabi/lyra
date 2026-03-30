@@ -8,7 +8,6 @@ resume via three paths, and returns ``SUBMIT_TO_POOL``.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
 
 from ..message import (
     InboundMessage,
@@ -24,9 +23,6 @@ from .message_pipeline import (
 )
 from .middleware import Next, PipelineContext
 from .pipeline_events import MessageDropped, PoolSubmitted
-
-if TYPE_CHECKING:
-    pass
 
 log = logging.getLogger(__name__)
 

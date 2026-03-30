@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from ..commands.command_parser import CommandParser
 from ..message import (
@@ -25,9 +25,6 @@ from .message_pipeline import (
 )
 from .middleware import Next, PipelineContext
 from .pipeline_events import CommandDispatched, MessageDropped
-
-if TYPE_CHECKING:
-    pass
 
 log = logging.getLogger(__name__)
 
@@ -223,15 +220,8 @@ class CommandMiddleware:
         if router and router.is_command(msg):
             _cmd = msg.text.split()[0] if msg.text else ""
             ctx.trace("processor", "command_detected", command=_cmd)
-            ctx.emit(
-                CommandDispatched(
-                    msg_id=msg.id,
-                    stage=type(self).__name__,
-                    command=_cmd,
-                )
-            )
             return await self._dispatch_command(
-                msg, router, ctx, next
+                msg, _cmd, router, ctx, next
             )
 
         return await next(msg, ctx)
@@ -239,6 +229,7 @@ class CommandMiddleware:
     async def _dispatch_command(  # noqa: PLR0913
         self,
         msg: InboundMessage,
+        cmd: str,
         router: Any,
         ctx: PipelineContext,
         next: Next,
@@ -274,6 +265,13 @@ class CommandMiddleware:
             "outbound",
             "command_handled",
             action=Action.COMMAND_HANDLED.value,
+        )
+        ctx.emit(
+            CommandDispatched(
+                msg_id=msg.id,
+                stage=type(self).__name__,
+                command=cmd,
+            )
         )
         return PipelineResult(
             action=Action.COMMAND_HANDLED, response=response

@@ -43,6 +43,7 @@ from lyra.core.auth import AuthMiddleware
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.cli_pool import CliPool
 from lyra.core.hub import Hub
+from lyra.core.hub.event_bus import PipelineEventBus
 from lyra.core.stores.auth_store import AuthStore
 from lyra.core.stores.pairing import PairingManager, set_pairing_manager
 
@@ -150,9 +151,6 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
         inbound_bus_cfg = _load_inbound_bus_config(raw_config)
         debouncer_cfg = _load_debouncer_config(raw_config)
         event_bus_cfg = _load_event_bus_config(raw_config)
-
-        from lyra.core.hub.event_bus import PipelineEventBus
-
         event_bus = PipelineEventBus(maxsize=event_bus_cfg.queue_maxsize)
 
         hub = Hub(

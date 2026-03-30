@@ -134,6 +134,13 @@ class MiddlewarePipeline:
         async def _run(
             index: int, msg: InboundMessage, ctx: PipelineContext
         ) -> PipelineResult:
+            """Run middleware at *index* with timing.
+
+            ``StageCompleted`` fires for both pass-through and drop stages.
+            For pass-through stages, ``duration_ms`` is subtree-inclusive
+            (includes downstream). For drop stages, it reflects only the
+            stage's own work since no downstream is called.
+            """
             if index >= len(self._middlewares):
                 return _DROP
             mw = self._middlewares[index]

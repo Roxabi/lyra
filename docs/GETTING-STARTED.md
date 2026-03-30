@@ -239,7 +239,9 @@ lyra bot add --platform discord --bot-id lyra
 
 This encrypts and stores the tokens in `~/.lyra/auth.db`.
 
-> **Note:** `.env` is for non-secret config only (TTS engine, STT model size, monitoring settings).
+> **Note:** `.env` is mostly for non-secret config (TTS engine, STT model size). The exception
+> is monitoring secrets (`TELEGRAM_TOKEN`, `TELEGRAM_ADMIN_CHAT_ID`) which the monitoring cron
+> reads directly from `.env` since it runs as a standalone process outside the hub.
 > See `.env.example` for all available options.
 
 ---
@@ -265,7 +267,34 @@ loginctl enable-linger $USER
 systemctl --user start lyra-stack
 ```
 
-## Step 11 — Verify services
+## Step 11 — Enable health monitoring
+
+The monitoring system runs as a separate **systemd user timer** (not part of supervisor). It runs every 5 minutes, checks hub health, and sends Telegram alerts on anomalies.
+
+```bash
+cd ~/projects/lyra
+
+# Ensure monitoring secrets are in .env
+# TELEGRAM_TOKEN=<bot token for sending alerts>
+# TELEGRAM_ADMIN_CHAT_ID=<your numeric Telegram user ID>
+
+# Create the health secret file (used by /health/detail endpoint)
+mkdir -p ~/.lyra/secrets
+echo -n "$(openssl rand -hex 32)" > ~/.lyra/secrets/health_secret
+chmod 600 ~/.lyra/secrets/health_secret
+
+# Copy the same secret to .env so the monitoring cron can use it
+echo "LYRA_HEALTH_SECRET=$(cat ~/.lyra/secrets/health_secret)" >> .env
+
+# Install + enable the timer (done automatically by make register)
+make monitor enable
+
+# Verify it works
+make monitor run      # trigger a manual check
+make monitor status   # check result
+```
+
+## Step 12 — Verify services
 
 ```bash
 cd ~/projects/lyra-stack
@@ -280,15 +309,21 @@ voicecli_tts     RUNNING   pid 12347, uptime 0:00:10
 voicecli_stt     RUNNING   pid 12348, uptime 0:00:10
 ```
 
+Check the monitoring timer:
+```bash
+make monitor status
+```
+
 Check the logs:
 ```bash
 make lyra logs      # tail Telegram adapter stdout
 make lyra errlogs   # tail stderr (where INFO/ERROR logs go)
+make monitor logs   # tail monitoring cron output (journalctl)
 ```
 
 ---
 
-## Step 12 — Send your first message
+## Step 13 — Send your first message
 
 **Telegram:** Open a DM with your bot and type anything. Lyra will respond.
 
@@ -303,7 +338,7 @@ What happens under the hood:
 
 ---
 
-## Step 13 — Set up lyra agent account (optional)
+## Step 14 — Set up lyra agent account (optional)
 
 Generate a dedicated SSH key for the agent on Machine 2:
 

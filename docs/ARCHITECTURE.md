@@ -251,7 +251,7 @@ After the Phase 1b refactoring, every module is ≤300 LOC. Key decomposition:
 
 **Per-channel queues** (#126, completed): each channel adapter has its own bounded inbound queue → feeds a shared staging queue → Hub consumes and routes. Outbound has a symmetric per-channel queue + OutboundDispatcher.
 
-**Backpressure**: when the staging queue is full, the adapter sends an immediate acknowledgment ("message received, ~Xs wait") then performs a blocking `await bus.put()` until a slot frees up.
+**Backpressure**: when the staging queue is full, the adapter sends an immediate acknowledgment ("message received, ~Xs wait") then performs a blocking `await bus.put()` until a slot frees up. `Bus[T].put()` is `async` — implementors must raise `asyncio.QueueFull` when the per-platform queue is at capacity so callers can apply backpressure without blocking the event loop. `LocalBus.put()` is the concrete async wrapper backed by `asyncio.Queue`; future transports (e.g. `NatsBus`) must uphold the same contract.
 
 **Unified message format:**
 ```python

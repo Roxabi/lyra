@@ -1,0 +1,174 @@
+---
+title: "Consolidated Review: Distributed Lyra — NATS Epic Restructuring"
+issues: [60, 282, 62]
+status: active
+date: 2026-03-30
+reviewers: [architecture, product, security, devops]
+---
+
+## Decision
+
+**Close epics #60, #282, #62 and all their sub-issues. Create a single unified epic with 4 slices.**
+
+Rationale:
+- #282 (Hub standalone via Unix socket) is superseded — NATS replaces Unix socket
+- #60 (NATS introduction) had stale sub-issues and unmade design decisions
+- #62 (Resilience, observability, security) sub-issues are all NATS-specific (#56, #57, #58)
+- Merging all three into one epic with clear slices eliminates coordination overhead
+
+## Key Architectural Insight
+
+NATS serves **two independent purposes** with different prerequisites:
+
+| Purpose | What it does | Requires Hub extraction? |
+|---------|-------------|--------------------------|
+| **Distributed compute** | Offload LLM inference to Machine 2, fan-out telemetry | No |
+| **Hub IPC** | Hub-Adapter communication after process split | Yes |
+
+The original plan assumed these were sequential (extract Hub → NATS for IPC → Machine 2). They can be **decoupled**: NATS for compute first (Slice B), Hub extraction later (Slice C).
+
+## Proposed Epic: "Distributed Lyra — NATS bus, compute offloading, and process split"
+
+### Slice A — NATS Foundation + Security Baseline
+
+- Install NATS on Machine 1 (systemd system unit, provision.sh)
+- TLS enabled from day 1 (self-signed CA at provisioning)
+- Basic nkey auth (per-process credentials)
+- Monitoring port bound to localhost only
+- UFW rule: allow 4222 from 192.168.1.0/24 only
+- NatsBus implementation (`Bus[T]` over NATS)
+- Protocol amendment: `put()` → `async def put()`
+
+### Slice B — Distributed Compute (no topology change)
+
+- NATS-based LlmProvider for Machine 2 offloading
+- Machine 2 LLM worker service (scoped nkey: llm subjects only)
+- Circuit breaker + fallback when Machine 2 offline
+- Health check heartbeats
+- **Prerequisite:** #14 (LLM benchmark) must close first
+
+### Slice C — Hub Extraction + IPC (topology change)
+
+- Design artifact: streaming chunk protocol (AsyncIterator[RenderEvent] cannot cross NATS)
+- Design artifact: NATS subject naming convention
+- Trust re-resolution moved to Hub side (Authenticator.resolve() post-bus, not adapter-side)
+- Strip callable `platform_meta` keys at NatsBus deserialization boundary
+- Update ADR-021
+- Extract Hub into standalone `lyra_hub` process
+- Rewire TelegramAdapter as thin NATS client
+- Rewire DiscordAdapter as thin NATS client
+- Update Makefile + deploy.sh (startup ordering, rolling restart)
+- Integration test: adapter reload preserves Hub state
+
+### Slice D — Hardening
+
+- JetStream persistence (with `max_age` retention policies per subject)
+- Full JWT/account auth (replacing basic nkey)
+- NATS observability (Prometheus exporter)
+- Subject ACL audit
+
+**Critical path:** `A → B (immediate value) → C (when needed) → D (harden)`
+
+## Review Findings
+
+### Architecture
+
+| Finding | Severity | Resolution |
+|---------|----------|------------|
+| `Bus[T].put()` is synchronous — NATS publish is async I/O | High | Amend Protocol: `async def put()`. One-line change, update all callers |
+| `task_done()` erases get/ack correlation | Medium | NatsBus holds last-fetched msg as state; document single-consumer invariant |
+| `register(platform, maxsize)` maps cleanly to NATS subscriptions | Low | No change needed |
+| Streaming across process boundary is unsolved | High | Design artifact needed: chunk-per-message protocol with stream start/end signaling |
+| NATS subject naming convention missing | High | Design artifact needed before Slice C. Proposed: `lyra.inbound.{platform}.{bot_id}`, `lyra.outbound.{platform}.{bot_id}`, `lyra.llm.request`, `lyra.llm.response.{request_id}` |
+| Hub restart = SPOF for both adapters post-extraction | Medium | JetStream (Slice D) partially mitigates. Document risk in ADR-021 update |
+| Embedded mode (`--adapter all`) survives cleanly | Info | Hub accepts injected `Bus[T]` — LocalBus for dev, NatsBus for prod |
+| SQLite WAL with 3 writer processes | Info | Write isolation improves after extraction (Hub does most writes) |
+| NATS as hard runtime dependency vs ADR-021's Redis rejection | Medium | ADR update must justify why NATS is accepted when Redis was rejected (compute offloading is functional, not convenience) |
+
+### Security
+
+| Finding | Severity | Slice Gate |
+|---------|----------|------------|
+| Trust escalation via unauthenticated NATS injection — any LAN device forges OWNER messages | Critical | **Slice A** must include nkey auth |
+| Conversation exfiltration — plaintext without TLS | High | **Slice A** must include TLS |
+| Machine 2 lateral movement — compromised Windows machine gets NATS access | High | **Slice B** must scope Machine 2 nkey to llm subjects only |
+| `platform_meta: dict[str, Any]` carries callables (`_session_update_fn`) | Medium | **Slice C** must strip callables at NatsBus boundary |
+| JetStream creates durable PII store without retention | Medium | **Slice D** must set `max_age` per stream |
+| NATS monitoring port (8222) exposes topology | Medium | **Slice A** bind to localhost |
+| Trust re-resolution must move from adapter to Hub | Critical | **Slice C** architectural prerequisite |
+
+### Product
+
+| Finding | Impact |
+|---------|--------|
+| No user-visible improvement until Slice C | Multi-sprint infrastructure investment — set expectations |
+| Machine 2 GPU blocked by #14 (LLM benchmark, P3) | Promote #14 to P2 before Slice B starts |
+| 3 concurrent XL epics (#60, #417, #322) unsustainable for solo dev | Serialize: close #432 → #417 → then NATS |
+| #51 (Machine 2 worker) needs #23 (circuit breaker fallback) | Ship together |
+| 5 open design questions from merge doc unresolved | Must resolve before NatsBus spec |
+| MVP = full critical path through integration test | Shipping A+B without C leaves codebase in worse intermediate state |
+
+### DevOps
+
+| Finding | Recommendation |
+|---------|---------------|
+| NATS install method | Systemd system unit (not supervisord). Static binary via provision.sh |
+| Startup ordering | `nats.service → lyra-stack.service → supervisord → lyra_hub → adapters`. Use `priority` in supervisor confs |
+| Deploy workflow | Stop adapters → restart hub → wait for readiness → start adapters. Update `deploy.sh` |
+| Machine 2 offline | JetStream work queues with `max_age` TTL + circuit breaker fallback to Machine 1 |
+| NATS server config | `/etc/nats/nats.conf` (infra, in lyra-stack repo). Client: `.env` for `NATS_URL` |
+| Monitoring from day 1 | Extend `lyra_monitoring` to probe NATS health. NATS HTTP on localhost only |
+| JetStream backup | Not needed for ephemeral queues. Keep SQLite as authoritative persistence |
+
+## Issues Closed (16)
+
+### Epics
+- **#60** — Epic: Phase 2 — NATS introduction (recreated as new unified epic)
+- **#282** — Epic: Hub as standalone process (merged into new epic)
+- **#62** — Epic: Phase 4 — Resilience, observability + security (NATS children absorbed)
+
+### Dead / superseded
+- **#283** — Design IPC protocol (Unix socket) — NATS replaces entirely
+- **#443** — Rewire OutboundDispatcher for IPC push — folded into NatsBus
+
+### Recreated under new epic
+- **#49** — Install NATS server on Machine 1
+- **#50** — NatsBus implementation
+- **#51** — LLM worker on Machine 2
+- **#52** — Health check system
+- **#284** — Extract Hub into standalone process
+- **#285** — Refactor TelegramAdapter
+- **#286** — Refactor DiscordAdapter
+- **#287** — Update Makefile reload targets
+- **#288** — Update ADR-021
+- **#444** — Integration test: adapter reload preserves state
+- **#56** — JetStream persistence
+- **#57** — NATS observability
+- **#58** — NATS auth
+
+## Artifacts Superseded
+
+- `artifacts/frames/282-hub-standalone-process-frame.mdx` — superseded by this doc
+- `artifacts/analyses/282-60-merged-epic-status.mdx` — superseded by this doc
+
+## Related Epics (kept separate)
+
+| # | Title | Why separate |
+|---|-------|-------------|
+| #274 | Observability — logging, tracing & audit trail | #270 (structured logging) is not NATS-specific |
+| #109 | Agent Supervision System | Depends on NATS events but is its own scope |
+| #61 | Phase 3 — Atomic SLMs | Depends on NATS but different epic |
+| #63 | Phase 5 — Multi-agent orchestration | Far future |
+
+## Key Files
+
+| File | Role |
+|------|------|
+| `src/lyra/core/bus.py` | `Bus[T]` Protocol — needs `put()` → `async def put()` amendment |
+| `src/lyra/core/inbound_bus.py` | `LocalBus` — reference implementation |
+| `src/lyra/core/hub/hub.py` | Hub class — extraction target for Slice C |
+| `src/lyra/core/hub/message_pipeline.py:413` | `_session_update_fn` callable in `platform_meta` — unsafe at network boundary |
+| `src/lyra/core/authenticator.py` | Trust resolution — must move to Hub side for Slice C |
+| `src/lyra/adapters/_shared.py` | `push_to_hub_guarded()` — will become NATS publish |
+| `src/lyra/bootstrap/multibot.py` | Startup wiring — injection point for Bus[T] |
+| `docs/architecture/adr/021-hub-per-adapter.mdx` | ADR to update in Slice C |

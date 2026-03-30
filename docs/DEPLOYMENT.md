@@ -28,14 +28,27 @@ Machine 1 must be set up with `lyra-stack` and the provision script. See [GETTIN
 make deploy
 ```
 
-This runs `scripts/deploy.sh` on Machine 1: fetches `main`, runs tests (rolls back on failure), restarts Lyra via supervisord.
+This runs `scripts/deploy.sh` on Machine 1. The script checks **two repos independently**:
+
+| Repo | Branch | Services restarted on change |
+|------|--------|------------------------------|
+| `lyra` | `origin/staging` | `lyra_telegram`, `lyra_discord` |
+| `voiceCLI` | `origin/staging` | `voicecli_tts`, `voicecli_stt` |
+
+**Smart restart** — only the services whose repo changed are restarted. If neither repo has new commits, the script exits without touching supervisor.
+
+**Auto re-lock** — when voiceCLI updates, the script also runs `uv lock --upgrade-package voicecli` inside Lyra's `.venv` so the pinned dependency stays in sync, then marks Lyra as updated too (both sets of adapters restart).
+
+**Test gate** — after pulling `lyra`, `pytest` runs before the restart. A test failure rolls back to the previous commit; voiceCLI is not pulled in that run.
+
+**Deploy log** — every run is appended to `~/.local/state/lyra/logs/deploy.log`.
 
 For a manual update on Machine 1:
 
 ```bash
 cd ~/projects/lyra
-git pull
-uv sync --no-dev
+git pull origin staging
+uv sync --all-extras --frozen
 make lyra reload
 ```
 

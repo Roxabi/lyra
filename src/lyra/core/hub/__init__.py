@@ -10,6 +10,18 @@ from .message_pipeline import (
 from .message_pipeline import (
     PipelineResult as PipelineResult,
 )
+from .middleware import (
+    MiddlewarePipeline as MiddlewarePipeline,
+)
+from .middleware import (
+    PipelineContext as PipelineContext,
+)
+from .middleware import (
+    PipelineMiddleware as PipelineMiddleware,
+)
+from .middleware import (
+    build_default_pipeline as build_default_pipeline,
+)
 from .outbound_dispatcher import OutboundDispatcher as OutboundDispatcher
 
 __all__ = [
@@ -17,7 +29,11 @@ __all__ = [
     "ChannelAdapter",
     "Hub",
     "MessagePipeline",
+    "MiddlewarePipeline",
     "OutboundDispatcher",
+    "PipelineMiddleware",
+    "PipelineContext",
     "PipelineResult",
     "RoutingKey",
+    "build_default_pipeline",
 ]

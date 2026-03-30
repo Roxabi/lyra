@@ -17,11 +17,11 @@ from .hub_protocol import (  # noqa: F401 — public re-export
     RoutingKey,
 )
 from .hub_rate_limit import RateLimiter
-from .message_pipeline import (  # noqa: F401 — public re-export (Action)
+from .message_pipeline import (  # noqa: F401 — public re-export
     Action,
-    MessagePipeline,
     PipelineResult,
 )
+from .middleware import build_default_pipeline
 from .pool_manager import PoolManager
 
 if TYPE_CHECKING:
@@ -282,7 +282,7 @@ class Hub(HubOutboundMixin):
 
     async def run(self) -> None:
         """Hub bus consumer loop. Runs until cancelled."""
-        pipeline = MessagePipeline(self)
+        pipeline = build_default_pipeline(self)
         while True:
             msg = await self.inbound_bus.get()
             try:

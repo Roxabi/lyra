@@ -1,0 +1,48 @@
+---
+title: "Security audit remediation: 1 Critical, 4 Medium, 4 Low + prompt injection hardening"
+issue: 428
+status: approved
+tier: F-full
+date: 2026-03-30
+---
+
+## Problem
+
+A comprehensive security audit (2026-03-26) of the Lyra codebase identified **9 actionable findings** across error handling, configuration security, prompt injection, and information disclosure — plus 3 backlog items for defense-in-depth.
+
+While Lyra's security posture is solid for single-tenant deployment (100% parameterized SQL, no shell injection, encrypted credentials, HMAC webhook verification), there are gaps:
+
+1. **Error information leakage** — The `/svc` command sends raw Python exceptions (filesystem paths, OS error codes) to chat, visible to all group members.
+2. **Prompt injection surface** — Scraped web content is truncated but not XML-escaped before LLM injection, allowing tag breakout. Plain text messages also lack input tagging.
+3. **Configuration trust** — `LYRA_CONFIG` and `LYRA_MESSAGES_CONFIG` accept arbitrary file paths without validation, enabling config substitution by anyone who can set env vars.
+4. **System prompt exposure** — The system prompt is passed as a CLI argument, visible in `/proc/<pid>/cmdline`. The code comment (H-10) claims this is blocked on upstream CLI support, but `--system-prompt-file` already exists in the Claude CLI.
+5. **Health endpoint overexposure** — Queue depths, circuit breaker states, uptime, and reaper metrics are returned to authenticated callers alongside basic liveness.
+
+## Who
+
+- **Primary:** Lyra operator (Mickael) — responsible for security posture of the always-on hub
+- **Secondary:** Any users in Telegram/Discord groups where Lyra operates — exposed to info leaks (C1, L2) and potential prompt injection via shared web scraping (M4)
+
+## Constraints
+
+- **M1 is NOT blocked** — `--system-prompt-file` exists in the Claude CLI today. The H-10 comment is stale. This is a straightforward fix: write a tmpfile, pass the path.
+- **Single-tenant context** — Lyra is a personal agent, so some findings (M3 health detail, L3 config endpoint) are lower urgency than in a multi-tenant system. Still worth fixing for defense-in-depth.
+- **Existing escape patterns** — `add_vault.py:88-92` already implements HTML escaping for vault content. The same pattern should be reused for M4 (scraped content) and the new plain text tagging.
+- **No dependency on external teams** — All fixes are internal to the Lyra codebase.
+
+## Out of Scope
+
+- CVEs in transitive dependencies (pygments ReDoS, onnx supply chain) — tracked but not actionable without upstream fixes
+- System prompt refusal instruction — only relevant if untrusted users join; can be added later to persona TOML
+- Full Claw-style injection detection layer — disproportionate for single-tenant; the escaping + tagging fixes close the practical attack surface
+
+## Complexity
+
+**Tier: F-full** — 9 findings across 6+ files spanning error handling, config validation, prompt injection defense, CLI integration, and health endpoint architecture. Multiple security domains require careful, coordinated changes with no regressions.
+
+Signals observed:
+- **Files touched:** 8+ files across `commands/svc/`, `core/`, `bootstrap/`, `processors/`
+- **Technical risk:** Security-sensitive changes — incorrect escaping or validation creates new vulnerabilities
+- **Arch impact:** Health endpoint split (M3) and centralized error sanitization (backlog) touch shared infrastructure
+- **Domain breadth:** Error handling, config loading, prompt construction, CLI spawning, HTTP endpoints, dependency management
+- **Unknowns:** None significant — audit provides precise file locations and fix descriptions

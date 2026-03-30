@@ -29,6 +29,24 @@ class TestSupervisorctlManagerControl:
         assert "lyra" in result
 
     @pytest.mark.asyncio
+    async def test_status_all_does_not_append_service(self):
+        calls: list[list] = []
+        proc = MagicMock()
+        proc.returncode = 0
+        proc.communicate = AsyncMock(return_value=(b"output", b""))
+
+        async def fake_exec(*args, **kwargs):
+            calls.append(list(args))
+            return proc
+
+        with patch("asyncio.create_subprocess_exec", new=fake_exec):
+            await SupervisorctlManager().control("status", None)
+
+        # script + action only, no service arg
+        assert len(calls[0]) == 2
+        assert "status" in calls[0]
+
+    @pytest.mark.asyncio
     async def test_restart_service_calls_correct_args(self):
         calls: list[list] = []
         proc = MagicMock()

@@ -63,8 +63,9 @@ class TestFfmpegConverterConvert:
         with patch(
             "asyncio.create_subprocess_exec", side_effect=FileNotFoundError
         ):
-            with pytest.raises(AudioConversionFailed):
+            with pytest.raises(AudioConversionFailed) as exc_info:
                 await FfmpegConverter().convert_wav_to_ogg(wav, ogg)
+            assert exc_info.value.reason == "not_available"
 
     @pytest.mark.asyncio
     async def test_nonzero_exit_raises(self, tmp_path: Path):
@@ -76,8 +77,9 @@ class TestFfmpegConverterConvert:
         proc.communicate = AsyncMock(return_value=(b"", b"error"))
 
         with patch("asyncio.create_subprocess_exec", new=AsyncMock(return_value=proc)):
-            with pytest.raises(AudioConversionFailed):
+            with pytest.raises(AudioConversionFailed) as exc_info:
                 await FfmpegConverter().convert_wav_to_ogg(wav, ogg)
+            assert exc_info.value.reason == "subprocess_error"
 
     @pytest.mark.asyncio
     async def test_timeout_raises(self, tmp_path: Path):
@@ -93,5 +95,6 @@ class TestFfmpegConverterConvert:
                 "lyra.integrations.audio.asyncio.wait_for",
                 side_effect=asyncio.TimeoutError,
             ):
-                with pytest.raises(AudioConversionFailed):
+                with pytest.raises(AudioConversionFailed) as exc_info:
                     await FfmpegConverter().convert_wav_to_ogg(wav, ogg)
+                assert exc_info.value.reason == "timeout"

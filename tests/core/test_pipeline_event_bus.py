@@ -26,8 +26,8 @@ from lyra.core.hub.pipeline_events import (
 from tests.core.conftest import _make_hub, make_inbound_message
 
 
-def _make_event(**overrides: object) -> MessageReceived:
-    defaults = {
+def _make_event(**overrides: str) -> MessageReceived:
+    defaults: dict[str, str] = {
         "msg_id": "test-1",
         "stage": "inbound",
         "platform": "telegram",
@@ -139,7 +139,7 @@ class TestPipelineEventBus:
         q = bus.subscribe()
         bus.emit(_make_event())
         event = q.get_nowait()
-        assert isinstance(event, PipelineEvent)
+        assert isinstance(event, MessageReceived)
         assert event.platform == "telegram"
 
     def test_queue_full_does_not_affect_other_subscribers(self) -> None:

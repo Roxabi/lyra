@@ -136,7 +136,15 @@ class TestHubMemoryFields:
         object.__setattr__(hub, "_memory", mock_mm)
 
         class ConcreteAgent(AgentBase):
-            async def process(self, msg: InboundMessage, pool: Pool, *, on_intermediate: Callable[[str], Awaitable[None]] | None = None) -> Response | AsyncIterator[RenderEvent]:
+            async def process(
+                self,
+                msg: InboundMessage,
+                pool: Pool,
+                *,
+                on_intermediate: (
+                    Callable[[str], Awaitable[None]] | None
+                ) = None,
+            ) -> Response | AsyncIterator[RenderEvent]:
                 return Response(content="")
 
         config = Agent(name="lyra", system_prompt="", memory_namespace="lyra")
@@ -151,7 +159,15 @@ class TestHubMemoryFields:
         (memory not configured)."""
 
         class ConcreteAgent(AgentBase):
-            async def process(self, msg: InboundMessage, pool: Pool, *, on_intermediate: Callable[[str], Awaitable[None]] | None = None) -> Response | AsyncIterator[RenderEvent]:
+            async def process(
+                self,
+                msg: InboundMessage,
+                pool: Pool,
+                *,
+                on_intermediate: (
+                    Callable[[str], Awaitable[None]] | None
+                ) = None,
+            ) -> Response | AsyncIterator[RenderEvent]:
                 return Response(content="")
 
         hub = Hub()

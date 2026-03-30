@@ -16,7 +16,10 @@ if TYPE_CHECKING:
 from lyra.adapters import discord_audio  # noqa: I001
 from lyra.adapters import discord_audio_outbound
 from lyra.adapters._shared import ATTACHMENT_EXTS_BASE, TypingTaskManager, resolve_msg
-from lyra.adapters.discord_config import DiscordConfig as DiscordConfig, load_discord_config as load_discord_config  # noqa: F401
+from lyra.adapters.discord_config import (  # noqa: F401
+    DiscordConfig as DiscordConfig,
+    load_discord_config as load_discord_config,
+)
 
 from lyra.adapters.discord_inbound import handle_message
 from lyra.adapters.discord_normalize import normalize as _normalize_impl
@@ -31,7 +34,11 @@ from lyra.adapters.discord_voice_commands import (
     handle_voice_command as _handle_voice_command_impl,
     register_voice_app_commands as _register_voice_app_commands,
 )
-from lyra.core.auth import _ALLOW_ALL as _ALLOW_ALL, _DENY_ALL as _DENY_ALL, AuthMiddleware as AuthMiddleware  # noqa: F401
+from lyra.core.auth import (  # noqa: F401
+    _ALLOW_ALL as _ALLOW_ALL,
+    _DENY_ALL as _DENY_ALL,
+    AuthMiddleware as AuthMiddleware,
+)
 
 from lyra.core.authenticator import Authenticator
 from lyra.core.circuit_breaker import CircuitRegistry

@@ -56,7 +56,11 @@ async def test_hub_records_success_on_clean_streaming() -> None:
 
             return gen()
 
-    hub.register_adapter(Platform.TELEGRAM, "main", cast("ChannelAdapter", SilentAdapter()))
+    hub.register_adapter(
+        Platform.TELEGRAM,
+        "main",
+        cast("ChannelAdapter", SilentAdapter()),
+    )
     hub.register_agent(cast("AgentBase", CleanStreamingAgent()))
     hub.register_binding(Platform.TELEGRAM, "main", "*", "test", "telegram:main:*")
 
@@ -115,7 +119,11 @@ async def test_mid_stream_failure_records_anthropic_failure() -> None:
 
             return gen()
 
-    hub.register_adapter(Platform.TELEGRAM, "main", cast("ChannelAdapter", SilentAdapter()))
+    hub.register_adapter(
+        Platform.TELEGRAM,
+        "main",
+        cast("ChannelAdapter", SilentAdapter()),
+    )
     hub.register_agent(cast("AgentBase", FailingStreamAgent()))
     hub.register_binding(Platform.TELEGRAM, "main", "*", "test", "telegram:main:*")
 
@@ -173,7 +181,11 @@ async def test_hub_circuit_opens_after_threshold() -> None:
 
             return gen()
 
-    hub.register_adapter(Platform.TELEGRAM, "main", cast("ChannelAdapter", SilentAdapter()))
+    hub.register_adapter(
+        Platform.TELEGRAM,
+        "main",
+        cast("ChannelAdapter", SilentAdapter()),
+    )
     hub.register_agent(cast("AgentBase", AlwaysFailStreamAgent()))
     hub.register_binding(Platform.TELEGRAM, "main", "*", "test", "telegram:main:*")
 
@@ -250,7 +262,11 @@ async def test_hub_msg_manager_injection_generic_on_agent_failure() -> None:
 
     config = Agent(name="failing", system_prompt="", memory_namespace="test")
     hub.register_agent(FailingAgent(config))
-    hub.register_adapter(Platform.TELEGRAM, "main", cast("ChannelAdapter", CapturingAdapter()))
+    hub.register_adapter(
+        Platform.TELEGRAM,
+        "main",
+        cast("ChannelAdapter", CapturingAdapter()),
+    )
     hub.register_binding(
         Platform.TELEGRAM, "main", "chat:42", "failing", "telegram:main:chat:42"
     )

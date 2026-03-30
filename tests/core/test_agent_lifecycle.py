@@ -28,7 +28,15 @@ class TestAgentMemoryInjection:
         )
 
         class ConcreteAgent(AgentBase):
-            async def process(self, msg: InboundMessage, pool: Pool, *, on_intermediate: Callable[[str], Awaitable[None]] | None = None) -> Response | AsyncIterator[RenderEvent]:
+            async def process(
+                self,
+                msg: InboundMessage,
+                pool: Pool,
+                *,
+                on_intermediate: (
+                    Callable[[str], Awaitable[None]] | None
+                ) = None,
+            ) -> Response | AsyncIterator[RenderEvent]:
                 return Response(content="")
 
         agent = ConcreteAgent(config)
@@ -46,7 +54,15 @@ class TestAgentMemoryInjection:
         )
 
         class ConcreteAgent(AgentBase):
-            async def process(self, msg: InboundMessage, pool: Pool, *, on_intermediate: Callable[[str], Awaitable[None]] | None = None) -> Response | AsyncIterator[RenderEvent]:
+            async def process(
+                self,
+                msg: InboundMessage,
+                pool: Pool,
+                *,
+                on_intermediate: (
+                    Callable[[str], Awaitable[None]] | None
+                ) = None,
+            ) -> Response | AsyncIterator[RenderEvent]:
                 return Response(content="")
 
         agent = ConcreteAgent(config)
@@ -80,7 +96,15 @@ class TestAgentEnsureSystemPrompt:
         )
 
         class ConcreteAgent(AgentBase):
-            async def process(self, msg: InboundMessage, pool: Pool, *, on_intermediate: Callable[[str], Awaitable[None]] | None = None) -> Response | AsyncIterator[RenderEvent]:
+            async def process(
+                self,
+                msg: InboundMessage,
+                pool: Pool,
+                *,
+                on_intermediate: (
+                    Callable[[str], Awaitable[None]] | None
+                ) = None,
+            ) -> Response | AsyncIterator[RenderEvent]:
                 return Response(content="")
 
         agent = ConcreteAgent(config)
@@ -106,7 +130,15 @@ class TestAgentEnsureSystemPrompt:
         )
 
         class ConcreteAgent(AgentBase):
-            async def process(self, msg: InboundMessage, pool: Pool, *, on_intermediate: Callable[[str], Awaitable[None]] | None = None) -> Response | AsyncIterator[RenderEvent]:
+            async def process(
+                self,
+                msg: InboundMessage,
+                pool: Pool,
+                *,
+                on_intermediate: (
+                    Callable[[str], Awaitable[None]] | None
+                ) = None,
+            ) -> Response | AsyncIterator[RenderEvent]:
                 return Response(content="")
 
         agent = ConcreteAgent(config)
@@ -146,7 +178,15 @@ class TestAgentFlushSession:
         config = Agent(name="lyra", system_prompt="", memory_namespace="lyra")
 
         class ConcreteAgent(AgentBase):
-            async def process(self, msg: InboundMessage, pool: Pool, *, on_intermediate: Callable[[str], Awaitable[None]] | None = None) -> Response | AsyncIterator[RenderEvent]:
+            async def process(
+                self,
+                msg: InboundMessage,
+                pool: Pool,
+                *,
+                on_intermediate: (
+                    Callable[[str], Awaitable[None]] | None
+                ) = None,
+            ) -> Response | AsyncIterator[RenderEvent]:
                 return Response(content="")
 
         agent = ConcreteAgent(config)
@@ -170,7 +210,15 @@ class TestAgentFlushSession:
         config = Agent(name="lyra", system_prompt="", memory_namespace="lyra")
 
         class ConcreteAgent(AgentBase):
-            async def process(self, msg: InboundMessage, pool: Pool, *, on_intermediate: Callable[[str], Awaitable[None]] | None = None) -> Response | AsyncIterator[RenderEvent]:
+            async def process(
+                self,
+                msg: InboundMessage,
+                pool: Pool,
+                *,
+                on_intermediate: (
+                    Callable[[str], Awaitable[None]] | None
+                ) = None,
+            ) -> Response | AsyncIterator[RenderEvent]:
                 return Response(content="")
 
         agent = ConcreteAgent(config)
@@ -212,7 +260,15 @@ class TestAgentCompact:
         config = Agent(name="lyra", system_prompt="", memory_namespace="lyra")
 
         class ConcreteAgent(AgentBase):
-            async def process(self, msg: InboundMessage, pool: Pool, *, on_intermediate: Callable[[str], Awaitable[None]] | None = None) -> Response | AsyncIterator[RenderEvent]:
+            async def process(
+                self,
+                msg: InboundMessage,
+                pool: Pool,
+                *,
+                on_intermediate: (
+                    Callable[[str], Awaitable[None]] | None
+                ) = None,
+            ) -> Response | AsyncIterator[RenderEvent]:
                 return Response(content="")
 
         agent = ConcreteAgent(config)
@@ -238,7 +294,15 @@ class TestAgentCompact:
         config = Agent(name="lyra", system_prompt="", memory_namespace="lyra")
 
         class ConcreteAgent(AgentBase):
-            async def process(self, msg: InboundMessage, pool: Pool, *, on_intermediate: Callable[[str], Awaitable[None]] | None = None) -> Response | AsyncIterator[RenderEvent]:
+            async def process(
+                self,
+                msg: InboundMessage,
+                pool: Pool,
+                *,
+                on_intermediate: (
+                    Callable[[str], Awaitable[None]] | None
+                ) = None,
+            ) -> Response | AsyncIterator[RenderEvent]:
                 return Response(content="")
 
         # Use a small compact_context_tokens so 5 entries of 100 chars each

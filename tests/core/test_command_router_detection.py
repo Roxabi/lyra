@@ -251,7 +251,11 @@ class TestPassthroughNonCommandInHub:
             ) -> None:
                 pass
 
-        hub.register_adapter(Platform.TELEGRAM, "main", cast("ChannelAdapter", CapturingAdapter()))
+        hub.register_adapter(
+            Platform.TELEGRAM,
+            "main",
+            cast("ChannelAdapter", CapturingAdapter()),
+        )
         hub.register_binding(
             Platform.TELEGRAM, "main", "chat:42", "lyra", "telegram:main:chat:42"
         )
@@ -297,7 +301,11 @@ class TestPassthroughNonCommandInHub:
             ) -> None:
                 pass
 
-        hub.register_adapter(Platform.TELEGRAM, "main", cast("ChannelAdapter", CapturingAdapter()))
+        hub.register_adapter(
+            Platform.TELEGRAM,
+            "main",
+            cast("ChannelAdapter", CapturingAdapter()),
+        )
         hub.register_binding(
             Platform.TELEGRAM, "main", "chat:42", "lyra", "telegram:main:chat:42"
         )

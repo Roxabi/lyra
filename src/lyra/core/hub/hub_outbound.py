@@ -80,7 +80,9 @@ class HubOutboundMixin:
 
         key = RoutingKey(Platform(msg.platform), msg.bot_id, msg.scope_id)
         pool_id = key.to_pool_id()
-        return self._pool_manager.pools.get(pool_id) if hasattr(self, "_pool_manager") else None
+        if not hasattr(self, "_pool_manager"):
+            return None
+        return self._pool_manager.pools.get(pool_id)
 
     def _tts_language_kwargs(self, msg: "InboundMessage") -> dict:
         """Build session_language + on_language_detected kwargs for TTS."""

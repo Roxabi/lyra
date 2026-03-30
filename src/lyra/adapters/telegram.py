@@ -35,7 +35,11 @@ from lyra.adapters.telegram_outbound import (
     send as _send_impl,
     send_streaming as _send_streaming_impl,
 )
-from lyra.core.auth import _ALLOW_ALL as _ALLOW_ALL, _DENY_ALL as _DENY_ALL, AuthMiddleware as AuthMiddleware  # noqa: F401
+from lyra.core.auth import (  # noqa: F401
+    _ALLOW_ALL as _ALLOW_ALL,
+    _DENY_ALL as _DENY_ALL,
+    AuthMiddleware as AuthMiddleware,
+)
 
 from lyra.core.authenticator import Authenticator
 from lyra.core.circuit_breaker import CircuitRegistry

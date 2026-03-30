@@ -130,7 +130,15 @@ class TestResolveAgentTTS:
 
         # Arrange — build a concrete AgentBase subclass
         class FakeAgent(AgentBase):
-            async def process(self, msg: InboundMessage, pool: Pool, *, on_intermediate: Callable[[str], Awaitable[None]] | None = None) -> Response | AsyncIterator[RenderEvent]:
+            async def process(
+                self,
+                msg: InboundMessage,
+                pool: Pool,
+                *,
+                on_intermediate: (
+                    Callable[[str], Awaitable[None]] | None
+                ) = None,
+            ) -> Response | AsyncIterator[RenderEvent]:
                 return Response(content="")
 
         agent_tts = AgentTTSConfig(engine="agent_eng", voice="agent_vox")
@@ -222,7 +230,15 @@ class TestDispatchResponseAgentTTSE2E:
 
         # Arrange — concrete agent with custom TTS
         class FakeAgent(AgentBase):
-            async def process(self, msg: InboundMessage, pool: Pool, *, on_intermediate: Callable[[str], Awaitable[None]] | None = None) -> Response | AsyncIterator[RenderEvent]:
+            async def process(
+                self,
+                msg: InboundMessage,
+                pool: Pool,
+                *,
+                on_intermediate: (
+                    Callable[[str], Awaitable[None]] | None
+                ) = None,
+            ) -> Response | AsyncIterator[RenderEvent]:
                 return Response(content="")
 
         agent_tts = AgentTTSConfig(engine="e2e_eng", voice="e2e_vox")

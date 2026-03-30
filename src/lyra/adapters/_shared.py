@@ -232,7 +232,11 @@ class TypingTaskManager:
     def __init__(self) -> None:
         self._tasks: dict[int, asyncio.Task[None]] = {}
 
-    def start(self, chat_id: int, coro_factory: Callable[[], Coroutine[Any, Any, None]]) -> None:
+    def start(
+        self,
+        chat_id: int,
+        coro_factory: Callable[[], Coroutine[Any, Any, None]],
+    ) -> None:
         """Cancel any existing task for *chat_id* and start a new one."""
         existing = self._tasks.pop(chat_id, None)
         if existing and not existing.done():

@@ -68,7 +68,11 @@ async def test_anthropic_circuit_open_sends_fast_fail_and_skips_agent() -> None:
 
             return gen()
 
-    hub.register_adapter(Platform.TELEGRAM, "main", cast("ChannelAdapter", CapturingAdapter()))
+    hub.register_adapter(
+        Platform.TELEGRAM,
+        "main",
+        cast("ChannelAdapter", CapturingAdapter()),
+    )
     hub.register_agent(cast("AgentBase", MockStreamingAgent()))
     hub.register_binding(Platform.TELEGRAM, "main", "*", "test", "telegram:main:*")
 
@@ -133,7 +137,11 @@ async def test_anthropic_circuit_open_includes_retry_after() -> None:
 
             return gen()
 
-    hub.register_adapter(Platform.TELEGRAM, "main", cast("ChannelAdapter", CapturingAdapter()))
+    hub.register_adapter(
+        Platform.TELEGRAM,
+        "main",
+        cast("ChannelAdapter", CapturingAdapter()),
+    )
     hub.register_agent(cast("AgentBase", MockStreamingAgent()))
     hub.register_binding(Platform.TELEGRAM, "main", "*", "test", "telegram:main:*")
 

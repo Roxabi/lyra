@@ -285,7 +285,8 @@ class PoolProcessor:
                 # pool_processor also imports message.
                 # Python caches modules in sys.modules after the first import,
                 # so this is effectively free (one dict lookup) on every call.
-                importlib.import_module("lyra.core.processors")  # registers processors via @register decorators
+                # registers processors via @register decorators
+                importlib.import_module("lyra.core.processors")
                 from lyra.core.processor_registry import registry as _proc_registry
 
                 _cmd_name = f"{msg.command.prefix}{msg.command.name}"

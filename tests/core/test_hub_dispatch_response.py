@@ -42,7 +42,11 @@ class TestDispatchResponse:
             ) -> None:
                 pass
 
-        hub.register_adapter(Platform.TELEGRAM, "main", cast("ChannelAdapter", CapturingAdapter()))
+        hub.register_adapter(
+            Platform.TELEGRAM,
+            "main",
+            cast("ChannelAdapter", CapturingAdapter()),
+        )
         msg = make_inbound_message(platform="telegram", bot_id="main")
         response = Response(content="pong")
         await hub.dispatch_response(msg, response)
@@ -74,7 +78,11 @@ class TestDispatchResponse:
             ) -> None:
                 pass
 
-        hub.register_adapter(Platform.TELEGRAM, "main", cast("ChannelAdapter", DummyAdapter()))
+        hub.register_adapter(
+            Platform.TELEGRAM,
+            "main",
+            cast("ChannelAdapter", DummyAdapter()),
+        )
         assert hub._last_processed_at is None
         msg = make_inbound_message(platform="telegram", bot_id="main")
         await hub.dispatch_response(msg, Response(content="ok"))
@@ -116,7 +124,11 @@ class TestDispatchAttachment:
             ) -> None:
                 sent.append((attachment, inbound))
 
-        hub.register_adapter(Platform.TELEGRAM, "main", cast("ChannelAdapter", CapturingAdapter()))
+        hub.register_adapter(
+            Platform.TELEGRAM,
+            "main",
+            cast("ChannelAdapter", CapturingAdapter()),
+        )
         msg = make_inbound_message(platform="telegram", bot_id="main")
         attachment = OutboundAttachment(
             data=b"img", type="image", mime_type="image/png"
@@ -153,7 +165,11 @@ class TestDispatchAttachment:
             ) -> None:
                 pass
 
-        hub.register_adapter(Platform.TELEGRAM, "main", cast("ChannelAdapter", DummyAdapter()))
+        hub.register_adapter(
+            Platform.TELEGRAM,
+            "main",
+            cast("ChannelAdapter", DummyAdapter()),
+        )
         assert hub._last_processed_at is None
         msg = make_inbound_message(platform="telegram", bot_id="main")
         attachment = OutboundAttachment(
@@ -189,7 +205,11 @@ async def test_dispatch_response_accepts_outbound_message() -> None:
         ) -> None:
             pass
 
-    hub.register_adapter(Platform.TELEGRAM, "main", cast("ChannelAdapter", MockAdapterV2()))
+    hub.register_adapter(
+        Platform.TELEGRAM,
+        "main",
+        cast("ChannelAdapter", MockAdapterV2()),
+    )
     msg = make_inbound_message(platform="telegram", bot_id="main")
     outbound = OutboundMessage.from_text("hi")
 
@@ -220,7 +240,11 @@ async def test_dispatch_response_accepts_legacy_response() -> None:
         ) -> None:
             pass
 
-    hub.register_adapter(Platform.TELEGRAM, "main", cast("ChannelAdapter", LegacyCapturingAdapter()))
+    hub.register_adapter(
+        Platform.TELEGRAM,
+        "main",
+        cast("ChannelAdapter", LegacyCapturingAdapter()),
+    )
     msg = make_inbound_message(platform="telegram", bot_id="main")
 
     await hub.dispatch_response(msg, Response(content="hi"))

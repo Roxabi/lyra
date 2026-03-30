@@ -244,7 +244,11 @@ class TestTelegramStreaming:
         outbound = OutboundMessage.from_text("")
         outbound.intermediate = True
         start_calls = []
-        object.__setattr__(adapter, "_start_typing", lambda cid: start_calls.append(cid))
+        object.__setattr__(
+            adapter,
+            "_start_typing",
+            lambda cid: start_calls.append(cid),
+        )
         await adapter.send_streaming(msg, quick_events(), outbound)
         assert len(start_calls) == 1
 
@@ -427,7 +431,11 @@ class TestDiscordStreaming:
         outbound = OutboundMessage.from_text("")
         outbound.intermediate = True
         start_calls = []
-        object.__setattr__(adapter, "_start_typing", lambda cid: start_calls.append(cid))
+        object.__setattr__(
+            adapter,
+            "_start_typing",
+            lambda cid: start_calls.append(cid),
+        )
         await adapter.send_streaming(msg, quick_events(), outbound)
         assert len(start_calls) == 1
 

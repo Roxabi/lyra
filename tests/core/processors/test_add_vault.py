@@ -83,7 +83,9 @@ class TestAddVaultProcessorPreHappyPath:
         proc = AddVaultProcessor(tools)
         msg = make_msg(command_args="Some note content")
         calls = []
-        cast(Any, tools.vault).add = AsyncMock(side_effect=lambda *a, **kw: calls.append((a, kw)))
+        cast(Any, tools.vault).add = AsyncMock(
+        side_effect=lambda *a, **kw: calls.append((a, kw))
+    )
 
         # Act
         await proc.pre(msg)
@@ -100,7 +102,9 @@ class TestAddVaultProcessorPreHappyPath:
         proc = AddVaultProcessor(tools)
         msg = make_msg(command_args=long_note)
         calls = []
-        cast(Any, tools.vault).add = AsyncMock(side_effect=lambda *a, **kw: calls.append((a, kw)))
+        cast(Any, tools.vault).add = AsyncMock(
+        side_effect=lambda *a, **kw: calls.append((a, kw))
+    )
 
         # Act
         await proc.pre(msg)
@@ -116,7 +120,9 @@ class TestAddVaultProcessorPreHappyPath:
         proc = AddVaultProcessor(tools)
         msg = make_msg(command_args=note)
         calls = []
-        cast(Any, tools.vault).add = AsyncMock(side_effect=lambda *a, **kw: calls.append((a, kw)))
+        cast(Any, tools.vault).add = AsyncMock(
+        side_effect=lambda *a, **kw: calls.append((a, kw))
+    )
 
         # Act
         await proc.pre(msg)
@@ -160,7 +166,9 @@ class TestAddVaultProcessorPreHappyPath:
         proc = AddVaultProcessor(tools)
         msg = make_msg(command_args=oversized)
         calls = []
-        cast(Any, tools.vault).add = AsyncMock(side_effect=lambda *a, **kw: calls.append((a, kw)))
+        cast(Any, tools.vault).add = AsyncMock(
+        side_effect=lambda *a, **kw: calls.append((a, kw))
+    )
 
         # Act
         await proc.pre(msg)
@@ -194,7 +202,9 @@ class TestAddVaultProcessorPreHappyPath:
         proc = AddVaultProcessor(tools)
         msg = make_msg(command_args="Some note")
         calls = []
-        cast(Any, tools.vault).add = AsyncMock(side_effect=lambda *a, **kw: calls.append((a, kw)))
+        cast(Any, tools.vault).add = AsyncMock(
+        side_effect=lambda *a, **kw: calls.append((a, kw))
+    )
 
         # Act
         await proc.pre(msg)
@@ -209,7 +219,9 @@ class TestAddVaultProcessorPreHappyPath:
         proc = AddVaultProcessor(tools)
         msg = make_msg(command_args="Some note")
         calls = []
-        cast(Any, tools.vault).add = AsyncMock(side_effect=lambda *a, **kw: calls.append((a, kw)))
+        cast(Any, tools.vault).add = AsyncMock(
+        side_effect=lambda *a, **kw: calls.append((a, kw))
+    )
 
         # Act
         await proc.pre(msg)
@@ -324,7 +336,9 @@ class TestAddVaultProcessorPreTextFallback:
             command_args="",
         )
         calls = []
-        cast(Any, tools.vault).add = AsyncMock(side_effect=lambda *a, **kw: calls.append((a, kw)))
+        cast(Any, tools.vault).add = AsyncMock(
+        side_effect=lambda *a, **kw: calls.append((a, kw))
+    )
 
         # Act
         await proc.pre(msg)
@@ -347,7 +361,9 @@ class TestVaultCliCategoryAndType:
         proc = AddVaultProcessor(tools)
         msg = make_msg(command_args="Test note for category check")
         calls = []
-        cast(Any, tools.vault).add = AsyncMock(side_effect=lambda *a, **kw: calls.append((a, kw)))
+        cast(Any, tools.vault).add = AsyncMock(
+        side_effect=lambda *a, **kw: calls.append((a, kw))
+    )
 
         # Act
         await proc.pre(msg)

@@ -53,7 +53,11 @@ class TestDispatchStreaming:
                     if isinstance(event, TextRenderEvent):
                         received.append(event.text)
 
-        hub.register_adapter(Platform.TELEGRAM, "main", cast(ChannelAdapter, StreamAdapter()))
+        hub.register_adapter(
+            Platform.TELEGRAM,
+            "main",
+            cast(ChannelAdapter, StreamAdapter()),
+        )
         msg = make_inbound_message(platform="telegram", bot_id="main")
 
         async def gen() -> AsyncIterator[TextRenderEvent]:
@@ -82,7 +86,11 @@ class TestDispatchStreaming:
                 async for _ in events:
                     pass
 
-        hub.register_adapter(Platform.TELEGRAM, "main", cast(ChannelAdapter, StreamAdapter()))
+        hub.register_adapter(
+            Platform.TELEGRAM,
+            "main",
+            cast(ChannelAdapter, StreamAdapter()),
+        )
         assert hub._last_processed_at is None
         msg = make_inbound_message(platform="telegram", bot_id="main")
 
@@ -103,7 +111,11 @@ class TestDispatchStreaming:
                 sent.append(outbound)
 
         # LegacyAdapter intentionally lacks send_streaming to test fallback
-        hub.register_adapter(Platform.TELEGRAM, "main", cast(ChannelAdapter, LegacyAdapter()))
+        hub.register_adapter(
+            Platform.TELEGRAM,
+            "main",
+            cast(ChannelAdapter, LegacyAdapter()),
+        )
         msg = make_inbound_message(platform="telegram", bot_id="main")
 
         async def gen() -> AsyncIterator[TextRenderEvent]:
@@ -120,7 +132,11 @@ class TestDispatchStreaming:
         """Voice modality: text streams to user, then TTS fires as background task."""
         hub = Hub(tts=cast(TTSService, MagicMock()))
         _mock_synth = AsyncMock()
-        object.__setattr__(hub._audio_pipeline, "synthesize_and_dispatch_audio", _mock_synth)
+        object.__setattr__(
+            hub._audio_pipeline,
+            "synthesize_and_dispatch_audio",
+            _mock_synth,
+        )
         streamed: list[TextRenderEvent] = []
 
         class StreamAdapter:
@@ -138,7 +154,11 @@ class TestDispatchStreaming:
                 async for chunk in events:
                     streamed.append(chunk)
 
-        hub.register_adapter(Platform.TELEGRAM, "main", cast(ChannelAdapter, StreamAdapter()))
+        hub.register_adapter(
+            Platform.TELEGRAM,
+            "main",
+            cast(ChannelAdapter, StreamAdapter()),
+        )
         msg = make_inbound_message(platform="telegram", bot_id="main", modality="voice")
 
         async def gen() -> AsyncIterator[TextRenderEvent]:
@@ -162,7 +182,11 @@ class TestDispatchStreaming:
         """Voice modality with empty/whitespace text does not trigger TTS."""
         hub = Hub(tts=cast(TTSService, MagicMock()))
         _mock_synth = AsyncMock()
-        object.__setattr__(hub._audio_pipeline, "synthesize_and_dispatch_audio", _mock_synth)
+        object.__setattr__(
+            hub._audio_pipeline,
+            "synthesize_and_dispatch_audio",
+            _mock_synth,
+        )
 
         class StreamAdapter:
             async def send(
@@ -179,7 +203,11 @@ class TestDispatchStreaming:
                 async for _ in events:
                     pass
 
-        hub.register_adapter(Platform.TELEGRAM, "main", cast(ChannelAdapter, StreamAdapter()))
+        hub.register_adapter(
+            Platform.TELEGRAM,
+            "main",
+            cast(ChannelAdapter, StreamAdapter()),
+        )
         msg = make_inbound_message(platform="telegram", bot_id="main", modality="voice")
 
         async def gen() -> AsyncIterator[TextRenderEvent]:
@@ -212,7 +240,11 @@ class TestDispatchStreaming:
                     if isinstance(chunk, TextRenderEvent):
                         streamed.append(chunk.text)
 
-        hub.register_adapter(Platform.TELEGRAM, "main", cast(ChannelAdapter, StreamAdapter()))
+        hub.register_adapter(
+            Platform.TELEGRAM,
+            "main",
+            cast(ChannelAdapter, StreamAdapter()),
+        )
         msg = make_inbound_message(platform="telegram", bot_id="main", modality="voice")
 
         async def gen() -> AsyncIterator[TextRenderEvent]:
@@ -225,7 +257,11 @@ class TestDispatchStreaming:
         """Voice + legacy adapter (no send_streaming): collects text, TTS."""
         hub = Hub(tts=cast(TTSService, MagicMock()))
         _mock_synth = AsyncMock()
-        object.__setattr__(hub._audio_pipeline, "synthesize_and_dispatch_audio", _mock_synth)
+        object.__setattr__(
+            hub._audio_pipeline,
+            "synthesize_and_dispatch_audio",
+            _mock_synth,
+        )
         sent: list[OutboundMessage] = []
 
         class LegacyAdapter:
@@ -234,7 +270,11 @@ class TestDispatchStreaming:
             ) -> None:
                 sent.append(outbound)
 
-        hub.register_adapter(Platform.TELEGRAM, "main", cast(ChannelAdapter, LegacyAdapter()))
+        hub.register_adapter(
+            Platform.TELEGRAM,
+            "main",
+            cast(ChannelAdapter, LegacyAdapter()),
+        )
         msg = make_inbound_message(platform="telegram", bot_id="main", modality="voice")
 
         async def gen() -> AsyncIterator[TextRenderEvent]:
@@ -258,7 +298,11 @@ class TestDispatchStreaming:
 
         hub = Hub(tts=cast(TTSService, MagicMock()))
         _mock_synth = AsyncMock()
-        object.__setattr__(hub._audio_pipeline, "synthesize_and_dispatch_audio", _mock_synth)
+        object.__setattr__(
+            hub._audio_pipeline,
+            "synthesize_and_dispatch_audio",
+            _mock_synth,
+        )
         streamed: list[str] = []
 
         class StreamAdapter:
@@ -348,7 +392,11 @@ class TestHubRunStreaming:
 
         config = Agent(name="streamer", system_prompt="", memory_namespace="lyra")
         hub.register_agent(StreamingAgent(config))
-        hub.register_adapter(Platform.TELEGRAM, "main", cast(ChannelAdapter, CapturingStreamAdapter()))
+        hub.register_adapter(
+            Platform.TELEGRAM,
+            "main",
+            cast(ChannelAdapter, CapturingStreamAdapter()),
+        )
         hub.register_binding(
             Platform.TELEGRAM, "main", "chat:42", "streamer", "telegram:main:chat:42"
         )

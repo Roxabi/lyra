@@ -6,9 +6,10 @@ no Hub required for most tests.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+import dataclasses
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from lyra.core.hub.message_pipeline import Action, PipelineResult
+from lyra.core.hub.message_pipeline import Action, PipelineResult, ResumeStatus
 from lyra.core.hub.middleware import (
     CommandMiddleware,
     CreatePoolMiddleware,
@@ -91,6 +92,8 @@ class TestValidatePlatform:
 
 class TestRateLimit:
     async def test_not_limited_calls_next(self) -> None:
+        from lyra.core.hub.hub_protocol import RoutingKey
+
         mw = RateLimitMiddleware()
         ctx = _make_ctx()
         next_fn = _make_next()
@@ -100,7 +103,7 @@ class TestRateLimit:
 
         next_fn.assert_awaited_once()
         assert result == _PASS
-        assert ctx.key is not None
+        assert ctx.key == RoutingKey(Platform.TELEGRAM, "main", "chat:42")
 
     async def test_rate_limited_drops(self) -> None:
         mw = RateLimitMiddleware()
@@ -399,3 +402,262 @@ class TestBuildDefaultPipeline:
         result = await pipeline.process(msg)
 
         assert result.action == Action.DROP
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Fix #3: CommandMiddleware error path
+# ──────────────────────────────────────────────────────────────────────
+
+
+class TestCommandErrorPath:
+    async def test_dispatch_raises_returns_error_response(self) -> None:
+        """Command dispatch exception → COMMAND_HANDLED with generic error."""
+        from lyra.core.hub.hub_protocol import RoutingKey
+
+        hub = _make_hub()
+        pool = hub.get_or_create_pool("telegram:main:chat:42", "lyra")
+        router = MagicMock()
+        router.is_command.return_value = True
+        router.dispatch = AsyncMock(side_effect=RuntimeError("boom"))
+
+        mw = CommandMiddleware()
+        ctx = PipelineContext(
+            hub=hub,
+            pool=pool,
+            key=RoutingKey(Platform.TELEGRAM, "main", "chat:42"),
+            router=router,
+        )
+        msg = make_inbound_message()
+
+        result = await mw(msg, ctx, _make_next())
+
+        assert result.action == Action.COMMAND_HANDLED
+        assert result.response is not None
+        assert "boom" not in (result.response.content or "")
+
+    async def test_dispatch_raises_emits_command_error_trace(self) -> None:
+        """Command dispatch exception fires command_error trace event."""
+        from lyra.core.hub.hub_protocol import RoutingKey
+
+        events: list[dict] = []
+
+        def hook(stage, event, **kw):
+            events.append({"stage": stage, "event": event, **kw})
+
+        hub = _make_hub()
+        pool = hub.get_or_create_pool("telegram:main:chat:42", "lyra")
+        router = MagicMock()
+        router.is_command.return_value = True
+        router.dispatch = AsyncMock(side_effect=RuntimeError("boom"))
+
+        mw = CommandMiddleware()
+        ctx = PipelineContext(
+            hub=hub,
+            pool=pool,
+            key=RoutingKey(Platform.TELEGRAM, "main", "chat:42"),
+            router=router,
+            trace_hook=hook,
+        )
+        msg = make_inbound_message()
+
+        await mw(msg, ctx, _make_next())
+
+        assert any(e["event"] == "command_error" for e in events)
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Fix #4: SubmitToPoolMiddleware circuit-breaker drop
+# ──────────────────────────────────────────────────────────────────────
+
+
+class TestCircuitBreakerDrop:
+    async def test_circuit_breaker_open_drops(self) -> None:
+        """Open circuit breaker in SubmitToPoolMiddleware → DROP."""
+        from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
+        from lyra.core.hub.hub_protocol import RoutingKey
+
+        registry = CircuitRegistry()
+        cb = CircuitBreaker(
+            name="anthropic", failure_threshold=1, recovery_timeout=60
+        )
+        registry.register(cb)
+        cb.record_failure()
+
+        hub = _make_hub(circuit_registry=registry)
+        pool = hub.get_or_create_pool("telegram:main:chat:42", "lyra")
+        mw = SubmitToPoolMiddleware()
+        ctx = PipelineContext(
+            hub=hub,
+            pool=pool,
+            key=RoutingKey(Platform.TELEGRAM, "main", "chat:42"),
+        )
+        msg = make_inbound_message()
+
+        result = await mw(msg, ctx, _make_next())
+
+        assert result.action == Action.DROP
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Fix #5: _resolve_context resume paths (via SubmitToPoolMiddleware)
+# ──────────────────────────────────────────────────────────────────────
+
+
+class TestResolveContextMiddleware:
+    async def test_no_thread_session_returns_skipped(self) -> None:
+        """No thread_session_id and no TurnStore → SKIPPED."""
+        hub = _make_hub()
+        pool = hub.get_or_create_pool("telegram:main:chat:42", "lyra")
+        ctx = PipelineContext(hub=hub)
+        mw = SubmitToPoolMiddleware()
+        msg = make_inbound_message()
+
+        status = await mw._resolve_context(msg, pool, pool.pool_id, ctx)
+
+        assert status == ResumeStatus.SKIPPED
+
+    async def test_thread_session_accepted_returns_resumed(self) -> None:
+        """thread_session_id + accepted → RESUMED."""
+        hub = _make_hub()
+        pool = hub.get_or_create_pool("telegram:main:chat:42", "lyra")
+
+        async def _fake_resume(sid: str) -> bool:
+            return True
+
+        pool._session_resume_fn = _fake_resume  # type: ignore[attr-defined]
+
+        ctx = PipelineContext(hub=hub)
+        mw = SubmitToPoolMiddleware()
+        _base = make_inbound_message(scope_id="chat:42")
+        _meta = {**_base.platform_meta, "thread_session_id": "tss-1"}
+        msg = dataclasses.replace(_base, platform_meta=_meta)
+
+        status = await mw._resolve_context(msg, pool, pool.pool_id, ctx)
+
+        assert status == ResumeStatus.RESUMED
+
+    async def test_thread_session_rejected_returns_fresh(self) -> None:
+        """thread_session_id rejected, no TurnStore → FRESH."""
+        hub = _make_hub()
+        pool = hub.get_or_create_pool("telegram:main:chat:42", "lyra")
+
+        async def _fake_resume(sid: str) -> bool:
+            return False
+
+        pool._session_resume_fn = _fake_resume  # type: ignore[attr-defined]
+
+        ctx = PipelineContext(hub=hub)
+        mw = SubmitToPoolMiddleware()
+        _base = make_inbound_message(scope_id="chat:42")
+        _meta = {**_base.platform_meta, "thread_session_id": "tss-dead"}
+        msg = dataclasses.replace(_base, platform_meta=_meta)
+
+        status = await mw._resolve_context(msg, pool, pool.pool_id, ctx)
+
+        assert status == ResumeStatus.FRESH
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Fix #6: PipelineContext.trace exception swallowing
+# ──────────────────────────────────────────────────────────────────────
+
+
+class TestTraceExceptionSwallowing:
+    async def test_raising_trace_hook_does_not_propagate(self) -> None:
+        """A raising trace_hook must not propagate exceptions."""
+
+        def bad_hook(stage, event, **kw):
+            raise RuntimeError("trace bug")
+
+        ctx = _make_ctx(trace_hook=bad_hook)
+
+        # Must not raise
+        ctx.trace("stage", "event", key="value")
+
+    async def test_raising_trace_in_pipeline_does_not_abort(self) -> None:
+        """A raising trace_hook must not abort pipeline processing."""
+
+        def bad_hook(stage, event, **kw):
+            raise RuntimeError("trace bug")
+
+        hub = _make_hub()
+        pipeline = build_default_pipeline(hub, trace_hook=bad_hook)
+        msg = make_inbound_message()
+
+        result = await pipeline.process(msg)
+
+        assert result.action == Action.SUBMIT_TO_POOL
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Fix #7: empty/exhausted pipeline → DROP
+# ──────────────────────────────────────────────────────────────────────
+
+
+class TestEmptyPipeline:
+    async def test_empty_pipeline_drops(self) -> None:
+        """A pipeline with no middlewares returns DROP."""
+        hub = _make_hub()
+        pipeline = MiddlewarePipeline([], hub)
+        msg = make_inbound_message()
+
+        result = await pipeline.process(msg)
+
+        assert result.action == Action.DROP
+
+    async def test_next_past_last_middleware_drops(self) -> None:
+        """Calling next past the last middleware returns DROP."""
+
+        class PassThrough:
+            async def __call__(self, msg, ctx, next):
+                return await next(msg, ctx)
+
+        hub = _make_hub()
+        pipeline = MiddlewarePipeline([PassThrough()], hub)
+        msg = make_inbound_message()
+
+        result = await pipeline.process(msg)
+
+        assert result.action == Action.DROP
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Fix #8: _notify_session_fallthrough on FRESH
+# ──────────────────────────────────────────────────────────────────────
+
+
+class TestNotifySessionFallthroughMiddleware:
+    async def test_notify_called_when_fresh(self) -> None:
+        """FRESH status triggers try_notify_user."""
+        from lyra.core.hub.hub_protocol import RoutingKey
+
+        hub = _make_hub()
+        pool = hub.get_or_create_pool("telegram:main:chat:42", "lyra")
+
+        async def _rejected_resume(sid: str) -> bool:
+            return False
+
+        pool._session_resume_fn = _rejected_resume  # type: ignore[attr-defined]
+
+        _base = make_inbound_message(scope_id="chat:42")
+        _meta = {**_base.platform_meta, "thread_session_id": "tss-dead"}
+        msg = dataclasses.replace(_base, platform_meta=_meta)
+        mw = SubmitToPoolMiddleware()
+        ctx = PipelineContext(
+            hub=hub,
+            pool=pool,
+            key=RoutingKey(Platform.TELEGRAM, "main", "chat:42"),
+        )
+
+        notify_calls: list[tuple] = []
+
+        async def _fake_notify(platform, _a, _o, text, **_kw):
+            notify_calls.append((platform, text))
+
+        _patch = "lyra.core.hub.outbound_errors.try_notify_user"
+        with patch(_patch, side_effect=_fake_notify):
+            result = await mw(msg, ctx, _make_next())
+
+        assert result.action == Action.SUBMIT_TO_POOL
+        assert len(notify_calls) == 1
+        assert "starting fresh" in notify_calls[0][1]

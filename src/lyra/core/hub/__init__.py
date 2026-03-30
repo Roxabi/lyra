@@ -17,6 +17,9 @@ from .middleware import (
     PipelineContext as PipelineContext,
 )
 from .middleware import (
+    PipelineMiddleware as PipelineMiddleware,
+)
+from .middleware import (
     build_default_pipeline as build_default_pipeline,
 )
 from .outbound_dispatcher import OutboundDispatcher as OutboundDispatcher
@@ -28,6 +31,7 @@ __all__ = [
     "MessagePipeline",
     "MiddlewarePipeline",
     "OutboundDispatcher",
+    "PipelineMiddleware",
     "PipelineContext",
     "PipelineResult",
     "RoutingKey",

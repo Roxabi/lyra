@@ -14,7 +14,7 @@ import dataclasses
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol
 
 from ..agent import AgentBase
 from ..commands.command_parser import CommandParser
@@ -26,6 +26,7 @@ from ..message import (
 )
 from ..pool import Pool
 from .message_pipeline import (
+    _DROP,
     _SESSION_FALLTHROUGH_MSG,
     Action,
     PipelineResult,
@@ -39,8 +40,6 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 _command_parser = CommandParser()
-
-_DROP = PipelineResult(action=Action.DROP)
 
 
 @dataclass
@@ -69,7 +68,6 @@ class PipelineContext:
 Next = Callable[[InboundMessage, PipelineContext], Awaitable[PipelineResult]]
 
 
-@runtime_checkable
 class PipelineMiddleware(Protocol):
     """One stage of the inbound message pipeline.
 
@@ -184,7 +182,10 @@ class ResolveBindingMiddleware:
         ctx: PipelineContext,
         next: Next,
     ) -> PipelineResult:
-        assert ctx.key is not None
+        if ctx.key is None:
+            raise RuntimeError(
+                "RateLimitMiddleware must precede ResolveBindingMiddleware"
+            )
 
         binding = ctx.hub.resolve_binding(msg)
         if binding is None:
@@ -221,8 +222,15 @@ class CreatePoolMiddleware:
         ctx: PipelineContext,
         next: Next,
     ) -> PipelineResult:
-        assert ctx.binding is not None
-        assert ctx.agent is not None
+        if ctx.binding is None:
+            raise RuntimeError(
+                "ResolveBindingMiddleware must precede CreatePoolMiddleware"
+            )
+        if ctx.agent is None:
+            raise RuntimeError(
+                "ResolveBindingMiddleware must set ctx.agent"
+                " before CreatePoolMiddleware"
+            )
 
         pool = ctx.hub.get_or_create_pool(
             ctx.binding.pool_id,
@@ -237,6 +245,11 @@ class CreatePoolMiddleware:
         )
 
         ctx.router = getattr(ctx.agent, "command_router", None)
+
+        # Wire provider callbacks once at pool creation.
+        _agent = ctx.hub.agent_registry.get(pool.agent_name)
+        if _agent is not None and hasattr(_agent, "configure_pool"):
+            _agent.configure_pool(pool)
 
         # Parse command context and rewrite bare URLs (#99).
         cmd_ctx = _command_parser.parse(msg.text)
@@ -258,8 +271,14 @@ class CommandMiddleware:
         ctx: PipelineContext,
         next: Next,
     ) -> PipelineResult:
-        assert ctx.pool is not None
-        assert ctx.key is not None
+        if ctx.pool is None:
+            raise RuntimeError(
+                "CreatePoolMiddleware must precede CommandMiddleware"
+            )
+        if ctx.key is None:
+            raise RuntimeError(
+                "RateLimitMiddleware must precede CommandMiddleware"
+            )
 
         router = ctx.router
         if router and router.is_command(msg):
@@ -278,13 +297,8 @@ class CommandMiddleware:
         ctx: PipelineContext,
         next: Next,
     ) -> PipelineResult:
-        assert ctx.pool is not None
-        assert ctx.key is not None
-        pool = ctx.pool
-        key = ctx.key
-        _agent = ctx.hub.agent_registry.get(pool.agent_name)
-        if _agent is not None and hasattr(_agent, "configure_pool"):
-            _agent.configure_pool(pool)
+        pool = ctx.pool  # guaranteed non-None by __call__ guard
+        key = ctx.key  # guaranteed non-None by __call__ guard
         try:
             response = await router.dispatch(msg, pool)
         except Exception as exc:
@@ -319,8 +333,14 @@ class SubmitToPoolMiddleware:
         ctx: PipelineContext,
         next: Next,
     ) -> PipelineResult:
-        assert ctx.pool is not None
-        assert ctx.key is not None
+        if ctx.pool is None:
+            raise RuntimeError(
+                "CreatePoolMiddleware must precede SubmitToPoolMiddleware"
+            )
+        if ctx.key is None:
+            raise RuntimeError(
+                "RateLimitMiddleware must precede SubmitToPoolMiddleware"
+            )
 
         if (ctx.key.platform, msg.bot_id) not in ctx.hub.adapter_registry:
             log.error(
@@ -346,11 +366,6 @@ class SubmitToPoolMiddleware:
         _update_fn = msg.platform_meta.get("_session_update_fn")
         if _update_fn is not None and pool._observer._session_update_fn is None:
             pool._observer.register_session_update_fn(_update_fn)
-
-        # Wire provider callbacks before _resolve_context.
-        _agent = ctx.hub.agent_registry.get(pool.agent_name)
-        if _agent is not None and hasattr(_agent, "configure_pool"):
-            _agent.configure_pool(pool)
 
         try:
             status = await self._resolve_context(msg, pool, pool.pool_id, ctx)
@@ -384,6 +399,14 @@ class SubmitToPoolMiddleware:
 
         Three paths (priority order): (1) reply-to-resume, (2) thread-session-resume,
         (3) last-active-session from TurnStore.
+
+        Returns:
+            RESUMED  — a session was successfully resumed via any path.
+            FRESH    — Path 2 was attempted but rejected (session pruned /
+                       invalid / expired); Claude will start fresh. The caller
+                       should notify the user.
+            SKIPPED  — no resume was attempted (pool busy, group chat, first
+                       use, no TurnStore, …). Silent and expected.
         """
         hub = ctx.hub
         path2_attempted = False

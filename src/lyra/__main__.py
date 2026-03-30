@@ -26,10 +26,10 @@ from lyra.adapters.telegram import (
     TelegramAdapter as TelegramAdapter,  # noqa: F401
 )
 from lyra.bootstrap.config import (
+    LoggingConfig,
     _load_circuit_config,
     _load_logging_config,
     _load_raw_config,
-    LoggingConfig,
 )
 from lyra.bootstrap.multibot import _bootstrap_multibot
 from lyra.config import (

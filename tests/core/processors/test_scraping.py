@@ -76,7 +76,9 @@ class _ConcreteProcessor(ScrapingProcessor):
 
 
 class TestExtractAndValidateUrl:
-    def test_valid_http_url_returns_url_and_no_error(self) -> None:
+    def test_valid_http_url_returns_url_and_no_error(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
         # Arrange
         msg = make_msg(
             text="/explain http://example.com",
@@ -85,11 +87,15 @@ class TestExtractAndValidateUrl:
         )
 
         # Act
-        url, err = _extract_and_validate_url(msg)
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            url, err = _extract_and_validate_url(msg)
 
         # Assert
         assert url == "http://example.com"
         assert err is None
+        assert "HTTP URL requested" in caplog.text
 
     def test_valid_https_url_returns_url_and_no_error(self) -> None:
         # Arrange
@@ -290,6 +296,7 @@ class TestScrapingProcessorTruncation:
         # Assert
         assert "[content truncated]" not in enriched.text
         assert short_content in enriched.text
+        assert enriched.processor_enriched is True
 
     async def test_pre_injects_instruction_and_url(self) -> None:
         # Arrange

@@ -110,6 +110,21 @@ class AgentOverrideConfig(BaseModel):
     workspaces: dict[str, str] = {}
 
 
+def _validate_config_path(path_str: str) -> str:
+    """Validate that a config file path is within the trusted base (user home).
+
+    Raises ValueError if the resolved path is outside Path.home().
+    """
+    resolved = Path(path_str).expanduser().resolve()
+    trusted_base = Path.home()
+    if not resolved.is_relative_to(trusted_base):
+        raise ValueError(
+            f"Config path {resolved!r} is outside trusted base {trusted_base!r}. "
+            "Set the env var to a path under your home directory."
+        )
+    return str(resolved)
+
+
 _CB_DEFAULTS: dict[str, int] = {"failure_threshold": 5, "recovery_timeout": 60}
 _CB_SERVICES = ("anthropic", "telegram", "discord", "hub")
 _ADMIN_ID_PATTERN = re.compile(r"^(tg|dc):user:\d+$")
@@ -121,7 +136,10 @@ def _load_raw_config(config_path: str | None = None) -> dict[str, Any]:
     Resolution order: $LYRA_CONFIG env var → 'config.toml' in cwd → empty dict.
     """
     raw: dict[str, Any] = {}
-    path = config_path or os.environ.get("LYRA_CONFIG", "config.toml")
+    env_path = os.environ.get("LYRA_CONFIG")
+    path = config_path or env_path or "config.toml"
+    if env_path and not config_path:
+        path = _validate_config_path(env_path)
     try:
         with open(path, "rb") as f:
             raw = tomllib.load(f)
@@ -244,7 +262,8 @@ def _load_messages(language: str = "en") -> MessageManager:
       LYRA_MESSAGES_CONFIG env var → messages.toml in cwd → bundled config.
     """
     bundled = Path(__file__).resolve().parent.parent / "config" / "messages.toml"
-    path_str = os.environ.get("LYRA_MESSAGES_CONFIG") or (
+    env_messages = os.environ.get("LYRA_MESSAGES_CONFIG")
+    path_str = env_messages or (
         "messages.toml" if Path("messages.toml").exists() else str(bundled)
     )
     if not path_str.endswith(".toml"):
@@ -253,5 +272,7 @@ def _load_messages(language: str = "en") -> MessageManager:
             path_str,
         )
         path_str = str(bundled)
+    if env_messages and path_str.endswith(".toml"):
+        path_str = _validate_config_path(path_str)
     log.info("Loaded messages from %s", path_str)
     return MessageManager(path_str, language=language)

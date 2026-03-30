@@ -31,7 +31,7 @@ class MonitoringConfig(BaseModel):
     quiet_end: str = "08:00"
     idle_check_enabled: bool = False
     min_disk_free_gb: int = 1
-    health_endpoint_url: str = "http://localhost:8443/health"
+    health_endpoint_url: str = "http://localhost:8443/health/detail"
     diagnostic_model: str = "claude-haiku-4-5-20251001"
     disk_check_path: str = "/"
     service_name: str = "lyra"

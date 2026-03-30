@@ -233,7 +233,10 @@ class SimpleAgent(AgentBase):
             # Pipeline-transcribed audio — wrap for prompt injection guard (H-8)
             text = f"<voice_transcript>{html.escape(msg.text)}</voice_transcript>"
         else:
-            text = msg.text
+            if not msg.processor_enriched:
+                text = f"<user_message>{html.escape(msg.text)}</user_message>"
+            else:
+                text = msg.text
 
         model_cfg = self.config.llm_config
 

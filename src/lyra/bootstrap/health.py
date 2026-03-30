@@ -3,12 +3,27 @@
 from __future__ import annotations
 
 import hmac
-import os
+import logging
 import time
+from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException
 
 from lyra.core.hub import Hub
+
+log = logging.getLogger(__name__)
+
+
+def _read_secret(name: str) -> str:
+    """Read a secret from ~/.lyra/secrets/{name}. Returns '' if missing."""
+    path = Path.home() / ".lyra" / "secrets" / name
+    try:
+        return path.read_text().strip()
+    except FileNotFoundError:
+        return ""
+    except OSError as exc:
+        log.warning("Could not read secret %r: %s", name, exc)
+        return ""
 
 
 def create_health_app(hub: Hub) -> FastAPI:
@@ -20,18 +35,15 @@ def create_health_app(hub: Hub) -> FastAPI:
     app = FastAPI(title="Lyra Hub")
 
     @app.get("/health")
-    async def health(authorization: str = Header(default="")) -> dict:
-        health_secret = os.environ.get("LYRA_HEALTH_SECRET", "")
-        expected = f"Bearer {health_secret}"
-        authenticated = bool(health_secret) and hmac.compare_digest(
-            authorization, expected
-        )
+    async def health() -> dict:
+        return {"ok": True}
 
-        # Security: wrong/missing token intentionally returns the minimal
-        # response rather than 401, to avoid revealing whether a secret is
-        # configured.  This differs from /config which returns 401.
-        if not authenticated:
-            return {"ok": True}
+    @app.get("/health/detail")
+    async def health_detail(authorization: str = Header(default="")) -> dict:
+        health_secret = _read_secret("health_secret")
+        expected = f"Bearer {health_secret}"
+        if not health_secret or not hmac.compare_digest(authorization, expected):
+            raise HTTPException(status_code=401, detail="unauthorized")
 
         uptime_s = time.monotonic() - hub._start_time
 
@@ -90,7 +102,7 @@ def create_health_app(hub: Hub) -> FastAPI:
         authorization: str = Header(default=""),
         agent: str = "lyra_default",
     ) -> dict:
-        config_secret = os.environ.get("LYRA_CONFIG_SECRET", "")
+        config_secret = _read_secret("config_secret")
         if not config_secret or not hmac.compare_digest(
             authorization, f"Bearer {config_secret}"
         ):
@@ -111,10 +123,6 @@ def create_health_app(hub: Hub) -> FastAPI:
             "model": rc.model,
             "max_steps": rc.max_steps,
             "extra_instructions": rc.extra_instructions,
-            "effective_model": rc.model or agent_obj.config.llm_config.model,
-            "effective_max_steps": (
-                rc.max_steps or agent_obj.config.llm_config.max_turns
-            ),
         }
 
     return app

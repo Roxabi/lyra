@@ -295,6 +295,31 @@ class TestOverlayAppliedInProcess:
 # ---------------------------------------------------------------------------
 
 
+class TestProcessorEnrichedNotDoubleWrapped:
+    async def test_processor_enriched_msg_not_double_wrapped(self) -> None:
+        """processor_enriched=True: text with <webpage> tags is passed verbatim."""
+        import dataclasses
+
+        from lyra.agents.anthropic_agent import AnthropicAgent
+
+        provider = make_mock_provider("ok")
+        agent = AnthropicAgent(make_config(), provider)
+
+        enriched_text = "<webpage>some scraped content</webpage>"
+        base_msg = make_message(enriched_text)
+        msg = dataclasses.replace(base_msg, processor_enriched=True)
+        pool = make_pool()
+
+        await agent.process(msg, pool)
+
+        provider.complete.assert_awaited_once()
+        call_args = provider.complete.call_args
+        sent_text = call_args.args[1]
+        # Must NOT wrap in <user_message>...</user_message>
+        assert "<user_message>" not in sent_text
+        assert sent_text == enriched_text
+
+
 class TestSessionCommandWiring:
     """Router is built with session_driver and /add /explain /summarize registered."""
 

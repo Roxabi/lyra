@@ -173,7 +173,11 @@ class AnthropicAgent(AgentBase):
                 llm_text = f"<voice_transcript>{_esc}</voice_transcript>"
                 history_text = msg.text
             else:
-                llm_text = history_text = msg.text
+                if not msg.processor_enriched:
+                    llm_text = f"<user_message>{html.escape(msg.text)}</user_message>"
+                else:
+                    llm_text = msg.text
+                history_text = msg.text
 
             # Build messages array for SDK (includes history + new user message)
             messages: list[dict] = list(pool.sdk_history)

@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import tempfile
 import time
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
@@ -51,6 +52,8 @@ class _ProcessEntry:
     system_prompt: str = ""
     session_id: str | None = None
     resumed_from: str | None = None  # session_id passed to --resume at spawn
+    # tmpfile for --system-prompt-file (cleaned on kill)
+    prompt_file: str | None = None
     turn_count: int = 0
     last_activity: float = field(default_factory=time.time)
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
@@ -93,7 +96,7 @@ class CliPoolWorkerMixin:
         model_config: ModelConfig,
         session_id: str | None = None,
         system_prompt: str = "",
-    ) -> list[str]:
+    ) -> tuple[list[str], str | None]:
         cmd = [
             "claude",
             "--input-format",
@@ -120,14 +123,18 @@ class CliPoolWorkerMixin:
             cmd.append("--dangerously-skip-permissions")
         if model_config.tools:
             cmd.extend(["--allowedTools", ",".join(model_config.tools)])
-        # H-10: --system-prompt exposes the value in /proc/<pid>/cmdline.
-        # A proper fix requires Claude CLI to support --system-prompt-file or
-        # stdin-based system prompt delivery.
+        prompt_file: str | None = None
         if system_prompt:
-            cmd.extend(["--system-prompt", system_prompt])
+            fd, prompt_file = tempfile.mkstemp(suffix=".txt", prefix="lyra-prompt-")
+            try:
+                os.write(fd, system_prompt.encode("utf-8"))
+            finally:
+                os.close(fd)
+            os.chmod(prompt_file, 0o600)
+            cmd.extend(["--system-prompt-file", prompt_file])
         if session_id:
             cmd.extend(["--resume", session_id])
-        return cmd
+        return cmd, prompt_file
 
     async def _spawn(
         self, pool_id: str, model_config: ModelConfig, system_prompt: str = ""
@@ -138,7 +145,7 @@ class CliPoolWorkerMixin:
             or _LYRA_ROOT
         )
         resume_session_id = self._resume_session_ids.pop(pool_id, None)
-        cmd = self._build_cmd(
+        cmd, prompt_file = self._build_cmd(
             model_config,
             session_id=resume_session_id,
             system_prompt=system_prompt,
@@ -151,12 +158,7 @@ class CliPoolWorkerMixin:
             spawn_cwd,
             resume_session_id or "-",
         )
-        # Redact system prompt from debug log to avoid log-file exposure
-        _redacted = [
-            "<redacted>" if i > 0 and cmd[i - 1] == "--system-prompt" else c
-            for i, c in enumerate(cmd)
-        ]
-        log.debug("[pool:%s] cmd: %s", pool_id, " ".join(_redacted))
+        log.debug("[pool:%s] cmd: %s", pool_id, " ".join(cmd))
         env = {k: v for k, v in os.environ.items() if k in _SAFE_ENV_KEYS}
         env["HOME"] = str(Path.home())
         try:
@@ -171,6 +173,8 @@ class CliPoolWorkerMixin:
             )
         except Exception as exc:
             log.error("[pool:%s] failed to spawn: %s", pool_id, exc)
+            if prompt_file:
+                Path(prompt_file).unlink(missing_ok=True)
             return None
 
         # Wire the session persist callback if the subclass provides it.
@@ -181,6 +185,7 @@ class CliPoolWorkerMixin:
             model_config=model_config,
             system_prompt=system_prompt,
             resumed_from=resume_session_id,
+            prompt_file=prompt_file,
             _on_session_update=_persist_fn,
         )
         self._entries[pool_id] = entry
@@ -248,6 +253,8 @@ class CliPoolWorkerMixin:
                     await entry.proc.wait()
             except ProcessLookupError:
                 pass
+        if entry.prompt_file:
+            Path(entry.prompt_file).unlink(missing_ok=True)
         log.debug("[pool:%s] killed", pool_id)
 
     async def _idle_reaper(self) -> None:

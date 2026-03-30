@@ -45,11 +45,11 @@ class TestSimpleAgentAudioBranch:
         assert isinstance(response, Response)
         assert response.content == "text response"
 
-        # Assert — CLI was called with the literal text (H-8 regression guard:
-        # plain text must NOT be wrapped in <voice_transcript>)
+        # Assert — CLI was called with the user-message-wrapped text (H-8 regression
+        # guard: plain text must NOT be wrapped in <voice_transcript>)
         call_args = cli_pool.complete.call_args
         text_sent = call_args[0][1]
-        assert text_sent == "tell me something"
+        assert text_sent == "<user_message>tell me something</user_message>"
         assert "<voice_transcript>" not in text_sent
 
     async def test_pipeline_voice_is_xml_wrapped(self) -> None:

@@ -48,7 +48,6 @@ class TestHealthUnauthenticated:
         self, hub: Hub, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """#207: Wrong Bearer token still returns minimal response."""
-        monkeypatch.setenv("LYRA_HEALTH_SECRET", HEALTH_SECRET)
         from lyra.bootstrap.health import create_health_app
 
         app = create_health_app(hub)
@@ -83,7 +82,6 @@ class TestHealthUnauthenticated:
         self, hub: Hub, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """#207: LYRA_HEALTH_SECRET='' still returns minimal response."""
-        monkeypatch.setenv("LYRA_HEALTH_SECRET", "")
         from lyra.bootstrap.health import create_health_app
 
         app = create_health_app(hub)
@@ -103,16 +101,18 @@ class TestHealthUnauthenticated:
 class TestHealthEndpoint:
     @pytest.fixture(autouse=True)
     def set_health_secret(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("LYRA_HEALTH_SECRET", HEALTH_SECRET)
+        import lyra.bootstrap.health as health_mod
+
+        monkeypatch.setattr(health_mod, "_read_secret", lambda name: HEALTH_SECRET)
 
     async def test_health_returns_json(self, hub: Hub) -> None:
-        """SC-2: /health returns JSON with expected keys."""
+        """SC-2: /health/detail returns JSON with expected keys."""
         from lyra.bootstrap.health import create_health_app
 
         app = create_health_app(hub)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/health", headers=AUTH_HEADERS)
+            resp = await client.get("/health/detail", headers=AUTH_HEADERS)
 
         assert resp.status_code == 200
         data = resp.json()
@@ -154,13 +154,13 @@ class TestHealthEndpoint:
         app = create_health_app(hub)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/health", headers=AUTH_HEADERS)
+            resp = await client.get("/health/detail", headers=AUTH_HEADERS)
 
         data = resp.json()
         assert data["queue_size"] == 1
 
     async def test_health_per_platform_queue_depths(self, hub: Hub) -> None:
-        """S2-6: /health reports per-platform queue depths."""
+        """S2-6: /health/detail reports per-platform queue depths."""
         from unittest.mock import MagicMock
 
         from lyra.bootstrap.health import create_health_app
@@ -197,7 +197,7 @@ class TestHealthEndpoint:
         app = create_health_app(hub)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/health", headers=AUTH_HEADERS)
+            resp = await client.get("/health/detail", headers=AUTH_HEADERS)
 
         data = resp.json()
         assert data["queues"]["inbound"]["telegram"] == 1
@@ -210,7 +210,7 @@ class TestHealthEndpoint:
         app = create_health_app(hub)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/health", headers=AUTH_HEADERS)
+            resp = await client.get("/health/detail", headers=AUTH_HEADERS)
 
         data = resp.json()
         assert data["uptime_s"] >= 0
@@ -224,7 +224,7 @@ class TestHealthEndpoint:
         app = create_health_app(hub)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/health", headers=AUTH_HEADERS)
+            resp = await client.get("/health/detail", headers=AUTH_HEADERS)
 
         data = resp.json()
         assert data["last_message_age_s"] is None
@@ -238,7 +238,7 @@ class TestHealthEndpoint:
         app = create_health_app(hub)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/health", headers=AUTH_HEADERS)
+            resp = await client.get("/health/detail", headers=AUTH_HEADERS)
 
         data = resp.json()
         assert data["last_message_age_s"] is not None
@@ -251,7 +251,7 @@ class TestHealthEndpoint:
         app = create_health_app(hub)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/health", headers=AUTH_HEADERS)
+            resp = await client.get("/health/detail", headers=AUTH_HEADERS)
 
         data = resp.json()
         circuits = data["circuits"]
@@ -274,7 +274,7 @@ class TestHealthEndpoint:
         app = create_health_app(hub)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/health", headers=AUTH_HEADERS)
+            resp = await client.get("/health/detail", headers=AUTH_HEADERS)
 
         data = resp.json()
         assert data["circuits"]["anthropic"]["state"] == "open"

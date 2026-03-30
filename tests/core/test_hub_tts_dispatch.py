@@ -14,7 +14,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from lyra.core.hub import Hub
-from lyra.core.hub.message_pipeline import Action, MessagePipeline, PipelineResult
+from lyra.core.hub.message_pipeline import Action, PipelineResult
+from lyra.core.hub.middleware import MiddlewarePipeline
 from lyra.core.message import InboundMessage, OutboundAudio, Response
 from tests.core.conftest import make_inbound_message
 
@@ -57,7 +58,7 @@ class TestHubRunAudioDispatch:
         hub.dispatch_response = AsyncMock()
 
         mock = AsyncMock(return_value=pipeline_result)
-        with patch.object(MessagePipeline, "process", new=mock):
+        with patch.object(MiddlewarePipeline, "process", new=mock):
             await _run_hub_one_msg(hub, msg)
 
         hub.dispatch_audio.assert_awaited_once_with(msg, audio)
@@ -74,7 +75,7 @@ class TestHubRunAudioDispatch:
         hub.dispatch_response = AsyncMock()
 
         mock = AsyncMock(return_value=pipeline_result)
-        with patch.object(MessagePipeline, "process", new=mock):
+        with patch.object(MiddlewarePipeline, "process", new=mock):
             await _run_hub_one_msg(hub, msg)
 
         hub.dispatch_response.assert_awaited_once_with(msg, response)
@@ -92,7 +93,7 @@ class TestHubRunAudioDispatch:
         hub.dispatch_response = AsyncMock()
 
         mock = AsyncMock(return_value=pipeline_result)
-        with patch.object(MessagePipeline, "process", new=mock):
+        with patch.object(MiddlewarePipeline, "process", new=mock):
             await _run_hub_one_msg(hub, msg)
 
         hub.dispatch_response.assert_awaited_once_with(msg, response)
@@ -109,7 +110,7 @@ class TestHubRunAudioDispatch:
         hub.dispatch_response = AsyncMock()
 
         mock = AsyncMock(return_value=pipeline_result)
-        with patch.object(MessagePipeline, "process", new=mock):
+        with patch.object(MiddlewarePipeline, "process", new=mock):
             await _run_hub_one_msg(hub, msg)
 
         hub.dispatch_response.assert_not_awaited()
@@ -131,7 +132,7 @@ class TestHubRunAudioDispatch:
         hub.dispatch_response = AsyncMock()
 
         mock = AsyncMock(return_value=pipeline_result)
-        with patch.object(MessagePipeline, "process", new=mock):
+        with patch.object(MiddlewarePipeline, "process", new=mock):
             await _run_hub_one_msg(hub, msg)
 
         hub.dispatch_response.assert_awaited_once_with(msg, response)

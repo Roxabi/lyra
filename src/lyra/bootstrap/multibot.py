@@ -16,6 +16,7 @@ from lyra.bootstrap.config import (
     _build_agent_overrides,
     _load_cli_pool_config,
     _load_debouncer_config,
+    _load_event_bus_config,
     _load_hub_config,
     _load_inbound_bus_config,
     _load_llm_config,
@@ -42,6 +43,7 @@ from lyra.core.auth import AuthMiddleware
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.cli_pool import CliPool
 from lyra.core.hub import Hub
+from lyra.core.hub.event_bus import PipelineEventBus
 from lyra.core.stores.auth_store import AuthStore
 from lyra.core.stores.pairing import PairingManager, set_pairing_manager
 
@@ -148,6 +150,8 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
         llm_cfg = _load_llm_config(raw_config)
         inbound_bus_cfg = _load_inbound_bus_config(raw_config)
         debouncer_cfg = _load_debouncer_config(raw_config)
+        event_bus_cfg = _load_event_bus_config(raw_config)
+        event_bus = PipelineEventBus(maxsize=event_bus_cfg.queue_maxsize)
 
         hub = Hub(
             circuit_registry=circuit_registry,
@@ -168,6 +172,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
             platform_queue_maxsize=inbound_bus_cfg.platform_queue_maxsize,
             queue_depth_threshold=inbound_bus_cfg.queue_depth_threshold,
             max_merged_chars=debouncer_cfg.max_merged_chars,
+            event_bus=event_bus,
         )
         hub.set_turn_store(stores.turn)
         hub.set_message_index(stores.message_index)

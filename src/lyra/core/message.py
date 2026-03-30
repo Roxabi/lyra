@@ -93,6 +93,9 @@ class InboundMessage:
     routing: RoutingContext | None = None
     command: CommandContext | None = None
     modality: Literal["text", "voice"] | None = None
+    # Set to True by processors that have already enriched text with trusted context.
+    # Agents use this flag to decide whether to wrap plain text in <user_message> tags.
+    processor_enriched: bool = False
 
 
 @dataclass(frozen=True)

@@ -23,6 +23,17 @@ from lyra.tts import (  # noqa: E402
 
 from .conftest import make_chunked_result, write_minimal_wav  # noqa: E402
 
+
+def _make_ogg_converter(ogg_bytes: bytes = b"fakeoggdata") -> AsyncMock:
+    """Return a mock AudioConverter that writes ogg_bytes to out_path."""
+
+    async def _fake_convert(wav_path: Path, out_path: Path) -> None:
+        out_path.write_bytes(ogg_bytes)
+
+    converter = AsyncMock()
+    converter.convert_wav_to_ogg = AsyncMock(side_effect=_fake_convert)
+    return converter
+
 # ---------------------------------------------------------------------------
 # TTSService.synthesize() — delegates to voiceCLI
 # ---------------------------------------------------------------------------
@@ -31,54 +42,51 @@ from .conftest import make_chunked_result, write_minimal_wav  # noqa: E402
 @pytest.mark.asyncio
 async def test_synthesize_returns_synthesis_result():
     """synthesize() returns SynthesisResult with OGG audio_bytes and audio/ogg mime."""
-    svc = TTSService(TTSConfig())
-
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
         wav_path = tmp.name
-    with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp_ogg:
-        ogg_path = tmp_ogg.name
+
+    expected_bytes = b"fakeoggdata"
+    converter = _make_ogg_converter(expected_bytes)
+    svc = TTSService(TTSConfig(), converter=converter)
 
     write_minimal_wav(wav_path, duration_ms=500)
-    expected_bytes = b"fakeoggdata"
-    Path(ogg_path).write_bytes(expected_bytes)
 
     async def fake_generate(text, **kwargs):
         write_minimal_wav(wav_path, duration_ms=500)
         return make_chunked_result([wav_path])
 
     with patch("voicecli.generate_async", new=AsyncMock(side_effect=fake_generate)):
-        with patch("lyra.tts._wav_to_ogg", return_value=Path(ogg_path)):
-            result = await svc.synthesize("Hello world")
+        result = await svc.synthesize("Hello world")
 
     assert isinstance(result, SynthesisResult)
     assert result.audio_bytes == expected_bytes
     assert result.mime_type == "audio/ogg"
     assert result.duration_ms is not None  # computed from WAV before OGG conversion
+    assert result.waveform_b64 is not None
+    converter.convert_wav_to_ogg.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_synthesize_cleans_up_temp_file_on_success():
     """synthesize() deletes temp WAV chunk and OGG files after success."""
-    svc = TTSService(TTSConfig())
-
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
         wav_path = tmp.name
-    with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp_ogg:
-        ogg_path = tmp_ogg.name
+
+    converter = _make_ogg_converter()
+    svc = TTSService(TTSConfig(), converter=converter)
 
     write_minimal_wav(wav_path, duration_ms=200)
-    Path(ogg_path).write_bytes(b"fakeogg")
 
     async def fake_generate(text, **kwargs):
         write_minimal_wav(wav_path, duration_ms=200)
         return make_chunked_result([wav_path])
 
     with patch("voicecli.generate_async", new=AsyncMock(side_effect=fake_generate)):
-        with patch("lyra.tts._wav_to_ogg", return_value=Path(ogg_path)):
-            await svc.synthesize("Cleanup test")
+        await svc.synthesize("Cleanup test")
 
+    ogg_path = Path(wav_path).with_suffix(".ogg")
     assert not os.path.exists(wav_path), "WAV file must be deleted after synthesis"
-    assert not os.path.exists(ogg_path), "OGG file must be deleted after synthesis"
+    assert not ogg_path.exists(), "OGG file must be deleted after synthesis"
 
 
 @pytest.mark.asyncio
@@ -115,16 +123,15 @@ async def test_synthesize_cleans_up_temp_file_on_failure():
 @pytest.mark.asyncio
 async def test_synthesize_passes_language_to_generate():
     """synthesize(language=...) forwards language kwarg to generate_async."""
-    svc = TTSService(TTSConfig())
     captured: dict = {}
 
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
         wav_path = tmp.name
-    with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp_ogg:
-        ogg_path = tmp_ogg.name
+
+    converter = _make_ogg_converter()
+    svc = TTSService(TTSConfig(), converter=converter)
 
     write_minimal_wav(wav_path)
-    Path(ogg_path).write_bytes(b"fakeogg")
 
     async def fake_gen(text, **kwargs):
         captured.update(kwargs)
@@ -132,8 +139,7 @@ async def test_synthesize_passes_language_to_generate():
         return make_chunked_result([wav_path])
 
     with patch("voicecli.generate_async", new=AsyncMock(side_effect=fake_gen)):
-        with patch("lyra.tts._wav_to_ogg", return_value=Path(ogg_path)):
-            await svc.synthesize("Hello", language="fr")
+        await svc.synthesize("Hello", language="fr")
 
     assert captured.get("language") == "french"  # ISO code normalized to full name
 
@@ -141,16 +147,15 @@ async def test_synthesize_passes_language_to_generate():
 @pytest.mark.asyncio
 async def test_synthesize_language_none_uses_init_value():
     """synthesize() with language=None uses the TTSConfig.language from init."""
-    svc = TTSService(TTSConfig(language="English"))
     captured: dict = {}
 
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
         wav_path = tmp.name
-    with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp_ogg:
-        ogg_path = tmp_ogg.name
+
+    converter = _make_ogg_converter()
+    svc = TTSService(TTSConfig(language="English"), converter=converter)
 
     write_minimal_wav(wav_path)
-    Path(ogg_path).write_bytes(b"fakeogg")
 
     async def fake_gen(text, **kwargs):
         captured.update(kwargs)
@@ -158,7 +163,6 @@ async def test_synthesize_language_none_uses_init_value():
         return make_chunked_result([wav_path])
 
     with patch("voicecli.generate_async", new=AsyncMock(side_effect=fake_gen)):
-        with patch("lyra.tts._wav_to_ogg", return_value=Path(ogg_path)):
-            await svc.synthesize("Hello")  # no language override
+        await svc.synthesize("Hello")  # no language override
 
     assert captured.get("language") == "English"

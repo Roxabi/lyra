@@ -20,6 +20,17 @@ from lyra.tts import TTSConfig, TTSService  # noqa: E402
 
 from .conftest import make_chunked_result, write_minimal_wav  # noqa: E402
 
+
+def _make_ogg_converter(ogg_bytes: bytes = b"fakeogg") -> AsyncMock:
+    """Return a mock AudioConverter that writes ogg_bytes to out_path."""
+
+    async def _fake_convert(wav_path: Path, out_path: Path) -> None:
+        out_path.write_bytes(ogg_bytes)
+
+    converter = AsyncMock()
+    converter.convert_wav_to_ogg = AsyncMock(side_effect=_fake_convert)
+    return converter
+
 # ---------------------------------------------------------------------------
 # AgentTTSConfig — new fields (exaggeration, cfg_weight)
 # ---------------------------------------------------------------------------
@@ -63,16 +74,16 @@ def test_build_tts_from_dict_missing_new_fields():
 @pytest.mark.asyncio
 async def test_synthesize_with_agent_tts_forwards_all_fields():
     """agent_tts forwards all non-None fields to generate_async."""
-    svc = TTSService(TTSConfig(engine="global_engine", voice="global_voice"))
     captured: dict = {}
 
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
         wav_path = tmp.name
-    with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp_ogg:
-        ogg_path = tmp_ogg.name
+
+    converter = _make_ogg_converter()
+    cfg = TTSConfig(engine="global_engine", voice="global_voice")
+    svc = TTSService(cfg, converter=converter)
 
     write_minimal_wav(wav_path)
-    Path(ogg_path).write_bytes(b"fakeogg")
 
     async def fake_gen(text, **kwargs):
         captured.update(kwargs)
@@ -95,8 +106,7 @@ async def test_synthesize_with_agent_tts_forwards_all_fields():
     )
 
     with patch("voicecli.generate_async", new=AsyncMock(side_effect=fake_gen)):
-        with patch("lyra.tts._wav_to_ogg", return_value=Path(ogg_path)):
-            await svc.synthesize("Hello", agent_tts=agent_tts)
+        await svc.synthesize("Hello", agent_tts=agent_tts)
 
     assert captured.get("engine") == "agent_engine"
     assert captured.get("voice") == "agent_voice"
@@ -115,16 +125,18 @@ async def test_synthesize_with_agent_tts_forwards_all_fields():
 @pytest.mark.asyncio
 async def test_synthesize_agent_tts_merge_order():
     """User pref overrides agent_tts for language/voice; agent_tts overrides global."""
-    svc = TTSService(TTSConfig(engine="global", voice="global_v", language="English"))
     captured: dict = {}
 
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
         wav_path = tmp.name
-    with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp_ogg:
-        ogg_path = tmp_ogg.name
+
+    converter = _make_ogg_converter()
+    cfg = TTSConfig(
+        engine="global", voice="global_v", language="English",
+    )
+    svc = TTSService(cfg, converter=converter)
 
     write_minimal_wav(wav_path)
-    Path(ogg_path).write_bytes(b"fakeogg")
 
     async def fake_gen(text, **kwargs):
         captured.update(kwargs)
@@ -136,11 +148,10 @@ async def test_synthesize_agent_tts_merge_order():
     )
 
     with patch("voicecli.generate_async", new=AsyncMock(side_effect=fake_gen)):
-        with patch("lyra.tts._wav_to_ogg", return_value=Path(ogg_path)):
-            # User pref overrides agent_tts for language and voice
-            await svc.synthesize(
-                "Hello", agent_tts=agent_tts, language="de", voice="user_voice"
-            )
+        # User pref overrides agent_tts for language and voice
+        await svc.synthesize(
+            "Hello", agent_tts=agent_tts, language="de", voice="user_voice"
+        )
 
     # user pref wins for language and voice
     assert captured.get("language") == "german"  # "de" normalized
@@ -152,16 +163,15 @@ async def test_synthesize_agent_tts_merge_order():
 @pytest.mark.asyncio
 async def test_synthesize_agent_tts_chunked_not_forwarded():
     """chunked is always True (hardcoded), never overridden by agent_tts."""
-    svc = TTSService(TTSConfig())
     captured: dict = {}
 
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
         wav_path = tmp.name
-    with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp_ogg:
-        ogg_path = tmp_ogg.name
+
+    converter = _make_ogg_converter()
+    svc = TTSService(TTSConfig(), converter=converter)
 
     write_minimal_wav(wav_path)
-    Path(ogg_path).write_bytes(b"fakeogg")
 
     async def fake_gen(text, **kwargs):
         captured.update(kwargs)
@@ -171,8 +181,7 @@ async def test_synthesize_agent_tts_chunked_not_forwarded():
     agent_tts = AgentTTSConfig(chunked=False)
 
     with patch("voicecli.generate_async", new=AsyncMock(side_effect=fake_gen)):
-        with patch("lyra.tts._wav_to_ogg", return_value=Path(ogg_path)):
-            await svc.synthesize("Hello", agent_tts=agent_tts)
+        await svc.synthesize("Hello", agent_tts=agent_tts)
 
     assert captured.get("chunked") is True
 
@@ -180,16 +189,16 @@ async def test_synthesize_agent_tts_chunked_not_forwarded():
 @pytest.mark.asyncio
 async def test_synthesize_agent_tts_none_uses_global_defaults():
     """synthesize(agent_tts=None) uses global defaults — no regression."""
-    svc = TTSService(TTSConfig(engine="global_eng", voice="global_vox"))
     captured: dict = {}
 
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
         wav_path = tmp.name
-    with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp_ogg:
-        ogg_path = tmp_ogg.name
+
+    converter = _make_ogg_converter()
+    cfg = TTSConfig(engine="global_eng", voice="global_vox")
+    svc = TTSService(cfg, converter=converter)
 
     write_minimal_wav(wav_path)
-    Path(ogg_path).write_bytes(b"fakeogg")
 
     async def fake_gen(text, **kwargs):
         captured.update(kwargs)
@@ -197,8 +206,7 @@ async def test_synthesize_agent_tts_none_uses_global_defaults():
         return make_chunked_result([wav_path])
 
     with patch("voicecli.generate_async", new=AsyncMock(side_effect=fake_gen)):
-        with patch("lyra.tts._wav_to_ogg", return_value=Path(ogg_path)):
-            await svc.synthesize("Hello", agent_tts=None)
+        await svc.synthesize("Hello", agent_tts=None)
 
     assert captured.get("engine") == "global_eng"
     assert captured.get("voice") == "global_vox"

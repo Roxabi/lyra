@@ -1,4 +1,5 @@
 from .agent import Agent, AgentBase
+from .bus import Bus
 from .hub import (
     Action,
     ChannelAdapter,
@@ -7,6 +8,7 @@ from .hub import (
     PipelineResult,
     RoutingKey,
 )
+from .inbound_bus import LocalBus
 from .message import (
     Attachment,
     Button,
@@ -34,6 +36,7 @@ __all__ = [
     "Agent",
     "AgentBase",
     "Attachment",
+    "Bus",
     "Button",
     "ChannelAdapter",
     "CodeBlock",
@@ -42,6 +45,7 @@ __all__ = [
     "Hub",
     "MessagePipeline",
     "InboundMessage",
+    "LocalBus",
     "MediaPart",
     "OutboundAttachment",
     "OutboundMessage",

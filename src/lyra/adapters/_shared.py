@@ -33,7 +33,7 @@ from lyra.core.message import (
 )
 
 if TYPE_CHECKING:
-    from lyra.core.inbound_bus import InboundBus
+    from lyra.core.bus import Bus
     from lyra.core.messages import MessageManager
 
 __all__ = [
@@ -59,7 +59,7 @@ log = logging.getLogger(__name__)
 
 async def push_to_hub_guarded(  # noqa: PLR0913 — each arg is a distinct guard/callback dependency
     *,
-    inbound_bus: "InboundBus[Any]",
+    inbound_bus: "Bus[Any]",
     platform: Platform,
     msg: InboundMessage | InboundAudio,
     circuit_registry: CircuitRegistry | None,

@@ -9,7 +9,7 @@ import pytest
 
 from lyra.core import Agent, AgentBase, Hub, Pool, Response
 from lyra.core.message import InboundMessage, Platform
-from tests.core.conftest import MockAdapter, make_inbound_message
+from tests.core.conftest import MockAdapter, make_inbound_message, push_to_hub
 
 # ---------------------------------------------------------------------------
 # T3 — Hub routing key (RoutingKey replaces BindingKey)
@@ -110,7 +110,7 @@ class TestUnmatchedRouting:
     ) -> None:
         hub = Hub()
         msg = make_inbound_message(platform="telegram", user_id="nobody")
-        await hub.bus.put(msg)
+        await push_to_hub(hub, msg)
         with caplog.at_level(logging.WARNING, logger="lyra.core.hub"):
             # run() loops forever — use a short timeout to exercise one iteration
             try:
@@ -118,7 +118,8 @@ class TestUnmatchedRouting:
             except asyncio.TimeoutError:
                 pass  # expected — run() never returns on its own
         assert any("unmatched" in r.message.lower() for r in caplog.records)
-        assert hub.bus.empty()  # message was consumed (dropped, not re-queued)
+        # message was consumed (dropped, not re-queued)
+        assert hub.inbound_bus.staging_qsize() == 0
 
 
 # ---------------------------------------------------------------------------
@@ -163,7 +164,7 @@ class TestAgentRegistryMiss:
             Platform.TELEGRAM, "main", "chat:42", "ghost", "telegram:main:chat:42"
         )
         msg = make_inbound_message(platform="telegram", bot_id="main", user_id="alice")
-        await hub.bus.put(msg)
+        await push_to_hub(hub, msg)
 
         with caplog.at_level(logging.WARNING, logger="lyra.core.hub"):
             try:
@@ -172,7 +173,7 @@ class TestAgentRegistryMiss:
                 pass  # expected — run() never returns on its own
 
         assert any("no agent registered" in r.message.lower() for r in caplog.records)
-        assert hub.bus.empty()
+        assert hub.inbound_bus.staging_qsize() == 0
 
 
 # ---------------------------------------------------------------------------
@@ -201,7 +202,7 @@ class TestMissingAdapterDrop:
         )
         # Deliberately do NOT register an adapter for (TELEGRAM, "main")
         msg = make_inbound_message(platform="telegram", bot_id="main", user_id="alice")
-        await hub.bus.put(msg)
+        await push_to_hub(hub, msg)
 
         with caplog.at_level(logging.ERROR, logger="lyra.core.hub"):
             try:
@@ -210,7 +211,7 @@ class TestMissingAdapterDrop:
                 pass  # expected — run() never returns on its own
 
         assert any("no adapter registered" in r.message.lower() for r in caplog.records)
-        assert hub.bus.empty()
+        assert hub.inbound_bus.staging_qsize() == 0
 
 
 # ---------------------------------------------------------------------------

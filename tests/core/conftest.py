@@ -285,6 +285,23 @@ def make_inbound_message(  # noqa: PLR0913
     return InboundMessage(**kwargs)
 
 
+async def push_to_hub(hub: Hub, msg: InboundMessage) -> None:
+    """Inject *msg* into the hub's inbound bus for testing.
+
+    Registers the platform and starts the bus feeders if needed, then
+    enqueues via the ``Bus`` Protocol's ``put()`` method.
+    """
+    from lyra.core.inbound_bus import LocalBus
+
+    platform = Platform(msg.platform)
+    bus = hub.inbound_bus
+    if platform not in bus.registered_platforms():
+        bus.register(platform)
+    if isinstance(bus, LocalBus) and not bus._feeders:
+        await bus.start()
+    bus.put(platform, msg)
+
+
 # ---------------------------------------------------------------------------
 # StreamingIterator shared helpers (used by test_cli_streaming_parse +
 # test_cli_streaming_lifecycle)

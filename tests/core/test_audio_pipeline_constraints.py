@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, cast
 import pytest
 
 from lyra.core.hub import Hub
+from lyra.core.inbound_bus import LocalBus
 from lyra.core.message import InboundMessage, Platform, Response
 from lyra.core.trust import TrustLevel
 from tests.core.conftest import FakeSTT, make_audio, make_inbound_message
@@ -67,8 +68,10 @@ class TestAudioPipelineTrustLevel:
         task = asyncio.create_task(hub._audio_pipeline.run())
         try:
             # The normal audio should produce the echo reply
+            # Cast to LocalBus for test access to private staging queue
+            staging = cast(LocalBus[InboundMessage], hub.inbound_bus)._staging
             msg: InboundMessage = await asyncio.wait_for(
-                hub.inbound_bus._staging.get(), timeout=2.0
+                staging.get(), timeout=2.0
             )
             assert msg.id == "audio-2"
             # No dispatch for the blocked audio — capture should only have the
@@ -112,7 +115,9 @@ class TestAudioPipelineRateLimit:
         task = asyncio.create_task(hub._audio_pipeline.run())
         try:
             # Wait for the first audio to be enqueued as text
-            await asyncio.wait_for(hub.inbound_bus._staging.get(), timeout=2.0)
+            # Cast to LocalBus for test access to private staging queue
+            staging = cast(LocalBus[InboundMessage], hub.inbound_bus)._staging
+            await asyncio.wait_for(staging.get(), timeout=2.0)
             # Give the loop time to process second audio and dispatch rate limit
             await asyncio.sleep(0.1)
             # The rate-limited reply should be dispatched
@@ -187,8 +192,10 @@ class TestAudioPipelineTranscriptCap:
         await hub.inbound_audio_bus.start()
         task = asyncio.create_task(hub._audio_pipeline.run())
         try:
+            # Cast to LocalBus for test access to private staging queue
+            staging = cast(LocalBus[InboundMessage], hub.inbound_bus)._staging
             msg: InboundMessage = await asyncio.wait_for(
-                hub.inbound_bus._staging.get(), timeout=2.0
+                staging.get(), timeout=2.0
             )
             assert len(msg.text) == 2000
         finally:

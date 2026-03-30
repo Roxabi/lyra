@@ -9,13 +9,13 @@ shared protocols. Everything else in the project depends on `core/`.
 ## Key architecture: hub-and-spoke
 
 ```
-Inbound (platform) → InboundBus → MessagePipeline → Pool → Agent → LlmProvider
+Inbound (platform) → Bus[T] (LocalBus) → MessagePipeline → Pool → Agent → LlmProvider
                                                         ↓
 Outbound (platform) ←──────────────── OutboundDispatcher ←──────────────────
 ```
 
 - `Hub` (`hub/hub.py`) is the singleton coordinator. It owns one `PoolManager`, one
-  `InboundBus`, one `OutboundDispatcher` per registered adapter, and the agent registry.
+  `LocalBus` (typed as `Bus[T]`), one `OutboundDispatcher` per registered adapter, and the agent registry.
 - `Pool` (`pool/pool.py`) is one-per-conversation-scope. It serialises turns, debounces
   rapid messages, and holds the SDK history deque. A Pool never knows which platform
   it came from — routing is done by `PoolManager` before the Pool is touched.

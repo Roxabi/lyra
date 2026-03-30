@@ -19,7 +19,7 @@ from lyra.core.message import (
     OutboundMessage,
     Platform,
 )
-from tests.core.conftest import make_circuit_registry, make_inbound_message
+from tests.core.conftest import make_circuit_registry, make_inbound_message, push_to_hub
 
 # ---------------------------------------------------------------------------
 # SC-07 — Anthropic circuit OPEN: fast-fail reply, agent.process() skipped
@@ -77,7 +77,7 @@ async def test_anthropic_circuit_open_sends_fast_fail_and_skips_agent() -> None:
     hub.register_binding(Platform.TELEGRAM, "main", "*", "test", "telegram:main:*")
 
     # Act — put one message on bus and let hub process it
-    await hub.bus.put(make_inbound_message())
+    await push_to_hub(hub, make_inbound_message())
     hub_task = asyncio.create_task(hub.run())
     await asyncio.sleep(0.05)
     hub_task.cancel()
@@ -146,7 +146,7 @@ async def test_anthropic_circuit_open_includes_retry_after() -> None:
     hub.register_binding(Platform.TELEGRAM, "main", "*", "test", "telegram:main:*")
 
     # Act
-    await hub.bus.put(make_inbound_message())
+    await push_to_hub(hub, make_inbound_message())
     hub_task = asyncio.create_task(hub.run())
     await asyncio.sleep(0.05)
     hub_task.cancel()

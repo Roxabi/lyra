@@ -1,4 +1,4 @@
-"""Tests for InboundBus: per-platform queues + feeder tasks + staging queue."""
+"""Tests for LocalBus: per-platform queues + feeder tasks + staging queue."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 import pytest
 
 from lyra.core.auth import TrustLevel
-from lyra.core.inbound_bus import InboundBus
+from lyra.core.inbound_bus import LocalBus
 from lyra.core.message import (
     InboundMessage,
     Platform,
@@ -46,29 +46,29 @@ def _make_msg(platform: Platform = Platform.TELEGRAM) -> InboundMessage:
 
 class TestInboundBusRegistration:
     def test_register_creates_queue(self) -> None:
-        bus = InboundBus()
+        bus = LocalBus()
         bus.register(Platform.TELEGRAM, maxsize=50)
         assert Platform.TELEGRAM in bus._queues
         assert bus._queues[Platform.TELEGRAM].maxsize == 50
 
     def test_qsize_zero_initially(self) -> None:
-        bus = InboundBus()
+        bus = LocalBus()
         bus.register(Platform.TELEGRAM)
         assert bus.qsize(Platform.TELEGRAM) == 0
 
     def test_qsize_unknown_platform_returns_zero(self) -> None:
-        bus = InboundBus()
+        bus = LocalBus()
         assert bus.qsize(Platform.TELEGRAM) == 0
 
     def test_put_increments_qsize(self) -> None:
-        bus = InboundBus()
+        bus = LocalBus()
         bus.register(Platform.TELEGRAM, maxsize=10)
         msg = _make_msg(Platform.TELEGRAM)
         bus.put(Platform.TELEGRAM, msg)
         assert bus.qsize(Platform.TELEGRAM) == 1
 
     def test_put_raises_queue_full(self) -> None:
-        bus = InboundBus()
+        bus = LocalBus()
         bus.register(Platform.TELEGRAM, maxsize=1)
         msg = _make_msg(Platform.TELEGRAM)
         bus.put(Platform.TELEGRAM, msg)
@@ -78,7 +78,7 @@ class TestInboundBusRegistration:
 
 class TestInboundBusFeeder:
     async def test_feeder_forwards_to_staging(self) -> None:
-        bus = InboundBus()
+        bus = LocalBus()
         bus.register(Platform.TELEGRAM, maxsize=10)
         await bus.start()
 
@@ -93,7 +93,7 @@ class TestInboundBusFeeder:
             await bus.stop()
 
     async def test_two_platforms_isolated(self) -> None:
-        bus = InboundBus()
+        bus = LocalBus()
         bus.register(Platform.TELEGRAM, maxsize=1)
         bus.register(Platform.DISCORD, maxsize=10)
         await bus.start()
@@ -113,7 +113,7 @@ class TestInboundBusFeeder:
             await bus.stop()
 
     async def test_stop_cancels_feeders(self) -> None:
-        bus = InboundBus()
+        bus = LocalBus()
         bus.register(Platform.TELEGRAM, maxsize=10)
         await bus.start()
         assert len(bus._feeders) == 1
@@ -122,7 +122,7 @@ class TestInboundBusFeeder:
         assert len(bus._feeders) == 0
 
     async def test_double_start_raises(self) -> None:
-        bus = InboundBus()
+        bus = LocalBus()
         bus.register(Platform.TELEGRAM, maxsize=10)
         await bus.start()
 

@@ -17,7 +17,7 @@ from lyra.core.message import (
     OutboundMessage,
     Platform,
 )
-from tests.core.conftest import make_circuit_registry, make_inbound_message
+from tests.core.conftest import make_circuit_registry, make_inbound_message, push_to_hub
 
 # ---------------------------------------------------------------------------
 # SC-10 — Clean streaming records hub circuit success
@@ -65,7 +65,7 @@ async def test_hub_records_success_on_clean_streaming() -> None:
     hub.register_binding(Platform.TELEGRAM, "main", "*", "test", "telegram:main:*")
 
     # Act
-    await hub.bus.put(make_inbound_message())
+    await push_to_hub(hub, make_inbound_message())
     hub_task = asyncio.create_task(hub.run())
     await asyncio.sleep(0.1)
     hub_task.cancel()
@@ -128,7 +128,7 @@ async def test_mid_stream_failure_records_anthropic_failure() -> None:
     hub.register_binding(Platform.TELEGRAM, "main", "*", "test", "telegram:main:*")
 
     # Act
-    await hub.bus.put(make_inbound_message())
+    await push_to_hub(hub, make_inbound_message())
     hub_task = asyncio.create_task(hub.run())
     await asyncio.sleep(0.1)
     hub_task.cancel()
@@ -191,7 +191,7 @@ async def test_hub_circuit_opens_after_threshold() -> None:
 
     # Act — enqueue 2 messages to trip the threshold
     for _ in range(2):
-        await hub.bus.put(make_inbound_message())
+        await push_to_hub(hub, make_inbound_message())
     hub_task = asyncio.create_task(hub.run())
     await asyncio.sleep(0.2)
     hub_task.cancel()
@@ -273,7 +273,7 @@ async def test_hub_msg_manager_injection_generic_on_agent_failure() -> None:
 
     # Act — put one message; hub processes it and sends an error reply
     msg = make_inbound_message(platform="telegram", bot_id="main", user_id="alice")
-    await hub.bus.put(msg)
+    await push_to_hub(hub, msg)
     hub_task = asyncio.create_task(hub.run())
     await asyncio.sleep(0.1)
     hub_task.cancel()

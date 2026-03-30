@@ -1,5 +1,6 @@
-"""InboundBus — generic per-platform inbound queues with feeder tasks and staging queue.
+"""LocalBus — generic per-platform inbound queues with feeder tasks and staging queue.
 
+Concrete implementation of the ``Bus[T]`` Protocol defined in ``bus.py``.
 Each registered platform gets its own bounded asyncio.Queue. Independent feeder
 tasks drain per-platform queues into a single staging queue consumed by Hub.run().
 This isolates platform-level backpressure: a flood on one platform cannot starve
@@ -7,18 +8,19 @@ another platform's messages.
 
 Usage::
 
-    from lyra.core.inbound_bus import InboundBus
+    from lyra.core.bus import Bus
+    from lyra.core.inbound_bus import LocalBus
     from lyra.core.message import InboundMessage, InboundAudio, Platform
 
     # Text messages
-    bus: InboundBus[InboundMessage] = InboundBus(name="inbound")
+    bus: Bus[InboundMessage] = LocalBus(name="inbound")
     bus.register(Platform.TELEGRAM, maxsize=100)
     await bus.start()
     ...
     await bus.stop()
 
     # Audio envelopes — depth monitoring included
-    audio_bus: InboundBus[InboundAudio] = InboundBus(name="inbound-audio")
+    audio_bus: Bus[InboundAudio] = LocalBus(name="inbound-audio")
     audio_bus.register(Platform.TELEGRAM, maxsize=100)
     await audio_bus.start()
 """
@@ -36,12 +38,14 @@ log = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
-class InboundBus(Generic[T]):
+class LocalBus(Generic[T]):
     """Generic per-platform inbound queues + staging queue consumed by Hub.run().
+
+    Concrete implementation of ``Bus[T]`` Protocol.
 
     Lifecycle::
 
-        bus: InboundBus[InboundMessage] = InboundBus(name="inbound")
+        bus: Bus[InboundMessage] = LocalBus(name="inbound")
         bus.register(Platform.TELEGRAM, maxsize=100)
         bus.register(Platform.DISCORD, maxsize=100)
         await bus.start()          # spawns feeder tasks
@@ -109,7 +113,7 @@ class InboundBus(Generic[T]):
         """
         if self._feeders:
             raise RuntimeError(
-                f"InboundBus({self._name!r}).start() called while feeders are "
+                f"LocalBus({self._name!r}).start() called while feeders are "
                 "already running — call stop() first."
             )
         for platform, queue in self._queues.items():
@@ -122,7 +126,7 @@ class InboundBus(Generic[T]):
     async def _feeder(self, platform: Platform, queue: asyncio.Queue[T]) -> None:
         """Drain platform queue into the staging queue indefinitely."""
         log.debug(
-            "InboundBus(%r) feeder started for platform=%s",
+            "LocalBus(%r) feeder started for platform=%s",
             self._name,
             platform.value,
         )

@@ -6,14 +6,11 @@ import logging
 from contextvars import copy_context
 from unittest.mock import AsyncMock
 
-import pytest
-
 from lyra.core.hub.message_pipeline import Action, PipelineResult
 from lyra.core.hub.middleware import PipelineContext
 from lyra.core.hub.middleware_stages import CreatePoolMiddleware, TraceMiddleware
 from lyra.core.trace import TraceContext, TraceIdFilter
 from tests.core.conftest import _make_hub, make_inbound_message
-
 
 # ──────────────────────────────────────────────────────────────────────
 # TraceContext

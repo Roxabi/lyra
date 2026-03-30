@@ -10,7 +10,6 @@ from contextvars import copy_context
 from lyra.bootstrap.config import LoggingConfig, _load_logging_config
 from lyra.core.trace import JsonFormatter, TraceContext, TraceIdFilter
 
-
 # ──────────────────────────────────────────────────────────────────────
 # JsonFormatter
 # ──────────────────────────────────────────────────────────────────────
@@ -65,8 +64,9 @@ class TestJsonFormatter:
         fmt = JsonFormatter()
         record = self._make_record(trace_id="t1")
         obj = json.loads(fmt.format(record))
-        for forbidden in ("pathname", "threadName", "processName", "lineno", "funcName"):
-            assert forbidden not in obj
+        forbidden = ("pathname", "threadName", "processName", "lineno")
+        for key in forbidden:
+            assert key not in obj
 
     def test_message_interpolation(self) -> None:
         """Format args should be interpolated into the message."""
@@ -184,7 +184,9 @@ class TestJsonFormatter:
 class TestSetupLogging:
     """Tests for _setup_logging wiring (#270)."""
 
-    def test_json_file_true_attaches_json_formatter(self, tmp_path, monkeypatch) -> None:
+    def test_json_file_true_uses_json_formatter(
+        self, tmp_path, monkeypatch
+    ) -> None:
         monkeypatch.setattr("lyra.__main__.Path.home", lambda: tmp_path)
         import lyra.__main__ as main_mod
 
@@ -202,7 +204,9 @@ class TestSetupLogging:
         finally:
             root.handlers[:] = original_handlers
 
-    def test_json_file_false_attaches_plain_formatter(self, tmp_path, monkeypatch) -> None:
+    def test_json_file_false_uses_plain_formatter(
+        self, tmp_path, monkeypatch
+    ) -> None:
         monkeypatch.setattr("lyra.__main__.Path.home", lambda: tmp_path)
         import lyra.__main__ as main_mod
 

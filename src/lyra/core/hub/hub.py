@@ -17,9 +17,8 @@ from .hub_protocol import (  # noqa: F401 — public re-export
     RoutingKey,
 )
 from .hub_rate_limit import RateLimiter
-from .message_pipeline import (  # noqa: F401 — public re-export (Action)
+from .message_pipeline import (  # noqa: F401 — public re-export
     Action,
-    MessagePipeline,
     PipelineResult,
 )
 from .middleware import build_default_pipeline

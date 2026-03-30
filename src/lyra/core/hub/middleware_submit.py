@@ -23,6 +23,7 @@ from .message_pipeline import (
     ResumeStatus,
 )
 from .middleware import Next, PipelineContext
+from .pipeline_events import MessageDropped, PoolSubmitted
 
 if TYPE_CHECKING:
     pass
@@ -61,10 +62,24 @@ class SubmitToPoolMiddleware:
                 bot_id=msg.bot_id,
                 action=Action.DROP.value,
             )
+            ctx.emit(
+                MessageDropped(
+                    msg_id=msg.id,
+                    stage=type(self).__name__,
+                    reason="no_adapter",
+                )
+            )
             return _DROP
 
         if await ctx.hub.circuit_breaker_drop(msg):
             ctx.trace("outbound", "circuit_open", action=Action.DROP.value)
+            ctx.emit(
+                MessageDropped(
+                    msg_id=msg.id,
+                    stage=type(self).__name__,
+                    reason="circuit_open",
+                )
+            )
             return _DROP
 
         pool = ctx.pool
@@ -92,6 +107,15 @@ class SubmitToPoolMiddleware:
             "message_submitted",
             adapter=msg.platform,
             resume_status=status.value,
+        )
+        ctx.emit(
+            PoolSubmitted(
+                msg_id=msg.id,
+                stage=type(self).__name__,
+                pool_id=pool.pool_id,
+                agent_name=ctx.binding.agent_name if ctx.binding else "",
+                resume_status=status.value,
+            )
         )
 
         if status == ResumeStatus.FRESH:

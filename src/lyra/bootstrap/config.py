@@ -88,6 +88,14 @@ class DebouncerConfig(BaseModel):
     cancel_on_new_message: bool = False
 
 
+class EventBusConfig(BaseModel):
+    """Typed [event_bus] config section (#432)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    queue_maxsize: int = 1000
+
+
 class AgentOverrideConfig(BaseModel):
     """Typed output of _build_agent_overrides().
 
@@ -222,6 +230,11 @@ def _load_inbound_bus_config(raw: dict[str, Any]) -> InboundBusConfig:
 def _load_debouncer_config(raw: dict[str, Any]) -> DebouncerConfig:
     """Load [debouncer] section from raw config dict. Missing keys → defaults."""
     return DebouncerConfig.model_validate(raw.get("debouncer", {}))
+
+
+def _load_event_bus_config(raw: dict[str, Any]) -> EventBusConfig:
+    """Load [event_bus] section from raw config dict. Missing keys → defaults."""
+    return EventBusConfig.model_validate(raw.get("event_bus", {}))
 
 
 def _load_messages(language: str = "en") -> MessageManager:

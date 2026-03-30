@@ -24,6 +24,7 @@ from .message_pipeline import (
     PipelineResult,
 )
 from .middleware import Next, PipelineContext
+from .pipeline_events import CommandDispatched, MessageDropped
 
 if TYPE_CHECKING:
     pass
@@ -56,6 +57,13 @@ class ValidatePlatformMiddleware:
                 platform=msg.platform,
                 action=Action.DROP.value,
             )
+            ctx.emit(
+                MessageDropped(
+                    msg_id=msg.id,
+                    stage=type(self).__name__,
+                    reason="unknown_platform",
+                )
+            )
             return _DROP
         return await next(msg, ctx)
 
@@ -77,6 +85,13 @@ class RateLimitMiddleware:
         if ctx.hub._is_rate_limited(msg):
             log.warning("rate limit exceeded for %s — message dropped", key)
             ctx.trace("inbound", "rate_limited", action=Action.DROP.value)
+            ctx.emit(
+                MessageDropped(
+                    msg_id=msg.id,
+                    stage=type(self).__name__,
+                    reason="rate_limited",
+                )
+            )
             return _DROP
         return await next(msg, ctx)
 
@@ -101,6 +116,13 @@ class ResolveBindingMiddleware:
                 "unmatched routing key %s — message dropped", ctx.key
             )
             ctx.trace("pool", "no_binding", action=Action.DROP.value)
+            ctx.emit(
+                MessageDropped(
+                    msg_id=msg.id,
+                    stage=type(self).__name__,
+                    reason="no_binding",
+                )
+            )
             return _DROP
         ctx.binding = binding
 
@@ -116,6 +138,13 @@ class ResolveBindingMiddleware:
                 "no_agent",
                 agent_name=binding.agent_name,
                 action=Action.DROP.value,
+            )
+            ctx.emit(
+                MessageDropped(
+                    msg_id=msg.id,
+                    stage=type(self).__name__,
+                    reason="no_agent",
+                )
             )
             return _DROP
         ctx.agent = agent
@@ -194,6 +223,13 @@ class CommandMiddleware:
         if router and router.is_command(msg):
             _cmd = msg.text.split()[0] if msg.text else ""
             ctx.trace("processor", "command_detected", command=_cmd)
+            ctx.emit(
+                CommandDispatched(
+                    msg_id=msg.id,
+                    stage=type(self).__name__,
+                    command=_cmd,
+                )
+            )
             return await self._dispatch_command(
                 msg, router, ctx, next
             )

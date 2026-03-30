@@ -16,6 +16,7 @@ Layout:
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
@@ -28,8 +29,14 @@ from .message_pipeline import (
     PipelineResult,
     TraceHook,
 )
+from .pipeline_events import (
+    MessageReceived,
+    PipelineEvent,
+    StageCompleted,
+)
 
 if TYPE_CHECKING:
+    from .event_bus import PipelineEventBus
     from .hub import Binding, Hub, RoutingKey
 
 log = logging.getLogger(__name__)
@@ -46,6 +53,7 @@ class PipelineContext:
     pool: Pool | None = None
     router: Any = None
     trace_hook: TraceHook | None = None
+    event_bus: PipelineEventBus | None = None
 
     def trace(self, stage: str, event: str, **payload: object) -> None:
         """Emit a trace event if a hook is registered. Never raises."""
@@ -55,6 +63,11 @@ class PipelineContext:
             self.trace_hook(stage, event, **payload)
         except Exception:
             log.debug("trace_hook raised — ignoring", exc_info=True)
+
+    def emit(self, event: PipelineEvent) -> None:
+        """Emit a pipeline telemetry event. No-op if bus is None."""
+        if self.event_bus is not None:
+            self.event_bus.emit(event)
 
 
 # Type alias for the next-middleware callback.
@@ -85,14 +98,20 @@ class MiddlewarePipeline:
         hub: Hub,
         *,
         trace_hook: TraceHook | None = None,
+        event_bus: PipelineEventBus | None = None,
     ) -> None:
         self._middlewares = middlewares
         self._hub = hub
         self._trace_hook = trace_hook
+        self._event_bus = event_bus
 
     async def process(self, msg: InboundMessage) -> PipelineResult:
         """Route *msg* through the middleware chain."""
-        ctx = PipelineContext(hub=self._hub, trace_hook=self._trace_hook)
+        ctx = PipelineContext(
+            hub=self._hub,
+            trace_hook=self._trace_hook,
+            event_bus=self._event_bus,
+        )
 
         ctx.trace(
             "inbound",
@@ -102,13 +121,32 @@ class MiddlewarePipeline:
             user_id=msg.user_id,
         )
 
+        ctx.emit(
+            MessageReceived(
+                msg_id=msg.id,
+                stage="inbound",
+                platform=msg.platform,
+                user_id=msg.user_id,
+                scope_id=msg.scope_id,
+            )
+        )
+
         async def _run(
             index: int, msg: InboundMessage, ctx: PipelineContext
         ) -> PipelineResult:
             if index >= len(self._middlewares):
                 return _DROP
             mw = self._middlewares[index]
-            return await mw(msg, ctx, lambda m, c: _run(index + 1, m, c))
+            t0 = time.monotonic()
+            result = await mw(msg, ctx, lambda m, c: _run(index + 1, m, c))
+            ctx.emit(
+                StageCompleted(
+                    msg_id=msg.id,
+                    stage=type(mw).__name__,
+                    duration_ms=(time.monotonic() - t0) * 1000,
+                )
+            )
+            return result
 
         return await _run(0, msg, ctx)
 
@@ -117,6 +155,7 @@ def build_default_pipeline(
     hub: Hub,
     *,
     trace_hook: TraceHook | None = None,
+    event_bus: PipelineEventBus | None = None,
 ) -> MiddlewarePipeline:
     """Build the standard middleware pipeline with all 6 stages."""
     from .middleware_stages import (
@@ -139,4 +178,5 @@ def build_default_pipeline(
         ],
         hub,
         trace_hook=trace_hook,
+        event_bus=event_bus,
     )

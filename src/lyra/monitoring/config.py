@@ -34,7 +34,8 @@ class MonitoringConfig(BaseModel):
     health_endpoint_url: str = "http://localhost:8443/health/detail"
     diagnostic_model: str = "claude-haiku-4-5-20251001"
     disk_check_path: str = "/"
-    service_name: str = "lyra"
+    service_name: str = "lyra_telegram"
+    health_secret: str = ""
 
     # Secrets (from env vars)
     telegram_token: str = Field(default="", repr=False)
@@ -98,6 +99,7 @@ def load_monitoring_config(config_path: str | None = None) -> MonitoringConfig:
     telegram_token = os.environ.get("TELEGRAM_TOKEN", "")
     anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     telegram_admin_chat_id = os.environ.get("TELEGRAM_ADMIN_CHAT_ID", "")
+    health_secret = os.environ.get("LYRA_HEALTH_SECRET", "")
 
     if not telegram_token:
         raise ValueError(
@@ -116,5 +118,6 @@ def load_monitoring_config(config_path: str | None = None) -> MonitoringConfig:
             "telegram_token": telegram_token,
             "anthropic_api_key": anthropic_api_key,
             "telegram_admin_chat_id": telegram_admin_chat_id,
+            "health_secret": health_secret,
         }
     )

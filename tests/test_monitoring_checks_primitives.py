@@ -13,28 +13,49 @@ import pytest
 
 
 class TestCheckProcess:
-    def test_active_service(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """SC-4: check_process passes for active service."""
+    def test_active_supervisor(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """check_process passes for RUNNING supervisor process."""
+        monkeypatch.setattr(
+            "lyra.monitoring.checks.subprocess.run",
+            lambda *a, **kw: MagicMock(
+                returncode=0,
+                stdout="lyra_telegram                    RUNNING   pid 1234, uptime 1:00:00\n",
+            ),
+        )
+        from lyra.monitoring.checks import check_process
+
+        result = check_process("lyra_telegram")
+        assert result.passed is True
+        assert result.name == "process"
+        assert "RUNNING" in result.detail
+
+    def test_inactive_supervisor(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """check_process fails for STOPPED supervisor process."""
+        monkeypatch.setattr(
+            "lyra.monitoring.checks.subprocess.run",
+            lambda *a, **kw: MagicMock(
+                returncode=3,
+                stdout="lyra_telegram                    STOPPED   Mar 30 12:00 PM\n",
+            ),
+        )
+        from lyra.monitoring.checks import check_process
+
+        result = check_process("lyra_telegram")
+        assert result.passed is False
+
+    def test_fallback_to_systemctl(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """check_process falls back to systemctl when supervisorctl not found."""
+        from unittest.mock import patch
+
         monkeypatch.setattr(
             "lyra.monitoring.checks.subprocess.run",
             lambda *a, **kw: MagicMock(returncode=0, stdout="active\n"),
         )
         from lyra.monitoring.checks import check_process
 
-        result = check_process("lyra")
+        with patch("lyra.monitoring.checks.Path.exists", return_value=False):
+            result = check_process("lyra")
         assert result.passed is True
-        assert result.name == "process"
-
-    def test_inactive_service(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """SC-4: check_process fails for inactive service."""
-        monkeypatch.setattr(
-            "lyra.monitoring.checks.subprocess.run",
-            lambda *a, **kw: MagicMock(returncode=3, stdout="inactive\n"),
-        )
-        from lyra.monitoring.checks import check_process
-
-        result = check_process("lyra")
-        assert result.passed is False
 
 
 # ---------------------------------------------------------------------------

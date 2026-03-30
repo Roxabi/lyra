@@ -6,6 +6,7 @@ import asyncio
 import shutil
 import subprocess
 from datetime import datetime, timezone
+from pathlib import Path
 
 import httpx
 
@@ -14,8 +15,34 @@ from .models import CheckResult, HealthReport
 
 
 def check_process(service_name: str) -> CheckResult:
-    """Check if a systemd service is active."""
+    """Check if a supervisor-managed process is running.
+
+    Uses supervisorctl via lyra-stack. Falls back to systemctl if
+    supervisorctl is not available.
+    """
     now = datetime.now(timezone.utc)
+    sctl = Path.home() / "projects" / "lyra-stack" / "scripts" / "supervisorctl.sh"
+
+    if sctl.exists():
+        try:
+            result = subprocess.run(
+                [str(sctl), "status", service_name],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            output = result.stdout.strip()
+            active = "RUNNING" in output
+            detail = output.split("\n")[0] if output else "unknown"
+            return CheckResult(
+                name="process", passed=active, detail=detail, timestamp=now
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
+            return CheckResult(
+                name="process", passed=False, detail=str(exc), timestamp=now
+            )
+
+    # Fallback: systemctl
     try:
         result = subprocess.run(
             ["systemctl", "is-active", service_name],
@@ -30,15 +57,20 @@ def check_process(service_name: str) -> CheckResult:
         return CheckResult(name="process", passed=False, detail=str(exc), timestamp=now)
 
 
-async def check_http_health(url: str, timeout: int) -> tuple[CheckResult, dict | None]:
+async def check_http_health(
+    url: str, timeout: int, health_secret: str = ""
+) -> tuple[CheckResult, dict | None]:
     """Check if the hub /health endpoint responds.
 
     Returns (CheckResult, parsed JSON or None on failure).
     """
     now = datetime.now(timezone.utc)
+    headers: dict[str, str] = {}
+    if health_secret:
+        headers["Authorization"] = f"Bearer {health_secret}"
     try:
         async with httpx.AsyncClient() as client:
-            resp = await client.get(url, timeout=timeout)
+            resp = await client.get(url, timeout=timeout, headers=headers)
         if resp.status_code == 200:
             data = resp.json()
             return (
@@ -200,7 +232,9 @@ async def run_checks(config: MonitoringConfig) -> HealthReport:
 
     # Check 2: HTTP health (provides data for checks 3-5)
     http_result, health_json = await check_http_health(
-        config.health_endpoint_url, config.health_endpoint_timeout_s
+        config.health_endpoint_url,
+        config.health_endpoint_timeout_s,
+        config.health_secret,
     )
     checks.append(http_result)
 

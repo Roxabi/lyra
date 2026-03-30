@@ -289,7 +289,10 @@ class TestRunFallbackChain:
 
         monkeypatch.setattr(
             "lyra.monitoring.checks.subprocess.run",
-            lambda *a, **kw: MagicMock(returncode=0, stdout="active\n"),
+            lambda *a, **kw: MagicMock(
+                returncode=0,
+                stdout="lyra_telegram                    RUNNING   pid 1234, uptime 1:00:00\n",
+            ),
         )
 
         mock_resp = MagicMock()

@@ -121,9 +121,18 @@ class TestEscalateToLLM:
         )
 
         with (
-            patch("lyra.monitoring.escalation.shutil.which", return_value="/usr/bin/claude"),
-            patch("lyra.monitoring.escalation.asyncio.create_subprocess_exec", return_value=mock_proc),
-            patch("lyra.monitoring.escalation.asyncio.wait_for", return_value=mock_proc.communicate.return_value),
+            patch(
+                "lyra.monitoring.escalation.shutil.which",
+                return_value="/usr/bin/claude",
+            ),
+            patch(
+                "lyra.monitoring.escalation.asyncio.create_subprocess_exec",
+                return_value=mock_proc,
+            ),
+            patch(
+                "lyra.monitoring.escalation.asyncio.wait_for",
+                return_value=mock_proc.communicate.return_value,
+            ),
         ):
             result = await escalate_to_llm(failed_report, config)
 

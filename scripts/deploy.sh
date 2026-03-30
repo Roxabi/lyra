@@ -1,14 +1,17 @@
 #!/bin/bash
-# Deploy script for Machine 1 — pull latest staging, install deps, restart Lyra.
-# Called by: systemd timer (auto) or `make deploy` (manual from Machine 2).
+# Deploy script for production — pull latest staging, install deps, restart changed services.
+# Called by: systemd timer (auto) or `make deploy` (manual from dev machine).
+#
+# Smart restart: only restarts services whose dependencies actually changed.
+# - lyra_telegram + lyra_discord: always restarted on new commits
+# - voicecli_tts + voicecli_stt: only restarted if voiceCLI dependency changed in uv.lock
 set -euo pipefail
 
 export PATH="$HOME/.local/bin:$PATH"
 source "$HOME/.local/bin/env" 2>/dev/null || true  # uv
 
 PROJECT_DIR="$HOME/projects/lyra"
-SUPERVISOR_DIR="$PROJECT_DIR/supervisor"
-SUPERVISORCTL="$SUPERVISOR_DIR/scripts/supervisorctl.sh"
+SCTL="$HOME/projects/lyra-stack/scripts/supervisorctl.sh"
 LOG_FILE="$HOME/.local/state/lyra/logs/deploy.log"
 
 mkdir -p "$(dirname "$LOG_FILE")"
@@ -31,6 +34,12 @@ fi
 
 log "New version detected: $LOCAL -> $REMOTE"
 
+# Snapshot uv.lock before pull to detect dependency changes
+LOCK_BEFORE=""
+if [ -f uv.lock ]; then
+    LOCK_BEFORE=$(sha256sum uv.lock | cut -d' ' -f1)
+fi
+
 # Pull
 git pull origin staging 2>&1 | tee -a "$LOG_FILE"
 
@@ -44,13 +53,27 @@ if ! uv run pytest --tb=short -q 2>&1 | tee -a "$LOG_FILE"; then
     exit 1
 fi
 
-# Restart Lyra via supervisor
-if [ -f "$SUPERVISOR_DIR/supervisord.pid" ] && kill -0 "$(cat "$SUPERVISOR_DIR/supervisord.pid")" 2>/dev/null; then
-    log "Restarting Lyra..."
-    "$SUPERVISORCTL" restart lyra 2>&1 | tee -a "$LOG_FILE"
-else
-    log "Starting Lyra (supervisor not running)..."
-    "$SUPERVISOR_DIR/scripts/start.sh" 2>&1 | tee -a "$LOG_FILE"
+# Detect if voiceCLI dependency changed
+LOCK_AFTER=$(sha256sum uv.lock | cut -d' ' -f1)
+VOICE_CHANGED=false
+if [ "$LOCK_BEFORE" != "$LOCK_AFTER" ]; then
+    if git diff "$LOCAL" "$REMOTE" -- uv.lock | grep -q 'voicecli'; then
+        VOICE_CHANGED=true
+    fi
 fi
 
-log "Deploy complete: $(git rev-parse --short HEAD)"
+# Restart services via supervisor
+if [ -f "$HOME/projects/lyra-stack/supervisord.pid" ] && kill -0 "$(cat "$HOME/projects/lyra-stack/supervisord.pid")" 2>/dev/null; then
+    log "Restarting Lyra adapters..."
+    "$SCTL" restart lyra_telegram lyra_discord 2>&1 | tee -a "$LOG_FILE"
+
+    if [ "$VOICE_CHANGED" = true ]; then
+        log "voiceCLI dependency changed — restarting TTS/STT..."
+        "$SCTL" restart voicecli_tts voicecli_stt 2>&1 | tee -a "$LOG_FILE"
+    fi
+else
+    log "Starting supervisor (not running)..."
+    "$HOME/projects/lyra-stack/scripts/start.sh" 2>&1 | tee -a "$LOG_FILE"
+fi
+
+log "Deploy complete: $(git rev-parse --short HEAD)$([ "$VOICE_CHANGED" = true ] && echo ' [+voice]')"

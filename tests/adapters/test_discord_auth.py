@@ -74,7 +74,7 @@ class TestDiscordAuth:
 
         hub = MagicMock()
         hub.inbound_bus = MagicMock()
-        hub.inbound_bus.put = MagicMock()
+        hub.inbound_bus.put = AsyncMock()
         adapter = DiscordAdapter(
             hub=hub, bot_id="main", intents=discord.Intents.none(), auth=auth
         )
@@ -105,7 +105,7 @@ class TestDiscordAuth:
 
         hub = MagicMock()
         hub.inbound_bus = MagicMock()
-        hub.inbound_bus.put = MagicMock()
+        hub.inbound_bus.put = AsyncMock()
         adapter = DiscordAdapter(
             hub=hub, bot_id="main", intents=discord.Intents.none(), auth=auth
         )
@@ -139,7 +139,7 @@ class TestDiscordAuth:
 
         hub = MagicMock()
         hub.inbound_bus = MagicMock()
-        hub.inbound_bus.put = MagicMock()
+        hub.inbound_bus.put = AsyncMock()
         adapter = DiscordAdapter(
             hub=hub, bot_id="main", intents=discord.Intents.none(), auth=auth
         )
@@ -186,7 +186,7 @@ class TestDiscordAuth:
 
         hub = MagicMock()
         hub.inbound_bus = MagicMock()
-        hub.inbound_bus.put = MagicMock()
+        hub.inbound_bus.put = AsyncMock()
         adapter = DiscordAdapter(
             hub=hub, bot_id="main", intents=discord.Intents.none(), auth=auth
         )
@@ -216,7 +216,7 @@ class TestDiscordAuth:
 
         hub = MagicMock()
         hub.inbound_bus = MagicMock()
-        hub.inbound_bus.put = MagicMock()
+        hub.inbound_bus.put = AsyncMock()
         adapter = DiscordAdapter(
             hub=hub, bot_id="main", intents=discord.Intents.none(), auth=auth
         )

@@ -104,7 +104,7 @@ class TestAudioLoopTranscription:
     async def test_transcribed_audio_enqueued_as_inbound_message(self, hub_with_stt):
         hub, stt = hub_with_stt
         audio = _make_audio()
-        hub.inbound_audio_bus.put(Platform.TELEGRAM, audio)
+        await hub.inbound_audio_bus.put(Platform.TELEGRAM, audio)
 
         # Stub dispatch_response so the echo reply doesn't raise KeyError
         object.__setattr__(hub, "dispatch_response", lambda msg, resp: asyncio.sleep(0))
@@ -139,7 +139,7 @@ class TestAudioLoopNoSTT:
     async def test_no_stt_dispatches_unsupported_reply(self, hub_no_stt):
         hub = hub_no_stt
         audio = _make_audio()
-        hub.inbound_audio_bus.put(Platform.TELEGRAM, audio)
+        await hub.inbound_audio_bus.put(Platform.TELEGRAM, audio)
 
         dispatched: list[tuple[InboundMessage, Response]] = []
         done = asyncio.Event()
@@ -174,7 +174,7 @@ class TestAudioLoopSTTFailure:
         hub.inbound_audio_bus.register(Platform.TELEGRAM, maxsize=10)
 
         audio = _make_audio()
-        hub.inbound_audio_bus.put(Platform.TELEGRAM, audio)
+        await hub.inbound_audio_bus.put(Platform.TELEGRAM, audio)
 
         dispatched: list[tuple[InboundMessage, Response]] = []
         done = asyncio.Event()
@@ -209,7 +209,7 @@ class TestAudioLoopNoise:
         hub.inbound_audio_bus.register(Platform.TELEGRAM, maxsize=10)
 
         audio = _make_audio()
-        hub.inbound_audio_bus.put(Platform.TELEGRAM, audio)
+        await hub.inbound_audio_bus.put(Platform.TELEGRAM, audio)
 
         dispatched: list[tuple[InboundMessage, Response]] = []
         done = asyncio.Event()
@@ -304,7 +304,7 @@ class TestProcessAudioItemPropagatesLanguage:
         object.__setattr__(hub, "dispatch_response", lambda msg, resp: asyncio.sleep(0))
 
         audio = _make_audio()
-        hub.inbound_audio_bus.put(Platform.TELEGRAM, audio)
+        await hub.inbound_audio_bus.put(Platform.TELEGRAM, audio)
 
         await hub.inbound_bus.start()
         await hub.inbound_audio_bus.start()
@@ -329,7 +329,7 @@ class TestAudioLoopTaskDone:
     async def test_task_done_called(self, hub_with_stt):
         hub, _ = hub_with_stt
         audio = _make_audio()
-        hub.inbound_audio_bus.put(Platform.TELEGRAM, audio)
+        await hub.inbound_audio_bus.put(Platform.TELEGRAM, audio)
 
         # Stub dispatch_response so the echo reply doesn't raise KeyError
         object.__setattr__(hub, "dispatch_response", lambda msg, resp: asyncio.sleep(0))

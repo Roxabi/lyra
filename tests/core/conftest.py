@@ -299,7 +299,7 @@ async def push_to_hub(hub: Hub, msg: InboundMessage) -> None:
         bus.register(platform)
     if isinstance(bus, LocalBus) and not bus._feeders:
         await bus.start()
-    bus.put(platform, msg)
+    await bus.put(platform, msg)
 
 
 # ---------------------------------------------------------------------------

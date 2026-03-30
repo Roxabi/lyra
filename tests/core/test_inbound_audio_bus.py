@@ -51,23 +51,23 @@ class TestInboundAudioBusRegistration:
         bus = InboundAudioBus()
         assert bus.qsize(Platform.TELEGRAM) == 0
 
-    def test_put_increments_qsize(self) -> None:
+    async def test_put_increments_qsize(self) -> None:
         bus = InboundAudioBus()
         bus.register(Platform.TELEGRAM, maxsize=10)
-        bus.put(Platform.TELEGRAM, _make_audio())
+        await bus.put(Platform.TELEGRAM, _make_audio())
         assert bus.qsize(Platform.TELEGRAM) == 1
 
-    def test_put_raises_queue_full(self) -> None:
+    async def test_put_raises_queue_full(self) -> None:
         bus = InboundAudioBus()
         bus.register(Platform.TELEGRAM, maxsize=1)
-        bus.put(Platform.TELEGRAM, _make_audio())
+        await bus.put(Platform.TELEGRAM, _make_audio())
         with pytest.raises(asyncio.QueueFull):
-            bus.put(Platform.TELEGRAM, _make_audio())
+            await bus.put(Platform.TELEGRAM, _make_audio())
 
-    def test_put_unregistered_platform_raises(self) -> None:
+    async def test_put_unregistered_platform_raises(self) -> None:
         bus = InboundAudioBus()
         with pytest.raises(KeyError):
-            bus.put(Platform.TELEGRAM, _make_audio())
+            await bus.put(Platform.TELEGRAM, _make_audio())
 
     def test_registered_platforms(self) -> None:
         bus = InboundAudioBus()
@@ -85,7 +85,7 @@ class TestInboundAudioBusFeeder:
 
         try:
             audio = _make_audio()
-            bus.put(Platform.TELEGRAM, audio)
+            await bus.put(Platform.TELEGRAM, audio)
             received = await asyncio.wait_for(bus.get(), timeout=0.5)
             assert received is audio
         finally:
@@ -98,11 +98,11 @@ class TestInboundAudioBusFeeder:
         await bus.start()
 
         try:
-            bus.put(Platform.TELEGRAM, _make_audio(Platform.TELEGRAM))
+            await bus.put(Platform.TELEGRAM, _make_audio(Platform.TELEGRAM))
             with pytest.raises(asyncio.QueueFull):
-                bus.put(Platform.TELEGRAM, _make_audio(Platform.TELEGRAM))
+                await bus.put(Platform.TELEGRAM, _make_audio(Platform.TELEGRAM))
             # Discord unaffected
-            bus.put(Platform.DISCORD, _make_audio(Platform.DISCORD))
+            await bus.put(Platform.DISCORD, _make_audio(Platform.DISCORD))
         finally:
             await bus.stop()
 
@@ -120,7 +120,7 @@ class TestInboundAudioBusFeeder:
         await bus.start()
 
         try:
-            bus.put(Platform.TELEGRAM, _make_audio())
+            await bus.put(Platform.TELEGRAM, _make_audio())
             # Wait for feeder to forward (avoids sleep-based flake)
             await asyncio.wait_for(bus.get(), timeout=0.5)
             bus.task_done()
@@ -134,7 +134,7 @@ class TestInboundAudioBusFeeder:
         await bus.start()
 
         try:
-            bus.put(Platform.TELEGRAM, _make_audio())
+            await bus.put(Platform.TELEGRAM, _make_audio())
             await asyncio.wait_for(bus.get(), timeout=0.5)
             bus.task_done()  # should not raise
         finally:

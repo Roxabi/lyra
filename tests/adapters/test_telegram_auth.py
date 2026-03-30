@@ -181,7 +181,7 @@ class TestTelegramAuth:
 
         hub = MagicMock()
         hub.inbound_bus = MagicMock()
-        hub.inbound_bus.put = MagicMock()
+        hub.inbound_bus.put = AsyncMock()
         adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub, auth=auth)
         adapter.bot = AsyncMock()
 
@@ -208,7 +208,7 @@ class TestTelegramAuth:
 
         hub = MagicMock()
         hub.inbound_bus = MagicMock()
-        hub.inbound_bus.put = MagicMock()
+        hub.inbound_bus.put = AsyncMock()
         adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub, auth=auth)
         adapter.bot = AsyncMock()
 
@@ -265,7 +265,7 @@ class TestTelegramAuth:
 
         hub = MagicMock()
         hub.inbound_bus = MagicMock()
-        hub.inbound_bus.put = MagicMock()
+        hub.inbound_bus.put = AsyncMock()
         adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub, auth=auth)
         adapter.bot = AsyncMock()
 

@@ -86,7 +86,7 @@ class LocalBus(Generic[T]):
             )
         self._queues[platform] = asyncio.Queue(maxsize=maxsize)
 
-    def put(self, platform: Platform, item: T) -> None:
+    async def put(self, platform: Platform, item: T) -> None:
         """Enqueue an item on the platform's queue.
 
         Raises asyncio.QueueFull if the platform queue is at capacity.

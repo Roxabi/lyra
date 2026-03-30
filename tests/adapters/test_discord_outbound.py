@@ -45,7 +45,7 @@ async def test_own_message_is_filtered() -> None:
 
     hub = MagicMock()
     hub.inbound_bus = MagicMock()
-    hub.inbound_bus.put = MagicMock()
+    hub.inbound_bus.put = AsyncMock()
 
     adapter = DiscordAdapter(
         hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL

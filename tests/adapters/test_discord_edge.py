@@ -73,7 +73,7 @@ async def test_backpressure_sends_ack_when_bus_full() -> None:
 
     hub = MagicMock()
     hub.inbound_bus = MagicMock()
-    hub.inbound_bus.put = MagicMock(side_effect=asyncio.QueueFull())
+    hub.inbound_bus.put = AsyncMock(side_effect=asyncio.QueueFull())
 
     adapter = DiscordAdapter(
         hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
@@ -119,7 +119,7 @@ async def test_on_message_drops_silently_when_hub_circuit_open() -> None:
 
     hub = MagicMock()
     hub.inbound_bus = MagicMock()
-    hub.inbound_bus.put = MagicMock()
+    hub.inbound_bus.put = AsyncMock()
 
     adapter = DiscordAdapter(
         hub=hub,
@@ -159,7 +159,7 @@ async def test_on_message_notifies_user_when_hub_circuit_open_dm() -> None:
 
     hub = MagicMock()
     hub.inbound_bus = MagicMock()
-    hub.inbound_bus.put = MagicMock()
+    hub.inbound_bus.put = AsyncMock()
 
     adapter = DiscordAdapter(
         hub=hub,
@@ -273,7 +273,7 @@ async def test_discord_msg_manager_injection_backpressure_ack() -> None:
 
     hub = MagicMock()
     hub.inbound_bus = MagicMock()
-    hub.inbound_bus.put = MagicMock(side_effect=asyncio.QueueFull())
+    hub.inbound_bus.put = AsyncMock(side_effect=asyncio.QueueFull())
 
     adapter = DiscordAdapter(
         hub=hub,

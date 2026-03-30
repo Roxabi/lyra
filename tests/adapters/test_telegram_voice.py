@@ -45,7 +45,7 @@ def _make_adapter() -> tuple[TelegramAdapter, MagicMock]:
     hub = MagicMock()
     hub.inbound_bus = MagicMock()
     hub.inbound_audio_bus = MagicMock()
-    hub.inbound_audio_bus.put = MagicMock()
+    hub.inbound_audio_bus.put = AsyncMock()
     adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub, auth=_ALLOW_ALL)
     bot_mock = AsyncMock()
     bot_mock.send_chat_action = AsyncMock()

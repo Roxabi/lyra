@@ -192,7 +192,7 @@ class TestHealthEndpoint:
             },
             trust_level=TrustLevel.TRUSTED,
         )
-        hub.inbound_bus.put(Platform.TELEGRAM, msg)
+        await hub.inbound_bus.put(Platform.TELEGRAM, msg)
 
         app = create_health_app(hub)
         transport = ASGITransport(app=app)

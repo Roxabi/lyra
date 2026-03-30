@@ -252,7 +252,7 @@ class AudioPipeline:
             language=result.language,  # propagate Whisper-detected language
         )
         try:
-            self._hub.inbound_bus.put(platform_enum, msg)
+            await self._hub.inbound_bus.put(platform_enum, msg)
         except asyncio.QueueFull:
             log.warning("inbound bus full — transcribed audio %s dropped", audio.id)
             return

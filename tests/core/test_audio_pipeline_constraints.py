@@ -57,11 +57,11 @@ class TestAudioPipelineTrustLevel:
 
         # Blocked audio
         audio = make_audio(trust_level=TrustLevel.BLOCKED)
-        hub.inbound_audio_bus.put(Platform.TELEGRAM, audio)
+        await hub.inbound_audio_bus.put(Platform.TELEGRAM, audio)
 
         # Followed by a normal audio to prove the loop didn't stall
         normal = make_audio(audio_id="audio-2", trust_level=TrustLevel.TRUSTED)
-        hub.inbound_audio_bus.put(Platform.TELEGRAM, normal)
+        await hub.inbound_audio_bus.put(Platform.TELEGRAM, normal)
 
         await hub.inbound_bus.start()
         await hub.inbound_audio_bus.start()
@@ -104,11 +104,11 @@ class TestAudioPipelineRateLimit:
 
         # First audio consumes the rate allowance
         audio1 = make_audio(audio_id="audio-1")
-        hub.inbound_audio_bus.put(Platform.TELEGRAM, audio1)
+        await hub.inbound_audio_bus.put(Platform.TELEGRAM, audio1)
 
         # Second audio should be rate-limited
         audio2 = make_audio(audio_id="audio-2")
-        hub.inbound_audio_bus.put(Platform.TELEGRAM, audio2)
+        await hub.inbound_audio_bus.put(Platform.TELEGRAM, audio2)
 
         await hub.inbound_bus.start()
         await hub.inbound_audio_bus.start()
@@ -153,7 +153,7 @@ class TestAudioPipelineSlashInjection:
         object.__setattr__(hub, "dispatch_response", capture)
 
         audio = make_audio()
-        hub.inbound_audio_bus.put(Platform.TELEGRAM, audio)
+        await hub.inbound_audio_bus.put(Platform.TELEGRAM, audio)
 
         await hub.inbound_audio_bus.start()
         task = asyncio.create_task(hub._audio_pipeline.run())
@@ -186,7 +186,7 @@ class TestAudioPipelineTranscriptCap:
         object.__setattr__(hub, "dispatch_response", lambda msg, resp: asyncio.sleep(0))
 
         audio = make_audio()
-        hub.inbound_audio_bus.put(Platform.TELEGRAM, audio)
+        await hub.inbound_audio_bus.put(Platform.TELEGRAM, audio)
 
         await hub.inbound_bus.start()
         await hub.inbound_audio_bus.start()
@@ -229,11 +229,11 @@ class TestAudioPipelineBusFull:
 
         # Fill the per-platform queue (don't start bus — no feeder to drain)
         filler = make_inbound_message()
-        hub.inbound_bus.put(Platform.TELEGRAM, filler)
+        await hub.inbound_bus.put(Platform.TELEGRAM, filler)
 
         # Now send audio — it will be transcribed but put() raises QueueFull
         audio = make_audio()
-        hub.inbound_audio_bus.put(Platform.TELEGRAM, audio)
+        await hub.inbound_audio_bus.put(Platform.TELEGRAM, audio)
 
         await hub.inbound_audio_bus.start()
         task = asyncio.create_task(hub._audio_pipeline.run())

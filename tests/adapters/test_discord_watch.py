@@ -22,7 +22,7 @@ class TestWatchChannels:
 
         hub = MagicMock()
         hub.inbound_bus = MagicMock()
-        hub.inbound_bus.put = MagicMock()
+        hub.inbound_bus.put = AsyncMock()
 
         adapter = DiscordAdapter(
             hub=hub,
@@ -68,7 +68,7 @@ class TestWatchChannels:
 
         hub = MagicMock()
         hub.inbound_bus = MagicMock()
-        hub.inbound_bus.put = MagicMock()
+        hub.inbound_bus.put = AsyncMock()
 
         adapter = DiscordAdapter(
             hub=hub,
@@ -117,7 +117,7 @@ class TestWatchChannels:
 
         hub = MagicMock()
         hub.inbound_bus = MagicMock()
-        hub.inbound_bus.put = MagicMock()
+        hub.inbound_bus.put = AsyncMock()
 
         adapter = DiscordAdapter(
             hub=hub,
@@ -154,7 +154,7 @@ class TestWatchChannels:
 
         hub = MagicMock()
         hub.inbound_bus = MagicMock()
-        hub.inbound_bus.put = MagicMock()
+        hub.inbound_bus.put = AsyncMock()
 
         adapter = DiscordAdapter(
             hub=hub,
@@ -201,7 +201,7 @@ class TestWatchChannels:
 
         hub = MagicMock()
         hub.inbound_bus = MagicMock()
-        hub.inbound_bus.put = MagicMock()
+        hub.inbound_bus.put = AsyncMock()
 
         adapter = DiscordAdapter(
             hub=hub,
@@ -242,7 +242,7 @@ class TestWatchChannels:
 
         hub = MagicMock()
         hub.inbound_bus = MagicMock()
-        hub.inbound_bus.put = MagicMock()
+        hub.inbound_bus.put = AsyncMock()
 
         adapter = DiscordAdapter(
             hub=hub,

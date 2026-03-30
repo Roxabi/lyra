@@ -35,8 +35,8 @@ class Bus(Protocol[T]):
         """Register a bounded queue for the given platform."""
         ...
 
-    def put(self, platform: Platform, item: T) -> None:
-        """Enqueue an item on the platform's queue (synchronous, non-blocking)."""
+    async def put(self, platform: Platform, item: T) -> None:
+        """Enqueue an item on the platform's queue."""
         ...
 
     async def get(self) -> T:

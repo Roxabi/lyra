@@ -55,7 +55,7 @@ async def test_backpressure_sends_ack_when_bus_full() -> None:
 
     hub = MagicMock()
     hub.inbound_bus = MagicMock()
-    hub.inbound_bus.put = MagicMock(side_effect=asyncio.QueueFull())
+    hub.inbound_bus.put = AsyncMock(side_effect=asyncio.QueueFull())
 
     bot = AsyncMock()
     bot.get_me = AsyncMock(return_value=SimpleNamespace(username="lyra_bot"))
@@ -95,7 +95,7 @@ async def test_telegram_msg_manager_injection_backpressure_ack() -> None:
 
     hub = MagicMock()
     hub.inbound_bus = MagicMock()
-    hub.inbound_bus.put = MagicMock(side_effect=asyncio.QueueFull())
+    hub.inbound_bus.put = AsyncMock(side_effect=asyncio.QueueFull())
 
     bot = AsyncMock()
     bot.get_me = AsyncMock(return_value=SimpleNamespace(username="lyra_bot"))
@@ -169,7 +169,7 @@ async def test_on_message_drops_and_notifies_when_hub_circuit_open() -> None:
 
     hub = MagicMock()
     hub.inbound_bus = MagicMock()
-    hub.inbound_bus.put = MagicMock()
+    hub.inbound_bus.put = AsyncMock()
 
     bot = AsyncMock()
     bot.get_me = AsyncMock(return_value=SimpleNamespace(username="lyra_bot"))

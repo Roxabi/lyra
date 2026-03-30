@@ -13,7 +13,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from ..agent import AgentBase
@@ -26,11 +26,11 @@ from ..message import (
 )
 from ..pool import Pool
 from .message_pipeline import (
+    _SESSION_FALLTHROUGH_MSG,
     Action,
     PipelineResult,
     ResumeStatus,
     TraceHook,
-    _SESSION_FALLTHROUGH_MSG,
 )
 
 if TYPE_CHECKING:
@@ -265,19 +265,23 @@ class CommandMiddleware:
         if router and router.is_command(msg):
             _cmd = msg.text.split()[0] if msg.text else ""
             ctx.trace("processor", "command_detected", command=_cmd)
-            return await self._dispatch_command(msg, router, ctx.pool, ctx.key, ctx, next)
+            return await self._dispatch_command(
+                msg, router, ctx, next
+            )
 
         return await next(msg, ctx)
 
-    async def _dispatch_command(
+    async def _dispatch_command(  # noqa: PLR0913
         self,
         msg: InboundMessage,
         router: Any,
-        pool: Pool,
-        key: RoutingKey,
         ctx: PipelineContext,
         next: Next,
     ) -> PipelineResult:
+        assert ctx.pool is not None
+        assert ctx.key is not None
+        pool = ctx.pool
+        key = ctx.key
         _agent = ctx.hub.agent_registry.get(pool.agent_name)
         if _agent is not None and hasattr(_agent, "configure_pool"):
             _agent.configure_pool(pool)

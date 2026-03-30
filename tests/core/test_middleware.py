@@ -8,9 +8,6 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
-from lyra.core.agent import Agent
 from lyra.core.hub.message_pipeline import Action, PipelineResult
 from lyra.core.hub.middleware import (
     CommandMiddleware,
@@ -24,8 +21,7 @@ from lyra.core.hub.middleware import (
     build_default_pipeline,
 )
 from lyra.core.message import Platform, Response
-from tests.core.conftest import _make_hub, _NullAgent, make_inbound_message
-
+from tests.core.conftest import _make_hub, make_inbound_message
 
 _DROP = PipelineResult(action=Action.DROP)
 _PASS = PipelineResult(action=Action.SUBMIT_TO_POOL)
@@ -136,7 +132,7 @@ class TestResolveBinding:
         next_fn = _make_next()
         msg = make_inbound_message()
 
-        result = await mw(msg, ctx, next_fn)
+        await mw(msg, ctx, next_fn)
 
         next_fn.assert_awaited_once()
         assert ctx.binding is not None
@@ -193,7 +189,7 @@ class TestCreatePool:
         next_fn = _make_next()
         msg = make_inbound_message()
 
-        result = await mw(msg, ctx, next_fn)
+        await mw(msg, ctx, next_fn)
 
         next_fn.assert_awaited_once()
         assert ctx.pool is not None
@@ -220,7 +216,7 @@ class TestCommand:
         next_fn = _make_next()
         msg = make_inbound_message()
 
-        result = await mw(msg, ctx, next_fn)
+        await mw(msg, ctx, next_fn)
 
         next_fn.assert_awaited_once()
 
@@ -269,7 +265,7 @@ class TestCommand:
         next_fn = _make_next()
         msg = make_inbound_message()
 
-        result = await mw(msg, ctx, next_fn)
+        await mw(msg, ctx, next_fn)
 
         next_fn.assert_awaited_once()
 

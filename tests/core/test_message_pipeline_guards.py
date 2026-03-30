@@ -17,6 +17,7 @@ from tests.core.conftest import (
     _MockAdapter,
     _NullAgent,
     make_inbound_message,
+    push_to_hub,
 )
 
 # -------------------------------------------------------------------
@@ -232,7 +233,7 @@ class TestPipelineIntegration:
         submitted: list[InboundMessage] = []
         object.__setattr__(pool, "submit", lambda m: submitted.append(m))
 
-        await hub.bus.put(msg)
+        await push_to_hub(hub, msg)
         try:
             await asyncio.wait_for(hub.run(), timeout=0.3)
         except asyncio.TimeoutError:

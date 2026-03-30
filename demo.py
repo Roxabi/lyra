@@ -39,7 +39,8 @@ async def main() -> None:
     hub.register_adapter(Platform.TELEGRAM, "main", adapter)
     hub.register_binding(Platform.TELEGRAM, "main", "*", "echo", "telegram:main:*")
 
-    # Start hub consumer
+    # Start bus feeders + hub consumer
+    await hub.inbound_bus.start()
     hub_task = asyncio.create_task(hub.run())
 
     # Simulate messages
@@ -59,10 +60,10 @@ async def main() -> None:
             trust_level=TrustLevel.TRUSTED,
         )
         print(f"  -> {text}")
-        await hub.bus.put(msg)
+        hub.inbound_bus.put(Platform.TELEGRAM, msg)
 
     # Let the hub process all messages
-    await hub.bus.join()
+    await hub.inbound_bus._staging.join()  # type: ignore[union-attr]
 
     print(f"\nDone — {len(adapter.responses)} messages routed successfully.")
     hub_task.cancel()

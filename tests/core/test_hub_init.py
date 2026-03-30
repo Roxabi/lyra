@@ -90,13 +90,11 @@ class TestAgent:
 
 class TestHubInit:
     def test_inbound_bus_exists(self) -> None:
-        from lyra.core.inbound_bus import InboundBus
+        from lyra.core.inbound_bus import LocalBus
 
         hub = Hub()
         assert Hub.BUS_SIZE == 100
-        assert isinstance(hub.inbound_bus, InboundBus)
-        # hub.bus is a backward-compat alias for the staging queue (unbounded)
-        assert isinstance(hub.bus, asyncio.Queue)
+        assert isinstance(hub.inbound_bus, LocalBus)
 
     def test_per_platform_queue_is_bounded_after_register_adapter(self) -> None:
         hub = Hub()

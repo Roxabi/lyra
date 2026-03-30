@@ -17,7 +17,7 @@ from lyra.core.hub import Hub
 from lyra.core.hub.message_pipeline import Action, PipelineResult
 from lyra.core.hub.middleware import MiddlewarePipeline
 from lyra.core.message import InboundMessage, OutboundAudio, Response
-from tests.core.conftest import make_inbound_message
+from tests.core.conftest import make_inbound_message, push_to_hub
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -31,7 +31,7 @@ def _make_pipeline_result(response: Response) -> PipelineResult:
 
 async def _run_hub_one_msg(hub: Hub, msg: InboundMessage) -> None:
     """Put *msg* on the bus and run Hub.run() until it processes one message."""
-    await hub.bus.put(msg)
+    await push_to_hub(hub, msg)
     try:
         await asyncio.wait_for(hub.run(), timeout=0.3)
     except asyncio.TimeoutError:

@@ -34,7 +34,7 @@ from lyra.core.message import (
 )
 from lyra.core.pool import Pool
 
-from .conftest import make_echo_plugin_dir, make_message, make_router
+from .conftest import make_echo_plugin_dir, make_message, make_router, push_to_hub
 
 # ---------------------------------------------------------------------------
 # Helpers local to this file
@@ -158,7 +158,7 @@ class TestBangPrefixFallthrough:
             Platform.TELEGRAM, "main", "chat:42", "lyra", "telegram:main:chat:42"
         )
 
-        await hub.bus.put(make_message(content="!unknown_xyz"))
+        await push_to_hub(hub, make_message(content="!unknown_xyz"))
 
         try:
             await asyncio.wait_for(hub.run(), timeout=0.3)

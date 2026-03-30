@@ -7,7 +7,8 @@ from typing import TYPE_CHECKING
 
 from ..agent import AgentBase
 from ..audio_pipeline import AudioPipeline
-from ..inbound_bus import InboundBus
+from ..bus import Bus
+from ..inbound_bus import LocalBus
 from ..message import InboundAudio, InboundMessage, Platform
 from ..pool import Pool
 from .hub_outbound import HubOutboundMixin
@@ -43,7 +44,7 @@ log = logging.getLogger(__name__)
 
 
 class Hub(HubOutboundMixin):
-    """Central hub: InboundBus + OutboundDispatchers + adapter registry + pools."""
+    """Central hub: Bus + OutboundDispatchers + adapter registry + pools."""
 
     # Class-level defaults used directly in tests and when Hub() is constructed
     # without config.  Production values come from [hub] in config.toml via
@@ -83,12 +84,12 @@ class Hub(HubOutboundMixin):
         max_merged_chars: int = MAX_MERGED_CHARS,
     ) -> None:
         self._platform_queue_maxsize = platform_queue_maxsize
-        self.inbound_bus: InboundBus[InboundMessage] = InboundBus(
+        self.inbound_bus: Bus[InboundMessage] = LocalBus(
             name="inbound",
             staging_maxsize=staging_maxsize,
             queue_depth_threshold=queue_depth_threshold,
         )
-        self.inbound_audio_bus: InboundBus[InboundAudio] = InboundBus(
+        self.inbound_audio_bus: Bus[InboundAudio] = LocalBus(
             name="inbound-audio",
             staging_maxsize=staging_maxsize,
             queue_depth_threshold=queue_depth_threshold,
@@ -124,10 +125,6 @@ class Hub(HubOutboundMixin):
     @property
     def pools(self) -> dict[str, Pool]:
         return self._pool_manager.pools
-
-    @property
-    def bus(self) -> asyncio.Queue[InboundMessage]:
-        return self.inbound_bus._staging
 
     def register_agent(self, agent: AgentBase) -> None:
         """Register an agent implementation by name."""

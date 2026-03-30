@@ -17,7 +17,7 @@ from lyra.core.message import (
 )
 from lyra.core.render_events import RenderEvent, TextRenderEvent
 from lyra.tts import TTSService
-from tests.core.conftest import MockAdapter, make_inbound_message
+from tests.core.conftest import MockAdapter, make_inbound_message, push_to_hub
 
 
 def _mock_tts_on(hub: Hub) -> AsyncMock:
@@ -345,7 +345,7 @@ class TestHubRunStreaming:
         )
 
         msg = make_inbound_message(platform="telegram", bot_id="main", user_id="alice")
-        await hub.bus.put(msg)
+        await push_to_hub(hub, msg)
 
         try:
             await asyncio.wait_for(hub.run(), timeout=0.5)

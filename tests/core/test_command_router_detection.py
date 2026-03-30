@@ -34,7 +34,7 @@ from lyra.core.message import (
 from lyra.core.messages import MessageManager
 from lyra.core.pool import Pool
 
-from .conftest import make_echo_plugin_dir, make_message, make_router
+from .conftest import make_echo_plugin_dir, make_message, make_router, push_to_hub
 
 TOML_PATH = (
     Path(__file__).resolve().parent.parent.parent
@@ -261,7 +261,7 @@ class TestPassthroughNonCommandInHub:
         )
 
         plain_msg = make_message(content="hello, how are you?")
-        await hub.bus.put(plain_msg)
+        await push_to_hub(hub, plain_msg)
 
         try:
             await asyncio.wait_for(hub.run(), timeout=0.3)
@@ -311,7 +311,7 @@ class TestPassthroughNonCommandInHub:
         )
 
         command_msg = make_message(content="/help")
-        await hub.bus.put(command_msg)
+        await push_to_hub(hub, command_msg)
 
         try:
             await asyncio.wait_for(hub.run(), timeout=0.3)

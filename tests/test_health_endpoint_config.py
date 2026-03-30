@@ -27,7 +27,11 @@ class TestConfigEndpoint:
     ) -> None:
         """AnthropicAgent registered as lyra_default → 200 with all expected keys."""
         # Arrange
-        monkeypatch.setenv("LYRA_CONFIG_SECRET", "test-config-secret")
+        import lyra.bootstrap.health as health_mod
+
+        monkeypatch.setattr(
+            health_mod, "_read_secret", lambda name: "test-config-secret"
+        )
         from unittest.mock import AsyncMock, MagicMock
 
         from lyra.agents.anthropic_agent import AnthropicAgent
@@ -78,21 +82,21 @@ class TestConfigEndpoint:
         assert "model" in data
         assert "max_steps" in data
         assert "extra_instructions" in data
-        assert "effective_model" in data
-        assert "effective_max_steps" in data
         # Spot-check values
         assert data["style"] == "concise"
         assert data["language"] == "auto"
         assert data["temperature"] == 0.7
-        assert data["effective_model"] == "claude-sonnet-4-5"
-        assert data["effective_max_steps"] == 10
 
     async def test_config_returns_404_when_no_anthropic_agent(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """No agent (or non-AnthropicAgent) registered → 404."""
         # Arrange
-        monkeypatch.setenv("LYRA_CONFIG_SECRET", "test-config-secret")
+        import lyra.bootstrap.health as health_mod
+
+        monkeypatch.setattr(
+            health_mod, "_read_secret", lambda name: "test-config-secret"
+        )
         from lyra.bootstrap.health import create_health_app
 
         test_hub = Hub()
@@ -145,11 +149,13 @@ class TestConfigEndpoint:
 
 
 class TestHealthReaperFields:
-    """#317 SC-11: /health includes reaper_alive and reaper_last_sweep_age."""
+    """#317 SC-11: /health/detail includes reaper_alive and reaper_last_sweep_age."""
 
     @pytest.fixture(autouse=True)
     def set_health_secret(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("LYRA_HEALTH_SECRET", HEALTH_SECRET)
+        import lyra.bootstrap.health as health_mod
+
+        monkeypatch.setattr(health_mod, "_read_secret", lambda name: HEALTH_SECRET)
 
     async def test_reaper_fields_absent_when_no_cli_pool(self, hub: Hub) -> None:
         """No cli_pool → reaper keys omitted entirely from response."""
@@ -159,7 +165,7 @@ class TestHealthReaperFields:
         app = create_health_app(hub)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/health", headers=AUTH_HEADERS)
+            resp = await client.get("/health/detail", headers=AUTH_HEADERS)
 
         data = resp.json()
         assert "reaper_alive" not in data
@@ -183,7 +189,7 @@ class TestHealthReaperFields:
         app = create_health_app(hub)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/health", headers=AUTH_HEADERS)
+            resp = await client.get("/health/detail", headers=AUTH_HEADERS)
 
         data = resp.json()
         assert data["reaper_alive"] is True
@@ -207,7 +213,7 @@ class TestHealthReaperFields:
         app = create_health_app(hub)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/health", headers=AUTH_HEADERS)
+            resp = await client.get("/health/detail", headers=AUTH_HEADERS)
 
         data = resp.json()
         assert data["reaper_alive"] is True

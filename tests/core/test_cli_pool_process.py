@@ -30,7 +30,7 @@ from .conftest_cli_pool import (
 class TestCliPoolBuildCmd:
     def test_basic_cmd(self) -> None:
         pool = CliPool()
-        cmd = pool._build_cmd(DEFAULT_MODEL)
+        cmd, prompt_file = pool._build_cmd(DEFAULT_MODEL)
 
         assert cmd[0] == "claude"
         assert "--input-format" in cmd
@@ -42,49 +42,66 @@ class TestCliPoolBuildCmd:
         assert "--max-turns" not in cmd
         assert "--allowedTools" not in cmd
         assert "--resume" not in cmd
+        assert prompt_file is None
 
     def test_explicit_max_turns(self) -> None:
         pool = CliPool()
         cfg = ModelConfig(max_turns=10)
-        cmd = pool._build_cmd(cfg)
+        cmd, prompt_file = pool._build_cmd(cfg)
 
         assert "--max-turns" in cmd
         idx = cmd.index("--max-turns")
         assert cmd[idx + 1] == "10"
+        assert prompt_file is None
 
     def test_with_tools(self) -> None:
         pool = CliPool()
         cfg = ModelConfig(tools=("Read", "Grep"))
-        cmd = pool._build_cmd(cfg)
+        cmd, prompt_file = pool._build_cmd(cfg)
 
         assert "--allowedTools" in cmd
         idx = cmd.index("--allowedTools")
         assert cmd[idx + 1] == "Read,Grep"
+        assert prompt_file is None
 
     def test_with_session_id(self) -> None:
         pool = CliPool()
-        cmd = pool._build_cmd(DEFAULT_MODEL, session_id="abc123")
+        cmd, prompt_file = pool._build_cmd(DEFAULT_MODEL, session_id="abc123")
 
         assert "--resume" in cmd
         idx = cmd.index("--resume")
         assert cmd[idx + 1] == "abc123"
+        assert prompt_file is None
 
     def test_no_resume_when_session_id_is_none(self) -> None:
         pool = CliPool()
-        cmd = pool._build_cmd(DEFAULT_MODEL, session_id=None)
+        cmd, prompt_file = pool._build_cmd(DEFAULT_MODEL, session_id=None)
         assert "--resume" not in cmd
+        assert prompt_file is None
 
     def test_system_prompt_included_when_provided(self) -> None:
+        import os
+        from pathlib import Path
+
         pool = CliPool()
-        cmd = pool._build_cmd(DEFAULT_MODEL, system_prompt="You are helpful.")
-        assert "--system-prompt" in cmd
-        idx = cmd.index("--system-prompt")
-        assert cmd[idx + 1] == "You are helpful."
+        cmd, prompt_file = pool._build_cmd(DEFAULT_MODEL, system_prompt="You are helpful.")
+        try:
+            assert "--system-prompt-file" in cmd
+            idx = cmd.index("--system-prompt-file")
+            assert cmd[idx + 1] == prompt_file
+            assert prompt_file is not None
+            assert Path(prompt_file).exists()
+            assert Path(prompt_file).read_text() == "You are helpful."
+        finally:
+            if prompt_file:
+                os.unlink(prompt_file)
 
     def test_system_prompt_omitted_when_empty(self) -> None:
         pool = CliPool()
-        cmd = pool._build_cmd(DEFAULT_MODEL, system_prompt="")
+        cmd, prompt_file = pool._build_cmd(DEFAULT_MODEL, system_prompt="")
         assert "--system-prompt" not in cmd
+        assert "--system-prompt-file" not in cmd
+        assert prompt_file is None
 
 
 # ---------------------------------------------------------------------------

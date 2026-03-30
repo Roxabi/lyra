@@ -123,4 +123,4 @@ class TestCmdSvcErrorHandling:
             side_effect=ServiceControlFailed("subprocess_error")
         )
         result = await cmd_svc(msg, _POOL, ["restart", "lyra"])
-        assert "error" in result.content.lower()
+        assert result.content == "Something went wrong. Please try again."

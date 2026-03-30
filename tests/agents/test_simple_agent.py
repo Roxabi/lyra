@@ -144,7 +144,7 @@ class TestSimpleAgentProcess:
         provider.complete.assert_awaited_once()
         args = provider.complete.call_args
         assert args[0][0] == "telegram:main:bob"
-        assert args[0][1] == "test text"
+        assert args[0][1] == "<user_message>test text</user_message>"
 
 
 # ---------------------------------------------------------------------------
@@ -296,7 +296,7 @@ class TestSimpleAgentStreaming:
         provider.stream.assert_awaited_once()
         args = provider.stream.call_args[0]
         assert args[0] == "tg:main:user1"
-        assert args[1] == "my question"
+        assert args[1] == "<user_message>my question</user_message>"
 
     async def test_returns_response_when_provider_has_no_stream_method(self) -> None:
         # Arrange — provider without stream() falls back to complete()

@@ -21,6 +21,13 @@ class TestLoadCircuitConfigDefaults:
         """SC-16: Missing lyra.toml → 4 CBs with failure_threshold=5, recovery_timeout=60."""  # noqa: E501
         # Arrange — point LYRA_CONFIG at a nonexistent file
         monkeypatch.setenv("LYRA_CONFIG", str(tmp_path / "nonexistent.toml"))
+        import lyra.bootstrap.config as config_mod
+
+        monkeypatch.setattr(
+            config_mod,
+            "_validate_config_path",
+            lambda path_str: str(Path(path_str).resolve()),
+        )
 
         # Act
         from lyra.__main__ import (  # noqa: PLC0415
@@ -86,6 +93,13 @@ class TestLoadCircuitConfigTomlOverrides:
             "user_ids = ['telegram:tg:user:42']\n"
         )
         monkeypatch.setenv("LYRA_CONFIG", str(config))
+        import lyra.bootstrap.config as config_mod
+
+        monkeypatch.setattr(
+            config_mod,
+            "_validate_config_path",
+            lambda path_str: str(Path(path_str).resolve()),
+        )
 
         # Act
         from lyra.__main__ import (  # noqa: PLC0415
@@ -119,6 +133,13 @@ class TestLoadCircuitConfigTomlOverrides:
             "[admin]\nuser_ids = ['telegram:tg:user:1', 'discord:dc:user:2']\n"
         )
         monkeypatch.setenv("LYRA_CONFIG", str(config))
+        import lyra.bootstrap.config as config_mod
+
+        monkeypatch.setattr(
+            config_mod,
+            "_validate_config_path",
+            lambda path_str: str(Path(path_str).resolve()),
+        )
 
         # Act
         from lyra.__main__ import (  # noqa: PLC0415
@@ -142,6 +163,13 @@ class TestLoadCircuitConfigTomlOverrides:
         config = tmp_path / "lyra.toml"
         config.write_text("[circuit_breaker.hub]\nrecovery_timeout = 120\n")
         monkeypatch.setenv("LYRA_CONFIG", str(config))
+        import lyra.bootstrap.config as config_mod
+
+        monkeypatch.setattr(
+            config_mod,
+            "_validate_config_path",
+            lambda path_str: str(Path(path_str).resolve()),
+        )
 
         # Act
         from lyra.__main__ import (  # noqa: PLC0415

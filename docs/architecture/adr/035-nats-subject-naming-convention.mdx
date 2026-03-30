@@ -101,11 +101,23 @@ across the entire subject namespace.
 
 | Subject | Direction | Publisher | Subscriber | Payload type |
 |---------|-----------|-----------|------------|--------------|
-| `lyra.inbound.{platform}.{bot_id}` | adapter → hub | Adapter | Hub / NatsBus | `NatsInboundEnvelope` (JSON) |
-| `lyra.outbound.{platform}.{bot_id}` | hub → adapter | Hub / NatsBus | Adapter | `NatsChunkEnvelope` (JSON) |
+| `lyra.inbound.{platform}.{bot_id}` | adapter → hub | Adapter | Hub / NatsBus | `NatsInboundEnvelope` (TBD — Slice C) |
+| `lyra.outbound.{platform}.{bot_id}` | hub → adapter | Hub / NatsBus | Adapter | `NatsChunkEnvelope` (JSON, ADR-036) |
 
 `{platform}` is the lowercase platform name (`telegram`, `discord`).
 `{bot_id}` is the numeric bot ID string (consistent with ADR-001 routing key scheme).
+
+> **`scope_id` note:** ADR-001 routing key is `(platform, bot_id, scope_id)`. Subjects
+> encode only `{platform}.{bot_id}` — `scope_id` is intentionally absent. Subjects are
+> scoped to bot identity for ACL purposes; the Hub resolves `scope_id` from the inbound
+> envelope body after receiving the message.
+
+> **Multi-adapter note:** The outbound subject is per-bot, not per-session. All
+> concurrent user streams for a given bot share one subscription, disambiguated by
+> `stream_id` inside the envelope. Multiple adapter instances subscribing to the same
+> outbound subject will each receive all streams for that bot — this is intentional for
+> the current single-adapter-per-bot model. If multi-adapter deployments are ever
+> needed, `stream_id` should be included in the subject token.
 
 ### Tier 2 — Compute Offload (Slice B)
 
@@ -123,6 +135,11 @@ across the entire subject namespace.
 
 These subjects are reserved but not yet implemented. No code should publish or subscribe
 to `lyra.hub.*` or `lyra.monitor.*` before a dedicated ADR approves their payloads.
+
+> **ACL guard:** Until an operator identity is defined, `nats-server.conf` MUST include
+> `deny_publish: ["lyra.hub.command.>"]` for all existing identities (hub, adapters,
+> llm-worker, monitor). This prevents accidental or malicious control-plane access
+> through over-broad wildcards.
 
 ## Token Constraints
 
@@ -154,12 +171,17 @@ publish   ["lyra.llm.health.>"]
 subscribe ["lyra.llm.request"]
 ```
 
-The `monitor` identity (Slice A, A3 NATS health probe) has read-only access:
+The `monitor` identity (Slice A, A3 NATS health probe) is scoped to health subjects only:
 
 ```
 # Identity: monitor
-subscribe ["lyra.>"]
+subscribe ["lyra.llm.health.>", "lyra.monitor.health"]
 ```
+
+> **Security note:** `lyra.>` is intentionally **not** granted to the monitor identity.
+> `lyra.inbound.>` carries raw user messages and `lyra.outbound.>` carries LLM
+> responses — neither is needed for health monitoring. Granting `lyra.>` would create
+> a passive surveillance path if the monitor process were compromised.
 
 ## Consequences
 

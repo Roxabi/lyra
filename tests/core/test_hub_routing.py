@@ -118,7 +118,8 @@ class TestUnmatchedRouting:
             except asyncio.TimeoutError:
                 pass  # expected — run() never returns on its own
         assert any("unmatched" in r.message.lower() for r in caplog.records)
-        assert hub.inbound_bus.staging_qsize() == 0  # message was consumed (dropped, not re-queued)
+        # message was consumed (dropped, not re-queued)
+        assert hub.inbound_bus.staging_qsize() == 0
 
 
 # ---------------------------------------------------------------------------

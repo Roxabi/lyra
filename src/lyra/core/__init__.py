@@ -8,6 +8,7 @@ from .hub import (
     PipelineResult,
     RoutingKey,
 )
+from .inbound_bus import LocalBus
 from .message import (
     Attachment,
     Button,
@@ -21,7 +22,6 @@ from .message import (
     Response,
     RoutingContext,
 )
-from .inbound_bus import LocalBus
 from .pool import Pool
 from .render_events import (
     FileEditSummary,

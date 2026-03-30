@@ -48,7 +48,7 @@ async def run_lifecycle(  # noqa: PLR0913, C901 — lifecycle orchestration
         _loop.add_signal_handler(signal.SIGINT, stop.set)
         _loop.add_signal_handler(signal.SIGTERM, stop.set)
 
-    from lyra.bootstrap.utils import _log_task_failure
+    from lyra.bootstrap.utils import watchdog
 
     tasks = [
         asyncio.create_task(hub.run(), name="hub"),
@@ -65,7 +65,6 @@ async def run_lifecycle(  # noqa: PLR0913, C901 — lifecycle orchestration
         _audit_task = asyncio.create_task(
             _audit_consumer.run(), name="audit-consumer"
         )
-        _audit_task.add_done_callback(_log_task_failure)
         tasks.append(_audit_task)
     for tg_adapter in tg_adapters:
         tasks.append(
@@ -79,7 +78,6 @@ async def run_lifecycle(  # noqa: PLR0913, C901 — lifecycle orchestration
             dc_adapter.start(dc_token),
             name=f"discord:{dc_bot_cfg.bot_id}",
         )
-        _dc_task.add_done_callback(_log_task_failure)
         tasks.append(_dc_task)
 
     tg_active = [f"telegram:{a._bot_id}" for a in tg_adapters]
@@ -91,7 +89,7 @@ async def run_lifecycle(  # noqa: PLR0913, C901 — lifecycle orchestration
         health_port,
     )
 
-    await stop.wait()
+    await watchdog(tasks, stop)
 
     log.info("Shutdown signal received \u2014 stopping\u2026")
     for task in tasks:

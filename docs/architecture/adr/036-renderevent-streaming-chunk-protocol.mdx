@@ -1,0 +1,350 @@
+---
+title: "ADR-036: RenderEvent Streaming Chunk Protocol over NATS"
+description: Defines how AsyncIterator[RenderEvent] crosses the NATS boundary — envelope format, per-type serialization, ordering guarantees, and error handling for Hub-to-Adapter streaming in Slice C.
+---
+
+## Status
+
+Draft — pre-implementation design artifact for #445 Slice C.
+
+## Context
+
+Issue #454, part of #445 Slice C (Hub Extraction + IPC). When Hub and Adapter run in
+the same process, the Hub delivers responses as `AsyncIterator[RenderEvent]` passed
+directly to `OutboundDispatcher`. Once they are separate processes connected by NATS,
+this iterator cannot cross the process boundary — NATS delivers discrete messages, not
+Python iterators.
+
+The two concrete `RenderEvent` types are defined in `src/lyra/core/render_events.py`:
+
+```python
+@dataclass(frozen=True)
+class TextRenderEvent:
+    text: str
+    is_final: bool
+    is_error: bool = False
+
+@dataclass(frozen=True)
+class ToolSummaryRenderEvent:
+    files: dict[str, FileEditSummary]       # path → FileEditSummary
+    bash_commands: list[str]
+    web_fetches: list[str]
+    agent_calls: list[str]
+    silent_counts: SilentCounts             # reads, greps, globs
+    is_complete: bool = False
+```
+
+Supporting types:
+
+```python
+@dataclass(frozen=True)
+class FileEditSummary:
+    path: str
+    edits: list[str]
+    count: int = 0
+
+@dataclass(frozen=True)
+class SilentCounts:
+    reads: int = 0
+    greps: int = 0
+    globs: int = 0
+```
+
+A turn produces a sequence of zero or more `ToolSummaryRenderEvent`s (throttled,
+intermediate) followed by exactly one `TextRenderEvent(is_final=True)` at turn end.
+Text-only turns (no tool calls) omit `ToolSummaryRenderEvent` entirely.
+
+Three protocol shapes were considered.
+
+## Options Considered
+
+### Option A: Persistent outbound subject + streaming envelope (recommended)
+
+Each `RenderEvent` is published as one NATS message on `lyra.outbound.{platform}.{bot_id}`
+(ADR-035 Tier 1). Messages carry a `NatsChunkEnvelope` that identifies the logical stream,
+enforces ordering, and marks termination.
+
+```json
+{
+  "stream_id": "01955b7e-4f2c-7a3d-8b1e-2c9f4d6e8a0c",
+  "seq": 0,
+  "event_type": "tool_summary",
+  "payload": { ... },
+  "done": false
+}
+```
+
+The Adapter subscribes to the outbound subject, groups messages by `stream_id`, and
+reconstructs the `AsyncIterator[RenderEvent]` by sorting on `seq` and yielding until
+`done=true`.
+
+- **Pros:** Persistent subject enables proactive Hub→Adapter messages (future: typing
+  indicators, push notifications). Multiple concurrent turns share one subscription per
+  `{platform}.{bot_id}` — `stream_id` disambiguates. Adapter reconnects transparently
+  (NatsBus re-subscribes; in-flight streams are recoverable with JetStream in Slice D).
+  Aligns with the established outbound subject scheme (ADR-035).
+- **Cons:** Adapter must multiplex concurrent streams by `stream_id`. Gap detection
+  adds implementation complexity vs. a reply inbox.
+
+**Scope:** S
+
+### Option B: Reply inbox per request (ephemeral, similar to Slice B streaming LLM)
+
+Adapter publishes inbound message with a reply inbox (`nc.new_inbox()`). Hub publishes
+each chunk to the reply inbox. Adapter subscribes to its own inbox.
+
+- **Pros:** No multiplexing — each inbox carries exactly one stream. Subject lifetime
+  matches the request lifetime. Same pattern used by `NatsLlmDriver.stream()` in Slice B.
+- **Cons:** Inbox is ephemeral — lost on Adapter reconnect mid-stream (no recovery path
+  without JetStream). Hub cannot send proactive messages (no stable outbound subject per
+  adapter). Two separate subscription lifecycles to manage (inbound response + outbound
+  proactive). Violates the persistent subject model in ADR-035.
+
+**Scope:** S (implementation) — but accumulates structural debt.
+
+### Option C: Single-message full response (batch, no streaming)
+
+Hub serializes the entire `list[RenderEvent]` produced by a turn into one NATS message
+and publishes it to the outbound subject after the turn completes.
+
+- **Pros:** Simplest receiver logic — no streaming reconstruction. No `seq` or `stream_id`
+  needed.
+- **Cons:** Eliminates real-time streaming. The entire ADR-032 streaming pipeline (typed
+  events, throttled tool summaries, incremental text delivery) is collapsed to a batch.
+  Telegram/Discord edit-in-place experience — the primary user-visible streaming UX —
+  is broken. Incompatible with the ADR-032 `AsyncIterator[RenderEvent]` contract.
+
+**Scope:** XS (implementation) + XL (UX regression).
+
+## Decision
+
+**Option A — persistent outbound subject with `NatsChunkEnvelope`.**
+
+The reply-inbox pattern (Option B) is appropriate for one-off request-reply (NatsLlmDriver)
+but not for the Hub→Adapter delivery path, which must support both streaming responses
+and future proactive messages on the same subscription. Option C is disqualified by the
+streaming UX regression it causes.
+
+## Envelope Format
+
+### `NatsChunkEnvelope`
+
+Published on `lyra.outbound.{platform}.{bot_id}` (one message per `RenderEvent`):
+
+```typescript
+interface NatsChunkEnvelope {
+  stream_id: string;      // UUIDv4, one per Hub turn
+  seq: number;            // 0-indexed, monotonically increasing per stream_id
+  event_type: "text" | "tool_summary" | "error";
+  payload: object;        // discriminated by event_type — see below
+  done: boolean;          // true on last message (including error termination)
+}
+```
+
+`stream_id` is a UUIDv4 string generated at the start of each Hub turn. It uniquely
+identifies one logical `AsyncIterator[RenderEvent]` across all concurrent turns on the
+same `{platform}.{bot_id}` subject.
+
+### Payload schemas by `event_type`
+
+#### `"text"` — maps to `TextRenderEvent`
+
+```json
+{
+  "stream_id": "01955b7e-4f2c-7a3d-8b1e-2c9f4d6e8a0c",
+  "seq": 2,
+  "event_type": "text",
+  "payload": {
+    "text": "Here is the result...",
+    "is_final": true,
+    "is_error": false
+  },
+  "done": true
+}
+```
+
+`is_final=true` ⟹ this is the last `TextRenderEvent` in the turn. Combined with
+`done=true` on the envelope, this single message closes the stream. A text-only turn
+(no tool calls) produces exactly one message: `seq=0, done=true`.
+
+#### `"tool_summary"` — maps to `ToolSummaryRenderEvent`
+
+```json
+{
+  "stream_id": "01955b7e-4f2c-7a3d-8b1e-2c9f4d6e8a0c",
+  "seq": 0,
+  "event_type": "tool_summary",
+  "payload": {
+    "files": {
+      "src/lyra/core/bus.py": {
+        "path": "src/lyra/core/bus.py",
+        "edits": ["add async put()"],
+        "count": 1
+      }
+    },
+    "bash_commands": ["pytest tests/"],
+    "web_fetches": [],
+    "agent_calls": [],
+    "silent_counts": {"reads": 4, "greps": 2, "globs": 1},
+    "is_complete": false
+  },
+  "done": false
+}
+```
+
+`is_complete=false` means more tool events or the final text are still coming.
+`is_complete=true` means this is the final tool summary snapshot before `TextRenderEvent`.
+
+#### `"error"` — stream abort
+
+```json
+{
+  "stream_id": "01955b7e-4f2c-7a3d-8b1e-2c9f4d6e8a0c",
+  "seq": 3,
+  "event_type": "error",
+  "payload": {
+    "code": "STREAM_ABORTED",
+    "message": "Hub turn failed: tool execution timeout"
+  },
+  "done": true
+}
+```
+
+Error chunks always carry `done=true`. The `code` field uses SCREAMING_SNAKE_CASE.
+Reserved error codes:
+
+| Code | Meaning |
+|------|---------|
+| `STREAM_ABORTED` | Hub aborted the turn mid-stream (exception, timeout, cancellation) |
+| `STREAM_TIMEOUT` | Hub timed out waiting for the next LLM event |
+| `DESERIALIZATION_ERROR` | Hub could not serialize a `RenderEvent` to JSON |
+
+### `NatsInboundEnvelope`
+
+Published on `lyra.inbound.{platform}.{bot_id}` by Adapters (informational, not part
+of this ADR — specified in Slice C implementation):
+
+```typescript
+interface NatsInboundEnvelope {
+  stream_id: string;    // UUIDv4, referenced by outbound chunks for this turn
+  platform: string;
+  bot_id: string;
+  user_id: string;
+  text: string;
+  // ... remaining TurnInput fields
+}
+```
+
+The Adapter-generated `stream_id` in the inbound envelope is what the Hub uses to
+label the corresponding outbound chunk stream. This creates a 1:1 correlation between
+inbound request and outbound stream.
+
+## Ordering Guarantees
+
+NATS Core guarantees **in-order delivery per subject per connection**: messages
+published by a single publisher arrive at a subscriber in publication order over the
+same connection. Since one Hub process publishes all chunks for a given turn
+sequentially, and NATS Core preserves publication order, `seq` values will arrive in
+order under normal conditions.
+
+`seq` serves three purposes:
+1. **Gap detection** — if receiver gets seq `0, 1, 3`, seq `2` was dropped (NATS
+   Core does not guarantee delivery under network partition). The receiver should
+   treat a gap as a stream abort and surface it as an error to the user.
+2. **Deduplication** (Slice D JetStream) — JetStream at-least-once delivery may
+   redeliver chunks; `seq` allows idempotent deduplication.
+3. **Multiplexing correctness** — `(stream_id, seq)` uniquely identifies a chunk
+   position even when multiple concurrent streams share the same subject.
+
+**Gap policy (Slice C, NATS Core):** Receiver waits up to `stream_timeout_s`
+(configurable, default 30s) for the next expected `seq`. On timeout, treat as
+`STREAM_ABORTED` and surface an error turn to the user. No reordering buffer is
+needed — NATS Core in-order guarantee makes out-of-order arrival impossible except
+in the dropped-message case, which gap detection already handles as a fatal event.
+
+## Error Handling Summary
+
+| Condition | Detection | Recovery |
+|-----------|-----------|----------|
+| Hub sends `event_type="error"` | Explicit error chunk | Surface error to user; stream closed |
+| No chunk received within `stream_timeout_s` | Receiver timer | Treat as `STREAM_ABORTED`; surface error |
+| Gap in `seq` (dropped message) | `seq` monotonicity check | Treat as fatal; surface error (stream state is inconsistent) |
+| Adapter reconnects mid-stream | NATS Core: missed messages | Treat as `STREAM_ABORTED`; user sees partial response (Slice D JetStream adds recovery) |
+| Hub crashes mid-turn | No `done=true` received | Receiver timer fires after `stream_timeout_s` |
+
+## Serialization Notes
+
+- All payloads are JSON (UTF-8). Consistent with ADR-4 (JSON for NATS payloads).
+- `FileEditSummary.edits` is a `list[str]` — serializes directly as a JSON array.
+- `SilentCounts` fields are integers — no special handling.
+- `ToolSummaryRenderEvent.files` is `dict[str, FileEditSummary]` — serializes as a
+  JSON object keyed by file path.
+- `frozen=True` dataclasses have no circular references — `dataclasses.asdict()` is
+  safe for serialization.
+- `platform_meta` (present on `TurnInput`, not on `RenderEvent`) is **not** in the
+  outbound payload. `RenderEvent`s contain no non-serializable callables.
+
+## Consequences
+
+### Positive
+
+- `RenderEvent` types map cleanly to JSON — no custom serializer needed beyond
+  `dataclasses.asdict()` plus the `event_type` discriminator.
+- `stream_id` enables the Adapter to correlate each outbound stream with the
+  inbound turn that triggered it — useful for logging and turn-level metrics.
+- Protocol is forward-compatible: new `RenderEvent` subtypes add a new `event_type`
+  value. Adapters that do not recognize an `event_type` can log and skip without
+  breaking the stream.
+- Gap detection and timeout handling are sufficient for Slice C (single-connection,
+  low-latency LAN). JetStream persistence (Slice D) upgrades recovery without
+  changing the envelope format.
+
+### Negative
+
+- Adapter must maintain per-`stream_id` receive state (expected `seq`, timeout timer).
+  For N concurrent turns this is N small state objects — acceptable at personal-scale
+  (2–5 concurrent turns).
+- NATS Core provides no delivery guarantee on network partition. Under partition, an
+  in-flight turn is aborted and the user sees an error. JetStream (Slice D) adds
+  at-least-once delivery, but the envelope format is compatible — no protocol change
+  needed.
+
+### Neutral
+
+- `TextRenderEvent.is_final=true` and `NatsChunkEnvelope.done=true` are always
+  paired on the final chunk. Receivers may use either field; `done=true` is the
+  canonical stream-close signal.
+- The streaming LLM path (Slice B, `NatsLlmDriver.stream()`) uses NATS reply
+  inboxes and `LlmEvent` types — it is a separate protocol, not `NatsChunkEnvelope`.
+  The two protocols do not intersect.
+
+## Implementation Notes (Slice C)
+
+When implementing NatsBus in Slice C2:
+
+1. **Hub side (`NatsBus.put()`):**
+   - Generate `stream_id = str(uuid.uuid4())` at turn start (or accept it from
+     the inbound envelope).
+   - Wrap each `RenderEvent` in `NatsChunkEnvelope` with monotonically incrementing
+     `seq`.
+   - Set `done=True` on the last chunk (the `TextRenderEvent(is_final=True)`).
+   - Publish all chunks to `lyra.outbound.{platform}.{bot_id}` via `nc.publish()`.
+
+2. **Adapter side (stream reassembly):**
+   - Subscribe to `lyra.outbound.{platform}.{bot_id}`.
+   - Route incoming envelopes to per-`stream_id` queues (an `asyncio.Queue` per
+     active stream).
+   - In the consumer coroutine: `async for envelope in stream_queue` → deserialize
+     `payload` by `event_type` → yield `RenderEvent` → stop on `done=True`.
+   - Arm a `stream_timeout_s` timer per stream; cancel on `done=True`.
+
+3. **Deserialization:**
+   - Discriminate on `event_type` before deserializing `payload`:
+     ```python
+     match envelope["event_type"]:
+         case "text":         return TextRenderEvent(**envelope["payload"])
+         case "tool_summary": return _tool_summary_from_dict(envelope["payload"])
+         case "error":        raise NatsStreamError(envelope["payload"])
+     ```
+   - `_tool_summary_from_dict` reconstructs nested dataclasses
+     (`FileEditSummary`, `SilentCounts`) from the plain JSON dict.

@@ -1,0 +1,185 @@
+---
+title: "ADR-035: NATS Subject Naming Convention for Hub IPC"
+description: Defines the canonical subject hierarchy for all NATS communication in Lyra — Hub IPC (Slice C), LLM compute offload (Slice B), and future control-plane subjects.
+---
+
+## Status
+
+Draft — pre-implementation design artifact for #445 Slice C.
+
+## Context
+
+Issue #454, part of #445 Slice C (Hub Extraction + IPC). Slice C will split each
+`lyra_{platform}` process into a thin adapter (pure I/O) and a shared `lyra_hub` process
+connected by NATS. Before any Slice C code lands, the subject naming scheme must be
+frozen so that it can be consistently referenced in NatsBus, adapter clients, nkey ACL
+policies, health monitoring, and operator runbooks.
+
+The subject scheme also needs to be compatible with Slice B subjects
+(`lyra.llm.request`, `lyra.llm.health.{worker_id}`) which are already specified in
+the #445 spec.
+
+Three naming structures were considered for Hub IPC subjects.
+
+## Options Considered
+
+### Option A: Domain-first hierarchy — `lyra.{domain}.{qualifier...}` (recommended)
+
+```
+lyra.inbound.{platform}.{bot_id}       # adapter → hub
+lyra.outbound.{platform}.{bot_id}      # hub → adapter
+lyra.llm.request                       # hub → llm worker
+lyra.llm.health.{worker_id}            # llm worker → hub monitor
+lyra.hub.command.{cmd}                 # control plane → hub
+```
+
+ACL examples with nkey permissions:
+```
+# adapter process (telegram): can publish inbound, subscribe outbound
+publish   ["lyra.inbound.telegram.>"]
+subscribe ["lyra.outbound.telegram.>"]
+
+# hub process: subscribes all inbound, publishes all outbound + llm
+publish   ["lyra.outbound.>", "lyra.llm.request"]
+subscribe ["lyra.inbound.>"]
+
+# llm-worker: subscribes llm.request, publishes llm.health
+publish   ["lyra.llm.health.>"]
+subscribe ["lyra.llm.request"]
+```
+
+- **Pros:** Domain segments map directly to nkey ACL wildcards. `lyra.inbound.>` grants
+  access to all platforms at once — useful for the hub identity. Adding a new platform
+  (voice, SMS) requires no ACL schema change. Subject tokens are readable on the wire
+  (`nats sub "lyra.>"`). Consistent with Slice B subjects already in the spec.
+- **Cons:** None identified.
+
+**Scope:** S
+
+### Option B: Direction-first — `lyra.{direction}.{platform}.{bot_id}`
+
+```
+lyra.adapter-to-hub.telegram.12345
+lyra.hub-to-adapter.telegram.12345
+```
+
+- **Pros:** Direction is the first differentiator — matches mental model for IPC.
+- **Cons:** `adapter-to-hub` and `hub-to-adapter` are verbose compared to `inbound`/`outbound`.
+  Direction-first groups unrelated platforms together under the same prefix
+  (`lyra.inbound.*`) — harder to write per-platform ACLs. Does not align with the
+  Slice B subject scheme (`lyra.llm.request` is domain-first, not direction-first).
+
+**Scope:** S
+
+### Option C: Platform-first — `lyra.{platform}.{bot_id}.{direction}`
+
+```
+lyra.telegram.12345.in
+lyra.discord.67890.out
+```
+
+- **Pros:** Platform grouping. `lyra.telegram.>` grants all Telegram subjects at once.
+- **Cons:** ACL for the hub identity (`subscribe all inbound subjects across platforms`)
+  requires a wildcard that also matches outbound subjects (`lyra.*.*.in` vs `lyra.*.*`).
+  Harder to express "hub can subscribe to inbound for all platforms" without also granting
+  outbound. Ordering is less idiomatic — NATS convention is `{app}.{noun}.{verb}`.
+
+**Scope:** S
+
+## Decision
+
+**Option A — `lyra.{domain}.{qualifier...}`.**
+
+Domain-first naming aligns with NATS convention (`{app}.{noun}.{verb...}`) and produces
+ACL policies that map cleanly to process identities. The Slice B subjects in the #445
+spec already use this scheme — adopting it for Hub IPC subjects maintains consistency
+across the entire subject namespace.
+
+## Subject Catalogue
+
+### Tier 1 — Hub IPC (Slice C)
+
+| Subject | Direction | Publisher | Subscriber | Payload type |
+|---------|-----------|-----------|------------|--------------|
+| `lyra.inbound.{platform}.{bot_id}` | adapter → hub | Adapter | Hub / NatsBus | `NatsInboundEnvelope` (JSON) |
+| `lyra.outbound.{platform}.{bot_id}` | hub → adapter | Hub / NatsBus | Adapter | `NatsChunkEnvelope` (JSON) |
+
+`{platform}` is the lowercase platform name (`telegram`, `discord`).
+`{bot_id}` is the numeric bot ID string (consistent with ADR-001 routing key scheme).
+
+### Tier 2 — Compute Offload (Slice B)
+
+| Subject | Direction | Publisher | Subscriber | Payload type |
+|---------|-----------|-----------|------------|--------------|
+| `lyra.llm.request` | hub → worker | Hub / NatsLlmDriver | LLM worker (queue group `workers`) | `LlmRequestEnvelope` (JSON) |
+| `lyra.llm.health.{worker_id}` | worker → hub | LLM worker | Hub / NatsHealthMonitor | `LlmHeartbeat` (JSON) |
+
+### Tier 3 — Control Plane (reserved, Slice D+)
+
+| Subject | Publisher | Purpose |
+|---------|-----------|---------|
+| `lyra.hub.command.{cmd}` | Operator / automation | Hub lifecycle commands (graceful drain, etc.) |
+| `lyra.monitor.health` | Hub health probe | Aggregated health events for external monitors |
+
+These subjects are reserved but not yet implemented. No code should publish or subscribe
+to `lyra.hub.*` or `lyra.monitor.*` before a dedicated ADR approves their payloads.
+
+## Token Constraints
+
+| Token | Constraints | Examples |
+|-------|-------------|---------|
+| `{platform}` | Lowercase ASCII, no dots | `telegram`, `discord` |
+| `{bot_id}` | Numeric string (no leading zeros) | `12345678`, `987654321` |
+| `{worker_id}` | Lowercase ASCII + hyphens | `m2-gpu-0`, `m1-cpu-0` |
+| `{cmd}` | Lowercase ASCII, verb form | `drain`, `reload`, `shutdown` |
+
+Dots within token values are **prohibited** — they would create phantom subject
+levels and break wildcard subscriptions.
+
+## ACL Policy Reference
+
+Three nkey user identities, each with minimum-privilege subject permissions:
+
+```
+# Identity: hub
+publish   ["lyra.outbound.>", "lyra.llm.request"]
+subscribe ["lyra.inbound.>"]
+
+# Identity: telegram-adapter (one identity per platform)
+publish   ["lyra.inbound.telegram.>"]
+subscribe ["lyra.outbound.telegram.>"]
+
+# Identity: llm-worker
+publish   ["lyra.llm.health.>"]
+subscribe ["lyra.llm.request"]
+```
+
+The `monitor` identity (Slice A, A3 NATS health probe) has read-only access:
+
+```
+# Identity: monitor
+subscribe ["lyra.>"]
+```
+
+## Consequences
+
+### Positive
+
+- All NATS subjects share a common `lyra.` prefix — `nats sub "lyra.>"` captures the
+  entire system for debugging.
+- Domain-scoped ACL wildcards (`lyra.inbound.>`, `lyra.outbound.>`) map one-to-one to
+  process identities. Adding a new adapter platform requires no ACL schema change.
+- Subject names are human-readable in `nats sub` output without decoding.
+
+### Negative
+
+- `{bot_id}` is numeric — operators must know which bot ID belongs to which bot when
+  reading subject names. The lyra agent list/show commands provide this mapping.
+
+### Neutral
+
+- JetStream stream names (Slice D) will mirror subject prefixes:
+  `LYRA_INBOUND`, `LYRA_OUTBOUND`, `LYRA_LLM`. No naming conflict with Core subjects.
+- Subject naming is unaffected by the number of Hub replicas (future horizontal
+  scaling) — each Hub replica subscribes to the same `lyra.inbound.>` subject,
+  and NATS queue groups handle load distribution.

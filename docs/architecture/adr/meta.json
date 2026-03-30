@@ -32,6 +32,8 @@
     "030-tool-provider-protocol-for-session-commands",
     "032-llmevent-streamprocessor-renderevent-hexagonal-streaming",
     "033-pulid-flux2-face-lock-strategy",
-    "034-brand-asset-pipeline-structure"
+    "034-brand-asset-pipeline-structure",
+    "035-nats-subject-naming-convention",
+    "036-renderevent-streaming-chunk-protocol"
   ]
 }

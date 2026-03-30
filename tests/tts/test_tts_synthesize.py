@@ -24,11 +24,11 @@ from lyra.tts import (  # noqa: E402
 from .conftest import make_chunked_result, write_minimal_wav  # noqa: E402
 
 
-def _make_ogg_converter(ogg_path: str, ogg_bytes: bytes = b"fakeoggdata") -> AsyncMock:
-    """Return a mock AudioConverter that writes ogg_bytes to ogg_path on call."""
+def _make_ogg_converter(ogg_bytes: bytes = b"fakeoggdata") -> AsyncMock:
+    """Return a mock AudioConverter that writes ogg_bytes to out_path."""
 
     async def _fake_convert(wav_path: Path, out_path: Path) -> None:
-        Path(ogg_path).write_bytes(ogg_bytes)
+        out_path.write_bytes(ogg_bytes)
 
     converter = AsyncMock()
     converter.convert_wav_to_ogg = AsyncMock(side_effect=_fake_convert)
@@ -44,11 +44,9 @@ async def test_synthesize_returns_synthesis_result():
     """synthesize() returns SynthesisResult with OGG audio_bytes and audio/ogg mime."""
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
         wav_path = tmp.name
-    with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp_ogg:
-        ogg_path = tmp_ogg.name
 
     expected_bytes = b"fakeoggdata"
-    converter = _make_ogg_converter(ogg_path, expected_bytes)
+    converter = _make_ogg_converter(expected_bytes)
     svc = TTSService(TTSConfig(), converter=converter)
 
     write_minimal_wav(wav_path, duration_ms=500)
@@ -73,10 +71,8 @@ async def test_synthesize_cleans_up_temp_file_on_success():
     """synthesize() deletes temp WAV chunk and OGG files after success."""
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
         wav_path = tmp.name
-    with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp_ogg:
-        ogg_path = tmp_ogg.name
 
-    converter = _make_ogg_converter(ogg_path)
+    converter = _make_ogg_converter()
     svc = TTSService(TTSConfig(), converter=converter)
 
     write_minimal_wav(wav_path, duration_ms=200)
@@ -88,8 +84,9 @@ async def test_synthesize_cleans_up_temp_file_on_success():
     with patch("voicecli.generate_async", new=AsyncMock(side_effect=fake_generate)):
         await svc.synthesize("Cleanup test")
 
+    ogg_path = Path(wav_path).with_suffix(".ogg")
     assert not os.path.exists(wav_path), "WAV file must be deleted after synthesis"
-    assert not os.path.exists(ogg_path), "OGG file must be deleted after synthesis"
+    assert not ogg_path.exists(), "OGG file must be deleted after synthesis"
 
 
 @pytest.mark.asyncio
@@ -130,10 +127,8 @@ async def test_synthesize_passes_language_to_generate():
 
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
         wav_path = tmp.name
-    with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp_ogg:
-        ogg_path = tmp_ogg.name
 
-    converter = _make_ogg_converter(ogg_path)
+    converter = _make_ogg_converter()
     svc = TTSService(TTSConfig(), converter=converter)
 
     write_minimal_wav(wav_path)
@@ -156,10 +151,8 @@ async def test_synthesize_language_none_uses_init_value():
 
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
         wav_path = tmp.name
-    with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp_ogg:
-        ogg_path = tmp_ogg.name
 
-    converter = _make_ogg_converter(ogg_path)
+    converter = _make_ogg_converter()
     svc = TTSService(TTSConfig(language="English"), converter=converter)
 
     write_minimal_wav(wav_path)

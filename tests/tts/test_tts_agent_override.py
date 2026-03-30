@@ -21,11 +21,11 @@ from lyra.tts import TTSConfig, TTSService  # noqa: E402
 from .conftest import make_chunked_result, write_minimal_wav  # noqa: E402
 
 
-def _make_ogg_converter(ogg_path: str, ogg_bytes: bytes = b"fakeogg") -> AsyncMock:
-    """Return a mock AudioConverter that writes ogg_bytes to ogg_path on call."""
+def _make_ogg_converter(ogg_bytes: bytes = b"fakeogg") -> AsyncMock:
+    """Return a mock AudioConverter that writes ogg_bytes to out_path."""
 
     async def _fake_convert(wav_path: Path, out_path: Path) -> None:
-        Path(ogg_path).write_bytes(ogg_bytes)
+        out_path.write_bytes(ogg_bytes)
 
     converter = AsyncMock()
     converter.convert_wav_to_ogg = AsyncMock(side_effect=_fake_convert)
@@ -78,10 +78,8 @@ async def test_synthesize_with_agent_tts_forwards_all_fields():
 
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
         wav_path = tmp.name
-    with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp_ogg:
-        ogg_path = tmp_ogg.name
 
-    converter = _make_ogg_converter(ogg_path)
+    converter = _make_ogg_converter()
     cfg = TTSConfig(engine="global_engine", voice="global_voice")
     svc = TTSService(cfg, converter=converter)
 
@@ -131,10 +129,8 @@ async def test_synthesize_agent_tts_merge_order():
 
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
         wav_path = tmp.name
-    with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp_ogg:
-        ogg_path = tmp_ogg.name
 
-    converter = _make_ogg_converter(ogg_path)
+    converter = _make_ogg_converter()
     cfg = TTSConfig(
         engine="global", voice="global_v", language="English",
     )
@@ -171,10 +167,8 @@ async def test_synthesize_agent_tts_chunked_not_forwarded():
 
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
         wav_path = tmp.name
-    with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp_ogg:
-        ogg_path = tmp_ogg.name
 
-    converter = _make_ogg_converter(ogg_path)
+    converter = _make_ogg_converter()
     svc = TTSService(TTSConfig(), converter=converter)
 
     write_minimal_wav(wav_path)
@@ -199,10 +193,8 @@ async def test_synthesize_agent_tts_none_uses_global_defaults():
 
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
         wav_path = tmp.name
-    with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp_ogg:
-        ogg_path = tmp_ogg.name
 
-    converter = _make_ogg_converter(ogg_path)
+    converter = _make_ogg_converter()
     cfg = TTSConfig(engine="global_eng", voice="global_vox")
     svc = TTSService(cfg, converter=converter)
 

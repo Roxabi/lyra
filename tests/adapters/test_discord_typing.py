@@ -251,7 +251,7 @@ async def test_on_message_cancels_typing_when_message_dropped_queue_full() -> No
     adapter.get_channel = MagicMock(return_value=mock_channel)
 
     discord_msg = SimpleNamespace(
-        guild=SimpleNamespace(id=111),
+        guild=None,  # DM — ensures message reaches push_to_hub_guarded
         channel=SimpleNamespace(id=333, send=AsyncMock()),
         author=SimpleNamespace(id=42, name="Alice", display_name="Alice", bot=False),
         content="hello",

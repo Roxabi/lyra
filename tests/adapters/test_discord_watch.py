@@ -147,7 +147,6 @@ class TestWatchChannels:
         hub.inbound_bus.put.assert_not_called()
 
     @pytest.mark.asyncio
-    @pytest.mark.asyncio
     async def test_watch_channel_auto_thread_disabled(self) -> None:
         """Watch channel + auto_thread=False: message processed, no thread created."""
         from lyra.adapters.discord import DiscordAdapter

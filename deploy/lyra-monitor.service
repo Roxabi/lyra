@@ -1,18 +1,17 @@
 [Unit]
 Description=Lyra health monitor (Layer 1 pre-check + Layer 2 LLM escalation)
-After=network-online.target lyra.service
+After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
-User={{LYRA_USER:-mickael}}
-WorkingDirectory={{LYRA_PROJECT_DIR}}
-EnvironmentFile=%h/.lyra/.env
-ExecStart={{LYRA_PROJECT_DIR}}/.venv/bin/python -m lyra.monitoring
+WorkingDirectory=%h/projects/lyra
+EnvironmentFile=%h/projects/lyra/.env
+ExecStart=%h/projects/lyra/.venv/bin/python -m lyra.monitoring
 TimeoutStartSec=60
 
 # Security hardening
 NoNewPrivileges=yes
 ProtectSystem=strict
 PrivateTmp=yes
-ReadWritePaths=%h/.lyra
+ReadWritePaths=%h/.lyra %h/.local/state/lyra

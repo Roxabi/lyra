@@ -72,10 +72,10 @@ def diagnosis() -> DiagnosisReport:
 
 
 class TestEscalateToLLM:
-    async def test_calls_anthropic(
+    async def test_calls_anthropic_api_fallback(
         self, config: MonitoringConfig, failed_report: HealthReport
     ) -> None:
-        """SC-7: escalate_to_llm calls Anthropic API and returns DiagnosisReport."""
+        """SC-7: escalate_to_llm falls back to API when CLI not available."""
         from lyra.monitoring.escalation import escalate_to_llm
 
         mock_response = MagicMock()
@@ -90,7 +90,10 @@ class TestEscalateToLLM:
             ]
         }
 
-        with patch("lyra.monitoring.escalation.httpx.AsyncClient") as mock_client_cls:
+        with (
+            patch("lyra.monitoring.escalation.shutil.which", return_value=None),
+            patch("lyra.monitoring.escalation.httpx.AsyncClient") as mock_client_cls,
+        ):
             mock_client = AsyncMock()
             mock_client.post.return_value = mock_response
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -103,6 +106,31 @@ class TestEscalateToLLM:
         assert result.severity == "warning"
         assert result.diagnosis == "Process down"
 
+    async def test_prefers_cli_over_api(
+        self, config: MonitoringConfig, failed_report: HealthReport
+    ) -> None:
+        """escalate_to_llm uses Claude CLI when available."""
+        from lyra.monitoring.escalation import escalate_to_llm
+
+        mock_proc = AsyncMock()
+        mock_proc.returncode = 0
+        mock_proc.communicate.return_value = (
+            b'{"severity":"critical","diagnosis":"Service crashed",'
+            b'"suggested_remediation":"Restart it"}',
+            b"",
+        )
+
+        with (
+            patch("lyra.monitoring.escalation.shutil.which", return_value="/usr/bin/claude"),
+            patch("lyra.monitoring.escalation.asyncio.create_subprocess_exec", return_value=mock_proc),
+            patch("lyra.monitoring.escalation.asyncio.wait_for", return_value=mock_proc.communicate.return_value),
+        ):
+            result = await escalate_to_llm(failed_report, config)
+
+        assert isinstance(result, DiagnosisReport)
+        assert result.severity == "critical"
+        assert result.diagnosis == "Service crashed"
+
     async def test_raises_on_api_error(
         self, config: MonitoringConfig, failed_report: HealthReport
     ) -> None:
@@ -111,7 +139,10 @@ class TestEscalateToLLM:
 
         from lyra.monitoring.escalation import escalate_to_llm
 
-        with patch("lyra.monitoring.escalation.httpx.AsyncClient") as mock_client_cls:
+        with (
+            patch("lyra.monitoring.escalation.shutil.which", return_value=None),
+            patch("lyra.monitoring.escalation.httpx.AsyncClient") as mock_client_cls,
+        ):
             mock_client = AsyncMock()
             mock_client.post.side_effect = httpx.ConnectError("API unreachable")
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -300,6 +331,7 @@ class TestRunFallbackChain:
         call_log: list[str] = []
 
         with (
+            patch("lyra.monitoring.escalation.shutil.which", return_value=None),
             patch("lyra.monitoring.checks.httpx.AsyncClient") as checks_cls,
             patch("lyra.monitoring.escalation.httpx.AsyncClient") as esc_cls,
         ):
@@ -354,6 +386,7 @@ class TestRunFallbackChain:
         import httpx
 
         with (
+            patch("lyra.monitoring.escalation.shutil.which", return_value=None),
             patch("lyra.monitoring.checks.httpx.AsyncClient") as checks_cls,
             patch("lyra.monitoring.escalation.httpx.AsyncClient") as esc_cls,
         ):

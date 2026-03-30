@@ -37,7 +37,12 @@ define require_machine1
 	@[ -n "$(MACHINE1_DIR)" ] || { echo "Error: MACHINE1_DIR not set in .env"; exit 1; }
 endef
 
-.PHONY: lyra telegram discord register deploy remote test lint typecheck format
+.PHONY: lyra telegram discord monitor register deploy remote test lint typecheck format
+
+ifeq (monitor,$(firstword $(MAKECMDGOALS)))
+  MONITOR_CMD := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
+  $(eval $(MONITOR_CMD):;@:)
+endif
 
 ifneq (remote,$(firstword $(MAKECMDGOALS)))
 lyra:
@@ -123,6 +128,30 @@ endif
 
 endif # ifneq remote
 
+SYSTEMD_USER_DIR := $(HOME)/.config/systemd/user
+
+monitor:
+ifeq ($(MONITOR_CMD),status)
+	@systemctl --user status lyra-monitor.timer lyra-monitor.service 2>&1 || true
+	@echo ""
+	@systemctl --user list-timers lyra-monitor.timer 2>/dev/null || true
+else ifeq ($(MONITOR_CMD),logs)
+	@journalctl --user -u lyra-monitor.service -f
+else ifeq ($(MONITOR_CMD),run)
+	@echo "Triggering manual monitoring run..."
+	@systemctl --user start lyra-monitor.service
+else ifeq ($(MONITOR_CMD),enable)
+	@systemctl --user enable --now lyra-monitor.timer
+	@echo "Monitor timer enabled."
+else ifeq ($(MONITOR_CMD),disable)
+	@systemctl --user disable --now lyra-monitor.timer
+	@echo "Monitor timer disabled."
+else ifeq ($(MONITOR_CMD),)
+	@systemctl --user status lyra-monitor.timer 2>&1 || true
+else
+	@echo "Usage: make monitor [status|logs|run|enable|disable]"
+endif
+
 register:
 	@echo "Registering lyra with lyra-stack..."
 	@if [ ! -d "$(LYRA_STACK_DIR)" ]; then \
@@ -138,7 +167,18 @@ register:
 	@if [ -S "$(LYRA_STACK_DIR)/supervisor.sock" ]; then \
 		$(SUPERVISORCTL) reread && $(SUPERVISORCTL) update; \
 	fi
-	@echo "Done. Run 'make telegram' and 'make discord' to start."
+	@echo ""
+	@echo "Installing monitoring systemd timer..."
+	@mkdir -p "$(SYSTEMD_USER_DIR)"
+	@cp "$(abspath deploy/lyra-monitor.service)" "$(SYSTEMD_USER_DIR)/lyra-monitor.service"
+	@cp "$(abspath deploy/lyra-monitor.timer)"   "$(SYSTEMD_USER_DIR)/lyra-monitor.timer"
+	@systemctl --user daemon-reload
+	@systemctl --user enable lyra-monitor.timer
+	@echo ""
+	@echo "Done."
+	@echo "  Adapters: run 'make telegram' and 'make discord' to start."
+	@echo "  Monitor:  run 'make monitor enable' to start the health check timer."
+	@echo "  Secrets:  ensure TELEGRAM_TOKEN, ANTHROPIC_API_KEY, TELEGRAM_ADMIN_CHAT_ID are in .env"
 
 deploy:
 	$(require_machine1)

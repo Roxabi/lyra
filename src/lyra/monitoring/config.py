@@ -103,10 +103,8 @@ def load_monitoring_config(config_path: str | None = None) -> MonitoringConfig:
         raise ValueError(
             "TELEGRAM_TOKEN environment variable is required for monitoring"
         )
-    if not anthropic_api_key:
-        raise ValueError(
-            "ANTHROPIC_API_KEY environment variable is required for monitoring"
-        )
+    # ANTHROPIC_API_KEY is optional — monitoring prefers Claude CLI (OAuth).
+    # Only required if claude CLI is not installed.
     if not telegram_admin_chat_id:
         raise ValueError(
             "TELEGRAM_ADMIN_CHAT_ID environment variable is required for monitoring"

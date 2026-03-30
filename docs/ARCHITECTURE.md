@@ -509,6 +509,49 @@ See `docs/architecture/adr/010-external-tool-integration-pattern.mdx` for full r
 
 ---
 
+## Monitoring Layer
+
+Two-layer health monitoring with LLM-assisted diagnosis.
+
+### Layer 1 — Deterministic pre-checks (`src/lyra/monitoring/checks.py`)
+
+Seven zero-LLM checks run every 5 minutes:
+
+| Check | What it verifies |
+|-------|-----------------|
+| `process` | `systemctl is-active` for the Lyra service |
+| `http_health` | GET `/health/detail` (bearer auth) |
+| `queue_depth` | Inbound staging queue below threshold |
+| `idle` | Messages processed within idle window (optional, respects quiet hours) |
+| `circuits` | All circuit breakers closed |
+| `reaper` | CLI pool reaper task alive and sweeping |
+| `disk` | Free disk space above minimum |
+
+### Layer 2 — LLM diagnosis (`src/lyra/monitoring/escalation.py`)
+
+When Layer 1 detects an anomaly, the failed checks are sent to the Anthropic API (Haiku). The LLM returns severity + diagnosis + suggested remediation. Result is sent to Telegram admin chat. If the LLM call fails, a raw alert with check results is sent instead.
+
+### Runtime
+
+The monitoring system runs as a **systemd user timer** (`lyra-monitor.timer`), not through supervisor. This is a deliberate split:
+
+- **Supervisor** manages long-running daemons (lyra_telegram, lyra_discord, voicecli_*)
+- **Systemd timer** manages the periodic monitoring cron (oneshot, every 5 minutes)
+
+```
+~/.config/systemd/user/lyra-monitor.timer   → triggers every 5min
+~/.config/systemd/user/lyra-monitor.service → runs python -m lyra.monitoring
+```
+
+Installed via `make register` in the lyra repo. Managed via `make monitor status|logs|run|enable|disable`.
+
+### Configuration
+
+Thresholds: `[monitoring]` section in `lyra.toml`.
+Secrets: `TELEGRAM_TOKEN`, `ANTHROPIC_API_KEY`, `TELEGRAM_ADMIN_CHAT_ID` in `.env`.
+
+---
+
 ## Features
 
 - **24/7 Autonomy**: embedded scheduler (no external cron), temporal triggers and webhooks

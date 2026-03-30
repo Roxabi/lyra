@@ -228,3 +228,39 @@ startup
 `config.toml` is loaded once at startup. Agent DB rows are loaded into cache at connect time and served synchronously — no per-message file I/O.
 
 > **Important:** TOML file changes do NOT take effect at runtime. Run `lyra agent init --force` and restart to pick up TOML edits. Use `lyra agent edit` to change a running agent without touching TOML.
+
+## Monitoring (`lyra-monitor.timer`)
+
+The health monitoring cron runs as a **systemd user timer**, separate from supervisor.
+
+### Files
+
+| File | Role |
+|------|------|
+| `deploy/lyra-monitor.service` | Systemd oneshot — runs `python -m lyra.monitoring` |
+| `deploy/lyra-monitor.timer` | Triggers the service every 5 minutes |
+| `lyra.toml` `[monitoring]` | Thresholds (queue depth, idle hours, disk, model, etc.) |
+| `.env` | Secrets: `TELEGRAM_TOKEN`, `ANTHROPIC_API_KEY`, `TELEGRAM_ADMIN_CHAT_ID` |
+
+### Installation
+
+```bash
+make register     # installs timer + enables it (but does not start)
+make monitor enable   # start the timer
+make monitor status   # check timer + last run
+make monitor logs     # journalctl follow
+make monitor run      # trigger a manual check now
+make monitor disable  # stop the timer
+```
+
+### Required `.env` variables
+
+```bash
+TELEGRAM_TOKEN=bot...           # for sending alerts (same bot or dedicated)
+ANTHROPIC_API_KEY=sk-ant-...    # for LLM diagnosis (Layer 2)
+TELEGRAM_ADMIN_CHAT_ID=123...   # numeric chat ID for alerts
+```
+
+### Why systemd timer, not supervisor?
+
+Monitoring is a **periodic task** (run checks, report, exit) — not a long-running daemon. Systemd timers provide `Persistent=true` (catch up after reboot), precise scheduling, and journalctl integration. The sleep-loop supervisor approach was replaced because it had no scheduling guarantees and no visibility into when the last check ran.

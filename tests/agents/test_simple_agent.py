@@ -146,6 +146,31 @@ class TestSimpleAgentProcess:
         assert args[0][0] == "telegram:main:bob"
         assert args[0][1] == "<user_message>test text</user_message>"
 
+    async def test_processor_enriched_msg_not_double_wrapped(self) -> None:
+        """processor_enriched=True: text with <webpage> tags is passed verbatim."""
+        import dataclasses
+
+        provider = MagicMock()
+        provider.complete = AsyncMock(
+            return_value=LlmResult(result="ok", session_id="s1")
+        )
+        agent = make_agent(provider)
+        enriched_text = "<webpage>some scraped content</webpage>"
+        msg = dataclasses.replace(
+            make_inbound_message(enriched_text),
+            processor_enriched=True,
+        )
+        pool = make_pool()
+
+        await agent.process(msg, pool)
+
+        provider.complete.assert_awaited_once()
+        args = provider.complete.call_args
+        sent_text = args[0][1]
+        # Must NOT wrap in <user_message>...</user_message>
+        assert "<user_message>" not in sent_text
+        assert sent_text == enriched_text
+
 
 # ---------------------------------------------------------------------------
 # T4 — on_intermediate callback forwarding based on show_intermediate flag

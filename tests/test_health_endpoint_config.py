@@ -116,7 +116,9 @@ class TestConfigEndpoint:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """#207: /config without auth returns 401."""
-        monkeypatch.setenv("LYRA_CONFIG_SECRET", "test-config-secret")
+        import lyra.bootstrap.health as health_mod
+
+        monkeypatch.setattr(health_mod, "_read_secret", lambda name: "test-config-secret")
         from lyra.bootstrap.health import create_health_app
 
         app = create_health_app(Hub())
@@ -130,7 +132,9 @@ class TestConfigEndpoint:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """#207: /config with wrong token returns 401."""
-        monkeypatch.setenv("LYRA_CONFIG_SECRET", "test-config-secret")
+        import lyra.bootstrap.health as health_mod
+
+        monkeypatch.setattr(health_mod, "_read_secret", lambda name: "test-config-secret")
         from lyra.bootstrap.health import create_health_app
 
         app = create_health_app(Hub())

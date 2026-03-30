@@ -143,6 +143,7 @@ class TestAddVaultProcessorPreHappyPath:
         # Assert — enriched text mentions success and includes the note
         assert "saved" in enriched.text.lower()
         assert "Buy groceries" in enriched.text
+        assert enriched.processor_enriched is True
 
     async def test_enriched_message_contains_note_content_tag(self) -> None:
         # Arrange

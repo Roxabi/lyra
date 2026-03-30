@@ -92,6 +92,7 @@ class TestCliPoolBuildCmd:
             assert prompt_file is not None
             assert Path(prompt_file).exists()
             assert Path(prompt_file).read_text() == "You are helpful."
+            assert oct(Path(prompt_file).stat().st_mode & 0o777) == oct(0o600)
         finally:
             if prompt_file:
                 os.unlink(prompt_file)

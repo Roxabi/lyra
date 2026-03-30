@@ -52,6 +52,7 @@ class _ProcessEntry:
     system_prompt: str = ""
     session_id: str | None = None
     resumed_from: str | None = None  # session_id passed to --resume at spawn
+    prompt_file: str | None = None  # tmpfile path for --system-prompt-file (cleaned up on kill)
     turn_count: int = 0
     last_activity: float = field(default_factory=time.time)
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
@@ -171,10 +172,9 @@ class CliPoolWorkerMixin:
             )
         except Exception as exc:
             log.error("[pool:%s] failed to spawn: %s", pool_id, exc)
-            return None
-        finally:
             if prompt_file:
                 Path(prompt_file).unlink(missing_ok=True)
+            return None
 
         # Wire the session persist callback if the subclass provides it.
         _persist_fn = getattr(self, "_persist_cli_session", None)
@@ -184,6 +184,7 @@ class CliPoolWorkerMixin:
             model_config=model_config,
             system_prompt=system_prompt,
             resumed_from=resume_session_id,
+            prompt_file=prompt_file,
             _on_session_update=_persist_fn,
         )
         self._entries[pool_id] = entry
@@ -251,6 +252,8 @@ class CliPoolWorkerMixin:
                     await entry.proc.wait()
             except ProcessLookupError:
                 pass
+        if entry.prompt_file:
+            Path(entry.prompt_file).unlink(missing_ok=True)
         log.debug("[pool:%s] killed", pool_id)
 
     async def _idle_reaper(self) -> None:

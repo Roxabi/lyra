@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 import lyra.commands.svc.handlers as svc_mod
-from lyra.commands.svc.handlers import cmd_svc
+from lyra.commands.svc.handlers import _sanitize_svc_output, cmd_svc
 from lyra.core.message import InboundMessage
 from lyra.core.pool import Pool
 from lyra.core.trust import TrustLevel
@@ -43,6 +43,40 @@ def _mock_service_manager(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
     mock_mgr.control = AsyncMock(return_value="(no output)")
     monkeypatch.setattr(svc_mod, "_service_manager", mock_mgr)
     return mock_mgr
+
+
+class TestSanitizeSvcOutput:
+    def test_pid_number_replaced(self) -> None:
+        assert _sanitize_svc_output("pid 12345") == "pid ***"
+
+    def test_pid_in_parens_replaced(self) -> None:
+        assert _sanitize_svc_output("(pid 12345)") == "(pid ***)"
+
+    def test_home_path_replaced(self) -> None:
+        assert _sanitize_svc_output("/home/user/x") == "<path>"
+
+    def test_var_log_path_replaced(self) -> None:
+        assert _sanitize_svc_output("/var/log/x") == "<path>"
+
+    def test_tmp_path_replaced(self) -> None:
+        assert _sanitize_svc_output("/tmp/x") == "<path>"
+
+    def test_etc_path_replaced(self) -> None:
+        assert _sanitize_svc_output("/etc/foo") == "<path>"
+
+    def test_combined_pid_and_path(self) -> None:
+        result = _sanitize_svc_output("pid 99 started at /home/user/lyra")
+        assert "99" not in result
+        assert "/home" not in result
+        assert "pid ***" in result
+        assert "<path>" in result
+
+    def test_empty_string_passthrough(self) -> None:
+        assert _sanitize_svc_output("") == ""
+
+    def test_clean_output_passthrough(self) -> None:
+        output = "lyra RUNNING"
+        assert _sanitize_svc_output(output) == output
 
 
 class TestCmdSvcAdminGuard:

@@ -48,7 +48,6 @@ class TestHealthUnauthenticated:
         self, hub: Hub, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """#207: Wrong Bearer token still returns minimal response."""
-        monkeypatch.setenv("LYRA_HEALTH_SECRET", HEALTH_SECRET)
         from lyra.bootstrap.health import create_health_app
 
         app = create_health_app(hub)
@@ -83,7 +82,6 @@ class TestHealthUnauthenticated:
         self, hub: Hub, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """#207: LYRA_HEALTH_SECRET='' still returns minimal response."""
-        monkeypatch.setenv("LYRA_HEALTH_SECRET", "")
         from lyra.bootstrap.health import create_health_app
 
         app = create_health_app(hub)

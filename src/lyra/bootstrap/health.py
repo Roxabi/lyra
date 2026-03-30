@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import hmac
+import logging
 import time
 from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException
 
 from lyra.core.hub import Hub
+
+log = logging.getLogger(__name__)
 
 
 def _read_secret(name: str) -> str:
@@ -17,6 +20,9 @@ def _read_secret(name: str) -> str:
     try:
         return path.read_text().strip()
     except FileNotFoundError:
+        return ""
+    except OSError as exc:
+        log.warning("Could not read secret %r: %s", name, exc)
         return ""
 
 

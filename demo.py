@@ -63,7 +63,8 @@ async def main() -> None:
         hub.inbound_bus.put(Platform.TELEGRAM, msg)
 
     # Let the hub process all messages
-    await hub.inbound_bus._staging.join()  # type: ignore[union-attr]
+    while hub.inbound_bus.staging_qsize() > 0:
+        await asyncio.sleep(0)
 
     print(f"\nDone — {len(adapter.responses)} messages routed successfully.")
     hub_task.cancel()

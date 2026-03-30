@@ -10,7 +10,7 @@ and outbound dispatcher.
 
 | File | Responsibility |
 |------|---------------|
-| `hub.py` | `Hub` class — main entry point; owns InboundBus, adapters, PoolManager, OutboundDispatcher |
+| `hub.py` | `Hub` class — main entry point; owns Bus[T] (LocalBus), adapters, PoolManager, OutboundDispatcher |
 | `hub_outbound.py` | `HubOutboundMixin` — outbound dispatch helpers mixed into Hub |
 | `hub_protocol.py` | `ChannelAdapter` protocol, `RoutingKey` NamedTuple, `Binding` type |
 | `hub_rate_limit.py` | Per-adapter rate limiting logic |

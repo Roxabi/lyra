@@ -95,6 +95,8 @@ class TestHubInit:
         hub = Hub()
         assert Hub.BUS_SIZE == 100
         assert isinstance(hub.inbound_bus, LocalBus)
+        # hub.bus property was removed in #48 — no raw asyncio.Queue exposure
+        assert not hasattr(hub, "bus")
 
     def test_per_platform_queue_is_bounded_after_register_adapter(self) -> None:
         hub = Hub()

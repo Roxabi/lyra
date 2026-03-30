@@ -248,7 +248,10 @@ class TurnStore(SqliteStore):
             )
             await db.commit()
             if cursor.rowcount and cursor.rowcount > 0:
-                log.info("TurnStore: backfilled %d session(s) from turn history", cursor.rowcount)
+                log.info(
+                    "TurnStore: backfilled %d session(s)",
+                    cursor.rowcount,
+                )
         except Exception:
             log.exception("TurnStore._backfill_sessions failed")
 

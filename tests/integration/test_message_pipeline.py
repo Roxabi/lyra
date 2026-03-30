@@ -22,11 +22,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import pytest
 
-from lyra.core.hub.hub_protocol import ChannelAdapter
 from lyra.core.hub.message_pipeline import Action, MessagePipeline
 from lyra.core.message import Platform
 from tests.core.conftest import (
@@ -151,7 +150,7 @@ class TestMessagePipelineTraces:
 
         hub = Hub()
         adapter = _MockAdapter()
-        hub.register_adapter(Platform.TELEGRAM, "main", cast(ChannelAdapter, adapter))
+        hub.register_adapter(Platform.TELEGRAM, "main", adapter)
         # Intentionally no binding registered
 
         pipeline = MessagePipeline(hub, trace_hook=_make_trace_hook(steps))
@@ -176,7 +175,7 @@ class TestMessagePipelineTraces:
 
         hub = Hub()
         adapter = _MockAdapter()
-        hub.register_adapter(Platform.TELEGRAM, "main", cast(ChannelAdapter, adapter))
+        hub.register_adapter(Platform.TELEGRAM, "main", adapter)
         hub.register_binding(
             Platform.TELEGRAM, "main", "*", "ghost_agent", "telegram:main:*"
         )

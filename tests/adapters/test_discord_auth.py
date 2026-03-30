@@ -195,7 +195,7 @@ class TestDiscordAuth:
         msg_ns = _make_discord_msg_ns()
         await adapter.on_message(msg_ns)
 
-        hub.inbound_bus.put.assert_called_once()
+        hub.inbound_bus.put.assert_awaited_once()
         _platform, msg = hub.inbound_bus.put.call_args[0]
         assert msg.trust_level == TrustLevel.PUBLIC
         assert msg.is_admin is False
@@ -225,7 +225,7 @@ class TestDiscordAuth:
         msg_ns = _make_discord_msg_ns()
         await adapter.on_message(msg_ns)
 
-        hub.inbound_bus.put.assert_called_once()
+        hub.inbound_bus.put.assert_awaited_once()
         _platform, msg = hub.inbound_bus.put.call_args[0]
         assert msg.is_admin is True
 

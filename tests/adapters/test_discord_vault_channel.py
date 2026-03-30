@@ -54,7 +54,7 @@ class TestVaultChannels:
 
         await adapter.on_message(discord_msg)
 
-        hub.inbound_bus.put.assert_called_once()
+        hub.inbound_bus.put.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_vault_channel_text_rewritten_as_add_vault_command(self) -> None:
@@ -95,7 +95,7 @@ class TestVaultChannels:
 
         await adapter.on_message(discord_msg)
 
-        hub.inbound_bus.put.assert_called_once()
+        hub.inbound_bus.put.assert_awaited_once()
         _platform_arg, hub_msg = hub.inbound_bus.put.call_args[0]
         assert hub_msg.text == "/add-vault remember this important thing"
 
@@ -141,7 +141,7 @@ class TestVaultChannels:
         await adapter.on_message(discord_msg)
 
         # Message is processed
-        hub.inbound_bus.put.assert_called_once()
+        hub.inbound_bus.put.assert_awaited_once()
         # But no thread is created
         create_thread_mock.assert_not_awaited()
 

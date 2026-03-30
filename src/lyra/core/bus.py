@@ -36,7 +36,11 @@ class Bus(Protocol[T]):
         ...
 
     async def put(self, platform: Platform, item: T) -> None:
-        """Enqueue an item on the platform's queue."""
+        """Enqueue an item on the platform's queue.
+
+        Must raise ``asyncio.QueueFull`` when the platform queue is at capacity —
+        callers rely on this exception for backpressure handling.
+        """
         ...
 
     async def get(self) -> T:

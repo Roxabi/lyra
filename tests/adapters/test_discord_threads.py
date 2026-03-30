@@ -69,7 +69,7 @@ class TestDiscordAutoThread:
         create_thread_mock.assert_awaited_once()
 
         # Assert — hub.inbound_bus.put was called and the InboundMessage has thread_id
-        hub.inbound_bus.put.assert_called_once()
+        hub.inbound_bus.put.assert_awaited_once()
         _platform_arg, hub_msg = hub.inbound_bus.put.call_args[0]
         assert hub_msg.platform_meta["thread_id"] == 9999
         assert hub_msg.scope_id == "thread:9999"
@@ -198,7 +198,7 @@ class TestDiscordAutoThread:
         await adapter.on_message(discord_msg)
 
         # Assert — message still processed (bus.put called)
-        hub.inbound_bus.put.assert_called_once()
+        hub.inbound_bus.put.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_auto_thread_exception_recovers_partial_thread(self) -> None:
@@ -248,7 +248,7 @@ class TestDiscordAutoThread:
         await adapter.on_message(discord_msg)
 
         # Assert — message processed with recovered thread scope
-        hub.inbound_bus.put.assert_called_once()
+        hub.inbound_bus.put.assert_awaited_once()
         _platform_arg, hub_msg = hub.inbound_bus.put.call_args[0]
         assert hub_msg.scope_id == "thread:8888"
         assert hub_msg.platform_meta["thread_id"] == 8888

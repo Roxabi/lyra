@@ -187,7 +187,7 @@ class TestTelegramAuth:
 
         await adapter._on_message(_make_aiogram_msg())
 
-        hub.inbound_bus.put.assert_called_once()
+        hub.inbound_bus.put.assert_awaited_once()
         _platform, msg = hub.inbound_bus.put.call_args[0]
         assert msg.trust_level == TrustLevel.TRUSTED
         assert msg.is_admin is False
@@ -214,7 +214,7 @@ class TestTelegramAuth:
 
         await adapter._on_message(_make_aiogram_msg())
 
-        hub.inbound_bus.put.assert_called_once()
+        hub.inbound_bus.put.assert_awaited_once()
         _platform, msg = hub.inbound_bus.put.call_args[0]
         assert msg.is_admin is True
 
@@ -271,7 +271,7 @@ class TestTelegramAuth:
 
         await adapter._on_message(_make_aiogram_msg())
 
-        hub.inbound_bus.put.assert_called_once()
+        hub.inbound_bus.put.assert_awaited_once()
         _platform, msg = hub.inbound_bus.put.call_args[0]
         assert msg.trust_level == TrustLevel.PUBLIC
         assert msg.is_admin is False

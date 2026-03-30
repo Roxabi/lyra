@@ -64,8 +64,10 @@ def init_tts(
     if stt_service is None or not voice_responses:
         return None
 
+    from lyra.integrations.audio import FfmpegConverter
+
     tts_cfg = load_tts_config()
-    tts_service = TTSService(tts_cfg)
+    tts_service = TTSService(tts_cfg, converter=FfmpegConverter())
     log.info(
         "TTS voice responses enabled (global defaults): engine=%s voice=%s",
         tts_cfg.engine or "default",

@@ -6,7 +6,6 @@ import base64
 import logging
 import os
 import struct
-import subprocess
 import tempfile
 import wave
 from dataclasses import dataclass
@@ -17,6 +16,7 @@ from pydantic import BaseModel
 
 if TYPE_CHECKING:
     from lyra.core.agent_config import AgentTTSConfig
+    from lyra.integrations.base import AudioConverter
 
 log = logging.getLogger(__name__)
 
@@ -93,29 +93,6 @@ def _wav_waveform_b64(wav_path: Path, num_samples: int = 256) -> str:
         return base64.b64encode(bytes(num_samples)).decode()
 
 
-def _wav_to_ogg(wav_path: Path) -> Path:
-    """Convert WAV to OGG/Opus (48 kHz, mono) using ffmpeg. Returns the OGG path."""
-    ogg_path = wav_path.with_suffix(".ogg")
-    subprocess.run(
-        [
-            "ffmpeg",
-            "-i",
-            str(wav_path),
-            "-c:a",
-            "libopus",
-            "-ar",
-            "48000",
-            "-ac",
-            "1",
-            "-y",
-            str(ogg_path),
-        ],
-        capture_output=True,
-        check=True,
-    )
-    return ogg_path
-
-
 def _merge_wav_chunks(chunk_paths: list[Path], output: Path) -> Path:
     """Concatenate multiple WAV chunk files into one WAV using stdlib wave.
 
@@ -174,10 +151,17 @@ class TTSService:
     are read.
     """
 
-    def __init__(self, config: TTSConfig) -> None:
+    def __init__(
+        self,
+        config: TTSConfig,
+        converter: "AudioConverter | None" = None,
+    ) -> None:
+        from lyra.integrations.audio import FfmpegConverter
+
         self._engine = config.engine
         self._voice = config.voice
         self._language = config.language
+        self._converter = converter or FfmpegConverter()
         log.debug(
             "TTSService init: engine=%s voice=%s (via voiceCLI)",
             self._engine,
@@ -304,7 +288,8 @@ class TTSService:
             waveform_b64 = _wav_waveform_b64(merged_wav)
 
             # Convert merged WAV → OGG/Opus
-            ogg_path = _wav_to_ogg(merged_wav)
+            ogg_path = merged_wav.with_suffix(".ogg")
+            await self._converter.convert_wav_to_ogg(merged_wav, ogg_path)
             extra_paths.append(ogg_path)
 
             audio_bytes = ogg_path.read_bytes()

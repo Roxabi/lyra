@@ -1,0 +1,50 @@
+---
+title: "Persistence layer: architectural overhaul (7 open findings)"
+issue: 417
+status: approved
+tier: F-full
+date: 2026-03-30
+---
+
+## Problem
+
+Lyra's persistence layer grew organically across five SQLite databases (`auth.db`, `turns.db`, `message_index.db`, `pairing.db`, plus a dead `agents.db`). A deep-dive analysis surfaced 10 architectural findings — 3 now fixed, 7 still open. The remaining issues fall into three clusters:
+
+1. **Domain overload** — `auth.db` houses 5 unrelated domains (auth grants, agent configs, bot tokens, Discord thread pointers, user TTS prefs). Any schema migration risks all 5 stores. This violates hexagonal architecture and makes the persistence layer brittle to change.
+
+2. **Session durability** — `_resume_session_ids` is an in-memory dict lost on every restart, `_session_file_exists()` has a timing bug with stream-json mode, and sessions are implicit (no first-class sessions table). Together these cause silent context loss on restart — the most user-facing pain point.
+
+3. **Hygiene gaps** — Memory vault upserts lack `session_id` traceability, `message_index.db` grows unboundedly with no pruning, and `discord_threads` lives in the auth domain instead of being adapter-owned.
+
+These are not independent bugs — they compound. The auth.db split (B) unblocks the ThreadStore move (G). Session persistence (D) and the timing fix (E) are both needed for reliable resume. The explicit sessions table (F) gives D and E a clean foundation.
+
+## Who
+
+- **Primary:** End users on Telegram and Discord — they experience silent context loss when Lyra restarts mid-conversation (findings D, E)
+- **Secondary:** Developers maintaining Lyra — the monolithic `auth.db` and implicit sessions make changes risky and debugging hard (findings B, F, G)
+
+## Constraints
+
+- Each sub-issue must be independently mergeable and deployable — no big-bang migration
+- Production (`roxabituwer`) runs 24/7 under supervisord — migrations must be backward-compatible or have a rollback path
+- SQLite is the persistence engine (no plans to change) — solutions must work within its concurrency model
+- Finding G (ThreadStore move) is blocked by finding B (auth.db split)
+
+## Out of Scope
+
+- Switching away from SQLite to another database engine
+- Rewriting the CLI subprocess model or Claude CLI integration
+- Vault schema changes (finding H only adds metadata to existing upsert calls)
+- Findings 1, 3, 10 — already fixed
+- The `/promote` staging→main lifecycle (this is feature work on staging)
+
+## Complexity
+
+**Tier: F-full** — 7 findings across 3 domains (auth, persistence, platform adapters), with dependency ordering between sub-issues, migration scripts, and store connection rewiring.
+
+Signals:
+- Multiple domains affected (auth stores, turn stores, platform adapters, memory layer)
+- New patterns required (explicit sessions table, pool state persistence, adapter-owned databases)
+- Schema migrations with backward-compatibility requirement
+- Dependency chain between findings (B → G, D + E + F cluster)
+- Labels: `architecture`, `technical-debt`; complexity marker: 8/10

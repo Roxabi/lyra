@@ -25,8 +25,8 @@ from lyra.bootstrap.config import (
     _load_pairing_config,
     _load_pool_config,
 )
-from lyra.bootstrap.multibot_stores import open_stores
 from lyra.bootstrap.multibot_lifecycle import run_lifecycle
+from lyra.bootstrap.multibot_stores import open_stores
 from lyra.bootstrap.multibot_wiring import (
     _build_bot_auths,
     wire_discord_adapters,

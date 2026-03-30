@@ -6,6 +6,7 @@ import asyncio
 import logging
 import os
 import signal
+from pathlib import Path
 
 import uvicorn
 
@@ -101,7 +102,7 @@ async def wire_telegram_adapters(  # noqa: PLR0913 — wiring requires all deps
     return adapters, dispatchers
 
 
-async def wire_discord_adapters(  # noqa: PLR0913 — wiring requires all deps
+async def wire_discord_adapters(  # noqa: PLR0913, C901 — wiring requires all deps
     hub: Hub,
     dc_bot_auths: list[tuple[DiscordBotConfig, AuthMiddleware]],
     bot_agent_map: dict[tuple[str, str], str],
@@ -122,7 +123,17 @@ async def wire_discord_adapters(  # noqa: PLR0913 — wiring requires all deps
     adapters: list[tuple[DiscordAdapter, DiscordBotConfig, str]] = []
     dispatchers: list[OutboundDispatcher] = []
 
-    for bot_cfg, auth in dc_bot_auths:
+    # Shared ThreadStore for all Discord adapters (#417/S4)
+    # One connection to discord.db — shared across bots, closed by the first
+    # adapter's close() (all adapters hold the same reference).
+    _vault = Path(vault_dir or os.environ.get("LYRA_VAULT_DIR", _DEFAULT_VAULT_DIR))
+    thread_store: ThreadStore | None = None
+    if dc_bot_auths:
+        thread_store = ThreadStore(db_path=_vault / "discord.db")
+        await thread_store.connect()
+
+    try:
+      for bot_cfg, auth in dc_bot_auths:
         resolved_agent = bot_agent_map.get(("discord", bot_cfg.bot_id))
         if resolved_agent is None:
             log.warning(
@@ -158,13 +169,6 @@ async def wire_discord_adapters(  # noqa: PLR0913 — wiring requires all deps
 
             watch_channels = _parse_channel_ids("watch_channels")
             vault_channels = _parse_channel_ids("vault_channels")
-
-        # Each adapter owns its ThreadStore connection to discord.db (#417/S4)
-        from pathlib import Path
-
-        _vault = Path(vault_dir or os.environ.get("LYRA_VAULT_DIR", _DEFAULT_VAULT_DIR))
-        thread_store = ThreadStore(db_path=_vault / "discord.db")
-        await thread_store.connect()
 
         adapter = DiscordAdapter(
             hub=hub,
@@ -205,6 +209,11 @@ async def wire_discord_adapters(  # noqa: PLR0913 — wiring requires all deps
             bot_cfg.bot_id,
             resolved_agent,
         )
+    except Exception:
+        # Close the shared ThreadStore on wiring failure (#417 fix)
+        if thread_store is not None:
+            await thread_store.close()
+        raise
 
     return adapters, dispatchers
 

@@ -8,6 +8,7 @@ after S4 lands).  AuthStore remains on auth.db (grants only).
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import sqlite3
 import tempfile
@@ -58,73 +59,88 @@ def _has_sentinel(db_path: Path) -> bool:
         return False
 
 
-def _migrate_to_config_db(vault_dir: Path) -> None:
-    """Copy config tables from auth.db to config.db (synchronous, atomic).
+_IDENT_RE = __import__("re").compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _atomic_table_copy(  # noqa: C901 — sequential migration steps
+    src_path: Path,
+    dst_path: Path,
+    tables: tuple[str, ...],
+    tmp_prefix: str,
+) -> int:
+    """Copy *tables* from *src_path* to *dst_path* (synchronous, atomic).
 
     Writes to a temporary file first, then renames atomically to prevent
-    partial migration on crash. A ``_migration_complete`` sentinel row is
+    partial migration on crash.  A ``_migration_complete`` sentinel row is
     written last so a partial file (no sentinel) can be detected and retried.
+
+    Column and table names are validated against ``[A-Za-z_][A-Za-z0-9_]*``
+    before interpolation into SQL (sqlite3 does not support parameterised
+    identifiers).
+
+    Returns total rows copied across all tables.
     """
-    auth_path = vault_dir / "auth.db"
-    config_path = vault_dir / "config.db"
+    if not src_path.exists():
+        log.warning("%s not found — skipping migration", src_path)
+        return 0
 
-    if not auth_path.exists():
-        log.warning("auth.db not found at %s — skipping migration", auth_path)
-        return
-
-    # Write to temp file in same dir (same filesystem → atomic rename)
     fd, tmp_path_str = tempfile.mkstemp(
-        dir=str(vault_dir), prefix=".config_db_migrate_", suffix=".db"
+        dir=str(src_path.parent), prefix=tmp_prefix, suffix=".db"
     )
     tmp_path = Path(tmp_path_str)
+    src: sqlite3.Connection | None = None
+    dst: sqlite3.Connection | None = None
+    total_rows = 0
     try:
-        import os
-
         os.close(fd)
-
-        # Open auth.db read-only, create temp config.db
-        src = sqlite3.connect(str(auth_path))
+        src = sqlite3.connect(str(src_path))
         dst = sqlite3.connect(str(tmp_path))
         dst.execute("PRAGMA journal_mode=WAL")
 
-        for table in _CONFIG_TABLES:
-            # Read schema from auth.db
+        for table in tables:
+            if not _IDENT_RE.match(table):
+                raise ValueError(f"Invalid table name: {table!r}")
             row = src.execute(
                 "SELECT sql FROM sqlite_master"
                 " WHERE type='table' AND name=?",
                 (table,),
             ).fetchone()
             if row is None:
-                log.debug("Table %s not found in auth.db — skipping", table)
+                log.debug("Table %s not found in %s — skipping", table, src_path.name)
                 continue
-            # Create table in config.db
             dst.execute(row[0])
-            # Copy all rows
+            # Copy rows — validate column names before interpolation
             cols_cur = src.execute(f"PRAGMA table_info({table})")  # noqa: S608
             col_names = [r[1] for r in cols_cur.fetchall()]
+            for c in col_names:
+                if not _IDENT_RE.match(c):
+                    raise ValueError(f"Invalid column name in {table}: {c!r}")
             col_list = ", ".join(col_names)
             placeholders = ", ".join("?" for _ in col_names)
-            rows = src.execute(f"SELECT {col_list} FROM {table}").fetchall()  # noqa: S608
+            rows = src.execute(
+                f"SELECT {col_list} FROM {table}"  # noqa: S608
+            ).fetchall()
             if rows:
                 dst.executemany(
                     f"INSERT OR IGNORE INTO {table} ({col_list})"  # noqa: S608
                     f" VALUES ({placeholders})",
                     rows,
                 )
+            total_rows += len(rows)
             log.debug("Migrated %d rows for table %s", len(rows), table)
 
-        # Copy indices that belong to migrated tables
+        # Copy indices for migrated tables
         idx_rows = src.execute(
             "SELECT sql FROM sqlite_master"
             " WHERE type='index' AND sql IS NOT NULL AND tbl_name IN (%s)"
-            % ",".join("?" for _ in _CONFIG_TABLES),
-            _CONFIG_TABLES,
+            % ",".join("?" for _ in tables),
+            tables,
         ).fetchall()
         for (idx_sql,) in idx_rows:
             try:
                 dst.execute(idx_sql)
             except sqlite3.OperationalError:
-                pass  # index may already exist from CREATE TABLE
+                pass  # index may already exist
 
         # Sentinel — marks migration as complete
         dst.execute(_SENTINEL_DDL)
@@ -132,83 +148,41 @@ def _migrate_to_config_db(vault_dir: Path) -> None:
             "INSERT INTO _migration_complete (migrated_at) VALUES (datetime('now'))"
         )
         dst.commit()
-        src.close()
-        dst.close()
+    finally:
+        if src is not None:
+            src.close()
+        if dst is not None:
+            dst.close()
 
-        # Atomic rename
-        shutil.move(str(tmp_path), str(config_path))
+    # Atomic rename (same filesystem)
+    shutil.move(str(tmp_path), str(dst_path))
+    return total_rows
+
+
+def _migrate_to_config_db(vault_dir: Path) -> None:
+    """Copy config tables from auth.db → config.db (atomic rename)."""
+    n = _atomic_table_copy(
+        src_path=vault_dir / "auth.db",
+        dst_path=vault_dir / "config.db",
+        tables=_CONFIG_TABLES,
+        tmp_prefix=".config_db_migrate_",
+    )
+    if n:
         log.warning(
-            "auth.db split: migrated %d tables to config.db (auth.db tombstones kept)",
-            len(_CONFIG_TABLES),
+            "auth.db split: migrated %d rows to config.db (tombstones kept)", n
         )
-    except Exception:
-        # Clean up temp file on failure
-        tmp_path.unlink(missing_ok=True)
-        raise
 
 
 def _migrate_threads_to_discord_db(vault_dir: Path) -> None:
-    """Copy discord_threads from auth.db to discord.db (atomic rename).
-
-    Same pattern as _migrate_to_config_db — temp file + atomic rename.
-    """
-    auth_path = vault_dir / "auth.db"
-    discord_path = vault_dir / "discord.db"
-
-    if not auth_path.exists():
-        return
-
-    fd, tmp_path_str = tempfile.mkstemp(
-        dir=str(vault_dir), prefix=".discord_db_migrate_", suffix=".db"
+    """Copy discord_threads from auth.db → discord.db (atomic rename)."""
+    n = _atomic_table_copy(
+        src_path=vault_dir / "auth.db",
+        dst_path=vault_dir / "discord.db",
+        tables=("discord_threads",),
+        tmp_prefix=".discord_db_migrate_",
     )
-    tmp_path = Path(tmp_path_str)
-    try:
-        import os
-
-        os.close(fd)
-        src = sqlite3.connect(str(auth_path))
-        dst = sqlite3.connect(str(tmp_path))
-        dst.execute("PRAGMA journal_mode=WAL")
-
-        row = src.execute(
-            "SELECT sql FROM sqlite_master"
-            " WHERE type='table' AND name='discord_threads'"
-        ).fetchone()
-        if row is None:
-            src.close()
-            dst.close()
-            tmp_path.unlink(missing_ok=True)
-            return
-
-        dst.execute(row[0])
-        cols_cur = src.execute("PRAGMA table_info(discord_threads)")
-        col_names = [r[1] for r in cols_cur.fetchall()]
-        col_list = ", ".join(col_names)
-        placeholders = ", ".join("?" for _ in col_names)
-        rows = src.execute(f"SELECT {col_list} FROM discord_threads").fetchall()  # noqa: S608
-        if rows:
-            dst.executemany(
-                f"INSERT OR IGNORE INTO discord_threads ({col_list})"  # noqa: S608
-                f" VALUES ({placeholders})",
-                rows,
-            )
-
-        # Sentinel
-        dst.execute(_SENTINEL_DDL)
-        dst.execute(
-            "INSERT INTO _migration_complete (migrated_at) VALUES (datetime('now'))"
-        )
-        dst.commit()
-        src.close()
-        dst.close()
-
-        shutil.move(str(tmp_path), str(discord_path))
-        log.warning(
-            "ThreadStore migration: moved %d rows to discord.db", len(rows)
-        )
-    except Exception:
-        tmp_path.unlink(missing_ok=True)
-        raise
+    if n:
+        log.warning("ThreadStore migration: moved %d rows to discord.db", n)
 
 
 def _ensure_discord_db(vault_dir: Path) -> None:

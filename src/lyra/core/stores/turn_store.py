@@ -125,7 +125,10 @@ class TurnStore(SqliteStore):
         await db.execute(_CREATE_POOL_SESSIONS)
         await db.execute(_CREATE_IDX_POOL_SESSIONS)
         await db.commit()
-        await self._backfill_sessions(db)
+        # Gate backfill: skip if pool_sessions already has rows (#417 fix)
+        async with db.execute("SELECT 1 FROM pool_sessions LIMIT 1") as cur:
+            if await cur.fetchone() is None:
+                await self._backfill_sessions(db)
 
     def _db_or_raise(self):
         """Return the open connection or raise with TurnStore-specific message."""

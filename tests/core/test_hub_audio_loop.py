@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, cast
 import pytest
 
 from lyra.core.hub import Hub
+from lyra.core.inbound_bus import LocalBus
 from lyra.core.message import InboundAudio, InboundMessage, Platform, Response
 from lyra.core.trust import TrustLevel
 
@@ -113,8 +114,10 @@ class TestAudioLoopTranscription:
         task = asyncio.create_task(hub._audio_pipeline.run())
         try:
             # Wait for the message to appear on the inbound bus staging queue
+            # Cast to LocalBus for test access to private staging queue
+            staging = cast(LocalBus[InboundMessage], hub.inbound_bus)._staging
             msg: InboundMessage = await asyncio.wait_for(
-                hub.inbound_bus._staging.get(), timeout=2.0
+                staging.get(), timeout=2.0
             )
             assert msg.id == "audio-1"
             assert msg.text == "Hello world"
@@ -307,8 +310,10 @@ class TestProcessAudioItemPropagatesLanguage:
         await hub.inbound_audio_bus.start()
         task = asyncio.create_task(hub._audio_pipeline.run())
         try:
+            # Cast to LocalBus for test access to private staging queue
+            staging = cast(LocalBus[InboundMessage], hub.inbound_bus)._staging
             msg: InboundMessage = await asyncio.wait_for(
-                hub.inbound_bus._staging.get(), timeout=2.0
+                staging.get(), timeout=2.0
             )
             assert msg.language == "fr"
         finally:
@@ -334,11 +339,14 @@ class TestAudioLoopTaskDone:
         task = asyncio.create_task(hub._audio_pipeline.run())
         try:
             # Wait for re-enqueued message
-            await asyncio.wait_for(hub.inbound_bus._staging.get(), timeout=2.0)
+            # Cast to LocalBus for test access to private staging queue
+            inbound_staging = cast(LocalBus[InboundMessage], hub.inbound_bus)._staging
+            await asyncio.wait_for(inbound_staging.get(), timeout=2.0)
             # Give the loop time to call task_done
             await asyncio.sleep(0.05)
             # join() should return immediately since task_done was called
-            await asyncio.wait_for(hub.inbound_audio_bus._staging.join(), timeout=1.0)
+            audio_staging = cast(LocalBus[InboundAudio], hub.inbound_audio_bus)._staging
+            await asyncio.wait_for(audio_staging.join(), timeout=1.0)
         finally:
             task.cancel()
             await hub.inbound_audio_bus.stop()

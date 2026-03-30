@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -14,7 +14,9 @@ from lyra.core import (
     Hub,
     Pool,
 )
+from lyra.core.inbound_bus import LocalBus
 from lyra.core.message import (
+    InboundMessage,
     Platform,
 )
 from tests.core.conftest import MockAdapter
@@ -103,7 +105,9 @@ class TestHubInit:
         hub.register_adapter(Platform.TELEGRAM, "main", MockAdapter())
         assert hub.inbound_bus.qsize(Platform.TELEGRAM) == 0
         # Per-platform queue has BUS_SIZE maxsize
-        assert hub.inbound_bus._queues[Platform.TELEGRAM].maxsize == Hub.BUS_SIZE
+        # Cast to LocalBus for test access to private _queues dict
+        queues = cast(LocalBus[InboundMessage], hub.inbound_bus)._queues
+        assert queues[Platform.TELEGRAM].maxsize == Hub.BUS_SIZE
 
     def test_empty_registries(self) -> None:
         hub = Hub()

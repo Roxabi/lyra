@@ -96,6 +96,14 @@ class EventBusConfig(BaseModel):
     queue_maxsize: int = 1000
 
 
+class MessageIndexConfig(BaseModel):
+    """Typed [message_index] config section (#417)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    retention_days: int = 90
+
+
 class AgentOverrideConfig(BaseModel):
     """Typed output of _build_agent_overrides().
 

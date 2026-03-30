@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import sqlite3
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
@@ -351,5 +352,171 @@ class TestTurnStoreIntegrationWithPool:
 
         assert len(await store.get_turns("pool:A", user_id="uA")) == 1
         assert len(await store.get_turns("pool:B", user_id="uB")) == 1
+
+        await store.close()
+
+
+class TestPoolSessions:
+    async def test_start_session_idempotent(self, store: TurnStore) -> None:
+        """start_session called twice with the same session_id inserts only 1 row."""
+        await store.start_session("sess-idem", "pool:idem")
+        await store.start_session("sess-idem", "pool:idem")
+
+        db = store._db_or_raise()
+        async with db.execute(
+            "SELECT COUNT(*) FROM pool_sessions WHERE session_id = ?",
+            ("sess-idem",),
+        ) as cur:
+            row = await cur.fetchone()
+        assert row[0] == 1
+
+    async def test_get_last_session_from_pool_sessions(self, store: TurnStore) -> None:
+        """get_last_session returns the session registered via start_session."""
+        await store.start_session("sess-latest", "pool:q")
+        result = await store.get_last_session("pool:q")
+        assert result == "sess-latest"
+
+    async def test_get_last_session_returns_none_for_unknown_pool(
+        self, store: TurnStore
+    ) -> None:
+        """get_last_session returns None when no sessions exist for the pool."""
+        result = await store.get_last_session("pool:nonexistent")
+        assert result is None
+
+    async def test_backfill_no_duplicates(self, store: TurnStore) -> None:
+        """_backfill_sessions run twice produces exactly one row per session."""
+        db = store._db_or_raise()
+        # Insert turns directly to simulate pre-existing history.
+        ts = "2025-01-01T00:00:00+00:00"
+        await db.execute(
+            "INSERT INTO conversation_turns"
+            " (pool_id, session_id, role, platform, user_id, content, timestamp)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("pool:bf", "sess-bf", "user", "telegram", "u", "hi", ts),
+        )
+        await db.commit()
+
+        await store._backfill_sessions(db)
+        await store._backfill_sessions(db)  # second call must be a no-op
+
+        async with db.execute(
+            "SELECT COUNT(*) FROM pool_sessions WHERE session_id = ?",
+            ("sess-bf",),
+        ) as cur:
+            row = await cur.fetchone()
+        assert row[0] == 1
+
+    async def test_log_turn_updates_last_active_at(self, store: TurnStore) -> None:
+        """log_turn updates last_active_at on the matching pool_sessions row."""
+        await store.start_session("sess-ts", "pool:ts")
+
+        db = store._db_or_raise()
+        async with db.execute(
+            "SELECT last_active_at FROM pool_sessions WHERE session_id = ?",
+            ("sess-ts",),
+        ) as cur:
+            before = (await cur.fetchone())[0]
+
+        # Small sleep to guarantee the timestamp advances.
+        await asyncio.sleep(0.01)
+
+        await store.log_turn(
+            pool_id="pool:ts",
+            session_id="sess-ts",
+            role="user",
+            platform="telegram",
+            user_id="u",
+            content="hello",
+        )
+
+        async with db.execute(
+            "SELECT last_active_at FROM pool_sessions WHERE session_id = ?",
+            ("sess-ts",),
+        ) as cur:
+            after = (await cur.fetchone())[0]
+
+        assert after > before
+
+    async def test_get_last_session_returns_most_recent(
+        self, store: TurnStore
+    ) -> None:
+        """get_last_session returns the most recently started session, not first."""
+        # Arrange — register two sessions with a measurable time gap
+        await store.start_session("sess-first", "pool:order")
+        await asyncio.sleep(0.01)  # ensure distinct last_active_at timestamps
+        await store.start_session("sess-second", "pool:order")
+
+        # Act
+        result = await store.get_last_session("pool:order")
+
+        # Assert — second session has a later last_active_at, so it wins
+        assert result == "sess-second"
+
+
+class TestBackfillOnFirstConnect:
+    async def test_backfill_on_first_connect(self, tmp_path) -> None:
+        """connect() backfills pool_sessions from pre-existing conversation_turns rows.
+
+        Simulates a DB that was written before pool_sessions existed (#417):
+        raw turns are inserted directly via sqlite3, then TurnStore.connect()
+        is called.  The backfill must derive pool_sessions with
+        started_at = MIN(timestamp) for each (pool_id, session_id) group.
+        """
+        # Arrange — create turns.db with raw turns (no pool_sessions yet)
+        db_path = tmp_path / "turns.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.execute(
+            """
+            CREATE TABLE conversation_turns (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                pool_id           TEXT    NOT NULL,
+                session_id        TEXT    NOT NULL,
+                role              TEXT    NOT NULL,
+                platform          TEXT    NOT NULL,
+                user_id           TEXT    NOT NULL,
+                content           TEXT    NOT NULL,
+                message_id        TEXT,
+                reply_message_id  TEXT,
+                timestamp         TEXT    NOT NULL,
+                metadata          TEXT    DEFAULT '{}'
+            )
+            """
+        )
+        # Insert two turns in the same session with different timestamps
+        ts_early = "2025-01-01T10:00:00+00:00"
+        ts_late = "2025-01-01T11:00:00+00:00"
+        conn.execute(
+            "INSERT INTO conversation_turns"
+            " (pool_id, session_id, role, platform, user_id, content, timestamp)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("pool:bf", "sess-bf", "user", "telegram", "u", "first", ts_early),
+        )
+        conn.execute(
+            "INSERT INTO conversation_turns"
+            " (pool_id, session_id, role, platform, user_id, content, timestamp)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("pool:bf", "sess-bf", "assistant", "telegram", "u", "second", ts_late),
+        )
+        conn.commit()
+        conn.close()
+
+        # Act — TurnStore.connect() must run the backfill
+        store = TurnStore(db_path)
+        await store.connect()
+
+        # Assert — pool_sessions row was created with started_at = MIN(timestamp)
+        db = store._db_or_raise()
+        async with db.execute(
+            "SELECT session_id, pool_id, started_at FROM pool_sessions"
+            " WHERE session_id = ?",
+            ("sess-bf",),
+        ) as cur:
+            row = await cur.fetchone()
+
+        assert row is not None
+        session_id, pool_id, started_at = row
+        assert session_id == "sess-bf"
+        assert pool_id == "pool:bf"
+        assert started_at == ts_early  # MIN(timestamp) = earliest turn
 
         await store.close()

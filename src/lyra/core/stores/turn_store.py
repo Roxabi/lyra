@@ -50,6 +50,23 @@ CREATE INDEX IF NOT EXISTS idx_turns_pool
 ON conversation_turns(pool_id, timestamp)
 """
 
+_CREATE_POOL_SESSIONS = """
+CREATE TABLE IF NOT EXISTS pool_sessions (
+    session_id     TEXT PRIMARY KEY,
+    pool_id        TEXT NOT NULL,
+    started_at     TEXT NOT NULL,
+    last_active_at TEXT NOT NULL,
+    ended_at       TEXT,
+    resume_count   INTEGER DEFAULT 0,
+    metadata       TEXT DEFAULT '{}'
+)
+"""
+
+_CREATE_IDX_POOL_SESSIONS = """
+CREATE INDEX IF NOT EXISTS idx_pool_sessions_pool
+ON pool_sessions(pool_id, last_active_at)
+"""
+
 _INSERT = """
 INSERT INTO conversation_turns
     (pool_id, session_id, role, platform, user_id,
@@ -105,6 +122,13 @@ class TurnStore(SqliteStore):
         await db.execute(_CREATE_IDX_SESSION)
         await db.execute(_CREATE_IDX_POOL)
         await db.commit()
+        await db.execute(_CREATE_POOL_SESSIONS)
+        await db.execute(_CREATE_IDX_POOL_SESSIONS)
+        await db.commit()
+        # Gate backfill: skip if pool_sessions already has rows (#417 fix)
+        async with db.execute("SELECT 1 FROM pool_sessions LIMIT 1") as cur:
+            if await cur.fetchone() is None:
+                await self._backfill_sessions(db)
 
     def _db_or_raise(self):
         """Return the open connection or raise with TurnStore-specific message."""
@@ -164,6 +188,11 @@ class TurnStore(SqliteStore):
                     meta_str,
                 ),
             )
+            # Update session activity timestamp (#417 / S2) — tolerant: 0-row OK
+            await db.execute(
+                "UPDATE pool_sessions SET last_active_at = ? WHERE session_id = ?",
+                (ts, session_id),
+            )
             await db.commit()
         except Exception:
             log.exception(
@@ -173,18 +202,30 @@ class TurnStore(SqliteStore):
                 role,
             )
 
+    async def start_session(self, session_id: str, pool_id: str) -> None:
+        """Register a new session. Uses INSERT OR IGNORE — safe on restart."""
+        db = self._db_or_raise()
+        ts = datetime.now(UTC).isoformat()
+        await db.execute(
+            "INSERT OR IGNORE INTO pool_sessions"
+            " (session_id, pool_id, started_at, last_active_at)"
+            " VALUES (?, ?, ?, ?)",
+            (session_id, pool_id, ts, ts),
+        )
+        await db.commit()
+
     async def get_last_session(self, pool_id: str) -> str | None:
         """Return the most recent session_id for *pool_id*, or None.
 
-        Used by _resolve_context Path 3 (last-active-session fallback)
-        to resume the most recent session for DMs / channels (#316).
+        Queries the pool_sessions table (O(1) via index) instead of scanning
+        conversation_turns. Returns a session from creation, not first reply.
         """
         db = self._db_or_raise()
         try:
             async with db.execute(
-                "SELECT session_id FROM conversation_turns"
-                " WHERE pool_id = ? AND role = 'assistant'"
-                " ORDER BY timestamp DESC LIMIT 1",
+                "SELECT session_id FROM pool_sessions"
+                " WHERE pool_id = ?"
+                " ORDER BY last_active_at DESC LIMIT 1",
                 (pool_id,),
             ) as cur:
                 row = await cur.fetchone()
@@ -192,6 +233,30 @@ class TurnStore(SqliteStore):
         except Exception:
             log.exception("TurnStore.get_last_session failed (pool=%s)", pool_id)
             return None
+
+    async def _backfill_sessions(self, db) -> None:
+        """One-time backfill: derive pool_sessions from conversation_turns.
+
+        Uses INSERT OR IGNORE so running twice is safe. Skips empty session_id.
+        resume_count defaults to 0 (pre-backfill counts are lost).
+        """
+        try:
+            cursor = await db.execute(
+                "INSERT OR IGNORE INTO pool_sessions"
+                " (session_id, pool_id, started_at, last_active_at, resume_count)"
+                " SELECT session_id, pool_id, MIN(timestamp), MAX(timestamp), 0"
+                " FROM conversation_turns"
+                " WHERE session_id != ''"
+                " GROUP BY pool_id, session_id"
+            )
+            await db.commit()
+            if cursor.rowcount and cursor.rowcount > 0:
+                log.info(
+                    "TurnStore: backfilled %d session(s)",
+                    cursor.rowcount,
+                )
+        except Exception:
+            log.exception("TurnStore._backfill_sessions failed")
 
     async def get_turns(
         self, pool_id: str, user_id: str, limit: int = 50

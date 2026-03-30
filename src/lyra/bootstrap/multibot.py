@@ -13,6 +13,7 @@ from lyra.bootstrap.agent_factory import (
     _resolve_bot_agent_map,
 )
 from lyra.bootstrap.config import (
+    MessageIndexConfig,
     _build_agent_overrides,
     _load_cli_pool_config,
     _load_debouncer_config,
@@ -69,6 +70,16 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
     vault_dir.mkdir(parents=True, exist_ok=True)
 
     async with open_stores(vault_dir) as stores:
+        # Prune stale message_index entries (#417 / S1)
+        mi_cfg = MessageIndexConfig(**raw_config.get("message_index", {}))
+        pruned = await stores.message_index.cleanup_older_than(mi_cfg.retention_days)
+        if pruned:
+            log.info(
+                "message_index: pruned %d entries older than %d days",
+                pruned,
+                mi_cfg.retention_days,
+            )
+
         # Seed per-bot owner/trusted users as permanent grants
         auth_block: dict = raw_config.get("auth", {})
         for entry in auth_block.get("telegram_bots", []):
@@ -225,8 +236,8 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
             stores.cred,
             circuit_registry,
             msg_manager,
-            stores.thread,
             agent_store=stores.agent,
+            vault_dir=str(vault_dir),
         )
 
         # Start buses, dispatchers, health server, adapter tasks

@@ -7,7 +7,6 @@ sub-modules that register their commands on ``agent_app``.
 from __future__ import annotations
 
 import importlib
-
 import os
 from pathlib import Path
 from typing import Optional

@@ -7,9 +7,8 @@ backend = "anthropic-sdk" in agent TOML config.
 
 from __future__ import annotations
 
-import importlib
-
 import html
+import importlib
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING

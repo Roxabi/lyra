@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import asyncio
 import collections.abc
-import importlib
 import contextlib
+import importlib
 import logging
 import time
 from typing import TYPE_CHECKING

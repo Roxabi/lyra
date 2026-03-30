@@ -6,7 +6,6 @@ Stateless functions that receive dependencies as arguments and return Response.
 from __future__ import annotations
 
 import importlib
-
 from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path

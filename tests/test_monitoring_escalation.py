@@ -300,7 +300,7 @@ class TestRunFallbackChain:
             "lyra.monitoring.checks.subprocess.run",
             lambda *a, **kw: MagicMock(
                 returncode=0,
-                stdout="lyra_telegram                    RUNNING   pid 1234, uptime 1:00:00\n",
+                stdout="lyra_telegram                    RUNNING   pid 1234, uptime 1:00:00\n",  # noqa: E501
             ),
         )
 

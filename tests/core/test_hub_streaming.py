@@ -140,6 +140,7 @@ class TestDispatchStreaming:
 
         await hub.dispatch_streaming(msg, gen())
 
+        assert all(isinstance(e, TextRenderEvent) for e in streamed)
         assert streamed == [
             TextRenderEvent(text="Hello", is_final=False),
             TextRenderEvent(text=" world", is_final=True),
@@ -225,6 +226,7 @@ class TestDispatchStreaming:
             ) -> None:
                 sent.append(outbound)
 
+        # LegacyAdapter intentionally lacks send_streaming — tests voice fallback path
         hub.register_adapter(
             Platform.TELEGRAM,
             "main",

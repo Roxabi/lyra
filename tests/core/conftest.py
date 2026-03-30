@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import json as _json
+from collections.abc import AsyncIterator
 from dataclasses import dataclass as _dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -24,12 +25,16 @@ from lyra.core.message import (
     Attachment,
     InboundAudio,
     InboundMessage,
+    OutboundAttachment,
+    OutboundAudio,
+    OutboundAudioChunk,
     OutboundMessage,
     Platform,
     Response,
     RoutingContext,
 )
 from lyra.core.pool import Pool
+from lyra.core.render_events import RenderEvent
 from lyra.core.stores.agent_store import AgentRow, AgentStore
 from lyra.core.stores.auth_store import AuthStore
 from lyra.core.stores.pairing import PairingConfig, PairingManager
@@ -77,14 +82,14 @@ def make_plugin(
 
 
 class MockAdapter:
-    """Minimal ChannelAdapter for testing."""
+    """Typed ChannelAdapter test double — implements the full protocol."""
 
-    def normalize(self, raw: object) -> InboundMessage:
+    def normalize(self, raw: Any) -> InboundMessage:
         raise NotImplementedError
 
     def normalize_audio(
         self,
-        raw: object,
+        raw: Any,
         audio_bytes: bytes,
         mime_type: str,
         *,
@@ -100,25 +105,29 @@ class MockAdapter:
     async def send_streaming(
         self,
         original_msg: InboundMessage,
-        events: object,
-        outbound: object = None,
+        events: AsyncIterator[RenderEvent],
+        outbound: OutboundMessage | None = None,
     ) -> None:
         pass
 
-    async def render_audio(self, msg: object, inbound: InboundMessage) -> None:
+    async def render_audio(
+        self, msg: OutboundAudio, inbound: InboundMessage
+    ) -> None:
         pass
 
     async def render_audio_stream(
-        self, chunks: object, inbound: InboundMessage
+        self, chunks: AsyncIterator[OutboundAudioChunk], inbound: InboundMessage
     ) -> None:
         pass
 
     async def render_voice_stream(
-        self, chunks: object, inbound: InboundMessage
+        self, chunks: AsyncIterator[OutboundAudioChunk], inbound: InboundMessage
     ) -> None:
         pass
 
-    async def render_attachment(self, msg: object, inbound: InboundMessage) -> None:
+    async def render_attachment(
+        self, msg: OutboundAttachment, inbound: InboundMessage
+    ) -> None:
         pass
 
 
@@ -624,8 +633,8 @@ def make_msg(text: str = "hello") -> InboundMessage:
 # ---------------------------------------------------------------------------
 
 
-class _MockAdapter:
-    """Minimal adapter that records sent messages."""
+class _MockAdapter(MockAdapter):
+    """Adapter that records sent messages — extends MockAdapter."""
 
     def __init__(self) -> None:
         self.sent: list[OutboundMessage] = []
@@ -636,28 +645,6 @@ class _MockAdapter:
         outbound: OutboundMessage,
     ) -> None:
         self.sent.append(outbound)
-
-    async def send_streaming(
-        self,
-        original_msg: InboundMessage,
-        events: object,
-        outbound: object = None,
-    ) -> None:
-        pass
-
-    async def render_audio(
-        self,
-        msg: object,
-        inbound: InboundMessage,
-    ) -> None:
-        pass
-
-    async def render_attachment(
-        self,
-        msg: object,
-        inbound: InboundMessage,
-    ) -> None:
-        pass
 
 
 class _NullAgent(AgentBase):
@@ -686,10 +673,8 @@ def _make_hub(**kwargs: Any) -> Hub:
     )
     hub.register_agent(agent)
 
-    from lyra.core.hub.hub_protocol import ChannelAdapter
-
     adapter = _MockAdapter()
-    hub.register_adapter(Platform.TELEGRAM, "main", cast(ChannelAdapter, adapter))
+    hub.register_adapter(Platform.TELEGRAM, "main", adapter)
     hub.register_binding(
         Platform.TELEGRAM,
         "main",

@@ -4,13 +4,11 @@ gate removal assertions (#208, #245)."""
 from __future__ import annotations
 
 import asyncio
-from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 from lyra.core.agent import Agent
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.hub import Hub
-from lyra.core.hub.hub_protocol import ChannelAdapter
 from lyra.core.hub.message_pipeline import Action, MessagePipeline
 from lyra.core.message import InboundMessage, Platform, Response
 from lyra.core.pool import Pool
@@ -53,7 +51,7 @@ class TestPipelineGuardStages:
         hub.register_adapter(
             Platform.TELEGRAM,
             "main",
-            cast(ChannelAdapter, _MockAdapter()),
+            _MockAdapter(),
         )
         pipeline = MessagePipeline(hub)
         msg = make_inbound_message()
@@ -65,7 +63,7 @@ class TestPipelineGuardStages:
         hub.register_adapter(
             Platform.TELEGRAM,
             "main",
-            cast(ChannelAdapter, _MockAdapter()),
+            _MockAdapter(),
         )
         # Binding references non-existent agent
         hub.register_binding(

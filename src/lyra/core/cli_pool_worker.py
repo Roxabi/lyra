@@ -73,18 +73,9 @@ class _ProcessEntry:
 
 
 class CliPoolWorkerMixin:
-    """Base class providing spawn/kill worker methods for CliPool.
+    """Base class providing spawn/kill worker methods for CliPool."""
 
-    Subclasses must initialise:
-    - ``self._entries: dict[str, _ProcessEntry]``
-    - ``self._cwd_overrides: dict[str, Path]``
-    - ``self._resume_session_ids: dict[str, str]``
-    - ``self._default_timeout: int``
-    - ``self._kill_timeout: float``
-    - ``self._reaper_interval: int``
-    - ``self._read_buffer_bytes: int``
-    """
-
+    # Declared for type-checking — initialised by CliPool.__init__.
     if TYPE_CHECKING:
         _entries: dict[str, _ProcessEntry]
         _cwd_overrides: dict[str, Path]

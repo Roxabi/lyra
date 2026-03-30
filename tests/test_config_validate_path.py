@@ -51,7 +51,6 @@ class TestValidateConfigPath:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Relative paths that resolve inside home are accepted."""
-        import os
 
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         # Change cwd to tmp_path so relative paths resolve inside home

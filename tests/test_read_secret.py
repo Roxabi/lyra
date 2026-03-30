@@ -10,7 +10,9 @@ from lyra.bootstrap.health import _read_secret
 
 
 class TestReadSecret:
-    def _setup_secrets_dir(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    def _setup_secrets_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> Path:
         """Set up ~/.lyra/secrets/ structure under tmp_path."""
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         secrets_dir = tmp_path / ".lyra" / "secrets"

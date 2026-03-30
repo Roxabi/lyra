@@ -33,11 +33,7 @@ _command_parser = CommandParser()
 
 
 class TraceMiddleware:
-    """Stage 0: generate a per-turn trace_id and store it in contextvars (#270).
-
-    Must be first in the pipeline so that all downstream middleware,
-    pool workers, and agent calls inherit the trace context.
-    """
+    """Stage 0: generate a per-turn trace_id and store it in contextvars (#270)."""
 
     async def __call__(
         self,

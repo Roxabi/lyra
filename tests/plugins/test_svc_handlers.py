@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -10,6 +11,7 @@ import pytest
 import lyra.commands.svc.handlers as svc_mod
 from lyra.commands.svc.handlers import cmd_svc
 from lyra.core.message import InboundMessage
+from lyra.core.pool import Pool
 from lyra.core.trust import TrustLevel
 from lyra.integrations.base import ServiceControlFailed
 
@@ -31,7 +33,7 @@ def _make_msg(text: str = "/svc status", *, is_admin: bool = True) -> InboundMes
     )
 
 
-_POOL = None  # pool is unused by cmd_svc
+_POOL = cast(Pool, None)  # pool is unused by cmd_svc
 
 
 @pytest.fixture(autouse=True)

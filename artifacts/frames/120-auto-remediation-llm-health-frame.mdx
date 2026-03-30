@@ -1,0 +1,44 @@
+---
+title: "Auto-remediation actions from LLM health diagnosis"
+issue: 120
+status: approved
+tier: F-lite
+date: 2026-03-30
+---
+
+## Problem
+
+When the two-layer monitoring system (#111) detects an anomaly and Layer 2 (LLM) diagnoses the issue, it currently sends a Telegram notification with a suggested fix. The operator must then manually SSH into the machine and execute the remediation. For common, well-understood failures (process crashed, queue stuck, stale locks), this manual step adds unnecessary downtime.
+
+Auto-remediation for safe, pre-approved actions would close the loop between diagnosis and recovery without human intervention, while keeping the operator informed at every step.
+
+## Who
+
+- **Primary:** Operator (Mickael) — receives diagnosis alerts, currently acts on them manually
+- **Secondary:** End users of Lyra — experience reduced downtime when common failures self-heal
+
+## Constraints
+
+- Depends on #111 (bash pre-check layer) — **satisfied** (closed/merged)
+- Remediation targets **local machine only** — both supervisor-managed and systemd-managed services
+- No remote execution (no SSH to other hosts)
+- Must have a global kill switch (TOML config toggle)
+- Must enforce a per-target cooldown window to prevent remediation loops (e.g., don't restart the same service twice within N minutes)
+- LLM must map diagnosis to a registered action from the safe list — or fall back to "manual" with notification only
+
+## Out of Scope
+
+- Multi-step or chained remediations (e.g., "restart A then B then check C")
+- Rollbacks or state restoration
+- Remediation on remote machines
+- Custom/arbitrary shell commands — only pre-registered actions
+
+## Complexity
+
+**Tier: F-lite** — Single domain (monitoring/health subsystem), clear scope with a bounded action registry, no new architectural patterns. Extends the existing Layer 2 diagnosis flow.
+
+Signals:
+- Extends existing monitoring subsystem (#111, #104)
+- Well-defined action set (restart, flush, clear locks)
+- Single config surface (TOML registry + kill switch)
+- No cross-domain impact beyond notification dispatch

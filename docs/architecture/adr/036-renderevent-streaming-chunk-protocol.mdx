@@ -271,11 +271,13 @@ order under normal conditions.
 3. **Multiplexing correctness** — `(stream_id, seq)` uniquely identifies a chunk
    position even when multiple concurrent streams share the same subject.
 
-**Gap policy (Slice C, NATS Core):** Receiver waits up to `stream_timeout_s`
-(configurable, default 30s) for the next expected `seq`. On timeout, treat as
-`STREAM_ABORTED` and surface an error turn to the user. No reordering buffer is
-needed — NATS Core in-order guarantee makes out-of-order arrival impossible except
-in the dropped-message case, which gap detection already handles as a fatal event.
+**Gap policy (Slice C, NATS Core):** The Adapter MUST validate `seq == expected_seq`
+for every received chunk. Any deviation (regression, skip, or repeat) MUST be treated
+as immediate `STREAM_ABORTED` — not deferred to the timeout. The Adapter also waits up
+to `stream_timeout_s` (configurable, default 30s) for the next expected `seq` when no
+chunk arrives; on timeout, treat as `STREAM_ABORTED`. No reordering buffer is needed —
+NATS Core in-order guarantee makes out-of-order arrival impossible except in the
+dropped-message case, which the seq check already handles as a fatal event.
 
 ## Error Handling Summary
 

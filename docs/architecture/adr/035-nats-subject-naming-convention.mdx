@@ -146,12 +146,16 @@ to `lyra.hub.*` or `lyra.monitor.*` before a dedicated ADR approves their payloa
 | Token | Constraints | Examples |
 |-------|-------------|---------|
 | `{platform}` | Lowercase ASCII, no dots | `telegram`, `discord` |
-| `{bot_id}` | Numeric string (no leading zeros) | `12345678`, `987654321` |
+| `{bot_id}` | Numeric string (no leading zeros), regex `^[1-9][0-9]*$` | `12345678`, `987654321` |
 | `{worker_id}` | Lowercase ASCII + hyphens | `m2-gpu-0`, `m1-cpu-0` |
 | `{cmd}` | Lowercase ASCII, verb form | `drain`, `reload`, `shutdown` |
 
 Dots within token values are **prohibited** — they would create phantom subject
 levels and break wildcard subscriptions.
+
+The Adapter MUST validate `bot_id` against `^[1-9][0-9]*$` before constructing
+subject strings. A failed validation is a startup error — a leading-zero or
+non-numeric `bot_id` would produce a shadow subject that bypasses per-bot ACL rules.
 
 ## ACL Policy Reference
 

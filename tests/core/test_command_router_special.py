@@ -449,14 +449,14 @@ class TestSessionCommands:
     ) -> None:
         """Processor cmds gated by passthroughs in /help (#359)."""
         from lyra.core.builtin_commands import help_command
-        from lyra.core.processor_registry import ProcessorEntry, registry
+        from lyra.core.processor_registry import BaseProcessor, ProcessorEntry, registry
 
         # Hermetic: register fake processors, clean up after.
         registry._entries["/fake-a"] = ProcessorEntry(
-            processor_cls=type("A", (), {}), description="Fake A"
+            processor_cls=type("A", (BaseProcessor,), {}), description="Fake A"
         )
         registry._entries["/fake-b"] = ProcessorEntry(
-            processor_cls=type("B", (), {}), description="Fake B"
+            processor_cls=type("B", (BaseProcessor,), {}), description="Fake B"
         )
         try:
             router = make_router(tmp_path)
@@ -504,10 +504,10 @@ class TestSessionCommands:
         self, tmp_path: Path
     ) -> None:
         """Router dispatch /help passes passthroughs to help_command (#359)."""
-        from lyra.core.processor_registry import ProcessorEntry, registry
+        from lyra.core.processor_registry import BaseProcessor, ProcessorEntry, registry
 
         registry._entries["/fake-pt"] = ProcessorEntry(
-            processor_cls=type("PT", (), {}), description="Fake PT"
+            processor_cls=type("PT", (BaseProcessor,), {}), description="Fake PT"
         )
         try:
             router = make_router(tmp_path)
@@ -515,11 +515,13 @@ class TestSessionCommands:
 
             # Not registered as passthrough → should not appear
             resp = await router.dispatch(msg, pool=None)
+            assert resp is not None
             assert "/fake-pt" not in resp.content
 
             # Register as passthrough → should appear
             router.register_passthrough("fake-pt")
             resp2 = await router.dispatch(msg, pool=None)
+            assert resp2 is not None
             assert "/fake-pt" in resp2.content
         finally:
             registry._entries.pop("/fake-pt", None)

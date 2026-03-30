@@ -368,6 +368,7 @@ class TestPoolSessions:
             ("sess-idem",),
         ) as cur:
             row = await cur.fetchone()
+        assert row is not None
         assert row[0] == 1
 
     async def test_get_last_session_from_pool_sessions(self, store: TurnStore) -> None:
@@ -404,6 +405,7 @@ class TestPoolSessions:
             ("sess-bf",),
         ) as cur:
             row = await cur.fetchone()
+        assert row is not None
         assert row[0] == 1
 
     async def test_log_turn_updates_last_active_at(self, store: TurnStore) -> None:
@@ -415,7 +417,9 @@ class TestPoolSessions:
             "SELECT last_active_at FROM pool_sessions WHERE session_id = ?",
             ("sess-ts",),
         ) as cur:
-            before = (await cur.fetchone())[0]
+            _row = await cur.fetchone()
+            assert _row is not None
+            before = _row[0]
 
         # Small sleep to guarantee the timestamp advances.
         await asyncio.sleep(0.01)
@@ -433,7 +437,9 @@ class TestPoolSessions:
             "SELECT last_active_at FROM pool_sessions WHERE session_id = ?",
             ("sess-ts",),
         ) as cur:
-            after = (await cur.fetchone())[0]
+            _row = await cur.fetchone()
+            assert _row is not None
+            after = _row[0]
 
         assert after > before
 

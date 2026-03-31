@@ -59,7 +59,11 @@ async def cmd_add_vault(
         )
     except VaultWriteFailed as exc:
         if exc.reason == "not_available":
-            return Response(content="Vault CLI not available — note was NOT saved.")
-        return Response(content=f"Vault write failed ({exc.reason}) — note was NOT saved.")
+            return Response(
+                content="Vault CLI not available — note was NOT saved.",
+            )
+        return Response(
+            content=f"Vault write failed ({exc.reason}) — NOT saved.",
+        )
 
     return Response(content="Saved to vault.")

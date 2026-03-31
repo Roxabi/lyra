@@ -9,8 +9,6 @@ from __future__ import annotations
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
 from lyra.commands.add_vault.handlers import (
     _MAX_CONTENT_CHARS,
     _NOTE_CATEGORY,
@@ -41,7 +39,10 @@ def make_tools(vault_side_effect=None) -> SessionTools:
 
 
 def make_msg(text: str = "hello") -> InboundMessage:
-    cmd = CommandContext(prefix="/", name="add-vault", args=text, raw=f"/add-vault {text}")
+    cmd = CommandContext(
+        prefix="/", name="add-vault",
+        args=text, raw=f"/add-vault {text}",
+    )
     return InboundMessage(
         id="msg-1",
         platform="telegram",
@@ -58,6 +59,20 @@ def make_msg(text: str = "hello") -> InboundMessage:
     )
 
 
+def _call(tools: SessionTools) -> list:
+    calls: list = []
+    cast(Any, tools.vault).add = AsyncMock(
+        side_effect=lambda *a, **kw: calls.append((a, kw)),
+    )
+    return calls
+
+
+async def _run(msg, tools, args):
+    return await cmd_add_vault(
+        msg, _DUMMY_DRIVER, tools, args, 30.0,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Happy path
 # ---------------------------------------------------------------------------
@@ -66,16 +81,17 @@ def make_msg(text: str = "hello") -> InboundMessage:
 class TestAddVaultHappyPath:
     async def test_saves_note_to_vault(self) -> None:
         tools = make_tools()
-        resp = await cmd_add_vault(make_msg("Buy milk"), _DUMMY_DRIVER, tools, ["Buy", "milk"], 30.0)
+        resp = await _run(
+            make_msg("Buy milk"), tools, ["Buy", "milk"],
+        )
         cast(Any, tools.vault).add.assert_called_once()
         assert "saved" in resp.content.lower()
 
     async def test_saves_with_correct_category_and_type(self) -> None:
         tools = make_tools()
-        calls: list = []
-        cast(Any, tools.vault).add = AsyncMock(side_effect=lambda *a, **kw: calls.append((a, kw)))
+        calls = _call(tools)
 
-        await cmd_add_vault(make_msg("Note"), _DUMMY_DRIVER, tools, ["Note"], 30.0)
+        await _run(make_msg("Note"), tools, ["Note"])
 
         _, kwargs = calls[0]
         assert kwargs["category"] == _NOTE_CATEGORY
@@ -83,31 +99,30 @@ class TestAddVaultHappyPath:
 
     async def test_title_truncated_to_80_chars(self) -> None:
         tools = make_tools()
-        calls: list = []
-        cast(Any, tools.vault).add = AsyncMock(side_effect=lambda *a, **kw: calls.append((a, kw)))
+        calls = _call(tools)
         long_note = "A" * 120
 
-        await cmd_add_vault(make_msg(long_note), _DUMMY_DRIVER, tools, [long_note], 30.0)
+        await _run(make_msg(long_note), tools, [long_note])
 
         (title, *_), _ = calls[0]
         assert len(title) == 80
 
     async def test_full_content_passed_as_body(self) -> None:
         tools = make_tools()
-        calls: list = []
-        cast(Any, tools.vault).add = AsyncMock(side_effect=lambda *a, **kw: calls.append((a, kw)))
+        calls = _call(tools)
 
-        await cmd_add_vault(make_msg("Short note"), _DUMMY_DRIVER, tools, ["Short", "note"], 30.0)
+        await _run(
+            make_msg("Short note"), tools, ["Short", "note"],
+        )
 
         (_, _, _, body), _ = calls[0]
         assert body == "Short note"
 
     async def test_empty_url_and_tags(self) -> None:
         tools = make_tools()
-        calls: list = []
-        cast(Any, tools.vault).add = AsyncMock(side_effect=lambda *a, **kw: calls.append((a, kw)))
+        calls = _call(tools)
 
-        await cmd_add_vault(make_msg("Note"), _DUMMY_DRIVER, tools, ["Note"], 30.0)
+        await _run(make_msg("Note"), tools, ["Note"])
 
         (_, tags, url, _), _ = calls[0]
         assert tags == []
@@ -122,13 +137,15 @@ class TestAddVaultHappyPath:
 class TestAddVaultMissingContent:
     async def test_empty_args_returns_usage(self) -> None:
         tools = make_tools()
-        resp = await cmd_add_vault(make_msg(""), _DUMMY_DRIVER, tools, [], 30.0)
+        resp = await _run(make_msg(""), tools, [])
         assert "Usage:" in resp.content
         cast(Any, tools.vault).add.assert_not_called()
 
     async def test_whitespace_args_returns_usage(self) -> None:
         tools = make_tools()
-        resp = await cmd_add_vault(make_msg(""), _DUMMY_DRIVER, tools, ["  ", "  "], 30.0)
+        resp = await _run(
+            make_msg(""), tools, ["  ", "  "],
+        )
         assert "Usage:" in resp.content
         cast(Any, tools.vault).add.assert_not_called()
 
@@ -141,14 +158,16 @@ class TestAddVaultMissingContent:
 class TestAddVaultTruncation:
     async def test_oversized_content_truncated(self) -> None:
         tools = make_tools()
-        calls: list = []
-        cast(Any, tools.vault).add = AsyncMock(side_effect=lambda *a, **kw: calls.append((a, kw)))
+        calls = _call(tools)
         oversized = "B" * (_MAX_CONTENT_CHARS + 500)
 
-        await cmd_add_vault(make_msg(oversized), _DUMMY_DRIVER, tools, [oversized], 30.0)
+        await _run(
+            make_msg(oversized), tools, [oversized],
+        )
 
         (_, _, _, body), _ = calls[0]
-        assert len(body) <= _MAX_CONTENT_CHARS + len("\n\n[note truncated]")
+        max_len = _MAX_CONTENT_CHARS + len("\n\n[note truncated]")
+        assert len(body) <= max_len
         assert "[note truncated]" in body
 
 
@@ -159,12 +178,20 @@ class TestAddVaultTruncation:
 
 class TestAddVaultFailures:
     async def test_vault_not_available(self) -> None:
-        tools = make_tools(vault_side_effect=VaultWriteFailed("not_available"))
-        resp = await cmd_add_vault(make_msg("Note"), _DUMMY_DRIVER, tools, ["Note"], 30.0)
+        tools = make_tools(
+            vault_side_effect=VaultWriteFailed("not_available"),
+        )
+        resp = await _run(
+            make_msg("Note"), tools, ["Note"],
+        )
         assert "not available" in resp.content.lower()
         assert "NOT saved" in resp.content
 
     async def test_vault_subprocess_error(self) -> None:
-        tools = make_tools(vault_side_effect=VaultWriteFailed("subprocess_error"))
-        resp = await cmd_add_vault(make_msg("Note"), _DUMMY_DRIVER, tools, ["Note"], 30.0)
+        tools = make_tools(
+            vault_side_effect=VaultWriteFailed("subprocess_error"),
+        )
+        resp = await _run(
+            make_msg("Note"), tools, ["Note"],
+        )
         assert "NOT saved" in resp.content

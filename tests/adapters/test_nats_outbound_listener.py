@@ -62,7 +62,7 @@ async def test_send_envelope_dispatches_to_adapter_send() -> None:
     await listener._handle(_make_nats_msg(envelope))
 
     adapter.send.assert_called_once()
-    call_original_msg, call_outbound = adapter.send.call_args[0]
+    call_original_msg, _call_outbound = adapter.send.call_args[0]
     assert call_original_msg is msg
 
 

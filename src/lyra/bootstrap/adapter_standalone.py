@@ -15,7 +15,8 @@ import sys
 import nats
 
 from lyra.adapters.nats_outbound_listener import NatsOutboundListener
-from lyra.core.bus import Bus, LocalBus
+from lyra.core.bus import Bus
+from lyra.core.inbound_bus import LocalBus
 from lyra.core.message import InboundAudio, InboundMessage, Platform
 
 log = logging.getLogger(__name__)

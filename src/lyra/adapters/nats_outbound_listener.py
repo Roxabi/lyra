@@ -92,7 +92,7 @@ class NatsOutboundListener:
     async def _handle_send(self, data: dict) -> None:
         stream_id = data.get("stream_id")
         original_msg = self._cache.get(stream_id) if stream_id else None
-        if original_msg is None:
+        if stream_id is None or original_msg is None:
             log.warning(
                 "NatsOutboundListener: unknown stream_id=%r for send",
                 stream_id,
@@ -109,7 +109,7 @@ class NatsOutboundListener:
     async def _handle_attachment(self, data: dict) -> None:
         stream_id = data.get("stream_id")
         original_msg = self._cache.get(stream_id) if stream_id else None
-        if original_msg is None:
+        if stream_id is None or original_msg is None:
             log.warning(
                 "NatsOutboundListener: unknown stream_id=%r for attachment", stream_id
             )

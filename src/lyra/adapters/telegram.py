@@ -79,20 +79,15 @@ def load_config() -> TelegramConfig:
 
 def _make_verifier(secret: str):
     """Return a FastAPI dependency that validates the Telegram webhook secret."""
-
     async def verify(request: Request) -> None:
         incoming = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
         if not secret or not hmac.compare_digest(incoming, secret):
             raise HTTPException(status_code=401, detail="Unauthorized")
-
     return verify
 
 
 class TelegramAdapter:
-    """Telegram channel adapter — aiogram v3 webhook style.
-
-    Never logs the bot token. Webhook route validates secret token header.
-    """
+    """Telegram adapter — aiogram v3 webhook. Never logs the bot token."""
 
     def __init__(  # noqa: PLR0913 — DI constructor
         self,
@@ -147,7 +142,6 @@ class TelegramAdapter:
         self._typing = TypingTaskManager()
         self._bot: Any = None
         self._dp: Any = None
-
         from aiogram import Dispatcher, F
 
         self._dp = Dispatcher()
@@ -174,11 +168,7 @@ class TelegramAdapter:
         self._bot = value
 
     async def resolve_identity(self) -> None:
-        """Discover the bot's username via the Telegram API (getMe).
-
-        Must be called once after the bot is available — analogous to
-        Discord's ``on_ready()`` which populates ``_bot_user``.
-        """
+        """Discover the bot's username via getMe — call once after startup."""
         me = await self.bot.get_me()
         self._bot_username = me.username
         log.info(
@@ -240,7 +230,6 @@ class TelegramAdapter:
         self._typing.cancel(chat_id)
 
     async def astart(self) -> None:
-        """Start the outbound listener if wired (NATS mode only)."""
         if self._outbound_listener is not None:
             await self._outbound_listener.start()
 

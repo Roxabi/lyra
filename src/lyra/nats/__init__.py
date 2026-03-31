@@ -20,5 +20,6 @@ Usage::
     await bus.stop()
 """
 from .nats_bus import NatsBus
+from .nats_channel_proxy import NatsChannelProxy
 
-__all__ = ["NatsBus"]
+__all__ = ["NatsBus", "NatsChannelProxy"]

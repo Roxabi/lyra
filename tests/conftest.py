@@ -6,6 +6,7 @@ import asyncio
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -223,7 +224,7 @@ def patch_all(
     _OriginalHub = Hub
 
     class CapturingHub(_OriginalHub):  # type: ignore[misc]
-        def __init__(self, **kwargs: object) -> None:
+        def __init__(self, **kwargs: Any) -> None:
             super().__init__(**kwargs)
             captured.append(self)
 

@@ -141,9 +141,7 @@ class TestDiscordNormalizeRouting:
     def test_routing_populated(self) -> None:
         from lyra.adapters.discord import _ALLOW_ALL, DiscordAdapter
 
-        hub = MagicMock()
         adapter = DiscordAdapter.__new__(DiscordAdapter)
-        adapter._hub = hub
         adapter._bot_id = "main"
         adapter._bot_user = None
         adapter._mention_re = None

@@ -48,9 +48,12 @@ def _make_discord_msg(
 
 
 def _make_adapter() -> DiscordAdapter:
-    hub = MagicMock()
     return DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
 
 
@@ -113,12 +116,16 @@ def test_normalize_audio_thread_scope_id() -> None:
 @pytest.mark.asyncio
 async def test_on_message_enqueues_audio_on_audio_bus() -> None:
     """on_message() downloads audio and enqueues on inbound_audio_bus."""
-    hub = MagicMock()
-    hub.inbound_bus = MagicMock()
-    hub.inbound_audio_bus = MagicMock()
-    hub.inbound_audio_bus.put = AsyncMock()
+    inbound_bus = MagicMock()
+    inbound_bus.put = AsyncMock()
+    inbound_audio_bus = MagicMock()
+    inbound_audio_bus.put = AsyncMock()
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=inbound_bus,
+        inbound_audio_bus=inbound_audio_bus,
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
 
     # Use a valid OGG magic header so the magic-byte check passes.
@@ -140,8 +147,8 @@ async def test_on_message_enqueues_audio_on_audio_bus() -> None:
     # Audio bytes downloaded
     attachment_obj.read.assert_called_once()
     # Enqueued on audio bus (not text bus)
-    hub.inbound_audio_bus.put.assert_called_once()
-    hub.inbound_bus.put.assert_not_called()
+    inbound_audio_bus.put.assert_called_once()
+    inbound_bus.put.assert_not_called()
     # No unsupported reply sent
     msg.reply.assert_not_called()
 
@@ -149,10 +156,16 @@ async def test_on_message_enqueues_audio_on_audio_bus() -> None:
 @pytest.mark.asyncio
 async def test_on_message_audio_download_failure_returns_cleanly() -> None:
     """on_message() handles download failure gracefully — no enqueue, no crash."""
-    hub = MagicMock()
-    hub.inbound_bus = MagicMock()
-    hub.inbound_audio_bus = MagicMock()
-    adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+    inbound_bus = MagicMock()
+    inbound_bus.put = AsyncMock()
+    inbound_audio_bus = MagicMock()
+    inbound_audio_bus.put = AsyncMock()
+    adapter = DiscordAdapter(
+        bot_id="main",
+        inbound_bus=inbound_bus,
+        inbound_audio_bus=inbound_audio_bus,
+        intents=discord.Intents.none(),
+    )
 
     attachment_obj = SimpleNamespace(
         content_type="audio/ogg",
@@ -165,19 +178,20 @@ async def test_on_message_audio_download_failure_returns_cleanly() -> None:
 
     await adapter.on_message(msg)
 
-    hub.inbound_audio_bus.put.assert_not_called()
-    hub.inbound_bus.put.assert_not_called()
+    inbound_audio_bus.put.assert_not_called()
+    inbound_bus.put.assert_not_called()
     msg.reply.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_on_message_audio_too_large_sends_reply() -> None:
     """on_message() rejects oversized audio with user-facing reply."""
-    hub = MagicMock()
-    hub.inbound_bus = MagicMock()
-    hub.inbound_audio_bus = MagicMock()
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
 
     attachment_obj = SimpleNamespace(
@@ -193,7 +207,6 @@ async def test_on_message_audio_too_large_sends_reply() -> None:
 
     # Should NOT download
     attachment_obj.read.assert_not_called()
-    hub.inbound_audio_bus.put.assert_not_called()
     # Should reply with too-large message
     msg.reply.assert_called_once()
 
@@ -201,10 +214,12 @@ async def test_on_message_audio_too_large_sends_reply() -> None:
 @pytest.mark.asyncio
 async def test_on_message_does_not_call_normalize_audio_for_non_audio() -> None:
     """on_message() does not call normalize_audio() for non-audio attachments."""
-    hub = MagicMock()
-    hub.inbound_bus = MagicMock()
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
 
     image_attachment = SimpleNamespace(
@@ -238,10 +253,14 @@ async def test_on_message_does_not_call_normalize_audio_for_non_audio() -> None:
 @pytest.mark.asyncio
 async def test_on_message_returns_after_audio_skips_text_path() -> None:
     """on_message() must not enqueue a text hub_msg when audio is processed."""
-    hub = MagicMock()
-    hub.inbound_bus = MagicMock()
+    inbound_bus = MagicMock()
+    inbound_bus.put = AsyncMock()
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=inbound_bus,
+        inbound_audio_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
 
     attachment_obj = SimpleNamespace(
@@ -255,4 +274,4 @@ async def test_on_message_returns_after_audio_skips_text_path() -> None:
 
     await adapter.on_message(msg)
 
-    hub.inbound_bus.put.assert_not_called()
+    inbound_bus.put.assert_not_called()

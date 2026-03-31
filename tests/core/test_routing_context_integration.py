@@ -34,11 +34,11 @@ class TestTelegramNormalizeRouting:
     def test_routing_populated(self) -> None:
         from lyra.adapters.telegram import _ALLOW_ALL, TelegramAdapter
 
-        hub = MagicMock()
         adapter = TelegramAdapter(
             bot_id="main",
             token="fake",
-            hub=hub,
+            inbound_bus=MagicMock(),
+            inbound_audio_bus=MagicMock(),
             auth=_ALLOW_ALL,
         )
 
@@ -69,11 +69,11 @@ class TestTelegramNormalizeRouting:
     def test_routing_with_topic(self) -> None:
         from lyra.adapters.telegram import _ALLOW_ALL, TelegramAdapter
 
-        hub = MagicMock()
         adapter = TelegramAdapter(
             bot_id="main",
             token="fake",
-            hub=hub,
+            inbound_bus=MagicMock(),
+            inbound_audio_bus=MagicMock(),
             auth=_ALLOW_ALL,
         )
 
@@ -102,8 +102,7 @@ class TestTelegramNormalizeRouting:
         """RoutingContext.platform_meta must not alias InboundMessage.platform_meta."""
         from lyra.adapters.telegram import _ALLOW_ALL, TelegramAdapter
 
-        hub = MagicMock()
-        adapter = TelegramAdapter(bot_id="main", token="fake", hub=hub, auth=_ALLOW_ALL)
+        adapter = TelegramAdapter(bot_id="main", token="fake", inbound_bus=MagicMock(), inbound_audio_bus=MagicMock(), auth=_ALLOW_ALL)
 
         raw = SimpleNamespace(
             from_user=SimpleNamespace(id=42, full_name="Alice"),

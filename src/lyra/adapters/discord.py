@@ -10,8 +10,9 @@ from typing import TYPE_CHECKING, Any, cast
 import discord
 
 if TYPE_CHECKING:
-    from lyra.core.hub import Hub
+    from lyra.core.bus import Bus
     from lyra.core.render_events import RenderEvent
+    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
 
 from lyra.adapters import discord_audio  # noqa: I001
 from lyra.adapters import discord_audio_outbound
@@ -72,9 +73,10 @@ class DiscordAdapter(discord.Client):
 
     def __init__(  # noqa: PLR0913 — DI constructor, each arg is a required dependency
         self,
-        hub: "Hub",
         bot_id: str = "main",
         *,
+        inbound_bus: "Bus[InboundMessage]",
+        inbound_audio_bus: "Bus[InboundAudio]",
         intents: discord.Intents | None = None,
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
@@ -99,7 +101,8 @@ class DiscordAdapter(discord.Client):
                 DeprecationWarning,
                 stacklevel=2,
             )
-        self._hub = hub
+        self._inbound_bus = inbound_bus
+        self._inbound_audio_bus = inbound_audio_bus
         self._bot_id = bot_id
         self._circuit_registry = circuit_registry
         self._msg_manager = msg_manager
@@ -118,6 +121,10 @@ class DiscordAdapter(discord.Client):
         self._watch_channels: frozenset[int] = watch_channels
         self._thread_sessions: dict[str, tuple[str, str]] = {}
         self._vsm: VoiceSessionManager = VoiceSessionManager()
+        self._outbound_listener: "NatsOutboundListener | None" = None
+        # Injectable identity resolver for slash command trust (set by wiring layer).
+        # Falls back to PUBLIC trust when not set (standalone/test mode).
+        self._resolve_identity_fn: Any = None
 
     def _msg(self, key: str, fallback: str) -> str:
         """Return a localised message string, falling back when no manager."""
@@ -149,11 +156,18 @@ class DiscordAdapter(discord.Client):
         if send_to_id is not None:
             self._cancel_typing(send_to_id)
 
+    async def astart(self) -> None:
+        """Start the outbound listener if wired (NATS mode only)."""
+        if self._outbound_listener is not None:
+            await self._outbound_listener.start()
+
     async def close(self) -> None:
-        """Cancel pending typing tasks, drain voice, close ThreadStore."""
+        """Cancel pending typing tasks, drain voice, close ThreadStore, stop outbound listener."""
         await self._typing.cancel_all()
         await self._vsm.leave_all()
-        # Close adapter-owned ThreadStore (#417 / S4)
+        if self._outbound_listener is not None:
+            await self._outbound_listener.stop()
+        # Close adapter-owned ThreadStore
         if self._thread_store is not None:
             try:
                 await self._thread_store.close()

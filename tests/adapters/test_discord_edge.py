@@ -71,12 +71,11 @@ async def test_backpressure_sends_ack_when_bus_full() -> None:
 
     from lyra.adapters.discord import DiscordAdapter
 
-    hub = MagicMock()
-    hub.inbound_bus = MagicMock()
-    hub.inbound_bus.put = AsyncMock(side_effect=asyncio.QueueFull())
+    inbound_bus = MagicMock()
+    inbound_bus.put = AsyncMock(side_effect=asyncio.QueueFull())
 
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main", inbound_bus=inbound_bus, inbound_audio_bus=MagicMock(), intents=discord.Intents.none(), auth=_ALLOW_ALL
     )
     bot_user = SimpleNamespace(id=999, bot=True)
     adapter._bot_user = bot_user
@@ -117,13 +116,13 @@ async def test_on_message_drops_silently_when_hub_circuit_open() -> None:
     # Arrange
     registry = _make_open_registry("hub")
 
-    hub = MagicMock()
-    hub.inbound_bus = MagicMock()
-    hub.inbound_bus.put = AsyncMock()
+    inbound_bus = MagicMock()
+    inbound_bus.put = AsyncMock()
 
     adapter = DiscordAdapter(
-        hub=hub,
         bot_id="main",
+        inbound_bus=inbound_bus,
+        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         circuit_registry=registry,
         auth=_ALLOW_ALL,
@@ -146,7 +145,7 @@ async def test_on_message_drops_silently_when_hub_circuit_open() -> None:
     await adapter.on_message(discord_msg)
 
     # Assert — inbound_bus.put must NOT be called; message filtered before circuit check
-    hub.inbound_bus.put.assert_not_called()
+    inbound_bus.put.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -157,13 +156,13 @@ async def test_on_message_notifies_user_when_hub_circuit_open_dm() -> None:
     # Arrange — hub circuit is OPEN
     registry = _make_open_registry("hub")
 
-    hub = MagicMock()
-    hub.inbound_bus = MagicMock()
-    hub.inbound_bus.put = AsyncMock()
+    inbound_bus = MagicMock()
+    inbound_bus.put = AsyncMock()
 
     adapter = DiscordAdapter(
-        hub=hub,
         bot_id="main",
+        inbound_bus=inbound_bus,
+        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         circuit_registry=registry,
         auth=_ALLOW_ALL,
@@ -188,7 +187,7 @@ async def test_on_message_notifies_user_when_hub_circuit_open_dm() -> None:
     await adapter.on_message(discord_msg)
 
     # Assert — inbound_bus.put must NOT be called (message dropped)
-    hub.inbound_bus.put.assert_not_called()
+    inbound_bus.put.assert_not_called()
     # Assert — user receives a circuit-open notification via reply
     reply_mock.assert_called_once()
     sent_text = reply_mock.call_args.args[0]
@@ -211,10 +210,10 @@ async def test_send_skips_when_discord_circuit_open() -> None:
     # Arrange
     registry = _make_open_registry("discord")
 
-    hub = MagicMock()
     adapter = DiscordAdapter(
-        hub=hub,
         bot_id="main",
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         circuit_registry=registry,
     )
@@ -271,13 +270,13 @@ async def test_discord_msg_manager_injection_backpressure_ack() -> None:
 
     import asyncio
 
-    hub = MagicMock()
-    hub.inbound_bus = MagicMock()
-    hub.inbound_bus.put = AsyncMock(side_effect=asyncio.QueueFull())
+    inbound_bus = MagicMock()
+    inbound_bus.put = AsyncMock(side_effect=asyncio.QueueFull())
 
     adapter = DiscordAdapter(
-        hub=hub,
         bot_id="main",
+        inbound_bus=inbound_bus,
+        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         msg_manager=mm,
         auth=_ALLOW_ALL,
@@ -316,9 +315,8 @@ def test_normalize_empty_text() -> None:
     from lyra.adapters.discord import DiscordAdapter
     from lyra.core.message import InboundMessage
 
-    hub = MagicMock()
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main", inbound_bus=MagicMock(), inbound_audio_bus=MagicMock(), intents=discord.Intents.none(), auth=_ALLOW_ALL
     )
     adapter._bot_user = SimpleNamespace(id=999, bot=True)
     discord_msg = SimpleNamespace(

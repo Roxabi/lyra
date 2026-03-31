@@ -127,12 +127,12 @@ class TestCredentialResolution:
         monkeypatch.setattr(
             main_mod,
             "DiscordAdapter",
-            lambda hub, **kwargs: CapturingDcAdapter(hub=hub),
+            lambda **kwargs: CapturingDcAdapter(),
         )
         monkeypatch.setattr(
             wiring_mod,
             "DiscordAdapter",
-            lambda hub, **kwargs: CapturingDcAdapter(hub=hub),
+            lambda **kwargs: CapturingDcAdapter(),
         )
         monkeypatch.setattr(
             main_mod,

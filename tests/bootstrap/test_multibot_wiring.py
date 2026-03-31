@@ -71,6 +71,41 @@ async def test_wire_telegram_adapters_registers_authenticator() -> None:
 
 
 @pytest.mark.asyncio
+async def test_wire_telegram_no_nats_listener_in_dev_mode() -> None:
+    """wire_telegram_adapters() does NOT create NatsOutboundListener (dev mode only)."""
+    from lyra.bootstrap.multibot_wiring import wire_telegram_adapters
+    from lyra.core.circuit_breaker import CircuitRegistry
+
+    hub = Hub()
+    bot_cfg = TelegramBotConfig(bot_id="main")
+    auth = Authenticator(store=None, role_map={}, default=TrustLevel.PUBLIC)
+
+    cred_store = MagicMock()
+    cred_store.get_full = AsyncMock(return_value=("fake-token", "fake-secret"))
+
+    mock_adapter_instance = MagicMock()
+    mock_adapter_instance.resolve_identity = AsyncMock()
+    mock_adapter_instance._outbound_listener = None
+
+    with patch(
+        "lyra.bootstrap.multibot_wiring.TelegramAdapter",
+        return_value=mock_adapter_instance,
+    ):
+        adapters, _ = await wire_telegram_adapters(
+            hub=hub,
+            tg_bot_auths=[(bot_cfg, auth)],
+            bot_agent_map={("telegram", "main"): "lyra_default"},
+            cred_store=cred_store,
+            circuit_registry=CircuitRegistry(),
+            msg_manager=MagicMock(),
+        )
+
+    assert len(adapters) == 1
+    # In dev/embedded mode, no NATS listener is attached
+    assert mock_adapter_instance._outbound_listener is None
+
+
+@pytest.mark.asyncio
 async def test_wire_telegram_adapters_skips_missing_agent_mapping() -> None:
     """wire_telegram_adapters() skips bots not in bot_agent_map without raising."""
     from lyra.bootstrap.multibot_wiring import wire_telegram_adapters

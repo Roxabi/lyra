@@ -88,8 +88,8 @@ class _FakeTgAdapter:
 
 
 class _FakeDcAdapter:
-    def __init__(self, hub: Hub, **kwargs: object) -> None:
-        self._hub = hub
+    def __init__(self, **kwargs: object) -> None:
+        pass
 
     async def start(self, token: str) -> None:
         await asyncio.sleep(1_000)
@@ -191,7 +191,7 @@ def patch_bootstrap_common(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     monkeypatch.setattr(
         wiring_mod,
         "DiscordAdapter",
-        lambda **kwargs: _FakeDcAdapter(hub=MagicMock()),
+        lambda **kwargs: _FakeDcAdapter(),
     )
 
     mock_tg_auth = MagicMock()
@@ -220,10 +220,18 @@ def patch_all(
     """
     captured: list[Hub] = []
 
+    _OriginalHub = Hub
+
+    class CapturingHub(_OriginalHub):  # type: ignore[misc]
+        def __init__(self, **kwargs: object) -> None:
+            super().__init__(**kwargs)
+            captured.append(self)
+
+    monkeypatch.setattr(multibot_mod, "Hub", CapturingHub)
+
     class CapturingDcAdapter(_FakeDcAdapter):
-        def __init__(self, hub: Hub, **kwargs: object) -> None:
-            captured.append(hub)
-            super().__init__(hub, **kwargs)
+        def __init__(self, **kwargs: object) -> None:
+            super().__init__(**kwargs)
 
     mock_tg_auth, mock_dc_auth = MagicMock(), MagicMock()
     _auth_results = iter([mock_tg_auth, mock_dc_auth])

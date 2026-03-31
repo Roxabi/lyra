@@ -116,7 +116,7 @@ async def test_send_publishes_to_correct_subject() -> None:
 
 @pytest.mark.asyncio
 async def test_send_envelope_structure() -> None:
-    """send() envelope has type, msg_id, and outbound fields."""
+    """send() envelope has type=send, stream_id, and outbound fields."""
     nc = _make_nc()
     proxy = NatsChannelProxy(nc=nc, platform=Platform.DISCORD, bot_id="bot2")
     inbound = _make_inbound("msg-xyz")
@@ -127,8 +127,9 @@ async def test_send_envelope_structure() -> None:
     _subject, payload = nc.publish.call_args.args
     envelope = json.loads(payload.decode("utf-8"))
 
-    assert envelope["type"] == "outbound"
-    assert envelope["msg_id"] == "msg-xyz"
+    assert envelope["type"] == "send"
+    assert envelope["stream_id"] == "msg-xyz"
+    assert "msg_id" not in envelope
     assert "outbound" in envelope
     assert isinstance(envelope["outbound"], dict)
     # Verify outbound content was serialized
@@ -175,8 +176,8 @@ async def test_send_streaming_publishes_chunks_with_incrementing_seq() -> None:
 
 
 @pytest.mark.asyncio
-async def test_send_streaming_subject_includes_msg_id() -> None:
-    """send_streaming() publishes to stream subject with msg_id suffix."""
+async def test_send_streaming_subject_is_single_outbound_subject() -> None:
+    """send_streaming() publishes to single outbound subject, not stream.* subject."""
     nc = _make_nc()
     proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
     inbound = _make_inbound("msg-42")
@@ -186,7 +187,8 @@ async def test_send_streaming_subject_includes_msg_id() -> None:
     )
 
     subject, _ = nc.publish.call_args.args
-    assert subject == "lyra.outbound.stream.telegram.main.msg-42"
+    assert subject == "lyra.outbound.telegram.main"
+    assert "stream" not in subject
 
 
 @pytest.mark.asyncio
@@ -256,8 +258,8 @@ async def test_send_streaming_event_type_tool_summary() -> None:
 
 
 @pytest.mark.asyncio
-async def test_send_streaming_chunk_has_msg_id_and_type() -> None:
-    """Each chunk envelope has type='stream_chunk' and the inbound msg_id."""
+async def test_send_streaming_chunk_has_stream_id_no_type() -> None:
+    """Each chunk envelope has stream_id (not msg_id) and no 'type' key."""
     nc = _make_nc()
     proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
     inbound = _make_inbound("msg-check")
@@ -268,8 +270,9 @@ async def test_send_streaming_chunk_has_msg_id_and_type() -> None:
 
     _, payload = nc.publish.call_args.args
     chunk = json.loads(payload.decode("utf-8"))
-    assert chunk["type"] == "stream_chunk"
-    assert chunk["msg_id"] == "msg-check"
+    assert "type" not in chunk
+    assert chunk["stream_id"] == "msg-check"
+    assert "msg_id" not in chunk
     assert "payload" in chunk
 
 
@@ -324,7 +327,8 @@ async def test_render_attachment_publishes_to_outbound_subject() -> None:
 
     envelope = json.loads(payload.decode("utf-8"))
     assert envelope["type"] == "attachment"
-    assert envelope["msg_id"] == "msg-att"
+    assert envelope["stream_id"] == "msg-att"
+    assert "msg_id" not in envelope
     assert "attachment" in envelope
     assert isinstance(envelope["attachment"], dict)
     assert envelope["attachment"]["type"] == "image"
@@ -418,3 +422,47 @@ async def test_render_voice_stream_drains_and_logs(
     nc.publish.assert_not_awaited()
     assert consumed == [0, 1]
     assert any("audio-over-NATS" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# New API tests: stream_id / type=send / single subject
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_send_includes_stream_id() -> None:
+    """send() envelope uses stream_id (not msg_id) and type=send."""
+    nc = _make_nc()
+    proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
+    inbound = _make_inbound("msg-stream-id-check")
+    outbound = OutboundMessage.from_text("hi")
+
+    await proxy.send(inbound, outbound)
+
+    call_args = nc.publish.call_args
+    subject = call_args.args[0]
+    envelope = json.loads(call_args.args[1])
+    assert envelope["stream_id"] == inbound.id
+    assert envelope["type"] == "send"
+    assert "msg_id" not in envelope
+
+
+@pytest.mark.asyncio
+async def test_send_streaming_uses_single_subject() -> None:
+    """send_streaming() publishes to single outbound subject, not stream.* subject."""
+    nc = _make_nc()
+    proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
+    inbound = _make_inbound("msg-single-subject")
+
+    await proxy.send_streaming(
+        inbound, _async_iter(TextRenderEvent(text="hi", is_final=True))
+    )
+
+    assert nc.publish.await_count >= 1
+    subject = nc.publish.call_args_list[0].args[0]
+    assert "stream" not in subject
+    assert subject == f"lyra.outbound.{proxy._platform.value}.{proxy._bot_id}"
+    envelope = json.loads(nc.publish.call_args_list[0].args[1])
+    assert "stream_id" in envelope
+    assert "seq" in envelope
+    assert "type" not in envelope  # chunks don't have type key

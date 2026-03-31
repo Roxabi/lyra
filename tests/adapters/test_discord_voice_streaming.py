@@ -243,8 +243,11 @@ class TestRenderVoiceStream:
     @pytest.mark.asyncio
     async def test_render_voice_stream_calls_vsm_stream(self) -> None:
         # Arrange
-        hub = MagicMock()
-        adapter = DiscordAdapter(hub=hub, bot_id="main")
+        adapter = DiscordAdapter(
+            bot_id="main",
+            inbound_bus=MagicMock(),
+            inbound_audio_bus=MagicMock(),
+        )
         adapter._vsm.stream = AsyncMock()
         inbound = _make_discord_inbound(platform_meta={"guild_id": "1"})
 
@@ -264,8 +267,11 @@ class TestRenderVoiceStream:
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
         # Arrange — inbound platform is telegram, not discord
-        hub = MagicMock()
-        adapter = DiscordAdapter(hub=hub, bot_id="main")
+        adapter = DiscordAdapter(
+            bot_id="main",
+            inbound_bus=MagicMock(),
+            inbound_audio_bus=MagicMock(),
+        )
         adapter._vsm.stream = AsyncMock()
 
         inbound = InboundMessage(
@@ -299,8 +305,11 @@ class TestRenderVoiceStream:
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
         # Arrange — platform_meta has no guild_id
-        hub = MagicMock()
-        adapter = DiscordAdapter(hub=hub, bot_id="main")
+        adapter = DiscordAdapter(
+            bot_id="main",
+            inbound_bus=MagicMock(),
+            inbound_audio_bus=MagicMock(),
+        )
         adapter._vsm.stream = AsyncMock()
         inbound = _make_discord_inbound(platform_meta={})
 

@@ -219,7 +219,7 @@ async def handle_audio(  # noqa: C901 — audio gate mirrors text gate with inde
 
     adapter._start_typing(message.channel.id)
     await push_to_hub_guarded(
-        inbound_bus=adapter._hub.inbound_audio_bus,
+        inbound_bus=adapter._inbound_audio_bus,
         platform=Platform.DISCORD,
         msg=hub_audio,
         circuit_registry=adapter._circuit_registry,

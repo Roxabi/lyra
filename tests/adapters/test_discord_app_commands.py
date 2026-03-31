@@ -93,8 +93,11 @@ class TestOnReadySync:
         """If tree.sync() raises, on_ready should log warning and continue."""
         from lyra.adapters.discord import DiscordAdapter
 
-        hub = MagicMock()
-        adapter = DiscordAdapter(hub=hub, bot_id="test")
+        adapter = DiscordAdapter(
+            bot_id="test",
+            inbound_bus=MagicMock(),
+            inbound_audio_bus=MagicMock(),
+        )
         adapter._bot_user = MagicMock()
         adapter._bot_user.id = 12345
 
@@ -128,8 +131,11 @@ class TestOnReadySync:
     async def test_sync_called_per_guild(self) -> None:
         from lyra.adapters.discord import DiscordAdapter
 
-        hub = MagicMock()
-        adapter = DiscordAdapter(hub=hub, bot_id="test")
+        adapter = DiscordAdapter(
+            bot_id="test",
+            inbound_bus=MagicMock(),
+            inbound_audio_bus=MagicMock(),
+        )
         adapter._bot_user = MagicMock()
         adapter._bot_user.id = 12345
 

@@ -49,8 +49,12 @@ async def test_missing_secret_returns_401() -> None:
 
     from lyra.adapters.telegram import TelegramAdapter
 
-    hub = MagicMock()
-    adapter = TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+    adapter = TelegramAdapter(
+        bot_id="main",
+        token="test-token-secret",
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
+    )
 
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=adapter.app)
@@ -95,11 +99,11 @@ async def test_get_status_endpoint_returns_all_circuits() -> None:
             CircuitBreaker(name, failure_threshold=3, recovery_timeout=60)
         )
 
-    hub = MagicMock()
     adapter = TelegramAdapter(
         bot_id="main",
         token="test-token-secret",
-        hub=hub,
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
         webhook_secret="secret",
         circuit_registry=registry,
     )
@@ -134,16 +138,20 @@ class TestTelegramAdapterInbound:
         """All users reach the bus with trust_level=PUBLIC (Hub resolves trust)."""
         from lyra.adapters.telegram import TelegramAdapter
 
-        hub = MagicMock()
-        hub.inbound_bus = MagicMock()
-        hub.inbound_bus.put = AsyncMock()
-        adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub)
+        inbound_bus = MagicMock()
+        inbound_bus.put = AsyncMock()
+        adapter = TelegramAdapter(
+            bot_id="main",
+            token="tok",
+            inbound_bus=inbound_bus,
+            inbound_audio_bus=MagicMock(),
+        )
         adapter.bot = AsyncMock()
 
         await adapter._on_message(_make_aiogram_msg())
 
-        hub.inbound_bus.put.assert_awaited_once()
-        _platform, msg = hub.inbound_bus.put.call_args[0]
+        inbound_bus.put.assert_awaited_once()
+        _platform, msg = inbound_bus.put.call_args[0]
         assert msg.trust_level == TrustLevel.PUBLIC
         assert msg.is_admin is False
 
@@ -154,9 +162,14 @@ class TestTelegramAdapterInbound:
 
         from lyra.adapters.telegram import TelegramAdapter
 
-        hub = MagicMock()
-        hub.inbound_bus = MagicMock()
-        adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub)
+        inbound_bus = MagicMock()
+        inbound_bus.put = AsyncMock()
+        adapter = TelegramAdapter(
+            bot_id="main",
+            token="tok",
+            inbound_bus=inbound_bus,
+            inbound_audio_bus=MagicMock(),
+        )
 
         bot_msg = SimpleNamespace(
             chat=SimpleNamespace(id=123, type="private"),
@@ -172,7 +185,7 @@ class TestTelegramAdapterInbound:
             await adapter._on_message(bot_msg)
 
         mock_norm.assert_not_called()
-        hub.inbound_bus.put.assert_not_called()
+        inbound_bus.put.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_voice_message_forwarded_with_public_trust(self) -> None:
@@ -181,10 +194,14 @@ class TestTelegramAdapterInbound:
 
         from lyra.adapters.telegram import TelegramAdapter
 
-        hub = MagicMock()
-        hub.inbound_audio_bus = MagicMock()
-        hub.inbound_audio_bus.registered_platforms = MagicMock(return_value=[])
-        adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub)
+        inbound_audio_bus = MagicMock()
+        inbound_audio_bus.registered_platforms = MagicMock(return_value=[])
+        adapter = TelegramAdapter(
+            bot_id="main",
+            token="tok",
+            inbound_bus=MagicMock(),
+            inbound_audio_bus=inbound_audio_bus,
+        )
         adapter.bot = AsyncMock()
 
         voice_msg = SimpleNamespace(

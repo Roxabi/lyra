@@ -42,8 +42,11 @@ async def _push_to_hub(
             return
         await adapter.bot.send_message(chat_id, text)
 
+    if adapter._outbound_listener is not None:
+        adapter._outbound_listener.cache_inbound(hub_msg)
+
     await push_to_hub_guarded(
-        inbound_bus=adapter._hub.inbound_bus,
+        inbound_bus=adapter._inbound_bus,
         platform=Platform.TELEGRAM,
         msg=hub_msg,
         circuit_registry=adapter._circuit_registry,
@@ -173,7 +176,7 @@ async def handle_voice_message(adapter: TelegramAdapter, msg: Any) -> None:
             )
 
         await push_to_hub_guarded(
-            inbound_bus=adapter._hub.inbound_audio_bus,
+            inbound_bus=adapter._inbound_audio_bus,
             platform=Platform.TELEGRAM,
             msg=hub_audio,
             circuit_registry=adapter._circuit_registry,

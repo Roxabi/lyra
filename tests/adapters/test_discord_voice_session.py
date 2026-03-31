@@ -248,8 +248,11 @@ class TestVoiceSessionManager:
 
 
 def _make_adapter_with_bot() -> DiscordAdapter:
-    hub = MagicMock()
-    adapter = DiscordAdapter(hub=hub, bot_id="main")
+    adapter = DiscordAdapter(
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
+    )
     bot_user = MagicMock()
     bot_user.id = 999
     adapter._bot_user = bot_user
@@ -303,8 +306,11 @@ class TestOnVoiceStateUpdate:
 
     @pytest.mark.asyncio
     async def test_bot_not_ready_does_not_invalidate(self) -> None:
-        hub = MagicMock()
-        adapter = DiscordAdapter(hub=hub, bot_id="main")
+        adapter = DiscordAdapter(
+            bot_id="main",
+            inbound_bus=MagicMock(),
+            inbound_audio_bus=MagicMock(),
+        )
         # _bot_user is None (not ready yet)
         adapter._vsm.invalidate = MagicMock()
         member = _make_member(member_id=999, guild_id=1)

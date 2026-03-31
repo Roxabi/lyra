@@ -21,9 +21,12 @@ def test_normalize_builds_correct_discord_context() -> None:
     from lyra.adapters.discord import DiscordAdapter  # ImportError expected in RED
     from lyra.core.message import InboundMessage
 
-    hub = MagicMock()
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
     adapter._bot_user = SimpleNamespace(id=999, bot=True)
 
@@ -57,9 +60,12 @@ def test_is_mention_true_when_bot_in_mentions() -> None:
     """bot_user present in message.mentions → is_mention is True."""
     from lyra.adapters.discord import DiscordAdapter  # ImportError expected in RED
 
-    hub = MagicMock()
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
     bot_user = SimpleNamespace(id=999, bot=True)
     adapter._bot_user = bot_user
@@ -88,9 +94,12 @@ def test_is_mention_false_when_bot_not_in_mentions() -> None:
     """bot_user absent from message.mentions → is_mention is False."""
     from lyra.adapters.discord import DiscordAdapter  # ImportError expected in RED
 
-    hub = MagicMock()
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
     bot_user = SimpleNamespace(id=999, bot=True)
     adapter._bot_user = bot_user
@@ -119,9 +128,12 @@ def test_normalize_bot_user_none_is_mention_false() -> None:
     """When _bot_user is None (pre-on_ready), is_mention must be False — never raise."""
     from lyra.adapters.discord import DiscordAdapter
 
-    hub = MagicMock()
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
     # _bot_user stays None (default, before on_ready fires)
 
@@ -149,9 +161,12 @@ def test_mention_prefix_stripped_from_content() -> None:
     """@mention prefix (<@id>) is stripped from text before delivery."""
     from lyra.adapters.discord import DiscordAdapter
 
-    hub = MagicMock()
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
     bot_user = SimpleNamespace(id=999, bot=True)
     adapter._bot_user = bot_user
@@ -176,9 +191,12 @@ def test_mention_prefix_stripped_nickname_variant() -> None:
     """@mention prefix with nickname format (<@!id>) is also stripped."""
     from lyra.adapters.discord import DiscordAdapter
 
-    hub = MagicMock()
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
     bot_user = SimpleNamespace(id=999, bot=True)
     adapter._bot_user = bot_user
@@ -208,9 +226,12 @@ def test_normalize_dm_no_guild() -> None:
     from lyra.adapters.discord import DiscordAdapter
     from lyra.core.message import InboundMessage
 
-    hub = MagicMock()
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
     adapter._bot_user = SimpleNamespace(id=999, bot=True)
 
@@ -241,9 +262,12 @@ def test_normalize_uses_display_name_when_present() -> None:
     """When author has display_name, it takes precedence over name."""
     from lyra.adapters.discord import DiscordAdapter
 
-    hub = MagicMock()
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
     adapter._bot_user = SimpleNamespace(id=999, bot=True)
 
@@ -268,9 +292,12 @@ def test_normalize_falls_back_to_name_when_display_name_none() -> None:
     """When display_name is None, falls back to name."""
     from lyra.adapters.discord import DiscordAdapter
 
-    hub = MagicMock()
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
     adapter._bot_user = SimpleNamespace(id=999, bot=True)
 
@@ -305,9 +332,12 @@ def test_discord_token_not_in_logs(
     secret_token = "super-secret-discord-token-xyz"
     monkeypatch.setenv("DISCORD_TOKEN", secret_token)
 
-    hub = MagicMock()
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
 
     with caplog.at_level(logging.DEBUG):
@@ -340,9 +370,12 @@ def test_normalize_guild_channel_user_scoped_scope_id() -> None:
     from lyra.adapters.discord import DiscordAdapter
     from lyra.core.message import InboundMessage
 
-    hub = MagicMock()
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
     adapter._bot_user = SimpleNamespace(id=999, bot=True)
 
@@ -367,9 +400,12 @@ def test_normalize_dm_scope_id_unchanged() -> None:
     """Discord DM (guild=None) → scope_id has no user suffix (regression)."""
     from lyra.adapters.discord import DiscordAdapter
 
-    hub = MagicMock()
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
     adapter._bot_user = SimpleNamespace(id=999, bot=True)
 
@@ -392,9 +428,12 @@ def test_normalize_thread_scope_id_unchanged() -> None:
     """Discord thread → scope_id uses thread: prefix, no user suffix (regression)."""
     from lyra.adapters.discord import DiscordAdapter
 
-    hub = MagicMock()
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
     adapter._bot_user = SimpleNamespace(id=999, bot=True)
 
@@ -421,9 +460,12 @@ def test_two_users_same_guild_channel_get_distinct_pool_ids() -> None:
     from lyra.core.hub.hub_protocol import RoutingKey
     from lyra.core.message import Platform
 
-    hub = MagicMock()
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
     adapter._bot_user = SimpleNamespace(id=999, bot=True)
 

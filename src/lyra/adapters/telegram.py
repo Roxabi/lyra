@@ -15,8 +15,9 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
 
 if TYPE_CHECKING:
-    from lyra.core.hub import Hub
+    from lyra.core.bus import Bus
     from lyra.core.render_events import RenderEvent
+    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
 
 from lyra.adapters import telegram_audio  # noqa: I001
 from lyra.adapters._shared import TypingTaskManager, resolve_msg
@@ -97,7 +98,8 @@ class TelegramAdapter:
         self,
         bot_id: str,
         token: str,
-        hub: Hub,
+        inbound_bus: "Bus[InboundMessage]",
+        inbound_audio_bus: "Bus[InboundAudio]",
         webhook_secret: str = "",
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
@@ -120,7 +122,8 @@ class TelegramAdapter:
                 "webhook_secret is empty — all webhook requests will be rejected"
             )
         self._bot_username: str | None = None
-        self._hub: Hub = hub
+        self._inbound_bus = inbound_bus
+        self._inbound_audio_bus = inbound_audio_bus
         self._circuit_registry = circuit_registry
         self._msg_manager = msg_manager
         self._auth: Authenticator = auth
@@ -155,6 +158,7 @@ class TelegramAdapter:
 
         self.app = FastAPI()
         self._register_routes()
+        self._outbound_listener: "NatsOutboundListener | None" = None
 
     @property
     def bot(self) -> Any:
@@ -235,8 +239,15 @@ class TelegramAdapter:
     def _cancel_typing(self, chat_id: int) -> None:
         self._typing.cancel(chat_id)
 
+    async def astart(self) -> None:
+        """Start the outbound listener if wired (NATS mode only)."""
+        if self._outbound_listener is not None:
+            await self._outbound_listener.start()
+
     async def close(self) -> None:
         await self._typing.cancel_all()
+        if self._outbound_listener is not None:
+            await self._outbound_listener.stop()
 
     # --- Thin delegates to submodules ---
 

@@ -85,8 +85,8 @@ class NatsChannelProxy:
         """Publish an outbound text message to NATS."""
         subject = f"lyra.outbound.{self._platform.value}.{self._bot_id}"
         envelope = {
-            "type": "outbound",
-            "msg_id": original_msg.id,
+            "type": "send",
+            "stream_id": original_msg.id,
             "outbound": json.loads(serialize(outbound).decode("utf-8")),
         }
         payload = json.dumps(envelope, ensure_ascii=False).encode("utf-8")
@@ -99,9 +99,7 @@ class NatsChannelProxy:
         outbound: OutboundMessage | None = None,
     ) -> None:
         """Publish streaming render events to NATS as chunked messages."""
-        subject = (
-            f"lyra.outbound.stream.{self._platform.value}.{self._bot_id}.{_safe_subject_token(original_msg.id)}"
-        )
+        subject = f"lyra.outbound.{self._platform.value}.{self._bot_id}"
         seq = 0
         try:
             async for event in events:
@@ -109,8 +107,7 @@ class NatsChannelProxy:
                     "text" if isinstance(event, TextRenderEvent) else "tool_summary"
                 )
                 chunk = {
-                    "type": "stream_chunk",
-                    "msg_id": original_msg.id,
+                    "stream_id": original_msg.id,
                     "seq": seq,
                     "event_type": event_type,
                     "payload": json.loads(serialize(event).decode("utf-8")),
@@ -180,7 +177,7 @@ class NatsChannelProxy:
         subject = f"lyra.outbound.{self._platform.value}.{self._bot_id}"
         envelope = {
             "type": "attachment",
-            "msg_id": inbound.id,
+            "stream_id": inbound.id,
             "attachment": json.loads(serialize(msg).decode("utf-8")),
         }
         payload = json.dumps(envelope, ensure_ascii=False).encode("utf-8")

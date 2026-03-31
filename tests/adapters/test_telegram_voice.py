@@ -42,16 +42,25 @@ def _make_voice_msg(  # noqa: PLR0913 — test factory with optional overrides
 
 
 def _make_adapter() -> tuple[TelegramAdapter, MagicMock]:
-    hub = MagicMock()
-    hub.inbound_bus = MagicMock()
-    hub.inbound_audio_bus = MagicMock()
-    hub.inbound_audio_bus.put = AsyncMock()
-    adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub, auth=_ALLOW_ALL)
+    inbound_bus = MagicMock()
+    inbound_bus.put = AsyncMock()
+    inbound_audio_bus = MagicMock()
+    inbound_audio_bus.put = AsyncMock()
+    buses = MagicMock()
+    buses.inbound_bus = inbound_bus
+    buses.inbound_audio_bus = inbound_audio_bus
+    adapter = TelegramAdapter(
+        bot_id="main",
+        token="tok",
+        inbound_bus=inbound_bus,
+        inbound_audio_bus=inbound_audio_bus,
+        auth=_ALLOW_ALL,
+    )
     bot_mock = AsyncMock()
     bot_mock.send_chat_action = AsyncMock()
     bot_mock.send_message = AsyncMock()
     adapter.bot = bot_mock
-    return adapter, hub
+    return adapter, buses
 
 
 # ---------------------------------------------------------------------------
@@ -62,7 +71,7 @@ def _make_adapter() -> tuple[TelegramAdapter, MagicMock]:
 @pytest.mark.asyncio
 async def test_voice_message_enqueues_on_audio_bus(tmp_path: Path) -> None:
     """Voice message → downloads audio and enqueues on inbound_audio_bus."""
-    adapter, hub = _make_adapter()
+    adapter, buses = _make_adapter()
 
     # Create a temp file to simulate download
     audio_file = tmp_path / "voice.ogg"
@@ -76,8 +85,8 @@ async def test_voice_message_enqueues_on_audio_bus(tmp_path: Path) -> None:
         await adapter._on_voice_message(_make_voice_msg())
 
     # Enqueued on audio bus (not text bus)
-    hub.inbound_audio_bus.put.assert_called_once()
-    hub.inbound_bus.put.assert_not_called()
+    buses.inbound_audio_bus.put.assert_called_once()
+    buses.inbound_bus.put.assert_not_called()
     # No unsupported reply sent
     adapter.bot.send_message.assert_not_called()
 
@@ -90,14 +99,14 @@ async def test_voice_message_enqueues_on_audio_bus(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_voice_from_bot_is_ignored() -> None:
     """Voice messages from other bots are silently dropped."""
-    adapter, hub = _make_adapter()
+    adapter, buses = _make_adapter()
     msg = _make_voice_msg()
     msg.from_user = SimpleNamespace(id=99, full_name="BotUser", is_bot=True)
 
     await adapter._on_voice_message(msg)
 
-    hub.inbound_bus.put.assert_not_called()
-    hub.inbound_audio_bus.put.assert_not_called()
+    buses.inbound_bus.put.assert_not_called()
+    buses.inbound_audio_bus.put.assert_not_called()
     adapter.bot.send_message.assert_not_called()
 
 
@@ -109,34 +118,34 @@ async def test_voice_from_bot_is_ignored() -> None:
 @pytest.mark.asyncio
 async def test_voice_message_no_voice_object_returns_early() -> None:
     """Message with voice=None, audio=None, video_note=None → early return."""
-    adapter, hub = _make_adapter()
+    adapter, buses = _make_adapter()
     msg = _make_voice_msg()
     msg.voice = None
     msg.audio = None
 
     await adapter._on_voice_message(msg)
 
-    hub.inbound_audio_bus.put.assert_not_called()
+    buses.inbound_audio_bus.put.assert_not_called()
     adapter.bot.send_message.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_voice_message_no_file_id_returns_early() -> None:
     """Voice object with file_id=None → early return."""
-    adapter, hub = _make_adapter()
+    adapter, buses = _make_adapter()
     msg = _make_voice_msg()
     msg.voice = SimpleNamespace(file_id=None, duration=3)
 
     await adapter._on_voice_message(msg)
 
-    hub.inbound_audio_bus.put.assert_not_called()
+    buses.inbound_audio_bus.put.assert_not_called()
     adapter.bot.send_message.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_voice_message_too_large_sends_reply() -> None:
     """_download_audio raises ValueError → user gets 'too large' reply."""
-    adapter, hub = _make_adapter()
+    adapter, buses = _make_adapter()
 
     with patch(
         "lyra.adapters.telegram_inbound._download_audio",
@@ -145,7 +154,7 @@ async def test_voice_message_too_large_sends_reply() -> None:
     ):
         await adapter._on_voice_message(_make_voice_msg())
 
-    hub.inbound_audio_bus.put.assert_not_called()
+    buses.inbound_audio_bus.put.assert_not_called()
     adapter.bot.send_message.assert_called_once()
 
 
@@ -184,7 +193,7 @@ async def test_voice_too_large_no_reply_when_no_message_id() -> None:
 @pytest.mark.asyncio
 async def test_voice_message_download_error_returns_silently() -> None:
     """_download_audio raises generic exception → log + return, no enqueue."""
-    adapter, hub = _make_adapter()
+    adapter, buses = _make_adapter()
 
     with patch(
         "lyra.adapters.telegram_inbound._download_audio",
@@ -193,7 +202,7 @@ async def test_voice_message_download_error_returns_silently() -> None:
     ):
         await adapter._on_voice_message(_make_voice_msg())
 
-    hub.inbound_audio_bus.put.assert_not_called()
+    buses.inbound_audio_bus.put.assert_not_called()
     adapter.bot.send_message.assert_not_called()
 
 

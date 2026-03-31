@@ -3,16 +3,13 @@
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import MagicMock, call
-
-import pytest
+from unittest.mock import MagicMock
 
 from lyra.core.bus import Bus
 from lyra.core.hub import Hub
 from lyra.core.inbound_bus import LocalBus
-from lyra.core.message import InboundAudio, InboundMessage, Platform
+from lyra.core.message import InboundMessage, Platform
 from tests.core.conftest import MockAdapter
-
 
 # ---------------------------------------------------------------------------
 # Helpers

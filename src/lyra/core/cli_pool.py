@@ -133,6 +133,33 @@ class CliPool(CliPoolWorkerMixin):
         self._reaper_task = asyncio.create_task(self._idle_reaper())
         log.info("CliPool started (idle_ttl=%ds)", self._idle_ttl)
 
+    async def drain(self, timeout: float = 60.0) -> None:
+        """Wait for all in-flight turns to complete before stopping.
+
+        A turn is considered in-flight when its ``_lock`` is held.  Idle
+        processes (alive but waiting for the next message) are not counted —
+        they are safe to kill immediately.
+        """
+        deadline = asyncio.get_event_loop().time() + timeout
+        while True:
+            inflight = [pid for pid, e in self._entries.items() if e._lock.locked()]
+            if not inflight:
+                return
+            remaining = deadline - asyncio.get_event_loop().time()
+            if remaining <= 0:
+                log.warning(
+                    "CliPool drain timeout — %d turn(s) still in-flight: %s",
+                    len(inflight),
+                    inflight,
+                )
+                return
+            log.info(
+                "CliPool draining — %d turn(s) in-flight, %.0fs remaining…",
+                len(inflight),
+                remaining,
+            )
+            await asyncio.sleep(1.0)
+
     async def stop(self) -> None:
         """Stop reaper and kill all processes."""
         if self._reaper_task:

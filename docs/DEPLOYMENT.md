@@ -41,6 +41,8 @@ This runs `scripts/deploy.sh` on Machine 1. The script checks **two repos indepe
 
 **Test gate** — after pulling `lyra`, `pytest` runs before the restart. A test failure rolls back to the previous commit; voiceCLI is not pulled in that run.
 
+**Graceful drain** — on restart, the running process finishes any in-flight Claude CLI turns (up to 60 s) before exiting. Conversations that complete within the window are transparent to users; only turns that outlast 60 s receive a "please resend" notification. Supervisor's `stopwaitsecs=75` gives the drain window a 15 s buffer before force-kill.
+
 **Deploy log** — every run is appended to `~/.local/state/lyra/logs/deploy.log`.
 
 For a manual update on Machine 1:

@@ -104,6 +104,8 @@ async def run_lifecycle(  # noqa: PLR0913, C901 — lifecycle orchestration
     if pm is not None:
         await pm.close()
     if cli_pool is not None:
+        await cli_pool.drain(timeout=60.0)
+        # Notify only sessions that couldn't finish within the drain window.
         active_ids = cli_pool.get_active_pool_ids()
         if active_ids:
             await hub.notify_shutdown_inflight(active_ids)

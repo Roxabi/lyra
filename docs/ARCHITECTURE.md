@@ -407,7 +407,7 @@ stateDiagram-v2
     Error --> Stopped : circuit breaker open (repeated failures)
 
     Idle --> Stopped : hub shutdown / supervisord stop
-    Active --> Stopped : hub shutdown (in-flight tasks cancelled)
+    Active --> Stopped : hub shutdown (in-flight turns drained up to 60s)
 
     Stopped --> Running : supervisor restart → hub.register_agent()
     Stopped --> [*]

@@ -368,6 +368,9 @@ class TestResolveContextResumeStatus:
             async def get_last_session(self, pid: str) -> str | None:
                 return "last-sess"
 
+            async def increment_resume_count(self, sid: str) -> None:
+                pass
+
             async def close(self) -> None:
                 pass
 
@@ -468,6 +471,9 @@ class TestResolveContextResumeStatus:
         class _FakeTurnStore:
             async def get_last_session(self, pid: str) -> str | None:
                 return "sess-alice-last" if pid == pool_id else None
+
+            async def increment_resume_count(self, sid: str) -> None:
+                pass
 
             async def close(self) -> None:
                 pass

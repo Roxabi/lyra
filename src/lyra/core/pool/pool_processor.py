@@ -375,6 +375,7 @@ class PoolProcessor:
                 # _on_dispatched callback) guarantees the iterator has finished.
                 _stream_sid = getattr(_result_iter_for_sid, "session_id", None)
                 if _stream_sid and pool.session_id != _stream_sid:
+                    pool._observer.end_session_async(pool.session_id)  # S7 (#417)
                     pool.session_id = _stream_sid
                 pool._observer.session_update_async(_original_msg)
                 _reply_id = outbound.metadata.get("reply_message_id")
@@ -406,6 +407,7 @@ class PoolProcessor:
             # The _on_dispatched callback above handles the dispatcher path.
             _stream_sid = getattr(_result_iter_for_sid, "session_id", None)
             if _stream_sid and pool.session_id != _stream_sid:
+                pool._observer.end_session_async(pool.session_id)  # S7 (#417)
                 pool.session_id = _stream_sid
 
             # Processor post-hook for streaming agents (#372).
@@ -425,6 +427,8 @@ class PoolProcessor:
             if isinstance(result, Response):  # pyright: ignore[reportUnnecessaryIsInstance]
                 _cli_session_id = result.metadata.get("session_id")
                 if _cli_session_id:
+                    if pool.session_id != _cli_session_id:
+                        pool._observer.end_session_async(pool.session_id)  # S7 (#417)
                     pool.session_id = _cli_session_id
             # Attach deferred turn-logging callback after adapter sends (#316).
             if isinstance(result, Response):  # pyright: ignore[reportUnnecessaryIsInstance]

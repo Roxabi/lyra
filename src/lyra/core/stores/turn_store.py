@@ -188,6 +188,13 @@ class TurnStore(SqliteStore):
                     meta_str,
                 ),
             )
+            # Ensure session row exists (#417 / S7) — idempotent, safe on restart
+            await db.execute(
+                "INSERT OR IGNORE INTO pool_sessions"
+                " (session_id, pool_id, started_at, last_active_at)"
+                " VALUES (?, ?, ?, ?)",
+                (session_id, pool_id, ts, ts),
+            )
             # Update session activity timestamp (#417 / S2) — tolerant: 0-row OK
             await db.execute(
                 "UPDATE pool_sessions SET last_active_at = ? WHERE session_id = ?",
@@ -257,6 +264,36 @@ class TurnStore(SqliteStore):
                 )
         except Exception:
             log.exception("TurnStore._backfill_sessions failed")
+
+    async def increment_resume_count(self, session_id: str) -> None:
+        """Increment resume_count for *session_id* (#417 / S6). Tolerant: 0-row OK."""
+        db = self._db_or_raise()
+        try:
+            await db.execute(
+                "UPDATE pool_sessions"
+                " SET resume_count = resume_count + 1"
+                " WHERE session_id = ?",
+                (session_id,),
+            )
+            await db.commit()
+        except Exception:
+            log.exception(
+                "TurnStore.increment_resume_count failed (session=%s)", session_id
+            )
+
+    async def end_session(self, session_id: str) -> None:
+        """Stamp ended_at on *session_id* (#417 / S7). No-op if already stamped."""
+        db = self._db_or_raise()
+        ts = datetime.now(UTC).isoformat()
+        try:
+            await db.execute(
+                "UPDATE pool_sessions SET ended_at = ?"
+                " WHERE session_id = ? AND ended_at IS NULL",
+                (ts, session_id),
+            )
+            await db.commit()
+        except Exception:
+            log.exception("TurnStore.end_session failed (session=%s)", session_id)
 
     async def get_turns(
         self, pool_id: str, user_id: str, limit: int = 50

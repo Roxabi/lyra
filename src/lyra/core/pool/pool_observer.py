@@ -85,6 +85,15 @@ class PoolObserver:
         except RuntimeError:
             pass  # no running event loop (e.g. sync test context)
 
+    def end_session_async(self, session_id: str) -> None:
+        """Fire-and-forget end_session via TurnStore (#417 / S7); no-op if not connected."""
+        if self._turn_store is None:
+            return
+        self._fire_and_forget(
+            self._turn_store.end_session(session_id),
+            f"turn_store end_session failed (pool={self._pool_id} session={session_id})",
+        )
+
     def log_turn_async(  # noqa: PLR0913
         self,
         *,

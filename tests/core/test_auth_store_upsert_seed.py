@@ -153,7 +153,8 @@ class TestSeedFromConfig:
             # Only one row should exist
             assert store._db is not None
             async with store._db.execute(
-                "SELECT COUNT(*) FROM grants WHERE identity_key = ?", ("tg:user:owner-1",)
+                "SELECT COUNT(*) FROM grants WHERE identity_key = ?",
+                ("tg:user:owner-1",),
             ) as cur:
                 row = await cur.fetchone()
             assert row is not None and row[0] == 1
@@ -203,7 +204,8 @@ class TestSeedFromConfig:
             await store.seed_from_config(raw, "telegram")
             assert store._db is not None
             async with store._db.execute(
-                "SELECT expires_at FROM grants WHERE identity_key = ?", ("tg:user:perm-user",)
+                "SELECT expires_at FROM grants WHERE identity_key = ?",
+                ("tg:user:perm-user",),
             ) as cur:
                 row = await cur.fetchone()
             assert row is not None

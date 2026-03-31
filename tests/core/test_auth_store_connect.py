@@ -77,7 +77,9 @@ class TestAuthStoreConnect:
         # First session: write a grant directly
         store1 = AuthStore(db_path=db_path)
         await store1.connect()
-        await store1.upsert("tg:user:persisted", TrustLevel.TRUSTED, None, "test", "test")
+        await store1.upsert(
+            "tg:user:persisted", TrustLevel.TRUSTED, None, "test", "test"
+        )
         await store1.close()
 
         # Second session: connect should warm cache from DB

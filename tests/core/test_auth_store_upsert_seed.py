@@ -131,7 +131,7 @@ class TestSeedFromConfig:
         try:
             raw = self._raw("telegram", owner_users=["owner-1"])
             await store.seed_from_config(raw, "telegram")
-            assert store.check("owner-1") == TrustLevel.OWNER
+            assert store.check("tg:user:owner-1") == TrustLevel.OWNER
         finally:
             await store.close()
 
@@ -140,7 +140,7 @@ class TestSeedFromConfig:
         try:
             raw = self._raw("telegram", trusted_users=["trusted-1"])
             await store.seed_from_config(raw, "telegram")
-            assert store.check("trusted-1") == TrustLevel.TRUSTED
+            assert store.check("tg:user:trusted-1") == TrustLevel.TRUSTED
         finally:
             await store.close()
 
@@ -153,12 +153,12 @@ class TestSeedFromConfig:
             # Only one row should exist
             assert store._db is not None
             async with store._db.execute(
-                "SELECT COUNT(*) FROM grants WHERE identity_key = ?", ("owner-1",)
+                "SELECT COUNT(*) FROM grants WHERE identity_key = ?", ("tg:user:owner-1",)
             ) as cur:
                 row = await cur.fetchone()
             assert row is not None and row[0] == 1
             # Trust level must be preserved after re-seed
-            assert store.check("owner-1") == TrustLevel.OWNER
+            assert store.check("tg:user:owner-1") == TrustLevel.OWNER
         finally:
             await store.close()
 
@@ -171,14 +171,14 @@ class TestSeedFromConfig:
             # First seed: user as OWNER
             raw_owner = self._raw("telegram", owner_users=["user-42"])
             await store.seed_from_config(raw_owner, "telegram")
-            assert store.check("user-42") == TrustLevel.OWNER
+            assert store.check("tg:user:user-42") == TrustLevel.OWNER
 
             # Second seed: same user now only in trusted_users
             raw_trusted = self._raw("telegram", trusted_users=["user-42"])
             await store.seed_from_config(raw_trusted, "telegram")
 
             # Must remain OWNER — permanent grants are never downgraded
-            assert store.check("user-42") == TrustLevel.OWNER
+            assert store.check("tg:user:user-42") == TrustLevel.OWNER
         finally:
             await store.close()
 
@@ -203,7 +203,7 @@ class TestSeedFromConfig:
             await store.seed_from_config(raw, "telegram")
             assert store._db is not None
             async with store._db.execute(
-                "SELECT expires_at FROM grants WHERE identity_key = ?", ("perm-user",)
+                "SELECT expires_at FROM grants WHERE identity_key = ?", ("tg:user:perm-user",)
             ) as cur:
                 row = await cur.fetchone()
             assert row is not None

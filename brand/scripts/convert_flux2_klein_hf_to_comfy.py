@@ -24,6 +24,11 @@ from safetensors.torch import load_file, save_file
 SRC = "models/diffusion_models/flux2-klein-4b.safetensors"
 DST = "models/diffusion_models/flux2-klein-4b-comfy.safetensors"
 
+if not os.path.isfile(SRC):
+    raise FileNotFoundError(
+        f"{SRC} not found — run from ~/ComfyUI/ (correct CWD for this script)"
+    )
+
 print(f"Loading {SRC}…")
 sd = load_file(SRC)
 print(f"  {len(sd)} keys loaded")

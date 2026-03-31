@@ -27,7 +27,7 @@ EXEMPT=(
     "src/lyra/core/audio_pipeline.py"       # 313 lines — #396 refactor backlog
     "src/lyra/core/cli_pool.py"             # 401 lines — #396 refactor backlog
     "src/lyra/agents/simple_agent.py"       # 306 lines — #396 refactor backlog
-    "src/lyra/bootstrap/hub_standalone.py"  # 458 lines — #396 refactor backlog
+    "src/lyra/bootstrap/hub_standalone.py"  # 446 lines — #396 refactor backlog
 )
 
 is_exempt() {

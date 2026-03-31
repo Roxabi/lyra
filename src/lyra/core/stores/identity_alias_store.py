@@ -90,13 +90,11 @@ class IdentityAliasStore(SqliteStore):
         self._reverse: dict[str, set[str]] = {}
 
     async def connect(self) -> None:
-        """Open aiosqlite, enable WAL, create tables, warm cache."""
         await self._open_db(ddl=[_CREATE_ALIASES, _CREATE_CHALLENGES])
         await self._warm_cache()
         log.info("IdentityAliasStore connected (db=%s)", self._db_path)
 
     async def _warm_cache(self) -> None:
-        """Load all identity_aliases rows into _cache and _reverse."""
         db = self._require_db()
         self._cache.clear()
         self._reverse.clear()
@@ -297,6 +295,5 @@ class IdentityAliasStore(SqliteStore):
     # ------------------------------------------------------------------
 
     async def close(self) -> None:
-        """Close the database connection."""
         await super().close()
         log.info("IdentityAliasStore closed")

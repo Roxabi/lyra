@@ -70,15 +70,8 @@ def _atomic_table_copy(  # noqa: C901 — sequential migration steps
 ) -> int:
     """Copy *tables* from *src_path* to *dst_path* (synchronous, atomic).
 
-    Writes to a temporary file first, then renames atomically to prevent
-    partial migration on crash.  A ``_migration_complete`` sentinel row is
-    written last so a partial file (no sentinel) can be detected and retried.
-
-    Column and table names are validated against ``[A-Za-z_][A-Za-z0-9_]*``
-    before interpolation into SQL (sqlite3 does not support parameterised
-    identifiers).
-
-    Returns total rows copied across all tables.
+    Writes to a temp file first, then renames atomically. Column/table names
+    are validated before SQL interpolation. Returns total rows copied.
     """
     if not src_path.exists():
         log.warning("%s not found — skipping migration", src_path)

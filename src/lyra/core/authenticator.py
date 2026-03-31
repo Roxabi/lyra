@@ -1,12 +1,7 @@
 """Authenticator: per-adapter identity resolver.
 
-Renamed from AuthMiddleware. Resolves user identity (TrustLevel + admin status)
-from store, role map, and config. Returns Identity instead of bare TrustLevel.
-
-Usage:
-    auth = Authenticator.from_config(raw_config, "telegram", store=auth_store)
-    identity = auth.resolve(user_id, roles=role_names, command=command_name)
-    # identity.trust_level, identity.is_admin, identity.user_id
+Resolves user identity (TrustLevel + admin status) from store, role map, and config.
+Returns Identity instead of bare TrustLevel.
 """
 
 from __future__ import annotations
@@ -27,7 +22,6 @@ log = logging.getLogger(__name__)
 __all__ = ["Authenticator", "_ALLOW_ALL", "_DENY_ALL"]
 
 
-# Ordering used to pick the highest trust level among multiple role matches.
 _TRUST_ORDER: dict[TrustLevel, int] = {
     TrustLevel.OWNER: 3,
     TrustLevel.TRUSTED: 2,
@@ -37,15 +31,10 @@ _TRUST_ORDER: dict[TrustLevel, int] = {
 
 
 class Authenticator:
-    """Identity resolver injected into channel adapters.
+    """Identity resolver: trust resolution considers all linked aliases.
 
-    Resolution order for resolve():
-      1. user_id is None -> BLOCKED (anonymous/service)
-      2. store.check(user_id) == BLOCKED -> BLOCKED
-      3. command in public_commands -> PUBLIC
-      4. store.check(user_id) -> OWNER/TRUSTED if stored
-      5. role_map lookup (highest trust level across matched roles)
-      6. self._default (fallback)
+    Order: blocked (any alias) → public_commands bypass → max stored trust
+    → role_map → default.
     """
 
     def __init__(  # noqa: PLR0913
@@ -67,7 +56,6 @@ class Authenticator:
         self._alias_store = alias_store
 
     def _store_level(self, user_id: str | None) -> TrustLevel | None:
-        """Return the stored TrustLevel for user_id, or None if not present."""
         if self._store is None or user_id is None:
             return None
         level = self._store.check(user_id)
@@ -76,7 +64,6 @@ class Authenticator:
         return None
 
     def _best_role_level(self, roles: Sequence[str]) -> TrustLevel | None:
-        """Return the highest TrustLevel from role_map for the given roles."""
         best: TrustLevel | None = None
         for role in roles:
             candidate = self._role_map.get(role)
@@ -91,7 +78,6 @@ class Authenticator:
         roles: Sequence[str] = (),
         command: str | None = None,
     ) -> TrustLevel:
-        """Resolve TrustLevel, considering all linked identities via alias_store."""
         if user_id is None:
             return TrustLevel.BLOCKED
 
@@ -143,7 +129,6 @@ class Authenticator:
         roles: Sequence[str] = (),
         command: str | None = None,
     ) -> TrustLevel:
-        """Backward-compat method. Returns TrustLevel only. Prefer resolve() for new code."""  # noqa: E501
         return self._resolve_trust(user_id, roles, command)
 
     def resolve(
@@ -152,15 +137,9 @@ class Authenticator:
         roles: Sequence[str] = (),
         command: str | None = None,
     ) -> Identity:
-        """Return the Identity for the given user_id and optional roles.
+        """Resolve trust and admin for user_id; return Identity.
 
-        Args:
-            user_id: Platform user identifier, or None for anonymous/service.
-            roles: Role names (e.g. Discord guild roles) for role-based lookup.
-            command: Command name (e.g. "/join") -- public_commands bypass.
-
-        Returns:
-            Identity with resolved trust_level and is_admin.
+        user_id=None → BLOCKED. Considers all aliases via alias_store.
         """
         trust = self._resolve_trust(user_id, roles, command)
         resolved_uid = user_id or ""
@@ -188,7 +167,6 @@ class Authenticator:
         admin_user_ids: frozenset[str] = frozenset(),
         alias_store: IdentityAliasStore | None = None,
     ) -> Authenticator:
-        """Return a fixed OWNER authenticator for the CLI section."""
         return cls(
             store=store,
             role_map={},
@@ -206,7 +184,6 @@ class Authenticator:
         admin_user_ids: frozenset[str] = frozenset(),
         alias_store: IdentityAliasStore | None = None,
     ) -> Authenticator:
-        """Validate *section_cfg* and build an Authenticator instance."""
         raw_default: str = section_cfg.get("default", "")
         try:
             default = TrustLevel(raw_default)

@@ -72,18 +72,22 @@ class LocalBus(Generic[T]):
         self._threshold = queue_depth_threshold
         self._depth_exceeded = False
 
-    def register(self, platform: Platform, maxsize: int = 100) -> None:
+    def register(self, platform: Platform, maxsize: int = 100, bot_id: str | None = None) -> None:  # noqa: ARG002
         """Register a bounded queue for the given platform.
 
         Must be called before start(). Raises RuntimeError if called after
         start() — the new queue would have no feeder task and messages would
         silently never reach staging.
+
+        bot_id is accepted for protocol compatibility but ignored by LocalBus.
         """
         if self._feeders:
             raise RuntimeError(
                 f"Cannot register platform {platform!r} after start() — "
                 "feeders are already running."
             )
+        if platform in self._queues:
+            return  # Already registered — idempotent for multi-bot
         self._queues[platform] = asyncio.Queue(maxsize=maxsize)
 
     async def put(self, platform: Platform, item: T) -> None:

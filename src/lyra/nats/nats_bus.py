@@ -3,8 +3,8 @@
 Concrete implementation of the ``Bus[T]`` Protocol defined in ``bus.py``,
 using NATS as the transport layer instead of local asyncio queues.
 
-Each registered platform maps to one NATS subscription on the subject
-``lyra.inbound.{platform.value}.{bot_id}``.  Inbound messages are
+Each registered (platform, bot_id) pair maps to one NATS subscription on the
+subject ``lyra.inbound.{platform.value}.{bot_id}``.  Inbound messages are
 deserialized from JSON and placed into a single staging queue consumed
 by Hub.run().
 
@@ -21,12 +21,19 @@ Usage::
     ...
     await bus.stop()
     await nc.close()
+
+Multi-bot usage::
+
+    bus.register(Platform.TELEGRAM, bot_id="bot-a")
+    bus.register(Platform.TELEGRAM, bot_id="bot-b")
+    await bus.start()  # two subscriptions: one per (platform, bot_id) pair
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from typing import Generic, TypeVar
 
 from nats.aio.client import Client as NATS
@@ -55,12 +62,13 @@ class NatsBus(Generic[T]):
         bus.register(Platform.TELEGRAM)
         await bus.start()   # creates NATS subscriptions
         ...
-        await bus.stop()    # unsubscribes; platforms remain registered
+        await bus.stop()    # unsubscribes; registrations remain intact
         await bus.start()   # safe to restart without re-registering
 
     Args:
         nc: Already-connected ``nats.NATS`` client.
-        bot_id: Bot identifier appended to the NATS subject.
+        bot_id: Default bot identifier used when ``register()`` is called
+            without an explicit ``bot_id``.
         item_type: Concrete type used for deserialization (e.g. ``InboundMessage``).
     """
 
@@ -68,19 +76,22 @@ class NatsBus(Generic[T]):
         self._nc = nc
         self._bot_id = bot_id
         self._item_type = item_type
-        self._platforms: set[Platform] = set()
-        self._subscriptions: dict[Platform, Subscription] = {}
+        self._registrations: set[tuple[Platform, str]] = set()
+        self._subscriptions: dict[tuple[Platform, str], Subscription] = {}
         self._staging: asyncio.Queue[T] = asyncio.Queue(maxsize=500)
 
     # ------------------------------------------------------------------
     # Registration
     # ------------------------------------------------------------------
 
-    def register(self, platform: Platform, maxsize: int = 100) -> None:  # noqa: ARG002
-        """Record *platform* for subscription setup.
+    def register(self, platform: Platform, maxsize: int = 100, bot_id: str | None = None) -> None:  # noqa: ARG002
+        """Record *(platform, bot_id)* for subscription setup.
 
         ``maxsize`` is accepted for Protocol compatibility but unused — there
         is no per-platform local buffer in NatsBus.
+
+        When ``bot_id`` is omitted or ``None``, the constructor's ``bot_id``
+        is used, preserving backward compatibility.
 
         Raises:
             RuntimeError: If called after ``start()``.
@@ -90,18 +101,26 @@ class NatsBus(Generic[T]):
                 f"Cannot register platform {platform!r} after start() — "
                 "subscriptions are already active."
             )
-        self._platforms.add(platform)
+        resolved_bid = bot_id or self._bot_id
+        if not re.fullmatch(r'[A-Za-z0-9_-]+', resolved_bid):
+            raise ValueError(
+                f"Invalid bot_id for NATS subject: {resolved_bid!r} — "
+                "must match [A-Za-z0-9_-]+"
+            )
+        if (platform, resolved_bid) in self._registrations:
+            return  # Already registered — idempotent
+        self._registrations.add((platform, resolved_bid))
 
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
 
     async def start(self) -> None:
-        """Create one NATS subscription per registered platform.
+        """Create one NATS subscription per registered (platform, bot_id) pair.
 
         Subject pattern: ``lyra.inbound.{platform.value}.{bot_id}``
 
-        No-op if zero platforms are registered.
+        No-op if zero registrations exist.
 
         Raises:
             RuntimeError: If subscriptions are already active (double-start).
@@ -111,14 +130,14 @@ class NatsBus(Generic[T]):
                 "NatsBus.start() called while subscriptions are already active — "
                 "call stop() first."
             )
-        for platform in self._platforms:
-            await self._make_handler(platform)
+        for platform, bid in self._registrations:
+            await self._make_handler(platform, bid)
 
     async def stop(self) -> None:
         """Unsubscribe all active NATS subscriptions.
 
-        Registered platforms are preserved so that a subsequent ``start()``
-        succeeds without re-registering.
+        Registered (platform, bot_id) pairs are preserved so that a subsequent
+        ``start()`` succeeds without re-registering.
         """
         for sub in self._subscriptions.values():
             try:
@@ -134,14 +153,18 @@ class NatsBus(Generic[T]):
     async def put(self, platform: Platform, item: T) -> None:
         """Serialize *item* and publish it to the platform's NATS subject.
 
+        Uses the first matching registration's bot_id for the subject.
+
         Raises:
             KeyError: If *platform* has not been registered.
         """
-        if platform not in self._platforms:
+        registered_platforms = frozenset(p for p, _ in self._registrations)
+        if platform not in registered_platforms:
             raise KeyError(
                 f"Platform {platform!r} is not registered — call register() first."
             )
-        subject = f"lyra.inbound.{platform.value}.{self._bot_id}"
+        bid = next((b for p, b in self._registrations if p == platform), self._bot_id)
+        subject = f"lyra.inbound.{platform.value}.{bid}"
         payload = serialize(item)
         await self._nc.publish(subject, payload)
 
@@ -167,17 +190,15 @@ class NatsBus(Generic[T]):
 
     def registered_platforms(self) -> frozenset[Platform]:
         """Return the set of currently registered platforms."""
-        return frozenset(self._platforms)
+        return frozenset(p for p, _ in self._registrations)
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
-    async def _make_handler(
-        self, platform: Platform
-    ) -> None:
-        """Create NATS subscription for *platform* and register the handler."""
-        subject = f"lyra.inbound.{platform.value}.{self._bot_id}"
+    async def _make_handler(self, platform: Platform, bot_id: str) -> None:
+        """Create NATS subscription for *(platform, bot_id)* and register the handler."""
+        subject = f"lyra.inbound.{platform.value}.{bot_id}"
 
         async def handler(msg: Msg) -> None:
             try:
@@ -185,15 +206,17 @@ class NatsBus(Generic[T]):
                 self._staging.put_nowait(item)
             except asyncio.QueueFull:
                 log.warning(
-                    "NatsBus staging queue full — dropping message on platform=%s",
+                    "NatsBus staging queue full — dropping message on platform=%s bot_id=%s",
                     platform.value,
+                    bot_id,
                 )
             except Exception:
                 log.exception(
-                    "NatsBus: failed to deserialize message on platform=%s",
+                    "NatsBus: failed to deserialize message on platform=%s bot_id=%s",
                     platform.value,
+                    bot_id,
                 )
 
         sub = await self._nc.subscribe(subject, cb=handler)
-        self._subscriptions[platform] = sub
-        log.debug("NatsBus subscribed: subject=%s bot_id=%s", subject, self._bot_id)
+        self._subscriptions[(platform, bot_id)] = sub
+        log.debug("NatsBus subscribed: subject=%s bot_id=%s", subject, bot_id)

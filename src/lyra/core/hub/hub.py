@@ -88,14 +88,16 @@ class Hub(HubOutboundMixin):
         queue_depth_threshold: int = QUEUE_DEPTH_THRESHOLD,
         max_merged_chars: int = MAX_MERGED_CHARS,
         event_bus: "PipelineEventBus | None" = None,
+        inbound_bus: "Bus[InboundMessage] | None" = None,
+        inbound_audio_bus: "Bus[InboundAudio] | None" = None,
     ) -> None:
         self._platform_queue_maxsize = platform_queue_maxsize
-        self.inbound_bus: Bus[InboundMessage] = LocalBus(
+        self.inbound_bus: Bus[InboundMessage] = inbound_bus or LocalBus(
             name="inbound",
             staging_maxsize=staging_maxsize,
             queue_depth_threshold=queue_depth_threshold,
         )
-        self.inbound_audio_bus: Bus[InboundAudio] = LocalBus(
+        self.inbound_audio_bus: Bus[InboundAudio] = inbound_audio_bus or LocalBus(
             name="inbound-audio",
             staging_maxsize=staging_maxsize,
             queue_depth_threshold=queue_depth_threshold,
@@ -172,10 +174,10 @@ class Hub(HubOutboundMixin):
     ) -> None:
         self.adapter_registry[(platform, bot_id)] = adapter
         if platform not in self.inbound_bus.registered_platforms():
-            self.inbound_bus.register(platform, maxsize=self._platform_queue_maxsize)
+            self.inbound_bus.register(platform, maxsize=self._platform_queue_maxsize, bot_id=bot_id)
         if platform not in self.inbound_audio_bus.registered_platforms():
             self.inbound_audio_bus.register(
-                platform, maxsize=self._platform_queue_maxsize
+                platform, maxsize=self._platform_queue_maxsize, bot_id=bot_id
             )
 
     def register_outbound_dispatcher(

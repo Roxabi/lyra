@@ -31,8 +31,12 @@ class Bus(Protocol[T]):
     ``put(item: T)`` positions).
     """
 
-    def register(self, platform: Platform, maxsize: int = 100) -> None:
-        """Register a bounded queue for the given platform."""
+    def register(self, platform: Platform, maxsize: int = 100, bot_id: str | None = None) -> None:
+        """Register a bounded queue for the given platform.
+
+        bot_id is used by NatsBus to key subscriptions per (platform, bot_id).
+        LocalBus ignores it.
+        """
         ...
 
     async def put(self, platform: Platform, item: T) -> None:

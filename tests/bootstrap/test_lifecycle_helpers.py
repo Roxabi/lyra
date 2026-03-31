@@ -19,7 +19,8 @@ def test_setup_signal_handlers_registers_sigint_and_sigterm() -> None:
     mock_loop = MagicMock()
     stop = asyncio.Event()
 
-    with patch("lyra.bootstrap.lifecycle_helpers.asyncio.get_running_loop", return_value=mock_loop):
+    _target = "lyra.bootstrap.lifecycle_helpers.asyncio.get_running_loop"
+    with patch(_target, return_value=mock_loop):
         setup_signal_handlers(stop)
 
     calls = mock_loop.add_signal_handler.call_args_list
@@ -33,7 +34,8 @@ def test_setup_signal_handlers_uses_stop_event() -> None:
     mock_loop = MagicMock()
     stop = asyncio.Event()
 
-    with patch("lyra.bootstrap.lifecycle_helpers.asyncio.get_running_loop", return_value=mock_loop):
+    _target = "lyra.bootstrap.lifecycle_helpers.asyncio.get_running_loop"
+    with patch(_target, return_value=mock_loop):
         setup_signal_handlers(stop)
 
     for call in mock_loop.add_signal_handler.call_args_list:

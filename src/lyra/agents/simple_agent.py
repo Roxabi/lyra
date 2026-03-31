@@ -137,6 +137,16 @@ class SimpleAgent(AgentBase):
         for cmd in registry.commands():
             self.command_router.register_passthrough(cmd.lstrip("/"))
 
+        # /add-vault — direct vault save, no LLM needed (#372).
+        from lyra.commands.add_vault.handlers import cmd_add_vault
+
+        self.command_router.register_session_command(
+            "add-vault",
+            cmd_add_vault,
+            tools=self._session_tools,
+            description="Save a note to the vault: /add-vault <note content>",
+        )
+
     def _maybe_register_reset(self, pool: Pool) -> None:
         """Register a session reset callback on the pool the first time we process.
 

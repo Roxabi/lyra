@@ -107,3 +107,14 @@ venv/bin/python main.py --listen 127.0.0.1 --port 8188
 - Subsequent runs are fast (~2–5 min for 50 steps at 1024×1024)
 - EVA-CLIP downloads automatically on first PuLID use (~800 MB)
 - Done when: flux2-klein loads without OOM, smoke-test image generates
+
+## Blackwell JIT Cache
+
+PyTorch caches compiled SM_120 CUDA kernels in `~/.cache/torch/`. Once compiled, all subsequent runs skip the 30–45 min wait.
+
+**On this machine (ROXABITOWER):** JIT was compiled during initial setup/debug session (2026-03-31) — the cache is warm. The smoke test ran in ~1 sec and peaked at 13.0 GB VRAM.
+
+On a **fresh machine**, the first generation will still take 30–45 min. The cache directory to back up or copy across machines is:
+```
+~/.cache/torch/kernels/
+```

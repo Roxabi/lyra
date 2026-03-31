@@ -15,6 +15,7 @@ from collections.abc import AsyncGenerator, Generator
 
 import nats
 import pytest
+from nats.aio.client import Client as NATS
 
 # Skip marker applied automatically to any test that depends on nats-server.
 _nats_server_available = shutil.which("nats-server") is not None
@@ -65,7 +66,7 @@ def nats_server_url() -> Generator[str, None, None]:
 
 
 @pytest.fixture()
-async def nc(nats_server_url: str) -> AsyncGenerator[nats.NATS, None]:
+async def nc(nats_server_url: str) -> AsyncGenerator[NATS, None]:
     """Return a connected nats.NATS client, drained after each test."""
     conn = await nats.connect(nats_server_url)
     yield conn

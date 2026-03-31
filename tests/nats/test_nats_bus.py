@@ -1,24 +1,19 @@
 """Tests for NatsBus: Bus[T] over NATS pub/sub.
 
 Covers all 17 success criteria from spec #455 (C2: NatsBus implementation).
-NatsBus does not exist yet — this is the RED phase.
 
 Uses a real nats-server subprocess (see conftest.py) — no mocks of the
-NATS transport layer.
-
-RED-phase import guard: imports from lyra.nats are attempted at module load.
-If the package does not exist yet, each test skips with the ImportError detail
-so pytest can still collect and report all test names.
+NATS transport layer. Tests requiring nats-server are automatically skipped
+when the binary is not found in PATH.
 """
 
 from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
-from typing import Any
 
-import nats
 import pytest
+from nats.aio.client import Client as NATS
 
 from lyra.core.bus import Bus
 from lyra.core.message import (
@@ -27,53 +22,9 @@ from lyra.core.message import (
     Platform,
 )
 from lyra.core.trust import TrustLevel
+from lyra.nats._serialize import deserialize, serialize
+from lyra.nats.nats_bus import NatsBus
 from tests.nats.conftest import requires_nats_server
-
-# ---------------------------------------------------------------------------
-# RED-phase guarded imports — lyra.nats does not exist yet.
-# Tests will be collected but xfail until the implementation lands.
-# ---------------------------------------------------------------------------
-try:
-    from lyra.nats._serialize import deserialize, serialize
-
-    _HAS_SERIALIZE = True
-except ImportError as _serialize_err:
-    _HAS_SERIALIZE = False
-    _serialize_err_msg = str(_serialize_err)
-
-    # Provide typed stubs so type-checkers don't complain in the test body.
-    def serialize(msg: Any) -> bytes:  # type: ignore[misc]
-        raise ImportError(_serialize_err_msg)
-
-    def deserialize(payload: bytes, cls: Any) -> Any:  # type: ignore[misc]
-        raise ImportError(_serialize_err_msg)
-
-
-try:
-    from lyra.nats.nats_bus import NatsBus
-
-    _HAS_NATS_BUS = True
-except ImportError as _bus_err:
-    _HAS_NATS_BUS = False
-    _bus_err_msg = str(_bus_err)
-
-    class NatsBus:  # type: ignore[no-redef]
-        """Stub — implementation not yet available."""
-
-        def __init__(self, *args: Any, **kwargs: Any) -> None:
-            raise ImportError(_bus_err_msg)
-
-
-# Markers applied to each test class — skip cleanly if module absent.
-_needs_serialize = pytest.mark.skipif(
-    not _HAS_SERIALIZE,
-    reason="lyra.nats._serialize not yet implemented (RED phase)",
-)
-_needs_nats_bus = pytest.mark.skipif(
-    not _HAS_NATS_BUS,
-    reason="lyra.nats.nats_bus not yet implemented (RED phase)",
-)
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -114,7 +65,7 @@ def _make_msg(platform: Platform = Platform.TELEGRAM) -> InboundMessage:
     )
 
 
-def _make_bus(nc: nats.NATS) -> NatsBus:
+def _make_bus(nc: NATS) -> NatsBus:
     return NatsBus(nc=nc, bot_id="main", item_type=InboundMessage)
 
 
@@ -123,7 +74,6 @@ def _make_bus(nc: nats.NATS) -> NatsBus:
 # ---------------------------------------------------------------------------
 
 
-@_needs_serialize
 class TestSerialize:
     def test_callable_stripped_from_platform_meta(self) -> None:
         """Callables in platform_meta must be stripped during serialization."""
@@ -258,10 +208,9 @@ class TestSerialize:
 # ---------------------------------------------------------------------------
 
 
-@_needs_nats_bus
 @requires_nats_server
 class TestNatsBusLifecycle:
-    async def test_register_before_start_ok(self, nc: nats.NATS) -> None:
+    async def test_register_before_start_ok(self, nc: NATS) -> None:
         """register(platform) succeeds before start() is called."""
         # Arrange
         bus = _make_bus(nc)
@@ -270,7 +219,7 @@ class TestNatsBusLifecycle:
         bus.register(Platform.TELEGRAM)
         assert Platform.TELEGRAM in bus.registered_platforms()
 
-    async def test_register_after_start_raises(self, nc: nats.NATS) -> None:
+    async def test_register_after_start_raises(self, nc: NATS) -> None:
         """Calling register() after start() must raise RuntimeError."""
         # Arrange
         bus = _make_bus(nc)
@@ -284,7 +233,7 @@ class TestNatsBusLifecycle:
         finally:
             await bus.stop()
 
-    async def test_start_zero_platforms_ok(self, nc: nats.NATS) -> None:
+    async def test_start_zero_platforms_ok(self, nc: NATS) -> None:
         """start() with no registered platforms is a no-op — no exception."""
         # Arrange
         bus = _make_bus(nc)
@@ -293,7 +242,7 @@ class TestNatsBusLifecycle:
         await bus.start()
         await bus.stop()
 
-    async def test_stop_preserves_platforms(self, nc: nats.NATS) -> None:
+    async def test_stop_preserves_platforms(self, nc: NATS) -> None:
         """stop() must not clear registered_platforms."""
         # Arrange
         bus = _make_bus(nc)
@@ -306,7 +255,7 @@ class TestNatsBusLifecycle:
         # Assert — platform still known after stop
         assert Platform.TELEGRAM in bus.registered_platforms()
 
-    async def test_start_after_stop_ok(self, nc: nats.NATS) -> None:
+    async def test_start_after_stop_ok(self, nc: NATS) -> None:
         """stop() then start() succeeds without re-registering platforms."""
         # Arrange
         bus = _make_bus(nc)
@@ -324,10 +273,9 @@ class TestNatsBusLifecycle:
 # ---------------------------------------------------------------------------
 
 
-@_needs_nats_bus
 @requires_nats_server
 class TestNatsBusRoundTrip:
-    async def test_put_get_roundtrip(self, nc: nats.NATS) -> None:
+    async def test_put_get_roundtrip(self, nc: NATS) -> None:
         """put() + get(): publisher/subscriber message fields preserved."""
         # Arrange — two NatsBus instances sharing the same NATS connection
         publisher = _make_bus(nc)
@@ -355,7 +303,7 @@ class TestNatsBusRoundTrip:
         finally:
             await subscriber.stop()
 
-    async def test_callable_stripped_in_transit(self, nc: nats.NATS) -> None:
+    async def test_callable_stripped_in_transit(self, nc: NATS) -> None:
         """put() a message with _session_update_fn; get() on other side strips it."""
         # Arrange
         publisher = _make_bus(nc)
@@ -399,10 +347,9 @@ class TestNatsBusRoundTrip:
 # ---------------------------------------------------------------------------
 
 
-@_needs_nats_bus
 @requires_nats_server
 class TestNatsBusEdgeCases:
-    async def test_task_done_is_noop(self, nc: nats.NATS) -> None:
+    async def test_task_done_is_noop(self, nc: NATS) -> None:
         """task_done() returns None without raising any exception."""
         # Arrange
         bus = _make_bus(nc)
@@ -411,7 +358,7 @@ class TestNatsBusEdgeCases:
         result = bus.task_done()
         assert result is None
 
-    def test_qsize_always_zero(self, nc: nats.NATS) -> None:
+    def test_qsize_always_zero(self, nc: NATS) -> None:
         """qsize(platform) always returns 0 (no local per-platform buffer)."""
         # Arrange
         bus = _make_bus(nc)
@@ -420,7 +367,7 @@ class TestNatsBusEdgeCases:
         # Act / Assert
         assert bus.qsize(Platform.TELEGRAM) == 0
 
-    async def test_staging_qsize(self, nc: nats.NATS) -> None:
+    async def test_staging_qsize(self, nc: NATS) -> None:
         """staging_qsize() reflects items waiting in the staging queue."""
         # Arrange
         publisher = _make_bus(nc)
@@ -446,7 +393,7 @@ class TestNatsBusEdgeCases:
         finally:
             await subscriber.stop()
 
-    async def test_unregistered_platform_raises(self, nc: nats.NATS) -> None:
+    async def test_unregistered_platform_raises(self, nc: NATS) -> None:
         """put() to an unregistered platform raises KeyError."""
         # Arrange
         bus = _make_bus(nc)
@@ -463,7 +410,6 @@ class TestNatsBusEdgeCases:
 # ---------------------------------------------------------------------------
 
 
-@_needs_nats_bus
 class TestProtocolConformance:
     def test_type_annotation_accepted(self) -> None:
         """NatsBus exposes all required Bus[T] methods (structural Protocol check)."""

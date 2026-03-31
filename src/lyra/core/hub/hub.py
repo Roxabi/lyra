@@ -237,6 +237,9 @@ class Hub(HubOutboundMixin):
             return msg
         auth = self._get_authenticator(key_platform, msg.bot_id)
         if auth is None:
+            log.debug(
+                "no authenticator for %s/%s — trust unchanged", key_platform, msg.bot_id
+            )
             return msg
         uid = msg.user_id if msg.user_id else None
         roles = list(getattr(msg, "roles", ()))
@@ -261,6 +264,11 @@ class Hub(HubOutboundMixin):
             return audio
         auth = self._get_authenticator(key_platform, audio.bot_id)
         if auth is None:
+            log.debug(
+                "no authenticator for %s/%s — trust unchanged",
+                key_platform,
+                audio.bot_id,
+            )
             return audio
         uid = audio.user_id if audio.user_id else None
         identity = auth.resolve(uid)

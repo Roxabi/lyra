@@ -12,9 +12,11 @@ import sys
 from pathlib import Path
 
 import pytest
+from nats.aio.client import Client as NATS
 
 import lyra.bootstrap.hub_standalone as _hub_standalone_mod
 from lyra.bootstrap.hub_standalone import _acquire_lockfile, _release_lockfile
+from tests.nats.conftest import requires_nats_server
 
 
 # ---------------------------------------------------------------------------
@@ -187,6 +189,187 @@ class TestHealthEndpoint:
 
         # Assert
         assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# TestStandaloneHubPipeline — SC-17: full pipeline integration
+# ---------------------------------------------------------------------------
+
+
+@requires_nats_server
+class TestStandaloneHubPipeline:
+    """SC-17: publish InboundMessage to NATS → Hub processes → staging queue drained.
+
+    Wires NatsBus directly into Hub without the full bootstrap, bypassing the
+    config/store/agent complexity while still exercising the real NATS transport
+    and Hub.run() consumer loop.
+    """
+
+    async def test_nats_inbound_delivered_to_hub_run(
+        self, nc: NATS, nats_server_url: str
+    ) -> None:
+        """Hub.run() consumes a message published to NATS inbound subject."""
+        import asyncio
+
+        import nats as nats_lib
+
+        from lyra.core.hub import Hub
+        from lyra.core.message import InboundMessage, Platform
+        from lyra.core.trust import TrustLevel
+        from lyra.nats._serialize import serialize
+        from lyra.nats.nats_bus import NatsBus
+
+        # Arrange — separate NATS connection for the Hub (mirrors production)
+        hub_nc = await nats_lib.connect(nats_server_url)
+
+        bot_id = "test_bot"
+        platform = Platform.TELEGRAM
+        inbound_subject = f"lyra.inbound.{platform.value}.{bot_id}"
+
+        inbound_bus: NatsBus[InboundMessage] = NatsBus(
+            nc=hub_nc, bot_id=bot_id, item_type=InboundMessage
+        )
+        inbound_bus.register(platform, bot_id=bot_id)
+        await inbound_bus.start()
+
+        hub = Hub(inbound_bus=inbound_bus)
+
+        test_msg = InboundMessage(
+            id="sc17-msg-001",
+            platform=platform.value,
+            bot_id=bot_id,
+            scope_id="chat:999",
+            user_id="user:sc17",
+            user_name="SC17User",
+            is_mention=False,
+            text="integration test",
+            text_raw="integration test",
+            trust_level=TrustLevel.PUBLIC,
+        )
+
+        try:
+            # Act — start Hub consumer loop, then publish via external NATS client
+            hub_task = asyncio.create_task(hub.run(), name="hub-run")
+
+            # Give Hub.run() a moment to enter its get() await
+            await asyncio.sleep(0.05)
+
+            payload = serialize(test_msg)
+            await nc.publish(inbound_subject, payload)
+            await nc.flush()
+
+            # Wait up to 2 s for the staging queue to be drained by Hub.run()
+            deadline = asyncio.get_event_loop().time() + 2.0
+            while asyncio.get_event_loop().time() < deadline:
+                if inbound_bus.staging_qsize() == 0:
+                    break
+                await asyncio.sleep(0.05)
+
+            # Assert — staging queue is empty: Hub.run() consumed the message
+            assert inbound_bus.staging_qsize() == 0, (
+                "NatsBus staging queue not drained — Hub.run() did not consume"
+                " the inbound message published to NATS"
+            )
+        finally:
+            hub_task.cancel()
+            try:
+                await hub_task
+            except asyncio.CancelledError:
+                pass
+            await inbound_bus.stop()
+            if hub_nc.is_connected:
+                await hub_nc.drain()
+
+    async def test_trust_re_resolution_invoked(
+        self, nc: NATS, nats_server_url: str
+    ) -> None:
+        """ResolveTrustMiddleware calls Authenticator.resolve() for every inbound message.
+
+        Publishes an InboundMessage via NATS and verifies that the registered
+        Authenticator's resolve() method is called — confirming the C3 trust
+        re-resolution path runs in the standalone Hub pipeline.
+        """
+        import asyncio
+        from unittest.mock import MagicMock
+
+        import nats as nats_lib
+
+        from lyra.core.authenticator import Authenticator
+        from lyra.core.hub import Hub
+        from lyra.core.identity import Identity
+        from lyra.core.message import InboundMessage, Platform
+        from lyra.core.trust import TrustLevel
+        from lyra.nats._serialize import serialize
+        from lyra.nats.nats_bus import NatsBus
+
+        # Arrange — Hub with NatsBus and a mock Authenticator
+        hub_nc = await nats_lib.connect(nats_server_url)
+
+        bot_id = "trust_bot"
+        platform = Platform.TELEGRAM
+        inbound_subject = f"lyra.inbound.{platform.value}.{bot_id}"
+
+        inbound_bus: NatsBus[InboundMessage] = NatsBus(
+            nc=hub_nc, bot_id=bot_id, item_type=InboundMessage
+        )
+        inbound_bus.register(platform, bot_id=bot_id)
+        await inbound_bus.start()
+
+        hub = Hub(inbound_bus=inbound_bus)
+
+        # Mock authenticator: returns PUBLIC identity for any user
+        mock_auth = MagicMock(spec=Authenticator)
+        mock_auth.resolve.return_value = Identity(
+            user_id="user:trust", trust_level=TrustLevel.PUBLIC, is_admin=False
+        )
+        hub.register_authenticator(platform, bot_id, mock_auth)
+
+        test_msg = InboundMessage(
+            id="trust-msg-001",
+            platform=platform.value,
+            bot_id=bot_id,
+            scope_id="chat:trust",
+            user_id="user:trust",
+            user_name="TrustUser",
+            is_mention=False,
+            text="trust test",
+            text_raw="trust test",
+            trust_level=TrustLevel.PUBLIC,
+        )
+
+        try:
+            # Act — start Hub, publish message via NATS
+            hub_task = asyncio.create_task(hub.run(), name="hub-run-trust")
+
+            await asyncio.sleep(0.05)
+
+            payload = serialize(test_msg)
+            await nc.publish(inbound_subject, payload)
+            await nc.flush()
+
+            # Wait for the message to be consumed from the staging queue
+            deadline = asyncio.get_event_loop().time() + 2.0
+            while asyncio.get_event_loop().time() < deadline:
+                if inbound_bus.staging_qsize() == 0:
+                    break
+                await asyncio.sleep(0.05)
+
+            # Give Hub.run() a moment to finish pipeline processing after get()
+            await asyncio.sleep(0.1)
+
+            # Assert — Authenticator.resolve() was called with the user_id from the message
+            mock_auth.resolve.assert_called_once()
+            call_args = mock_auth.resolve.call_args
+            assert call_args.args[0] == "user:trust" or call_args.kwargs.get("user_id") == "user:trust"
+        finally:
+            hub_task.cancel()
+            try:
+                await hub_task
+            except asyncio.CancelledError:
+                pass
+            await inbound_bus.stop()
+            if hub_nc.is_connected:
+                await hub_nc.drain()
 
 
 # ---------------------------------------------------------------------------

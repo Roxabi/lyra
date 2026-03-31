@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -27,6 +28,13 @@ from lyra.nats._serialize import serialize
 
 log = logging.getLogger(__name__)
 
+_NATS_UNSAFE = re.compile(r'[.*> ]')
+
+
+def _safe_subject_token(value: str) -> str:
+    """Sanitize a value for use as a NATS subject token."""
+    return _NATS_UNSAFE.sub('_', value)
+
 
 class NatsChannelProxy:
     """ChannelAdapter that publishes outbound messages to NATS subjects.
@@ -39,6 +47,11 @@ class NatsChannelProxy:
 
     def __init__(self, nc: NATS, platform: Platform, bot_id: str) -> None:
         """Store nc, platform, bot_id. No I/O."""
+        if not re.fullmatch(r'[A-Za-z0-9_-]+', bot_id):
+            raise ValueError(
+                f"Invalid bot_id for NATS subject: {bot_id!r} — "
+                "must match [A-Za-z0-9_-]+"
+            )
         self._nc = nc
         self._platform = platform
         self._bot_id = bot_id
@@ -87,7 +100,7 @@ class NatsChannelProxy:
     ) -> None:
         """Publish streaming render events to NATS as chunked messages."""
         subject = (
-            f"lyra.outbound.stream.{self._platform.value}.{self._bot_id}.{original_msg.id}"
+            f"lyra.outbound.stream.{self._platform.value}.{self._bot_id}.{_safe_subject_token(original_msg.id)}"
         )
         seq = 0
         try:

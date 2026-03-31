@@ -108,24 +108,30 @@ class TestRegisterAdapterBotId:
             bot_id="audiobot",
         )
 
-    def test_register_skipped_if_platform_already_registered(self) -> None:
+    def test_register_always_called_bus_handles_idempotency(self) -> None:
         mock_bus: Any = _make_mock_bus()
-        # Simulate platform already registered so the guard short-circuits.
-        mock_bus.registered_platforms.return_value = frozenset({Platform.TELEGRAM})
+        hub = Hub(inbound_bus=mock_bus)
+        # Hub always calls register(); Bus is responsible for idempotency.
+        hub.register_adapter(Platform.TELEGRAM, "bot1", MockAdapter())
+        mock_bus.register.assert_called_once_with(
+            Platform.TELEGRAM,
+            maxsize=Hub.PLATFORM_QUEUE_MAXSIZE,
+            bot_id="bot1",
+        )
+
+    def test_second_bot_same_platform_calls_register_twice(self) -> None:
+        """Hub always calls bus.register() — Bus handles idempotency internally."""
+        mock_bus: Any = _make_mock_bus()
         hub = Hub(inbound_bus=mock_bus)
         hub.register_adapter(Platform.TELEGRAM, "bot1", MockAdapter())
-        mock_bus.register.assert_not_called()
-
-    def test_second_bot_same_platform_does_not_re_register(self) -> None:
-        """Only the first register_adapter call per platform triggers bus.register()."""
-        hub = Hub()
-        hub.register_adapter(Platform.TELEGRAM, "bot1", MockAdapter())
-        # Registering a second bot on the same platform must NOT call register()
-        # again (the guard checks registered_platforms).
-        platforms_before = set(hub.inbound_bus.registered_platforms())
         hub.register_adapter(Platform.TELEGRAM, "bot2", MockAdapter())
-        platforms_after = set(hub.inbound_bus.registered_platforms())
-        assert platforms_before == platforms_after
+        assert mock_bus.register.call_count == 2
+        mock_bus.register.assert_any_call(
+            Platform.TELEGRAM, maxsize=Hub.PLATFORM_QUEUE_MAXSIZE, bot_id="bot1"
+        )
+        mock_bus.register.assert_any_call(
+            Platform.TELEGRAM, maxsize=Hub.PLATFORM_QUEUE_MAXSIZE, bot_id="bot2"
+        )
 
 
 # ---------------------------------------------------------------------------

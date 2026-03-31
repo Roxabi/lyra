@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from typing import Generic, TypeVar
 
 from nats.aio.client import Client as NATS
@@ -101,6 +102,13 @@ class NatsBus(Generic[T]):
                 "subscriptions are already active."
             )
         resolved_bid = bot_id or self._bot_id
+        if not re.fullmatch(r'[A-Za-z0-9_-]+', resolved_bid):
+            raise ValueError(
+                f"Invalid bot_id for NATS subject: {resolved_bid!r} — "
+                "must match [A-Za-z0-9_-]+"
+            )
+        if (platform, resolved_bid) in self._registrations:
+            return  # Already registered — idempotent
         self._registrations.add((platform, resolved_bid))
 
     # ------------------------------------------------------------------

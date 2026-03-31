@@ -86,6 +86,8 @@ class LocalBus(Generic[T]):
                 f"Cannot register platform {platform!r} after start() — "
                 "feeders are already running."
             )
+        if platform in self._queues:
+            return  # Already registered — idempotent for multi-bot
         self._queues[platform] = asyncio.Queue(maxsize=maxsize)
 
     async def put(self, platform: Platform, item: T) -> None:

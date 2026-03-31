@@ -50,9 +50,10 @@ flowchart TD
 ```mermaid
 flowchart LR
     subgraph "Slice A — Foundation"
-        A1[A1: Bus async put]
-        A2[A2: NATS server install]
-        A3[A3: Health probe]
+        A1["✓ A1: Bus async put"]
+        A2["✓ A2: NATS server install"]
+        A2b[A2b: NATS opt-in #469]
+        A3[A3: Health probe #449]
     end
 
     subgraph "Slice B — Compute"
@@ -79,8 +80,9 @@ flowchart LR
 
     EXT14["#14 LLM benchmark"]
 
-    A2 --> A3
-    A2 --> B1
+    A2 --> A2b
+    A2b --> A3
+    A2b --> B1
     A2 --> B2
     EXT14 --> B2
     B1 --> B3
@@ -101,8 +103,9 @@ flowchart LR
     C6 --> D3
     D2 --> D4[D2 includes ACL]
 
-    style A1 fill:#4CAF50,color:white
-    style A2 fill:#4CAF50,color:white
+    style A1 fill:#4CAF50,color:white,stroke-dasharray:5 5
+    style A2 fill:#4CAF50,color:white,stroke-dasharray:5 5
+    style A2b fill:#4CAF50,color:white
     style A3 fill:#4CAF50,color:white
     style B1 fill:#2196F3,color:white
     style B2 fill:#2196F3,color:white
@@ -176,39 +179,34 @@ flowchart LR
 
 ## Waves
 
-### Wave 1 — Slice A: Foundation (parallel tracks)
+### Wave 1 — Slice A: Foundation
 
-Three independent tracks that can run in parallel.
+> **A1 and A2 done.** Remaining: A2b (#469) + A3 (#449) — can run in parallel (different repos).
 
-| Track | Issue | Agent | Micro-tasks |
-|-------|-------|-------|-------------|
-| 1 | A1: Bus[T] async put | backend-dev | 5 |
-| 2 | A2: NATS server install | devops | 7 |
-| 3 | A3: Health probe | backend-dev | 3 (blocked by A2) |
+| Track | Issue | Agent | Status | Notes |
+|-------|-------|-------|--------|-------|
+| 1 | A1: Bus[T] async put (#447) | backend-dev | ✓ done | merged 2026-03-30 |
+| 2 | A2: NATS server install (#448) | devops | ✓ done | merged 2026-03-30 in lyra-stack |
+| 3 | A2b: NATS opt-in in provision.sh (#469) | devops | open | lyra-stack repo |
+| 4 | A3: Health probe (#449) | backend-dev | open | parallel with A2b |
 
-#### A1 micro-tasks (backend-dev)
+#### A2b micro-tasks (devops — lyra-stack repo)
 
-1. Change `put()` signature in `Bus[T]` Protocol → `async def put(self, platform: Platform, item: T) -> None` (`core/bus.py:38`)
-2. Change `LocalBus.put()` to `async def put()` — keep `put_nowait()` body, wrap in async (`core/inbound_bus.py:89`)
-3. Add `await` to `inbound_bus.put(platform, msg)` in `push_to_hub_guarded()` (`adapters/_shared.py:97`)
-4. Grep all test files calling `.put(` on bus instances → add `await` where missing
-5. Run `pyright` + `pytest` — verify zero regression
+1. Extract NATS block from `scripts/provision.sh` into a standalone function
+2. Guard behind `--nats` flag or remove from base run entirely
+3. Add `nats-install` target to `Makefile` (calls the extracted function, idempotent)
+4. Remove `After=nats.service` from `lyra-stack.service` if present
+5. Document `make nats-install` in `README.md` under "Multi-machine setup"
 
-#### A2 micro-tasks (devops)
+#### A3 micro-tasks (backend-dev — lyra repo, parallel with A2b)
 
-1. Add NATS binary download (pinned version) to `lyra-stack/scripts/provision.sh`
-2. Create TLS CA + cert generation script (`lyra-stack/scripts/gen-nats-certs.sh`)
-3. Create nkey generation script (`lyra-stack/scripts/gen-nats-nkeys.sh`)
-4. Write `nats.conf` template → `lyra-stack/nats/nats.conf`
-5. Write `nats.service` systemd unit → `lyra-stack/nats/nats.service`
-6. Add UFW rule to `provision.sh`: `ufw allow from 192.168.1.0/24 to any port 4222 proto tcp`
-7. Test: run `provision.sh` on Machine 1, verify NATS starts with TLS + nkey, `nats-server --signal reload` works
-
-#### A3 micro-tasks (backend-dev, blocked by A2)
-
-1. Add NATS TCP connect + PING/PONG check to `lyra_monitoring` health probe
-2. Return `{"nats": "ok"|"degraded"|"unreachable"}` in health response
-3. Test: stop NATS → health returns `degraded`, start NATS → `ok`
+1. Read `NATS_URL` from config/env in `lyra_monitoring`
+2. If `NATS_URL` not set: skip NATS check entirely, omit `nats` key from response
+3. If `NATS_URL` set: TCP connect to host:port + NATS PING/PONG
+4. Return `{"nats": "ok"}` or `{"nats": "unreachable"}` + overall `degraded` when unreachable
+5. Test: no `NATS_URL` → clean response, no `nats` key
+6. Test: `NATS_URL` set, NATS stopped → `degraded` + `"nats": "unreachable"`
+7. Test: `NATS_URL` set, NATS running → `ok` + `"nats": "ok"`
 
 ### Wave 2 — Slice B: Compute (after Wave 1)
 
@@ -216,7 +214,7 @@ Two parallel tracks (B1, B2), then two sequential (B3, B4).
 
 | Track | Issue | Agent | Micro-tasks | Blocked by |
 |-------|-------|-------|-------------|------------|
-| 1 | B1: NatsLlmDriver | backend-dev | 10 | A2 |
+| 1 | B1: NatsLlmDriver | backend-dev | 10 | A2b (#469) |
 | 2 | B2: Machine 2 worker | backend-dev | 8 | A2, #14 |
 | 3 | B3: Circuit breaker | backend-dev | 5 | B1 |
 | 4 | B4: Integration test | tester | 5 | B1, B2 |
@@ -224,14 +222,15 @@ Two parallel tracks (B1, B2), then two sequential (B3, B4).
 #### B1 micro-tasks (backend-dev)
 
 1. Create `src/lyra/nats/__init__.py` and `src/lyra/nats/connection.py` — `NatsConnection` class
-2. Add `nats-py` to `pyproject.toml` dependencies
+2. Add `nats-py` to `pyproject.toml` as optional dependency (`extras = ["nats"]`)
 3. Create `src/lyra/nats/health_monitor.py` — `NatsHealthMonitor` class (subscribe `lyra.llm.health.*`, track heartbeats)
 4. Create `src/lyra/llm/drivers/nats_driver.py` — `NatsLlmDriver` skeleton
 5. Implement `NatsLlmDriver.complete()` — NATS request-reply with JSON serialization
 6. Implement `NatsLlmDriver.stream()` — ephemeral inbox subscription, yield `LlmEvent`s
 7. Implement `NatsLlmDriver.is_alive()` — delegate to `NatsHealthMonitor`
-8. Register `"nats"` backend in `registry.py`
-9. Wire `NatsConnection` + `NatsHealthMonitor` lifecycle in `bootstrap/multibot.py` (connect/close)
+8. Register `"nats"` backend in `registry.py` **only if `NATS_URL` env var is set**
+9. Wire `NatsConnection` + `NatsHealthMonitor` lifecycle in `bootstrap/multibot.py` — connect/close only if `NATS_URL` set
+10. Test: no `NATS_URL` → lyra boots cleanly, `"nats"` absent from registry, no errors
 10. Unit tests: `NatsLlmDriver` with mocked NATS connection
 
 #### B2 micro-tasks (backend-dev)

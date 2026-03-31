@@ -61,6 +61,15 @@ A singleton `NatsConnection` created in bootstrap, injected into consumers. Life
 - `complete()`: NATS built-in request-reply (`nc.request()`). One request, one response.
 - `stream()`: Hub publishes request with `stream=true`. Worker publishes chunks to the reply inbox. Last chunk carries `done=true`. Hub subscribes and yields `LlmEvent`s.
 
+## Architectural Constraint
+
+**NATS is opt-in, not the default.** A mono-machine setup must work with zero NATS configuration. Lyra is an open project — contributors and single-machine users must not be forced to provision NATS just to run the bot.
+
+- `provision.sh` base install does not include NATS — NATS setup is a separate opt-in step (`make nats-install` in lyra-stack)
+- `NatsLlmDriver` only registers in `ProviderRegistry` when `NATS_URL` env var is set
+- Health probe omits NATS entirely when not configured (`nats` key absent, not `degraded`)
+- `lyra-stack.service` has no hard ordering dependency on `nats.service` unless opted in
+
 ## Expected Behavior
 
 ### Slice A — NATS Foundation + Security Baseline
@@ -74,6 +83,8 @@ A singleton `NatsConnection` created in bootstrap, injected into consumers. Life
 
 #### A2: Install NATS server on Machine 1
 
+> **Status: done** (#448, merged 2026-03-30 in lyra-stack)
+
 1. `provision.sh` in `lyra-stack` downloads NATS server static binary (pinned version) to `/usr/local/bin/nats-server`
 2. A systemd system unit `nats.service` starts NATS with config `/etc/nats/nats.conf`
 3. `nats.conf` enables:
@@ -81,15 +92,24 @@ A singleton `NatsConnection` created in bootstrap, injected into consumers. Life
    - nkey auth: 3 user nkeys — `hub`, `llm-worker`, `monitor`
    - Monitoring HTTP on `127.0.0.1:8222`
 4. UFW rule: `allow from 192.168.1.0/24 to any port 4222 proto tcp`
-5. Startup ordering: `nats.service` → `lyra-stack.service` (systemd `Before=`)
-6. NATS config, cert generation script, and nkey generation script live in `lyra-stack` repo (infrastructure)
-7. nkey seed files stored in `/etc/nats/nkeys/` (mode 0600, root-owned). Application processes read seed path from environment variables.
+5. NATS config, cert generation script, and nkey generation script live in `lyra-stack` repo (infrastructure)
+6. nkey seed files stored in `/etc/nats/nkeys/` (mode 0600, root-owned). Application processes read seed path from environment variables.
 
-#### A3: NATS health probe
+#### A2b: Make NATS install opt-in (#469)
 
-1. `lyra_monitoring` gains a NATS health check: TCP connect to `localhost:4222` + NATS PING/PONG
-2. Health endpoint reports NATS status alongside existing checks
-3. If NATS is unreachable, health degrades to `degraded` (not `down` — NATS is not required for core messaging yet)
+NATS was baked unconditionally into `provision.sh` as part of A2. This must be corrected before Slice B ships.
+
+1. Extract NATS block from `provision.sh` — base provisioning runs without it
+2. `make nats-install` in `lyra-stack` runs the NATS block (idempotent)
+3. `lyra-stack.service` has no `After=nats.service` / `Requires=nats.service` by default
+4. Document `make nats-install` in `lyra-stack/README.md` under "Multi-machine setup"
+
+#### A3: NATS health probe (#449)
+
+1. Health probe runs **only** when `NATS_URL` env var is set — skipped entirely otherwise
+2. `NATS_URL` set + reachable → `"nats": "ok"`
+3. `NATS_URL` set + unreachable → `"nats": "unreachable"` (overall status: `degraded`)
+4. `NATS_URL` absent → `nats` key omitted from health response (not `degraded`)
 
 ### Slice B — Distributed Compute (no topology change)
 

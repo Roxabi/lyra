@@ -215,11 +215,6 @@ class Authenticator:
         admin_user_ids: frozenset[str] = frozenset(),
         alias_store: IdentityAliasStore | None = None,
     ) -> Authenticator | None:
-        """Parse raw TOML config dict and build an Authenticator instance.
-
-        Returns:
-            Authenticator instance, or None if the section is missing (non-CLI).
-        """
         auth_block: dict = raw.get("auth", {})
         section_cfg: dict | None = auth_block.get(section)
 
@@ -255,11 +250,6 @@ class Authenticator:
         admin_user_ids: frozenset[str] = frozenset(),
         alias_store: IdentityAliasStore | None = None,
     ) -> Authenticator | None:
-        """Parse per-bot auth config from [[auth.<section>_bots]] array.
-
-        Returns:
-            Authenticator instance, or None if no matching entry found.
-        """
         auth_block: dict = raw.get("auth", {})
         bots_key = f"{section}_bots"
         bots_list: list[dict] = auth_block.get(bots_key, [])

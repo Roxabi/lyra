@@ -21,13 +21,13 @@ import nats
 import pytest
 
 from lyra.core.bus import Bus
-from tests.nats.conftest import requires_nats_server
 from lyra.core.message import (
     Attachment,
     InboundMessage,
     Platform,
 )
 from lyra.core.trust import TrustLevel
+from tests.nats.conftest import requires_nats_server
 
 # ---------------------------------------------------------------------------
 # RED-phase guarded imports — lyra.nats does not exist yet.
@@ -328,7 +328,7 @@ class TestNatsBusLifecycle:
 @requires_nats_server
 class TestNatsBusRoundTrip:
     async def test_put_get_roundtrip(self, nc: nats.NATS) -> None:
-        """put() on publisher bus, get() on subscriber bus — message fields preserved."""
+        """put() + get(): publisher/subscriber message fields preserved."""
         # Arrange — two NatsBus instances sharing the same NATS connection
         publisher = _make_bus(nc)
         subscriber = _make_bus(nc)
@@ -412,7 +412,7 @@ class TestNatsBusEdgeCases:
         assert result is None
 
     def test_qsize_always_zero(self, nc: nats.NATS) -> None:
-        """qsize(platform) always returns 0 for NATS (no local per-platform buffering)."""
+        """qsize(platform) always returns 0 (no local per-platform buffer)."""
         # Arrange
         bus = _make_bus(nc)
         bus.register(Platform.TELEGRAM)

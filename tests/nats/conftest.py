@@ -20,7 +20,10 @@ import pytest
 _nats_server_available = shutil.which("nats-server") is not None
 requires_nats_server = pytest.mark.skipif(
     not _nats_server_available,
-    reason="nats-server not found in PATH — install via 'make nats-install' in lyra-stack",
+    reason=(
+        "nats-server not found in PATH"
+        " — install via 'make nats-install' in lyra-stack"
+    ),
 )
 
 

@@ -146,52 +146,37 @@ def _encode(obj: Any) -> Any:
 # ---------------------------------------------------------------------------
 
 
-def _decode(value: Any, target_type: Any) -> Any:
-    """Reconstruct value as target_type.
-
-    Handles: dataclass, Enum, datetime, bytes, list[X], Union/Optional, scalars.
-    """
-    if target_type is Any or target_type is None:
+def _decode_union(value: Any, args: tuple[Any, ...]) -> Any:
+    """Decode value when the target is a Union / Optional type."""
+    if value is None:
+        return None
+    non_none = [a for a in args if a is not type(None)]
+    # bytes: detect "b64:" prefix
+    if (
+        bytes in non_none
+        and isinstance(value, str)
+        and value.startswith(_B64_PREFIX)
+    ):
+        return base64.b64decode(value[len(_B64_PREFIX):])
+    # Single non-None candidate: decode as that type
+    if len(non_none) == 1:
+        return _decode(value, non_none[0])
+    # Multiple non-None: str | bytes without b64 prefix → keep as str
+    if str in non_none and isinstance(value, str):
         return value
+    # Dataclass candidate: try to reconstruct
+    for candidate in non_none:
+        if (
+            dataclasses.is_dataclass(candidate)
+            and isinstance(candidate, type)
+            and isinstance(value, dict)
+        ):
+            return _decode_dataclass(value, candidate)
+    return value
 
-    origin = typing.get_origin(target_type)
-    args = typing.get_args(target_type)
 
-    # ── Union / Optional (including X | Y syntax) ────────────────────────────
-    is_union = origin is typing.Union or (
-        hasattr(types, "UnionType") and isinstance(target_type, types.UnionType)
-    )
-    if is_union:
-        if value is None:
-            return None
-        # Collect non-None candidates
-        non_none = [a for a in args if a is not type(None)]
-        # bytes: detect "b64:" prefix
-        if bytes in non_none and isinstance(value, str) and value.startswith(_B64_PREFIX):
-            return base64.b64decode(value[len(_B64_PREFIX):])
-        # Single non-None candidate: decode as that type
-        if len(non_none) == 1:
-            return _decode(value, non_none[0])
-        # Multiple non-None: str | bytes without b64 prefix → keep as str
-        if str in non_none and isinstance(value, str):
-            return value
-        # Dataclass candidate: try to reconstruct
-        for candidate in non_none:
-            if dataclasses.is_dataclass(candidate) and isinstance(candidate, type) and isinstance(value, dict):
-                return _decode_dataclass(value, candidate)
-        return value
-
-    # ── list[X] ──────────────────────────────────────────────────────────────
-    if origin is list:
-        if value is None:
-            return value
-        elem_type = args[0] if args else Any
-        return [_decode(item, elem_type) for item in value]
-
-    # ── Literal — return as-is ───────────────────────────────────────────────
-    if origin is typing.Literal:
-        return value
-
+def _decode_concrete(value: Any, target_type: Any) -> Any:
+    """Decode value for concrete (non-generic, non-union) types."""
     # ── Dataclass ────────────────────────────────────────────────────────────
     if dataclasses.is_dataclass(target_type) and isinstance(target_type, type):
         if value is None:
@@ -220,6 +205,38 @@ def _decode(value: Any, target_type: Any) -> Any:
 
     # ── Scalar / dict / unknown ───────────────────────────────────────────────
     return value
+
+
+def _decode(value: Any, target_type: Any) -> Any:
+    """Reconstruct value as target_type.
+
+    Handles: dataclass, Enum, datetime, bytes, list[X], Union/Optional, scalars.
+    """
+    if target_type is Any or target_type is None:
+        return value
+
+    origin = typing.get_origin(target_type)
+    args = typing.get_args(target_type)
+
+    # ── Union / Optional (including X | Y syntax) ────────────────────────────
+    is_union = origin is typing.Union or (
+        hasattr(types, "UnionType") and isinstance(target_type, types.UnionType)
+    )
+    if is_union:
+        return _decode_union(value, args)
+
+    # ── list[X] ──────────────────────────────────────────────────────────────
+    if origin is list:
+        if value is None:
+            return value
+        elem_type = args[0] if args else Any
+        return [_decode(item, elem_type) for item in value]
+
+    # ── Literal — return as-is ───────────────────────────────────────────────
+    if origin is typing.Literal:
+        return value
+
+    return _decode_concrete(value, target_type)
 
 
 def _decode_dataclass(d: dict[str, Any], dc_type: type) -> Any:

@@ -173,7 +173,9 @@ class Hub(HubOutboundMixin):
         adapter: ChannelAdapter,
     ) -> None:
         self.adapter_registry[(platform, bot_id)] = adapter
-        self.inbound_bus.register(platform, maxsize=self._platform_queue_maxsize, bot_id=bot_id)
+        self.inbound_bus.register(
+            platform, maxsize=self._platform_queue_maxsize, bot_id=bot_id
+        )
         self.inbound_audio_bus.register(
             platform, maxsize=self._platform_queue_maxsize, bot_id=bot_id
         )

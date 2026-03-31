@@ -74,9 +74,7 @@ class ValidatePlatformMiddleware:
             )
             ctx.emit(
                 MessageDropped(
-                    msg_id=msg.id,
-                    stage=type(self).__name__,
-                    reason="unknown_platform",
+                    msg_id=msg.id, stage=type(self).__name__, reason="unknown_platform"
                 )
             )
             return _DROP
@@ -105,9 +103,7 @@ class TrustGuardMiddleware:
             )
             ctx.emit(
                 MessageDropped(
-                    msg_id=msg.id,
-                    stage=type(self).__name__,
-                    reason="trust_blocked",
+                    msg_id=msg.id, stage=type(self).__name__, reason="trust_blocked"
                 )
             )
             return _DROP
@@ -133,9 +129,7 @@ class RateLimitMiddleware:
             ctx.trace("inbound", "rate_limited", action=Action.DROP.value)
             ctx.emit(
                 MessageDropped(
-                    msg_id=msg.id,
-                    stage=type(self).__name__,
-                    reason="rate_limited",
+                    msg_id=msg.id, stage=type(self).__name__, reason="rate_limited"
                 )
             )
             return _DROP
@@ -158,15 +152,11 @@ class ResolveBindingMiddleware:
 
         binding = ctx.hub.resolve_binding(msg)
         if binding is None:
-            log.warning(
-                "unmatched routing key %s — message dropped", ctx.key
-            )
+            log.warning("unmatched routing key %s — message dropped", ctx.key)
             ctx.trace("pool", "no_binding", action=Action.DROP.value)
             ctx.emit(
                 MessageDropped(
-                    msg_id=msg.id,
-                    stage=type(self).__name__,
-                    reason="no_binding",
+                    msg_id=msg.id, stage=type(self).__name__, reason="no_binding"
                 )
             )
             return _DROP
@@ -187,9 +177,7 @@ class ResolveBindingMiddleware:
             )
             ctx.emit(
                 MessageDropped(
-                    msg_id=msg.id,
-                    stage=type(self).__name__,
-                    reason="no_agent",
+                    msg_id=msg.id, stage=type(self).__name__, reason="no_agent"
                 )
             )
             return _DROP
@@ -261,21 +249,15 @@ class CommandMiddleware:
         next: Next,
     ) -> PipelineResult:
         if ctx.pool is None:
-            raise RuntimeError(
-                "CreatePoolMiddleware must precede CommandMiddleware"
-            )
+            raise RuntimeError("CreatePoolMiddleware must precede CommandMiddleware")
         if ctx.key is None:
-            raise RuntimeError(
-                "RateLimitMiddleware must precede CommandMiddleware"
-            )
+            raise RuntimeError("RateLimitMiddleware must precede CommandMiddleware")
 
         router = ctx.router
         if router and router.is_command(msg):
             _cmd = msg.text.split()[0] if msg.text else ""
             ctx.trace("processor", "command_detected", command=_cmd)
-            return await self._dispatch_command(
-                msg, _cmd, router, ctx, next
-            )
+            return await self._dispatch_command(msg, _cmd, router, ctx, next)
 
         return await next(msg, ctx)
 
@@ -287,45 +269,25 @@ class CommandMiddleware:
         ctx: PipelineContext,
         next: Next,
     ) -> PipelineResult:
-        pool = ctx.pool  # guaranteed non-None by __call__ guard
-        key = ctx.key  # guaranteed non-None by __call__ guard
+        pool = ctx.pool
+        key = ctx.key
         try:
             response = await router.dispatch(msg, pool)
         except Exception as exc:
-            log.exception(
-                "command dispatch failed for %s: %s", key, exc
-            )
-            _content = (
-                ctx.hub._msg_manager.get("generic")
-                if ctx.hub._msg_manager
-                else GENERIC_ERROR_REPLY
-            )
-            response = Response(content=_content)
-            ctx.trace(
-                "outbound",
-                "command_error",
-                action=Action.COMMAND_HANDLED.value,
-            )
+            log.exception("command dispatch failed for %s: %s", key, exc)
+            mgr = ctx.hub._msg_manager
+            _content = mgr.get("generic") if mgr else GENERIC_ERROR_REPLY
+            ctx.trace("outbound", "command_error", action=Action.COMMAND_HANDLED.value)
             return PipelineResult(
-                action=Action.COMMAND_HANDLED, response=response
+                action=Action.COMMAND_HANDLED, response=Response(content=_content)
             )
 
         if response is None:
             ctx.trace("processor", "command_fallthrough")
             return await next(msg, ctx)
 
-        ctx.trace(
-            "outbound",
-            "command_handled",
-            action=Action.COMMAND_HANDLED.value,
-        )
+        ctx.trace("outbound", "command_handled", action=Action.COMMAND_HANDLED.value)
         ctx.emit(
-            CommandDispatched(
-                msg_id=msg.id,
-                stage=type(self).__name__,
-                command=cmd,
-            )
+            CommandDispatched(msg_id=msg.id, stage=type(self).__name__, command=cmd)
         )
-        return PipelineResult(
-            action=Action.COMMAND_HANDLED, response=response
-        )
+        return PipelineResult(action=Action.COMMAND_HANDLED, response=response)

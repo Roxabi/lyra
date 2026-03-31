@@ -270,7 +270,7 @@ class TestHubTrustResolutionEdgeCases:
             is_admin=False,
         )
         defaults.update(kwargs)
-        return InboundMessage(**defaults)
+        return InboundMessage(**defaults)  # type: ignore[arg-type]
 
     def test_empty_user_id_passed_as_none_to_auth_resolve(self) -> None:
         """Empty string user_id → auth.resolve() is called with None."""

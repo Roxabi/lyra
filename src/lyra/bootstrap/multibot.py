@@ -222,6 +222,12 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
         for ag in all_agents.values():
             hub.register_agent(ag)
 
+        # Wire alias_store into each agent's MemoryManager (#472 review finding 1)
+        for agent in hub.agent_registry.values():
+            mem = getattr(agent, "_memory", None)
+            if mem is not None and hasattr(mem, "set_alias_store"):
+                mem.set_alias_store(stores.identity_alias)
+
         # Wire adapters via helpers
         tg_adapters, tg_dispatchers = await wire_telegram_adapters(
             hub,

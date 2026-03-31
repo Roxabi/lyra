@@ -143,8 +143,15 @@ class IdentityAliasStore(SqliteStore):
 
         Maps secondary_id → primary_id. If secondary_id was previously linked
         to a different primary, the old relationship is replaced.
+
+        If primary_id is itself a secondary in the cache, its root primary is
+        used instead to keep the alias graph flat (no chains).
         """
         db = self._require_db()
+
+        # Flatten: if primary_id is itself a secondary, use its root primary
+        if primary_id in self._cache:
+            primary_id = self._cache[primary_id]
 
         # Remove stale cache entry for secondary_id before inserting
         old_primary = self._cache.get(secondary_id)
@@ -152,6 +159,12 @@ class IdentityAliasStore(SqliteStore):
             self._reverse.get(old_primary, set()).discard(secondary_id)
             if not self._reverse.get(old_primary):
                 self._reverse.pop(old_primary, None)
+
+        # Update cache before the DB write so there is no stale-read window
+        # during the await. If the DB write fails, _warm_cache() on next
+        # connect() will reconcile any inconsistency.
+        self._cache[secondary_id] = primary_id
+        self._reverse.setdefault(primary_id, set()).add(secondary_id)
 
         await db.execute(
             "INSERT INTO identity_aliases (platform_user_id, primary_id) "
@@ -161,10 +174,6 @@ class IdentityAliasStore(SqliteStore):
             (secondary_id, primary_id),
         )
         await db.commit()
-
-        # Write-through: _cache and _reverse
-        self._cache[secondary_id] = primary_id
-        self._reverse.setdefault(primary_id, set()).add(secondary_id)
 
         log.info("Linked %s → %s", secondary_id, primary_id)
 
@@ -239,27 +248,36 @@ class IdentityAliasStore(SqliteStore):
 
         Deletes the row on success or if expired. Returns ("", "") for the id/platform
         fields on failure.
+
+        Uses BEGIN IMMEDIATE to prevent two concurrent callers from both consuming
+        the same code (TOCTOU race between SELECT and DELETE).
         """
         db = self._require_db()
         code_hash = _sha256(code)
 
-        async with db.execute(
-            "SELECT initiator_id, platform, expires_at FROM link_challenges "
-            "WHERE code_hash = ?",
-            (code_hash,),
-        ) as cur:
-            row = await cur.fetchone()
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            async with db.execute(
+                "SELECT initiator_id, platform, expires_at FROM link_challenges "
+                "WHERE code_hash = ?",
+                (code_hash,),
+            ) as cur:
+                row = await cur.fetchone()
 
-        if row is None:
-            return False, "", ""
+            if row is None:
+                await db.execute("ROLLBACK")
+                return False, "", ""
 
-        initiator_id, platform, expires_at_str = row
+            initiator_id, platform, expires_at_str = row
 
-        # Always delete the row (consumed on first attempt, success or expiry)
-        await db.execute(
-            "DELETE FROM link_challenges WHERE code_hash = ?", (code_hash,)
-        )
-        await db.commit()
+            # Always delete the row (consumed on first attempt, success or expiry)
+            await db.execute(
+                "DELETE FROM link_challenges WHERE code_hash = ?", (code_hash,)
+            )
+            await db.execute("COMMIT")
+        except Exception:
+            await db.execute("ROLLBACK")
+            raise
 
         expires_at = datetime.fromisoformat(expires_at_str)
         if expires_at.tzinfo is None:

@@ -91,8 +91,9 @@ class PrefsStore(SqliteStore):
             # Multi-alias: single IN query; first non-default value wins
             placeholders = ", ".join("?" * len(aliases))
             async with db.execute(
-                f"SELECT key, value FROM user_prefs WHERE user_id IN ({placeholders})",
-                tuple(aliases),
+                f"SELECT key, value FROM user_prefs WHERE user_id IN ({placeholders})"
+                f" ORDER BY CASE WHEN user_id = ? THEN 0 ELSE 1 END",
+                (*tuple(aliases), user_id),
             ) as cur:
                 async for key, value in cur:
                     if key == "tts_language" and prefs.tts_language == "detected":

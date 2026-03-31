@@ -166,6 +166,45 @@ class TestLinkComplete:
             await store.close()
 
 
+@pytest.mark.asyncio
+async def test_link_complete_blocked_initiator_rejected(tmp_path: Path) -> None:
+    """SC #13: /link rejected if either identity is BLOCKED."""
+    store = IdentityAliasStore(db_path=tmp_path / "alias.db")
+    await store.connect()
+    try:
+        # Create auth store with BLOCKED initiator
+        from lyra.core.authenticator import Authenticator
+        from lyra.core.stores.auth_store import AuthStore
+        auth_store = AuthStore(db_path=tmp_path / "auth.db")
+        await auth_store.connect()
+        await auth_store.upsert(
+            "tg:user:blocked", TrustLevel.BLOCKED, None, "test", "test"
+        )
+        auth = Authenticator(store=auth_store, role_map={}, default=TrustLevel.TRUSTED)
+
+        # Create challenge from the blocked initiator
+        code = await store.create_challenge("tg:user:blocked", "telegram")
+
+        # Set up pool with populated authenticators
+        hub_mock = MagicMock()
+        hub_mock._alias_store = store
+        hub_mock._authenticators = {
+            ("discord", "main"): auth,
+            ("telegram", "main"): auth,
+        }
+        pool = MagicMock(spec=Pool)
+        pool._ctx = hub_mock
+
+        # Try to complete from discord
+        msg = _make_msg(user_id="dc:user:2", platform="discord", is_admin=True)
+        response = await cmd_link(msg, pool, [code])
+        content = response.content.lower()
+        assert "blocked" in content or "cannot" in content
+    finally:
+        await auth_store.close()
+        await store.close()
+
+
 # ---------------------------------------------------------------------------
 # /unlink
 # ---------------------------------------------------------------------------

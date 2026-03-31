@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from lyra.core.message import InboundMessage, Response
 from lyra.core.stores.identity_alias_store import IdentityAliasStore
+from lyra.core.trust import TrustLevel
 
 if TYPE_CHECKING:
     from lyra.core.pool import Pool
@@ -14,6 +15,26 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 _ADMIN_ONLY = "This command requires admin privileges."
+
+
+def _redact(platform_id: str) -> str:
+    """Redact a platform ID to platform + truncated suffix."""
+    if ":" in platform_id:
+        parts = platform_id.rsplit(":", 1)
+        suffix = parts[-1]
+        return f"{parts[0]}:…{suffix[-3:]}" if len(suffix) > 3 else platform_id
+    return platform_id
+
+
+def _any_alias_blocked(hub: object, alias_store: IdentityAliasStore, *ids: str) -> bool:
+    """Return True if any alias of any of *ids* is BLOCKED in any authenticator."""
+    authenticators = getattr(hub, "_authenticators", {})
+    for check_id in ids:
+        for a in alias_store.resolve_aliases(check_id):
+            for auth in authenticators.values():
+                if auth._store and auth._store.check(a) == TrustLevel.BLOCKED:
+                    return True
+    return False
 
 
 def _get_alias_store(pool: Pool) -> IdentityAliasStore | None:
@@ -63,22 +84,12 @@ async def cmd_link(msg: InboundMessage, pool: Pool, args: list[str]) -> Response
             " than where you initiated."
         )
 
-    # Check neither is BLOCKED
-    # (We rely on the trust middleware — if msg arrived, user isn't blocked.
-    # But check the initiator's stored trust via the auth store on hub.)
+    # Check neither identity (nor any of their existing aliases) is BLOCKED
+    alias_store_ref = _get_alias_store(pool)
     hub = getattr(pool, "_ctx", None)
-    if hub is not None:
-        auth = hub._authenticators.get((msg.platform, msg.bot_id))
-        if auth is not None:
-            from lyra.core.trust import TrustLevel
-            # Check initiator isn't blocked
-            if auth._store and auth._store.check(initiator_id) == TrustLevel.BLOCKED:
-                return Response(
-                    content="Cannot link: the initiating identity is blocked."
-                )
-            # Check completer isn't blocked
-            if auth._store and auth._store.check(msg.user_id) == TrustLevel.BLOCKED:
-                return Response(content="Cannot link: your identity is blocked.")
+    if alias_store_ref is not None and hub is not None:
+        if _any_alias_blocked(hub, alias_store_ref, initiator_id, msg.user_id):
+            return Response(content="Cannot link: one of the identities is blocked.")
 
     # Create the alias (initiator is primary)
     await alias_store.link(primary_id=initiator_id, secondary_id=msg.user_id)
@@ -86,8 +97,8 @@ async def cmd_link(msg: InboundMessage, pool: Pool, args: list[str]) -> Response
     log.info("Identity linked: %s (primary) <- %s", initiator_id, msg.user_id)
     return Response(
         content=f"Identity linked successfully.\n"
-        f"Primary: `{initiator_id}`\n"
-        f"Linked: `{msg.user_id}`\n\n"
+        f"Primary: `{_redact(initiator_id)}`\n"
+        f"Linked: `{_redact(msg.user_id)}`\n\n"
         f"Your trust level, preferences, and memory are now shared across platforms."
     )
 

@@ -1,24 +1,34 @@
 """Smoke test for ComfyUI + flux2-klein-4B — issue #421."""
-import sys, os, warnings
+import os
+import sys
+import warnings
+
 sys.path.insert(0, os.path.dirname(__file__))
 warnings.filterwarnings("ignore")
 
-import torch
-import folder_paths
-import comfy.sd
-import comfy.utils
-import comfy.model_management
-from comfy_extras.nodes_flux import (
-    EmptyFlux2LatentImage, Flux2Scheduler, FluxGuidance,
+import comfy.model_management  # noqa: E402
+import comfy.sd  # noqa: E402
+import comfy.utils  # noqa: E402
+import folder_paths  # noqa: E402
+import torch  # noqa: E402
+from comfy_extras.nodes_custom_sampler import (  # noqa: E402
+    BasicGuider,
+    KSamplerSelect,
+    RandomNoise,
+    SamplerCustomAdvanced,
 )
-from comfy_extras.nodes_custom_sampler import (
-    BasicGuider, RandomNoise, SamplerCustomAdvanced, KSamplerSelect,
+from comfy_extras.nodes_flux import (  # noqa: E402
+    EmptyFlux2LatentImage,
+    Flux2Scheduler,
+    FluxGuidance,
 )
-from nodes import VAEDecode, SaveImage
+from nodes import SaveImage, VAEDecode  # noqa: E402
 
-UNET   = folder_paths.get_full_path("diffusion_models", "flux2-klein-4b-comfy.safetensors")
-TE     = folder_paths.get_full_path("text_encoders",    "flux2-klein-qwen3.safetensors")
-VAE_P  = folder_paths.get_full_path("vae",              "flux2-klein-vae.safetensors")
+UNET = folder_paths.get_full_path(
+    "diffusion_models", "flux2-klein-4b-comfy.safetensors"
+)
+TE = folder_paths.get_full_path("text_encoders", "flux2-klein-qwen3.safetensors")
+VAE_P = folder_paths.get_full_path("vae", "flux2-klein-vae.safetensors")
 
 print("Loading text encoder (Qwen3 4B, merged)…")
 clip = comfy.sd.load_clip(
@@ -55,7 +65,7 @@ print("Building sigmas (10 steps)…")
 sigmas = Flux2Scheduler.execute(steps=10, width=512, height=512).args[0]
 
 print("Building noise + sampler…")
-noise   = RandomNoise.execute(noise_seed=42).args[0]
+noise = RandomNoise.execute(noise_seed=42).args[0]
 sampler = KSamplerSelect.execute(sampler_name="euler").args[0]
 
 print("Sampling…  (first run triggers Blackwell JIT — may take 30–45 min)")
@@ -72,5 +82,5 @@ print("Saving…")
 SaveImage().save_images(images=images, filename_prefix="smoke_test_421")
 
 peak_vram = torch.cuda.max_memory_allocated() / 1024**3
-print(f"\n✓ Smoke test PASSED — flux2-klein-4B generated without OOM")
+print("\n✓ Smoke test PASSED — flux2-klein-4B generated without OOM")
 print(f"  Peak VRAM: {peak_vram:.1f} GB")

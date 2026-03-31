@@ -9,7 +9,6 @@ import pytest
 from lyra.core.stores.auth_store import AuthStore
 from lyra.core.trust import TrustLevel
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -80,7 +79,6 @@ class TestCleanupBareIds:
         store1 = AuthStore(db_path=db_path)
         await store1.connect()
         # Insert bare ID grant bypassing normal API (insert raw SQL via upsert)
-        from datetime import timezone, datetime
 
         await store1.upsert(
             identity_key="123",

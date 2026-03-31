@@ -223,7 +223,7 @@ async def wire_discord_adapters(  # noqa: PLR0913, C901 — wiring requires all 
     return adapters, dispatchers
 
 
-def _build_bot_auths(
+def _build_bot_auths(  # noqa: PLR0913
     raw_config: dict,
     tg_multi_cfg: TelegramMultiConfig,
     dc_multi_cfg: DiscordMultiConfig,

@@ -14,7 +14,6 @@ from lyra.core.pool import Pool
 from lyra.core.stores.identity_alias_store import IdentityAliasStore
 from lyra.core.trust import TrustLevel
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -37,7 +36,8 @@ def _make_msg(
         text="",
         text_raw="",
         timestamp=datetime.now(timezone.utc),
-        platform_meta={"chat_id": 42, "topic_id": None, "message_id": None, "is_group": False},
+        platform_meta={"chat_id": 42, "topic_id": None, "message_id": None,
+            "is_group": False},
         trust_level=TrustLevel.TRUSTED,
         is_admin=is_admin,
     )
@@ -160,7 +160,8 @@ class TestLinkComplete:
                 user_id="dc:user:2", platform="discord", is_admin=True
             )
             response = await cmd_link(msg, pool, ["BADCOD"])
-            assert "invalid" in response.content.lower() or "expired" in response.content.lower()
+            result = response.content.lower()
+            assert "invalid" in result or "expired" in result
         finally:
             await store.close()
 
@@ -181,7 +182,8 @@ class TestUnlink:
             pool = _make_pool(store)
             msg = _make_msg(user_id="dc:user:2", platform="discord", is_admin=True)
             response = await cmd_unlink(msg, pool, [])
-            assert "removed" in response.content.lower() or "unlinked" in response.content.lower()
+            result = response.content.lower()
+            assert "removed" in result or "unlinked" in result
 
             aliases = store.resolve_aliases("dc:user:2")
             assert aliases == frozenset({"dc:user:2"})
@@ -210,6 +212,7 @@ class TestUnlink:
             pool = _make_pool(store)
             msg = _make_msg(user_id="tg:user:99", is_admin=True)
             response = await cmd_unlink(msg, pool, [])
-            assert "no" in response.content.lower() or "not found" in response.content.lower()
+            result = response.content.lower()
+            assert "no" in result or "not found" in result
         finally:
             await store.close()

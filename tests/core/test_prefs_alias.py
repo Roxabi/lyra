@@ -7,8 +7,7 @@ from pathlib import Path
 import pytest
 
 from lyra.core.stores.identity_alias_store import IdentityAliasStore
-from lyra.core.stores.prefs_store import PrefsStore, UserPrefs
-
+from lyra.core.stores.prefs_store import PrefsStore
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -47,7 +46,7 @@ class TestPrefsAliasVisibility:
         prefs_store: PrefsStore,
         alias_store: IdentityAliasStore,
     ) -> None:
-        """Prefs set for tg:user:1 are visible when queried as dc:user:2 after linking."""
+        """Prefs set for tg:user:1 visible as dc:user:2 after linking."""
         await prefs_store.set_pref("tg:user:1", "tts_language", "fr")
         await alias_store.link("tg:user:1", "dc:user:2")
         prefs_store.set_alias_store(alias_store)
@@ -93,7 +92,7 @@ class TestPrefsAliasVisibility:
         prefs_store: PrefsStore,
         alias_store: IdentityAliasStore,
     ) -> None:
-        """get_prefs(dc:user:2).user_id is always 'dc:user:2', even when prefs came from alias."""
+        """Returned user_id is always the requesting ID."""
         await prefs_store.set_pref("tg:user:1", "tts_voice", "echo")
         await alias_store.link("tg:user:1", "dc:user:2")
         prefs_store.set_alias_store(alias_store)

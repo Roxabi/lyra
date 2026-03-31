@@ -12,7 +12,6 @@ import pytest_asyncio
 from lyra.core.memory import MemoryManager, SessionSnapshot
 from lyra.core.stores.identity_alias_store import IdentityAliasStore
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -175,7 +174,7 @@ class TestFetchPreferencesAliases:
     async def test_fetch_preferences_filters_aliases(
         self, mm: MemoryManager, alias_store: IdentityAliasStore
     ) -> None:
-        """Preferences stored for tg:user:1 appear in recall() as dc:user:2 after link."""
+        """Memory prefs for tg:user:1 visible as dc:user:2 after link."""
         snap = _make_snap(user_id="tg:user:1")
         await mm.upsert_preference(
             snap,
@@ -199,7 +198,7 @@ class TestFetchPreferencesAliases:
     async def test_fetch_preferences_empty_without_alias(
         self, mm: MemoryManager
     ) -> None:
-        """Without alias, preferences for tg:user:1 are not shown when recalling as dc:user:2."""
+        """Without alias, memory prefs stay platform-scoped."""
         snap = _make_snap(user_id="tg:user:1")
         await mm.upsert_preference(
             snap,

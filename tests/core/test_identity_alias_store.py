@@ -8,7 +8,6 @@ import pytest
 
 from lyra.core.stores.identity_alias_store import IdentityAliasStore
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

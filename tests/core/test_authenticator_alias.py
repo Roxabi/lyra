@@ -11,7 +11,6 @@ from lyra.core.stores.auth_store import AuthStore
 from lyra.core.stores.identity_alias_store import IdentityAliasStore
 from lyra.core.trust import TrustLevel
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -62,8 +61,8 @@ class TestMaxTrustAcrossAliases:
     async def test_max_trust_across_aliases(
         self, auth_store: AuthStore, alias_store: IdentityAliasStore
     ) -> None:
-        """Resolving a secondary ID returns the max trust level across all linked IDs."""
-        # tg:user:1 = OWNER, dc:user:2 = TRUSTED; after link → resolving dc:user:2 → OWNER
+        """Max trust level across all linked IDs."""
+        # tg:user:1=OWNER, dc:user:2=TRUSTED; linked → dc:user:2 resolves OWNER
         await auth_store.upsert(
             identity_key="tg:user:1",
             trust_level=TrustLevel.OWNER,

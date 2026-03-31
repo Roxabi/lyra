@@ -110,8 +110,8 @@ async def test_send_publishes_to_correct_subject() -> None:
     await proxy.send(inbound, outbound)
 
     nc.publish.assert_awaited_once()
-    subject, payload = nc.publish.call_args.args
-    assert subject == "lyra.outbound.telegram.main"
+    _subject, _payload = nc.publish.call_args.args
+    assert _subject == "lyra.outbound.telegram.main"
 
 
 @pytest.mark.asyncio
@@ -124,7 +124,7 @@ async def test_send_envelope_structure() -> None:
 
     await proxy.send(inbound, outbound)
 
-    subject, payload = nc.publish.call_args.args
+    _subject, payload = nc.publish.call_args.args
     envelope = json.loads(payload.decode("utf-8"))
 
     assert envelope["type"] == "outbound"

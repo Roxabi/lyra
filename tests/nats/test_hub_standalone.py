@@ -251,6 +251,7 @@ class TestStandaloneHubPipeline:
             trust_level=TrustLevel.PUBLIC,
         )
 
+        hub_task: asyncio.Task | None = None
         try:
             # Act — start Hub consumer loop, then publish via external NATS client
             hub_task = asyncio.create_task(hub.run(), name="hub-run")
@@ -275,11 +276,12 @@ class TestStandaloneHubPipeline:
                 " the inbound message published to NATS"
             )
         finally:
-            hub_task.cancel()
-            try:
-                await hub_task
-            except asyncio.CancelledError:
-                pass
+            if hub_task is not None:
+                hub_task.cancel()
+                try:
+                    await hub_task
+                except asyncio.CancelledError:
+                    pass
             await inbound_bus.stop()
             if hub_nc.is_connected:
                 await hub_nc.drain()
@@ -341,6 +343,7 @@ class TestStandaloneHubPipeline:
             trust_level=TrustLevel.PUBLIC,
         )
 
+        hub_task: asyncio.Task | None = None
         try:
             # Act — start Hub, publish message via NATS
             hub_task = asyncio.create_task(hub.run(), name="hub-run-trust")
@@ -369,11 +372,12 @@ class TestStandaloneHubPipeline:
                 or call_args.kwargs.get("user_id") == "user:trust"
             )
         finally:
-            hub_task.cancel()
-            try:
-                await hub_task
-            except asyncio.CancelledError:
-                pass
+            if hub_task is not None:
+                hub_task.cancel()
+                try:
+                    await hub_task
+                except asyncio.CancelledError:
+                    pass
             await inbound_bus.stop()
             if hub_nc.is_connected:
                 await hub_nc.drain()

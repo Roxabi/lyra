@@ -6,6 +6,7 @@ command that saves to vault and returns a static response (no LLM).
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
@@ -53,7 +54,7 @@ def make_msg(text: str = "hello") -> InboundMessage:
         is_mention=False,
         text=f"/add-vault {text}",
         text_raw=f"/add-vault {text}",
-        timestamp=None,
+        timestamp=datetime.now(timezone.utc),
         trust_level=TrustLevel.TRUSTED,
         command=cmd,
     )

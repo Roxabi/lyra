@@ -10,9 +10,9 @@ from typing import TYPE_CHECKING, Any, cast
 import discord
 
 if TYPE_CHECKING:
+    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
     from lyra.core.bus import Bus
     from lyra.core.render_events import RenderEvent
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
 
 from lyra.adapters import discord_audio  # noqa: I001
 from lyra.adapters import discord_audio_outbound
@@ -162,7 +162,7 @@ class DiscordAdapter(discord.Client):
             await self._outbound_listener.start()
 
     async def close(self) -> None:
-        """Cancel pending typing tasks, drain voice, close ThreadStore, stop outbound listener."""
+        """Cancel typing tasks, drain voice, close ThreadStore, stop listener."""
         await self._typing.cancel_all()
         await self._vsm.leave_all()
         if self._outbound_listener is not None:

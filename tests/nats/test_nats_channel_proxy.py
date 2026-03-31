@@ -440,7 +440,6 @@ async def test_send_includes_stream_id() -> None:
     await proxy.send(inbound, outbound)
 
     call_args = nc.publish.call_args
-    subject = call_args.args[0]
     envelope = json.loads(call_args.args[1])
     assert envelope["stream_id"] == inbound.id
     assert envelope["type"] == "send"

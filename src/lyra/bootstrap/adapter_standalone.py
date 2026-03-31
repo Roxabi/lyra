@@ -11,19 +11,17 @@ import asyncio
 import logging
 import os
 import sys
-from typing import Any
 
 import nats
 
 from lyra.adapters.nats_outbound_listener import NatsOutboundListener
-from lyra.core.bus import Bus
-from lyra.core.message import InboundMessage, InboundAudio, Platform
-from lyra.core.bus import LocalBus
+from lyra.core.bus import Bus, LocalBus
+from lyra.core.message import InboundAudio, InboundMessage, Platform
 
 log = logging.getLogger(__name__)
 
 
-async def _bootstrap_adapter_standalone(
+async def _bootstrap_adapter_standalone(  # noqa: PLR0915
     raw_config: dict,
     platform: str,
     *,
@@ -51,7 +49,9 @@ async def _bootstrap_adapter_standalone(
         from lyra.adapters.telegram import TelegramAdapter
         from lyra.config import TelegramMultiConfig
 
-        tg_multi_cfg = TelegramMultiConfig.model_validate(raw_config.get("telegram", {}))
+        tg_multi_cfg = TelegramMultiConfig.model_validate(
+            raw_config.get("telegram", {})
+        )
         if not tg_multi_cfg.bots:
             sys.exit("No telegram bots configured")
 
@@ -68,8 +68,14 @@ async def _bootstrap_adapter_standalone(
 
             inbound_audio_bus: Bus[InboundAudio] = LocalBus(name="inbound-audio")  # type: ignore[type-arg]
 
-            token = os.environ.get(f"TELEGRAM_TOKEN_{bot_id.upper()}") or os.environ.get("TELEGRAM_TOKEN", "")
-            webhook_secret = os.environ.get(f"TELEGRAM_WEBHOOK_SECRET_{bot_id.upper()}") or os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
+            token = (
+                os.environ.get(f"TELEGRAM_TOKEN_{bot_id.upper()}")
+                or os.environ.get("TELEGRAM_TOKEN", "")
+            )
+            webhook_secret = (
+                os.environ.get(f"TELEGRAM_WEBHOOK_SECRET_{bot_id.upper()}")
+                or os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
+            )
 
             adapter = TelegramAdapter(
                 bot_id=bot_id,
@@ -131,7 +137,10 @@ async def _bootstrap_adapter_standalone(
 
             inbound_audio_bus_dc: Bus[InboundAudio] = LocalBus(name="inbound-audio")  # type: ignore[type-arg]
 
-            token = os.environ.get(f"DISCORD_TOKEN_{bot_id.upper()}") or os.environ.get("DISCORD_TOKEN", "")
+            token = (
+                os.environ.get(f"DISCORD_TOKEN_{bot_id.upper()}")
+                or os.environ.get("DISCORD_TOKEN", "")
+            )
 
             adapter_dc = DiscordAdapter(
                 bot_id=bot_id,

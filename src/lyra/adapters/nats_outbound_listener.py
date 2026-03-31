@@ -11,12 +11,15 @@ from typing import TYPE_CHECKING, Any
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 
-from lyra.core.message import InboundMessage, OutboundAttachment, OutboundMessage, Platform
-from lyra.nats._serialize import serialize
+from lyra.core.message import (
+    InboundMessage,
+    OutboundAttachment,
+    OutboundMessage,
+    Platform,
+)
 
 if TYPE_CHECKING:
-    from lyra.adapters.discord import DiscordAdapter
-    from lyra.adapters.telegram import TelegramAdapter
+    pass
 
 log = logging.getLogger(__name__)
 
@@ -27,7 +30,8 @@ class NatsOutboundListener:
     Three envelope types:
     - send:       {"type": "send", "stream_id": ..., "outbound": {...}}
     - attachment: {"type": "attachment", "stream_id": ..., "attachment": {...}}
-    - chunk:      {"stream_id": ..., "seq": N, "event_type": ..., "payload": {...}, "done": bool}
+    - chunk:      {"stream_id": ..., "seq": N, "event_type": ..., "payload": {...},
+                   "done": bool}
 
     Inbound message cache: populated by cache_inbound() before push_to_hub_guarded.
     Used to correlate stream_id → original InboundMessage for reply routing.
@@ -90,7 +94,8 @@ class NatsOutboundListener:
         original_msg = self._cache.get(stream_id) if stream_id else None
         if original_msg is None:
             log.warning(
-                "NatsOutboundListener: unknown stream_id=%r for send envelope", stream_id
+                "NatsOutboundListener: unknown stream_id=%r for send",
+                stream_id,
             )
             return
         try:
@@ -157,7 +162,10 @@ class NatsOutboundListener:
         try:
             await self._adapter.send_streaming(original_msg, _events())
         except Exception:
-            log.exception("NatsOutboundListener: send_streaming failed for stream_id=%r", stream_id)
+            log.exception(
+                "NatsOutboundListener: send_streaming failed for stream_id=%r",
+                stream_id,
+            )
         finally:
             self._cache.pop(stream_id, None)
             self._stream_tasks.pop(stream_id, None)

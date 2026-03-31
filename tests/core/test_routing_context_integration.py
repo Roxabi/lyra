@@ -102,7 +102,13 @@ class TestTelegramNormalizeRouting:
         """RoutingContext.platform_meta must not alias InboundMessage.platform_meta."""
         from lyra.adapters.telegram import _ALLOW_ALL, TelegramAdapter
 
-        adapter = TelegramAdapter(bot_id="main", token="fake", inbound_bus=MagicMock(), inbound_audio_bus=MagicMock(), auth=_ALLOW_ALL)
+        adapter = TelegramAdapter(
+            bot_id="main",
+            token="fake",
+            inbound_bus=MagicMock(),
+            inbound_audio_bus=MagicMock(),
+            auth=_ALLOW_ALL,
+        )
 
         raw = SimpleNamespace(
             from_user=SimpleNamespace(id=42, full_name="Alice"),

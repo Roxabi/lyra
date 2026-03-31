@@ -59,7 +59,12 @@ class TestDiscordAdapterInbound:
 
         inbound_bus = MagicMock()
         inbound_bus.put = AsyncMock()
-        adapter = DiscordAdapter(bot_id="main", inbound_bus=inbound_bus, inbound_audio_bus=MagicMock(), intents=discord.Intents.none())
+        adapter = DiscordAdapter(
+            bot_id="main",
+            inbound_bus=inbound_bus,
+            inbound_audio_bus=MagicMock(),
+            intents=discord.Intents.none(),
+        )
         adapter._bot_user = SimpleNamespace(id=999, bot=True)
 
         await adapter.on_message(_make_discord_msg_ns())
@@ -77,7 +82,12 @@ class TestDiscordAdapterInbound:
         from lyra.adapters.discord import DiscordAdapter
 
         inbound_bus = MagicMock()
-        adapter = DiscordAdapter(bot_id="main", inbound_bus=inbound_bus, inbound_audio_bus=MagicMock(), intents=discord.Intents.none())
+        adapter = DiscordAdapter(
+            bot_id="main",
+            inbound_bus=inbound_bus,
+            inbound_audio_bus=MagicMock(),
+            intents=discord.Intents.none(),
+        )
         adapter._bot_user = SimpleNamespace(id=999, bot=True)
 
         bot_msg = SimpleNamespace(
@@ -105,7 +115,12 @@ class TestDiscordAdapterInbound:
 
         inbound_bus = MagicMock()
         inbound_bus.put = AsyncMock()
-        adapter = DiscordAdapter(bot_id="main", inbound_bus=inbound_bus, inbound_audio_bus=MagicMock(), intents=discord.Intents.none())
+        adapter = DiscordAdapter(
+            bot_id="main",
+            inbound_bus=inbound_bus,
+            inbound_audio_bus=MagicMock(),
+            intents=discord.Intents.none(),
+        )
         adapter._bot_user = SimpleNamespace(id=999, bot=True)
 
         msg_ns = _make_discord_msg_ns(roles=["123456"])

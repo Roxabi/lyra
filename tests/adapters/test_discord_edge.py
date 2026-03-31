@@ -75,7 +75,11 @@ async def test_backpressure_sends_ack_when_bus_full() -> None:
     inbound_bus.put = AsyncMock(side_effect=asyncio.QueueFull())
 
     adapter = DiscordAdapter(
-        bot_id="main", inbound_bus=inbound_bus, inbound_audio_bus=MagicMock(), intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=inbound_bus,
+        inbound_audio_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
     bot_user = SimpleNamespace(id=999, bot=True)
     adapter._bot_user = bot_user
@@ -316,7 +320,11 @@ def test_normalize_empty_text() -> None:
     from lyra.core.message import InboundMessage
 
     adapter = DiscordAdapter(
-        bot_id="main", inbound_bus=MagicMock(), inbound_audio_bus=MagicMock(), intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
     adapter._bot_user = SimpleNamespace(id=999, bot=True)
     discord_msg = SimpleNamespace(

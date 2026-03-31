@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.message import InboundMessage, OutboundMessage, OutboundAttachment, Platform
+from lyra.core.message import InboundMessage, Platform
 from lyra.core.trust import TrustLevel
 
 
@@ -24,7 +24,9 @@ def _make_tg_msg(msg_id: str = "msg-1") -> InboundMessage:
         text="hi",
         text_raw="hi",
         timestamp=datetime.now(timezone.utc),
-        platform_meta={"chat_id": 42, "message_id": 10, "topic_id": None, "is_group": False},
+        platform_meta={
+            "chat_id": 42, "message_id": 10, "topic_id": None, "is_group": False
+        },
         trust_level=TrustLevel.TRUSTED,
     )
 
@@ -47,7 +49,6 @@ async def test_send_envelope_dispatches_to_adapter_send() -> None:
     msg = _make_tg_msg()
     listener.cache_inbound(msg)
 
-    outbound = OutboundMessage.from_text("hello")
     # Serialize outbound using the same approach as NatsChannelProxy
     envelope = {
         "type": "send",
@@ -116,7 +117,7 @@ async def test_attachment_envelope_dispatches_to_render_attachment() -> None:
 
 @pytest.mark.asyncio
 async def test_done_flag_evicts_cache_entry() -> None:
-    """send envelope with done=True for stream_id -> cache entry removed after dispatch."""
+    """send envelope with done=True for stream_id -> cache entry removed after dispatch."""  # noqa: E501
     from lyra.adapters.nats_outbound_listener import NatsOutboundListener
 
     nc = AsyncMock()

@@ -102,6 +102,7 @@ class TestCleanupBareIds:
                 "SELECT COUNT(*) FROM grants WHERE identity_key = '123'"
             ) as cur:
                 row = await cur.fetchone()
+            assert row is not None
             assert row[0] == 0
         finally:
             await store2.close()

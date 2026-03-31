@@ -149,7 +149,6 @@ async def wire_discord_adapters(  # noqa: PLR0913, C901 — wiring requires all 
             dc_token, _ = dc_creds
 
             watch_channels: frozenset[int] = frozenset()
-            vault_channels: frozenset[int] = frozenset()
             if agent_store is not None:
                 bot_settings = agent_store.get_bot_settings("discord", bot_cfg.bot_id)
 
@@ -169,7 +168,6 @@ async def wire_discord_adapters(  # noqa: PLR0913, C901 — wiring requires all 
                     return frozenset(valid)
 
                 watch_channels = _parse_channel_ids("watch_channels")
-                vault_channels = _parse_channel_ids("vault_channels")
 
             adapter = DiscordAdapter(
                 hub=hub,
@@ -180,7 +178,6 @@ async def wire_discord_adapters(  # noqa: PLR0913, C901 — wiring requires all 
                 thread_hot_hours=bot_cfg.thread_hot_hours,
                 thread_store=thread_store,
                 watch_channels=watch_channels,
-                vault_channels=vault_channels,
             )
             # C3: Hub is the trust authority — register here, not on adapter.
             hub.register_authenticator(Platform.DISCORD, bot_cfg.bot_id, auth)

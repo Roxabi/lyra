@@ -327,15 +327,6 @@ class PoolProcessor:
         _platform = pool.medium or str(msg.platform)
         _user_id = pool.user_id or msg.user_id
 
-        # Guard: processors with post() are incompatible with streaming agents.
-        # To support streaming, override process() to return a Response (non-streaming).
-        if _processor is not None and isinstance(result, collections.abc.AsyncIterator):
-            raise NotImplementedError(
-                f"Processor {type(_processor).__name__!r} is not compatible with "
-                f"streaming agent {type(agent).__name__!r} — "
-                "override process() to return a Response instead of an AsyncIterator."
-            )
-
         if isinstance(result, collections.abc.AsyncIterator):
             # Fix #373: tee the iterator to capture streamed content for turn logging.
             # Save original ref before wrapping — session_id lives on the original.
@@ -343,6 +334,8 @@ class PoolProcessor:
             _content_parts: list[str] = []
             _cfg = getattr(agent, "config", None)
             _emit_tool_recap = _cfg.show_tool_recap if _cfg is not None else True
+            # Signal when the stream is fully consumed so post() can run (#372).
+            _stream_done = asyncio.Event() if _processor is not None else None
 
             async def _capture() -> collections.abc.AsyncGenerator[RenderEvent, None]:
                 # S4: _result_iter_for_sid yields RenderEvent from StreamProcessor.
@@ -360,6 +353,8 @@ class PoolProcessor:
                     _aclose = getattr(_result_iter_for_sid, "aclose", None)
                     if callable(_aclose):
                         await _aclose()  # type: ignore[misc]
+                    if _stream_done is not None:
+                        _stream_done.set()
 
             result = _capture()  # type: ignore[assignment]  # AsyncGenerator is a subtype of AsyncIterator
 
@@ -412,6 +407,18 @@ class PoolProcessor:
             _stream_sid = getattr(_result_iter_for_sid, "session_id", None)
             if _stream_sid and pool.session_id != _stream_sid:
                 pool.session_id = _stream_sid
+
+            # Processor post-hook for streaming agents (#372).
+            # Wait for stream to be fully consumed, then call post() with the
+            # captured content.  post() runs fire-and-forget for side effects
+            # (e.g. vault save) — the user response is already streamed.
+            if _processor is not None and _stream_done is not None:
+                await _stream_done.wait()
+                _streamed = Response(content="".join(_content_parts))
+                try:
+                    await _processor.post(_original_msg, _streamed)
+                except Exception:
+                    log.warning("Processor post() failed (streaming)", exc_info=True)
         else:
             pool._ctx.record_circuit_success()
             # Update session_id with the real Claude CLI session UUID (#316).

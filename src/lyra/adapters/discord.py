@@ -83,7 +83,6 @@ class DiscordAdapter(discord.Client):
         auth: Authenticator = _DENY_ALL,
         thread_store: ThreadStore | None = None,
         watch_channels: frozenset[int] = frozenset(),
-        vault_channels: frozenset[int] = frozenset(),
     ) -> None:
         if intents is None:
             intents = discord.Intents.default()
@@ -117,7 +116,6 @@ class DiscordAdapter(discord.Client):
         self._owned_threads: set[int] = set()  # populated from ThreadStore on on_ready
         self._thread_store: ThreadStore | None = thread_store
         self._watch_channels: frozenset[int] = watch_channels
-        self._vault_channels: frozenset[int] = vault_channels
         self._thread_sessions: dict[str, tuple[str, str]] = {}
         self._vsm: VoiceSessionManager = VoiceSessionManager()
 

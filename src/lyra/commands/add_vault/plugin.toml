@@ -1,0 +1,9 @@
+name = "add_vault"
+description = "Save a note directly to the vault"
+version = "0.1.0"
+priority = 100
+enabled = true
+timeout = 30.0
+
+# /add-vault is registered as a session command by agents (via register_session_command)
+# to receive SessionTools injection. No plugin commands exported from this module.

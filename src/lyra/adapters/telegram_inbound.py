@@ -11,6 +11,7 @@ from lyra.adapters.telegram_audio import _download_audio
 from lyra.adapters.telegram_formatting import _make_send_kwargs
 from lyra.adapters.telegram_normalize import _make_scope_id, normalize_audio
 from lyra.core.message import InboundMessage, Platform
+from lyra.core.trust import TrustLevel
 
 if TYPE_CHECKING:
     from lyra.adapters.telegram import TelegramAdapter
@@ -57,14 +58,9 @@ async def handle_message(adapter: TelegramAdapter, msg: Any) -> None:
     if not msg.from_user or getattr(msg.from_user, "is_bot", False):
         return
 
-    user_id = str(msg.from_user.id)
-    identity = adapter._auth.resolve(user_id)
-    if adapter._guard_chain.run(identity):
-        log.info("auth_reject user=%s channel=telegram", user_id)
-        return
-
+    # C3: adapters send raw identity fields; Hub resolves trust in run().
     hub_msg = adapter.normalize(
-        msg, trust_level=identity.trust_level, is_admin=identity.is_admin
+        msg, trust_level=TrustLevel.PUBLIC, is_admin=False
     )
 
     # In group chats, only respond when directly mentioned.
@@ -101,12 +97,7 @@ async def handle_voice_message(adapter: TelegramAdapter, msg: Any) -> None:
     if not msg.from_user or getattr(msg.from_user, "is_bot", False):
         return
 
-    uid = str(msg.from_user.id)
-    identity = adapter._auth.resolve(uid)
-    if adapter._guard_chain.run(identity):
-        log.info("auth_reject user=%s channel=telegram", uid)
-        return
-
+    # C3: adapters send raw identity fields; Hub resolves trust in run().
     voice = msg.voice or msg.audio or getattr(msg, "video_note", None)
     if voice is None:
         return
@@ -166,12 +157,13 @@ async def handle_voice_message(adapter: TelegramAdapter, msg: Any) -> None:
         tmp_path.unlink(missing_ok=True)
 
     # is_admin not propagated to InboundAudio — InboundAudio.is_admin is deferred (see #315)  # noqa: E501
+    # C3: trust resolved by Hub; adapter passes PUBLIC as raw identity.
     hub_audio = normalize_audio(
         adapter,
         msg,
         audio_bytes=audio_bytes,
         mime_type="audio/ogg",
-        trust_level=identity.trust_level,
+        trust_level=TrustLevel.PUBLIC,
     )
 
     adapter._start_typing(chat_id)

@@ -68,9 +68,10 @@ async def wire_telegram_adapters(  # noqa: PLR0913 — wiring requires all deps
             webhook_secret=tg_webhook_secret or "",
             circuit_registry=circuit_registry,
             msg_manager=msg_manager,
-            auth=auth,
         )
         await adapter.resolve_identity()
+        # C3: Hub is the trust authority — register authenticator here, not on adapter.
+        hub.register_authenticator(Platform.TELEGRAM, bot_cfg.bot_id, auth)
         hub.register_adapter(Platform.TELEGRAM, bot_cfg.bot_id, adapter)
 
         tg_key = RoutingKey(Platform.TELEGRAM, bot_cfg.bot_id, "*")
@@ -177,11 +178,12 @@ async def wire_discord_adapters(  # noqa: PLR0913, C901 — wiring requires all 
             msg_manager=msg_manager,
             auto_thread=bot_cfg.auto_thread,
             thread_hot_hours=bot_cfg.thread_hot_hours,
-            auth=auth,
             thread_store=thread_store,
             watch_channels=watch_channels,
             vault_channels=vault_channels,
         )
+        # C3: Hub is the trust authority — register authenticator here, not on adapter.
+        hub.register_authenticator(Platform.DISCORD, bot_cfg.bot_id, auth)
         hub.register_adapter(Platform.DISCORD, bot_cfg.bot_id, adapter)
 
         dc_key = RoutingKey(Platform.DISCORD, bot_cfg.bot_id, "*")

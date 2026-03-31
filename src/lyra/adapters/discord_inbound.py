@@ -19,6 +19,7 @@ from lyra.adapters.discord_threads import (
     retrieve_thread_session,
 )
 from lyra.core.message import InboundMessage, Platform
+from lyra.core.trust import TrustLevel
 
 if TYPE_CHECKING:
     from lyra.adapters.discord import DiscordAdapter
@@ -36,19 +37,7 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
     if message.author.bot:
         return
 
-    # Auth gate — runs before normalize() and before audio handling.
-    _raw_uid = str(message.author.id)
-    roles = (
-        [str(r.id) for r in message.author.roles]
-        if hasattr(message.author, "roles")
-        else []
-    )
-    identity = adapter._auth.resolve(_raw_uid, roles=roles)
-    if adapter._guard_chain.run(identity):
-        log.info("auth_reject user=%s channel=discord", f"dc:user:{message.author.id}")
-        return
-    trust = identity.trust_level
-
+    # C3: adapters send raw identity fields; Hub resolves trust in run().
     # Audio attachment detection
     audio_attachment = next(
         (
@@ -59,12 +48,12 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
         None,
     )
     if audio_attachment is not None:
-        await _handle_audio(adapter, message, audio_attachment, trust)
+        await _handle_audio(adapter, message, audio_attachment, TrustLevel.PUBLIC)
         return  # audio messages handled separately; skip text path
 
     # Voice command dispatch — guild-only; runs before mention/DM filter.
     if message.guild is not None:
-        if await adapter._handle_voice_command(message, trust):
+        if await adapter._handle_voice_command(message, TrustLevel.PUBLIC):
             return
 
     # Pre-detect mention (needed for auto-thread decision)
@@ -204,8 +193,8 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
             message,
             thread_id=resolved_thread_id,
             channel_id=resolved_channel_id,
-            trust_level=trust,
-            is_admin=identity.is_admin,
+            trust_level=TrustLevel.PUBLIC,
+            is_admin=False,
         )
     except Exception:
         log.exception("Failed to normalize discord message id=%s", message.id)

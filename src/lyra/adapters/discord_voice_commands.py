@@ -141,10 +141,13 @@ async def handle_voice_command(
 
 
 def _resolve_slash_trust(adapter: "DiscordAdapter", user_id: str) -> TrustLevel:
-    """Resolve trust level for a slash command interaction user."""
-    identity = adapter._auth.resolve(user_id)
-    rejection = adapter._guard_chain.run(identity)
-    if rejection is not None:
+    """Resolve trust level for a slash command interaction user.
+
+    Slash commands are out-of-band Discord interactions that don't flow through
+    the inbound message bus. Trust is delegated to the Hub authenticator (C3).
+    """
+    identity = adapter._hub.resolve_identity(user_id, "discord", adapter._bot_id)
+    if identity.trust_level == TrustLevel.BLOCKED:
         return TrustLevel.BLOCKED
     return identity.trust_level
 

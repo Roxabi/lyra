@@ -19,6 +19,7 @@ from ..message import (
     Response,
 )
 from ..trace import TraceContext
+from ..trust import TrustLevel
 from .message_pipeline import (
     _DROP,
     Action,
@@ -82,8 +83,39 @@ class ValidatePlatformMiddleware:
         return await next(msg, ctx)
 
 
+class TrustGuardMiddleware:
+    """Stage 2: drop messages from BLOCKED users.
+
+    Replaces the adapter-side GuardChain (C3 — trust re-resolution). Trust is
+    resolved by Hub._resolve_message_trust() before the pipeline runs, so this
+    stage sees the authoritative trust level.
+    """
+
+    async def __call__(
+        self,
+        msg: InboundMessage,
+        ctx: PipelineContext,
+        next: Next,
+    ) -> PipelineResult:
+        if msg.trust_level == TrustLevel.BLOCKED:
+            log.info(
+                "trust_blocked user=%s platform=%s — message dropped",
+                msg.user_id,
+                msg.platform,
+            )
+            ctx.emit(
+                MessageDropped(
+                    msg_id=msg.id,
+                    stage=type(self).__name__,
+                    reason="trust_blocked",
+                )
+            )
+            return _DROP
+        return await next(msg, ctx)
+
+
 class RateLimitMiddleware:
-    """Stage 2: drop messages that exceed the per-user rate limit."""
+    """Stage 3: drop messages that exceed the per-user rate limit."""
 
     async def __call__(
         self,

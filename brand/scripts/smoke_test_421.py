@@ -1,10 +1,8 @@
 """Smoke test for ComfyUI + flux2-klein-4B — issue #421."""
 import os
 import sys
-import warnings
 
 sys.path.insert(0, os.path.dirname(__file__))
-warnings.filterwarnings("ignore")
 
 import comfy.model_management  # noqa: E402
 import comfy.sd  # noqa: E402
@@ -29,6 +27,11 @@ UNET = folder_paths.get_full_path(
 )
 TE = folder_paths.get_full_path("text_encoders", "flux2-klein-qwen3.safetensors")
 VAE_P = folder_paths.get_full_path("vae", "flux2-klein-vae.safetensors")
+
+for _label, _path in [("UNET", UNET), ("TE", TE), ("VAE", VAE_P)]:
+    if _path is None:
+        print(f"ERROR — model file not found for {_label}", file=sys.stderr)
+        sys.exit(1)
 
 print("Loading text encoder (Qwen3 4B, merged)…")
 clip = comfy.sd.load_clip(
@@ -77,10 +80,16 @@ samples = SamplerCustomAdvanced.execute(
 print("Decoding…")
 images = VAEDecode().decode(samples=samples, vae=vae)[0]
 print(f"  Output shape: {images.shape}")
+assert images.shape == (1, 512, 512, 3), f"Unexpected output shape: {images.shape}"
 
 print("Saving…")
-SaveImage().save_images(images=images, filename_prefix="smoke_test_421")
+result = SaveImage().save_images(images=images, filename_prefix="smoke_test_421")
+assert result and result.get("ui", {}).get("images"), "SaveImage returned no files"
 
 peak_vram = torch.cuda.max_memory_allocated() / 1024**3
+VRAM_CEILING_GB = 20.0
+assert peak_vram < VRAM_CEILING_GB, (
+    f"VRAM regression: {peak_vram:.1f} GB >= {VRAM_CEILING_GB} GB"
+)
 print("\n✓ Smoke test PASSED — flux2-klein-4B generated without OOM")
 print(f"  Peak VRAM: {peak_vram:.1f} GB")

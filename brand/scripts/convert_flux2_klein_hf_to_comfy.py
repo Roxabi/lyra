@@ -12,15 +12,14 @@ HF format uses:
   - norm_out / proj_out         →  final_layer.adaLN_modulation.1 / final_layer.linear
   - time_guidance_embed.*       →  time_in.*
 
-Input:  models/diffusion_models/flux2-klein-4b.safetensors  (symlink to HF cache, 7.3 GB)
+Input:  models/diffusion_models/flux2-klein-4b.safetensors
+        (symlink to HF cache, 7.3 GB)
 Output: models/diffusion_models/flux2-klein-4b-comfy.safetensors  (~7.3 GB)
 """
-import sys, os
-sys.path.insert(0, os.path.dirname(__file__))
+import os
 
 import torch
 from safetensors.torch import load_file, save_file
-import comfy.utils
 
 SRC = "models/diffusion_models/flux2-klein-4b.safetensors"
 DST = "models/diffusion_models/flux2-klein-4b-comfy.safetensors"
@@ -36,15 +35,20 @@ def add(dst_key, tensor):
 
 # ── simple renames ────────────────────────────────────────────────────────────
 SIMPLE = {
-    "x_embedder.weight":                                       "img_in.weight",
-    "context_embedder.weight":                                 "txt_in.weight",
-    "double_stream_modulation_img.linear.weight":              "double_stream_modulation_img.lin.weight",
-    "double_stream_modulation_txt.linear.weight":              "double_stream_modulation_txt.lin.weight",
-    "single_stream_modulation.linear.weight":                  "single_stream_modulation.lin.weight",
-    "norm_out.linear.weight":                                  "final_layer.adaLN_modulation.1.weight",
-    "proj_out.weight":                                         "final_layer.linear.weight",
-    "time_guidance_embed.timestep_embedder.linear_1.weight":   "time_in.in_layer.weight",
-    "time_guidance_embed.timestep_embedder.linear_2.weight":   "time_in.out_layer.weight",
+    "x_embedder.weight": "img_in.weight",
+    "context_embedder.weight": "txt_in.weight",
+    "double_stream_modulation_img.linear.weight":
+        "double_stream_modulation_img.lin.weight",
+    "double_stream_modulation_txt.linear.weight":
+        "double_stream_modulation_txt.lin.weight",
+    "single_stream_modulation.linear.weight":
+        "single_stream_modulation.lin.weight",
+    "norm_out.linear.weight": "final_layer.adaLN_modulation.1.weight",
+    "proj_out.weight": "final_layer.linear.weight",
+    "time_guidance_embed.timestep_embedder.linear_1.weight":
+        "time_in.in_layer.weight",
+    "time_guidance_embed.timestep_embedder.linear_2.weight":
+        "time_in.out_layer.weight",
 }
 for src_k, dst_k in SIMPLE.items():
     if src_k in sd:
@@ -54,7 +58,10 @@ for src_k, dst_k in SIMPLE.items():
         print(f"  MISSING: {src_k}")
 
 # ── double blocks (transformer_blocks.N → double_blocks.N) ───────────────────
-n_double = max(int(k.split(".")[1]) for k in sd if k.startswith("transformer_blocks.")) + 1
+n_double = (
+    max(int(k.split(".")[1]) for k in sd if k.startswith("transformer_blocks."))
+    + 1
+)
 print(f"\nDouble blocks: {n_double}")
 
 for n in range(n_double):
@@ -88,7 +95,10 @@ for n in range(n_double):
 print(f"  converted {n_double} double blocks")
 
 # ── single blocks (single_transformer_blocks.N → single_blocks.N) ────────────
-n_single = max(int(k.split(".")[1]) for k in sd if k.startswith("single_transformer_blocks.")) + 1
+n_single = (
+    max(int(k.split(".")[1]) for k in sd if k.startswith("single_transformer_blocks."))
+    + 1
+)
 print(f"Single blocks: {n_single}")
 
 for n in range(n_single):
@@ -132,4 +142,7 @@ print(f"\nSaving to {DST}…")
 save_file(out, DST)
 size_gb = os.path.getsize(DST) / 1024**3
 print(f"✓ Saved: {size_gb:.2f} GB")
-print(f"\nDone. Load in ComfyUI as 'Load Diffusion Model' → flux2-klein-4b-comfy.safetensors")
+print(
+    "\nDone. Load in ComfyUI as 'Load Diffusion Model'"
+    " → flux2-klein-4b-comfy.safetensors"
+)

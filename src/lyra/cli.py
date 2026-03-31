@@ -56,6 +56,29 @@ lyra_app.add_typer(config_app, name="config")
 lyra_app.add_typer(bot_app, name="bot")
 lyra_app.add_typer(setup_app, name="setup")
 
+hub_app = typer.Typer(name="hub", help="Run standalone Hub process (requires NATS).")
+lyra_app.add_typer(hub_app, name="hub")
+
+# ---------------------------------------------------------------------------
+# lyra hub
+# ---------------------------------------------------------------------------
+
+
+@hub_app.callback(invoke_without_command=True)
+def _hub_callback(ctx: typer.Context) -> None:
+    """Start the standalone Hub process connected to NATS."""
+    if ctx.invoked_subcommand is None:
+        _run_hub()
+
+
+def _run_hub() -> None:
+    from lyra.bootstrap.config import _load_raw_config
+    from lyra.bootstrap.hub_standalone import _bootstrap_hub_standalone
+
+    raw_config = _load_raw_config()
+    asyncio.run(_bootstrap_hub_standalone(raw_config))
+
+
 # ---------------------------------------------------------------------------
 # lyra (root)
 # ---------------------------------------------------------------------------

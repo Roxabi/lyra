@@ -20,6 +20,7 @@ from lyra.core.trust import TrustLevel
 
 if TYPE_CHECKING:
     from lyra.core.stores.auth_store import AuthStore
+    from lyra.core.stores.identity_alias_store import IdentityAliasStore
 
 log = logging.getLogger(__name__)
 
@@ -47,13 +48,14 @@ class Authenticator:
       6. self._default (fallback)
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         store: AuthStore | None,
         role_map: dict[str, TrustLevel],
         default: TrustLevel,
         public_commands: list[str] | None = None,
         admin_user_ids: frozenset[str] = frozenset(),
+        alias_store: IdentityAliasStore | None = None,
     ) -> None:
         self._store = store
         self._role_map = role_map
@@ -62,6 +64,7 @@ class Authenticator:
             public_commands if public_commands is not None else ["/join"]
         )
         self._admin_user_ids = admin_user_ids
+        self._alias_store = alias_store
 
     def _store_level(self, user_id: str | None) -> TrustLevel | None:
         """Return the stored TrustLevel for user_id, or None if not present."""
@@ -88,19 +91,39 @@ class Authenticator:
         roles: Sequence[str] = (),
         command: str | None = None,
     ) -> TrustLevel:
-        """Resolve TrustLevel (same logic as former AuthMiddleware.check)."""
+        """Resolve TrustLevel, considering all linked identities via alias_store."""
         if user_id is None:
             return TrustLevel.BLOCKED
 
-        stored = self._store_level(user_id)
-        if stored == TrustLevel.BLOCKED:
-            return TrustLevel.BLOCKED
+        # Resolve all linked identities (alias-aware)
+        aliases = (
+            self._alias_store.resolve_aliases(user_id)
+            if self._alias_store
+            else frozenset({user_id})
+        )
 
+        # Any linked ID BLOCKED → entire group is BLOCKED
+        for a in aliases:
+            stored = self._store_level(a)
+            if stored == TrustLevel.BLOCKED:
+                return TrustLevel.BLOCKED
+
+        # Command bypass check
         if command is not None and command in self._public_commands:
             return TrustLevel.PUBLIC
 
-        if stored is not None:
-            return stored
+        # Max trust across all linked identities
+        best_stored: TrustLevel | None = None
+        for a in aliases:
+            stored = self._store_level(a)
+            if stored is not None and (
+                best_stored is None
+                or _TRUST_ORDER[stored] > _TRUST_ORDER.get(best_stored, 0)
+            ):
+                best_stored = stored
+
+        if best_stored is not None:
+            return best_stored
 
         best = self._best_role_level(roles)
         if best is not None:
@@ -135,12 +158,20 @@ class Authenticator:
         """
         trust = self._resolve_trust(user_id, roles, command)
         resolved_uid = user_id or ""
+        # Resolve aliases once and reuse for admin check.
         # is_admin uses stored trust (before command bypass), not resolved trust.
         # An OWNER user issuing a public command retains is_admin=True.
-        stored_trust = self._store_level(user_id) if user_id else None
+        aliases = (
+            self._alias_store.resolve_aliases(user_id)
+            if self._alias_store and user_id
+            else frozenset({resolved_uid})
+        )
         is_admin = bool(
             user_id
-            and (user_id in self._admin_user_ids or stored_trust == TrustLevel.OWNER)
+            and any(
+                a in self._admin_user_ids or self._store_level(a) == TrustLevel.OWNER
+                for a in aliases
+            )
         )
         return Identity(user_id=resolved_uid, trust_level=trust, is_admin=is_admin)
 
@@ -149,6 +180,7 @@ class Authenticator:
         cls,
         store: AuthStore | None,
         admin_user_ids: frozenset[str] = frozenset(),
+        alias_store: IdentityAliasStore | None = None,
     ) -> Authenticator:
         """Return a fixed OWNER authenticator for the CLI section."""
         return cls(
@@ -156,6 +188,7 @@ class Authenticator:
             role_map={},
             default=TrustLevel.OWNER,
             admin_user_ids=admin_user_ids,
+            alias_store=alias_store,
         )
 
     @classmethod
@@ -165,6 +198,7 @@ class Authenticator:
         context_label: str,
         store: AuthStore | None,
         admin_user_ids: frozenset[str] = frozenset(),
+        alias_store: IdentityAliasStore | None = None,
     ) -> Authenticator:
         """Validate *section_cfg* and build an Authenticator instance."""
         raw_default: str = section_cfg.get("default", "")
@@ -186,6 +220,7 @@ class Authenticator:
             role_map=role_map,
             default=default,
             admin_user_ids=admin_user_ids,
+            alias_store=alias_store,
         )
 
     @classmethod
@@ -195,6 +230,7 @@ class Authenticator:
         section: str,
         store: AuthStore | None = None,
         admin_user_ids: frozenset[str] = frozenset(),
+        alias_store: IdentityAliasStore | None = None,
     ) -> Authenticator | None:
         """Parse raw TOML config dict and build an Authenticator instance.
 
@@ -206,7 +242,11 @@ class Authenticator:
 
         if section_cfg is None:
             if section == "cli":
-                return cls._cli_sentinel(store=None, admin_user_ids=admin_user_ids)
+                return cls._cli_sentinel(
+                    store=None,
+                    admin_user_ids=admin_user_ids,
+                    alias_store=alias_store,
+                )
             log.warning(
                 "Missing [auth.%s] in lyra.toml -- %s adapter will be disabled",
                 section,
@@ -219,16 +259,18 @@ class Authenticator:
             context_label=f"[auth.{section}]",
             store=store,
             admin_user_ids=admin_user_ids,
+            alias_store=alias_store,
         )
 
     @classmethod
-    def from_bot_config(
+    def from_bot_config(  # noqa: PLR0913
         cls,
         raw: dict,
         section: str,
         bot_id: str,
         store: AuthStore | None = None,
         admin_user_ids: frozenset[str] = frozenset(),
+        alias_store: IdentityAliasStore | None = None,
     ) -> Authenticator | None:
         """Parse per-bot auth config from [[auth.<section>_bots]] array.
 
@@ -247,7 +289,11 @@ class Authenticator:
 
         if section_cfg is None:
             if section == "cli":
-                return cls._cli_sentinel(store=None, admin_user_ids=admin_user_ids)
+                return cls._cli_sentinel(
+                    store=None,
+                    admin_user_ids=admin_user_ids,
+                    alias_store=alias_store,
+                )
             log.warning(
                 "Missing [auth.%s] or [[auth.%s]] entry for bot_id=%r"
                 " -- %s adapter bot_id=%r will be disabled",
@@ -264,6 +310,7 @@ class Authenticator:
             context_label=f"auth config for {section} bot_id={bot_id!r}",
             store=store,
             admin_user_ids=admin_user_ids,
+            alias_store=alias_store,
         )
 
 

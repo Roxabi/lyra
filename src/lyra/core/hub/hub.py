@@ -38,6 +38,7 @@ if TYPE_CHECKING:
     from ..cli_pool import CliPool
     from ..memory import MemoryManager
     from ..messages import MessageManager
+    from ..stores.identity_alias_store import IdentityAliasStore
     from ..stores.message_index import MessageIndex
     from ..stores.pairing import PairingManager
     from ..stores.prefs_store import PrefsStore
@@ -132,6 +133,7 @@ class Hub(HubOutboundMixin):
         self._audio_pipeline = AudioPipeline(self)
         # C3: per-(platform, bot_id) authenticator registry — Hub is the trust authority
         self._authenticators: dict[tuple[Platform, str], Authenticator] = {}
+        self._alias_store: IdentityAliasStore | None = None
 
     @property
     def pools(self) -> dict[str, Pool]:
@@ -165,6 +167,12 @@ class Hub(HubOutboundMixin):
         self._message_index = store
         for pool in self.pools.values():
             pool._observer.register_message_index(store)
+
+    def set_alias_store(self, store: IdentityAliasStore) -> None:
+        self._alias_store = store
+        # Inject into memory manager if present
+        if self._memory is not None and hasattr(self._memory, "set_alias_store"):
+            self._memory.set_alias_store(store)
 
     def register_adapter(
         self,

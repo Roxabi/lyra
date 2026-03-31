@@ -384,6 +384,32 @@ make deploy          # pull latest + restart (from Machine 2)
 
 ---
 
+## Step 15 — NATS (optional, multi-machine only)
+
+NATS is the message bus for distributed Lyra (hub + compute workers). Single-machine setups skip this entirely.
+
+```bash
+cd ~/projects/lyra-stack
+
+# Install NATS server, user, config, systemd unit + lyra-stack ordering
+make nats-install
+
+# Generate TLS certs + nkey auth
+sudo scripts/gen-nats-certs.sh
+sudo scripts/gen-nats-nkeys.sh
+
+# Start + verify
+sudo systemctl start nats.service
+sudo systemctl status nats.service
+
+# Restart lyra-stack to pick up After=nats.service ordering
+systemctl --user restart lyra-stack.service
+```
+
+See the [Multi-machine setup](https://github.com/Roxabi/lyra-stack#multi-machine-setup) section in `lyra-stack/README.md` for full details.
+
+---
+
 ## Local demo without tokens
 
 You can test the hub routing without any platform tokens:

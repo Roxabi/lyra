@@ -1,0 +1,51 @@
+---
+title: "NatsBus — Bus[T] implementation over NATS"
+issue: 455
+status: approved
+tier: F-lite
+date: 2026-03-31
+---
+
+## Problem
+
+Lyra's `Bus[T]` Protocol defines a generic inbound message transport layer used by Hub to receive messages from adapters. Today the only concrete implementation is `LocalBus` (asyncio queues, in-process). When Hub is extracted as a standalone process (Slice C of #445), adapters and Hub run in separate OS processes and cannot share a queue — they need a network-backed bus.
+
+`NatsBus` is that implementation: `Bus[T]` over NATS pub-sub. It allows Hub to subscribe to inbound subjects per platform and adapters to publish messages across process boundaries, while preserving the same `Bus[T]` interface Hub already depends on — no Hub changes required.
+
+Both blockers are resolved: #447 (async `put()` Protocol amendment) is merged and the `Bus[T]` interface in `src/lyra/core/bus.py` is already async. #454 (NATS subject naming + streaming chunk protocol design) is closed with design artifacts in place.
+
+## Who
+
+- **Primary:** Lyra developer implementing distributed Hub ↔ Adapter IPC (Slice C of #445)
+- **Secondary:** Future contributors extending transport backends (Slice D JetStream, #50 NATS long-term)
+
+## Constraints
+
+- `NatsBus` must fully implement the `Bus[T]` Protocol (register, put, get, task_done, start, stop, qsize, staging_qsize, registered_platforms)
+- `put(platform, item)` must serialize to JSON and strip non-JSON-serializable values from `platform_meta` (specifically: `_session_update_fn` callable)
+- `task_done()` is a no-op — ack semantics deferred to Slice D (JetStream)
+- Reuse the `NatsConnection` class from Slice B (`src/lyra/nats/connection.py`) — no second NATS connection per process
+- NATS subject naming per design artifact from #454: `lyra.inbound.{platform}.{bot_id}`
+- NATS is opt-in: `LocalBus` remains the default. `NatsBus` is injected via DI when Hub runs in distributed mode
+- Unit tests with an embedded/mock NATS server (not integration-test dependent on a live Machine 1 NATS)
+- `src/lyra/nats/` package does not yet exist — must be created
+
+## Out of Scope
+
+- C1 (design artifacts for streaming/subject naming — done in #454)
+- C3 (trust re-resolution on Hub side — separate issue)
+- C4 (Hub standalone process extraction — separate issue)
+- C5 (adapter rewiring as thin NATS clients — separate issue)
+- C6 (ops: Makefile targets, deploy scripts, supervisor — separate issue)
+- JetStream ack / `task_done()` real semantics (Slice D)
+- Outbound bus over NATS (only inbound `Bus[T]` is in scope)
+
+## Complexity
+
+**Tier: F-lite** — Single new class implementing an existing Protocol. Clear acceptance criteria from parent spec. One new module (`src/lyra/nats/nats_bus.py`), one package init, unit tests. No new patterns, no architecture changes.
+
+Signals observed:
+- Single domain (transport layer)
+- Existing Protocol to implement (no design needed)
+- ≤5 new files total
+- No unknowns (subject naming, serialization strategy, and lifecycle all specified)

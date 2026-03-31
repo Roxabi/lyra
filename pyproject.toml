@@ -17,6 +17,8 @@ dependencies = [
     "uvicorn[standard]>=0.34",
     "httpx[asyncio]>=0.28",
     "python-dotenv>=1.0",
+    # NATS transport (NatsBus — issue #455, Slice C of #445)
+    "nats-py>=2.6",
     # Agent backends
     "anthropic>=0.49",
     "typer>=0.14",

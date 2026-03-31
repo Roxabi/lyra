@@ -1,6 +1,6 @@
 import pytest
 
-from lyra.adapters._shared import chunk_text
+from lyra.adapters._shared import IntermediateTextState, chunk_text
 
 
 class TestChunkText:
@@ -39,3 +39,72 @@ class TestChunkText:
         # chunk_text splits at word boundaries, so "hello world" splits at the
         # space — each chunk is rstrip'd/lstrip'd, yielding two clean words.
         assert chunk_text("hello world", 5) == ["hello", "world"]
+
+
+class TestIntermediateTextState:
+    def test_fresh_instance_has_no_text(self) -> None:
+        state = IntermediateTextState()
+        assert state.text == ""
+        assert not state.has_intermediate_text
+
+    def test_append_first_segment_adds_hourglass_prefix(self) -> None:
+        state = IntermediateTextState()
+        state.append("hello")
+        assert state.text == "⏳ hello"
+        assert state.has_intermediate_text
+
+    def test_append_second_segment_adds_newline_and_prefix(self) -> None:
+        state = IntermediateTextState()
+        state.append("hello")
+        state.append("world")
+        assert state.text == "⏳ hello\n⏳ world"
+
+    def test_append_empty_string_is_noop(self) -> None:
+        state = IntermediateTextState()
+        state.append("")
+        assert state.text == ""
+        assert not state.has_intermediate_text
+
+    def test_append_multiple_segments_chains_correctly(self) -> None:
+        state = IntermediateTextState()
+        state.append("a")
+        state.append("b")
+        state.append("c")
+        assert state.text == "⏳ a\n⏳ b\n⏳ c"
+
+    def test_display_returns_empty_string_when_both_empty(self) -> None:
+        state = IntermediateTextState()
+        assert state.display() == ""
+
+    def test_display_returns_text_only_when_no_tool_summary(self) -> None:
+        state = IntermediateTextState()
+        state.append("thinking")
+        assert state.display() == "⏳ thinking"
+
+    def test_display_returns_tool_summary_only_when_no_text(self) -> None:
+        state = IntermediateTextState()
+        state.set_tool_summary("🔧 Done ✅")
+        assert state.display() == "🔧 Done ✅"
+
+    def test_display_combines_text_and_summary_with_double_newline(self) -> None:
+        state = IntermediateTextState()
+        state.append("thinking")
+        state.set_tool_summary("🔧 Done ✅")
+        assert state.display() == "⏳ thinking\n\n🔧 Done ✅"
+
+    def test_display_combine_recap_false_returns_text_when_both_set(self) -> None:
+        state = IntermediateTextState()
+        state.append("thinking")
+        state.set_tool_summary("🔧 Done ✅")
+        assert state.display(combine_recap=False) == "⏳ thinking"
+
+    def test_display_combine_recap_false_returns_summary_when_no_text(self) -> None:
+        state = IntermediateTextState()
+        state.set_tool_summary("🔧 Done ✅")
+        assert state.display(combine_recap=False) == "🔧 Done ✅"
+
+    def test_set_tool_summary_overwrites_previous(self) -> None:
+        state = IntermediateTextState()
+        state.set_tool_summary("first")
+        state.set_tool_summary("second")
+        assert state.display() == "second"

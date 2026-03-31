@@ -9,6 +9,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
+from lyra.adapters._shared import IntermediateTextState
 from lyra.adapters.telegram_formatting import (
     _render_buttons,
     _render_text,
@@ -229,10 +230,9 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: tool-su
         return
 
     had_tool_events = False
-    had_intermediate_text = False
+    _istate = IntermediateTextState()
     last_tool_edit: float | None = None
     last_intermediate_edit: float | None = None
-    intermediate_text: str = ""
     final_text: str | None = None
     is_error_turn: bool = False
     stream_error: Exception | None = None
@@ -241,21 +241,20 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: tool-su
         async for event in events:
             if isinstance(event, ToolSummaryRenderEvent):
                 had_tool_events = True
-                # Don't overwrite intermediate text that is already visible in
-                # the placeholder — the tool summary would erase what the user
-                # can see.  The summary is still captured; the final text is
-                # delivered as a new message (had_tool_events=True path below).
-                if not had_intermediate_text:
-                    tool_text = _format_tool_summary(event)
-                    now = time.monotonic()
-                    # Always edit on is_complete; otherwise respect debounce
-                    if (
-                        event.is_complete
-                        or last_tool_edit is None
-                        or (now - last_tool_edit) >= STREAMING_EDIT_INTERVAL
-                    ):
-                        try:
-                            rendered = _render_text(tool_text)
+                tool_text = _format_tool_summary(event)
+                _istate.set_tool_summary(tool_text)
+                now = time.monotonic()
+                # Always edit on is_complete; otherwise respect debounce.
+                # IntermediateTextState.display() combines both when intermediate
+                # text is already visible, so neither overwrites the other.
+                if (
+                    event.is_complete
+                    or last_tool_edit is None
+                    or (now - last_tool_edit) >= STREAMING_EDIT_INTERVAL
+                ):
+                    try:
+                        rendered = _render_text(_istate.display())
+                        if rendered:
                             await adapter.bot.edit_message_text(
                                 chat_id=chat_id,
                                 message_id=placeholder.message_id,
@@ -263,32 +262,32 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: tool-su
                                 parse_mode="MarkdownV2",
                             )
                             last_tool_edit = now
-                        except Exception as edit_exc:
-                            log.debug("Tool summary edit skipped: %s", edit_exc)
+                    except Exception as edit_exc:
+                        log.debug("Tool summary edit skipped: %s", edit_exc)
 
             else:  # TextRenderEvent
                 if event.is_final:
                     final_text = event.text
                     is_error_turn = event.is_error
                 else:
-                    # Intermediate text (between tool calls) — edit placeholder
-                    # with accumulated text, debounced at STREAMING_EDIT_INTERVAL.
-                    intermediate_text += event.text
+                    # Delegate accumulation, ⏳ prefix, and recap combining to
+                    # IntermediateTextState — no formatting logic lives here.
+                    _istate.append(event.text)
                     now = time.monotonic()
                     if (
                         last_intermediate_edit is None
                         or (now - last_intermediate_edit) >= STREAMING_EDIT_INTERVAL
                     ):
                         try:
-                            rendered = _render_text(intermediate_text)
-                            await adapter.bot.edit_message_text(
-                                chat_id=chat_id,
-                                message_id=placeholder.message_id,
-                                text=rendered[0],
-                                parse_mode="MarkdownV2",
-                            )
-                            last_intermediate_edit = now
-                            had_intermediate_text = True
+                            rendered = _render_text(_istate.display())
+                            if rendered:
+                                await adapter.bot.edit_message_text(
+                                    chat_id=chat_id,
+                                    message_id=placeholder.message_id,
+                                    text=rendered[0],
+                                    parse_mode="MarkdownV2",
+                                )
+                                last_intermediate_edit = now
                         except Exception as edit_exc:
                             log.debug("Intermediate text edit skipped: %s", edit_exc)
     except Exception as exc:

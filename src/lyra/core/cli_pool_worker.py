@@ -139,11 +139,7 @@ class CliPoolWorkerMixin:
     async def _spawn(
         self, pool_id: str, model_config: ModelConfig, system_prompt: str = ""
     ) -> _ProcessEntry | None:
-        spawn_cwd = (
-            self._cwd_overrides.get(pool_id)
-            or model_config.cwd
-            or _LYRA_ROOT
-        )
+        spawn_cwd = self._cwd_overrides.get(pool_id) or model_config.cwd or _LYRA_ROOT
         resume_session_id = self._resume_session_ids.pop(pool_id, None)
         cmd, prompt_file = self._build_cmd(
             model_config,
@@ -279,9 +275,7 @@ class CliPoolWorkerMixin:
                     await self._kill(pool_id)
                     # Fire-and-forget notification for idle evictions
                     if self._on_reap and reason == "idle":
-                        _t = asyncio.create_task(
-                            self._on_reap(pool_id, reason)
-                        )
+                        _t = asyncio.create_task(self._on_reap(pool_id, reason))
                         _t.add_done_callback(
                             lambda t, pid=pool_id: (
                                 log.warning(

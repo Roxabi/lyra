@@ -243,3 +243,127 @@ class TestTrustGuardMiddleware:
             result = await mw(msg, ctx, next_fn)
 
             assert result is sentinel, f"Expected pass-through for trust={trust}"
+
+
+# ---------------------------------------------------------------------------
+# Finding J: _resolve_message_trust() edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestHubTrustResolutionEdgeCases:
+    """Edge cases for Hub._resolve_message_trust()."""
+
+    def _make_msg(self, **kwargs) -> "InboundMessage":
+        from lyra.core.message import InboundMessage
+
+        defaults = dict(
+            id="test-edge",
+            platform="telegram",
+            bot_id="main",
+            scope_id="tg:user:42",
+            user_id="tg:user:42",
+            user_name="Alice",
+            is_mention=False,
+            text="hello",
+            text_raw="hello",
+            trust_level=TrustLevel.PUBLIC,
+            is_admin=False,
+        )
+        defaults.update(kwargs)
+        return InboundMessage(**defaults)
+
+    def test_empty_user_id_passed_as_none_to_auth_resolve(self) -> None:
+        """Empty string user_id is treated as None — auth.resolve() is called with None."""
+        from unittest.mock import MagicMock
+
+        from lyra.core.authenticator import Authenticator
+        from lyra.core.hub.hub import Hub
+        from lyra.core.identity import Identity
+        from lyra.core.message import Platform
+
+        # Arrange
+        auth = MagicMock(spec=Authenticator)
+        auth.resolve.return_value = Identity(
+            user_id="", trust_level=TrustLevel.BLOCKED, is_admin=False
+        )
+
+        hub = Hub()
+        hub.register_authenticator(Platform.TELEGRAM, "main", auth)
+
+        msg = self._make_msg(user_id="")
+
+        # Act
+        hub._resolve_message_trust(msg)
+
+        # Assert: auth.resolve was called with None (empty string is falsy → None)
+        # _resolve_message_trust passes roles=list(getattr(msg, "roles", ())) — empty list here.
+        auth.resolve.assert_called_once_with(None, roles=[])
+
+    def test_invalid_platform_returns_message_unchanged(self) -> None:
+        """Invalid platform string causes early return — message object is unchanged."""
+        from lyra.core.authenticator import Authenticator
+        from lyra.core.hub.hub import Hub
+        from lyra.core.message import Platform
+
+        # Arrange
+        store = MagicMock()
+        store.check.return_value = TrustLevel.TRUSTED
+        auth = Authenticator(store=store, role_map={}, default=TrustLevel.PUBLIC)
+
+        hub = Hub()
+        hub.register_authenticator(Platform.TELEGRAM, "main", auth)
+
+        msg = self._make_msg(platform="badplatform")
+
+        # Act
+        result = hub._resolve_message_trust(msg)
+
+        # Assert: same object returned (ValueError path, no copy made)
+        assert result is msg
+
+    def test_auth_resolve_raises_propagates_to_caller(self) -> None:
+        """_resolve_message_trust propagates exceptions raised by auth.resolve().
+
+        Hub.run() wraps _resolve_message_trust in try/except and continues the loop.
+        Here we verify the raw propagation from _resolve_message_trust itself.
+        """
+        from unittest.mock import MagicMock
+
+        from lyra.core.authenticator import Authenticator
+        from lyra.core.hub.hub import Hub
+        from lyra.core.message import Platform
+
+        # Arrange
+        auth = MagicMock(spec=Authenticator)
+        auth.resolve.side_effect = RuntimeError("store unavailable")
+
+        hub = Hub()
+        hub.register_authenticator(Platform.TELEGRAM, "main", auth)
+
+        msg = self._make_msg()
+
+        # Act / Assert
+        with pytest.raises(RuntimeError, match="store unavailable"):
+            hub._resolve_message_trust(msg)
+
+
+# ---------------------------------------------------------------------------
+# Finding K: resolve_identity() invalid platform
+# ---------------------------------------------------------------------------
+
+
+class TestHubResolveIdentity:
+    """Hub.resolve_identity() edge cases."""
+
+    def test_resolve_identity_invalid_platform_returns_public(self) -> None:
+        """Unknown platform string returns a PUBLIC identity (ValueError caught internally)."""
+        from lyra.core.hub.hub import Hub
+
+        # Arrange
+        hub = Hub()
+
+        # Act
+        result = hub.resolve_identity(user_id="u1", platform="badplatform", bot_id="main")
+
+        # Assert
+        assert result.trust_level == TrustLevel.PUBLIC

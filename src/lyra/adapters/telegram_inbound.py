@@ -59,9 +59,7 @@ async def handle_message(adapter: TelegramAdapter, msg: Any) -> None:
         return
 
     # C3: adapters send raw identity fields; Hub resolves trust in run().
-    hub_msg = adapter.normalize(
-        msg, trust_level=TrustLevel.PUBLIC, is_admin=False
-    )
+    hub_msg = adapter.normalize(msg, trust_level=TrustLevel.PUBLIC, is_admin=False)
 
     # In group chats, only respond when directly mentioned.
     # In private chats, always respond.

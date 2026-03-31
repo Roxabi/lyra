@@ -64,7 +64,8 @@ class InboundMessage:
     """Normalized inbound envelope produced by all channel adapters.
 
     platform_meta carries platform-specific routing data. See spec platform_meta table.
-    Security: trust is always 'user' from adapters — never set above adapter layer.
+    Security (C3): adapters set trust_level=PUBLIC; Hub overwrites via
+    _resolve_message_trust() (ResolveTrustMiddleware) before the pipeline runs.
     Bot-authored messages are filtered by adapters before normalize() is called.
     """
 
@@ -79,6 +80,7 @@ class InboundMessage:
     text_raw: str  # original text with platform markup
     trust_level: TrustLevel
     is_admin: bool = False
+    roles: tuple[str, ...] = ()
     attachments: list[Attachment] = field(default_factory=list)
     reply_to_id: str | None = None
     thread_id: str | None = None
@@ -104,7 +106,8 @@ class InboundAudio:
 
     Mirrors InboundMessage for audio: adapters produce this; hub/agents consume it.
     Adapters enqueue via InboundAudioBus; hub/agents consume from its staging queue.
-    Security: trust is always 'user' from adapters — never set above adapter layer.
+    Security (C3): adapters set trust_level=PUBLIC; Hub overwrites via
+    _resolve_audio_trust() (AudioPipeline) before the BLOCKED check.
     """
 
     id: str

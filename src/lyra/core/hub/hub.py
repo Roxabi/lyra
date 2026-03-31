@@ -196,6 +196,12 @@ class Hub(HubOutboundMixin):
         """
         self._authenticators[(platform, bot_id)] = auth
 
+    def _get_authenticator(
+        self, platform: Platform, bot_id: str
+    ) -> "Authenticator | None":
+        """Return the registered Authenticator for (platform, bot_id), or None."""
+        return self._authenticators.get((platform, bot_id))
+
     def resolve_identity(
         self, user_id: str | None, platform: str, bot_id: str
     ) -> Identity:
@@ -206,12 +212,12 @@ class Hub(HubOutboundMixin):
         when no authenticator is registered for the pair.
         """
         try:
-            key = (Platform(platform), bot_id)
+            key_platform = Platform(platform)
         except ValueError:
             return Identity(
                 user_id=user_id or "", trust_level=TrustLevel.PUBLIC, is_admin=False
             )
-        auth = self._authenticators.get(key)
+        auth = self._get_authenticator(key_platform, bot_id)
         if auth is None:
             return Identity(
                 user_id=user_id or "", trust_level=TrustLevel.PUBLIC, is_admin=False
@@ -226,13 +232,15 @@ class Hub(HubOutboundMixin):
         No-op when no authenticator is registered for the (platform, bot_id) pair.
         """
         try:
-            key = (Platform(msg.platform), msg.bot_id)
+            key_platform = Platform(msg.platform)
         except ValueError:
             return msg
-        auth = self._authenticators.get(key)
+        auth = self._get_authenticator(key_platform, msg.bot_id)
         if auth is None:
             return msg
-        identity = auth.resolve(msg.user_id if msg.user_id else None)
+        uid = msg.user_id if msg.user_id else None
+        roles = list(getattr(msg, "roles", ()))
+        identity = auth.resolve(uid, roles=roles)
         trust_unchanged = identity.trust_level == msg.trust_level
         admin_unchanged = identity.is_admin == msg.is_admin
         if trust_unchanged and admin_unchanged:
@@ -240,6 +248,25 @@ class Hub(HubOutboundMixin):
         return dataclasses.replace(
             msg, trust_level=identity.trust_level, is_admin=identity.is_admin
         )
+
+    def _resolve_audio_trust(self, audio: "InboundAudio") -> "InboundAudio":
+        """Re-resolve trust level for InboundAudio (C3).
+
+        Mirrors _resolve_message_trust(). Called by AudioPipeline before the
+        BLOCKED check to ensure Hub-resolved trust.
+        """
+        try:
+            key_platform = Platform(audio.platform)
+        except ValueError:
+            return audio
+        auth = self._get_authenticator(key_platform, audio.bot_id)
+        if auth is None:
+            return audio
+        uid = audio.user_id if audio.user_id else None
+        identity = auth.resolve(uid)
+        if identity.trust_level == audio.trust_level:
+            return audio
+        return dataclasses.replace(audio, trust_level=identity.trust_level)
 
     def register_binding(
         self,
@@ -348,7 +375,6 @@ class Hub(HubOutboundMixin):
             msg = await self.inbound_bus.get()
             try:
                 try:
-                    msg = self._resolve_message_trust(msg)
                     result = await pipeline.process(msg)
                 except Exception:
                     log.exception("pipeline.process() failed for msg id=%s", msg.id)

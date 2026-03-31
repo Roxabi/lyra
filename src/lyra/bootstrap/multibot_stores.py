@@ -36,8 +36,7 @@ _CONFIG_TABLES = (
 )
 
 _SENTINEL_DDL = (
-    "CREATE TABLE IF NOT EXISTS _migration_complete"
-    " (migrated_at TEXT NOT NULL)"
+    "CREATE TABLE IF NOT EXISTS _migration_complete (migrated_at TEXT NOT NULL)"
 )
 
 
@@ -101,8 +100,7 @@ def _atomic_table_copy(  # noqa: C901 — sequential migration steps
             if not _IDENT_RE.match(table):
                 raise ValueError(f"Invalid table name: {table!r}")
             row = src.execute(
-                "SELECT sql FROM sqlite_master"
-                " WHERE type='table' AND name=?",
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
                 (table,),
             ).fetchone()
             if row is None:
@@ -168,9 +166,7 @@ def _migrate_to_config_db(vault_dir: Path) -> None:
         tmp_prefix=".config_db_migrate_",
     )
     if n:
-        log.warning(
-            "auth.db split: migrated %d rows to config.db (tombstones kept)", n
-        )
+        log.warning("auth.db split: migrated %d rows to config.db (tombstones kept)", n)
 
 
 def _migrate_threads_to_discord_db(vault_dir: Path) -> None:

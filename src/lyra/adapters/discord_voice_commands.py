@@ -91,7 +91,8 @@ async def handle_join_command(
         if args.strip().lower().split()[:1] == ["stay"]
         else VoiceMode.TRANSIENT
     )
-    if mode == VoiceMode.PERSISTENT and trust < TrustLevel.TRUSTED:
+    _elevated = {TrustLevel.TRUSTED, TrustLevel.OWNER}
+    if mode == VoiceMode.PERSISTENT and trust not in _elevated:
         await reply_safe(
             message,
             "Persistent mode requires elevated permissions.",
@@ -127,7 +128,7 @@ async def handle_voice_command(
     guild = message.guild
     guild_id = str(guild.id)
     if cmd.name == "leave":
-        if trust < TrustLevel.TRUSTED:
+        if trust not in {TrustLevel.TRUSTED, TrustLevel.OWNER}:
             await reply_safe(
                 message,
                 "You don't have permission to use this command.",
@@ -189,7 +190,8 @@ async def _handle_join_slash(
         )
         return
     voice_mode = VoiceMode.PERSISTENT if mode == "stay" else VoiceMode.TRANSIENT
-    if voice_mode == VoiceMode.PERSISTENT and trust < TrustLevel.TRUSTED:
+    _elevated = {TrustLevel.TRUSTED, TrustLevel.OWNER}
+    if voice_mode == VoiceMode.PERSISTENT and trust not in _elevated:
         voice_mode = VoiceMode.TRANSIENT
     try:
         await adapter._vsm.join(guild, channel, voice_mode)
@@ -239,7 +241,7 @@ def register_voice_app_commands(
             )
             return
         trust = _resolve_slash_trust(adapter, str(interaction.user.id))
-        if trust < TrustLevel.TRUSTED:
+        if trust not in {TrustLevel.TRUSTED, TrustLevel.OWNER}:
             await interaction.response.send_message(
                 "You don't have permission to use this command.",
                 ephemeral=True,

@@ -66,12 +66,8 @@ class ValidatePlatformMiddleware:
                 msg.platform,
                 msg.id,
             )
-            ctx.trace(
-                "inbound",
-                "platform_invalid",
-                platform=msg.platform,
-                action=Action.DROP.value,
-            )
+            ctx.trace("inbound", "platform_invalid",
+                      platform=msg.platform, action=Action.DROP.value)
             ctx.emit(
                 MessageDropped(
                     msg_id=msg.id, stage=type(self).__name__, reason="unknown_platform"
@@ -81,13 +77,22 @@ class ValidatePlatformMiddleware:
         return await next(msg, ctx)
 
 
-class TrustGuardMiddleware:
-    """Stage 2: drop messages from BLOCKED users.
+class ResolveTrustMiddleware:
+    """Stage 2: resolve trust level from Hub authenticator (C3).
 
-    Replaces the adapter-side GuardChain (C3 — trust re-resolution). Trust is
-    resolved by Hub._resolve_message_trust() before the pipeline runs, so this
-    stage sees the authoritative trust level.
+    Overwrites adapter-supplied trust_level=PUBLIC with authoritative trust.
+    Must precede TrustGuardMiddleware.
     """
+
+    async def __call__(
+        self, msg: InboundMessage, ctx: PipelineContext, next: Next
+    ) -> PipelineResult:
+        msg = ctx.hub._resolve_message_trust(msg)
+        return await next(msg, ctx)
+
+
+class TrustGuardMiddleware:
+    """Stage 3: drop BLOCKED users (C3). Trust resolved by ResolveTrustMiddleware."""
 
     async def __call__(
         self,
@@ -111,7 +116,7 @@ class TrustGuardMiddleware:
 
 
 class RateLimitMiddleware:
-    """Stage 3: drop messages that exceed the per-user rate limit."""
+    """Stage 4: drop messages that exceed the per-user rate limit."""
 
     async def __call__(
         self,
@@ -137,7 +142,7 @@ class RateLimitMiddleware:
 
 
 class ResolveBindingMiddleware:
-    """Stage 3: resolve binding + look up agent. Sets ctx.binding, ctx.agent."""
+    """Stage 5: resolve binding + look up agent. Sets ctx.binding, ctx.agent."""
 
     async def __call__(
         self,
@@ -187,7 +192,7 @@ class ResolveBindingMiddleware:
 
 
 class CreatePoolMiddleware:
-    """Stage 4: get or create the pool. Sets ctx.pool, ctx.router."""
+    """Stage 6: get or create the pool. Sets ctx.pool, ctx.router."""
 
     async def __call__(
         self,
@@ -240,7 +245,7 @@ class CreatePoolMiddleware:
 
 
 class CommandMiddleware:
-    """Stage 5: detect and dispatch commands."""
+    """Stage 7: detect and dispatch commands."""
 
     async def __call__(
         self,

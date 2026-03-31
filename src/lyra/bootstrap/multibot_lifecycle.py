@@ -62,9 +62,7 @@ async def run_lifecycle(  # noqa: PLR0913, C901 — lifecycle orchestration
 
         _audit_queue = hub._event_bus.subscribe()
         _audit_consumer = AuditConsumer(_audit_queue)
-        _audit_task = asyncio.create_task(
-            _audit_consumer.run(), name="audit-consumer"
-        )
+        _audit_task = asyncio.create_task(_audit_consumer.run(), name="audit-consumer")
         tasks.append(_audit_task)
     for tg_adapter in tg_adapters:
         tasks.append(

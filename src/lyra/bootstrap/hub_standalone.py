@@ -6,7 +6,6 @@ import asyncio
 import atexit
 import logging
 import os
-import signal
 import sys
 from pathlib import Path
 
@@ -25,7 +24,6 @@ from lyra.bootstrap.config import (
     _load_messages,
     _load_pairing_config,
     _load_pool_config,
-    _load_raw_config,
     _load_circuit_config,
 )
 from lyra.bootstrap.health import create_health_app
@@ -37,14 +35,9 @@ from lyra.bootstrap.lifecycle_helpers import (
 from lyra.bootstrap.multibot_stores import open_stores
 from lyra.bootstrap.multibot_wiring import _build_bot_auths
 from lyra.bootstrap.voice_overlay import init_stt, init_tts
-from lyra.config import (
-    DiscordMultiConfig,
-    TelegramMultiConfig,
-    load_multibot_config,
-)
+from lyra.config import load_multibot_config
 from lyra.core.agent import Agent
 from lyra.core.agent_loader import agent_row_to_config
-from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.cli_pool import CliPool
 from lyra.core.hub import Hub
 from lyra.core.hub.event_bus import PipelineEventBus

@@ -4,8 +4,14 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
+from collections.abc import Sequence
+from typing import Any, Protocol
 
 log = logging.getLogger(__name__)
+
+
+class _Stoppable(Protocol):
+    async def stop(self) -> Any: ...
 
 
 def setup_signal_handlers(stop: asyncio.Event) -> None:
@@ -15,13 +21,13 @@ def setup_signal_handlers(stop: asyncio.Event) -> None:
     loop.add_signal_handler(signal.SIGTERM, stop.set)
 
 
-async def teardown_buses(*buses: object) -> None:
+async def teardown_buses(*buses: _Stoppable) -> None:
     """Stop all provided buses (Bus[T] instances)."""
     for bus in buses:
         await bus.stop()
 
 
-async def teardown_dispatchers(dispatchers: list) -> None:
+async def teardown_dispatchers(dispatchers: Sequence[_Stoppable]) -> None:
     """Stop all outbound dispatchers."""
     for d in dispatchers:
         await d.stop()

@@ -1,0 +1,57 @@
+---
+title: "Extract Hub into standalone lyra_hub process"
+issue: 457
+status: approved
+tier: F-full
+date: 2026-03-31
+---
+
+## Problem
+
+Each adapter process (`lyra_telegram`, `lyra_discord`) embeds its own Hub instance (ADR-021 Phase 1b). This means:
+
+1. **State loss on restart** — restarting an adapter kills its Hub, destroying all in-memory pools (L0 working memory, active conversations, in-flight outbound). Every adapter reload causes a hard reset of all conversations on that platform.
+2. **Duplicated resources** — each adapter maintains its own pool registry, agent instances, memory manager, and store connections independently. On Machine 1 this means 2× Hub overhead for no benefit.
+3. **No cross-platform sharing** — pools are siloed per adapter process. Future features like multi-agent orchestration (#63) or unified conversation history require a shared Hub.
+
+**Why now:** Both prerequisites for NATS-based Hub IPC are merged — NatsBus (`Bus[T]` over NATS, #455) and trust re-resolution on the Hub side (#456). The transport layer and security boundary are in place. This is a proactive move: no bottleneck yet, but the path is clear and shipping now avoids accumulating technical debt while the context is fresh.
+
+**Parent:** Epic #445 (Distributed Lyra), Slice C4. Supersedes old frame #282 which planned Unix socket IPC — now replaced by NATS transport.
+
+## Who
+
+- **Primary:** Mickael (operator) — adapter restarts during active conversations cause visible disruption (lost context, repeated greetings, dropped responses). A standalone Hub survives adapter restarts.
+- **Secondary:** End users on Telegram/Discord — experience conversation continuity breaks whenever an adapter reloads. With Hub surviving adapter restarts, conversations persist seamlessly.
+
+## Constraints
+
+- **NATS as IPC** — Hub↔adapter communication goes through `NatsBus` (already implemented in #455). No Unix sockets, no HTTP.
+- **Embedded dev mode preserved** — `--adapter all` with `LocalBus` must keep working for local development. `NatsBus` is production topology only.
+- **Hub-side only (C4 scope)** — this issue delivers the standalone Hub process and its NatsBus integration. Adapter rewiring is C5 (#458), ops/ADR update is C6 (#459).
+- **SQLite WAL mode** — Hub does most writes. Adapters (when rewired in C5) will be read-only or write-free. WAL allows concurrent readers.
+- **NATS opt-in** — a mono-machine setup must work with zero NATS configuration (architectural constraint from #445 spec). `lyra hub` requires `NATS_URL` to be set.
+- **Single-process Hub** — no clustering, no HA. One Hub instance per deployment.
+- **Existing CLI structure** — `lyra` uses Typer. New `lyra hub` subcommand follows the same pattern as `lyra agent`, `lyra bot`, `lyra setup`.
+
+## Out of Scope
+
+- Adapter rewiring as thin NATS clients (C5, #458)
+- Ops updates, Makefile targets, supervisor config, ADR-021 amendment (C6, #459)
+- JetStream persistence (Slice D, #460)
+- JWT/account auth replacing nkeys (Slice D, #461)
+- Cross-machine NATS clustering
+- Changes to pool logic, agent loading, or memory layer internals
+- NATS subject naming convention ADR (C1 design artifact — can be done in parallel)
+- Streaming chunk protocol design for `RenderEvent` over NATS (C1 — needed for C5, not C4)
+
+## Complexity
+
+**Tier: F-full** — New process boundary with multi-domain impact.
+
+Signals:
+- New architectural pattern: process split where Hub runs independently of adapters
+- Multiple domains affected: `core/hub/`, `bootstrap/`, `cli.py`, `nats/`, configuration
+- New CLI entry point (`lyra hub`) with its own bootstrap path
+- Must coexist with embedded mode — two startup paths for the same Hub
+- Bootstrap wiring diverges: standalone Hub creates NatsBus + subscribes to inbound subjects vs. embedded mode with LocalBus
+- Parent spec (§ C4) lists 4 acceptance criteria, each touching different layers

@@ -122,6 +122,16 @@ class AnthropicAgent(AgentBase):
         for cmd in registry.commands():
             self.command_router.register_passthrough(cmd.lstrip("/"))
 
+        # /add-vault — direct vault save, no LLM needed (#372).
+        from lyra.commands.add_vault.handlers import cmd_add_vault
+
+        self.command_router.register_session_command(
+            "add-vault",
+            cmd_add_vault,
+            tools=self._session_tools,
+            description="Save a note to the vault: /add-vault <note content>",
+        )
+
     async def _process_llm(  # noqa: C901 — voice modality branch adds one branch
         self, msg: InboundMessage, pool: Pool, *, on_intermediate=None
     ) -> Response:

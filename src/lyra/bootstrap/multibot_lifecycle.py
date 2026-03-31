@@ -9,7 +9,11 @@ import os
 import uvicorn
 
 from lyra.bootstrap.health import create_health_app
-from lyra.bootstrap.lifecycle_helpers import setup_signal_handlers, teardown_buses, teardown_dispatchers
+from lyra.bootstrap.lifecycle_helpers import (
+    setup_signal_handlers,
+    teardown_buses,
+    teardown_dispatchers,
+)
 from lyra.core.cli_pool import CliPool
 from lyra.core.hub import Hub
 from lyra.core.stores.pairing import PairingManager

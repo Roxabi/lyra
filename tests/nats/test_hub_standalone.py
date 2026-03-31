@@ -8,7 +8,6 @@ Covers:
 from __future__ import annotations
 
 import os
-import sys
 from pathlib import Path
 
 import pytest
@@ -18,14 +17,15 @@ import lyra.bootstrap.hub_standalone as _hub_standalone_mod
 from lyra.bootstrap.hub_standalone import _acquire_lockfile, _release_lockfile
 from tests.nats.conftest import requires_nats_server
 
-
 # ---------------------------------------------------------------------------
 # test_nats_url_guard_missing
 # ---------------------------------------------------------------------------
 
 
 class TestNatsUrlGuard:
-    async def test_nats_url_guard_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_nats_url_guard_missing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """_bootstrap_hub_standalone exits with SystemExit when NATS_URL is not set."""
         # Arrange
         monkeypatch.delenv("NATS_URL", raising=False)
@@ -66,7 +66,9 @@ class TestLockfileLifecycle:
         _release_lockfile()
 
         # Assert — file is gone
-        assert not lockfile.exists(), "Lockfile should be removed by _release_lockfile()"
+        assert not lockfile.exists(), (
+            "Lockfile should be removed by _release_lockfile()"
+        )
 
     def test_lockfile_blocks_second_instance(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -167,7 +169,9 @@ class TestHealthEndpoint:
         # Assert
         assert resp.status_code == 200
         body = resp.json()
-        assert "adapters" in body, f"Expected 'adapters' key in health detail; got {body}"
+        assert "adapters" in body, (
+            f"Expected 'adapters' key in health detail; got {body}"
+        )
         assert isinstance(body["adapters"], int)
 
     async def test_health_detail_unauthorized_without_secret(self) -> None:
@@ -247,6 +251,7 @@ class TestStandaloneHubPipeline:
             trust_level=TrustLevel.PUBLIC,
         )
 
+        hub_task: asyncio.Task | None = None
         try:
             # Act — start Hub consumer loop, then publish via external NATS client
             hub_task = asyncio.create_task(hub.run(), name="hub-run")
@@ -271,11 +276,12 @@ class TestStandaloneHubPipeline:
                 " the inbound message published to NATS"
             )
         finally:
-            hub_task.cancel()
-            try:
-                await hub_task
-            except asyncio.CancelledError:
-                pass
+            if hub_task is not None:
+                hub_task.cancel()
+                try:
+                    await hub_task
+                except asyncio.CancelledError:
+                    pass
             await inbound_bus.stop()
             if hub_nc.is_connected:
                 await hub_nc.drain()
@@ -283,7 +289,7 @@ class TestStandaloneHubPipeline:
     async def test_trust_re_resolution_invoked(
         self, nc: NATS, nats_server_url: str
     ) -> None:
-        """ResolveTrustMiddleware calls Authenticator.resolve() for every inbound message.
+        """ResolveTrustMiddleware calls Authenticator.resolve() for every inbound msg.
 
         Publishes an InboundMessage via NATS and verifies that the registered
         Authenticator's resolve() method is called — confirming the C3 trust
@@ -337,6 +343,7 @@ class TestStandaloneHubPipeline:
             trust_level=TrustLevel.PUBLIC,
         )
 
+        hub_task: asyncio.Task | None = None
         try:
             # Act — start Hub, publish message via NATS
             hub_task = asyncio.create_task(hub.run(), name="hub-run-trust")
@@ -357,16 +364,20 @@ class TestStandaloneHubPipeline:
             # Give Hub.run() a moment to finish pipeline processing after get()
             await asyncio.sleep(0.1)
 
-            # Assert — Authenticator.resolve() was called with the user_id from the message
+            # Assert — Authenticator.resolve() was called with user_id from the message
             mock_auth.resolve.assert_called_once()
             call_args = mock_auth.resolve.call_args
-            assert call_args.args[0] == "user:trust" or call_args.kwargs.get("user_id") == "user:trust"
+            assert (
+                call_args.args[0] == "user:trust"
+                or call_args.kwargs.get("user_id") == "user:trust"
+            )
         finally:
-            hub_task.cancel()
-            try:
-                await hub_task
-            except asyncio.CancelledError:
-                pass
+            if hub_task is not None:
+                hub_task.cancel()
+                try:
+                    await hub_task
+                except asyncio.CancelledError:
+                    pass
             await inbound_bus.stop()
             if hub_nc.is_connected:
                 await hub_nc.drain()

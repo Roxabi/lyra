@@ -92,17 +92,11 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
         not _is_dm and not _is_thread and message.channel.id in adapter._watch_channels
     )
 
-    # Vault channel: auto-save every message to the vault (no mention needed).
-    _is_vault_channel = (
-        not _is_dm and not _is_thread and message.channel.id in adapter._vault_channels
-    )
-
     _should_process = (
         _is_dm
         or _is_mention
         or _in_owned_thread
         or _is_watch_channel
-        or _is_vault_channel
     )
     if not _should_process:
         return
@@ -113,7 +107,6 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
     if (
         adapter._auto_thread
         and (_is_mention or _is_watch_channel)
-        and not _is_vault_channel
         and not isinstance(message.channel, discord.Thread)
         and hasattr(message.channel, "create_thread")
     ):
@@ -199,12 +192,6 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
     except Exception:
         log.exception("Failed to normalize discord message id=%s", message.id)
         return
-
-    # Vault channel: rewrite message text to /add-vault <content> so the
-    # AddVaultProcessor handles it automatically via the normal command pipeline.
-    if _is_vault_channel and hub_msg.text:
-        hub_msg = dataclasses.replace(hub_msg, text=f"/add-vault {hub_msg.text}")
-        log.debug("vault_channel: rewrote message %s as /add-vault command", hub_msg.id)
 
     # Inject stored session + persistence callback into platform_meta.
     _meta_updates: dict[str, Any] = {}

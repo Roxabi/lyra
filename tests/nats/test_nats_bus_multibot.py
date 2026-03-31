@@ -12,7 +12,6 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 
-import pytest
 from nats.aio.client import Client as NATS
 
 from lyra.core.message import InboundMessage, Platform
@@ -25,10 +24,17 @@ from tests.nats.conftest import requires_nats_server
 # ---------------------------------------------------------------------------
 
 
-def _make_msg(platform: Platform = Platform.TELEGRAM, bot_id: str = "main") -> InboundMessage:
+def _make_msg(
+    platform: Platform = Platform.TELEGRAM, bot_id: str = "main"
+) -> InboundMessage:
     if platform == Platform.TELEGRAM:
         scope = "chat:1"
-        meta: dict = {"chat_id": 1, "topic_id": None, "message_id": None, "is_group": False}
+        meta: dict = {
+            "chat_id": 1,
+            "topic_id": None,
+            "message_id": None,
+            "is_group": False,
+        }
     else:
         scope = "channel:2"
         meta = {
@@ -84,9 +90,9 @@ class TestMultiBotRegistration:
     async def test_messages_on_separate_subjects_both_arrive_in_staging(
         self, nc: NATS
     ) -> None:
-        """Messages published to each (platform, bot_id) subject both land in staging."""
+        """Messages to each (platform, bot_id) subject both land in staging."""
         # Arrange
-        publisher = _make_bus(nc)
+        _publisher = _make_bus(nc)
         subscriber = _make_bus(nc)
 
         subscriber.register(Platform.TELEGRAM, bot_id="bot-a")
@@ -159,7 +165,7 @@ class TestMultiBotRegistration:
             await bus.stop()
 
     async def test_registered_platforms_deduplicates(self, nc: NATS) -> None:
-        """registered_platforms() returns each Platform once even with multiple bot_ids."""
+        """registered_platforms() returns each Platform once with multiple bot_ids."""
         # Arrange
         bus = _make_bus(nc)
         bus.register(Platform.TELEGRAM, bot_id="bot-a")

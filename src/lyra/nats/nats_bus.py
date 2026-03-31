@@ -84,7 +84,9 @@ class NatsBus(Generic[T]):
     # Registration
     # ------------------------------------------------------------------
 
-    def register(self, platform: Platform, maxsize: int = 100, bot_id: str | None = None) -> None:  # noqa: ARG002
+    def register(  # noqa: ARG002
+        self, platform: Platform, maxsize: int = 100, bot_id: str | None = None
+    ) -> None:
         """Record *(platform, bot_id)* for subscription setup.
 
         ``maxsize`` is accepted for Protocol compatibility but unused — there
@@ -197,7 +199,8 @@ class NatsBus(Generic[T]):
     # ------------------------------------------------------------------
 
     async def _make_handler(self, platform: Platform, bot_id: str) -> None:
-        """Create NATS subscription for *(platform, bot_id)* and register the handler."""
+        """Create NATS subscription for *(platform, bot_id)* and register the handler.
+        """
         subject = f"lyra.inbound.{platform.value}.{bot_id}"
 
         async def handler(msg: Msg) -> None:
@@ -206,7 +209,8 @@ class NatsBus(Generic[T]):
                 self._staging.put_nowait(item)
             except asyncio.QueueFull:
                 log.warning(
-                    "NatsBus staging queue full — dropping message on platform=%s bot_id=%s",
+                    "NatsBus staging queue full — dropping message on"
+                    " platform=%s bot_id=%s",
                     platform.value,
                     bot_id,
                 )

@@ -72,7 +72,9 @@ class LocalBus(Generic[T]):
         self._threshold = queue_depth_threshold
         self._depth_exceeded = False
 
-    def register(self, platform: Platform, maxsize: int = 100, bot_id: str | None = None) -> None:  # noqa: ARG002
+    def register(  # noqa: ARG002
+        self, platform: Platform, maxsize: int = 100, bot_id: str | None = None
+    ) -> None:
         """Register a bounded queue for the given platform.
 
         Must be called before start(). Raises RuntimeError if called after

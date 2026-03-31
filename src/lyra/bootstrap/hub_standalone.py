@@ -15,6 +15,7 @@ from lyra.bootstrap.agent_factory import _resolve_agents, _resolve_bot_agent_map
 from lyra.bootstrap.config import (
     MessageIndexConfig,
     _build_agent_overrides,
+    _load_circuit_config,
     _load_cli_pool_config,
     _load_debouncer_config,
     _load_event_bus_config,
@@ -24,7 +25,6 @@ from lyra.bootstrap.config import (
     _load_messages,
     _load_pairing_config,
     _load_pool_config,
-    _load_circuit_config,
 )
 from lyra.bootstrap.health import create_health_app
 from lyra.bootstrap.lifecycle_helpers import (
@@ -80,7 +80,9 @@ def _acquire_lockfile() -> None:
                 )
             except ProcessLookupError:
                 # PID no longer alive — stale lockfile, safe to overwrite
-                log.warning("Stale lockfile found (PID %d not running) — overwriting", pid)
+                log.warning(
+                    "Stale lockfile found (PID %d not running) — overwriting", pid
+                )
             except PermissionError:
                 # PID exists but we can't signal it — treat as alive
                 sys.exit(
@@ -305,7 +307,9 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
                 )
                 continue
 
-            proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id=bot_cfg.bot_id)
+            proxy = NatsChannelProxy(
+                nc=nc, platform=Platform.TELEGRAM, bot_id=bot_cfg.bot_id
+            )
             hub.register_authenticator(Platform.TELEGRAM, bot_cfg.bot_id, auth)
             hub.register_adapter(Platform.TELEGRAM, bot_cfg.bot_id, proxy)
 
@@ -327,7 +331,9 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
                 circuit_registry=circuit_registry,
                 bot_id=bot_cfg.bot_id,
             )
-            hub.register_outbound_dispatcher(Platform.TELEGRAM, bot_cfg.bot_id, dispatcher)
+            hub.register_outbound_dispatcher(
+                Platform.TELEGRAM, bot_cfg.bot_id, dispatcher
+            )
             dispatchers.append(dispatcher)
             log.info(
                 "Registered NATS proxy: telegram bot_id=%r agent=%r",
@@ -344,7 +350,9 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
                 )
                 continue
 
-            proxy = NatsChannelProxy(nc=nc, platform=Platform.DISCORD, bot_id=bot_cfg.bot_id)
+            proxy = NatsChannelProxy(
+                nc=nc, platform=Platform.DISCORD, bot_id=bot_cfg.bot_id
+            )
             hub.register_authenticator(Platform.DISCORD, bot_cfg.bot_id, auth)
             hub.register_adapter(Platform.DISCORD, bot_cfg.bot_id, proxy)
 
@@ -366,7 +374,9 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
                 circuit_registry=circuit_registry,
                 bot_id=bot_cfg.bot_id,
             )
-            hub.register_outbound_dispatcher(Platform.DISCORD, bot_cfg.bot_id, dispatcher)
+            hub.register_outbound_dispatcher(
+                Platform.DISCORD, bot_cfg.bot_id, dispatcher
+            )
             dispatchers.append(dispatcher)
             log.info(
                 "Registered NATS proxy: discord bot_id=%r agent=%r",
@@ -406,7 +416,9 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
 
             _audit_queue = hub._event_bus.subscribe()
             _audit_consumer = AuditConsumer(_audit_queue)
-            tasks.append(asyncio.create_task(_audit_consumer.run(), name="audit-consumer"))
+            tasks.append(
+                asyncio.create_task(_audit_consumer.run(), name="audit-consumer")
+            )
 
         active = (
             [f"telegram:{c.bot_id}" for c, _ in tg_bot_auths]

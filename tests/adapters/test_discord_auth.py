@@ -253,7 +253,7 @@ class TestTrustGuardMiddleware:
 class TestHubTrustResolutionEdgeCases:
     """Edge cases for Hub._resolve_message_trust()."""
 
-    def _make_msg(self, **kwargs) -> "InboundMessage":
+    def _make_msg(self, **kwargs):
         from lyra.core.message import InboundMessage
 
         defaults = dict(
@@ -273,7 +273,7 @@ class TestHubTrustResolutionEdgeCases:
         return InboundMessage(**defaults)
 
     def test_empty_user_id_passed_as_none_to_auth_resolve(self) -> None:
-        """Empty string user_id is treated as None — auth.resolve() is called with None."""
+        """Empty string user_id → auth.resolve() is called with None."""
         from unittest.mock import MagicMock
 
         from lyra.core.authenticator import Authenticator
@@ -296,7 +296,7 @@ class TestHubTrustResolutionEdgeCases:
         hub._resolve_message_trust(msg)
 
         # Assert: auth.resolve was called with None (empty string is falsy → None)
-        # _resolve_message_trust passes roles=list(getattr(msg, "roles", ())) — empty list here.
+        # _resolve_message_trust passes roles=list(getattr(msg, "roles", ())).
         auth.resolve.assert_called_once_with(None, roles=[])
 
     def test_invalid_platform_returns_message_unchanged(self) -> None:
@@ -356,14 +356,16 @@ class TestHubResolveIdentity:
     """Hub.resolve_identity() edge cases."""
 
     def test_resolve_identity_invalid_platform_returns_public(self) -> None:
-        """Unknown platform string returns a PUBLIC identity (ValueError caught internally)."""
+        """Unknown platform returns PUBLIC (ValueError caught internally)."""
         from lyra.core.hub.hub import Hub
 
         # Arrange
         hub = Hub()
 
         # Act
-        result = hub.resolve_identity(user_id="u1", platform="badplatform", bot_id="main")
+        result = hub.resolve_identity(
+            user_id="u1", platform="badplatform", bot_id="main"
+        )
 
         # Assert
         assert result.trust_level == TrustLevel.PUBLIC

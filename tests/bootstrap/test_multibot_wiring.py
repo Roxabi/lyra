@@ -10,8 +10,7 @@ from lyra.config import TelegramBotConfig
 from lyra.core.authenticator import Authenticator
 from lyra.core.hub.hub import Hub
 from lyra.core.message import Platform
-from lyra.core.trust import TrustLevel
-
+from lyra.core.trust import TrustLevel  # noqa: F401 — used in Authenticator(default=)
 
 # ---------------------------------------------------------------------------
 # Finding I: wire_telegram_adapters registers the authenticator on the hub
@@ -20,7 +19,7 @@ from lyra.core.trust import TrustLevel
 
 @pytest.mark.asyncio
 async def test_wire_telegram_adapters_registers_authenticator() -> None:
-    """wire_telegram_adapters() must call hub.register_authenticator(Platform.TELEGRAM, bot_id, auth)."""
+    """wire_telegram_adapters() must call hub.register_authenticator() with the auth."""
     from lyra.bootstrap.multibot_wiring import wire_telegram_adapters
     from lyra.core.circuit_breaker import CircuitRegistry
 

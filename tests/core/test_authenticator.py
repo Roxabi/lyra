@@ -27,7 +27,9 @@ class TestResolve:
         assert identity.trust_level == TrustLevel.OWNER
         assert identity.is_admin is True
 
-    def test_admin_user_ids_sets_is_admin(self) -> None:
+    def test_admin_user_ids_sets_is_admin_and_owner_trust(self) -> None:
+        # admin_user_ids grants OWNER trust regardless of store/default —
+        # prevents cache-key format mismatch (tg:user: vs bare ID) blocking admins.
         auth = Authenticator(
             store=None,
             role_map={},
@@ -35,7 +37,7 @@ class TestResolve:
             admin_user_ids=frozenset({"u1"}),
         )
         identity = auth.resolve("u1")
-        assert identity.trust_level == TrustLevel.PUBLIC
+        assert identity.trust_level == TrustLevel.OWNER
         assert identity.is_admin is True
 
     def test_non_admin_user(self) -> None:

@@ -125,6 +125,12 @@ class Authenticator:
         if best_stored is not None:
             return best_stored
 
+        # admin_user_ids (from [admin].user_ids) use platform-prefixed keys
+        # (e.g. "tg:user:123") while seed_from_config stores bare IDs — grant
+        # OWNER directly so admins are never blocked by a cache-key mismatch.
+        if user_id in self._admin_user_ids:
+            return TrustLevel.OWNER
+
         best = self._best_role_level(roles)
         if best is not None:
             return best

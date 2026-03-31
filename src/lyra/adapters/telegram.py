@@ -15,9 +15,9 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
 
 if TYPE_CHECKING:
+    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
     from lyra.core.bus import Bus
     from lyra.core.render_events import RenderEvent
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
 
 from lyra.adapters import telegram_audio  # noqa: I001
 from lyra.adapters._shared import TypingTaskManager, resolve_msg

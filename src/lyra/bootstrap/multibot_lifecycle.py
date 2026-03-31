@@ -5,11 +5,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import signal
 
 import uvicorn
 
 from lyra.bootstrap.health import create_health_app
+from lyra.bootstrap.lifecycle_helpers import setup_signal_handlers, teardown_buses, teardown_dispatchers
 from lyra.core.cli_pool import CliPool
 from lyra.core.hub import Hub
 from lyra.core.stores.pairing import PairingManager
@@ -44,9 +44,7 @@ async def run_lifecycle(  # noqa: PLR0913, C901 — lifecycle orchestration
 
     stop = _stop if _stop is not None else asyncio.Event()
     if _stop is None:
-        _loop = asyncio.get_running_loop()
-        _loop.add_signal_handler(signal.SIGINT, stop.set)
-        _loop.add_signal_handler(signal.SIGTERM, stop.set)
+        setup_signal_handlers(stop)
 
     from lyra.bootstrap.utils import watchdog
 
@@ -93,12 +91,8 @@ async def run_lifecycle(  # noqa: PLR0913, C901 — lifecycle orchestration
     for task in tasks:
         task.cancel()
     await asyncio.gather(*tasks, return_exceptions=True)
-    await hub.inbound_bus.stop()
-    await hub.inbound_audio_bus.stop()
-    for d in tg_dispatchers:
-        await d.stop()
-    for d in dc_dispatchers:
-        await d.stop()
+    await teardown_buses(hub.inbound_bus, hub.inbound_audio_bus)
+    await teardown_dispatchers(tg_dispatchers + dc_dispatchers)
     for dc_adapter, _, _dc_tok in dc_adapters:
         await dc_adapter.close()
     if pm is not None:

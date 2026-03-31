@@ -23,6 +23,7 @@ from lyra.core.messages import MessageManager
 from lyra.core.stores.agent_store import AgentStore
 from lyra.core.stores.auth_store import AuthStore
 from lyra.core.stores.credential_store import CredentialStore
+from lyra.core.stores.identity_alias_store import IdentityAliasStore
 from lyra.core.stores.thread_store import ThreadStore
 from lyra.errors import MissingCredentialsError
 
@@ -219,12 +220,13 @@ async def wire_discord_adapters(  # noqa: PLR0913, C901 — wiring requires all 
     return adapters, dispatchers
 
 
-def _build_bot_auths(
+def _build_bot_auths(  # noqa: PLR0913
     raw_config: dict,
     tg_multi_cfg: TelegramMultiConfig,
     dc_multi_cfg: DiscordMultiConfig,
     auth_store: AuthStore,
     admin_user_ids: frozenset[str] = frozenset(),
+    alias_store: IdentityAliasStore | None = None,
 ) -> tuple[
     list[tuple[TelegramBotConfig, Authenticator]],
     list[tuple[DiscordBotConfig, Authenticator]],
@@ -241,6 +243,7 @@ def _build_bot_auths(
                 bot_cfg.bot_id,
                 store=auth_store,
                 admin_user_ids=admin_user_ids,
+                alias_store=alias_store,
             )
             if auth is None:
                 log.warning(
@@ -257,6 +260,7 @@ def _build_bot_auths(
                 bot_cfg.bot_id,
                 store=auth_store,
                 admin_user_ids=admin_user_ids,
+                alias_store=alias_store,
             )
             if auth is None:
                 log.warning(

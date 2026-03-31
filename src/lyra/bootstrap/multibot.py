@@ -92,6 +92,7 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
             dc_multi_cfg,
             stores.auth,
             admin_user_ids,
+            alias_store=stores.identity_alias,
         )
         log.info("Authenticator: %d admin_user_id(s) configured", len(admin_user_ids))
 
@@ -185,6 +186,10 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
         hub.set_turn_store(stores.turn)
         hub.set_message_index(stores.message_index)
 
+        # Wire identity alias store into consumers (#472)
+        stores.prefs.set_alias_store(stores.identity_alias)
+        hub.set_alias_store(stores.identity_alias)
+
         # Build cli_pool if any agent needs it
         cli_pool: CliPool | None = None
         for cfg in agent_configs.values():
@@ -216,6 +221,12 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
         )
         for ag in all_agents.values():
             hub.register_agent(ag)
+
+        # Wire alias_store into each agent's MemoryManager (#472 review finding 1)
+        for agent in hub.agent_registry.values():
+            mem = getattr(agent, "_memory", None)
+            if mem is not None and hasattr(mem, "set_alias_store"):
+                mem.set_alias_store(stores.identity_alias)
 
         # Wire adapters via helpers
         tg_adapters, tg_dispatchers = await wire_telegram_adapters(

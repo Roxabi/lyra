@@ -15,6 +15,11 @@ log = logging.getLogger(__name__)
 
 __all__ = ["AuthStore"]
 
+_PLATFORM_PREFIX: dict[str, str] = {
+    "telegram": "tg:user:",
+    "discord": "dc:user:",
+}
+
 
 _CREATE_GRANTS = """
 CREATE TABLE IF NOT EXISTS grants (
@@ -52,7 +57,20 @@ class AuthStore(SqliteStore):
         """Open aiosqlite, enable WAL, create grants table, warm cache."""
         await self._open_db(ddl=[_CREATE_GRANTS])
         await self._warm_cache()
+        await self._cleanup_bare_ids()
         log.info("AuthStore connected (db=%s)", self._db_path)
+
+    async def _cleanup_bare_ids(self) -> None:
+        """Delete legacy bare-ID grants (no platform prefix). Idempotent."""
+        db = self._require_db()
+        async with db.execute(
+            "DELETE FROM grants WHERE identity_key NOT LIKE '%:%'"
+        ) as cur:
+            deleted = cur.rowcount
+        if deleted:
+            await db.commit()
+            self._cache = {k: v for k, v in self._cache.items() if ":" in k}
+            log.info("Cleaned up %d bare-ID grants", deleted)
 
     async def _warm_cache(self) -> None:
         """Load all non-expired grants from DB into _cache."""
@@ -151,11 +169,12 @@ class AuthStore(SqliteStore):
         if section_cfg is None:
             return
 
+        prefix = _PLATFORM_PREFIX.get(section, "")
         entries: list[tuple[str, TrustLevel]] = []
         for uid in section_cfg.get("owner_users", []):
-            entries.append((str(uid), TrustLevel.OWNER))
+            entries.append((f"{prefix}{uid}", TrustLevel.OWNER))
         for uid in section_cfg.get("trusted_users", []):
-            entries.append((str(uid), TrustLevel.TRUSTED))
+            entries.append((f"{prefix}{uid}", TrustLevel.TRUSTED))
 
         for identity_key, trust in entries:
             _SEED_SQL = (

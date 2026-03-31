@@ -25,16 +25,33 @@ index-url: https://download.pytorch.org/whl/nightly/cu130
 > cu130 required for `comfy.quant_ops` optimized CUDA kernels on Blackwell.
 > CUDA 13.0 toolkit (`cuda-toolkit-13-0`) must be installed alongside cu128.
 
-## Model Symlinks (no duplication from imageCLI HF cache)
+## Model Files
 
-All flux2-klein weights are symlinked from `~/.cache/huggingface/hub/models--black-forest-labs--FLUX.2-klein-4B/snapshots/e7b7dc27f91deacad38e78976d1f2b499d76a294/`:
+HF weights are symlinked from `~/.cache/huggingface/hub/models--black-forest-labs--FLUX.2-klein-4B/snapshots/e7b7dc27f91deacad38e78976d1f2b499d76a294/`:
 
-| ComfyUI path | Source |
-|---|---|
-| `models/diffusion_models/flux2-klein-4b.safetensors` | `transformer/diffusion_pytorch_model.safetensors` (7.3 GB) |
-| `models/vae/flux2-klein-vae.safetensors` | `vae/diffusion_pytorch_model.safetensors` (161 MB) |
-| `models/text_encoders/flux2-klein-qwen3-00001-of-00002.safetensors` | `text_encoder/model-00001-of-00002.safetensors` (4.7 GB) |
-| `models/text_encoders/flux2-klein-qwen3-00002-of-00002.safetensors` | `text_encoder/model-00002-of-00002.safetensors` (2.9 GB) |
+| ComfyUI path | Source | Notes |
+|---|---|---|
+| `models/diffusion_models/flux2-klein-4b.safetensors` | `transformer/diffusion_pytorch_model.safetensors` (7.3 GB) | HF format — symlink only |
+| `models/diffusion_models/flux2-klein-4b-comfy.safetensors` | converted from HF format (7.3 GB) | **Use this in ComfyUI** |
+| `models/vae/flux2-klein-vae.safetensors` | `vae/diffusion_pytorch_model.safetensors` (161 MB) | symlink |
+| `models/text_encoders/flux2-klein-qwen3-00001-of-00002.safetensors` | `text_encoder/model-00001-of-00002.safetensors` (4.7 GB) | shard — do not use directly |
+| `models/text_encoders/flux2-klein-qwen3-00002-of-00002.safetensors` | `text_encoder/model-00002-of-00002.safetensors` (2.9 GB) | shard — do not use directly |
+| `models/text_encoders/flux2-klein-qwen3.safetensors` | merged from both shards (7.5 GB) | **Use this in ComfyUI** |
+
+### Why conversion is needed
+
+ComfyUI expects different key names than HF diffusers:
+- Separate `to_q/to_k/to_v` → merged `qkv`
+- `transformer_blocks` → `double_blocks`
+- `x_embedder` → `img_in`
+- `*.linear.weight` → `*.lin.weight` (modulation layers)
+- See `~/ComfyUI/convert_flux2_klein_hf_to_comfy.py` for details
+
+### Why shard merging is needed
+
+`DualCLIPLoader` with `flux2` type falls through to SDXLClipModel (no FLUX2 dual-file handler).
+The Qwen3 4B encoder must be loaded as a single file via `CLIPLoader` with type `flux2`.
+Merge script: `~/ComfyUI/models/text_encoders/flux2-klein-qwen3.safetensors` (created once, ~7.5 GB).
 
 ## Custom Nodes
 
@@ -67,8 +84,8 @@ opencv-python
 ## ComfyUI Node Setup (Flux2-Klein workflow)
 
 Load order in the UI:
-1. **Load Diffusion Model** → `flux2-klein-4b.safetensors`
-2. **Dual CLIP Loader** (type: `flux2`) → both `flux2-klein-qwen3-*` shards
+1. **Load Diffusion Model** → `flux2-klein-4b-comfy.safetensors` (converted file, not the HF symlink)
+2. **Load CLIP** (type: `flux2`) → `flux2-klein-qwen3.safetensors` (merged file, not the shards)
 3. **Load VAE** → `flux2-klein-vae.safetensors`
 4. **Load InsightFace (PuLID)** → auto-detects AntelopeV2
 5. **Load EVA-CLIP (PuLID)** → downloads on first run

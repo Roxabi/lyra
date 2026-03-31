@@ -128,6 +128,23 @@ endif
 
 endif # ifneq remote
 
+# ── Machine 2 local tools (not managed by supervisor) ────────────────────────
+COMFYUI_DIR := $(HOME)/ComfyUI
+COMFYUI_CMD ?=
+
+comfyui:
+ifeq ($(COMFYUI_CMD),logs)
+	@tail -f /tmp/comfyui.log
+else ifeq ($(COMFYUI_CMD),stop)
+	@pkill -f "venv/bin/python main.py" && echo "ComfyUI stopped" || echo "ComfyUI not running"
+else ifeq ($(COMFYUI_CMD),status)
+	@pgrep -fa "venv/bin/python main.py" || echo "ComfyUI not running"
+else
+	@echo "Starting ComfyUI at http://localhost:8188 (log → /tmp/comfyui.log)"
+	@cd $(COMFYUI_DIR) && nohup venv/bin/python main.py --listen 127.0.0.1 --port 8188 > /tmp/comfyui.log 2>&1 &
+	@echo "PID: $$!"
+endif
+
 SYSTEMD_USER_DIR := $(HOME)/.config/systemd/user
 
 monitor:

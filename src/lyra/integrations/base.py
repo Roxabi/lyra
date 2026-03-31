@@ -84,9 +84,7 @@ class ServiceControlFailed(Exception):
 class AudioConverter(Protocol):
     """Async audio converter: WAV → OGG/Opus."""
 
-    async def convert_wav_to_ogg(
-        self, wav_path: Path, ogg_path: Path
-    ) -> None: ...
+    async def convert_wav_to_ogg(self, wav_path: Path, ogg_path: Path) -> None: ...
 
 
 @runtime_checkable

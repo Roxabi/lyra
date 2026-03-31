@@ -15,7 +15,7 @@ from lyra.config import (
     TelegramBotConfig,
     TelegramMultiConfig,
 )
-from lyra.core.auth import AuthMiddleware
+from lyra.core.authenticator import Authenticator
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.hub import Hub, OutboundDispatcher, RoutingKey
 from lyra.core.message import Platform
@@ -34,7 +34,7 @@ log = logging.getLogger(__name__)
 
 async def wire_telegram_adapters(  # noqa: PLR0913 — wiring requires all deps
     hub: Hub,
-    tg_bot_auths: list[tuple[TelegramBotConfig, AuthMiddleware]],
+    tg_bot_auths: list[tuple[TelegramBotConfig, Authenticator]],
     bot_agent_map: dict[tuple[str, str], str],
     cred_store: CredentialStore,
     circuit_registry: CircuitRegistry,
@@ -68,9 +68,10 @@ async def wire_telegram_adapters(  # noqa: PLR0913 — wiring requires all deps
             webhook_secret=tg_webhook_secret or "",
             circuit_registry=circuit_registry,
             msg_manager=msg_manager,
-            auth=auth,
         )
         await adapter.resolve_identity()
+        # C3: Hub is the trust authority — register authenticator here, not on adapter.
+        hub.register_authenticator(Platform.TELEGRAM, bot_cfg.bot_id, auth)
         hub.register_adapter(Platform.TELEGRAM, bot_cfg.bot_id, adapter)
 
         tg_key = RoutingKey(Platform.TELEGRAM, bot_cfg.bot_id, "*")
@@ -104,7 +105,7 @@ async def wire_telegram_adapters(  # noqa: PLR0913 — wiring requires all deps
 
 async def wire_discord_adapters(  # noqa: PLR0913, C901 — wiring requires all deps
     hub: Hub,
-    dc_bot_auths: list[tuple[DiscordBotConfig, AuthMiddleware]],
+    dc_bot_auths: list[tuple[DiscordBotConfig, Authenticator]],
     bot_agent_map: dict[tuple[str, str], str],
     cred_store: CredentialStore,
     circuit_registry: CircuitRegistry,
@@ -133,82 +134,85 @@ async def wire_discord_adapters(  # noqa: PLR0913, C901 — wiring requires all 
         await thread_store.connect()
 
     try:
-      for bot_cfg, auth in dc_bot_auths:
-        resolved_agent = bot_agent_map.get(("discord", bot_cfg.bot_id))
-        if resolved_agent is None:
-            log.warning(
-                "discord bot_id=%r not in bot_agent_map — skipping adapter",
-                bot_cfg.bot_id,
+        for bot_cfg, auth in dc_bot_auths:
+            resolved_agent = bot_agent_map.get(("discord", bot_cfg.bot_id))
+            if resolved_agent is None:
+                log.warning(
+                    "discord bot_id=%r not in bot_agent_map — skipping adapter",
+                    bot_cfg.bot_id,
+                )
+                continue
+
+            dc_creds = await cred_store.get_full("discord", bot_cfg.bot_id)
+            if dc_creds is None:
+                raise MissingCredentialsError("discord", bot_cfg.bot_id)
+            dc_token, _ = dc_creds
+
+            watch_channels: frozenset[int] = frozenset()
+            vault_channels: frozenset[int] = frozenset()
+            if agent_store is not None:
+                bot_settings = agent_store.get_bot_settings("discord", bot_cfg.bot_id)
+
+                def _parse_channel_ids(key: str) -> frozenset[int]:
+                    raw_ids = bot_settings.get(key, [])
+                    valid: list[int] = []
+                    for ch in raw_ids:
+                        try:
+                            valid.append(int(ch))
+                        except (ValueError, TypeError):
+                            log.warning(
+                                "%s: invalid channel id %r for bot %r — skipping",
+                                key,
+                                ch,
+                                bot_cfg.bot_id,
+                            )
+                    return frozenset(valid)
+
+                watch_channels = _parse_channel_ids("watch_channels")
+                vault_channels = _parse_channel_ids("vault_channels")
+
+            adapter = DiscordAdapter(
+                hub=hub,
+                bot_id=bot_cfg.bot_id,
+                circuit_registry=circuit_registry,
+                msg_manager=msg_manager,
+                auto_thread=bot_cfg.auto_thread,
+                thread_hot_hours=bot_cfg.thread_hot_hours,
+                thread_store=thread_store,
+                watch_channels=watch_channels,
+                vault_channels=vault_channels,
             )
-            continue
+            # C3: Hub is the trust authority — register here, not on adapter.
+            hub.register_authenticator(Platform.DISCORD, bot_cfg.bot_id, auth)
+            hub.register_adapter(Platform.DISCORD, bot_cfg.bot_id, adapter)
 
-        dc_creds = await cred_store.get_full("discord", bot_cfg.bot_id)
-        if dc_creds is None:
-            raise MissingCredentialsError("discord", bot_cfg.bot_id)
-        dc_token, _ = dc_creds
+            dc_key = RoutingKey(Platform.DISCORD, bot_cfg.bot_id, "*")
+            hub.register_binding(
+                Platform.DISCORD,
+                bot_cfg.bot_id,
+                "*",
+                resolved_agent,
+                dc_key.to_pool_id(),
+            )
 
-        watch_channels: frozenset[int] = frozenset()
-        vault_channels: frozenset[int] = frozenset()
-        if agent_store is not None:
-            bot_settings = agent_store.get_bot_settings("discord", bot_cfg.bot_id)
+            dispatcher = OutboundDispatcher(
+                platform_name="discord",
+                adapter=adapter,
+                circuit=circuit_registry.get("discord"),
+                circuit_registry=circuit_registry,
+                bot_id=bot_cfg.bot_id,
+            )
+            hub.register_outbound_dispatcher(
+                Platform.DISCORD, bot_cfg.bot_id, dispatcher
+            )
 
-            def _parse_channel_ids(key: str) -> frozenset[int]:
-                raw_ids = bot_settings.get(key, [])
-                valid: list[int] = []
-                for ch in raw_ids:
-                    try:
-                        valid.append(int(ch))
-                    except (ValueError, TypeError):
-                        log.warning(
-                            "%s: invalid channel id %r for bot %r — skipping",
-                            key,
-                            ch,
-                            bot_cfg.bot_id,
-                        )
-                return frozenset(valid)
-
-            watch_channels = _parse_channel_ids("watch_channels")
-            vault_channels = _parse_channel_ids("vault_channels")
-
-        adapter = DiscordAdapter(
-            hub=hub,
-            bot_id=bot_cfg.bot_id,
-            circuit_registry=circuit_registry,
-            msg_manager=msg_manager,
-            auto_thread=bot_cfg.auto_thread,
-            thread_hot_hours=bot_cfg.thread_hot_hours,
-            auth=auth,
-            thread_store=thread_store,
-            watch_channels=watch_channels,
-            vault_channels=vault_channels,
-        )
-        hub.register_adapter(Platform.DISCORD, bot_cfg.bot_id, adapter)
-
-        dc_key = RoutingKey(Platform.DISCORD, bot_cfg.bot_id, "*")
-        hub.register_binding(
-            Platform.DISCORD,
-            bot_cfg.bot_id,
-            "*",
-            resolved_agent,
-            dc_key.to_pool_id(),
-        )
-
-        dispatcher = OutboundDispatcher(
-            platform_name="discord",
-            adapter=adapter,
-            circuit=circuit_registry.get("discord"),
-            circuit_registry=circuit_registry,
-            bot_id=bot_cfg.bot_id,
-        )
-        hub.register_outbound_dispatcher(Platform.DISCORD, bot_cfg.bot_id, dispatcher)
-
-        adapters.append((adapter, bot_cfg, dc_token))
-        dispatchers.append(dispatcher)
-        log.info(
-            "Registered Discord bot bot_id=%r agent=%r",
-            bot_cfg.bot_id,
-            resolved_agent,
-        )
+            adapters.append((adapter, bot_cfg, dc_token))
+            dispatchers.append(dispatcher)
+            log.info(
+                "Registered Discord bot bot_id=%r agent=%r",
+                bot_cfg.bot_id,
+                resolved_agent,
+            )
     except Exception:
         # Close the shared ThreadStore on wiring failure (#417 fix)
         if thread_store is not None:
@@ -225,16 +229,16 @@ def _build_bot_auths(
     auth_store: AuthStore,
     admin_user_ids: frozenset[str] = frozenset(),
 ) -> tuple[
-    list[tuple[TelegramBotConfig, AuthMiddleware]],
-    list[tuple[DiscordBotConfig, AuthMiddleware]],
+    list[tuple[TelegramBotConfig, Authenticator]],
+    list[tuple[DiscordBotConfig, Authenticator]],
 ]:
     """Build (bot_cfg, auth) pairs for each platform, skipping bots without auth."""
-    tg_bot_auths: list[tuple[TelegramBotConfig, AuthMiddleware]] = []
-    dc_bot_auths: list[tuple[DiscordBotConfig, AuthMiddleware]] = []
+    tg_bot_auths: list[tuple[TelegramBotConfig, Authenticator]] = []
+    dc_bot_auths: list[tuple[DiscordBotConfig, Authenticator]] = []
 
     try:
         for bot_cfg in tg_multi_cfg.bots:
-            auth = AuthMiddleware.from_bot_config(
+            auth = Authenticator.from_bot_config(
                 raw_config,
                 "telegram",
                 bot_cfg.bot_id,
@@ -250,7 +254,7 @@ def _build_bot_auths(
             tg_bot_auths.append((bot_cfg, auth))
 
         for bot_cfg in dc_multi_cfg.bots:
-            auth = AuthMiddleware.from_bot_config(
+            auth = Authenticator.from_bot_config(
                 raw_config,
                 "discord",
                 bot_cfg.bot_id,

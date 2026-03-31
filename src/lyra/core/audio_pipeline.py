@@ -160,6 +160,8 @@ class AudioPipeline:
             return
         key = RoutingKey(platform_enum, audio.bot_id, audio.scope_id)
 
+        audio = self._hub._resolve_audio_trust(audio)
+
         if audio.trust_level == TrustLevel.BLOCKED:
             log.warning("audio %s has trust_level=BLOCKED — dropped", audio.id)
             return

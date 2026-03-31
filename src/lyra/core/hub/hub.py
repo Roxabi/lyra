@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import logging
 import time
 from typing import TYPE_CHECKING
 
 from ..agent import AgentBase
 from ..audio_pipeline import AudioPipeline
+from ..authenticator import Authenticator
 from ..bus import Bus
+from ..identity import Identity
 from ..inbound_bus import LocalBus
 from ..message import InboundAudio, InboundMessage, Platform
 from ..pool import Pool
+from ..trust import TrustLevel
 from .hub_outbound import HubOutboundMixin
 from .hub_protocol import (  # noqa: F401 — public re-export
     Binding,
@@ -124,6 +128,8 @@ class Hub(HubOutboundMixin):
         self._event_bus: PipelineEventBus | None = event_bus
         self._pool_manager = PoolManager(self)
         self._audio_pipeline = AudioPipeline(self)
+        # C3: per-(platform, bot_id) authenticator registry — Hub is the trust authority
+        self._authenticators: dict[tuple[Platform, str], Authenticator] = {}
 
     @property
     def pools(self) -> dict[str, Pool]:
@@ -179,6 +185,96 @@ class Hub(HubOutboundMixin):
         dispatcher: OutboundDispatcher,
     ) -> None:
         self.outbound_dispatchers[(platform, bot_id)] = dispatcher
+
+    def register_authenticator(
+        self, platform: Platform, bot_id: str, auth: Authenticator
+    ) -> None:
+        """Register the Authenticator for a (platform, bot_id) pair.
+
+        Called during bootstrap wiring. The Hub is the trust authority — adapters
+        send raw identity fields; trust is resolved here (C3).
+        """
+        self._authenticators[(platform, bot_id)] = auth
+
+    def _get_authenticator(
+        self, platform: Platform, bot_id: str
+    ) -> "Authenticator | None":
+        """Return the registered Authenticator for (platform, bot_id), or None."""
+        return self._authenticators.get((platform, bot_id))
+
+    def resolve_identity(
+        self, user_id: str | None, platform: str, bot_id: str
+    ) -> Identity:
+        """Resolve identity for a user on a given (platform, bot_id).
+
+        Used by out-of-band adapter gates (e.g. Discord slash commands) that
+        don't flow through the inbound message bus. Returns PUBLIC identity
+        when no authenticator is registered for the pair.
+        """
+        try:
+            key_platform = Platform(platform)
+        except ValueError:
+            return Identity(
+                user_id=user_id or "", trust_level=TrustLevel.PUBLIC, is_admin=False
+            )
+        auth = self._get_authenticator(key_platform, bot_id)
+        if auth is None:
+            return Identity(
+                user_id=user_id or "", trust_level=TrustLevel.PUBLIC, is_admin=False
+            )
+        return auth.resolve(user_id)
+
+    def _resolve_message_trust(self, msg: InboundMessage) -> InboundMessage:
+        """Re-resolve trust level on the Hub side (C3 — trust re-resolution).
+
+        Adapters send messages with trust_level=PUBLIC (raw). Hub overwrites with
+        the authoritative resolved identity before the pipeline sees the message.
+        No-op when no authenticator is registered for the (platform, bot_id) pair.
+        """
+        try:
+            key_platform = Platform(msg.platform)
+        except ValueError:
+            return msg
+        auth = self._get_authenticator(key_platform, msg.bot_id)
+        if auth is None:
+            log.debug(
+                "no authenticator for %s/%s — trust unchanged", key_platform, msg.bot_id
+            )
+            return msg
+        uid = msg.user_id if msg.user_id else None
+        roles = list(getattr(msg, "roles", ()))
+        identity = auth.resolve(uid, roles=roles)
+        trust_unchanged = identity.trust_level == msg.trust_level
+        admin_unchanged = identity.is_admin == msg.is_admin
+        if trust_unchanged and admin_unchanged:
+            return msg
+        return dataclasses.replace(
+            msg, trust_level=identity.trust_level, is_admin=identity.is_admin
+        )
+
+    def _resolve_audio_trust(self, audio: "InboundAudio") -> "InboundAudio":
+        """Re-resolve trust level for InboundAudio (C3).
+
+        Mirrors _resolve_message_trust(). Called by AudioPipeline before the
+        BLOCKED check to ensure Hub-resolved trust.
+        """
+        try:
+            key_platform = Platform(audio.platform)
+        except ValueError:
+            return audio
+        auth = self._get_authenticator(key_platform, audio.bot_id)
+        if auth is None:
+            log.debug(
+                "no authenticator for %s/%s — trust unchanged",
+                key_platform,
+                audio.bot_id,
+            )
+            return audio
+        uid = audio.user_id if audio.user_id else None
+        identity = auth.resolve(uid)
+        if identity.trust_level == audio.trust_level:
+            return audio
+        return dataclasses.replace(audio, trust_level=identity.trust_level)
 
     def register_binding(
         self,

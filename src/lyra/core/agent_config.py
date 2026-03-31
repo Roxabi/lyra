@@ -111,9 +111,7 @@ class SmartRoutingConfig(BaseModel):
 
     @field_validator("routing_table", mode="before")
     @classmethod
-    def _coerce_routing_table_keys(
-        cls, v: Any
-    ) -> dict[Complexity, str]:
+    def _coerce_routing_table_keys(cls, v: Any) -> dict[Complexity, str]:
         """Convert string keys to Complexity enum values when loading from JSON."""
         if not isinstance(v, dict):
             return v

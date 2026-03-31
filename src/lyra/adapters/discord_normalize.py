@@ -84,6 +84,7 @@ def normalize(  # noqa: PLR0913 — all kwargs are platform-specific routing con
     )
 
     _display_name = getattr(raw.author, "display_name", None)
+    roles = tuple(str(r.id) for r in getattr(raw.author, "roles", []) or [])
     attachments = extract_attachments(getattr(raw, "attachments", None) or [])
     _reference = getattr(raw, "reference", None)
     reply_to_id: str | None = (
@@ -122,6 +123,7 @@ def normalize(  # noqa: PLR0913 — all kwargs are platform-specific routing con
         trust="user",
         trust_level=trust_level,
         is_admin=is_admin,
+        roles=roles,
         platform_meta=platform_meta,
         routing=routing,
         reply_to_id=reply_to_id,

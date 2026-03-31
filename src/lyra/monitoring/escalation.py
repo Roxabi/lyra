@@ -74,10 +74,14 @@ async def _escalate_via_cli(
 
     proc = await asyncio.create_subprocess_exec(
         "claude",
-        "-p", prompt,
-        "--model", config.diagnostic_model,
-        "--output-format", "text",
-        "--max-turns", "1",
+        "-p",
+        prompt,
+        "--model",
+        config.diagnostic_model,
+        "--output-format",
+        "text",
+        "--max-turns",
+        "1",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )

@@ -103,6 +103,15 @@ class TelegramAdapter:
         msg_manager: MessageManager | None = None,
         auth: Authenticator = _DENY_ALL,
     ) -> None:
+        if auth is not _DENY_ALL:
+            import warnings
+
+            warnings.warn(
+                "TelegramAdapter(auth=...) is deprecated after C3 — "
+                "use hub.register_authenticator() instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         self._bot_id = bot_id
         self._token = token
         self._webhook_secret = webhook_secret

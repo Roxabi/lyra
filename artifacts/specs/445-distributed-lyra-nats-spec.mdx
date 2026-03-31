@@ -186,11 +186,13 @@ NATS was baked unconditionally into `provision.sh` as part of A2. This must be c
 5. `task_done()` → no-op for core NATS (ack semantics with JetStream in Slice D)
 6. Serialization strips non-JSON-serializable values from `platform_meta` (specifically: `_session_update_fn` callable)
 
-#### C3: Trust re-resolution on Hub side
+#### C3: Trust re-resolution on Hub side ✅ (#456)
 
-1. `Authenticator.resolve()` moves from adapter-side to Hub-side
-2. Adapter sends raw `user_id` + `platform` over NATS; Hub resolves trust level post-deserialization
-3. Required because adapter can no longer access the auth store in a separate process
+1. `Authenticator.resolve()` moved from adapter-side to Hub-side (`Hub.register_authenticator()`, `Hub._resolve_message_trust()`)
+2. Adapter sends messages with `trust_level=PUBLIC` (raw); Hub overwrites with authoritative trust before pipeline
+3. `TrustGuardMiddleware` added to Hub pipeline — drops BLOCKED users (replaces adapter-side GuardChain)
+4. Bootstrap wires authenticators onto Hub (`hub.register_authenticator(platform, bot_id, auth)`) instead of adapters
+5. Out-of-band gates (Discord slash commands) use `hub.resolve_identity()` — auth store never accessed directly by adapters
 
 #### C4: Extract Hub into standalone process
 

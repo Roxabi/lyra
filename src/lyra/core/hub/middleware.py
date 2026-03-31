@@ -164,13 +164,15 @@ def build_default_pipeline(
     trace_hook: TraceHook | None = None,
     event_bus: PipelineEventBus | None = None,
 ) -> MiddlewarePipeline:
-    """Build the standard middleware pipeline with all 6 stages."""
+    """Build the standard middleware pipeline with all 8 stages."""
     from .middleware_stages import (
         CommandMiddleware,
         CreatePoolMiddleware,
         RateLimitMiddleware,
         ResolveBindingMiddleware,
+        ResolveTrustMiddleware,
         TraceMiddleware,
+        TrustGuardMiddleware,
         ValidatePlatformMiddleware,
     )
     from .middleware_submit import SubmitToPoolMiddleware
@@ -179,6 +181,8 @@ def build_default_pipeline(
         [
             TraceMiddleware(),
             ValidatePlatformMiddleware(),
+            ResolveTrustMiddleware(),
+            TrustGuardMiddleware(),
             RateLimitMiddleware(),
             ResolveBindingMiddleware(),
             CreatePoolMiddleware(),

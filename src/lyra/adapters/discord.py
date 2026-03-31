@@ -91,6 +91,15 @@ class DiscordAdapter(discord.Client):
         super().__init__(intents=intents)
         self.tree = discord.app_commands.CommandTree(self)
         _register_voice_app_commands(self.tree, self)
+        if auth is not _DENY_ALL:
+            import warnings
+
+            warnings.warn(
+                "DiscordAdapter(auth=...) is deprecated after C3 — "
+                "use hub.register_authenticator() instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         self._hub = hub
         self._bot_id = bot_id
         self._circuit_registry = circuit_registry

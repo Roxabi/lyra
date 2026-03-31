@@ -30,6 +30,7 @@ from lyra.cli_setup import setup_app
 # Version
 # ---------------------------------------------------------------------------
 
+
 def _get_version() -> str:
     try:
         return importlib.metadata.version("lyra")

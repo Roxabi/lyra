@@ -59,9 +59,7 @@ def _validate(action: str, args: list[str]) -> tuple[str | None, Response | None
         )
     service = args[1].lower()
     if service not in _ALLOWED_SERVICES:
-        return None, Response(
-            content=f"Unknown service '{args[1]}'.\n{_SERVICES_LIST}"
-        )
+        return None, Response(content=f"Unknown service '{args[1]}'.\n{_SERVICES_LIST}")
     return service, None
 
 

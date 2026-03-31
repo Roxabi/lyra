@@ -81,16 +81,11 @@ class SubmitToPoolMiddleware:
         pool = ctx.pool
         # Register session persistence callback once.
         _update_fn = msg.platform_meta.get("_session_update_fn")
-        if (
-            _update_fn is not None
-            and pool._observer._session_update_fn is None
-        ):
+        if _update_fn is not None and pool._observer._session_update_fn is None:
             pool._observer.register_session_update_fn(_update_fn)
 
         try:
-            status = await self._resolve_context(
-                msg, pool, pool.pool_id, ctx
-            )
+            status = await self._resolve_context(msg, pool, pool.pool_id, ctx)
         except Exception:
             log.warning(
                 "_resolve_context failed — continuing with active session",
@@ -144,18 +139,13 @@ class SubmitToPoolMiddleware:
 
         # Path 1: reply-to-resume via MessageIndex (#341).
         if msg.reply_to_id is not None and hub._message_index is None:
-            log.debug(
-                "reply-to-resume: no MessageIndex configured — skipping"
-            )
+            log.debug("reply-to-resume: no MessageIndex configured — skipping")
         if msg.reply_to_id is not None and hub._message_index is not None:
-            session_id = await hub._message_index.resolve(
-                pool_id, str(msg.reply_to_id)
-            )
+            session_id = await hub._message_index.resolve(pool_id, str(msg.reply_to_id))
             if session_id is not None:
                 if not pool.is_idle:
                     log.info(
-                        "reply-to-resume: pool %r busy"
-                        " — skipping resume of session %r",
+                        "reply-to-resume: pool %r busy — skipping resume of session %r",
                         pool_id,
                         session_id,
                     )
@@ -169,9 +159,7 @@ class SubmitToPoolMiddleware:
                     return ResumeStatus.RESUMED
 
         # Path 2: thread-session-resume.
-        thread_session_id: str | None = msg.platform_meta.get(
-            "thread_session_id"
-        )
+        thread_session_id: str | None = msg.platform_meta.get("thread_session_id")
         if thread_session_id is not None:
             if not pool.is_idle:
                 log.info(
@@ -212,8 +200,7 @@ class SubmitToPoolMiddleware:
                 )
                 if _alive:
                     log.debug(
-                        "last-session-resume: pool %r already on"
-                        " session %r",
+                        "last-session-resume: pool %r already on session %r",
                         pool_id,
                         last_sid,
                     )
@@ -233,9 +220,7 @@ class SubmitToPoolMiddleware:
                 await pool.resume_session(last_sid)
                 return ResumeStatus.RESUMED
 
-        return (
-            ResumeStatus.FRESH if path2_attempted else ResumeStatus.SKIPPED
-        )
+        return ResumeStatus.FRESH if path2_attempted else ResumeStatus.SKIPPED
 
     async def _notify_session_fallthrough(
         self, msg: InboundMessage, ctx: PipelineContext

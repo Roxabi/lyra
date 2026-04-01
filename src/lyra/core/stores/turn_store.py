@@ -125,7 +125,7 @@ class TurnStore(SqliteStore):
         await db.execute(_CREATE_POOL_SESSIONS)
         await db.execute(_CREATE_IDX_POOL_SESSIONS)
         await db.commit()
-        # Gate backfill: skip if pool_sessions already has rows (#417 fix)
+        # Gate backfill: skip if pool_sessions already has rows
         async with db.execute("SELECT 1 FROM pool_sessions LIMIT 1") as cur:
             if await cur.fetchone() is None:
                 await self._backfill_sessions(db)
@@ -188,14 +188,14 @@ class TurnStore(SqliteStore):
                     meta_str,
                 ),
             )
-            # Ensure session row exists (#417 / S7) — idempotent, safe on restart
+            # Ensure session row exists — idempotent, safe on restart
             await db.execute(
                 "INSERT OR IGNORE INTO pool_sessions"
                 " (session_id, pool_id, started_at, last_active_at)"
                 " VALUES (?, ?, ?, ?)",
                 (session_id, pool_id, ts, ts),
             )
-            # Update session activity timestamp (#417 / S2) — tolerant: 0-row OK
+            # Update session activity timestamp — tolerant: 0-row OK
             await db.execute(
                 "UPDATE pool_sessions SET last_active_at = ? WHERE session_id = ?",
                 (ts, session_id),
@@ -266,7 +266,7 @@ class TurnStore(SqliteStore):
             log.exception("TurnStore._backfill_sessions failed")
 
     async def increment_resume_count(self, session_id: str) -> None:
-        """Increment resume_count for *session_id* (#417 / S6). Tolerant: 0-row OK."""
+        """Increment resume_count for *session_id*. Tolerant: 0-row OK."""
         db = self._db_or_raise()
         try:
             await db.execute(
@@ -282,7 +282,7 @@ class TurnStore(SqliteStore):
             )
 
     async def end_session(self, session_id: str) -> None:
-        """Stamp ended_at on *session_id* (#417 / S7). No-op if already stamped."""
+        """Stamp ended_at on *session_id*. No-op if already stamped."""
         db = self._db_or_raise()
         ts = datetime.now(UTC).isoformat()
         try:

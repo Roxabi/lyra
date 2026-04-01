@@ -86,7 +86,7 @@ class PoolObserver:
             pass  # no running event loop (e.g. sync test context)
 
     def end_session_async(self, session_id: str) -> None:
-        """Fire-and-forget end_session via TurnStore (#417 / S7); no-op if not connected."""
+        """Fire-and-forget end_session via TurnStore; no-op if not connected."""
         if self._turn_store is None:
             return
         self._fire_and_forget(

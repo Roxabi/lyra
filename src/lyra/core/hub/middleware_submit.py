@@ -157,7 +157,7 @@ class SubmitToPoolMiddleware:
                     )
                     accepted = await pool.resume_session(session_id)
                     if accepted and hub._turn_store is not None:
-                        await hub._turn_store.increment_resume_count(session_id)  # S6 (#417)
+                        await hub._turn_store.increment_resume_count(session_id)
                     return ResumeStatus.RESUMED
 
         # Path 2: thread-session-resume.
@@ -179,7 +179,7 @@ class SubmitToPoolMiddleware:
             accepted = await pool.resume_session(thread_session_id)
             if accepted:
                 if hub._turn_store is not None:
-                    await hub._turn_store.increment_resume_count(thread_session_id)  # S6 (#417)
+                    await hub._turn_store.increment_resume_count(thread_session_id)
                 return ResumeStatus.RESUMED
             log.info(
                 "thread-session-resume: session %r not accepted"
@@ -223,7 +223,7 @@ class SubmitToPoolMiddleware:
                 )
                 accepted = await pool.resume_session(last_sid)
                 if accepted:
-                    await hub._turn_store.increment_resume_count(last_sid)  # S6 (#417)
+                    await hub._turn_store.increment_resume_count(last_sid)
                 return ResumeStatus.RESUMED
 
         return ResumeStatus.FRESH if path2_attempted else ResumeStatus.SKIPPED

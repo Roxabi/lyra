@@ -4,6 +4,8 @@ NATS client, without a local Hub instance.
 Entry point: _bootstrap_adapter_standalone(raw_config, platform)
 
 Used by lyra_telegram and lyra_discord supervisor programs in NATS mode (ADR-037).
+Tokens are read from the encrypted credential store (same source as hub mode).
+Telegram uses aiogram long-polling; Discord uses its websocket connection.
 """
 from __future__ import annotations
 
@@ -11,10 +13,12 @@ import asyncio
 import logging
 import os
 import sys
+from pathlib import Path
 
 import nats
 
 from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+from lyra.bootstrap.multibot_stores import open_stores
 from lyra.core.bus import Bus
 from lyra.core.inbound_bus import LocalBus
 from lyra.core.message import InboundAudio, InboundMessage, Platform
@@ -46,137 +50,176 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915
 
     from lyra.nats.nats_bus import NatsBus
 
+    vault_dir = Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra")))
+    vault_dir.mkdir(parents=True, exist_ok=True)
+
     # nc.close() is deferred to the outer finally so the shared connection stays
-    # alive for all bots in the loop (previously closed per-iteration — bug).
+    # alive for all bots (previously closed per-iteration — bug).
     try:
-        if platform == "telegram":
-            from lyra.adapters.telegram import TelegramAdapter
-            from lyra.config import TelegramMultiConfig
+        async with open_stores(vault_dir) as stores:
+            if platform == "telegram":
+                from lyra.adapters.telegram import TelegramAdapter
+                from lyra.config import TelegramMultiConfig
 
-            tg_multi_cfg = TelegramMultiConfig.model_validate(
-                raw_config.get("telegram", {})
-            )
-            if not tg_multi_cfg.bots:
-                sys.exit("No telegram bots configured")
-
-            for bot_cfg in tg_multi_cfg.bots:
-                bot_id = bot_cfg.bot_id
-
-                inbound_bus: Bus[InboundMessage] = NatsBus(  # type: ignore[type-arg]
-                    nc=nc,
-                    bot_id=bot_id,
-                    item_type=InboundMessage,
+                tg_multi_cfg = TelegramMultiConfig.model_validate(
+                    raw_config.get("telegram", {})
                 )
-                inbound_bus.register(platform_enum)
-                await inbound_bus.start()
+                if not tg_multi_cfg.bots:
+                    sys.exit("No telegram bots configured")
 
-                inbound_audio_bus: Bus[InboundAudio] = LocalBus(name="inbound-audio")  # type: ignore[type-arg]
-                inbound_audio_bus.register(platform_enum)
+                # Wire all bots; collect (adapter, inbound_bus) pairs for teardown
+                wired: list[tuple[TelegramAdapter, Bus[InboundMessage]]] = []
 
-                token = (
-                    os.environ.get(f"TELEGRAM_TOKEN_{bot_id.upper()}")
-                    or os.environ.get("TELEGRAM_TOKEN", "")
-                )
-                webhook_secret = (
-                    os.environ.get(f"TELEGRAM_WEBHOOK_SECRET_{bot_id.upper()}")
-                    or os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
-                )
+                for bot_cfg in tg_multi_cfg.bots:
+                    bot_id = bot_cfg.bot_id
 
-                adapter = TelegramAdapter(
-                    bot_id=bot_id,
-                    token=token,
-                    inbound_bus=inbound_bus,
-                    inbound_audio_bus=inbound_audio_bus,
-                    webhook_secret=webhook_secret,
-                )
-                await adapter.resolve_identity()
+                    tg_creds = await stores.cred.get_full("telegram", bot_id)
+                    if tg_creds is None:
+                        log.error(
+                            "adapter_standalone: no credentials for telegram/%s — skipping",
+                            bot_id,
+                        )
+                        continue
+                    token, webhook_secret = tg_creds
 
-                listener = NatsOutboundListener(nc, platform_enum, bot_id, adapter)
-                adapter._outbound_listener = listener
-                await adapter.astart()
-
-                log.info(
-                    "adapter_standalone: Telegram bot_id=%s ready (NATS mode)", bot_id
-                )
-
-                try:
-                    import uvicorn
-                    config = uvicorn.Config(
-                        adapter.app,
-                        host=os.environ.get("LYRA_WEBHOOK_HOST", "0.0.0.0"),
-                        port=int(os.environ.get("LYRA_WEBHOOK_PORT", "8080")),
+                    inbound_bus: Bus[InboundMessage] = NatsBus(  # type: ignore[type-arg]
+                        nc=nc,
+                        bot_id=bot_id,
+                        item_type=InboundMessage,
                     )
-                    server = uvicorn.Server(config)
-                    if _stop is not None:
-                        # Test mode: run until stop event
-                        serve_task = asyncio.create_task(server.serve())
-                        await _stop.wait()
-                        server.should_exit = True
-                        await serve_task
-                    else:
-                        await server.serve()
-                finally:
-                    await adapter.close()
-                    await inbound_bus.stop()
+                    inbound_bus.register(platform_enum)
+                    await inbound_bus.start()
 
-        elif platform == "discord":
-            from lyra.adapters.discord import DiscordAdapter
-            from lyra.config import DiscordMultiConfig
+                    inbound_audio_bus: Bus[InboundAudio] = LocalBus(name="inbound-audio")  # type: ignore[type-arg]
+                    inbound_audio_bus.register(platform_enum)
 
-            dc_multi_cfg = DiscordMultiConfig.model_validate(
-                raw_config.get("discord", {})
-            )
-            if not dc_multi_cfg.bots:
-                sys.exit("No discord bots configured")
+                    adapter = TelegramAdapter(
+                        bot_id=bot_id,
+                        token=token,
+                        inbound_bus=inbound_bus,
+                        inbound_audio_bus=inbound_audio_bus,
+                        webhook_secret=webhook_secret or "",
+                    )
+                    await adapter.resolve_identity()
 
-            for bot_cfg in dc_multi_cfg.bots:
-                bot_id = bot_cfg.bot_id
+                    listener = NatsOutboundListener(nc, platform_enum, bot_id, adapter)
+                    adapter._outbound_listener = listener
+                    await adapter.astart()
 
-                inbound_bus_dc: Bus[InboundMessage] = NatsBus(  # type: ignore[type-arg]
-                    nc=nc,
-                    bot_id=bot_id,
-                    item_type=InboundMessage,
-                )
-                inbound_bus_dc.register(platform_enum)
-                await inbound_bus_dc.start()
+                    wired.append((adapter, inbound_bus))
+                    log.info(
+                        "adapter_standalone: Telegram bot_id=%s ready (NATS mode)", bot_id
+                    )
 
-                inbound_audio_bus_dc: Bus[InboundAudio] = LocalBus(name="inbound-audio")  # type: ignore[type-arg]
-                inbound_audio_bus_dc.register(platform_enum)
+                if not wired:
+                    sys.exit("No Telegram adapters started — check credentials")
 
-                token = (
-                    os.environ.get(f"DISCORD_TOKEN_{bot_id.upper()}")
-                    or os.environ.get("DISCORD_TOKEN", "")
-                )
+                stop = _stop if _stop is not None else asyncio.Event()
+                if _stop is None:
+                    import signal
+                    loop = asyncio.get_running_loop()
+                    for sig in (signal.SIGTERM, signal.SIGINT):
+                        loop.add_signal_handler(sig, stop.set)
 
-                adapter_dc = DiscordAdapter(
-                    bot_id=bot_id,
-                    inbound_bus=inbound_bus_dc,
-                    inbound_audio_bus=inbound_audio_bus_dc,
-                    auto_thread=bot_cfg.auto_thread,
-                    thread_hot_hours=bot_cfg.thread_hot_hours,
-                )
-
-                listener_dc = NatsOutboundListener(
-                    nc, platform_enum, bot_id, adapter_dc
-                )
-                adapter_dc._outbound_listener = listener_dc
-                await adapter_dc.astart()
-
-                log.info(
-                    "adapter_standalone: Discord bot_id=%s ready (NATS mode)", bot_id
-                )
-
+                # All bots poll concurrently
+                poll_tasks = [
+                    asyncio.create_task(
+                        a.dp.start_polling(a.bot, handle_signals=False),
+                        name=f"telegram:{a._bot_id}",
+                    )
+                    for a, _ in wired
+                ]
                 try:
-                    if _stop is not None:
-                        start_task = asyncio.create_task(adapter_dc.start(token))
-                        await _stop.wait()
-                        await adapter_dc.close()
-                        start_task.cancel()
-                    else:
-                        await adapter_dc.start(token)
+                    await stop.wait()
+                    for a, _ in wired:
+                        await a.dp.stop_polling()
+                    await asyncio.gather(*poll_tasks, return_exceptions=True)
                 finally:
-                    await inbound_bus_dc.stop()
-        else:
-            sys.exit(f"Unknown platform: {platform!r}")
+                    for a, ibus in wired:
+                        await a.close()
+                        await ibus.stop()
+
+            elif platform == "discord":
+                from lyra.adapters.discord import DiscordAdapter
+                from lyra.config import DiscordMultiConfig
+
+                dc_multi_cfg = DiscordMultiConfig.model_validate(
+                    raw_config.get("discord", {})
+                )
+                if not dc_multi_cfg.bots:
+                    sys.exit("No discord bots configured")
+
+                wired_dc: list[tuple[DiscordAdapter, str, Bus[InboundMessage]]] = []
+
+                for bot_cfg in dc_multi_cfg.bots:
+                    bot_id = bot_cfg.bot_id
+
+                    dc_creds = await stores.cred.get_full("discord", bot_id)
+                    if dc_creds is None:
+                        log.error(
+                            "adapter_standalone: no credentials for discord/%s — skipping",
+                            bot_id,
+                        )
+                        continue
+                    token, _ = dc_creds
+
+                    inbound_bus_dc: Bus[InboundMessage] = NatsBus(  # type: ignore[type-arg]
+                        nc=nc,
+                        bot_id=bot_id,
+                        item_type=InboundMessage,
+                    )
+                    inbound_bus_dc.register(platform_enum)
+                    await inbound_bus_dc.start()
+
+                    inbound_audio_bus_dc: Bus[InboundAudio] = LocalBus(name="inbound-audio")  # type: ignore[type-arg]
+                    inbound_audio_bus_dc.register(platform_enum)
+
+                    adapter_dc = DiscordAdapter(
+                        bot_id=bot_id,
+                        inbound_bus=inbound_bus_dc,
+                        inbound_audio_bus=inbound_audio_bus_dc,
+                        auto_thread=bot_cfg.auto_thread,
+                        thread_hot_hours=bot_cfg.thread_hot_hours,
+                    )
+
+                    listener_dc = NatsOutboundListener(
+                        nc, platform_enum, bot_id, adapter_dc
+                    )
+                    adapter_dc._outbound_listener = listener_dc
+                    await adapter_dc.astart()
+
+                    wired_dc.append((adapter_dc, token, inbound_bus_dc))
+                    log.info(
+                        "adapter_standalone: Discord bot_id=%s ready (NATS mode)", bot_id
+                    )
+
+                if not wired_dc:
+                    sys.exit("No Discord adapters started — check credentials")
+
+                stop_dc = _stop if _stop is not None else asyncio.Event()
+                if _stop is None:
+                    import signal
+                    loop = asyncio.get_running_loop()
+                    for sig in (signal.SIGTERM, signal.SIGINT):
+                        loop.add_signal_handler(sig, stop_dc.set)
+
+                # All bots connect concurrently
+                start_tasks = [
+                    asyncio.create_task(
+                        a.start(tok),
+                        name=f"discord:{a._bot_id}",
+                    )
+                    for a, tok, _ in wired_dc
+                ]
+                try:
+                    await stop_dc.wait()
+                    for a, _, _ in wired_dc:
+                        await a.close()
+                    await asyncio.gather(*start_tasks, return_exceptions=True)
+                finally:
+                    for _, _, ibus in wired_dc:
+                        await ibus.stop()
+            else:
+                sys.exit(f"Unknown platform: {platform!r}")
     finally:
         await nc.close()

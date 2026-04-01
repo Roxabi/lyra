@@ -185,6 +185,7 @@ register:
 		exit 1; \
 	fi
 	@mkdir -p "$(LYRA_STACK_DIR)/conf.d"
+	@ln -sf "$(abspath supervisor/conf.d/lyra_hub.conf)"      "$(LYRA_STACK_DIR)/conf.d/lyra_hub.conf"
 	@ln -sf "$(abspath supervisor/conf.d/lyra_telegram.conf)" "$(LYRA_STACK_DIR)/conf.d/lyra_telegram.conf"
 	@ln -sf "$(abspath supervisor/conf.d/lyra_discord.conf)"  "$(LYRA_STACK_DIR)/conf.d/lyra_discord.conf"
 	@if [ -L "$(LYRA_STACK_DIR)/conf.d/lyra.conf" ]; then rm "$(LYRA_STACK_DIR)/conf.d/lyra.conf"; fi

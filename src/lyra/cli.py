@@ -59,6 +59,9 @@ lyra_app.add_typer(setup_app, name="setup")
 hub_app = typer.Typer(name="hub", help="Run standalone Hub process (requires NATS).")
 lyra_app.add_typer(hub_app, name="hub")
 
+adapter_app = typer.Typer(name="adapter", help="Run standalone adapter process (requires NATS).")
+lyra_app.add_typer(adapter_app, name="adapter")
+
 # ---------------------------------------------------------------------------
 # lyra hub
 # ---------------------------------------------------------------------------
@@ -77,6 +80,31 @@ def _run_hub() -> None:
 
     raw_config = _load_raw_config()
     asyncio.run(_bootstrap_hub_standalone(raw_config))
+
+
+# ---------------------------------------------------------------------------
+# lyra adapter
+# ---------------------------------------------------------------------------
+
+
+@adapter_app.command("telegram")
+def _adapter_telegram() -> None:
+    """Start the standalone Telegram adapter connected to NATS."""
+    _run_adapter("telegram")
+
+
+@adapter_app.command("discord")
+def _adapter_discord() -> None:
+    """Start the standalone Discord adapter connected to NATS."""
+    _run_adapter("discord")
+
+
+def _run_adapter(platform: str) -> None:
+    from lyra.bootstrap.adapter_standalone import _bootstrap_adapter_standalone
+    from lyra.bootstrap.config import _load_raw_config
+
+    raw_config = _load_raw_config()
+    asyncio.run(_bootstrap_adapter_standalone(raw_config, platform))
 
 
 # ---------------------------------------------------------------------------

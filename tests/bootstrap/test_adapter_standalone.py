@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -14,6 +15,18 @@ def _make_raw_config(platform: str) -> dict:
     return {"discord": {"bots": [
         {"bot_id": "main", "auto_thread": False, "thread_hot_hours": 4}
     ]}}
+
+
+def _mock_open_stores(token: str, webhook_secret: str = "") -> object:
+    """Return a patched open_stores that yields a mock StoreBundle."""
+    mock_stores = MagicMock()
+    mock_stores.cred.get_full = AsyncMock(return_value=(token, webhook_secret))
+
+    @asynccontextmanager
+    async def _open(_vault_dir):  # type: ignore[no-untyped-def]
+        yield mock_stores
+
+    return _open
 
 
 @pytest.mark.asyncio
@@ -28,10 +41,12 @@ async def test_telegram_bootstrap_wires_listener_and_calls_astart() -> None:
     mock_nc.subscribe = AsyncMock(return_value=AsyncMock())
 
     mock_adapter = AsyncMock()
+    mock_adapter._bot_id = "main"
     mock_adapter.resolve_identity = AsyncMock()
     mock_adapter.astart = AsyncMock()
     mock_adapter.close = AsyncMock()
-    mock_adapter.app = MagicMock()
+    mock_adapter.dp.start_polling = AsyncMock(return_value=None)
+    mock_adapter.dp.stop_polling = AsyncMock(return_value=None)
 
     mock_listener = AsyncMock()
     mock_listener.start = AsyncMock()
@@ -41,33 +56,24 @@ async def test_telegram_bootstrap_wires_listener_and_calls_astart() -> None:
     mock_inbound_bus.start = AsyncMock()
     mock_inbound_bus.stop = AsyncMock()
 
-    mock_server = AsyncMock()
-    mock_server.serve = AsyncMock(return_value=None)
-
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch(
-            "lyra.nats.nats_bus.NatsBus",
-            return_value=mock_inbound_bus,
-        ),
-        patch(
-            "lyra.adapters.telegram.TelegramAdapter",
-            return_value=mock_adapter,
-        ),
+        patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
+        patch("lyra.adapters.telegram.TelegramAdapter", return_value=mock_adapter),
         patch(
             "lyra.bootstrap.adapter_standalone.NatsOutboundListener",
             return_value=mock_listener,
         ),
-        patch("uvicorn.Config", return_value=MagicMock()),
-        patch("uvicorn.Server", return_value=mock_server),
-        patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222",
-                                "TELEGRAM_TOKEN": "t"}),
+        patch(
+            "lyra.bootstrap.adapter_standalone.open_stores",
+            _mock_open_stores("test-token", "webhook-secret"),
+        ),
+        patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
     ):
         await _bootstrap_adapter_standalone(
             _make_raw_config("telegram"), "telegram", _stop=stop
         )
 
-    # Listener was wired and started via astart()
     mock_adapter.astart.assert_awaited_once()
     mock_nc.close.assert_awaited_once()
 
@@ -83,6 +89,7 @@ async def test_discord_bootstrap_wires_listener_and_calls_astart() -> None:
     mock_nc = AsyncMock()
 
     mock_adapter_dc = AsyncMock()
+    mock_adapter_dc._bot_id = "main"
     mock_adapter_dc.astart = AsyncMock()
     mock_adapter_dc.close = AsyncMock()
     mock_adapter_dc.start = AsyncMock(return_value=None)
@@ -96,20 +103,17 @@ async def test_discord_bootstrap_wires_listener_and_calls_astart() -> None:
 
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch(
-            "lyra.nats.nats_bus.NatsBus",
-            return_value=mock_inbound_bus_dc,
-        ),
-        patch(
-            "lyra.adapters.discord.DiscordAdapter",
-            return_value=mock_adapter_dc,
-        ),
+        patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus_dc),
+        patch("lyra.adapters.discord.DiscordAdapter", return_value=mock_adapter_dc),
         patch(
             "lyra.bootstrap.adapter_standalone.NatsOutboundListener",
             return_value=mock_listener_dc,
         ),
-        patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222",
-                                "DISCORD_TOKEN": "d"}),
+        patch(
+            "lyra.bootstrap.adapter_standalone.open_stores",
+            _mock_open_stores("discord-token"),
+        ),
+        patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
     ):
         await _bootstrap_adapter_standalone(
             _make_raw_config("discord"), "discord", _stop=stop
@@ -140,9 +144,10 @@ async def test_nc_close_called_even_on_exception() -> None:
 
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
+        patch("lyra.nats.nats_bus.NatsBus", side_effect=RuntimeError("boom")),
         patch(
-            "lyra.nats.nats_bus.NatsBus",
-            side_effect=RuntimeError("boom"),
+            "lyra.bootstrap.adapter_standalone.open_stores",
+            _mock_open_stores("t"),
         ),
         patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
         pytest.raises(RuntimeError, match="boom"),

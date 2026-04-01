@@ -165,7 +165,8 @@ async def test_send_streaming_publishes_chunks_with_incrementing_seq() -> None:
 
     await proxy.send_streaming(inbound, _async_iter(tool_event, text_event))
 
-    assert nc.publish.await_count == 2
+    # 2 event chunks + 1 terminal sentinel = 3 publishes
+    assert nc.publish.await_count == 3
     calls = nc.publish.call_args_list
 
     chunk0 = json.loads(calls[0].args[1].decode("utf-8"))
@@ -218,7 +219,8 @@ async def test_send_streaming_done_false_on_non_final_event() -> None:
         inbound, _async_iter(TextRenderEvent(text="Partial", is_final=False))
     )
 
-    _, payload = nc.publish.call_args.args
+    # call_args_list[0] is the event chunk; last call is the terminal sentinel
+    _, payload = nc.publish.call_args_list[0].args
     chunk = json.loads(payload.decode("utf-8"))
     assert chunk["done"] is False
 
@@ -234,7 +236,7 @@ async def test_send_streaming_event_type_text() -> None:
         inbound, _async_iter(TextRenderEvent(text="Hello", is_final=True))
     )
 
-    _, payload = nc.publish.call_args.args
+    _, payload = nc.publish.call_args_list[0].args
     chunk = json.loads(payload.decode("utf-8"))
     assert chunk["event_type"] == "text"
 
@@ -251,7 +253,7 @@ async def test_send_streaming_event_type_tool_summary() -> None:
         _async_iter(ToolSummaryRenderEvent(bash_commands=["ls"], is_complete=True)),
     )
 
-    _, payload = nc.publish.call_args.args
+    _, payload = nc.publish.call_args_list[0].args
     chunk = json.loads(payload.decode("utf-8"))
     assert chunk["event_type"] == "tool_summary"
     assert chunk["done"] is True

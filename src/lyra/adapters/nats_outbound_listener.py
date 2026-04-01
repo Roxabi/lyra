@@ -19,7 +19,7 @@ from lyra.core.message import (
 )
 
 if TYPE_CHECKING:
-    pass
+    from lyra.core.hub.hub_protocol import ChannelAdapter
 
 log = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ class NatsOutboundListener:
         nc: NATS,
         platform: Platform,
         bot_id: str,
-        adapter: Any,
+        adapter: "ChannelAdapter",
     ) -> None:
         self._nc = nc
         self._platform = platform
@@ -50,8 +50,8 @@ class NatsOutboundListener:
         self._adapter = adapter
         self._cache: dict[str, InboundMessage] = {}
         self._stream_queues: dict[str, asyncio.Queue[dict]] = {}
-        self._stream_tasks: dict[str, asyncio.Task] = {}
-        self._sub = None
+        self._stream_tasks: dict[str, asyncio.Task[None]] = {}
+        self._sub: Any = None  # nats.aio.subscription.Subscription | None
 
     def cache_inbound(self, msg: InboundMessage) -> None:
         """Store msg so it can be retrieved later by stream_id."""
@@ -98,8 +98,12 @@ class NatsOutboundListener:
                 stream_id,
             )
             return
+        outbound_data = data.get("outbound")
+        if outbound_data is None:
+            log.warning("NatsOutboundListener: missing 'outbound' key in send envelope")
+            return
         try:
-            outbound = OutboundMessage(**data["outbound"])
+            outbound = OutboundMessage(**outbound_data)
         except Exception:
             log.warning("NatsOutboundListener: failed to deserialize outbound message")
             return
@@ -114,8 +118,12 @@ class NatsOutboundListener:
                 "NatsOutboundListener: unknown stream_id=%r for attachment", stream_id
             )
             return
+        attachment_data = data.get("attachment")
+        if attachment_data is None:
+            log.warning("NatsOutboundListener: missing 'attachment' key in envelope")
+            return
         try:
-            attachment = OutboundAttachment(**data["attachment"])
+            attachment = OutboundAttachment(**attachment_data)
         except Exception:
             log.warning("NatsOutboundListener: failed to deserialize attachment")
             return
@@ -123,7 +131,10 @@ class NatsOutboundListener:
         self._cache.pop(stream_id, None)
 
     async def _handle_chunk(self, data: dict) -> None:
-        stream_id = data["stream_id"]
+        stream_id = data.get("stream_id")
+        if stream_id is None:
+            log.warning("NatsOutboundListener: chunk envelope missing stream_id")
+            return
         q = self._stream_queues.setdefault(stream_id, asyncio.Queue())
         await q.put(data)
         # Launch a drain task on first chunk; subsequent chunks just enqueue

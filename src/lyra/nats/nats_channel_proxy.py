@@ -121,6 +121,20 @@ class NatsChannelProxy:
                     json.dumps(chunk, ensure_ascii=False).encode("utf-8"),
                 )
                 seq += 1
+            # Always publish a terminal sentinel so NatsOutboundListener._drain_stream
+            # exits cleanly even when the events iterator was empty or the last event
+            # did not set is_final=True.
+            terminal = {
+                "stream_id": original_msg.id,
+                "seq": seq,
+                "event_type": "stream_end",
+                "payload": {},
+                "done": True,
+            }
+            await self._nc.publish(
+                subject,
+                json.dumps(terminal, ensure_ascii=False).encode("utf-8"),
+            )
         except Exception:
             log.exception(
                 "NatsChannelProxy: NATS publish failed during streaming,"

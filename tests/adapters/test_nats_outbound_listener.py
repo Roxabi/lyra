@@ -1,7 +1,6 @@
 """Tests for NatsOutboundListener — NATS-to-adapter dispatch."""
 from __future__ import annotations
 
-import asyncio
 import json
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
@@ -116,8 +115,8 @@ async def test_attachment_envelope_dispatches_to_render_attachment() -> None:
 
 
 @pytest.mark.asyncio
-async def test_done_flag_evicts_cache_entry() -> None:
-    """send envelope with done=True for stream_id -> cache entry removed after dispatch."""  # noqa: E501
+async def test_send_evicts_cache_entry() -> None:
+    """send envelope -> cache entry removed after dispatch (eviction is unconditional)."""  # noqa: E501
     from lyra.adapters.nats_outbound_listener import NatsOutboundListener
 
     nc = AsyncMock()
@@ -162,8 +161,10 @@ async def test_chunk_envelope_triggers_send_streaming() -> None:
     }
     await listener._handle(_make_nats_msg(chunk))
 
-    # Give the drain task a chance to run
-    await asyncio.sleep(0.05)
+    # Await the drain task directly — avoids flaky sleep-based synchronization
+    task = listener._stream_tasks.get(msg.id)
+    if task:
+        await task
 
     adapter.send_streaming.assert_called_once()
 

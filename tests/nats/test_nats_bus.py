@@ -281,6 +281,7 @@ class TestNatsBusRoundTrip:
         publisher = _make_bus(nc)
         subscriber = _make_bus(nc)
 
+        publisher.register(Platform.TELEGRAM)
         subscriber.register(Platform.TELEGRAM)
         await subscriber.start()
 
@@ -309,6 +310,7 @@ class TestNatsBusRoundTrip:
         publisher = _make_bus(nc)
         subscriber = _make_bus(nc)
 
+        publisher.register(Platform.TELEGRAM)
         subscriber.register(Platform.TELEGRAM)
         await subscriber.start()
 
@@ -373,6 +375,7 @@ class TestNatsBusEdgeCases:
         publisher = _make_bus(nc)
         subscriber = _make_bus(nc)
 
+        publisher.register(Platform.TELEGRAM)
         subscriber.register(Platform.TELEGRAM)
         await subscriber.start()
 

@@ -10,7 +10,11 @@ from typing import TYPE_CHECKING, Any
 
 import discord
 
-from lyra.adapters._shared import DISCORD_MAX_LENGTH, STREAMING_EDIT_INTERVAL, StreamState
+from lyra.adapters._shared import (
+    DISCORD_MAX_LENGTH,
+    STREAMING_EDIT_INTERVAL,
+    StreamState,
+)
 from lyra.adapters.discord_formatting import render_buttons, render_text
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,

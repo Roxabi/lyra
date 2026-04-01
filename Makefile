@@ -53,28 +53,33 @@ ifneq (remote,$(firstword $(MAKECMDGOALS)))
 lyra:
 ifeq ($(LYRA_CMD),stop)
 	$(ensure_hub)
+	@$(SUPERVISORCTL) stop lyra_hub
 	@$(SUPERVISORCTL) stop lyra_telegram
 	@$(SUPERVISORCTL) stop lyra_discord
 else ifeq ($(LYRA_CMD),reload)
 	$(ensure_hub)
+	@$(SUPERVISORCTL) restart lyra_hub
 	@$(SUPERVISORCTL) restart lyra_telegram
 	@$(SUPERVISORCTL) restart lyra_discord
 else ifeq ($(LYRA_CMD),logs)
 	$(ensure_hub)
-	@$(SUPERVISORCTL) tail -f lyra_telegram
+	@$(SUPERVISORCTL) tail -f lyra_hub
 else ifeq ($(LYRA_CMD),errors)
 	$(ensure_hub)
-	@$(SUPERVISORCTL) tail -f lyra_telegram stderr
+	@$(SUPERVISORCTL) tail -f lyra_hub stderr
 else ifeq ($(LYRA_CMD),status)
 	$(ensure_hub)
+	@$(SUPERVISORCTL) status lyra_hub
 	@$(SUPERVISORCTL) status lyra_telegram
 	@$(SUPERVISORCTL) status lyra_discord
 else ifeq ($(LYRA_CMD),)
 	@$(SUPERVISOR_START)
+	@$(SUPERVISORCTL) start lyra_hub
 	@$(SUPERVISORCTL) start lyra_telegram
 	@$(SUPERVISORCTL) start lyra_discord
 else
 	$(ensure_hub)
+	@$(SUPERVISORCTL) $(LYRA_CMD) lyra_hub
 	@$(SUPERVISORCTL) $(LYRA_CMD) lyra_telegram
 	@$(SUPERVISORCTL) $(LYRA_CMD) lyra_discord
 endif
@@ -222,13 +227,14 @@ remote:
 	ACTION="$(word 2,$(REMOTE_CMD))"; \
 	SCTL="$(REMOTE_SCTL)"; \
 	case "$$SVC" in \
-	  lyra)     PROGS="lyra_telegram lyra_discord" ;; \
+	  lyra)     PROGS="lyra_hub lyra_telegram lyra_discord" ;; \
+	  hub)      PROGS="lyra_hub" ;; \
 	  telegram) PROGS="lyra_telegram" ;; \
 	  discord)  PROGS="lyra_discord" ;; \
 	  tts)      PROGS="voicecli_tts" ;; \
 	  stt)      PROGS="voicecli_stt" ;; \
 	  reload|start|stop|status|logs|errors|"") \
-	    ACTION="$$SVC"; PROGS="lyra_telegram lyra_discord voicecli_tts voicecli_stt" ;; \
+	    ACTION="$$SVC"; PROGS="lyra_hub lyra_telegram lyra_discord voicecli_tts voicecli_stt" ;; \
 	  *) echo "Unknown service: $$SVC"; exit 1 ;; \
 	esac; \
 	case "$${ACTION:-status}" in \

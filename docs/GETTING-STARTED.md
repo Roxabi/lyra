@@ -408,7 +408,7 @@ ssh -i ~/.ssh/lyra_agent lyra@<MACHINE_1_IP> "id && git --version"
 ```bash
 make ps              # status of all services (lyra_hub + lyra_telegram + lyra_discord)
 make lyra reload     # restart hub + both adapters
-make lyra logs       # tail lyra_telegram stdout
+make lyra logs       # tail lyra_hub stdout
 make deploy          # pull latest + run tests + restart (from Machine 2)
 ```
 

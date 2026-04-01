@@ -71,6 +71,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915
                 await inbound_bus.start()
 
                 inbound_audio_bus: Bus[InboundAudio] = LocalBus(name="inbound-audio")  # type: ignore[type-arg]
+                inbound_audio_bus.register(platform_enum)
 
                 token = (
                     os.environ.get(f"TELEGRAM_TOKEN_{bot_id.upper()}")
@@ -102,7 +103,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915
                     import uvicorn
                     config = uvicorn.Config(
                         adapter.app,
-                        host="0.0.0.0",
+                        host=os.environ.get("LYRA_WEBHOOK_HOST", "0.0.0.0"),
                         port=int(os.environ.get("LYRA_WEBHOOK_PORT", "8080")),
                     )
                     server = uvicorn.Server(config)
@@ -140,6 +141,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915
                 await inbound_bus_dc.start()
 
                 inbound_audio_bus_dc: Bus[InboundAudio] = LocalBus(name="inbound-audio")  # type: ignore[type-arg]
+                inbound_audio_bus_dc.register(platform_enum)
 
                 token = (
                     os.environ.get(f"DISCORD_TOKEN_{bot_id.upper()}")

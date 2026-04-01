@@ -148,6 +148,11 @@ def _resolve_slash_trust(adapter: "DiscordAdapter", user_id: str) -> TrustLevel:
     the inbound message bus. Trust is delegated to the Hub authenticator (C3).
     """
     if adapter._resolve_identity_fn is None:
+        log.warning(
+            "_resolve_slash_trust: no identity resolver wired (NATS mode?)"
+            " — falling back to TrustLevel.PUBLIC for user_id=%s",
+            user_id,
+        )
         return TrustLevel.PUBLIC
     identity = adapter._resolve_identity_fn(user_id, "discord", adapter._bot_id)
     if identity.trust_level == TrustLevel.BLOCKED:

@@ -160,8 +160,19 @@ class NatsOutboundListener:
         from lyra.core.render_events import TextRenderEvent
 
         async def _events():
+            expected_seq = 0
             while True:
                 chunk = await q.get()
+                seq = chunk.get("seq")
+                if seq is not None and seq != expected_seq:
+                    log.warning(
+                        "NatsOutboundListener: out-of-order chunk"
+                        " stream_id=%r expected_seq=%d got_seq=%d",
+                        stream_id,
+                        expected_seq,
+                        seq,
+                    )
+                expected_seq += 1
                 event_type = chunk.get("event_type", "text")
                 payload = chunk.get("payload", {})
                 is_done = chunk.get("done", False)

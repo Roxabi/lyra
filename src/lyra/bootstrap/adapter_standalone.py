@@ -28,7 +28,7 @@ from lyra.core.stores.credential_store import CredentialStore, LyraKeyring
 log = logging.getLogger(__name__)
 
 
-async def _bootstrap_adapter_standalone(  # noqa: PLR0915
+async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
     raw_config: dict,
     platform: str,
     *,
@@ -78,7 +78,8 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915
                     creds = await cred_store.get_full("telegram", bot_id)
                     if creds is None:
                         log.error(
-                            "adapter_standalone: no credentials for telegram/%s — skipping",
+                            "adapter_standalone: no credentials for telegram/%s"
+                            " — skipping",
                             bot_id,
                         )
                         continue
@@ -171,7 +172,8 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915
                     creds = await cred_store.get_full("discord", bot_id)
                     if creds is None:
                         log.error(
-                            "adapter_standalone: no credentials for discord/%s — skipping",
+                            "adapter_standalone: no credentials for discord/%s"
+                            " — skipping",
                             bot_id,
                         )
                         continue

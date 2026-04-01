@@ -1,13 +1,13 @@
 # Lyra — Prioritized Roadmap
 
 > Living document. Updated as decisions are made.
-> Last updated: 2026-03-22
+> Last updated: 2026-04-01
 
 ---
 
 ## Current focus
 
-**Phase 1b complete. Architecture refactoring complete.** All Phase 1b items shipped + full module decomposition + hardening. Next: Phase 2 (#60) or #136 (multi-bot registry, blocked by #79).
+**Phase 1b complete. Architecture refactoring complete. NATS standalone mode shipped (#458).** Hub and adapters now run as three separate processes on Machine 1, communicating over NATS. Next: Phase 2 Machine 2 LLM worker (#51), or #136 (multi-bot registry, blocked by #79).
 
 ---
 
@@ -19,7 +19,7 @@
 | **1** | — | ✅ Done | Hub: asyncio bus, adapters (Telegram/Discord), SimpleAgent, command router |
 | **1b** | #73 | ✅ Done | Agent core: persona ✅, SDK agent ✅, parity audit ✅, memory foundation ✅, hub refactor ✅, command sessions ✅, architecture refactoring ✅ |
 | **Voice** | #74 | 🔓 Unblocked | TTS + STT integration — unblocked since #76 shipped |
-| **2** | #60 | Planned | NATS introduction + Machine 2 coordination |
+| **2** | #60 | Partial | NATS standalone mode ✅ done (#458); Machine 2 LLM worker coordination = planned |
 | **3** | #61 | Frozen | Atomic SLMs + cognitive pipeline |
 | **4** | #62 | Frozen | Resilience, observability, security |
 | **5** | #63 | Frozen | Multi-agent orchestration |
@@ -148,7 +148,7 @@
 
 | # | Issue | Priority | Status |
 |---|-------|----------|--------|
-| #133 | Split Lyra adapters into independent supervisor processes | P2 | Open |
+| #133 | Split Lyra adapters into independent supervisor processes | P2 | ✅ Done (#458) |
 | #132 | Document Machine 2 supervisor setup + voice daemons | P2 | Open |
 | #123 | Claude CLI wrapper library — extract 2ndBrain pool design | P2 | Open |
 
@@ -174,19 +174,20 @@
 
 ## Phase 2 — NATS + Machine 2 (#60)
 
-> Start after Phase 1b tail + voice pipeline are stable.
+> NATS standalone mode (single-machine) shipped in #458. Remaining: Machine 2 LLM worker coordination.
 
-| # | Issue | Priority |
-|---|-------|----------|
-| #49 | Install NATS server on Machine 1 | P2 |
-| #50 | NatsBus implementation | P2 |
-| #48 | Bus abstraction — LocalBus/NatsBus interface | P2 |
-| #51 | LLM worker on Machine 2 — NATS-based inference service | P2 |
-| #52 | Health check system — heartbeat + worker status | P2 |
-| #56 | JetStream persistence — survive restarts, replay | P3 |
-| #57 | NATS observability — Prometheus + Grafana | P3 |
-| #58 | NATS auth — nkey/JWT | P3 |
-| #23 | Machine 2 timeout + circuit breaker + cloud fallback | P2 |
+| # | Issue | Priority | Status |
+|---|-------|----------|--------|
+| #49 | Install NATS server on Machine 1 | P2 | ✅ Done (#458) |
+| #50 | NatsBus implementation | P2 | ✅ Done (#458) |
+| #48 | Bus abstraction — LocalBus/NatsBus interface | P2 | ✅ Done (#458) |
+| #458 | Adapters as thin NATS clients — standalone hub + adapter processes | P2 | ✅ Done |
+| #51 | LLM worker on Machine 2 — NATS-based inference service | P2 | Planned |
+| #52 | Health check system — heartbeat + worker status | P2 | Planned |
+| #56 | JetStream persistence — survive restarts, replay | P3 | Planned |
+| #57 | NATS observability — Prometheus + Grafana | P3 | Planned |
+| #58 | NATS auth — nkey/JWT | P3 | Planned |
+| #23 | Machine 2 timeout + circuit breaker + cloud fallback | P2 | Planned |
 
 ---
 
@@ -249,7 +250,7 @@ Feature work accumulates silently. `core/` had grown to 60+ files; over a dozen 
 
 > Explicitly frozen. Reconsider when Phase 1b tail + voice are done.
 
-- **NATS / distributed bus** — Phase 2, needs Phase 1b stable first
+- **NATS Machine 2 LLM worker** — Phase 2 (#51); NATS standalone (single-machine, three-process) already shipped in #458
 - **Atomic SLMs** — Phase 3, no local model benchmark done yet (#14)
 - **Proactive engine** — Phase 2, no infra for it yet
 - **Funding rate arbitrage** — full-time topic, incompatible with solo
@@ -264,7 +265,7 @@ Feature work accumulates silently. `core/` had grown to 60+ files; over a dozen 
 - LegalTech go/no-go → social signals #10 (min: 3 qualified DMs or 1 pricing request)
 - MedTech go/no-go → social signals #11
 - YouTube automation → after 1 validated manual workflow
-- NATS adoption → after Phase 1b tail shipped and stable in production
+- NATS Machine 2 LLM worker → after voice pipeline stable and Machine 2 benchmarked (#14)
 
 ---
 

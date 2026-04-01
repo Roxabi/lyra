@@ -88,6 +88,21 @@ lyra agent delete <name>  # refuses if bot still assigned
 - Commits: Conventional Commits (`feat:`, `fix:`, `chore:`, etc.)
 - Issues: via `dev-core` workflow (`/dev #N`)
 
+## Production entry points (NATS three-process mode)
+
+Lyra runs as three separate supervisor processes on Machine 1:
+
+| Supervisor program | CLI command | Bootstrap function |
+|-------------------|-------------|-------------------|
+| `lyra_hub` | `lyra hub` | `_bootstrap_hub_standalone()` |
+| `lyra_telegram` | `lyra adapter telegram` | `_bootstrap_adapter_standalone()` |
+| `lyra_discord` | `lyra adapter discord` | `_bootstrap_adapter_standalone()` |
+
+Scripts: `run_hub.sh` and `run_adapter.sh` in the lyra-stack supervisor conf.
+NATS topics: `lyra.inbound.<platform>.<bot_id>` (adapter→hub) · `lyra.outbound.<platform>.<bot_id>` (hub→adapter).
+
+The old single-process mode (`python -m lyra --adapter telegram` → `_bootstrap_multibot`) still exists in the codebase but is no longer the production deployment mode.
+
 ## Gotchas
 
 <!-- Add project-specific gotchas here -->

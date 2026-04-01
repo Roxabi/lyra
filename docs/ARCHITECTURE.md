@@ -1,7 +1,7 @@
 # Lyra — Architecture & Decisions
 
 > Living document. Updated as decisions are made.
-> Last updated: 2026-03-17 (Phase 1b complete + architecture refactoring: module decomposition #294–#312, auth split #313/#314, deduplication, timeout hardening #317, session resumption #318)
+> Last updated: 2026-04-01 (NATS three-process mode: standalone hub + per-adapter processes — #458)
 
 ---
 
@@ -112,23 +112,29 @@ Default (`large-v3-turbo`) adds ~3GB → total **~8.5GB / 10GB** with 1.5GB head
 
 ### Overview
 
+**Production deployment (NATS three-process mode, #458):**
+
 ```
-Telegram ──▶ tg_inbound Queue ──┐
-                                 ├──▶ InboundBus (staging) ──▶ Hub ──▶ resolve_binding()
-Discord  ──▶ dc_inbound Queue ──┘         (bounded 100)        │
-                                                                ▼
-                                                        get_or_create_pool()
-                                                                │
-                                                                ▼
-                                                        agent.process(msg, pool)
-                                                                │
-                                               ┌────────────────┴────────────────┐
-                                               │                                 │
-                                      tg_outbound Queue                dc_outbound Queue
-                                      OutboundDispatcher               OutboundDispatcher
-                                               │                                 │
-                                          Telegram                           Discord
+lyra_telegram process                   lyra_hub process                    lyra_discord process
+─────────────────────                   ────────────────────                ────────────────────
+aiogram long-poll                       open_stores()                       discord.py gateway
+      │                                 NatsBus                                   │
+      │  lyra.inbound.telegram.<bot>         │                                    │
+      ├────────────────────────────────▶ InboundBus ──▶ Hub ──▶ resolve_binding() │
+      │                                                   │                        │
+      │                                           get_or_create_pool()             │
+      │                                                   │                        │
+      │                                           agent.process(msg, pool)         │
+      │                                                   │                        │
+      │  lyra.outbound.telegram.<bot>                     │  lyra.outbound.discord.<bot>
+      ◀───────────────────────────────────────────────────┴───────────────────────▶
+NatsOutboundListener                                                    NatsOutboundListener
+sends reply to user                                                     sends reply to user
 ```
+
+All three processes run on Machine 1. NATS topics: `lyra.inbound.<platform>.<bot_id>` (adapter→hub) and `lyra.outbound.<platform>.<bot_id>` (hub→adapter).
+
+**Legacy single-process mode** (`python -m lyra --adapter telegram` → `_bootstrap_multibot`) still exists in the codebase but is no longer the production deployment mode.
 
 **Adapter registry** (`dict[tuple[Platform, str], ChannelAdapter]`) — keyed by `(platform, bot_id)`. Multiple bots per platform are supported; each registers independently via `hub.register_adapter(Platform.TELEGRAM, bot_id, adapter)`. The OutboundDispatcher routes responses back to the originating channel.
 
@@ -244,7 +250,7 @@ After the Phase 1b refactoring, every module is ≤300 LOC. Key decomposition:
 | **Outbound** | `outbound_dispatcher.py` | `outbound_errors.py` |
 | **Telegram** | `telegram.py` (adapter shell) | `telegram_inbound.py`, `telegram_outbound.py`, `telegram_normalize.py`, `telegram_audio.py`, `telegram_formatting.py` |
 | **Discord** | `discord.py` (adapter shell) | `discord_inbound.py`, `discord_outbound.py`, `discord_normalize.py`, `discord_audio.py`, `discord_audio_outbound.py`, `discord_formatting.py`, `discord_threads.py`, `discord_voice.py`, `discord_voice_commands.py` |
-| **Bootstrap** | `multibot.py` | `multibot_stores.py`, `multibot_wiring.py` |
+| **Bootstrap** | `multibot.py` (legacy single-process) | `multibot_stores.py`, `multibot_wiring.py`; standalone entry points: `_bootstrap_hub_standalone()` (hub process), `_bootstrap_adapter_standalone()` (adapter process) |
 | **Shared** | `adapters/_shared.py` | Common adapter utilities (typing control, etc.) |
 
 ### The Bus
@@ -294,7 +300,9 @@ Examples:
 
 ### Multi-Bot Architecture
 
-Lyra supports N bots per platform within a single process. The key structures that make this work:
+In NATS standalone mode (production), each adapter runs as its own process (`lyra adapter telegram`, `lyra adapter discord`) and communicates with the hub over NATS. The hub still maintains the adapter registry, but adapters are now remote NATS clients rather than in-process objects.
+
+In the legacy single-process mode (`_bootstrap_multibot`), N bots per platform run within a single process. The key structures that make both modes work:
 
 **Adapter registry** — `dict[(Platform, bot_id), ChannelAdapter]`
 
@@ -583,6 +591,7 @@ Secrets: `TELEGRAM_TOKEN`, `ANTHROPIC_API_KEY`, `TELEGRAM_ADMIN_CHAT_ID` in `.en
 | Embeddings | fastembed ONNX (nomic-embed-text) + sqlite-vec |
 | Process mgmt | supervisord + systemd |
 | Internal API | FastAPI |
+| Message bus | NATS (standalone mode: hub + adapters on Machine 1); `NatsBus` + `NatsOutboundListener` |
 
 ### Machine 2 (AI Server)
 
@@ -592,9 +601,11 @@ Secrets: `TELEGRAM_TOKEN`, `ANTHROPIC_API_KEY`, `TELEGRAM_ADMIN_CHAT_ID` in `.en
 | Exposed API | FastAPI `/llm` |
 | Protocol | OpenAI-compatible |
 
-### Inter-machine Communication
+### Inter-process / Inter-machine Communication
 
-`httpx` async on local network (HTTP/2). No gRPC — unnecessary at this throughput.
+**Same-machine (current):** NATS on localhost. Hub and adapter processes communicate via `lyra.inbound.*` / `lyra.outbound.*` topics. No HTTP between processes.
+
+**Inter-machine (Phase 2, planned):** `httpx` async on local network (HTTP/2) or NATS cluster for Machine 2 LLM worker. No gRPC — unnecessary at this throughput.
 
 ```python
 client = AsyncOpenAI(
@@ -611,7 +622,7 @@ client = AsyncOpenAI(
 
 - **Python + asyncio** — Go/Rust/Zig/Node eliminated. Python AI ecosystem is unbeatable, asyncio is sufficient for 1-5 I/O-bound users.
 - **2 machines** — Machine 1 autonomous (hub + TTS + embeddings), Machine 2 on demand (heavy LLM). Eliminates VRAM contention.
-- **Cloud LLM by default** — LlmProvider protocol (#123 ✅) with two drivers: `ClaudeCliDriver` (CLI subprocess) and `AnthropicSdkDriver` (direct API). Smart routing (#134 ✅) selects model by complexity. Local LLM on Machine 2 = Phase 2 (NATS worker).
+- **Cloud LLM by default** — LlmProvider protocol (#123 ✅) with two drivers: `ClaudeCliDriver` (CLI subprocess) and `AnthropicSdkDriver` (direct API). Smart routing (#134 ✅) selects model by complexity. NATS standalone mode (hub + adapters as separate processes on Machine 1) ✅ done (#458). Local LLM on Machine 2 via NATS worker = Phase 2 (#51).
 - **SQLite** — No Postgres. SQLite + WAL mode + `aiosqlite` amply covers personal use.
 
 ### Resolved decisions (Phase 1b completions)
@@ -651,7 +662,7 @@ client = AsyncOpenAI(
 
 ### Deferred Gaps (Phase 2)
 
-- **Machine 2 / local LLM** — OllamaDriver in #123 will add the driver; NATS worker for Machine 2 is Phase 2 (#51). Circuit breaker for remote LLM: #23.
+- **Machine 2 / local LLM** — OllamaDriver in #123 will add the driver; NATS worker for Machine 2 is Phase 2 (#51). Circuit breaker for remote LLM: #23. NATS standalone mode (single-machine, three-process) is ✅ done (#458).
 - **Machine 1 VRAM under load** — Measure with `nvidia-smi` before planning Phase 2 SLMs.
 - **Memory levels 2, 4** — Episodic Markdown logs (L2), procedural seeds (L4) deferred. Add when real need arises. (L1 raw turn logging shipped in #67.)
 
@@ -698,7 +709,7 @@ What is **explicitly excluded from Phase 1**:
 - Atomic SLMs (Phase 3)
 - Cognitive meta-language between SLMs
 - Knowledge graph (optional level 4)
-- Machine 2 / local LLM (Phase 2, NATS-based)
+- Machine 2 / local LLM (Phase 2, NATS-based) — NATS standalone mode ✅ done; Machine 2 LLM worker still Phase 2
 - Hash-chained audit trail (Phase 4 — unnecessary for personal use)
 
 ## Phase 2 — Atomic SLM & Cognitive Meta-language

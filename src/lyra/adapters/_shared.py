@@ -24,6 +24,7 @@ from lyra.adapters._shared_audio import (
     _MAX_OUTBOUND_AUDIO_BYTES,
     AUDIO_MIME_TYPES,
     _PartialAudioError,
+    buffer_and_render_audio,
     buffer_audio_chunks,
     mime_to_ext,
 )
@@ -45,6 +46,7 @@ __all__ = [
     "_AUDIO_EXTS",
     "_MAX_OUTBOUND_AUDIO_BYTES",
     "_PartialAudioError",
+    "buffer_and_render_audio",
     "buffer_audio_chunks",
     "mime_to_ext",
     "ATTACHMENT_EXTS_BASE",

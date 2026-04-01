@@ -12,8 +12,7 @@ import discord
 from lyra.adapters._shared import (
     _AUDIO_EXTS,
     DISCORD_MAX_LENGTH,
-    _PartialAudioError,
-    buffer_audio_chunks,
+    buffer_and_render_audio,
     mime_to_ext,
     parse_reply_to_id,
     sanitize_filename,
@@ -209,15 +208,7 @@ async def render_audio_stream(
             inbound.id,
         )
         return
-
-    try:
-        assembled = await buffer_audio_chunks(chunks)
-    except _PartialAudioError as e:
-        await render_audio_fn(e.audio, inbound)
-        raise e.cause from e
-    if assembled is None:
-        return
-    await render_audio_fn(assembled, inbound)
+    await buffer_and_render_audio(chunks, inbound, render_audio_fn)
 
 
 async def render_voice_stream(

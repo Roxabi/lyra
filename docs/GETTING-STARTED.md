@@ -239,9 +239,10 @@ lyra bot add --platform discord --bot-id lyra
 
 This encrypts and stores the tokens in `~/.lyra/auth.db`.
 
-> **Note:** `.env` is mostly for non-secret config (TTS engine, STT model size). The exception
-> is monitoring secrets (`TELEGRAM_TOKEN`, `TELEGRAM_ADMIN_CHAT_ID`) which the monitoring cron
-> reads directly from `.env` since it runs as a standalone process outside the hub.
+> **Note:** `.env` is mostly for non-secret config. Required entries:
+> - `NATS_URL=nats://127.0.0.1:4222` — the Hub and adapters connect via NATS (set up in Step 10)
+> - `TELEGRAM_TOKEN`, `TELEGRAM_ADMIN_CHAT_ID` — monitoring cron reads these directly from `.env`
+>
 > See `.env.example` for all available options.
 
 ---
@@ -256,7 +257,34 @@ Follow the prompts to authenticate. Lyra uses Claude Code as its LLM backend —
 
 ---
 
-## Step 10 — Enable auto-start on boot
+## Step 10 — NATS (required)
+
+Lyra runs the Hub and adapters as separate processes connected via NATS. This is required even on a single machine.
+
+```bash
+cd ~/projects/lyra-stack
+
+# Install NATS binary, system user, systemd unit + firewall rule (needs sudo)
+make nats-install
+
+# Single-machine: install the simple localhost config (no TLS, no auth)
+sudo install -m 644 nats/nats-local.conf /etc/nats/nats.conf
+
+# Start + verify
+sudo systemctl start nats.service
+sudo systemctl status nats.service
+
+# Add NATS_URL to lyra's .env
+echo "NATS_URL=nats://127.0.0.1:4222" >> ~/projects/lyra/.env
+```
+
+> **Multi-machine (Hub on Machine 2):** Use `nats/nats.conf` instead (TLS + nkeys).
+> Generate credentials with `sudo scripts/gen-nats-certs.sh` and `sudo scripts/gen-nats-nkeys.sh`,
+> then add nkey auth to `.env`. See `lyra-stack/README.md` for the full multi-machine setup.
+
+---
+
+## Step 11 — Enable auto-start on boot
 
 ```bash
 # Enable the systemd user unit + linger (runs without login session)
@@ -267,7 +295,7 @@ loginctl enable-linger $USER
 systemctl --user start lyra-stack
 ```
 
-## Step 11 — Enable health monitoring
+## Step 12 — Enable health monitoring
 
 The monitoring system runs as a separate **systemd user timer** (not part of supervisor). It runs every 5 minutes, checks hub health, and sends Telegram alerts on anomalies.
 
@@ -294,7 +322,7 @@ make monitor run      # trigger a manual check
 make monitor status   # check result
 ```
 
-## Step 12 — Verify services
+## Step 13 — Verify services
 
 ```bash
 cd ~/projects/lyra-stack
@@ -303,6 +331,7 @@ make ps
 
 You should see:
 ```
+lyra_hub         RUNNING   pid 12344, uptime 0:00:10
 lyra_telegram    RUNNING   pid 12345, uptime 0:00:10
 lyra_discord     RUNNING   pid 12346, uptime 0:00:10
 voicecli_tts     RUNNING   pid 12347, uptime 0:00:10
@@ -323,22 +352,23 @@ make monitor logs   # tail monitoring cron output (journalctl)
 
 ---
 
-## Step 13 — Send your first message
+## Step 14 — Send your first message
 
 **Telegram:** Open a DM with your bot and type anything. Lyra will respond.
 
 **Discord:** @mention your bot in a channel: `@YourBot hello!`
 
 What happens under the hood:
-1. The adapter normalizes your message into an `InboundMessage` object
-2. It goes onto the hub's async bus (`asyncio.Queue`)
-3. The hub resolves the routing (wildcard binding → your user gets an isolated pool)
+1. The adapter (standalone process) normalizes your message into an `InboundMessage`
+2. It publishes to NATS (`lyra.inbound.<platform>.<bot_id>`)
+3. The Hub picks it up via its `NatsBus` subscription and resolves the routing
 4. `SimpleAgent` sends the text to a persistent `claude` subprocess
-5. The response is dispatched back to the originating platform
+5. The Hub publishes the response to NATS (`lyra.outbound.<platform>.<bot_id>`)
+6. The `NatsOutboundListener` in the adapter process receives it and dispatches to the platform
 
 ---
 
-## Step 14 — Set up lyra agent account (optional)
+## Step 15 — Set up lyra agent account (optional)
 
 Generate a dedicated SSH key for the agent on Machine 2:
 
@@ -376,37 +406,11 @@ ssh -i ~/.ssh/lyra_agent lyra@<MACHINE_1_IP> "id && git --version"
 
 **Daily commands** (from `~/projects/lyra-stack`):
 ```bash
-make ps              # status of all services
-make lyra reload     # restart lyra
-make lyra logs       # tail logs
-make deploy          # pull latest + restart (from Machine 2)
+make ps              # status of all services (lyra_hub + lyra_telegram + lyra_discord)
+make lyra reload     # restart hub + both adapters
+make lyra logs       # tail lyra_telegram stdout
+make deploy          # pull latest + run tests + restart (from Machine 2)
 ```
-
----
-
-## Step 15 — NATS (optional, multi-machine only)
-
-NATS is the message bus for distributed Lyra (hub + compute workers). Single-machine setups skip this entirely.
-
-```bash
-cd ~/projects/lyra-stack
-
-# Install NATS server, user, config, systemd unit + lyra-stack ordering
-make nats-install
-
-# Generate TLS certs + nkey auth
-sudo scripts/gen-nats-certs.sh
-sudo scripts/gen-nats-nkeys.sh
-
-# Start + verify
-sudo systemctl start nats.service
-sudo systemctl status nats.service
-
-# Restart lyra-stack to pick up After=nats.service ordering
-systemctl --user restart lyra-stack.service
-```
-
-See the [Multi-machine setup](https://github.com/Roxabi/lyra-stack#multi-machine-setup) section in `lyra-stack/README.md` for full details.
 
 ---
 

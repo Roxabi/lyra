@@ -22,9 +22,10 @@ from lyra.core.message import (
     OutboundMessage,
     Platform,
 )
-from lyra.core.render_events import RenderEvent, TextRenderEvent
+from lyra.core.render_events import RenderEvent
 from lyra.core.trust import TrustLevel
 from lyra.nats._serialize import serialize
+from lyra.nats.render_event_codec import NatsRenderEventCodec
 
 log = logging.getLogger(__name__)
 
@@ -103,18 +104,13 @@ class NatsChannelProxy:
         seq = 0
         try:
             async for event in events:
-                event_type = (
-                    "text" if isinstance(event, TextRenderEvent) else "tool_summary"
-                )
+                event_type, payload, is_done = NatsRenderEventCodec.encode(event)
                 chunk = {
                     "stream_id": original_msg.id,
                     "seq": seq,
                     "event_type": event_type,
-                    "payload": json.loads(serialize(event).decode("utf-8")),
-                    "done": (
-                        getattr(event, "is_final", False)
-                        or getattr(event, "is_complete", False)
-                    ),
+                    "payload": payload,
+                    "done": is_done,
                 }
                 await self._nc.publish(
                     subject,

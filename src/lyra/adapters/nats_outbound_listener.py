@@ -6,12 +6,13 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 
 from lyra.core.message import (
+    InboundAudio,
     InboundMessage,
     OutboundAttachment,
     OutboundMessage,
@@ -48,12 +49,12 @@ class NatsOutboundListener:
         self._platform = platform
         self._bot_id = bot_id
         self._adapter = adapter
-        self._cache: dict[str, InboundMessage] = {}
+        self._cache: dict[str, InboundMessage | InboundAudio] = {}
         self._stream_queues: dict[str, asyncio.Queue[dict]] = {}
         self._stream_tasks: dict[str, asyncio.Task[None]] = {}
         self._sub: Any = None  # nats.aio.subscription.Subscription | None
 
-    def cache_inbound(self, msg: InboundMessage) -> None:
+    def cache_inbound(self, msg: InboundMessage | InboundAudio) -> None:
         """Store msg so it can be retrieved later by stream_id."""
         self._cache[msg.id] = msg
 
@@ -107,7 +108,7 @@ class NatsOutboundListener:
         except Exception:
             log.warning("NatsOutboundListener: failed to deserialize outbound message")
             return
-        await self._adapter.send(original_msg, outbound)
+        await self._adapter.send(cast(InboundMessage, original_msg), outbound)
         self._cache.pop(stream_id, None)
 
     async def _handle_attachment(self, data: dict) -> None:
@@ -127,7 +128,9 @@ class NatsOutboundListener:
         except Exception:
             log.warning("NatsOutboundListener: failed to deserialize attachment")
             return
-        await self._adapter.render_attachment(attachment, original_msg)
+        await self._adapter.render_attachment(
+            attachment, cast(InboundMessage, original_msg)
+        )
         self._cache.pop(stream_id, None)
 
     async def _handle_chunk(self, data: dict) -> None:
@@ -182,7 +185,9 @@ class NatsOutboundListener:
                     break
 
         try:
-            await self._adapter.send_streaming(original_msg, _events())
+            await self._adapter.send_streaming(
+                cast(InboundMessage, original_msg), _events()
+            )
         except Exception:
             log.exception(
                 "NatsOutboundListener: send_streaming failed for stream_id=%r",

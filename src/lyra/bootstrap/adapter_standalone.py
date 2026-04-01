@@ -4,7 +4,9 @@ NATS client, without a local Hub instance.
 Entry point: _bootstrap_adapter_standalone(raw_config, platform)
 
 Used by lyra_telegram and lyra_discord supervisor programs in NATS mode (ADR-037).
-Tokens are read from the encrypted credential store (same source as hub mode).
+Tokens are read from the encrypted credential store (same source as hub mode),
+then the store is closed immediately — adapters do not hold auth.db open during
+their long-lived polling/websocket phase.
 Telegram uses aiogram long-polling; Discord uses its websocket connection.
 """
 from __future__ import annotations
@@ -53,15 +55,6 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915
     vault_dir = Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra")))
     vault_dir.mkdir(parents=True, exist_ok=True)
 
-    # Adapters only need credentials — open CredentialStore directly rather than
-    # the full open_stores() bundle. This avoids SQLite contention with the Hub
-    # process which opens all stores simultaneously at startup.
-    keyring = LyraKeyring.load_or_create(vault_dir / "keyring.key")
-    cred_store = CredentialStore(db_path=vault_dir / "auth.db", keyring=keyring)
-    await cred_store.connect()
-
-    # nc.close() is deferred to the outer finally so the shared connection stays
-    # alive for all bots (previously closed per-iteration — bug).
     try:
         if platform == "telegram":
             from lyra.adapters.telegram import TelegramAdapter
@@ -73,20 +66,33 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915
             if not tg_multi_cfg.bots:
                 sys.exit("No telegram bots configured")
 
-            # Wire all bots; collect (adapter, inbound_bus) pairs for teardown
+            # Gather credentials then close the store immediately — don't hold
+            # auth.db open during long-lived polling (causes Hub DB lock).
+            keyring = LyraKeyring.load_or_create(vault_dir / "keyring.key")
+            cred_store = CredentialStore(db_path=vault_dir / "auth.db", keyring=keyring)
+            await cred_store.connect()
+            tg_creds: dict[str, tuple[str, str | None]] = {}
+            try:
+                for bot_cfg in tg_multi_cfg.bots:
+                    bot_id = bot_cfg.bot_id
+                    creds = await cred_store.get_full("telegram", bot_id)
+                    if creds is None:
+                        log.error(
+                            "adapter_standalone: no credentials for telegram/%s — skipping",
+                            bot_id,
+                        )
+                        continue
+                    tg_creds[bot_id] = creds
+            finally:
+                await cred_store.close()
+
             wired: list[tuple[TelegramAdapter, Bus[InboundMessage]]] = []
 
             for bot_cfg in tg_multi_cfg.bots:
                 bot_id = bot_cfg.bot_id
-
-                tg_creds = await cred_store.get_full("telegram", bot_id)
-                if tg_creds is None:
-                    log.error(
-                        "adapter_standalone: no credentials for telegram/%s — skipping",
-                        bot_id,
-                    )
+                if bot_id not in tg_creds:
                     continue
-                token, webhook_secret = tg_creds
+                token, webhook_secret = tg_creds[bot_id]
 
                 inbound_bus: Bus[InboundMessage] = NatsBus(  # type: ignore[type-arg]
                     nc=nc,
@@ -127,7 +133,6 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915
                 for sig in (signal.SIGTERM, signal.SIGINT):
                     loop.add_signal_handler(sig, stop.set)
 
-            # All bots poll concurrently
             poll_tasks = [
                 asyncio.create_task(
                     a.dp.start_polling(a.bot, handle_signals=False),
@@ -155,19 +160,33 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915
             if not dc_multi_cfg.bots:
                 sys.exit("No discord bots configured")
 
+            # Gather credentials then close the store immediately.
+            keyring = LyraKeyring.load_or_create(vault_dir / "keyring.key")
+            cred_store = CredentialStore(db_path=vault_dir / "auth.db", keyring=keyring)
+            await cred_store.connect()
+            dc_creds: dict[str, str] = {}
+            try:
+                for bot_cfg in dc_multi_cfg.bots:
+                    bot_id = bot_cfg.bot_id
+                    creds = await cred_store.get_full("discord", bot_id)
+                    if creds is None:
+                        log.error(
+                            "adapter_standalone: no credentials for discord/%s — skipping",
+                            bot_id,
+                        )
+                        continue
+                    token, _ = creds
+                    dc_creds[bot_id] = token
+            finally:
+                await cred_store.close()
+
             wired_dc: list[tuple[DiscordAdapter, str, Bus[InboundMessage]]] = []
 
             for bot_cfg in dc_multi_cfg.bots:
                 bot_id = bot_cfg.bot_id
-
-                dc_creds = await cred_store.get_full("discord", bot_id)
-                if dc_creds is None:
-                    log.error(
-                        "adapter_standalone: no credentials for discord/%s — skipping",
-                        bot_id,
-                    )
+                if bot_id not in dc_creds:
                     continue
-                token, _ = dc_creds
+                token = dc_creds[bot_id]
 
                 inbound_bus_dc: Bus[InboundMessage] = NatsBus(  # type: ignore[type-arg]
                     nc=nc,
@@ -209,7 +228,6 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915
                 for sig in (signal.SIGTERM, signal.SIGINT):
                     loop.add_signal_handler(sig, stop_dc.set)
 
-            # All bots connect concurrently
             start_tasks = [
                 asyncio.create_task(
                     a.start(tok),
@@ -225,8 +243,9 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915
             finally:
                 for _, _, ibus in wired_dc:
                     await ibus.stop()
+
         else:
             sys.exit(f"Unknown platform: {platform!r}")
+
     finally:
-        await cred_store.close()
         await nc.close()

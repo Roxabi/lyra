@@ -27,13 +27,13 @@ class TestDiscordAutoThread:
         from lyra.adapters.discord import DiscordAdapter
 
         # Arrange
-        hub = MagicMock()
-        hub.inbound_bus = MagicMock()
-        hub.inbound_bus.put = AsyncMock()
+        inbound_bus = MagicMock()
+        inbound_bus.put = AsyncMock()
 
         adapter = DiscordAdapter(
-            hub=hub,
             bot_id="main",
+            inbound_bus=inbound_bus,
+            inbound_audio_bus=MagicMock(),
             intents=discord.Intents.none(),
             auto_thread=True,
             auth=_ALLOW_ALL,
@@ -68,9 +68,9 @@ class TestDiscordAutoThread:
         # Assert — create_thread was called once
         create_thread_mock.assert_awaited_once()
 
-        # Assert — hub.inbound_bus.put was called and the InboundMessage has thread_id
-        hub.inbound_bus.put.assert_awaited_once()
-        _platform_arg, hub_msg = hub.inbound_bus.put.call_args[0]
+        # Assert — inbound_bus.put was called and the InboundMessage has thread_id
+        inbound_bus.put.assert_awaited_once()
+        _platform_arg, hub_msg = inbound_bus.put.call_args[0]
         assert hub_msg.platform_meta["thread_id"] == 9999
         assert hub_msg.scope_id == "thread:9999"
 
@@ -80,13 +80,13 @@ class TestDiscordAutoThread:
         from lyra.adapters.discord import DiscordAdapter
 
         # Arrange
-        hub = MagicMock()
-        hub.inbound_bus = MagicMock()
-        hub.inbound_bus.put = AsyncMock()
+        inbound_bus = MagicMock()
+        inbound_bus.put = AsyncMock()
 
         adapter = DiscordAdapter(
-            hub=hub,
             bot_id="main",
+            inbound_bus=inbound_bus,
+            inbound_audio_bus=MagicMock(),
             intents=discord.Intents.none(),
             auto_thread=True,
             auth=_ALLOW_ALL,
@@ -124,13 +124,13 @@ class TestDiscordAutoThread:
         from lyra.adapters.discord import DiscordAdapter
 
         # Arrange
-        hub = MagicMock()
-        hub.inbound_bus = MagicMock()
-        hub.inbound_bus.put = AsyncMock()
+        inbound_bus = MagicMock()
+        inbound_bus.put = AsyncMock()
 
         adapter = DiscordAdapter(
-            hub=hub,
             bot_id="main",
+            inbound_bus=inbound_bus,
+            inbound_audio_bus=MagicMock(),
             intents=discord.Intents.none(),
             auto_thread=False,
             auth=_ALLOW_ALL,
@@ -164,13 +164,13 @@ class TestDiscordAutoThread:
         from lyra.adapters.discord import DiscordAdapter
 
         # Arrange
-        hub = MagicMock()
-        hub.inbound_bus = MagicMock()
-        hub.inbound_bus.put = AsyncMock()
+        inbound_bus = MagicMock()
+        inbound_bus.put = AsyncMock()
 
         adapter = DiscordAdapter(
-            hub=hub,
             bot_id="main",
+            inbound_bus=inbound_bus,
+            inbound_audio_bus=MagicMock(),
             intents=discord.Intents.none(),
             auto_thread=True,
             auth=_ALLOW_ALL,
@@ -198,7 +198,7 @@ class TestDiscordAutoThread:
         await adapter.on_message(discord_msg)
 
         # Assert — message still processed (bus.put called)
-        hub.inbound_bus.put.assert_awaited_once()
+        inbound_bus.put.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_auto_thread_exception_recovers_partial_thread(self) -> None:
@@ -206,13 +206,13 @@ class TestDiscordAutoThread:
         from lyra.adapters.discord import DiscordAdapter
 
         # Arrange
-        hub = MagicMock()
-        hub.inbound_bus = MagicMock()
-        hub.inbound_bus.put = AsyncMock()
+        inbound_bus = MagicMock()
+        inbound_bus.put = AsyncMock()
 
         adapter = DiscordAdapter(
-            hub=hub,
             bot_id="main",
+            inbound_bus=inbound_bus,
+            inbound_audio_bus=MagicMock(),
             intents=discord.Intents.none(),
             auto_thread=True,
             auth=_ALLOW_ALL,
@@ -248,8 +248,8 @@ class TestDiscordAutoThread:
         await adapter.on_message(discord_msg)
 
         # Assert — message processed with recovered thread scope
-        hub.inbound_bus.put.assert_awaited_once()
-        _platform_arg, hub_msg = hub.inbound_bus.put.call_args[0]
+        inbound_bus.put.assert_awaited_once()
+        _platform_arg, hub_msg = inbound_bus.put.call_args[0]
         assert hub_msg.scope_id == "thread:8888"
         assert hub_msg.platform_meta["thread_id"] == 8888
         assert 8888 in adapter._owned_threads

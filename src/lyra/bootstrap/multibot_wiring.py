@@ -65,7 +65,8 @@ async def wire_telegram_adapters(  # noqa: PLR0913 — wiring requires all deps
         adapter = TelegramAdapter(
             bot_id=bot_cfg.bot_id,
             token=tg_token,
-            hub=hub,
+            inbound_bus=hub.inbound_bus,
+            inbound_audio_bus=hub.inbound_audio_bus,
             webhook_secret=tg_webhook_secret or "",
             circuit_registry=circuit_registry,
             msg_manager=msg_manager,
@@ -171,8 +172,9 @@ async def wire_discord_adapters(  # noqa: PLR0913, C901 — wiring requires all 
                 watch_channels = _parse_channel_ids("watch_channels")
 
             adapter = DiscordAdapter(
-                hub=hub,
                 bot_id=bot_cfg.bot_id,
+                inbound_bus=hub.inbound_bus,
+                inbound_audio_bus=hub.inbound_audio_bus,
                 circuit_registry=circuit_registry,
                 msg_manager=msg_manager,
                 auto_thread=bot_cfg.auto_thread,
@@ -180,6 +182,8 @@ async def wire_discord_adapters(  # noqa: PLR0913, C901 — wiring requires all 
                 thread_store=thread_store,
                 watch_channels=watch_channels,
             )
+            # Wire identity resolver for slash command trust (voice commands).
+            adapter._resolve_identity_fn = hub.resolve_identity
             # C3: Hub is the trust authority — register here, not on adapter.
             hub.register_authenticator(Platform.DISCORD, bot_cfg.bot_id, auth)
             hub.register_adapter(Platform.DISCORD, bot_cfg.bot_id, adapter)

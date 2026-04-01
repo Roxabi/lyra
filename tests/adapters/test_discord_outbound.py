@@ -25,9 +25,12 @@ def _make_discord_adapter():
     """Build a DiscordAdapter with a MagicMock hub."""
     from lyra.adapters.discord import DiscordAdapter  # ImportError expected in RED
 
-    hub = MagicMock()
     return DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
 
 
@@ -43,12 +46,15 @@ async def test_own_message_is_filtered() -> None:
 
     from lyra.adapters.discord import DiscordAdapter  # ImportError expected in RED
 
-    hub = MagicMock()
-    hub.inbound_bus = MagicMock()
-    hub.inbound_bus.put = AsyncMock()
+    inbound_bus = MagicMock()
+    inbound_bus.put = AsyncMock()
 
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=inbound_bus,
+        inbound_audio_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
     bot_user = SimpleNamespace(id=999, bot=True)
     adapter._bot_user = bot_user
@@ -65,7 +71,7 @@ async def test_own_message_is_filtered() -> None:
 
     await adapter.on_message(discord_msg)
 
-    hub.inbound_bus.put.assert_not_called()
+    inbound_bus.put.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -78,9 +84,12 @@ async def test_send_reply_on_mention() -> None:
     """adapter.send() calls msg.reply(text) when is_mention=True."""
     from lyra.adapters.discord import DiscordAdapter
 
-    hub = MagicMock()
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
 
     mock_message = AsyncMock()
@@ -107,9 +116,12 @@ async def test_send_reply_on_no_mention() -> None:
     """send() still replies to the trigger message even when is_mention=False."""
     from lyra.adapters.discord import DiscordAdapter
 
-    hub = MagicMock()
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
 
     mock_message = AsyncMock()
@@ -136,9 +148,12 @@ async def test_send_stores_reply_message_id_channel_send() -> None:
     """send() via msg.reply() stores sent message id in metadata."""
     from lyra.adapters.discord import DiscordAdapter
 
-    hub = MagicMock()
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
 
     sent_msg = SimpleNamespace(id=888)
@@ -167,9 +182,12 @@ async def test_send_stores_reply_message_id_msg_reply() -> None:
     """send() via msg.reply() stores sent message id in outbound.metadata."""
     from lyra.adapters.discord import DiscordAdapter
 
-    hub = MagicMock()
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
 
     sent_msg = SimpleNamespace(id=7777)
@@ -198,9 +216,12 @@ async def test_send_no_reply_message_id_on_failure() -> None:
     """send() must NOT set reply_message_id in metadata when the send call throws."""
     from lyra.adapters.discord import DiscordAdapter
 
-    hub = MagicMock()
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
 
     mock_message = AsyncMock()

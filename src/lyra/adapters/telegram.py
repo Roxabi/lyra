@@ -15,7 +15,8 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
 
 if TYPE_CHECKING:
-    from lyra.core.hub import Hub
+    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.core.bus import Bus
     from lyra.core.render_events import RenderEvent
 
 from lyra.adapters import telegram_audio  # noqa: I001
@@ -78,26 +79,22 @@ def load_config() -> TelegramConfig:
 
 def _make_verifier(secret: str):
     """Return a FastAPI dependency that validates the Telegram webhook secret."""
-
     async def verify(request: Request) -> None:
         incoming = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
         if not secret or not hmac.compare_digest(incoming, secret):
             raise HTTPException(status_code=401, detail="Unauthorized")
-
     return verify
 
 
 class TelegramAdapter:
-    """Telegram channel adapter — aiogram v3 webhook style.
-
-    Never logs the bot token. Webhook route validates secret token header.
-    """
+    """Telegram adapter — aiogram v3 webhook. Never logs the bot token."""
 
     def __init__(  # noqa: PLR0913 — DI constructor
         self,
         bot_id: str,
         token: str,
-        hub: Hub,
+        inbound_bus: "Bus[InboundMessage]",
+        inbound_audio_bus: "Bus[InboundAudio]",
         webhook_secret: str = "",
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
@@ -120,7 +117,8 @@ class TelegramAdapter:
                 "webhook_secret is empty — all webhook requests will be rejected"
             )
         self._bot_username: str | None = None
-        self._hub: Hub = hub
+        self._inbound_bus = inbound_bus
+        self._inbound_audio_bus = inbound_audio_bus
         self._circuit_registry = circuit_registry
         self._msg_manager = msg_manager
         self._auth: Authenticator = auth
@@ -144,7 +142,6 @@ class TelegramAdapter:
         self._typing = TypingTaskManager()
         self._bot: Any = None
         self._dp: Any = None
-
         from aiogram import Dispatcher, F
 
         self._dp = Dispatcher()
@@ -155,6 +152,7 @@ class TelegramAdapter:
 
         self.app = FastAPI()
         self._register_routes()
+        self._outbound_listener: "NatsOutboundListener | None" = None
 
     @property
     def bot(self) -> Any:
@@ -170,11 +168,7 @@ class TelegramAdapter:
         self._bot = value
 
     async def resolve_identity(self) -> None:
-        """Discover the bot's username via the Telegram API (getMe).
-
-        Must be called once after the bot is available — analogous to
-        Discord's ``on_ready()`` which populates ``_bot_user``.
-        """
+        """Discover the bot's username via getMe — call once after startup."""
         me = await self.bot.get_me()
         self._bot_username = me.username
         log.info(
@@ -235,8 +229,14 @@ class TelegramAdapter:
     def _cancel_typing(self, chat_id: int) -> None:
         self._typing.cancel(chat_id)
 
+    async def astart(self) -> None:
+        if self._outbound_listener is not None:
+            await self._outbound_listener.start()
+
     async def close(self) -> None:
         await self._typing.cancel_all()
+        if self._outbound_listener is not None:
+            await self._outbound_listener.stop()
 
     # --- Thin delegates to submodules ---
 

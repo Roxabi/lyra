@@ -73,8 +73,12 @@ def make_dc_msg(channel_id: int = 99, message_id: int = 55) -> InboundMessage:
 
 
 def make_tg_adapter() -> TelegramAdapter:
-    hub = MagicMock()
-    adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub)
+    adapter = TelegramAdapter(
+        bot_id="main",
+        token="tok",
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
+    )
     bot_mock = AsyncMock()
     bot_mock.send_voice = AsyncMock()
     adapter.bot = bot_mock
@@ -82,8 +86,11 @@ def make_tg_adapter() -> TelegramAdapter:
 
 
 def make_dc_adapter() -> DiscordAdapter:
-    hub = MagicMock()
-    return DiscordAdapter(hub=hub, bot_id="main")
+    return DiscordAdapter(
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
+    )
 
 
 def make_dc_inbound_msg(
@@ -204,8 +211,12 @@ def make_dc_attach_msg(
 
 def make_tg_attach_adapter() -> TelegramAdapter:
     """TelegramAdapter with send_photo/send_video/send_document mocked."""
-    hub = MagicMock()
-    adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub)
+    adapter = TelegramAdapter(
+        bot_id="main",
+        token="tok",
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
+    )
     bot_mock = AsyncMock()
     bot_mock.send_photo = AsyncMock()
     bot_mock.send_video = AsyncMock()
@@ -216,8 +227,11 @@ def make_tg_attach_adapter() -> TelegramAdapter:
 
 def make_dc_attach_adapter() -> DiscordAdapter:
     """DiscordAdapter for render_attachment tests."""
-    hub = MagicMock()
-    return DiscordAdapter(hub=hub, bot_id="main")
+    return DiscordAdapter(
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -226,10 +240,13 @@ def make_dc_attach_adapter() -> DiscordAdapter:
 
 
 def _make_telegram_adapter() -> TelegramAdapter:
-    """Build a TelegramAdapter with a MagicMock hub (no bot attached)."""
-    hub = MagicMock()
+    """Build a TelegramAdapter with mock buses (no bot attached)."""
     adapter = TelegramAdapter(
-        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+        bot_id="main",
+        token="test-token-secret",
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
+        auth=_ALLOW_ALL,
     )
     return adapter
 
@@ -261,6 +278,36 @@ def _make_open_registry(service: str) -> CircuitRegistry:
             cb.record_failure()  # trips to OPEN
         registry.register(cb)
     return registry
+
+
+@pytest.fixture
+def mock_inbound_bus():
+    bus = MagicMock()
+    bus.put = AsyncMock()
+    return bus
+
+
+@pytest.fixture
+def telegram_adapter(mock_inbound_bus):
+    adapter = TelegramAdapter(
+        bot_id="main",
+        token="tok",
+        inbound_bus=mock_inbound_bus,
+        inbound_audio_bus=MagicMock(),
+    )
+    bot_mock = AsyncMock()
+    bot_mock.send_voice = AsyncMock()
+    adapter.bot = bot_mock
+    return adapter
+
+
+@pytest.fixture
+def discord_adapter(mock_inbound_bus):
+    return DiscordAdapter(
+        bot_id="main",
+        inbound_bus=mock_inbound_bus,
+        inbound_audio_bus=MagicMock(),
+    )
 
 
 _original_extract_cookies = httpx.Cookies.extract_cookies

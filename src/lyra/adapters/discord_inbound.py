@@ -252,8 +252,11 @@ async def _push_to_hub(
         if source_message is not None:
             await source_message.reply(text)
 
+    if adapter._outbound_listener is not None:
+        adapter._outbound_listener.cache_inbound(hub_msg)
+
     await push_to_hub_guarded(
-        inbound_bus=adapter._hub.inbound_bus,
+        inbound_bus=adapter._inbound_bus,
         platform=Platform.DISCORD,
         msg=hub_msg,
         circuit_registry=adapter._circuit_registry,

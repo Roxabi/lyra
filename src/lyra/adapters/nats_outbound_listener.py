@@ -160,7 +160,12 @@ class NatsOutboundListener:
             self._stream_queues.pop(stream_id, None)
             return
 
-        from lyra.core.render_events import TextRenderEvent
+        from lyra.core.render_events import (
+            FileEditSummary,
+            SilentCounts,
+            TextRenderEvent,
+            ToolSummaryRenderEvent,
+        )
 
         async def _events():
             expected_seq = 0
@@ -181,7 +186,27 @@ class NatsOutboundListener:
                 is_done = chunk.get("done", False)
                 if event_type == "text":
                     yield TextRenderEvent(**payload)
-                if is_done:
+                    if is_done:
+                        break
+                elif event_type == "tool_summary":
+                    files_raw = payload.get("files", {})
+                    silent_raw = payload.get("silent_counts", {})
+                    yield ToolSummaryRenderEvent(
+                        files={
+                            p: FileEditSummary(**d) for p, d in files_raw.items()
+                        },
+                        bash_commands=payload.get("bash_commands", []),
+                        web_fetches=payload.get("web_fetches", []),
+                        agent_calls=payload.get("agent_calls", []),
+                        silent_counts=(
+                            SilentCounts(**silent_raw)
+                            if isinstance(silent_raw, dict)
+                            else silent_raw
+                        ),
+                        is_complete=payload.get("is_complete", False),
+                    )
+                    # Don't break on tool_summary — final TextRenderEvent follows
+                elif event_type == "stream_end" or is_done:
                     break
 
         try:

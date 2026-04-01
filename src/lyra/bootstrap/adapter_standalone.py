@@ -180,6 +180,38 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915
             finally:
                 await cred_store.close()
 
+            from lyra.core.stores.agent_store import AgentStore
+            from lyra.core.stores.thread_store import ThreadStore
+
+            # Read per-bot settings then close — don't hold config.db open
+            # during the long-lived adapter lifecycle (same pattern as CredentialStore).
+            agent_store = AgentStore(db_path=vault_dir / "config.db")
+            await agent_store.connect()
+            dc_bot_watch_channels: dict[str, frozenset[int]] = {}
+            try:
+                for bot_cfg in dc_multi_cfg.bots:
+                    bot_settings = agent_store.get_bot_settings(
+                        "discord", bot_cfg.bot_id
+                    )
+                    raw_ids = bot_settings.get("watch_channels", [])
+                    valid: list[int] = []
+                    for ch in raw_ids:
+                        try:
+                            valid.append(int(ch))
+                        except (ValueError, TypeError):
+                            log.warning(
+                                "watch_channels: invalid channel id %r for bot %r"
+                                " — skipping",
+                                ch,
+                                bot_cfg.bot_id,
+                            )
+                    dc_bot_watch_channels[bot_cfg.bot_id] = frozenset(valid)
+            finally:
+                await agent_store.close()
+
+            dc_thread_store = ThreadStore(db_path=vault_dir / "discord.db")
+            await dc_thread_store.connect()
+
             wired_dc: list[tuple[DiscordAdapter, str, Bus[InboundMessage]]] = []
 
             for bot_cfg in dc_multi_cfg.bots:
@@ -205,6 +237,8 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915
                     inbound_audio_bus=inbound_audio_bus_dc,
                     auto_thread=bot_cfg.auto_thread,
                     thread_hot_hours=bot_cfg.thread_hot_hours,
+                    thread_store=dc_thread_store,
+                    watch_channels=dc_bot_watch_channels.get(bot_id, frozenset()),
                 )
 
                 listener_dc = NatsOutboundListener(

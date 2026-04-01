@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 import discord
 
-from lyra.adapters._shared import DISCORD_MAX_LENGTH, IntermediateTextState
+from lyra.adapters._shared import DISCORD_MAX_LENGTH, STREAMING_EDIT_INTERVAL, StreamState
 from lyra.adapters.discord_formatting import render_buttons, render_text
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
@@ -24,10 +24,6 @@ if TYPE_CHECKING:
     from lyra.adapters.discord import DiscordAdapter
 
 log = logging.getLogger("lyra.adapters.discord")
-
-# Seconds between intermediate streaming edits (debounce).
-# Aligned with Telegram. Respects Discord's ~1 edit/s rate limit per message.
-STREAMING_EDIT_INTERVAL = 1.0
 
 
 async def _discord_typing_worker(  # noqa: C901 — retry + error branches
@@ -243,74 +239,60 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: tool-su
             )
         return
 
-    had_tool_events = False
-    _istate = IntermediateTextState()
-    last_tool_edit: float | None = None
-    last_intermediate_edit: float | None = None
-    final_text: str | None = None
-    is_error_turn: bool = False
-    stream_error: Exception | None = None
+    _st = StreamState()
 
     try:
         async for event in events:
             if isinstance(event, ToolSummaryRenderEvent):
-                had_tool_events = True
+                _st.had_tool_events = True
                 # Don't overwrite intermediate text that is already visible in
                 # the placeholder — the tool summary would erase what the user
-                # can see. Tool summaries go into the embed, not _istate, so
-                # _istate._tool_summary is intentionally unused on Discord.
-                if not _istate.has_intermediate_text:
+                # can see. Tool summaries go into the embed, not istate, so
+                # istate._tool_summary is intentionally unused on Discord.
+                if not _st.istate.has_intermediate_text:
                     now = time.monotonic()
                     if (
                         event.is_complete
-                        or last_tool_edit is None
-                        or (now - last_tool_edit) >= STREAMING_EDIT_INTERVAL
+                        or _st.last_tool_edit is None
+                        or (now - _st.last_tool_edit) >= STREAMING_EDIT_INTERVAL
                     ):
                         embed = _build_tool_embed(event)
                         await _discord_send_with_retry(
                             lambda e=embed: placeholder.edit(content="", embed=e),
                             label="Tool summary embed",
                         )
-                        last_tool_edit = now
+                        _st.last_tool_edit = now
 
             else:  # TextRenderEvent
                 if event.is_final:
-                    final_text = event.text
-                    is_error_turn = event.is_error
+                    _st.on_final_text(event)
                 else:
                     # Intermediate text — delegate accumulation and ⏳ formatting
                     # to IntermediateTextState; Discord doesn't combine the recap
                     # (it lives in a separate embed).
-                    _istate.append(event.text)
+                    _st.istate.append(event.text)
                     now = time.monotonic()
                     if (
-                        last_intermediate_edit is None
-                        or (now - last_intermediate_edit) >= STREAMING_EDIT_INTERVAL
+                        _st.last_intermediate_edit is None
+                        or (now - _st.last_intermediate_edit) >= STREAMING_EDIT_INTERVAL
                     ):
-                        display = _istate.text[-DISCORD_MAX_LENGTH:]
+                        display = _st.istate.text[-DISCORD_MAX_LENGTH:]
                         await _discord_send_with_retry(
                             lambda d=display: placeholder.edit(content=d, embed=None),
                             label="Intermediate text edit",
                         )
-                        last_intermediate_edit = now
+                        _st.last_intermediate_edit = now
     except Exception as exc:
-        stream_error = exc
+        _st.stream_error = exc
         log.exception("Stream interrupted")
 
     # Deliver final text
-    if final_text is not None:
-        display_text = ("❌ " + final_text) if is_error_turn else final_text
-        if stream_error is not None:
-            if display_text:
-                display_text += adapter._msg(
-                    "stream_interrupted", " [response interrupted]"
-                )
-            else:
-                display_text = adapter._msg("generic", GENERIC_ERROR_REPLY)
+    display_text = _st.build_display_text(adapter._msg)
+    if display_text is not None:
         final_chunks = (
             render_text(display_text, DISCORD_MAX_LENGTH) if display_text else []
         )
-        if had_tool_events:
+        if _st.had_tool_events:
             # Tool summary stays in placeholder; text as new message(s).
             # Update reply_message_id to the final text message so session
             # routing can match user replies to the correct pool (#387).
@@ -339,7 +321,7 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: tool-su
                     lambda c=extra_chunk: messageable.send(c),
                     label="Overflow chunk",
                 )
-    elif stream_error is not None:
+    elif _st.stream_error is not None:
         error_text = adapter._msg("generic", GENERIC_ERROR_REPLY)
         await _discord_send_with_retry(
             lambda: placeholder.edit(content=error_text[:DISCORD_MAX_LENGTH]),
@@ -353,5 +335,5 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: tool-su
         adapter._cancel_typing(send_to_id)
 
     # Re-raise stream error so OutboundDispatcher can record CB failure
-    if stream_error is not None:
-        raise stream_error
+    if _st.stream_error is not None:
+        raise _st.stream_error

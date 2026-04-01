@@ -9,7 +9,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
-from lyra.adapters._shared import IntermediateTextState
+from lyra.adapters._shared import STREAMING_EDIT_INTERVAL, StreamState
 from lyra.adapters.telegram_formatting import (
     _render_buttons,
     _render_text,
@@ -26,10 +26,6 @@ if TYPE_CHECKING:
     from lyra.adapters.telegram import TelegramAdapter
 
 log = logging.getLogger("lyra.adapters.telegram")
-
-# Seconds between intermediate streaming edits (debounce).
-# Aligned with Discord. Telegram allows ~1 edit/s per chat before flood-wait.
-STREAMING_EDIT_INTERVAL = 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -229,31 +225,24 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: tool-su
             outbound.metadata["reply_message_id"] = fallback_msg.message_id
         return
 
-    had_tool_events = False
-    _istate = IntermediateTextState()
-    last_tool_edit: float | None = None
-    last_intermediate_edit: float | None = None
-    final_text: str | None = None
-    is_error_turn: bool = False
-    stream_error: Exception | None = None
+    _st = StreamState()
 
     try:
         async for event in events:
             if isinstance(event, ToolSummaryRenderEvent):
-                had_tool_events = True
-                tool_text = _format_tool_summary(event)
-                _istate.set_tool_summary(tool_text)
+                _st.had_tool_events = True
+                _st.istate.set_tool_summary(_format_tool_summary(event))
                 now = time.monotonic()
                 # Always edit on is_complete; otherwise respect debounce.
                 # IntermediateTextState.display() combines both when intermediate
                 # text is already visible, so neither overwrites the other.
                 if (
                     event.is_complete
-                    or last_tool_edit is None
-                    or (now - last_tool_edit) >= STREAMING_EDIT_INTERVAL
+                    or _st.last_tool_edit is None
+                    or (now - _st.last_tool_edit) >= STREAMING_EDIT_INTERVAL
                 ):
                     try:
-                        rendered = _render_text(_istate.display())
+                        rendered = _render_text(_st.istate.display())
                         if rendered:
                             await adapter.bot.edit_message_text(
                                 chat_id=chat_id,
@@ -261,25 +250,24 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: tool-su
                                 text=rendered[0],
                                 parse_mode="MarkdownV2",
                             )
-                            last_tool_edit = now
+                            _st.last_tool_edit = now
                     except Exception as edit_exc:
                         log.debug("Tool summary edit skipped: %s", edit_exc)
 
             else:  # TextRenderEvent
                 if event.is_final:
-                    final_text = event.text
-                    is_error_turn = event.is_error
+                    _st.on_final_text(event)
                 else:
                     # Delegate accumulation, ⏳ prefix, and recap combining to
                     # IntermediateTextState — no formatting logic lives here.
-                    _istate.append(event.text)
+                    _st.istate.append(event.text)
                     now = time.monotonic()
                     if (
-                        last_intermediate_edit is None
-                        or (now - last_intermediate_edit) >= STREAMING_EDIT_INTERVAL
+                        _st.last_intermediate_edit is None
+                        or (now - _st.last_intermediate_edit) >= STREAMING_EDIT_INTERVAL
                     ):
                         try:
-                            rendered = _render_text(_istate.display())
+                            rendered = _render_text(_st.istate.display())
                             if rendered:
                                 await adapter.bot.edit_message_text(
                                     chat_id=chat_id,
@@ -287,25 +275,18 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: tool-su
                                     text=rendered[0],
                                     parse_mode="MarkdownV2",
                                 )
-                                last_intermediate_edit = now
+                                _st.last_intermediate_edit = now
                         except Exception as edit_exc:
                             log.debug("Intermediate text edit skipped: %s", edit_exc)
     except Exception as exc:
-        stream_error = exc
+        _st.stream_error = exc
         log.exception("Stream interrupted")
 
     # Deliver final text
-    if final_text is not None:
-        display_text = ("❌ " + final_text) if is_error_turn else final_text
-        if stream_error is not None:
-            if display_text:
-                display_text += adapter._msg(
-                    "stream_interrupted", " [response interrupted]"
-                )
-            else:
-                display_text = adapter._msg("generic", GENERIC_ERROR_REPLY)
+    display_text = _st.build_display_text(adapter._msg)
+    if display_text is not None:
         final_chunks = _render_text(display_text) if display_text else []
-        if had_tool_events:
+        if _st.had_tool_events:
             # Tool summary stays in placeholder; text sent as new message(s).
             # Update reply_message_id to the final text message so session
             # routing can match user replies to the correct pool (#387).
@@ -341,7 +322,7 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: tool-su
                     )
                 except Exception:
                     log.exception("Failed to send overflow chunk")
-    elif stream_error is not None:
+    elif _st.stream_error is not None:
         # No text at all — send generic error
         error_text = adapter._msg("generic", GENERIC_ERROR_REPLY)
         try:
@@ -361,5 +342,5 @@ async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: tool-su
         adapter._cancel_typing(chat_id)
 
     # Re-raise stream error so OutboundDispatcher can record CB failure
-    if stream_error is not None:
-        raise stream_error
+    if _st.stream_error is not None:
+        raise _st.stream_error

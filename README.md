@@ -21,29 +21,49 @@ It's for developers who want a persistent personal AI without giving up ownershi
 
 ## How it works
 
-1. **Channel adapters** (Telegram, Discord) normalize incoming messages and push them into per-platform bounded asyncio queues.
-2. **The Hub** routes each message to the right agent via typed `(platform, bot_id, scope_id)` bindings — one pool per conversation scope (chat, thread, channel).
-3. **The Agent** processes the message, calls the LLM, and sends the response back through the outbound dispatcher to the originating channel.
+1. **Channel adapters** (Telegram, Discord) run as separate processes. They normalize incoming messages and publish them over NATS (`lyra.inbound.<platform>.<bot_id>`).
+2. **The Hub** (`lyra_hub` process) subscribes to NATS, routes each message to the right agent via typed `(platform, bot_id, scope_id)` bindings — one pool per conversation scope (chat, thread, channel).
+3. **The Agent** processes the message, calls the LLM, and publishes the response over NATS (`lyra.outbound.<platform>.<bot_id>`). The adapter's `NatsOutboundListener` delivers it to the platform.
 
 ## Architecture
 
 ```mermaid
 flowchart TD
-    TG["Telegram<br/>aiogram v3 · polling"] --> TQ["tg_inbound<br/>Queue"]
-    DC["Discord<br/>discord.py v2 · gateway"] --> DQ["dc_inbound<br/>Queue"]
-    TQ --> STG["InboundBus<br/>staging Queue"]
-    DQ --> STG
-    STG --> HUB["Hub<br/>resolve_binding()"]
-    HUB -->|"telegram · main · chat:555"| P1["Pool<br/>asyncio.Task"]
-    HUB -->|"discord · main · thread:888"| P2["Pool<br/>asyncio.Task"]
-    P1 --> AGENT["Agent<br/>stateless singleton"]
+    subgraph AP["lyra_telegram process"]
+        TG["Telegram<br/>aiogram v3 · polling"]
+        TGOL["NatsOutboundListener"]
+    end
+    subgraph DP["lyra_discord process"]
+        DC["Discord<br/>discord.py v2 · gateway"]
+        DCOL["NatsOutboundListener"]
+    end
+    subgraph HP["lyra_hub process"]
+        BUS["NatsBus<br/>lyra.inbound.*"]
+        HUB["Hub<br/>resolve_binding()"]
+        P1["Pool<br/>asyncio.Task"]
+        P2["Pool<br/>asyncio.Task"]
+        AGENT["Agent<br/>stateless singleton"]
+        LLM["LLM<br/>LlmProvider<br/>Claude CLI + SDK"]
+        SC["SessionCommand<br/>scrape → LLM → vault"]
+        OD["OutboundDispatcher<br/>NatsChannelProxy"]
+    end
+    NATS[("NATS<br/>systemd")]
+
+    TG -->|"lyra.inbound.telegram.*"| NATS
+    DC -->|"lyra.inbound.discord.*"| NATS
+    NATS --> BUS --> HUB
+    HUB -->|"telegram · main · chat:555"| P1
+    HUB -->|"discord · main · thread:888"| P2
+    P1 --> AGENT
     P2 --> AGENT
-    AGENT -->|"/vault-add · /explain<br/>/summarize · /search<br/>bare URL"| SC["SessionCommand<br/>scrape → LLM → vault"]
-    AGENT -->|"normal chat"| LLM["LLM<br/>LlmProvider<br/>Claude CLI + SDK"]
-    P1 --> TGO["tg_outbound<br/>OutboundDispatcher"]
-    P2 --> DCO["dc_outbound<br/>OutboundDispatcher"]
-    TGO --> TG
-    DCO --> DC
+    AGENT -->|"/vault-add · /explain<br/>/summarize · /search"| SC
+    AGENT -->|"normal chat"| LLM
+    P1 --> OD
+    P2 --> OD
+    OD -->|"lyra.outbound.telegram.*"| NATS
+    OD -->|"lyra.outbound.discord.*"| NATS
+    NATS --> TGOL --> TG
+    NATS --> DCOL --> DC
 ```
 
 ## Features
@@ -85,6 +105,7 @@ cat > .env <<'EOF'
 TELEGRAM_TOKEN=your-telegram-bot-token
 TELEGRAM_WEBHOOK_SECRET=any-random-secret
 DISCORD_TOKEN=your-discord-bot-token   # omit if not using Discord
+NATS_URL=nats://127.0.0.1:4222         # NATS server (see GETTING-STARTED.md Step 10)
 EOF
 
 # 3. Auth config — tell Lyra which bots to run and who owns them
@@ -124,6 +145,12 @@ Key `.env` variables:
 | `DISCORD_TOKEN` | ✅ | Bot token from Discord Developer Portal |
 | _(see `config.toml`)_ | — | `auto_thread` is configured in `config.toml` under `[[discord.bots]] auto_thread = true` |
 
+**Infrastructure**
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `NATS_URL` | ✅ | NATS server URL — e.g. `nats://127.0.0.1:4222` |
+
 **LLM & Config**
 
 | Variable | Required | Description |
@@ -144,7 +171,15 @@ See [QUICKSTART.md](docs/QUICKSTART.md) for the full walkthrough.
 ## CLI reference
 
 ```bash
-lyra start                        # start all configured adapters
+# Production entry points (three-process NATS mode)
+lyra hub                          # start the hub process (used by supervisor)
+lyra adapter telegram             # start the Telegram adapter process
+lyra adapter discord              # start the Discord adapter process
+
+# Legacy single-process (dev / quick test)
+lyra start                        # start hub + adapters in one process (no NATS required)
+
+# Agent management
 lyra agent init                   # seed DB from TOML files (first-time setup)
 lyra agent init --force           # overwrite existing DB rows with TOML
 lyra agent list                   # list all agents in DB (name, backend, model, assigned bots)
@@ -189,11 +224,11 @@ DEPLOY_DIR=~/projects/lyra            # project path on production
 
 | Command | Description |
 |---------|-------------|
-| `make lyra` | Start both adapters locally (telegram + discord) |
-| `make lyra stop` | Stop both adapters |
-| `make lyra reload` | Restart both adapters |
-| `make lyra status` | Status of both adapters |
-| `make lyra logs` | Tail lyra_telegram stdout |
+| `make lyra` | Start hub + both adapters (lyra_hub, lyra_telegram, lyra_discord) |
+| `make lyra stop` | Stop all three Lyra processes |
+| `make lyra reload` | Restart all three Lyra processes |
+| `make lyra status` | Status of all three Lyra processes |
+| `make lyra logs` | Tail lyra_hub stdout |
 | `make telegram` | telegram adapter only (start\|stop\|reload\|logs\|errors) |
 | `make discord` | discord adapter only (start\|stop\|reload\|logs\|errors) |
 | `make deploy` | Deploy to Machine 1 (pull main + test + restart) |
@@ -209,15 +244,17 @@ DEPLOY_DIR=~/projects/lyra            # project path on production
 ```
 src/lyra/
   core/       — hub, pool, agent, message, memory, auth, bus, command router
-  adapters/   — channel adapters (Telegram, Discord, CLI)
+  adapters/   — channel adapters (Telegram, Discord, CLI) + NatsOutboundListener
+  nats/       — NatsBus, NatsChannelProxy (NATS inter-process transport)
+  bootstrap/  — process entry points: hub_standalone, adapter_standalone
   agents/     — agent implementations + TOML seed configs
   llm/        — LlmProvider protocol, drivers (CLI, SDK), smart routing
   stt/        — STTService (faster-whisper)
   tts/        — TTS pipeline (voicecli, OGG/Opus)
   commands/   — command handlers (echo, pairing, search)
   monitoring/ — health checks + escalation
-tests/        — pytest-asyncio + pytest-cov (core, adapters, llm, cli)
-docs/         — ARCHITECTURE.md, ROADMAP.md, QUICKSTART.md, 24 ADRs
+tests/        — pytest-asyncio + pytest-cov (core, adapters, llm, cli, nats)
+docs/         — ARCHITECTURE.md, ROADMAP.md, QUICKSTART.md, 37 ADRs
 ```
 
 > See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full file-by-file breakdown.

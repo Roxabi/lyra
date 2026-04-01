@@ -1,6 +1,6 @@
 # Multi-Bot Support
 
-Run multiple bots in a single Lyra process — each with its own persona, model, and auth policy — without duplicating infrastructure.
+Run multiple bots — each with its own persona, model, and auth policy — without duplicating infrastructure. All bots share the hub process (`lyra_hub`) and are served by the same adapter processes (`lyra_telegram`, `lyra_discord`).
 
 ## What multi-bot support enables
 
@@ -308,7 +308,7 @@ The `CliPool` is the Claude CLI subprocess pool. It is shared across all agents 
 | `bot_id` must be unique per platform | Two Telegram bots cannot share the same `bot_id` |
 | `auth_bots` entry required per bot | A bot without a matching auth entry is silently skipped at startup — add `[[auth.telegram_bots]]` / `[[auth.discord_bots]]` entry or the bot will not start. The process exits only if ALL bots lack auth. |
 | `CliPool` is shared | All bots share the subprocess pool — heavy concurrent use increases subprocess contention |
-| Single process | All bots run in one Python process — a crash affects all bots |
+| Shared hub process | All bots route through `lyra_hub` — a hub crash affects all bots (supervisor auto-restarts) |
 
 ---
 

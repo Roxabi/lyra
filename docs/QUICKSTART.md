@@ -165,7 +165,7 @@ If the hub logs `Processing your request…`, the bounded queue (100) is full. T
 
 ## Running Multiple Bots
 
-Lyra supports running multiple bots (each with its own persona and model) in a single process. The short version:
+Lyra supports running multiple bots (each with its own persona and model) — all sharing the hub and adapter processes. The short version:
 
 1. Create an agent TOML in `src/lyra/agents/<name>.toml` for the new persona. Copy `lyra_default.toml` and edit `[agent].name`, `[model].model`, and `[prompt]`. Then run `lyra agent init` to import it into the DB.
 2. Add `[[telegram.bots]]` and/or `[[discord.bots]]` entries to `config.toml`, each with a unique `bot_id` and `agent = "<name>"`.

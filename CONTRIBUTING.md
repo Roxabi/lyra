@@ -97,14 +97,19 @@ class SignalAdapter:
 
 See `src/lyra/adapters/_shared.py` for shared normalization helpers and render functions (audio, attachments).
 
-**4. Register it in `src/lyra/__main__.py`**:
+**4. Register it in `src/lyra/bootstrap/hub_standalone.py`** (and `adapter_standalone.py` for the adapter side):
+
+Add the platform's inbound/outbound NATS subjects to `_bootstrap_hub_standalone()` and wire
+a new `_bootstrap_adapter_standalone()` branch for the new platform. The hub registers the
+adapter via `hub.register_adapter(Platform.SIGNAL, bot_id, proxy)` where `proxy` is a
+`NatsChannelProxy` routing to `lyra.outbound.signal.<bot_id>`.
 
 ```python
-from lyra.adapters.signal import SignalAdapter
-
-signal_adapter = SignalAdapter(hub=hub, bot_id="main")
-hub.register_adapter(Platform.SIGNAL, "main", signal_adapter)
-hub.register_binding(Platform.SIGNAL, "main", "*", "lyra", ...)
+# In hub_standalone.py — register NATS proxy for the new adapter
+from lyra.nats.nats_channel_proxy import NatsChannelProxy
+proxy = NatsChannelProxy(nc, f"lyra.outbound.signal.{bot_id}")
+hub.register_adapter(Platform.SIGNAL, bot_id, proxy)
+hub.register_binding(Platform.SIGNAL, bot_id, "*", "lyra", ...)
 ```
 
 **5. Add tests** in `tests/adapters/test_signal.py` — mock the external SDK, test `_normalize()` and `send()`.

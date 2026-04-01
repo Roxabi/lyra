@@ -338,7 +338,9 @@ class MessagePipeline:
             accepted = await pool.resume_session(thread_session_id)
             if accepted:
                 if self._hub._turn_store is not None:
-                    await self._hub._turn_store.increment_resume_count(thread_session_id)
+                    await self._hub._turn_store.increment_resume_count(
+                        thread_session_id
+                    )
                 return ResumeStatus.RESUMED
             log.info(
                 "thread-session-resume: session %r not accepted"

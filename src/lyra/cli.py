@@ -59,7 +59,10 @@ lyra_app.add_typer(setup_app, name="setup")
 hub_app = typer.Typer(name="hub", help="Run standalone Hub process (requires NATS).")
 lyra_app.add_typer(hub_app, name="hub")
 
-adapter_app = typer.Typer(name="adapter", help="Run standalone adapter process (requires NATS).")
+adapter_app = typer.Typer(
+    name="adapter",
+    help="Run standalone adapter process (requires NATS).",
+)
 lyra_app.add_typer(adapter_app, name="adapter")
 
 # ---------------------------------------------------------------------------

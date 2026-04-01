@@ -14,6 +14,7 @@ import logging
 import os
 import re
 from collections.abc import Awaitable, Callable, Coroutine
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 # Re-exports from _shared_audio — importers can use either module.
@@ -22,15 +23,18 @@ from lyra.adapters._shared_audio import (
     _MAX_OUTBOUND_AUDIO_BYTES,
     AUDIO_MIME_TYPES,
     _PartialAudioError,
+    buffer_and_render_audio,
     buffer_audio_chunks,
     mime_to_ext,
 )
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
+    GENERIC_ERROR_REPLY,
     InboundAudio,
     InboundMessage,
     Platform,
 )
+from lyra.core.render_events import TextRenderEvent
 
 if TYPE_CHECKING:
     from lyra.core.bus import Bus
@@ -41,10 +45,12 @@ __all__ = [
     "_AUDIO_EXTS",
     "_MAX_OUTBOUND_AUDIO_BYTES",
     "_PartialAudioError",
+    "buffer_and_render_audio",
     "buffer_audio_chunks",
     "mime_to_ext",
     "ATTACHMENT_EXTS_BASE",
     "DISCORD_MAX_LENGTH",
+    "STREAMING_EDIT_INTERVAL",
     "push_to_hub_guarded",
     "truncate_caption",
     "sanitize_filename",
@@ -52,6 +58,7 @@ __all__ = [
     "resolve_msg",
     "TypingTaskManager",
     "IntermediateTextState",
+    "StreamState",
     "parse_reply_to_id",
 ]
 
@@ -167,6 +174,10 @@ ATTACHMENT_EXTS_BASE = frozenset(
 
 # Discord API message length limit — used by discord_formatting and discord_audio.
 DISCORD_MAX_LENGTH = 2000
+
+# Seconds between intermediate streaming edits (debounce).
+# Shared by Telegram and Discord adapters; aligned with each platform's rate limit.
+STREAMING_EDIT_INTERVAL = 1.0
 
 
 def chunk_text(
@@ -330,6 +341,60 @@ class IntermediateTextState:
         if combine_recap and self._text and self._tool_summary:
             return self._text + "\n\n" + self._tool_summary
         return self._text or self._tool_summary
+
+
+@dataclass
+class StreamState:
+    """Mutable event-loop state for send_streaming().
+
+    Extracted from Telegram and Discord adapters to eliminate the identical
+    7-variable state block, final-text capture, and display-text assembly.
+    Platform-specific rendering (API calls, text formatting) stays in each adapter.
+
+    Usage::
+
+        _st = StreamState()
+        async for event in events:
+            if isinstance(event, ToolSummaryRenderEvent):
+                _st.had_tool_events = True
+                # ... platform-specific tool render ...
+            else:
+                if event.is_final:
+                    _st.on_final_text(event)
+                else:
+                    _st.istate.append(event.text)
+                    # ... platform-specific intermediate edit ...
+        display_text = _st.build_display_text(adapter._msg)
+    """
+
+    had_tool_events: bool = False
+    istate: IntermediateTextState = field(default_factory=IntermediateTextState)
+    last_tool_edit: float | None = None
+    last_intermediate_edit: float | None = None
+    final_text: str | None = None
+    is_error_turn: bool = False
+    stream_error: Exception | None = None
+
+    def on_final_text(self, event: TextRenderEvent) -> None:
+        """Capture final text and error flag from a terminal TextRenderEvent."""
+        self.final_text = event.text
+        self.is_error_turn = event.is_error
+
+    def build_display_text(self, msg_fn: Callable[[str, str], str]) -> str | None:
+        """Assemble display text with error prefix and interrupt notice.
+
+        Returns ``None`` when no final text was received — callers handle the
+        error-only case (``elif stream_error``) separately.
+        """
+        if self.final_text is None:
+            return None
+        display = ("❌ " + self.final_text) if self.is_error_turn else self.final_text
+        if self.stream_error is not None:
+            if display:
+                display += msg_fn("stream_interrupted", " [response interrupted]")
+            else:
+                display = msg_fn("generic", GENERIC_ERROR_REPLY)
+        return display
 
 
 def parse_reply_to_id(reply_to_id: str | None) -> int | None:

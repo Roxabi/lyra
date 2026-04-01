@@ -8,10 +8,10 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from io import BytesIO
 
-from lyra.core.message import OutboundAudio, OutboundAudioChunk
+from lyra.core.message import InboundMessage, OutboundAudio, OutboundAudioChunk
 
 log = logging.getLogger(__name__)
 
@@ -91,6 +91,31 @@ async def buffer_audio_chunks(
         raise _PartialAudioError(assembled, stream_error)
 
     return assembled
+
+
+async def buffer_and_render_audio(
+    chunks: AsyncIterator[OutboundAudioChunk],
+    inbound: InboundMessage,
+    render_fn: Callable[[OutboundAudio, InboundMessage], Awaitable[None]],
+) -> None:
+    """Buffer streaming audio chunks and call *render_fn* with the assembled audio.
+
+    Shared by Telegram and Discord ``render_audio_stream()`` implementations.
+    Platform-specific validation (inbound platform check) must be done by the
+    caller before invoking this helper.
+
+    On ``_PartialAudioError``, calls *render_fn* with the partial audio, then
+    re-raises the original cause so the circuit breaker can record the failure.
+    Returns without calling *render_fn* if the stream yields no data.
+    """
+    try:
+        assembled = await buffer_audio_chunks(chunks)
+    except _PartialAudioError as e:
+        await render_fn(e.audio, inbound)
+        raise e.cause from e
+    if assembled is None:
+        return
+    await render_fn(assembled, inbound)
 
 
 class _PartialAudioError(Exception):

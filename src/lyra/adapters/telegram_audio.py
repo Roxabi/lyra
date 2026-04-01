@@ -12,8 +12,7 @@ from typing import TYPE_CHECKING, Any
 from aiogram.types import BufferedInputFile
 
 from lyra.adapters._shared import (
-    _PartialAudioError,
-    buffer_audio_chunks,
+    buffer_and_render_audio,
     mime_to_ext,
     parse_reply_to_id,
     sanitize_filename,
@@ -181,15 +180,9 @@ async def render_audio_stream(
     meta = _validate_inbound(inbound, "render_audio_stream")
     if meta is None:
         return
-
-    try:
-        assembled = await buffer_audio_chunks(chunks)
-    except _PartialAudioError as e:
-        await render_audio(adapter, e.audio, inbound)
-        raise e.cause from e
-    if assembled is None:
-        return
-    await render_audio(adapter, assembled, inbound)
+    await buffer_and_render_audio(
+        chunks, inbound, lambda audio, msg: render_audio(adapter, audio, msg)
+    )
 
 
 async def render_voice_stream(

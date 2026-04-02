@@ -137,14 +137,14 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         """Expose the internal task dict — used by tests and outbound submodules."""
         return self._typing._tasks
 
-    def _start_typing(self, send_to_id: int) -> None:
+    def _start_typing(self, send_to_id: int) -> None:  # type: ignore[override]
         """Start (or restart) the typing indicator background task for send_to_id."""
         self._typing.start(
             send_to_id,
             lambda: _discord_typing_worker(self._resolve_channel, send_to_id),
         )
 
-    def _cancel_typing(self, send_to_id: int) -> None:
+    def _cancel_typing(self, send_to_id: int) -> None:  # type: ignore[override]
         """Cancel and remove the typing indicator task for send_to_id."""
         self._typing.cancel(send_to_id)
 
@@ -318,7 +318,7 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
 
         channel_id: int | None = original_msg.platform_meta.get("channel_id")
         thread_id: int | None = original_msg.platform_meta.get("thread_id")
-        send_to_id: int = thread_id if thread_id is not None else channel_id
+        send_to_id: int = thread_id if thread_id is not None else channel_id  # type: ignore[assignment]
         reply_msg_id: int | None = original_msg.platform_meta.get("message_id")
         should_reply = reply_msg_id is not None and thread_id is None
         _placeholder_text = self._msg("stream_placeholder", "\u2026")
@@ -326,7 +326,7 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         async def _send_placeholder():
             messageable = await self._resolve_channel(send_to_id)
             if should_reply:
-                msg_obj = messageable.get_partial_message(reply_msg_id)
+                msg_obj = messageable.get_partial_message(reply_msg_id)  # type: ignore[attr-defined]
                 placeholder = await msg_obj.reply(_placeholder_text)
             else:
                 placeholder = await messageable.send(_placeholder_text)

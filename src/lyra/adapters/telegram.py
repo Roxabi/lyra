@@ -225,10 +225,10 @@ class TelegramAdapter(OutboundAdapterBase):
         """Expose the internal task dict — used by tests and outbound submodules."""
         return self._typing._tasks
 
-    def _start_typing(self, chat_id: int) -> None:
+    def _start_typing(self, chat_id: int) -> None:  # type: ignore[override]
         self._typing.start(chat_id, lambda: _typing_worker(self.bot, chat_id))
 
-    def _cancel_typing(self, chat_id: int) -> None:
+    def _cancel_typing(self, chat_id: int) -> None:  # type: ignore[override]
         self._typing.cancel(chat_id)
 
     async def astart(self) -> None:

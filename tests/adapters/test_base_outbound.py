@@ -90,7 +90,7 @@ class TestOutboundAdapterBaseABC:
 
         # Arrange
         class MissingSend(OutboundAdapterBase):
-            def _make_streaming_callbacks(self, original_msg, outbound):
+            def _make_streaming_callbacks(self, original_msg, outbound):  # type: ignore[override]
                 pass
 
             def _start_typing(self, scope_id):

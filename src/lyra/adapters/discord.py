@@ -308,7 +308,7 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
             return PlatformCallbacks(
                 send_placeholder=_bad_placeholder,
                 edit_placeholder_text=lambda ph, text: asyncio.sleep(0),
-                edit_placeholder_tool=lambda ph, ev, h: asyncio.sleep(0),
+                edit_placeholder_tool=lambda ph, ev: asyncio.sleep(0),
                 send_message=_noop,
                 send_fallback=_noop,
                 chunk_text=lambda t: [t],

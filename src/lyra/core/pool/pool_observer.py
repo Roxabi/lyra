@@ -161,7 +161,9 @@ class PoolObserver:
         # Index user turn for reply-to session routing (#341).
         _msg_id = msg.platform_meta.get("message_id")
         if _msg_id is not None:
-            await self.index_turn_async(str(_msg_id), session_id=session_id, role="user")
+            await self.index_turn_async(
+                str(_msg_id), session_id=session_id, role="user"
+            )
 
     async def index_turn_async(
         self,

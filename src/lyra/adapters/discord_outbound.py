@@ -4,25 +4,22 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
-from collections.abc import AsyncIterator, Callable
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 import discord
 
 from lyra.adapters._shared import (
     DISCORD_MAX_LENGTH,
-    STREAMING_EDIT_INTERVAL,
-    StreamState,
+    format_tool_summary_header,
 )
 from lyra.adapters.discord_formatting import render_buttons, render_text
 from lyra.core.message import (
-    GENERIC_ERROR_REPLY,
     InboundMessage,
     OutboundMessage,
     Platform,
 )
-from lyra.core.render_events import RenderEvent, TextRenderEvent, ToolSummaryRenderEvent
+from lyra.core.render_events import ToolSummaryRenderEvent
 
 if TYPE_CHECKING:
     from lyra.adapters.discord import DiscordAdapter
@@ -91,31 +88,6 @@ async def _discord_typing_worker(  # noqa: C901 — retry + error branches
         )
 
 
-async def _discord_send_with_retry(
-    coro_fn: Callable[[], Any],
-    *,
-    label: str,
-    max_attempts: int = 3,
-) -> None:
-    """Call *coro_fn()* and retry with exponential backoff (1 s, 2 s, 4 s ...)."""
-    for attempt in range(max_attempts):
-        try:
-            await coro_fn()
-            return
-        except Exception:
-            if attempt == max_attempts - 1:
-                log.exception("%s failed after %d attempts", label, max_attempts)
-                return
-            delay = 2**attempt  # 1 s, 2 s, 4 s ...
-            log.warning(
-                "%s failed (attempt %d/%d), retrying in %d s",
-                label,
-                attempt + 1,
-                max_attempts,
-                delay,
-            )
-            await asyncio.sleep(delay)
-
 
 async def send(  # noqa: C901 — attachment loop adds branches
     adapter: "DiscordAdapter",
@@ -175,169 +147,7 @@ def _build_tool_embed(event: ToolSummaryRenderEvent) -> "discord.Embed":
     """Build a Discord embed from a ToolSummaryRenderEvent."""
     from lyra.core.tool_recap_format import format_tool_lines
 
-    title = "🔧 Done ✅" if event.is_complete else "🔧 Working…"
+    title = format_tool_summary_header(event)
     color = discord.Color.green() if event.is_complete else discord.Color.blue()
     description = "\n".join(format_tool_lines(event)) or "\u200b"
     return discord.Embed(title=title, description=description, color=color)
-
-
-async def send_streaming(  # noqa: C901, PLR0915 — streaming protocol: tool-summary/text/fallback branches are inherently sequential
-    adapter: "DiscordAdapter",
-    original_msg: InboundMessage,
-    events: AsyncIterator[RenderEvent],
-    outbound: OutboundMessage | None = None,
-) -> None:
-    """Stream RenderEvent objects with embed-based tool summary and final text send.
-
-    Flow for tool-using turns:
-      placeholder → embed update on each ToolSummaryRenderEvent (throttled)
-      → messageable.send(final text) on TextRenderEvent(is_final=True)
-
-    Flow for text-only turns:
-      placeholder → placeholder.edit(content=final text) on
-      TextRenderEvent(is_final=True)
-
-    Circuit breaker checks and recording are handled by OutboundDispatcher.
-    """
-    if original_msg.platform != Platform.DISCORD.value:
-        log.error(
-            "send_streaming() called with non-discord message id=%s",
-            original_msg.id,
-        )
-        return
-
-    channel_id: int | None = original_msg.platform_meta.get("channel_id")
-    if channel_id is None:
-        raise ValueError(
-            "platform_meta missing required key 'channel_id' for send_streaming()"
-        )
-    thread_id: int | None = original_msg.platform_meta.get("thread_id")
-    send_to_id: int = thread_id if thread_id is not None else channel_id
-    messageable = await adapter._resolve_channel(send_to_id)
-
-    parts: list[str] = []
-
-    # Send placeholder
-    _placeholder_text = adapter._msg("stream_placeholder", "\u2026")
-    reply_msg_id: int | None = original_msg.platform_meta.get("message_id")
-    should_reply = reply_msg_id is not None and thread_id is None
-    try:
-        if should_reply:
-            msg_obj = messageable.get_partial_message(reply_msg_id)  # type: ignore[attr-defined]
-            placeholder = await msg_obj.reply(_placeholder_text)
-        else:
-            placeholder = await messageable.send(_placeholder_text)
-        if outbound is not None:
-            outbound.metadata["reply_message_id"] = placeholder.id
-    except Exception:
-        log.exception("Failed to send placeholder — falling back to non-streaming")
-        async for event in events:
-            if isinstance(event, TextRenderEvent):
-                parts.append(event.text)
-        fallback_content = "".join(parts) or _placeholder_text
-        fallback_outbound = OutboundMessage.from_text(fallback_content)
-        await send(adapter, original_msg, fallback_outbound)
-        if outbound is not None:
-            outbound.metadata["reply_message_id"] = fallback_outbound.metadata.get(
-                "reply_message_id"
-            )
-        return
-
-    _st = StreamState()
-
-    try:
-        async for event in events:
-            if isinstance(event, ToolSummaryRenderEvent):
-                _st.had_tool_events = True
-                # Don't overwrite intermediate text that is already visible in
-                # the placeholder — the tool summary would erase what the user
-                # can see. Tool summaries go into the embed, not istate, so
-                # istate._tool_summary is intentionally unused on Discord.
-                if not _st.istate.has_intermediate_text:
-                    now = time.monotonic()
-                    if (
-                        event.is_complete
-                        or _st.last_tool_edit is None
-                        or (now - _st.last_tool_edit) >= STREAMING_EDIT_INTERVAL
-                    ):
-                        embed = _build_tool_embed(event)
-                        await _discord_send_with_retry(
-                            lambda e=embed: placeholder.edit(content="", embed=e),
-                            label="Tool summary embed",
-                        )
-                        _st.last_tool_edit = now
-
-            else:  # TextRenderEvent
-                if event.is_final:
-                    _st.on_final_text(event)
-                else:
-                    # Intermediate text — delegate accumulation and ⏳ formatting
-                    # to IntermediateTextState; Discord doesn't combine the recap
-                    # (it lives in a separate embed).
-                    _st.istate.append(event.text)
-                    now = time.monotonic()
-                    if (
-                        _st.last_intermediate_edit is None
-                        or (now - _st.last_intermediate_edit) >= STREAMING_EDIT_INTERVAL
-                    ):
-                        display = _st.istate.text[-DISCORD_MAX_LENGTH:]
-                        await _discord_send_with_retry(
-                            lambda d=display: placeholder.edit(content=d, embed=None),
-                            label="Intermediate text edit",
-                        )
-                        _st.last_intermediate_edit = now
-    except Exception as exc:
-        _st.stream_error = exc
-        log.exception("Stream interrupted")
-
-    # Deliver final text
-    display_text = _st.build_display_text(adapter._msg)
-    if display_text is not None:
-        final_chunks = (
-            render_text(display_text, DISCORD_MAX_LENGTH) if display_text else []
-        )
-        if _st.had_tool_events:
-            # Tool summary stays in placeholder; text as new message(s).
-            # Update reply_message_id to the final text message so session
-            # routing can match user replies to the correct pool (#387).
-            for i, chunk in enumerate(final_chunks):
-                is_last = i == len(final_chunks) - 1
-                if is_last:
-                    try:
-                        _sent = await messageable.send(chunk)
-                        if outbound is not None:
-                            outbound.metadata["reply_message_id"] = _sent.id
-                    except Exception:
-                        log.exception("Failed to send final text chunk")
-                else:
-                    await _discord_send_with_retry(
-                        lambda c=chunk: messageable.send(c),
-                        label="Final text chunk",
-                    )
-        elif final_chunks:
-            # Text-only turn: edit placeholder with text
-            await _discord_send_with_retry(
-                lambda: placeholder.edit(content=final_chunks[0]),
-                label="Final edit",
-            )
-            for extra_chunk in final_chunks[1:]:
-                await _discord_send_with_retry(
-                    lambda c=extra_chunk: messageable.send(c),
-                    label="Overflow chunk",
-                )
-    elif _st.stream_error is not None:
-        error_text = adapter._msg("generic", GENERIC_ERROR_REPLY)
-        await _discord_send_with_retry(
-            lambda: placeholder.edit(content=error_text[:DISCORD_MAX_LENGTH]),
-            label="Error edit",
-        )
-
-    # Cancel typing after final content is confirmed.
-    if outbound is not None and outbound.intermediate:
-        adapter._start_typing(send_to_id)
-    else:
-        adapter._cancel_typing(send_to_id)
-
-    # Re-raise stream error so OutboundDispatcher can record CB failure
-    if _st.stream_error is not None:
-        raise _st.stream_error

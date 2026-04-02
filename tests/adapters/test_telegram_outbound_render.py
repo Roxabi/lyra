@@ -170,3 +170,27 @@ class TestTelegramOutboundMessage:
 
         # Assert
         assert outbound.metadata.get("reply_message_id") == 999
+
+
+@pytest.mark.asyncio
+async def test_telegram_fallback_sets_reply_message_id() -> None:
+    """When send_streaming fallback path is taken (placeholder fails),
+    outbound.metadata['reply_message_id'] is set from the fallback message."""
+    from tests.adapters.conftest import _make_telegram_adapter, _make_telegram_message
+
+    adapter = _make_telegram_adapter()
+    sent_mock = MagicMock()
+    sent_mock.message_id = 77
+    adapter.bot = AsyncMock()
+    # Make send_message raise to trigger fallback
+    adapter.bot.send_message = AsyncMock(side_effect=[Exception("placeholder failed"), sent_mock])  # noqa: E501
+
+    original_msg = _make_telegram_message()
+    outbound = OutboundMessage.from_text("")
+
+    async def _events():
+        from lyra.core.render_events import TextRenderEvent
+        yield TextRenderEvent(text="hello", is_final=True)
+
+    await adapter.send_streaming(original_msg, _events(), outbound=outbound)
+    assert outbound.metadata.get("reply_message_id") == 77

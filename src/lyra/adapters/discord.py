@@ -10,9 +10,9 @@ from typing import TYPE_CHECKING, Any, cast
 import discord
 
 if TYPE_CHECKING:
+    from lyra.adapters._shared_streaming import PlatformCallbacks
     from lyra.adapters.nats_outbound_listener import NatsOutboundListener
     from lyra.core.bus import Bus
-    from lyra.core.render_events import RenderEvent
 
 from lyra.adapters import discord_audio  # noqa: I001
 from lyra.adapters import discord_audio_outbound
@@ -24,10 +24,10 @@ from lyra.adapters.discord_config import (  # noqa: F401
 
 from lyra.adapters.discord_inbound import handle_message
 from lyra.adapters.discord_normalize import normalize as _normalize_impl
+from lyra.adapters._base_outbound import OutboundAdapterBase
 from lyra.adapters.discord_outbound import (
     _discord_typing_worker,
     send as _send_impl,
-    send_streaming as _send_streaming_impl,
 )
 from lyra.adapters.discord_threads import restore_hot_threads
 from lyra.adapters.discord_voice import VoiceSessionManager
@@ -62,7 +62,7 @@ _ATTACHMENT_EXTS = ATTACHMENT_EXTS_BASE
 log = logging.getLogger(__name__)
 
 
-class DiscordAdapter(discord.Client):
+class DiscordAdapter(discord.Client, OutboundAdapterBase):
     """Discord channel adapter — discord.py v2 Gateway mode.
 
     Security contract:
@@ -137,16 +137,16 @@ class DiscordAdapter(discord.Client):
         """Expose the internal task dict — used by tests and outbound submodules."""
         return self._typing._tasks
 
-    def _start_typing(self, send_to_id: int) -> None:
-        """Start (or restart) the typing indicator background task for send_to_id."""
+    def _start_typing(self, scope_id: int) -> None:
+        """Start (or restart) the typing indicator background task for scope_id."""
         self._typing.start(
-            send_to_id,
-            lambda: _discord_typing_worker(self._resolve_channel, send_to_id),
+            scope_id,
+            lambda: _discord_typing_worker(self._resolve_channel, scope_id),
         )
 
-    def _cancel_typing(self, send_to_id: int) -> None:
-        """Cancel and remove the typing indicator task for send_to_id."""
-        self._typing.cancel(send_to_id)
+    def _cancel_typing(self, scope_id: int) -> None:
+        """Cancel and remove the typing indicator task for scope_id."""
+        self._typing.cancel(scope_id)
 
     def _cancel_typing_for(self, inbound: InboundMessage) -> None:
         """Cancel the typing indicator for the channel/thread of *inbound*."""
@@ -289,14 +289,103 @@ class DiscordAdapter(discord.Client):
         """Send response back to Discord."""
         await _send_impl(self, original_msg, outbound)
 
-    async def send_streaming(
+    def _make_streaming_callbacks(  # noqa: C901 — streaming callbacks: one closure per platform op
         self,
         original_msg: InboundMessage,
-        events: AsyncIterator[RenderEvent],
-        outbound: OutboundMessage | None = None,
-    ) -> None:
-        """Stream response with edit-in-place, debounced at ~1s."""
-        await _send_streaming_impl(self, original_msg, events, outbound)
+        outbound: OutboundMessage | None,
+    ) -> "PlatformCallbacks":
+        """Build platform-specific callbacks for StreamingSession."""
+        from lyra.adapters._shared import DISCORD_MAX_LENGTH, send_with_retry
+        from lyra.adapters._shared_streaming import PlatformCallbacks
+        from lyra.adapters.discord_formatting import render_text
+        from lyra.adapters.discord_outbound import _build_tool_embed
+
+        if original_msg.platform != "discord":
+            async def _bad_placeholder():
+                raise ValueError("not a discord message")
+            async def _noop(text=""):
+                return None
+            return PlatformCallbacks(
+                send_placeholder=_bad_placeholder,
+                edit_placeholder_text=lambda ph, text: asyncio.sleep(0),
+                edit_placeholder_tool=lambda ph, ev: asyncio.sleep(0),
+                send_message=_noop,
+                send_fallback=_noop,
+                chunk_text=lambda t: [t],
+                start_typing=lambda: None,
+                cancel_typing=lambda: None,
+            )
+
+        channel_id: int | None = original_msg.platform_meta.get("channel_id")
+        thread_id: int | None = original_msg.platform_meta.get("thread_id")
+        send_to_id: int = thread_id if thread_id is not None else channel_id  # type: ignore[assignment]
+        reply_msg_id: int | None = original_msg.platform_meta.get("message_id")
+        should_reply = reply_msg_id is not None and thread_id is None
+        _placeholder_text = self._msg("stream_placeholder", "\u2026")
+
+        async def _send_placeholder():
+            messageable = await self._resolve_channel(send_to_id)
+            if should_reply:
+                msg_obj = messageable.get_partial_message(reply_msg_id)  # type: ignore[attr-defined]
+                placeholder = await msg_obj.reply(_placeholder_text)
+            else:
+                placeholder = await messageable.send(_placeholder_text)
+            return placeholder, placeholder.id
+
+        async def _edit_placeholder_text(ph, text):
+            display = text[-DISCORD_MAX_LENGTH:]
+            await send_with_retry(
+                lambda d=display: ph.edit(content=d, embed=None),
+                label="Intermediate text edit",
+            )
+
+        async def _edit_placeholder_tool(ph, event):
+            embed = _build_tool_embed(event)
+            await send_with_retry(
+                lambda e=embed: ph.edit(content="", embed=e),
+                label="Tool summary embed",
+            )
+
+        async def _send_message(text: str) -> int | None:
+            messageable = await self._resolve_channel(send_to_id)
+            chunks = render_text(text, DISCORD_MAX_LENGTH)
+            last_id = None
+            for i, chunk in enumerate(chunks):
+                is_last = i == len(chunks) - 1
+                if is_last:
+                    try:
+                        sent = await messageable.send(chunk)
+                        last_id = sent.id
+                    except Exception:
+                        log.exception("Failed to send final text chunk")
+                else:
+                    await send_with_retry(
+                        lambda c=chunk: messageable.send(c),
+                        label="Final text chunk",
+                    )
+            return last_id
+
+        async def _send_fallback(text: str) -> int | None:
+            fallback_outbound = (
+                OutboundMessage.from_text(text) if text
+                else OutboundMessage.from_text(_placeholder_text)
+            )
+            from lyra.adapters.discord_outbound import (
+                send as _discord_send,  # late: avoids circular import
+            )
+            await _discord_send(self, original_msg, fallback_outbound)
+            return fallback_outbound.metadata.get("reply_message_id")
+
+        return PlatformCallbacks(
+            send_placeholder=_send_placeholder,
+            edit_placeholder_text=_edit_placeholder_text,
+            edit_placeholder_tool=_edit_placeholder_tool,
+            send_message=_send_message,
+            send_fallback=_send_fallback,
+            chunk_text=lambda text: render_text(text, DISCORD_MAX_LENGTH),
+            start_typing=lambda: self._start_typing(send_to_id),
+            cancel_typing=lambda: self._cancel_typing(send_to_id),
+        )
 
     async def render_audio(self, msg: OutboundAudio, inbound: InboundMessage) -> None:
         """Send an OutboundAudio envelope as a Discord voice message."""

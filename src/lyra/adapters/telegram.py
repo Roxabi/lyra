@@ -15,11 +15,12 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
 
 if TYPE_CHECKING:
+    from lyra.adapters._shared_streaming import PlatformCallbacks
     from lyra.adapters.nats_outbound_listener import NatsOutboundListener
     from lyra.core.bus import Bus
-    from lyra.core.render_events import RenderEvent
 
 from lyra.adapters import telegram_audio  # noqa: I001
+from lyra.adapters._base_outbound import OutboundAdapterBase
 from lyra.adapters._shared import TypingTaskManager, resolve_msg
 from lyra.adapters.telegram_formatting import (
     _render_buttons as _render_buttons_impl,
@@ -33,8 +34,8 @@ from lyra.adapters.telegram_normalize import (
 from lyra.adapters.telegram_outbound import (
     _typing_loop as _typing_loop,  # noqa: F401
     _typing_worker,
+    build_streaming_callbacks as _build_streaming_callbacks,
     send as _send_impl,
-    send_streaming as _send_streaming_impl,
 )
 from lyra.core.auth import (  # noqa: F401
     _ALLOW_ALL as _ALLOW_ALL,
@@ -86,7 +87,7 @@ def _make_verifier(secret: str):
     return verify
 
 
-class TelegramAdapter:
+class TelegramAdapter(OutboundAdapterBase):
     """Telegram adapter — aiogram v3 webhook. Never logs the bot token."""
 
     def __init__(  # noqa: PLR0913 — DI constructor
@@ -100,6 +101,7 @@ class TelegramAdapter:
         msg_manager: MessageManager | None = None,
         auth: Authenticator = _DENY_ALL,
     ) -> None:
+        super().__init__()  # no-op today, future-proofs cooperative chain
         if auth is not _DENY_ALL:
             import warnings
 
@@ -223,11 +225,11 @@ class TelegramAdapter:
         """Expose the internal task dict — used by tests and outbound submodules."""
         return self._typing._tasks
 
-    def _start_typing(self, chat_id: int) -> None:
-        self._typing.start(chat_id, lambda: _typing_worker(self.bot, chat_id))
+    def _start_typing(self, scope_id: int) -> None:
+        self._typing.start(scope_id, lambda: _typing_worker(self.bot, scope_id))
 
-    def _cancel_typing(self, chat_id: int) -> None:
-        self._typing.cancel(chat_id)
+    def _cancel_typing(self, scope_id: int) -> None:
+        self._typing.cancel(scope_id)
 
     async def astart(self) -> None:
         if self._outbound_listener is not None:
@@ -273,13 +275,10 @@ class TelegramAdapter:
     ) -> None:
         await _send_impl(self, original_msg, outbound)
 
-    async def send_streaming(
-        self,
-        original_msg: InboundMessage,
-        events: AsyncIterator[RenderEvent],
-        outbound: OutboundMessage | None = None,
-    ) -> None:
-        await _send_streaming_impl(self, original_msg, events, outbound)
+    def _make_streaming_callbacks(
+        self, original_msg: InboundMessage, outbound: OutboundMessage | None
+    ) -> "PlatformCallbacks":
+        return _build_streaming_callbacks(self, original_msg, outbound)
 
     async def render_audio(self, msg: OutboundAudio, inbound: InboundMessage) -> None:
         await telegram_audio.render_audio(self, msg, inbound)

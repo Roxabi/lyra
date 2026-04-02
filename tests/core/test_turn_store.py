@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import sqlite3
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
@@ -295,7 +296,9 @@ class TestTurnStoreIntegrationWithPool:
                 if _cb is not None:
                     outbound = OutboundMessage.from_text(response.content)
                     outbound.metadata["reply_message_id"] = "bot_msg_42"
-                    _cb(outbound)
+                    result = _cb(outbound)
+                    if inspect.isawaitable(result):
+                        await result
 
         ctx.dispatch_response = AsyncMock(side_effect=_dispatch_with_callback)
 

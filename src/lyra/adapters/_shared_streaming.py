@@ -1,8 +1,10 @@
-"""Shared streaming algorithm for outbound adapters.
+"""Shared streaming session for channel adapters.
 
-Extracted from TelegramAdapter and DiscordAdapter to eliminate near-identical
-send_streaming() implementations. Platform-specific behaviour is injected via
-PlatformCallbacks; the algorithm is the same for all platforms.
+Extracts the edit-in-place streaming algorithm from Telegram and Discord outbound
+adapters into a single ``StreamingSession`` class. Platform-specific behaviour
+(message API calls, text rendering) is injected via ``PlatformCallbacks``.
+
+This is Slice 2 of #468 — centralising streaming adapters.
 """
 
 from __future__ import annotations
@@ -11,230 +13,248 @@ import logging
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-from lyra.adapters._shared import (
-    STREAMING_EDIT_INTERVAL,
-    StreamState,
-)
-from lyra.core.render_events import TextRenderEvent, ToolSummaryRenderEvent
-
-if TYPE_CHECKING:
-    from lyra.core.message import OutboundMessage
-    from lyra.core.render_events import RenderEvent
+from lyra.adapters._shared import STREAMING_EDIT_INTERVAL, StreamState
+from lyra.core.message import GENERIC_ERROR_REPLY, OutboundMessage
+from lyra.core.render_events import RenderEvent, TextRenderEvent, ToolSummaryRenderEvent
+from lyra.core.tool_recap_format import format_tool_lines
 
 log = logging.getLogger(__name__)
-
-__all__ = ["PlatformCallbacks", "StreamingSession"]
-
-# Cap fallback accumulation to match IntermediateTextState._MAX_INTERMEDIATE_CHARS.
-# Prevents unbounded memory use when placeholder send fails and the LLM streams
-# a very large response.
-_MAX_FALLBACK_CHARS = 8_000
 
 
 @dataclass
 class PlatformCallbacks:
-    """Platform-specific I/O callbacks injected into StreamingSession.
+    """Injectable platform callbacks for StreamingSession.
 
-    All coroutine fields must be awaitable. Sync fields (chunk_text,
-    start_typing, cancel_typing) are called directly.
+    Each field is a callable that performs a platform-specific operation.
+    Callbacks may raise; StreamingSession catches and handles exceptions
+    internally except for stream errors which are re-raised from ``run()``.
     """
 
-    # Send the initial placeholder message.
-    # Returns (placeholder_obj, reply_message_id | None).
     send_placeholder: Callable[[], Awaitable[tuple[Any, int | None]]]
+    """Send the placeholder message. Returns (placeholder_obj, reply_message_id)."""
 
-    # Edit the placeholder with accumulated intermediate text.
-    # Args: (placeholder_obj, display_text)
     edit_placeholder_text: Callable[[Any, str], Awaitable[None]]
+    """Edit the placeholder content with intermediate or final text."""
 
-    # Edit the placeholder with a tool summary embed/text.
-    # Args: (placeholder_obj, event)
-    edit_placeholder_tool: Callable[[Any, ToolSummaryRenderEvent], Awaitable[None]]
+    edit_placeholder_tool: Callable[[Any, ToolSummaryRenderEvent, str], Awaitable[None]]
+    """Edit the placeholder with a tool summary event and display text."""
 
-    # Send a new message (used for final text in tool-using turns).
-    # Returns the sent message id (or None).
     send_message: Callable[[str], Awaitable[int | None]]
+    """Send a new message (used for final text in tool-event turns). Returns message ID."""
 
-    # Fallback: send final text without streaming (placeholder failed).
-    # Returns the sent message id (or None).
     send_fallback: Callable[[str], Awaitable[int | None]]
+    """Send fallback content when placeholder creation fails.
 
-    # Split text into chunks that fit platform message limits.
+    The callback is responsible for platform-specific rendering (e.g.
+    MarkdownV2 escaping on Telegram). Returns message ID or None.
+    """
+
     chunk_text: Callable[[str], list[str]]
+    """Split text into platform-appropriate chunks."""
 
-    # Start (or restart) the typing indicator. Sync.
     start_typing: Callable[[], None]
+    """Start the platform typing indicator."""
 
-    # Cancel the typing indicator. Sync.
     cancel_typing: Callable[[], None]
+    """Cancel the platform typing indicator."""
+
+    get_msg: Callable[[str, str], str]
+    """Look up a localised message by key with fallback. Adapters inject their ``_msg``."""
+
+    placeholder_text: str
+    """Fallback text when no events arrive (e.g. ``"…"``). Used by ``_drain_fallback``."""
+
+    guard_tool_on_intermediate: bool = True
+    """When True, suppress tool-summary edits if intermediate text is already visible.
+
+    Discord sets True (tool summary would erase visible text); Telegram sets False
+    (tool summary is combined with intermediate text via ``IntermediateTextState.display``).
+    """
 
 
 class StreamingSession:
-    """Executes the shared streaming algorithm using platform-injected callbacks.
+    """Platform-agnostic streaming session.
 
-    Usage::
+    Orchestrates the streaming lifecycle:
+      1. Send placeholder
+      2. Edit placeholder on each event (debounced)
+      3. Deliver final text (edit placeholder or send new message for tool turns)
+      4. Manage typing indicator tail
 
-        session = StreamingSession(callbacks, outbound)
-        await session.run(events)
+    Platform-specific behaviour (API calls, text formatting) is injected via
+    ``PlatformCallbacks``. The session is single-use — create a new instance
+    per outbound turn.
     """
 
     def __init__(
         self,
         callbacks: PlatformCallbacks,
-        outbound: "OutboundMessage | None",
+        outbound: OutboundMessage | None,
     ) -> None:
         self._cb = callbacks
         self._outbound = outbound
-        self._st: StreamState | None = None
+        self._st = StreamState()
 
-    async def run(self, events: "AsyncIterator[RenderEvent]") -> None:
-        """Execute the full streaming protocol."""
-        placeholder_obj, reply_id = await self._send_placeholder(events)
-        if placeholder_obj is None:
-            # Fallback path already completed inside _send_placeholder
-            return
-        if reply_id is not None and self._outbound is not None:
-            self._outbound.metadata["reply_message_id"] = reply_id
-        await self._run_event_loop(events, placeholder_obj)
-        await self._deliver_final(placeholder_obj)
-        self._handle_typing_tail()
+    async def _send_placeholder(self) -> tuple[Any, int | None] | None:
+        """Send the placeholder and record reply_message_id on outbound.
 
-    async def _send_placeholder(
-        self,
-        events: "AsyncIterator[RenderEvent]",
-    ) -> tuple[Any, int | None]:
-        """Send placeholder. On failure, drain events and call send_fallback.
-
-        Returns (placeholder_obj, reply_id) on success.
-        Returns (None, None) on failure (fallback path taken).
+        On failure: cancels typing, drains events accumulating text, sends fallback.
+        Returns None on failure (caller should call _handle_typing_tail and return).
+        Returns (placeholder_obj, reply_message_id) on success.
         """
         try:
-            placeholder_obj, reply_id = await self._cb.send_placeholder()
-            return placeholder_obj, reply_id
+            placeholder_obj, reply_message_id = await self._cb.send_placeholder()
+            if self._outbound is not None:
+                self._outbound.metadata["reply_message_id"] = reply_message_id
+            return placeholder_obj, reply_message_id
         except Exception:
+            self._cb.cancel_typing()
             log.exception("Failed to send placeholder — falling back to non-streaming")
-            parts: list[str] = []
-            total_chars = 0
-            async for event in events:
-                if isinstance(event, TextRenderEvent):
-                    parts.append(event.text)
-                    total_chars += len(event.text)
-                    if total_chars >= _MAX_FALLBACK_CHARS:
-                        break
-            fallback_text = "".join(parts)
-            fallback_id = await self._cb.send_fallback(fallback_text)
-            if self._outbound is not None and fallback_id is not None:
-                self._outbound.metadata["reply_message_id"] = fallback_id
-            return None, None
+            return None
+
+    async def _drain_fallback(
+        self, events: AsyncIterator[RenderEvent]
+    ) -> None:
+        """Drain remaining events, accumulate text, send via fallback callback."""
+        parts: list[str] = []
+        async for event in events:
+            if isinstance(event, TextRenderEvent):
+                parts.append(event.text)
+        fallback_text = "".join(parts) or self._cb.placeholder_text
+        try:
+            fallback_message_id = await self._cb.send_fallback(fallback_text)
+        except Exception:
+            log.exception("Fallback send failed — message lost")
+            return
+        if self._outbound is not None and fallback_message_id is not None:
+            self._outbound.metadata["reply_message_id"] = fallback_message_id
 
     async def _run_event_loop(
         self,
-        events: "AsyncIterator[RenderEvent]",
+        events: AsyncIterator[RenderEvent],
         placeholder_obj: Any,
     ) -> None:
-        """Process events, updating placeholder and accumulating state."""
-        _st = StreamState()
-        self._st = _st
-
+        """Iterate over events, updating the placeholder with debounced edits."""
         try:
             async for event in events:
                 if isinstance(event, ToolSummaryRenderEvent):
-                    _st.had_tool_events = True
-                    now = time.monotonic()
-                    if _st.istate.has_intermediate_text:
-                        # Suppress: don't overwrite visible intermediate text
-                        # with a tool embed (guard centralised here, not in cb).
-                        pass
-                    elif (
-                        event.is_complete
-                        or _st.last_tool_edit is None
-                        or (now - _st.last_tool_edit) >= STREAMING_EDIT_INTERVAL
+                    self._st.had_tool_events = True
+                    header = "🔧 Done ✅" if event.is_complete else "🔧 Working…"
+                    body = "\n".join(format_tool_lines(event))
+                    summary = f"{header}\n{body}".strip() if body else header
+                    self._st.istate.set_tool_summary(summary)
+
+                    # Guard: on Discord, don't overwrite intermediate text already
+                    # visible in the placeholder (tool summary lives in a separate
+                    # embed). On Telegram, tool summary is combined with intermediate
+                    # text via IntermediateTextState.display(combine_recap=True).
+                    if not (
+                        self._cb.guard_tool_on_intermediate
+                        and self._st.istate.has_intermediate_text
                     ):
-                        try:
-                            await self._cb.edit_placeholder_tool(
-                                placeholder_obj, event
-                            )
-                            _st.last_tool_edit = now
-                        except Exception as exc:
-                            log.debug("Tool edit skipped: %s", exc)
-                else:  # TextRenderEvent
-                    if event.is_final:
-                        _st.on_final_text(event)
-                    else:
-                        _st.istate.append(event.text)
                         now = time.monotonic()
                         if (
-                            _st.last_intermediate_edit is None
-                            or (now - _st.last_intermediate_edit)
+                            event.is_complete
+                            or self._st.last_tool_edit is None
+                            or (now - self._st.last_tool_edit) >= STREAMING_EDIT_INTERVAL
+                        ):
+                            display_text = self._st.istate.display()
+                            try:
+                                await self._cb.edit_placeholder_tool(
+                                    placeholder_obj, event, display_text
+                                )
+                            except Exception as edit_exc:
+                                log.debug("Tool summary edit skipped: %s", edit_exc)
+                            self._st.last_tool_edit = now
+
+                else:  # TextRenderEvent
+                    if event.is_final:
+                        self._st.on_final_text(event)
+                    else:
+                        self._st.istate.append(event.text)
+                        now = time.monotonic()
+                        if (
+                            self._st.last_intermediate_edit is None
+                            or (now - self._st.last_intermediate_edit)
                             >= STREAMING_EDIT_INTERVAL
                         ):
-                            display = _st.istate.display()
                             try:
                                 await self._cb.edit_placeholder_text(
-                                    placeholder_obj, display
+                                    placeholder_obj, self._st.istate.display()
                                 )
-                                _st.last_intermediate_edit = now
-                            except Exception as exc:
-                                log.debug("Intermediate edit skipped: %s", exc)
+                            except Exception as edit_exc:
+                                log.debug(
+                                    "Intermediate text edit skipped: %s", edit_exc
+                                )
+                            self._st.last_intermediate_edit = now
+
         except Exception as exc:
-            _st.stream_error = exc
+            self._st.stream_error = exc
             log.exception("Stream interrupted")
 
-    async def _deliver_final(self, placeholder_obj: Any) -> None:  # noqa: C901 — delivery: tool/text/error × chunk/overflow branches
-        """Send or edit the final text after the event loop completes."""
-        _st = self._st
-        if _st is None:
-            return
-
-        from lyra.core.message import GENERIC_ERROR_REPLY
-
-        def _msg(_key: str, fallback: str) -> str:  # noqa: ARG001
-            return fallback
-
-        display_text = _st.build_display_text(_msg)
-
+    async def _deliver_final(self, placeholder_obj: Any) -> None:
+        """Deliver the final message content after the event loop completes."""
+        display_text = self._st.build_display_text(self._cb.get_msg)
         if display_text is not None:
             final_chunks = self._cb.chunk_text(display_text) if display_text else []
-            if _st.had_tool_events:
-                # Tool summary in placeholder; send new message for text
+            if self._st.had_tool_events:
+                # Tool summary stays in placeholder; final text sent as new message(s).
+                # Update reply_message_id to the last sent chunk.
+                last_msg_id: int | None = None
                 for chunk in final_chunks:
                     try:
-                        msg_id = await self._cb.send_message(chunk)
-                        if self._outbound is not None and msg_id is not None:
-                            self._outbound.metadata["reply_message_id"] = msg_id
+                        last_msg_id = await self._cb.send_message(chunk)
                     except Exception:
                         log.exception("Failed to send final text chunk")
+                if (
+                    self._outbound is not None
+                    and last_msg_id is not None
+                ):
+                    self._outbound.metadata["reply_message_id"] = last_msg_id
             elif final_chunks:
-                # Text-only turn: edit placeholder with first chunk
+                # Text-only turn: edit placeholder with first chunk, send overflow.
                 try:
                     await self._cb.edit_placeholder_text(
                         placeholder_obj, final_chunks[0]
                     )
                 except Exception:
                     log.exception("Final edit failed")
-                # Send overflow chunks as new messages
                 for extra_chunk in final_chunks[1:]:
                     try:
                         await self._cb.send_message(extra_chunk)
                     except Exception:
                         log.exception("Failed to send overflow chunk")
-        elif _st.stream_error is not None:
+        elif self._st.stream_error is not None:
+            # No text at all — edit placeholder with generic error
+            error_text = GENERIC_ERROR_REPLY
             try:
-                await self._cb.edit_placeholder_text(
-                    placeholder_obj, GENERIC_ERROR_REPLY
-                )
-            except Exception:
-                log.exception("Error edit failed")
-
-        # Re-raise stream error so OutboundDispatcher can record CB failure
-        if _st.stream_error is not None:
-            raise _st.stream_error
+                await self._cb.edit_placeholder_text(placeholder_obj, error_text)
+            except Exception as edit_exc:
+                log.debug("Error edit skipped: %s", edit_exc)
 
     def _handle_typing_tail(self) -> None:
-        """Start or cancel typing indicator based on outbound.intermediate."""
+        """Start or cancel typing based on whether the turn is intermediate."""
         if self._outbound is not None and self._outbound.intermediate:
             self._cb.start_typing()
         else:
             self._cb.cancel_typing()
+
+    async def run(self, events: AsyncIterator[RenderEvent]) -> None:
+        """Run the full streaming lifecycle.
+
+        Raises the stream error (if any) after delivering the error message,
+        so callers (OutboundDispatcher) can record a circuit breaker failure.
+        """
+        result = await self._send_placeholder()
+        if result is None:
+            await self._drain_fallback(events)
+            self._handle_typing_tail()
+            return
+        placeholder_obj, _ = result
+        await self._run_event_loop(events, placeholder_obj)
+        await self._deliver_final(placeholder_obj)
+        self._handle_typing_tail()
+        if self._st.stream_error is not None:
+            raise self._st.stream_error

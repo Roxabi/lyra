@@ -8,6 +8,7 @@ calls the adapter, and records success/failure.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import time
 from collections.abc import AsyncIterator
@@ -211,7 +212,7 @@ class OutboundDispatcher:
                 _cb = _cb_out.metadata.pop("_on_dispatched", None)
                 if callable(_cb):
                     _cb_result = _cb(_cb_out)
-                    if asyncio.iscoroutine(_cb_result):
+                    if inspect.isawaitable(_cb_result):
                         await _cb_result
             # Fix 3: notify user once per chat per debounce window
             scope_key = msg.scope_id or msg.id
@@ -288,7 +289,7 @@ class OutboundDispatcher:
             _dispatched = _out.metadata.pop("_on_dispatched", None)
             if callable(_dispatched):
                 _dispatched_result = _dispatched(_out)
-                if asyncio.iscoroutine(_dispatched_result):
+                if inspect.isawaitable(_dispatched_result):
                     await _dispatched_result
 
         if _last_exc is not None:

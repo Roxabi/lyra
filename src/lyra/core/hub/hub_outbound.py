@@ -7,6 +7,7 @@ Contains all dispatch_* methods and outbound routing logic.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import time
 from collections.abc import Callable, Coroutine
@@ -177,7 +178,7 @@ class HubOutboundMixin:
             _dispatched = outbound.metadata.pop("_on_dispatched", None)
             if callable(_dispatched):
                 _result = _dispatched(outbound)
-                if asyncio.iscoroutine(_result):
+                if inspect.isawaitable(_result):
                     await _result
 
         await self._route_outbound(
@@ -318,7 +319,7 @@ class HubOutboundMixin:
                 _dispatched = outbound.metadata.pop("_on_dispatched", None)
                 if callable(_dispatched):
                     _result = _dispatched(outbound)
-                    if asyncio.iscoroutine(_result):
+                    if inspect.isawaitable(_result):
                         await _result
             self._last_processed_at = time.monotonic()
 

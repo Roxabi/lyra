@@ -1,0 +1,73 @@
+---
+title: "feat: unified channel rule engine"
+issue: 475
+status: approved
+parked: true
+blocked_by: 477
+tier: F-full
+date: 2026-04-02
+---
+
+## Problem
+
+Lyra has two active, competing mechanisms for channel-based auto-behaviors:
+
+- **`patterns.toml` + `agent.patterns`** — agent-scoped, detects bare URLs, rewrites to `/vault-add`, stored in TOML + DB
+- **`watch_channels`** — bot-scoped, auto-responds without @mention and creates threads, stored in DB `settings_json`
+
+A third mechanism (`vault_channels`) was removed in #372 but left the config model inconsistent. Adding a new channel behavior today requires code changes — there is no unified config concept, and the two existing mechanisms can interact in undefined ways when both apply to the same channel.
+
+## Who
+
+- **Primary:** Mickael (Lyra admin) — configures channel behaviors via TOML/DB, needs a single place to add/change rules without touching code
+- **Secondary:** Future agents running in watch channels — their auto-response behavior is governed by these rules
+
+## Architecture
+
+The rule engine is a **trigger + routing layer** on top of `ToolRegistry` (#477):
+
+```
+message received
+  → trigger detection  (bare_url? any_message? keyword?)
+    → rule match       (channel scope, enabled check)
+      → ToolRegistry.dispatch(rule.action, {message, context})
+```
+
+The `action` field in a rule is a **tool name** — not a custom DSL, not a hardcoded handler. Execution always goes through the registry. Extensibility comes from registering new tools, not from modifying the rule engine.
+
+**Migration path:**
+- `patterns.toml` bare_url behavior → register `vault-add` as a tool, express as a `bare_url` rule
+- `watch_channels` behavior → register `auto-respond` as a tool, express as an `any_message` rule
+
+## Constraints
+
+- **Hard dependency on #477** — `ToolRegistry.dispatch()` must exist before this is implemented
+- Discord-only for now — `watch_channels` was never implemented for Telegram; rule engine can be platform-agnostic in design but Discord is the only validated target
+- Config storage TBD — TOML-only (restart to change) vs DB-backed (runtime edits) vs hybrid; needs decision before spec
+- Zero external dependencies — consistent with #477's constraint
+
+## Out of Scope
+
+- Cross-platform rules (one rule firing on both Telegram + Discord)
+- Rate limiting per rule
+- Priority/ordering between conflicting rules
+- Dynamic rule editing via bot commands (Phase 2+)
+
+## Open Question
+
+**Config storage** — before spec can be written, one decision is needed:
+- TOML-only (restart to change rules)
+- DB-backed (runtime edits via bot commands)
+- Hybrid (TOML as source of truth, loaded into DB on startup)
+
+Resolve after #477 lands.
+
+## Complexity
+
+**Tier: F-full** — new architectural layer (rule engine), replaces two existing mechanisms, introduces a config format, depends on and extends #477's ToolRegistry, requires migration path.
+
+Signals observed:
+- New pattern not present in codebase today
+- Touches agent config layer (TOML), bot settings layer (DB), and message dispatch layer (hub)
+- Hard dependency on another F-full issue (#477) that must land first
+- Migration from two existing mechanisms with different config models

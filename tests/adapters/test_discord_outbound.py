@@ -349,3 +349,87 @@ class TestDiscordOutboundMessage:
         await adapter.send(make_dc_inbound_msg(), outbound)
 
         assert outbound.metadata.get("reply_message_id") == 7654
+
+
+# ---------------------------------------------------------------------------
+# V5 RED tests — DiscordAdapter MRO and fallback path (#468)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_discord_mro_instantiation() -> None:
+    """DiscordAdapter(discord.Client, OutboundAdapterBase) can be instantiated."""
+    from unittest.mock import MagicMock
+
+    import discord
+
+    from lyra.adapters.discord import DiscordAdapter
+
+    adapter = DiscordAdapter(
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
+        intents=discord.Intents.none(),
+    )
+    assert adapter is not None
+
+
+@pytest.mark.asyncio
+async def test_discord_fallback_sets_reply_message_id() -> None:
+    """When send_streaming fallback path is taken (placeholder fails),
+    outbound.metadata['reply_message_id'] is set from the fallback message."""
+    from datetime import datetime, timezone
+    from unittest.mock import AsyncMock, MagicMock
+
+    import discord
+
+    from lyra.adapters.discord import _ALLOW_ALL, DiscordAdapter
+    from lyra.core.message import InboundMessage, OutboundMessage
+    from lyra.core.trust import TrustLevel
+
+    adapter = DiscordAdapter(
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        inbound_audio_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
+    )
+
+    # Use a message with no message_id so should_reply=False (avoids reply() path)
+    # Both placeholder and fallback go through channel.send()
+    original_msg = InboundMessage(
+        id="msg-fallback-test",
+        platform="discord",
+        bot_id="main",
+        scope_id="channel:333",
+        user_id="dc:user:42",
+        user_name="Alice",
+        is_mention=False,
+        text="hello",
+        text_raw="hello",
+        timestamp=datetime.now(timezone.utc),
+        trust_level=TrustLevel.TRUSTED,
+        platform_meta={
+            "guild_id": 111,
+            "channel_id": 333,
+            "message_id": None,  # no reply-to → should_reply=False
+            "thread_id": None,
+            "channel_type": "text",
+        },
+    )
+
+    sent_mock = MagicMock()
+    sent_mock.id = 88
+    mock_channel = AsyncMock()
+    # First call (send placeholder) raises; second call (fallback send) succeeds
+    mock_channel.send = AsyncMock(side_effect=[Exception("placeholder failed"), sent_mock])  # noqa: E501
+    adapter._resolve_channel = AsyncMock(return_value=mock_channel)
+
+    outbound = OutboundMessage.from_text("")
+
+    async def _events():
+        from lyra.core.render_events import TextRenderEvent
+        yield TextRenderEvent(text="hello", is_final=True)
+
+    await adapter.send_streaming(original_msg, _events(), outbound=outbound)
+    assert outbound.metadata.get("reply_message_id") == 88

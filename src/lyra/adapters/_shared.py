@@ -39,6 +39,7 @@ from lyra.core.render_events import TextRenderEvent
 if TYPE_CHECKING:
     from lyra.core.bus import Bus
     from lyra.core.messages import MessageManager
+    from lyra.core.render_events import ToolSummaryRenderEvent
 
 __all__ = [
     "AUDIO_MIME_TYPES",
@@ -59,7 +60,9 @@ __all__ = [
     "TypingTaskManager",
     "IntermediateTextState",
     "StreamState",
+    "format_tool_summary_header",
     "parse_reply_to_id",
+    "send_with_retry",
 ]
 
 log = logging.getLogger(__name__)
@@ -409,3 +412,37 @@ def parse_reply_to_id(reply_to_id: str | None) -> int | None:
             reply_to_id,
         )
         return None
+
+
+async def send_with_retry(
+    coro_fn: Callable[[], Any],
+    *,
+    label: str,
+    max_attempts: int = 3,
+) -> None:
+    """Call *coro_fn()* and retry with exponential backoff (1 s, 2 s, 4 s ...)."""
+    for attempt in range(max_attempts):
+        try:
+            await coro_fn()
+            return
+        except Exception:
+            if attempt == max_attempts - 1:
+                log.exception("%s failed after %d attempts", label, max_attempts)
+                return
+            delay = 2**attempt  # 1 s, 2 s, 4 s ...
+            log.warning(
+                "%s failed (attempt %d/%d), retrying in %d s",
+                label,
+                attempt + 1,
+                max_attempts,
+                delay,
+            )
+            await asyncio.sleep(delay)
+
+
+def format_tool_summary_header(event: ToolSummaryRenderEvent) -> str:
+    """Return the tool summary header string for a ToolSummaryRenderEvent.
+
+    Header only — does NOT include tool body lines.
+    """
+    return "🔧 Done ✅" if event.is_complete else "🔧 Working…"

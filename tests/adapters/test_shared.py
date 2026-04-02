@@ -1,6 +1,14 @@
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
-from lyra.adapters._shared import IntermediateTextState, chunk_text
+from lyra.adapters._shared import (
+    IntermediateTextState,
+    chunk_text,
+    format_tool_summary_header,
+    send_with_retry,
+)
+from lyra.core.render_events import ToolSummaryRenderEvent
 
 
 class TestChunkText:
@@ -108,3 +116,59 @@ class TestIntermediateTextState:
         state.set_tool_summary("first")
         state.set_tool_summary("second")
         assert state.display() == "second"
+
+
+class TestSendWithRetry:
+    async def test_send_with_retry_succeeds_on_first_attempt(self) -> None:
+        # Arrange
+        coro_fn = AsyncMock(return_value=None)
+        # Act
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            await send_with_retry(coro_fn, label="test-op")
+        # Assert
+        coro_fn.assert_awaited_once()
+
+    async def test_send_with_retry_retries_on_transient_failure(self) -> None:
+        # Arrange — fails once, then succeeds
+        coro_fn = AsyncMock(side_effect=[RuntimeError("transient"), None])
+        # Act
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            await send_with_retry(coro_fn, label="test-op")
+        # Assert
+        assert coro_fn.await_count == 2
+
+    async def test_send_with_retry_gives_up_after_max_attempts(self) -> None:
+        # Arrange — always raises
+        coro_fn = AsyncMock(side_effect=RuntimeError("permanent"))
+        # Act — must NOT re-raise; function returns normally after exhausting attempts
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            await send_with_retry(coro_fn, label="test-op", max_attempts=3)
+        # Assert
+        assert coro_fn.await_count == 3
+
+    async def test_send_with_retry_custom_max_attempts(self) -> None:
+        # Arrange — always raises; custom limit of 2
+        coro_fn = AsyncMock(side_effect=RuntimeError("permanent"))
+        # Act
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            await send_with_retry(coro_fn, label="test-op", max_attempts=2)
+        # Assert — called at most max_attempts times
+        assert coro_fn.await_count == 2
+
+
+class TestFormatToolSummaryHeader:
+    def test_format_tool_summary_header_complete(self) -> None:
+        # Arrange
+        event = ToolSummaryRenderEvent(is_complete=True)
+        # Act
+        result = format_tool_summary_header(event)
+        # Assert
+        assert result == "🔧 Done ✅"
+
+    def test_format_tool_summary_header_in_progress(self) -> None:
+        # Arrange
+        event = ToolSummaryRenderEvent(is_complete=False)
+        # Act
+        result = format_tool_summary_header(event)
+        # Assert
+        assert result == "🔧 Working…"

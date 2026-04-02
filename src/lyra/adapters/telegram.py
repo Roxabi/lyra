@@ -15,11 +15,12 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
 
 if TYPE_CHECKING:
+    from lyra.adapters._shared_streaming import PlatformCallbacks
     from lyra.adapters.nats_outbound_listener import NatsOutboundListener
     from lyra.core.bus import Bus
-    from lyra.core.render_events import RenderEvent
 
 from lyra.adapters import telegram_audio  # noqa: I001
+from lyra.adapters._base_outbound import OutboundAdapterBase
 from lyra.adapters._shared import TypingTaskManager, resolve_msg
 from lyra.adapters.telegram_formatting import (
     _render_buttons as _render_buttons_impl,
@@ -34,7 +35,6 @@ from lyra.adapters.telegram_outbound import (
     _typing_loop as _typing_loop,  # noqa: F401
     _typing_worker,
     send as _send_impl,
-    send_streaming as _send_streaming_impl,
 )
 from lyra.core.auth import (  # noqa: F401
     _ALLOW_ALL as _ALLOW_ALL,
@@ -86,7 +86,7 @@ def _make_verifier(secret: str):
     return verify
 
 
-class TelegramAdapter:
+class TelegramAdapter(OutboundAdapterBase):
     """Telegram adapter — aiogram v3 webhook. Never logs the bot token."""
 
     def __init__(  # noqa: PLR0913 — DI constructor
@@ -100,6 +100,7 @@ class TelegramAdapter:
         msg_manager: MessageManager | None = None,
         auth: Authenticator = _DENY_ALL,
     ) -> None:
+        super().__init__()  # no-op today, future-proofs cooperative chain
         if auth is not _DENY_ALL:
             import warnings
 
@@ -273,13 +274,117 @@ class TelegramAdapter:
     ) -> None:
         await _send_impl(self, original_msg, outbound)
 
-    async def send_streaming(
+    def _make_streaming_callbacks(  # noqa: C901 — streaming callbacks: one closure per platform op
         self,
         original_msg: InboundMessage,
-        events: AsyncIterator[RenderEvent],
-        outbound: OutboundMessage | None = None,
-    ) -> None:
-        await _send_streaming_impl(self, original_msg, events, outbound)
+        outbound: OutboundMessage | None,
+    ) -> "PlatformCallbacks":
+        from lyra.adapters._shared_streaming import PlatformCallbacks
+        from lyra.adapters.telegram_formatting import _validate_inbound
+
+        meta = _validate_inbound(original_msg, "send_streaming")
+        if meta is None:
+            # Return no-op callbacks that immediately signal failure;
+            # send_placeholder raises, triggering the fallback path.
+            async def _noop_placeholder():
+                raise ValueError("invalid inbound message")
+
+            async def _noop_fallback(text: str) -> None:
+                return None
+
+            return PlatformCallbacks(
+                send_placeholder=_noop_placeholder,
+                edit_placeholder_text=lambda ph, text: asyncio.sleep(0),
+                edit_placeholder_tool=lambda ph, ev, header: asyncio.sleep(0),
+                send_message=_noop_fallback,
+                send_fallback=_noop_fallback,
+                chunk_text=lambda text: [text],
+                start_typing=lambda: None,
+                cancel_typing=lambda: None,
+            )
+
+        chat_id, _, _ = meta
+        reply_to: int | None = original_msg.platform_meta.get("message_id")
+        _placeholder_text = self._msg("stream_placeholder", "\u2026")
+
+        async def _send_placeholder():
+            msg = await self.bot.send_message(
+                chat_id=chat_id,
+                text=_placeholder_text,
+                **({"reply_to_message_id": reply_to} if reply_to is not None else {}),
+            )
+            return msg, msg.message_id
+
+        async def _edit_placeholder_text(ph: object, text: str) -> None:
+            rendered = _render_text_impl(text)
+            if rendered:
+                try:
+                    await self.bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=ph.message_id,
+                        text=rendered[0],
+                        parse_mode="MarkdownV2",
+                    )
+                except Exception as exc:
+                    log.debug("Placeholder text edit skipped: %s", exc)
+
+        async def _edit_placeholder_tool(  # noqa: E501
+            ph: object, event: object, header: str
+        ) -> None:
+            from lyra.adapters.telegram_outbound import _format_tool_summary
+            summary = _format_tool_summary(event)
+            rendered = _render_text_impl(summary)
+            if rendered:
+                try:
+                    await self.bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=ph.message_id,
+                        text=rendered[0],
+                        parse_mode="MarkdownV2",
+                    )
+                except Exception as exc:
+                    log.debug("Tool summary edit skipped: %s", exc)
+
+        async def _send_message(text: str) -> "int | None":
+            rendered = _render_text_impl(text)
+            last = None
+            for chunk in rendered:
+                try:
+                    last = await self.bot.send_message(
+                        chat_id=chat_id,
+                        text=chunk,
+                        parse_mode="MarkdownV2",
+                    )
+                except Exception:
+                    log.exception("Failed to send final text chunk")
+            return last.message_id if last else None
+
+        async def _send_fallback(text: str) -> "int | None":
+            """NOT self.send() — needs MarkdownV2 escaping."""
+            rendered = _render_text_impl(text) if text else []
+            if not rendered:
+                rendered = [text or _placeholder_text]
+            last = None
+            for chunk in rendered:
+                last = await self.bot.send_message(
+                    chat_id=chat_id,
+                    text=chunk,
+                    parse_mode="MarkdownV2",
+                )
+            return last.message_id if last else None
+
+        scope_id = chat_id
+
+        return PlatformCallbacks(
+            send_placeholder=_send_placeholder,
+            edit_placeholder_text=_edit_placeholder_text,
+            edit_placeholder_tool=_edit_placeholder_tool,
+            send_message=_send_message,
+            send_fallback=_send_fallback,
+            chunk_text=lambda text: _render_text_impl(text) or [text],
+            start_typing=lambda: self._start_typing(scope_id),
+            cancel_typing=lambda: self._cancel_typing(scope_id),
+        )
 
     async def render_audio(self, msg: OutboundAudio, inbound: InboundMessage) -> None:
         await telegram_audio.render_audio(self, msg, inbound)

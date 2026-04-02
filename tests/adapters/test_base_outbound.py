@@ -101,7 +101,7 @@ class TestOutboundAdapterBaseABC:
 
         # Act / Assert
         with pytest.raises(TypeError):
-            MissingSend()
+            MissingSend()  # type: ignore[abstract]
 
     def test_missing_make_streaming_callbacks_raises_type_error(self) -> None:
         """Instantiating a subclass that omits _make_streaming_callbacks() must raise TypeError."""  # noqa: E501
@@ -119,7 +119,7 @@ class TestOutboundAdapterBaseABC:
 
         # Act / Assert
         with pytest.raises(TypeError):
-            MissingCallbacks()
+            MissingCallbacks()  # type: ignore[abstract]
 
     def test_missing_start_typing_raises_type_error(self) -> None:
         """Instantiating a subclass that omits _start_typing() must raise TypeError."""
@@ -129,7 +129,7 @@ class TestOutboundAdapterBaseABC:
             async def send(self, original_msg, outbound):
                 pass
 
-            def _make_streaming_callbacks(self, original_msg, outbound):
+            def _make_streaming_callbacks(self, original_msg, outbound):  # type: ignore[override]
                 pass
 
             def _cancel_typing(self, scope_id):
@@ -137,7 +137,7 @@ class TestOutboundAdapterBaseABC:
 
         # Act / Assert
         with pytest.raises(TypeError):
-            MissingStartTyping()
+            MissingStartTyping()  # type: ignore[abstract]
 
     def test_missing_cancel_typing_raises_type_error(self) -> None:
         """Instantiating a subclass that omits _cancel_typing() must raise TypeError."""
@@ -147,7 +147,7 @@ class TestOutboundAdapterBaseABC:
             async def send(self, original_msg, outbound):
                 pass
 
-            def _make_streaming_callbacks(self, original_msg, outbound):
+            def _make_streaming_callbacks(self, original_msg, outbound):  # type: ignore[override]
                 pass
 
             def _start_typing(self, scope_id):
@@ -155,7 +155,7 @@ class TestOutboundAdapterBaseABC:
 
         # Act / Assert
         with pytest.raises(TypeError):
-            MissingCancelTyping()
+            MissingCancelTyping()  # type: ignore[abstract]
 
     def test_concrete_subclass_instantiates_successfully(self) -> None:
         """A complete concrete subclass must instantiate without error."""

@@ -128,9 +128,10 @@ class TestStreamingSessionFallback:
     async def test_fallback_path_drains_all_events(self) -> None:
         """When send_placeholder raises, remaining events are drained without crash."""
         # Arrange
+        _send_fallback = AsyncMock(return_value=77)
         callbacks = make_mock_callbacks(
             send_placeholder=AsyncMock(side_effect=Exception("network error")),
-            send_fallback=AsyncMock(return_value=77),
+            send_fallback=_send_fallback,
         )
         session = StreamingSession(callbacks=callbacks, outbound=None)
 
@@ -138,7 +139,7 @@ class TestStreamingSessionFallback:
         await session.run(text_events("a", "b", "c"))
 
         # Assert — fallback was called (session completed gracefully)
-        callbacks.send_fallback.assert_called_once()
+        _send_fallback.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -151,8 +152,9 @@ class TestStreamingSessionToolEvents:
         """After ToolSummaryRenderEvent, final text is sent as a new message."""
         # Arrange
         outbound = OutboundMessage.from_text("")
+        _send_message = AsyncMock(return_value=99)
         callbacks = make_mock_callbacks(
-            send_message=AsyncMock(return_value=99),
+            send_message=_send_message,
         )
         session = StreamingSession(callbacks=callbacks, outbound=outbound)
 
@@ -160,21 +162,26 @@ class TestStreamingSessionToolEvents:
         await session.run(tool_then_text("summary", "final"))
 
         # Assert
-        callbacks.send_message.assert_called()
+        _send_message.assert_called()
         assert outbound.metadata["reply_message_id"] == 99
 
     async def test_text_only_edits_placeholder(self) -> None:
         """Text-only turn (no tool events) edits the placeholder, not send_message."""
         # Arrange
-        callbacks = make_mock_callbacks()
+        _edit_placeholder_text = AsyncMock(return_value=None)
+        _send_message = AsyncMock(return_value=99)
+        callbacks = make_mock_callbacks(
+            edit_placeholder_text=_edit_placeholder_text,
+            send_message=_send_message,
+        )
         session = StreamingSession(callbacks=callbacks, outbound=None)
 
         # Act
         await session.run(text_events("hello"))
 
         # Assert
-        callbacks.edit_placeholder_text.assert_called()
-        callbacks.send_message.assert_not_called()
+        _edit_placeholder_text.assert_called()
+        _send_message.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -188,37 +195,40 @@ class TestStreamingSessionTyping:
         # Arrange
         outbound = OutboundMessage.from_text("")
         # intermediate defaults to False
-        callbacks = make_mock_callbacks()
+        _cancel_typing = MagicMock(return_value=None)
+        callbacks = make_mock_callbacks(cancel_typing=_cancel_typing)
         session = StreamingSession(callbacks=callbacks, outbound=outbound)
 
         # Act
         await session.run(text_events("hello"))
 
         # Assert
-        callbacks.cancel_typing.assert_called()
+        _cancel_typing.assert_called()
 
     async def test_start_typing_called_when_intermediate(self) -> None:
         """start_typing is called when outbound.intermediate is True."""
         # Arrange
         outbound = OutboundMessage.from_text("")
         outbound.intermediate = True
-        callbacks = make_mock_callbacks()
+        _start_typing = MagicMock(return_value=None)
+        callbacks = make_mock_callbacks(start_typing=_start_typing)
         session = StreamingSession(callbacks=callbacks, outbound=outbound)
 
         # Act
         await session.run(text_events("hello"))
 
         # Assert
-        callbacks.start_typing.assert_called()
+        _start_typing.assert_called()
 
     async def test_cancel_typing_called_when_outbound_is_none(self) -> None:
         """cancel_typing is called when outbound is None (no intermediate flag)."""
         # Arrange
-        callbacks = make_mock_callbacks()
+        _cancel_typing = MagicMock(return_value=None)
+        callbacks = make_mock_callbacks(cancel_typing=_cancel_typing)
         session = StreamingSession(callbacks=callbacks, outbound=None)
 
         # Act
         await session.run(text_events("hello"))
 
         # Assert — when outbound is None, not-intermediate path applies
-        callbacks.cancel_typing.assert_called()
+        _cancel_typing.assert_called()

@@ -420,7 +420,14 @@ async def send_with_retry(
     label: str,
     max_attempts: int = 3,
 ) -> None:
-    """Call *coro_fn()* and retry with exponential backoff (1 s, 2 s, 4 s ...)."""
+    """Call *coro_fn()* and retry with exponential backoff (1 s, 2 s, 4 s ...).
+
+    Swallows the final exception and returns normally after exhaustion. Use only
+    for cosmetic/intermediate operations where silent skip is acceptable (e.g.
+    streaming edits, tool embeds). For operations whose return value drives
+    routing (e.g. updating reply_message_id), bypass this function and use a
+    bare try/except instead.
+    """
     for attempt in range(max_attempts):
         try:
             await coro_fn()

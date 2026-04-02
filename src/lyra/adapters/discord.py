@@ -137,16 +137,16 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         """Expose the internal task dict — used by tests and outbound submodules."""
         return self._typing._tasks
 
-    def _start_typing(self, send_to_id: int) -> None:  # type: ignore[override]
-        """Start (or restart) the typing indicator background task for send_to_id."""
+    def _start_typing(self, scope_id: int) -> None:
+        """Start (or restart) the typing indicator background task for scope_id."""
         self._typing.start(
-            send_to_id,
-            lambda: _discord_typing_worker(self._resolve_channel, send_to_id),
+            scope_id,
+            lambda: _discord_typing_worker(self._resolve_channel, scope_id),
         )
 
-    def _cancel_typing(self, send_to_id: int) -> None:  # type: ignore[override]
-        """Cancel and remove the typing indicator task for send_to_id."""
-        self._typing.cancel(send_to_id)
+    def _cancel_typing(self, scope_id: int) -> None:
+        """Cancel and remove the typing indicator task for scope_id."""
+        self._typing.cancel(scope_id)
 
     def _cancel_typing_for(self, inbound: InboundMessage) -> None:
         """Cancel the typing indicator for the channel/thread of *inbound*."""
@@ -332,24 +332,14 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
                 placeholder = await messageable.send(_placeholder_text)
             return placeholder, placeholder.id
 
-        # Track whether intermediate text has been shown in the placeholder.
-        # Once visible, tool embeds must not overwrite it (Discord-specific
-        # behaviour: the text and embed share the same message, so an embed
-        # edit would erase the intermediate text the user can see).
-        _has_intermediate_text: list[bool] = [False]
-
         async def _edit_placeholder_text(ph, text):
-            _has_intermediate_text[0] = True
             display = text[-DISCORD_MAX_LENGTH:]
             await send_with_retry(
                 lambda d=display: ph.edit(content=d, embed=None),
                 label="Intermediate text edit",
             )
 
-        async def _edit_placeholder_tool(ph, event, header):
-            if _has_intermediate_text[0]:
-                # Suppress tool embed — it would overwrite visible intermediate text.
-                return
+        async def _edit_placeholder_tool(ph, event, _header):
             embed = _build_tool_embed(event)
             await send_with_retry(
                 lambda e=embed: ph.edit(content="", embed=e),

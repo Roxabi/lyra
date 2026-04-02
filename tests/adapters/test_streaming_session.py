@@ -9,6 +9,8 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from lyra.adapters._shared_streaming import PlatformCallbacks, StreamingSession
 from lyra.core.message import OutboundMessage
 from lyra.core.render_events import TextRenderEvent, ToolSummaryRenderEvent
@@ -183,6 +185,45 @@ class TestStreamingSessionToolEvents:
         _edit_placeholder_text.assert_called()
         _send_message.assert_not_called()
 
+    async def test_text_overflow_chunks_sent_as_new_messages(self) -> None:
+        """When chunk_text returns >1 chunk for final text, first edits placeholder,
+        remainder sent via send_message."""
+        # Arrange
+        _edit_placeholder_text = AsyncMock(return_value=None)
+        _send_message = AsyncMock(return_value=99)
+        callbacks = make_mock_callbacks(
+            edit_placeholder_text=_edit_placeholder_text,
+            send_message=_send_message,
+            chunk_text=lambda text: ["chunk0", "chunk1", "chunk2"],
+        )
+        session = StreamingSession(callbacks=callbacks, outbound=None)
+
+        # Act
+        await session.run(text_events("long text"))
+
+        # Assert — first chunk edits placeholder; overflow chunks sent as new messages
+        assert _edit_placeholder_text.call_count >= 1
+        assert _edit_placeholder_text.call_args_list[-1].args[1] == "chunk0"
+        assert _send_message.call_count == 2  # chunk1 and chunk2
+
+    async def test_tool_event_calls_edit_placeholder_tool(self) -> None:
+        """A ToolSummaryRenderEvent causes edit_placeholder_tool to be called."""
+        # Arrange
+        _edit_placeholder_tool = AsyncMock(return_value=None)
+        callbacks = make_mock_callbacks(edit_placeholder_tool=_edit_placeholder_tool)
+        session = StreamingSession(callbacks=callbacks, outbound=None)
+
+        # Act
+        await session.run(tool_then_text())
+
+        # Assert
+        _edit_placeholder_tool.assert_called_once()
+        _call = _edit_placeholder_tool.call_args
+        # Second arg is the ToolSummaryRenderEvent
+        assert isinstance(_call.args[1], ToolSummaryRenderEvent)
+        # Third arg is the header string
+        assert isinstance(_call.args[2], str) and _call.args[2]
+
 
 # ---------------------------------------------------------------------------
 # TestStreamingSessionTyping
@@ -232,3 +273,44 @@ class TestStreamingSessionTyping:
 
         # Assert — when outbound is None, not-intermediate path applies
         _cancel_typing.assert_called()
+
+
+# ---------------------------------------------------------------------------
+# TestStreamingSessionStreamError
+# ---------------------------------------------------------------------------
+
+
+class TestStreamingSessionStreamError:
+    async def test_stream_error_edits_placeholder_with_generic_error(self) -> None:
+        """When the event stream raises mid-stream, placeholder is edited with GENERIC_ERROR_REPLY."""  # noqa: E501
+        from lyra.core.message import GENERIC_ERROR_REPLY
+
+        async def error_events():
+            yield TextRenderEvent(text="partial", is_final=False)
+            raise RuntimeError("mid-stream failure")
+
+        _edit_placeholder_text = AsyncMock(return_value=None)
+        callbacks = make_mock_callbacks(edit_placeholder_text=_edit_placeholder_text)
+        session = StreamingSession(callbacks=callbacks, outbound=None)
+
+        with pytest.raises(RuntimeError, match="mid-stream failure"):
+            await session.run(error_events())
+
+        # The last edit_placeholder_text call should have GENERIC_ERROR_REPLY
+        assert any(
+            call.args[1] == GENERIC_ERROR_REPLY
+            for call in _edit_placeholder_text.call_args_list
+        )
+
+    async def test_stream_error_is_reraised_from_run(self) -> None:
+        """Exception from the event stream is re-raised from session.run()."""
+
+        async def error_events():
+            raise ValueError("stream broken")
+            yield  # make it an async generator
+
+        callbacks = make_mock_callbacks()
+        session = StreamingSession(callbacks=callbacks, outbound=None)
+
+        with pytest.raises(ValueError, match="stream broken"):
+            await session.run(error_events())

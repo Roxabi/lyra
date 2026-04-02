@@ -135,7 +135,11 @@ class StreamingSession:
                 if isinstance(event, ToolSummaryRenderEvent):
                     _st.had_tool_events = True
                     now = time.monotonic()
-                    if (
+                    if _st.istate.has_intermediate_text:
+                        # Suppress: don't overwrite visible intermediate text
+                        # with a tool embed (guard centralised here, not in cb).
+                        pass
+                    elif (
                         event.is_complete
                         or _st.last_tool_edit is None
                         or (now - _st.last_tool_edit) >= STREAMING_EDIT_INTERVAL
@@ -179,7 +183,7 @@ class StreamingSession:
 
         from lyra.core.message import GENERIC_ERROR_REPLY
 
-        def _msg(_key: str, fallback: str) -> str:
+        def _msg(_key: str, fallback: str) -> str:  # noqa: ARG001
             return fallback
 
         display_text = _st.build_display_text(_msg)

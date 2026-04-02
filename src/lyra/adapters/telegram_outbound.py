@@ -20,6 +20,7 @@ from lyra.core.message import (
 from lyra.core.render_events import ToolSummaryRenderEvent
 
 if TYPE_CHECKING:
+    from lyra.adapters._shared_streaming import PlatformCallbacks
     from lyra.adapters.telegram import TelegramAdapter
 
 log = logging.getLogger("lyra.adapters.telegram")
@@ -155,4 +156,110 @@ def _format_tool_summary(event: ToolSummaryRenderEvent) -> str:
     header = "🔧 Done ✅" if event.is_complete else "🔧 Working…"
     body = "\n".join(format_tool_lines(event))
     return f"{header}\n{body}".strip() if body else header
+
+
+def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
+    adapter: "TelegramAdapter",
+    original_msg: InboundMessage,
+    outbound: OutboundMessage | None,
+) -> "PlatformCallbacks":
+    """Build PlatformCallbacks for StreamingSession from a TelegramAdapter context.
+
+    Extracted from TelegramAdapter._make_streaming_callbacks to keep telegram.py
+    under the 300-line file-length limit.
+    """
+    from lyra.adapters._shared_streaming import PlatformCallbacks
+
+    meta = _validate_inbound(original_msg, "send_streaming")
+    if meta is None:
+        async def _noop_placeholder() -> tuple[None, None]:
+            raise ValueError("invalid inbound message")
+
+        async def _noop_fallback(text: str) -> None:
+            return None
+
+        return PlatformCallbacks(
+            send_placeholder=_noop_placeholder,
+            edit_placeholder_text=lambda ph, text: asyncio.sleep(0),
+            edit_placeholder_tool=lambda ph, ev, header: asyncio.sleep(0),
+            send_message=_noop_fallback,
+            send_fallback=_noop_fallback,
+            chunk_text=lambda text: [text],
+            start_typing=lambda: None,
+            cancel_typing=lambda: None,
+        )
+
+    chat_id, _, _ = meta
+    reply_to: int | None = original_msg.platform_meta.get("message_id")
+    _placeholder_text = adapter._msg("stream_placeholder", "\u2026")
+
+    async def _send_placeholder() -> tuple[Any, int]:
+        msg = await adapter.bot.send_message(
+            chat_id=chat_id,
+            text=_placeholder_text,
+            **({"reply_to_message_id": reply_to} if reply_to is not None else {}),
+        )
+        return msg, msg.message_id
+
+    async def _edit_placeholder_text(ph: Any, text: str) -> None:
+        rendered = _render_text(text)
+        if rendered:
+            try:
+                await adapter.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=ph.message_id,
+                    text=rendered[0],
+                    parse_mode="MarkdownV2",
+                )
+            except Exception as exc:
+                log.debug("Placeholder text edit skipped: %s", exc)
+
+    async def _edit_placeholder_tool(ph: Any, event: Any, header: str) -> None:
+        summary = _format_tool_summary(event)
+        rendered = _render_text(summary)
+        if rendered:
+            try:
+                await adapter.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=ph.message_id,
+                    text=rendered[0],
+                    parse_mode="MarkdownV2",
+                )
+            except Exception as exc:
+                log.debug("Tool summary edit skipped: %s", exc)
+
+    async def _send_message(text: str) -> int | None:
+        rendered = _render_text(text)
+        last = None
+        for chunk in rendered:
+            try:
+                last = await adapter.bot.send_message(
+                    chat_id=chat_id, text=chunk, parse_mode="MarkdownV2"
+                )
+            except Exception:
+                log.exception("Failed to send final text chunk")
+        return last.message_id if last else None
+
+    async def _send_fallback(text: str) -> int | None:
+        """NOT adapter.send() — needs MarkdownV2 escaping."""
+        rendered = _render_text(text) if text else []
+        if not rendered:
+            rendered = [text or _placeholder_text]
+        last = None
+        for chunk in rendered:
+            last = await adapter.bot.send_message(
+                chat_id=chat_id, text=chunk, parse_mode="MarkdownV2"
+            )
+        return last.message_id if last else None
+
+    return PlatformCallbacks(
+        send_placeholder=_send_placeholder,
+        edit_placeholder_text=_edit_placeholder_text,
+        edit_placeholder_tool=_edit_placeholder_tool,
+        send_message=_send_message,
+        send_fallback=_send_fallback,
+        chunk_text=lambda text: _render_text(text) or [text],
+        start_typing=lambda: adapter._start_typing(chat_id),
+        cancel_typing=lambda: adapter._cancel_typing(chat_id),
+    )
 

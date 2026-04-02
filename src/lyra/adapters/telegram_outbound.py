@@ -181,7 +181,7 @@ def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
         return PlatformCallbacks(
             send_placeholder=_noop_placeholder,
             edit_placeholder_text=lambda ph, text: asyncio.sleep(0),
-            edit_placeholder_tool=lambda ph, ev, header: asyncio.sleep(0),
+            edit_placeholder_tool=lambda ph, ev: asyncio.sleep(0),
             send_message=_noop_fallback,
             send_fallback=_noop_fallback,
             chunk_text=lambda text: [text],
@@ -214,7 +214,7 @@ def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
             except Exception as exc:
                 log.debug("Placeholder text edit skipped: %s", exc)
 
-    async def _edit_placeholder_tool(ph: Any, event: Any, header: str) -> None:
+    async def _edit_placeholder_tool(ph: Any, event: Any) -> None:
         summary = _format_tool_summary(event)
         rendered = _render_text(summary)
         if rendered:

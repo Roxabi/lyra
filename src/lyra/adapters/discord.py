@@ -339,7 +339,7 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
                 label="Intermediate text edit",
             )
 
-        async def _edit_placeholder_tool(ph, event, _header):
+        async def _edit_placeholder_tool(ph, event):
             embed = _build_tool_embed(event)
             await send_with_retry(
                 lambda e=embed: ph.edit(content="", embed=e),
@@ -370,7 +370,9 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
                 OutboundMessage.from_text(text) if text
                 else OutboundMessage.from_text(_placeholder_text)
             )
-            from lyra.adapters.discord_outbound import send as _discord_send
+            from lyra.adapters.discord_outbound import (
+                send as _discord_send,  # late: avoids circular import
+            )
             await _discord_send(self, original_msg, fallback_outbound)
             return fallback_outbound.metadata.get("reply_message_id")
 

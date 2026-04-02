@@ -16,7 +16,6 @@ from typing import TYPE_CHECKING, Any
 from lyra.adapters._shared import (
     STREAMING_EDIT_INTERVAL,
     StreamState,
-    format_tool_summary_header,
 )
 from lyra.core.render_events import TextRenderEvent, ToolSummaryRenderEvent
 
@@ -27,6 +26,11 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 __all__ = ["PlatformCallbacks", "StreamingSession"]
+
+# Cap fallback accumulation to match IntermediateTextState._MAX_INTERMEDIATE_CHARS.
+# Prevents unbounded memory use when placeholder send fails and the LLM streams
+# a very large response.
+_MAX_FALLBACK_CHARS = 8_000
 
 
 @dataclass
@@ -46,8 +50,8 @@ class PlatformCallbacks:
     edit_placeholder_text: Callable[[Any, str], Awaitable[None]]
 
     # Edit the placeholder with a tool summary embed/text.
-    # Args: (placeholder_obj, event, header_text)
-    edit_placeholder_tool: Callable[[Any, ToolSummaryRenderEvent, str], Awaitable[None]]
+    # Args: (placeholder_obj, event)
+    edit_placeholder_tool: Callable[[Any, ToolSummaryRenderEvent], Awaitable[None]]
 
     # Send a new message (used for final text in tool-using turns).
     # Returns the sent message id (or None).
@@ -112,9 +116,13 @@ class StreamingSession:
         except Exception:
             log.exception("Failed to send placeholder — falling back to non-streaming")
             parts: list[str] = []
+            total_chars = 0
             async for event in events:
                 if isinstance(event, TextRenderEvent):
                     parts.append(event.text)
+                    total_chars += len(event.text)
+                    if total_chars >= _MAX_FALLBACK_CHARS:
+                        break
             fallback_text = "".join(parts)
             fallback_id = await self._cb.send_fallback(fallback_text)
             if self._outbound is not None and fallback_id is not None:
@@ -144,10 +152,9 @@ class StreamingSession:
                         or _st.last_tool_edit is None
                         or (now - _st.last_tool_edit) >= STREAMING_EDIT_INTERVAL
                     ):
-                        header = format_tool_summary_header(event)
                         try:
                             await self._cb.edit_placeholder_tool(
-                                placeholder_obj, event, header
+                                placeholder_obj, event
                             )
                             _st.last_tool_edit = now
                         except Exception as exc:

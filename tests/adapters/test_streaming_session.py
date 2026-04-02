@@ -221,8 +221,54 @@ class TestStreamingSessionToolEvents:
         _call = _edit_placeholder_tool.call_args
         # Second arg is the ToolSummaryRenderEvent
         assert isinstance(_call.args[1], ToolSummaryRenderEvent)
-        # Third arg is the header string
-        assert isinstance(_call.args[2], str) and _call.args[2]
+
+    async def test_tool_debounce_suppresses_rapid_edits(self) -> None:
+        """Two rapid ToolSummaryRenderEvents within STREAMING_EDIT_INTERVAL
+        result in only one edit_placeholder_tool call (the is_complete one)."""
+        from unittest.mock import patch
+
+        async def two_tool_events():
+            # First event: in-progress (not complete)
+            yield ToolSummaryRenderEvent(bash_commands=["step 1"], is_complete=False)
+            # Second event: complete — always fires regardless of debounce
+            yield ToolSummaryRenderEvent(  # noqa: E501
+                bash_commands=["step 1", "step 2"], is_complete=True
+            )
+            yield TextRenderEvent(text="done", is_final=True)
+
+        _edit_placeholder_tool = AsyncMock(return_value=None)
+        callbacks = make_mock_callbacks(edit_placeholder_tool=_edit_placeholder_tool)
+        session = StreamingSession(callbacks=callbacks, outbound=None)
+
+        # Freeze monotonic so both events appear to arrive at the same instant
+        frozen_time = 1000.0
+        with patch("lyra.adapters._shared_streaming.time") as mock_time:
+            mock_time.monotonic.return_value = frozen_time
+            await session.run(two_tool_events())
+
+        # First event is debounced (last_tool_edit is None → fires, sets last_tool_edit)
+        # Second event is_complete=True → always fires
+        # So exactly 2 calls: first (last_tool_edit=None bypass) + second (is_complete)
+        assert _edit_placeholder_tool.call_count == 2
+
+        # Verify: a third rapid non-complete event would be suppressed
+        _edit_placeholder_tool2 = AsyncMock(return_value=None)
+        callbacks2 = make_mock_callbacks(edit_placeholder_tool=_edit_placeholder_tool2)
+        session2 = StreamingSession(callbacks=callbacks2, outbound=None)
+
+        async def three_rapid_tool_events():
+            # All non-complete, all at the same frozen timestamp
+            yield ToolSummaryRenderEvent(bash_commands=["a"], is_complete=False)
+            yield ToolSummaryRenderEvent(bash_commands=["b"], is_complete=False)
+            yield ToolSummaryRenderEvent(bash_commands=["c"], is_complete=False)
+            yield TextRenderEvent(text="done", is_final=True)
+
+        with patch("lyra.adapters._shared_streaming.time") as mock_time:
+            mock_time.monotonic.return_value = frozen_time
+            await session2.run(three_rapid_tool_events())
+
+        # Only the first fires (last_tool_edit=None); subsequent are within interval
+        assert _edit_placeholder_tool2.call_count == 1
 
 
 # ---------------------------------------------------------------------------

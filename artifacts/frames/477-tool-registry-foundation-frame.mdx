@@ -1,0 +1,49 @@
+---
+title: "feat(tools): ToolHandler registry + first tools + multi-turn agent loop"
+issue: 477
+status: draft
+tier: F-full
+date: 2026-04-02
+parent: 493
+---
+
+## Problem
+
+Lyra's agent is single-turn: one LLM call, one response, done. There is no mechanism to
+execute tools during a turn and feed results back to the LLM. The `ToolHandler` protocol
+and `ToolRegistry` defined in #493 exist only as a design — this issue implements them.
+
+## Who
+
+- **Primary:** The agent turn loop — needs a registry to dispatch tool calls into and a
+  multi-turn loop to re-invoke the LLM with results.
+- **Secondary:** #475 (channel rules) and slash command dispatch — both will call
+  `registry.get()` / `registry.dispatch()` once this ships.
+
+## Constraints
+
+- `ToolHandler` protocol and `ToolRegistry` interface are defined in #493 and must not
+  be modified here. Implement exactly against that contract.
+- `ChannelAdapter` and `LlmProvider` protocols are stable — no changes needed to either.
+- `AnthropicSdkDriver` already handles `stop_reason == "tool_use"` with a toy loop
+  (`get_time`). The real loop moves to `SimpleAgent.process()` — remove the driver-level
+  loop to avoid double-dispatch.
+- Max-turns safety limit required (default: 10) to prevent runaway loops.
+- Shell sandboxing model to be decided in spec (subprocess with restricted env vs allowlist).
+
+## Out of Scope
+
+- Manifest-based plugin loading — that is #478
+- Lifecycle hooks (pre-LLM, post-LLM) — that is #478
+- Channel rule engine integration — that is #475
+- Slash command routing / parser — new issue needed
+- E-stop / tool approval UI — downstream
+- MCP client — downstream
+
+## Complexity
+
+**Tier: F-full** — touches agent core (multi-turn loop refactor), new `src/lyra/tools/`
+module, LlmProvider wiring (pass tool definitions), bootstrap injection. Three tool
+implementations included.
+
+Signals: new module, agent core change, protocol must stay stable for downstream consumers.

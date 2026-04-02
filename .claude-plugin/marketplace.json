@@ -15,6 +15,12 @@
       "description": "Send messages, images, and voice notes to users via Lyra bots (Telegram & Discord).",
       "source": "./plugins/lyra-send",
       "category": "utilities"
+    },
+    {
+      "name": "lyra-ops",
+      "description": "Debug Lyra on production — check status, pull logs, diagnose root cause, suggest fix.",
+      "source": "./plugins/lyra-ops",
+      "category": "operations"
     }
   ]
 }

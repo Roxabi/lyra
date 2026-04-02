@@ -1,0 +1,8 @@
+{
+  "name": "lyra-ops",
+  "version": "0.1.0",
+  "description": "Debug Lyra on production — check status, pull logs, diagnose root cause, suggest fix.",
+  "author": {
+    "name": "Roxabi"
+  }
+}

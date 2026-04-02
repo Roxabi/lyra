@@ -246,3 +246,103 @@ class TestMessageIndexPopulation:
         await obs.append(msg, session_id=_SESSION_ID)
 
         mi.upsert.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Error path / try-except coverage (#FindingH)
+# ---------------------------------------------------------------------------
+
+
+class TestLogTurnAsyncErrorPath:
+    @pytest.mark.anyio
+    async def test_error_does_not_propagate(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """log_turn_async: TurnStore exception is caught, does not raise."""
+        import logging
+
+        obs = _make_observer()
+        store = MagicMock()
+        store.log_turn = AsyncMock(side_effect=RuntimeError("DB error"))
+        obs.register_turn_store(store)
+
+        with caplog.at_level(logging.ERROR, logger="lyra.core.pool.pool_observer"):
+            # Act — must not raise
+            await obs.log_turn_async(
+                role="user",
+                platform="telegram",
+                user_id="alice",
+                content="hello",
+            )
+
+        assert any(
+            "turn_store write failed" in r.message for r in caplog.records
+        )
+
+
+class TestSessionUpdateAsyncErrorPath:
+    @pytest.mark.anyio
+    async def test_error_does_not_propagate(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """session_update_async catches callback exceptions and logs ERROR."""
+        import logging
+
+        obs = _make_observer()
+        callback = AsyncMock(side_effect=RuntimeError("session DB error"))
+        obs.register_session_update_fn(callback)
+
+        msg = make_inbound_message()
+
+        with caplog.at_level(logging.ERROR, logger="lyra.core.pool.pool_observer"):
+            # Act — must not raise
+            await obs.session_update_async(msg)
+
+        assert any(
+            "session_update failed" in r.message for r in caplog.records
+        )
+
+
+class TestAppendErrorPath:
+    @pytest.mark.anyio
+    async def test_turn_logger_error_does_not_propagate(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """append() catches turn_logger exceptions and logs ERROR, does not raise."""
+        import logging
+
+        obs = _make_observer()
+        turn_logger = AsyncMock(side_effect=RuntimeError("logger boom"))
+        obs.register_turn_logger(turn_logger)
+
+        msg = make_inbound_message()
+
+        with caplog.at_level(logging.ERROR, logger="lyra.core.pool.pool_observer"):
+            # Act — must not raise
+            await obs.append(msg, session_id=_SESSION_ID)
+
+        assert any(
+            "turn_logger failed" in r.message for r in caplog.records
+        )
+
+
+class TestIndexTurnAsyncErrorPath:
+    @pytest.mark.anyio
+    async def test_error_does_not_propagate(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """index_turn_async catches MessageIndex exceptions and logs ERROR."""
+        import logging
+
+        obs = _make_observer()
+        mi = MagicMock()
+        mi.upsert = AsyncMock(side_effect=RuntimeError("index DB error"))
+        obs.register_message_index(mi)
+
+        with caplog.at_level(logging.ERROR, logger="lyra.core.pool.pool_observer"):
+            # Act — must not raise
+            await obs.index_turn_async("msg-42", session_id=_SESSION_ID, role="user")
+
+        assert any(
+            "message_index upsert failed" in r.message for r in caplog.records
+        )

@@ -53,7 +53,8 @@ class PoolContext(Protocol):
 
     def record_circuit_failure(self, exc: BaseException) -> None: ...
 
-    def record_dead_backend_hit(self) -> None: ...
+    def record_dead_backend_hit(self) -> None:  # optional: no-op default
+        ...
 
 
 class Pool:

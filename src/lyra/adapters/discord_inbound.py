@@ -134,13 +134,18 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
                 resolved_thread_id = message.thread.id
                 adapter._owned_threads.add(message.thread.id)
                 if adapter._thread_store is not None:
-                    await persist_thread_claim(
-                        adapter._thread_store,
-                        thread_id=message.thread.id,
-                        bot_id=adapter._bot_id,
-                        channel_id=message.channel.id,
-                        guild_id=getattr(message.guild, "id", None),
-                    )
+                    try:
+                        await persist_thread_claim(
+                            adapter._thread_store,
+                            thread_id=message.thread.id,
+                            bot_id=adapter._bot_id,
+                            channel_id=message.channel.id,
+                            guild_id=getattr(message.guild, "id", None),
+                        )
+                    except Exception as e:
+                        log.warning(
+                            "Failed to persist thread claim in recovery path: %s", e
+                        )
 
     # Claim an existing thread when directly mentioned inside it.
     if _is_mention and isinstance(message.channel, discord.Thread):

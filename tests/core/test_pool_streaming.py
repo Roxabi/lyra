@@ -95,9 +95,8 @@ async def _consume_and_dispatch_cb(
         if isinstance(outbound, _OM):
             cb = outbound.metadata.pop("_on_dispatched", None)
             if cb is not None:
-                import asyncio as _asyncio
                 result = cb(outbound)
-                if _asyncio.iscoroutine(result):
+                if asyncio.iscoroutine(result):
                     await result
 
 

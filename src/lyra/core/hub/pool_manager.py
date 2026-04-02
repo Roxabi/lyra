@@ -72,7 +72,8 @@ class PoolManager:
             if pool.user_id:  # skip zero-message pools
                 agent = self._hub.agent_registry.get(pool.agent_name)
                 if agent is not None and hasattr(agent, "flush_session"):
-                    task = asyncio.ensure_future(agent.flush_session(pool, "idle"))
+                    # background flush: eviction cannot await (synchronous call context)
+                    task = asyncio.create_task(agent.flush_session(pool, "idle"))
                     self._hub._memory_tasks.add(task)
 
                     def _on_flush_done(

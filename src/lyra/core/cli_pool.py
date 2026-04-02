@@ -204,6 +204,7 @@ class CliPool(CliPoolWorkerMixin):
                 entry = await self._spawn(pool_id, model_config, system_prompt)
                 if entry is None:
                     return CliResult(error="Failed to spawn Claude CLI process")
+                self.reset_dead_backend_hits()
             elif entry.system_prompt != system_prompt:
                 log.info(
                     "[pool:%s] system_prompt changed — respawning process",
@@ -296,6 +297,7 @@ class CliPool(CliPoolWorkerMixin):
                 entry = await self._spawn(pool_id, model_config, system_prompt)
                 if entry is None:
                     raise RuntimeError("Failed to spawn Claude CLI process")
+                self.reset_dead_backend_hits()
             elif entry.system_prompt != system_prompt:
                 log.info(
                     "[pool:%s] system_prompt changed — respawning (streaming)",

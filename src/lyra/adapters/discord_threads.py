@@ -20,7 +20,7 @@ async def persist_thread_claim(
     channel_id: int,
     guild_id: int | None,
 ) -> None:
-    """Persist thread ownership to ThreadStore (fire-and-forget)."""
+    """Persist thread ownership to ThreadStore. Awaitable — callers must await."""
     try:
         await thread_store.claim(
             thread_id=str(thread_id),

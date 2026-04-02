@@ -268,8 +268,7 @@ class TestTurnStoreIntegrationWithPool:
         pool._turn_store = store
         msg = self._make_msg()
 
-        pool.append(msg)
-        await asyncio.sleep(0.05)
+        await pool.append(msg)
 
         rows = await store.get_turns("p:1", user_id="u1")
         assert len(rows) == 1

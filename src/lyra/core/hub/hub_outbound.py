@@ -175,7 +175,7 @@ class HubOutboundMixin:
         async def _fallback_and_notify(adapter: ChannelAdapter) -> None:
             await adapter.send(msg, outbound)
             _dispatched = outbound.metadata.pop("_on_dispatched", None)
-            if _dispatched is not None:
+            if callable(_dispatched):
                 _result = _dispatched(outbound)
                 if asyncio.iscoroutine(_result):
                     await _result
@@ -316,7 +316,7 @@ class HubOutboundMixin:
                     )
             if outbound is not None:
                 _dispatched = outbound.metadata.pop("_on_dispatched", None)
-                if _dispatched is not None:
+                if callable(_dispatched):
                     _result = _dispatched(outbound)
                     if asyncio.iscoroutine(_result):
                         await _result

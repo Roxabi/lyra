@@ -72,9 +72,22 @@ class PoolManager:
             if pool.user_id:  # skip zero-message pools
                 agent = self._hub.agent_registry.get(pool.agent_name)
                 if agent is not None and hasattr(agent, "flush_session"):
+                    # background flush: eviction cannot await (synchronous call context)
                     task = asyncio.create_task(agent.flush_session(pool, "idle"))
                     self._hub._memory_tasks.add(task)
-                    task.add_done_callback(self._hub._memory_tasks.discard)
+
+                    def _on_flush_done(
+                        t: asyncio.Task, _pid: str = pid
+                    ) -> None:
+                        self._hub._memory_tasks.discard(t)
+                        if not t.cancelled() and t.exception():
+                            log.error(
+                                "flush_session failed during eviction (pool=%s): %s",
+                                _pid,
+                                t.exception(),
+                            )
+
+                    task.add_done_callback(_on_flush_done)
             # Evict CLI entry synchronously so a new pool can't claim the old
             # process. preserve_session=True stores session_id for auto-resume
             # on next spawn (mirrors _kill contract; see #370).

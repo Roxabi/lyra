@@ -586,6 +586,7 @@ def _make_ctx_mock(agents: dict | None = None) -> MagicMock:
     ctx.dispatch_streaming = AsyncMock(return_value=None)
     ctx.record_circuit_success = MagicMock()
     ctx.record_circuit_failure = MagicMock()
+    ctx.record_dead_backend_hit = MagicMock()
     # Keep a reference so tests can mutate the agent registry
     ctx._agents = _agents
     return ctx

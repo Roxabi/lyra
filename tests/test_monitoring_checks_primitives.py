@@ -159,3 +159,35 @@ class TestCheckDisk:
 
         result = check_disk("/", 1)
         assert result.passed is False
+
+
+# ---------------------------------------------------------------------------
+# check_dead_backend
+# ---------------------------------------------------------------------------
+
+
+class TestCheckDeadBackend:
+    def test_passes_when_no_hits(self) -> None:
+        """check_dead_backend passes when dead_backend_hits == 0."""
+        from lyra.monitoring.checks import check_dead_backend
+
+        result = check_dead_backend({"dead_backend_hits": 0})
+        assert result.passed is True
+        assert result.name == "dead_backend"
+        assert "dead_backend_hits=0" in result.detail
+
+    def test_fails_when_hits_present(self) -> None:
+        """check_dead_backend fails when dead_backend_hits > 0."""
+        from lyra.monitoring.checks import check_dead_backend
+
+        result = check_dead_backend({"dead_backend_hits": 3})
+        assert result.passed is False
+        assert "dead_backend_hits=3" in result.detail
+
+    def test_missing_key_defaults_to_pass(self) -> None:
+        """check_dead_backend passes when key is absent (defaults to 0)."""
+        from lyra.monitoring.checks import check_dead_backend
+
+        result = check_dead_backend({})
+        assert result.passed is True
+        assert "dead_backend_hits=0" in result.detail

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import dataclasses
 import logging
 from collections.abc import Callable
@@ -117,14 +116,12 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
             resolved_thread_id = thread.id
             adapter._owned_threads.add(thread.id)
             if adapter._thread_store is not None:
-                asyncio.create_task(
-                    persist_thread_claim(
-                        adapter._thread_store,
-                        thread_id=thread.id,
-                        bot_id=adapter._bot_id,
-                        channel_id=message.channel.id,
-                        guild_id=getattr(message.guild, "id", None),
-                    )
+                await persist_thread_claim(
+                    adapter._thread_store,
+                    thread_id=thread.id,
+                    bot_id=adapter._bot_id,
+                    channel_id=message.channel.id,
+                    guild_id=getattr(message.guild, "id", None),
                 )
         except Exception:
             log.exception(
@@ -137,30 +134,31 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
                 resolved_thread_id = message.thread.id
                 adapter._owned_threads.add(message.thread.id)
                 if adapter._thread_store is not None:
-                    asyncio.create_task(
-                        persist_thread_claim(
+                    try:
+                        await persist_thread_claim(
                             adapter._thread_store,
                             thread_id=message.thread.id,
                             bot_id=adapter._bot_id,
                             channel_id=message.channel.id,
                             guild_id=getattr(message.guild, "id", None),
                         )
-                    )
+                    except Exception as e:
+                        log.warning(
+                            "Failed to persist thread claim in recovery path: %s", e
+                        )
 
     # Claim an existing thread when directly mentioned inside it.
     if _is_mention and isinstance(message.channel, discord.Thread):
         adapter._owned_threads.add(message.channel.id)
         if adapter._thread_store is not None:
-            asyncio.create_task(
-                persist_thread_claim(
-                    adapter._thread_store,
-                    thread_id=message.channel.id,
-                    bot_id=adapter._bot_id,
-                    channel_id=getattr(
-                        message.channel, "parent_id", message.channel.id
-                    ),
-                    guild_id=getattr(message.guild, "id", None),
-                )
+            await persist_thread_claim(
+                adapter._thread_store,
+                thread_id=message.channel.id,
+                bot_id=adapter._bot_id,
+                channel_id=getattr(
+                    message.channel, "parent_id", message.channel.id
+                ),
+                guild_id=getattr(message.guild, "id", None),
             )
 
     # Retrieve stored session for existing owned threads (read-side fix).

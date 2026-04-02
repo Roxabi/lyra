@@ -263,3 +263,72 @@ class TestDiscordAutoThread:
 
         # Assert
         assert config.auto_thread is True
+
+
+# ---------------------------------------------------------------------------
+# Finding G: persist_thread_claim failure path
+# ---------------------------------------------------------------------------
+
+
+class TestPersistThreadClaimFailurePath:
+    """persist_thread_claim raising must not propagate out of handle_message."""
+
+    @pytest.mark.asyncio
+    async def test_persist_thread_claim_failure_does_not_prevent_message_processing(
+        self,
+    ) -> None:
+        """persist_thread_claim raising RuntimeError: message still reaches bus."""
+        from unittest.mock import patch
+
+        from lyra.adapters.discord import DiscordAdapter
+
+        # Arrange
+        inbound_bus = MagicMock()
+        inbound_bus.put = AsyncMock()
+
+        adapter = DiscordAdapter(
+            bot_id="main",
+            inbound_bus=inbound_bus,
+            inbound_audio_bus=MagicMock(),
+            intents=discord.Intents.none(),
+            auto_thread=True,
+            auth=_ALLOW_ALL,
+        )
+        bot_user = SimpleNamespace(id=999, bot=True)
+        adapter._bot_user = bot_user
+
+        # Wire a thread store so persist_thread_claim is actually called
+        adapter._thread_store = AsyncMock()
+
+        thread_mock = MagicMock()
+        thread_mock.id = 9999
+        create_thread_mock = AsyncMock(return_value=thread_mock)
+
+        discord_msg = SimpleNamespace(
+            guild=SimpleNamespace(id=111),
+            channel=SimpleNamespace(
+                id=333,
+                send=AsyncMock(),
+                type=SimpleNamespace(name="text"),
+                create_thread=AsyncMock(),
+            ),
+            author=SimpleNamespace(
+                id=42, name="Alice", display_name="Alice", bot=False
+            ),
+            content="<@999> help me",
+            created_at=datetime.now(timezone.utc),
+            id=555,
+            mentions=[bot_user],
+            create_thread=create_thread_mock,
+        )
+
+        # Patch persist_thread_claim to raise
+        with patch(
+            "lyra.adapters.discord_inbound.persist_thread_claim",
+            AsyncMock(side_effect=RuntimeError("DB error")),
+        ):
+            # Act — must not raise
+            await adapter.on_message(discord_msg)
+
+        # Assert — message still reaches the inbound bus
+        inbound_bus.put.assert_awaited_once()

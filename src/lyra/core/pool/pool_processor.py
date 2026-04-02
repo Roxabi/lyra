@@ -202,6 +202,7 @@ class PoolProcessor:
                     pool.pool_id,
                     _duration_ms,
                 )
+                pool._ctx.record_dead_backend_hit()
         except asyncio.TimeoutError:
             log.warning(
                 "pool %s: turn timeout after %.0fs — killing backend",
@@ -246,7 +247,7 @@ class PoolProcessor:
     async def _process_one(self, msg: InboundMessage, agent: AgentBase) -> None:  # noqa: C901, PLR0915 — session-id update adds branches
         """Run agent.process and dispatch result (streaming or non-streaming)."""
         pool = self._pool
-        pool.append(msg)
+        await pool.append(msg)
 
         # Inject voice modality — must happen before _original_msg is
         # captured so dispatch_streaming sees it.  Covers:
@@ -364,7 +365,7 @@ class PoolProcessor:
             # Register before dispatch so _process_with_cancel can supersede it.
             pool._inflight_stream_outbound = _outbound
 
-            def _log_streaming_turn(outbound: OutboundMessage) -> None:
+            async def _log_streaming_turn(outbound: OutboundMessage) -> None:
                 # Clear inflight reference once streaming is fully delivered.
                 if pool._inflight_stream_outbound is outbound:
                     pool._inflight_stream_outbound = None
@@ -375,11 +376,11 @@ class PoolProcessor:
                 # _on_dispatched callback) guarantees the iterator has finished.
                 _stream_sid = getattr(_result_iter_for_sid, "session_id", None)
                 if _stream_sid and pool.session_id != _stream_sid:
-                    pool._observer.end_session_async(pool.session_id)
+                    await pool._observer.end_session_async(pool.session_id)
                     pool.session_id = _stream_sid
-                pool._observer.session_update_async(_original_msg)
+                await pool._observer.session_update_async(_original_msg)
                 _reply_id = outbound.metadata.get("reply_message_id")
-                pool._observer.log_turn_async(
+                await pool._observer.log_turn_async(
                     role="assistant",
                     platform=_platform,
                     user_id=_user_id,
@@ -389,7 +390,7 @@ class PoolProcessor:
                     ),
                 )
                 # Index assistant turn for reply-to session routing (#341).
-                pool._observer.index_turn_async(
+                await pool._observer.index_turn_async(
                     str(_reply_id) if _reply_id is not None else None,
                     session_id=pool.session_id,
                     role="assistant",
@@ -407,7 +408,7 @@ class PoolProcessor:
             # The _on_dispatched callback above handles the dispatcher path.
             _stream_sid = getattr(_result_iter_for_sid, "session_id", None)
             if _stream_sid and pool.session_id != _stream_sid:
-                pool._observer.end_session_async(pool.session_id)
+                await pool._observer.end_session_async(pool.session_id)
                 pool.session_id = _stream_sid
 
             # Processor post-hook for streaming agents (#372).
@@ -428,15 +429,15 @@ class PoolProcessor:
                 _cli_session_id = result.metadata.get("session_id")
                 if _cli_session_id:
                     if pool.session_id != _cli_session_id:
-                        pool._observer.end_session_async(pool.session_id)
+                        await pool._observer.end_session_async(pool.session_id)
                     pool.session_id = _cli_session_id
             # Attach deferred turn-logging callback after adapter sends (#316).
             if isinstance(result, Response):  # pyright: ignore[reportUnnecessaryIsInstance]
                 _content = result.content
 
-                def _log_turn(outbound: OutboundMessage) -> None:
+                async def _log_turn(outbound: OutboundMessage) -> None:
                     _reply_id = outbound.metadata.get("reply_message_id")
-                    pool._observer.log_turn_async(
+                    await pool._observer.log_turn_async(
                         role="assistant",
                         platform=_platform,
                         user_id=_user_id,
@@ -446,7 +447,7 @@ class PoolProcessor:
                         ),
                     )
                     # Index assistant turn for reply-to session routing (#341).
-                    pool._observer.index_turn_async(
+                    await pool._observer.index_turn_async(
                         str(_reply_id) if _reply_id is not None else None,
                         session_id=pool.session_id,
                         role="assistant",
@@ -454,7 +455,7 @@ class PoolProcessor:
 
                 result.metadata["_on_dispatched"] = _log_turn
             await pool._ctx.dispatch_response(_original_msg, result)
-            pool._observer.session_update_async(_original_msg)
+            await pool._observer.session_update_async(_original_msg)
 
         _compact_fn = getattr(agent, "compact", None)
         if _compact_fn is not None:

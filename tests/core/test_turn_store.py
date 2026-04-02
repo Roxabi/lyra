@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import sqlite3
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
@@ -268,8 +269,7 @@ class TestTurnStoreIntegrationWithPool:
         pool._turn_store = store
         msg = self._make_msg()
 
-        pool.append(msg)
-        await asyncio.sleep(0.05)
+        await pool.append(msg)
 
         rows = await store.get_turns("p:1", user_id="u1")
         assert len(rows) == 1
@@ -296,7 +296,9 @@ class TestTurnStoreIntegrationWithPool:
                 if _cb is not None:
                     outbound = OutboundMessage.from_text(response.content)
                     outbound.metadata["reply_message_id"] = "bot_msg_42"
-                    _cb(outbound)
+                    result = _cb(outbound)
+                    if inspect.isawaitable(result):
+                        await result
 
         ctx.dispatch_response = AsyncMock(side_effect=_dispatch_with_callback)
 

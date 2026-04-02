@@ -391,3 +391,41 @@ class TestFastCompletionWarning:
             for r in caplog.records
             if r.levelno == logging.WARNING
         )
+
+    @pytest.mark.asyncio
+    async def test_guarded_process_fast_completion_calls_record_dead_backend_hit(
+        self, pool: Pool, ctx_mock: MagicMock
+    ) -> None:
+        """Agent completes in <100ms → ctx.record_dead_backend_hit() is called.
+
+        We control time.monotonic so the duration is deterministically 10 ms
+        (below the 100 ms _MIN_EXPECTED_DURATION_MS threshold).
+        """
+        import time as _real_time
+
+        agent = FastAgent()
+        ctx_mock._agents["test_agent"] = agent
+        msg = make_msg("hello")
+
+        _start_value = _real_time.monotonic()
+        _calls: list[float] = []
+
+        def _controlled_monotonic() -> float:
+            idx = len(_calls)
+            if idx == 0:
+                result = _start_value
+            elif idx == 1:
+                result = _start_value + 0.01  # 10 ms — below 100 ms threshold
+            else:
+                result = _real_time.monotonic()
+            _calls.append(result)
+            return result
+
+        with patch(
+            "lyra.core.pool.pool_processor.time",
+            monotonic=_controlled_monotonic,
+        ):
+            pool.submit(msg)
+            await _drain(pool)
+
+        ctx_mock.record_dead_backend_hit.assert_called_once()

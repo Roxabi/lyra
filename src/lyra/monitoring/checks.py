@@ -208,6 +208,19 @@ def check_reaper(health_json: dict) -> CheckResult:
     )
 
 
+def check_dead_backend(health_json: dict) -> CheckResult:
+    """Check if any dead-backend hits have been recorded since last restart."""
+    now = datetime.now(timezone.utc)
+    hits = health_json.get("dead_backend_hits", 0)
+    passed = hits == 0
+    return CheckResult(
+        name="dead_backend",
+        passed=passed,
+        detail=f"dead_backend_hits={hits}",
+        timestamp=now,
+    )
+
+
 def check_disk(path: str, min_free_gb: int) -> CheckResult:
     """Check if free disk space exceeds minimum threshold."""
     now = datetime.now(timezone.utc)
@@ -261,7 +274,11 @@ async def run_checks(config: MonitoringConfig) -> HealthReport:
         if health_json.get("reaper_alive") is not None:
             checks.append(check_reaper(health_json))
 
-    # Check 7: Disk space (blocking → offload to thread)
+        # Check 7: Dead backend detection
+        if "dead_backend_hits" in health_json:
+            checks.append(check_dead_backend(health_json))
+
+    # Check 8: Disk space (blocking → offload to thread)
     checks.append(
         await asyncio.to_thread(
             check_disk, config.disk_check_path, config.min_disk_free_gb

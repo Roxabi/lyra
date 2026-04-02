@@ -58,6 +58,7 @@ class TestRunChecks:
             },
             "reaper_alive": True,
             "reaper_last_sweep_age": 30.0,
+            "dead_backend_hits": 0,
         }
 
         with patch("lyra.monitoring.checks.httpx.AsyncClient") as mock_client_cls:
@@ -80,8 +81,8 @@ class TestRunChecks:
 
         assert report.all_passed is True
         assert report.failed_count == 0
-        # process + http_health + queue_depth + circuits + reaper + disk = 6
-        assert len(report.checks) == 6
+        # process + http_health + queue_depth + circuits + reaper + dead_backend + disk
+        assert len(report.checks) == 7
 
     async def test_failure_detected(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """SC-11: run_checks returns all_passed=False when a check fails."""

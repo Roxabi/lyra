@@ -53,6 +53,8 @@ class PoolContext(Protocol):
 
     def record_circuit_failure(self, exc: BaseException) -> None: ...
 
+    def record_dead_backend_hit(self) -> None: ...
+
 
 class Pool:
     """One pool per conversation scope. Holds history and a per-session asyncio.Task."""
@@ -270,14 +272,14 @@ class Pool:
 
     # S1 — session identity mutators (issue #83)
 
-    def append(self, msg: InboundMessage) -> None:
+    async def append(self, msg: InboundMessage) -> None:
         """Called from _process_one. Promotes session identity and tracks count."""
         if self.user_id == "":
             self.user_id = msg.user_id
             self.medium = str(msg.platform)
         self.message_count += 1
         self._last_msg = msg
-        self._observer.append(msg, session_id=self.session_id)
+        await self._observer.append(msg, session_id=self.session_id)
 
     def snapshot(self, agent_namespace: str) -> "SessionSnapshot":
         from ..memory import SessionSnapshot

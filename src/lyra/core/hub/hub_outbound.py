@@ -45,9 +45,12 @@ class HubOutboundMixin:
 
     # These attributes are defined on Hub — declared here for type checking only.
     if TYPE_CHECKING:
+        from ..cli_pool import CliPool
+
         outbound_dispatchers: dict[tuple[Platform, str], OutboundDispatcher]
         adapter_registry: dict[tuple[Platform, str], ChannelAdapter]
         circuit_registry: CircuitRegistry | None
+        cli_pool: CliPool | None
         _msg_manager: MessageManager | None
         _tts: TTSService | None
         _audio_pipeline: AudioPipeline
@@ -172,8 +175,10 @@ class HubOutboundMixin:
         async def _fallback_and_notify(adapter: ChannelAdapter) -> None:
             await adapter.send(msg, outbound)
             _dispatched = outbound.metadata.pop("_on_dispatched", None)
-            if callable(_dispatched):
-                _dispatched(outbound)
+            if _dispatched is not None:
+                _result = _dispatched(outbound)
+                if asyncio.iscoroutine(_result):
+                    await _result
 
         await self._route_outbound(
             msg,
@@ -311,8 +316,10 @@ class HubOutboundMixin:
                     )
             if outbound is not None:
                 _dispatched = outbound.metadata.pop("_on_dispatched", None)
-                if callable(_dispatched):
-                    _dispatched(outbound)
+                if _dispatched is not None:
+                    _result = _dispatched(outbound)
+                    if asyncio.iscoroutine(_result):
+                        await _result
             self._last_processed_at = time.monotonic()
 
         # Voice: synthesize TTS as a background task now that text is collected.
@@ -402,3 +409,7 @@ class HubOutboundMixin:
                 _ant_cb = self.circuit_registry.get("anthropic")
                 if _ant_cb is not None:
                     _ant_cb.record_failure()
+
+    def record_dead_backend_hit(self) -> None:
+        if self.cli_pool is not None:
+            self.cli_pool.record_dead_backend_hit()

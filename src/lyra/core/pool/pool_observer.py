@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import asyncio
-import contextlib
 import logging
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Literal
@@ -72,30 +70,21 @@ class PoolObserver:
     # Core observability helpers
     # ------------------------------------------------------------------
 
-    def _fire_and_forget(self, coro: Awaitable[None], label: str) -> None:
-        """Schedule *coro* as fire-and-forget; log errors; no-op without event loop."""
-        try:
-            task = asyncio.ensure_future(coro)
-
-            def _on_done(t: asyncio.Task) -> None:
-                if not t.cancelled() and t.exception():
-                    log.error("%s: %s", label, t.exception())
-
-            task.add_done_callback(_on_done)
-        except RuntimeError:
-            pass  # no running event loop (e.g. sync test context)
-
-    def end_session_async(self, session_id: str) -> None:
-        """Fire-and-forget end_session via TurnStore; no-op if not connected."""
+    async def end_session_async(self, session_id: str) -> None:
+        """Await end_session via TurnStore; no-op if not connected."""
         if self._turn_store is None:
             return
-        self._fire_and_forget(
-            self._turn_store.end_session(session_id),
-            f"turn_store end_session failed"
-            f" (pool={self._pool_id} session={session_id})",
-        )
+        try:
+            await self._turn_store.end_session(session_id)
+        except Exception:
+            log.error(
+                "turn_store end_session failed (pool=%s session=%s)",
+                self._pool_id,
+                session_id,
+                exc_info=True,
+            )
 
-    def log_turn_async(  # noqa: PLR0913
+    async def log_turn_async(  # noqa: PLR0913
         self,
         *,
         role: str,
@@ -105,11 +94,11 @@ class PoolObserver:
         message_id: str | None = None,
         reply_message_id: str | None = None,
     ) -> None:
-        """Fire-and-forget turn logging via TurnStore; no-op if not connected."""
+        """Await turn logging via TurnStore; no-op if not connected."""
         if self._turn_store is None:
             return
-        self._fire_and_forget(
-            self._turn_store.log_turn(
+        try:
+            await self._turn_store.log_turn(
                 pool_id=self._pool_id,
                 session_id=self._session_id_fn(),
                 role=role,
@@ -118,37 +107,51 @@ class PoolObserver:
                 content=content,
                 message_id=message_id,
                 reply_message_id=reply_message_id,
-            ),
-            f"turn_store write failed (pool={self._pool_id} role={role})",
-        )
+            )
+        except Exception:
+            log.error(
+                "turn_store write failed (pool=%s role=%s)",
+                self._pool_id,
+                role,
+                exc_info=True,
+            )
 
-    def session_update_async(self, msg: InboundMessage) -> None:
-        """Fire-and-forget session persistence via callback; no-op if absent."""
+    async def session_update_async(self, msg: InboundMessage) -> None:
+        """Await session persistence via callback; no-op if absent."""
         if self._session_update_fn is None or self._session_persisted:
             return
         self._session_persisted = True
-        self._fire_and_forget(
-            self._session_update_fn(msg, self._session_id_fn(), self._pool_id),
-            f"session_update failed (pool={self._pool_id})",
-        )
+        try:
+            await self._session_update_fn(msg, self._session_id_fn(), self._pool_id)
+        except Exception:
+            log.error(
+                "session_update failed (pool=%s)",
+                self._pool_id,
+                exc_info=True,
+            )
 
-    def append(
+    async def append(
         self,
         msg: InboundMessage,
         *,
         session_id: str,
     ) -> None:
-        """Fire turn-logger and log user turn for *msg*.
+        """Await turn-logger and log user turn for *msg*.
 
         Called from Pool.append() after identity fields are updated.
         ``session_id`` is passed explicitly so the observer uses the value
         that was current at the moment append() ran.
         """
-        with contextlib.suppress(RuntimeError):
-            if self._turn_logger is not None:
-                _coro = self._turn_logger(session_id, msg)
-                asyncio.ensure_future(_coro)
-        self.log_turn_async(
+        if self._turn_logger is not None:
+            try:
+                await self._turn_logger(session_id, msg)
+            except Exception:
+                log.error(
+                    "turn_logger failed (pool=%s)",
+                    self._pool_id,
+                    exc_info=True,
+                )
+        await self.log_turn_async(
             role="user",
             platform=str(msg.platform),
             user_id=msg.user_id,
@@ -158,21 +161,25 @@ class PoolObserver:
         # Index user turn for reply-to session routing (#341).
         _msg_id = msg.platform_meta.get("message_id")
         if _msg_id is not None:
-            self.index_turn_async(str(_msg_id), session_id=session_id, role="user")
+            await self.index_turn_async(str(_msg_id), session_id=session_id, role="user")
 
-    def index_turn_async(
+    async def index_turn_async(
         self,
         platform_msg_id: str | None,
         *,
         session_id: str,
         role: Literal["user", "assistant"],
     ) -> None:
-        """Fire-and-forget message index upsert; no-op if not connected."""
+        """Await message index upsert; no-op if not connected."""
         if self._message_index is None or platform_msg_id is None:
             return
-        self._fire_and_forget(
-            self._message_index.upsert(
+        try:
+            await self._message_index.upsert(
                 self._pool_id, platform_msg_id, session_id, role
-            ),
-            f"message_index upsert failed (pool={self._pool_id})",
-        )
+            )
+        except Exception:
+            log.error(
+                "message_index upsert failed (pool=%s)",
+                self._pool_id,
+                exc_info=True,
+            )

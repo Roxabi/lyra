@@ -95,6 +95,7 @@ def create_health_app(hub: Hub) -> FastAPI:
                 if hub.cli_pool._last_sweep_at is not None
                 else None
             )
+            result["dead_backend_hits"] = hub.cli_pool.dead_backend_hits
 
         return result
 

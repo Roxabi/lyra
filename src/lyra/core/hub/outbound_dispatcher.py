@@ -209,8 +209,10 @@ class OutboundDispatcher:
             if _cb_out is not None:
                 _cb_out.metadata["reply_message_id"] = None
                 _cb = _cb_out.metadata.pop("_on_dispatched", None)
-                if callable(_cb):
-                    _cb(_cb_out)
+                if _cb is not None:
+                    _cb_result = _cb(_cb_out)
+                    if asyncio.iscoroutine(_cb_result):
+                        await _cb_result
             # Fix 3: notify user once per chat per debounce window
             scope_key = msg.scope_id or msg.id
             now = time.monotonic()
@@ -284,8 +286,10 @@ class OutboundDispatcher:
         _out = payload if kind == "send" else outbound
         if _out is not None:
             _dispatched = _out.metadata.pop("_on_dispatched", None)
-            if callable(_dispatched):
-                _dispatched(_out)
+            if _dispatched is not None:
+                _dispatched_result = _dispatched(_out)
+                if asyncio.iscoroutine(_dispatched_result):
+                    await _dispatched_result
 
         if _last_exc is not None:
             exc = _last_exc

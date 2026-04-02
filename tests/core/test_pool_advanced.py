@@ -168,29 +168,33 @@ class TestPoolIdentity:
 class TestPoolAppend:
     """Pool.append() must update session identity fields (S1)."""
 
-    def test_append_promotes_user_id_once(self, pool: Pool) -> None:
+    @pytest.mark.anyio
+    async def test_append_promotes_user_id_once(self, pool: Pool) -> None:
         """First append sets user_id; subsequent appends with different user_id
         must NOT overwrite it (first-writer-wins semantics)."""
         msg1 = _make_inbound(user_id="u1", platform="telegram")
-        pool.append(msg1)
+        await pool.append(msg1)
         assert pool.user_id == "u1" and pool.message_count == 1
 
         msg2 = _make_inbound(user_id="u2", platform="discord")
-        pool.append(msg2)
+        await pool.append(msg2)
         assert pool.user_id == "u1"  # not overwritten
 
-    def test_append_increments_message_count(self, pool: Pool) -> None:
+    @pytest.mark.anyio
+    async def test_append_increments_message_count(self, pool: Pool) -> None:
         """message_count increments once per append call."""
-        pool.append(_make_inbound())
-        pool.append(_make_inbound())
+        await pool.append(_make_inbound())
+        await pool.append(_make_inbound())
         assert pool.message_count == 2
 
-    def test_append_sets_medium_from_platform(self, pool: Pool) -> None:
+    @pytest.mark.anyio
+    async def test_append_sets_medium_from_platform(self, pool: Pool) -> None:
         """First append captures medium (platform string) from the message."""
-        pool.append(_make_inbound(platform="telegram"))
+        await pool.append(_make_inbound(platform="telegram"))
         assert pool.medium == "telegram"
 
-    def test_append_calls_turn_logger_no_error(self, pool: Pool) -> None:
+    @pytest.mark.anyio
+    async def test_append_calls_turn_logger_no_error(self, pool: Pool) -> None:
         """When _turn_logger is set, append() must not raise any error."""
         calls: list = []
 
@@ -198,9 +202,9 @@ class TestPoolAppend:
             calls.append((sid, m))
 
         pool._turn_logger = fake_logger
-        pool.append(_make_inbound())
-        # turn_logger may be called via create_task; at minimum no sync error
+        await pool.append(_make_inbound())
         assert pool.message_count == 1
+        assert len(calls) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -211,11 +215,12 @@ class TestPoolAppend:
 class TestPoolSnapshot:
     """Pool.snapshot() must return a SessionSnapshot (S1)."""
 
-    def test_snapshot_returns_session_snapshot(self, pool: Pool) -> None:
+    @pytest.mark.anyio
+    async def test_snapshot_returns_session_snapshot(self, pool: Pool) -> None:
         """snapshot() returns a SessionSnapshot with correct identity fields."""
         from lyra.core.memory import SessionSnapshot
 
-        pool.append(_make_inbound(user_id="u1", platform="telegram"))
+        await pool.append(_make_inbound(user_id="u1", platform="telegram"))
         snap = pool.snapshot("lyra")
         assert isinstance(snap, SessionSnapshot)
         assert snap.session_id == pool.session_id

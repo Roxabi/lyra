@@ -181,12 +181,14 @@ def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
         return PlatformCallbacks(
             send_placeholder=_noop_placeholder,
             edit_placeholder_text=lambda ph, text: asyncio.sleep(0),
-            edit_placeholder_tool=lambda ph, ev: asyncio.sleep(0),
+            edit_placeholder_tool=lambda ph, ev, h: asyncio.sleep(0),
             send_message=_noop_fallback,
             send_fallback=_noop_fallback,
             chunk_text=lambda text: [text],
             start_typing=lambda: None,
             cancel_typing=lambda: None,
+            get_msg=lambda key, fallback: fallback,
+            placeholder_text="\u2026",
         )
 
     chat_id, _, _ = meta
@@ -214,7 +216,7 @@ def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
             except Exception as exc:
                 log.debug("Placeholder text edit skipped: %s", exc)
 
-    async def _edit_placeholder_tool(ph: Any, event: Any) -> None:
+    async def _edit_placeholder_tool(ph: Any, event: Any, header: str = "") -> None:
         summary = _format_tool_summary(event)
         rendered = _render_text(summary)
         if rendered:
@@ -261,5 +263,7 @@ def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
         chunk_text=lambda text: _render_text(text) or [text],
         start_typing=lambda: adapter._start_typing(chat_id),
         cancel_typing=lambda: adapter._cancel_typing(chat_id),
+        get_msg=adapter._msg,
+        placeholder_text=_placeholder_text,
     )
 

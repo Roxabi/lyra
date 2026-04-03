@@ -61,6 +61,8 @@ class TestableAdapter(OutboundAdapterBase):
             chunk_text=lambda text: [text],
             start_typing=MagicMock(),
             cancel_typing=MagicMock(),
+            get_msg=MagicMock(side_effect=lambda key, fb: fb),
+            placeholder_text="\u2026",
         )
 
     def _start_typing(self, scope_id: int) -> None:
@@ -231,6 +233,8 @@ class TestOutboundAdapterBaseSendStreaming:
                     chunk_text=lambda text: [text],
                     start_typing=MagicMock(),
                     cancel_typing=MagicMock(),
+                    get_msg=MagicMock(side_effect=lambda key, fb: fb),
+                    placeholder_text="\u2026",
                 )
 
             def _start_typing(self, scope_id):

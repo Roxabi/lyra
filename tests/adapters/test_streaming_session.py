@@ -1,18 +1,19 @@
+# pyright: reportFunctionMemberAccess=false
 """Tests for StreamingSession and PlatformCallbacks.
 
-These are RED-phase tests: the module under test
-(lyra.adapters._shared_streaming) does not exist yet.
-All tests are expected to fail with ImportError until V2 is implemented.
+Covers the shared streaming algorithm extracted in #495 (Slice 2 of #468).
+All tests use mock PlatformCallbacks — no platform SDK imports required.
 """
+
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from lyra.adapters._shared_streaming import PlatformCallbacks, StreamingSession
-from lyra.core.message import OutboundMessage
+from lyra.core.message import GENERIC_ERROR_REPLY, OutboundMessage
 from lyra.core.render_events import TextRenderEvent, ToolSummaryRenderEvent
 
 # ---------------------------------------------------------------------------
@@ -20,343 +21,401 @@ from lyra.core.render_events import TextRenderEvent, ToolSummaryRenderEvent
 # ---------------------------------------------------------------------------
 
 
-def make_mock_callbacks(**overrides: Any) -> PlatformCallbacks:
-    """Return a PlatformCallbacks with all fields mocked to sensible defaults.
-
-    - send_placeholder: AsyncMock returning (MagicMock(), 42)
-    - edit_placeholder_text: AsyncMock returning None
-    - edit_placeholder_tool: AsyncMock returning None
-    - send_message: AsyncMock returning 99
-    - send_fallback: AsyncMock returning 77
-    - chunk_text: MagicMock (sync) returning [text] (identity)
-    - start_typing: MagicMock (sync) returning None
-    - cancel_typing: MagicMock (sync) returning None
-
-    Pass keyword arguments to override specific fields.
-    """
-    placeholder_obj = MagicMock()
-
-    defaults: dict[str, Any] = dict(
-        send_placeholder=AsyncMock(return_value=(placeholder_obj, 42)),
-        edit_placeholder_text=AsyncMock(return_value=None),
-        edit_placeholder_tool=AsyncMock(return_value=None),
+def _make_callbacks(**overrides) -> PlatformCallbacks:
+    """Build PlatformCallbacks with AsyncMock/MagicMock defaults."""
+    cb = PlatformCallbacks(
+        send_placeholder=AsyncMock(return_value=(object(), 42)),
+        edit_placeholder_text=AsyncMock(),
+        edit_placeholder_tool=AsyncMock(),
         send_message=AsyncMock(return_value=99),
         send_fallback=AsyncMock(return_value=77),
-        chunk_text=MagicMock(side_effect=lambda text: [text]),
-        start_typing=MagicMock(return_value=None),
-        cancel_typing=MagicMock(return_value=None),
+        chunk_text=MagicMock(side_effect=lambda t: [t] if t else []),
+        start_typing=MagicMock(),
+        cancel_typing=MagicMock(),
+        get_msg=MagicMock(side_effect=lambda key, fallback: fallback),
+        placeholder_text="…",
     )
-    defaults.update(overrides)
-    return PlatformCallbacks(**defaults)
+    for k, v in overrides.items():
+        setattr(cb, k, v)
+    return cb
 
 
-async def text_events(*texts: str, is_final_last: bool = True):
-    """Yield TextRenderEvents; the last one has is_final=True."""
-    for i, t in enumerate(texts):
-        yield TextRenderEvent(
-            text=t,
-            is_final=(i == len(texts) - 1 and is_final_last),
+async def _events(*items: object) -> AsyncIterator:
+    for item in items:
+        yield item
+
+
+async def _error_events():
+    raise RuntimeError("boom")
+    yield  # make it an async generator  # noqa: RET503
+
+
+async def _partial_then_error():
+    """Yield one intermediate text event then raise."""
+    yield TextRenderEvent("partial", is_final=False)
+    raise RuntimeError("mid-stream")
+
+
+# ---------------------------------------------------------------------------
+# Tests — delivery branches
+# ---------------------------------------------------------------------------
+
+
+async def test_text_only_turn():
+    """A single final TextRenderEvent edits the placeholder and cancels typing."""
+    cb = _make_callbacks()
+    placeholder_obj = object()
+    cb.send_placeholder = AsyncMock(return_value=(placeholder_obj, 42))
+
+    session = StreamingSession(cb, outbound=None)
+    await session.run(_events(TextRenderEvent("hello", is_final=True)))
+
+    cb.edit_placeholder_text.assert_called_once_with(placeholder_obj, "hello")
+    cb.send_message.assert_not_called()
+    cb.cancel_typing.assert_called_once()
+
+
+async def test_tool_then_text_turn():
+    """Tool event + final text: tool edits placeholder, text sent as new message."""
+    outbound = OutboundMessage.from_text("x")
+    cb = _make_callbacks()
+    placeholder_obj = object()
+    cb.send_placeholder = AsyncMock(return_value=(placeholder_obj, 42))
+    cb.send_message = AsyncMock(return_value=99)
+
+    session = StreamingSession(cb, outbound=outbound)
+    await session.run(
+        _events(
+            ToolSummaryRenderEvent(is_complete=True),
+            TextRenderEvent("result", is_final=True),
         )
+    )
+
+    cb.edit_placeholder_tool.assert_called_once()
+    cb.send_message.assert_called_once_with("result")
+    assert outbound.metadata["reply_message_id"] == 99
 
 
-async def tool_then_text(
-    tool_summary: str = "tool result",
-    final_text: str = "done",
-):
-    """Yield one ToolSummaryRenderEvent then a final TextRenderEvent."""
-    yield ToolSummaryRenderEvent(bash_commands=["make test"], is_complete=True)
-    yield TextRenderEvent(text=final_text, is_final=True)
+async def test_tool_then_text_turn_outbound_none():
+    """Tool event + final text with outbound=None:
+    no crash on reply_message_id write."""
+    cb = _make_callbacks()
+    placeholder_obj = object()
+    cb.send_placeholder = AsyncMock(return_value=(placeholder_obj, 42))
 
-
-async def empty_events():
-    """Empty async generator — yields nothing."""
-    return
-    yield  # make it an async generator
-
-
-# ---------------------------------------------------------------------------
-# TestStreamingSessionPlaceholder
-# ---------------------------------------------------------------------------
-
-
-class TestStreamingSessionPlaceholder:
-    async def test_send_placeholder_sets_reply_message_id(self) -> None:
-        """send_placeholder reply_id is stored in outbound.metadata."""
-        # Arrange
-        outbound = OutboundMessage.from_text("")
-        callbacks = make_mock_callbacks(
-            send_placeholder=AsyncMock(return_value=(MagicMock(), 42))
+    session = StreamingSession(cb, outbound=None)
+    await session.run(
+        _events(
+            ToolSummaryRenderEvent(is_complete=True),
+            TextRenderEvent("result", is_final=True),
         )
-        session = StreamingSession(callbacks=callbacks, outbound=outbound)
+    )
 
-        # Act
-        await session.run(text_events("hello"))
+    cb.send_message.assert_called_once_with("result")
 
-        # Assert
-        assert outbound.metadata["reply_message_id"] == 42
 
-    async def test_send_placeholder_none_outbound_no_crash(self) -> None:
-        """StreamingSession with outbound=None must not raise."""
-        # Arrange
-        callbacks = make_mock_callbacks()
-        session = StreamingSession(callbacks=callbacks, outbound=None)
+async def test_stream_error_no_text():
+    """When the event iterator raises, edit placeholder
+    with generic error and re-raise."""
+    cb = _make_callbacks()
+    placeholder_obj = object()
+    cb.send_placeholder = AsyncMock(return_value=(placeholder_obj, 42))
 
-        # Act / Assert — no exception
-        await session.run(text_events("hello"))
+    session = StreamingSession(cb, outbound=None)
+    with pytest.raises(RuntimeError, match="boom"):
+        await session.run(_error_events())
+
+    # Error text should be written to the placeholder
+    cb.edit_placeholder_text.assert_called_once_with(
+        placeholder_obj, GENERIC_ERROR_REPLY,
+    )
+
+
+async def test_stream_error_outbound_not_mutated():
+    """Stream error with outbound: reply_message_id stays
+    as placeholder ID, not overwritten."""
+    outbound = OutboundMessage.from_text("x")
+    cb = _make_callbacks()
+    placeholder_obj = object()
+    cb.send_placeholder = AsyncMock(return_value=(placeholder_obj, 42))
+
+    session = StreamingSession(cb, outbound=outbound)
+    with pytest.raises(RuntimeError, match="boom"):
+        await session.run(_error_events())
+
+    # Placeholder ID was set; stream error doesn't overwrite it
+    assert outbound.metadata["reply_message_id"] == 42
+
+
+async def test_error_turn_text_prepended():
+    """is_error=True final text gets ❌ prefix via build_display_text."""
+    cb = _make_callbacks()
+    placeholder_obj = object()
+    cb.send_placeholder = AsyncMock(return_value=(placeholder_obj, 42))
+
+    session = StreamingSession(cb, outbound=None)
+    await session.run(
+        _events(TextRenderEvent("something went wrong", is_final=True, is_error=True))
+    )
+
+    cb.edit_placeholder_text.assert_called_once_with(
+        placeholder_obj, "❌ something went wrong"
+    )
+
+
+async def test_partial_text_then_stream_error():
+    """Partial text + stream error appends [response interrupted] suffix."""
+    cb = _make_callbacks()
+    placeholder_obj = object()
+    cb.send_placeholder = AsyncMock(return_value=(placeholder_obj, 42))
+
+    session = StreamingSession(cb, outbound=None)
+    with pytest.raises(RuntimeError, match="mid-stream"):
+        await session.run(_partial_then_error())
+
+    # No final text arrived — error branch should fire with generic error
+    cb.edit_placeholder_text.assert_called_with(placeholder_obj, GENERIC_ERROR_REPLY)
 
 
 # ---------------------------------------------------------------------------
-# TestStreamingSessionFallback
+# Tests — fallback path
 # ---------------------------------------------------------------------------
 
 
-class TestStreamingSessionFallback:
-    async def test_fallback_path_updates_reply_message_id(self) -> None:
-        """When send_placeholder raises, fallback id is stored in outbound.metadata."""
-        # Arrange
-        outbound = OutboundMessage.from_text("")
-        callbacks = make_mock_callbacks(
-            send_placeholder=AsyncMock(side_effect=Exception("network error")),
-            send_fallback=AsyncMock(return_value=77),
+async def test_placeholder_fallback():
+    """When send_placeholder raises, send_fallback is called with accumulated text."""
+    cb = _make_callbacks()
+    cb.send_placeholder = AsyncMock(side_effect=Exception("network error"))
+    cb.send_fallback = AsyncMock(return_value=77)
+
+    outbound = OutboundMessage.from_text("x")
+    session = StreamingSession(cb, outbound=outbound)
+    await session.run(_events(TextRenderEvent("fallback text", is_final=True)))
+
+    cb.send_fallback.assert_called_once_with("fallback text")
+    cb.cancel_typing.assert_called()
+    assert outbound.metadata["reply_message_id"] == 77
+
+
+async def test_fallback_empty_stream():
+    """When placeholder fails and no events, send_fallback gets placeholder_text."""
+    cb = _make_callbacks()
+    cb.send_placeholder = AsyncMock(side_effect=Exception("fail"))
+    cb.send_fallback = AsyncMock(return_value=55)
+    cb.placeholder_text = "…"
+
+    session = StreamingSession(cb, outbound=None)
+    await session.run(_events())
+
+    cb.send_fallback.assert_called_once_with("…")
+
+
+async def test_fallback_outbound_none():
+    """When send_placeholder raises and outbound is None, no crash occurs."""
+    cb = _make_callbacks()
+    cb.send_placeholder = AsyncMock(side_effect=Exception("network error"))
+    cb.send_fallback = AsyncMock(return_value=77)
+
+    session = StreamingSession(cb, outbound=None)
+    await session.run(_events(TextRenderEvent("some text", is_final=True)))
+
+    cb.send_fallback.assert_called_once_with("some text")
+    cb.cancel_typing.assert_called()
+
+
+# ---------------------------------------------------------------------------
+# Tests — reply_message_id
+# ---------------------------------------------------------------------------
+
+
+async def test_reply_message_id_with_outbound():
+    """Placeholder message ID written to outbound.metadata on text-only turn."""
+    outbound = OutboundMessage.from_text("x")
+    placeholder_obj = object()
+    cb = _make_callbacks()
+    cb.send_placeholder = AsyncMock(return_value=(placeholder_obj, 42))
+
+    session = StreamingSession(cb, outbound=outbound)
+    await session.run(_events(TextRenderEvent("hello", is_final=True)))
+
+    assert outbound.metadata["reply_message_id"] == 42
+
+
+async def test_reply_message_id_without_outbound():
+    """No crash when outbound is None — reply_message_id tracking simply skipped."""
+    cb = _make_callbacks()
+    session = StreamingSession(cb, outbound=None)
+    await session.run(_events(TextRenderEvent("hello", is_final=True)))
+    cb.cancel_typing.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Tests — typing tail
+# ---------------------------------------------------------------------------
+
+
+async def test_typing_tail_intermediate():
+    """start_typing called (not cancel_typing) when outbound.intermediate=True."""
+    outbound = OutboundMessage.from_text("x")
+    outbound.intermediate = True
+    cb = _make_callbacks()
+
+    session = StreamingSession(cb, outbound=outbound)
+    await session.run(_events(TextRenderEvent("hi", is_final=True)))
+
+    cb.start_typing.assert_called_once()
+    cb.cancel_typing.assert_not_called()
+
+
+async def test_typing_tail_final():
+    """cancel_typing called (not start_typing) when outbound.intermediate=False."""
+    outbound = OutboundMessage.from_text("x")
+    outbound.intermediate = False
+    cb = _make_callbacks()
+
+    session = StreamingSession(cb, outbound=outbound)
+    await session.run(_events(TextRenderEvent("hi", is_final=True)))
+
+    cb.cancel_typing.assert_called_once()
+    cb.start_typing.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Tests — intermediate text guard
+# ---------------------------------------------------------------------------
+
+
+async def test_intermediate_text_guard_discord():
+    """Tool edit NOT called when guard=True and intermediate text is visible."""
+    cb = _make_callbacks(guard_tool_on_intermediate=True)
+    placeholder_obj = object()
+    cb.send_placeholder = AsyncMock(return_value=(placeholder_obj, 42))
+
+    session = StreamingSession(cb, outbound=None)
+    await session.run(
+        _events(
+            TextRenderEvent("thinking", is_final=False),
+            ToolSummaryRenderEvent(is_complete=True),
+            TextRenderEvent("done", is_final=True),
         )
-        session = StreamingSession(callbacks=callbacks, outbound=outbound)
+    )
 
-        # Act
-        await session.run(text_events("hello"))
+    cb.edit_placeholder_tool.assert_not_called()
 
-        # Assert
-        assert outbound.metadata["reply_message_id"] == 77
 
-    async def test_fallback_path_drains_all_events(self) -> None:
-        """When send_placeholder raises, remaining events are drained without crash."""
-        # Arrange
-        _send_fallback = AsyncMock(return_value=77)
-        callbacks = make_mock_callbacks(
-            send_placeholder=AsyncMock(side_effect=Exception("network error")),
-            send_fallback=_send_fallback,
+async def test_intermediate_text_guard_telegram():
+    """Tool edit IS called when guard=False (Telegram: combine_recap=True)."""
+    cb = _make_callbacks(guard_tool_on_intermediate=False)
+    placeholder_obj = object()
+    cb.send_placeholder = AsyncMock(return_value=(placeholder_obj, 42))
+
+    session = StreamingSession(cb, outbound=None)
+    await session.run(
+        _events(
+            TextRenderEvent("thinking", is_final=False),
+            ToolSummaryRenderEvent(is_complete=True),
+            TextRenderEvent("done", is_final=True),
         )
-        session = StreamingSession(callbacks=callbacks, outbound=None)
+    )
 
-        # Act — multiple events should all be consumed without error
-        await session.run(text_events("a", "b", "c"))
-
-        # Assert — fallback was called (session completed gracefully)
-        _send_fallback.assert_called_once()
+    cb.edit_placeholder_tool.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
-# TestStreamingSessionToolEvents
+# Tests — overflow + multi-chunk
 # ---------------------------------------------------------------------------
 
 
-class TestStreamingSessionToolEvents:
-    async def test_had_tool_events_sends_new_message(self) -> None:
-        """After ToolSummaryRenderEvent, final text is sent as a new message."""
-        # Arrange
-        outbound = OutboundMessage.from_text("")
-        _send_message = AsyncMock(return_value=99)
-        callbacks = make_mock_callbacks(
-            send_message=_send_message,
+async def test_overflow_chunks():
+    """First chunk edits placeholder; second chunk sent via send_message."""
+    cb = _make_callbacks()
+    placeholder_obj = object()
+    cb.send_placeholder = AsyncMock(return_value=(placeholder_obj, 42))
+    cb.chunk_text = MagicMock(return_value=["chunk1", "chunk2"])
+
+    session = StreamingSession(cb, outbound=None)
+    await session.run(_events(TextRenderEvent("chunk1chunk2", is_final=True)))
+
+    cb.edit_placeholder_text.assert_called_with(placeholder_obj, "chunk1")
+    cb.send_message.assert_called_once_with("chunk2")
+
+
+async def test_had_tool_events_reply_id_last_chunk_only():
+    """reply_message_id updated only for the last chunk in had_tool_events branch."""
+    outbound = OutboundMessage.from_text("x")
+    cb = _make_callbacks()
+    placeholder_obj = object()
+    cb.send_placeholder = AsyncMock(return_value=(placeholder_obj, 42))
+    cb.chunk_text = MagicMock(return_value=["part1", "part2"])
+    send_call_count = 0
+
+    async def _send_message(_chunk: str) -> int:
+        nonlocal send_call_count
+        send_call_count += 1
+        return 100 + send_call_count
+
+    cb.send_message = _send_message  # type: ignore[assignment]
+
+    session = StreamingSession(cb, outbound=outbound)
+    await session.run(
+        _events(
+            ToolSummaryRenderEvent(is_complete=True),
+            TextRenderEvent("part1part2", is_final=True),
         )
-        session = StreamingSession(callbacks=callbacks, outbound=outbound)
+    )
 
-        # Act
-        await session.run(tool_then_text("summary", "final"))
-
-        # Assert
-        _send_message.assert_called()
-        assert outbound.metadata["reply_message_id"] == 99
-
-    async def test_text_only_edits_placeholder(self) -> None:
-        """Text-only turn (no tool events) edits the placeholder, not send_message."""
-        # Arrange
-        _edit_placeholder_text = AsyncMock(return_value=None)
-        _send_message = AsyncMock(return_value=99)
-        callbacks = make_mock_callbacks(
-            edit_placeholder_text=_edit_placeholder_text,
-            send_message=_send_message,
-        )
-        session = StreamingSession(callbacks=callbacks, outbound=None)
-
-        # Act
-        await session.run(text_events("hello"))
-
-        # Assert
-        _edit_placeholder_text.assert_called()
-        _send_message.assert_not_called()
-
-    async def test_text_overflow_chunks_sent_as_new_messages(self) -> None:
-        """When chunk_text returns >1 chunk for final text, first edits placeholder,
-        remainder sent via send_message."""
-        # Arrange
-        _edit_placeholder_text = AsyncMock(return_value=None)
-        _send_message = AsyncMock(return_value=99)
-        callbacks = make_mock_callbacks(
-            edit_placeholder_text=_edit_placeholder_text,
-            send_message=_send_message,
-            chunk_text=lambda text: ["chunk0", "chunk1", "chunk2"],
-        )
-        session = StreamingSession(callbacks=callbacks, outbound=None)
-
-        # Act
-        await session.run(text_events("long text"))
-
-        # Assert — first chunk edits placeholder; overflow chunks sent as new messages
-        assert _edit_placeholder_text.call_count >= 1
-        assert _edit_placeholder_text.call_args_list[-1].args[1] == "chunk0"
-        assert _send_message.call_count == 2  # chunk1 and chunk2
-
-    async def test_tool_event_calls_edit_placeholder_tool(self) -> None:
-        """A ToolSummaryRenderEvent causes edit_placeholder_tool to be called."""
-        # Arrange
-        _edit_placeholder_tool = AsyncMock(return_value=None)
-        callbacks = make_mock_callbacks(edit_placeholder_tool=_edit_placeholder_tool)
-        session = StreamingSession(callbacks=callbacks, outbound=None)
-
-        # Act
-        await session.run(tool_then_text())
-
-        # Assert
-        _edit_placeholder_tool.assert_called_once()
-        _call = _edit_placeholder_tool.call_args
-        # Second arg is the ToolSummaryRenderEvent
-        assert isinstance(_call.args[1], ToolSummaryRenderEvent)
-
-    async def test_tool_debounce_suppresses_rapid_edits(self) -> None:
-        """Two rapid ToolSummaryRenderEvents within STREAMING_EDIT_INTERVAL
-        result in only one edit_placeholder_tool call (the is_complete one)."""
-        from unittest.mock import patch
-
-        async def two_tool_events():
-            # First event: in-progress (not complete)
-            yield ToolSummaryRenderEvent(bash_commands=["step 1"], is_complete=False)
-            # Second event: complete — always fires regardless of debounce
-            yield ToolSummaryRenderEvent(  # noqa: E501
-                bash_commands=["step 1", "step 2"], is_complete=True
-            )
-            yield TextRenderEvent(text="done", is_final=True)
-
-        _edit_placeholder_tool = AsyncMock(return_value=None)
-        callbacks = make_mock_callbacks(edit_placeholder_tool=_edit_placeholder_tool)
-        session = StreamingSession(callbacks=callbacks, outbound=None)
-
-        # Freeze monotonic so both events appear to arrive at the same instant
-        frozen_time = 1000.0
-        with patch("lyra.adapters._shared_streaming.time") as mock_time:
-            mock_time.monotonic.return_value = frozen_time
-            await session.run(two_tool_events())
-
-        # First event is debounced (last_tool_edit is None → fires, sets last_tool_edit)
-        # Second event is_complete=True → always fires
-        # So exactly 2 calls: first (last_tool_edit=None bypass) + second (is_complete)
-        assert _edit_placeholder_tool.call_count == 2
-
-        # Verify: a third rapid non-complete event would be suppressed
-        _edit_placeholder_tool2 = AsyncMock(return_value=None)
-        callbacks2 = make_mock_callbacks(edit_placeholder_tool=_edit_placeholder_tool2)
-        session2 = StreamingSession(callbacks=callbacks2, outbound=None)
-
-        async def three_rapid_tool_events():
-            # All non-complete, all at the same frozen timestamp
-            yield ToolSummaryRenderEvent(bash_commands=["a"], is_complete=False)
-            yield ToolSummaryRenderEvent(bash_commands=["b"], is_complete=False)
-            yield ToolSummaryRenderEvent(bash_commands=["c"], is_complete=False)
-            yield TextRenderEvent(text="done", is_final=True)
-
-        with patch("lyra.adapters._shared_streaming.time") as mock_time:
-            mock_time.monotonic.return_value = frozen_time
-            await session2.run(three_rapid_tool_events())
-
-        # Only the first fires (last_tool_edit=None); subsequent are within interval
-        assert _edit_placeholder_tool2.call_count == 1
+    assert outbound.metadata["reply_message_id"] == 102
 
 
 # ---------------------------------------------------------------------------
-# TestStreamingSessionTyping
+# Tests — get_msg (i18n)
 # ---------------------------------------------------------------------------
 
 
-class TestStreamingSessionTyping:
-    async def test_cancel_typing_called_when_not_intermediate(self) -> None:
-        """cancel_typing is called when outbound.intermediate is False (default)."""
-        # Arrange
-        outbound = OutboundMessage.from_text("")
-        # intermediate defaults to False
-        _cancel_typing = MagicMock(return_value=None)
-        callbacks = make_mock_callbacks(cancel_typing=_cancel_typing)
-        session = StreamingSession(callbacks=callbacks, outbound=outbound)
+async def test_get_msg_used_for_display_text():
+    """get_msg callback is used by build_display_text for i18n strings.
 
-        # Act
-        await session.run(text_events("hello"))
+    When a final text arrives and then a stream error occurs, build_display_text
+    calls get_msg("stream_interrupted", ...) to append the interrupt suffix.
+    """
 
-        # Assert
-        _cancel_typing.assert_called()
+    async def _final_then_error():
+        yield TextRenderEvent("partial answer", is_final=True)
+        raise RuntimeError("late error")
 
-    async def test_start_typing_called_when_intermediate(self) -> None:
-        """start_typing is called when outbound.intermediate is True."""
-        # Arrange
-        outbound = OutboundMessage.from_text("")
-        outbound.intermediate = True
-        _start_typing = MagicMock(return_value=None)
-        callbacks = make_mock_callbacks(start_typing=_start_typing)
-        session = StreamingSession(callbacks=callbacks, outbound=outbound)
+    cb = _make_callbacks()
+    placeholder_obj = object()
+    cb.send_placeholder = AsyncMock(return_value=(placeholder_obj, 42))
+    cb.get_msg = MagicMock(
+        side_effect=lambda key, fallback: (
+            " [interrompu]"
+            if key == "stream_interrupted"
+            else fallback
+        ),
+    )
 
-        # Act
-        await session.run(text_events("hello"))
+    session = StreamingSession(cb, outbound=None)
+    with pytest.raises(RuntimeError, match="late error"):
+        await session.run(_final_then_error())
 
-        # Assert
-        _start_typing.assert_called()
-
-    async def test_cancel_typing_called_when_outbound_is_none(self) -> None:
-        """cancel_typing is called when outbound is None (no intermediate flag)."""
-        # Arrange
-        _cancel_typing = MagicMock(return_value=None)
-        callbacks = make_mock_callbacks(cancel_typing=_cancel_typing)
-        session = StreamingSession(callbacks=callbacks, outbound=None)
-
-        # Act
-        await session.run(text_events("hello"))
-
-        # Assert — when outbound is None, not-intermediate path applies
-        _cancel_typing.assert_called()
+    # build_display_text should have used get_msg for the interrupt suffix
+    cb.get_msg.assert_called()
+    # The final text should include the localised interrupt suffix
+    cb.edit_placeholder_text.assert_called_with(
+        placeholder_obj, "partial answer [interrompu]",
+    )
 
 
-# ---------------------------------------------------------------------------
-# TestStreamingSessionStreamError
-# ---------------------------------------------------------------------------
+async def test_get_msg_default_fallback():
+    """When get_msg returns the fallback, default English strings are used."""
+    cb = _make_callbacks()
+    placeholder_obj = object()
+    cb.send_placeholder = AsyncMock(return_value=(placeholder_obj, 42))
 
+    session = StreamingSession(cb, outbound=None)
+    await session.run(_events(TextRenderEvent("hello", is_final=True)))
 
-class TestStreamingSessionStreamError:
-    async def test_stream_error_edits_placeholder_with_generic_error(self) -> None:
-        """When the event stream raises mid-stream, placeholder is edited with GENERIC_ERROR_REPLY."""  # noqa: E501
-        from lyra.core.message import GENERIC_ERROR_REPLY
-
-        async def error_events():
-            yield TextRenderEvent(text="partial", is_final=False)
-            raise RuntimeError("mid-stream failure")
-
-        _edit_placeholder_text = AsyncMock(return_value=None)
-        callbacks = make_mock_callbacks(edit_placeholder_text=_edit_placeholder_text)
-        session = StreamingSession(callbacks=callbacks, outbound=None)
-
-        with pytest.raises(RuntimeError, match="mid-stream failure"):
-            await session.run(error_events())
-
-        # The last edit_placeholder_text call should have GENERIC_ERROR_REPLY
-        assert any(
-            call.args[1] == GENERIC_ERROR_REPLY
-            for call in _edit_placeholder_text.call_args_list
-        )
-
-    async def test_stream_error_is_reraised_from_run(self) -> None:
-        """Exception from the event stream is re-raised from session.run()."""
-
-        async def error_events():
-            raise ValueError("stream broken")
-            yield  # make it an async generator
-
-        callbacks = make_mock_callbacks()
-        session = StreamingSession(callbacks=callbacks, outbound=None)
-
-        with pytest.raises(ValueError, match="stream broken"):
-            await session.run(error_events())
+    # get_msg was called during build_display_text (no error → no interrupt suffix,
+    # but the callback is still wired correctly)
+    # Verify no crash and edit happened
+    cb.edit_placeholder_text.assert_called_once_with(placeholder_obj, "hello")

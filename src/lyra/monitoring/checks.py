@@ -21,7 +21,10 @@ def check_process(service_name: str) -> CheckResult:
     supervisorctl is not available.
     """
     now = datetime.now(timezone.utc)
-    sctl = Path.home() / "projects" / "lyra" / "deploy" / "supervisor" / "supervisorctl.sh"
+    sctl = (
+        Path.home() / "projects" / "lyra" / "deploy"
+        / "supervisor" / "supervisorctl.sh"
+    )
 
     if sctl.exists():
         try:

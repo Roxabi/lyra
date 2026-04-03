@@ -101,6 +101,20 @@ class NatsChannelProxy:
     ) -> None:
         """Publish streaming render events to NATS as chunked messages."""
         subject = f"lyra.outbound.{self._platform.value}.{self._bot_id}"
+
+        # Send outbound metadata so the adapter can honour the intermediate flag
+        # (typing indicator lifecycle) and other outbound fields.
+        if outbound is not None:
+            header = {
+                "type": "stream_start",
+                "stream_id": original_msg.id,
+                "outbound": json.loads(serialize(outbound).decode("utf-8")),
+            }
+            await self._nc.publish(
+                subject,
+                json.dumps(header, ensure_ascii=False).encode("utf-8"),
+            )
+
         seq = 0
         try:
             async for event in events:

@@ -52,6 +52,7 @@ class NatsOutboundListener:
         self._cache: dict[str, InboundMessage | InboundAudio] = {}
         self._stream_queues: dict[str, asyncio.Queue[dict]] = {}
         self._stream_tasks: dict[str, asyncio.Task[None]] = {}
+        self._stream_outbound: dict[str, OutboundMessage] = {}
         self._sub: Any = None  # nats.aio.subscription.Subscription | None
 
     def cache_inbound(self, msg: InboundMessage | InboundAudio) -> None:
@@ -83,6 +84,8 @@ class NatsOutboundListener:
         msg_type = data.get("type")
         if msg_type == "send":
             await self._handle_send(data)
+        elif msg_type == "stream_start":
+            self._handle_stream_start(data)
         elif msg_type == "attachment":
             await self._handle_attachment(data)
         elif "stream_id" in data and "seq" in data:
@@ -132,6 +135,17 @@ class NatsOutboundListener:
             attachment, cast(InboundMessage, original_msg)
         )
         self._cache.pop(stream_id, None)
+
+    def _handle_stream_start(self, data: dict) -> None:
+        """Store outbound metadata for a streaming session."""
+        stream_id = data.get("stream_id")
+        outbound_data = data.get("outbound")
+        if stream_id is None or outbound_data is None:
+            return
+        try:
+            self._stream_outbound[stream_id] = OutboundMessage(**outbound_data)
+        except Exception:
+            log.warning("NatsOutboundListener: failed to deserialize stream outbound")
 
     async def _handle_chunk(self, data: dict) -> None:
         stream_id = data.get("stream_id")
@@ -185,9 +199,10 @@ class NatsOutboundListener:
                 if NatsRenderEventCodec.is_terminal(event_type, is_done):
                     break
 
+        outbound = self._stream_outbound.pop(stream_id, None)
         try:
             await self._adapter.send_streaming(
-                cast(InboundMessage, original_msg), _events()
+                cast(InboundMessage, original_msg), _events(), outbound
             )
         except Exception:
             log.exception(

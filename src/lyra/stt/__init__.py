@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from pydantic import BaseModel
 log = logging.getLogger(__name__)
 
 WHISPER_NOISE_TOKENS = {"[music]", "[applause]", "[laughter]", "[silence]", "[noise]"}
+_ALLOWED_AUDIO_EXTENSIONS = {".ogg", ".mp3", ".wav", ".m4a", ".webm", ".flac", ".opus"}
 
 
 @dataclass
@@ -52,7 +54,20 @@ class STTService:
         log.debug("STTService init: model=%s (via voiceCLI)", self._model)
 
     async def transcribe(self, path: Path | str) -> TranscriptionResult:
-        return await asyncio.to_thread(self._transcribe_sync, str(path))
+        resolved = Path(path).resolve()
+        _tmpdir = Path(tempfile.gettempdir()).resolve()
+        if not resolved.is_relative_to(_tmpdir):
+            raise ValueError(
+                f"Path outside allowed directory ({_tmpdir}): {resolved}"
+            )
+        if resolved.suffix.lower() not in _ALLOWED_AUDIO_EXTENSIONS:
+            raise ValueError(
+                f"Unsupported audio extension {resolved.suffix!r},"
+                f" expected one of {sorted(_ALLOWED_AUDIO_EXTENSIONS)}"
+            )
+        if not resolved.is_file():
+            raise FileNotFoundError(f"Audio file not found: {resolved}")
+        return await asyncio.to_thread(self._transcribe_sync, str(resolved))
 
     def _transcribe_sync(self, path: str) -> TranscriptionResult:
         try:

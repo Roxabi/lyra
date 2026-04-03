@@ -254,7 +254,7 @@ src/lyra/
   commands/   — command handlers (echo, pairing, search)
   monitoring/ — health checks + escalation
 tests/        — pytest-asyncio + pytest-cov (core, adapters, llm, cli, nats)
-docs/         — ARCHITECTURE.md, ROADMAP.md, QUICKSTART.md, 37 ADRs
+docs/         — ARCHITECTURE.md, ROADMAP.md, QUICKSTART.md, 38 ADRs
 ```
 
 > See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full file-by-file breakdown.
@@ -270,7 +270,7 @@ docs/         — ARCHITECTURE.md, ROADMAP.md, QUICKSTART.md, 37 ADRs
 | [COMMANDS.md](docs/COMMANDS.md) | Command router — slash commands, external tool integration pattern |
 | [GETTING-STARTED.md](docs/GETTING-STARTED.md) | Machine 1 (Ubuntu Server) hardware setup |
 | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production service management on Machine 1 (supervisord, logs, firewall) |
-| [ADRs](docs/architecture/adr/) | 24 architecture decision records with full rationale |
+| [ADRs](docs/architecture/adr/) | 38 architecture decision records with full rationale |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Branching model, commit conventions, adding adapters and agents |
 
 ## Contributing

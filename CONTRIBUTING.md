@@ -76,7 +76,7 @@ uv run pre-commit install
 
 ## Adding a channel adapter
 
-A channel adapter normalizes messages from one platform into `InboundMessage` objects and sends `Response` objects back via the `OutboundDispatcher`.
+A channel adapter normalizes messages from one platform into `InboundMessage` objects and sends `OutboundMessage` objects back via the platform API.
 
 **1. Add a `Platform` variant** in `src/lyra/core/message.py`:
 
@@ -87,15 +87,37 @@ class Platform(str, Enum):
     SIGNAL   = "signal"        # new
 ```
 
-**2. Create `src/lyra/adapters/signal.py`** implementing the `ChannelAdapter` protocol:
+**2. Create `src/lyra/adapters/signal.py`** inheriting `OutboundAdapterBase`:
 
 ```python
-class SignalAdapter:
-    async def send(self, original_msg: InboundMessage, response: Response) -> None:
+from lyra.adapters._base_outbound import OutboundAdapterBase
+from lyra.adapters._shared_streaming import PlatformCallbacks
+
+class SignalAdapter(OutboundAdapterBase):
+    async def send(self, original_msg: InboundMessage, outbound: OutboundMessage) -> None:
         ...
+
+    def _make_streaming_callbacks(self, original_msg, outbound) -> PlatformCallbacks:
+        return PlatformCallbacks(
+            send_placeholder=...,
+            edit_placeholder_text=...,
+            edit_placeholder_tool=...,
+            send_message=...,
+            send_fallback=...,
+            chunk_text=...,
+            start_typing=...,
+            cancel_typing=...,
+        )
+
+    def _start_typing(self, scope_id): ...
+    def _cancel_typing(self, scope_id): ...
 ```
 
+`send_streaming()` is provided by `OutboundAdapterBase` — do not override it. Platform-specific streaming behaviour belongs in `_make_streaming_callbacks()`.
+
 See `src/lyra/adapters/_shared.py` for shared normalization helpers and render functions (audio, attachments).
+
+**3. Implement `_normalize()`** to parse raw platform payloads into `InboundMessage` objects, and any platform-specific render methods (`render_audio`, `render_attachment`, etc.) as needed.
 
 **4. Register it in `src/lyra/bootstrap/hub_standalone.py`** (and `adapter_standalone.py` for the adapter side):
 

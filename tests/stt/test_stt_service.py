@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -265,3 +266,93 @@ def test_transcribe_sync_no_detection_params_when_none():
     assert "language_detection_threshold" not in captured_kwargs
     assert "language_detection_segments" not in captured_kwargs
     assert "language_fallback" not in captured_kwargs
+
+
+# ---------------------------------------------------------------------------
+# Daemon detection state machine (per-call socket check)
+# ---------------------------------------------------------------------------
+
+_SOCKET_PATCH = "voicecli.stt_daemon.SOCKET_PATH"
+_UNLOAD_PATCH = "voicecli.transcribe.unload_model"
+
+
+def _stt_service() -> STTService:
+    return STTService(STTConfig(model_size="large-v3-turbo"))
+
+
+def _mock_socket(exists: bool) -> MagicMock:
+    """Return a mock Path whose .exists() returns the given value."""
+    sock = MagicMock(spec=Path)
+    sock.exists.return_value = exists
+    return sock
+
+
+@requires_voicecli
+def test_daemon_appears_unloads_model():
+    """Transition 1: daemon_up=True, _daemon_active=False → unload + activate."""
+    svc = _stt_service()
+    assert svc._daemon_active is False
+
+    with (
+        patch(_SOCKET_PATCH, _mock_socket(True)),
+        patch(_UNLOAD_PATCH) as mock_unload,
+        patch("voicecli.config.load_vocab", return_value=[]),
+        patch("voicecli.config.vocab_to_prompt", return_value=""),
+        patch("voicecli.transcribe.transcribe", return_value=_make_vc_result()),
+    ):
+        svc._transcribe_sync("/tmp/fake.ogg")
+
+    mock_unload.assert_called_once()
+    assert svc._daemon_active is True
+
+
+@requires_voicecli
+def test_daemon_disappears_falls_back():
+    """Transition 2: daemon_up=False, _daemon_active=True → reset + warn."""
+    svc = _stt_service()
+    svc._daemon_active = True
+
+    with (
+        patch(_SOCKET_PATCH, _mock_socket(False)),
+        patch("voicecli.config.load_vocab", return_value=[]),
+        patch("voicecli.config.vocab_to_prompt", return_value=""),
+        patch("voicecli.transcribe.transcribe", return_value=_make_vc_result()),
+    ):
+        svc._transcribe_sync("/tmp/fake.ogg")
+
+    assert svc._daemon_active is False
+
+
+@requires_voicecli
+def test_daemon_already_active_no_op():
+    """Transition 3: daemon_up=True, _daemon_active=True → no unload call."""
+    svc = _stt_service()
+    svc._daemon_active = True
+
+    with (
+        patch(_SOCKET_PATCH, _mock_socket(True)),
+        patch(_UNLOAD_PATCH) as mock_unload,
+        patch("voicecli.config.load_vocab", return_value=[]),
+        patch("voicecli.config.vocab_to_prompt", return_value=""),
+        patch("voicecli.transcribe.transcribe", return_value=_make_vc_result()),
+    ):
+        svc._transcribe_sync("/tmp/fake.ogg")
+
+    mock_unload.assert_not_called()
+    assert svc._daemon_active is True
+
+
+@requires_voicecli
+def test_no_daemon_no_flag_no_op():
+    """Transition 4: daemon_up=False, _daemon_active=False → no state change."""
+    svc = _stt_service()
+
+    with (
+        patch(_SOCKET_PATCH, _mock_socket(False)),
+        patch("voicecli.config.load_vocab", return_value=[]),
+        patch("voicecli.config.vocab_to_prompt", return_value=""),
+        patch("voicecli.transcribe.transcribe", return_value=_make_vc_result()),
+    ):
+        svc._transcribe_sync("/tmp/fake.ogg")
+
+    assert svc._daemon_active is False

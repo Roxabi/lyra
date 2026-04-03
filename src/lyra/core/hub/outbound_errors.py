@@ -115,25 +115,10 @@ async def try_notify_user(
         )
         return
     try:
-        if platform_name == "telegram":
-            chat_id: int | None = msg.platform_meta.get("chat_id")
-            if chat_id is None:
-                return
-            await adapter.bot.send_message(chat_id=chat_id, text=text)
-        elif platform_name == "discord":
-            thread_id: int | None = msg.platform_meta.get("thread_id")
-            channel_id: int | None = msg.platform_meta.get("channel_id")
-            send_to_id = thread_id if thread_id is not None else channel_id
-            if send_to_id is None:
-                return
-            channel = await adapter._resolve_channel(send_to_id)
-            await channel.send(text)
-        else:
-            log.debug(
-                "OutboundDispatcher[%s]: try_notify_user not implemented"
-                " for this platform",
-                platform_name,
-            )
+        from ..message import OutboundMessage as _OM
+
+        outbound = _OM(content=[text])
+        await adapter.send(msg, outbound)
     except Exception as notify_exc:
         log.warning(
             "OutboundDispatcher[%s]: failed to send user notification: %s",

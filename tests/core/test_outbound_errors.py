@@ -152,82 +152,34 @@ class TestIsTransientError:
 
 
 class TestTryNotifyUser:
-    async def test_telegram_sends_message(self) -> None:
+    async def test_sends_via_adapter_send(self) -> None:
         adapter = MagicMock()
-        adapter.bot = MagicMock()
-        adapter.bot.send_message = AsyncMock()
-        msg = make_dispatcher_msg()  # platform_meta has chat_id=123
-        await try_notify_user("telegram", adapter, msg, "⚠️ error")
-        adapter.bot.send_message.assert_awaited_once_with(chat_id=123, text="⚠️ error")
-
-    async def test_telegram_no_chat_id_returns_silently(self) -> None:
-        adapter = MagicMock()
-        adapter.bot = MagicMock()
-        adapter.bot.send_message = AsyncMock()
+        adapter.send = AsyncMock()
         msg = make_dispatcher_msg()
-        object.__setattr__(msg, "platform_meta", {})  # no chat_id
         await try_notify_user("telegram", adapter, msg, "⚠️ error")
-        adapter.bot.send_message.assert_not_awaited()
+        adapter.send.assert_awaited_once()
+        _, outbound = adapter.send.call_args.args
+        assert outbound.content == ["⚠️ error"]
 
-    async def test_telegram_exception_swallowed(self) -> None:
+    async def test_works_for_any_platform(self) -> None:
         adapter = MagicMock()
-        adapter.bot = MagicMock()
-        adapter.bot.send_message = AsyncMock(side_effect=Exception("network error"))
+        adapter.send = AsyncMock()
+        msg = make_dispatcher_msg()
+        await try_notify_user("cli", adapter, msg, "⚠️ error")
+        adapter.send.assert_awaited_once()
+
+    async def test_exception_swallowed(self) -> None:
+        adapter = MagicMock()
+        adapter.send = AsyncMock(side_effect=Exception("network error"))
         msg = make_dispatcher_msg()
         # Must not propagate the exception
         await try_notify_user("telegram", adapter, msg, "⚠️ error")
 
-    async def test_discord_sends_to_thread_when_present(self) -> None:
+    async def test_circuit_open_suppresses(self) -> None:
         adapter = MagicMock()
-        channel = MagicMock()
-        channel.send = AsyncMock()
-        adapter._resolve_channel = AsyncMock(return_value=channel)
-
+        adapter.send = AsyncMock()
+        circuit = MagicMock()
+        circuit.is_open = MagicMock(return_value=True)
         msg = make_dispatcher_msg()
-        object.__setattr__(
-            msg,
-            "platform_meta",
-            {"channel_id": 10, "thread_id": 20, "message_id": 1},
-        )
-        await try_notify_user("discord", adapter, msg, "⚠️ error")
-        adapter._resolve_channel.assert_awaited_once_with(20)
-        channel.send.assert_awaited_once_with("⚠️ error")
-
-    async def test_discord_falls_back_to_channel(self) -> None:
-        adapter = MagicMock()
-        channel = MagicMock()
-        channel.send = AsyncMock()
-        adapter._resolve_channel = AsyncMock(return_value=channel)
-
-        msg = make_dispatcher_msg()
-        object.__setattr__(
-            msg,
-            "platform_meta",
-            {"channel_id": 10, "thread_id": None, "message_id": 1},
-        )
-        await try_notify_user("discord", adapter, msg, "⚠️ error")
-        adapter._resolve_channel.assert_awaited_once_with(10)
-
-    async def test_discord_no_channel_id_returns_silently(self) -> None:
-        adapter = MagicMock()
-        adapter._resolve_channel = AsyncMock()
-        msg = make_dispatcher_msg()
-        object.__setattr__(
-            msg, "platform_meta", {"thread_id": None, "channel_id": None}
-        )
-        await try_notify_user("discord", adapter, msg, "⚠️ error")
-        adapter._resolve_channel.assert_not_awaited()
-
-    async def test_unknown_platform_no_exception(self) -> None:
-        adapter = MagicMock()
-        msg = make_dispatcher_msg()
-        # Should not raise for unsupported platforms
-        await try_notify_user("cli", adapter, msg, "⚠️ error")
-
-    async def test_discord_exception_swallowed(self) -> None:
-        adapter = MagicMock()
-        adapter._resolve_channel = AsyncMock(side_effect=Exception("connection lost"))
-        msg = make_dispatcher_msg()
-        object.__setattr__(msg, "platform_meta", {"channel_id": 10, "thread_id": None})
-        # Must not propagate
-        await try_notify_user("discord", adapter, msg, "⚠️ error")
+        await try_notify_user("telegram", adapter, msg, "⚠️ error", circuit=circuit)
+        adapter.send.assert_not_awaited()

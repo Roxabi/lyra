@@ -13,16 +13,11 @@ else ifeq (discord,$(firstword $(MAKECMDGOALS)))
 endif
 
 LYRA_STACK_DIR ?= $(HOME)/projects/lyra-stack
-SUPERVISORCTL  := $(LYRA_STACK_DIR)/scripts/supervisorctl.sh
-SUPERVISOR_START := $(LYRA_STACK_DIR)/scripts/start.sh
-HUB_PID        := $(LYRA_STACK_DIR)/supervisord.pid
+SUPERVISORCTL  := deploy/supervisor/supervisorctl.sh
+SUPERVISOR_START := deploy/supervisor/start.sh
+HUB_PID        := deploy/supervisor/supervisord.pid
 
-define ensure_hub
-	@if [ ! -d "$(LYRA_STACK_DIR)" ]; then \
-		echo "Error: lyra-stack not found at $(LYRA_STACK_DIR)"; \
-		echo "       Clone it or set LYRA_STACK_DIR=/path/to/lyra-stack"; \
-		exit 1; \
-	fi
+define ensure_supervisor
 	@if [ ! -f "$(HUB_PID)" ] || ! kill -0 $$(cat "$(HUB_PID)" 2>/dev/null) 2>/dev/null; then \
 		echo "Hub supervisord not running, starting..."; \
 		$(SUPERVISOR_START); \
@@ -52,23 +47,23 @@ endif
 ifneq (remote,$(firstword $(MAKECMDGOALS)))
 lyra:
 ifeq ($(LYRA_CMD),stop)
-	$(ensure_hub)
+	$(ensure_supervisor)
 	@$(SUPERVISORCTL) stop lyra_hub
 	@$(SUPERVISORCTL) stop lyra_telegram
 	@$(SUPERVISORCTL) stop lyra_discord
 else ifeq ($(LYRA_CMD),reload)
-	$(ensure_hub)
+	$(ensure_supervisor)
 	@$(SUPERVISORCTL) restart lyra_hub
 	@$(SUPERVISORCTL) restart lyra_telegram
 	@$(SUPERVISORCTL) restart lyra_discord
 else ifeq ($(LYRA_CMD),logs)
-	$(ensure_hub)
+	$(ensure_supervisor)
 	@$(SUPERVISORCTL) tail -f lyra_hub
 else ifeq ($(LYRA_CMD),errors)
-	$(ensure_hub)
+	$(ensure_supervisor)
 	@$(SUPERVISORCTL) tail -f lyra_hub stderr
 else ifeq ($(LYRA_CMD),status)
-	$(ensure_hub)
+	$(ensure_supervisor)
 	@$(SUPERVISORCTL) status lyra_hub
 	@$(SUPERVISORCTL) status lyra_telegram
 	@$(SUPERVISORCTL) status lyra_discord
@@ -78,7 +73,7 @@ else ifeq ($(LYRA_CMD),)
 	@$(SUPERVISORCTL) start lyra_telegram
 	@$(SUPERVISORCTL) start lyra_discord
 else
-	$(ensure_hub)
+	$(ensure_supervisor)
 	@$(SUPERVISORCTL) $(LYRA_CMD) lyra_hub
 	@$(SUPERVISORCTL) $(LYRA_CMD) lyra_telegram
 	@$(SUPERVISORCTL) $(LYRA_CMD) lyra_discord
@@ -86,53 +81,53 @@ endif
 
 telegram:
 ifeq ($(TELEGRAM_CMD),stop)
-	$(ensure_hub)
+	$(ensure_supervisor)
 	@$(SUPERVISORCTL) stop lyra_telegram
 else ifeq ($(TELEGRAM_CMD),reload)
-	$(ensure_hub)
+	$(ensure_supervisor)
 	@$(SUPERVISORCTL) stop lyra_telegram
 	@sleep 1
 	@$(SUPERVISORCTL) start lyra_telegram
 else ifeq ($(TELEGRAM_CMD),logs)
-	$(ensure_hub)
+	$(ensure_supervisor)
 	@$(SUPERVISORCTL) tail -f lyra_telegram
 else ifeq ($(TELEGRAM_CMD),errors)
-	$(ensure_hub)
+	$(ensure_supervisor)
 	@$(SUPERVISORCTL) tail -f lyra_telegram stderr
 else ifeq ($(TELEGRAM_CMD),status)
-	$(ensure_hub)
+	$(ensure_supervisor)
 	@$(SUPERVISORCTL) status lyra_telegram
 else ifeq ($(TELEGRAM_CMD),)
 	@$(SUPERVISOR_START)
 	@$(SUPERVISORCTL) start lyra_telegram
 else
-	$(ensure_hub)
+	$(ensure_supervisor)
 	@$(SUPERVISORCTL) $(TELEGRAM_CMD) lyra_telegram
 endif
 
 discord:
 ifeq ($(DISCORD_CMD),stop)
-	$(ensure_hub)
+	$(ensure_supervisor)
 	@$(SUPERVISORCTL) stop lyra_discord
 else ifeq ($(DISCORD_CMD),reload)
-	$(ensure_hub)
+	$(ensure_supervisor)
 	@$(SUPERVISORCTL) stop lyra_discord
 	@sleep 1
 	@$(SUPERVISORCTL) start lyra_discord
 else ifeq ($(DISCORD_CMD),logs)
-	$(ensure_hub)
+	$(ensure_supervisor)
 	@$(SUPERVISORCTL) tail -f lyra_discord
 else ifeq ($(DISCORD_CMD),errors)
-	$(ensure_hub)
+	$(ensure_supervisor)
 	@$(SUPERVISORCTL) tail -f lyra_discord stderr
 else ifeq ($(DISCORD_CMD),status)
-	$(ensure_hub)
+	$(ensure_supervisor)
 	@$(SUPERVISORCTL) status lyra_discord
 else ifeq ($(DISCORD_CMD),)
 	@$(SUPERVISOR_START)
 	@$(SUPERVISORCTL) start lyra_discord
 else
-	$(ensure_hub)
+	$(ensure_supervisor)
 	@$(SUPERVISORCTL) $(DISCORD_CMD) lyra_discord
 endif
 
@@ -183,43 +178,34 @@ else
 endif
 
 register:
-	@echo "Registering lyra with lyra-stack..."
-	@if [ ! -d "$(LYRA_STACK_DIR)" ]; then \
-		echo "Error: lyra-stack not found at $(LYRA_STACK_DIR)"; \
-		echo "       Clone it or set LYRA_STACK_DIR=/path/to/lyra-stack"; \
-		exit 1; \
-	fi
-	@mkdir -p "$(LYRA_STACK_DIR)/conf.d"
-	@ln -sf "$(abspath supervisor/conf.d/lyra_hub.conf)"      "$(LYRA_STACK_DIR)/conf.d/lyra_hub.conf"
-	@ln -sf "$(abspath supervisor/conf.d/lyra_telegram.conf)" "$(LYRA_STACK_DIR)/conf.d/lyra_telegram.conf"
-	@ln -sf "$(abspath supervisor/conf.d/lyra_discord.conf)"  "$(LYRA_STACK_DIR)/conf.d/lyra_discord.conf"
-	@if [ -L "$(LYRA_STACK_DIR)/conf.d/lyra.conf" ]; then rm "$(LYRA_STACK_DIR)/conf.d/lyra.conf"; fi
+	@echo "Registering lyra supervisor..."
 	@mkdir -p "$(HOME)/.local/state/lyra/logs"
-	@if [ -S "$(LYRA_STACK_DIR)/supervisor.sock" ]; then \
-		$(SUPERVISORCTL) reread && $(SUPERVISORCTL) update; \
-	fi
+	@echo ""
+	@echo "Installing lyra systemd service..."
+	@mkdir -p "$(SYSTEMD_USER_DIR)"
+	@cp "$(abspath deploy/lyra.service)" "$(SYSTEMD_USER_DIR)/lyra.service"
 	@echo ""
 	@echo "Installing monitoring systemd timer..."
-	@mkdir -p "$(SYSTEMD_USER_DIR)"
 	@cp "$(abspath deploy/lyra-monitor.service)" "$(SYSTEMD_USER_DIR)/lyra-monitor.service"
 	@cp "$(abspath deploy/lyra-monitor.timer)"   "$(SYSTEMD_USER_DIR)/lyra-monitor.timer"
 	@systemctl --user daemon-reload
+	@systemctl --user enable lyra.service
 	@systemctl --user enable lyra-monitor.timer
 	@echo ""
 	@echo "Done."
-	@echo "  Adapters: run 'make telegram' and 'make discord' to start."
-	@echo "  Monitor:  run 'make monitor enable' to start the health check timer."
-	@echo "  Secrets:  ensure TELEGRAM_TOKEN, ANTHROPIC_API_KEY, TELEGRAM_ADMIN_CHAT_ID are in .env"
+	@echo "  Supervisor: run 'make lyra' to start hub + adapters."
+	@echo "  Monitor:    run 'make monitor enable' to start the health check timer."
+	@echo "  Secrets:    ensure TELEGRAM_TOKEN, ANTHROPIC_API_KEY, TELEGRAM_ADMIN_CHAT_ID are in .env"
 
 deploy:
 	$(require_machine1)
 	@echo "Deploying to Machine 1 ($(DEPLOY_HOST))..."
 	@ssh $(DEPLOY_HOST) "cd $(DEPLOY_DIR) && bash scripts/deploy.sh"
 
-REMOTE_SCTL := ~/projects/lyra-stack/scripts/supervisorctl.sh
+REMOTE_SCTL := ~/projects/lyra/deploy/supervisor/supervisorctl.sh
 
 # make remote [service] [action]
-#   Services: lyra, telegram, discord, tts, stt (default: all)
+#   Services: lyra, hub, telegram, discord (default: all lyra programs)
 #   Actions:  reload, start, stop, status, logs, errors (default: status)
 remote:
 	$(require_machine1)
@@ -231,10 +217,8 @@ remote:
 	  hub)      PROGS="lyra_hub" ;; \
 	  telegram) PROGS="lyra_telegram" ;; \
 	  discord)  PROGS="lyra_discord" ;; \
-	  tts)      PROGS="voicecli_tts" ;; \
-	  stt)      PROGS="voicecli_stt" ;; \
 	  reload|start|stop|status|logs|errors|"") \
-	    ACTION="$$SVC"; PROGS="lyra_hub lyra_telegram lyra_discord voicecli_tts voicecli_stt" ;; \
+	    ACTION="$$SVC"; PROGS="lyra_hub lyra_telegram lyra_discord" ;; \
 	  *) echo "Unknown service: $$SVC"; exit 1 ;; \
 	esac; \
 	case "$${ACTION:-status}" in \

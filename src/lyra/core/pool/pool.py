@@ -56,6 +56,9 @@ class PoolContext(Protocol):
     def record_dead_backend_hit(self) -> None:  # optional: no-op default
         ...
 
+    def reset_dead_backend_hits(self) -> None:  # optional: no-op default
+        ...
+
 
 class Pool:
     """One pool per conversation scope. Holds history and a per-session asyncio.Task."""
@@ -118,6 +121,7 @@ class Pool:
         self._system_prompt: str = ""
         self.voice_mode: bool = False
         self.last_detected_language: str | None = None
+        self._last_turn_had_backend_error: bool = False
         self._last_msg: InboundMessage | None = None
         self._observer = PoolObserver(
             pool_id=pool_id,

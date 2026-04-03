@@ -194,15 +194,23 @@ class PoolProcessor:
                 pool.pool_id,
                 _duration_ms,
             )
-            if _duration_ms < _MIN_EXPECTED_DURATION_MS:
+            _had_error = pool._last_turn_had_backend_error
+            pool._last_turn_had_backend_error = False
+            if _duration_ms < _MIN_EXPECTED_DURATION_MS or _had_error:
                 log.warning(
                     "agent suspiciously fast: agent=%s pool=%s"
-                    " duration_ms=%.0f — possible dead backend",
+                    " duration_ms=%.0f backend_error=%s"
+                    " — possible dead backend",
                     pool.agent_name,
                     pool.pool_id,
                     _duration_ms,
+                    _had_error,
                 )
                 pool._ctx.record_dead_backend_hit()
+            else:
+                # Backend responded normally — clear any prior dead-backend hits
+                # so the health check stops alerting once the backend recovers.
+                pool._ctx.reset_dead_backend_hits()
         except asyncio.TimeoutError:
             log.warning(
                 "pool %s: turn timeout after %.0fs — killing backend",
@@ -346,6 +354,8 @@ class PoolProcessor:
                     async for event in _result_iter_for_sid:
                         if isinstance(event, TextRenderEvent):
                             _content_parts.append(event.text)
+                            if event.is_error:
+                                pool._last_turn_had_backend_error = True
                         elif not _emit_tool_recap:
                             # ToolSummaryRenderEvent — suppress when recap is disabled
                             continue

@@ -295,6 +295,7 @@ class SimpleAgent(AgentBase):
                 pool.pool_id,
                 result.error,
             )
+            pool._last_turn_had_backend_error = True
             # Timeout gets a specific message; all other errors get a generic one
             if "Timeout" in result.error:
                 user_msg = (

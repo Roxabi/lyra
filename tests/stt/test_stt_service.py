@@ -356,3 +356,34 @@ def test_no_daemon_no_flag_no_op():
         svc._transcribe_sync("/tmp/fake.ogg")
 
     assert svc._daemon_active is False
+
+
+@requires_voicecli
+def test_daemon_connection_fails_retries_in_process():
+    """TOCTOU recovery: daemon socket exists but connection fails → retry in-process."""
+    svc = _stt_service()
+    svc._daemon_active = True
+
+    call_count = 0
+
+    def _transcribe_with_failure(path, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise ConnectionError("daemon socket gone")
+        return _make_vc_result()
+
+    with (
+        patch(_SOCKET_PATCH, _mock_socket(True)),
+        patch("voicecli.config.load_vocab", return_value=[]),
+        patch("voicecli.config.vocab_to_prompt", return_value=""),
+        patch(
+            "voicecli.transcribe.transcribe",
+            side_effect=_transcribe_with_failure,
+        ),
+    ):
+        result = svc._transcribe_sync("/tmp/fake.ogg")
+
+    assert call_count == 2
+    assert svc._daemon_active is False
+    assert result.text == "Hello world"

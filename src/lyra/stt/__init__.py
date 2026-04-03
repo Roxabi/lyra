@@ -89,7 +89,18 @@ class STTService:
                 kwargs["language_detection_segments"] = self._detection_segments
             if self._detection_fallback is not None:
                 kwargs["language_fallback"] = self._detection_fallback
-            vc_result = _transcribe(Path(path), **kwargs)
+            try:
+                vc_result = _transcribe(Path(path), **kwargs)
+            except (ConnectionError, OSError):
+                if self._daemon_active:
+                    self._daemon_active = False
+                    log.warning(
+                        "STT daemon connection failed — retrying"
+                        " with in-process model",
+                    )
+                    vc_result = _transcribe(Path(path), **kwargs)
+                else:
+                    raise
 
             duration = (
                 max((seg["end"] for seg in vc_result.segments), default=0.0)

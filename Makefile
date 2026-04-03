@@ -189,11 +189,11 @@ register:
 	@cp "$(abspath deploy/lyra-monitor.service)" "$(SYSTEMD_USER_DIR)/lyra-monitor.service"
 	@cp "$(abspath deploy/lyra-monitor.timer)"   "$(SYSTEMD_USER_DIR)/lyra-monitor.timer"
 	@systemctl --user daemon-reload
-	@systemctl --user enable lyra.service
+	@systemctl --user enable --now lyra.service
 	@systemctl --user enable lyra-monitor.timer
 	@echo ""
 	@echo "Done."
-	@echo "  Supervisor: run 'make lyra' to start hub + adapters."
+	@echo "  Supervisor: lyra.service is running. Use 'make lyra status' or 'systemctl --user status lyra'."
 	@echo "  Monitor:    run 'make monitor enable' to start the health check timer."
 	@echo "  Secrets:    ensure TELEGRAM_TOKEN, ANTHROPIC_API_KEY, TELEGRAM_ADMIN_CHAT_ID are in .env"
 

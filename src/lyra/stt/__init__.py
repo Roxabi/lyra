@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -54,8 +55,11 @@ class STTService:
 
     async def transcribe(self, path: Path | str) -> TranscriptionResult:
         resolved = Path(path).resolve()
-        if ".." in Path(path).parts:
-            raise ValueError(f"Path traversal not allowed: {path}")
+        _tmpdir = Path(tempfile.gettempdir()).resolve()
+        if not resolved.is_relative_to(_tmpdir):
+            raise ValueError(
+                f"Path outside allowed directory ({_tmpdir}): {resolved}"
+            )
         if resolved.suffix.lower() not in _ALLOWED_AUDIO_EXTENSIONS:
             raise ValueError(
                 f"Unsupported audio extension {resolved.suffix!r},"

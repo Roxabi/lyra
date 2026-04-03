@@ -86,17 +86,34 @@ def audio_ogg(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_transcribe_rejects_path_traversal(tmp_path):
+async def test_transcribe_rejects_path_outside_tempdir():
     svc = STTService(STTConfig(model_size="large-v3-turbo"))
-    malicious = tmp_path / ".." / ".." / "etc" / "passwd"
-    with pytest.raises(ValueError, match="Path traversal not allowed"):
-        await svc.transcribe(malicious)
+    with pytest.raises(ValueError, match="Path outside allowed directory"):
+        await svc.transcribe("/etc/passwd.ogg")
+
+
+@pytest.mark.asyncio
+async def test_transcribe_rejects_path_outside_tempdir_string():
+    """String input with traversal is also rejected."""
+    svc = STTService(STTConfig(model_size="large-v3-turbo"))
+    with pytest.raises(ValueError, match="Path outside allowed directory"):
+        await svc.transcribe("/home/../etc/passwd.ogg")
 
 
 @pytest.mark.asyncio
 async def test_transcribe_rejects_bad_extension(tmp_path):
     f = tmp_path / "secret.txt"
     f.write_bytes(b"secret data")
+    svc = STTService(STTConfig(model_size="large-v3-turbo"))
+    with pytest.raises(ValueError, match="Unsupported audio extension"):
+        await svc.transcribe(f)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", ["noext", "audio.ogg.bak", "file.exe"])
+async def test_transcribe_rejects_various_bad_extensions(tmp_path, name):
+    f = tmp_path / name
+    f.write_bytes(b"\x00")
     svc = STTService(STTConfig(model_size="large-v3-turbo"))
     with pytest.raises(ValueError, match="Unsupported audio extension"):
         await svc.transcribe(f)
@@ -110,18 +127,33 @@ async def test_transcribe_rejects_missing_file(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_transcribe_accepts_all_valid_extensions(tmp_path):
-    """All allowed extensions pass validation."""
+@pytest.mark.parametrize(
+    "ext",
+    [".ogg", ".mp3", ".wav", ".m4a", ".webm", ".flac", ".opus", ".OGG"],
+)
+async def test_transcribe_accepts_valid_extensions(tmp_path, ext):
+    """All allowed extensions (including uppercase) pass validation."""
     svc = STTService(STTConfig(model_size="large-v3-turbo"))
-    for ext in (".ogg", ".mp3", ".wav", ".m4a", ".webm", ".flac", ".opus"):
-        f = tmp_path / f"audio{ext}"
-        f.write_bytes(b"\x00")
-        # File exists + valid extension → validation passes, reaches _transcribe_sync
-        with patch.object(svc, "_transcribe_sync", return_value=TranscriptionResult(
-            text="ok", language="en", duration_seconds=0.0
-        )):
-            result = await svc.transcribe(f)
-            assert result.text == "ok"
+    f = tmp_path / f"audio{ext}"
+    f.write_bytes(b"\x00")
+    with patch.object(svc, "_transcribe_sync", return_value=TranscriptionResult(
+        text="ok", language="en", duration_seconds=0.0
+    )):
+        result = await svc.transcribe(f)
+        assert result.text == "ok"
+
+
+@pytest.mark.asyncio
+async def test_transcribe_accepts_string_path(tmp_path):
+    """String paths inside tempdir are accepted."""
+    svc = STTService(STTConfig(model_size="large-v3-turbo"))
+    f = tmp_path / "voice.ogg"
+    f.write_bytes(b"\x00")
+    with patch.object(svc, "_transcribe_sync", return_value=TranscriptionResult(
+        text="ok", language="en", duration_seconds=0.0
+    )):
+        result = await svc.transcribe(str(f))
+        assert result.text == "ok"
 
 
 # ---------------------------------------------------------------------------

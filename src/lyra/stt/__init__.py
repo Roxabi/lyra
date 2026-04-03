@@ -60,11 +60,10 @@ class STTService:
                 load_vocab,
                 vocab_to_prompt,
             )
+            from voicecli.stt_daemon import SOCKET_PATH
             from voicecli.transcribe import (
                 transcribe as _transcribe,
             )
-
-            from voicecli.stt_daemon import SOCKET_PATH  # type: ignore[import-untyped]  # noqa: I001
 
             daemon_up = SOCKET_PATH.exists()
             if daemon_up and not self._daemon_active:

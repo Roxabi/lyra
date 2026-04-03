@@ -29,7 +29,6 @@ LimitNOFILE=65536
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-ReadOnlyPaths=/etc/nats
 PrivateTmp=true
 
 [Install]

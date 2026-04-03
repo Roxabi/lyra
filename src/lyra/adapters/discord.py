@@ -308,12 +308,14 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
             return PlatformCallbacks(
                 send_placeholder=_bad_placeholder,
                 edit_placeholder_text=lambda ph, text: asyncio.sleep(0),
-                edit_placeholder_tool=lambda ph, ev: asyncio.sleep(0),
+                edit_placeholder_tool=lambda ph, ev, h: asyncio.sleep(0),
                 send_message=_noop,
                 send_fallback=_noop,
                 chunk_text=lambda t: [t],
                 start_typing=lambda: None,
                 cancel_typing=lambda: None,
+                get_msg=lambda key, fallback: fallback,
+                placeholder_text="\u2026",
             )
 
         channel_id: int | None = original_msg.platform_meta.get("channel_id")
@@ -339,7 +341,7 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
                 label="Intermediate text edit",
             )
 
-        async def _edit_placeholder_tool(ph, event):
+        async def _edit_placeholder_tool(ph, event, header: str = ""):
             embed = _build_tool_embed(event)
             await send_with_retry(
                 lambda e=embed: ph.edit(content="", embed=e),
@@ -385,6 +387,8 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
             chunk_text=lambda text: render_text(text, DISCORD_MAX_LENGTH),
             start_typing=lambda: self._start_typing(send_to_id),
             cancel_typing=lambda: self._cancel_typing(send_to_id),
+            get_msg=self._msg,
+            placeholder_text=_placeholder_text,
         )
 
     async def render_audio(self, msg: OutboundAudio, inbound: InboundMessage) -> None:

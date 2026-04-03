@@ -33,12 +33,14 @@ LYRA_REMOTE=$(git rev-parse origin/staging)
 if [ "$LYRA_LOCAL" != "$LYRA_REMOTE" ]; then
     log "lyra: new version $LYRA_LOCAL -> $LYRA_REMOTE"
 
+    # Reset generated files that may differ between machines (e.g. uv.lock after voiceCLI re-lock)
+    git checkout -- uv.lock 2>/dev/null || true
     git pull origin staging 2>&1 | tee -a "$LOG_FILE"
     uv sync --all-extras --frozen 2>&1 | tee -a "$LOG_FILE"
 
     if ! uv run pytest --tb=short -q 2>&1 | tee -a "$LOG_FILE"; then
         log "ERROR: lyra tests failed — rolling back."
-        git checkout "$LYRA_LOCAL" 2>&1 | tee -a "$LOG_FILE"
+        git reset --hard "$LYRA_LOCAL" 2>&1 | tee -a "$LOG_FILE"
     else
         LYRA_UPDATED=true
     fi

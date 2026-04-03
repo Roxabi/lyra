@@ -1,3 +1,4 @@
+# pyright: reportFunctionMemberAccess=false
 """Tests for StreamingSession and PlatformCallbacks.
 
 Covers the shared streaming algorithm extracted in #495 (Slice 2 of #468).
@@ -46,7 +47,7 @@ async def _events(*items: object) -> AsyncIterator:
 
 async def _error_events():
     raise RuntimeError("boom")
-    yield  # make it an async generator  # noqa: unreachable
+    yield  # make it an async generator  # noqa: RET503
 
 
 async def _partial_then_error():

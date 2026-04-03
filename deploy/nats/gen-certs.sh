@@ -13,7 +13,7 @@ set -euo pipefail
 CERT_DIR="/etc/nats/certs"
 DEFAULT_SAN="DNS:localhost,IP:127.0.0.1,IP:192.168.1.16"
 SAN="${DEFAULT_SAN}"
-VALID_DAYS=3650  # 10 years
+VALID_DAYS=3650  # 10 years — private LAN CA, no ACME; rotate manually on reprovision
 
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
 info()  { echo -e "${GREEN}[+]${NC} $1"; }

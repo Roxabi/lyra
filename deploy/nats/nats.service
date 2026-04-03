@@ -29,6 +29,7 @@ LimitNOFILE=65536
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
+SystemCallFilter=@system-service
 PrivateTmp=true
 
 [Install]

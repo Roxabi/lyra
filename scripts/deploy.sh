@@ -25,7 +25,7 @@ VOICE_UPDATED=false
 # ── Check lyra ───────────────────────────────────────────────────────────────
 
 cd "$LYRA_DIR"
-git fetch origin staging 2>&1 | tee -a "$LOG_FILE"
+timeout 30 git fetch origin staging 2>&1 | tee -a "$LOG_FILE"
 
 LYRA_LOCAL=$(git rev-parse HEAD)
 LYRA_REMOTE=$(git rev-parse origin/staging)
@@ -35,10 +35,10 @@ if [ "$LYRA_LOCAL" != "$LYRA_REMOTE" ]; then
 
     # Reset generated files that may differ between machines (e.g. uv.lock after voiceCLI re-lock)
     git checkout -- uv.lock 2>/dev/null || true
-    git pull origin staging 2>&1 | tee -a "$LOG_FILE"
-    uv sync --all-extras --frozen 2>&1 | tee -a "$LOG_FILE"
+    timeout 30 git pull origin staging 2>&1 | tee -a "$LOG_FILE"
+    timeout 60 uv sync --all-extras --frozen 2>&1 | tee -a "$LOG_FILE"
 
-    if ! uv run pytest --tb=short -q 2>&1 | tee -a "$LOG_FILE"; then
+    if ! timeout 120 uv run pytest --tb=short -q 2>&1 | tee -a "$LOG_FILE"; then
         log "ERROR: lyra tests failed — rolling back."
         git reset --hard "$LYRA_LOCAL" 2>&1 | tee -a "$LOG_FILE"
         uv sync --all-extras --frozen 2>&1 | tee -a "$LOG_FILE"
@@ -52,7 +52,7 @@ fi
 
 if [ -d "$VOICE_DIR/.git" ]; then
     cd "$VOICE_DIR"
-    git fetch origin staging 2>&1 | tee -a "$LOG_FILE"
+    timeout 30 git fetch origin staging 2>&1 | tee -a "$LOG_FILE"
 
     VOICE_LOCAL=$(git rev-parse HEAD)
     VOICE_REMOTE=$(git rev-parse origin/staging)
@@ -60,14 +60,14 @@ if [ -d "$VOICE_DIR/.git" ]; then
     if [ "$VOICE_LOCAL" != "$VOICE_REMOTE" ]; then
         log "voiceCLI: new version $VOICE_LOCAL -> $VOICE_REMOTE"
 
-        git pull origin staging 2>&1 | tee -a "$LOG_FILE"
-        uv sync --frozen 2>&1 | tee -a "$LOG_FILE"
+        timeout 30 git pull origin staging 2>&1 | tee -a "$LOG_FILE"
+        timeout 60 uv sync --frozen 2>&1 | tee -a "$LOG_FILE"
         VOICE_UPDATED=true
 
         # Also update voiceCLI inside Lyra's .venv so the library stays in sync
         log "Re-syncing voiceCLI in Lyra..."
         cd "$LYRA_DIR"
-        uv sync --all-extras --upgrade-package voicecli 2>&1 | tee -a "$LOG_FILE"
+        timeout 60 uv sync --all-extras --upgrade-package voicecli 2>&1 | tee -a "$LOG_FILE"
         LYRA_UPDATED=true
     fi
 fi

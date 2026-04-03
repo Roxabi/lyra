@@ -37,7 +37,7 @@ define require_machine1
 	@[ -n "$(DEPLOY_DIR)" ] || { echo "Error: DEPLOY_DIR not set in .env"; exit 1; }
 endef
 
-.PHONY: lyra telegram discord monitor comfyui register deploy remote test lint typecheck format
+.PHONY: lyra telegram discord monitor comfyui register deploy remote nats-install test lint typecheck format
 
 ifeq (monitor,$(firstword $(MAKECMDGOALS)))
   MONITOR_CMD := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
@@ -246,6 +246,9 @@ remote:
 	  errors)  FIRST=$${PROGS%% *}; ssh $(DEPLOY_HOST) "$$SCTL tail -f $$FIRST stderr" ;; \
 	  *) echo "Unknown action: $$ACTION"; exit 1 ;; \
 	esac
+
+nats-install:
+	@bash deploy/nats/install.sh
 
 test:
 	uv run pytest -v

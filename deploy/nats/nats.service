@@ -1,0 +1,36 @@
+[Unit]
+Description=NATS Server (Lyra by Roxabi)
+Documentation=https://docs.nats.io
+After=network-online.target
+Wants=network-online.target
+# Ordering intent: NATS must be ready before lyra-stack user service starts.
+# System units start before user sessions, so this is implicit at boot.
+# To enforce strictly, add After=nats.service to the lyra-stack user unit
+# via a drop-in (user units cannot directly depend on system units).
+
+[Service]
+Type=simple
+User=nats
+Group=nats
+
+# RuntimeDirectory creates /run/nats-server owned by the nats user — PID file writeable by daemon
+RuntimeDirectory=nats-server
+RuntimeDirectoryMode=0750
+
+ExecStart=/usr/local/bin/nats-server -c /etc/nats/nats.conf
+ExecReload=/bin/kill -HUP $MAINPID
+KillMode=process
+KillSignal=SIGTERM
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+SystemCallFilter=@system-service
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -115,7 +115,7 @@ reportUnknownLambdaType = "none"
 reportMissingTypeArgument = "none"
 
 [tool.ruff]
-exclude = [".claude/worktrees"]
+exclude = [".claude/worktrees", "deploy"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "C901", "PLR0913", "PLR0915"]

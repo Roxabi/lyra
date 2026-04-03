@@ -41,6 +41,8 @@ if [ "$LYRA_LOCAL" != "$LYRA_REMOTE" ]; then
     if ! uv run pytest --tb=short -q 2>&1 | tee -a "$LOG_FILE"; then
         log "ERROR: lyra tests failed — rolling back."
         git reset --hard "$LYRA_LOCAL" 2>&1 | tee -a "$LOG_FILE"
+        uv sync --all-extras --frozen 2>&1 | tee -a "$LOG_FILE"
+        exit 1
     else
         LYRA_UPDATED=true
     fi
@@ -80,7 +82,8 @@ fi
 
 if [ -f "$HOME/projects/lyra/deploy/supervisor/supervisord.pid" ] && kill -0 "$(cat "$HOME/projects/lyra/deploy/supervisor/supervisord.pid")" 2>/dev/null; then
     if [ "$LYRA_UPDATED" = true ]; then
-        log "Restarting Lyra adapters..."
+        log "Restarting Lyra (hub + adapters)..."
+        "$SCTL" restart lyra_hub 2>&1 | tee -a "$LOG_FILE"
         "$SCTL" restart lyra_telegram lyra_discord 2>&1 | tee -a "$LOG_FILE"
     fi
 
@@ -91,6 +94,26 @@ if [ -f "$HOME/projects/lyra/deploy/supervisor/supervisord.pid" ] && kill -0 "$(
 else
     log "Starting supervisor (not running)..."
     "$HOME/projects/lyra/deploy/supervisor/start.sh" 2>&1 | tee -a "$LOG_FILE"
+fi
+
+# ── Verify services reached RUNNING ──────────────────────────────────────────
+
+log "Verifying services..."
+HEALTHY=false
+for i in $(seq 1 12); do
+    sleep 5
+    FAILED=$("$SCTL" status 2>&1 | grep -c "FATAL\|BACKOFF" || true)
+    if [ "$FAILED" -eq 0 ]; then
+        HEALTHY=true
+        break
+    fi
+    log "Waiting for services... (attempt $i/12)"
+done
+
+if [ "$HEALTHY" = false ]; then
+    log "ERROR: Some services failed to reach RUNNING after 60s:"
+    "$SCTL" status 2>&1 | tee -a "$LOG_FILE"
+    exit 1
 fi
 
 TAGS=""

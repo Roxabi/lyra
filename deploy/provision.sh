@@ -178,13 +178,14 @@ else
   cat > "$UNIT_FILE" << 'UNIT'
 [Unit]
 Description=Lyra supervisord (hub, telegram, discord)
-After=network-online.target
+After=network-online.target nats.service
 Wants=network-online.target
+Requires=nats.service
 
 [Service]
 Type=forking
 PIDFile=%h/projects/lyra/deploy/supervisor/supervisord.pid
-ExecStart=%h/projects/lyra/deploy/supervisor/start.sh
+ExecStart=%h/projects/lyra/deploy/supervisor/start.sh --all
 ExecStop=%h/projects/lyra/deploy/supervisor/supervisorctl.sh shutdown
 Restart=on-failure
 RestartSec=5

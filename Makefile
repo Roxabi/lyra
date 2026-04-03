@@ -84,9 +84,7 @@ ifeq ($(TELEGRAM_CMD),stop)
 	@$(SUPERVISORCTL) stop lyra_telegram
 else ifeq ($(TELEGRAM_CMD),reload)
 	$(ensure_supervisor)
-	@$(SUPERVISORCTL) stop lyra_telegram
-	@sleep 1
-	@$(SUPERVISORCTL) start lyra_telegram
+	@$(SUPERVISORCTL) restart lyra_telegram
 else ifeq ($(TELEGRAM_CMD),logs)
 	$(ensure_supervisor)
 	@$(SUPERVISORCTL) tail -f lyra_telegram
@@ -110,9 +108,7 @@ ifeq ($(DISCORD_CMD),stop)
 	@$(SUPERVISORCTL) stop lyra_discord
 else ifeq ($(DISCORD_CMD),reload)
 	$(ensure_supervisor)
-	@$(SUPERVISORCTL) stop lyra_discord
-	@sleep 1
-	@$(SUPERVISORCTL) start lyra_discord
+	@$(SUPERVISORCTL) restart lyra_discord
 else ifeq ($(DISCORD_CMD),logs)
 	$(ensure_supervisor)
 	@$(SUPERVISORCTL) tail -f lyra_discord

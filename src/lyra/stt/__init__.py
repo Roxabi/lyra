@@ -48,7 +48,7 @@ class STTService:
         self._detection_threshold = config.language_detection_threshold
         self._detection_segments = config.language_detection_segments
         self._detection_fallback = config.language_fallback
-        self._daemon_detected = False
+        self._daemon_active = False
         log.debug("STTService init: model=%s (via voiceCLI)", self._model)
 
     async def transcribe(self, path: Path | str) -> TranscriptionResult:
@@ -64,18 +64,23 @@ class STTService:
                 transcribe as _transcribe,
             )
 
-            if not self._daemon_detected:
-                from voicecli.stt_daemon import SOCKET_PATH  # type: ignore[import-untyped]  # noqa: I001
+            from voicecli.stt_daemon import SOCKET_PATH  # type: ignore[import-untyped]  # noqa: I001
 
-                if SOCKET_PATH.exists():
-                    from voicecli.transcribe import unload_model  # type: ignore[import-untyped]  # noqa: I001
+            daemon_up = SOCKET_PATH.exists()
+            if daemon_up and not self._daemon_active:
+                from voicecli.transcribe import unload_model  # type: ignore[import-untyped]  # noqa: I001
 
-                    unload_model()
-                    self._daemon_detected = True
-                    log.info(
-                        "STT daemon detected — unloaded local model,"
-                        " deferring to daemon",
-                    )
+                unload_model()
+                self._daemon_active = True
+                log.info(
+                    "STT daemon detected — unloaded local model,"
+                    " deferring to daemon",
+                )
+            elif not daemon_up and self._daemon_active:
+                self._daemon_active = False
+                log.warning(
+                    "STT daemon socket gone — falling back to in-process model",
+                )
 
             initial_prompt = vocab_to_prompt(load_vocab())
             kwargs: dict = dict(model=self._model, initial_prompt=initial_prompt)

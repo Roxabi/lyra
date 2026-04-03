@@ -25,7 +25,7 @@ See `docs/ARCHITECTURE.md` for full context.
 | `docs/ROADMAP.md` | Roadmap and priorities |
 | `docs/GETTING-STARTED.md` | Machine 1 setup guide |
 | `artifacts/` | Frames, specs, plans, analyses, explorations (dev-core) |
-| `~/projects/lyra-stack/scripts/provision.sh` | Machine 1 post-install provisioning script (sibling repo) |
+| `deploy/provision.sh` | Machine 1 post-install provisioning script |
 
 ## Local infrastructure
 
@@ -105,7 +105,7 @@ _Fact-checked 2026-03-17 against `src/lyra/`, `docs/`, and git history._
 |---|-------|--------|
 | 1 | Key docs exist (`ARCHITECTURE.md`, `CONFIGURATION.md`, `ROADMAP.md`, `GETTING-STARTED.md`) | ✅ Confirmed |
 | 2 | `artifacts/` (analyses, explorations, frames, plans, specs) | ✅ Confirmed |
-| 3 | `lyra-stack/scripts/provision.sh` (relative path) | ❌ Fixed → `~/projects/lyra-stack/scripts/provision.sh` — `lyra-stack` is a sibling repo, not inside this project |
+| 3 | `provision.sh` location | ✅ Fixed → `deploy/provision.sh` — now lives in the lyra repo |
 | 4 | "TOML files in `src/lyra/agents/`" as the only location | ❌ Fixed → Two locations: `~/.lyra/agents/` (user-level, higher precedence) and `src/lyra/agents/` (system defaults) |
 | 5 | `workspaces` "each key becomes a `/<key>` slash command" | ❌ Fixed → command is `/workspace <key>`, not `/<key>` (verified in `workspace_commands.py`) |
 | 6 | `~/.lyra/auth.db` as agent store | ✅ Confirmed (`cli_agent.py:31`) |

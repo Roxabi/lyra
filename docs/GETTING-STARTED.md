@@ -117,7 +117,7 @@ ssh-copy-id yourname@<MACHINE_1_IP>
 
 ```bash
 ssh yourname@<MACHINE_1_IP>
-curl -fsSL https://raw.githubusercontent.com/Roxabi/lyra-stack/main/scripts/provision.sh | ADMIN_USER=yourname bash
+curl -fsSL https://raw.githubusercontent.com/Roxabi/lyra/staging/deploy/provision.sh | ADMIN_USER=yourname bash
 ```
 
 The script handles:
@@ -169,7 +169,8 @@ ssh yourname@<MACHINE_1_IP>
 # https://github.com/settings/keys → paste output of: cat ~/.ssh/id_ed25519.pub
 
 git clone git@github.com:Roxabi/lyra-stack.git ~/projects/lyra-stack
-cd ~/projects/lyra-stack && make setup
+git clone git@github.com:Roxabi/lyra.git ~/projects/lyra
+cd ~/projects/lyra && python deploy/setup.py
 ```
 
 `make setup` will:

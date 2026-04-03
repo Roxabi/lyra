@@ -1,27 +1,18 @@
-ifeq (remote,$(firstword $(MAKECMDGOALS)))
-  REMOTE_CMD := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
-  $(eval $(REMOTE_CMD):;@:)
-else ifeq (lyra,$(firstword $(MAKECMDGOALS)))
-  LYRA_CMD := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
-  $(eval $(LYRA_CMD):;@:)
-else ifeq (telegram,$(firstword $(MAKECMDGOALS)))
-  TELEGRAM_CMD := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
-  $(eval $(TELEGRAM_CMD):;@:)
-else ifeq (discord,$(firstword $(MAKECMDGOALS)))
-  DISCORD_CMD := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
-  $(eval $(DISCORD_CMD):;@:)
+SUPERVISOR_HUB ?= $(HOME)/projects
+HUB_SERVICES   := lyra telegram discord
+-include $(SUPERVISOR_HUB)/hub.mk
+
+# Sub-command parsing for multi-word targets (remote, monitor, deploy).
+# These are NOT in HUB_SERVICES because their sub-commands can collide
+# with real target names (e.g. `make remote telegram reload`).
+_LYRA_MULTI := monitor deploy remote
+ifneq (,$(filter $(_LYRA_MULTI),$(firstword $(MAKECMDGOALS))))
+  _LYRA_CMD := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
+  _IS_LYRA_SUBCMD := true
+  ifneq (,$(_LYRA_CMD))
+    $(eval $(_LYRA_CMD):;@:)
+  endif
 endif
-
-SUPERVISORCTL  := deploy/supervisor/supervisorctl.sh
-SUPERVISOR_START := deploy/supervisor/start.sh
-HUB_PID        := deploy/supervisor/supervisord.pid
-
-define ensure_supervisor
-	@if [ ! -f "$(HUB_PID)" ] || ! kill -0 $$(cat "$(HUB_PID)" 2>/dev/null) 2>/dev/null; then \
-		echo "Hub supervisord not running, starting..."; \
-		$(SUPERVISOR_START); \
-	fi
-endef
 
 DEPLOY_HOST := $(shell grep '^DEPLOY_HOST=' .env 2>/dev/null | cut -d= -f2)
 DEPLOY_DIR := $(shell grep '^DEPLOY_DIR=' .env 2>/dev/null | cut -d= -f2)
@@ -33,123 +24,54 @@ endef
 
 .PHONY: lyra telegram discord monitor register deploy remote nats-install test lint typecheck format
 
-ifeq (monitor,$(firstword $(MAKECMDGOALS)))
-  MONITOR_CMD := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
-  $(eval $(MONITOR_CMD):;@:)
-endif
+# ── Supervisor services ──────────────────────────────────────────────────────
 
-ifneq (remote,$(firstword $(MAKECMDGOALS)))
+LYRA_PROGRAMS := lyra_hub lyra_telegram lyra_discord
+
 lyra:
-ifeq ($(LYRA_CMD),stop)
-	$(ensure_supervisor)
-	@$(SUPERVISORCTL) stop lyra_hub
-	@$(SUPERVISORCTL) stop lyra_telegram
-	@$(SUPERVISORCTL) stop lyra_discord
-else ifeq ($(LYRA_CMD),reload)
-	$(ensure_supervisor)
-	@$(SUPERVISORCTL) restart lyra_hub
-	@$(SUPERVISORCTL) restart lyra_telegram
-	@$(SUPERVISORCTL) restart lyra_discord
-else ifeq ($(LYRA_CMD),logs)
-	$(ensure_supervisor)
-	@$(SUPERVISORCTL) tail -f lyra_hub
-else ifeq ($(LYRA_CMD),errors)
-	$(ensure_supervisor)
-	@$(SUPERVISORCTL) tail -f lyra_hub stderr
-else ifeq ($(LYRA_CMD),status)
-	$(ensure_supervisor)
-	@$(SUPERVISORCTL) status lyra_hub
-	@$(SUPERVISORCTL) status lyra_telegram
-	@$(SUPERVISORCTL) status lyra_discord
-else ifeq ($(LYRA_CMD),)
-	@$(SUPERVISOR_START)
-	@$(SUPERVISORCTL) start lyra_hub
-	@$(SUPERVISORCTL) start lyra_telegram
-	@$(SUPERVISORCTL) start lyra_discord
-else
-	$(ensure_supervisor)
-	@$(SUPERVISORCTL) $(LYRA_CMD) lyra_hub
-	@$(SUPERVISORCTL) $(LYRA_CMD) lyra_telegram
-	@$(SUPERVISORCTL) $(LYRA_CMD) lyra_discord
+ifndef _IS_LYRA_SUBCMD
+	$(ensure_hub)
+	@for p in $(LYRA_PROGRAMS); do $(HUB_SVC) $$p $(SVC_CMD); done
 endif
 
 telegram:
-ifeq ($(TELEGRAM_CMD),stop)
-	$(ensure_supervisor)
-	@$(SUPERVISORCTL) stop lyra_telegram
-else ifeq ($(TELEGRAM_CMD),reload)
-	$(ensure_supervisor)
-	@$(SUPERVISORCTL) restart lyra_telegram
-else ifeq ($(TELEGRAM_CMD),logs)
-	$(ensure_supervisor)
-	@$(SUPERVISORCTL) tail -f lyra_telegram
-else ifeq ($(TELEGRAM_CMD),errors)
-	$(ensure_supervisor)
-	@$(SUPERVISORCTL) tail -f lyra_telegram stderr
-else ifeq ($(TELEGRAM_CMD),status)
-	$(ensure_supervisor)
-	@$(SUPERVISORCTL) status lyra_telegram
-else ifeq ($(TELEGRAM_CMD),)
-	@$(SUPERVISOR_START)
-	@$(SUPERVISORCTL) start lyra_telegram
-else
-	$(ensure_supervisor)
-	@$(SUPERVISORCTL) $(TELEGRAM_CMD) lyra_telegram
+ifndef _IS_LYRA_SUBCMD
+	$(ensure_hub)
+	@$(HUB_SVC) lyra_telegram $(SVC_CMD)
 endif
 
 discord:
-ifeq ($(DISCORD_CMD),stop)
-	$(ensure_supervisor)
-	@$(SUPERVISORCTL) stop lyra_discord
-else ifeq ($(DISCORD_CMD),reload)
-	$(ensure_supervisor)
-	@$(SUPERVISORCTL) restart lyra_discord
-else ifeq ($(DISCORD_CMD),logs)
-	$(ensure_supervisor)
-	@$(SUPERVISORCTL) tail -f lyra_discord
-else ifeq ($(DISCORD_CMD),errors)
-	$(ensure_supervisor)
-	@$(SUPERVISORCTL) tail -f lyra_discord stderr
-else ifeq ($(DISCORD_CMD),status)
-	$(ensure_supervisor)
-	@$(SUPERVISORCTL) status lyra_discord
-else ifeq ($(DISCORD_CMD),)
-	@$(SUPERVISOR_START)
-	@$(SUPERVISORCTL) start lyra_discord
-else
-	$(ensure_supervisor)
-	@$(SUPERVISORCTL) $(DISCORD_CMD) lyra_discord
+ifndef _IS_LYRA_SUBCMD
+	$(ensure_hub)
+	@$(HUB_SVC) lyra_discord $(SVC_CMD)
 endif
 
-endif # ifneq remote
+# ── Monitor (systemd timer, not supervisor) ──────────────────────────────────
+
+monitor:
+	@case "$(_LYRA_CMD)" in \
+		status) systemctl --user status lyra-monitor.timer lyra-monitor.service 2>&1 || true; \
+			echo ""; systemctl --user list-timers lyra-monitor.timer 2>/dev/null || true ;; \
+		logs)   journalctl --user -u lyra-monitor.service -f ;; \
+		run)    echo "Triggering manual monitoring run..."; systemctl --user start lyra-monitor.service ;; \
+		enable) systemctl --user enable --now lyra-monitor.timer; echo "Monitor timer enabled." ;; \
+		disable) systemctl --user disable --now lyra-monitor.timer; echo "Monitor timer disabled." ;; \
+		"")     systemctl --user status lyra-monitor.timer 2>&1 || true ;; \
+		*)      echo "Usage: make monitor [status|logs|run|enable|disable]" ;; \
+	esac
+
+# ── Registration ─────────────────────────────────────────────────────────────
 
 SYSTEMD_USER_DIR := $(HOME)/.config/systemd/user
 
-monitor:
-ifeq ($(MONITOR_CMD),status)
-	@systemctl --user status lyra-monitor.timer lyra-monitor.service 2>&1 || true
-	@echo ""
-	@systemctl --user list-timers lyra-monitor.timer 2>/dev/null || true
-else ifeq ($(MONITOR_CMD),logs)
-	@journalctl --user -u lyra-monitor.service -f
-else ifeq ($(MONITOR_CMD),run)
-	@echo "Triggering manual monitoring run..."
-	@systemctl --user start lyra-monitor.service
-else ifeq ($(MONITOR_CMD),enable)
-	@systemctl --user enable --now lyra-monitor.timer
-	@echo "Monitor timer enabled."
-else ifeq ($(MONITOR_CMD),disable)
-	@systemctl --user disable --now lyra-monitor.timer
-	@echo "Monitor timer disabled."
-else ifeq ($(MONITOR_CMD),)
-	@systemctl --user status lyra-monitor.timer 2>&1 || true
-else
-	@echo "Usage: make monitor [status|logs|run|enable|disable]"
-endif
-
 register:
-	@echo "Registering lyra supervisor..."
+	@echo "Registering lyra with supervisor hub..."
+	@$(HUB_GEN_MK) lyra "$(abspath .)" lyra telegram discord monitor deploy remote
+	$(call hub-link-conf,lyra_hub,supervisor/conf.d/lyra_hub.conf)
+	$(call hub-link-conf,lyra_telegram,supervisor/conf.d/lyra_telegram.conf)
+	$(call hub-link-conf,lyra_discord,supervisor/conf.d/lyra_discord.conf)
 	@mkdir -p "$(HOME)/.local/state/lyra/logs"
+	$(hub_reread)
 	@echo ""
 	@echo "Installing lyra systemd service..."
 	@mkdir -p "$(SYSTEMD_USER_DIR)"
@@ -167,6 +89,8 @@ register:
 	@echo "  Monitor:    run 'make monitor enable' to start the health check timer."
 	@echo "  Secrets:    ensure TELEGRAM_TOKEN, ANTHROPIC_API_KEY, TELEGRAM_ADMIN_CHAT_ID are in .env"
 
+# ── Deploy + remote ──────────────────────────────────────────────────────────
+
 deploy:
 	$(require_machine1)
 	@echo "Deploying to Machine 1 ($(DEPLOY_HOST))..."
@@ -179,8 +103,8 @@ REMOTE_SCTL := ~/projects/lyra/deploy/supervisor/supervisorctl.sh
 #   Actions:  reload, start, stop, status, logs, errors (default: status)
 remote:
 	$(require_machine1)
-	@SVC="$(word 1,$(REMOTE_CMD))"; \
-	ACTION="$(word 2,$(REMOTE_CMD))"; \
+	@SVC="$(word 1,$(_LYRA_CMD))"; \
+	ACTION="$(word 2,$(_LYRA_CMD))"; \
 	SCTL="$(REMOTE_SCTL)"; \
 	case "$$SVC" in \
 	  lyra)     PROGS="lyra_hub lyra_telegram lyra_discord" ;; \
@@ -200,6 +124,8 @@ remote:
 	  errors)  FIRST=$${PROGS%% *}; ssh $(DEPLOY_HOST) "$$SCTL tail -f $$FIRST stderr" ;; \
 	  *) echo "Unknown action: $$ACTION"; exit 1 ;; \
 	esac
+
+# ── Dev tools ────────────────────────────────────────────────────────────────
 
 nats-install:
 	@bash deploy/nats/install.sh

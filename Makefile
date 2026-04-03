@@ -31,16 +31,11 @@ define require_machine1
 	@[ -n "$(DEPLOY_DIR)" ] || { echo "Error: DEPLOY_DIR not set in .env"; exit 1; }
 endef
 
-.PHONY: lyra telegram discord monitor comfyui register deploy remote nats-install test lint typecheck format
+.PHONY: lyra telegram discord monitor register deploy remote nats-install test lint typecheck format
 
 ifeq (monitor,$(firstword $(MAKECMDGOALS)))
   MONITOR_CMD := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
   $(eval $(MONITOR_CMD):;@:)
-endif
-
-ifeq (comfyui,$(firstword $(MAKECMDGOALS)))
-  COMFYUI_CMD := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
-  $(eval $(COMFYUI_CMD):;@:)
 endif
 
 ifneq (remote,$(firstword $(MAKECMDGOALS)))
@@ -127,26 +122,6 @@ else
 endif
 
 endif # ifneq remote
-
-# ── Machine 2 local tools (not managed by supervisor) ────────────────────────
-COMFYUI_DIR := $(HOME)/ComfyUI
-COMFYUI_PID := /tmp/comfyui.pid
-COMFYUI_LOG := /tmp/comfyui.log  # overwritten on each start (intentional)
-
-comfyui:
-ifeq ($(COMFYUI_CMD),logs)
-	@tail -f $(COMFYUI_LOG)
-else ifeq ($(COMFYUI_CMD),stop)
-	@kill $$(cat $(COMFYUI_PID) 2>/dev/null) 2>/dev/null && echo "ComfyUI stopped" || echo "ComfyUI not running"
-	@rm -f $(COMFYUI_PID)
-else ifeq ($(COMFYUI_CMD),status)
-	@pgrep -f "$(COMFYUI_DIR)/venv/bin/python" > /dev/null && echo "ComfyUI running" || echo "ComfyUI not running"
-else
-	@[ -d "$(COMFYUI_DIR)" ] || { echo "Error: ComfyUI not found at $(COMFYUI_DIR)"; exit 1; }
-	@pgrep -qf "$(COMFYUI_DIR)/venv/bin/python" && echo "ComfyUI already running. Use 'make comfyui stop'." && exit 0 || true
-	@echo "Starting ComfyUI at http://localhost:8188 (log → $(COMFYUI_LOG), overwritten each start)"
-	@cd $(COMFYUI_DIR); nohup venv/bin/python main.py --listen 127.0.0.1 --port 8188 > $(COMFYUI_LOG) 2>&1 & echo $$! > $(COMFYUI_PID); echo "Started — PID $$(cat $(COMFYUI_PID))"
-endif
 
 SYSTEMD_USER_DIR := $(HOME)/.config/systemd/user
 

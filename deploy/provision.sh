@@ -275,7 +275,7 @@ else
   echo ""
   echo "     git clone git@github.com:Roxabi/lyra-stack.git ~/projects/lyra-stack"
   echo "     git clone git@github.com:Roxabi/lyra.git ~/projects/lyra"
-  echo "     cd ~/projects/lyra && python deploy/setup.py"
+  echo "     cd ~/projects/lyra && python3 deploy/setup.py"
   echo ""
   echo "  2. Enable auto-start on boot:"
   echo ""

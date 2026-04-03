@@ -170,7 +170,7 @@ ssh yourname@<MACHINE_1_IP>
 
 git clone git@github.com:Roxabi/lyra-stack.git ~/projects/lyra-stack
 git clone git@github.com:Roxabi/lyra.git ~/projects/lyra
-cd ~/projects/lyra && python deploy/setup.py
+cd ~/projects/lyra && python3 deploy/setup.py
 ```
 
 `make setup` will:
@@ -402,7 +402,7 @@ ssh -i ~/.ssh/lyra_agent lyra@<MACHINE_1_IP> "id && git --version"
 | Config | `~/projects/lyra/config.toml` |
 | Credentials | `~/.lyra/auth.db` (encrypted, via `lyra bot add`) |
 | Logs | `~/.local/state/lyra/logs/` |
-| Diagrams | `~/.agent/` (if installed) |
+| Diagrams | `~/.roxabi/forge/` (if installed) |
 | Firewall | UFW, SSH only |
 
 **Daily commands** (from `~/projects/lyra-stack`):

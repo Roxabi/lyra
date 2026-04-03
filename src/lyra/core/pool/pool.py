@@ -53,12 +53,6 @@ class PoolContext(Protocol):
 
     def record_circuit_failure(self, exc: BaseException) -> None: ...
 
-    def record_dead_backend_hit(self) -> None:  # optional: no-op default
-        ...
-
-    def reset_dead_backend_hits(self) -> None:  # optional: no-op default
-        ...
-
 
 class Pool:
     """One pool per conversation scope. Holds history and a per-session asyncio.Task."""

@@ -91,10 +91,6 @@ class CliPool(CliPoolWorkerMixin):
             session_store_dir or Path.home() / ".lyra"
         ) / "cli_sessions.json"
         self._cli_sessions: dict[str, dict[str, str]] = self._load_cli_sessions()
-        # Dead-backend hit counter — incremented by pool_processor when a turn
-        # completes suspiciously fast (< _MIN_EXPECTED_DURATION_MS).  Exposed
-        # via the /health/detail endpoint so the monitor can catch silent failures.
-        self._dead_backend_hits: int = 0
         # In-memory mapping of pool_id → current Lyra session UUID.
         # Updated by link_lyra_session() before each send, so the
         # _on_session_update callback can record {lyra_sid → cli_sid}.
@@ -204,7 +200,6 @@ class CliPool(CliPoolWorkerMixin):
                 entry = await self._spawn(pool_id, model_config, system_prompt)
                 if entry is None:
                     return CliResult(error="Failed to spawn Claude CLI process")
-                self.reset_dead_backend_hits()
             elif entry.system_prompt != system_prompt:
                 log.info(
                     "[pool:%s] system_prompt changed — respawning process",
@@ -297,7 +292,6 @@ class CliPool(CliPoolWorkerMixin):
                 entry = await self._spawn(pool_id, model_config, system_prompt)
                 if entry is None:
                     raise RuntimeError("Failed to spawn Claude CLI process")
-                self.reset_dead_backend_hits()
             elif entry.system_prompt != system_prompt:
                 log.info(
                     "[pool:%s] system_prompt changed — respawning (streaming)",
@@ -358,19 +352,6 @@ class CliPool(CliPoolWorkerMixin):
             return iterator
 
         raise RuntimeError("Failed after stale resume retry")
-
-    def record_dead_backend_hit(self) -> None:
-        """Increment the dead-backend counter (called by PoolProcessor)."""
-        self._dead_backend_hits += 1
-
-    @property
-    def dead_backend_hits(self) -> int:
-        """Number of suspiciously-fast responses since last reset."""
-        return self._dead_backend_hits
-
-    def reset_dead_backend_hits(self) -> None:
-        """Reset the counter (called after a successful restart)."""
-        self._dead_backend_hits = 0
 
     def is_alive(self, pool_id: str) -> bool:
         """Return True if a live process exists for pool_id."""

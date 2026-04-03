@@ -66,8 +66,13 @@ def _build_shared_base_providers(
     if cli_pool is not None:
         from lyra.llm.drivers.cli import ClaudeCliDriver
 
-        providers["claude-cli"] = ClaudeCliDriver(cli_pool)
-        log.info("Shared base: built claude-cli driver")
+        cli_driver: LlmProvider = ClaudeCliDriver(cli_pool)
+        cli_cb = circuit_registry.get("claude-cli")
+        if cli_cb is not None:
+            providers["claude-cli"] = CircuitBreakerDecorator(cli_driver, cli_cb)
+        else:
+            providers["claude-cli"] = cli_driver
+        log.info("Shared base: built claude-cli driver (decorated)")
 
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if api_key:

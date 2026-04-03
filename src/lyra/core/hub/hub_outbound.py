@@ -411,10 +411,3 @@ class HubOutboundMixin:
                 if _ant_cb is not None:
                     _ant_cb.record_failure()
 
-    def record_dead_backend_hit(self) -> None:
-        if self.cli_pool is not None:
-            self.cli_pool.record_dead_backend_hit()
-
-    def reset_dead_backend_hits(self) -> None:
-        if self.cli_pool is not None:
-            self.cli_pool.reset_dead_backend_hits()

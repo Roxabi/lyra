@@ -24,9 +24,6 @@ from ..render_events import RenderEvent, TextRenderEvent
 
 log = logging.getLogger(__name__)
 
-# Below this threshold, log a warning for possible dead backend or empty response.
-_MIN_EXPECTED_DURATION_MS = 100
-
 
 class PoolProcessor:
     """Async processing engine for a Pool.
@@ -194,23 +191,6 @@ class PoolProcessor:
                 pool.pool_id,
                 _duration_ms,
             )
-            _had_error = pool._last_turn_had_backend_error
-            pool._last_turn_had_backend_error = False
-            if _duration_ms < _MIN_EXPECTED_DURATION_MS or _had_error:
-                log.warning(
-                    "agent suspiciously fast: agent=%s pool=%s"
-                    " duration_ms=%.0f backend_error=%s"
-                    " — possible dead backend",
-                    pool.agent_name,
-                    pool.pool_id,
-                    _duration_ms,
-                    _had_error,
-                )
-                pool._ctx.record_dead_backend_hit()
-            else:
-                # Backend responded normally — clear any prior dead-backend hits
-                # so the health check stops alerting once the backend recovers.
-                pool._ctx.reset_dead_backend_hits()
         except asyncio.TimeoutError:
             log.warning(
                 "pool %s: turn timeout after %.0fs — killing backend",

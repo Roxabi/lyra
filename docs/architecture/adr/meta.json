@@ -35,6 +35,7 @@
     "034-brand-asset-pipeline-structure",
     "035-nats-subject-naming-convention",
     "036-renderevent-streaming-chunk-protocol",
-    "037-nats-outbound-listener-placement-and-adapter-standalone-bootstrap"
+    "037-nats-outbound-listener-placement-and-adapter-standalone-bootstrap",
+    "037-unified-identity-alias-layer-shape3"
   ]
 }

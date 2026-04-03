@@ -97,7 +97,8 @@ async def test_tool_then_text_turn():
 
 
 async def test_tool_then_text_turn_outbound_none():
-    """Tool event + final text with outbound=None: no crash on reply_message_id write."""
+    """Tool event + final text with outbound=None:
+    no crash on reply_message_id write."""
     cb = _make_callbacks()
     placeholder_obj = object()
     cb.send_placeholder = AsyncMock(return_value=(placeholder_obj, 42))
@@ -114,7 +115,8 @@ async def test_tool_then_text_turn_outbound_none():
 
 
 async def test_stream_error_no_text():
-    """When the event iterator raises, edit placeholder with generic error and re-raise."""
+    """When the event iterator raises, edit placeholder
+    with generic error and re-raise."""
     cb = _make_callbacks()
     placeholder_obj = object()
     cb.send_placeholder = AsyncMock(return_value=(placeholder_obj, 42))
@@ -124,11 +126,14 @@ async def test_stream_error_no_text():
         await session.run(_error_events())
 
     # Error text should be written to the placeholder
-    cb.edit_placeholder_text.assert_called_once_with(placeholder_obj, GENERIC_ERROR_REPLY)
+    cb.edit_placeholder_text.assert_called_once_with(
+        placeholder_obj, GENERIC_ERROR_REPLY,
+    )
 
 
 async def test_stream_error_outbound_not_mutated():
-    """Stream error with outbound: reply_message_id stays as placeholder ID, not overwritten."""
+    """Stream error with outbound: reply_message_id stays
+    as placeholder ID, not overwritten."""
     outbound = OutboundMessage.from_text("x")
     cb = _make_callbacks()
     placeholder_obj = object()
@@ -381,7 +386,13 @@ async def test_get_msg_used_for_display_text():
     cb = _make_callbacks()
     placeholder_obj = object()
     cb.send_placeholder = AsyncMock(return_value=(placeholder_obj, 42))
-    cb.get_msg = MagicMock(side_effect=lambda key, fallback: " [interrompu]" if key == "stream_interrupted" else fallback)
+    cb.get_msg = MagicMock(
+        side_effect=lambda key, fallback: (
+            " [interrompu]"
+            if key == "stream_interrupted"
+            else fallback
+        ),
+    )
 
     session = StreamingSession(cb, outbound=None)
     with pytest.raises(RuntimeError, match="late error"):
@@ -390,7 +401,9 @@ async def test_get_msg_used_for_display_text():
     # build_display_text should have used get_msg for the interrupt suffix
     cb.get_msg.assert_called()
     # The final text should include the localised interrupt suffix
-    cb.edit_placeholder_text.assert_called_with(placeholder_obj, "partial answer [interrompu]")
+    cb.edit_placeholder_text.assert_called_with(
+        placeholder_obj, "partial answer [interrompu]",
+    )
 
 
 async def test_get_msg_default_fallback():

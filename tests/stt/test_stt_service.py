@@ -73,6 +73,58 @@ def test_is_whisper_noise(text, expected):
 
 
 # ---------------------------------------------------------------------------
+# Path sanitisation (transcribe input validation)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def audio_ogg(tmp_path):
+    """Create a real .ogg temp file for path validation tests."""
+    f = tmp_path / "test.ogg"
+    f.write_bytes(b"\x00")
+    return f
+
+
+@pytest.mark.asyncio
+async def test_transcribe_rejects_path_traversal(tmp_path):
+    svc = STTService(STTConfig(model_size="large-v3-turbo"))
+    malicious = tmp_path / ".." / ".." / "etc" / "passwd"
+    with pytest.raises(ValueError, match="Path traversal not allowed"):
+        await svc.transcribe(malicious)
+
+
+@pytest.mark.asyncio
+async def test_transcribe_rejects_bad_extension(tmp_path):
+    f = tmp_path / "secret.txt"
+    f.write_bytes(b"secret data")
+    svc = STTService(STTConfig(model_size="large-v3-turbo"))
+    with pytest.raises(ValueError, match="Unsupported audio extension"):
+        await svc.transcribe(f)
+
+
+@pytest.mark.asyncio
+async def test_transcribe_rejects_missing_file(tmp_path):
+    svc = STTService(STTConfig(model_size="large-v3-turbo"))
+    with pytest.raises(FileNotFoundError, match="Audio file not found"):
+        await svc.transcribe(tmp_path / "nonexistent.ogg")
+
+
+@pytest.mark.asyncio
+async def test_transcribe_accepts_all_valid_extensions(tmp_path):
+    """All allowed extensions pass validation."""
+    svc = STTService(STTConfig(model_size="large-v3-turbo"))
+    for ext in (".ogg", ".mp3", ".wav", ".m4a", ".webm", ".flac", ".opus"):
+        f = tmp_path / f"audio{ext}"
+        f.write_bytes(b"\x00")
+        # File exists + valid extension → validation passes, reaches _transcribe_sync
+        with patch.object(svc, "_transcribe_sync", return_value=TranscriptionResult(
+            text="ok", language="en", duration_seconds=0.0
+        )):
+            result = await svc.transcribe(f)
+            assert result.text == "ok"
+
+
+# ---------------------------------------------------------------------------
 # STTService init
 # ---------------------------------------------------------------------------
 
@@ -99,7 +151,7 @@ def _make_vc_result(text="Hello world", language: str | None = "en", segments=No
 
 @requires_voicecli
 @pytest.mark.asyncio
-async def test_transcribe_returns_transcription_result():
+async def test_transcribe_returns_transcription_result(audio_ogg):
     svc = STTService(STTConfig(model_size="large-v3-turbo"))
 
     with (
@@ -109,7 +161,7 @@ async def test_transcribe_returns_transcription_result():
             "voicecli.transcribe.transcribe", return_value=_make_vc_result()
         ) as mock_t,
     ):
-        result = await svc.transcribe("/tmp/fake.ogg")
+        result = await svc.transcribe(audio_ogg)
 
     assert isinstance(result, TranscriptionResult)
     assert result.text == "Hello world"
@@ -120,7 +172,7 @@ async def test_transcribe_returns_transcription_result():
 
 @requires_voicecli
 @pytest.mark.asyncio
-async def test_transcribe_passes_vocab_as_prompt():
+async def test_transcribe_passes_vocab_as_prompt(audio_ogg):
     svc = STTService(STTConfig(model_size="large-v3-turbo"))
 
     with (
@@ -130,7 +182,7 @@ async def test_transcribe_passes_vocab_as_prompt():
             "voicecli.transcribe.transcribe", return_value=_make_vc_result()
         ) as mock_t,
     ):
-        await svc.transcribe("/tmp/fake.ogg")
+        await svc.transcribe(audio_ogg)
 
     _, kwargs = mock_t.call_args
     assert kwargs.get("initial_prompt") == "Lyra, Roxabi."
@@ -138,7 +190,7 @@ async def test_transcribe_passes_vocab_as_prompt():
 
 @requires_voicecli
 @pytest.mark.asyncio
-async def test_transcribe_none_language_becomes_unknown():
+async def test_transcribe_none_language_becomes_unknown(audio_ogg):
     svc = STTService(STTConfig(model_size="large-v3-turbo"))
 
     with (
@@ -149,14 +201,14 @@ async def test_transcribe_none_language_becomes_unknown():
             return_value=_make_vc_result(language=None),
         ),
     ):
-        result = await svc.transcribe("/tmp/fake.ogg")
+        result = await svc.transcribe(audio_ogg)
 
     assert result.language == "unknown"
 
 
 @requires_voicecli
 @pytest.mark.asyncio
-async def test_transcribe_empty_segments_duration_zero():
+async def test_transcribe_empty_segments_duration_zero(audio_ogg):
     svc = STTService(STTConfig(model_size="large-v3-turbo"))
 
     with (
@@ -167,14 +219,14 @@ async def test_transcribe_empty_segments_duration_zero():
             return_value=_make_vc_result(segments=[]),
         ),
     ):
-        result = await svc.transcribe("/tmp/fake.ogg")
+        result = await svc.transcribe(audio_ogg)
 
     assert result.duration_seconds == 0.0
 
 
 @requires_voicecli
 @pytest.mark.asyncio
-async def test_transcribe_propagates_error():
+async def test_transcribe_propagates_error(audio_ogg):
     svc = STTService(STTConfig(model_size="large-v3-turbo"))
 
     with (
@@ -186,7 +238,7 @@ async def test_transcribe_propagates_error():
         ),
     ):
         with pytest.raises(RuntimeError, match="model load failed"):
-            await svc.transcribe("/tmp/fake.ogg")
+            await svc.transcribe(audio_ogg)
 
 
 # ---------------------------------------------------------------------------

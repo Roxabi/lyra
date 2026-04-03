@@ -42,7 +42,8 @@ class PlatformCallbacks:
     """Edit the placeholder with a tool summary event and display text."""
 
     send_message: Callable[[str], Awaitable[int | None]]
-    """Send a new message (used for final text in tool-event turns). Returns message ID."""
+    """Send a new message (tool-event turns).
+    Returns message ID."""
 
     send_fallback: Callable[[str], Awaitable[int | None]]
     """Send fallback content when placeholder creation fails.
@@ -61,16 +62,19 @@ class PlatformCallbacks:
     """Cancel the platform typing indicator."""
 
     get_msg: Callable[[str, str], str]
-    """Look up a localised message by key with fallback. Adapters inject their ``_msg``."""
+    """Look up a localised message by key with fallback.
+    Adapters inject their ``_msg``."""
 
     placeholder_text: str
-    """Fallback text when no events arrive (e.g. ``"…"``). Used by ``_drain_fallback``."""
+    """Fallback text when no events arrive (e.g. ``"…"``).
+    Used by ``_drain_fallback``."""
 
     guard_tool_on_intermediate: bool = True
     """When True, suppress tool-summary edits if intermediate text is already visible.
 
-    Discord sets True (tool summary would erase visible text); Telegram sets False
-    (tool summary is combined with intermediate text via ``IntermediateTextState.display``).
+    Discord sets True (tool summary would erase visible text);
+    Telegram sets False (tool summary is combined with
+    intermediate text via ``IntermediateTextState.display``).
     """
 
 
@@ -158,7 +162,8 @@ class StreamingSession:
                         if (
                             event.is_complete
                             or self._st.last_tool_edit is None
-                            or (now - self._st.last_tool_edit) >= STREAMING_EDIT_INTERVAL
+                            or (now - self._st.last_tool_edit)
+                            >= STREAMING_EDIT_INTERVAL
                         ):
                             display_text = self._st.istate.display()
                             try:
@@ -194,43 +199,59 @@ class StreamingSession:
             self._st.stream_error = exc
             log.exception("Stream interrupted")
 
-    async def _deliver_final(self, placeholder_obj: Any) -> None:
-        """Deliver the final message content after the event loop completes."""
+    async def _deliver_tool_chunks(
+        self, final_chunks: list[str],
+    ) -> None:
+        """Send final text as new messages (tool-using turns)."""
+        last_msg_id: int | None = None
+        for chunk in final_chunks:
+            try:
+                last_msg_id = await self._cb.send_message(chunk)
+            except Exception:
+                log.exception("Failed to send final text chunk")
+        if self._outbound is not None and last_msg_id is not None:
+            self._outbound.metadata["reply_message_id"] = (
+                last_msg_id
+            )
+
+    async def _deliver_text_chunks(
+        self, placeholder_obj: Any, final_chunks: list[str],
+    ) -> None:
+        """Edit placeholder with first chunk, send overflow."""
+        try:
+            await self._cb.edit_placeholder_text(
+                placeholder_obj, final_chunks[0],
+            )
+        except Exception:
+            log.exception("Final edit failed")
+        for extra_chunk in final_chunks[1:]:
+            try:
+                await self._cb.send_message(extra_chunk)
+            except Exception:
+                log.exception("Failed to send overflow chunk")
+
+    async def _deliver_final(
+        self, placeholder_obj: Any,
+    ) -> None:
+        """Deliver the final message after the event loop."""
         display_text = self._st.build_display_text(self._cb.get_msg)
         if display_text is not None:
-            final_chunks = self._cb.chunk_text(display_text) if display_text else []
+            chunks = (
+                self._cb.chunk_text(display_text)
+                if display_text
+                else []
+            )
             if self._st.had_tool_events:
-                # Tool summary stays in placeholder; final text sent as new message(s).
-                # Update reply_message_id to the last sent chunk.
-                last_msg_id: int | None = None
-                for chunk in final_chunks:
-                    try:
-                        last_msg_id = await self._cb.send_message(chunk)
-                    except Exception:
-                        log.exception("Failed to send final text chunk")
-                if (
-                    self._outbound is not None
-                    and last_msg_id is not None
-                ):
-                    self._outbound.metadata["reply_message_id"] = last_msg_id
-            elif final_chunks:
-                # Text-only turn: edit placeholder with first chunk, send overflow.
-                try:
-                    await self._cb.edit_placeholder_text(
-                        placeholder_obj, final_chunks[0]
-                    )
-                except Exception:
-                    log.exception("Final edit failed")
-                for extra_chunk in final_chunks[1:]:
-                    try:
-                        await self._cb.send_message(extra_chunk)
-                    except Exception:
-                        log.exception("Failed to send overflow chunk")
+                await self._deliver_tool_chunks(chunks)
+            elif chunks:
+                await self._deliver_text_chunks(
+                    placeholder_obj, chunks,
+                )
         elif self._st.stream_error is not None:
-            # No text at all — edit placeholder with generic error
-            error_text = GENERIC_ERROR_REPLY
             try:
-                await self._cb.edit_placeholder_text(placeholder_obj, error_text)
+                await self._cb.edit_placeholder_text(
+                    placeholder_obj, GENERIC_ERROR_REPLY,
+                )
             except Exception as edit_exc:
                 log.debug("Error edit skipped: %s", edit_exc)
 

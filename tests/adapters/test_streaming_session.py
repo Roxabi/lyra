@@ -15,7 +15,6 @@ from lyra.adapters._shared_streaming import PlatformCallbacks, StreamingSession
 from lyra.core.message import GENERIC_ERROR_REPLY, OutboundMessage
 from lyra.core.render_events import TextRenderEvent, ToolSummaryRenderEvent
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

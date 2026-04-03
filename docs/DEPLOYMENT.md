@@ -4,20 +4,20 @@ Running Lyra as a managed service on Machine 1 (Ubuntu Server 24.04).
 
 ## Overview
 
-Lyra runs as **three separate processes** managed by **supervisord** via `lyra-stack`. All daemons (lyra_hub, lyra_telegram, lyra_discord, voicecli_tts, voicecli_stt) are managed by a single supervisord instance. A **systemd user unit** (`lyra-stack.service`) with linger ensures everything auto-starts on boot — no login session required.
+Lyra runs as **three separate processes** managed by **supervisord**. All daemons (lyra_hub, lyra_telegram, lyra_discord, voicecli_tts, voicecli_stt) are managed by a single supervisord instance. A **systemd user unit** (`lyra.service`) with linger ensures everything auto-starts on boot — no login session required.
 
 ```
 Machine 1 (roxabituwer, 192.168.1.16)
 ├── systemd: nats.service         (NATS server — independent, always-on)
-├── systemd user unit: lyra-stack.service (auto-start, linger enabled)
-│   └── supervisord (lyra-stack)
+├── systemd user unit: lyra.service (auto-start, linger enabled)
+│   └── supervisord (lyra)
 │       ├── lyra_hub      ← hub process (NatsBus, pool, LLM, memory)
 │       ├── lyra_telegram ← Telegram adapter (thin NATS client)
 │       └── lyra_discord  ← Discord adapter (thin NATS client)
-├── lyra program configs: ~/projects/lyra/supervisor/conf.d/
-│   ├── lyra_hub.conf      → symlinked into lyra-stack/conf.d/
-│   ├── lyra_telegram.conf → symlinked into lyra-stack/conf.d/
-│   └── lyra_discord.conf  → symlinked into lyra-stack/conf.d/
+├── program configs: ~/projects/lyra/deploy/supervisor/conf.d/
+│   ├── lyra_hub.conf
+│   ├── lyra_telegram.conf
+│   └── lyra_discord.conf
 ├── working directory: ~/projects/lyra/
 ├── env file: ~/projects/lyra/.env
 └── logs: ~/.local/state/lyra/logs/ (rotating, 10 MB × 3-5 files per program)
@@ -25,7 +25,7 @@ Machine 1 (roxabituwer, 192.168.1.16)
 
 ## Prerequisites
 
-Machine 1 must be set up with `lyra-stack` and the provision script. See [GETTING-STARTED.md](GETTING-STARTED.md).
+Machine 1 must be set up with the provision script. See [GETTING-STARTED.md](GETTING-STARTED.md).
 
 ## 1. Deploy the code
 
@@ -146,7 +146,7 @@ make lyra logs      # tail lyra_hub stdout
 ```bash
 # One-time setup on Machine 1
 cd ~/projects/lyra
-make register    # creates symlink in lyra-stack/conf.d/
+make register    # installs supervisor program configs and systemd unit
 ```
 
 ## 4. Manage the service
@@ -172,7 +172,7 @@ make remote errors
 Or use supervisorctl directly on Machine 1:
 
 ```bash
-cd ~/projects/lyra-stack
+cd ~/projects/lyra
 make ps            # all programs
 make lyra          # lyra status
 make lyra reload   # restart lyra
@@ -249,24 +249,24 @@ make remote errors    # tail stderr logs
 
 ## 9. systemd auto-start
 
-The `lyra-stack.service` systemd user unit manages supervisord lifecycle on boot.
+The `lyra.service` systemd user unit manages supervisord lifecycle on boot.
 
 ```bash
 # Check unit status
-systemctl --user status lyra-stack
+systemctl --user status lyra
 
 # Enable auto-start (already done on provisioned machines)
-systemctl --user enable lyra-stack.service
+systemctl --user enable lyra.service
 loginctl enable-linger $USER
 
 # Restart all services via systemd
-systemctl --user restart lyra-stack
+systemctl --user restart lyra
 
 # View systemd journal
-journalctl --user -eu lyra-stack.service --no-pager -n 50
+journalctl --user -eu lyra.service --no-pager -n 50
 ```
 
-> **Note:** `start.sh` and `supervisorctl.sh` use full paths to
+> **Note:** `start.sh` and `supervisorctl.sh` (in `deploy/supervisor/`) use full paths to
 > `$HOME/.local/bin/supervisord` and `$HOME/.local/bin/supervisorctl`
 > because systemd does not include `~/.local/bin` on PATH.
 

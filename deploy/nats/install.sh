@@ -3,7 +3,7 @@
 # Usage: cd ~/projects/lyra && make nats-install
 #
 # Installs the NATS server binary, system user, config, systemd unit,
-# and lyra-stack ordering drop-in. Idempotent — safe to run multiple times.
+# and lyra.service ordering drop-in. Idempotent — safe to run multiple times.
 #
 # Run this AFTER provision.sh on machines that participate in multi-machine
 # NATS pub/sub (Machine 1 hub and any compute workers).
@@ -83,12 +83,12 @@ else
   fi
 fi
 
-section "lyra-stack ordering (After=nats.service)"
+section "lyra.service ordering (After=nats.service)"
 # User units cannot directly depend on system units; drop-in is the correct mechanism.
-NATS_DROPIN_DIR="$HOME/.config/systemd/user/lyra-stack.service.d"
+NATS_DROPIN_DIR="$HOME/.config/systemd/user/lyra.service.d"
 NATS_DROPIN="${NATS_DROPIN_DIR}/after-nats.conf"
 if [ -f "${NATS_DROPIN}" ]; then
-  info "lyra-stack After=nats.service drop-in already installed."
+  info "lyra.service After=nats.service drop-in already installed."
 else
   mkdir -p "${NATS_DROPIN_DIR}"
   cat > "${NATS_DROPIN}" << 'DROPIN'
@@ -96,7 +96,7 @@ else
 After=nats.service
 DROPIN
   systemctl --user daemon-reload 2>/dev/null || true
-  info "lyra-stack.service will now start after nats.service (drop-in installed)."
+  info "lyra.service will now start after nats.service (drop-in installed)."
 fi
 
 section "Firewall (NATS port 4222 — LAN only)"
@@ -119,6 +119,6 @@ echo ""
 echo "     sudo systemctl start nats.service"
 echo "     sudo systemctl status nats.service"
 echo ""
-echo "  3. Restart lyra-stack to activate new After=nats.service ordering:"
+echo "  3. Restart lyra to activate new After=nats.service ordering:"
 echo ""
-echo "     systemctl --user restart lyra-stack.service"
+echo "     systemctl --user restart lyra.service"

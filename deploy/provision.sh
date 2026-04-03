@@ -168,30 +168,31 @@ else
   info "supervisord installed."
 fi
 
-section "systemd user unit (lyra-stack auto-start)"
+section "systemd user unit (lyra auto-start)"
 UNIT_DIR="$HOME/.config/systemd/user"
-UNIT_FILE="$UNIT_DIR/lyra-stack.service"
+UNIT_FILE="$UNIT_DIR/lyra.service"
 mkdir -p "$UNIT_DIR"
 if [ -f "$UNIT_FILE" ]; then
-  info "lyra-stack.service already exists."
+  info "lyra.service already exists."
 else
   cat > "$UNIT_FILE" << 'UNIT'
 [Unit]
-Description=lyra-stack supervisord (TTS, STT, Lyra daemons)
-After=graphical-session.target
+Description=Lyra supervisord (hub, telegram, discord)
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=forking
-PIDFile=%h/projects/lyra-stack/supervisord.pid
-ExecStart=%h/projects/lyra-stack/scripts/start.sh
-ExecStop=%h/.local/bin/supervisorctl -c %h/projects/lyra-stack/supervisord.conf shutdown
+PIDFile=%h/projects/lyra/deploy/supervisor/supervisord.pid
+ExecStart=%h/projects/lyra/deploy/supervisor/start.sh
+ExecStop=%h/projects/lyra/deploy/supervisor/supervisorctl.sh shutdown
 Restart=on-failure
 RestartSec=5
 
 [Install]
 WantedBy=default.target
 UNIT
-  info "lyra-stack.service created."
+  info "lyra.service created."
 fi
 
 # Enable linger so user services start without login session
@@ -271,23 +272,22 @@ if [ "${NEEDS_REBOOT:-false}" = true ]; then
 else
   echo ""
   info "Next steps:"
-  echo "  1. Clone lyra-stack (supervisord hub) and lyra, then run setup:"
+  echo "  1. Clone lyra and run setup:"
   echo ""
-  echo "     git clone git@github.com:Roxabi/lyra-stack.git ~/projects/lyra-stack"
   echo "     git clone git@github.com:Roxabi/lyra.git ~/projects/lyra"
   echo "     cd ~/projects/lyra && python3 deploy/setup.py"
   echo ""
   echo "  2. Enable auto-start on boot:"
   echo ""
   echo "     systemctl --user daemon-reload"
-  echo "     systemctl --user enable lyra-stack.service"
+  echo "     systemctl --user enable lyra.service"
   echo ""
   echo "  3. Authenticate Claude CLI:"
   echo ""
   echo "     claude"
   echo ""
-  echo "  Optional — multi-machine NATS setup:"
+  echo "  Optional — NATS setup for multi-machine:"
   echo ""
-  echo "     cd ~/projects/lyra-stack && make nats-install"
+  echo "     cd ~/projects/lyra && make nats-install"
   echo ""
 fi

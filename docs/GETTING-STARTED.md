@@ -160,7 +160,7 @@ ssh yourname@<MACHINE_1_IP> "
 
 ---
 
-## Step 7 — Clone lyra-stack and run setup
+## Step 7 — Clone lyra and run setup
 
 ```bash
 ssh yourname@<MACHINE_1_IP>
@@ -168,7 +168,6 @@ ssh yourname@<MACHINE_1_IP>
 # Add your GitHub SSH key if not already done
 # https://github.com/settings/keys → paste output of: cat ~/.ssh/id_ed25519.pub
 
-git clone git@github.com:Roxabi/lyra-stack.git ~/projects/lyra-stack
 git clone git@github.com:Roxabi/lyra.git ~/projects/lyra
 cd ~/projects/lyra && python3 deploy/setup.py
 ```
@@ -263,13 +262,13 @@ Follow the prompts to authenticate. Lyra uses Claude Code as its LLM backend —
 Lyra runs the Hub and adapters as separate processes connected via NATS. This is required even on a single machine.
 
 ```bash
-cd ~/projects/lyra-stack
+cd ~/projects/lyra
 
 # Install NATS binary, system user, systemd unit + firewall rule (needs sudo)
 make nats-install
 
 # Single-machine: install the simple localhost config (no TLS, no auth)
-sudo install -m 644 nats/nats-local.conf /etc/nats/nats.conf
+sudo install -m 644 deploy/supervisor/nats/nats-local.conf /etc/nats/nats.conf
 
 # Start + verify
 sudo systemctl start nats.service
@@ -279,9 +278,9 @@ sudo systemctl status nats.service
 echo "NATS_URL=nats://127.0.0.1:4222" >> ~/projects/lyra/.env
 ```
 
-> **Multi-machine (Hub on Machine 2):** Use `nats/nats.conf` instead (TLS + nkeys).
-> Generate credentials with `sudo scripts/gen-nats-certs.sh` and `sudo scripts/gen-nats-nkeys.sh`,
-> then add nkey auth to `.env`. See `lyra-stack/README.md` for the full multi-machine setup.
+> **Multi-machine (Hub on Machine 2):** Use `deploy/supervisor/nats/nats.conf` instead (TLS + nkeys).
+> Generate credentials with `sudo deploy/supervisor/scripts/gen-nats-certs.sh` and `sudo deploy/supervisor/scripts/gen-nats-nkeys.sh`,
+> then add nkey auth to `.env`.
 
 ---
 
@@ -289,11 +288,11 @@ echo "NATS_URL=nats://127.0.0.1:4222" >> ~/projects/lyra/.env
 
 ```bash
 # Enable the systemd user unit + linger (runs without login session)
-systemctl --user enable lyra-stack.service
+systemctl --user enable lyra.service
 loginctl enable-linger $USER
 
 # Start now
-systemctl --user start lyra-stack
+systemctl --user start lyra
 ```
 
 ## Step 12 — Enable health monitoring
@@ -326,7 +325,7 @@ make monitor status   # check result
 ## Step 13 — Verify services
 
 ```bash
-cd ~/projects/lyra-stack
+cd ~/projects/lyra
 make ps
 ```
 
@@ -398,14 +397,14 @@ ssh -i ~/.ssh/lyra_agent lyra@<MACHINE_1_IP> "id && git --version"
 | Agent access | `ssh -i ~/.ssh/lyra_agent lyra@<IP>` (optional) |
 | Lyra project | `~/projects/lyra/` |
 | VoiceCLI project | `~/projects/voiceCLI/` (if installed) |
-| Supervisor hub | `~/projects/lyra-stack/` |
+| Supervisor configs | `~/projects/lyra/deploy/supervisor/` |
 | Config | `~/projects/lyra/config.toml` |
 | Credentials | `~/.lyra/auth.db` (encrypted, via `lyra bot add`) |
 | Logs | `~/.local/state/lyra/logs/` |
 | Diagrams | `~/.roxabi/forge/` (if installed) |
 | Firewall | UFW, SSH only |
 
-**Daily commands** (from `~/projects/lyra-stack`):
+**Daily commands** (from `~/projects/lyra`):
 ```bash
 make ps              # status of all services (lyra_hub + lyra_telegram + lyra_discord)
 make lyra reload     # restart hub + both adapters

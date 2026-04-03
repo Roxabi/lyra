@@ -1,8 +1,8 @@
 """Shared fixtures for NatsBus unit tests.
 
 Uses a real nats-server subprocess on an ephemeral port — no mocks.
-nats-server binary must be in PATH (installed via ``make nats-install`` in
-lyra-stack, or available as a system package). Tests that depend on the ``nc``
+nats-server binary must be in PATH (installed via ``make nats-install``,
+or available as a system package). Tests that depend on the ``nc``
 fixture are automatically skipped when nats-server is not found.
 """
 from __future__ import annotations
@@ -23,7 +23,7 @@ requires_nats_server = pytest.mark.skipif(
     not _nats_server_available,
     reason=(
         "nats-server not found in PATH"
-        " — install via 'make nats-install' in lyra-stack"
+        " — install via 'make nats-install'"
     ),
 )
 

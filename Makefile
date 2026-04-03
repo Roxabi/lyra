@@ -12,7 +12,6 @@ else ifeq (discord,$(firstword $(MAKECMDGOALS)))
   $(eval $(DISCORD_CMD):;@:)
 endif
 
-LYRA_STACK_DIR ?= $(HOME)/projects/lyra-stack
 SUPERVISORCTL  := deploy/supervisor/supervisorctl.sh
 SUPERVISOR_START := deploy/supervisor/start.sh
 HUB_PID        := deploy/supervisor/supervisord.pid

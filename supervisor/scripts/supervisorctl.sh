@@ -1,3 +1,6 @@
 #!/bin/bash
-LYRA_STACK_DIR="${LYRA_STACK_DIR:-$HOME/projects/lyra-stack}"
-exec supervisorctl -c "$LYRA_STACK_DIR/supervisord.conf" "$@"
+# Run supervisorctl against the lyra deploy supervisor socket
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+SUPERVISOR_DIR="$(cd "$SCRIPT_DIR/../../deploy/supervisor" && pwd)"
+
+exec "$HOME/.local/bin/supervisorctl" -c "$SUPERVISOR_DIR/supervisord.conf" "$@"

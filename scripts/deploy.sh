@@ -12,7 +12,7 @@ source "$HOME/.local/bin/env" 2>/dev/null || true  # uv
 
 LYRA_DIR="$HOME/projects/lyra"
 VOICE_DIR="$HOME/projects/voiceCLI"
-SCTL="$HOME/projects/lyra-stack/scripts/supervisorctl.sh"
+SCTL="$HOME/projects/lyra/deploy/supervisor/supervisorctl.sh"
 LOG_FILE="$HOME/.local/state/lyra/logs/deploy.log"
 
 mkdir -p "$(dirname "$LOG_FILE")"
@@ -78,7 +78,7 @@ if [ "$LYRA_UPDATED" = false ] && [ "$VOICE_UPDATED" = false ]; then
     exit 0
 fi
 
-if [ -f "$HOME/projects/lyra-stack/supervisord.pid" ] && kill -0 "$(cat "$HOME/projects/lyra-stack/supervisord.pid")" 2>/dev/null; then
+if [ -f "$HOME/projects/lyra/deploy/supervisor/supervisord.pid" ] && kill -0 "$(cat "$HOME/projects/lyra/deploy/supervisor/supervisord.pid")" 2>/dev/null; then
     if [ "$LYRA_UPDATED" = true ]; then
         log "Restarting Lyra adapters..."
         "$SCTL" restart lyra_telegram lyra_discord 2>&1 | tee -a "$LOG_FILE"
@@ -90,7 +90,7 @@ if [ -f "$HOME/projects/lyra-stack/supervisord.pid" ] && kill -0 "$(cat "$HOME/p
     fi
 else
     log "Starting supervisor (not running)..."
-    "$HOME/projects/lyra-stack/scripts/start.sh" 2>&1 | tee -a "$LOG_FILE"
+    "$HOME/projects/lyra/deploy/supervisor/start.sh" 2>&1 | tee -a "$LOG_FILE"
 fi
 
 TAGS=""

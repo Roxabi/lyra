@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""lyra-stack setup — clone and register modules, scaffold config, start supervisord."""
+"""Lyra setup — clone and register modules, scaffold config, start supervisord."""
 
 import os
 import shutil
@@ -8,10 +8,9 @@ import sys
 import tomllib
 from pathlib import Path
 
-LYRA_STACK_DIR = Path(
-    os.environ.get("LYRA_STACK_DIR", Path.home() / "projects" / "lyra-stack")
-)
-STACK_FILE = Path(os.environ.get("STACK_FILE", LYRA_STACK_DIR / "stack.toml"))
+LYRA_DIR = Path(os.environ.get("LYRA_DIR", Path.home() / "projects" / "lyra"))
+SUPERVISOR_DIR = LYRA_DIR / "deploy" / "supervisor"
+STACK_FILE = Path(os.environ.get("STACK_FILE", LYRA_DIR / "deploy" / "stack.toml"))
 
 
 def run(cmd: str, cwd: Path | None = None, check: bool = True) -> int:
@@ -236,7 +235,7 @@ def bootstrap_forge() -> None:
 
     # Register forge conf symlink
     conf_src = forge_src / "conf.d" / "forge.conf"
-    conf_dst = LYRA_STACK_DIR / "conf.d" / "forge.conf"
+    conf_dst = SUPERVISOR_DIR / "conf.d" / "forge.conf"
     if conf_src.exists() and not conf_dst.exists():
         conf_dst.parent.mkdir(parents=True, exist_ok=True)
         conf_dst.symlink_to(conf_src)
@@ -282,7 +281,7 @@ def init_agents(lyra_dir: Path) -> None:
 def create_log_dirs() -> None:
     """Create XDG-compliant log directories."""
     state = Path.home() / ".local" / "state"
-    for app in ("lyra", "voicecli", "lyra-stack"):
+    for app in ("lyra", "voicecli"):
         log_dir = state / app / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
     print("  ✓  Log directories created (~/.local/state/*/logs/)")
@@ -299,7 +298,7 @@ def main() -> None:
 
     modules = config.get("modules", {})
 
-    print("\nlyra-stack setup")
+    print("\nLyra setup")
     print("─" * 40)
     print()
 
@@ -350,8 +349,7 @@ def main() -> None:
 
         if module.get("register", True):
             print("       registering...")
-            env = {**os.environ, "LYRA_STACK_DIR": str(LYRA_STACK_DIR)}
-            subprocess.run("make register", shell=True, cwd=path, env=env, check=True)
+            subprocess.run("make register", shell=True, cwd=path, check=True)
         else:
             print("       skipping registration (no daemon)")
 
@@ -395,14 +393,14 @@ def main() -> None:
     # ── Phase 4: Start supervisord + enable systemd ───────────────────────────
 
     print("Starting supervisord...")
-    run(str(LYRA_STACK_DIR / "scripts" / "start.sh"))
+    run(str(SUPERVISOR_DIR / "start.sh"))
 
     print()
     print("Enabling systemd auto-start...")
     run("systemctl --user daemon-reload", check=False)
-    run("systemctl --user enable lyra-stack.service", check=False)
+    run("systemctl --user enable lyra.service", check=False)
     run("loginctl enable-linger $(whoami)", check=False)
-    print("  ✓  lyra-stack.service enabled (auto-starts on boot)")
+    print("  ✓  lyra.service enabled (auto-starts on boot)")
 
     # Enable monitoring timer (installed by make register)
     print()
@@ -416,7 +414,7 @@ def main() -> None:
     print("Setup complete!")
     print()
     print("  make ps                              status of all services")
-    print("  systemctl --user status lyra-stack    systemd unit status")
+    print("  systemctl --user status lyra          systemd unit status")
     print("  make lyra reload                     restart lyra")
     print("  make tts reload                      restart voicecli_tts")
     print("  make stt reload                      restart voicecli_stt")

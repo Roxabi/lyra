@@ -3,9 +3,9 @@ Description=NATS Server (Lyra by Roxabi)
 Documentation=https://docs.nats.io
 After=network-online.target
 Wants=network-online.target
-# Ordering intent: NATS must be ready before lyra-stack user service starts.
+# Ordering intent: NATS must be ready before lyra.service (user unit) starts.
 # System units start before user sessions, so this is implicit at boot.
-# To enforce strictly, add After=nats.service to the lyra-stack user unit
+# To enforce strictly, add After=nats.service to the lyra user unit
 # via a drop-in (user units cannot directly depend on system units).
 
 [Service]

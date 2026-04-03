@@ -17,11 +17,11 @@ from .models import CheckResult, HealthReport
 def check_process(service_name: str) -> CheckResult:
     """Check if a supervisor-managed process is running.
 
-    Uses supervisorctl via lyra-stack. Falls back to systemctl if
+    Uses supervisorctl via deploy/supervisor. Falls back to systemctl if
     supervisorctl is not available.
     """
     now = datetime.now(timezone.utc)
-    sctl = Path.home() / "projects" / "lyra-stack" / "scripts" / "supervisorctl.sh"
+    sctl = Path.home() / "projects" / "lyra" / "deploy" / "supervisor" / "supervisorctl.sh"
 
     if sctl.exists():
         try:

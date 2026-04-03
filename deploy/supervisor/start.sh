@@ -3,7 +3,7 @@
 set -e
 
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
-SUPERVISOR_DIR="$(dirname "$SCRIPT_DIR")"
+SUPERVISOR_DIR="$SCRIPT_DIR"
 
 mkdir -p "$HOME/.local/state/lyra/logs"
 

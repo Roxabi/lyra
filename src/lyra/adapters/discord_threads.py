@@ -58,6 +58,13 @@ async def persist_thread_session(  # noqa: PLR0913 — each arg is a distinct re
             session_id=session_id,
             pool_id=pool_id,
         )
+        if len(cache) >= 500:
+            oldest_key = next(iter(cache))
+            del cache[oldest_key]
+            log.debug(
+                "ThreadStore: evicted oldest thread_sessions entry thread_id=%s (cache full)",
+                oldest_key,
+            )
         cache[str(thread_id)] = (session_id, pool_id)
         log.debug(
             "ThreadStore: persisted session_id=%s pool_id=%s for thread_id=%s",

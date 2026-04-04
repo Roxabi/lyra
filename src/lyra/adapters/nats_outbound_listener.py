@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from typing import TYPE_CHECKING, Any, cast
 
 from nats.aio.client import Client as NATS
@@ -23,6 +24,11 @@ if TYPE_CHECKING:
     from lyra.core.hub.hub_protocol import ChannelAdapter
 
 log = logging.getLogger(__name__)
+
+_MAX_CACHE_SIZE = 500
+_MAX_STREAMS = 100
+_CACHE_TTL_SECONDS = 120
+_REAPER_INTERVAL_SECONDS = 30
 
 
 class NatsOutboundListener:
@@ -50,22 +56,36 @@ class NatsOutboundListener:
         self._bot_id = bot_id
         self._adapter = adapter
         self._cache: dict[str, InboundMessage | InboundAudio] = {}
+        self._cache_ts: dict[str, float] = {}
         self._stream_queues: dict[str, asyncio.Queue[dict]] = {}
         self._stream_tasks: dict[str, asyncio.Task[None]] = {}
         self._stream_outbound: dict[str, OutboundMessage] = {}
         self._sub: Any = None  # nats.aio.subscription.Subscription | None
+        self._reaper_task: asyncio.Task[None] | None = None
 
     def cache_inbound(self, msg: InboundMessage | InboundAudio) -> None:
         """Store msg so it can be retrieved later by stream_id."""
+        if len(self._cache) >= _MAX_CACHE_SIZE:
+            log.warning(
+                "NatsOutboundListener: _cache full (%d entries), dropping stream_id=%r",
+                _MAX_CACHE_SIZE,
+                msg.id,
+            )
+            return
         self._cache[msg.id] = msg
+        self._cache_ts[msg.id] = time.monotonic()
 
     async def start(self) -> None:
         """Subscribe to the outbound NATS subject."""
         subject = f"lyra.outbound.{self._platform.value}.{self._bot_id}"
         self._sub = await self._nc.subscribe(subject, cb=self._handle)
+        self._reaper_task = asyncio.create_task(self._reap_stale())
 
     async def stop(self) -> None:
         """Unsubscribe from NATS."""
+        if self._reaper_task is not None:
+            self._reaper_task.cancel()
+            self._reaper_task = None
         if self._sub is not None:
             await self._sub.unsubscribe()
             self._sub = None
@@ -113,6 +133,7 @@ class NatsOutboundListener:
             return
         await self._adapter.send(cast(InboundMessage, original_msg), outbound)
         self._cache.pop(stream_id, None)
+        self._cache_ts.pop(stream_id, None)
 
     async def _handle_attachment(self, data: dict) -> None:
         stream_id = data.get("stream_id")
@@ -135,6 +156,7 @@ class NatsOutboundListener:
             attachment, cast(InboundMessage, original_msg)
         )
         self._cache.pop(stream_id, None)
+        self._cache_ts.pop(stream_id, None)
 
     def _handle_stream_start(self, data: dict) -> None:
         """Store outbound metadata for a streaming session."""
@@ -144,6 +166,7 @@ class NatsOutboundListener:
             return
         try:
             self._stream_outbound[stream_id] = OutboundMessage(**outbound_data)
+            self._cache_ts.setdefault(stream_id, time.monotonic())
         except Exception:
             log.warning("NatsOutboundListener: failed to deserialize stream outbound")
 
@@ -151,6 +174,13 @@ class NatsOutboundListener:
         stream_id = data.get("stream_id")
         if stream_id is None:
             log.warning("NatsOutboundListener: chunk envelope missing stream_id")
+            return
+        if stream_id not in self._stream_tasks and len(self._stream_tasks) >= _MAX_STREAMS:
+            log.warning(
+                "NatsOutboundListener: _stream_tasks full (%d streams), dropping stream_id=%r",
+                _MAX_STREAMS,
+                stream_id,
+            )
             return
         q = self._stream_queues.setdefault(stream_id, asyncio.Queue())
         await q.put(data)
@@ -211,5 +241,29 @@ class NatsOutboundListener:
             )
         finally:
             self._cache.pop(stream_id, None)
+            self._cache_ts.pop(stream_id, None)
             self._stream_tasks.pop(stream_id, None)
             self._stream_queues.pop(stream_id, None)
+
+    async def _reap_stale(self) -> None:
+        """Periodically evict cache entries that have exceeded the TTL."""
+        while True:
+            await asyncio.sleep(_REAPER_INTERVAL_SECONDS)
+            now = time.monotonic()
+            stale = [
+                sid
+                for sid, ts in list(self._cache_ts.items())
+                if now - ts > _CACHE_TTL_SECONDS
+            ]
+            for stream_id in stale:
+                log.warning(
+                    "NatsOutboundListener: evicting stale stream_id=%r (TTL exceeded)",
+                    stream_id,
+                )
+                self._cache.pop(stream_id, None)
+                self._cache_ts.pop(stream_id, None)
+                self._stream_outbound.pop(stream_id, None)
+                task = self._stream_tasks.pop(stream_id, None)
+                if task is not None:
+                    task.cancel()
+                self._stream_queues.pop(stream_id, None)

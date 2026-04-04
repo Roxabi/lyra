@@ -65,6 +65,7 @@ class NatsTtsClient:
             if voice is None and getattr(agent_tts, "voice", None) is not None:
                 request["voice"] = agent_tts.voice
         payload = json.dumps(request, ensure_ascii=False).encode("utf-8")
+        payload_kb = len(payload) / 1024
         try:
             reply = await self._nc.request(self.SUBJECT, payload, timeout=self._timeout)
             data = json.loads(reply.data)
@@ -72,6 +73,12 @@ class NatsTtsClient:
             log.warning("TTS adapter timeout after %.0fs", self._timeout)
             raise TtsUnavailableError("TTS adapter timeout") from exc
         except Exception as exc:
+            if "max_payload" in str(exc).lower() or "MaxPayload" in type(exc).__name__:
+                log.error(
+                    "TTS request payload too large (%.0f KB) — check NATS max_payload config",
+                    payload_kb,
+                )
+                raise TtsUnavailableError("TTS request payload too large") from exc
             log.warning("TTS adapter unreachable: %s: %s", type(exc).__name__, exc)
             raise TtsUnavailableError("TTS adapter unreachable") from exc
         if not data.get("ok"):

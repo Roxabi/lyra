@@ -49,6 +49,7 @@ class NatsSttClient:
             "language_fallback": self._detection_fallback,
         }
         payload = json.dumps(request, ensure_ascii=False).encode("utf-8")
+        payload_kb = len(payload) / 1024
         try:
             reply = await self._nc.request(self.SUBJECT, payload, timeout=self._timeout)
             data = json.loads(reply.data)
@@ -56,6 +57,12 @@ class NatsSttClient:
             log.warning("STT adapter timeout after %.0fs", self._timeout)
             raise STTUnavailableError("STT adapter timeout") from exc
         except Exception as exc:
+            if "max_payload" in str(exc).lower() or "MaxPayload" in type(exc).__name__:
+                log.error(
+                    "STT request payload too large (%.0f KB) — check NATS max_payload config",
+                    payload_kb,
+                )
+                raise STTUnavailableError("STT request payload too large") from exc
             log.warning("STT adapter unreachable: %s: %s", type(exc).__name__, exc)
             raise STTUnavailableError("STT adapter unreachable") from exc
         if not data.get("ok"):

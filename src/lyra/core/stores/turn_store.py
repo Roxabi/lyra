@@ -241,6 +241,25 @@ class TurnStore(SqliteStore):
             log.exception("TurnStore.get_last_session failed (pool=%s)", pool_id)
             return None
 
+    async def get_session_pool_id(self, session_id: str) -> str | None:
+        """Return the pool_id for a session, or None if not found.
+
+        Used for scope validation at the NATS trust boundary (#525).
+        """
+        db = self._db_or_raise()
+        try:
+            async with db.execute(
+                "SELECT pool_id FROM pool_sessions WHERE session_id = ?",
+                (session_id,),
+            ) as cur:
+                row = await cur.fetchone()
+                return row[0] if row else None
+        except Exception:
+            log.exception(
+                "TurnStore.get_session_pool_id failed (session=%s)", session_id
+            )
+            return None
+
     async def _backfill_sessions(self, db) -> None:
         """One-time backfill: derive pool_sessions from conversation_turns.
 

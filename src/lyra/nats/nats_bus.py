@@ -32,15 +32,17 @@ Multi-bot usage::
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import logging
 import re
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.aio.subscription import Subscription
 
 from lyra.core.message import Platform
+from lyra.nats._sanitize import sanitize_platform_meta
 from lyra.nats._serialize import deserialize, serialize
 
 log = logging.getLogger(__name__)
@@ -221,6 +223,12 @@ class NatsBus(Generic[T]):
         async def handler(msg: Msg) -> None:
             try:
                 item = deserialize(msg.data, self._item_type)
+                if hasattr(item, "platform_meta"):
+                    _item: Any = item
+                    item = dataclasses.replace(
+                        _item,
+                        platform_meta=sanitize_platform_meta(_item.platform_meta),
+                    )
                 self._staging.put_nowait(item)
             except asyncio.QueueFull:
                 log.warning(

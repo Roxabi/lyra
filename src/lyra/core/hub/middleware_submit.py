@@ -163,6 +163,27 @@ class SubmitToPoolMiddleware:
         # Path 2: thread-session-resume.
         thread_session_id: str | None = msg.platform_meta.get("thread_session_id")
         if thread_session_id is not None:
+            # Scope-validate: session must belong to this pool (#525).
+            if hub._turn_store is not None:
+                session_pool = await hub._turn_store.get_session_pool_id(
+                    thread_session_id
+                )
+                if session_pool is None or session_pool != pool_id:
+                    log.warning(
+                        "thread-session-resume: scope mismatch for %r — "
+                        "expected pool %r, got %r — skipping",
+                        thread_session_id,
+                        pool_id,
+                        session_pool,
+                    )
+                    return ResumeStatus.SKIPPED
+            else:
+                # No TurnStore → cannot validate scope → safe default: skip.
+                log.debug(
+                    "thread-session-resume: no TurnStore — skipping %r",
+                    thread_session_id,
+                )
+                return ResumeStatus.SKIPPED
             if not pool.is_idle:
                 log.info(
                     "thread-session-resume: pool %r busy — skipping %r",
@@ -178,8 +199,7 @@ class SubmitToPoolMiddleware:
             path2_attempted = True
             accepted = await pool.resume_session(thread_session_id)
             if accepted:
-                if hub._turn_store is not None:
-                    await hub._turn_store.increment_resume_count(thread_session_id)
+                await hub._turn_store.increment_resume_count(thread_session_id)
                 return ResumeStatus.RESUMED
             log.info(
                 "thread-session-resume: session %r not accepted"

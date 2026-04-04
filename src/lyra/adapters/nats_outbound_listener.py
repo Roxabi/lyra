@@ -10,7 +10,12 @@ from typing import TYPE_CHECKING, Any, cast
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 
-from lyra.adapters.nats_stream_decoder import decode_stream_events
+from lyra.adapters.nats_stream_decoder import (
+    decode_stream_events,
+)
+from lyra.adapters.nats_stream_decoder import (
+    handle_stream_error as _handle_stream_error_impl,
+)
 from lyra.core.message import (
     InboundAudio,
     InboundMessage,
@@ -58,6 +63,10 @@ class NatsOutboundListener:
         self._stream_outbound: dict[str, OutboundMessage] = {}
         self._sub: Any = None  # nats.aio.subscription.Subscription | None
         self._reaper_task: asyncio.Task[None] | None = None
+        # Tombstone set: stream_ids that received stream_error, used to reject
+        # late-arriving chunks after a stream has been terminated. Bounded to
+        # _MAX_TERMINATED_STREAMS; an arbitrary entry is evicted when full.
+        self._terminated_streams: set[str] = set()
 
     def cache_inbound(self, msg: InboundMessage | InboundAudio) -> None:
         """Store msg so it can be retrieved later by stream_id."""
@@ -109,6 +118,8 @@ class NatsOutboundListener:
             await self._handle_send(data)
         elif msg_type == "stream_start":
             self._handle_stream_start(data)
+        elif msg_type == "stream_error":
+            self._handle_stream_error(data)
         elif msg_type == "attachment":
             await self._handle_attachment(data)
         elif "stream_id" in data and "seq" in data:
@@ -182,10 +193,21 @@ class NatsOutboundListener:
         except Exception:
             log.warning("NatsOutboundListener: failed to deserialize stream outbound")
 
+    def _handle_stream_error(self, data: dict) -> None:
+        """Dispatch to the stream_error handler in _nats_outbound_stream."""
+        _handle_stream_error_impl(self, data)
+
     async def _handle_chunk(self, data: dict) -> None:
         stream_id = data.get("stream_id")
         if stream_id is None:
             log.warning("NatsOutboundListener: chunk envelope missing stream_id")
+            return
+        if stream_id in self._terminated_streams:
+            log.warning(
+                "NatsOutboundListener: chunk rejected for terminated"
+                " stream_id=%r",
+                stream_id,
+            )
             return
         at_limit = len(self._stream_tasks) >= _MAX_STREAMS
         if stream_id not in self._stream_tasks and at_limit:
@@ -250,6 +272,8 @@ class NatsOutboundListener:
             self._cache_ts.pop(stream_id, None)
             self._stream_tasks.pop(stream_id, None)
             self._stream_queues.pop(stream_id, None)
+            # Clean up tombstone for completed streams; bounded set handles the rest
+            self._terminated_streams.discard(stream_id)
 
     async def _reap_stale(self) -> None:
         """Periodically evict cache entries that have exceeded the TTL."""

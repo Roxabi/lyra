@@ -17,6 +17,7 @@ from lyra.bootstrap.lifecycle_helpers import (
 from lyra.core.cli_pool import CliPool
 from lyra.core.hub import Hub
 from lyra.core.stores.pairing import PairingManager
+from lyra.nats.nats_channel_proxy import NatsChannelProxy
 
 log = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ async def run_lifecycle(  # noqa: PLR0913, C901 — lifecycle orchestration
     pm: PairingManager | None,
     cli_pool: CliPool | None,
     _stop: asyncio.Event | None,
+    proxies: list[NatsChannelProxy] | None = None,
 ) -> None:
     """Start all buses/dispatchers/adapters, wait for stop, then tear down."""
     await hub.inbound_bus.start()
@@ -97,6 +99,10 @@ async def run_lifecycle(  # noqa: PLR0913, C901 — lifecycle orchestration
     await asyncio.gather(*tasks, return_exceptions=True)
     await teardown_buses(hub.inbound_bus, hub.inbound_audio_bus)
     await teardown_dispatchers(tg_dispatchers + dc_dispatchers)
+    # proxies is only populated in three-process hub_standalone mode; unified mode
+    # runs adapters in-process (platform SDKs) and does not use NatsChannelProxy.
+    for proxy in proxies or []:
+        await proxy.publish_stream_errors("hub_shutdown")
     for dc_adapter, _, _dc_tok in dc_adapters:
         await dc_adapter.close()
     if pm is not None:

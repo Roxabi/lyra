@@ -91,7 +91,7 @@ class NatsRenderEventCodec:
         * All other types (including ``"text"``) — terminal when ``is_done``
           is ``True``.
         """
-        if event_type == "stream_end":
+        if event_type in ("stream_end", "stream_error"):
             return True
         if event_type == "tool_summary":
             return False

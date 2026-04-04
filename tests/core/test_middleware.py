@@ -521,12 +521,23 @@ class TestResolveContextMiddleware:
     async def test_thread_session_accepted_returns_resumed(self) -> None:
         """thread_session_id + accepted → RESUMED."""
         hub = _make_hub()
-        pool = hub.get_or_create_pool("telegram:main:chat:42", "lyra")
+        pool_id = "telegram:main:chat:42"
+        pool = hub.get_or_create_pool(pool_id, "lyra")
 
         async def _fake_resume(sid: str) -> bool:
             return True
 
         pool._session_resume_fn = _fake_resume  # type: ignore[attr-defined]
+
+        # Wire fake TurnStore so scope validation passes (#525).
+        class _FakeTurnStore:
+            async def get_session_pool_id(self, session_id: str) -> str | None:
+                return pool_id
+
+            async def increment_resume_count(self, sid: str) -> None:
+                pass
+
+        hub._turn_store = _FakeTurnStore()  # type: ignore[assignment]
 
         ctx = PipelineContext(hub=hub)
         mw = SubmitToPoolMiddleware()
@@ -539,14 +550,28 @@ class TestResolveContextMiddleware:
         assert status == ResumeStatus.RESUMED
 
     async def test_thread_session_rejected_returns_fresh(self) -> None:
-        """thread_session_id rejected, no TurnStore → FRESH."""
+        """thread_session_id rejected → FRESH."""
         hub = _make_hub()
-        pool = hub.get_or_create_pool("telegram:main:chat:42", "lyra")
+        pool_id = "telegram:main:chat:42"
+        pool = hub.get_or_create_pool(pool_id, "lyra")
 
         async def _fake_resume(sid: str) -> bool:
             return False
 
         pool._session_resume_fn = _fake_resume  # type: ignore[attr-defined]
+
+        # Wire fake TurnStore so scope validation passes (#525).
+        class _FakeTurnStore:
+            async def get_session_pool_id(self, session_id: str) -> str | None:
+                return pool_id
+
+            async def get_last_session(self, pid: str) -> str | None:
+                return None
+
+            async def increment_resume_count(self, sid: str) -> None:
+                pass
+
+        hub._turn_store = _FakeTurnStore()  # type: ignore[assignment]
 
         ctx = PipelineContext(hub=hub)
         mw = SubmitToPoolMiddleware()
@@ -634,12 +659,26 @@ class TestNotifySessionFallthroughMiddleware:
         from lyra.core.hub.hub_protocol import RoutingKey
 
         hub = _make_hub()
-        pool = hub.get_or_create_pool("telegram:main:chat:42", "lyra")
+        pool_id = "telegram:main:chat:42"
+        pool = hub.get_or_create_pool(pool_id, "lyra")
 
         async def _rejected_resume(sid: str) -> bool:
             return False
 
         pool._session_resume_fn = _rejected_resume  # type: ignore[attr-defined]
+
+        # Wire fake TurnStore so scope validation passes (#525).
+        class _FakeTurnStore:
+            async def get_session_pool_id(self, session_id: str) -> str | None:
+                return pool_id
+
+            async def get_last_session(self, pid: str) -> str | None:
+                return None
+
+            async def increment_resume_count(self, sid: str) -> None:
+                pass
+
+        hub._turn_store = _FakeTurnStore()  # type: ignore[assignment]
 
         _base = make_inbound_message(scope_id="chat:42")
         _meta = {**_base.platform_meta, "thread_session_id": "tss-dead"}

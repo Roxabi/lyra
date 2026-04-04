@@ -16,8 +16,30 @@ if TYPE_CHECKING:
     from lyra.core.stores.turn_store import TurnStore
 
 # -------------------------------------------------------------------
-# Stub
+# Stubs
 # -------------------------------------------------------------------
+
+
+class _FakeTurnStoreScope:
+    """Minimal TurnStore stub that satisfies scope validation (#525).
+
+    Returns *pool_id* from get_session_pool_id so Path 2 scope-check passes.
+    """
+
+    def __init__(self, pool_id: str) -> None:
+        self._pool_id = pool_id
+
+    async def get_session_pool_id(self, session_id: str) -> str | None:
+        return self._pool_id
+
+    async def get_last_session(self, pid: str) -> str | None:
+        return None
+
+    async def increment_resume_count(self, sid: str) -> None:
+        pass
+
+    async def close(self) -> None:
+        pass
 
 
 class _StubMessageIndex:
@@ -310,9 +332,14 @@ class TestResolveContextResumeStatus:
         assert status == ResumeStatus.RESUMED
 
     async def test_path2_accepted_returns_resumed(self) -> None:
-        """Path 2 accepted → RESUMED."""
+        """Path 2 accepted → RESUMED.
+
+        TurnStore is required for scope validation (#525): get_session_pool_id
+        must return the pool_id so the check passes before resume is attempted.
+        """
         pool_id = "telegram:main:chat:42"
         hub = _make_hub()
+        hub._turn_store = cast("TurnStore", _FakeTurnStoreScope(pool_id))
         pool = hub.get_or_create_pool(pool_id, "lyra")
 
         async def _fake_resume(sid: str) -> bool:
@@ -330,9 +357,15 @@ class TestResolveContextResumeStatus:
         assert status == ResumeStatus.RESUMED
 
     async def test_path2_rejected_no_path3_returns_fresh(self) -> None:
-        """Path 2 rejected, no TurnStore → FRESH (user must be notified)."""
+        """Path 2 rejected, no further TurnStore path → FRESH (user must be notified).
+
+        Scope validation passes (TurnStore present, pool_id matches), but
+        resume_session returns False — so the result is FRESH with no Path 3
+        rescue possible (get_last_session returns None).
+        """
         pool_id = "telegram:main:chat:42"
         hub = _make_hub()
+        hub._turn_store = cast("TurnStore", _FakeTurnStoreScope(pool_id))
         pool = hub.get_or_create_pool(pool_id, "lyra")
 
         async def _fake_resume(sid: str) -> bool:
@@ -365,6 +398,9 @@ class TestResolveContextResumeStatus:
         pool._session_resume_fn = _fake_resume
 
         class _FakeTurnStore:
+            async def get_session_pool_id(self, session_id: str) -> str | None:
+                return pool_id  # scope validation passes (#525)
+
             async def get_last_session(self, pid: str) -> str | None:
                 return "last-sess"
 
@@ -427,7 +463,7 @@ class TestResolveContextResumeStatus:
         """Path 2 rejected in a group chat → FRESH (no is_group guard since #356).
 
         With user-scoped pool_ids, group chats no longer need is_group guards.
-        Path 2 rejection falls through to Path 3, and without a TurnStore
+        Path 2 rejection falls through to Path 3, and without a last session
         this returns FRESH (user should be notified of fresh start).
         """
         pool_id = "telegram:main:chat:42:user:tg:user:alice"
@@ -438,6 +474,19 @@ class TestResolveContextResumeStatus:
             return False
 
         pool._session_resume_fn = _rejected_resume
+
+        # Wire fake TurnStore so scope validation passes (#525).
+        class _FakeTurnStore:
+            async def get_session_pool_id(self, session_id: str) -> str | None:
+                return pool_id  # scope validation passes
+
+            async def get_last_session(self, pid: str) -> str | None:
+                return None  # no last session → FRESH
+
+            async def increment_resume_count(self, sid: str) -> None:
+                pass
+
+        hub._turn_store = cast("TurnStore", _FakeTurnStore())
 
         _base = make_inbound_message(scope_id="chat:42:user:tg:user:alice")
         # is_group in platform_meta no longer affects the pipeline path since #356
@@ -525,8 +574,14 @@ class TestPath3DeadBackendGuard:
         object.__setattr__(agent, "is_backend_alive", lambda _pool_id: False)
 
         class _FakeTurnStore:
+            async def get_session_pool_id(self, session_id: str) -> str | None:
+                return pool_id  # scope validation passes (#525)
+
             async def get_last_session(self, pid: str) -> str | None:
                 return pool.session_id  # matches pool.session_id exactly
+
+            async def increment_resume_count(self, sid: str) -> None:
+                pass
 
             async def close(self) -> None:
                 pass
@@ -597,6 +652,9 @@ class TestNotifySessionFallthrough:
             return False
 
         pool._session_resume_fn = _rejected_resume
+
+        # Wire fake TurnStore so scope validation passes (#525).
+        hub._turn_store = cast("TurnStore", _FakeTurnStoreScope(pool_id))
 
         _base = make_inbound_message(scope_id="chat:42")
         _meta = {**_base.platform_meta, "thread_session_id": "tss-dead"}

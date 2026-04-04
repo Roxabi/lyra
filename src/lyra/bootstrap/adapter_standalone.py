@@ -17,6 +17,16 @@ from lyra.nats.connect import scrub_nats_url
 log = logging.getLogger(__name__)
 
 
+def _adapter_outbound_queue_group(platform: Platform, bot_id: str) -> str:
+    """Return the NATS queue group name for an adapter's outbound subscription.
+
+    Each adapter instance for a given (platform, bot_id) joins this group so
+    that during rolling restarts only one process receives each outbound
+    message, preventing duplicate sends to users.
+    """
+    return f"adapter-outbound-{platform.value}-{bot_id}"
+
+
 async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
     raw_config: dict,
     platform: str,
@@ -118,7 +128,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
 
                 listener = NatsOutboundListener(
                     nc, platform_enum, bot_id, adapter,
-                    queue_group=f"adapter-outbound-{platform_enum.value}-{bot_id}",
+                    queue_group=_adapter_outbound_queue_group(platform_enum, bot_id),
                 )
                 adapter._outbound_listener = listener
                 await adapter.astart()
@@ -256,7 +266,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
 
                 listener_dc = NatsOutboundListener(
                     nc, platform_enum, bot_id, adapter_dc,
-                    queue_group=f"adapter-outbound-{platform_enum.value}-{bot_id}",
+                    queue_group=_adapter_outbound_queue_group(platform_enum, bot_id),
                 )
                 adapter_dc._outbound_listener = listener_dc
                 await adapter_dc.astart()

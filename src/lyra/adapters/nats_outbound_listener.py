@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, cast
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 
+from lyra.adapters.nats_stream_decoder import decode_stream_events
 from lyra.core.message import (
     InboundAudio,
     InboundMessage,
@@ -120,7 +121,8 @@ class NatsOutboundListener:
         original_msg = self._cache.get(stream_id) if stream_id else None
         if stream_id is None or original_msg is None:
             log.warning(
-                "NatsOutboundListener: unknown stream_id=%r for send", stream_id,
+                "NatsOutboundListener: unknown stream_id=%r for send",
+                stream_id,
             )
             return
         outbound_data = data.get("outbound")
@@ -167,8 +169,10 @@ class NatsOutboundListener:
             return
         if len(self._stream_outbound) >= _MAX_STREAMS:
             log.warning(
-                "NatsOutboundListener: _stream_outbound full (%d entries),"
-                " dropping stream_id=%r", _MAX_STREAMS, stream_id,
+                "NatsOutboundListener: _stream_outbound full"
+                " (%d entries), dropping stream_id=%r",
+                _MAX_STREAMS,
+                stream_id,
             )
             return
         try:
@@ -186,8 +190,10 @@ class NatsOutboundListener:
         at_limit = len(self._stream_tasks) >= _MAX_STREAMS
         if stream_id not in self._stream_tasks and at_limit:
             log.warning(
-                "NatsOutboundListener: _stream_tasks full (%d streams),"
-                " dropping stream_id=%r", _MAX_STREAMS, stream_id,
+                "NatsOutboundListener: _stream_tasks full"
+                " (%d streams), dropping stream_id=%r",
+                _MAX_STREAMS,
+                stream_id,
             )
             return
         q = self._stream_queues.setdefault(
@@ -219,8 +225,7 @@ class NatsOutboundListener:
                 await q.get()
                 drained += 1
             log.warning(
-                "NatsOutboundListener: drained %d chunk(s)"
-                " for unknown stream_id=%r",
+                "NatsOutboundListener: drained %d chunk(s) for unknown stream_id=%r",
                 drained,
                 stream_id,
             )
@@ -228,43 +233,12 @@ class NatsOutboundListener:
             self._stream_queues.pop(stream_id, None)
             return
 
-        from lyra.nats.render_event_codec import NatsRenderEventCodec
-
-        async def _events():
-            expected_seq = 0
-            while True:
-                try:
-                    chunk = await asyncio.wait_for(q.get(), timeout=120.0)
-                except TimeoutError:
-                    log.warning(
-                        "NatsOutboundListener: stream timed out waiting for chunk"
-                        " stream_id=%r (120s)",
-                        stream_id,
-                    )
-                    break
-                seq = chunk.get("seq")
-                if seq is not None and seq != expected_seq:
-                    log.warning(
-                        "NatsOutboundListener: out-of-order chunk"
-                        " stream_id=%r expected_seq=%d got_seq=%d",
-                        stream_id,
-                        expected_seq,
-                        seq,
-                    )
-                expected_seq += 1
-                event_type = chunk.get("event_type", "text")
-                payload = chunk.get("payload", {})
-                is_done = chunk.get("done", False)
-                event = NatsRenderEventCodec.decode(event_type, payload)
-                if event is not None:
-                    yield event
-                if NatsRenderEventCodec.is_terminal(event_type, is_done):
-                    break
-
         outbound = self._stream_outbound.pop(stream_id, None)
         try:
             await self._adapter.send_streaming(
-                cast(InboundMessage, original_msg), _events(), outbound
+                cast(InboundMessage, original_msg),
+                decode_stream_events(stream_id, q),
+                outbound,
             )
         except Exception:
             log.exception(
@@ -283,7 +257,8 @@ class NatsOutboundListener:
             await asyncio.sleep(_REAPER_INTERVAL_SECONDS)
             now = time.monotonic()
             stale = [
-                sid for sid, ts in list(self._cache_ts.items())
+                sid
+                for sid, ts in list(self._cache_ts.items())
                 if now - ts > _CACHE_TTL_SECONDS
             ]
             for stream_id in stale:

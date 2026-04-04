@@ -450,7 +450,12 @@ class TestNatsBusQueueGroup:
     async def test_subscribe_uses_queue_group(self, nc: NATS) -> None:
         """NatsBus passes queue_group to nc.subscribe()."""
         # Arrange
-        bus = NatsBus(nc=nc, bot_id="main", item_type=InboundMessage, queue_group="test-group")
+        bus = NatsBus(
+            nc=nc,
+            bot_id="main",
+            item_type=InboundMessage,
+            queue_group="test-group",
+        )
         bus.register(Platform.TELEGRAM)
 
         # Act

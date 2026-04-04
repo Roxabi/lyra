@@ -10,13 +10,12 @@ import asyncio
 import json
 import logging
 import time
-from typing import Any
+from collections.abc import Sequence
+from typing import Protocol
 
 import nats.errors
 from nats.aio.client import Client as NATS
 from nats.aio.subscription import Subscription
-
-from lyra.core.bus import Bus
 
 log = logging.getLogger(__name__)
 
@@ -25,15 +24,24 @@ PROBE_INTERVAL_S = 0.5
 PROBE_TIMEOUT_S = 30.0
 
 
+class _HasSubscriptionCount(Protocol):
+    """Structural type for anything the readiness responder needs from a bus."""
+
+    @property
+    def subscription_count(self) -> int: ...
+
+
 async def start_readiness_responder(
-    nc: NATS, buses: list[Bus[Any]]
+    nc: NATS, buses: Sequence[_HasSubscriptionCount]
 ) -> Subscription:
     """Subscribe to ``lyra.system.ready`` and reply with hub status on each request.
 
     Args:
         nc: Already-connected NATS client.
-        buses: List of bus instances whose ``subscription_count`` values are
-            summed into the ``buses`` field of each reply.
+        buses: Sequence of bus-like objects whose ``subscription_count`` values
+            are summed into the ``buses`` field of each reply. Uses a
+            structural protocol so tests can pass minimal fakes without
+            implementing the full ``Bus`` interface.
 
     Returns:
         The NATS Subscription object so callers can unsubscribe when needed.

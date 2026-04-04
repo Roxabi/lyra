@@ -43,8 +43,11 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
     if not nats_url:
         sys.exit("NATS_URL required for standalone adapter mode")
 
-    nc = await nats_connect(nats_url)
-    log.info("adapter_standalone: connected to NATS at %s", nats_url)
+    try:
+        nc = await nats_connect(nats_url)
+        log.info("adapter_standalone: connected to NATS at %s", nats_url)
+    except Exception as exc:
+        sys.exit(f"Failed to connect to NATS at {nats_url!r}: {exc}")
 
     platform_enum = Platform(platform)
 

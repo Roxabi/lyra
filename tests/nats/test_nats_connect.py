@@ -67,16 +67,46 @@ class TestNatsConnect:
         monkeypatch.setenv("NATS_NKEY_SEED_PATH", str(missing))
 
         # Act / Assert
-        with pytest.raises(SystemExit):
+        with pytest.raises(SystemExit, match="is not a file"):
             await nats_connect("nats://localhost:4222")
 
     async def test_connect_directory_path(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """SystemExit is raised when NATS_NKEY_SEED_PATH points to a directory."""
+        """SystemExit when NATS_NKEY_SEED_PATH points to a directory."""
         # Arrange — tmp_path itself is a directory
         monkeypatch.setenv("NATS_NKEY_SEED_PATH", str(tmp_path))
 
         # Act / Assert
-        with pytest.raises(SystemExit):
+        with pytest.raises(SystemExit, match="is not a file"):
+            await nats_connect("nats://localhost:4222")
+
+    async def test_connect_unreadable_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """SystemExit when seed file exists but is unreadable."""
+        # Arrange
+        seed_file = tmp_path / "nkey.seed"
+        seed_file.write_text("seed-content")
+        seed_file.chmod(0o000)
+        monkeypatch.setenv("NATS_NKEY_SEED_PATH", str(seed_file))
+
+        # Act / Assert
+        with pytest.raises(SystemExit, match="unreadable"):
+            await nats_connect("nats://localhost:4222")
+
+        # Cleanup
+        seed_file.chmod(0o644)
+
+    async def test_connect_empty_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """SystemExit when seed file is empty or whitespace-only."""
+        # Arrange
+        seed_file = tmp_path / "nkey.seed"
+        seed_file.write_text("   \n  ")
+        monkeypatch.setenv("NATS_NKEY_SEED_PATH", str(seed_file))
+
+        # Act / Assert
+        with pytest.raises(SystemExit, match="is empty"):
             await nats_connect("nats://localhost:4222")

@@ -24,12 +24,17 @@ def _read_nkey_seed() -> str | None:
     if not path_str:
         return None
     path = Path(path_str)
-    if not path.is_file():
-        sys.exit(f"NATS_NKEY_SEED_PATH={path_str!r} is not a file")
     try:
+        if not path.is_file():
+            sys.exit(
+                f"NATS_NKEY_SEED_PATH={path_str!r} is not a file"
+            )
         seed = path.read_text().strip()
     except OSError as exc:
-        sys.exit(f"NATS_NKEY_SEED_PATH={path_str!r} is unreadable: {exc}")
+        sys.exit(
+            f"NATS_NKEY_SEED_PATH={path_str!r} is unreadable:"
+            f" {exc.strerror}"
+        )
     if not seed:
         sys.exit(f"NATS_NKEY_SEED_PATH={path_str!r} is empty")
     return seed
@@ -45,5 +50,7 @@ async def nats_connect(url: str) -> NATS:
     seed = _read_nkey_seed()
     if seed:
         kwargs["nkeys_seed_str"] = seed
+    nc = await nats.connect(url, **kwargs)
+    if seed:
         log.info("NATS nkey auth enabled (seed from NATS_NKEY_SEED_PATH)")
-    return await nats.connect(url, **kwargs)
+    return nc

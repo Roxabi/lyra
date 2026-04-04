@@ -1,7 +1,4 @@
-"""RED-phase tests for the NATS readiness probe (lyra.nats.readiness).
-
-The module ``src/lyra/nats/readiness.py`` does not exist yet — these tests are
-expected to FAIL until it is implemented (spec #528).
+"""Tests for the NATS readiness probe (lyra.nats.readiness).
 
 Covered behaviours:
 - start_readiness_responder() replies to lyra.system.ready with a valid JSON payload
@@ -9,11 +6,14 @@ Covered behaviours:
 - wait_for_hub() returns False and logs WARNING when no responder is present
 - wait_for_hub() succeeds when the responder starts after the probe begins
   (concurrent-startup race simulation)
+- wait_for_hub() returns False and logs on unexpected errors
+- start_readiness_responder() handles buses=[] (sum of empty = 0)
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 
 import nats
@@ -106,8 +106,6 @@ class TestReadinessReply:
         self, nc: NATS, nats_server_url: str
     ) -> None:
         """Reply payload contains 'status', 'uptime_s', and 'buses' keys."""
-        import json
-
         # Arrange — start responder; issue a raw NATS request to capture reply
         buses = [FakeBus(count=2)]
         sub = await start_readiness_responder(nc, buses)
@@ -137,8 +135,6 @@ class TestReadinessReply:
         self, nc: NATS, nats_server_url: str
     ) -> None:
         """'buses' in reply equals sum of all NatsBus.subscription_count values."""
-        import json
-
         # Arrange — two buses with known subscription counts
         buses = [FakeBus(count=3), FakeBus(count=5)]
         sub = await start_readiness_responder(nc, buses)
@@ -238,3 +234,71 @@ class TestConcurrentStartup:
                 await sub.unsubscribe()
             if hub_nc.is_connected:
                 await hub_nc.drain()
+
+
+# ---------------------------------------------------------------------------
+# TestReadinessEdgeCases — empty buses list + unexpected errors
+# ---------------------------------------------------------------------------
+
+
+@requires_nats_server
+class TestReadinessEmptyBuses:
+    async def test_empty_buses_list_reports_zero(
+        self, nc: NATS, nats_server_url: str
+    ) -> None:
+        """start_readiness_responder with buses=[] replies with buses=0.
+
+        sum([]) is 0 — this exercises the default branch so a regression
+        that raises on empty input is caught.
+        """
+        # Arrange — zero buses
+        sub = await start_readiness_responder(nc, [])
+
+        nc2 = await nats.connect(nats_server_url)
+        try:
+            # Act
+            msg = await nc2.request(READINESS_SUBJECT, b"", timeout=5.0)
+            payload = json.loads(msg.data.decode())
+
+            # Assert
+            assert payload["buses"] == 0
+            assert payload["status"] == "ready"
+        finally:
+            await sub.unsubscribe()
+            if nc2.is_connected:
+                await nc2.drain()
+
+
+class TestWaitForHubUnexpectedError:
+    async def test_unexpected_error_is_logged_and_returns_false(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """wait_for_hub catches unexpected errors, logs them, and returns False.
+
+        Injects a fake NATS client whose .request() raises RuntimeError on
+        every call. Probe should exhaust the timeout, log via log.exception,
+        and return False.
+        """
+
+        # Arrange — fake NATS client that raises unexpected errors
+        class BrokenNats:
+            async def request(
+                self, subject: str, payload: bytes, timeout: float
+            ) -> None:
+                raise RuntimeError("synthetic transport fault")
+
+        with caplog.at_level(logging.ERROR, logger="lyra.nats.readiness"):
+            # Act — short timeout so the test is fast
+            result = await wait_for_hub(BrokenNats(), timeout=0.6)  # type: ignore[arg-type]
+
+        # Assert — returned False (graceful degradation)
+        assert result is False
+
+        # Assert — log.exception emitted at ERROR level
+        error_records = [
+            r for r in caplog.records if r.levelno >= logging.ERROR
+        ]
+        assert error_records, (
+            "Expected at least one ERROR log from wait_for_hub on unexpected "
+            f"error; captured records: {caplog.records}"
+        )

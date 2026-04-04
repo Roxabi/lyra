@@ -17,6 +17,7 @@ from lyra.core.message import (
     OutboundMessage,
     Platform,
 )
+from lyra.nats._serialize import deserialize_dict as _deserialize_dict
 
 if TYPE_CHECKING:
     from lyra.core.hub.hub_protocol import ChannelAdapter
@@ -31,17 +32,7 @@ _REAPER_INTERVAL_SECONDS = 30
 
 
 class NatsOutboundListener:
-    """Subscribes to NATS outbound subject and dispatches to the platform adapter.
-
-    Three envelope types:
-    - send:       {"type": "send", "stream_id": ..., "outbound": {...}}
-    - attachment: {"type": "attachment", "stream_id": ..., "attachment": {...}}
-    - chunk:      {"stream_id": ..., "seq": N, "event_type": ..., "payload": {...},
-                   "done": bool}
-
-    Inbound message cache: populated by cache_inbound() before push_to_hub_guarded.
-    Used to correlate stream_id → original InboundMessage for reply routing.
-    """
+    """NATS outbound subscriber → adapter dispatch (send/attachment/stream)."""
 
     def __init__(
         self,
@@ -69,10 +60,8 @@ class NatsOutboundListener:
             self._cache.pop(oldest)
             self._cache_ts.pop(oldest, None)
             log.warning(
-                "NatsOutboundListener: _cache full"
-                " (%d), evicted stream_id=%r",
-                _MAX_CACHE_SIZE,
-                oldest,
+                "NatsOutboundListener: _cache full (%d), evicted %r",
+                _MAX_CACHE_SIZE, oldest,
             )
         self._cache[msg.id] = msg
         self._cache_ts[msg.id] = time.monotonic()
@@ -133,7 +122,7 @@ class NatsOutboundListener:
             log.warning("NatsOutboundListener: missing 'outbound' key in send envelope")
             return
         try:
-            outbound = OutboundMessage(**outbound_data)
+            outbound = _deserialize_dict(outbound_data, OutboundMessage)
         except Exception:
             log.warning("NatsOutboundListener: failed to deserialize outbound message")
             return
@@ -154,7 +143,7 @@ class NatsOutboundListener:
             log.warning("NatsOutboundListener: missing 'attachment' key in envelope")
             return
         try:
-            attachment = OutboundAttachment(**attachment_data)
+            attachment = _deserialize_dict(attachment_data, OutboundAttachment)
         except Exception:
             log.warning("NatsOutboundListener: failed to deserialize attachment")
             return
@@ -179,7 +168,9 @@ class NatsOutboundListener:
             )
             return
         try:
-            self._stream_outbound[stream_id] = OutboundMessage(**outbound_data)
+            self._stream_outbound[stream_id] = _deserialize_dict(
+                outbound_data, OutboundMessage
+            )
         except Exception:
             log.warning("NatsOutboundListener: failed to deserialize stream outbound")
 
@@ -240,7 +231,15 @@ class NatsOutboundListener:
         async def _events():
             expected_seq = 0
             while True:
-                chunk = await q.get()
+                try:
+                    chunk = await asyncio.wait_for(q.get(), timeout=120.0)
+                except TimeoutError:
+                    log.warning(
+                        "NatsOutboundListener: stream timed out waiting for chunk"
+                        " stream_id=%r (120s)",
+                        stream_id,
+                    )
+                    break
                 seq = chunk.get("seq")
                 if seq is not None and seq != expected_seq:
                     log.warning(

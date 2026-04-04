@@ -23,6 +23,7 @@ from typing import Any, TypeVar, get_type_hints
 T = TypeVar("T")
 
 _B64_PREFIX = "b64:"
+_hints_cache: dict[type, dict[str, Any]] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -50,6 +51,15 @@ def deserialize(data: bytes, item_type: type[T]) -> T:
     return _decode(raw, item_type)  # type: ignore[return-value]
 
 
+def deserialize_dict(d: dict[str, Any], item_type: type[T]) -> T:
+    """Reconstruct a dataclass from a pre-parsed dict.
+
+    Same as :func:`deserialize` but skips the JSON parse step — use when
+    the caller already has a ``dict`` (e.g. from a prior ``json.loads``).
+    """
+    return _decode(d, item_type)  # type: ignore[return-value]
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -69,9 +79,17 @@ def _get_hints(dc_type: type) -> dict[str, Any]:
 
     Falls back to explicitly importing known TYPE_CHECKING-only types when
     NameError is raised (e.g. ``CommandContext`` imported under TYPE_CHECKING).
+
+    Results are cached per type to avoid repeated ``get_type_hints`` calls.
     """
+    cached = _hints_cache.get(dc_type)
+    if cached is not None:
+        return cached
+
     try:
-        return get_type_hints(dc_type)
+        result = get_type_hints(dc_type)
+        _hints_cache[dc_type] = result
+        return result
     except NameError:
         pass
 
@@ -95,10 +113,14 @@ def _get_hints(dc_type: type) -> dict[str, Any]:
                 pass
 
     try:
-        return get_type_hints(dc_type, globalns=globalns, localns=localns)
+        result = get_type_hints(dc_type, globalns=globalns, localns=localns)
     except Exception:
-        # Final fallback: no type coercion — raw JSON values returned as-is
+        # Final fallback: no type coercion — raw JSON values returned as-is.
+        # Do NOT cache the empty fallback: a transient resolution failure
+        # should not permanently disable type coercion for this type.
         return {}
+    _hints_cache[dc_type] = result
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -201,7 +223,9 @@ def _decode_concrete(value: Any, target_type: Any) -> Any:
             return base64.b64decode(value[len(_B64_PREFIX):])
         if isinstance(value, bytes):
             return value
-        return value
+        raise ValueError(
+            f"Expected b64:-prefixed string for bytes field, got {type(value).__name__}"
+        )
 
     # ── Scalar / dict / unknown ───────────────────────────────────────────────
     return value

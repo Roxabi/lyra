@@ -83,6 +83,8 @@ class NatsBus(Generic[T]):
         bot_id: str,
         item_type: type[T],
         subject_prefix: str = "lyra.inbound",
+        *,
+        staging_maxsize: int = 500,
     ) -> None:
         if not re.fullmatch(r'[A-Za-z0-9_.\-]+', subject_prefix):
             raise ValueError(
@@ -95,7 +97,7 @@ class NatsBus(Generic[T]):
         self._subject_prefix = subject_prefix
         self._registrations: set[tuple[Platform, str]] = set()
         self._subscriptions: dict[tuple[Platform, str], Subscription] = {}
-        self._staging: asyncio.Queue[T] = asyncio.Queue(maxsize=500)
+        self._staging: asyncio.Queue[T] = asyncio.Queue(maxsize=staging_maxsize)
 
     # ------------------------------------------------------------------
     # Registration

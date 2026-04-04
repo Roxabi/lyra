@@ -56,7 +56,7 @@ DISCORD_TOKEN=MTIz...                      # from Discord Developer Portal → B
 
 ## 3. Configure the agent (optional)
 
-Agents are managed via **AgentStore** (SQLite at `~/.lyra/auth.db`). TOML files in `src/lyra/agents/` are seed sources — import them into the DB on first setup:
+Agents are managed via **AgentStore** (SQLite at `~/.lyra/config.db`). TOML files in `src/lyra/agents/` (system defaults) and `~/.lyra/agents/` (user overrides) are seed sources — import them into the DB on first setup:
 
 ```bash
 # First-time: seed DB from TOML files

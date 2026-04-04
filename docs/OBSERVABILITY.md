@@ -141,7 +141,8 @@ Config keys (in `config.toml` under `[monitoring]`):
 | `check_interval_minutes` | 5 | How often checks run |
 | `health_endpoint_timeout_s` | 5 | HTTP timeout for `/health` |
 | `queue_depth_threshold` | 80 | Alert threshold |
-| `idle_threshold_hours` | 6 | Flag pools idle longer than this |
+| `idle_check_enabled` | `false` | Enable the idle check (opt-in; check is skipped when `false`) |
+| `idle_threshold_hours` | 6 | Flag pools idle longer than this (only used when `idle_check_enabled = true`) |
 | `quiet_start` / `quiet_end` | `00:00` / `08:00` | Suppress alerts during quiet hours |
 
 ---

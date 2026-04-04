@@ -237,7 +237,7 @@ lyra bot add --platform discord --bot-id lyra
 # Prompts for: token
 ```
 
-This encrypts and stores the tokens in `~/.lyra/auth.db`.
+This encrypts and stores the tokens in `~/.lyra/config.db`.
 
 > **Note:** `.env` is mostly for non-secret config. Required entries:
 > - `NATS_URL=nats://127.0.0.1:4222` — the Hub and adapters connect via NATS (set up in Step 10)
@@ -268,7 +268,7 @@ cd ~/projects/lyra
 make nats-install
 
 # Single-machine: install the simple localhost config (no TLS, no auth)
-sudo install -m 644 deploy/supervisor/nats/nats-local.conf /etc/nats/nats.conf
+sudo install -m 644 deploy/nats/nats-local.conf /etc/nats/nats.conf
 
 # Start + verify
 sudo systemctl start nats.service
@@ -278,8 +278,8 @@ sudo systemctl status nats.service
 echo "NATS_URL=nats://127.0.0.1:4222" >> ~/projects/lyra/.env
 ```
 
-> **Multi-machine (Hub on Machine 2):** Use `deploy/supervisor/nats/nats.conf` instead (TLS + nkeys).
-> Generate credentials with `sudo deploy/supervisor/scripts/gen-nats-certs.sh` and `sudo deploy/supervisor/scripts/gen-nats-nkeys.sh`,
+> **Multi-machine (Hub on Machine 2):** Use `deploy/nats/nats.conf` instead (TLS + nkeys).
+> Generate credentials with `sudo deploy/nats/gen-certs.sh` and `sudo deploy/nats/gen-nkeys.sh`,
 > then add nkey auth to `.env`.
 
 ---
@@ -399,7 +399,7 @@ ssh -i ~/.ssh/lyra_agent lyra@<MACHINE_1_IP> "id && git --version"
 | VoiceCLI project | `~/projects/voiceCLI/` (if installed) |
 | Supervisor configs | `~/projects/lyra/deploy/supervisor/` |
 | Config | `~/projects/lyra/config.toml` |
-| Credentials | `~/.lyra/auth.db` (encrypted, via `lyra bot add`) |
+| Credentials | `~/.lyra/config.db` (encrypted, via `lyra bot add`) |
 | Logs | `~/.local/state/lyra/logs/` |
 | Diagrams | `~/.roxabi/forge/` (if installed) |
 | Firewall | UFW, SSH only |

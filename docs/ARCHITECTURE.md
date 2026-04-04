@@ -132,7 +132,7 @@ NatsOutboundListener                                                    NatsOutb
 sends reply to user                                                     sends reply to user
 ```
 
-All three processes run on Machine 1. NATS topics: `lyra.inbound.<platform>.<bot_id>` (adapter→hub) and `lyra.outbound.<platform>.<bot_id>` (hub→adapter).
+All three processes run on Machine 1. NATS topics: `lyra.inbound.<platform>.<bot_id>` (adapter→hub) and `lyra.outbound.<platform>.<bot_id>` (hub→adapter). On startup, the hub sends a Telegram notification to the admin chat (if `TELEGRAM_TOKEN` and `TELEGRAM_ADMIN_CHAT_ID` are set) via `_notify_startup()` in `bootstrap/hub_standalone.py`.
 
 **Legacy single-process mode** (`python -m lyra --adapter telegram` → `_bootstrap_multibot`) still exists in the codebase but is no longer the production deployment mode.
 
@@ -252,12 +252,19 @@ After the Phase 1b refactoring, every module is ≤300 LOC. Key decomposition:
 | **Discord** | `discord.py` (adapter shell) | `discord_inbound.py`, `discord_outbound.py`, `discord_normalize.py`, `discord_audio.py`, `discord_audio_outbound.py`, `discord_formatting.py`, `discord_threads.py`, `discord_voice.py`, `discord_voice_commands.py` |
 | **Bootstrap** | `multibot.py` (legacy single-process) | `multibot_stores.py`, `multibot_wiring.py`; standalone entry points: `_bootstrap_hub_standalone()` (hub process), `_bootstrap_adapter_standalone()` (adapter process) |
 | **Shared** | `adapters/_shared.py` | Common adapter utilities (typing control, etc.) |
+| **Shared** | `adapters/_shared_streaming.py` | `StreamingSession` — centralized edit-in-place streaming algorithm for all platform adapters (#468, #495, #501) |
+| **Shared** | `adapters/_base_outbound.py` | `OutboundAdapterBase` — abstract base class for all platform outbound adapters |
+| **NATS** | `nats/render_event_codec.py` | Explicit encoder/decoder for `RenderEvent` over NATS wire format |
+
+### Adapter Streaming Pattern
+
+All platform adapters inherit `OutboundAdapterBase`. Streaming is centralized in `StreamingSession`, which accepts a `PlatformCallbacks` dataclass containing platform-specific send, edit, and typing operations. This eliminates streaming code duplication across adapters — each platform only supplies its callbacks; the edit-in-place algorithm lives in one place. Added in #468, #495, #501.
 
 ### The Bus
 
 **Per-channel queues** (#126, completed): each channel adapter has its own bounded inbound queue → feeds a shared staging queue → Hub consumes and routes. Outbound has a symmetric per-channel queue + OutboundDispatcher.
 
-**Backpressure**: when the staging queue is full, the adapter sends an immediate acknowledgment ("message received, ~Xs wait") then performs a blocking `await bus.put()` until a slot frees up. `Bus[T].put()` is `async` — implementors must raise `asyncio.QueueFull` when the per-platform queue is at capacity so callers can apply backpressure without blocking the event loop. `LocalBus.put()` is the concrete async wrapper backed by `asyncio.Queue`; future transports (e.g. `NatsBus`) must uphold the same contract.
+**Backpressure**: when the staging queue is full, the adapter sends an immediate acknowledgment ("message received, ~Xs wait") then performs a blocking `await bus.put()` until a slot frees up. `Bus[T].put()` is `async` — implementors must raise `asyncio.QueueFull` when the per-platform queue is at capacity so callers can apply backpressure without blocking the event loop. `LocalBus.put()` is the concrete async wrapper backed by `asyncio.Queue`; production transports (`NatsBus`, live since #458) must uphold the same contract. In three-process mode, `NatsBus` handles hub↔adapter communication while each process still uses `LocalBus` internally for its async queue.
 
 **Unified message format:**
 ```python
@@ -422,7 +429,7 @@ stateDiagram-v2
     Deleted --> [*]
 
     note right of Seeded
-        Agent config lives in ~/.lyra/auth.db.
+        Agent config lives in ~/.lyra/config.db.
         TOML files are seed sources only.
         Runtime always reads from DB.
     end note
@@ -651,10 +658,10 @@ client = AsyncOpenAI(
 - **`[model].cwd` and `[workspaces]`** ✅ — `ModelConfig.cwd` sets a fixed working directory for the Claude subprocess for a given agent. `[workspaces]` in agent TOML registers named directory shortcuts; each key becomes a `/keyname` slash command that stores a per-pool cwd override in `CliPool._cwd_overrides`. Switching workspace clears pool history and kills/respawns the Claude subprocess with the new cwd.
 - **Reduced Phase 1 memory scope** — Level 0 (working, L0 compaction ✅ #83) + Level 3 (semantic ✅ #78/#81/#82). Levels 1, 2, 4 added when the real need arises.
 - **Memory agent integration** (#83 ✅) — `MemoryManager` wired into Pool identity fields, AgentBase lifecycle (`build_system_prompt`, `compact`, `flush_session`, `_schedule_extraction`), and Hub (`set_memory`, `_memory_tasks`, shutdown drain). Identity anchor seeded in L3 on first boot. FTS isolated per user via `namespace:user_id` sub-namespace. 7 slices delivered: Pool identity, MemoryManager infra, identity anchor, session flush, compaction, cross-session recall, concept/preference extraction.
-- **AgentStore** (#268 ✅) — SQLite-backed agent registry (`~/.lyra/auth.db`). TOML files are seed sources only — imported via `lyra agent init`. Runtime reads from DB. CLI: `init`, `list`, `show`, `edit`, `validate`, `assign`, `unassign`, `delete`. In-memory cache warmed at `connect()` — no per-message file I/O. Includes `tts_json`/`stt_json` columns for per-agent TTS/STT config (serialized from TOML `[tts]`/`[stt]` sections, deserialized into `AgentTTSConfig`/`AgentSTTConfig`). See ADR-024.
+- **AgentStore** (#268 ✅) — SQLite-backed agent registry (`~/.lyra/config.db`, renamed from `auth.db` in v15). TOML files are seed sources only — imported via `lyra agent init`. Runtime reads from DB. CLI: `init`, `list`, `show`, `edit`, `validate`, `assign`, `unassign`, `delete`. In-memory cache warmed at `connect()` — no per-message file I/O. Includes `tts_json`/`stt_json` columns for per-agent TTS/STT config (serialized from TOML `[tts]`/`[stt]` sections, deserialized into `AgentTTSConfig`/`AgentSTTConfig`). See ADR-024.
 - **Raw turn logging** (#67 ✅) — `TurnStore` (`src/lyra/core/turn_store.py`) persists every user + assistant turn to `~/.lyra/turns.db` (SQLite, separate from vault). Fire-and-forget writes via `asyncio.create_task`. Query: `get_session_turns()`, `get_pool_turns()`, `get_user_turns()`. This is the L1 memory layer.
 - **Retryable LlmResult** (#276 ✅) — `LlmResult` carries a `retryable: bool` flag. Non-retryable errors (auth failures, invalid requests) skip the retry/backoff loop in decorators.
-- **Hub command sessions** (#99 ✅) — Session command layer: `SessionCommandHandler` protocol, `SessionCommandEntry` registry in `CommandRouter`. `/vault-add` (scrape → LLM summary → vault write), `/explain` (scrape → LLM plain-language explanation), `/summarize` (scrape → LLM bullet points), `/search` (vault FTS). Bare URL messages auto-rewritten to `/vault-add <url>` — target command configurable in `src/lyra/config/patterns.toml` `[bare_url].command`. Scraping via `web-intel:scrape` subprocess; vault via `vault` CLI. `session_helpers.py` provides `scrape_url`, `vault_add`, `vault_search` async wrappers. `session_commands.py` contains the four command handlers. `AnthropicAgent` wired with a session driver for isolated LLM calls (no pool history pollution). `commands/search/` plugin implements `/search`.
+- **Hub command sessions** (#99 ✅, refactored to processor commands #363) — Processor command layer: `BaseProcessor` from `processor_registry.py`, registered via `@register()` decorators. `/vault-add` (scrape → LLM summary → vault write), `/explain` (scrape → LLM plain-language explanation), `/summarize` (scrape → LLM bullet points), `/search` (vault FTS). Bare URL messages auto-rewritten to `/vault-add <url>` — target command configurable in `src/lyra/config/patterns.toml` `[bare_url].command`. Processor commands land responses in pool history, enabling follow-up questions (unlike the old `SessionCommandHandler` pattern). `commands/search/` plugin implements `/search`.
 
 ### External tool integration
 
@@ -689,8 +696,8 @@ What is built in Phase 1 / 1b:
 - DX: complexity/size limits (#196 ✅), pytest-cov + coverage gate (#211 ✅)
 - Security: hmac.compare_digest (#212 ✅), two-tier /health (#207 ✅), symlink plugin_loader fix (#215 ✅)
 - UX: typing indicator redesign (#229 ✅), intermediate turns (`show_intermediate`) ✅, `/clear` session reset ✅
-- Hub command sessions (#99 ✅): `/vault-add`, `/explain`, `/summarize`, `/search` — session command layer with isolated LLM calls, scrape + vault integration, bare URL auto-rewrite (target configurable in `patterns.toml`)
-- AgentStore (#268 ✅): SQLite-backed agent registry (`~/.lyra/auth.db`), CLI overhaul (`init`, `list`, `show`, `edit`, `validate`, `assign`, `delete`)
+- Hub command sessions (#99 ✅, refactored #363): `/vault-add`, `/explain`, `/summarize`, `/search` — processor commands via `processor_registry.py`, scrape + vault integration, bare URL auto-rewrite
+- AgentStore (#268 ✅): SQLite-backed agent registry (`~/.lyra/config.db`), CLI overhaul (`init`, `list`, `show`, `edit`, `validate`, `assign`, `delete`)
 - Raw turn logging (#67 ✅): TurnStore — L1 memory layer, conversation audit trail to `~/.lyra/turns.db`
 - Retryable LlmResult (#276 ✅): non-retryable errors skip retry/backoff loop
 
@@ -702,7 +709,7 @@ What is built in Phase 1 / 1b:
 - Deduplication: 8 cross-codebase patterns consolidated
 - Timeout hardening (#317): reaper process + timeout system hardened
 - Session resumption (#318): `session_id` + `reply_message_id` wired for resumption
-- Dead code removal: `event_bus.py`, `bootstrap/legacy.py` deleted
+- Dead code removal: `bootstrap/legacy.py` deleted; `event_bus.py` refactored into `PipelineEventBus` (fire-and-forget telemetry fan-out, #432) — the old pub/sub `EventBus` was removed and replaced by typed dataclass events + `PipelineEventBus`
 
 What is **explicitly excluded from Phase 1**:
 - Memory levels 2 (episodic), 4 (procedural) — added when the real need arises (L1 raw turn logging shipped in #67)
@@ -763,7 +770,7 @@ class CognitiveFrame:
 - Core decomposition: `agent.py` → `agent.py` + `agent_builder.py` + `agent_config.py` + `agent_loader.py` + `agent_models.py` + `agent_plugins.py` (#295/#306); `pool.py` → `pool.py` + `pool_processor.py` (#300/#309); `command_router.py` → `command_router.py` + `builtin_commands.py` + `workspace_commands.py` (#298/#312); `memory.py` → `memory.py` + `memory_freshness.py` + `memory_schema.py` + `memory_types.py`; `agent_store.py` → `agent_store.py` + `agent_seeder.py` (#304/#308)
 - Auth split: `AuthMiddleware` → `Authenticator` (identity resolver) + `GuardChain` (composable guard pipeline) (#313/#314)
 - 8-pattern deduplication across adapters + core — shared adapter code in `adapters/_shared.py`
-- Removed dead abstractions: `event_bus.py` (EventBus pub/sub), `bootstrap/legacy.py`
+- Removed dead abstractions: `bootstrap/legacy.py`; `event_bus.py` refactored into `PipelineEventBus` (fire-and-forget telemetry fan-out, #432) — old pub/sub `EventBus` replaced by typed dataclass events
 - **#317** — Harden timeout system and reaper process
 - **#318** — Wire `session_id` + `reply_message_id` for session resumption
 

@@ -14,7 +14,7 @@ Machine 1 (roxabituwer, 192.168.1.16)
 │       ├── lyra_hub      ← hub process (NatsBus, pool, LLM, memory)
 │       ├── lyra_telegram ← Telegram adapter (thin NATS client)
 │       └── lyra_discord  ← Discord adapter (thin NATS client)
-├── program configs: ~/projects/lyra/deploy/supervisor/conf.d/
+├── program configs: ~/projects/lyra/supervisor/conf.d/
 │   ├── lyra_hub.conf
 │   ├── lyra_telegram.conf
 │   └── lyra_discord.conf
@@ -43,7 +43,7 @@ This runs `scripts/deploy.sh` on Machine 1. The script checks **two repos indepe
 
 **Smart restart** — only the services whose repo changed are restarted. If neither repo has new commits, the script exits without touching supervisor.
 
-**Auto re-lock** — when voiceCLI updates, the script runs `uv sync --upgrade-package voicecli` inside Lyra's `.venv` so the pinned dependency stays in sync. This also triggers a full Lyra restart (hub + both adapters) to pick up the new dependency — so a voiceCLI-only change restarts all five services.
+**Auto re-lock** — when voiceCLI updates, the script runs `uv sync --all-extras --upgrade-package voicecli` inside Lyra's `.venv` so the pinned dependency stays in sync. This also triggers a full Lyra restart (hub + both adapters) to pick up the new dependency — so a voiceCLI-only change restarts all five services.
 
 **Test gate** — after pulling `lyra`, `pytest` runs before the restart. A test failure rolls back to the previous commit; voiceCLI is not pulled in that run.
 
@@ -174,7 +174,6 @@ Or use supervisorctl directly on Machine 1:
 
 ```bash
 cd ~/projects/lyra
-make ps            # all programs
 make lyra          # lyra status
 make lyra reload   # restart lyra
 make lyra logs     # tail stdout

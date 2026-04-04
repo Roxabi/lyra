@@ -21,7 +21,6 @@ import nats
 
 from lyra.adapters.nats_outbound_listener import NatsOutboundListener
 from lyra.core.bus import Bus
-from lyra.core.inbound_bus import LocalBus
 from lyra.core.message import InboundAudio, InboundMessage, Platform
 from lyra.core.stores.credential_store import CredentialStore, LyraKeyring
 
@@ -87,7 +86,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
             finally:
                 await cred_store.close()
 
-            wired: list[tuple[TelegramAdapter, Bus[InboundMessage]]] = []
+            wired: list[tuple] = []  # (TelegramAdapter, Bus, Bus)
 
             for bot_cfg in tg_multi_cfg.bots:
                 bot_id = bot_cfg.bot_id
@@ -103,8 +102,14 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
                 inbound_bus.register(platform_enum)
                 await inbound_bus.start()
 
-                inbound_audio_bus: Bus[InboundAudio] = LocalBus(name="inbound-audio")  # type: ignore[type-arg]
+                inbound_audio_bus: Bus[InboundAudio] = NatsBus(  # type: ignore[type-arg]
+                    nc=nc,
+                    bot_id=bot_id,
+                    item_type=InboundAudio,
+                    subject_prefix="lyra.inbound.audio",
+                )
                 inbound_audio_bus.register(platform_enum)
+                await inbound_audio_bus.start()
 
                 adapter = TelegramAdapter(
                     bot_id=bot_id,
@@ -119,7 +124,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
                 adapter._outbound_listener = listener
                 await adapter.astart()
 
-                wired.append((adapter, inbound_bus))
+                wired.append((adapter, inbound_bus, inbound_audio_bus))
                 log.info(
                     "adapter_standalone: Telegram bot_id=%s ready (NATS mode)", bot_id
                 )
@@ -139,17 +144,18 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
                     a.dp.start_polling(a.bot, handle_signals=False),
                     name=f"telegram:{a._bot_id}",
                 )
-                for a, _ in wired
+                for a, _, _ in wired
             ]
             try:
                 await stop.wait()
-                for a, _ in wired:
+                for a, _, _ in wired:
                     await a.dp.stop_polling()
                 await asyncio.gather(*poll_tasks, return_exceptions=True)
             finally:
-                for a, ibus in wired:
+                for a, ibus, abus in wired:
                     await a.close()
                     await ibus.stop()
+                    await abus.stop()
 
         elif platform == "discord":
             from lyra.adapters.discord import DiscordAdapter
@@ -214,7 +220,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
             dc_thread_store = ThreadStore(db_path=vault_dir / "discord.db")
             await dc_thread_store.connect()
 
-            wired_dc: list[tuple[DiscordAdapter, str, Bus[InboundMessage]]] = []
+            wired_dc: list[tuple] = []  # (DiscordAdapter, str, Bus, Bus)
 
             for bot_cfg in dc_multi_cfg.bots:
                 bot_id = bot_cfg.bot_id
@@ -230,8 +236,14 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
                 inbound_bus_dc.register(platform_enum)
                 await inbound_bus_dc.start()
 
-                inbound_audio_bus_dc: Bus[InboundAudio] = LocalBus(name="inbound-audio")  # type: ignore[type-arg]
+                inbound_audio_bus_dc: Bus[InboundAudio] = NatsBus(  # type: ignore[type-arg]
+                    nc=nc,
+                    bot_id=bot_id,
+                    item_type=InboundAudio,
+                    subject_prefix="lyra.inbound.audio",
+                )
                 inbound_audio_bus_dc.register(platform_enum)
+                await inbound_audio_bus_dc.start()
 
                 adapter_dc = DiscordAdapter(
                     bot_id=bot_id,
@@ -249,7 +261,8 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
                 adapter_dc._outbound_listener = listener_dc
                 await adapter_dc.astart()
 
-                wired_dc.append((adapter_dc, token, inbound_bus_dc))
+                abus_dc = inbound_audio_bus_dc
+                wired_dc.append((adapter_dc, token, inbound_bus_dc, abus_dc))
                 log.info(
                     "adapter_standalone: Discord bot_id=%s ready (NATS mode)", bot_id
                 )
@@ -269,19 +282,19 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
                     a.start(tok),
                     name=f"discord:{a._bot_id}",
                 )
-                for a, tok, _ in wired_dc
+                for a, tok, _, _ in wired_dc
             ]
             try:
                 await stop_dc.wait()
-                for a, _, _ in wired_dc:
+                for a, _, _, _ in wired_dc:
                     await a.close()
                 await asyncio.gather(*start_tasks, return_exceptions=True)
             finally:
-                for _, _, ibus in wired_dc:
+                for _, _, ibus, abus in wired_dc:
                     await ibus.stop()
+                    await abus.stop()
 
         else:
             sys.exit(f"Unknown platform: {platform!r}")
-
     finally:
         await nc.close()

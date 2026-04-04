@@ -34,7 +34,7 @@ from lyra.bootstrap.lifecycle_helpers import (
 )
 from lyra.bootstrap.multibot_stores import open_stores
 from lyra.bootstrap.multibot_wiring import _build_bot_auths
-from lyra.bootstrap.voice_overlay import init_stt, init_tts
+from lyra.bootstrap.voice_overlay import init_nats_stt, init_nats_tts
 from lyra.config import load_multibot_config
 from lyra.core.agent import Agent
 from lyra.core.agent_loader import agent_row_to_config
@@ -42,7 +42,6 @@ from lyra.core.cli_pool import CliPool
 from lyra.core.hub import Hub
 from lyra.core.hub.event_bus import PipelineEventBus
 from lyra.core.hub.outbound_dispatcher import OutboundDispatcher
-from lyra.core.inbound_bus import LocalBus
 from lyra.core.message import InboundAudio, InboundMessage, Platform
 from lyra.core.stores.pairing import PairingManager, set_pairing_manager
 from lyra.nats.nats_bus import NatsBus
@@ -159,8 +158,9 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
     inbound_bus: NatsBus[InboundMessage] = NatsBus(
         nc=nc, bot_id="hub", item_type=InboundMessage
     )
-    # Audio is not routed over NATS in C4 — use a local bus as a no-op sink
-    inbound_audio_bus: LocalBus[InboundAudio] = LocalBus(name="inbound-audio")
+    inbound_audio_bus: NatsBus[InboundAudio] = NatsBus(
+        nc=nc, bot_id="hub", item_type=InboundAudio, subject_prefix="lyra.inbound.audio"
+    )
 
     vault_dir = Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra")))
     vault_dir.mkdir(parents=True, exist_ok=True)
@@ -254,9 +254,9 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
             await pm.connect()
             set_pairing_manager(pm)
 
-        # STT / TTS services (audio not over NATS in C4, but agent may still need them)
-        stt_service = init_stt(first_agent_config)
-        tts_service = init_tts(stt_service)
+        # STT / TTS via NATS clients (hub talks to voicecli adapters over NATS)
+        stt_service = init_nats_stt(nc)
+        tts_service = init_nats_tts(nc, stt_service)
 
         cli_pool_cfg = _load_cli_pool_config(raw_config)
         hub_cfg = _load_hub_config(raw_config)

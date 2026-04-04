@@ -145,7 +145,7 @@ class AudioPipeline:
             finally:
                 self._hub.inbound_audio_bus.task_done()
 
-    async def _process_audio_item(self, audio: InboundAudio) -> None:
+    async def _process_audio_item(self, audio: InboundAudio) -> None:  # noqa: C901, PLR0915
         from ..stt import is_whisper_noise
         from .hub import RoutingKey
 
@@ -199,7 +199,21 @@ class AudioPipeline:
         )
         try:
             result = await self._hub._stt.transcribe(tmp)
-        finally:
+        except Exception as _transcribe_exc:
+            from ..stt import STTUnavailableError
+
+            tmp.unlink(missing_ok=True)
+            if isinstance(_transcribe_exc, STTUnavailableError):
+                _content = (
+                    self._hub._msg_manager.get("stt_unavailable")
+                    if self._hub._msg_manager
+                    else "Voice messages are temporarily unavailable."
+                )
+                await self._dispatch_audio_reply(audio, _content)
+                log.warning("STT adapter unavailable — audio %s dropped", audio.id)
+                return
+            raise
+        else:
             tmp.unlink(missing_ok=True)
 
         if is_whisper_noise(result.text):
@@ -299,7 +313,7 @@ class AudioPipeline:
         )
         await self._hub.dispatch_response(synthetic, Response(content=content))
 
-    async def synthesize_and_dispatch_audio(  # noqa: PLR0913
+    async def synthesize_and_dispatch_audio(  # noqa: PLR0913, C901
         self,
         msg: InboundMessage,
         text: str,
@@ -383,11 +397,20 @@ class AudioPipeline:
                 len(result.audio_bytes),
                 msg.id,
             )
-        except Exception:
-            log.exception(
-                "TTS synthesis failed for voice response — audio not sent (msg id=%s)",
-                msg.id,
-            )
+        except Exception as _tts_exc:
+            from ..tts import TtsUnavailableError
+
+            if isinstance(_tts_exc, TtsUnavailableError):
+                log.warning(
+                    "TTS adapter unavailable — sending text fallback for msg id=%s",
+                    msg.id,
+                )
+                await self._hub.dispatch_response(msg, Response(content=text))
+            else:
+                log.exception(
+                    "TTS synthesis failed — audio not sent (msg id=%s)",
+                    msg.id,
+                )
 
     @staticmethod
     def _write_temp_audio(data: bytes, suffix: str) -> str:

@@ -70,12 +70,27 @@ class NatsBus(Generic[T]):
         bot_id: Default bot identifier used when ``register()`` is called
             without an explicit ``bot_id``.
         item_type: Concrete type used for deserialization (e.g. ``InboundMessage``).
+        subject_prefix: NATS subject prefix. Defaults to ``"lyra.inbound"``.
+            Use a different prefix (e.g. ``"lyra.inbound.audio"``) to avoid
+            subject collisions between different message types.
     """
 
-    def __init__(self, nc: NATS, bot_id: str, item_type: type[T]) -> None:
+    def __init__(
+        self,
+        nc: NATS,
+        bot_id: str,
+        item_type: type[T],
+        subject_prefix: str = "lyra.inbound",
+    ) -> None:
+        if not re.fullmatch(r'[A-Za-z0-9_.\-]+', subject_prefix):
+            raise ValueError(
+                f"Invalid subject_prefix for NATS: {subject_prefix!r} — "
+                "must match [A-Za-z0-9_.\\-]+ (no wildcards or spaces)"
+            )
         self._nc = nc
         self._bot_id = bot_id
         self._item_type = item_type
+        self._subject_prefix = subject_prefix
         self._registrations: set[tuple[Platform, str]] = set()
         self._subscriptions: dict[tuple[Platform, str], Subscription] = {}
         self._staging: asyncio.Queue[T] = asyncio.Queue(maxsize=500)
@@ -120,7 +135,7 @@ class NatsBus(Generic[T]):
     async def start(self) -> None:
         """Create one NATS subscription per registered (platform, bot_id) pair.
 
-        Subject pattern: ``lyra.inbound.{platform.value}.{bot_id}``
+        Subject pattern: ``{subject_prefix}.{platform.value}.{bot_id}``
 
         No-op if zero registrations exist.
 
@@ -166,7 +181,7 @@ class NatsBus(Generic[T]):
                 f"Platform {platform!r} is not registered — call register() first."
             )
         bid = next((b for p, b in self._registrations if p == platform), self._bot_id)
-        subject = f"lyra.inbound.{platform.value}.{bid}"
+        subject = f"{self._subject_prefix}.{platform.value}.{bid}"
         payload = serialize(item)
         await self._nc.publish(subject, payload)
 
@@ -201,7 +216,7 @@ class NatsBus(Generic[T]):
     async def _make_handler(self, platform: Platform, bot_id: str) -> None:
         """Create NATS subscription for *(platform, bot_id)* and register the handler.
         """
-        subject = f"lyra.inbound.{platform.value}.{bot_id}"
+        subject = f"{self._subject_prefix}.{platform.value}.{bot_id}"
 
         async def handler(msg: Msg) -> None:
             try:

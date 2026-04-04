@@ -27,8 +27,8 @@ _AGENTS_DIR = Path(__file__).resolve().parent
 
 if TYPE_CHECKING:
     from lyra.core.stores.agent_store import AgentStore
-    from lyra.stt import STTService
-    from lyra.tts import TTSService
+    from lyra.stt import STTProtocol
+    from lyra.tts import TtsProtocol
 
 log = logging.getLogger(__name__)
 
@@ -47,8 +47,8 @@ class AnthropicAgent(AgentBase):
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
         runtime_config: RuntimeConfig | None = None,
-        stt: "STTService | None" = None,
-        tts: "TTSService | None" = None,
+        stt: "STTProtocol | None" = None,
+        tts: "TtsProtocol | None" = None,
         agents_dir: Path | None = None,
         smart_routing_decorator: object | None = None,
         agent_store: "AgentStore | None" = None,

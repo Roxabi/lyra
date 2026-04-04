@@ -7,7 +7,6 @@ Spec trace: S4-1, S4-2, S4-3, S4-4, S4-5, S4-6, S4-7
 from __future__ import annotations
 
 import asyncio
-import logging
 from unittest.mock import MagicMock
 
 import pytest

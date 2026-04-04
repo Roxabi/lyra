@@ -8,9 +8,6 @@ import os
 # Re-exported for backward compatibility (tests import these from agent_factory)
 from lyra.bootstrap.bot_agent_map import resolve_bot_agent_map  # noqa: F401
 from lyra.bootstrap.config import LlmConfig
-from lyra.bootstrap.voice_overlay import (
-    apply_agent_stt_overlay as apply_agent_stt_overlay,  # noqa: F401
-)
 from lyra.core.agent import Agent, AgentBase
 from lyra.core.agent_config import SmartRoutingConfig
 from lyra.core.circuit_breaker import CircuitRegistry
@@ -20,8 +17,8 @@ from lyra.core.stores.agent_store import AgentStore
 from lyra.llm.base import LlmProvider
 from lyra.llm.registry import ProviderRegistry
 from lyra.llm.smart_routing import SmartRoutingDecorator
-from lyra.stt import STTService
-from lyra.tts import TTSService
+from lyra.stt import STTProtocol
+from lyra.tts import TtsProtocol
 
 log = logging.getLogger(__name__)
 
@@ -156,8 +153,8 @@ def _create_agent(  # noqa: PLR0913 — factory with optional overrides for each
     cli_pool: CliPool | None,
     circuit_registry: CircuitRegistry | None = None,
     msg_manager: MessageManager | None = None,
-    stt: STTService | None = None,
-    tts: TTSService | None = None,
+    stt: STTProtocol | None = None,
+    tts: TtsProtocol | None = None,
     provider_registry: ProviderRegistry | None = None,
     smart_routing_decorator: SmartRoutingDecorator | None = None,
     agent_store: AgentStore | None = None,
@@ -214,8 +211,8 @@ def _resolve_agents(  # noqa: PLR0913
     cli_pool: CliPool | None,
     circuit_registry: CircuitRegistry,
     msg_manager: MessageManager,
-    stt_service: STTService | None,
-    tts_service: TTSService | None = None,
+    stt_service: STTProtocol | None,
+    tts_service: TtsProtocol | None = None,
     agent_store: AgentStore | None = None,
     llm_cfg: LlmConfig | None = None,
 ) -> dict[str, AgentBase]:

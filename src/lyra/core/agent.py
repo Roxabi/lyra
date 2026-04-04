@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable
 
-    from lyra.stt import STTService
-    from lyra.tts import TTSService
+    from lyra.stt import STTProtocol
+    from lyra.tts import TtsProtocol
 
     from .memory import MemoryManager
     from .render_events import RenderEvent
@@ -50,8 +50,8 @@ class AgentBase(ABC, SessionManager):
         plugins_dir: Path | None = None,
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
-        stt: "STTService | None" = None,
-        tts: "TTSService | None" = None,
+        stt: "STTProtocol | None" = None,
+        tts: "TtsProtocol | None" = None,
         smart_routing_decorator: Any | None = None,
         compact_context_tokens: int = MODEL_CONTEXT_TOKENS,
         instance_overrides: dict | None = None,

@@ -10,13 +10,30 @@ import tempfile
 import wave
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pydantic import BaseModel
 
 if TYPE_CHECKING:
     from lyra.core.agent_config import AgentTTSConfig
     from lyra.integrations.base import AudioConverter
+
+
+@runtime_checkable
+class TtsProtocol(Protocol):
+    async def synthesize(
+        self,
+        text: str,
+        *,
+        agent_tts: "AgentTTSConfig | None" = None,
+        language: str | None = None,
+        voice: str | None = None,
+        fallback_language: str | None = None,
+    ) -> "SynthesisResult": ...
+
+
+class TtsUnavailableError(Exception):
+    """Raised when the TTS NATS adapter is unreachable (timeout or connection error)."""
 
 log = logging.getLogger(__name__)
 

@@ -478,16 +478,16 @@ class TestNatsBusQueueGroup:
                 msg = dataclasses.replace(msg, id=f"msg-{i}")
                 await publisher.put(Platform.TELEGRAM, msg)
 
+            # Yield to the event loop so the NATS client task can deliver
+            # messages into each subscriber's staging queue.
+            await asyncio.sleep(0.5)
+
             received_a: list = []
             received_b: list = []
-            # Drain with a bounded deadline
-            deadline = asyncio.get_event_loop().time() + 2.0
-            while len(received_a) + len(received_b) < n:
-                if asyncio.get_event_loop().time() > deadline:
-                    break
-                for bus, bucket in ((sub_a, received_a), (sub_b, received_b)):
-                    if bus.staging_qsize() > 0:
-                        bucket.append(await bus.get())
+            while sub_a.staging_qsize() > 0:
+                received_a.append(await sub_a.get())
+            while sub_b.staging_qsize() > 0:
+                received_b.append(await sub_b.get())
 
             # Assert — every message delivered exactly once across the group
             all_ids = {m.id for m in received_a} | {m.id for m in received_b}

@@ -16,7 +16,7 @@ import sys
 
 import nats
 
-from lyra.tts import SynthesisResult, TTSConfig, TTSService, load_tts_config
+from lyra.tts import SynthesisResult, TTSService, load_tts_config
 
 log = logging.getLogger(__name__)
 
@@ -89,7 +89,7 @@ async def _bootstrap_tts_adapter_standalone(
             response = {
                 "request_id": data.get("request_id", "unknown"),
                 "ok": False,
-                "error": str(exc),
+                "error": "synthesis_failed",
             }
 
         if msg.reply:

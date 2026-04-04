@@ -18,7 +18,7 @@ from pathlib import Path
 
 import nats
 
-from lyra.stt import STTConfig, STTService, TranscriptionResult, load_stt_config
+from lyra.stt import STTService, TranscriptionResult, load_stt_config
 
 log = logging.getLogger(__name__)
 
@@ -55,6 +55,8 @@ async def _bootstrap_stt_adapter_standalone(
             data = json.loads(msg.data)
             request_id = data.get("request_id", "unknown")
             audio_b64 = data["audio_b64"]
+            if len(audio_b64) > 10_000_000:
+                raise ValueError("audio payload too large")
             audio_bytes = base64.b64decode(audio_b64)
             mime_type = data.get("mime_type", "audio/ogg")
 
@@ -85,7 +87,7 @@ async def _bootstrap_stt_adapter_standalone(
             response = {
                 "request_id": data.get("request_id", "unknown"),
                 "ok": False,
-                "error": str(exc),
+                "error": "transcription_failed",
             }
 
         if msg.reply:

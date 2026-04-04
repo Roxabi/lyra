@@ -32,7 +32,7 @@ from lyra.bootstrap.multibot_wiring import (
     wire_discord_adapters,
     wire_telegram_adapters,
 )
-from lyra.bootstrap.voice_overlay import init_stt, init_tts
+# Voice is NATS-only after ADR-039 — multibot mode sets stt/tts to None
 from lyra.config import (
     DiscordMultiConfig,
     TelegramMultiConfig,
@@ -149,9 +149,9 @@ async def _bootstrap_multibot(  # noqa: C901, PLR0915 — startup wiring
             await pm.connect()
             set_pairing_manager(pm)
 
-        # STT / TTS services
-        stt_service = init_stt(first_agent_config)
-        tts_service = init_tts(stt_service)
+        # STT / TTS are NATS-only (ADR-039) — multibot mode does not support voice
+        stt_service = None
+        tts_service = None
 
         cli_pool_cfg = _load_cli_pool_config(raw_config)
         hub_cfg = _load_hub_config(raw_config)

@@ -1,5 +1,5 @@
 SUPERVISOR_HUB ?= $(HOME)/projects
-HUB_SERVICES   := lyra telegram discord
+HUB_SERVICES   := lyra telegram discord lyra-stt lyra-tts
 -include $(SUPERVISOR_HUB)/hub.mk
 
 # Sub-command parsing for multi-word targets (remote, monitor, deploy).
@@ -82,8 +82,8 @@ register:
 	$(call hub-link-conf,lyra_hub,supervisor/conf.d/lyra_hub.conf)
 	$(call hub-link-conf,lyra_telegram,supervisor/conf.d/lyra_telegram.conf)
 	$(call hub-link-conf,lyra_discord,supervisor/conf.d/lyra_discord.conf)
-	$(call hub-link-conf,lyra_stt,deploy/supervisor/conf.d/lyra_stt.conf)
-	$(call hub-link-conf,lyra_tts,deploy/supervisor/conf.d/lyra_tts.conf)
+	$(call hub-link-conf,lyra_stt,supervisor/conf.d/lyra_stt.conf)
+	$(call hub-link-conf,lyra_tts,supervisor/conf.d/lyra_tts.conf)
 	@mkdir -p "$(HOME)/.local/state/lyra/logs"
 	$(hub_reread)
 	@echo ""

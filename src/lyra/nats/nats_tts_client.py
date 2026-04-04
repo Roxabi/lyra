@@ -67,11 +67,11 @@ class NatsTtsClient:
         payload = json.dumps(request, ensure_ascii=False).encode("utf-8")
         try:
             reply = await self._nc.request(self.SUBJECT, payload, timeout=self._timeout)
+            data = json.loads(reply.data)
         except Exception as exc:
             raise TtsUnavailableError(f"TTS adapter unreachable: {exc}") from exc
-        data = json.loads(reply.data)
         if not data.get("ok"):
-            raise TtsUnavailableError(data.get("error", "TTS request failed"))
+            raise TtsUnavailableError("TTS synthesis failed")
         audio_bytes = base64.b64decode(data["audio_b64"])
         return SynthesisResult(
             audio_bytes=audio_bytes,

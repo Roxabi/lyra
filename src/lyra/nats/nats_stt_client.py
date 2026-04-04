@@ -51,12 +51,11 @@ class NatsSttClient:
         payload = json.dumps(request, ensure_ascii=False).encode("utf-8")
         try:
             reply = await self._nc.request(self.SUBJECT, payload, timeout=self._timeout)
+            data = json.loads(reply.data)
         except Exception as exc:
             raise STTUnavailableError(f"STT adapter unreachable: {exc}") from exc
-        data = json.loads(reply.data)
         if not data.get("ok"):
-            error_msg = data.get("error", "STT request failed")
-            raise STTUnavailableError(error_msg)
+            raise STTUnavailableError("STT transcription failed")
         return TranscriptionResult(
             text=data["text"],
             language=data.get("language", "unknown"),

@@ -124,7 +124,11 @@ async def retrieve_thread_session(
         thread_id=thread_id,
         bot_id=bot_id,
     )
-    if stored_session_id is not None:
+    if stored_session_id is not None and stored_pool_id is not None:
+        if len(cache) >= 500:
+            _oldest = next(iter(cache))
+            del cache[_oldest]
+        cache[thread_id] = (stored_session_id, stored_pool_id)
         log.debug(
             "ThreadStore: retrieved session_id=%s pool_id=%s for thread_id=%s",
             stored_session_id,

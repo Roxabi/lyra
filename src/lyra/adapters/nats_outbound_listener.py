@@ -67,12 +67,15 @@ class NatsOutboundListener:
     def cache_inbound(self, msg: InboundMessage | InboundAudio) -> None:
         """Store msg so it can be retrieved later by stream_id."""
         if len(self._cache) >= _MAX_CACHE_SIZE:
+            oldest = next(iter(self._cache))
+            self._cache.pop(oldest)
+            self._cache_ts.pop(oldest, None)
             log.warning(
-                "NatsOutboundListener: _cache full (%d entries), dropping stream_id=%r",
+                "NatsOutboundListener: _cache full"
+                " (%d), evicted stream_id=%r",
                 _MAX_CACHE_SIZE,
-                msg.id,
+                oldest,
             )
-            return
         self._cache[msg.id] = msg
         self._cache_ts[msg.id] = time.monotonic()
 
@@ -86,6 +89,10 @@ class NatsOutboundListener:
         """Unsubscribe from NATS."""
         if self._reaper_task is not None:
             self._reaper_task.cancel()
+            try:
+                await self._reaper_task
+            except asyncio.CancelledError:
+                pass
             self._reaper_task = None
         if self._sub is not None:
             await self._sub.unsubscribe()
@@ -175,7 +182,6 @@ class NatsOutboundListener:
             return
         try:
             self._stream_outbound[stream_id] = OutboundMessage(**outbound_data)
-            self._cache_ts.setdefault(stream_id, time.monotonic())
         except Exception:
             log.warning("NatsOutboundListener: failed to deserialize stream outbound")
 
@@ -196,6 +202,8 @@ class NatsOutboundListener:
         q = self._stream_queues.setdefault(
             stream_id, asyncio.Queue(maxsize=_MAX_QUEUE_SIZE),
         )
+        if stream_id in self._cache_ts:
+            self._cache_ts[stream_id] = time.monotonic()
         try:
             q.put_nowait(data)
         except asyncio.QueueFull:
@@ -215,12 +223,16 @@ class NatsOutboundListener:
         """Drain a stream queue and call adapter.send_streaming()."""
         original_msg = self._cache.get(stream_id)
         if original_msg is None:
-            log.warning(
-                "NatsOutboundListener: unknown stream_id=%r for streaming", stream_id
-            )
-            # drain queue silently
+            drained = 0
             while not q.empty():
                 await q.get()
+                drained += 1
+            log.warning(
+                "NatsOutboundListener: drained %d chunk(s)"
+                " for unknown stream_id=%r",
+                drained,
+                stream_id,
+            )
             self._stream_tasks.pop(stream_id, None)
             self._stream_queues.pop(stream_id, None)
             return

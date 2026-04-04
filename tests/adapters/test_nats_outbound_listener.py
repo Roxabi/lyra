@@ -214,7 +214,7 @@ async def test_stop_cancels_reaper_task() -> None:
 
 
 def test_cache_inbound_drops_when_full(caplog) -> None:
-    """cache_inbound drops and warns when _cache is at max size."""
+    """cache_inbound evicts oldest and warns when _cache is at max size."""
     import logging
 
     from lyra.adapters.nats_outbound_listener import (
@@ -239,12 +239,12 @@ def test_cache_inbound_drops_when_full(caplog) -> None:
     with caplog.at_level(logging.WARNING, logger=_logger):
         listener.cache_inbound(overflow_msg)
 
-    assert overflow_msg.id not in listener._cache
+    assert overflow_msg.id in listener._cache
+    assert "fill-0" not in listener._cache
     assert len(listener._cache) == _MAX_CACHE_SIZE
     assert len(listener._cache_ts) == _MAX_CACHE_SIZE
-    assert any(
-        "_cache full" in r.message for r in caplog.records
-    )
+    assert any("_cache full" in r.message for r in caplog.records)
+    assert any("evicted" in r.message for r in caplog.records)
 
 
 @pytest.mark.asyncio

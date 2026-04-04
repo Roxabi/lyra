@@ -7,6 +7,7 @@ import os
 import sys
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse, urlunparse
 
 import nats
 from nats.aio.client import Client as NATS
@@ -43,6 +44,32 @@ def _read_nkey_seed() -> str | None:
 _RESERVED_AUTH_KEYS = frozenset({"nkeys_seed_str", "token", "user", "password", "tls"})
 
 
+def scrub_nats_url(url: str) -> str:
+    """Return *url* with any embedded credentials removed.
+
+    ``nats://user:pass@host:4222`` → ``nats://host:4222``
+    """
+    parsed = urlparse(url)
+    if not parsed.hostname:
+        return url
+    clean_netloc = parsed.hostname
+    if parsed.port:
+        clean_netloc += f":{parsed.port}"
+    return urlunparse(parsed._replace(netloc=clean_netloc))
+
+
+async def _default_error_cb(exc: Exception) -> None:
+    log.error("NATS error: %s", exc)
+
+
+async def _default_disconnected_cb() -> None:
+    log.warning("NATS disconnected")
+
+
+async def _default_reconnected_cb() -> None:
+    log.info("NATS reconnected")
+
+
 async def nats_connect(url: str, **extra: Any) -> NATS:
     """Connect to NATS, optionally authenticating with an nkey seed.
 
@@ -59,7 +86,12 @@ async def nats_connect(url: str, **extra: Any) -> NATS:
         raise ValueError(
             f"nats_connect: auth keys must not be passed via **extra: {bad}"
         )
-    kwargs: dict[str, Any] = dict(extra)
+    kwargs: dict[str, Any] = {
+        "error_cb": _default_error_cb,
+        "disconnected_cb": _default_disconnected_cb,
+        "reconnected_cb": _default_reconnected_cb,
+        **extra,
+    }
     seed = _read_nkey_seed()
     if seed:
         kwargs["nkeys_seed_str"] = seed

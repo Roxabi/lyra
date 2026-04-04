@@ -19,6 +19,7 @@ from lyra.core.bus import Bus
 from lyra.core.message import InboundAudio, InboundMessage, Platform
 from lyra.core.stores.credential_store import CredentialStore, LyraKeyring
 from lyra.nats import nats_connect
+from lyra.nats.connect import scrub_nats_url
 
 log = logging.getLogger(__name__)
 
@@ -40,23 +41,9 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
     if not nats_url:
         sys.exit("NATS_URL required for standalone adapter mode")
 
-    async def _nats_error_cb(exc: Exception) -> None:
-        log.error("NATS error: %s", exc)
-
-    async def _nats_disconnected_cb() -> None:
-        log.warning("NATS disconnected — messages will be lost until reconnect")
-
-    async def _nats_reconnected_cb() -> None:
-        log.info("NATS reconnected")
-
     try:
-        nc = await nats_connect(
-            nats_url,
-            error_cb=_nats_error_cb,
-            disconnected_cb=_nats_disconnected_cb,
-            reconnected_cb=_nats_reconnected_cb,
-        )
-        log.info("adapter_standalone: connected to NATS at %s", nats_url)
+        nc = await nats_connect(nats_url)
+        log.info("adapter_standalone: connected to NATS at %s", scrub_nats_url(nats_url))
     except Exception as exc:
         sys.exit(f"Failed to connect to NATS at {nats_url!r}: {exc}")
 

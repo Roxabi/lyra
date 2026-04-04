@@ -51,6 +51,15 @@ def deserialize(data: bytes, item_type: type[T]) -> T:
     return _decode(raw, item_type)  # type: ignore[return-value]
 
 
+def deserialize_dict(d: dict[str, Any], item_type: type[T]) -> T:
+    """Reconstruct a dataclass from a pre-parsed dict.
+
+    Same as :func:`deserialize` but skips the JSON parse step — use when
+    the caller already has a ``dict`` (e.g. from a prior ``json.loads``).
+    """
+    return _decode(d, item_type)  # type: ignore[return-value]
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -106,8 +115,10 @@ def _get_hints(dc_type: type) -> dict[str, Any]:
     try:
         result = get_type_hints(dc_type, globalns=globalns, localns=localns)
     except Exception:
-        # Final fallback: no type coercion — raw JSON values returned as-is
-        result = {}
+        # Final fallback: no type coercion — raw JSON values returned as-is.
+        # Do NOT cache the empty fallback: a transient resolution failure
+        # should not permanently disable type coercion for this type.
+        return {}
     _hints_cache[dc_type] = result
     return result
 

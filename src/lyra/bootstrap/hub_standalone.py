@@ -43,6 +43,7 @@ from lyra.core.hub.outbound_dispatcher import OutboundDispatcher
 from lyra.core.message import InboundAudio, InboundMessage, Platform
 from lyra.core.stores.pairing import PairingManager, set_pairing_manager
 from lyra.nats import nats_connect
+from lyra.nats.connect import scrub_nats_url
 from lyra.nats.nats_bus import NatsBus
 from lyra.nats.nats_channel_proxy import NatsChannelProxy
 
@@ -148,23 +149,9 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
 
     _acquire_lockfile()
 
-    async def _nats_error_cb(exc: Exception) -> None:
-        log.error("NATS error: %s", exc)
-
-    async def _nats_disconnected_cb() -> None:
-        log.warning("NATS disconnected — messages will be lost until reconnect")
-
-    async def _nats_reconnected_cb() -> None:
-        log.info("NATS reconnected")
-
     try:
-        nc = await nats_connect(
-            nats_url,
-            error_cb=_nats_error_cb,
-            disconnected_cb=_nats_disconnected_cb,
-            reconnected_cb=_nats_reconnected_cb,
-        )
-        log.info("Connected to NATS at %s", nats_url)
+        nc = await nats_connect(nats_url)
+        log.info("Connected to NATS at %s", scrub_nats_url(nats_url))
     except Exception as exc:
         sys.exit(f"Failed to connect to NATS at {nats_url!r}: {exc}")
 

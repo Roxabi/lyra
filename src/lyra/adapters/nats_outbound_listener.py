@@ -17,7 +17,7 @@ from lyra.core.message import (
     OutboundMessage,
     Platform,
 )
-from lyra.nats._serialize import deserialize as _deserialize
+from lyra.nats._serialize import deserialize_dict as _deserialize_dict
 
 if TYPE_CHECKING:
     from lyra.core.hub.hub_protocol import ChannelAdapter
@@ -134,9 +134,7 @@ class NatsOutboundListener:
             log.warning("NatsOutboundListener: missing 'outbound' key in send envelope")
             return
         try:
-            outbound = _deserialize(
-                json.dumps(outbound_data).encode("utf-8"), OutboundMessage
-            )
+            outbound = _deserialize_dict(outbound_data, OutboundMessage)
         except Exception:
             log.warning("NatsOutboundListener: failed to deserialize outbound message")
             return
@@ -157,9 +155,7 @@ class NatsOutboundListener:
             log.warning("NatsOutboundListener: missing 'attachment' key in envelope")
             return
         try:
-            attachment = _deserialize(
-                json.dumps(attachment_data).encode("utf-8"), OutboundAttachment
-            )
+            attachment = _deserialize_dict(attachment_data, OutboundAttachment)
         except Exception:
             log.warning("NatsOutboundListener: failed to deserialize attachment")
             return
@@ -184,8 +180,8 @@ class NatsOutboundListener:
             )
             return
         try:
-            self._stream_outbound[stream_id] = _deserialize(
-                json.dumps(outbound_data).encode("utf-8"), OutboundMessage
+            self._stream_outbound[stream_id] = _deserialize_dict(
+                outbound_data, OutboundMessage
             )
         except Exception:
             log.warning("NatsOutboundListener: failed to deserialize stream outbound")

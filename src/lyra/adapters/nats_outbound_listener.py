@@ -12,6 +12,8 @@ from nats.aio.msg import Msg
 
 from lyra.adapters.nats_stream_decoder import (
     decode_stream_events,
+)
+from lyra.adapters.nats_stream_decoder import (
     handle_stream_error as _handle_stream_error_impl,
 )
 from lyra.core.message import (

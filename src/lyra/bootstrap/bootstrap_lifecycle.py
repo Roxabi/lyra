@@ -99,6 +99,8 @@ async def run_lifecycle(  # noqa: PLR0913, C901 — lifecycle orchestration
     await asyncio.gather(*tasks, return_exceptions=True)
     await teardown_buses(hub.inbound_bus, hub.inbound_audio_bus)
     await teardown_dispatchers(tg_dispatchers + dc_dispatchers)
+    # proxies is only populated in three-process hub_standalone mode; unified mode
+    # runs adapters in-process (platform SDKs) and does not use NatsChannelProxy.
     for proxy in proxies or []:
         await proxy.publish_stream_errors("hub_shutdown")
     for dc_adapter, _, _dc_tok in dc_adapters:

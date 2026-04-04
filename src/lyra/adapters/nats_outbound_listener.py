@@ -58,6 +58,10 @@ class NatsOutboundListener:
         self._stream_outbound: dict[str, OutboundMessage] = {}
         self._sub: Any = None  # nats.aio.subscription.Subscription | None
         self._reaper_task: asyncio.Task[None] | None = None
+        # Tombstone set: stream_ids that received stream_error, used to reject
+        # late-arriving chunks after a stream has been terminated.
+        # Bounded to 500 entries; oldest entry evicted when full.
+        self._terminated_streams: set[str] = set()
 
     def cache_inbound(self, msg: InboundMessage | InboundAudio) -> None:
         """Store msg so it can be retrieved later by stream_id."""
@@ -199,8 +203,16 @@ class NatsOutboundListener:
                     " stream_error for stream_id=%r",
                     stream_id,
                 )
+            # Record tombstone so late-arriving chunks are rejected
+            if len(self._terminated_streams) >= 500:
+                self._terminated_streams.pop()
+            self._terminated_streams.add(stream_id)
         else:
             # Race: error before first chunk or after stream_end already cleaned up
+            # Record tombstone before cleaning cache so late chunks are rejected
+            if len(self._terminated_streams) >= 500:
+                self._terminated_streams.pop()
+            self._terminated_streams.add(stream_id)
             self._cache.pop(stream_id, None)
             self._cache_ts.pop(stream_id, None)
             self._stream_outbound.pop(stream_id, None)
@@ -214,6 +226,13 @@ class NatsOutboundListener:
         stream_id = data.get("stream_id")
         if stream_id is None:
             log.warning("NatsOutboundListener: chunk envelope missing stream_id")
+            return
+        if stream_id in self._terminated_streams:
+            log.warning(
+                "NatsOutboundListener: chunk rejected for terminated"
+                " stream_id=%r",
+                stream_id,
+            )
             return
         at_limit = len(self._stream_tasks) >= _MAX_STREAMS
         if stream_id not in self._stream_tasks and at_limit:
@@ -278,6 +297,8 @@ class NatsOutboundListener:
             self._cache_ts.pop(stream_id, None)
             self._stream_tasks.pop(stream_id, None)
             self._stream_queues.pop(stream_id, None)
+            # Clean up tombstone for completed streams; bounded set handles the rest
+            self._terminated_streams.discard(stream_id)
 
     async def _reap_stale(self) -> None:
         """Periodically evict cache entries that have exceeded the TTL."""

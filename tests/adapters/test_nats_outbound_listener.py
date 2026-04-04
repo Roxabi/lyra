@@ -449,10 +449,10 @@ async def test_default_queue_group_is_empty() -> None:
 
 @pytest.mark.asyncio
 async def test_stream_error_enqueues_poison_pill() -> None:
-    """stream_error envelope is dispatched to _handle_stream_error.
+    """Verifies _handle routes type=stream_error to _handle_stream_error.
 
-    Verifies that _handle routes type='stream_error' to _handle_stream_error,
-    which enqueues a poison-pill chunk into the active stream queue.
+    _handle_stream_error enqueues a poison-pill chunk into the active stream
+    queue so _drain_stream terminates immediately.
     """
     from lyra.adapters.nats_outbound_listener import NatsOutboundListener
 
@@ -500,9 +500,33 @@ async def test_stream_error_enqueues_poison_pill() -> None:
 
 
 @pytest.mark.asyncio
+async def test_stream_error_missing_stream_id_is_noop() -> None:
+    """stream_error with no stream_id is a no-op — no crash, no state change."""
+    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+
+    nc = AsyncMock()
+    adapter = AsyncMock()
+    listener = NatsOutboundListener(nc, Platform.TELEGRAM, "main", adapter)
+
+    msg = _make_tg_msg("msg-noop")
+    listener.cache_inbound(msg)
+
+    # stream_error without stream_id — should silently no-op
+    error_envelope = {"type": "stream_error"}
+    await listener._handle(_make_nats_msg(error_envelope))
+
+    # State is unchanged
+    assert msg.id in listener._cache
+    assert len(listener._stream_queues) == 0
+
+
+@pytest.mark.asyncio
 async def test_stream_error_no_queue_cleans_cache() -> None:
     """stream_error with no active queue removes the cache entry."""
+    import time
+
     from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.core.message import OutboundMessage
 
     nc = AsyncMock()
     adapter = AsyncMock()
@@ -510,6 +534,12 @@ async def test_stream_error_no_queue_cleans_cache() -> None:
 
     msg = _make_tg_msg("msg-err-no-queue")
     listener.cache_inbound(msg)
+
+    # Seed _cache_ts and _stream_outbound to verify both are cleaned up
+    listener._cache_ts[msg.id] = time.monotonic()
+    listener._stream_outbound[msg.id] = OutboundMessage(
+        content=["x"], buttons=[], metadata={}
+    )
 
     assert msg.id in listener._cache
 
@@ -520,5 +550,7 @@ async def test_stream_error_no_queue_cleans_cache() -> None:
     }
     await listener._handle(_make_nats_msg(error_envelope))
 
-    # Cache entry must be cleaned up
+    # Cache entry and all related state must be cleaned up
     assert msg.id not in listener._cache
+    assert msg.id not in listener._cache_ts
+    assert msg.id not in listener._stream_outbound

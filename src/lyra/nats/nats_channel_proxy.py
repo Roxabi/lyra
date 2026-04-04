@@ -103,6 +103,8 @@ class NatsChannelProxy:
         """Publish streaming render events to NATS as chunked messages."""
         subject = f"lyra.outbound.{self._platform.value}.{self._bot_id}"
 
+        self._active_streams.add(original_msg.id)
+
         # Send outbound metadata so the adapter can honour the intermediate flag
         # (typing indicator lifecycle) and other outbound fields.
         if outbound is not None:
@@ -115,8 +117,6 @@ class NatsChannelProxy:
                 subject,
                 json.dumps(header, ensure_ascii=False).encode("utf-8"),
             )
-
-        self._active_streams.add(original_msg.id)
         seq = 0
         try:
             async for event in events:
@@ -174,9 +174,16 @@ class NatsChannelProxy:
                 pass
 
     async def publish_stream_errors(self, reason: str = "hub_shutdown") -> None:
-        """Publish stream_error for all active streams, then clear the set."""
+        """Publish stream_error for all active streams, then clear the set.
+
+        Uses an atomic swap to capture the snapshot and reset the set in one
+        step, eliminating the race window between list() and clear() when a
+        concurrent exception-path discard fires mid-iteration.
+        """
         subject = f"lyra.outbound.{self._platform.value}.{self._bot_id}"
-        for stream_id in list(self._active_streams):
+        stream_ids = self._active_streams
+        self._active_streams = set()
+        for stream_id in stream_ids:
             envelope = {
                 "type": "stream_error",
                 "stream_id": stream_id,
@@ -193,7 +200,6 @@ class NatsChannelProxy:
                     " for stream_id=%r",
                     stream_id,
                 )
-        self._active_streams.clear()
 
     # ------------------------------------------------------------------
     # Audio — not yet implemented (C5)

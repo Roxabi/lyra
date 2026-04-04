@@ -46,6 +46,7 @@ from lyra.nats import nats_connect
 from lyra.nats.connect import scrub_nats_url
 from lyra.nats.nats_bus import NatsBus
 from lyra.nats.nats_channel_proxy import NatsChannelProxy
+from lyra.nats.readiness import start_readiness_responder
 
 log = logging.getLogger(__name__)
 
@@ -423,6 +424,10 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
         for d in dispatchers:
             await d.start()
 
+        readiness_sub = await start_readiness_responder(
+            nc, [hub.inbound_bus, hub.inbound_audio_bus]
+        )
+
         import uvicorn
 
         health_port = int(os.environ.get("LYRA_HEALTH_PORT", "8443"))
@@ -471,6 +476,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        await readiness_sub.unsubscribe()
         await teardown_buses(hub.inbound_bus, hub.inbound_audio_bus)
         await teardown_dispatchers(dispatchers)
         if pm is not None:

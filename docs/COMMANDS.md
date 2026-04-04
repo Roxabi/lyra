@@ -38,12 +38,28 @@ source .venv/bin/activate
 | `lyra agent show <name>` | Full config for one agent |
 | `lyra agent create` | Interactively create a new agent TOML |
 | `lyra agent edit <name>` | Edit an agent interactively in DB |
-| `lyra agent validate [<name>]` | Validate agent TOML config(s) |
+| `lyra agent validate <name>` | Validate agent config in DB |
 | `lyra agent assign <name> --platform <p> --bot <id>` | Assign agent to a bot |
-| `lyra agent unassign <name> --platform <p> --bot <id>` | Remove agent-bot assignment |
+| `lyra agent unassign --platform <p> --bot <id>` | Remove a bot-agent mapping |
 | `lyra agent delete <name>` | Delete agent (refuses if bot still assigned) |
-| `lyra agent patch <name> --field <f> --value <v>` | Update a single agent field |
+| `lyra agent patch <name> --json <json_object>` | Apply a partial JSON patch to an agent |
 | `lyra agent refine <name>` | Interactively refine agent persona/voice |
+
+**Bot credential management**
+
+| Command | Description |
+|---------|-------------|
+| `lyra bot add --platform <p> --bot-id <id>` | Store encrypted bot token (prompts for token) |
+| `lyra bot list` | List all stored bot credentials (tokens masked) |
+| `lyra bot remove --platform <p> --bot-id <id>` | Remove stored bot credentials |
+
+**Hub and adapter (production three-process mode)**
+
+| Command | Description |
+|---------|-------------|
+| `lyra hub` | Start the standalone Hub process (requires NATS) |
+| `lyra adapter telegram` | Start the standalone Telegram adapter (requires NATS) |
+| `lyra adapter discord` | Start the standalone Discord adapter (requires NATS) |
 
 **Config management**
 

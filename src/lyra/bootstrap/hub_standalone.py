@@ -9,8 +9,6 @@ import os
 import sys
 from pathlib import Path
 
-import nats
-
 from lyra.bootstrap.agent_factory import _resolve_agents, _resolve_bot_agent_map
 from lyra.bootstrap.config import (
     MessageIndexConfig,
@@ -44,6 +42,7 @@ from lyra.core.hub.event_bus import PipelineEventBus
 from lyra.core.hub.outbound_dispatcher import OutboundDispatcher
 from lyra.core.message import InboundAudio, InboundMessage, Platform
 from lyra.core.stores.pairing import PairingManager, set_pairing_manager
+from lyra.nats import nats_connect
 from lyra.nats.nats_bus import NatsBus
 from lyra.nats.nats_channel_proxy import NatsChannelProxy
 
@@ -150,7 +149,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
     _acquire_lockfile()
 
     try:
-        nc = await nats.connect(nats_url)
+        nc = await nats_connect(nats_url)
         log.info("Connected to NATS at %s", nats_url)
     except Exception as exc:
         sys.exit(f"Failed to connect to NATS at {nats_url!r}: {exc}")

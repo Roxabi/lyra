@@ -1,13 +1,10 @@
-"""Standalone adapter bootstrap — runs TelegramAdapter or DiscordAdapter as a pure
-NATS client, without a local Hub instance.
+"""Standalone adapter bootstrap — runs TelegramAdapter or DiscordAdapter as a
+pure NATS client, without a local Hub instance.
 
 Entry point: _bootstrap_adapter_standalone(raw_config, platform)
 
-Used by lyra_telegram and lyra_discord supervisor programs in NATS mode (ADR-037).
-Tokens are read from the encrypted credential store (same source as hub mode),
-then the store is closed immediately — adapters do not hold auth.db open during
-their long-lived polling/websocket phase.
-Telegram uses aiogram long-polling; Discord uses its websocket connection.
+Used by lyra_telegram and lyra_discord supervisor programs in NATS mode.
+Tokens are read from the encrypted credential store then closed immediately.
 """
 from __future__ import annotations
 
@@ -17,12 +14,11 @@ import os
 import sys
 from pathlib import Path
 
-import nats
-
 from lyra.adapters.nats_outbound_listener import NatsOutboundListener
 from lyra.core.bus import Bus
 from lyra.core.message import InboundAudio, InboundMessage, Platform
 from lyra.core.stores.credential_store import CredentialStore, LyraKeyring
+from lyra.nats import nats_connect
 
 log = logging.getLogger(__name__)
 
@@ -44,8 +40,11 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
     if not nats_url:
         sys.exit("NATS_URL required for standalone adapter mode")
 
-    nc = await nats.connect(nats_url)
-    log.info("adapter_standalone: connected to NATS at %s", nats_url)
+    try:
+        nc = await nats_connect(nats_url)
+        log.info("adapter_standalone: connected to NATS at %s", nats_url)
+    except Exception as exc:
+        sys.exit(f"Failed to connect to NATS at {nats_url!r}: {exc}")
 
     platform_enum = Platform(platform)
 

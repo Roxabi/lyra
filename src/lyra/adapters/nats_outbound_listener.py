@@ -17,6 +17,7 @@ from lyra.core.message import (
     OutboundMessage,
     Platform,
 )
+from lyra.nats._serialize import deserialize as _deserialize
 
 if TYPE_CHECKING:
     from lyra.core.hub.hub_protocol import ChannelAdapter
@@ -133,7 +134,9 @@ class NatsOutboundListener:
             log.warning("NatsOutboundListener: missing 'outbound' key in send envelope")
             return
         try:
-            outbound = OutboundMessage(**outbound_data)
+            outbound = _deserialize(
+                json.dumps(outbound_data).encode("utf-8"), OutboundMessage
+            )
         except Exception:
             log.warning("NatsOutboundListener: failed to deserialize outbound message")
             return
@@ -154,7 +157,9 @@ class NatsOutboundListener:
             log.warning("NatsOutboundListener: missing 'attachment' key in envelope")
             return
         try:
-            attachment = OutboundAttachment(**attachment_data)
+            attachment = _deserialize(
+                json.dumps(attachment_data).encode("utf-8"), OutboundAttachment
+            )
         except Exception:
             log.warning("NatsOutboundListener: failed to deserialize attachment")
             return
@@ -179,7 +184,9 @@ class NatsOutboundListener:
             )
             return
         try:
-            self._stream_outbound[stream_id] = OutboundMessage(**outbound_data)
+            self._stream_outbound[stream_id] = _deserialize(
+                json.dumps(outbound_data).encode("utf-8"), OutboundMessage
+            )
         except Exception:
             log.warning("NatsOutboundListener: failed to deserialize stream outbound")
 
@@ -240,7 +247,15 @@ class NatsOutboundListener:
         async def _events():
             expected_seq = 0
             while True:
-                chunk = await q.get()
+                try:
+                    chunk = await asyncio.wait_for(q.get(), timeout=120.0)
+                except TimeoutError:
+                    log.warning(
+                        "NatsOutboundListener: stream timed out waiting for chunk"
+                        " stream_id=%r (120s)",
+                        stream_id,
+                    )
+                    break
                 seq = chunk.get("seq")
                 if seq is not None and seq != expected_seq:
                     log.warning(

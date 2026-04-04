@@ -40,13 +40,16 @@ def _read_nkey_seed() -> str | None:
     return seed
 
 
-async def nats_connect(url: str) -> NATS:
+async def nats_connect(url: str, **extra: Any) -> NATS:
     """Connect to NATS, optionally authenticating with an nkey seed.
 
     If NATS_NKEY_SEED_PATH is set, reads the seed file and passes it
     via nkeys_seed_str. If unset, connects without authentication (dev mode).
+
+    Extra keyword arguments (e.g. ``error_cb``, ``disconnected_cb``,
+    ``reconnected_cb``) are forwarded to ``nats.connect()``.
     """
-    kwargs: dict[str, Any] = {}
+    kwargs: dict[str, Any] = dict(extra)
     seed = _read_nkey_seed()
     if seed:
         kwargs["nkeys_seed_str"] = seed

@@ -148,14 +148,32 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
 
     _acquire_lockfile()
 
+    async def _nats_error_cb(exc: Exception) -> None:
+        log.error("NATS error: %s", exc)
+
+    async def _nats_disconnected_cb() -> None:
+        log.warning("NATS disconnected — messages will be lost until reconnect")
+
+    async def _nats_reconnected_cb() -> None:
+        log.info("NATS reconnected")
+
     try:
-        nc = await nats_connect(nats_url)
+        nc = await nats_connect(
+            nats_url,
+            error_cb=_nats_error_cb,
+            disconnected_cb=_nats_disconnected_cb,
+            reconnected_cb=_nats_reconnected_cb,
+        )
         log.info("Connected to NATS at %s", nats_url)
     except Exception as exc:
         sys.exit(f"Failed to connect to NATS at {nats_url!r}: {exc}")
 
+    _early_inbound_bus_cfg = _load_inbound_bus_config(raw_config)
     inbound_bus: NatsBus[InboundMessage] = NatsBus(
-        nc=nc, bot_id="hub", item_type=InboundMessage
+        nc=nc,
+        bot_id="hub",
+        item_type=InboundMessage,
+        staging_maxsize=_early_inbound_bus_cfg.staging_maxsize,
     )
     inbound_audio_bus: NatsBus[InboundAudio] = NatsBus(
         nc=nc, bot_id="hub", item_type=InboundAudio, subject_prefix="lyra.inbound.audio"

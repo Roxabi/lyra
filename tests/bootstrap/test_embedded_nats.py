@@ -57,11 +57,16 @@ class TestEmbeddedNatsWaitReady:
         en = EmbeddedNats()
         en.process = MagicMock()
         en.process.pid = 12345
+        en.process.returncode = None
 
-        conn_patch = patch("lyra.bootstrap.embedded_nats.socket.create_connection")
-        with conn_patch as mock_conn:
-            mock_conn.return_value.__enter__ = MagicMock()
-            mock_conn.return_value.__exit__ = MagicMock()
+        mock_writer = MagicMock()
+        mock_writer.close = MagicMock()
+        mock_writer.wait_closed = AsyncMock()
+
+        with patch(
+            "lyra.bootstrap.embedded_nats.asyncio.open_connection",
+            return_value=(MagicMock(), mock_writer),
+        ):
             await en.wait_ready(timeout=1.0)
 
     async def test_timeout_raises_runtime_error(self) -> None:
@@ -72,7 +77,7 @@ class TestEmbeddedNatsWaitReady:
         en.process.returncode = None
 
         with patch(
-            "lyra.bootstrap.embedded_nats.socket.create_connection",
+            "lyra.bootstrap.embedded_nats.asyncio.open_connection",
             side_effect=OSError("refused"),
         ):
             with pytest.raises(RuntimeError, match="not ready within"):
@@ -85,14 +90,12 @@ class TestEmbeddedNatsWaitReady:
         en.process.pid = 12345
         en.process.returncode = 1
         en.process.stderr = AsyncMock()
-        en.process.stderr.read = AsyncMock(return_value=b"address already in use")
+        en.process.stderr.read = AsyncMock(
+            return_value=b"address already in use"
+        )
 
-        with patch(
-            "lyra.bootstrap.embedded_nats.socket.create_connection",
-            side_effect=OSError("refused"),
-        ):
-            with pytest.raises(RuntimeError, match="address already in use"):
-                await en.wait_ready(timeout=0.2)
+        with pytest.raises(RuntimeError, match="address already in use"):
+            await en.wait_ready(timeout=0.2)
 
 
 class TestEmbeddedNatsStop:

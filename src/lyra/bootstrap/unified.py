@@ -334,14 +334,12 @@ async def _bootstrap_unified(  # noqa: C901, PLR0915
                 _stop,
             )
 
-        # After stores context closes
+    finally:
         try:
             await nc.close()
             log.info("NATS connection closed.")
         except Exception as exc:
             log.warning("Error closing NATS connection: %s", exc)
-
-    finally:
         if embedded:
             await embedded.stop()
         _release_lockfile()

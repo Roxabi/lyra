@@ -10,7 +10,6 @@ import asyncio
 import atexit
 import logging
 import shutil
-import socket
 
 log = logging.getLogger(__name__)
 
@@ -68,30 +67,36 @@ class EmbeddedNats:
         interval = 0.1
         elapsed = 0.0
         while elapsed < timeout:
+            # Check if process died before probing TCP
+            if self.process and self.process.returncode is not None:
+                stderr_bytes = b""
+                if self.process.stderr:
+                    stderr_bytes = await self.process.stderr.read()
+                stderr_text = stderr_bytes.decode(errors="replace").strip()
+                raise RuntimeError(
+                    f"nats-server exited with code "
+                    f"{self.process.returncode}: {stderr_text}"
+                )
             try:
-                # Quick TCP connect check
-                with socket.create_connection(("127.0.0.1", self.port), timeout=0.5):
-                    pid = self.process.pid if self.process else 0
-                    log.info("Embedded nats-server ready (PID %d)", pid)
-                    return
-            except OSError:
+                # Non-blocking TCP connect check
+                _, writer = await asyncio.wait_for(
+                    asyncio.open_connection("127.0.0.1", self.port),
+                    timeout=0.5,
+                )
+                writer.close()
+                await writer.wait_closed()
+                pid = self.process.pid if self.process else 0
+                log.info("Embedded nats-server ready (PID %d)", pid)
+                return
+            except (OSError, asyncio.TimeoutError):
                 await asyncio.sleep(interval)
                 elapsed += interval
 
-        # Check if process died
-        if self.process and self.process.returncode is not None:
-            if self.process.stderr:
-                stderr_bytes = await self.process.stderr.read()
-            else:
-                stderr_bytes = b""
-            stderr_text = stderr_bytes.decode(errors="replace").strip()
-            raise RuntimeError(
-                f"nats-server exited with code {self.process.returncode}: {stderr_text}"
-            )
-
         raise RuntimeError(
-            f"nats-server not ready within {timeout}s — port {self.port} busy.\n"
-            "        Set NATS_URL to connect to an existing NATS server instead."
+            f"nats-server not ready within {timeout}s — "
+            f"port {self.port} busy.\n"
+            "        Set NATS_URL to connect to an existing NATS"
+            " server instead."
         )
 
     async def stop(self) -> None:

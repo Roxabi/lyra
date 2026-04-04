@@ -192,14 +192,19 @@ async def test_start_subscribes_and_stop_unsubscribes() -> None:
 
 @pytest.mark.asyncio
 async def test_cache_inbound_drops_when_full(caplog) -> None:
-    """cache_inbound() drops the entry and logs a warning when _cache is at max size."""
+    """cache_inbound drops and warns when _cache is at max size."""
     import logging
 
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener, _MAX_CACHE_SIZE
+    from lyra.adapters.nats_outbound_listener import (
+        _MAX_CACHE_SIZE,
+        NatsOutboundListener,
+    )
 
     nc = AsyncMock()
     adapter = AsyncMock()
-    listener = NatsOutboundListener(nc, Platform.TELEGRAM, "main", adapter)
+    listener = NatsOutboundListener(
+        nc, Platform.TELEGRAM, "main", adapter,
+    )
 
     # Fill cache to the limit using distinct fake entries
     for i in range(_MAX_CACHE_SIZE):
@@ -208,25 +213,33 @@ async def test_cache_inbound_drops_when_full(caplog) -> None:
         listener._cache_ts[fake.id] = 0.0
 
     overflow_msg = _make_tg_msg("overflow-msg")
-    with caplog.at_level(logging.WARNING, logger="lyra.adapters.nats_outbound_listener"):
+    _logger = "lyra.adapters.nats_outbound_listener"
+    with caplog.at_level(logging.WARNING, logger=_logger):
         listener.cache_inbound(overflow_msg)
 
     assert overflow_msg.id not in listener._cache
     assert len(listener._cache) == _MAX_CACHE_SIZE
-    assert any("_cache full" in record.message for record in caplog.records)
+    assert any(
+        "_cache full" in r.message for r in caplog.records
+    )
 
 
 @pytest.mark.asyncio
 async def test_stream_drops_when_at_max_streams(caplog) -> None:
-    """_handle_chunk drops a new stream and logs a warning when _stream_tasks is at max."""
+    """_handle_chunk drops new stream when _stream_tasks full."""
     import asyncio
     import logging
 
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener, _MAX_STREAMS
+    from lyra.adapters.nats_outbound_listener import (
+        _MAX_STREAMS,
+        NatsOutboundListener,
+    )
 
     nc = AsyncMock()
     adapter = AsyncMock()
-    listener = NatsOutboundListener(nc, Platform.TELEGRAM, "main", adapter)
+    listener = NatsOutboundListener(
+        nc, Platform.TELEGRAM, "main", adapter,
+    )
 
     # Fill stream_tasks to the limit with mock tasks
     for i in range(_MAX_STREAMS):
@@ -241,28 +254,35 @@ async def test_stream_drops_when_at_max_streams(caplog) -> None:
         "payload": {"text": "hello", "is_final": True},
         "done": True,
     }
-    with caplog.at_level(logging.WARNING, logger="lyra.adapters.nats_outbound_listener"):
+    _logger = "lyra.adapters.nats_outbound_listener"
+    with caplog.at_level(logging.WARNING, logger=_logger):
         await listener._handle(_make_nats_msg(chunk))
 
     assert new_stream_id not in listener._stream_tasks
     assert new_stream_id not in listener._stream_queues
-    assert any("_stream_tasks full" in record.message for record in caplog.records)
+    assert any(
+        "_stream_tasks full" in r.message for r in caplog.records
+    )
 
 
 @pytest.mark.asyncio
 async def test_reaper_evicts_stale_entries(caplog) -> None:
-    """_reap_stale() evicts entries whose timestamp exceeds _CACHE_TTL_SECONDS."""
+    """_reap_stale evicts entries exceeding _CACHE_TTL_SECONDS."""
     import asyncio
     import logging
+    import time
+    import unittest.mock as mock
 
     from lyra.adapters.nats_outbound_listener import (
-        NatsOutboundListener,
         _CACHE_TTL_SECONDS,
+        NatsOutboundListener,
     )
 
     nc = AsyncMock()
     adapter = AsyncMock()
-    listener = NatsOutboundListener(nc, Platform.TELEGRAM, "main", adapter)
+    listener = NatsOutboundListener(
+        nc, Platform.TELEGRAM, "main", adapter,
+    )
 
     stale_id = "stale-stream"
     fresh_id = "fresh-stream"
@@ -270,16 +290,16 @@ async def test_reaper_evicts_stale_entries(caplog) -> None:
     stale_msg = _make_tg_msg(stale_id)
     fresh_msg = _make_tg_msg(fresh_id)
 
-    import time
-
     listener._cache[stale_id] = stale_msg
-    listener._cache_ts[stale_id] = time.monotonic() - (_CACHE_TTL_SECONDS + 1)
+    listener._cache_ts[stale_id] = (
+        time.monotonic() - (_CACHE_TTL_SECONDS + 1)
+    )
 
     listener._cache[fresh_id] = fresh_msg
     listener._cache_ts[fresh_id] = time.monotonic()
 
-    # Patch sleep: return normally on the first call (so the reap body runs),
-    # then raise CancelledError on the second call to stop the loop.
+    # Return normally on first call (reap body runs),
+    # then CancelledError on second call to stop the loop.
     call_count = 0
 
     async def _sleep_once(_interval):
@@ -288,10 +308,12 @@ async def test_reaper_evicts_stale_entries(caplog) -> None:
         if call_count >= 2:
             raise asyncio.CancelledError
 
-    import unittest.mock as mock
-
-    with mock.patch("lyra.adapters.nats_outbound_listener.asyncio.sleep", side_effect=_sleep_once):
-        with caplog.at_level(logging.WARNING, logger="lyra.adapters.nats_outbound_listener"):
+    _target = (
+        "lyra.adapters.nats_outbound_listener.asyncio.sleep"
+    )
+    _logger = "lyra.adapters.nats_outbound_listener"
+    with mock.patch(_target, side_effect=_sleep_once):
+        with caplog.at_level(logging.WARNING, logger=_logger):
             try:
                 await listener._reap_stale()
             except asyncio.CancelledError:
@@ -300,4 +322,6 @@ async def test_reaper_evicts_stale_entries(caplog) -> None:
     assert stale_id not in listener._cache
     assert stale_id not in listener._cache_ts
     assert fresh_id in listener._cache
-    assert any("evicting stale" in record.message for record in caplog.records)
+    assert any(
+        "evicting stale" in r.message for r in caplog.records
+    )

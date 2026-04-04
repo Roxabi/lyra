@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
 class NatsSttClient:
     SUBJECT = "lyra.voice.stt.request"
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         nc: NATS,
         *,

@@ -145,7 +145,7 @@ class AudioPipeline:
             finally:
                 self._hub.inbound_audio_bus.task_done()
 
-    async def _process_audio_item(self, audio: InboundAudio) -> None:
+    async def _process_audio_item(self, audio: InboundAudio) -> None:  # noqa: C901, PLR0915
         from ..stt import is_whisper_noise
         from .hub import RoutingKey
 
@@ -313,7 +313,7 @@ class AudioPipeline:
         )
         await self._hub.dispatch_response(synthetic, Response(content=content))
 
-    async def synthesize_and_dispatch_audio(  # noqa: PLR0913
+    async def synthesize_and_dispatch_audio(  # noqa: PLR0913, C901
         self,
         msg: InboundMessage,
         text: str,

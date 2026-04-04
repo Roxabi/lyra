@@ -32,7 +32,6 @@ from lyra.bootstrap.multibot_wiring import (
     wire_discord_adapters,
     wire_telegram_adapters,
 )
-# Voice is NATS-only after ADR-039 — multibot mode sets stt/tts to None
 from lyra.config import (
     DiscordMultiConfig,
     TelegramMultiConfig,

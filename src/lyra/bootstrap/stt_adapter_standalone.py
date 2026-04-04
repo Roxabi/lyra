@@ -26,7 +26,7 @@ SUBJECT = "lyra.voice.stt.request"
 QUEUE_GROUP = "stt-workers"
 
 
-async def _bootstrap_stt_adapter_standalone(
+async def _bootstrap_stt_adapter_standalone(  # noqa: PLR0915 — startup wiring
     raw_config: dict,
     *,
     _stop: asyncio.Event | None = None,

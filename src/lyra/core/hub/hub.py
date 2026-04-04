@@ -32,8 +32,8 @@ from .pool_manager import PoolManager
 if TYPE_CHECKING:
     from collections import deque
 
-    from ...stt import STTService
-    from ...tts import TTSService
+    from ...stt import STTProtocol
+    from ...tts import TtsProtocol
     from ..circuit_breaker import CircuitRegistry
     from ..cli_pool import CliPool
     from ..memory import MemoryManager
@@ -76,8 +76,8 @@ class Hub(HubOutboundMixin):
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
         pairing_manager: "PairingManager | None" = None,
-        stt: "STTService | None" = None,
-        tts: "TTSService | None" = None,
+        stt: "STTProtocol | None" = None,
+        tts: "TtsProtocol | None" = None,
         debounce_ms: int = 0,
         cancel_on_new_message: bool = False,
         prefs_store: "PrefsStore | None" = None,
@@ -111,8 +111,8 @@ class Hub(HubOutboundMixin):
         self._msg_manager = msg_manager
         self._pairing_manager = pairing_manager
         self._message_index: MessageIndex | None = None
-        self._stt: STTService | None = stt
-        self._tts: TTSService | None = tts
+        self._stt: STTProtocol | None = stt
+        self._tts: TtsProtocol | None = tts
         self._pool_ttl = pool_ttl
         self._debounce_ms = debounce_ms
         self._cancel_on_new_message = cancel_on_new_message

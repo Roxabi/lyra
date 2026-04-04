@@ -2,6 +2,18 @@
 
 This directory contains supervisor configs for **production only** (roxabituwer, RTX 3080 10GB).
 
+## Programs
+
+| Program | Purpose | Notes |
+|---------|---------|-------|
+| `lyra_hub` | Hub process (NATS-connected) | Requires NATS |
+| `lyra_telegram` | Telegram adapter | Requires NATS |
+| `lyra_discord` | Discord adapter | Requires NATS |
+| `lyra_stt` | STT NATS adapter (voicecli) | Requires NATS + voicecli + RTX 3080 VRAM |
+| `lyra_tts` | TTS NATS adapter (voicecli) | Requires NATS + voicecli + RTX 3080 VRAM |
+| `voicecli_stt` | voicecli STT Unix-socket daemon | Optional inner daemon for lyra_stt |
+| `voicecli_tts` | voicecli TTS Unix-socket daemon | Optional inner daemon for lyra_tts |
+
 ## Intentionally absent (local-only)
 
 | Program | Reason |

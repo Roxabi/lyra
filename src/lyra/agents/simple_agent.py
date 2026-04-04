@@ -36,8 +36,8 @@ if TYPE_CHECKING:
 
     from lyra.core.render_events import RenderEvent
     from lyra.core.stores.agent_store import AgentStore
-    from lyra.stt import STTService
-    from lyra.tts import TTSService
+    from lyra.stt import STTProtocol
+    from lyra.tts import TtsProtocol
 
 log = logging.getLogger(__name__)
 
@@ -65,8 +65,8 @@ class SimpleAgent(AgentBase):
         provider: LlmProvider,
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
-        stt: "STTService | None" = None,
-        tts: "TTSService | None" = None,
+        stt: "STTProtocol | None" = None,
+        tts: "TtsProtocol | None" = None,
         runtime_config: RuntimeConfig | None = None,
         agents_dir: Path | None = None,
         agent_store: "AgentStore | None" = None,

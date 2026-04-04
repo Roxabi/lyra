@@ -102,6 +102,26 @@ def _adapter_discord() -> None:
     _run_adapter("discord")
 
 
+@adapter_app.command("stt")
+def _adapter_stt() -> None:
+    """Start the standalone STT adapter connected to NATS."""
+    from lyra.bootstrap.config import _load_raw_config
+    from lyra.bootstrap.stt_adapter_standalone import _bootstrap_stt_adapter_standalone
+
+    raw_config = _load_raw_config()
+    asyncio.run(_bootstrap_stt_adapter_standalone(raw_config))
+
+
+@adapter_app.command("tts")
+def _adapter_tts() -> None:
+    """Start the standalone TTS adapter connected to NATS."""
+    from lyra.bootstrap.config import _load_raw_config
+    from lyra.bootstrap.tts_adapter_standalone import _bootstrap_tts_adapter_standalone
+
+    raw_config = _load_raw_config()
+    asyncio.run(_bootstrap_tts_adapter_standalone(raw_config))
+
+
 def _run_adapter(platform: str) -> None:
     from lyra.bootstrap.adapter_standalone import _bootstrap_adapter_standalone
     from lyra.bootstrap.config import _load_raw_config

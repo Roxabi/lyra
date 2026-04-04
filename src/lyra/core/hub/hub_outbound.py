@@ -21,7 +21,7 @@ from ..render_events import TextRenderEvent
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-    from ...tts import TTSService
+    from ...tts import TtsProtocol
     from ..agent import AgentBase
     from ..agent_config import AgentTTSConfig
     from ..audio_pipeline import AudioPipeline
@@ -53,7 +53,7 @@ class HubOutboundMixin:
         circuit_registry: CircuitRegistry | None
         cli_pool: CliPool | None
         _msg_manager: MessageManager | None
-        _tts: TTSService | None
+        _tts: TtsProtocol | None
         _audio_pipeline: AudioPipeline
         _memory_tasks: set[asyncio.Task]
         _last_processed_at: float | None

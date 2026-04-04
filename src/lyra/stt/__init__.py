@@ -8,10 +8,21 @@ import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel
 
 log = logging.getLogger(__name__)
+
+
+@runtime_checkable
+class STTProtocol(Protocol):
+    async def transcribe(self, path: Path | str) -> "TranscriptionResult": ...
+
+
+class STTUnavailableError(Exception):
+    """Raised when the STT NATS adapter is unreachable (timeout or connection error)."""
+
 
 WHISPER_NOISE_TOKENS = {"[music]", "[applause]", "[laughter]", "[silence]", "[noise]"}
 _ALLOWED_AUDIO_EXTENSIONS = {".ogg", ".mp3", ".wav", ".m4a", ".webm", ".flac", ".opus"}

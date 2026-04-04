@@ -239,8 +239,8 @@ lyra bot add --platform discord --bot-id lyra
 
 This encrypts and stores the tokens in `~/.lyra/config.db`.
 
-> **Note:** `.env` is mostly for non-secret config. Required entries:
-> - `NATS_URL=nats://127.0.0.1:4222` — the Hub and adapters connect via NATS (set up in Step 10)
+> **Note:** `.env` is mostly for non-secret config. Key entries:
+> - `NATS_URL=nats://127.0.0.1:4222` — set this for multi-machine production (`lyra hub` + `lyra adapter`). Omit it for single-machine dev — `lyra start` auto-starts an embedded nats-server.
 > - `TELEGRAM_TOKEN`, `TELEGRAM_ADMIN_CHAT_ID` — monitoring cron reads these directly from `.env`
 >
 > See `.env.example` for all available options.
@@ -257,9 +257,11 @@ Follow the prompts to authenticate. Lyra uses Claude Code as its LLM backend —
 
 ---
 
-## Step 10 — NATS (required)
+## Step 10 — NATS (optional for single-machine dev)
 
-Lyra runs the Hub and adapters as separate processes connected via NATS. This is required even on a single machine.
+For **single-machine development**, no NATS setup is required. `lyra start` auto-starts an embedded nats-server when `NATS_URL` is not set in `.env`.
+
+For **multi-machine production** (hub and adapters on separate machines), install and configure a standalone NATS server:
 
 ```bash
 cd ~/projects/lyra
@@ -274,13 +276,13 @@ sudo install -m 644 deploy/nats/nats-local.conf /etc/nats/nats.conf
 sudo systemctl start nats.service
 sudo systemctl status nats.service
 
-# Add NATS_URL to lyra's .env
+# Add NATS_URL to lyra's .env (tells lyra hub and lyra adapter to use this server)
 echo "NATS_URL=nats://127.0.0.1:4222" >> ~/projects/lyra/.env
 ```
 
 > **Multi-machine (Hub on Machine 2):** Use `deploy/nats/nats.conf` instead (TLS + nkeys).
 > Generate credentials with `sudo deploy/nats/gen-certs.sh` and `sudo deploy/nats/gen-nkeys.sh`,
-> then add nkey auth to `.env`.
+> then add nkey auth to `.env`. Use `lyra hub` and `lyra adapter` as separate processes instead of `lyra start`.
 
 ---
 

@@ -19,8 +19,9 @@ Usage::
     ...
     await bus.stop()
 """
+from .connect import nats_connect
 from .nats_bus import NatsBus
 from .nats_channel_proxy import NatsChannelProxy
 from .render_event_codec import NatsRenderEventCodec
 
-__all__ = ["NatsBus", "NatsChannelProxy", "NatsRenderEventCodec"]
+__all__ = ["NatsBus", "NatsChannelProxy", "NatsRenderEventCodec", "nats_connect"]

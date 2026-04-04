@@ -17,10 +17,9 @@ import os
 import sys
 from pathlib import Path
 
-import nats
-
 from lyra.adapters.nats_outbound_listener import NatsOutboundListener
 from lyra.core.bus import Bus
+from lyra.nats import nats_connect
 from lyra.core.message import InboundAudio, InboundMessage, Platform
 from lyra.core.stores.credential_store import CredentialStore, LyraKeyring
 
@@ -44,7 +43,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
     if not nats_url:
         sys.exit("NATS_URL required for standalone adapter mode")
 
-    nc = await nats.connect(nats_url)
+    nc = await nats_connect(nats_url)
     log.info("adapter_standalone: connected to NATS at %s", nats_url)
 
     platform_enum = Platform(platform)

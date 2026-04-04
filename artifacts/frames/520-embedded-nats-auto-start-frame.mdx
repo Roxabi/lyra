@@ -1,0 +1,47 @@
+---
+title: Replace multibot with embedded NATS auto-start
+issue: 520
+status: approved
+tier: F-lite
+date: 2026-04-04
+---
+
+## Problem
+
+Lyra has two diverging bootstrap paths:
+
+1. **Multibot single-process** (`python -m lyra`) — hub + adapters in one process, no NATS. Zero-infra onboarding. ~1100 lines across 4 files.
+2. **NATS three-process** (`lyra hub` + `lyra adapter telegram` + `lyra adapter discord`) — production mode. Requires NATS server installed and running.
+
+Multibot is degrading: after #518 (STT/TTS NATS decoupling), voice is `None` in multibot mode. Maintaining two bootstrap paths means every new feature (identity aliases, event bus, audio pipeline) must be wired in both places.
+
+Meanwhile, NATS mode requires newcomers to install a NATS server binary, configure systemd, and run 3 separate processes — a significant barrier for someone just trying Lyra.
+
+## Who
+
+- **Primary:** New users / contributors cloning Lyra for the first time — need a one-command start
+- **Secondary:** Maintainer (Mickael) — maintaining two bootstrap paths is wasted effort
+
+## Constraints
+
+- `nats-server` binary must be available on the system (or bundled/downloaded) for embedded mode to work
+- Embedded NATS must be transparent — same behavior as explicit NATS, just auto-provisioned
+- Production deployments (`NATS_URL` set explicitly) must be unaffected
+- Shared code (`multibot_stores.py`, `_build_bot_auths`) is used by `hub_standalone.py` — rename, don't delete
+- Existing tests that validate store/wiring logic should be preserved (test the renamed modules)
+
+## Out of Scope
+
+- Bundling/downloading `nats-server` binary automatically (assume it's installed or installable via `make nats-install`)
+- Multi-machine embedded NATS (embedded = localhost only, single-machine dev)
+- Changing the NATS three-process production deployment
+
+## Complexity
+
+**Tier: F-lite** — Single domain (bootstrap), clear solution pattern (subprocess management), no architectural unknowns. The embedded NATS manager is new code but small (~50-80 lines: start subprocess, wait for ready, stop on exit). Risk: if the in-process hub+adapter unification is complex, may bump to F-full during spec.
+
+Signals observed:
+- ~10 files to modify/remove/rename
+- 1 new module (embedded NATS manager)
+- Single domain (backend bootstrap)
+- Clear prior art (many tools embed nats-server as subprocess)

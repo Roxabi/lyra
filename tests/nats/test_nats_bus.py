@@ -10,6 +10,7 @@ when the binary is not found in PATH.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 from datetime import datetime, timezone
 
 import pytest
@@ -438,3 +439,75 @@ class TestProtocolConformance:
 
         # Bus[T] generic alias can be used as a type annotation
         assert Bus is not None
+
+
+# ---------------------------------------------------------------------------
+# TestNatsBusQueueGroup — queue_group parameter forwarded to nc.subscribe()
+# ---------------------------------------------------------------------------
+
+
+@requires_nats_server
+class TestNatsBusQueueGroup:
+    async def test_queue_group_distributes_messages(self, nc: NATS) -> None:
+        """Two NatsBus subscribers in the same queue group share the delivery."""
+        # Arrange — publisher + two subscribers in the same queue group
+        publisher = NatsBus(nc=nc, bot_id="main", item_type=InboundMessage)
+        sub_a = NatsBus(
+            nc=nc,
+            bot_id="main",
+            item_type=InboundMessage,
+            queue_group="test-distribution",
+        )
+        sub_b = NatsBus(
+            nc=nc,
+            bot_id="main",
+            item_type=InboundMessage,
+            queue_group="test-distribution",
+        )
+        publisher.register(Platform.TELEGRAM)
+        sub_a.register(Platform.TELEGRAM)
+        sub_b.register(Platform.TELEGRAM)
+        await sub_a.start()
+        await sub_b.start()
+
+        try:
+            # Act — publish N messages, drain both subscribers
+            n = 10
+            for i in range(n):
+                msg = _make_msg(Platform.TELEGRAM)
+                msg = dataclasses.replace(msg, id=f"msg-{i}")
+                await publisher.put(Platform.TELEGRAM, msg)
+
+            received_a: list = []
+            received_b: list = []
+            # Drain with a bounded deadline
+            deadline = asyncio.get_event_loop().time() + 2.0
+            while len(received_a) + len(received_b) < n:
+                if asyncio.get_event_loop().time() > deadline:
+                    break
+                for bus, bucket in ((sub_a, received_a), (sub_b, received_b)):
+                    if bus.staging_qsize() > 0:
+                        bucket.append(await bus.get())
+
+            # Assert — every message delivered exactly once across the group
+            all_ids = {m.id for m in received_a} | {m.id for m in received_b}
+            assert len(received_a) + len(received_b) == n
+            assert len(all_ids) == n  # no duplicates
+            # Both subscribers received at least one (load balancing)
+            assert len(received_a) > 0
+            assert len(received_b) > 0
+        finally:
+            await sub_a.stop()
+            await sub_b.stop()
+
+
+def test_nats_bus_default_queue_group_is_empty() -> None:
+    """Default queue_group is empty string (backward-compatible, no group)."""
+    from unittest.mock import MagicMock
+
+    # Arrange / Act — uses a mock nc: no real NATS connection needed for this check
+    nc = MagicMock()
+    bus = NatsBus(nc=nc, bot_id="main", item_type=InboundMessage)
+
+    # Assert
+    assert bus._queue_group == ""

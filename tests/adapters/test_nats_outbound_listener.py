@@ -409,3 +409,39 @@ async def test_reaper_evicts_stale_entries(caplog) -> None:
     assert stale_id not in listener._stream_outbound
     mock_task.cancel.assert_called_once()
     assert stale_id not in listener._stream_tasks
+
+
+@pytest.mark.asyncio
+async def test_start_subscribes_with_queue_group() -> None:
+    """NatsOutboundListener.start() passes queue_group to nc.subscribe()."""
+    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+
+    # Arrange
+    nc = AsyncMock()
+    adapter = AsyncMock()
+    listener = NatsOutboundListener(
+        nc, Platform.TELEGRAM, "main", adapter,
+        queue_group="adapter-outbound-telegram-main",
+    )
+
+    # Act
+    await listener.start()
+
+    # Assert
+    nc.subscribe.assert_called_once()
+    _, kwargs = nc.subscribe.call_args
+    assert kwargs.get("queue") == "adapter-outbound-telegram-main"
+
+
+@pytest.mark.asyncio
+async def test_default_queue_group_is_empty() -> None:
+    """Default queue_group is empty string."""
+    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+
+    # Arrange / Act
+    nc = AsyncMock()
+    adapter = AsyncMock()
+    listener = NatsOutboundListener(nc, Platform.TELEGRAM, "main", adapter)
+
+    # Assert
+    assert listener._queue_group == ""

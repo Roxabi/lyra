@@ -46,6 +46,7 @@ from lyra.nats import nats_connect
 from lyra.nats.connect import scrub_nats_url
 from lyra.nats.nats_bus import NatsBus
 from lyra.nats.nats_channel_proxy import NatsChannelProxy
+from lyra.nats.queue_groups import HUB_INBOUND, HUB_INBOUND_AUDIO
 from lyra.nats.readiness import start_readiness_responder
 
 log = logging.getLogger(__name__)
@@ -162,9 +163,14 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
         bot_id="hub",
         item_type=InboundMessage,
         staging_maxsize=inbound_bus_cfg.staging_maxsize,
+        queue_group=HUB_INBOUND,
     )
     inbound_audio_bus: NatsBus[InboundAudio] = NatsBus(
-        nc=nc, bot_id="hub", item_type=InboundAudio, subject_prefix="lyra.inbound.audio"
+        nc=nc,
+        bot_id="hub",
+        item_type=InboundAudio,
+        subject_prefix="lyra.inbound.audio",
+        queue_group=HUB_INBOUND_AUDIO,
     )
 
     vault_dir = Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra")))

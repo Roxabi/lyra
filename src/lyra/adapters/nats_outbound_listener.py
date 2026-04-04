@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, cast
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 
+from lyra.adapters.nats_stream_decoder import decode_stream_events
 from lyra.core.message import (
     InboundAudio,
     InboundMessage,
@@ -18,6 +19,7 @@ from lyra.core.message import (
     Platform,
 )
 from lyra.nats._serialize import deserialize_dict as _deserialize_dict
+from lyra.nats._validate import validate_nats_token
 
 if TYPE_CHECKING:
     from lyra.core.hub.hub_protocol import ChannelAdapter
@@ -40,11 +42,15 @@ class NatsOutboundListener:
         platform: Platform,
         bot_id: str,
         adapter: "ChannelAdapter",
+        *,
+        queue_group: str = "",
     ) -> None:
+        validate_nats_token(queue_group, kind="queue_group", allow_empty=True)
         self._nc = nc
         self._platform = platform
         self._bot_id = bot_id
         self._adapter = adapter
+        self._queue_group = queue_group
         self._cache: dict[str, InboundMessage | InboundAudio] = {}
         self._cache_ts: dict[str, float] = {}
         self._stream_queues: dict[str, asyncio.Queue[dict]] = {}
@@ -69,7 +75,9 @@ class NatsOutboundListener:
     async def start(self) -> None:
         """Subscribe to the outbound NATS subject."""
         subject = f"lyra.outbound.{self._platform.value}.{self._bot_id}"
-        self._sub = await self._nc.subscribe(subject, cb=self._handle)
+        self._sub = await self._nc.subscribe(
+            subject, queue=self._queue_group, cb=self._handle
+        )
         self._reaper_task = asyncio.create_task(self._reap_stale())
 
     async def stop(self) -> None:
@@ -217,8 +225,7 @@ class NatsOutboundListener:
                 await q.get()
                 drained += 1
             log.warning(
-                "NatsOutboundListener: drained %d chunk(s)"
-                " for unknown stream_id=%r",
+                "NatsOutboundListener: drained %d chunk(s) for unknown stream_id=%r",
                 drained,
                 stream_id,
             )
@@ -226,43 +233,12 @@ class NatsOutboundListener:
             self._stream_queues.pop(stream_id, None)
             return
 
-        from lyra.nats.render_event_codec import NatsRenderEventCodec
-
-        async def _events():
-            expected_seq = 0
-            while True:
-                try:
-                    chunk = await asyncio.wait_for(q.get(), timeout=120.0)
-                except TimeoutError:
-                    log.warning(
-                        "NatsOutboundListener: stream timed out waiting for chunk"
-                        " stream_id=%r (120s)",
-                        stream_id,
-                    )
-                    break
-                seq = chunk.get("seq")
-                if seq is not None and seq != expected_seq:
-                    log.warning(
-                        "NatsOutboundListener: out-of-order chunk"
-                        " stream_id=%r expected_seq=%d got_seq=%d",
-                        stream_id,
-                        expected_seq,
-                        seq,
-                    )
-                expected_seq += 1
-                event_type = chunk.get("event_type", "text")
-                payload = chunk.get("payload", {})
-                is_done = chunk.get("done", False)
-                event = NatsRenderEventCodec.decode(event_type, payload)
-                if event is not None:
-                    yield event
-                if NatsRenderEventCodec.is_terminal(event_type, is_done):
-                    break
-
         outbound = self._stream_outbound.pop(stream_id, None)
         try:
             await self._adapter.send_streaming(
-                cast(InboundMessage, original_msg), _events(), outbound
+                cast(InboundMessage, original_msg),
+                decode_stream_events(stream_id, q),
+                outbound,
             )
         except Exception:
             log.exception(

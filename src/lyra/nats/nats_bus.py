@@ -34,7 +34,6 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import logging
-import re
 from typing import Any, Generic, TypeVar
 
 from nats.aio.client import Client as NATS
@@ -44,6 +43,7 @@ from nats.aio.subscription import Subscription
 from lyra.core.message import Platform
 from lyra.nats._sanitize import sanitize_platform_meta
 from lyra.nats._serialize import deserialize, serialize
+from lyra.nats._validate import validate_nats_token
 
 log = logging.getLogger(__name__)
 
@@ -77,7 +77,7 @@ class NatsBus(Generic[T]):
             subject collisions between different message types.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         nc: NATS,
         bot_id: str,
@@ -85,16 +85,15 @@ class NatsBus(Generic[T]):
         subject_prefix: str = "lyra.inbound",
         *,
         staging_maxsize: int = 500,
+        queue_group: str = "",
     ) -> None:
-        if not re.fullmatch(r'[A-Za-z0-9_.\-]+', subject_prefix):
-            raise ValueError(
-                f"Invalid subject_prefix for NATS: {subject_prefix!r} — "
-                "must match [A-Za-z0-9_.\\-]+ (no wildcards or spaces)"
-            )
+        validate_nats_token(subject_prefix, kind="subject_prefix")
+        validate_nats_token(queue_group, kind="queue_group", allow_empty=True)
         self._nc = nc
         self._bot_id = bot_id
         self._item_type = item_type
         self._subject_prefix = subject_prefix
+        self._queue_group = queue_group
         self._registrations: set[tuple[Platform, str]] = set()
         self._subscriptions: dict[tuple[Platform, str], Subscription] = {}
         self._staging: asyncio.Queue[T] = asyncio.Queue(maxsize=staging_maxsize)
@@ -123,11 +122,7 @@ class NatsBus(Generic[T]):
                 "subscriptions are already active."
             )
         resolved_bid = bot_id or self._bot_id
-        if not re.fullmatch(r'[A-Za-z0-9_-]+', resolved_bid):
-            raise ValueError(
-                f"Invalid bot_id for NATS subject: {resolved_bid!r} — "
-                "must match [A-Za-z0-9_-]+"
-            )
+        validate_nats_token(resolved_bid, kind="bot_id")
         if (platform, resolved_bid) in self._registrations:
             return  # Already registered — idempotent
         self._registrations.add((platform, resolved_bid))
@@ -251,6 +246,11 @@ class NatsBus(Generic[T]):
                     bot_id,
                 )
 
-        sub = await self._nc.subscribe(subject, cb=handler)
+        sub = await self._nc.subscribe(subject, queue=self._queue_group, cb=handler)
         self._subscriptions[(platform, bot_id)] = sub
-        log.debug("NatsBus subscribed: subject=%s bot_id=%s", subject, bot_id)
+        log.debug(
+            "NatsBus subscribed: subject=%s bot_id=%s queue_group=%r",
+            subject,
+            bot_id,
+            self._queue_group,
+        )

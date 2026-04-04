@@ -79,6 +79,10 @@ def create_health_app(hub: Hub) -> FastAPI:
             "uptime_s": round(uptime_s, 1),
             "circuits": circuits,
             "adapters": len(hub.adapter_registry),
+            "buses": (
+                hub.inbound_bus.subscription_count
+                + hub.inbound_audio_bus.subscription_count
+            ),
         }
 
         # Reaper fields only present when a CLI pool is configured

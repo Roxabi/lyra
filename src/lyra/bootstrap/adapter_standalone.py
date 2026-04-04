@@ -128,6 +128,10 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
             if not wired:
                 sys.exit("No Telegram adapters started — check credentials")
 
+            from lyra.nats.readiness import wait_for_hub
+
+            await wait_for_hub(nc)
+
             stop = _stop if _stop is not None else asyncio.Event()
             if _stop is None:
                 import signal
@@ -265,6 +269,10 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
 
             if not wired_dc:
                 sys.exit("No Discord adapters started — check credentials")
+
+            from lyra.nats.readiness import wait_for_hub
+
+            await wait_for_hub(nc)
 
             stop_dc = _stop if _stop is not None else asyncio.Event()
             if _stop is None:

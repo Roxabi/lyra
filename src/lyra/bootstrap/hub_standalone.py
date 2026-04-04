@@ -423,6 +423,12 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
         for d in dispatchers:
             await d.start()
 
+        from lyra.nats.readiness import start_readiness_responder
+
+        _readiness_sub = await start_readiness_responder(
+            nc, [hub.inbound_bus, hub.inbound_audio_bus]
+        )
+
         import uvicorn
 
         health_port = int(os.environ.get("LYRA_HEALTH_PORT", "8443"))

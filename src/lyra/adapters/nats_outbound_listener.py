@@ -175,9 +175,11 @@ class NatsOutboundListener:
         if stream_id is None:
             log.warning("NatsOutboundListener: chunk envelope missing stream_id")
             return
-        if stream_id not in self._stream_tasks and len(self._stream_tasks) >= _MAX_STREAMS:
+        at_limit = len(self._stream_tasks) >= _MAX_STREAMS
+        if stream_id not in self._stream_tasks and at_limit:
             log.warning(
-                "NatsOutboundListener: _stream_tasks full (%d streams), dropping stream_id=%r",
+                "NatsOutboundListener: _stream_tasks full"
+                " (%d streams), dropping stream_id=%r",
                 _MAX_STREAMS,
                 stream_id,
             )

@@ -7,7 +7,7 @@ import os
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from nats import NATS
+    from nats.aio.client import Client as NATS
 
     from lyra.nats.nats_stt_client import NatsSttClient
     from lyra.nats.nats_tts_client import NatsTtsClient

@@ -77,7 +77,7 @@ async def _bootstrap_tts_adapter_standalone(
     tts_service = TTSService(tts_cfg)
     log.info("tts_adapter: TTSService ready (engine=%s)", tts_cfg.engine or "default")
 
-    async def handler(msg: nats.aio.msg.Msg) -> None:
+    async def handler(msg) -> None:  # nats.aio.msg.Msg
         data: dict = {}
         response: dict
         try:
@@ -101,7 +101,7 @@ async def _bootstrap_tts_adapter_standalone(
 
             result: SynthesisResult = await tts_service.synthesize(
                 text,
-                agent_tts=agent_tts,
+                agent_tts=agent_tts,  # type: ignore[arg-type]  # duck-typed stand-in
                 **synth_kwargs,
             )
 

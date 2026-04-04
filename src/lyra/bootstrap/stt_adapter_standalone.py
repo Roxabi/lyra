@@ -48,7 +48,7 @@ async def _bootstrap_stt_adapter_standalone(  # noqa: PLR0915 — startup wiring
     stt_service = STTService(base_stt_cfg)
     log.info("stt_adapter: STTService ready (model=%s)", base_stt_cfg.model_size)
 
-    async def handler(msg: nats.aio.msg.Msg) -> None:
+    async def handler(msg) -> None:  # nats.aio.msg.Msg
         data: dict = {}
         response: dict
         try:

@@ -10,7 +10,10 @@ from __future__ import annotations
 
 import dataclasses
 import logging
-from typing import cast
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from lyra.core.stores.turn_store import TurnStore
 
 import pytest
 
@@ -167,7 +170,7 @@ class TestScopeValidation:
         hub = _make_hub()
         # TurnStore says this session belongs to a *different* pool
         hub._turn_store = cast(
-            "object",
+            "TurnStore",
             _FakeTurnStore({"sess-1": "telegram:main:chat:OTHER"}),
         )
         pool = hub.get_or_create_pool(pool_id, "lyra")
@@ -195,7 +198,7 @@ class TestScopeValidation:
         hub = _make_hub()
         # TurnStore says this session belongs to the *same* pool
         hub._turn_store = cast(
-            "object",
+            "TurnStore",
             _FakeTurnStore({"sess-live": pool_id}),
         )
         pool = hub.get_or_create_pool(pool_id, "lyra")
@@ -229,7 +232,7 @@ class TestScopeValidation:
         hub = _make_hub()
         # TurnStore has no record of this session
         hub._turn_store = cast(
-            "object",
+            "TurnStore",
             _FakeTurnStore({}),  # empty map → None for all session_ids
         )
         pool = hub.get_or_create_pool(pool_id, "lyra")
@@ -285,7 +288,7 @@ class TestScopeValidation:
         hub = _make_hub()
         # Even with a TurnStore wired, Path 2 must not fire
         hub._turn_store = cast(
-            "object",
+            "TurnStore",
             _FakeTurnStore({}),
         )
         pool = hub.get_or_create_pool(pool_id, "lyra")
@@ -307,7 +310,7 @@ class TestScopeValidation:
         pool_id = "telegram:main:chat:42"
         hub = _make_hub()
         hub._turn_store = cast(
-            "object",
+            "TurnStore",
             _FakeTurnStore({"sess-cross": "telegram:main:chat:DIFFERENT"}),
         )
         pool = hub.get_or_create_pool(pool_id, "lyra")

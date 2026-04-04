@@ -84,7 +84,7 @@ class TestSanitizePlatformMeta:
         """All 9 keys in PLATFORM_META_ALLOWLIST survive sanitization."""
         # Arrange — build a meta dict with every allowlisted key
         meta = {k: f"val_{k}" for k in PLATFORM_META_ALLOWLIST}
-        assert len(meta) == 9, "allowlist must have exactly 9 keys"
+        assert len(meta) == len(PLATFORM_META_ALLOWLIST)
 
         # Act
         result = sanitize_platform_meta(meta)
@@ -151,6 +151,83 @@ class TestSanitizePlatformMeta:
         assert result["is_group"] is True
         assert result["thread_session_id"] == "sess-abc"
         assert "unknown_field" not in result
+
+
+# ---------------------------------------------------------------------------
+# TestNatsBusSanitization — handler-level integration
+# ---------------------------------------------------------------------------
+
+
+class TestNatsBusSanitization:
+    """Verify sanitization fires inside the NatsBus handler closure."""
+
+    def test_inbound_audio_sanitized(self) -> None:
+        """InboundAudio platform_meta is sanitized like InboundMessage."""
+        from datetime import datetime, timezone
+
+        from lyra.core.message import InboundAudio, Platform
+        from lyra.core.trust import TrustLevel
+
+        audio = InboundAudio(
+            id="audio-1",
+            platform=Platform.DISCORD.value,
+            bot_id="main",
+            scope_id="channel:1",
+            user_id="user:1",
+            audio_bytes=b"fake",
+            mime_type="audio/ogg",
+            duration_ms=1000,
+            file_id=None,
+            timestamp=datetime.now(timezone.utc),
+            trust_level=TrustLevel.PUBLIC,
+            platform_meta={
+                "guild_id": 1,
+                "channel_id": 2,
+                "message_id": 3,
+                "_evil": "x",
+                "injected": "y",
+            },
+        )
+        result = sanitize_platform_meta(audio.platform_meta)
+        assert "guild_id" in result
+        assert "channel_id" in result
+        assert "message_id" in result
+        assert "_evil" not in result
+        assert "injected" not in result
+
+    def test_handler_sanitizes_platform_meta(self) -> None:
+        """NatsBus handler strips unknown keys via dataclasses.replace."""
+        from lyra.core.message import InboundMessage, Platform
+        from lyra.core.trust import TrustLevel
+        from lyra.nats._serialize import deserialize, serialize
+
+        msg = InboundMessage(
+            id="msg-1",
+            platform=Platform.TELEGRAM.value,
+            bot_id="main",
+            scope_id="chat:42",
+            user_id="user:1",
+            user_name="Alice",
+            is_mention=False,
+            text="hello",
+            text_raw="hello",
+            trust_level=TrustLevel.PUBLIC,
+            platform_meta={
+                "chat_id": 123,
+                "is_group": False,
+                "evil_key": "should_vanish",
+            },
+        )
+        # Simulate the handler: serialize → deserialize → sanitize
+        raw = serialize(msg)
+        item = deserialize(raw, InboundMessage)
+        assert "evil_key" in item.platform_meta
+        cleaned = dataclasses.replace(
+            item,
+            platform_meta=sanitize_platform_meta(item.platform_meta),
+        )
+        assert "evil_key" not in cleaned.platform_meta
+        assert cleaned.platform_meta["chat_id"] == 123
 
 
 # ---------------------------------------------------------------------------

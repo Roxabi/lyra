@@ -24,7 +24,10 @@ class TestNatsConnect:
         monkeypatch.setenv("NATS_NKEY_SEED_PATH", str(seed_file))
 
         mock_nc = AsyncMock()
-        with patch("lyra.nats.connect.nats.connect", new=AsyncMock(return_value=mock_nc)) as mock_connect:
+        mock_conn = AsyncMock(return_value=mock_nc)
+        with patch(
+            "lyra.nats.connect.nats.connect", new=mock_conn
+        ) as mock_connect:
             # Act
             result = await nats_connect("nats://localhost:4222")
 
@@ -38,12 +41,15 @@ class TestNatsConnect:
     async def test_connect_without_seed(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """nats.connect is called without nkeys_seed_str when env var is absent."""
+        """nats.connect called without nkeys_seed_str when env var absent."""
         # Arrange
         monkeypatch.delenv("NATS_NKEY_SEED_PATH", raising=False)
 
         mock_nc = AsyncMock()
-        with patch("lyra.nats.connect.nats.connect", new=AsyncMock(return_value=mock_nc)) as mock_connect:
+        mock_conn = AsyncMock(return_value=mock_nc)
+        with patch(
+            "lyra.nats.connect.nats.connect", new=mock_conn
+        ) as mock_connect:
             # Act
             result = await nats_connect("nats://localhost:4222")
 
@@ -55,7 +61,7 @@ class TestNatsConnect:
     async def test_connect_missing_file(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """SystemExit is raised when NATS_NKEY_SEED_PATH points to a non-existent file."""
+        """SystemExit when NATS_NKEY_SEED_PATH points to missing file."""
         # Arrange
         missing = tmp_path / "does_not_exist.seed"
         monkeypatch.setenv("NATS_NKEY_SEED_PATH", str(missing))

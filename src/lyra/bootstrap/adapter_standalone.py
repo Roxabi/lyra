@@ -19,9 +19,9 @@ from pathlib import Path
 
 from lyra.adapters.nats_outbound_listener import NatsOutboundListener
 from lyra.core.bus import Bus
-from lyra.nats import nats_connect
 from lyra.core.message import InboundAudio, InboundMessage, Platform
 from lyra.core.stores.credential_store import CredentialStore, LyraKeyring
+from lyra.nats import nats_connect
 
 log = logging.getLogger(__name__)
 

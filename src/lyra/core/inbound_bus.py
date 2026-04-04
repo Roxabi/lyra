@@ -177,3 +177,8 @@ class LocalBus(Generic[T]):
     def registered_platforms(self) -> frozenset[Platform]:
         """Return the set of platforms with a registered queue."""
         return frozenset(self._queues)
+
+    @property
+    def subscription_count(self) -> int:
+        """LocalBus has no remote subscriptions — always 0."""
+        return 0

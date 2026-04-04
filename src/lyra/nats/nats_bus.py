@@ -208,6 +208,11 @@ class NatsBus(Generic[T]):
         """Return the set of currently registered platforms."""
         return frozenset(p for p, _ in self._registrations)
 
+    @property
+    def subscription_count(self) -> int:
+        """Return the number of active NATS subscriptions."""
+        return len(self._subscriptions)
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------

@@ -78,3 +78,13 @@ class Bus(Protocol[T]):
     def registered_platforms(self) -> frozenset[Platform]:
         """Return the set of platforms with a registered queue."""
         ...
+
+    @property
+    def subscription_count(self) -> int:
+        """Return the number of active transport subscriptions.
+
+        Network-backed implementations (e.g. ``NatsBus``) report the number
+        of live NATS subscriptions. In-process implementations
+        (e.g. ``LocalBus``) report ``0`` — they have no remote subscriptions.
+        """
+        ...

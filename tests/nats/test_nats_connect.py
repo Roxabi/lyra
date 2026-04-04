@@ -32,10 +32,12 @@ class TestNatsConnect:
             result = await nats_connect("nats://localhost:4222")
 
             # Assert
-            mock_connect.assert_called_once_with(
-                "nats://localhost:4222",
-                nkeys_seed_str=seed_content,
-            )
+            mock_connect.assert_called_once()
+            call_kwargs = mock_connect.call_args.kwargs
+            assert call_kwargs["nkeys_seed_str"] == seed_content
+            assert "error_cb" in call_kwargs
+            assert "disconnected_cb" in call_kwargs
+            assert "reconnected_cb" in call_kwargs
             assert result is mock_nc
 
     async def test_connect_without_seed(
@@ -54,8 +56,10 @@ class TestNatsConnect:
             result = await nats_connect("nats://localhost:4222")
 
             # Assert — nkeys_seed_str must NOT be present in the call
-            mock_connect.assert_called_once_with("nats://localhost:4222")
-            assert "nkeys_seed_str" not in mock_connect.call_args.kwargs
+            mock_connect.assert_called_once()
+            call_kwargs = mock_connect.call_args.kwargs
+            assert "nkeys_seed_str" not in call_kwargs
+            assert "error_cb" in call_kwargs
             assert result is mock_nc
 
     async def test_connect_missing_file(

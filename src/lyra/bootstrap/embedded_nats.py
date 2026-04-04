@@ -9,7 +9,13 @@ from __future__ import annotations
 import asyncio
 import atexit
 import logging
+import os
 import shutil
+import sys
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from nats.aio.client import Client as NATS
 
 log = logging.getLogger(__name__)
 
@@ -133,3 +139,46 @@ class EmbeddedNats:
         if self._atexit_registered:
             atexit.unregister(self._kill_sync)
             self._atexit_registered = False
+
+
+async def ensure_nats(
+    nats_url_env: str | None,
+) -> tuple[NATS, EmbeddedNats | None, str]:
+    """Return a NATS connection, optionally starting an embedded server.
+
+    If *nats_url_env* is falsy, starts an embedded nats-server and sets
+    ``NATS_URL`` in the environment. Otherwise connects to the given URL.
+
+    Returns ``(nc, embedded_or_none, nats_url)``.
+    """
+    from lyra.nats import nats_connect
+    from lyra.nats.connect import scrub_nats_url
+
+    embedded: EmbeddedNats | None = None
+    nats_url = nats_url_env
+
+    if not nats_url:
+        embedded = EmbeddedNats()
+        try:
+            await embedded.start()
+            await embedded.wait_ready()
+        except (FileNotFoundError, RuntimeError) as exc:
+            sys.exit(str(exc))
+        nats_url = embedded.url
+        os.environ["NATS_URL"] = nats_url
+        log.info(
+            "NATS_URL not set — started embedded nats-server on %s",
+            nats_url,
+        )
+    else:
+        log.info("Using external NATS at %s", scrub_nats_url(nats_url))
+
+    try:
+        nc = await nats_connect(nats_url)
+        log.info("Connected to NATS at %s", scrub_nats_url(nats_url))
+    except Exception as exc:
+        if embedded:
+            await embedded.stop()
+        sys.exit(f"Failed to connect to NATS at {nats_url!r}: {exc}")
+
+    return nc, embedded, nats_url

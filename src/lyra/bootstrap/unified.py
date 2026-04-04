@@ -1,10 +1,4 @@
-"""Unified bootstrap — single-process hub + adapters with optional embedded NATS.
-
-Replaces the old multibot bootstrap. When NATS_URL is not set, automatically
-starts an embedded nats-server subprocess on localhost:4222. When NATS_URL is
-set, connects to the external server. In both cases, hub and adapters run in
-one process using the NATS message bus internally.
-"""
+"""Unified bootstrap — single-process hub + adapters with optional embedded NATS."""
 
 from __future__ import annotations
 
@@ -36,7 +30,7 @@ from lyra.bootstrap.config import (
     _load_pairing_config,
     _load_pool_config,
 )
-from lyra.bootstrap.embedded_nats import EmbeddedNats
+from lyra.bootstrap.embedded_nats import ensure_nats
 from lyra.bootstrap.hub_standalone import _acquire_lockfile, _release_lockfile
 from lyra.config import load_multibot_config
 from lyra.core.agent import Agent
@@ -46,8 +40,6 @@ from lyra.core.hub import Hub
 from lyra.core.hub.event_bus import PipelineEventBus
 from lyra.core.message import InboundAudio, InboundMessage
 from lyra.core.stores.pairing import PairingManager, set_pairing_manager
-from lyra.nats import nats_connect
-from lyra.nats.connect import scrub_nats_url
 from lyra.nats.nats_bus import NatsBus
 
 log = logging.getLogger(__name__)
@@ -58,46 +50,9 @@ async def _bootstrap_unified(  # noqa: C901, PLR0915
     *,
     _stop: asyncio.Event | None = None,
 ) -> None:
-    """Wire hub + adapters in a single process with NATS message bus.
-
-    When NATS_URL is not set, starts an embedded nats-server subprocess
-    on localhost:4222. When NATS_URL is set, connects to the external
-    server (no embedded process).
-    """
-    embedded: EmbeddedNats | None = None
-    nats_url = os.environ.get("NATS_URL")
-
-    if not nats_url:
-        embedded = EmbeddedNats()
-        try:
-            await embedded.start()
-            await embedded.wait_ready()
-        except FileNotFoundError as exc:
-            sys.exit(str(exc))
-        except RuntimeError as exc:
-            sys.exit(str(exc))
-        nats_url = embedded.url
-        os.environ["NATS_URL"] = nats_url
-        log.info(
-            "NATS_URL not set — started embedded nats-server on %s",
-            nats_url,
-        )
-    else:
-        log.info("Using external NATS at %s", scrub_nats_url(nats_url))
-
+    """Wire hub + adapters in one process with NATS (embedded or external)."""
+    nc, embedded, _ = await ensure_nats(os.environ.get("NATS_URL"))
     _acquire_lockfile()
-
-    try:
-        nc = await nats_connect(nats_url)
-        log.info(
-            "Connected to NATS at %s", scrub_nats_url(nats_url)
-        )
-    except Exception as exc:
-        if embedded:
-            await embedded.stop()
-        _release_lockfile()
-        sys.exit(f"Failed to connect to NATS at {nats_url!r}: {exc}")
-
     try:
         inbound_bus_cfg = _load_inbound_bus_config(raw_config)
         inbound_bus: NatsBus[InboundMessage] = NatsBus(
@@ -218,15 +173,10 @@ async def _bootstrap_unified(  # noqa: C901, PLR0915
                 await pm.connect()
                 set_pairing_manager(pm)
 
-            # Voice: NATS-connected STT/TTS services
-            from lyra.bootstrap.voice_overlay import (
-                init_nats_stt,
-                init_nats_tts,
-            )
+            from lyra.bootstrap.voice_overlay import init_nats_stt, init_nats_tts
 
             stt_service = init_nats_stt(nc)
             tts_service = init_nats_tts(nc, stt_service)
-
             cli_pool_cfg = _load_cli_pool_config(raw_config)
             hub_cfg = _load_hub_config(raw_config)
             pool_cfg = _load_pool_config(raw_config)

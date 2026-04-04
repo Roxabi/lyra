@@ -106,16 +106,12 @@ def _patch_nats_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
     """Patch NATS components so _bootstrap_unified never touches a real server."""
     fake_nc = AsyncMock()
     fake_nc.close = AsyncMock()
-    monkeypatch.setattr(
-        unified_mod, "nats_connect", AsyncMock(return_value=fake_nc)
-    )
     fake_embedded = MagicMock()
-    fake_embedded.start = AsyncMock()
-    fake_embedded.wait_ready = AsyncMock()
     fake_embedded.stop = AsyncMock()
-    fake_embedded.url = "nats://localhost:4222"
     monkeypatch.setattr(
-        unified_mod, "EmbeddedNats", lambda **kw: fake_embedded
+        unified_mod,
+        "ensure_nats",
+        AsyncMock(return_value=(fake_nc, fake_embedded, "nats://localhost:4222")),
     )
     monkeypatch.setattr(unified_mod, "_acquire_lockfile", lambda: None)
     monkeypatch.setattr(unified_mod, "_release_lockfile", lambda: None)

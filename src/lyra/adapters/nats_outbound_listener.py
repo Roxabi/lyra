@@ -1,6 +1,4 @@
-"""NatsOutboundListener — subscribes to lyra.outbound.{platform}.{bot_id} and dispatches
-outbound messages back to the adapter (send / send_streaming / render_attachment).
-"""
+"""NatsOutboundListener — NATS outbound subject → adapter dispatch."""
 from __future__ import annotations
 
 import asyncio

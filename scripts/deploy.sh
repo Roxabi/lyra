@@ -14,6 +14,7 @@ LYRA_DIR="$HOME/projects/lyra"
 VOICE_DIR="$HOME/projects/voiceCLI"
 SCTL="$HOME/projects/lyra/deploy/supervisor/supervisorctl.sh"
 LOG_FILE="$HOME/.local/state/lyra/logs/deploy.log"
+FAIL_FILE="$HOME/.local/state/lyra/deploy_failed_shas.txt"
 
 mkdir -p "$(dirname "$LOG_FILE")"
 
@@ -31,20 +32,27 @@ LYRA_LOCAL=$(git rev-parse HEAD)
 LYRA_REMOTE=$(git rev-parse origin/staging)
 
 if [ "$LYRA_LOCAL" != "$LYRA_REMOTE" ]; then
-    log "lyra: new version $LYRA_LOCAL -> $LYRA_REMOTE"
-
-    # Reset generated files that may differ between machines (e.g. uv.lock after voiceCLI re-lock)
-    git checkout -- uv.lock 2>/dev/null || true
-    timeout 30 git pull origin staging 2>&1 | tee -a "$LOG_FILE"
-    timeout 60 uv sync --all-extras --frozen 2>&1 | tee -a "$LOG_FILE"
-
-    if ! timeout 120 uv run pytest --tb=short -q 2>&1 | tee -a "$LOG_FILE"; then
-        log "ERROR: lyra tests failed — rolling back."
-        git reset --hard "$LYRA_LOCAL" 2>&1 | tee -a "$LOG_FILE"
-        uv sync --all-extras --frozen 2>&1 | tee -a "$LOG_FILE"
-        exit 1
+    # Skip SHAs we've already rolled back — prevents pull/test/fail/rollback loops on broken staging.
+    # Cleared automatically when staging moves forward to a new SHA. Delete $FAIL_FILE to force a retry.
+    if [ -f "$FAIL_FILE" ] && grep -Fxq "$LYRA_REMOTE" "$FAIL_FILE"; then
+        : # known-failing SHA — wait silently for a new commit
     else
-        LYRA_UPDATED=true
+        log "lyra: new version $LYRA_LOCAL -> $LYRA_REMOTE"
+
+        # Reset generated files that may differ between machines (e.g. uv.lock after voiceCLI re-lock)
+        git checkout -- uv.lock 2>/dev/null || true
+        timeout 30 git pull origin staging 2>&1 | tee -a "$LOG_FILE"
+        timeout 60 uv sync --all-extras --frozen 2>&1 | tee -a "$LOG_FILE"
+
+        if ! timeout 120 uv run pytest --tb=short -q 2>&1 | tee -a "$LOG_FILE"; then
+            log "ERROR: lyra tests failed for $LYRA_REMOTE — rolling back and marking SHA as bad."
+            echo "$LYRA_REMOTE" >> "$FAIL_FILE"
+            git reset --hard "$LYRA_LOCAL" 2>&1 | tee -a "$LOG_FILE"
+            uv sync --all-extras --frozen 2>&1 | tee -a "$LOG_FILE"
+            exit 1
+        else
+            LYRA_UPDATED=true
+        fi
     fi
 fi
 

@@ -43,7 +43,7 @@ This runs `scripts/deploy.sh` on Machine 1. The script checks **two repos indepe
 
 **Smart restart** — only the services whose repo changed are restarted. If neither repo has new commits, the script exits without touching supervisor.
 
-**Auto re-lock** — when voiceCLI updates, the script also runs `uv lock --upgrade-package voicecli` inside Lyra's `.venv` so the pinned dependency stays in sync, then marks Lyra as updated too (both sets of adapters restart).
+**Auto re-lock** — when voiceCLI updates, the script runs `uv sync --upgrade-package voicecli` inside Lyra's `.venv` so the pinned dependency stays in sync. This also triggers a full Lyra restart (hub + both adapters) to pick up the new dependency — so a voiceCLI-only change restarts all five services.
 
 **Test gate** — after pulling `lyra`, `pytest` runs before the restart. A test failure rolls back to the previous commit; voiceCLI is not pulled in that run.
 
@@ -80,6 +80,7 @@ NATS_URL=nats://127.0.0.1:4222
 ANTHROPIC_API_KEY=sk-ant-...     # for anthropic-sdk backend
 LYRA_HEALTH_SECRET=...           # for authenticated /health endpoint
 LYRA_CONFIG_SECRET=...           # for /config HTTP endpoint
+LYRA_VAULT_DIR=~/.lyra           # override agent DB + config directory (default: ~/.lyra)
 ```
 
 ```bash

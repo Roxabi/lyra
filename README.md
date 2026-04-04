@@ -188,7 +188,7 @@ lyra agent edit <name>            # edit an agent interactively in DB
 lyra agent validate <name>        # validate agent schema + constraints
 lyra agent assign <name> --platform telegram --bot <bot_id>
 lyra agent delete <name>          # refuses if bot still assigned
-lyra agent create                 # create a new agent (writes directly to DB)
+lyra agent create                 # interactively create a new agent TOML (import with `lyra agent init`)
 lyra config show                  # display parsed config.toml
 lyra config validate              # check tokens + env vars are set
 lyra --version
@@ -207,15 +207,20 @@ Send these directly in Telegram or Discord:
 | `/summarize <url>` | Scrape URL → bullet-point summary |
 | `/search <query>` | Full-text search over vault |
 | `<url>` (bare) | Auto-rewritten to `/vault-add <url>` |
-| `/clear` | Reset conversation history |
+| `/clear` / `/new` | Reset conversation history |
+| `/stop` | Cancel current processing turn |
 | `/voice <text>` | Send voice reply — prompt routes through LLM then TTS (`voicecli`) |
+| `/workspace <name>` | Switch working directory to named workspace |
+| `/circuit` | Show circuit breaker status (admin) |
+| `/routing` | Show smart routing decisions (admin) |
+| `/config` | Show/set runtime config (admin) |
 | `/help` | List all available commands |
 
 > See [COMMANDS.md](docs/COMMANDS.md) for the full command reference, workspace commands, and how to add plugins.
 
 ## Operations (Makefile)
 
-Machine connection is configured in `.env` (see `.env.example`):
+The Makefile includes `hub.mk` from the parent `~/projects/` directory for shared service management targets (`svc.sh`). Machine connection is configured in `.env` (see `.env.example`):
 
 ```bash
 DEPLOY_HOST=user@your-hub-ip          # SSH target for production
@@ -252,7 +257,7 @@ src/lyra/
   stt/        — STTService (faster-whisper)
   tts/        — TTS pipeline (voicecli, OGG/Opus)
   commands/   — command handlers (echo, pairing, search)
-  monitoring/ — health checks + escalation
+  monitoring/ — health checks, escalation + Telegram startup notification
 tests/        — pytest-asyncio + pytest-cov (core, adapters, llm, cli, nats)
 docs/         — ARCHITECTURE.md, ROADMAP.md, QUICKSTART.md, 38 ADRs
 ```

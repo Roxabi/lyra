@@ -99,7 +99,7 @@ The old single-process mode (`python -m lyra --adapter telegram` → `_bootstrap
 
 ## Verification Summary
 
-_Fact-checked 2026-03-17 against `src/lyra/`, `docs/`, and git history._
+_Fact-checked 2026-04-04 against `src/lyra/`, `docs/`, and git history._
 
 | # | Claim | Result |
 |---|-------|--------|
@@ -114,3 +114,9 @@ _Fact-checked 2026-03-17 against `src/lyra/`, `docs/`, and git history._
 | 9 | `cwd` in `config.toml [defaults]` | ✅ Confirmed (`config.toml:3-4`) |
 | 10 | `lyra agent unassign` command (missing) | ➕ Added — exists in `cli_agent_crud.py` |
 | 11 | `lyra agent create <name>` command (missing) | ➕ Added — documented in `docs/COMMANDS.md` |
+| 12 | `lyra agent create` writes to DB | ❌ Fixed → currently writes TOML, not DB (TODO #268). README + COMMANDS.md corrected |
+| 13 | COMMANDS.md agent subcommand list | ❌ Fixed → was missing 9 subcommands (init, show, edit, assign, unassign, delete, patch, refine) |
+| 14 | `LYRA_VAULT_DIR` env var undocumented | ➕ Added to DEPLOYMENT.md env section |
+| 15 | Makefile uses `hub.mk` include pattern | ➕ Added to README Operations section |
+| 16 | Hub startup Telegram notification | ➕ Noted in README structure section (`hub_standalone.py`) |
+| 17 | DEPLOYMENT.md smart restart: voiceCLI triggers full restart | ❌ Fixed → clarified that voiceCLI change restarts all 5 services |

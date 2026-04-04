@@ -32,9 +32,18 @@ source .venv/bin/activate
 
 | Command | Description |
 |---------|-------------|
-| `lyra agent create <name>` | Create a new agent (writes directly to DB) |
+| `lyra agent init` | Seed DB from TOML files (first-time setup) |
+| `lyra agent init --force` | Overwrite existing DB rows with TOML |
 | `lyra agent list` | List all discovered agents |
+| `lyra agent show <name>` | Full config for one agent |
+| `lyra agent create` | Interactively create a new agent TOML |
+| `lyra agent edit <name>` | Edit an agent interactively in DB |
 | `lyra agent validate [<name>]` | Validate agent TOML config(s) |
+| `lyra agent assign <name> --platform <p> --bot <id>` | Assign agent to a bot |
+| `lyra agent unassign <name> --platform <p> --bot <id>` | Remove agent-bot assignment |
+| `lyra agent delete <name>` | Delete agent (refuses if bot still assigned) |
+| `lyra agent patch <name> --field <f> --value <v>` | Update a single agent field |
+| `lyra agent refine <name>` | Interactively refine agent persona/voice |
 
 **Config management**
 

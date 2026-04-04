@@ -554,3 +554,41 @@ async def test_stream_error_no_queue_cleans_cache() -> None:
     assert msg.id not in listener._cache
     assert msg.id not in listener._cache_ts
     assert msg.id not in listener._stream_outbound
+
+
+@pytest.mark.asyncio
+async def test_stream_error_unknown_stream_id_is_noop() -> None:
+    """stream_error with a stream_id the listener has no state for is a no-op.
+
+    Defense-in-depth: a forged stream_error with a random stream_id must NOT
+    pollute the tombstone set or evict unrelated cache entries. Enforcement of
+    publisher identity belongs at the NATS auth layer; this test guards the
+    code-level blast-radius reduction.
+    """
+    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+
+    nc = AsyncMock()
+    adapter = AsyncMock()
+    listener = NatsOutboundListener(nc, Platform.TELEGRAM, "main", adapter)
+
+    # A legitimate cached message that must not be disturbed.
+    cached = _make_tg_msg("legit-msg-id")
+    listener.cache_inbound(cached)
+
+    # Forged stream_error for a stream_id the listener has never seen.
+    error_envelope = {
+        "type": "stream_error",
+        "stream_id": "forged-stream-id-42",
+        "reason": "attacker",
+    }
+    await listener._handle(_make_nats_msg(error_envelope))
+
+    # Nothing in listener state should reference the forged id.
+    assert "forged-stream-id-42" not in listener._terminated_streams
+    assert "forged-stream-id-42" not in listener._cache
+    assert "forged-stream-id-42" not in listener._stream_outbound
+    assert "forged-stream-id-42" not in listener._stream_queues
+    assert "forged-stream-id-42" not in listener._stream_tasks
+
+    # The legitimate cache entry is untouched.
+    assert cached.id in listener._cache

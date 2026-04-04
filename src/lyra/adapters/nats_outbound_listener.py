@@ -10,7 +10,10 @@ from typing import TYPE_CHECKING, Any, cast
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 
-from lyra.adapters.nats_stream_decoder import decode_stream_events
+from lyra.adapters.nats_stream_decoder import (
+    decode_stream_events,
+    handle_stream_error as _handle_stream_error_impl,
+)
 from lyra.core.message import (
     InboundAudio,
     InboundMessage,
@@ -59,8 +62,8 @@ class NatsOutboundListener:
         self._sub: Any = None  # nats.aio.subscription.Subscription | None
         self._reaper_task: asyncio.Task[None] | None = None
         # Tombstone set: stream_ids that received stream_error, used to reject
-        # late-arriving chunks after a stream has been terminated.
-        # Bounded to 500 entries; oldest entry evicted when full.
+        # late-arriving chunks after a stream has been terminated. Bounded to
+        # _MAX_TERMINATED_STREAMS; an arbitrary entry is evicted when full.
         self._terminated_streams: set[str] = set()
 
     def cache_inbound(self, msg: InboundMessage | InboundAudio) -> None:
@@ -189,41 +192,8 @@ class NatsOutboundListener:
             log.warning("NatsOutboundListener: failed to deserialize stream outbound")
 
     def _handle_stream_error(self, data: dict) -> None:
-        """Handle stream_error envelope — terminate or clean up the stream."""
-        stream_id = data.get("stream_id")
-        if stream_id is None:
-            return
-        q = self._stream_queues.get(stream_id)
-        if q is not None:
-            try:
-                q.put_nowait({"event_type": "stream_error", "done": True})
-            except asyncio.QueueFull:
-                log.warning(
-                    "NatsOutboundListener: stream queue full, cannot enqueue"
-                    " stream_error for stream_id=%r",
-                    stream_id,
-                )
-            # Record tombstone so late-arriving chunks are rejected
-            if len(self._terminated_streams) >= 500:
-                self._terminated_streams.pop()
-            self._terminated_streams.add(stream_id)
-        else:
-            # Race: error before first chunk or after stream_end already cleaned up
-            # Record tombstone before cleaning cache so late chunks are rejected
-            if len(self._terminated_streams) >= 500:
-                self._terminated_streams.pop()
-            self._terminated_streams.add(stream_id)
-            self._cache.pop(stream_id, None)
-            self._cache_ts.pop(stream_id, None)
-            self._stream_outbound.pop(stream_id, None)
-            # Symmetry with _drain_stream's finally block — ensure no stale entries
-            self._stream_tasks.pop(stream_id, None)
-            self._stream_queues.pop(stream_id, None)
-            log.warning(
-                "NatsOutboundListener: stream_error for unknown/finished"
-                " stream_id=%r",
-                stream_id,
-            )
+        """Dispatch to the stream_error handler in _nats_outbound_stream."""
+        _handle_stream_error_impl(self, data)
 
     async def _handle_chunk(self, data: dict) -> None:
         stream_id = data.get("stream_id")

@@ -168,12 +168,12 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
     except Exception as exc:
         sys.exit(f"Failed to connect to NATS at {nats_url!r}: {exc}")
 
-    _early_inbound_bus_cfg = _load_inbound_bus_config(raw_config)
+    inbound_bus_cfg = _load_inbound_bus_config(raw_config)
     inbound_bus: NatsBus[InboundMessage] = NatsBus(
         nc=nc,
         bot_id="hub",
         item_type=InboundMessage,
-        staging_maxsize=_early_inbound_bus_cfg.staging_maxsize,
+        staging_maxsize=inbound_bus_cfg.staging_maxsize,
     )
     inbound_audio_bus: NatsBus[InboundAudio] = NatsBus(
         nc=nc, bot_id="hub", item_type=InboundAudio, subject_prefix="lyra.inbound.audio"
@@ -279,7 +279,6 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
         hub_cfg = _load_hub_config(raw_config)
         pool_cfg = _load_pool_config(raw_config)
         llm_cfg = _load_llm_config(raw_config)
-        inbound_bus_cfg = _load_inbound_bus_config(raw_config)
         debouncer_cfg = _load_debouncer_config(raw_config)
         event_bus_cfg = _load_event_bus_config(raw_config)
         event_bus = PipelineEventBus(maxsize=event_bus_cfg.queue_maxsize)

@@ -56,9 +56,9 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
             disconnected_cb=_nats_disconnected_cb,
             reconnected_cb=_nats_reconnected_cb,
         )
+        log.info("adapter_standalone: connected to NATS at %s", nats_url)
     except Exception as exc:
         sys.exit(f"Failed to connect to NATS at {nats_url!r}: {exc}")
-    log.info("adapter_standalone: connected to NATS at %s", nats_url)
 
     platform_enum = Platform(platform)
 

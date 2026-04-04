@@ -287,7 +287,7 @@ else
   echo ""
   echo "     claude"
   echo ""
-  echo "  Optional — NATS setup for multi-machine:"
+  echo "  Recommended — NATS setup for multi-machine production (embedded nats-server covers dev/single-machine use):"
   echo ""
   echo "     cd ~/projects/lyra && make nats-install"
   echo ""

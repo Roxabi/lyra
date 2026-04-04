@@ -6,7 +6,7 @@
 
 ## The `lyra` CLI
 
-The `lyra` CLI is the main entry point for managing Lyra from your shell. It replaces the former `python -m lyra` and `lyra-agent` commands.
+The `lyra` CLI is the main entry point for managing Lyra from your shell.
 
 ### Installation
 
@@ -24,7 +24,7 @@ source .venv/bin/activate
 
 | Command | Description |
 |---------|-------------|
-| `lyra` / `lyra start` | Start the Lyra server |
+| `lyra` / `lyra start` | Start hub + adapters in one process (auto-starts embedded NATS if `NATS_URL` is not set) |
 | `lyra --version` / `lyra -V` | Print the installed version |
 | `lyra --help` | List all available subcommands |
 

@@ -134,7 +134,7 @@ sends reply to user                                                     sends re
 
 All three processes run on Machine 1. NATS topics: `lyra.inbound.<platform>.<bot_id>` (adapter→hub) and `lyra.outbound.<platform>.<bot_id>` (hub→adapter). On startup, the hub sends a Telegram notification to the admin chat (if `TELEGRAM_TOKEN` and `TELEGRAM_ADMIN_CHAT_ID` are set) via `_notify_startup()` in `bootstrap/hub_standalone.py`.
 
-**Legacy single-process mode** (`python -m lyra --adapter telegram` → `_bootstrap_multibot`) still exists in the codebase but is no longer the production deployment mode.
+**Unified single-process mode** (`lyra start` → `_bootstrap_unified`) runs hub + adapters in one process with NATS messaging internally. When `NATS_URL` is not set, an embedded nats-server is auto-started.
 
 **Adapter registry** (`dict[tuple[Platform, str], ChannelAdapter]`) — keyed by `(platform, bot_id)`. Multiple bots per platform are supported; each registers independently via `hub.register_adapter(Platform.TELEGRAM, bot_id, adapter)`. The OutboundDispatcher routes responses back to the originating channel.
 
@@ -250,7 +250,7 @@ After the Phase 1b refactoring, every module is ≤300 LOC. Key decomposition:
 | **Outbound** | `outbound_dispatcher.py` | `outbound_errors.py` |
 | **Telegram** | `telegram.py` (adapter shell) | `telegram_inbound.py`, `telegram_outbound.py`, `telegram_normalize.py`, `telegram_audio.py`, `telegram_formatting.py` |
 | **Discord** | `discord.py` (adapter shell) | `discord_inbound.py`, `discord_outbound.py`, `discord_normalize.py`, `discord_audio.py`, `discord_audio_outbound.py`, `discord_formatting.py`, `discord_threads.py`, `discord_voice.py`, `discord_voice_commands.py` |
-| **Bootstrap** | `multibot.py` (legacy single-process) | `multibot_stores.py`, `multibot_wiring.py`; standalone entry points: `_bootstrap_hub_standalone()` (hub process), `_bootstrap_adapter_standalone()` (adapter process) |
+| **Bootstrap** | `unified.py` (single-process), `hub_standalone.py` (hub-only), `adapter_standalone.py` (adapter-only) | `bootstrap_stores.py`, `bootstrap_wiring.py`, `embedded_nats.py`, `bootstrap_lifecycle.py` |
 | **Shared** | `adapters/_shared.py` | Common adapter utilities (typing control, etc.) |
 | **Shared** | `adapters/_shared_streaming.py` | `StreamingSession` — centralized edit-in-place streaming algorithm for all platform adapters (#468, #495, #501) |
 | **Shared** | `adapters/_base_outbound.py` | `OutboundAdapterBase` — abstract base class for all platform outbound adapters |
@@ -309,7 +309,7 @@ Examples:
 
 In NATS standalone mode (production), each adapter runs as its own process (`lyra adapter telegram`, `lyra adapter discord`) and communicates with the hub over NATS. The hub still maintains the adapter registry, but adapters are now remote NATS clients rather than in-process objects.
 
-In the legacy single-process mode (`_bootstrap_multibot`), N bots per platform run within a single process. The key structures that make both modes work:
+In the unified single-process mode (`_bootstrap_unified`), N bots per platform run within a single process using NATS internally. The key structures that make both modes work:
 
 **Adapter registry** — `dict[(Platform, bot_id), ChannelAdapter]`
 

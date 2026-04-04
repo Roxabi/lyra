@@ -12,9 +12,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import lyra.__main__ as main_mod
-import lyra.bootstrap.multibot as multibot_mod
-import lyra.bootstrap.multibot_stores as stores_mod
-import lyra.bootstrap.multibot_wiring as wiring_mod
+import lyra.bootstrap.unified as unified_mod
+import lyra.bootstrap.bootstrap_stores as stores_mod
+import lyra.bootstrap.bootstrap_wiring as wiring_mod
 from lyra.core.agent import Agent
 from lyra.core.agent_config import ModelConfig
 from lyra.core.auth import AuthMiddleware
@@ -174,10 +174,10 @@ def patch_bootstrap_common(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
             result[("discord", bot_cfg.bot_id)] = "lyra_default"
         return result
 
-    monkeypatch.setattr(multibot_mod, "_resolve_bot_agent_map", _fake_resolve)
+    monkeypatch.setattr(unified_mod, "_resolve_bot_agent_map", _fake_resolve)
 
     monkeypatch.setattr(
-        multibot_mod,
+        unified_mod,
         "agent_row_to_config",
         lambda row, **kw: Agent(
             name=row.name if hasattr(row, "name") else "lyra_default",
@@ -204,6 +204,25 @@ def patch_bootstrap_common(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
         classmethod(lambda cls, raw, section, store=None: next(_auth_results)),
     )
 
+    # Patch NATS so _bootstrap_unified never touches a real server.
+    _fake_nc0 = AsyncMock()
+    _fake_nc0.close = AsyncMock()
+    monkeypatch.setattr(unified_mod, "nats_connect", AsyncMock(return_value=_fake_nc0))
+    _fake_embedded0 = MagicMock()
+    _fake_embedded0.start = AsyncMock()
+    _fake_embedded0.wait_ready = AsyncMock()
+    _fake_embedded0.stop = AsyncMock()
+    _fake_embedded0.url = "nats://localhost:4222"
+    monkeypatch.setattr(unified_mod, "EmbeddedNats", lambda **kw: _fake_embedded0)
+    monkeypatch.setattr(unified_mod, "_acquire_lockfile", lambda: None)
+    monkeypatch.setattr(unified_mod, "_release_lockfile", lambda: None)
+    _fake_nats_bus0 = MagicMock()
+    _fake_nats_bus0.start = AsyncMock()
+    _fake_nats_bus0.stop = AsyncMock()
+    monkeypatch.setattr(unified_mod, "NatsBus", lambda **kw: _fake_nats_bus0)
+    monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
+    monkeypatch.setenv("LYRA_HEALTH_PORT", "0")
+
     return fake_auth_store
 
 
@@ -228,7 +247,7 @@ def patch_all(
             super().__init__(**kwargs)
             captured.append(self)
 
-    monkeypatch.setattr(multibot_mod, "Hub", CapturingHub)
+    monkeypatch.setattr(unified_mod, "Hub", CapturingHub)
 
     class CapturingDcAdapter(_FakeDcAdapter):
         def __init__(self, **kwargs: object) -> None:
@@ -287,7 +306,7 @@ def patch_all(
         stores_mod, "CredentialStore", lambda **kwargs: _fake_cred_store
     )
     monkeypatch.setattr(
-        multibot_mod,
+        unified_mod,
         "agent_row_to_config",
         lambda row, **kw: Agent(
             name=row.name,
@@ -297,13 +316,27 @@ def patch_all(
         ),
     )
     monkeypatch.setattr(
-        main_mod, "TelegramAdapter", lambda **kwargs: _FakeTgAdapter(**kwargs)
-    )
-    monkeypatch.setattr(
         wiring_mod, "TelegramAdapter", lambda **kwargs: _FakeTgAdapter(**kwargs)
     )
-    monkeypatch.setattr(main_mod, "DiscordAdapter", CapturingDcAdapter)
     monkeypatch.setattr(wiring_mod, "DiscordAdapter", CapturingDcAdapter)
+
+    # Patch NATS components so _bootstrap_unified never touches a real server.
+    _fake_nc = AsyncMock()
+    _fake_nc.close = AsyncMock()
+    monkeypatch.setattr(unified_mod, "nats_connect", AsyncMock(return_value=_fake_nc))
+    _fake_embedded = MagicMock()
+    _fake_embedded.start = AsyncMock()
+    _fake_embedded.wait_ready = AsyncMock()
+    _fake_embedded.stop = AsyncMock()
+    _fake_embedded.url = "nats://localhost:4222"
+    monkeypatch.setattr(unified_mod, "EmbeddedNats", lambda **kw: _fake_embedded)
+    monkeypatch.setattr(unified_mod, "_acquire_lockfile", lambda: None)
+    monkeypatch.setattr(unified_mod, "_release_lockfile", lambda: None)
+    _fake_nats_bus = MagicMock()
+    _fake_nats_bus.start = AsyncMock()
+    _fake_nats_bus.stop = AsyncMock()
+    monkeypatch.setattr(unified_mod, "NatsBus", lambda **kw: _fake_nats_bus)
+    monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
     monkeypatch.setenv("LYRA_HEALTH_PORT", "0")
     return captured, _fake_auth_store
 
@@ -326,7 +359,7 @@ def patch_auth_config_test(monkeypatch: pytest.MonkeyPatch) -> None:
     _fake_agent_store.set_bot_agent = AsyncMock()
     monkeypatch.setattr(stores_mod, "AgentStore", lambda **kwargs: _fake_agent_store)
     monkeypatch.setattr(
-        multibot_mod,
+        unified_mod,
         "_resolve_bot_agent_map",
         AsyncMock(return_value={("telegram", "main"): "lyra_default"}),
     )
@@ -345,6 +378,25 @@ def patch_auth_config_test(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         stores_mod, "CredentialStore", lambda **kwargs: _fake_cred_store
     )
+
+    # Patch NATS so _bootstrap_unified never touches a real server.
+    _fake_nc2 = AsyncMock()
+    _fake_nc2.close = AsyncMock()
+    monkeypatch.setattr(unified_mod, "nats_connect", AsyncMock(return_value=_fake_nc2))
+    _fake_embedded2 = MagicMock()
+    _fake_embedded2.start = AsyncMock()
+    _fake_embedded2.wait_ready = AsyncMock()
+    _fake_embedded2.stop = AsyncMock()
+    _fake_embedded2.url = "nats://localhost:4222"
+    monkeypatch.setattr(unified_mod, "EmbeddedNats", lambda **kw: _fake_embedded2)
+    monkeypatch.setattr(unified_mod, "_acquire_lockfile", lambda: None)
+    monkeypatch.setattr(unified_mod, "_release_lockfile", lambda: None)
+    _fake_nats_bus2 = MagicMock()
+    _fake_nats_bus2.start = AsyncMock()
+    _fake_nats_bus2.stop = AsyncMock()
+    monkeypatch.setattr(unified_mod, "NatsBus", lambda **kw: _fake_nats_bus2)
+    monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
+    monkeypatch.setenv("LYRA_HEALTH_PORT", "0")
 
 
 # ---------------------------------------------------------------------------

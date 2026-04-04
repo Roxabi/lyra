@@ -30,10 +30,8 @@ class TestLoadCircuitConfigDefaults:
         )
 
         # Act
-        from lyra.__main__ import (  # noqa: PLC0415
-            _load_circuit_config,
-            _load_raw_config,
-        )
+        from lyra.bootstrap.config import _load_circuit_config  # noqa: PLC0415
+        from lyra.bootstrap.config import _load_raw_config  # noqa: PLC0415
 
         raw = _load_raw_config()
         registry, admin_ids = _load_circuit_config(raw)
@@ -59,10 +57,8 @@ class TestLoadCircuitConfigDefaults:
         monkeypatch.chdir(tmp_path)
 
         # Act
-        from lyra.__main__ import (  # noqa: PLC0415
-            _load_circuit_config,
-            _load_raw_config,
-        )
+        from lyra.bootstrap.config import _load_circuit_config  # noqa: PLC0415
+        from lyra.bootstrap.config import _load_raw_config  # noqa: PLC0415
 
         raw = _load_raw_config()
         registry, admin_ids = _load_circuit_config(raw)
@@ -102,10 +98,8 @@ class TestLoadCircuitConfigTomlOverrides:
         )
 
         # Act
-        from lyra.__main__ import (  # noqa: PLC0415
-            _load_circuit_config,
-            _load_raw_config,
-        )
+        from lyra.bootstrap.config import _load_circuit_config  # noqa: PLC0415
+        from lyra.bootstrap.config import _load_raw_config  # noqa: PLC0415
 
         raw = _load_raw_config()
         registry, admin_ids = _load_circuit_config(raw)
@@ -142,7 +136,7 @@ class TestLoadCircuitConfigTomlOverrides:
         )
 
         # Act
-        from lyra.__main__ import (  # noqa: PLC0415
+        from lyra.bootstrap.config import (  # noqa: PLC0415
             _load_circuit_config,
             _load_raw_config,
         )
@@ -172,10 +166,8 @@ class TestLoadCircuitConfigTomlOverrides:
         )
 
         # Act
-        from lyra.__main__ import (  # noqa: PLC0415
-            _load_circuit_config,
-            _load_raw_config,
-        )
+        from lyra.bootstrap.config import _load_circuit_config  # noqa: PLC0415
+        from lyra.bootstrap.config import _load_raw_config  # noqa: PLC0415
 
         raw = _load_raw_config()
         registry, admin_ids = _load_circuit_config(raw)

@@ -173,9 +173,14 @@ def start() -> None:
 
 
 def _run_server() -> None:
-    from lyra.__main__ import _main  # local import — avoids heavy deps at import time
+    from lyra.__main__ import _setup_logging
+    from lyra.bootstrap.config import _load_logging_config, _load_raw_config
+    from lyra.bootstrap.unified import _bootstrap_unified
 
-    asyncio.run(_main())
+    raw_config = _load_raw_config()
+    log_config = _load_logging_config(raw_config)
+    _setup_logging(log_config)
+    asyncio.run(_bootstrap_unified(raw_config))
 
 
 # ---------------------------------------------------------------------------

@@ -91,7 +91,7 @@ Lyra runs as three separate supervisor processes on Machine 1:
 Scripts: `run_hub.sh` and `run_adapter.sh` in `supervisor/scripts/` (lyra's own supervisord, managed via `lyra.service`).
 NATS topics: `lyra.inbound.<platform>.<bot_id>` (adapter→hub) · `lyra.outbound.<platform>.<bot_id>` (hub→adapter).
 
-The old single-process mode (`python -m lyra --adapter telegram` → `_bootstrap_multibot`) still exists in the codebase but is no longer the production deployment mode.
+The unified single-process mode (`lyra start` → `_bootstrap_unified`) runs hub + adapters in one process with NATS. Auto-starts embedded nats-server when NATS_URL is not set.
 
 ## Gotchas
 

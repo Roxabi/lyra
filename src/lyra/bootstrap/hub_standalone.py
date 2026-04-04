@@ -30,8 +30,8 @@ from lyra.bootstrap.lifecycle_helpers import (
     teardown_buses,
     teardown_dispatchers,
 )
-from lyra.bootstrap.multibot_stores import open_stores
-from lyra.bootstrap.multibot_wiring import _build_bot_auths
+from lyra.bootstrap.bootstrap_stores import open_stores
+from lyra.bootstrap.bootstrap_wiring import _build_bot_auths
 from lyra.bootstrap.voice_overlay import init_nats_stt, init_nats_tts
 from lyra.config import load_multibot_config
 from lyra.core.agent import Agent

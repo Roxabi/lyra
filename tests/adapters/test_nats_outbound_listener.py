@@ -191,7 +191,29 @@ async def test_start_subscribes_and_stop_unsubscribes() -> None:
 
 
 @pytest.mark.asyncio
-async def test_cache_inbound_drops_when_full(caplog) -> None:
+async def test_stop_cancels_reaper_task() -> None:
+    """stop() cancels the reaper task and sets _reaper_task to None."""
+    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+
+    mock_sub = AsyncMock()
+    nc = AsyncMock()
+    nc.subscribe = AsyncMock(return_value=mock_sub)
+
+    adapter = MagicMock()
+    listener = NatsOutboundListener(nc, Platform.TELEGRAM, "main", adapter)
+
+    # Arrange
+    await listener.start()
+    assert listener._reaper_task is not None
+
+    # Act
+    await listener.stop()
+
+    # Assert
+    assert listener._reaper_task is None
+
+
+def test_cache_inbound_drops_when_full(caplog) -> None:
     """cache_inbound drops and warns when _cache is at max size."""
     import logging
 
@@ -219,6 +241,7 @@ async def test_cache_inbound_drops_when_full(caplog) -> None:
 
     assert overflow_msg.id not in listener._cache
     assert len(listener._cache) == _MAX_CACHE_SIZE
+    assert len(listener._cache_ts) == _MAX_CACHE_SIZE
     assert any(
         "_cache full" in r.message for r in caplog.records
     )
@@ -266,6 +289,56 @@ async def test_stream_drops_when_at_max_streams(caplog) -> None:
 
 
 @pytest.mark.asyncio
+async def test_existing_stream_receives_chunks_at_capacity(caplog) -> None:
+    """Chunk for an existing stream_id is enqueued even when _stream_tasks is full."""
+    import asyncio
+    import logging
+
+    from lyra.adapters.nats_outbound_listener import (
+        _MAX_STREAMS,
+        NatsOutboundListener,
+    )
+
+    nc = AsyncMock()
+    adapter = AsyncMock()
+    listener = NatsOutboundListener(nc, Platform.TELEGRAM, "main", adapter)
+
+    existing_id = "existing-stream"
+    existing_msg = _make_tg_msg(existing_id)
+    listener.cache_inbound(existing_msg)
+
+    # Create a real queue for the existing stream
+    q: asyncio.Queue[dict] = asyncio.Queue(maxsize=256)
+    listener._stream_queues[existing_id] = q
+    existing_task = MagicMock(spec=asyncio.Task)
+    listener._stream_tasks[existing_id] = existing_task
+
+    # Fill _stream_tasks to _MAX_STREAMS (existing_id already occupies one slot)
+    for i in range(_MAX_STREAMS - 1):
+        listener._stream_tasks[f"other-{i}"] = MagicMock(spec=asyncio.Task)
+
+    assert len(listener._stream_tasks) == _MAX_STREAMS
+
+    chunk = {
+        "stream_id": existing_id,
+        "seq": 0,
+        "event_type": "text",
+        "payload": {"text": "hello", "is_final": True},
+        "done": True,
+    }
+    _logger = "lyra.adapters.nats_outbound_listener"
+    with caplog.at_level(logging.WARNING, logger=_logger):
+        await listener._handle(_make_nats_msg(chunk))
+
+    # Chunk must have been enqueued for the existing stream
+    assert listener._stream_queues[existing_id].qsize() >= 1
+    # No warning about capacity — existing stream is allowed
+    assert not any(
+        "_stream_tasks full" in r.message for r in caplog.records
+    )
+
+
+@pytest.mark.asyncio
 async def test_reaper_evicts_stale_entries(caplog) -> None:
     """_reap_stale evicts entries exceeding _CACHE_TTL_SECONDS."""
     import asyncio
@@ -298,6 +371,14 @@ async def test_reaper_evicts_stale_entries(caplog) -> None:
     listener._cache[fresh_id] = fresh_msg
     listener._cache_ts[fresh_id] = time.monotonic()
 
+    # Wire up _stream_outbound and a mock task for the stale entry
+    from lyra.core.message import OutboundMessage
+    listener._stream_outbound[stale_id] = OutboundMessage(
+        content=["x"], buttons=[], metadata={}
+    )
+    mock_task = MagicMock(spec=asyncio.Task)
+    listener._stream_tasks[stale_id] = mock_task
+
     # Return normally on first call (reap body runs),
     # then CancelledError on second call to stop the loop.
     call_count = 0
@@ -325,3 +406,6 @@ async def test_reaper_evicts_stale_entries(caplog) -> None:
     assert any(
         "evicting stale" in r.message for r in caplog.records
     )
+    assert stale_id not in listener._stream_outbound
+    mock_task.cancel.assert_called_once()
+    assert stale_id not in listener._stream_tasks

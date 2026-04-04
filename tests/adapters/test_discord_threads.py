@@ -266,6 +266,46 @@ class TestDiscordAutoThread:
 
 
 # ---------------------------------------------------------------------------
+# Tests for persist_thread_session LRU eviction
+# ---------------------------------------------------------------------------
+
+
+class TestPersistThreadSessionEviction:
+    """persist_thread_session evicts the oldest entry when cache is full."""
+
+    @pytest.mark.asyncio
+    async def test_persist_thread_session_evicts_oldest_on_full(self) -> None:
+        """Cache at 500 entries: adding one more evicts oldest, inserts new."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from lyra.adapters.discord_threads import persist_thread_session
+
+        # Arrange — cache pre-filled to the limit (500 entries)
+        cache: dict[str, tuple[str, str]] = {
+            str(i): ("s", "p") for i in range(500)
+        }
+
+        mock_store = MagicMock()
+        mock_store.update_session = AsyncMock()
+
+        mock_msg = MagicMock()
+        mock_msg.platform_meta = {"thread_id": 9999}
+
+        # Act
+        await persist_thread_session(
+            mock_store, mock_msg, "new-sess", "new-pool", "bot1", cache
+        )
+
+        # Assert — size unchanged (one evicted, one inserted)
+        assert len(cache) == 500
+        # Oldest key ("0") must have been evicted
+        assert "0" not in cache
+        # New entry must be present with the correct value
+        assert "9999" in cache
+        assert cache["9999"] == ("new-sess", "new-pool")
+
+
+# ---------------------------------------------------------------------------
 # Finding G: persist_thread_claim failure path
 # ---------------------------------------------------------------------------
 

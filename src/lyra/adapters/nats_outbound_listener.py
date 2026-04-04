@@ -27,6 +27,7 @@ log = logging.getLogger(__name__)
 
 _MAX_CACHE_SIZE = 500
 _MAX_STREAMS = 100
+_MAX_QUEUE_SIZE = 256
 _CACHE_TTL_SECONDS = 120
 _REAPER_INTERVAL_SECONDS = 30
 
@@ -164,6 +165,14 @@ class NatsOutboundListener:
         outbound_data = data.get("outbound")
         if stream_id is None or outbound_data is None:
             return
+        if len(self._stream_outbound) >= _MAX_STREAMS:
+            log.warning(
+                "NatsOutboundListener: _stream_outbound full"
+                " (%d entries), dropping stream_id=%r",
+                _MAX_STREAMS,
+                stream_id,
+            )
+            return
         try:
             self._stream_outbound[stream_id] = OutboundMessage(**outbound_data)
             self._cache_ts.setdefault(stream_id, time.monotonic())
@@ -184,8 +193,18 @@ class NatsOutboundListener:
                 stream_id,
             )
             return
-        q = self._stream_queues.setdefault(stream_id, asyncio.Queue())
-        await q.put(data)
+        q = self._stream_queues.setdefault(
+            stream_id, asyncio.Queue(maxsize=_MAX_QUEUE_SIZE),
+        )
+        try:
+            q.put_nowait(data)
+        except asyncio.QueueFull:
+            log.warning(
+                "NatsOutboundListener: stream queue full"
+                " for stream_id=%r, dropping chunk",
+                stream_id,
+            )
+            return
         # Launch a drain task on first chunk; subsequent chunks just enqueue
         if stream_id not in self._stream_tasks:
             self._stream_tasks[stream_id] = asyncio.create_task(

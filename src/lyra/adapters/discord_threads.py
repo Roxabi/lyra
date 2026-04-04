@@ -66,7 +66,9 @@ async def persist_thread_session(  # noqa: PLR0913 — each arg is a distinct re
                 " entry thread_id=%s (cache full)",
                 oldest_key,
             )
-        cache[str(thread_id)] = (session_id, pool_id)
+        _key = str(thread_id)
+        cache.pop(_key, None)
+        cache[_key] = (session_id, pool_id)
         log.debug(
             "ThreadStore: persisted session_id=%s pool_id=%s for thread_id=%s",
             session_id,
@@ -115,6 +117,7 @@ async def retrieve_thread_session(
     """
     cached = cache.get(thread_id)
     if cached is not None:
+        cache[thread_id] = cache.pop(thread_id)
         return cached
 
     stored_session_id, stored_pool_id = await thread_store.get_session(

@@ -216,6 +216,9 @@ class NatsOutboundListener:
             self._cache.pop(stream_id, None)
             self._cache_ts.pop(stream_id, None)
             self._stream_outbound.pop(stream_id, None)
+            # Symmetry with _drain_stream's finally block — ensure no stale entries
+            self._stream_tasks.pop(stream_id, None)
+            self._stream_queues.pop(stream_id, None)
             log.warning(
                 "NatsOutboundListener: stream_error for unknown/finished"
                 " stream_id=%r",

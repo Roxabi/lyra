@@ -119,59 +119,62 @@ class NatsChannelProxy:
             )
         seq = 0
         try:
-            async for event in events:
-                event_type, payload, is_done = NatsRenderEventCodec.encode(event)
-                chunk = {
+            try:
+                async for event in events:
+                    event_type, payload, is_done = NatsRenderEventCodec.encode(event)
+                    chunk = {
+                        "stream_id": original_msg.id,
+                        "seq": seq,
+                        "event_type": event_type,
+                        "payload": payload,
+                        "done": is_done,
+                    }
+                    await self._nc.publish(
+                        subject,
+                        json.dumps(chunk, ensure_ascii=False).encode("utf-8"),
+                    )
+                    seq += 1
+                # Always publish a terminal sentinel so the adapter's
+                # _drain_stream exits cleanly even when the events iterator
+                # was empty or the last event did not set is_final=True.
+                terminal = {
                     "stream_id": original_msg.id,
                     "seq": seq,
-                    "event_type": event_type,
-                    "payload": payload,
-                    "done": is_done,
+                    "event_type": "stream_end",
+                    "payload": {},
+                    "done": True,
                 }
                 await self._nc.publish(
                     subject,
-                    json.dumps(chunk, ensure_ascii=False).encode("utf-8"),
-                )
-                seq += 1
-            # Always publish a terminal sentinel so NatsOutboundListener._drain_stream
-            # exits cleanly even when the events iterator was empty or the last event
-            # did not set is_final=True.
-            terminal = {
-                "stream_id": original_msg.id,
-                "seq": seq,
-                "event_type": "stream_end",
-                "payload": {},
-                "done": True,
-            }
-            await self._nc.publish(
-                subject,
-                json.dumps(terminal, ensure_ascii=False).encode("utf-8"),
-            )
-            self._active_streams.discard(original_msg.id)
-        except Exception:
-            log.exception(
-                "NatsChannelProxy: NATS publish failed during streaming,"
-                " draining iterator"
-            )
-            error_envelope = {
-                "type": "stream_error",
-                "stream_id": original_msg.id,
-                "reason": "streaming_exception",
-            }
-            try:
-                await self._nc.publish(
-                    subject,
-                    json.dumps(error_envelope, ensure_ascii=False).encode("utf-8"),
+                    json.dumps(terminal, ensure_ascii=False).encode("utf-8"),
                 )
             except Exception:
-                log.warning(
-                    "NatsChannelProxy: failed to publish stream_error"
-                    " for stream_id=%r",
-                    original_msg.id,
+                log.exception(
+                    "NatsChannelProxy: NATS publish failed during streaming,"
+                    " draining iterator"
                 )
+                error_envelope = {
+                    "type": "stream_error",
+                    "stream_id": original_msg.id,
+                    "reason": "streaming_exception",
+                }
+                try:
+                    await self._nc.publish(
+                        subject,
+                        json.dumps(error_envelope, ensure_ascii=False).encode("utf-8"),
+                    )
+                except Exception:
+                    log.warning(
+                        "NatsChannelProxy: failed to publish stream_error"
+                        " for stream_id=%r",
+                        original_msg.id,
+                    )
+                async for _ in events:
+                    pass
+        finally:
+            # Ensure stream_id is always removed from the tracking set, regardless
+            # of success, streaming exception, or publish failure in the except path.
             self._active_streams.discard(original_msg.id)
-            async for _ in events:
-                pass
 
     async def publish_stream_errors(self, reason: str = "hub_shutdown") -> None:
         """Publish stream_error for all active streams, then clear the set.

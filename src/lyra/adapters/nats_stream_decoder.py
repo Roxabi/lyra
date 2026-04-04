@@ -59,6 +59,10 @@ async def decode_stream_events(
             )
         expected_seq += 1
         event_type = chunk.get("event_type", "text")
+        # stream_error is a transport-layer sentinel, not a render event —
+        # terminate the stream without passing it through the codec.
+        if event_type == "stream_error":
+            break
         payload = chunk.get("payload", {})
         is_done = chunk.get("done", False)
         event = NatsRenderEventCodec.decode(event_type, payload)

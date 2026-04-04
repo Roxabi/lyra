@@ -12,9 +12,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import lyra.__main__ as main_mod
-import lyra.bootstrap.unified as unified_mod
 import lyra.bootstrap.bootstrap_stores as stores_mod
 import lyra.bootstrap.bootstrap_wiring as wiring_mod
+import lyra.bootstrap.unified as unified_mod
 from lyra.core.agent import Agent
 from lyra.core.agent_config import ModelConfig
 from lyra.core.auth import AuthMiddleware

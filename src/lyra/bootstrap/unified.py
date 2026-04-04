@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 from lyra.bootstrap.agent_factory import _resolve_agents, _resolve_bot_agent_map
+from lyra.bootstrap.bootstrap_lifecycle import run_lifecycle
 from lyra.bootstrap.bootstrap_stores import open_stores
 from lyra.bootstrap.bootstrap_wiring import (
     _build_bot_auths,
@@ -37,7 +38,6 @@ from lyra.bootstrap.config import (
 )
 from lyra.bootstrap.embedded_nats import EmbeddedNats
 from lyra.bootstrap.hub_standalone import _acquire_lockfile, _release_lockfile
-from lyra.bootstrap.bootstrap_lifecycle import run_lifecycle
 from lyra.config import load_multibot_config
 from lyra.core.agent import Agent
 from lyra.core.agent_loader import agent_row_to_config

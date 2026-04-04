@@ -10,10 +10,13 @@ import asyncio
 import json
 import logging
 import time
+from typing import Any
 
 import nats.errors
 from nats.aio.client import Client as NATS
 from nats.aio.subscription import Subscription
+
+from lyra.core.bus import Bus
 
 log = logging.getLogger(__name__)
 
@@ -22,12 +25,14 @@ PROBE_INTERVAL_S = 0.5
 PROBE_TIMEOUT_S = 30.0
 
 
-async def start_readiness_responder(nc: NATS, buses: list) -> Subscription:
+async def start_readiness_responder(
+    nc: NATS, buses: list[Bus[Any]]
+) -> Subscription:
     """Subscribe to ``lyra.system.ready`` and reply with hub status on each request.
 
     Args:
         nc: Already-connected NATS client.
-        buses: List of NatsBus instances whose ``subscription_count`` values are
+        buses: List of bus instances whose ``subscription_count`` values are
             summed into the ``buses`` field of each reply.
 
     Returns:
@@ -36,6 +41,9 @@ async def start_readiness_responder(nc: NATS, buses: list) -> Subscription:
     started_at = time.monotonic()
 
     async def _handler(msg) -> None:  # type: ignore[no-untyped-def]
+        # Ignore stray publishes with no reply subject — nc.publish("") would raise.
+        if not msg.reply:
+            return
         uptime_s = time.monotonic() - started_at
         bus_count = sum(b.subscription_count for b in buses)
         payload = json.dumps(
@@ -71,19 +79,15 @@ async def wait_for_hub(
             break
         per_call = min(PROBE_INTERVAL_S, remaining)
         try:
-            await asyncio.wait_for(
-                nc.request(READINESS_SUBJECT, b"", timeout=per_call),
-                timeout=per_call + 0.1,
-            )
+            await nc.request(READINESS_SUBJECT, b"", timeout=per_call)
             log.info("Hub readiness confirmed — starting polling")
             return True
-        except asyncio.TimeoutError:
+        except nats.errors.TimeoutError:
             pass
         except nats.errors.NoRespondersError:
             pass
         except Exception:
             log.exception("wait_for_hub: unexpected error during probe")
-            pass
 
         # Brief sleep between probes so we don't hammer NATS on NoRespondersError
         await asyncio.sleep(PROBE_INTERVAL_S)

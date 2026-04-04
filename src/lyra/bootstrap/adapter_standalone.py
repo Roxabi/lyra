@@ -43,7 +43,10 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
 
     try:
         nc = await nats_connect(nats_url)
-        log.info("adapter_standalone: connected to NATS at %s", scrub_nats_url(nats_url))
+        log.info(
+            "adapter_standalone: connected to NATS at %s",
+            scrub_nats_url(nats_url),
+        )
     except Exception as exc:
         sys.exit(f"Failed to connect to NATS at {nats_url!r}: {exc}")
 

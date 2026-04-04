@@ -82,6 +82,11 @@ class NatsBus(Generic[T]):
         item_type: type[T],
         subject_prefix: str = "lyra.inbound",
     ) -> None:
+        if not re.fullmatch(r'[A-Za-z0-9_.\-]+', subject_prefix):
+            raise ValueError(
+                f"Invalid subject_prefix for NATS: {subject_prefix!r} — "
+                "must match [A-Za-z0-9_.\\-]+ (no wildcards or spaces)"
+            )
         self._nc = nc
         self._bot_id = bot_id
         self._item_type = item_type

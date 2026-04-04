@@ -13,6 +13,7 @@ import logging
 import os
 import signal
 import sys
+from dataclasses import dataclass
 
 import nats
 
@@ -22,6 +23,36 @@ log = logging.getLogger(__name__)
 
 SUBJECT = "lyra.voice.tts.request"
 QUEUE_GROUP = "tts-workers"
+
+# Fields the hub serializes from AgentTTSConfig into the NATS request.
+_AGENT_TTS_FIELDS = (
+    "engine", "voice", "language", "accent", "personality", "speed",
+    "emotion", "exaggeration", "cfg_weight", "segment_gap", "crossfade",
+    "chunk_size", "default_language", "languages",
+)
+
+
+@dataclass
+class _NatsTtsConfig:
+    """Lightweight stand-in for AgentTTSConfig — populated from NATS request fields.
+
+    TTSService._build_generate_kwargs uses getattr(agent_tts, field, None) so any
+    object with matching attributes works. This avoids importing the hub-layer type.
+    """
+    engine: str | None = None
+    voice: str | None = None
+    language: str | None = None
+    accent: str | None = None
+    personality: str | None = None
+    speed: float | None = None
+    emotion: str | None = None
+    exaggeration: float | None = None
+    cfg_weight: float | None = None
+    segment_gap: float | None = None
+    crossfade: float | None = None
+    chunk_size: int | None = None
+    default_language: str | None = None
+    languages: list[str] | None = None
 
 
 async def _bootstrap_tts_adapter_standalone(
@@ -54,13 +85,13 @@ async def _bootstrap_tts_adapter_standalone(
             request_id = data.get("request_id", "unknown")
             text = data["text"]
 
-            # Extract flat TTS kwargs from request.
-            # The adapter does NOT import AgentTTSConfig (hub-layer type).
-            # language, voice, and fallback_language are passed directly to
-            # TTSService.synthesize() which accepts them as explicit overrides.
-            # engine, accent, personality, etc. come from the global TTS config
-            # (env vars) for this first pass — a future enhancement can expose
-            # them as explicit kwargs once TTSService.synthesize() supports them.
+            # Build a lightweight TTS config from the flat NATS request fields.
+            # This mirrors AgentTTSConfig without importing the hub-layer type.
+            tts_config_kwargs = {
+                k: data[k] for k in _AGENT_TTS_FIELDS if data.get(k) is not None
+            }
+            agent_tts = _NatsTtsConfig(**tts_config_kwargs) if tts_config_kwargs else None
+
             synth_kwargs: dict = {}
             for key in ("language", "voice", "fallback_language"):
                 if data.get(key) is not None:
@@ -68,7 +99,7 @@ async def _bootstrap_tts_adapter_standalone(
 
             result: SynthesisResult = await tts_service.synthesize(
                 text,
-                agent_tts=None,
+                agent_tts=agent_tts,
                 **synth_kwargs,
             )
 

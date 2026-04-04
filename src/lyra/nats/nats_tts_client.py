@@ -68,8 +68,12 @@ class NatsTtsClient:
         try:
             reply = await self._nc.request(self.SUBJECT, payload, timeout=self._timeout)
             data = json.loads(reply.data)
+        except TimeoutError as exc:
+            log.warning("TTS adapter timeout after %.0fs", self._timeout)
+            raise TtsUnavailableError("TTS adapter timeout") from exc
         except Exception as exc:
-            raise TtsUnavailableError(f"TTS adapter unreachable: {exc}") from exc
+            log.warning("TTS adapter unreachable: %s: %s", type(exc).__name__, exc)
+            raise TtsUnavailableError("TTS adapter unreachable") from exc
         if not data.get("ok"):
             raise TtsUnavailableError("TTS synthesis failed")
         audio_bytes = base64.b64decode(data["audio_b64"])

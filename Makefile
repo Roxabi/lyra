@@ -125,6 +125,8 @@ remote:
 	  hub)      PROGS="lyra_hub" ;; \
 	  telegram) PROGS="lyra_telegram" ;; \
 	  discord)  PROGS="lyra_discord" ;; \
+	  stt)      PROGS="lyra_stt" ;; \
+	  tts)      PROGS="lyra_tts" ;; \
 	  reload|start|stop|status|logs|errors|"") \
 	    ACTION="$$SVC"; PROGS="lyra_hub lyra_telegram lyra_discord" ;; \
 	  *) echo "Unknown service: $$SVC"; exit 1 ;; \

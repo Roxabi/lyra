@@ -44,9 +44,9 @@ async def _bootstrap_stt_adapter_standalone(
     nc = await nats.connect(nats_url)
     log.info("stt_adapter: connected to NATS at %s", nats_url)
 
-    stt_cfg = load_stt_config()
-    stt_service = STTService(stt_cfg)
-    log.info("stt_adapter: STTService ready (model=%s)", stt_cfg.model_size)
+    base_stt_cfg = load_stt_config()
+    stt_service = STTService(base_stt_cfg)
+    log.info("stt_adapter: STTService ready (model=%s)", base_stt_cfg.model_size)
 
     async def handler(msg: nats.aio.msg.Msg) -> None:
         data: dict = {}
@@ -60,6 +60,20 @@ async def _bootstrap_stt_adapter_standalone(
             audio_bytes = base64.b64decode(audio_b64)
             mime_type = data.get("mime_type", "audio/ogg")
 
+            # Apply per-request STT config overrides from hub (detection params)
+            svc = stt_service
+            overrides: dict = {}
+            for key in (
+                "language_detection_threshold",
+                "language_detection_segments",
+                "language_fallback",
+            ):
+                if data.get(key) is not None:
+                    overrides[key] = data[key]
+            if overrides:
+                cfg = base_stt_cfg.model_copy(update=overrides)
+                svc = STTService(cfg)
+
             suffix = _mime_to_ext(mime_type)
             fd, tmp_path_str = tempfile.mkstemp(suffix=suffix)
             try:
@@ -67,7 +81,7 @@ async def _bootstrap_stt_adapter_standalone(
                 os.close(fd)
                 tmp_path = Path(tmp_path_str)
 
-                result: TranscriptionResult = await stt_service.transcribe(tmp_path)
+                result: TranscriptionResult = await svc.transcribe(tmp_path)
 
                 response = {
                     "request_id": request_id,

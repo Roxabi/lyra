@@ -7,6 +7,7 @@ Spec trace: S4-1, S4-2, S4-3, S4-4, S4-5, S4-6, S4-7
 from __future__ import annotations
 
 import asyncio
+import logging
 from unittest.mock import MagicMock
 
 import pytest
@@ -205,8 +206,6 @@ class TestPoolTimeout:
         self, fast_pool: Pool, ctx_mock: MagicMock, caplog: pytest.LogCaptureFixture
     ) -> None:
         """Timeout with dead backend logs ERROR distinguishing from normal timeout."""
-        import logging
-
         agent = SlowAgent()
         object.__setattr__(agent, "is_backend_alive", lambda pool_id: False)
         ctx_mock._agents["test_agent"] = agent
@@ -223,8 +222,6 @@ class TestPoolTimeout:
         self, fast_pool: Pool, ctx_mock: MagicMock, caplog: pytest.LogCaptureFixture
     ) -> None:
         """Normal timeout (live backend) does NOT log the dead-backend ERROR."""
-        import logging
-
         agent = SlowAgent()  # is_backend_alive returns True by default
         ctx_mock._agents["test_agent"] = agent
         msg = make_msg()

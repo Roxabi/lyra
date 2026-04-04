@@ -1,11 +1,4 @@
-"""Standalone adapter bootstrap — runs TelegramAdapter or DiscordAdapter as a
-pure NATS client, without a local Hub instance.
-
-Entry point: _bootstrap_adapter_standalone(raw_config, platform)
-
-Used by lyra_telegram and lyra_discord supervisor programs in NATS mode.
-Tokens are read from the encrypted credential store then closed immediately.
-"""
+"""Standalone adapter bootstrap — NATS-connected adapter without local Hub."""
 from __future__ import annotations
 
 import asyncio

@@ -32,17 +32,7 @@ _REAPER_INTERVAL_SECONDS = 30
 
 
 class NatsOutboundListener:
-    """Subscribes to NATS outbound subject and dispatches to the platform adapter.
-
-    Three envelope types:
-    - send:       {"type": "send", "stream_id": ..., "outbound": {...}}
-    - attachment: {"type": "attachment", "stream_id": ..., "attachment": {...}}
-    - chunk:      {"stream_id": ..., "seq": N, "event_type": ..., "payload": {...},
-                   "done": bool}
-
-    Inbound message cache: populated by cache_inbound() before push_to_hub_guarded.
-    Used to correlate stream_id → original InboundMessage for reply routing.
-    """
+    """NATS outbound subscriber → adapter dispatch (send/attachment/stream)."""
 
     def __init__(
         self,
@@ -70,10 +60,8 @@ class NatsOutboundListener:
             self._cache.pop(oldest)
             self._cache_ts.pop(oldest, None)
             log.warning(
-                "NatsOutboundListener: _cache full"
-                " (%d), evicted stream_id=%r",
-                _MAX_CACHE_SIZE,
-                oldest,
+                "NatsOutboundListener: _cache full (%d), evicted %r",
+                _MAX_CACHE_SIZE, oldest,
             )
         self._cache[msg.id] = msg
         self._cache_ts[msg.id] = time.monotonic()

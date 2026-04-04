@@ -3,7 +3,7 @@
 Covers:
 - sanitize_platform_meta() pure-function behaviour (allowlist, underscore strip,
   debug logging)
-- Path 2 (thread-session-resume) scope validation in SubmitToPoolMiddleware._resolve_context()
+- Path 2 scope validation in SubmitToPoolMiddleware
 """
 
 from __future__ import annotations

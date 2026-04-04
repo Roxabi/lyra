@@ -207,7 +207,7 @@ class AudioPipeline:
                 _content = (
                     self._hub._msg_manager.get("stt_unavailable")
                     if self._hub._msg_manager
-                    else "Voice messages are temporarily unavailable. Please try again later."
+                    else "Voice messages are temporarily unavailable."
                 )
                 await self._dispatch_audio_reply(audio, _content)
                 log.warning("STT adapter unavailable — audio %s dropped", audio.id)
@@ -408,7 +408,7 @@ class AudioPipeline:
                 await self._hub.dispatch_response(msg, Response(content=text))
             else:
                 log.exception(
-                    "TTS synthesis failed for voice response — audio not sent (msg id=%s)",
+                    "TTS synthesis failed — audio not sent (msg id=%s)",
                     msg.id,
                 )
 

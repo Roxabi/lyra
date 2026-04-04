@@ -91,7 +91,7 @@ async def _bootstrap_stt_adapter_standalone(
             finally:
                 Path(tmp_path_str).unlink(missing_ok=True)
 
-        except Exception as exc:
+        except Exception:
             log.exception(
                 "stt_adapter: transcription failed (request_id=%s)",
                 data.get("request_id", "?"),

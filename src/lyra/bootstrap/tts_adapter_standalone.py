@@ -90,7 +90,9 @@ async def _bootstrap_tts_adapter_standalone(
             tts_config_kwargs = {
                 k: data[k] for k in _AGENT_TTS_FIELDS if data.get(k) is not None
             }
-            agent_tts = _NatsTtsConfig(**tts_config_kwargs) if tts_config_kwargs else None
+            agent_tts = (
+                _NatsTtsConfig(**tts_config_kwargs) if tts_config_kwargs else None
+            )
 
             synth_kwargs: dict = {}
             for key in ("language", "voice", "fallback_language"):
@@ -112,7 +114,7 @@ async def _bootstrap_tts_adapter_standalone(
                 "waveform_b64": result.waveform_b64,
             }
 
-        except Exception as exc:
+        except Exception:
             log.exception(
                 "tts_adapter: synthesis failed (request_id=%s)",
                 data.get("request_id", "?"),

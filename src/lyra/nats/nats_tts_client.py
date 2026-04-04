@@ -75,7 +75,8 @@ class NatsTtsClient:
         except Exception as exc:
             if "max_payload" in str(exc).lower() or "MaxPayload" in type(exc).__name__:
                 log.error(
-                    "TTS request payload too large (%.0f KB) — check NATS max_payload config",
+                    "TTS payload too large (%.0f KB)"
+                    " — check NATS max_payload",
                     payload_kb,
                 )
                 raise TtsUnavailableError("TTS request payload too large") from exc

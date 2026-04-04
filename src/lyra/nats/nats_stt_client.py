@@ -59,7 +59,8 @@ class NatsSttClient:
         except Exception as exc:
             if "max_payload" in str(exc).lower() or "MaxPayload" in type(exc).__name__:
                 log.error(
-                    "STT request payload too large (%.0f KB) — check NATS max_payload config",
+                    "STT payload too large (%.0f KB)"
+                    " — check NATS max_payload",
                     payload_kb,
                 )
                 raise STTUnavailableError("STT request payload too large") from exc

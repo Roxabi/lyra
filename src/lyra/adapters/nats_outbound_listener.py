@@ -18,6 +18,7 @@ from lyra.core.message import (
     Platform,
 )
 from lyra.nats._serialize import deserialize_dict as _deserialize_dict
+from lyra.nats._validate import validate_nats_token
 
 if TYPE_CHECKING:
     from lyra.core.hub.hub_protocol import ChannelAdapter
@@ -43,6 +44,7 @@ class NatsOutboundListener:
         *,
         queue_group: str = "",
     ) -> None:
+        validate_nats_token(queue_group, kind="queue_group", allow_empty=True)
         self._nc = nc
         self._platform = platform
         self._bot_id = bot_id
@@ -165,10 +167,8 @@ class NatsOutboundListener:
             return
         if len(self._stream_outbound) >= _MAX_STREAMS:
             log.warning(
-                "NatsOutboundListener: _stream_outbound full"
-                " (%d entries), dropping stream_id=%r",
-                _MAX_STREAMS,
-                stream_id,
+                "NatsOutboundListener: _stream_outbound full (%d entries),"
+                " dropping stream_id=%r", _MAX_STREAMS, stream_id,
             )
             return
         try:

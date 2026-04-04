@@ -10,6 +10,7 @@ when the binary is not found in PATH.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 from datetime import datetime, timezone
 
 import pytest
@@ -447,26 +448,58 @@ class TestProtocolConformance:
 
 @requires_nats_server
 class TestNatsBusQueueGroup:
-    async def test_subscribe_uses_queue_group(self, nc: NATS) -> None:
-        """NatsBus passes queue_group to nc.subscribe()."""
-        # Arrange
-        bus = NatsBus(
+    async def test_queue_group_distributes_messages(self, nc: NATS) -> None:
+        """Two NatsBus subscribers in the same queue group share the delivery."""
+        # Arrange — publisher + two subscribers in the same queue group
+        publisher = NatsBus(nc=nc, bot_id="main", item_type=InboundMessage)
+        sub_a = NatsBus(
             nc=nc,
             bot_id="main",
             item_type=InboundMessage,
-            queue_group="test-group",
+            queue_group="test-distribution",
         )
-        bus.register(Platform.TELEGRAM)
-
-        # Act
-        await bus.start()
+        sub_b = NatsBus(
+            nc=nc,
+            bot_id="main",
+            item_type=InboundMessage,
+            queue_group="test-distribution",
+        )
+        publisher.register(Platform.TELEGRAM)
+        sub_a.register(Platform.TELEGRAM)
+        sub_b.register(Platform.TELEGRAM)
+        await sub_a.start()
+        await sub_b.start()
 
         try:
-            # Assert — nats-py stores the queue group on the Subscription object
-            sub = list(bus._subscriptions.values())[0]
-            assert sub._queue == "test-group"
+            # Act — publish N messages, drain both subscribers
+            n = 10
+            for i in range(n):
+                msg = _make_msg(Platform.TELEGRAM)
+                msg = dataclasses.replace(msg, id=f"msg-{i}")
+                await publisher.put(Platform.TELEGRAM, msg)
+
+            received_a: list = []
+            received_b: list = []
+            # Drain with a bounded deadline
+            deadline = asyncio.get_event_loop().time() + 2.0
+            while len(received_a) + len(received_b) < n:
+                if asyncio.get_event_loop().time() > deadline:
+                    break
+                for bus, bucket in ((sub_a, received_a), (sub_b, received_b)):
+                    if bus.staging_qsize() > 0:
+                        bucket.append(await bus.get())
+
+            # Assert — every message delivered exactly once across the group
+            all_ids = {m.id for m in received_a} | {m.id for m in received_b}
+            assert len(received_a) + len(received_b) == n
+            assert len(all_ids) == n  # no duplicates
+            # Both subscribers received at least one (load balancing)
+            assert len(received_a) > 0
+            assert len(received_b) > 0
         finally:
-            await bus.stop()
+            await sub_a.stop()
+            await sub_b.stop()
+
 
 def test_nats_bus_default_queue_group_is_empty() -> None:
     """Default queue_group is empty string (backward-compatible, no group)."""

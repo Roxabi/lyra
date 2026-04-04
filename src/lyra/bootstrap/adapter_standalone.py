@@ -1,13 +1,10 @@
-"""Standalone adapter bootstrap — runs TelegramAdapter or DiscordAdapter as a pure
-NATS client, without a local Hub instance.
+"""Standalone adapter bootstrap — runs TelegramAdapter or DiscordAdapter as a
+pure NATS client, without a local Hub instance.
 
 Entry point: _bootstrap_adapter_standalone(raw_config, platform)
 
-Used by lyra_telegram and lyra_discord supervisor programs in NATS mode (ADR-037).
-Tokens are read from the encrypted credential store (same source as hub mode),
-then the store is closed immediately — adapters do not hold auth.db open during
-their long-lived polling/websocket phase.
-Telegram uses aiogram long-polling; Discord uses its websocket connection.
+Used by lyra_telegram and lyra_discord supervisor programs in NATS mode.
+Tokens are read from the encrypted credential store then closed immediately.
 """
 from __future__ import annotations
 

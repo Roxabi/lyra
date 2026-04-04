@@ -77,7 +77,7 @@ class NatsBus(Generic[T]):
             subject collisions between different message types.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         nc: NATS,
         bot_id: str,
@@ -85,6 +85,7 @@ class NatsBus(Generic[T]):
         subject_prefix: str = "lyra.inbound",
         *,
         staging_maxsize: int = 500,
+        queue_group: str = "",
     ) -> None:
         if not re.fullmatch(r'[A-Za-z0-9_.\-]+', subject_prefix):
             raise ValueError(
@@ -95,6 +96,7 @@ class NatsBus(Generic[T]):
         self._bot_id = bot_id
         self._item_type = item_type
         self._subject_prefix = subject_prefix
+        self._queue_group = queue_group
         self._registrations: set[tuple[Platform, str]] = set()
         self._subscriptions: dict[tuple[Platform, str], Subscription] = {}
         self._staging: asyncio.Queue[T] = asyncio.Queue(maxsize=staging_maxsize)
@@ -246,6 +248,11 @@ class NatsBus(Generic[T]):
                     bot_id,
                 )
 
-        sub = await self._nc.subscribe(subject, cb=handler)
+        sub = await self._nc.subscribe(subject, queue=self._queue_group, cb=handler)
         self._subscriptions[(platform, bot_id)] = sub
-        log.debug("NatsBus subscribed: subject=%s bot_id=%s", subject, bot_id)
+        log.debug(
+            "NatsBus subscribed: subject=%s bot_id=%s queue_group=%r",
+            subject,
+            bot_id,
+            self._queue_group,
+        )

@@ -40,11 +40,14 @@ class NatsOutboundListener:
         platform: Platform,
         bot_id: str,
         adapter: "ChannelAdapter",
+        *,
+        queue_group: str = "",
     ) -> None:
         self._nc = nc
         self._platform = platform
         self._bot_id = bot_id
         self._adapter = adapter
+        self._queue_group = queue_group
         self._cache: dict[str, InboundMessage | InboundAudio] = {}
         self._cache_ts: dict[str, float] = {}
         self._stream_queues: dict[str, asyncio.Queue[dict]] = {}
@@ -69,7 +72,9 @@ class NatsOutboundListener:
     async def start(self) -> None:
         """Subscribe to the outbound NATS subject."""
         subject = f"lyra.outbound.{self._platform.value}.{self._bot_id}"
-        self._sub = await self._nc.subscribe(subject, cb=self._handle)
+        self._sub = await self._nc.subscribe(
+            subject, queue=self._queue_group, cb=self._handle
+        )
         self._reaper_task = asyncio.create_task(self._reap_stale())
 
     async def stop(self) -> None:

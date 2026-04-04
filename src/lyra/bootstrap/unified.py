@@ -60,12 +60,14 @@ async def _bootstrap_unified(  # noqa: C901, PLR0915
             bot_id="hub",
             item_type=InboundMessage,
             staging_maxsize=inbound_bus_cfg.staging_maxsize,
+            queue_group="hub-inbound",
         )
         inbound_audio_bus: NatsBus[InboundAudio] = NatsBus(
             nc=nc,
             bot_id="hub",
             item_type=InboundAudio,
             subject_prefix="lyra.inbound.audio",
+            queue_group="hub-inbound-audio",
         )
 
         vault_dir = Path(

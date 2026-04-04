@@ -438,3 +438,38 @@ class TestProtocolConformance:
 
         # Bus[T] generic alias can be used as a type annotation
         assert Bus is not None
+
+
+# ---------------------------------------------------------------------------
+# TestNatsBusQueueGroup — queue_group parameter forwarded to nc.subscribe()
+# ---------------------------------------------------------------------------
+
+
+@requires_nats_server
+class TestNatsBusQueueGroup:
+    async def test_subscribe_uses_queue_group(self, nc: NATS) -> None:
+        """NatsBus passes queue_group to nc.subscribe()."""
+        # Arrange
+        bus = NatsBus(nc=nc, bot_id="main", item_type=InboundMessage, queue_group="test-group")
+        bus.register(Platform.TELEGRAM)
+
+        # Act
+        await bus.start()
+
+        try:
+            # Assert — nats-py stores the queue group on the Subscription object
+            sub = list(bus._subscriptions.values())[0]
+            assert sub._queue == "test-group"
+        finally:
+            await bus.stop()
+
+def test_nats_bus_default_queue_group_is_empty() -> None:
+    """Default queue_group is empty string (backward-compatible, no group)."""
+    from unittest.mock import MagicMock
+
+    # Arrange / Act — uses a mock nc: no real NATS connection needed for this check
+    nc = MagicMock()
+    bus = NatsBus(nc=nc, bot_id="main", item_type=InboundMessage)
+
+    # Assert
+    assert bus._queue_group == ""

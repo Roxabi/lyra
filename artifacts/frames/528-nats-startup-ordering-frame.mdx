@@ -1,0 +1,50 @@
+---
+title: "feat(nats): add startup ordering or readiness probes"
+issue: 528
+status: approved
+tier: F-lite
+date: 2026-04-04
+---
+
+## Problem
+
+Supervisor starts `lyra_hub`, `lyra_telegram`, and `lyra_discord` concurrently with no ordering guarantees. Core NATS uses at-most-once delivery — messages published before the other side subscribes are silently dropped.
+
+Two race windows exist:
+
+1. **Adapter starts before hub** — user messages arrive on `lyra.inbound.*` before the hub's `NatsBus` has called `start()` and created subscriptions. Inbound messages are lost.
+2. **Hub starts before adapter** — hub publishes responses on `lyra.outbound.*` before the adapter's `NatsOutboundListener` has subscribed. Outbound replies are lost.
+
+Today there is zero readiness signaling between processes. The health endpoint (`/health`) is a static `{"ok": true}` — it does not reflect subscription readiness. Supervisor configs have no `priority` directives.
+
+The impact is worst during restarts (deploys, crashes) when users are actively chatting — messages vanish with no error or retry.
+
+## Who
+
+- **Primary:** End users — messages sent during the startup window disappear silently.
+- **Secondary:** Operators — silent message loss is hard to detect and debug; no metric or log signals the gap.
+
+## Constraints
+
+- Core NATS only (at-most-once). JetStream migration is tracked separately in #460.
+- Three-process supervisor model must be preserved (hub + telegram + discord as separate programs).
+- Unified mode (`lyra start`) is less affected — sequential in-process wiring — but should still benefit from readiness checks.
+- Solution must not add hard startup dependencies that prevent individual process restarts.
+- Embedded NATS auto-start (#520) may interact — the embedded server must also be ready before any process subscribes.
+
+## Out of Scope
+
+- JetStream / durable subscriptions (#460) — that's a larger architectural change.
+- Changing the three-process supervisor model.
+- Adapter-to-adapter direct communication.
+- Message replay or guaranteed delivery beyond the startup window.
+
+## Complexity
+
+**Tier: F-lite** — single domain (NATS infrastructure), clear problem with well-understood options, touches bootstrap files + supervisor config + health endpoint.
+
+Signals observed:
+- Single domain: NATS startup/bootstrap code
+- Clear scope: problem and solution space are well-defined in the issue
+- Estimated 4–8 files: hub bootstrap, adapter bootstrap, supervisor configs, health endpoint, possibly a readiness utility
+- No new architectural patterns — wiring existing primitives (NATS request/reply or supervisor priority)

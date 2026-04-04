@@ -86,9 +86,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
             finally:
                 await cred_store.close()
 
-            wired: list[
-                tuple[TelegramAdapter, Bus[InboundMessage], Bus[InboundAudio]]
-            ] = []
+            wired: list[tuple] = []  # (TelegramAdapter, Bus, Bus)
 
             for bot_cfg in tg_multi_cfg.bots:
                 bot_id = bot_cfg.bot_id
@@ -222,9 +220,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
             dc_thread_store = ThreadStore(db_path=vault_dir / "discord.db")
             await dc_thread_store.connect()
 
-            wired_dc: list[
-                tuple[DiscordAdapter, str, Bus[InboundMessage], Bus[InboundAudio]]
-            ] = []
+            wired_dc: list[tuple] = []  # (DiscordAdapter, str, Bus, Bus)
 
             for bot_cfg in dc_multi_cfg.bots:
                 bot_id = bot_cfg.bot_id
@@ -265,9 +261,8 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
                 adapter_dc._outbound_listener = listener_dc
                 await adapter_dc.astart()
 
-                wired_dc.append(
-                    (adapter_dc, token, inbound_bus_dc, inbound_audio_bus_dc)
-                )
+                abus_dc = inbound_audio_bus_dc
+                wired_dc.append((adapter_dc, token, inbound_bus_dc, abus_dc))
                 log.info(
                     "adapter_standalone: Discord bot_id=%s ready (NATS mode)", bot_id
                 )
@@ -301,6 +296,5 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
 
         else:
             sys.exit(f"Unknown platform: {platform!r}")
-
     finally:
         await nc.close()

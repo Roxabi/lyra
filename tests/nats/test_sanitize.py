@@ -11,11 +11,10 @@ from __future__ import annotations
 import dataclasses
 import logging
 from typing import cast
-from unittest.mock import patch
 
 import pytest
 
-from lyra.core.hub.message_pipeline import Action, ResumeStatus
+from lyra.core.hub.message_pipeline import ResumeStatus
 from lyra.core.hub.middleware import PipelineContext
 from lyra.core.hub.middleware_submit import SubmitToPoolMiddleware
 from lyra.nats._sanitize import PLATFORM_META_ALLOWLIST, sanitize_platform_meta
@@ -101,7 +100,9 @@ class TestSanitizePlatformMeta:
         # Assert
         assert result == {}
 
-    def test_stripped_keys_logged_at_debug(self, caplog: pytest.LogCaptureFixture) -> None:
+    def test_stripped_keys_logged_at_debug(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
         """Stripped key names appear in a DEBUG log record."""
         # Arrange
         meta = {"chat_id": 1, "evil_key": "x", "_internal": "y"}
@@ -115,7 +116,9 @@ class TestSanitizePlatformMeta:
         assert "evil_key" in debug_messages
         assert "_internal" in debug_messages
 
-    def test_no_log_when_nothing_stripped(self, caplog: pytest.LogCaptureFixture) -> None:
+    def test_no_log_when_nothing_stripped(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
         """No log is emitted when all keys are allowlisted (no stripping needed)."""
         # Arrange
         meta = {"chat_id": 1, "is_group": False}
@@ -158,7 +161,7 @@ class TestScopeValidation:
     async def test_cross_scope_thread_session_id_rejected(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """session registered to pool_A but message arrives at pool_B → SKIPPED + warning."""
+        """Cross-scope session → SKIPPED + warning."""
         # Arrange
         pool_id = "telegram:main:chat:99"
         hub = _make_hub()

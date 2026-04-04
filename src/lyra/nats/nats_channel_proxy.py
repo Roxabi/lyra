@@ -56,6 +56,7 @@ class NatsChannelProxy:
         self._nc = nc
         self._platform = platform
         self._bot_id = bot_id
+        self._active_streams: set[str] = set()
 
     # ------------------------------------------------------------------
     # Inbound normalization — not supported by this proxy
@@ -115,6 +116,7 @@ class NatsChannelProxy:
                 json.dumps(header, ensure_ascii=False).encode("utf-8"),
             )
 
+        self._active_streams.add(original_msg.id)
         seq = 0
         try:
             async for event in events:
@@ -145,13 +147,53 @@ class NatsChannelProxy:
                 subject,
                 json.dumps(terminal, ensure_ascii=False).encode("utf-8"),
             )
+            self._active_streams.discard(original_msg.id)
         except Exception:
             log.exception(
                 "NatsChannelProxy: NATS publish failed during streaming,"
                 " draining iterator"
             )
+            error_envelope = {
+                "type": "stream_error",
+                "stream_id": original_msg.id,
+                "reason": "streaming_exception",
+            }
+            try:
+                await self._nc.publish(
+                    subject,
+                    json.dumps(error_envelope, ensure_ascii=False).encode("utf-8"),
+                )
+            except Exception:
+                log.warning(
+                    "NatsChannelProxy: failed to publish stream_error"
+                    " for stream_id=%r",
+                    original_msg.id,
+                )
+            self._active_streams.discard(original_msg.id)
             async for _ in events:
                 pass
+
+    async def publish_stream_errors(self, reason: str = "hub_shutdown") -> None:
+        """Publish stream_error for all active streams, then clear the set."""
+        subject = f"lyra.outbound.{self._platform.value}.{self._bot_id}"
+        for stream_id in list(self._active_streams):
+            envelope = {
+                "type": "stream_error",
+                "stream_id": stream_id,
+                "reason": reason,
+            }
+            try:
+                await self._nc.publish(
+                    subject,
+                    json.dumps(envelope, ensure_ascii=False).encode("utf-8"),
+                )
+            except Exception:
+                log.warning(
+                    "NatsChannelProxy: failed to publish stream_error"
+                    " for stream_id=%r",
+                    stream_id,
+                )
+        self._active_streams.clear()
 
     # ------------------------------------------------------------------
     # Audio — not yet implemented (C5)

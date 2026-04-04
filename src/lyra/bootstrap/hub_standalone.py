@@ -337,6 +337,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
 
         # Wire each (platform, bot_id) to a NatsChannelProxy + OutboundDispatcher
         dispatchers: list[OutboundDispatcher] = []
+        proxies: list[NatsChannelProxy] = []
 
         for bot_cfg, auth in tg_bot_auths:
             resolved_agent = bot_agent_map.get(("telegram", bot_cfg.bot_id))
@@ -350,6 +351,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
             proxy = NatsChannelProxy(
                 nc=nc, platform=Platform.TELEGRAM, bot_id=bot_cfg.bot_id
             )
+            proxies.append(proxy)
             hub.register_authenticator(Platform.TELEGRAM, bot_cfg.bot_id, auth)
             hub.register_adapter(Platform.TELEGRAM, bot_cfg.bot_id, proxy)
 
@@ -393,6 +395,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
             proxy = NatsChannelProxy(
                 nc=nc, platform=Platform.DISCORD, bot_id=bot_cfg.bot_id
             )
+            proxies.append(proxy)
             hub.register_authenticator(Platform.DISCORD, bot_cfg.bot_id, auth)
             hub.register_adapter(Platform.DISCORD, bot_cfg.bot_id, proxy)
 
@@ -485,6 +488,8 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
         await readiness_sub.unsubscribe()
         await teardown_buses(hub.inbound_bus, hub.inbound_audio_bus)
         await teardown_dispatchers(dispatchers)
+        for proxy in proxies:
+            await proxy.publish_stream_errors("hub_shutdown")
         if pm is not None:
             await pm.close()
         if cli_pool is not None:

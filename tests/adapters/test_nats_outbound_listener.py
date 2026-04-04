@@ -445,3 +445,80 @@ async def test_default_queue_group_is_empty() -> None:
 
     # Assert
     assert listener._queue_group == ""
+
+
+@pytest.mark.asyncio
+async def test_stream_error_enqueues_poison_pill() -> None:
+    """stream_error envelope is dispatched to _handle_stream_error.
+
+    Verifies that _handle routes type='stream_error' to _handle_stream_error,
+    which enqueues a poison-pill chunk into the active stream queue.
+    """
+    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+
+    nc = AsyncMock()
+    adapter = AsyncMock()
+    adapter.send_streaming = AsyncMock()
+    listener = NatsOutboundListener(nc, Platform.TELEGRAM, "main", adapter)
+
+    msg = _make_tg_msg("msg-stream-err")
+    listener.cache_inbound(msg)
+
+    # stream_start so a queue exists and outbound metadata is cached
+    stream_start = {
+        "type": "stream_start",
+        "stream_id": msg.id,
+        "outbound": {"content": [], "buttons": [], "metadata": {}},
+    }
+    await listener._handle(_make_nats_msg(stream_start))
+
+    # One regular chunk — this starts a drain task
+    chunk = {
+        "stream_id": msg.id,
+        "seq": 0,
+        "event_type": "text",
+        "payload": {"text": "partial", "is_final": False},
+        "done": False,
+    }
+    await listener._handle(_make_nats_msg(chunk))
+
+    # stream_error — hub crashed mid-stream.
+    error_envelope = {
+        "type": "stream_error",
+        "stream_id": msg.id,
+    }
+    await listener._handle(_make_nats_msg(error_envelope))
+
+    # _handle_stream_error must enqueue a poison pill so the queue has 2 items:
+    # the regular chunk + the stream_error sentinel.
+    q = listener._stream_queues.get(msg.id)
+    assert q is not None, "_stream_queues must contain an entry for the stream_id"
+    assert q.qsize() == 2, (
+        "Expected 2 items in queue (1 chunk + 1 stream_error poison pill); "
+        f"got {q.qsize() if q else 'no queue'}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_stream_error_no_queue_cleans_cache() -> None:
+    """stream_error with no active queue removes the cache entry."""
+    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+
+    nc = AsyncMock()
+    adapter = AsyncMock()
+    listener = NatsOutboundListener(nc, Platform.TELEGRAM, "main", adapter)
+
+    msg = _make_tg_msg("msg-err-no-queue")
+    listener.cache_inbound(msg)
+
+    assert msg.id in listener._cache
+
+    # stream_error arrives with no prior chunks / no queue
+    error_envelope = {
+        "type": "stream_error",
+        "stream_id": msg.id,
+    }
+    await listener._handle(_make_nats_msg(error_envelope))
+
+    # Cache entry must be cleaned up
+    assert msg.id not in listener._cache

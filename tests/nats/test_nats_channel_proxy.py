@@ -467,3 +467,82 @@ async def test_send_streaming_uses_single_subject() -> None:
     assert "stream_id" in envelope
     assert "seq" in envelope
     assert "type" not in envelope  # chunks don't have type key
+
+
+# ---------------------------------------------------------------------------
+# is_terminal — stream_error event type
+# ---------------------------------------------------------------------------
+
+
+def test_is_terminal_stream_error():
+    """stream_error event type is always terminal regardless of done flag."""
+    from lyra.nats.render_event_codec import NatsRenderEventCodec
+    assert NatsRenderEventCodec.is_terminal("stream_error", True) is True
+    assert NatsRenderEventCodec.is_terminal("stream_error", False) is True
+
+
+# ---------------------------------------------------------------------------
+# _active_streams tracking + publish_stream_errors (V2 — slice 2)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_active_streams_tracked_during_streaming() -> None:
+    """send_streaming() adds stream_id to _active_streams then removes it on completion."""
+    nc = _make_nc()
+    proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
+    inbound = _make_inbound("msg-track")
+
+    await proxy.send_streaming(
+        inbound, _async_iter(TextRenderEvent(text="hi", is_final=True))
+    )
+
+    # After completion the set must be empty — stream_id was added then removed
+    assert proxy._active_streams == set()
+
+
+@pytest.mark.asyncio
+async def test_publish_stream_errors_publishes_for_active() -> None:
+    """publish_stream_errors() sends type=stream_error for each active stream_id."""
+    nc = _make_nc()
+    proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
+
+    # Manually seed two active streams (as the implementation will maintain)
+    proxy._active_streams = {"stream-a", "stream-b"}
+
+    await proxy.publish_stream_errors("hub_shutdown")
+
+    # One publish call per active stream_id
+    assert nc.publish.await_count == 2
+
+    subject = f"lyra.outbound.{proxy._platform.value}.{proxy._bot_id}"
+    published_envelopes = []
+    for call in nc.publish.call_args_list:
+        call_subject, call_payload = call.args
+        assert call_subject == subject
+        published_envelopes.append(json.loads(call_payload.decode("utf-8")))
+
+    stream_ids_published = {env["stream_id"] for env in published_envelopes}
+    assert stream_ids_published == {"stream-a", "stream-b"}
+    for env in published_envelopes:
+        assert env["type"] == "stream_error"
+        assert env["reason"] == "hub_shutdown"
+
+    # _active_streams must be cleared afterwards
+    assert proxy._active_streams == set()
+
+
+@pytest.mark.asyncio
+async def test_publish_stream_errors_swallows_nats_failure() -> None:
+    """publish_stream_errors() does not raise even when nc.publish fails."""
+    nc = _make_nc()
+    nc.publish = AsyncMock(side_effect=Exception("NATS gone"))
+    proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
+
+    proxy._active_streams = {"stream-x", "stream-y"}
+
+    # Must not raise despite publish failure
+    await proxy.publish_stream_errors("hub_shutdown")
+
+    # _active_streams must be cleared even on failure
+    assert proxy._active_streams == set()

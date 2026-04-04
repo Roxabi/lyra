@@ -109,6 +109,8 @@ class NatsOutboundListener:
             await self._handle_send(data)
         elif msg_type == "stream_start":
             self._handle_stream_start(data)
+        elif msg_type == "stream_error":
+            self._handle_stream_error(data)
         elif msg_type == "attachment":
             await self._handle_attachment(data)
         elif "stream_id" in data and "seq" in data:
@@ -181,6 +183,32 @@ class NatsOutboundListener:
             )
         except Exception:
             log.warning("NatsOutboundListener: failed to deserialize stream outbound")
+
+    def _handle_stream_error(self, data: dict) -> None:
+        """Handle stream_error envelope — terminate or clean up the stream."""
+        stream_id = data.get("stream_id")
+        if stream_id is None:
+            return
+        q = self._stream_queues.get(stream_id)
+        if q is not None:
+            try:
+                q.put_nowait({"event_type": "stream_error", "done": True})
+            except asyncio.QueueFull:
+                log.warning(
+                    "NatsOutboundListener: stream queue full, cannot enqueue"
+                    " stream_error for stream_id=%r",
+                    stream_id,
+                )
+        else:
+            # Race: error before first chunk or after stream_end already cleaned up
+            self._cache.pop(stream_id, None)
+            self._cache_ts.pop(stream_id, None)
+            self._stream_outbound.pop(stream_id, None)
+            log.warning(
+                "NatsOutboundListener: stream_error for unknown/finished"
+                " stream_id=%r",
+                stream_id,
+            )
 
     async def _handle_chunk(self, data: dict) -> None:
         stream_id = data.get("stream_id")

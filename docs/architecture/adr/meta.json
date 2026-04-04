@@ -37,6 +37,7 @@
     "036-renderevent-streaming-chunk-protocol",
     "037-nats-outbound-listener-placement-and-adapter-standalone-bootstrap",
     "037-unified-identity-alias-layer-shape3",
-    "038-health-monitoring-layer-boundaries"
+    "038-health-monitoring-layer-boundaries",
+    "039-stt-tts-nats-adapter-decoupling"
   ]
 }

@@ -1,0 +1,74 @@
+---
+title: "Decouple STT/TTS from hub into independent NATS adapter services"
+issue: 518
+status: approved
+tier: F-full
+date: 2026-04-04
+---
+
+## Problem
+
+The hub process imports `voicecli` directly through `STTService` and `TTSService` wrappers
+in `src/lyra/stt/` and `src/lyra/tts/`. When the voicecli Unix-socket daemons are not
+running, voicecli's "daemon-first, in-process fallback" strategy loads a ~2 GB Whisper
+model synchronously inside the hub, causing:
+
+1. **Telegram polling crashes** — event loop starvation during model load causes aiohttp
+   timeouts on `getUpdates`, trapping the adapter in a `TelegramNetworkError` timeout loop.
+2. **Hub startup coupling** — the hub cannot start cleanly without voice infrastructure,
+   violating startup order independence.
+3. **Blast radius leakage** — any voicecli crash or resource issue (VRAM contention, model
+   corruption) propagates into the hub process, affecting all channels including text-only
+   users.
+
+Root cause confirmed on 2026-04-04: Telegram adapter stuck in a timeout loop because the
+STT daemon was stopped and voicecli fell back to in-process model loading.
+
+The structural issue is dependency direction: the hub (application layer) imports voicecli
+(infrastructure), coupling the hub's crash surface to model loading.
+
+## Who
+
+- **Primary:** All Telegram and Discord users — hub crash means total outage, not just
+  voice degradation.
+- **Secondary:** Operator (Mickael) — voice services should be independently restartable
+  without touching the hub, consistent with Telegram/Discord adapter management.
+
+## Constraints
+
+- Hub must **never** import voicecli after this change — the dependency is removed, not
+  abstracted.
+- Existing voicecli Unix-socket daemons (`voicecli_stt`, `voicecli_tts`) are untouched —
+  new adapters can delegate to them internally.
+- Hub must start and handle text messages with voice adapters stopped — voice messages
+  receive a polite error reply (`stt_unavailable`).
+- No hub restart needed when voice adapters come up later — NATS request-reply with timeout
+  handles late arrival.
+- Must follow the existing adapter pattern (Telegram/Discord) and ADR-035 NATS naming
+  conventions.
+- Audio bytes travel as base64 in JSON envelopes over NATS — acceptable at this scale
+  (10–40 KB per message, well within NATS 1 MB limit).
+
+## Out of Scope
+
+- Changes to voicecli library internals or its Unix-socket daemon protocol.
+- NATS ACL enforcement in production (catalogue defined, enforcement deferred per ADR-035).
+- Multi-instance scaling of voice adapters (queue groups are set up for it, but not tested
+  or documented as a supported config).
+- Streaming/chunked TTS delivery over NATS (single request-reply per synthesis call).
+- Removing the old `STTService`/`TTSService` classes — they move into the adapter processes
+  and continue to be used there.
+
+## Complexity
+
+**Tier: F-full** — Multiple domains (NATS transport, voice services, hub bootstrap,
+supervisor infrastructure), two new standalone processes, new protocol interfaces, and a
+hub dependency removal that touches the startup and audio pipeline paths.
+
+Signals:
+- ~12 files impacted (6 new, 6 modified)
+- Two new supervisor processes with launch scripts
+- New NATS subject domain (`lyra.voice.*`)
+- New protocol interfaces (`STTProtocol`, `TtsProtocol`)
+- Hub bootstrap path rewrite (voice_overlay.py, hub_standalone.py)
+- Cross-cutting: affects bootstrap, NATS, audio pipeline, supervisor, and Makefile

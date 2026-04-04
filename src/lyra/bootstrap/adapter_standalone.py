@@ -13,19 +13,10 @@ from lyra.core.message import InboundAudio, InboundMessage, Platform
 from lyra.core.stores.credential_store import CredentialStore, LyraKeyring
 from lyra.nats import nats_connect
 from lyra.nats.connect import scrub_nats_url
+from lyra.nats.queue_groups import adapter_outbound
 from lyra.nats.readiness import wait_for_hub
 
 log = logging.getLogger(__name__)
-
-
-def _adapter_outbound_queue_group(platform: Platform, bot_id: str) -> str:
-    """Return the NATS queue group name for an adapter's outbound subscription.
-
-    Each adapter instance for a given (platform, bot_id) joins this group so
-    that during rolling restarts only one process receives each outbound
-    message, preventing duplicate sends to users.
-    """
-    return f"adapter-outbound-{platform.value}-{bot_id}"
 
 
 async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
@@ -102,17 +93,13 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
                 token, webhook_secret = tg_creds[bot_id]
 
                 inbound_bus: Bus[InboundMessage] = NatsBus(  # type: ignore[type-arg]
-                    nc=nc,
-                    bot_id=bot_id,
-                    item_type=InboundMessage,
+                    nc=nc, bot_id=bot_id, item_type=InboundMessage,
                 )
                 inbound_bus.register(platform_enum)
                 await inbound_bus.start()
 
                 inbound_audio_bus: Bus[InboundAudio] = NatsBus(  # type: ignore[type-arg]
-                    nc=nc,
-                    bot_id=bot_id,
-                    item_type=InboundAudio,
+                    nc=nc, bot_id=bot_id, item_type=InboundAudio,
                     subject_prefix="lyra.inbound.audio",
                 )
                 inbound_audio_bus.register(platform_enum)
@@ -129,7 +116,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
 
                 listener = NatsOutboundListener(
                     nc, platform_enum, bot_id, adapter,
-                    queue_group=_adapter_outbound_queue_group(platform_enum, bot_id),
+                    queue_group=adapter_outbound(platform_enum, bot_id),
                 )
                 adapter._outbound_listener = listener
                 await adapter.astart()
@@ -240,17 +227,13 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
                 token = dc_creds[bot_id]
 
                 inbound_bus_dc: Bus[InboundMessage] = NatsBus(  # type: ignore[type-arg]
-                    nc=nc,
-                    bot_id=bot_id,
-                    item_type=InboundMessage,
+                    nc=nc, bot_id=bot_id, item_type=InboundMessage,
                 )
                 inbound_bus_dc.register(platform_enum)
                 await inbound_bus_dc.start()
 
                 inbound_audio_bus_dc: Bus[InboundAudio] = NatsBus(  # type: ignore[type-arg]
-                    nc=nc,
-                    bot_id=bot_id,
-                    item_type=InboundAudio,
+                    nc=nc, bot_id=bot_id, item_type=InboundAudio,
                     subject_prefix="lyra.inbound.audio",
                 )
                 inbound_audio_bus_dc.register(platform_enum)
@@ -268,7 +251,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
 
                 listener_dc = NatsOutboundListener(
                     nc, platform_enum, bot_id, adapter_dc,
-                    queue_group=_adapter_outbound_queue_group(platform_enum, bot_id),
+                    queue_group=adapter_outbound(platform_enum, bot_id),
                 )
                 adapter_dc._outbound_listener = listener_dc
                 await adapter_dc.astart()

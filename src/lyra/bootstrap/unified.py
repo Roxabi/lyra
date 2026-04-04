@@ -41,6 +41,7 @@ from lyra.core.hub.event_bus import PipelineEventBus
 from lyra.core.message import InboundAudio, InboundMessage
 from lyra.core.stores.pairing import PairingManager, set_pairing_manager
 from lyra.nats.nats_bus import NatsBus
+from lyra.nats.queue_groups import HUB_INBOUND, HUB_INBOUND_AUDIO
 
 log = logging.getLogger(__name__)
 
@@ -60,14 +61,14 @@ async def _bootstrap_unified(  # noqa: C901, PLR0915
             bot_id="hub",
             item_type=InboundMessage,
             staging_maxsize=inbound_bus_cfg.staging_maxsize,
-            queue_group="hub-inbound",
+            queue_group=HUB_INBOUND,
         )
         inbound_audio_bus: NatsBus[InboundAudio] = NatsBus(
             nc=nc,
             bot_id="hub",
             item_type=InboundAudio,
             subject_prefix="lyra.inbound.audio",
-            queue_group="hub-inbound-audio",
+            queue_group=HUB_INBOUND_AUDIO,
         )
 
         vault_dir = Path(

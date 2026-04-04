@@ -118,8 +118,7 @@ class NatsOutboundListener:
         original_msg = self._cache.get(stream_id) if stream_id else None
         if stream_id is None or original_msg is None:
             log.warning(
-                "NatsOutboundListener: unknown stream_id=%r for send",
-                stream_id,
+                "NatsOutboundListener: unknown stream_id=%r for send", stream_id,
             )
             return
         outbound_data = data.get("outbound")
@@ -187,10 +186,8 @@ class NatsOutboundListener:
         at_limit = len(self._stream_tasks) >= _MAX_STREAMS
         if stream_id not in self._stream_tasks and at_limit:
             log.warning(
-                "NatsOutboundListener: _stream_tasks full"
-                " (%d streams), dropping stream_id=%r",
-                _MAX_STREAMS,
-                stream_id,
+                "NatsOutboundListener: _stream_tasks full (%d streams),"
+                " dropping stream_id=%r", _MAX_STREAMS, stream_id,
             )
             return
         q = self._stream_queues.setdefault(
@@ -286,8 +283,7 @@ class NatsOutboundListener:
             await asyncio.sleep(_REAPER_INTERVAL_SECONDS)
             now = time.monotonic()
             stale = [
-                sid
-                for sid, ts in list(self._cache_ts.items())
+                sid for sid, ts in list(self._cache_ts.items())
                 if now - ts > _CACHE_TTL_SECONDS
             ]
             for stream_id in stale:

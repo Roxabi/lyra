@@ -63,11 +63,9 @@ class NatsOutboundListener:
         self._stream_outbound: dict[str, OutboundMessage] = {}
         self._sub: Any = None  # nats.aio.subscription.Subscription | None
         self._reaper_task: asyncio.Task[None] | None = None
-        # Tombstone set: stream_ids that received stream_error, used to reject
-        # late-arriving chunks after a stream has been terminated. Bounded to
-        # _MAX_TERMINATED_STREAMS; an arbitrary entry is evicted when full.
+        # Tombstone set: stream_ids that received stream_error — rejects late
+        # chunks after termination. Bounded; arbitrary entry evicted when full.
         self._terminated_streams: set[str] = set()
-        # Per-envelope drop counts from schema version mismatches.
         self._version_mismatch_drops: dict[str, int] = {}
 
     def cache_inbound(self, msg: InboundMessage | InboundAudio) -> None:
@@ -84,11 +82,7 @@ class NatsOutboundListener:
         self._cache_ts[msg.id] = time.monotonic()
 
     def version_mismatch_count(self, envelope_name: str) -> int:
-        """Return the cumulative count of dropped render events for *envelope_name*.
-
-        Counts are per-listener and accumulate across the listener lifetime. Used
-        by tests and future metrics surfaces to detect botched rolling deploys.
-        """
+        """Cumulative drops for *envelope_name* (schema version mismatches)."""
         return self._version_mismatch_drops.get(envelope_name, 0)
 
     async def start(self) -> None:

@@ -228,11 +228,7 @@ class NatsBus(Generic[T]):
         return len(self._subscriptions)
 
     def version_mismatch_count(self, envelope_name: str) -> int:
-        """Return the cumulative count of dropped messages for *envelope_name*.
-
-        Counts are per-instance and accumulate across the bus lifetime. Used by
-        tests and future metrics surfaces to detect botched rolling deploys.
-        """
+        """Cumulative drops for *envelope_name* (schema version mismatches)."""
         return self._version_mismatch_drops.get(envelope_name, 0)
 
     # ------------------------------------------------------------------

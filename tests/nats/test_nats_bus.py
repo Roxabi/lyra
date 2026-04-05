@@ -511,3 +511,179 @@ def test_nats_bus_default_queue_group_is_empty() -> None:
 
     # Assert
     assert bus._queue_group == ""
+
+
+# ---------------------------------------------------------------------------
+# TestNatsBusVersionMismatch — MT-8: schema_version filtering in NatsBus handler
+# ---------------------------------------------------------------------------
+
+
+import json as _json  # noqa: E402 — module-level import placed here to avoid reordering existing imports
+
+
+def _make_inbound_bytes_v1() -> bytes:
+    """Return serialized bytes for a valid v1 InboundMessage."""
+    return serialize(_make_msg(Platform.TELEGRAM))
+
+
+def _make_inbound_bytes_no_version() -> bytes:
+    """Return JSON bytes for an InboundMessage with schema_version removed (legacy)."""
+    d = _json.loads(serialize(_make_msg(Platform.TELEGRAM)).decode("utf-8"))
+    del d["schema_version"]
+    return _json.dumps(d).encode("utf-8")
+
+
+def _make_inbound_bytes_version(version: int) -> bytes:
+    """Return JSON bytes for an InboundMessage with an explicit schema_version value."""
+    d = _json.loads(serialize(_make_msg(Platform.TELEGRAM)).decode("utf-8"))
+    d["schema_version"] = version
+    return _json.dumps(d).encode("utf-8")
+
+
+def _make_inbound_bytes_string_version() -> bytes:
+    """Return JSON bytes for an InboundMessage with schema_version as string."""
+    d = _json.loads(serialize(_make_msg(Platform.TELEGRAM)).decode("utf-8"))
+    d["schema_version"] = "1"
+    return _json.dumps(d).encode("utf-8")
+
+
+@requires_nats_server
+class TestNatsBusVersionMismatch:
+    """Integration tests for schema_version filtering wired into NatsBus._make_handler.
+
+    Covers SC-5 (drops v2), SC-6 (accepts matching v1), SC-7 (accepts legacy/no-field),
+    SC-10 (mixed batch survives subscription), SC-11 (version_mismatch_count accessor).
+    """
+
+    async def test_version_match_accepts(self, nc: NATS) -> None:
+        """Publish a v1 InboundMessage — it reaches staging and counter stays 0."""
+        # Arrange
+        bus = _make_bus(nc)
+        bus.register(Platform.TELEGRAM)
+        await bus.start()
+
+        subject = "lyra.inbound.telegram.main"
+
+        try:
+            # Act — publish a properly serialized v1 message
+            await nc.publish(subject, _make_inbound_bytes_v1())
+            received = await asyncio.wait_for(bus.get(), timeout=2.0)
+
+            # Assert — message arrived and mismatch counter untouched
+            assert received is not None
+            assert bus.version_mismatch_count("InboundMessage") == 0
+        finally:
+            await bus.stop()
+
+    async def test_legacy_payload_without_field_accepts(self, nc: NATS) -> None:
+        """Publish a payload without schema_version (pre-versioning producer) — ok."""
+        # Arrange
+        bus = _make_bus(nc)
+        bus.register(Platform.TELEGRAM)
+        await bus.start()
+
+        subject = "lyra.inbound.telegram.main"
+
+        try:
+            # Act — publish JSON without the schema_version key
+            await nc.publish(subject, _make_inbound_bytes_no_version())
+            received = await asyncio.wait_for(bus.get(), timeout=2.0)
+
+            # Assert — message arrives; no mismatch counted (missing field → v1)
+            assert received is not None
+            assert bus.version_mismatch_count("InboundMessage") == 0
+        finally:
+            await bus.stop()
+
+    async def test_version_mismatch_drops(
+        self, nc: NATS, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Publish schema_version=2 payload — dropped, counter=1, ERROR logged."""
+        import logging
+
+        # Arrange
+        bus = _make_bus(nc)
+        bus.register(Platform.TELEGRAM)
+        await bus.start()
+
+        subject = "lyra.inbound.telegram.main"
+
+        try:
+            # Act — publish a future-version payload that this receiver cannot handle
+            with caplog.at_level(logging.ERROR):
+                await nc.publish(subject, _make_inbound_bytes_version(2))
+                # Give the NATS delivery + handler a moment to run
+                await asyncio.sleep(0.15)
+
+            # Assert — staging queue stays empty (message was dropped)
+            with pytest.raises((asyncio.TimeoutError, TimeoutError)):
+                await asyncio.wait_for(bus.get(), timeout=0.3)
+
+            # Counter must have incremented exactly once
+            assert bus.version_mismatch_count("InboundMessage") == 1
+
+            # ERROR log must mention the mismatch
+            assert any(
+                "NATS schema version mismatch" in r.message
+                for r in caplog.records
+                if r.levelno >= logging.ERROR
+            )
+        finally:
+            await bus.stop()
+
+    async def test_mixed_batch_survives_subscription(self, nc: NATS) -> None:
+        """Publish [v1, v2_bad, v1] — 2 accepted, 1 dropped, bus stays alive."""
+        # Arrange
+        bus = _make_bus(nc)
+        bus.register(Platform.TELEGRAM)
+        await bus.start()
+
+        subject = "lyra.inbound.telegram.main"
+
+        try:
+            # Act — publish three messages; only the two v1s should arrive
+            await nc.publish(subject, _make_inbound_bytes_v1())
+            await nc.publish(subject, _make_inbound_bytes_version(2))
+            await nc.publish(subject, _make_inbound_bytes_v1())
+
+            # Wait for all deliveries to propagate through the NATS handler
+            await asyncio.sleep(0.2)
+
+            # Drain the staging queue
+            received: list = []
+            while bus.staging_qsize() > 0:
+                received.append(await bus.get())
+
+            # Assert — exactly 2 valid messages arrived
+            assert len(received) == 2
+            assert bus.version_mismatch_count("InboundMessage") == 1
+
+            # Assert — subscription is still alive: a 4th v1 must arrive
+            await nc.publish(subject, _make_inbound_bytes_v1())
+            fourth = await asyncio.wait_for(bus.get(), timeout=2.0)
+            assert fourth is not None
+        finally:
+            await bus.stop()
+
+    async def test_non_int_schema_version_drops(self, nc: NATS) -> None:
+        """Publish a payload with schema_version as a string — dropped, counter=1."""
+        # Arrange
+        bus = _make_bus(nc)
+        bus.register(Platform.TELEGRAM)
+        await bus.start()
+
+        subject = "lyra.inbound.telegram.main"
+
+        try:
+            # Act — publish JSON with schema_version: "1" (string, not int)
+            await nc.publish(subject, _make_inbound_bytes_string_version())
+            await asyncio.sleep(0.15)
+
+            # Assert — staging queue stays empty
+            with pytest.raises((asyncio.TimeoutError, TimeoutError)):
+                await asyncio.wait_for(bus.get(), timeout=0.3)
+
+            # Counter must have incremented
+            assert bus.version_mismatch_count("InboundMessage") == 1
+        finally:
+            await bus.stop()

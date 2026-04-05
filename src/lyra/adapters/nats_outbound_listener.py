@@ -67,6 +67,8 @@ class NatsOutboundListener:
         # late-arriving chunks after a stream has been terminated. Bounded to
         # _MAX_TERMINATED_STREAMS; an arbitrary entry is evicted when full.
         self._terminated_streams: set[str] = set()
+        # Per-envelope drop counts from schema version mismatches.
+        self._version_mismatch_drops: dict[str, int] = {}
 
     def cache_inbound(self, msg: InboundMessage | InboundAudio) -> None:
         """Store msg so it can be retrieved later by stream_id."""
@@ -80,6 +82,14 @@ class NatsOutboundListener:
             )
         self._cache[msg.id] = msg
         self._cache_ts[msg.id] = time.monotonic()
+
+    def version_mismatch_count(self, envelope_name: str) -> int:
+        """Return the cumulative count of dropped render events for *envelope_name*.
+
+        Counts are per-listener and accumulate across the listener lifetime. Used
+        by tests and future metrics surfaces to detect botched rolling deploys.
+        """
+        return self._version_mismatch_drops.get(envelope_name, 0)
 
     async def start(self) -> None:
         """Subscribe to the outbound NATS subject."""
@@ -259,7 +269,9 @@ class NatsOutboundListener:
         try:
             await self._adapter.send_streaming(
                 cast(InboundMessage, original_msg),
-                decode_stream_events(stream_id, q),
+                decode_stream_events(
+                    stream_id, q, counter=self._version_mismatch_drops
+                ),
                 outbound,
             )
         except Exception:

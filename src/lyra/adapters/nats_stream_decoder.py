@@ -26,7 +26,10 @@ _MAX_TERMINATED_STREAMS = 500
 
 
 async def decode_stream_events(
-    stream_id: str, q: asyncio.Queue[dict],
+    stream_id: str,
+    q: asyncio.Queue[dict],
+    *,
+    counter: dict[str, int] | None = None,
 ) -> AsyncIterator["RenderEvent"]:
     """Drain chunks from *q* and yield decoded :class:`RenderEvent` objects.
 
@@ -36,7 +39,10 @@ async def decode_stream_events(
 
     Args:
         stream_id: Logical stream identifier (used only for log correlation).
-        q: Queue populated by :meth:`NatsOutboundListener._handle_chunk`.
+        q:         Queue populated by :meth:`NatsOutboundListener._handle_chunk`.
+        counter:   Caller-owned mutable dict passed through to
+                   :meth:`NatsRenderEventCodec.decode` for version-mismatch
+                   drop counting.  ``None`` skips counting.
 
     Yields:
         Decoded render events until a terminal chunk arrives or the timeout
@@ -72,7 +78,7 @@ async def decode_stream_events(
             break
         payload = chunk.get("payload", {})
         is_done = chunk.get("done", False)
-        event = NatsRenderEventCodec.decode(event_type, payload)
+        event = NatsRenderEventCodec.decode(event_type, payload, counter=counter)
         if event is not None:
             yield event
         if NatsRenderEventCodec.is_terminal(event_type, is_done):

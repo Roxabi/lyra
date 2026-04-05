@@ -13,6 +13,10 @@ if TYPE_CHECKING:
 # Shared user-facing fallback for unhandled agent or dispatch errors.
 GENERIC_ERROR_REPLY = "Something went wrong. Please try again."
 
+SCHEMA_VERSION_INBOUND_MESSAGE = 1
+SCHEMA_VERSION_INBOUND_AUDIO = 1
+SCHEMA_VERSION_OUTBOUND_MESSAGE = 1
+
 
 class Platform(str, Enum):
     TELEGRAM = "telegram"
@@ -79,6 +83,7 @@ class InboundMessage:
     text: str  # normalized plain text (markup stripped)
     text_raw: str  # original text with platform markup
     trust_level: TrustLevel
+    schema_version: int = 1
     is_admin: bool = False
     roles: tuple[str, ...] = ()
     attachments: list[Attachment] = field(default_factory=list)
@@ -121,6 +126,7 @@ class InboundAudio:
     file_id: str | None
     timestamp: datetime
     trust_level: TrustLevel
+    schema_version: int = 1
     # Deprecated: use trust_level (TrustLevel) for authorization.
     # Removal tracked separately.
     trust: Literal["user", "system"] = "user"
@@ -258,6 +264,7 @@ class OutboundMessage:
     intermediate: bool = False  # True → typing continues after send
     metadata: dict[str, Any] = field(default_factory=dict)
     routing: RoutingContext | None = None
+    schema_version: int = 1
 
     @classmethod
     def from_text(cls, text: str) -> "OutboundMessage":

@@ -7,6 +7,7 @@ Covers all rules described in _version_check.py:
 - Receiver older than payload → dropped (mismatch)
 - Non-int values (string, None, zero, negative) → dropped
 - Counter isolation between independent callers
+- Log-flood rate limiting across repeated drops
 """
 from __future__ import annotations
 
@@ -14,7 +15,11 @@ import logging
 
 import pytest
 
+from lyra.nats import _version_check
 from lyra.nats._version_check import check_schema_version
+
+# Rate-limit state is reset before every test via an autouse fixture in
+# tests/conftest.py — no per-file reset needed here.
 
 # ---------------------------------------------------------------------------
 # TestCheckSchemaVersion
@@ -197,3 +202,158 @@ class TestCheckSchemaVersion:
         assert counter_b == {"EnvelopeB": 1}
         assert "EnvelopeB" not in counter_a
         assert "EnvelopeA" not in counter_b
+
+
+# ---------------------------------------------------------------------------
+# TestLogRateLimit — rate limiting of ERROR logs on repeated drops
+# ---------------------------------------------------------------------------
+
+
+class TestLogRateLimit:
+    """Verify that drop logs are rate-limited per envelope name."""
+
+    def test_first_drop_logs_at_error(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """First drop for an envelope fires a single log.error line."""
+        # Arrange
+        counter: dict[str, int] = {}
+
+        # Act
+        with caplog.at_level(logging.ERROR, logger="lyra.nats._version_check"):
+            check_schema_version(
+                {"schema_version": 2},
+                envelope_name="InboundMessage",
+                expected=1,
+                counter=counter,
+            )
+
+        # Assert
+        assert counter == {"InboundMessage": 1}
+        error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
+        assert len(error_records) == 1
+        assert "NATS schema version mismatch" in error_records[0].getMessage()
+
+    def test_subsequent_drops_within_interval_silent(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Repeat drops within the interval still count but do not log at ERROR."""
+        # Arrange
+        counter: dict[str, int] = {}
+
+        # Act — three drops in quick succession (well under _LOG_INTERVAL_S)
+        with caplog.at_level(logging.ERROR, logger="lyra.nats._version_check"):
+            for _ in range(3):
+                check_schema_version(
+                    {"schema_version": 2},
+                    envelope_name="InboundMessage",
+                    expected=1,
+                    counter=counter,
+                )
+
+        # Assert — counter still increments on every drop (rate limit is log-only)
+        assert counter == {"InboundMessage": 3}
+        # Assert — exactly one ERROR log fired, not three
+        error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
+        assert len(error_records) == 1
+
+    def test_drop_after_interval_logs_again(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """After _LOG_INTERVAL_S elapses, the next drop fires a fresh ERROR log."""
+        # Arrange — monkey-patch time.monotonic so we can simulate elapsed time
+        fake_now = [1000.0]
+
+        def fake_monotonic() -> float:
+            return fake_now[0]
+
+        monkeypatch.setattr(_version_check.time, "monotonic", fake_monotonic)
+
+        # Act — first drop at t=1000, second drop at t=1000+interval+1
+        with caplog.at_level(logging.ERROR, logger="lyra.nats._version_check"):
+            check_schema_version(
+                {"schema_version": 2},
+                envelope_name="InboundMessage",
+                expected=1,
+            )
+            fake_now[0] += _version_check._LOG_INTERVAL_S + 1.0
+            check_schema_version(
+                {"schema_version": 2},
+                envelope_name="InboundMessage",
+                expected=1,
+            )
+
+        # Assert — both drops fired an ERROR log
+        error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
+        assert len(error_records) == 2
+
+    def test_per_envelope_rate_limit_isolation(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """One envelope's rate-limited silence does not suppress another's first log."""
+        # Arrange
+        # Act — drop EnvelopeA twice, then EnvelopeB once
+        with caplog.at_level(logging.ERROR, logger="lyra.nats._version_check"):
+            check_schema_version(
+                {"schema_version": 2},
+                envelope_name="EnvelopeA",
+                expected=1,
+            )
+            check_schema_version(
+                {"schema_version": 2},
+                envelope_name="EnvelopeA",
+                expected=1,
+            )
+            check_schema_version(
+                {"schema_version": 2},
+                envelope_name="EnvelopeB",
+                expected=1,
+            )
+
+        # Assert — EnvelopeA fires once (rate-limited on second), EnvelopeB fires
+        # once (first drop, not silenced by EnvelopeA's limit) → 2 logs total
+        error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
+        assert len(error_records) == 2
+        messages = [r.getMessage() for r in error_records]
+        assert any("envelope=EnvelopeA" in m for m in messages)
+        assert any("envelope=EnvelopeB" in m for m in messages)
+
+    def test_counter_increments_even_when_log_silenced(self) -> None:
+        """Rate limiting suppresses logs but never suppresses counter increments."""
+        # Arrange
+        counter: dict[str, int] = {}
+
+        # Act — 5 drops; only 1 log expected, but all 5 must count
+        for _ in range(5):
+            check_schema_version(
+                {"schema_version": 2},
+                envelope_name="InboundMessage",
+                expected=1,
+                counter=counter,
+            )
+
+        # Assert
+        assert counter == {"InboundMessage": 5}
+
+    def test_boolean_value_drops(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """JSON true/false → dropped (bool is int subclass but invalid)."""
+        # Arrange
+        counter: dict[str, int] = {}
+
+        # Act
+        with caplog.at_level(logging.ERROR, logger="lyra.nats._version_check"):
+            check_schema_version(
+                {"schema_version": True},
+                envelope_name="InboundMessage",
+                expected=1,
+                counter=counter,
+            )
+
+        # Assert — True is technically isinstance(_, int) but we treat bool as malformed
+        assert counter == {"InboundMessage": 1}
+        error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
+        assert len(error_records) == 1

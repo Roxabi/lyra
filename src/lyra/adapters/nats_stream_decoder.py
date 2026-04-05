@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Any, AsyncIterator
+from typing import TYPE_CHECKING, Any, AsyncGenerator
 
 if TYPE_CHECKING:
     from lyra.core.hub.hub_protocol import RenderEvent
@@ -30,7 +30,7 @@ async def decode_stream_events(
     q: asyncio.Queue[dict],
     *,
     counter: dict[str, int] | None = None,
-) -> AsyncIterator["RenderEvent"]:
+) -> AsyncGenerator["RenderEvent", None]:
     """Drain chunks from *q* and yield decoded :class:`RenderEvent` objects.
 
     Enforces an in-order sequence check (warns on gaps) and bails out on a

@@ -19,6 +19,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+SCHEMA_VERSION_TEXT_RENDER_EVENT = 1
+SCHEMA_VERSION_TOOL_SUMMARY_RENDER_EVENT = 1
+
 
 @dataclass(frozen=True)
 class SilentCounts:
@@ -74,6 +77,7 @@ class TextRenderEvent:
 
     text: str
     is_final: bool
+    schema_version: int = 1
     is_error: bool = False
 
 
@@ -95,6 +99,7 @@ class ToolSummaryRenderEvent:
     agent_calls: list[str] = field(default_factory=list)
     silent_counts: SilentCounts = field(default_factory=SilentCounts)
     is_complete: bool = False
+    schema_version: int = 1
 
 
 # Union type exported for type annotations and ``isinstance`` checks.
@@ -103,6 +108,8 @@ RenderEvent = TextRenderEvent | ToolSummaryRenderEvent
 __all__ = [
     "FileEditSummary",
     "RenderEvent",
+    "SCHEMA_VERSION_TEXT_RENDER_EVENT",
+    "SCHEMA_VERSION_TOOL_SUMMARY_RENDER_EVENT",
     "SilentCounts",
     "TextRenderEvent",
     "ToolSummaryRenderEvent",

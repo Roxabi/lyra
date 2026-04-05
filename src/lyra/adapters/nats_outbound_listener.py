@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import time
@@ -63,10 +64,8 @@ class NatsOutboundListener:
         self._stream_outbound: dict[str, OutboundMessage] = {}
         self._sub: Any = None  # nats.aio.subscription.Subscription | None
         self._reaper_task: asyncio.Task[None] | None = None
-        # Tombstone set: stream_ids that received stream_error, used to reject
-        # late-arriving chunks after a stream has been terminated. Bounded to
-        # _MAX_TERMINATED_STREAMS; an arbitrary entry is evicted when full.
         self._terminated_streams: set[str] = set()
+        self._version_mismatch_drops: dict[str, int] = {}
 
     def cache_inbound(self, msg: InboundMessage | InboundAudio) -> None:
         """Store msg so it can be retrieved later by stream_id."""
@@ -81,6 +80,10 @@ class NatsOutboundListener:
         self._cache[msg.id] = msg
         self._cache_ts[msg.id] = time.monotonic()
 
+    def version_mismatch_count(self, envelope_name: str) -> int:
+        """Cumulative drops for *envelope_name* (schema version mismatches)."""
+        return self._version_mismatch_drops.get(envelope_name, 0)
+
     async def start(self) -> None:
         """Subscribe to the outbound NATS subject."""
         subject = f"lyra.outbound.{self._platform.value}.{self._bot_id}"
@@ -93,15 +96,12 @@ class NatsOutboundListener:
         """Unsubscribe from NATS."""
         if self._reaper_task is not None:
             self._reaper_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._reaper_task
-            except asyncio.CancelledError:
-                pass
             self._reaper_task = None
         if self._sub is not None:
             await self._sub.unsubscribe()
             self._sub = None
-        # cancel pending stream tasks
         for task in list(self._stream_tasks.values()):
             task.cancel()
         self._stream_tasks.clear()
@@ -232,7 +232,6 @@ class NatsOutboundListener:
                 stream_id,
             )
             return
-        # Launch a drain task on first chunk; subsequent chunks just enqueue
         if stream_id not in self._stream_tasks:
             self._stream_tasks[stream_id] = asyncio.create_task(
                 self._drain_stream(stream_id, q)
@@ -257,9 +256,12 @@ class NatsOutboundListener:
 
         outbound = self._stream_outbound.pop(stream_id, None)
         try:
+            # counter= wires drop tracking; read via version_mismatch_count().
             await self._adapter.send_streaming(
                 cast(InboundMessage, original_msg),
-                decode_stream_events(stream_id, q),
+                decode_stream_events(
+                    stream_id, q, counter=self._version_mismatch_drops
+                ),
                 outbound,
             )
         except Exception:
@@ -272,7 +274,6 @@ class NatsOutboundListener:
             self._cache_ts.pop(stream_id, None)
             self._stream_tasks.pop(stream_id, None)
             self._stream_queues.pop(stream_id, None)
-            # Clean up tombstone for completed streams; bounded set handles the rest
             self._terminated_streams.discard(stream_id)
 
     async def _reap_stale(self) -> None:

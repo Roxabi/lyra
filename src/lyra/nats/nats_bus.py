@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import json
 import logging
 from typing import Any, Generic, TypeVar
 
@@ -40,14 +41,26 @@ from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.aio.subscription import Subscription
 
-from lyra.core.message import Platform
+from lyra.core.message import (
+    SCHEMA_VERSION_INBOUND_AUDIO,
+    SCHEMA_VERSION_INBOUND_MESSAGE,
+    InboundAudio,
+    InboundMessage,
+    Platform,
+)
 from lyra.nats._sanitize import sanitize_platform_meta
-from lyra.nats._serialize import deserialize, serialize
+from lyra.nats._serialize import deserialize_dict, serialize
 from lyra.nats._validate import validate_nats_token
+from lyra.nats._version_check import check_schema_version
 
 log = logging.getLogger(__name__)
 
 T = TypeVar("T")
+
+_ENVELOPE_VERSIONS: dict[type, tuple[str, int]] = {
+    InboundMessage: ("InboundMessage", SCHEMA_VERSION_INBOUND_MESSAGE),
+    InboundAudio: ("InboundAudio", SCHEMA_VERSION_INBOUND_AUDIO),
+}
 
 
 class NatsBus(Generic[T]):
@@ -97,6 +110,7 @@ class NatsBus(Generic[T]):
         self._registrations: set[tuple[Platform, str]] = set()
         self._subscriptions: dict[tuple[Platform, str], Subscription] = {}
         self._staging: asyncio.Queue[T] = asyncio.Queue(maxsize=staging_maxsize)
+        self._version_mismatch_drops: dict[str, int] = {}
 
     # ------------------------------------------------------------------
     # Registration
@@ -213,6 +227,10 @@ class NatsBus(Generic[T]):
         """Return the number of active NATS subscriptions."""
         return len(self._subscriptions)
 
+    def version_mismatch_count(self, envelope_name: str) -> int:
+        """Cumulative drops for *envelope_name* (schema version mismatches)."""
+        return self._version_mismatch_drops.get(envelope_name, 0)
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
@@ -223,8 +241,29 @@ class NatsBus(Generic[T]):
         subject = f"{self._subject_prefix}.{platform.value}.{bot_id}"
 
         async def handler(msg: Msg) -> None:
+            # Pre-parse JSON so we can inspect schema_version before full deserialize.
             try:
-                item = deserialize(msg.data, self._item_type)
+                payload = json.loads(msg.data.decode("utf-8"))
+            except Exception:
+                log.exception(
+                    "NatsBus: failed to parse JSON on platform=%s bot_id=%s",
+                    platform.value,
+                    bot_id,
+                )
+                return
+
+            envelope_name, expected = _ENVELOPE_VERSIONS[self._item_type]
+            if not check_schema_version(
+                payload,
+                envelope_name=envelope_name,
+                expected=expected,
+                subject=subject,
+                counter=self._version_mismatch_drops,
+            ):
+                return  # helper already logged + incremented counter
+
+            try:
+                item = deserialize_dict(payload, self._item_type)
                 if hasattr(item, "platform_meta"):
                     _item: Any = item
                     item = dataclasses.replace(

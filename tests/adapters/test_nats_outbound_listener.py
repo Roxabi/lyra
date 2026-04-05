@@ -592,3 +592,75 @@ async def test_stream_error_unknown_stream_id_is_noop() -> None:
 
     # The legitimate cache entry is untouched.
     assert cached.id in listener._cache
+
+
+# ---------------------------------------------------------------------------
+# MT-14: Listener-level version mismatch counter integration
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_version_mismatch_counter_flows_from_listener() -> None:
+    """version_mismatch_count() reflects drops that occurred inside _drain_stream.
+
+    Strategy: construct a listener and manually call decode_stream_events with
+    listener._version_mismatch_drops as the counter, feeding a queue that contains
+    one v2 text chunk (should be dropped) followed by a terminal v1 chunk.
+    After draining the generator we assert:
+    - listener.version_mismatch_count("TextRenderEvent") == 1
+    - the terminal v1 chunk was decoded and yielded
+
+    This is a direct integration test: real NatsRenderEventCodec.decode() +
+    real decode_stream_events() + real listener counter dict — no mocks on
+    the tested path.
+    """
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.nats_stream_decoder import decode_stream_events
+    from lyra.core.message import Platform
+    from lyra.core.render_events import TextRenderEvent
+
+    # Arrange
+    nc = AsyncMock()
+    adapter = AsyncMock()
+    listener = NatsOutboundListener(nc, Platform.TELEGRAM, "main", adapter)
+
+    # Initial state: counter is empty
+    assert listener.version_mismatch_count("TextRenderEvent") == 0
+
+    stream_id = "test-stream-mt14"
+    q: asyncio.Queue[dict] = asyncio.Queue()
+
+    # Chunk 1: v2 payload → should be dropped, counter incremented
+    await q.put({
+        "stream_id": stream_id,
+        "seq": 0,
+        "event_type": "text",
+        "payload": {"schema_version": 2, "text": "bad", "is_final": False},
+        "done": False,
+    })
+    # Chunk 2: v1 payload → should decode and be yielded; is_final=True → terminal
+    await q.put({
+        "stream_id": stream_id,
+        "seq": 1,
+        "event_type": "text",
+        "payload": {"schema_version": 1, "text": "good", "is_final": True},
+        "done": True,
+    })
+
+    # Act — drain the generator using the listener's own counter dict
+    yielded: list[object] = []
+    async for event in decode_stream_events(
+        stream_id, q, counter=listener._version_mismatch_drops
+    ):
+        yielded.append(event)
+
+    # Assert — v2 chunk was dropped, counter reflects it
+    assert listener.version_mismatch_count("TextRenderEvent") == 1
+
+    # Assert — v1 chunk was decoded and yielded
+    assert len(yielded) == 1
+    assert isinstance(yielded[0], TextRenderEvent)
+    assert yielded[0].text == "good"  # type: ignore[union-attr]

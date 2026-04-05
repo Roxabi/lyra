@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 
 from lyra.core.render_events import (
+    SCHEMA_VERSION_TEXT_RENDER_EVENT,
+    SCHEMA_VERSION_TOOL_SUMMARY_RENDER_EVENT,
     FileEditSummary,
     RenderEvent,
     SilentCounts,
@@ -16,6 +18,7 @@ from lyra.core.render_events import (
     ToolSummaryRenderEvent,
 )
 from lyra.nats._serialize import deserialize, serialize
+from lyra.nats._version_check import check_schema_version
 
 
 class NatsRenderEventCodec:
@@ -51,18 +54,45 @@ class NatsRenderEventCodec:
         return "tool_summary", payload, event.is_complete
 
     @staticmethod
-    def decode(event_type: str, payload: dict) -> RenderEvent | None:
+    def decode(
+        event_type: str,
+        payload: dict,
+        *,
+        counter: dict[str, int] | None = None,
+    ) -> RenderEvent | None:
         """Reconstruct a ``RenderEvent`` from *(event_type, payload_dict)*.
 
-        Returns ``None`` for synthetic types (``"stream_end"``) or unknown
-        event types — callers should skip yielding ``None`` values.
+        Returns ``None`` for synthetic types (``"stream_end"``), unknown event
+        types, or payloads that fail the schema version check.  Callers should
+        skip yielding ``None`` values.
+
+        Args:
+            event_type: The ``"event_type"`` field from the wire chunk.
+            payload:    The ``"payload"`` dict from the wire chunk.
+            counter:    Caller-owned mutable dict; incremented at
+                        ``counter[envelope_name]`` on every version-check drop.
+                        Pass ``None`` to skip counting.
         """
         if event_type == "text":
+            if not check_schema_version(
+                payload,
+                envelope_name="TextRenderEvent",
+                expected=SCHEMA_VERSION_TEXT_RENDER_EVENT,
+                counter=counter,
+            ):
+                return None
             return deserialize(
                 json.dumps(payload, ensure_ascii=False).encode("utf-8"),
                 TextRenderEvent,
             )
         if event_type == "tool_summary":
+            if not check_schema_version(
+                payload,
+                envelope_name="ToolSummaryRenderEvent",
+                expected=SCHEMA_VERSION_TOOL_SUMMARY_RENDER_EVENT,
+                counter=counter,
+            ):
+                return None
             files_raw = payload.get("files", {})
             silent_raw = payload.get("silent_counts", {})
             return ToolSummaryRenderEvent(

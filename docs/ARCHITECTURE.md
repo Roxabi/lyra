@@ -288,6 +288,23 @@ class InboundMessage:
     platform_meta: dict         # platform-specific routing data (chat_id, guild_id, …)
 ```
 
+### Schema versioning
+
+Every hub↔adapter envelope (`InboundMessage`, `InboundAudio`, `OutboundMessage`, `TextRenderEvent`, `ToolSummaryRenderEvent`) carries a `schema_version: int = 1` field. The current version for each envelope lives in a `SCHEMA_VERSION_*` module-level constant in `src/lyra/core/message.py` and `src/lyra/core/render_events.py`.
+
+A receiver accepts any payload where `schema_version <= expected`. Strictly-greater versions are **dropped** with an ERROR log and an in-process counter increment via `check_schema_version` in `src/lyra/nats/_version_check.py`. Legacy payloads without a `schema_version` key default to version 1, so existing wire traffic is never dropped.
+
+Versioning does **not** enable rolling deploys across breaking schema changes — coordinated deploy of `lyra_hub`, `lyra_telegram`, and `lyra_discord` is still required. It exists to make failures **loud** (ERROR log + counter) instead of silent (mis-interpreted fields).
+
+Note: the outer render-event chunk envelope (`{stream_id, seq, event_type, payload, done}` in `render_event_codec.py`) is itself an implicit, unversioned contract. The `schema_version` field only guards the inner payload — a future rename of the outer wrapper's fields would not be caught by this mechanism.
+
+**How to bump `schema_version`:**
+
+1. Bump the `SCHEMA_VERSION_<ENVELOPE>` constant in `src/lyra/core/message.py` or `src/lyra/core/render_events.py` by 1.
+2. Update the `schema_version` field default on the corresponding envelope to match.
+3. Coordinate a simultaneous deploy of `lyra_hub` + `lyra_telegram` + `lyra_discord`. Rolling deploys across a version bump will produce loud ERROR logs on the still-old receivers until they are upgraded.
+4. Verify the bump with: `grep SCHEMA_VERSION_ src/lyra/core/*.py`.
+
 ### Bindings (routing table)
 
 Rule: `(platform, bot_id, scope_id)` → `(agent, pool_id)`

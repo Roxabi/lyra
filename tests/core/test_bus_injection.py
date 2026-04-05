@@ -1,4 +1,9 @@
-"""Tests for Hub bus injection and bot_id propagation to Bus.register()."""
+"""Tests for Hub bus injection and bot_id propagation to Bus.register().
+
+Slice 1 of issue #534: Hub.__init__ no longer accepts inbound_audio_bus.
+Tests for that removed attribute have been deleted.  This file now covers
+only the still-live inbound_bus injection path and register_adapter wiring.
+"""
 
 from __future__ import annotations
 
@@ -33,20 +38,11 @@ class TestHubDefaultBus:
         hub = Hub()
         assert isinstance(hub.inbound_bus, LocalBus)
 
-    def test_default_inbound_audio_bus_is_local_bus(self) -> None:
-        hub = Hub()
-        assert isinstance(hub.inbound_audio_bus, LocalBus)
-
-    def test_two_default_buses_are_distinct_instances(self) -> None:
-        hub = Hub()
-        assert hub.inbound_bus is not hub.inbound_audio_bus
-
     def test_no_bus_args_backward_compat(self) -> None:
         """Hub() with no bus args must work identically to before the change."""
         hub = Hub()
         hub.register_adapter(Platform.TELEGRAM, "main", MockAdapter())
         assert Platform.TELEGRAM in hub.inbound_bus.registered_platforms()
-        assert Platform.TELEGRAM in hub.inbound_audio_bus.registered_platforms()
 
 
 # ---------------------------------------------------------------------------
@@ -60,23 +56,11 @@ class TestHubInjectedBus:
         hub = Hub(inbound_bus=mock_bus)
         assert hub.inbound_bus is mock_bus
 
-    def test_injected_inbound_audio_bus_is_used(self) -> None:
-        mock_audio_bus: Any = _make_mock_bus()
-        hub = Hub(inbound_audio_bus=mock_audio_bus)
-        assert hub.inbound_audio_bus is mock_audio_bus
-
     def test_injected_bus_not_overwritten_by_local_bus(self) -> None:
         mock_bus: Any = _make_mock_bus()
         hub = Hub(inbound_bus=mock_bus)
         # Must remain the injected instance — not replaced by a LocalBus
         assert not isinstance(hub.inbound_bus, LocalBus)
-
-    def test_both_buses_injected_independently(self) -> None:
-        mock_bus: Any = _make_mock_bus()
-        mock_audio_bus: Any = _make_mock_bus()
-        hub = Hub(inbound_bus=mock_bus, inbound_audio_bus=mock_audio_bus)
-        assert hub.inbound_bus is mock_bus
-        assert hub.inbound_audio_bus is mock_audio_bus
 
 
 # ---------------------------------------------------------------------------
@@ -93,16 +77,6 @@ class TestRegisterAdapterBotId:
             Platform.TELEGRAM,
             maxsize=Hub.PLATFORM_QUEUE_MAXSIZE,
             bot_id="mybot",
-        )
-
-    def test_register_passes_bot_id_to_inbound_audio_bus(self) -> None:
-        mock_audio_bus: Any = _make_mock_bus()
-        hub = Hub(inbound_audio_bus=mock_audio_bus)
-        hub.register_adapter(Platform.TELEGRAM, "audiobot", MockAdapter())
-        mock_audio_bus.register.assert_called_once_with(
-            Platform.TELEGRAM,
-            maxsize=Hub.PLATFORM_QUEUE_MAXSIZE,
-            bot_id="audiobot",
         )
 
     def test_register_always_called_bus_handles_idempotency(self) -> None:

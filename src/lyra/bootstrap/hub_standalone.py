@@ -40,13 +40,14 @@ from lyra.core.cli_pool import CliPool
 from lyra.core.hub import Hub
 from lyra.core.hub.event_bus import PipelineEventBus
 from lyra.core.hub.outbound_dispatcher import OutboundDispatcher
-from lyra.core.message import InboundAudio, InboundMessage, Platform
+from lyra.core.message import InboundMessage, Platform
 from lyra.core.stores.pairing import PairingManager, set_pairing_manager
 from lyra.nats import nats_connect
+from lyra.nats.compat import InboundAudioLegacyHandler
 from lyra.nats.connect import scrub_nats_url
 from lyra.nats.nats_bus import NatsBus
 from lyra.nats.nats_channel_proxy import NatsChannelProxy
-from lyra.nats.queue_groups import HUB_INBOUND, HUB_INBOUND_AUDIO
+from lyra.nats.queue_groups import HUB_INBOUND
 from lyra.nats.readiness import start_readiness_responder
 
 log = logging.getLogger(__name__)
@@ -165,12 +166,11 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
         staging_maxsize=inbound_bus_cfg.staging_maxsize,
         queue_group=HUB_INBOUND,
     )
-    inbound_audio_bus: NatsBus[InboundAudio] = NatsBus(
-        nc=nc,
-        bot_id="hub",
-        item_type=InboundAudio,
-        subject_prefix="lyra.inbound.audio",
-        queue_group=HUB_INBOUND_AUDIO,
+    # Compat shim: bridge legacy lyra.inbound.audio.* → unified InboundMessage.
+    # Slice 1 only — delete in Slice 2 once adapters migrate.
+    legacy_audio_handler = InboundAudioLegacyHandler(
+        inbound_bus=inbound_bus,
+        nats_client=nc,
     )
 
     vault_dir = Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra")))
@@ -298,7 +298,6 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
             max_merged_chars=debouncer_cfg.max_merged_chars,
             event_bus=event_bus,
             inbound_bus=inbound_bus,
-            inbound_audio_bus=inbound_audio_bus,
         )
         hub.set_turn_store(stores.turn)
         hub.set_message_index(stores.message_index)
@@ -429,12 +428,12 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
 
         # Lifecycle: start buses, dispatchers, hub, health server
         await hub.inbound_bus.start()
-        await hub.inbound_audio_bus.start()
+        await legacy_audio_handler.start()
         for d in dispatchers:
             await d.start()
 
         readiness_sub = await start_readiness_responder(
-            nc, [hub.inbound_bus, hub.inbound_audio_bus]
+            nc, [hub.inbound_bus]
         )
 
         import uvicorn
@@ -454,7 +453,6 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
 
         tasks = [
             asyncio.create_task(hub.run(), name="hub"),
-            asyncio.create_task(hub._audio_pipeline.run(), name="hub-audio"),
             asyncio.create_task(health_server.serve(), name="health"),
         ]
 
@@ -486,7 +484,9 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         await readiness_sub.unsubscribe()
-        await teardown_buses(hub.inbound_bus, hub.inbound_audio_bus)
+        # Note: legacy_audio_handler has no stop() in Slice 1 — NATS client
+        # teardown closes the subscription implicitly.  Add stop() in Slice 2.
+        await teardown_buses(hub.inbound_bus)
         await teardown_dispatchers(dispatchers)
         for proxy in proxies:
             await proxy.publish_stream_errors("hub_shutdown")

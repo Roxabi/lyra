@@ -85,6 +85,8 @@ class TestInboundMessageRouting:
 
 # ---------------------------------------------------------------------------
 # InboundAudio carries routing
+# InboundAudio retained: tests InboundAudio.routing field — Slice-2 deletion
+# target (issue #534).  Remove this class when InboundAudio is deleted.
 # ---------------------------------------------------------------------------
 
 

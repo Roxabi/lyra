@@ -166,17 +166,6 @@ class AnthropicAgent(AgentBase):
                 _esc = html.escape(stt_result.text)
                 llm_text = f"<voice_transcript>{_esc}</voice_transcript>"
                 history_text = stt_result.text
-            elif _audio is not None and self._stt is None:
-                if tmp_path is not None:
-                    tmp_path.unlink(missing_ok=True)
-                    tmp_path = None  # prevent double-unlink in outer finally
-                return Response(
-                    content=(
-                        self._msg_manager.get("stt_unsupported")
-                        if self._msg_manager
-                        else "Voice messages are not supported — STT is not configured."
-                    )
-                )
             elif msg.modality == "voice":
                 # Pipeline-transcribed audio — wrap for prompt injection guard (H-8)
                 _esc = html.escape(msg.text)

@@ -174,6 +174,17 @@ class LocalBus(Generic[T]):
         """Return the current number of items in the staging queue."""
         return self._staging.qsize()
 
+    def inject(self, item: T) -> None:
+        """Public injection API for compat shims.
+
+        Enqueues an item directly into the staging queue, bypassing any
+        publisher-side tracing or metrics. Used by InboundAudioLegacyHandler
+        in Slice 1 of issue #534 to feed legacy-subject voice messages into
+        the unified inbound path. Callers must not rely on item order relative
+        to concurrent ``put()`` callers — inject is a separate entry point.
+        """
+        self._staging.put_nowait(item)
+
     def registered_platforms(self) -> frozenset[Platform]:
         """Return the set of platforms with a registered queue."""
         return frozenset(self._queues)

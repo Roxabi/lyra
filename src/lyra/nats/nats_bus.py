@@ -223,6 +223,17 @@ class NatsBus(Generic[T]):
         """Return the number of items currently waiting in the staging queue."""
         return self._staging.qsize()
 
+    def inject(self, item: T) -> None:
+        """Public injection API for compat shims.
+
+        Enqueues a pre-constructed item directly into the staging queue,
+        bypassing NATS publish/deserialize. Used by InboundAudioLegacyHandler
+        in Slice 1 of issue #534 so legacy-subject messages (decoded via a raw
+        NATS subscription handler) can feed the same pipeline as new-subject
+        messages consumed through the normal ``_make_handler`` path.
+        """
+        self._staging.put_nowait(item)
+
     def registered_platforms(self) -> frozenset[Platform]:
         """Return the set of currently registered platforms."""
         return frozenset(p for p, _ in self._registrations)

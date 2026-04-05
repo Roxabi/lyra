@@ -129,22 +129,3 @@ class TestSimpleAgentAudioBranch:
         assert response.metadata.get("error") is True
         cli_pool.complete.assert_not_called()
 
-    async def test_audio_no_stt(self) -> None:
-        """AUDIO with stt=None: unsupported Response, CLI not called."""
-        # Arrange
-        cli_pool = make_cli_pool()
-        agent = SimpleAgent(make_config(), cli_pool, stt=None)
-
-        with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
-            tmp_path = f.name
-
-        msg = make_audio_message(tmp_path)
-        pool = make_pool()
-
-        # Act
-        response = await agent.process(msg, pool)
-
-        # Assert
-        assert isinstance(response, Response)
-        assert "not supported" in response.content.lower()
-        cli_pool.complete.assert_not_called()

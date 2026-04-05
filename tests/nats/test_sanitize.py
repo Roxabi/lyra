@@ -162,13 +162,18 @@ class TestNatsBusSanitization:
     """Verify sanitization fires inside the NatsBus handler closure."""
 
     def test_inbound_audio_sanitized(self) -> None:
-        """InboundAudio platform_meta is sanitized like InboundMessage."""
+        """InboundAudio platform_meta is sanitized like InboundMessage.
+
+        InboundAudio retained: tests the sanitization path for InboundAudio
+        which is still live in Slice 1.  Slice 2 (issue #534) removes this
+        subject tree; delete this test when InboundAudio is deleted.
+        """
         from datetime import datetime, timezone
 
         from lyra.core.message import InboundAudio, Platform
         from lyra.core.trust import TrustLevel
 
-        audio = InboundAudio(
+        audio = InboundAudio(  # InboundAudio retained: tests Slice-2 deletion target
             id="audio-1",
             platform=Platform.DISCORD.value,
             bot_id="main",

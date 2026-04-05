@@ -86,6 +86,8 @@ class NatsBus(Generic[T]):
             without an explicit ``bot_id``.
         item_type: Concrete type used for deserialization (e.g. ``InboundMessage``).
         subject_prefix: NATS subject prefix. Defaults to ``"lyra.inbound"``.
+            Use a different prefix (e.g. ``"lyra.inbound.audio"``) to avoid
+            subject collisions between different message types.
         publish_only: If ``True``, ``start()`` is a no-op and ``get()`` raises.
             For adapter-side buses that only publish (see #541).
     """

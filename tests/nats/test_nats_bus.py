@@ -580,11 +580,15 @@ class TestPublishOnlyMode:
             received = await asyncio.wait_for(consumer.get(), timeout=2.0)
 
             # Assert — full-field equality (catches any serialize/deserialize
-            # regression, not just id)
+            # regression, not just id). Matches test_put_get_roundtrip style.
             assert received.id == msg.id
             assert received.platform == msg.platform
-            assert received.text == msg.text
+            assert received.bot_id == msg.bot_id
             assert received.scope_id == msg.scope_id
+            assert received.user_id == msg.user_id
+            assert received.user_name == msg.user_name
+            assert received.text == msg.text
+            assert received.trust_level == msg.trust_level
             # Producer has zero subscriptions — proves publish-only is intact.
             # (staging_qsize is tautologically 0 on publish-only because the
             # staging queue is never populated, so subscription_count is the
@@ -630,6 +634,33 @@ class TestPublishOnlyMode:
         await bus.start()
         with pytest.raises(RuntimeError, match="after start"):
             bus.register(Platform.DISCORD)
+
+
+class TestPublishOnlyInvariants:
+    """Publish-only invariant tests using a mocked NATS client (no server)."""
+
+    async def test_stop_does_not_touch_nats(self) -> None:
+        """Regression: stop() must not invoke any NATS method on publish-only.
+
+        Catches a future `stop()` refactor that would bypass the empty
+        ``_subscriptions`` invariant (e.g., adding teardown work not gated
+        on ``_subscriptions`` or ``_publish_only``).
+        """
+        from unittest.mock import MagicMock
+
+        nc = MagicMock()
+        bus = NatsBus(
+            nc=nc, bot_id="main", item_type=InboundMessage, publish_only=True,
+        )
+        bus.register(Platform.TELEGRAM)
+        await bus.start()
+        calls_before = len(nc.method_calls)
+        await bus.stop()
+        delta = len(nc.method_calls) - calls_before
+        assert delta == 0, (
+            f"stop() made {delta} NATS call(s) on publish-only bus — "
+            "publish-only invariant broken"
+        )
 
 
 def test_nats_bus_default_queue_group_is_empty() -> None:

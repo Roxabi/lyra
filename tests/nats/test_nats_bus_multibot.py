@@ -286,10 +286,16 @@ async def test_publish_only_adapter_bus_roundtrip(nc: NATS) -> None:
         # Act — consume on hub side
         received = await asyncio.wait_for(hub_bus.get(), timeout=2.0)
 
-        # Assert — full-field equality (stronger than id-only)
+        # Assert — full-field equality (stronger than id-only). Matches
+        # the field list used by test_put_get_roundtrip in test_nats_bus.py.
         assert received.id == msg.id
         assert received.platform == msg.platform
+        assert received.bot_id == msg.bot_id
+        assert received.scope_id == msg.scope_id
+        assert received.user_id == msg.user_id
+        assert received.user_name == msg.user_name
         assert received.text == msg.text
+        assert received.trust_level == msg.trust_level
 
         # Assert — adapter bus still has zero subscriptions after put()
         # (staging_qsize is tautologically 0 on publish-only; subscription_count

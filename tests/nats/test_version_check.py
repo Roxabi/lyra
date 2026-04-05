@@ -146,11 +146,11 @@ class TestCheckSchemaVersion:
         error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
         assert len(error_records) == 1
 
-    @pytest.mark.parametrize("bad_version", [0, -1])
-    def test_zero_or_negative_drops(
-        self, bad_version: int, caplog: pytest.LogCaptureFixture
+    @pytest.mark.parametrize("bad_version", [0, -1, 1.0, 2.0])
+    def test_malformed_numeric_values_drop(
+        self, bad_version: int | float, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """Integer <= 0 → dropped (invalid range), counter++, log.error."""
+        """Integer <= 0 or float → dropped (invalid), counter++, log.error."""
         # Arrange
         counter: dict[str, int] = {}
 

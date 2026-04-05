@@ -612,19 +612,17 @@ class TestNatsBusVersionMismatch:
             # Act — publish a future-version payload that this receiver cannot handle
             with caplog.at_level(logging.ERROR):
                 await nc.publish(subject, _make_inbound_bytes_version(2))
-                # Give the NATS delivery + handler a moment to run
-                await asyncio.sleep(0.15)
 
-            # Assert — staging queue stays empty (message was dropped)
-            with pytest.raises((asyncio.TimeoutError, TimeoutError)):
-                await asyncio.wait_for(bus.get(), timeout=0.3)
+            # Assert — staging queue stays empty (handler dropped the message)
+            with pytest.raises(asyncio.TimeoutError):
+                await asyncio.wait_for(bus.get(), timeout=0.5)
 
             # Counter must have incremented exactly once
             assert bus.version_mismatch_count("InboundMessage") == 1
 
             # ERROR log must mention the mismatch
             assert any(
-                "NATS schema version mismatch" in r.message
+                "NATS schema version mismatch" in r.getMessage()
                 for r in caplog.records
                 if r.levelno >= logging.ERROR
             )
@@ -641,27 +639,31 @@ class TestNatsBusVersionMismatch:
         subject = "lyra.inbound.telegram.main"
 
         try:
-            # Act — publish three messages; only the two v1s should arrive
+            # Act — publish four messages; only the two v1s should arrive
             await nc.publish(subject, _make_inbound_bytes_v1())
             await nc.publish(subject, _make_inbound_bytes_version(2))
             await nc.publish(subject, _make_inbound_bytes_v1())
+            await nc.publish(subject, _make_inbound_bytes_version(2))
 
-            # Wait for all deliveries to propagate through the NATS handler
-            await asyncio.sleep(0.2)
+            # Drain two v1s via event-driven wait
+            first = await asyncio.wait_for(bus.get(), timeout=1.0)
+            second = await asyncio.wait_for(bus.get(), timeout=1.0)
 
-            # Drain the staging queue
-            received: list = []
-            while bus.staging_qsize() > 0:
-                received.append(await bus.get())
+            # Assert — both are valid InboundMessage instances
+            assert first is not None
+            assert second is not None
 
-            # Assert — exactly 2 valid messages arrived
-            assert len(received) == 2
-            assert bus.version_mismatch_count("InboundMessage") == 1
+            # Assert — no v2 bled through (next get must time out)
+            with pytest.raises(asyncio.TimeoutError):
+                await asyncio.wait_for(bus.get(), timeout=0.5)
 
-            # Assert — subscription is still alive: a 4th v1 must arrive
+            # Assert — counter accumulated both drops
+            assert bus.version_mismatch_count("InboundMessage") == 2
+
+            # Assert — subscription is still alive: a final v1 must arrive
             await nc.publish(subject, _make_inbound_bytes_v1())
-            fourth = await asyncio.wait_for(bus.get(), timeout=2.0)
-            assert fourth is not None
+            fifth = await asyncio.wait_for(bus.get(), timeout=2.0)
+            assert fifth is not None
         finally:
             await bus.stop()
 
@@ -677,11 +679,10 @@ class TestNatsBusVersionMismatch:
         try:
             # Act — publish JSON with schema_version: "1" (string, not int)
             await nc.publish(subject, _make_inbound_bytes_string_version())
-            await asyncio.sleep(0.15)
 
-            # Assert — staging queue stays empty
-            with pytest.raises((asyncio.TimeoutError, TimeoutError)):
-                await asyncio.wait_for(bus.get(), timeout=0.3)
+            # Assert — staging queue stays empty (handler dropped the message)
+            with pytest.raises(asyncio.TimeoutError):
+                await asyncio.wait_for(bus.get(), timeout=0.5)
 
             # Counter must have incremented
             assert bus.version_mismatch_count("InboundMessage") == 1

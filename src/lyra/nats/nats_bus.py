@@ -252,9 +252,7 @@ class NatsBus(Generic[T]):
                 )
                 return
 
-            envelope_name, expected = _ENVELOPE_VERSIONS.get(
-                self._item_type, (self._item_type.__name__, 1)
-            )
+            envelope_name, expected = _ENVELOPE_VERSIONS[self._item_type]
             if not check_schema_version(
                 payload,
                 envelope_name=envelope_name,

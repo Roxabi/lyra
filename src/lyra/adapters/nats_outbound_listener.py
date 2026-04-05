@@ -256,6 +256,7 @@ class NatsOutboundListener:
 
         outbound = self._stream_outbound.pop(stream_id, None)
         try:
+            # counter= wires drop tracking; read via version_mismatch_count().
             await self._adapter.send_streaming(
                 cast(InboundMessage, original_msg),
                 decode_stream_events(

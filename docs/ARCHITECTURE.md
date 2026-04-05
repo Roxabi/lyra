@@ -296,6 +296,8 @@ A receiver accepts any payload where `schema_version <= expected`. Strictly-grea
 
 Versioning does **not** enable rolling deploys across breaking schema changes — coordinated deploy of `lyra_hub`, `lyra_telegram`, and `lyra_discord` is still required. It exists to make failures **loud** (ERROR log + counter) instead of silent (mis-interpreted fields).
 
+Note: the outer render-event chunk envelope (`{stream_id, seq, event_type, payload, done}` in `render_event_codec.py`) is itself an implicit, unversioned contract. The `schema_version` field only guards the inner payload — a future rename of the outer wrapper's fields would not be caught by this mechanism.
+
 **How to bump `schema_version`:**
 
 1. Bump the `SCHEMA_VERSION_<ENVELOPE>` constant in `src/lyra/core/message.py` or `src/lyra/core/render_events.py` by 1.

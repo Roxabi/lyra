@@ -1,0 +1,81 @@
+---
+title: Extract outbound listener behind a protocol
+issue: 529
+status: approved
+tier: F-lite
+date: 2026-04-05
+---
+
+## Problem
+
+`NatsOutboundListener` is referenced directly by every consumer on the adapter
+side — there is no protocol abstraction in between. Adapters declare
+`self._outbound_listener: "NatsOutboundListener | None"` (telegram.py:157,
+discord.py:124), bootstrap assigns a concrete instance
+(`adapter._outbound_listener = listener` in `adapter_standalone.py:121,256`),
+and inbound handlers poke at the concrete type to correlate replies
+(`telegram_inbound.py:45`, `discord_inbound.py:253`, `discord_audio.py:221`).
+
+This undermines the transport-agnostic story told by the hub side: the hub
+already talks to an abstract `Bus`, but the adapter process remains
+NATS-coupled at the type level. Swapping or adding a transport (e.g. an
+in-process stub for tests, a future non-NATS bus, or a fake for
+`test_bootstrap_wiring.py`) requires either importing `NatsOutboundListener`
+just to satisfy the type hint or resorting to duck typing — a tension already
+acknowledged in ADR-040 ("duck-typed `_outbound_listener` attribute").
+
+## Who
+
+- **Primary:** Lyra maintainers working on the transport layer — today this
+  means anyone touching `adapter_standalone.py`, the NATS adapter tests, or
+  the shared inbound helpers.
+- **Secondary:** Future transport contributors (in-process dev mode, alternate
+  bus) who would otherwise have to drag a NATS import into pure adapter code.
+
+## Constraints
+
+- **Behaviour-preserving refactor.** No changes to the wire format, NATS
+  subjects, envelope schema, cache TTL, queue-group logic, or
+  `cache_inbound` / `start` / `stop` semantics.
+- **Structural typing.** Use `typing.Protocol` (runtime-unchecked) so
+  `NatsOutboundListener` can remain unchanged and implement the protocol by
+  shape — consistent with how `ChannelAdapter` is defined in
+  `core/hub/hub_protocol.py`.
+- **Minimal surface area.** The protocol must cover only what adapter code
+  actually calls: `cache_inbound(msg)`, `start()`, `stop()`. Internal methods
+  on the listener (`_handle_*`, `_drain_stream`, `_reap_stale`) stay private
+  to `NatsOutboundListener`.
+- **Test wiring must still work.** `tests/bootstrap/test_bootstrap_wiring.py`
+  (which assigns `mock_adapter_instance._outbound_listener = None`) and the
+  extensive `tests/adapters/test_nats_outbound_listener.py` suite must
+  continue to pass without rewrites to production behaviour.
+- **Keep the listener in `adapters/`.** ADR-037 deliberately places
+  `nats_outbound_listener.py` alongside the adapters; the protocol lives in
+  the same package to preserve that boundary.
+
+## Out of Scope
+
+- Adding a second transport implementation. This frame ends at "adapters no
+  longer depend on the concrete NATS listener type."
+- Moving `NatsOutboundListener` to another package.
+- Changing the `adapter._outbound_listener` attribute name, making it public,
+  or switching to constructor injection — the current post-construction
+  assignment is inherited from #458 and is a separate design decision.
+- Touching hub-side code, `nats_bus.py`, queue-group logic, stream-error
+  handling, or render-event decoding.
+- Changing any NATS envelope or subject semantics.
+
+## Complexity
+
+**Tier: F-lite** — Pure type-level refactor. Single domain (adapters),
+well-scoped file list (~5 files: new protocol module, `telegram.py`,
+`discord.py`, `adapter_standalone.py`, possibly the three inbound helpers
+for their `TYPE_CHECKING` imports). No new runtime paths, no architectural
+unknowns. Benefits from a spec gate so the protocol surface is reviewed
+before wiring.
+
+Signals observed:
+- Single domain (adapters package)
+- ≤10 files touched, all in one layer
+- No new arch, no unknowns, complexity label = 3
+- Structural-typing refactor → behaviour-preserving by construction

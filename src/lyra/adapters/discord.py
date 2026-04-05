@@ -11,7 +11,7 @@ import discord
 
 if TYPE_CHECKING:
     from lyra.adapters._shared_streaming import PlatformCallbacks
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.outbound_listener import OutboundListener
     from lyra.core.bus import Bus
 
 from lyra.adapters import discord_audio  # noqa: I001
@@ -121,7 +121,7 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         self._watch_channels: frozenset[int] = watch_channels
         self._thread_sessions: dict[str, tuple[str, str]] = {}
         self._vsm: VoiceSessionManager = VoiceSessionManager()
-        self._outbound_listener: "NatsOutboundListener | None" = None
+        self._outbound_listener: "OutboundListener | None" = None
         # Injectable identity resolver for slash command trust (set by wiring layer).
         # Falls back to PUBLIC trust when not set (standalone/test mode).
         self._resolve_identity_fn: Any = None

@@ -6,6 +6,7 @@ import logging
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 from lyra.adapters.discord import DiscordAdapter
 from lyra.adapters.telegram import TelegramAdapter
@@ -42,7 +43,7 @@ async def wire_telegram_adapters(  # noqa: PLR0913 — wiring requires all deps
     cred_store: CredentialStore,
     circuit_registry: CircuitRegistry,
     msg_manager: MessageManager,
-    nats_client: object | None = None,
+    nats_client: Any = None,
 ) -> tuple[list[TelegramAdapter], list[OutboundDispatcher]]:
     """Wire each Telegram bot: adapter + dispatcher + hub bindings.
 
@@ -125,7 +126,7 @@ async def wire_discord_adapters(  # noqa: PLR0913, C901 — wiring requires all 
     msg_manager: MessageManager,
     agent_store: AgentStore | None = None,
     vault_dir: str | None = None,
-    nats_client: object | None = None,
+    nats_client: Any = None,
 ) -> tuple[
     list[tuple[DiscordAdapter, DiscordBotConfig, str]],
     list[OutboundDispatcher],

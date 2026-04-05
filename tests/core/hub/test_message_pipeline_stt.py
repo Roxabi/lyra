@@ -139,7 +139,7 @@ class TestRunSttStage:
         msg = make_voice_message(text="already transcribed")
 
         # Act
-        returned_msg, result = await pipeline._run_stt_stage(msg)
+        _returned_msg, result = await pipeline._run_stt_stage(msg)
 
         # Assert — no STT call, pipeline continues
         assert result is None
@@ -156,7 +156,7 @@ class TestRunSttStage:
         msg = make_voice_message()
 
         # Act
-        returned_msg, result = await pipeline._run_stt_stage(msg)
+        _returned_msg, result = await pipeline._run_stt_stage(msg)
 
         # Assert — terminal result, dispatch called with stt_unsupported template
         assert result is not None
@@ -177,7 +177,7 @@ class TestRunSttStage:
         msg = make_voice_message()
 
         # Act
-        returned_msg, result = await pipeline._run_stt_stage(msg)
+        _returned_msg, result = await pipeline._run_stt_stage(msg)
 
         # Assert
         assert result is not None
@@ -199,7 +199,7 @@ class TestRunSttStage:
 
         # Act
         with patch("lyra.stt.is_whisper_noise", return_value=True):
-            returned_msg, result = await pipeline._run_stt_stage(msg)
+            _returned_msg, result = await pipeline._run_stt_stage(msg)
 
         # Assert
         assert result is not None
@@ -221,7 +221,7 @@ class TestRunSttStage:
 
         # Act
         with patch("lyra.stt.is_whisper_noise", return_value=False):
-            returned_msg, result = await pipeline._run_stt_stage(msg)
+            _returned_msg, result = await pipeline._run_stt_stage(msg)
 
         # Assert
         assert result is not None
@@ -244,7 +244,7 @@ class TestRunSttStage:
 
         # Act
         with patch("lyra.stt.is_whisper_noise", return_value=False):
-            returned_msg, result = await pipeline._run_stt_stage(msg)
+            _returned_msg, result = await pipeline._run_stt_stage(msg)
 
         # Assert — transcript over cap triggers stt_invalid
         assert result is not None
@@ -264,7 +264,7 @@ class TestRunSttStage:
         msg = make_voice_message()
 
         # Act
-        returned_msg, result = await pipeline._run_stt_stage(msg)
+        _returned_msg, result = await pipeline._run_stt_stage(msg)
 
         # Assert
         assert result is not None
@@ -285,7 +285,7 @@ class TestRunSttStage:
         msg = make_voice_message()
 
         # Act — bound to 35s per spec, but effectively 200ms here
-        returned_msg, result = await asyncio.wait_for(
+        _returned_msg, result = await asyncio.wait_for(
             pipeline._run_stt_stage(msg), timeout=35.0
         )
 

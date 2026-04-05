@@ -52,7 +52,11 @@ class Bus(Protocol[T]):
         ...
 
     async def get(self) -> T:
-        """Wait for and return the next item from the staging queue."""
+        """Wait for and return the next item from the staging queue.
+
+        Some implementations raise ``RuntimeError`` when the bus is configured
+        as publish-only (see ``NatsBus(..., publish_only=True)``).
+        """
         ...
 
     def task_done(self) -> None:
@@ -60,11 +64,19 @@ class Bus(Protocol[T]):
         ...
 
     async def start(self) -> None:
-        """Start the bus (spawn feeder tasks, open connections, etc.)."""
+        """Start the bus (spawn feeder tasks, open connections, etc.).
+
+        Network-backed implementations may be no-ops when configured as
+        publish-only (e.g. ``NatsBus(..., publish_only=True)``).
+        """
         ...
 
     async def stop(self) -> None:
-        """Stop the bus and clean up resources."""
+        """Stop the bus and clean up resources.
+
+        Network-backed implementations may be no-ops when configured as
+        publish-only (e.g. ``NatsBus(..., publish_only=True)``).
+        """
         ...
 
     def qsize(self, platform: Platform) -> int:

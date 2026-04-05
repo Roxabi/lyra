@@ -501,6 +501,96 @@ class TestNatsBusQueueGroup:
             await sub_b.stop()
 
 
+# ---------------------------------------------------------------------------
+# TestPublishOnlyMode — publish_only=True skips subscriptions (SC-2..5, SC-8)
+# ---------------------------------------------------------------------------
+
+
+@requires_nats_server
+class TestPublishOnlyMode:
+    async def test_publish_only_start_noop(self, nc: NATS) -> None:
+        """start() on a publish-only bus creates zero subscriptions (SC-2, SC-8)."""
+        # Arrange
+        bus = NatsBus(
+            nc=nc,
+            bot_id="main",
+            item_type=InboundMessage,
+            publish_only=True,
+        )
+        bus.register(Platform.TELEGRAM)
+
+        # Act
+        await bus.start()
+
+        # Assert — no subscriptions created
+        assert bus.subscription_count == 0
+
+    async def test_publish_only_stop_noop(self, nc: NATS) -> None:
+        """stop() on a publish-only bus does not raise; count stays 0 (SC-3, SC-8)."""
+        # Arrange
+        bus = NatsBus(
+            nc=nc,
+            bot_id="main",
+            item_type=InboundMessage,
+            publish_only=True,
+        )
+        bus.register(Platform.TELEGRAM)
+        await bus.start()
+
+        # Act / Assert — must not raise
+        await bus.stop()
+        assert bus.subscription_count == 0
+
+    async def test_publish_only_get_raises(self, nc: NATS) -> None:
+        """get() on a publish-only bus raises RuntimeError (SC-4, SC-8)."""
+        # Arrange
+        bus = NatsBus(
+            nc=nc,
+            bot_id="main",
+            item_type=InboundMessage,
+            publish_only=True,
+        )
+        bus.register(Platform.TELEGRAM)
+
+        # Act / Assert
+        with pytest.raises(RuntimeError, match="publish-only"):
+            await bus.get()
+
+    async def test_publish_only_put_still_publishes(self, nc: NATS) -> None:
+        """put() on a publish-only bus reaches a normal subscriber (SC-5, SC-8).
+
+        staging_qsize() stays 0 because publish-only never buffers inbound data.
+        """
+        # Arrange — producer is publish-only; consumer is a normal NatsBus
+        producer = NatsBus(
+            nc=nc,
+            bot_id="main",
+            item_type=InboundMessage,
+            publish_only=True,
+        )
+        producer.register(Platform.TELEGRAM)
+        await producer.start()  # no-op for subscriptions
+
+        consumer = NatsBus(nc=nc, bot_id="main", item_type=InboundMessage)
+        consumer.register(Platform.TELEGRAM)
+        await consumer.start()
+
+        msg = _make_msg(Platform.TELEGRAM)
+
+        try:
+            # Act
+            await producer.put(Platform.TELEGRAM, msg)
+            received = await asyncio.wait_for(consumer.get(), timeout=2.0)
+
+            # Assert — message arrived and fields preserved
+            assert received.id == msg.id
+            # publish-only bus never buffers inbound messages
+            assert producer.staging_qsize() == 0
+        finally:
+            await consumer.stop()
+            await producer.stop()
+
+
 def test_nats_bus_default_queue_group_is_empty() -> None:
     """Default queue_group is empty string (backward-compatible, no group)."""
     from unittest.mock import MagicMock

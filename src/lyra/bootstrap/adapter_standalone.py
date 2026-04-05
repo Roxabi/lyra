@@ -93,14 +93,14 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
                 token, webhook_secret = tg_creds[bot_id]
 
                 inbound_bus: Bus[InboundMessage] = NatsBus(  # type: ignore[type-arg]
-                    nc=nc, bot_id=bot_id, item_type=InboundMessage,
+                    nc=nc, bot_id=bot_id, item_type=InboundMessage, publish_only=True,
                 )
                 inbound_bus.register(platform_enum)
                 await inbound_bus.start()
 
                 inbound_audio_bus: Bus[InboundAudio] = NatsBus(  # type: ignore[type-arg]
                     nc=nc, bot_id=bot_id, item_type=InboundAudio,
-                    subject_prefix="lyra.inbound.audio",
+                    subject_prefix="lyra.inbound.audio", publish_only=True,
                 )
                 inbound_audio_bus.register(platform_enum)
                 await inbound_audio_bus.start()
@@ -227,14 +227,14 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
                 token = dc_creds[bot_id]
 
                 inbound_bus_dc: Bus[InboundMessage] = NatsBus(  # type: ignore[type-arg]
-                    nc=nc, bot_id=bot_id, item_type=InboundMessage,
+                    nc=nc, bot_id=bot_id, item_type=InboundMessage, publish_only=True,
                 )
                 inbound_bus_dc.register(platform_enum)
                 await inbound_bus_dc.start()
 
                 inbound_audio_bus_dc: Bus[InboundAudio] = NatsBus(  # type: ignore[type-arg]
                     nc=nc, bot_id=bot_id, item_type=InboundAudio,
-                    subject_prefix="lyra.inbound.audio",
+                    subject_prefix="lyra.inbound.audio", publish_only=True,
                 )
                 inbound_audio_bus_dc.register(platform_enum)
                 await inbound_audio_bus_dc.start()

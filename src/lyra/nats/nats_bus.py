@@ -80,23 +80,14 @@ class NatsBus(Generic[T]):
         await bus.stop()    # unsubscribes; registrations remain intact
         await bus.start()   # safe to restart without re-registering
 
-    When ``publish_only=True`` the bus operates in publish-only mode: ``start()``
-    and ``stop()`` become no-ops (no subscriptions are ever created), and ``get()``
-    raises ``RuntimeError``.  ``register()`` and ``put()`` continue to work as
-    normal.  This mode is intended for adapter-side buses that only publish
-    outbound messages into NATS and have no reason to open inbound subscriptions
-    back to themselves.
-
     Args:
         nc: Already-connected ``nats.NATS`` client.
         bot_id: Default bot identifier used when ``register()`` is called
             without an explicit ``bot_id``.
         item_type: Concrete type used for deserialization (e.g. ``InboundMessage``).
         subject_prefix: NATS subject prefix. Defaults to ``"lyra.inbound"``.
-            Use a different prefix (e.g. ``"lyra.inbound.audio"``) to avoid
-            subject collisions between different message types.
-        publish_only: When ``True``, ``start()`` and ``stop()`` are no-ops and
-            ``get()`` raises ``RuntimeError``.  Defaults to ``False``.
+        publish_only: If ``True``, ``start()`` is a no-op and ``get()`` raises.
+            For adapter-side buses that only publish (see #541).
     """
 
     def __init__(  # noqa: PLR0913
@@ -159,9 +150,8 @@ class NatsBus(Generic[T]):
     async def start(self) -> None:
         """Create one NATS subscription per registered (platform, bot_id) pair.
 
-        Subject pattern: ``{subject_prefix}.{platform.value}.{bot_id}``
-
-        No-op if zero registrations exist or if ``publish_only=True``.
+        Subject pattern: ``{subject_prefix}.{platform.value}.{bot_id}``.
+        No-op if zero registrations or ``publish_only=True``.
 
         Raises:
             RuntimeError: If subscriptions are already active (double-start).
@@ -181,11 +171,7 @@ class NatsBus(Generic[T]):
 
         Registered (platform, bot_id) pairs are preserved so that a subsequent
         ``start()`` succeeds without re-registering.
-
-        No-op if ``publish_only=True``.
         """
-        if self._publish_only:
-            return
         for sub in self._subscriptions.values():
             try:
                 await sub.unsubscribe()
@@ -216,16 +202,9 @@ class NatsBus(Generic[T]):
         await self._nc.publish(subject, payload)
 
     async def get(self) -> T:
-        """Wait for and return the next item from the staging queue.
-
-        Raises:
-            RuntimeError: If called on a publish-only bus.
-        """
+        """Wait for and return the next item from the staging queue."""
         if self._publish_only:
-            raise RuntimeError(
-                "NatsBus.get() called on a publish-only bus — "
-                "publish-only buses never consume inbound messages."
-            )
+            raise RuntimeError("NatsBus.get(): publish-only bus never consumes")
         return await self._staging.get()
 
     def task_done(self) -> None:

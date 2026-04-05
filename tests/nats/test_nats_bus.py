@@ -501,6 +501,168 @@ class TestNatsBusQueueGroup:
             await sub_b.stop()
 
 
+# ---------------------------------------------------------------------------
+# TestPublishOnlyMode — publish_only=True skips subscriptions (SC-2..5, SC-8)
+# ---------------------------------------------------------------------------
+
+
+@requires_nats_server
+class TestPublishOnlyMode:
+    async def test_publish_only_start_noop(self, nc: NATS) -> None:
+        """start() on a publish-only bus creates zero subscriptions (SC-2, SC-8)."""
+        # Arrange
+        bus = NatsBus(
+            nc=nc,
+            bot_id="main",
+            item_type=InboundMessage,
+            publish_only=True,
+        )
+        bus.register(Platform.TELEGRAM)
+
+        # Act
+        await bus.start()
+
+        # Assert — no subscriptions created
+        assert bus.subscription_count == 0
+
+    async def test_publish_only_stop_noop(self, nc: NATS) -> None:
+        """stop() on a publish-only bus does not raise; count stays 0 (SC-3, SC-8)."""
+        # Arrange
+        bus = NatsBus(
+            nc=nc,
+            bot_id="main",
+            item_type=InboundMessage,
+            publish_only=True,
+        )
+        bus.register(Platform.TELEGRAM)
+        await bus.start()
+
+        # Act / Assert — must not raise
+        await bus.stop()
+        assert bus.subscription_count == 0
+
+    async def test_publish_only_get_raises(self, nc: NATS) -> None:
+        """get() on a publish-only bus raises RuntimeError (SC-4, SC-8)."""
+        # Arrange
+        bus = NatsBus(
+            nc=nc,
+            bot_id="main",
+            item_type=InboundMessage,
+            publish_only=True,
+        )
+        bus.register(Platform.TELEGRAM)
+
+        # Act / Assert
+        with pytest.raises(RuntimeError, match="publish-only"):
+            await bus.get()
+
+    async def test_publish_only_put_still_publishes(self, nc: NATS) -> None:
+        """put() on a publish-only bus reaches a normal subscriber (SC-5, SC-8)."""
+        # Arrange — producer is publish-only; consumer is a normal NatsBus
+        producer = NatsBus(
+            nc=nc,
+            bot_id="main",
+            item_type=InboundMessage,
+            publish_only=True,
+        )
+        producer.register(Platform.TELEGRAM)
+        await producer.start()  # no-op for subscriptions
+
+        consumer = NatsBus(nc=nc, bot_id="main", item_type=InboundMessage)
+        consumer.register(Platform.TELEGRAM)
+        await consumer.start()
+
+        msg = _make_msg(Platform.TELEGRAM)
+
+        try:
+            # Act
+            await producer.put(Platform.TELEGRAM, msg)
+            received = await asyncio.wait_for(consumer.get(), timeout=2.0)
+
+            # Assert — full-field equality (catches any serialize/deserialize
+            # regression, not just id). Matches test_put_get_roundtrip style.
+            assert received.id == msg.id
+            assert received.platform == msg.platform
+            assert received.bot_id == msg.bot_id
+            assert received.scope_id == msg.scope_id
+            assert received.user_id == msg.user_id
+            assert received.user_name == msg.user_name
+            assert received.text == msg.text
+            assert received.trust_level == msg.trust_level
+            # Producer has zero subscriptions — proves publish-only is intact.
+            # (staging_qsize is tautologically 0 on publish-only because the
+            # staging queue is never populated, so subscription_count is the
+            # meaningful invariant.)
+            assert producer.subscription_count == 0
+        finally:
+            await consumer.stop()
+            await producer.stop()
+
+    async def test_publish_only_double_start_raises(self, nc: NATS) -> None:
+        """Double-start on a publish-only bus raises RuntimeError (f1 regression).
+
+        Without this guard, the publish_only early-return in start() would
+        silently swallow a double-start, asymmetric with normal buses.
+        """
+        bus = NatsBus(
+            nc=nc,
+            bot_id="main",
+            item_type=InboundMessage,
+            publish_only=True,
+        )
+        bus.register(Platform.TELEGRAM)
+        await bus.start()
+        with pytest.raises(RuntimeError, match="already-started"):
+            await bus.start()
+
+    async def test_publish_only_register_after_start_raises(
+        self, nc: NATS
+    ) -> None:
+        """register() after start() on a publish-only bus raises (f2 regression).
+
+        Without the _started flag, the _subscriptions-based guard would be
+        neutered on publish-only buses, allowing a silent post-start
+        register() that reroutes future put() calls.
+        """
+        bus = NatsBus(
+            nc=nc,
+            bot_id="main",
+            item_type=InboundMessage,
+            publish_only=True,
+        )
+        bus.register(Platform.TELEGRAM)
+        await bus.start()
+        with pytest.raises(RuntimeError, match="after start"):
+            bus.register(Platform.DISCORD)
+
+
+class TestPublishOnlyInvariants:
+    """Publish-only invariant tests using a mocked NATS client (no server)."""
+
+    async def test_stop_does_not_touch_nats(self) -> None:
+        """Regression: stop() must not invoke any NATS method on publish-only.
+
+        Catches a future `stop()` refactor that would bypass the empty
+        ``_subscriptions`` invariant (e.g., adding teardown work not gated
+        on ``_subscriptions`` or ``_publish_only``).
+        """
+        from unittest.mock import MagicMock
+
+        nc = MagicMock()
+        bus = NatsBus(
+            nc=nc, bot_id="main", item_type=InboundMessage, publish_only=True,
+        )
+        bus.register(Platform.TELEGRAM)
+        await bus.start()
+        calls_before = len(nc.method_calls)
+        await bus.stop()
+        delta = len(nc.method_calls) - calls_before
+        assert delta == 0, (
+            f"stop() made {delta} NATS call(s) on publish-only bus — "
+            "publish-only invariant broken"
+        )
+
+
 def test_nats_bus_default_queue_group_is_empty() -> None:
     """Default queue_group is empty string (backward-compatible, no group)."""
     from unittest.mock import MagicMock

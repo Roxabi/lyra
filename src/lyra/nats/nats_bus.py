@@ -88,6 +88,8 @@ class NatsBus(Generic[T]):
         subject_prefix: NATS subject prefix. Defaults to ``"lyra.inbound"``.
             Use a different prefix (e.g. ``"lyra.inbound.audio"``) to avoid
             subject collisions between different message types.
+        publish_only: If ``True``, ``start()`` is a no-op and ``get()`` raises.
+            For adapter-side buses that only publish (see #541).
     """
 
     def __init__(  # noqa: PLR0913
@@ -99,6 +101,7 @@ class NatsBus(Generic[T]):
         *,
         staging_maxsize: int = 500,
         queue_group: str = "",
+        publish_only: bool = False,
     ) -> None:
         validate_nats_token(subject_prefix, kind="subject_prefix")
         validate_nats_token(queue_group, kind="queue_group", allow_empty=True)
@@ -107,6 +110,8 @@ class NatsBus(Generic[T]):
         self._item_type = item_type
         self._subject_prefix = subject_prefix
         self._queue_group = queue_group
+        self._publish_only = publish_only
+        self._started = False
         self._registrations: set[tuple[Platform, str]] = set()
         self._subscriptions: dict[tuple[Platform, str], Subscription] = {}
         self._staging: asyncio.Queue[T] = asyncio.Queue(maxsize=staging_maxsize)
@@ -121,19 +126,15 @@ class NatsBus(Generic[T]):
     ) -> None:
         """Record *(platform, bot_id)* for subscription setup.
 
-        ``maxsize`` is accepted for Protocol compatibility but unused — there
-        is no per-platform local buffer in NatsBus.
-
-        When ``bot_id`` is omitted or ``None``, the constructor's ``bot_id``
-        is used, preserving backward compatibility.
+        ``maxsize`` is Protocol-compat only (unused). ``bot_id`` defaults to
+        the constructor's ``bot_id`` when omitted.
 
         Raises:
             RuntimeError: If called after ``start()``.
         """
-        if self._subscriptions:
+        if self._started:
             raise RuntimeError(
-                f"Cannot register platform {platform!r} after start() — "
-                "subscriptions are already active."
+                f"Cannot register platform {platform!r} after start()."
             )
         resolved_bid = bot_id or self._bot_id
         validate_nats_token(resolved_bid, kind="bot_id")
@@ -148,26 +149,27 @@ class NatsBus(Generic[T]):
     async def start(self) -> None:
         """Create one NATS subscription per registered (platform, bot_id) pair.
 
-        Subject pattern: ``{subject_prefix}.{platform.value}.{bot_id}``
-
-        No-op if zero registrations exist.
+        Subject pattern: ``{subject_prefix}.{platform.value}.{bot_id}``.
+        No-op if zero registrations or ``publish_only=True``.
 
         Raises:
-            RuntimeError: If subscriptions are already active (double-start).
+            RuntimeError: If already started (double-start) — call stop() first.
         """
-        if self._subscriptions:
-            raise RuntimeError(
-                "NatsBus.start() called while subscriptions are already active — "
-                "call stop() first."
-            )
+        if self._started:
+            raise RuntimeError("NatsBus.start() called on an already-started bus.")
+        self._started = True
+        if self._publish_only:
+            return
         for platform, bid in self._registrations:
             await self._make_handler(platform, bid)
 
     async def stop(self) -> None:
         """Unsubscribe all active NATS subscriptions.
 
-        Registered (platform, bot_id) pairs are preserved so that a subsequent
-        ``start()`` succeeds without re-registering.
+        Registered (platform, bot_id) pairs are preserved so a subsequent
+        ``start()`` succeeds. Publish-only buses have empty ``_subscriptions``
+        (``start()`` returned early before populating it), so the loop below
+        is a natural no-op — do not add teardown that bypasses this invariant.
         """
         for sub in self._subscriptions.values():
             try:
@@ -175,6 +177,7 @@ class NatsBus(Generic[T]):
             except Exception:
                 log.exception("NatsBus: error unsubscribing")
         self._subscriptions.clear()
+        self._started = False
 
     # ------------------------------------------------------------------
     # Message I/O
@@ -200,6 +203,8 @@ class NatsBus(Generic[T]):
 
     async def get(self) -> T:
         """Wait for and return the next item from the staging queue."""
+        if self._publish_only:
+            raise RuntimeError("NatsBus.get(): publish-only bus never consumes")
         return await self._staging.get()
 
     def task_done(self) -> None:

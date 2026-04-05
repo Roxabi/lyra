@@ -247,3 +247,60 @@ class TestMultiBotBackwardCompat:
             assert len(bus._subscriptions) == 2
         finally:
             await bus.stop()
+
+
+# ---------------------------------------------------------------------------
+# Publish-only adapter bus roundtrip
+# ---------------------------------------------------------------------------
+
+
+@requires_nats_server
+async def test_publish_only_adapter_bus_roundtrip(nc: NATS) -> None:
+    """Adapter publish-only bus publishes; hub-side normal bus receives.
+
+    Mirrors the production split: adapter side opens no subscriptions,
+    hub side subscribes and consumes via get().
+    """
+    # Arrange — adapter-side bus (publish_only=True)
+    adapter_bus = NatsBus(
+        nc=nc, bot_id="bot-a", item_type=InboundMessage, publish_only=True
+    )
+    adapter_bus.register(Platform.TELEGRAM, bot_id="bot-a")
+
+    # Arrange — hub-side bus (normal mode)
+    hub_bus = NatsBus(nc=nc, bot_id="bot-a", item_type=InboundMessage)
+    hub_bus.register(Platform.TELEGRAM, bot_id="bot-a")
+
+    try:
+        # Act — start both buses
+        await adapter_bus.start()
+        await hub_bus.start()
+
+        # Assert — adapter-side opened zero subscriptions
+        assert adapter_bus.subscription_count == 0
+
+        # Act — publish via adapter put()
+        msg = _make_msg(Platform.TELEGRAM, bot_id="bot-a")
+        await adapter_bus.put(Platform.TELEGRAM, msg)
+
+        # Act — consume on hub side
+        received = await asyncio.wait_for(hub_bus.get(), timeout=2.0)
+
+        # Assert — full-field equality (stronger than id-only). Matches
+        # the field list used by test_put_get_roundtrip in test_nats_bus.py.
+        assert received.id == msg.id
+        assert received.platform == msg.platform
+        assert received.bot_id == msg.bot_id
+        assert received.scope_id == msg.scope_id
+        assert received.user_id == msg.user_id
+        assert received.user_name == msg.user_name
+        assert received.text == msg.text
+        assert received.trust_level == msg.trust_level
+
+        # Assert — adapter bus still has zero subscriptions after put()
+        # (staging_qsize is tautologically 0 on publish-only; subscription_count
+        # is the meaningful invariant here)
+        assert adapter_bus.subscription_count == 0
+    finally:
+        await adapter_bus.stop()
+        await hub_bus.stop()

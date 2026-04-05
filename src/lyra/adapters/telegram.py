@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict
 
 if TYPE_CHECKING:
     from lyra.adapters._shared_streaming import PlatformCallbacks
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.outbound_listener import OutboundListener
     from lyra.core.bus import Bus
 
 from lyra.adapters import telegram_audio  # noqa: I001
@@ -154,7 +154,7 @@ class TelegramAdapter(OutboundAdapterBase):
 
         self.app = FastAPI()
         self._register_routes()
-        self._outbound_listener: "NatsOutboundListener | None" = None
+        self._outbound_listener: "OutboundListener | None" = None
 
     @property
     def bot(self) -> Any:

@@ -5,7 +5,33 @@ description: Each adapter process embeds its own Hub instance and agent pool rat
 
 ## Status
 
-Accepted
+Superseded by ADR-035, ADR-037, ADR-040 (NATS three-process architecture introduced in #445 Slice C)
+
+## Superseded
+
+This decision has been superseded. The cross-platform bridging and richer control-plane needs
+that were flagged as the future trigger for the Option B upgrade path arrived sooner than
+expected. When the migration happened (issue #445, Slice C), the implementation chose a
+**NATS message bus** over the Unix-socket FastAPI protocol sketched in the upgrade path below
+— cleaner transport seam, nkey-based ACL story, and natural compatibility with the separate
+LLM compute-offload subjects introduced in Slice B.
+
+The current architecture maps Option A to an effective Option B-via-NATS:
+
+- `lyra_hub` — standalone hub process (`lyra hub`, `_bootstrap_hub_standalone()`)
+- `lyra_telegram` / `lyra_discord` — thin NATS clients (`lyra adapter <platform>`,
+  `_bootstrap_adapter_standalone()`), coordinated over `lyra.inbound.<platform>.<bot_id>`
+  and `lyra.outbound.<platform>.<bot_id>` subjects.
+
+The "Upgrade Path to Option B" section below was the seed of this migration.
+
+Successor ADRs: **ADR-035** (NATS subject naming convention, #454), **ADR-036**
+(`NatsChunkEnvelope` streaming protocol), **ADR-037** (`NatsOutboundListener` and adapter
+bootstrap contract, #458 Slice C5), **ADR-040** (systematic NATS layer architectural review).
+
+The original Option A decision and its rationale are preserved below as historical record.
+
+---
 
 ## Context
 

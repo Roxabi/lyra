@@ -17,7 +17,8 @@ import json
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
-from lyra.core.message import AudioPayload, InboundAudio, InboundMessage
+from lyra.core.audio_payload import AudioPayload
+from lyra.core.message import InboundAudio, InboundMessage
 from lyra.core.trust import TrustLevel
 
 # RED import — module does not exist yet (T9/T10 will create it)

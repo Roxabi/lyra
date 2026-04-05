@@ -14,7 +14,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from lyra.core.message import AudioPayload, InboundMessage  # AudioPayload: RED import
+from lyra.core.audio_payload import AudioPayload
+from lyra.core.message import InboundMessage
 from lyra.core.trust import TrustLevel
 
 # ---------------------------------------------------------------------------

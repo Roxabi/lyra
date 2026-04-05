@@ -124,22 +124,11 @@ class NatsBus(Generic[T]):
     def register(  # noqa: ARG002
         self, platform: Platform, maxsize: int = 100, bot_id: str | None = None
     ) -> None:
-        """Record *(platform, bot_id)* for subscription setup.
-
-        ``maxsize`` is Protocol-compat only (unused). ``bot_id`` defaults to
-        the constructor's ``bot_id`` when omitted.
-
-        Raises:
-            RuntimeError: If called after ``start()``.
-        """
+        """Record *(platform, bot_id)* for subscription setup (idempotent)."""
         if self._started:
-            raise RuntimeError(
-                f"Cannot register platform {platform!r} after start()."
-            )
+            raise RuntimeError(f"Cannot register {platform!r} after start().")
         resolved_bid = bot_id or self._bot_id
         validate_nats_token(resolved_bid, kind="bot_id")
-        if (platform, resolved_bid) in self._registrations:
-            return  # Already registered — idempotent
         self._registrations.add((platform, resolved_bid))
 
     # ------------------------------------------------------------------
@@ -224,14 +213,7 @@ class NatsBus(Generic[T]):
         return self._staging.qsize()
 
     def inject(self, item: T) -> None:
-        """Public injection API for compat shims.
-
-        Enqueues a pre-constructed item directly into the staging queue,
-        bypassing NATS publish/deserialize. Used by InboundAudioLegacyHandler
-        in Slice 1 of issue #534 so legacy-subject messages (decoded via a raw
-        NATS subscription handler) can feed the same pipeline as new-subject
-        messages consumed through the normal ``_make_handler`` path.
-        """
+        """Public injection API for compat shims (bypasses NATS deserialize)."""
         self._staging.put_nowait(item)
 
     def registered_platforms(self) -> frozenset[Platform]:

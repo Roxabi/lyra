@@ -31,8 +31,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from lyra.core.audio_payload import AudioPayload
 from lyra.core.inbound_bus import LocalBus
-from lyra.core.message import AudioPayload, InboundAudio, InboundMessage
+from lyra.core.message import InboundAudio, InboundMessage
 from lyra.core.trust import TrustLevel
 from lyra.nats.compat.inbound_audio_legacy import InboundAudioLegacyHandler
 

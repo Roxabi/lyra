@@ -65,9 +65,7 @@ async def wire_telegram_adapters(  # noqa: PLR0913 — wiring requires all deps
             raise MissingCredentialsError("telegram", bot_cfg.bot_id)
         tg_token, tg_webhook_secret = tg_creds
 
-        # Slice 1: adapter still publishes on legacy lyra.inbound.audio.* subject.
-        # Create a per-adapter publish-only NatsBus rather than reusing the
-        # hub-side consume bus (removed from Hub in #534 Slice 1).
+        # Slice 1: adapter publishes legacy lyra.inbound.audio.* (removed Slice 2 #534).
         tg_audio_bus: NatsBus[InboundAudio] = NatsBus(
             nc=nats_client,
             bot_id=bot_cfg.bot_id,

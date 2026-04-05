@@ -64,11 +64,9 @@ async def _bootstrap_unified(  # noqa: C901, PLR0915
             staging_maxsize=inbound_bus_cfg.staging_maxsize,
             queue_group=HUB_INBOUND,
         )
-        # Compat shim: bridge legacy lyra.inbound.audio.* → unified InboundMessage.
-        # Slice 1 only — delete in Slice 2 once adapters migrate.
+        # Compat shim for legacy lyra.inbound.audio.* (Slice 1 only, #534).
         legacy_audio_handler = InboundAudioLegacyHandler(
-            inbound_bus=inbound_bus,
-            nats_client=nc,
+            inbound_bus=inbound_bus, nats_client=nc,
         )
 
         vault_dir = Path(

@@ -14,9 +14,9 @@ import json
 import logging
 from typing import Any
 
+from lyra.core.audio_payload import AudioPayload
 from lyra.core.message import (
     SCHEMA_VERSION_INBOUND_AUDIO,
-    AudioPayload,
     InboundAudio,
     InboundMessage,
 )

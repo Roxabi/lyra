@@ -557,10 +557,7 @@ class TestPublishOnlyMode:
             await bus.get()
 
     async def test_publish_only_put_still_publishes(self, nc: NATS) -> None:
-        """put() on a publish-only bus reaches a normal subscriber (SC-5, SC-8).
-
-        staging_qsize() stays 0 because publish-only never buffers inbound data.
-        """
+        """put() on a publish-only bus reaches a normal subscriber (SC-5, SC-8)."""
         # Arrange — producer is publish-only; consumer is a normal NatsBus
         producer = NatsBus(
             nc=nc,
@@ -582,13 +579,57 @@ class TestPublishOnlyMode:
             await producer.put(Platform.TELEGRAM, msg)
             received = await asyncio.wait_for(consumer.get(), timeout=2.0)
 
-            # Assert — message arrived and fields preserved
+            # Assert — full-field equality (catches any serialize/deserialize
+            # regression, not just id)
             assert received.id == msg.id
-            # publish-only bus never buffers inbound messages
-            assert producer.staging_qsize() == 0
+            assert received.platform == msg.platform
+            assert received.text == msg.text
+            assert received.scope_id == msg.scope_id
+            # Producer has zero subscriptions — proves publish-only is intact.
+            # (staging_qsize is tautologically 0 on publish-only because the
+            # staging queue is never populated, so subscription_count is the
+            # meaningful invariant.)
+            assert producer.subscription_count == 0
         finally:
             await consumer.stop()
             await producer.stop()
+
+    async def test_publish_only_double_start_raises(self, nc: NATS) -> None:
+        """Double-start on a publish-only bus raises RuntimeError (f1 regression).
+
+        Without this guard, the publish_only early-return in start() would
+        silently swallow a double-start, asymmetric with normal buses.
+        """
+        bus = NatsBus(
+            nc=nc,
+            bot_id="main",
+            item_type=InboundMessage,
+            publish_only=True,
+        )
+        bus.register(Platform.TELEGRAM)
+        await bus.start()
+        with pytest.raises(RuntimeError, match="already-started"):
+            await bus.start()
+
+    async def test_publish_only_register_after_start_raises(
+        self, nc: NATS
+    ) -> None:
+        """register() after start() on a publish-only bus raises (f2 regression).
+
+        Without the _started flag, the _subscriptions-based guard would be
+        neutered on publish-only buses, allowing a silent post-start
+        register() that reroutes future put() calls.
+        """
+        bus = NatsBus(
+            nc=nc,
+            bot_id="main",
+            item_type=InboundMessage,
+            publish_only=True,
+        )
+        bus.register(Platform.TELEGRAM)
+        await bus.start()
+        with pytest.raises(RuntimeError, match="after start"):
+            bus.register(Platform.DISCORD)
 
 
 def test_nats_bus_default_queue_group_is_empty() -> None:

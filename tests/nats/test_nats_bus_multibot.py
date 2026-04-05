@@ -286,11 +286,15 @@ async def test_publish_only_adapter_bus_roundtrip(nc: NATS) -> None:
         # Act — consume on hub side
         received = await asyncio.wait_for(hub_bus.get(), timeout=2.0)
 
-        # Assert — correct message delivered
+        # Assert — full-field equality (stronger than id-only)
         assert received.id == msg.id
+        assert received.platform == msg.platform
+        assert received.text == msg.text
 
-        # Assert — publish-only bus never buffered the message
-        assert adapter_bus.staging_qsize() == 0
+        # Assert — adapter bus still has zero subscriptions after put()
+        # (staging_qsize is tautologically 0 on publish-only; subscription_count
+        # is the meaningful invariant here)
+        assert adapter_bus.subscription_count == 0
     finally:
         await adapter_bus.stop()
         await hub_bus.stop()

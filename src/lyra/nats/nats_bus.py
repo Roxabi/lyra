@@ -109,6 +109,7 @@ class NatsBus(Generic[T]):
         self._subject_prefix = subject_prefix
         self._queue_group = queue_group
         self._publish_only = publish_only
+        self._started = False
         self._registrations: set[tuple[Platform, str]] = set()
         self._subscriptions: dict[tuple[Platform, str], Subscription] = {}
         self._staging: asyncio.Queue[T] = asyncio.Queue(maxsize=staging_maxsize)
@@ -123,19 +124,15 @@ class NatsBus(Generic[T]):
     ) -> None:
         """Record *(platform, bot_id)* for subscription setup.
 
-        ``maxsize`` is accepted for Protocol compatibility but unused — there
-        is no per-platform local buffer in NatsBus.
-
-        When ``bot_id`` is omitted or ``None``, the constructor's ``bot_id``
-        is used, preserving backward compatibility.
+        ``maxsize`` is Protocol-compat only (unused). ``bot_id`` defaults to
+        the constructor's ``bot_id`` when omitted.
 
         Raises:
             RuntimeError: If called after ``start()``.
         """
-        if self._subscriptions:
+        if self._started:
             raise RuntimeError(
-                f"Cannot register platform {platform!r} after start() — "
-                "subscriptions are already active."
+                f"Cannot register platform {platform!r} after start()."
             )
         resolved_bid = bot_id or self._bot_id
         validate_nats_token(resolved_bid, kind="bot_id")
@@ -154,23 +151,23 @@ class NatsBus(Generic[T]):
         No-op if zero registrations or ``publish_only=True``.
 
         Raises:
-            RuntimeError: If subscriptions are already active (double-start).
+            RuntimeError: If already started (double-start) — call stop() first.
         """
+        if self._started:
+            raise RuntimeError("NatsBus.start() called on an already-started bus.")
+        self._started = True
         if self._publish_only:
             return
-        if self._subscriptions:
-            raise RuntimeError(
-                "NatsBus.start() called while subscriptions are already active — "
-                "call stop() first."
-            )
         for platform, bid in self._registrations:
             await self._make_handler(platform, bid)
 
     async def stop(self) -> None:
         """Unsubscribe all active NATS subscriptions.
 
-        Registered (platform, bot_id) pairs are preserved so that a subsequent
-        ``start()`` succeeds without re-registering.
+        Registered (platform, bot_id) pairs are preserved so a subsequent
+        ``start()`` succeeds. Publish-only buses have empty ``_subscriptions``
+        (``start()`` returned early before populating it), so the loop below
+        is a natural no-op — do not add teardown that bypasses this invariant.
         """
         for sub in self._subscriptions.values():
             try:
@@ -178,6 +175,7 @@ class NatsBus(Generic[T]):
             except Exception:
                 log.exception("NatsBus: error unsubscribing")
         self._subscriptions.clear()
+        self._started = False
 
     # ------------------------------------------------------------------
     # Message I/O

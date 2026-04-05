@@ -21,7 +21,7 @@ class OutboundListener(Protocol):
     core/hub/hub_protocol.py.
     """
 
-    def cache_inbound(self, msg: "InboundMessage | InboundAudio") -> None:
+    def cache_inbound(self, msg: InboundMessage | InboundAudio) -> None:
         """Store msg so outbound correlation can retrieve it by stream_id."""
         ...
 

@@ -194,14 +194,18 @@ Replacing NATS with Redis Streams or RabbitMQ would require:
 No changes to Hub, Pool, OutboundDispatcher, or any platform adapter would be required.
 The abstraction is doing its job.
 
-**One coupling leak:** `NatsOutboundListener` is not behind an abstraction. The
-adapter bootstrap calls `adapter._outbound_listener = listener` and then
-`await listener.start()` after platform-specific setup. The listener is injected
-as a field on the adapter via a duck-typed `_outbound_listener` attribute rather
-than via a named protocol. This works but means the adapter process is always
-NATS-specific — there is no `OutboundListener` protocol that a `LocalOutboundListener`
-or `RedisOutboundListener` could implement in its place. This is a narrow coupling but
-worth naming as a future seam.
+**One coupling leak (resolved by PR #550 / issue #529):** `NatsOutboundListener`
+was originally not behind an abstraction — the adapter bootstrap called
+`adapter._outbound_listener = listener` and then `await listener.start()` after
+platform-specific setup, injecting the listener as a duck-typed `_outbound_listener`
+attribute. That made the adapter process always NATS-specific at the type level.
+Issue #529 introduces `OutboundListener` (a structural `typing.Protocol` in
+`src/lyra/adapters/outbound_listener.py`) with the 3-method surface adapter code
+requires (`cache_inbound`, `start`, `stop`). `TelegramAdapter` and `DiscordAdapter`
+now annotate `_outbound_listener` as `OutboundListener | None`, and
+`NatsOutboundListener` satisfies the protocol structurally without inheritance.
+A future `LocalOutboundListener` or `RedisOutboundListener` can be wired in
+`adapter_standalone.py` with zero changes to adapter code.
 
 ---
 
@@ -414,7 +418,7 @@ correct behavior.
 | 6 | `_get_hints` lacks a per-type cache; reflection on every deserialization | Low | `_serialize.py` |
 | 7 | Outbound queue is unbounded; no max-age drain before circuit opens | Low | `outbound_dispatcher.py` |
 | 8 | `_on_dispatched` in metadata is a hidden control channel stripped by serializer | Low (by design) | `outbound_dispatcher.py`, `_serialize.py` |
-| 9 | No `OutboundListener` protocol; adapter process is always NATS-specific | Low | `adapter_standalone.py` |
+| 9 | No `OutboundListener` protocol; adapter process is always NATS-specific — **resolved by PR #550 / issue #529** | Low | `adapter_standalone.py` |
 | 10 | `TYPE_CHECKING`-only import workaround in `_get_hints` | Low | `_serialize.py` |
 
 ---

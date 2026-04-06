@@ -7,14 +7,14 @@ import time
 from typing import TYPE_CHECKING
 
 from ..agent import AgentBase
-from ..audio_pipeline import AudioPipeline
 from ..authenticator import Authenticator
 from ..bus import Bus
 from ..identity import Identity
 from ..inbound_bus import LocalBus
-from ..message import InboundAudio, InboundMessage, Platform
+from ..message import InboundMessage, Platform
 from ..pool import Pool
 from ..trust import TrustLevel
+from ..tts_dispatch import AudioPipeline
 from .hub_outbound import HubOutboundMixin
 from .hub_protocol import (  # noqa: F401 — public re-export
     Binding,
@@ -252,30 +252,6 @@ class Hub(HubOutboundMixin):
         return dataclasses.replace(
             msg, trust_level=identity.trust_level, is_admin=identity.is_admin
         )
-
-    def _resolve_audio_trust(self, audio: "InboundAudio") -> "InboundAudio":
-        """Re-resolve trust level for InboundAudio (C3).
-
-        Mirrors _resolve_message_trust(). Called by AudioPipeline before the
-        BLOCKED check to ensure Hub-resolved trust.
-        """
-        try:
-            key_platform = Platform(audio.platform)
-        except ValueError:
-            return audio
-        auth = self._get_authenticator(key_platform, audio.bot_id)
-        if auth is None:
-            log.debug(
-                "no authenticator for %s/%s — trust unchanged",
-                key_platform,
-                audio.bot_id,
-            )
-            return audio
-        uid = audio.user_id if audio.user_id else None
-        identity = auth.resolve(uid)
-        if identity.trust_level == audio.trust_level:
-            return audio
-        return dataclasses.replace(audio, trust_level=identity.trust_level)
 
     def register_binding(
         self,

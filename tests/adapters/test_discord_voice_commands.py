@@ -66,7 +66,6 @@ class TestHandleVoiceCommand:
         adapter = DiscordAdapter(
             bot_id="main",
             inbound_bus=MagicMock(),
-            inbound_audio_bus=MagicMock(),
         )
         join_mock = AsyncMock()
         adapter._vsm.join = join_mock
@@ -86,7 +85,6 @@ class TestHandleVoiceCommand:
         adapter = DiscordAdapter(
             bot_id="main",
             inbound_bus=MagicMock(),
-            inbound_audio_bus=MagicMock(),
         )
         join_mock = AsyncMock()
         adapter._vsm.join = join_mock
@@ -106,7 +104,6 @@ class TestHandleVoiceCommand:
         adapter = DiscordAdapter(
             bot_id="main",
             inbound_bus=MagicMock(),
-            inbound_audio_bus=MagicMock(),
         )
         join_mock = AsyncMock()
         adapter._vsm.join = join_mock
@@ -126,7 +123,6 @@ class TestHandleVoiceCommand:
         adapter = DiscordAdapter(
             bot_id="main",
             inbound_bus=MagicMock(),
-            inbound_audio_bus=MagicMock(),
         )
         join_mock = AsyncMock()
         adapter._vsm.join = join_mock
@@ -147,7 +143,6 @@ class TestHandleVoiceCommand:
         adapter = DiscordAdapter(
             bot_id="main",
             inbound_bus=MagicMock(),
-            inbound_audio_bus=MagicMock(),
         )
         join_mock = AsyncMock()
         adapter._vsm.join = join_mock
@@ -167,7 +162,6 @@ class TestHandleVoiceCommand:
         adapter = DiscordAdapter(
             bot_id="main",
             inbound_bus=MagicMock(),
-            inbound_audio_bus=MagicMock(),
         )
         leave_mock = AsyncMock()
         adapter._vsm.leave = leave_mock
@@ -188,7 +182,6 @@ class TestHandleVoiceCommand:
         adapter = DiscordAdapter(
             bot_id="main",
             inbound_bus=MagicMock(),
-            inbound_audio_bus=MagicMock(),
         )
         leave_mock = AsyncMock()
         adapter._vsm.leave = leave_mock
@@ -209,7 +202,6 @@ class TestHandleVoiceCommand:
         adapter = DiscordAdapter(
             bot_id="main",
             inbound_bus=MagicMock(),
-            inbound_audio_bus=MagicMock(),
         )
         join_mock = AsyncMock()
         leave_mock = AsyncMock()
@@ -231,7 +223,6 @@ class TestHandleVoiceCommand:
         adapter = DiscordAdapter(
             bot_id="main",
             inbound_bus=MagicMock(),
-            inbound_audio_bus=MagicMock(),
         )
         join_mock = AsyncMock()
         adapter._vsm.join = join_mock
@@ -251,7 +242,6 @@ class TestHandleVoiceCommand:
         adapter = DiscordAdapter(
             bot_id="main",
             inbound_bus=MagicMock(),
-            inbound_audio_bus=MagicMock(),
         )
         join_mock = AsyncMock()
         adapter._vsm.join = join_mock
@@ -272,7 +262,6 @@ class TestHandleVoiceCommand:
         adapter = DiscordAdapter(
             bot_id="main",
             inbound_bus=MagicMock(),
-            inbound_audio_bus=MagicMock(),
         )
         join_mock = AsyncMock(side_effect=VoiceAlreadyActiveError("1"))
         adapter._vsm.join = join_mock
@@ -294,7 +283,6 @@ class TestHandleVoiceCommand:
         adapter = DiscordAdapter(
             bot_id="main",
             inbound_bus=MagicMock(),
-            inbound_audio_bus=MagicMock(),
         )
         join_mock = AsyncMock(side_effect=VoiceAlreadyActiveError("1"))
         adapter._vsm.join = join_mock
@@ -318,7 +306,6 @@ class TestHandleVoiceCommand:
         adapter = DiscordAdapter(
             bot_id="main",
             inbound_bus=MagicMock(),
-            inbound_audio_bus=MagicMock(),
         )
         join_mock = AsyncMock(side_effect=VoiceDependencyError("libopus missing"))
         adapter._vsm.join = join_mock
@@ -340,7 +327,6 @@ class TestHandleVoiceCommand:
         adapter = DiscordAdapter(
             bot_id="main",
             inbound_bus=MagicMock(),
-            inbound_audio_bus=MagicMock(),
         )
         join_mock = AsyncMock()
         adapter._vsm.join = join_mock
@@ -367,7 +353,6 @@ class TestOnMessageVoiceCommandWiring:
         adapter = DiscordAdapter(
             bot_id="main",
             inbound_bus=inbound_bus,
-            inbound_audio_bus=MagicMock(),
         )
         adapter._auth = _ALLOW_ALL  # permit the message
         # Mock _handle_voice_command to return True (simulates voice command handled)

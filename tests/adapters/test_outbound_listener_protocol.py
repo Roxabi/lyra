@@ -21,7 +21,8 @@ from unittest.mock import AsyncMock
 
 from lyra.adapters.nats_outbound_listener import NatsOutboundListener
 from lyra.adapters.outbound_listener import OutboundListener
-from lyra.core.message import InboundAudio, Platform
+from lyra.core.audio_payload import AudioPayload
+from lyra.core.message import InboundMessage, Platform
 from lyra.core.trust import TrustLevel
 
 # Module-level static structural check. mypy/pyright verify that
@@ -32,25 +33,32 @@ from lyra.core.trust import TrustLevel
 _OUTBOUND_LISTENER_IMPLS: tuple[type[OutboundListener], ...] = (NatsOutboundListener,)
 
 
-def _make_audio() -> InboundAudio:
-    """Minimal InboundAudio fixture for exercising cache_inbound's union type.
+def _make_voice_message() -> InboundMessage:
+    """Minimal InboundMessage(modality='voice') fixture for exercising cache_inbound.
 
-    InboundAudio retained: cache_inbound accepts InboundMessage | InboundAudio
-    (union type).  This test specifically exercises the InboundAudio branch of
-    that union — a Slice 2 deletion target (issue #534).
+    Slice 2 (issue #534): cache_inbound now accepts only InboundMessage.
+    Voice messages carry audio via InboundMessage.audio (AudioPayload).
     """
-    return InboundAudio(  # InboundAudio retained: tests Slice-2 deletion target
+    return InboundMessage(
         id="audio-1",
         platform="telegram",
         bot_id="main",
         scope_id="chat:42",
         user_id="tg:user:1",
-        audio_bytes=b"\x00",
-        mime_type="audio/ogg",
-        duration_ms=None,
-        file_id=None,
+        user_name="Alice",
+        is_mention=False,
+        text="",
+        text_raw="",
         timestamp=datetime.now(timezone.utc),
+        platform_meta={"chat_id": 42, "topic_id": None, "message_id": None, "is_group": False},  # noqa: E501
         trust_level=TrustLevel.TRUSTED,
+        modality="voice",
+        audio=AudioPayload(
+            audio_bytes=b"\x00",
+            mime_type="audio/ogg",
+            duration_ms=None,
+            file_id=None,
+        ),
     )
 
 
@@ -74,10 +82,10 @@ def test_nats_listener_satisfies_outbound_listener_protocol() -> None:
     assert hasattr(proto, "stop")
     assert inspect.iscoroutinefunction(proto.stop)
 
-    # Exercise cache_inbound with a real InboundAudio to catch positional
-    # signature drift (e.g. an accidental second parameter). hasattr/callable
-    # alone would not fail on such a change.
-    proto.cache_inbound(_make_audio())
+    # Exercise cache_inbound with a real InboundMessage(modality='voice') to
+    # catch positional signature drift (e.g. an accidental second parameter).
+    # hasattr/callable alone would not fail on such a change.
+    proto.cache_inbound(_make_voice_message())
 
 
 def test_protocol_public_surface_is_exactly_three_methods() -> None:

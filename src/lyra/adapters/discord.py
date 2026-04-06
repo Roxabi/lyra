@@ -46,7 +46,6 @@ from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.guard import BlockedGuard, GuardChain
 from lyra.core.trust import TrustLevel
 from lyra.core.message import (
-    InboundAudio,
     InboundMessage,
     OutboundAttachment,
     OutboundAudio,
@@ -76,7 +75,6 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         bot_id: str = "main",
         *,
         inbound_bus: "Bus[InboundMessage]",
-        inbound_audio_bus: "Bus[InboundAudio]",
         intents: discord.Intents | None = None,
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
@@ -102,7 +100,6 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
                 stacklevel=2,
             )
         self._inbound_bus = inbound_bus
-        self._inbound_audio_bus = inbound_audio_bus
         self._bot_id = bot_id
         self._circuit_registry = circuit_registry
         self._msg_manager = msg_manager
@@ -250,8 +247,8 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         mime_type: str,
         *,
         trust_level: TrustLevel,
-    ) -> InboundAudio:
-        """Build an InboundAudio envelope from a Discord audio message."""
+    ) -> InboundMessage:
+        """Build an InboundMessage (modality='voice') from a Discord audio message."""
         return discord_audio.normalize_audio(
             raw,
             audio_bytes,

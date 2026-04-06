@@ -161,45 +161,6 @@ class TestSanitizePlatformMeta:
 class TestNatsBusSanitization:
     """Verify sanitization fires inside the NatsBus handler closure."""
 
-    def test_inbound_audio_sanitized(self) -> None:
-        """InboundAudio platform_meta is sanitized like InboundMessage.
-
-        InboundAudio retained: tests the sanitization path for InboundAudio
-        which is still live in Slice 1.  Slice 2 (issue #534) removes this
-        subject tree; delete this test when InboundAudio is deleted.
-        """
-        from datetime import datetime, timezone
-
-        from lyra.core.message import InboundAudio, Platform
-        from lyra.core.trust import TrustLevel
-
-        audio = InboundAudio(  # InboundAudio retained: tests Slice-2 deletion target
-            id="audio-1",
-            platform=Platform.DISCORD.value,
-            bot_id="main",
-            scope_id="channel:1",
-            user_id="user:1",
-            audio_bytes=b"fake",
-            mime_type="audio/ogg",
-            duration_ms=1000,
-            file_id=None,
-            timestamp=datetime.now(timezone.utc),
-            trust_level=TrustLevel.PUBLIC,
-            platform_meta={
-                "guild_id": 1,
-                "channel_id": 2,
-                "message_id": 3,
-                "_evil": "x",
-                "injected": "y",
-            },
-        )
-        result = sanitize_platform_meta(audio.platform_meta)
-        assert "guild_id" in result
-        assert "channel_id" in result
-        assert "message_id" in result
-        assert "_evil" not in result
-        assert "injected" not in result
-
     def test_handler_sanitizes_platform_meta(self) -> None:
         """NatsBus handler strips unknown keys via dataclasses.replace."""
         from lyra.core.message import InboundMessage, Platform

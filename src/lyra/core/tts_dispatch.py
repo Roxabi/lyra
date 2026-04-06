@@ -1,11 +1,11 @@
-"""TTS audio dispatch helper (temporarily housed here post-#534 Slice 1).
+"""TTS synthesis and dispatch helper functions.
 
-Previously this module hosted AudioPipeline.run() — the dedicated consumer loop
-that drained InboundAudioBus, called STT, and re-enqueued transcribed messages
-onto the text bus. That loop has been replaced by MessagePipeline._run_stt_stage
-in Slice 1 of issue #534. Only the TTS dispatch helper
-``synthesize_and_dispatch_audio`` remains. Slice 2 will relocate this helper
-to ``core/tts_dispatch.py`` and delete this file.
+This module owns ``AudioPipeline``, the TTS dispatch helper used by the hub
+outbound path.  The ``synthesize_and_dispatch_audio`` method resolves language
+and voice from PrefsStore (with fallback to Whisper-detected language), calls
+the TTS engine, and dispatches the resulting ``OutboundAudio`` to the correct
+adapter.  The former STT consumer loop that lived here was removed in #534
+Slice 1 and replaced by ``MessagePipeline._run_stt_stage``.
 """
 
 from __future__ import annotations

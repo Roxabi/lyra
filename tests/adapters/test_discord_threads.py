@@ -33,7 +33,6 @@ class TestDiscordAutoThread:
         adapter = DiscordAdapter(
             bot_id="main",
             inbound_bus=inbound_bus,
-            inbound_audio_bus=MagicMock(),
             intents=discord.Intents.none(),
             auto_thread=True,
             auth=_ALLOW_ALL,
@@ -86,7 +85,6 @@ class TestDiscordAutoThread:
         adapter = DiscordAdapter(
             bot_id="main",
             inbound_bus=inbound_bus,
-            inbound_audio_bus=MagicMock(),
             intents=discord.Intents.none(),
             auto_thread=True,
             auth=_ALLOW_ALL,
@@ -130,7 +128,6 @@ class TestDiscordAutoThread:
         adapter = DiscordAdapter(
             bot_id="main",
             inbound_bus=inbound_bus,
-            inbound_audio_bus=MagicMock(),
             intents=discord.Intents.none(),
             auto_thread=False,
             auth=_ALLOW_ALL,
@@ -170,7 +167,6 @@ class TestDiscordAutoThread:
         adapter = DiscordAdapter(
             bot_id="main",
             inbound_bus=inbound_bus,
-            inbound_audio_bus=MagicMock(),
             intents=discord.Intents.none(),
             auto_thread=True,
             auth=_ALLOW_ALL,
@@ -212,7 +208,6 @@ class TestDiscordAutoThread:
         adapter = DiscordAdapter(
             bot_id="main",
             inbound_bus=inbound_bus,
-            inbound_audio_bus=MagicMock(),
             intents=discord.Intents.none(),
             auto_thread=True,
             auth=_ALLOW_ALL,
@@ -329,7 +324,6 @@ class TestPersistThreadClaimFailurePath:
         adapter = DiscordAdapter(
             bot_id="main",
             inbound_bus=inbound_bus,
-            inbound_audio_bus=MagicMock(),
             intents=discord.Intents.none(),
             auto_thread=True,
             auth=_ALLOW_ALL,

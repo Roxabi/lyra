@@ -24,7 +24,6 @@ if TYPE_CHECKING:
     from ...tts import TtsProtocol
     from ..agent import AgentBase
     from ..agent_config import AgentTTSConfig
-    from ..audio_pipeline import AudioPipeline
     from ..circuit_breaker import CircuitRegistry
     from ..message import (
         InboundMessage,
@@ -34,6 +33,7 @@ if TYPE_CHECKING:
     )
     from ..messages import MessageManager
     from ..render_events import RenderEvent
+    from ..tts_dispatch import AudioPipeline
     from .hub_protocol import ChannelAdapter
     from .outbound_dispatcher import OutboundDispatcher
     from .pool_manager import PoolManager

@@ -6,12 +6,10 @@ objects for all types published by NatsChannelProxy over NATS.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
 
 import pytest
 
 from lyra.core.message import (
-    InboundAudio,
     InboundMessage,
     OutboundAttachment,
     OutboundMessage,
@@ -249,24 +247,6 @@ def _make_inbound_message() -> InboundMessage:
     )
 
 
-def _make_inbound_audio() -> InboundAudio:
-    # InboundAudio retained: tests the serialize/deserialize roundtrip for the
-    # legacy envelope — Slice-2 deletion target (issue #534).
-    return InboundAudio(
-        id="audio-legacy",
-        platform="telegram",
-        bot_id="main",
-        scope_id="chat:42",
-        user_id="user:1",
-        audio_bytes=b"fake-audio",
-        mime_type="audio/ogg",
-        duration_ms=1000,
-        file_id=None,
-        timestamp=datetime.now(timezone.utc),
-        trust_level=TrustLevel.PUBLIC,
-    )
-
-
 def _make_outbound_message() -> OutboundMessage:
     return OutboundMessage.from_text("hello from hub")
 
@@ -281,7 +261,6 @@ def _make_tool_summary_render_event() -> ToolSummaryRenderEvent:
 
 _ENVELOPE_FACTORIES = [
     pytest.param(_make_inbound_message, InboundMessage, id="InboundMessage"),
-    pytest.param(_make_inbound_audio, InboundAudio, id="InboundAudio"),
     pytest.param(_make_outbound_message, OutboundMessage, id="OutboundMessage"),
     pytest.param(_make_text_render_event, TextRenderEvent, id="TextRenderEvent"),
     pytest.param(

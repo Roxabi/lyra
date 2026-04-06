@@ -88,7 +88,8 @@ class SttMiddleware:
             return await next(msg, ctx)
 
         hub = ctx.hub
-        assert hub._msg_manager is not None
+        if hub._msg_manager is None:
+            return _DROP
 
         # 3. STT not configured → inform user and drop.
         if hub._stt is None:
@@ -102,7 +103,8 @@ class SttMiddleware:
 
         # 4. Transcription block.
         timeout_s = getattr(hub._stt, "timeout_ms", 30000) / 1000.0
-        assert msg.audio is not None  # guaranteed: modality == "voice"
+        if msg.audio is None:  # guaranteed by modality == "voice", guard for -O safety
+            return _DROP
         suffix = _MIME_TO_EXT.get(msg.audio.mime_type, ".ogg")
 
         def _write_temp(data: bytes, ext: str) -> str:

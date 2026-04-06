@@ -38,7 +38,6 @@ class TestTelegramNormalizeRouting:
             bot_id="main",
             token="fake",
             inbound_bus=MagicMock(),
-            inbound_audio_bus=MagicMock(),
             auth=_ALLOW_ALL,
         )
 
@@ -73,7 +72,6 @@ class TestTelegramNormalizeRouting:
             bot_id="main",
             token="fake",
             inbound_bus=MagicMock(),
-            inbound_audio_bus=MagicMock(),
             auth=_ALLOW_ALL,
         )
 
@@ -106,7 +104,6 @@ class TestTelegramNormalizeRouting:
             bot_id="main",
             token="fake",
             inbound_bus=MagicMock(),
-            inbound_audio_bus=MagicMock(),
             auth=_ALLOW_ALL,
         )
 

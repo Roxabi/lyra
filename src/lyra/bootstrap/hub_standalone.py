@@ -43,7 +43,6 @@ from lyra.core.hub.outbound_dispatcher import OutboundDispatcher
 from lyra.core.message import InboundMessage, Platform
 from lyra.core.stores.pairing import PairingManager, set_pairing_manager
 from lyra.nats import nats_connect
-from lyra.nats.compat import InboundAudioLegacyHandler
 from lyra.nats.connect import scrub_nats_url
 from lyra.nats.nats_bus import NatsBus
 from lyra.nats.nats_channel_proxy import NatsChannelProxy
@@ -156,7 +155,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
         nc = await nats_connect(nats_url)
         log.info("Connected to NATS at %s", scrub_nats_url(nats_url))
     except Exception as exc:
-        sys.exit(f"Failed to connect to NATS at {nats_url!r}: {exc}")
+        sys.exit(f"Failed to connect to NATS at {scrub_nats_url(nats_url)!r}: {exc}")
 
     inbound_bus_cfg = _load_inbound_bus_config(raw_config)
     inbound_bus: NatsBus[InboundMessage] = NatsBus(
@@ -166,13 +165,6 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
         staging_maxsize=inbound_bus_cfg.staging_maxsize,
         queue_group=HUB_INBOUND,
     )
-    # Compat shim: bridge legacy lyra.inbound.audio.* → unified InboundMessage.
-    # Slice 1 only — delete in Slice 2 once adapters migrate.
-    legacy_audio_handler = InboundAudioLegacyHandler(
-        inbound_bus=inbound_bus,
-        nats_client=nc,
-    )
-
     vault_dir = Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra")))
     vault_dir.mkdir(parents=True, exist_ok=True)
 
@@ -428,7 +420,6 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
 
         # Lifecycle: start buses, dispatchers, hub, health server
         await hub.inbound_bus.start()
-        await legacy_audio_handler.start()
         for d in dispatchers:
             await d.start()
 
@@ -484,8 +475,6 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         await readiness_sub.unsubscribe()
-        # Note: legacy_audio_handler has no stop() in Slice 1 — NATS client
-        # teardown closes the subscription implicitly.  Add stop() in Slice 2.
         await teardown_buses(hub.inbound_bus)
         await teardown_dispatchers(dispatchers)
         for proxy in proxies:

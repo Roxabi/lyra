@@ -10,19 +10,13 @@ Usage::
 
     from lyra.core.bus import Bus
     from lyra.core.inbound_bus import LocalBus
-    from lyra.core.message import InboundMessage, InboundAudio, Platform
+    from lyra.core.message import InboundMessage, Platform
 
-    # Text messages
     bus: Bus[InboundMessage] = LocalBus(name="inbound")
     bus.register(Platform.TELEGRAM, maxsize=100)
     await bus.start()
     ...
     await bus.stop()
-
-    # Audio envelopes — depth monitoring included
-    audio_bus: Bus[InboundAudio] = LocalBus(name="inbound-audio")
-    audio_bus.register(Platform.TELEGRAM, maxsize=100)
-    await audio_bus.start()
 """
 
 from __future__ import annotations

@@ -15,7 +15,6 @@ if TYPE_CHECKING:
 GENERIC_ERROR_REPLY = "Something went wrong. Please try again."
 
 SCHEMA_VERSION_INBOUND_MESSAGE = 1
-SCHEMA_VERSION_INBOUND_AUDIO = 1
 SCHEMA_VERSION_OUTBOUND_MESSAGE = 1
 
 
@@ -107,37 +106,6 @@ class InboundMessage:
     # Audio payload — populated when modality == "voice" (#534).
     # Stripped to None by the STT pipeline stage after successful transcription.
     audio: AudioPayload | None = None
-
-
-@dataclass(frozen=True)
-class InboundAudio:
-    """Normalized inbound audio envelope produced by all channel adapters.
-
-    Mirrors InboundMessage for audio: adapters produce this; hub/agents consume it.
-    Adapters enqueue via InboundAudioBus; hub/agents consume from its staging queue.
-    Security (C3): adapters set trust_level=PUBLIC; Hub overwrites via
-    _resolve_audio_trust() (AudioPipeline) before the BLOCKED check.
-    """
-
-    id: str
-    platform: str  # "telegram" | "discord" | ...
-    bot_id: str
-    scope_id: str
-    user_id: str
-    audio_bytes: bytes
-    mime_type: str
-    duration_ms: int | None
-    file_id: str | None
-    timestamp: datetime
-    trust_level: TrustLevel
-    schema_version: int = 1
-    # Deprecated: use trust_level (TrustLevel) for authorization.
-    # Removal tracked separately.
-    trust: Literal["user", "system"] = "user"
-    user_name: str = ""
-    is_mention: bool = False
-    platform_meta: dict = field(default_factory=dict)
-    routing: RoutingContext | None = None
 
 
 @dataclass

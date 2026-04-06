@@ -21,7 +21,6 @@ class TestTelegramAttachments:
             bot_id="main",
             token="test-token-secret",
             inbound_bus=MagicMock(),
-            inbound_audio_bus=MagicMock(),
         )
 
     def _make_msg(  # noqa: PLR0913 — test factory with optional overrides

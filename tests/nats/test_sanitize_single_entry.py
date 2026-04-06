@@ -21,6 +21,10 @@ Maintenance contract:
     together with a comment explaining the architectural justification.
   - Never add a second call site without first updating this test and leaving a
     comment referencing the issue/PR that justifies it.
+
+Slice 2 (issue #534): the compat shim (nats/compat/inbound_audio_legacy.py) was
+deleted.  NatsBus._make_handler() is now the single sanitization boundary for all
+inbound paths.
 """
 
 from __future__ import annotations
@@ -37,16 +41,9 @@ from pathlib import Path
 # Value is a short description of the architectural role.
 EXPECTED_CALL_SITES: dict[str, str] = {
     # NatsBus._make_handler() sanitizes each inbound message as it arrives from
-    # the NATS wire.  This is the primary sanitization point for all hub-inbound
-    # paths that flow through NatsBus.
+    # the NATS wire.  This is the sole sanitization point for all hub-inbound
+    # paths (Slice 2, issue #534: compat shim deleted).
     "src/lyra/nats/nats_bus.py": "NatsBus._make_handler — wire-boundary sanitization",
-    # InboundAudioLegacyHandler._convert_legacy() sanitizes legacy InboundAudio
-    # payloads arriving via a raw NATS subscription (not NatsBus).  This is a
-    # second legitimate wire boundary — the compat shim bypasses NatsBus entirely,
-    # so it MUST sanitize before calling Bus.inject().  Added in #534 Slice 1.
-    "src/lyra/nats/compat/inbound_audio_legacy.py": (
-        "InboundAudioLegacyHandler._convert_legacy — legacy wire-boundary sanitization"
-    ),
 }
 
 # ---------------------------------------------------------------------------
@@ -114,26 +111,6 @@ class TestSanitizeSingleEntryPoint:
             f"Expected call site(s) no longer found — inventory is stale.\n"
             f"  Missing: {sorted(missing)}\n"
             f"  Update EXPECTED_CALL_SITES to reflect the new architecture."
-        )
-
-    def test_compat_shim_sanitizes_at_wire_boundary(self) -> None:
-        """InboundAudioLegacyHandler MUST call sanitize_platform_meta.
-
-        The compat shim uses a raw NATS subscription (not NatsBus), so the
-        normal NatsBus._make_handler() sanitization path is bypassed.  The
-        shim MUST sanitize before calling Bus.inject() to prevent #525
-        regression on the legacy subject tree.
-        """
-        repo_root = Path(__file__).resolve().parent.parent.parent
-        compat_shim = (
-            repo_root / "src" / "lyra" / "nats" / "compat" / "inbound_audio_legacy.py"
-        )
-        assert compat_shim.exists(), f"Compat shim not found: {compat_shim}"
-        content = compat_shim.read_text(encoding="utf-8")
-        assert _CALL_PATTERN.search(content) is not None, (
-            "InboundAudioLegacyHandler does NOT call sanitize_platform_meta() — "
-            "this is a #525 regression: legacy audio payloads bypass NatsBus and "
-            "must be sanitized in the compat shim before Bus.inject()."
         )
 
     def test_total_inbound_call_count_matches_expected(self) -> None:

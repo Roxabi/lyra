@@ -63,7 +63,6 @@ async def test_backpressure_sends_ack_when_bus_full() -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=inbound_bus,
-        inbound_audio_bus=MagicMock(),
         auth=_ALLOW_ALL,
     )
     adapter.bot = bot
@@ -106,7 +105,6 @@ async def test_telegram_msg_manager_injection_backpressure_ack() -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=inbound_bus,
-        inbound_audio_bus=MagicMock(),
         msg_manager=mm,
         auth=_ALLOW_ALL,
     )
@@ -145,7 +143,6 @@ async def test_on_message_drops_bot_text_message() -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=inbound_bus,
-        inbound_audio_bus=MagicMock(),
         auth=_ALLOW_ALL,
     )
     bot_msg = SimpleNamespace(
@@ -185,7 +182,6 @@ async def test_on_message_drops_and_notifies_when_hub_circuit_open() -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=inbound_bus,
-        inbound_audio_bus=MagicMock(),
         circuit_registry=registry,
         auth=_ALLOW_ALL,
     )

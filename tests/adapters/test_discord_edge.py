@@ -77,7 +77,6 @@ async def test_backpressure_sends_ack_when_bus_full() -> None:
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=inbound_bus,
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         auth=_ALLOW_ALL,
     )
@@ -126,7 +125,6 @@ async def test_on_message_drops_silently_when_hub_circuit_open() -> None:
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=inbound_bus,
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         circuit_registry=registry,
         auth=_ALLOW_ALL,
@@ -166,7 +164,6 @@ async def test_on_message_notifies_user_when_hub_circuit_open_dm() -> None:
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=inbound_bus,
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         circuit_registry=registry,
         auth=_ALLOW_ALL,
@@ -217,7 +214,6 @@ async def test_send_skips_when_discord_circuit_open() -> None:
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         circuit_registry=registry,
     )
@@ -280,7 +276,6 @@ async def test_discord_msg_manager_injection_backpressure_ack() -> None:
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=inbound_bus,
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         msg_manager=mm,
         auth=_ALLOW_ALL,
@@ -322,7 +317,6 @@ def test_normalize_empty_text() -> None:
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         auth=_ALLOW_ALL,
     )

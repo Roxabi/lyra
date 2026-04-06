@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, NamedTuple, Protocol
 
 from ..message import (
-    InboundAudio,
     InboundMessage,
     OutboundAttachment,
     OutboundAudio,
@@ -36,7 +35,7 @@ class ChannelAdapter(Protocol):
 
     def normalize_audio(
         self, raw: Any, audio_bytes: bytes, mime_type: str, *, trust_level: TrustLevel
-    ) -> InboundAudio: ...
+    ) -> InboundMessage: ...
 
     async def send(
         self, original_msg: InboundMessage, outbound: OutboundMessage

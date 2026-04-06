@@ -33,7 +33,7 @@ LYRA_REMOTE=$(git rev-parse origin/staging)
 
 if [ "$LYRA_LOCAL" != "$LYRA_REMOTE" ]; then
     # Skip SHAs we've already rolled back — prevents pull/test/fail/rollback loops on broken staging.
-    # Cleared automatically when staging moves forward to a new SHA. Delete $FAIL_FILE to force a retry.
+    # Delete $FAIL_FILE to force a retry on a known-failing SHA.
     if [ -f "$FAIL_FILE" ] && grep -Fxq "$LYRA_REMOTE" "$FAIL_FILE"; then
         : # known-failing SHA — wait silently for a new commit
     else
@@ -52,6 +52,8 @@ if [ "$LYRA_LOCAL" != "$LYRA_REMOTE" ]; then
             exit 1
         else
             LYRA_UPDATED=true
+            # Clear fail log on success so it doesn't grow unbounded.
+            rm -f "$FAIL_FILE"
         fi
     fi
 fi

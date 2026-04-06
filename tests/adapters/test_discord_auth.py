@@ -62,7 +62,6 @@ class TestDiscordAdapterInbound:
         adapter = DiscordAdapter(
             bot_id="main",
             inbound_bus=inbound_bus,
-            inbound_audio_bus=MagicMock(),
             intents=discord.Intents.none(),
         )
         adapter._bot_user = SimpleNamespace(id=999, bot=True)
@@ -85,7 +84,6 @@ class TestDiscordAdapterInbound:
         adapter = DiscordAdapter(
             bot_id="main",
             inbound_bus=inbound_bus,
-            inbound_audio_bus=MagicMock(),
             intents=discord.Intents.none(),
         )
         adapter._bot_user = SimpleNamespace(id=999, bot=True)
@@ -118,7 +116,6 @@ class TestDiscordAdapterInbound:
         adapter = DiscordAdapter(
             bot_id="main",
             inbound_bus=inbound_bus,
-            inbound_audio_bus=MagicMock(),
             intents=discord.Intents.none(),
         )
         adapter._bot_user = SimpleNamespace(id=999, bot=True)

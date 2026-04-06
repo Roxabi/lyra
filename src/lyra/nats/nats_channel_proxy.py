@@ -14,7 +14,6 @@ from typing import Any
 from nats.aio.client import Client as NATS
 
 from lyra.core.message import (
-    InboundAudio,
     InboundMessage,
     OutboundAttachment,
     OutboundAudio,
@@ -74,8 +73,10 @@ class NatsChannelProxy:
         mime_type: str,
         *,
         trust_level: TrustLevel,
-    ) -> InboundAudio:
-        raise NotImplementedError("NatsChannelProxy does not normalize inbound audio")
+    ) -> InboundMessage:
+        raise NotImplementedError(
+            "NatsChannelProxy does not normalize audio messages"
+        )
 
     # ------------------------------------------------------------------
     # Outbound dispatch

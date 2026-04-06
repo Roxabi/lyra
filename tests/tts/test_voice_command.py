@@ -290,7 +290,6 @@ class TestTelegramAdapterRenderAudio:
             bot_id="main",
             token="test-token",
             inbound_bus=MagicMock(),
-            inbound_audio_bus=MagicMock(),
             auth=_ALLOW_ALL,
         )
         adapter.bot = AsyncMock()

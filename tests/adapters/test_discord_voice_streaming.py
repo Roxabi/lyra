@@ -246,7 +246,6 @@ class TestRenderVoiceStream:
         adapter = DiscordAdapter(
             bot_id="main",
             inbound_bus=MagicMock(),
-            inbound_audio_bus=MagicMock(),
         )
         adapter._vsm.stream = AsyncMock()
         inbound = _make_discord_inbound(platform_meta={"guild_id": "1"})
@@ -270,7 +269,6 @@ class TestRenderVoiceStream:
         adapter = DiscordAdapter(
             bot_id="main",
             inbound_bus=MagicMock(),
-            inbound_audio_bus=MagicMock(),
         )
         adapter._vsm.stream = AsyncMock()
 
@@ -308,7 +306,6 @@ class TestRenderVoiceStream:
         adapter = DiscordAdapter(
             bot_id="main",
             inbound_bus=MagicMock(),
-            inbound_audio_bus=MagicMock(),
         )
         adapter._vsm.stream = AsyncMock()
         inbound = _make_discord_inbound(platform_meta={})

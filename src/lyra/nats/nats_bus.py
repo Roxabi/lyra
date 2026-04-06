@@ -42,9 +42,7 @@ from nats.aio.msg import Msg
 from nats.aio.subscription import Subscription
 
 from lyra.core.message import (
-    SCHEMA_VERSION_INBOUND_AUDIO,
     SCHEMA_VERSION_INBOUND_MESSAGE,
-    InboundAudio,
     InboundMessage,
     Platform,
 )
@@ -59,7 +57,6 @@ T = TypeVar("T")
 
 _ENVELOPE_VERSIONS: dict[type, tuple[str, int]] = {
     InboundMessage: ("InboundMessage", SCHEMA_VERSION_INBOUND_MESSAGE),
-    InboundAudio: ("InboundAudio", SCHEMA_VERSION_INBOUND_AUDIO),
 }
 
 

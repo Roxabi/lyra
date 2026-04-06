@@ -251,6 +251,7 @@ def normalize_audio(
         is_mention=False,
         text="",
         text_raw="",
+        trust="user",
         trust_level=trust_level,
         timestamp=timestamp,
         platform_meta=platform_meta,

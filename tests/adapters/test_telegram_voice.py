@@ -323,3 +323,4 @@ def test_normalize_audio_video_note_fields() -> None:
     assert result.audio.mime_type == "video/mp4"
     assert result.audio.duration_ms == 5000
     assert result.audio.file_id == "VN123"
+    assert result.trust == "user"

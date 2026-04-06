@@ -37,8 +37,8 @@ def is_valid_audio_magic(data: bytes) -> bool:
     # WEBM (also used for Opus in browsers / Discord voice)
     if data[:4] == b"\x1aE\xdf\xa3":
         return True
-    # RIFF (WAV, WebP — WAV is audio/wav)
-    if data[:4] == b"RIFF":
+    # RIFF/WAV — check sub-type to reject non-audio RIFF containers (WebP, AVI)
+    if data[:4] == b"RIFF" and len(data) >= 12 and data[8:12] == b"WAVE":  # noqa: PLR2004
         return True
     # FLAC
     if data[:4] == b"fLaC":

@@ -327,6 +327,8 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
             hub.register_agent(ag)
 
         # Wire each (platform, bot_id) to a NatsChannelProxy + OutboundDispatcher
+        from lyra.core.hub.hub_protocol import RoutingKey
+
         dispatchers: list[OutboundDispatcher] = []
         proxies: list[NatsChannelProxy] = []
 
@@ -345,8 +347,6 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
             proxies.append(proxy)
             hub.register_authenticator(Platform.TELEGRAM, bot_cfg.bot_id, auth)
             hub.register_adapter(Platform.TELEGRAM, bot_cfg.bot_id, proxy)
-
-            from lyra.core.hub.hub_protocol import RoutingKey
 
             tg_key = RoutingKey(Platform.TELEGRAM, bot_cfg.bot_id, "*")
             hub.register_binding(
@@ -389,8 +389,6 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
             proxies.append(proxy)
             hub.register_authenticator(Platform.DISCORD, bot_cfg.bot_id, auth)
             hub.register_adapter(Platform.DISCORD, bot_cfg.bot_id, proxy)
-
-            from lyra.core.hub.hub_protocol import RoutingKey
 
             dc_key = RoutingKey(Platform.DISCORD, bot_cfg.bot_id, "*")
             hub.register_binding(

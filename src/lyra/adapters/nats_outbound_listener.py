@@ -18,6 +18,7 @@ from lyra.adapters.nats_stream_decoder import (
     handle_stream_error as _handle_stream_error_impl,
 )
 from lyra.core.message import (
+    SCHEMA_VERSION_OUTBOUND_MESSAGE,
     InboundMessage,
     OutboundAttachment,
     OutboundMessage,
@@ -25,6 +26,7 @@ from lyra.core.message import (
 )
 from lyra.nats._serialize import deserialize_dict as _deserialize_dict
 from lyra.nats._validate import validate_nats_token
+from lyra.nats._version_check import check_schema_version
 
 if TYPE_CHECKING:
     from lyra.core.hub.hub_protocol import ChannelAdapter
@@ -56,6 +58,7 @@ class NatsOutboundListener:
         self._bot_id = bot_id
         self._adapter = adapter
         self._queue_group = queue_group
+        self._subject = f"lyra.outbound.{platform.value}.{bot_id}"
         self._cache: dict[str, InboundMessage] = {}
         self._cache_ts: dict[str, float] = {}
         self._stream_queues: dict[str, asyncio.Queue[dict]] = {}
@@ -72,16 +75,19 @@ class NatsOutboundListener:
             oldest = next(iter(self._cache))
             self._cache.pop(oldest)
             self._cache_ts.pop(oldest, None)
-            log.warning(
-                "NatsOutboundListener: _cache full (%d), evicted %r",
-                _MAX_CACHE_SIZE, oldest,
-            )
+            log.warning("NatsOutboundListener: _cache full (%d), evicted %r",
+                _MAX_CACHE_SIZE, oldest)
         self._cache[msg.id] = msg
         self._cache_ts[msg.id] = time.monotonic()
 
     def version_mismatch_count(self, envelope_name: str) -> int:
         """Cumulative drops for *envelope_name* (schema version mismatches)."""
         return self._version_mismatch_drops.get(envelope_name, 0)
+
+    def _check_outbound_version(self, payload: dict, envelope_name: str) -> bool:
+        return check_schema_version(payload, envelope_name=envelope_name,
+            expected=SCHEMA_VERSION_OUTBOUND_MESSAGE,
+            subject=self._subject, counter=self._version_mismatch_drops)
 
     async def start(self) -> None:
         """Subscribe to the outbound NATS subject."""
@@ -139,6 +145,8 @@ class NatsOutboundListener:
         if outbound_data is None:
             log.warning("NatsOutboundListener: missing 'outbound' key in send envelope")
             return
+        if not self._check_outbound_version(outbound_data, "OutboundMessage"):
+            return
         try:
             outbound = _deserialize_dict(outbound_data, OutboundMessage)
         except Exception:
@@ -160,6 +168,8 @@ class NatsOutboundListener:
         if attachment_data is None:
             log.warning("NatsOutboundListener: missing 'attachment' key in envelope")
             return
+        if not self._check_outbound_version(attachment_data, "OutboundAttachment"):
+            return
         try:
             attachment = _deserialize_dict(attachment_data, OutboundAttachment)
         except Exception:
@@ -177,13 +187,11 @@ class NatsOutboundListener:
         outbound_data = data.get("outbound")
         if stream_id is None or outbound_data is None:
             return
+        if not self._check_outbound_version(outbound_data, "OutboundMessage"):
+            return
         if len(self._stream_outbound) >= _MAX_STREAMS:
-            log.warning(
-                "NatsOutboundListener: _stream_outbound full"
-                " (%d entries), dropping stream_id=%r",
-                _MAX_STREAMS,
-                stream_id,
-            )
+            log.warning("NatsOutboundListener: _stream_outbound full"
+                " (%d entries), dropping stream_id=%r", _MAX_STREAMS, stream_id)
             return
         try:
             self._stream_outbound[stream_id] = _deserialize_dict(
@@ -210,12 +218,8 @@ class NatsOutboundListener:
             return
         at_limit = len(self._stream_tasks) >= _MAX_STREAMS
         if stream_id not in self._stream_tasks and at_limit:
-            log.warning(
-                "NatsOutboundListener: _stream_tasks full"
-                " (%d streams), dropping stream_id=%r",
-                _MAX_STREAMS,
-                stream_id,
-            )
+            log.warning("NatsOutboundListener: _stream_tasks full"
+                " (%d streams), dropping stream_id=%r", _MAX_STREAMS, stream_id)
             return
         q = self._stream_queues.setdefault(
             stream_id, asyncio.Queue(maxsize=_MAX_QUEUE_SIZE),
@@ -225,11 +229,8 @@ class NatsOutboundListener:
         try:
             q.put_nowait(data)
         except asyncio.QueueFull:
-            log.warning(
-                "NatsOutboundListener: stream queue full"
-                " for stream_id=%r, dropping chunk",
-                stream_id,
-            )
+            log.warning("NatsOutboundListener: stream queue full"
+                " for stream_id=%r, dropping chunk", stream_id)
             return
         if stream_id not in self._stream_tasks:
             self._stream_tasks[stream_id] = asyncio.create_task(

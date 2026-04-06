@@ -18,6 +18,7 @@ from lyra.adapters.nats_stream_decoder import (
     handle_stream_error as _handle_stream_error_impl,
 )
 from lyra.core.message import (
+    SCHEMA_VERSION_OUTBOUND_MESSAGE,
     InboundMessage,
     OutboundAttachment,
     OutboundMessage,
@@ -25,6 +26,7 @@ from lyra.core.message import (
 )
 from lyra.nats._serialize import deserialize_dict as _deserialize_dict
 from lyra.nats._validate import validate_nats_token
+from lyra.nats._version_check import check_schema_version
 
 if TYPE_CHECKING:
     from lyra.core.hub.hub_protocol import ChannelAdapter
@@ -56,6 +58,7 @@ class NatsOutboundListener:
         self._bot_id = bot_id
         self._adapter = adapter
         self._queue_group = queue_group
+        self._subject = f"lyra.outbound.{platform.value}.{bot_id}"
         self._cache: dict[str, InboundMessage] = {}
         self._cache_ts: dict[str, float] = {}
         self._stream_queues: dict[str, asyncio.Queue[dict]] = {}
@@ -139,6 +142,14 @@ class NatsOutboundListener:
         if outbound_data is None:
             log.warning("NatsOutboundListener: missing 'outbound' key in send envelope")
             return
+        if not check_schema_version(
+            outbound_data,
+            envelope_name="OutboundMessage",
+            expected=SCHEMA_VERSION_OUTBOUND_MESSAGE,
+            subject=self._subject,
+            counter=self._version_mismatch_drops,
+        ):
+            return
         try:
             outbound = _deserialize_dict(outbound_data, OutboundMessage)
         except Exception:
@@ -160,6 +171,14 @@ class NatsOutboundListener:
         if attachment_data is None:
             log.warning("NatsOutboundListener: missing 'attachment' key in envelope")
             return
+        if not check_schema_version(
+            attachment_data,
+            envelope_name="OutboundMessage",
+            expected=SCHEMA_VERSION_OUTBOUND_MESSAGE,
+            subject=self._subject,
+            counter=self._version_mismatch_drops,
+        ):
+            return
         try:
             attachment = _deserialize_dict(attachment_data, OutboundAttachment)
         except Exception:
@@ -176,6 +195,14 @@ class NatsOutboundListener:
         stream_id = data.get("stream_id")
         outbound_data = data.get("outbound")
         if stream_id is None or outbound_data is None:
+            return
+        if not check_schema_version(
+            outbound_data,
+            envelope_name="OutboundMessage",
+            expected=SCHEMA_VERSION_OUTBOUND_MESSAGE,
+            subject=self._subject,
+            counter=self._version_mismatch_drops,
+        ):
             return
         if len(self._stream_outbound) >= _MAX_STREAMS:
             log.warning(

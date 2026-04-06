@@ -595,6 +595,104 @@ async def test_stream_error_unknown_stream_id_is_noop() -> None:
 
 
 # ---------------------------------------------------------------------------
+# #566: check_schema_version on OutboundMessage receive paths
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_send_version_mismatch_drops_and_increments_counter() -> None:
+    """send envelope with schema_version > expected is dropped; counter incremented."""
+    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.nats._version_check import _reset_log_state
+
+    _reset_log_state()
+    nc = AsyncMock()
+    adapter = AsyncMock()
+    listener = NatsOutboundListener(nc, Platform.TELEGRAM, "main", adapter)
+
+    msg = _make_tg_msg("msg-send-version")
+    listener.cache_inbound(msg)
+
+    envelope = {
+        "type": "send",
+        "stream_id": msg.id,
+        "outbound": {
+            "schema_version": 99,
+            "content": ["hello"],
+            "buttons": [],
+            "metadata": {},
+        },
+    }
+    await listener._handle(_make_nats_msg(envelope))
+
+    adapter.send.assert_not_called()
+    assert listener.version_mismatch_count("OutboundMessage") == 1
+
+
+@pytest.mark.asyncio
+async def test_stream_start_version_mismatch_drops_and_increments_counter() -> None:
+    """stream_start envelope with schema_version > expected is dropped; counter incremented."""  # noqa: E501
+    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.nats._version_check import _reset_log_state
+
+    _reset_log_state()
+    nc = AsyncMock()
+    adapter = AsyncMock()
+    listener = NatsOutboundListener(nc, Platform.TELEGRAM, "main", adapter)
+
+    msg = _make_tg_msg("msg-stream-start-version")
+    listener.cache_inbound(msg)
+
+    envelope = {
+        "type": "stream_start",
+        "stream_id": msg.id,
+        "outbound": {
+            "schema_version": 99,
+            "content": [],
+            "buttons": [],
+            "metadata": {},
+        },
+    }
+    await listener._handle(_make_nats_msg(envelope))
+
+    assert msg.id not in listener._stream_outbound
+    assert listener.version_mismatch_count("OutboundMessage") == 1
+
+
+@pytest.mark.asyncio
+async def test_attachment_version_mismatch_drops_and_increments_counter() -> None:
+    """attachment envelope with schema_version > expected is dropped; counter incremented."""  # noqa: E501
+    import base64
+
+    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.nats._version_check import _reset_log_state
+
+    _reset_log_state()
+    nc = AsyncMock()
+    adapter = AsyncMock()
+    listener = NatsOutboundListener(nc, Platform.TELEGRAM, "main", adapter)
+
+    msg = _make_tg_msg("msg-attach-version")
+    listener.cache_inbound(msg)
+
+    b64_data = "b64:" + base64.b64encode(b"PNG").decode("ascii")
+    envelope = {
+        "type": "attachment",
+        "stream_id": msg.id,
+        "attachment": {
+            "schema_version": 99,
+            "data": b64_data,
+            "type": "image",
+            "mime_type": "image/png",
+        },
+    }
+    await listener._handle(_make_nats_msg(envelope))
+
+    adapter.render_attachment.assert_not_called()
+    assert listener.version_mismatch_count("OutboundMessage") == 1
+
+
+# ---------------------------------------------------------------------------
 # MT-14: Listener-level version mismatch counter integration
 # ---------------------------------------------------------------------------
 

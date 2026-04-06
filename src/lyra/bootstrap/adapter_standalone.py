@@ -43,7 +43,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
             scrub_nats_url(nats_url),
         )
     except Exception as exc:
-        sys.exit(f"Failed to connect to NATS at {nats_url!r}: {exc}")
+        sys.exit(f"Failed to connect to NATS at {scrub_nats_url(nats_url)!r}: {exc}")
 
     platform_enum = Platform(platform)
 

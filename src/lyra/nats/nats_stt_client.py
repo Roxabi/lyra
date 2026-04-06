@@ -1,10 +1,12 @@
 """NatsSttClient — hub-side NATS request-reply client for STT."""
+
 from __future__ import annotations
 
 import asyncio
 import base64
 import json
 import logging
+import os
 from pathlib import Path
 from uuid import uuid4
 
@@ -22,14 +24,15 @@ class NatsSttClient:
         self,
         nc: NATS,
         *,
-        timeout: float = 60.0,
+        timeout: float | None = None,
         model: str = "large-v3-turbo",
         language_detection_threshold: float | None = None,
         language_detection_segments: int | None = None,
         language_fallback: str | None = None,
     ) -> None:
         self._nc = nc
-        self._timeout = timeout
+        env_val = os.environ.get("LYRA_STT_TIMEOUT", "15")
+        self._timeout = timeout if timeout is not None else float(env_val)
         self._model = model
         self._detection_threshold = language_detection_threshold
         self._detection_segments = language_detection_segments
@@ -59,8 +62,7 @@ class NatsSttClient:
         except Exception as exc:
             if "max_payload" in str(exc).lower() or "MaxPayload" in type(exc).__name__:
                 log.error(
-                    "STT payload too large (%.0f KB)"
-                    " — check NATS max_payload",
+                    "STT payload too large (%.0f KB) — check NATS max_payload",
                     payload_kb,
                 )
                 raise STTUnavailableError("STT request payload too large") from exc

@@ -49,3 +49,23 @@ class TestTimeoutResolution:
         monkeypatch.setenv("LYRA_STT_TIMEOUT", "")
         client = NatsSttClient(nc=mock_nc)
         assert client._timeout == 15.0
+
+    def test_zero_timeout_falls_back_to_default(self, mock_nc: MagicMock) -> None:
+        client = NatsSttClient(nc=mock_nc, timeout=0.0)
+        assert client._timeout == 15.0
+
+    def test_negative_timeout_falls_back_to_default(self, mock_nc: MagicMock) -> None:
+        client = NatsSttClient(nc=mock_nc, timeout=-1.0)
+        assert client._timeout == 15.0
+
+    def test_inf_timeout_falls_back_to_default(self, mock_nc: MagicMock) -> None:
+        client = NatsSttClient(nc=mock_nc, timeout=float("inf"))
+        assert client._timeout == 15.0
+
+    def test_boundary_min_timeout_accepted(self, mock_nc: MagicMock) -> None:
+        client = NatsSttClient(nc=mock_nc, timeout=1.0)
+        assert client._timeout == 1.0
+
+    def test_boundary_max_timeout_accepted(self, mock_nc: MagicMock) -> None:
+        client = NatsSttClient(nc=mock_nc, timeout=300.0)
+        assert client._timeout == 300.0

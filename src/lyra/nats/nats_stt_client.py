@@ -17,22 +17,38 @@ from lyra.stt import STTUnavailableError, TranscriptionResult
 log = logging.getLogger(__name__)
 
 _STT_TIMEOUT_DEFAULT = 15.0
+_STT_TIMEOUT_MIN = 1.0
+_STT_TIMEOUT_MAX = 300.0
 
 
 def _parse_stt_timeout(timeout: float | None) -> float:
-    """Resolve STT timeout: explicit arg > LYRA_STT_TIMEOUT env var > 15s default."""
+    """Resolve STT timeout: explicit arg > LYRA_STT_TIMEOUT env var > 15s default.
+
+    Accepts values in [1.0, 300.0] seconds; falls back to 15s on invalid input.
+    """
     if timeout is not None:
-        return timeout
-    raw = os.environ.get("LYRA_STT_TIMEOUT", str(_STT_TIMEOUT_DEFAULT))
-    try:
-        return float(raw)
-    except ValueError:
+        value = timeout
+    else:
+        raw = os.environ.get("LYRA_STT_TIMEOUT", str(_STT_TIMEOUT_DEFAULT))
+        try:
+            value = float(raw)
+        except ValueError:
+            log.warning(
+                "LYRA_STT_TIMEOUT=%r is not a valid float; using %.0fs",
+                raw,
+                _STT_TIMEOUT_DEFAULT,
+            )
+            return _STT_TIMEOUT_DEFAULT
+    if not (_STT_TIMEOUT_MIN <= value <= _STT_TIMEOUT_MAX):
         log.warning(
-            "LYRA_STT_TIMEOUT=%r is not a valid float; using %.0fs",
-            raw,
+            "STT timeout %.1fs out of range [%.0f, %.0f]; using %.0fs",
+            value,
+            _STT_TIMEOUT_MIN,
+            _STT_TIMEOUT_MAX,
             _STT_TIMEOUT_DEFAULT,
         )
         return _STT_TIMEOUT_DEFAULT
+    return value
 
 
 class NatsSttClient:

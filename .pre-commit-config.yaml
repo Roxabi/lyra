@@ -18,7 +18,7 @@ repos:
         pass_filenames: false
       - id: trufflehog
         name: trufflehog secret scan
-        entry: 'bash -c "[ -d .git ] && trufflehog git file://. --only-verified --fail || true"'
+        entry: 'bash -c "[ -d .git ] && trufflehog git file://. --fail || true"'
         language: system
         pass_filenames: false
         stages: [pre-push]

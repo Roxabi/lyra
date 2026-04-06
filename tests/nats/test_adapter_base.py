@@ -16,12 +16,11 @@ from __future__ import annotations
 import asyncio
 import signal
 import time
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from lyra.nats.adapter_base import NatsAdapterBase  # ImportError expected (RED)
-
 
 # ---------------------------------------------------------------------------
 # Concrete subclass used across all test classes
@@ -67,7 +66,7 @@ class TestNatsAdapterBaseConstruction:
             )
 
     def test_bad_queue_group_raises_value_error(self) -> None:
-        """Queue group containing a space triggers ValueError from validate_nats_token."""
+        """Queue group with a space triggers ValueError from validate_nats_token."""
         # Arrange
         bad_group = "bad group"
 
@@ -602,7 +601,8 @@ class TestRun:
 
         # Assert — add_signal_handler called twice: once for SIGTERM, once for SIGINT
         assert mock_loop.add_signal_handler.call_count == 2
-        registered_sigs = {args[0] for args, _ in mock_loop.add_signal_handler.call_args_list}
+        calls = mock_loop.add_signal_handler.call_args_list
+        registered_sigs = {args[0] for args, _ in calls}
         assert signal.SIGTERM in registered_sigs
         assert signal.SIGINT in registered_sigs
 

@@ -20,17 +20,17 @@ _SOURCE = Path("src/lyra/bootstrap/tts_adapter_standalone.py")
 
 
 def test_tts_adapter_source_uses_no_bare_nats_connect() -> None:
-    """Source must not contain bare nats.connect() or bare 'import nats' after migration.
+    """Source must not contain bare nats.connect() or 'import nats' after migration.
 
     RED gate: current source has `nats.connect(` and `import nats\\n` — this fails
     until the migration to NatsAdapterBase removes them.
     """
     source = _SOURCE.read_text()
     assert "nats.connect(" not in source, (
-        "tts_adapter_standalone still uses bare nats.connect() — migrate to NatsAdapterBase"
+        "tts_adapter_standalone still uses bare nats.connect()"
     )
     assert "import nats\n" not in source, (
-        "tts_adapter_standalone still has bare 'import nats' — migrate to NatsAdapterBase"
+        "tts_adapter_standalone still has bare 'import nats'"
     )
 
 
@@ -48,7 +48,7 @@ def test_tts_adapter_uses_tts_workers_constant() -> None:
 
 
 def test_bootstrap_tts_adapter_standalone_signature() -> None:
-    """_bootstrap_tts_adapter_standalone must be an async function with the expected params.
+    """_bootstrap_tts_adapter_standalone must be async with the expected params.
 
     This test passes before and after migration — the public signature is unchanged.
     """

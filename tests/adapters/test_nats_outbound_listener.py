@@ -603,9 +603,7 @@ async def test_stream_error_unknown_stream_id_is_noop() -> None:
 async def test_send_version_mismatch_drops_and_increments_counter() -> None:
     """send envelope with schema_version > expected is dropped; counter incremented."""
     from lyra.adapters.nats_outbound_listener import NatsOutboundListener
-    from lyra.nats._version_check import _reset_log_state
 
-    _reset_log_state()
     nc = AsyncMock()
     adapter = AsyncMock()
     listener = NatsOutboundListener(nc, Platform.TELEGRAM, "main", adapter)
@@ -633,9 +631,7 @@ async def test_send_version_mismatch_drops_and_increments_counter() -> None:
 async def test_stream_start_version_mismatch_drops_and_increments_counter() -> None:
     """stream_start envelope with schema_version > expected is dropped; counter incremented."""  # noqa: E501
     from lyra.adapters.nats_outbound_listener import NatsOutboundListener
-    from lyra.nats._version_check import _reset_log_state
 
-    _reset_log_state()
     nc = AsyncMock()
     adapter = AsyncMock()
     listener = NatsOutboundListener(nc, Platform.TELEGRAM, "main", adapter)
@@ -665,9 +661,7 @@ async def test_attachment_version_mismatch_drops_and_increments_counter() -> Non
     import base64
 
     from lyra.adapters.nats_outbound_listener import NatsOutboundListener
-    from lyra.nats._version_check import _reset_log_state
 
-    _reset_log_state()
     nc = AsyncMock()
     adapter = AsyncMock()
     listener = NatsOutboundListener(nc, Platform.TELEGRAM, "main", adapter)
@@ -689,7 +683,8 @@ async def test_attachment_version_mismatch_drops_and_increments_counter() -> Non
     await listener._handle(_make_nats_msg(envelope))
 
     adapter.render_attachment.assert_not_called()
-    assert listener.version_mismatch_count("OutboundMessage") == 1
+    assert listener.version_mismatch_count("OutboundAttachment") == 1
+    assert listener.version_mismatch_count("OutboundMessage") == 0
 
 
 # ---------------------------------------------------------------------------

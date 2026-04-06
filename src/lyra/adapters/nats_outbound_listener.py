@@ -84,8 +84,8 @@ class NatsOutboundListener:
         """Cumulative drops for *envelope_name* (schema version mismatches)."""
         return self._version_mismatch_drops.get(envelope_name, 0)
 
-    def _check_outbound_version(self, payload: dict) -> bool:
-        return check_schema_version(payload, envelope_name="OutboundMessage",
+    def _check_outbound_version(self, payload: dict, envelope_name: str) -> bool:
+        return check_schema_version(payload, envelope_name=envelope_name,
             expected=SCHEMA_VERSION_OUTBOUND_MESSAGE,
             subject=self._subject, counter=self._version_mismatch_drops)
 
@@ -145,7 +145,7 @@ class NatsOutboundListener:
         if outbound_data is None:
             log.warning("NatsOutboundListener: missing 'outbound' key in send envelope")
             return
-        if not self._check_outbound_version(outbound_data):
+        if not self._check_outbound_version(outbound_data, "OutboundMessage"):
             return
         try:
             outbound = _deserialize_dict(outbound_data, OutboundMessage)
@@ -168,7 +168,7 @@ class NatsOutboundListener:
         if attachment_data is None:
             log.warning("NatsOutboundListener: missing 'attachment' key in envelope")
             return
-        if not self._check_outbound_version(attachment_data):
+        if not self._check_outbound_version(attachment_data, "OutboundAttachment"):
             return
         try:
             attachment = _deserialize_dict(attachment_data, OutboundAttachment)
@@ -187,7 +187,7 @@ class NatsOutboundListener:
         outbound_data = data.get("outbound")
         if stream_id is None or outbound_data is None:
             return
-        if not self._check_outbound_version(outbound_data):
+        if not self._check_outbound_version(outbound_data, "OutboundMessage"):
             return
         if len(self._stream_outbound) >= _MAX_STREAMS:
             log.warning("NatsOutboundListener: _stream_outbound full"

@@ -603,6 +603,7 @@ async def test_stream_error_unknown_stream_id_is_noop() -> None:
 async def test_send_version_mismatch_drops_and_increments_counter() -> None:
     """send envelope with schema_version > expected is dropped; counter incremented."""
     from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.core.message import SCHEMA_VERSION_OUTBOUND_MESSAGE
 
     nc = AsyncMock()
     adapter = AsyncMock()
@@ -615,7 +616,7 @@ async def test_send_version_mismatch_drops_and_increments_counter() -> None:
         "type": "send",
         "stream_id": msg.id,
         "outbound": {
-            "schema_version": 99,
+            "schema_version": SCHEMA_VERSION_OUTBOUND_MESSAGE + 1,
             "content": ["hello"],
             "buttons": [],
             "metadata": {},
@@ -624,13 +625,14 @@ async def test_send_version_mismatch_drops_and_increments_counter() -> None:
     await listener._handle(_make_nats_msg(envelope))
 
     adapter.send.assert_not_called()
-    assert listener.version_mismatch_count("OutboundMessage") == 1
+    assert listener._version_mismatch_drops == {"OutboundMessage": 1}
 
 
 @pytest.mark.asyncio
 async def test_stream_start_version_mismatch_drops_and_increments_counter() -> None:
     """stream_start envelope with schema_version > expected is dropped; counter incremented."""  # noqa: E501
     from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.core.message import SCHEMA_VERSION_OUTBOUND_MESSAGE
 
     nc = AsyncMock()
     adapter = AsyncMock()
@@ -643,7 +645,7 @@ async def test_stream_start_version_mismatch_drops_and_increments_counter() -> N
         "type": "stream_start",
         "stream_id": msg.id,
         "outbound": {
-            "schema_version": 99,
+            "schema_version": SCHEMA_VERSION_OUTBOUND_MESSAGE + 1,
             "content": [],
             "buttons": [],
             "metadata": {},
@@ -652,7 +654,7 @@ async def test_stream_start_version_mismatch_drops_and_increments_counter() -> N
     await listener._handle(_make_nats_msg(envelope))
 
     assert msg.id not in listener._stream_outbound
-    assert listener.version_mismatch_count("OutboundMessage") == 1
+    assert listener._version_mismatch_drops == {"OutboundMessage": 1}
 
 
 @pytest.mark.asyncio
@@ -661,6 +663,7 @@ async def test_attachment_version_mismatch_drops_and_increments_counter() -> Non
     import base64
 
     from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.core.message import SCHEMA_VERSION_OUTBOUND_MESSAGE
 
     nc = AsyncMock()
     adapter = AsyncMock()
@@ -674,7 +677,7 @@ async def test_attachment_version_mismatch_drops_and_increments_counter() -> Non
         "type": "attachment",
         "stream_id": msg.id,
         "attachment": {
-            "schema_version": 99,
+            "schema_version": SCHEMA_VERSION_OUTBOUND_MESSAGE + 1,
             "data": b64_data,
             "type": "image",
             "mime_type": "image/png",
@@ -683,8 +686,30 @@ async def test_attachment_version_mismatch_drops_and_increments_counter() -> Non
     await listener._handle(_make_nats_msg(envelope))
 
     adapter.render_attachment.assert_not_called()
-    assert listener.version_mismatch_count("OutboundAttachment") == 1
-    assert listener.version_mismatch_count("OutboundMessage") == 0
+    assert listener._version_mismatch_drops == {"OutboundAttachment": 1}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("schema_version", [None, 1])
+async def test_send_valid_version_is_accepted(schema_version) -> None:
+    """send envelope with valid schema_version (absent or == 1) is accepted."""
+    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+
+    nc = AsyncMock()
+    adapter = AsyncMock()
+    listener = NatsOutboundListener(nc, Platform.TELEGRAM, "main", adapter)
+
+    msg = _make_tg_msg("msg-send-valid")
+    listener.cache_inbound(msg)
+
+    outbound: dict = {"content": ["hello"], "buttons": [], "metadata": {}}
+    if schema_version is not None:
+        outbound["schema_version"] = schema_version
+    envelope = {"type": "send", "stream_id": msg.id, "outbound": outbound}
+    await listener._handle(_make_nats_msg(envelope))
+
+    adapter.send.assert_called_once()
+    assert listener._version_mismatch_drops == {}
 
 
 # ---------------------------------------------------------------------------

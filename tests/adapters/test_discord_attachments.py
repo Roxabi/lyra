@@ -18,7 +18,6 @@ class TestDiscordAttachments:
         adapter = DiscordAdapter(
             bot_id="main",
             inbound_bus=MagicMock(),
-            inbound_audio_bus=MagicMock(),
             intents=discord.Intents.none(),
         )
         adapter._bot_user = SimpleNamespace(id=999, bot=True)

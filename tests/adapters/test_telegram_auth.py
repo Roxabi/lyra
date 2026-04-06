@@ -53,7 +53,6 @@ async def test_missing_secret_returns_401() -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
     )
 
     async with httpx.AsyncClient(
@@ -103,7 +102,6 @@ async def test_get_status_endpoint_returns_all_circuits() -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
         webhook_secret="secret",
         circuit_registry=registry,
     )
@@ -144,7 +142,6 @@ class TestTelegramAdapterInbound:
             bot_id="main",
             token="tok",
             inbound_bus=inbound_bus,
-            inbound_audio_bus=MagicMock(),
         )
         adapter.bot = AsyncMock()
 
@@ -168,7 +165,6 @@ class TestTelegramAdapterInbound:
             bot_id="main",
             token="tok",
             inbound_bus=inbound_bus,
-            inbound_audio_bus=MagicMock(),
         )
 
         bot_msg = SimpleNamespace(
@@ -194,13 +190,10 @@ class TestTelegramAdapterInbound:
 
         from lyra.adapters.telegram import TelegramAdapter
 
-        inbound_audio_bus = MagicMock()
-        inbound_audio_bus.registered_platforms = MagicMock(return_value=[])
         adapter = TelegramAdapter(
             bot_id="main",
             token="tok",
             inbound_bus=MagicMock(),
-            inbound_audio_bus=inbound_audio_bus,
         )
         adapter.bot = AsyncMock()
 

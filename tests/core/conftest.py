@@ -23,7 +23,6 @@ from lyra.core.commands.command_router import CommandRouter
 from lyra.core.hub import Hub
 from lyra.core.message import (
     Attachment,
-    InboundAudio,
     InboundMessage,
     OutboundAttachment,
     OutboundAudio,
@@ -94,7 +93,7 @@ class MockAdapter:
         mime_type: str,
         *,
         trust_level: TrustLevel,
-    ) -> InboundAudio:
+    ) -> InboundMessage:
         raise NotImplementedError
 
     async def send(
@@ -750,37 +749,6 @@ class FastAgent:
 # AudioPipeline shared helpers (used by test_audio_pipeline_constraints +
 # test_audio_pipeline_tts)
 # ---------------------------------------------------------------------------
-
-
-def make_audio(
-    audio_id: str = "audio-1",
-    platform: str = "telegram",
-    trust_level: TrustLevel = TrustLevel.TRUSTED,
-    user_id: str = "alice",
-) -> InboundAudio:
-    """Build a minimal InboundAudio for audio pipeline tests.
-
-    InboundAudio retained: feeds inbound_audio_bus.put() which still expects
-    InboundAudio in Slice 1.  Slice 2 (issue #534) deletes the AudioPipeline
-    consumer loop and this helper along with it.
-    """
-    from datetime import datetime, timezone
-
-    return InboundAudio(
-        id=audio_id,
-        platform=platform,
-        bot_id="main",
-        scope_id="chat:42",
-        user_id=user_id,
-        audio_bytes=b"\x00" * 100,
-        mime_type="audio/ogg",
-        duration_ms=3000,
-        file_id="file-1",
-        timestamp=datetime.now(timezone.utc),
-        trust_level=trust_level,
-        user_name="Alice",
-        platform_meta={"chat_id": 42, "is_group": False},
-    )
 
 
 @_dataclass

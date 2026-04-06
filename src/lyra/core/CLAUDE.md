@@ -50,7 +50,7 @@ These modules did not move into subdirs:
 - **Guards / trust**: `circuit_breaker.py`, `guard.py`, `identity.py`, `trust.py`
 - **Auth / persona**: `auth.py`, `authenticator.py`, `persona.py`
 - **Runtime / infra**: `debouncer.py`, `events.py`, `inbound_bus.py`,
-  `inbound_audio_bus.py`, `audio_pipeline.py`, `processor_registry.py`,
+  `tts_dispatch.py`, `processor_registry.py`,
   `runtime_config.py`, `session_lifecycle.py`, `stream_processor.py`,
   `tool_display_config.py`, `workspace_commands.py`, `builtin_commands.py`,
   `cli_pool.py`, `cli_pool_worker.py`, `cli_protocol.py`

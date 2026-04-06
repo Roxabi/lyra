@@ -28,7 +28,6 @@ def _make_discord_adapter():
     return DiscordAdapter(
         bot_id="main",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         auth=_ALLOW_ALL,
     )
@@ -52,7 +51,6 @@ async def test_own_message_is_filtered() -> None:
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=inbound_bus,
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         auth=_ALLOW_ALL,
     )
@@ -87,7 +85,6 @@ async def test_send_reply_on_mention() -> None:
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         auth=_ALLOW_ALL,
     )
@@ -119,7 +116,6 @@ async def test_send_reply_on_no_mention() -> None:
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         auth=_ALLOW_ALL,
     )
@@ -151,7 +147,6 @@ async def test_send_stores_reply_message_id_channel_send() -> None:
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         auth=_ALLOW_ALL,
     )
@@ -185,7 +180,6 @@ async def test_send_stores_reply_message_id_msg_reply() -> None:
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         auth=_ALLOW_ALL,
     )
@@ -219,7 +213,6 @@ async def test_send_no_reply_message_id_on_failure() -> None:
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         auth=_ALLOW_ALL,
     )
@@ -368,7 +361,6 @@ async def test_discord_mro_instantiation() -> None:
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
     )
     assert adapter is not None
@@ -390,7 +382,6 @@ async def test_discord_fallback_sets_reply_message_id() -> None:
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         auth=_ALLOW_ALL,
     )

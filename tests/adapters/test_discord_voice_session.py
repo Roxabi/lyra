@@ -251,7 +251,6 @@ def _make_adapter_with_bot() -> DiscordAdapter:
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
     )
     bot_user = MagicMock()
     bot_user.id = 999
@@ -309,7 +308,6 @@ class TestOnVoiceStateUpdate:
         adapter = DiscordAdapter(
             bot_id="main",
             inbound_bus=MagicMock(),
-            inbound_audio_bus=MagicMock(),
         )
         # _bot_user is None (not ready yet)
         adapter._vsm.invalidate = MagicMock()

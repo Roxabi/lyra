@@ -135,7 +135,6 @@ async def test_send_cancels_typing_task() -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
         auth=_ALLOW_ALL,
     )
     adapter.bot = bot
@@ -201,7 +200,6 @@ async def test_send_streaming_cancels_typing_task_after_placeholder() -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
         auth=_ALLOW_ALL,
     )
     adapter.bot = bot

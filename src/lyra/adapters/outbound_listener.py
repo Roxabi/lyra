@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
-    from lyra.core.message import InboundAudio, InboundMessage
+    from lyra.core.message import InboundMessage
 
 
 class OutboundListener(Protocol):
@@ -21,7 +21,7 @@ class OutboundListener(Protocol):
     core/hub/hub_protocol.py.
     """
 
-    def cache_inbound(self, msg: InboundMessage | InboundAudio) -> None:
+    def cache_inbound(self, msg: InboundMessage) -> None:
         """Store msg so outbound correlation can retrieve it by stream_id."""
         ...
 

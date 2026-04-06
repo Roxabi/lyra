@@ -8,8 +8,9 @@ from typing import TYPE_CHECKING, Any
 import discord
 
 from lyra.adapters._shared import push_to_hub_guarded
+from lyra.core.audio_payload import AudioPayload
 from lyra.core.message import (
-    InboundAudio,
+    InboundMessage,
     Platform,
     RoutingContext,
 )
@@ -61,8 +62,8 @@ def normalize_audio(
     *,
     bot_id: str,
     trust_level: "TrustLevel",
-) -> InboundAudio:
-    """Build an InboundAudio envelope from a Discord audio message.
+) -> InboundMessage:
+    """Build an InboundMessage (modality='voice') envelope from a Discord audio message.
 
     Security: trust is always 'user'. Bot messages are filtered by
     on_message().
@@ -88,22 +89,27 @@ def normalize_audio(
         reply_to_message_id=str(raw.id),
         platform_meta=dict(platform_meta),
     )
-    return InboundAudio(
+    return InboundMessage(
         id=f"discord:{user_id}:{int(timestamp.timestamp())}:{raw.id}",
         platform=Platform.DISCORD.value,
         bot_id=bot_id,
         scope_id=scope_id,
         user_id=user_id,
-        audio_bytes=audio_bytes,
-        mime_type=mime_type,
-        duration_ms=None,
-        file_id=None,
-        timestamp=timestamp,
         user_name=(getattr(raw.author, "display_name", None) or raw.author.name),
         is_mention=False,
+        text="",
+        text_raw="",
         trust_level=trust_level,
+        timestamp=timestamp,
         platform_meta=platform_meta,
         routing=routing,
+        modality="voice",
+        audio=AudioPayload(
+            audio_bytes=audio_bytes,
+            mime_type=mime_type,
+            duration_ms=None,
+            file_id=None,
+        ),
     )
 
 
@@ -221,7 +227,7 @@ async def handle_audio(  # noqa: C901 — audio gate mirrors text gate with inde
     if adapter._outbound_listener is not None:
         adapter._outbound_listener.cache_inbound(hub_audio)
     await push_to_hub_guarded(
-        inbound_bus=adapter._inbound_audio_bus,
+        inbound_bus=adapter._inbound_bus,
         platform=Platform.DISCORD,
         msg=hub_audio,
         circuit_registry=adapter._circuit_registry,

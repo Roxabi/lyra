@@ -17,7 +17,6 @@ from lyra.bootstrap.lifecycle_helpers import (
 from lyra.core.cli_pool import CliPool
 from lyra.core.hub import Hub
 from lyra.core.stores.pairing import PairingManager
-from lyra.nats.compat import InboundAudioLegacyHandler
 from lyra.nats.nats_channel_proxy import NatsChannelProxy
 
 log = logging.getLogger(__name__)
@@ -33,12 +32,9 @@ async def run_lifecycle(  # noqa: PLR0913, C901 — lifecycle orchestration
     cli_pool: CliPool | None,
     _stop: asyncio.Event | None,
     proxies: list[NatsChannelProxy] | None = None,
-    legacy_audio_handler: InboundAudioLegacyHandler | None = None,
 ) -> None:
     """Start all buses/dispatchers/adapters, wait for stop, then tear down."""
     await hub.inbound_bus.start()
-    if legacy_audio_handler is not None:
-        await legacy_audio_handler.start()
     for d in tg_dispatchers:
         await d.start()
     for d in dc_dispatchers:

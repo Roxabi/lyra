@@ -92,8 +92,8 @@ async def handle_message(adapter: TelegramAdapter, msg: Any) -> None:
 async def handle_voice_message(adapter: TelegramAdapter, msg: Any) -> None:
     """Handle an incoming voice or audio message.
 
-    Downloads audio, builds an InboundAudio envelope, and enqueues it
-    on the inbound audio bus with backpressure / circuit-open guards.
+    Downloads audio, builds an InboundMessage (modality='voice') envelope, and
+    enqueues it on the inbound bus with backpressure / circuit-open guards.
     """
     if not msg.from_user or getattr(msg.from_user, "is_bot", False):
         return
@@ -157,7 +157,6 @@ async def handle_voice_message(adapter: TelegramAdapter, msg: Any) -> None:
     finally:
         tmp_path.unlink(missing_ok=True)
 
-    # is_admin not propagated to InboundAudio — InboundAudio.is_admin is deferred (see #315)  # noqa: E501
     # C3: trust resolved by Hub; adapter passes PUBLIC as raw identity.
     hub_audio = normalize_audio(
         adapter,
@@ -176,7 +175,7 @@ async def handle_voice_message(adapter: TelegramAdapter, msg: Any) -> None:
             )
 
         await push_to_hub_guarded(
-            inbound_bus=adapter._inbound_audio_bus,
+            inbound_bus=adapter._inbound_bus,
             platform=Platform.TELEGRAM,
             msg=hub_audio,
             circuit_registry=adapter._circuit_registry,

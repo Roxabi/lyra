@@ -30,7 +30,6 @@ from lyra.adapters._shared_audio import (
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
-    InboundAudio,
     InboundMessage,
     Platform,
 )
@@ -72,7 +71,7 @@ async def push_to_hub_guarded(  # noqa: PLR0913 — each arg is a distinct guard
     *,
     inbound_bus: "Bus[Any]",
     platform: Platform,
-    msg: InboundMessage | InboundAudio,
+    msg: InboundMessage,
     circuit_registry: CircuitRegistry | None,
     on_drop: Callable[[], None] | None,
     send_backpressure: Callable[[str], Awaitable[None]],

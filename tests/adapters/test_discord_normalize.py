@@ -24,7 +24,6 @@ def test_normalize_builds_correct_discord_context() -> None:
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         auth=_ALLOW_ALL,
     )
@@ -63,7 +62,6 @@ def test_is_mention_true_when_bot_in_mentions() -> None:
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         auth=_ALLOW_ALL,
     )
@@ -97,7 +95,6 @@ def test_is_mention_false_when_bot_not_in_mentions() -> None:
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         auth=_ALLOW_ALL,
     )
@@ -131,7 +128,6 @@ def test_normalize_bot_user_none_is_mention_false() -> None:
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         auth=_ALLOW_ALL,
     )
@@ -164,7 +160,6 @@ def test_mention_prefix_stripped_from_content() -> None:
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         auth=_ALLOW_ALL,
     )
@@ -194,7 +189,6 @@ def test_mention_prefix_stripped_nickname_variant() -> None:
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         auth=_ALLOW_ALL,
     )
@@ -229,7 +223,6 @@ def test_normalize_dm_no_guild() -> None:
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         auth=_ALLOW_ALL,
     )
@@ -265,7 +258,6 @@ def test_normalize_uses_display_name_when_present() -> None:
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         auth=_ALLOW_ALL,
     )
@@ -295,7 +287,6 @@ def test_normalize_falls_back_to_name_when_display_name_none() -> None:
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         auth=_ALLOW_ALL,
     )
@@ -335,7 +326,6 @@ def test_discord_token_not_in_logs(
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         auth=_ALLOW_ALL,
     )
@@ -373,7 +363,6 @@ def test_normalize_guild_channel_user_scoped_scope_id() -> None:
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         auth=_ALLOW_ALL,
     )
@@ -403,7 +392,6 @@ def test_normalize_dm_scope_id_unchanged() -> None:
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         auth=_ALLOW_ALL,
     )
@@ -431,7 +419,6 @@ def test_normalize_thread_scope_id_unchanged() -> None:
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         auth=_ALLOW_ALL,
     )
@@ -463,7 +450,6 @@ def test_two_users_same_guild_channel_get_distinct_pool_ids() -> None:
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         auth=_ALLOW_ALL,
     )

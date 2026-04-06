@@ -6,7 +6,7 @@ import contextlib
 import json
 import logging
 import time
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
@@ -18,7 +18,6 @@ from lyra.adapters.nats_stream_decoder import (
     handle_stream_error as _handle_stream_error_impl,
 )
 from lyra.core.message import (
-    InboundAudio,
     InboundMessage,
     OutboundAttachment,
     OutboundMessage,
@@ -57,7 +56,7 @@ class NatsOutboundListener:
         self._bot_id = bot_id
         self._adapter = adapter
         self._queue_group = queue_group
-        self._cache: dict[str, InboundMessage | InboundAudio] = {}
+        self._cache: dict[str, InboundMessage] = {}
         self._cache_ts: dict[str, float] = {}
         self._stream_queues: dict[str, asyncio.Queue[dict]] = {}
         self._stream_tasks: dict[str, asyncio.Task[None]] = {}
@@ -67,7 +66,7 @@ class NatsOutboundListener:
         self._terminated_streams: set[str] = set()
         self._version_mismatch_drops: dict[str, int] = {}
 
-    def cache_inbound(self, msg: InboundMessage | InboundAudio) -> None:
+    def cache_inbound(self, msg: InboundMessage) -> None:
         """Store msg so it can be retrieved later by stream_id."""
         if len(self._cache) >= _MAX_CACHE_SIZE:
             oldest = next(iter(self._cache))
@@ -145,7 +144,7 @@ class NatsOutboundListener:
         except Exception:
             log.warning("NatsOutboundListener: failed to deserialize outbound message")
             return
-        await self._adapter.send(cast(InboundMessage, original_msg), outbound)
+        await self._adapter.send(original_msg, outbound)
         self._cache.pop(stream_id, None)
         self._cache_ts.pop(stream_id, None)
 
@@ -167,7 +166,7 @@ class NatsOutboundListener:
             log.warning("NatsOutboundListener: failed to deserialize attachment")
             return
         await self._adapter.render_attachment(
-            attachment, cast(InboundMessage, original_msg)
+            attachment, original_msg
         )
         self._cache.pop(stream_id, None)
         self._cache_ts.pop(stream_id, None)
@@ -258,7 +257,7 @@ class NatsOutboundListener:
         try:
             # counter= wires drop tracking; read via version_mismatch_count().
             await self._adapter.send_streaming(
-                cast(InboundMessage, original_msg),
+                original_msg,
                 decode_stream_events(
                     stream_id, q, counter=self._version_mismatch_drops
                 ),

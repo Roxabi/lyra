@@ -67,7 +67,6 @@ async def test_start_typing_creates_background_task() -> None:
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         auth=_ALLOW_ALL,
     )
@@ -95,7 +94,6 @@ async def test_cancel_typing_cancels_task() -> None:
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         auth=_ALLOW_ALL,
     )
@@ -120,7 +118,6 @@ async def test_send_cancels_typing_task_at_start() -> None:
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         auth=_ALLOW_ALL,
     )
@@ -155,7 +152,6 @@ async def test_send_streaming_cancels_typing_task_at_start() -> None:
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         auth=_ALLOW_ALL,
     )
@@ -210,7 +206,6 @@ async def test_on_message_does_not_cancel_typing_when_message_queued() -> None:
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=inbound_bus,
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         auth=_ALLOW_ALL,
     )
@@ -258,7 +253,6 @@ async def test_on_message_cancels_typing_when_message_dropped_queue_full() -> No
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=inbound_bus,
-        inbound_audio_bus=MagicMock(),
         intents=discord.Intents.none(),
         auth=_ALLOW_ALL,
     )

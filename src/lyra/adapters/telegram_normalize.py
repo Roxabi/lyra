@@ -6,9 +6,9 @@ import logging
 from datetime import timezone
 from typing import TYPE_CHECKING, Any
 
+from lyra.core.audio_payload import AudioPayload
 from lyra.core.message import (
     Attachment,
-    InboundAudio,
     InboundMessage,
     Platform,
     RoutingContext,
@@ -211,8 +211,8 @@ def normalize_audio(
     mime_type: str,
     *,
     trust_level: TrustLevel,
-) -> InboundAudio:
-    """Build an InboundAudio envelope from a Telegram voice/audio/video_note.
+) -> InboundMessage:
+    """Build a voice InboundMessage from a Telegram audio/voice/video_note update.
 
     Security: trust is always 'user'. normalize_audio() is never called for
     bot messages. Never logs the bot token.
@@ -241,20 +241,26 @@ def normalize_audio(
     platform_meta, routing = _build_routing(
         adapter, chat_id, topic_id, message_id, scope_id, is_group
     )
-    return InboundAudio(
+    return InboundMessage(
         id=(f"telegram:{user_id}:{int(timestamp.timestamp())}:{file_id or ''}"),
         platform=Platform.TELEGRAM.value,
         bot_id=adapter._bot_id,
         scope_id=scope_id,
         user_id=user_id,
-        audio_bytes=audio_bytes,
-        mime_type=mime_type,
-        duration_ms=duration_ms,
-        file_id=file_id,
-        timestamp=timestamp,
         user_name=raw.from_user.full_name,
         is_mention=False,
+        text="",
+        text_raw="",
         trust_level=trust_level,
+        timestamp=timestamp,
         platform_meta=platform_meta,
         routing=routing,
+        modality="voice",
+        audio=AudioPayload(
+            audio_bytes=audio_bytes,
+            mime_type=mime_type,
+            duration_ms=duration_ms,
+            file_id=file_id,
+            waveform_b64=None,
+        ),
     )

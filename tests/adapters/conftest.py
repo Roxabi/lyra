@@ -77,7 +77,6 @@ def make_tg_adapter() -> TelegramAdapter:
         bot_id="main",
         token="tok",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
     )
     bot_mock = AsyncMock()
     bot_mock.send_voice = AsyncMock()
@@ -89,7 +88,6 @@ def make_dc_adapter() -> DiscordAdapter:
     return DiscordAdapter(
         bot_id="main",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
     )
 
 
@@ -215,7 +213,6 @@ def make_tg_attach_adapter() -> TelegramAdapter:
         bot_id="main",
         token="tok",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
     )
     bot_mock = AsyncMock()
     bot_mock.send_photo = AsyncMock()
@@ -230,7 +227,6 @@ def make_dc_attach_adapter() -> DiscordAdapter:
     return DiscordAdapter(
         bot_id="main",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
     )
 
 
@@ -245,7 +241,6 @@ def _make_telegram_adapter() -> TelegramAdapter:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
         auth=_ALLOW_ALL,
     )
     return adapter
@@ -293,7 +288,6 @@ def telegram_adapter(mock_inbound_bus):
         bot_id="main",
         token="tok",
         inbound_bus=mock_inbound_bus,
-        inbound_audio_bus=MagicMock(),
     )
     bot_mock = AsyncMock()
     bot_mock.send_voice = AsyncMock()
@@ -306,7 +300,6 @@ def discord_adapter(mock_inbound_bus):
     return DiscordAdapter(
         bot_id="main",
         inbound_bus=mock_inbound_bus,
-        inbound_audio_bus=MagicMock(),
     )
 
 

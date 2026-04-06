@@ -74,7 +74,7 @@ def test_init_stores_attributes() -> None:
 
 
 # ---------------------------------------------------------------------------
-# normalize / normalize_audio — must raise NotImplementedError
+# normalize — must raise NotImplementedError
 # ---------------------------------------------------------------------------
 
 
@@ -85,13 +85,6 @@ def test_normalize_raises() -> None:
         NotImplementedError, match="does not normalize inbound messages"
     ):
         proxy.normalize({})
-
-
-def test_normalize_audio_raises() -> None:
-    """normalize_audio() raises NotImplementedError."""
-    proxy = NatsChannelProxy(nc=_make_nc(), platform=Platform.TELEGRAM, bot_id="main")
-    with pytest.raises(NotImplementedError, match="does not normalize inbound audio"):
-        proxy.normalize_audio({}, b"", "audio/ogg", trust_level=TrustLevel.PUBLIC)
 
 
 # ---------------------------------------------------------------------------

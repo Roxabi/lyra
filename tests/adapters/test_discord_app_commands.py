@@ -96,7 +96,6 @@ class TestOnReadySync:
         adapter = DiscordAdapter(
             bot_id="test",
             inbound_bus=MagicMock(),
-            inbound_audio_bus=MagicMock(),
         )
         adapter._bot_user = MagicMock()
         adapter._bot_user.id = 12345
@@ -134,7 +133,6 @@ class TestOnReadySync:
         adapter = DiscordAdapter(
             bot_id="test",
             inbound_bus=MagicMock(),
-            inbound_audio_bus=MagicMock(),
         )
         adapter._bot_user = MagicMock()
         adapter._bot_user.id = 12345

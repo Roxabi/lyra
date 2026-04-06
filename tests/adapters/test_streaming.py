@@ -85,7 +85,6 @@ class TestTelegramStreaming:
             bot_id="main",
             token="fake-token",
             inbound_bus=MagicMock(),
-            inbound_audio_bus=MagicMock(),
             webhook_secret="secret",
         )
         mock_bot = AsyncMock()
@@ -303,7 +302,6 @@ class TestDiscordStreaming:
         adapter = DiscordAdapter(
             bot_id="main",
             inbound_bus=MagicMock(),
-            inbound_audio_bus=MagicMock(),
         )
 
         mock_placeholder = AsyncMock()
@@ -475,7 +473,6 @@ class TestTelegramIntermediateText:
             bot_id="main",
             token="fake-token",
             inbound_bus=MagicMock(),
-            inbound_audio_bus=MagicMock(),
             webhook_secret="secret",
         )
         mock_bot = AsyncMock()
@@ -542,7 +539,6 @@ class TestDiscordIntermediateText:
         adapter = DiscordAdapter(
             bot_id="main",
             inbound_bus=MagicMock(),
-            inbound_audio_bus=MagicMock(),
         )
 
         mock_placeholder = AsyncMock()
@@ -660,7 +656,6 @@ async def test_telegram_streaming_fallback_sends_all_chunks() -> None:
         bot_id="main",
         token="tok",
         inbound_bus=MagicMock(),
-        inbound_audio_bus=MagicMock(),
         webhook_secret="s",
     )
     fallback_msgs = [MagicMock(message_id=i) for i in range(1, 4)]

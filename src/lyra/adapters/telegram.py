@@ -48,7 +48,6 @@ from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.guard import BlockedGuard, GuardChain
 from lyra.core.trust import TrustLevel
 from lyra.core.message import (
-    InboundAudio,
     InboundMessage,
     OutboundAttachment,
     OutboundAudio,
@@ -95,7 +94,6 @@ class TelegramAdapter(OutboundAdapterBase):
         bot_id: str,
         token: str,
         inbound_bus: "Bus[InboundMessage]",
-        inbound_audio_bus: "Bus[InboundAudio]",
         webhook_secret: str = "",
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
@@ -120,7 +118,6 @@ class TelegramAdapter(OutboundAdapterBase):
             )
         self._bot_username: str | None = None
         self._inbound_bus = inbound_bus
-        self._inbound_audio_bus = inbound_audio_bus
         self._circuit_registry = circuit_registry
         self._msg_manager = msg_manager
         self._auth: Authenticator = auth
@@ -265,7 +262,7 @@ class TelegramAdapter(OutboundAdapterBase):
 
     def normalize_audio(
         self, raw: Any, audio_bytes: bytes, mime_type: str, *, trust_level: TrustLevel
-    ) -> InboundAudio:
+    ) -> InboundMessage:
         return _normalize_audio_impl(
             self, raw, audio_bytes, mime_type, trust_level=trust_level
         )

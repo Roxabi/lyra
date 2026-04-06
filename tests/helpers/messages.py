@@ -1,12 +1,10 @@
 """Test helper factories for InboundMessage construction.
 
 Provides make_text_message() and make_voice_message() as single points of
-churn for envelope shape evolution.  All InboundAudio constructor calls will
-migrate to make_voice_message() as part of issue #534.
+churn for envelope shape evolution.
 
-Note: make_voice_message() imports AudioPayload from lyra.core.message.
-AudioPayload does NOT exist yet — it will be added in T5 (issue #534).
-The import failing at collection time is the expected RED state.
+Slice 2 (issue #534): InboundAudio is deleted.  Voice messages use
+InboundMessage(modality='voice', audio=AudioPayload(...)) throughout.
 """
 
 from __future__ import annotations
@@ -60,9 +58,6 @@ def make_voice_message(
 
     The audio field is an AudioPayload constructed from the audio_* kwargs.
     Any remaining kwargs override InboundMessage fields.
-
-    Note: AudioPayload import at the top of this module will fail until T5
-    adds AudioPayload to lyra.core.message — this is the expected RED state.
     """
     audio = AudioPayload(
         audio_bytes=audio_bytes,

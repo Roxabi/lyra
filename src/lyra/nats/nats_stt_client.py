@@ -1,10 +1,12 @@
 """NatsSttClient — hub-side NATS request-reply client for STT."""
+
 from __future__ import annotations
 
 import asyncio
 import base64
 import json
 import logging
+import os
 from pathlib import Path
 from uuid import uuid4
 
@@ -14,6 +16,40 @@ from lyra.stt import STTUnavailableError, TranscriptionResult
 
 log = logging.getLogger(__name__)
 
+_STT_TIMEOUT_DEFAULT = 15.0
+_STT_TIMEOUT_MIN = 1.0
+_STT_TIMEOUT_MAX = 300.0
+
+
+def _parse_stt_timeout(timeout: float | None) -> float:
+    """Resolve STT timeout: explicit arg > LYRA_STT_TIMEOUT env var > 15s default.
+
+    Accepts values in [1.0, 300.0] seconds; falls back to 15s on invalid input.
+    """
+    if timeout is not None:
+        value = timeout
+    else:
+        raw = os.environ.get("LYRA_STT_TIMEOUT", str(_STT_TIMEOUT_DEFAULT))
+        try:
+            value = float(raw)
+        except ValueError:
+            log.warning(
+                "LYRA_STT_TIMEOUT=%r is not a valid float; using %.0fs",
+                raw,
+                _STT_TIMEOUT_DEFAULT,
+            )
+            return _STT_TIMEOUT_DEFAULT
+    if not (_STT_TIMEOUT_MIN <= value <= _STT_TIMEOUT_MAX):
+        log.warning(
+            "STT timeout %.1fs out of range [%.0f, %.0f]; using %.0fs",
+            value,
+            _STT_TIMEOUT_MIN,
+            _STT_TIMEOUT_MAX,
+            _STT_TIMEOUT_DEFAULT,
+        )
+        return _STT_TIMEOUT_DEFAULT
+    return value
+
 
 class NatsSttClient:
     SUBJECT = "lyra.voice.stt.request"
@@ -22,14 +58,14 @@ class NatsSttClient:
         self,
         nc: NATS,
         *,
-        timeout: float = 60.0,
+        timeout: float | None = None,
         model: str = "large-v3-turbo",
         language_detection_threshold: float | None = None,
         language_detection_segments: int | None = None,
         language_fallback: str | None = None,
     ) -> None:
         self._nc = nc
-        self._timeout = timeout
+        self._timeout = _parse_stt_timeout(timeout)
         self._model = model
         self._detection_threshold = language_detection_threshold
         self._detection_segments = language_detection_segments
@@ -59,8 +95,7 @@ class NatsSttClient:
         except Exception as exc:
             if "max_payload" in str(exc).lower() or "MaxPayload" in type(exc).__name__:
                 log.error(
-                    "STT payload too large (%.0f KB)"
-                    " — check NATS max_payload",
+                    "STT payload too large (%.0f KB) — check NATS max_payload",
                     payload_kb,
                 )
                 raise STTUnavailableError("STT request payload too large") from exc

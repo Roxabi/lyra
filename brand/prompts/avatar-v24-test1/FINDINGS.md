@@ -6,6 +6,8 @@
 **Reference:** `concepts/avatar-lyra-v15-1024/000-reference-006.png`  
 **Baseline:** `brand/avatar/006-just-solved-1024.png` (Klein 4B, no PuLID)
 
+> **STATUS: PENDING** — fill Verdict + Decision before resolving issue #555.
+
 ## Generated Set
 
 20 images in `~/.roxabi/forge/lyra/brand/concepts/avatar-lyra-v24-test1/`

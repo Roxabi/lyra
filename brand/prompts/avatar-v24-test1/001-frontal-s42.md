@@ -4,10 +4,11 @@ width: 1024
 height: 1024
 steps: 28
 guidance: 3.5
-face_image: /home/mickael/.roxabi/forge/lyra/brand/concepts/avatar-lyra-v15-1024/000-reference-006.png
+face_image: ~/.roxabi/forge/lyra/brand/concepts/avatar-lyra-v15-1024/000-reference-006.png
 pulid_strength: 0.8
 seed: 42
 ---
+# body lines 12-15: see _base.md
 Editorial portrait photograph. Young woman, mid-20s, dark hair loose and natural. Full frontal composition, direct gaze at lens.
 Expression: just solved it — quiet satisfied smile, eyes bright with calm pride, not showing off.
 

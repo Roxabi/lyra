@@ -67,7 +67,7 @@ class SqliteStore:
         for stmt in ddl or []:
             await self._db.execute(stmt)
         await self._db.commit()
-        self._checkpoint_task = asyncio.get_event_loop().create_task(
+        self._checkpoint_task = asyncio.get_running_loop().create_task(
             self._run_periodic_checkpoint(),
             name=f"wal-checkpoint:{self._db_path}",
         )

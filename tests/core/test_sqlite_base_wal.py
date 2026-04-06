@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import sqlite3
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 from lyra.core.stores.sqlite_base import (
     SqliteStore,
@@ -31,6 +33,12 @@ class _SimpleStore(SqliteStore):
 class TestWalCheckpointOnClose:
     """close() must checkpoint WAL before closing the connection."""
 
+    async def test_close_without_connect_is_safe(self, tmp_path: Path) -> None:
+        store = _SimpleStore(tmp_path / "test.db")
+        await store.close()  # must not raise — _db and _checkpoint_task are None
+        assert store._db is None
+        assert store._checkpoint_task is None
+
     async def test_checkpoint_on_close_runs_without_error(self, tmp_path: Path) -> None:
         store = _SimpleStore(tmp_path / "test.db")
         await store.connect()
@@ -45,6 +53,26 @@ class TestWalCheckpointOnClose:
         # Second close must not raise
         await store.close()
         assert store._db is None
+
+    async def test_checkpoint_suppresses_operational_error(
+        self, tmp_path: Path
+    ) -> None:
+        """_checkpoint() must not propagate sqlite3.OperationalError."""
+
+        class _LockedCM:
+            async def __aenter__(self) -> None:
+                raise sqlite3.OperationalError("database is locked")
+
+            async def __aexit__(self, *_: object) -> None:
+                pass
+
+        store = _SimpleStore(tmp_path / "test.db")
+        await store.connect()
+        try:
+            with patch.object(store._db, "execute", return_value=_LockedCM()):
+                await store._checkpoint()  # must not raise
+        finally:
+            await store.close()
 
     async def test_checkpoint_task_cancelled_on_close(self, tmp_path: Path) -> None:
         store = _SimpleStore(tmp_path / "test.db")
@@ -125,7 +153,7 @@ class TestPeriodicCheckpointTask:
             await store.close()
 
     async def test_short_interval_checkpoint_fires(self, tmp_path: Path) -> None:
-        """With a 0-second interval the checkpoint runs immediately on next tick."""
+        """With a 0-second interval _checkpoint() is called on the next tick."""
 
         class _FastStore(_SimpleStore):
             _wal_checkpoint_interval = 0
@@ -133,10 +161,12 @@ class TestPeriodicCheckpointTask:
         store = _FastStore(tmp_path / "fast.db")
         await store.connect()
         try:
-            # Let the event loop tick so the task can run
+            spy = AsyncMock(wraps=store._checkpoint)
+            store._checkpoint = spy  # type: ignore[method-assign]
             await asyncio.sleep(0.05)
-            # If checkpoint raised, the task would be in an exception state
-            assert store._checkpoint_task is not None
-            assert not store._checkpoint_task.done()
+            assert spy.call_count >= 1, (
+                f"Expected _checkpoint() to be called at least once, "
+                f"got {spy.call_count}"
+            )
         finally:
             await store.close()

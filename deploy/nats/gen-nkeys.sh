@@ -119,6 +119,12 @@ info "Generating nkey pairs..."
 HUB_PUB=$(generate_nkey "hub")
 WORKER_PUB=$(generate_nkey "llm-worker")
 MONITOR_PUB=$(generate_nkey "monitor")
+TTS_PUB=$(generate_nkey "tts-adapter")
+STT_PUB=$(generate_nkey "stt-adapter")
+chmod 0640 "${NKEYS_DIR}/tts-adapter.seed"
+chgrp mickael "${NKEYS_DIR}/tts-adapter.seed"
+chmod 0640 "${NKEYS_DIR}/stt-adapter.seed"
+chgrp mickael "${NKEYS_DIR}/stt-adapter.seed"
 
 # ── write auth.conf ────────────────────────────────────────────────────────
 
@@ -132,6 +138,8 @@ authorization {
     { nkey: "${HUB_PUB}",    name: "hub" }
     { nkey: "${WORKER_PUB}", name: "llm-worker" }
     { nkey: "${MONITOR_PUB}", name: "monitor" }
+    { nkey: "${TTS_PUB}", name: "tts-adapter" }
+    { nkey: "${STT_PUB}", name: "stt-adapter" }
   ]
 }
 EOF
@@ -139,9 +147,9 @@ chmod 640 "${NKEYS_DIR}/auth.conf"
 chown root:nats "${NKEYS_DIR}/auth.conf"
 
 info "nkeys generated at ${NKEYS_DIR}/"
-info "  hub.seed        — seed for Lyra hub process       (NATS_HUB_NKEY_SEED)"
-info "  llm-worker.seed — seed for Machine 2 LLM worker   (NATS_LLM_WORKER_NKEY_SEED)"
-info "  monitor.seed    — seed for lyra-monitor health check (NATS_MONITOR_NKEY_SEED)"
-info "  auth.conf       — public keys included by nats.conf"
-warn "Set env vars in each service's run script to point at the seed files:"
-warn "  export NATS_NKEY_SEED_PATH=/etc/nats/nkeys/hub.seed"
+info "  hub.seed          — Lyra hub process         NATS_NKEY_SEED_PATH=/etc/nats/nkeys/hub.seed"
+info "  llm-worker.seed   — Machine 2 LLM worker     NATS_NKEY_SEED_PATH=/etc/nats/nkeys/llm-worker.seed"
+info "  monitor.seed      — lyra-monitor health check NATS_NKEY_SEED_PATH=/etc/nats/nkeys/monitor.seed"
+info "  tts-adapter.seed  — lyra_tts adapter process  NATS_NKEY_SEED_PATH=/etc/nats/nkeys/tts-adapter.seed"
+info "  stt-adapter.seed  — lyra_stt adapter process  NATS_NKEY_SEED_PATH=/etc/nats/nkeys/stt-adapter.seed"
+warn "Set NATS_NKEY_SEED_PATH in each service's supervisor conf.d to the seed path above."

@@ -69,3 +69,10 @@ class TestTimeoutResolution:
     def test_boundary_max_timeout_accepted(self, mock_nc: MagicMock) -> None:
         client = NatsSttClient(nc=mock_nc, timeout=300.0)
         assert client._timeout == 300.0
+
+    def test_env_var_zero_falls_back_to_default(
+        self, mock_nc: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LYRA_STT_TIMEOUT", "0")
+        client = NatsSttClient(nc=mock_nc)
+        assert client._timeout == 15.0

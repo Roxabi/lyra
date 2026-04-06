@@ -55,7 +55,12 @@ class NatsAdapterBase(ABC):
         await self._shutdown()
 
     @abstractmethod
-    async def handle(self, msg) -> None: ...
+    async def handle(self, msg, payload: dict) -> None: ...
+
+    async def reply(self, msg, data: bytes) -> None:
+        """Publish a response to msg.reply if a reply subject exists."""
+        if msg.reply and self._nc:
+            await self._nc.publish(msg.reply, data)
 
     async def _dispatch(self, msg) -> None:
         try:
@@ -64,7 +69,7 @@ class NatsAdapterBase(ABC):
             log.error("adapter_base: malformed JSON on %s", self.subject)
             return
         if self._validate_envelope(payload):
-            await self.handle(msg)
+            await self.handle(msg, payload)
 
     def _validate_envelope(self, payload: dict) -> bool:
         return check_schema_version(
@@ -77,11 +82,14 @@ class NatsAdapterBase(ABC):
 
     async def _shutdown(self) -> None:
         if self._nc:
-            await self._nc.drain()
+            await asyncio.wait_for(self._nc.drain(), timeout=self.drain_timeout)
             await self._nc.close()
 
     async def _wait_ready(self) -> None:
-        assert self._nc is not None
+        if self._nc is None:
+            raise RuntimeError(  # noqa: TRY003
+                "_wait_ready called before NATS connection was established"
+            )
         ok = await wait_for_hub(self._nc, timeout=self.timeout)
         if not ok:
             log.warning("adapter_base: hub readiness timed out — starting anyway")

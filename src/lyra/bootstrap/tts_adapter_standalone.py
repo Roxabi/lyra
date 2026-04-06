@@ -62,11 +62,10 @@ class TtsAdapterStandalone(NatsAdapterBase):
             "tts_adapter: TTSService ready (engine=%s)", tts_cfg.engine or "default"
         )
 
-    async def handle(self, msg) -> None:
-        data: dict = {}
+    async def handle(self, msg, payload: dict) -> None:
+        data: dict = payload
         response: dict
         try:
-            data = json.loads(msg.data)
             request_id = data.get("request_id", "unknown")
             text = data["text"]
 
@@ -110,11 +109,7 @@ class TtsAdapterStandalone(NatsAdapterBase):
                 "error": "synthesis_failed",
             }
 
-        if msg.reply and self._nc:
-            await self._nc.publish(
-                msg.reply,
-                json.dumps(response, ensure_ascii=False).encode("utf-8"),
-            )
+        await self.reply(msg, json.dumps(response, ensure_ascii=False).encode("utf-8"))
 
 
 async def _bootstrap_tts_adapter_standalone(

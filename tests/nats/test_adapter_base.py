@@ -28,7 +28,7 @@ from lyra.nats.adapter_base import NatsAdapterBase  # ImportError expected (RED)
 
 
 class _ConcreteAdapter(NatsAdapterBase):
-    async def handle(self, msg: object) -> None:  # noqa: D102
+    async def handle(self, msg: object, payload: dict) -> None:  # noqa: D102
         pass
 
 
@@ -669,3 +669,66 @@ class TestRun:
         # Assert — drain and close both called (shutdown path)
         mock_nc.drain.assert_awaited_once()
         mock_nc.close.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# T7 — _dispatch
+# ---------------------------------------------------------------------------
+
+
+class TestDispatch:
+    """T7 — _dispatch routes messages correctly: JSON error, bad envelope, valid."""
+
+    def _make_adapter(self) -> _ConcreteAdapter:
+        return _ConcreteAdapter(
+            subject="lyra.inbound.telegram.main",
+            queue_group="telegram_workers",
+            envelope_name="InboundMessage",
+            schema_version=1,
+        )
+
+    @pytest.mark.asyncio
+    async def test_malformed_json_does_not_call_handle(self) -> None:
+        """Non-JSON bytes → handle() is never called."""
+        # Arrange
+        adapter = self._make_adapter()
+        adapter.handle = AsyncMock()  # type: ignore[method-assign]
+        msg = MagicMock()
+        msg.data = b"not json at all"
+
+        # Act
+        await adapter._dispatch(msg)
+
+        # Assert
+        adapter.handle.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_invalid_envelope_does_not_call_handle(self) -> None:
+        """Valid JSON but wrong schema_version → handle() is never called."""
+        # Arrange
+        adapter = self._make_adapter()
+        adapter.handle = AsyncMock()  # type: ignore[method-assign]
+        msg = MagicMock()
+        msg.data = b'{"schema_version": 99, "text": "hello"}'
+
+        # Act
+        await adapter._dispatch(msg)
+
+        # Assert
+        adapter.handle.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_valid_message_calls_handle_with_msg_and_payload(self) -> None:
+        """Valid JSON + valid envelope → handle called with msg and parsed payload."""
+        # Arrange
+        adapter = self._make_adapter()
+        adapter.handle = AsyncMock()  # type: ignore[method-assign]
+        msg = MagicMock()
+        raw_payload = {"schema_version": 1, "text": "hello"}
+        msg.data = b'{"schema_version": 1, "text": "hello"}'
+
+        # Act
+        await adapter._dispatch(msg)
+
+        # Assert
+        adapter.handle.assert_awaited_once_with(msg, raw_payload)

@@ -17,7 +17,9 @@ from pathlib import Path
 
 import pytest
 
-_SOURCE = Path("src/lyra/bootstrap/stt_adapter_standalone.py")
+_SOURCE = (
+    Path(__file__).parent.parent.parent / "src/lyra/bootstrap/stt_adapter_standalone.py"
+)
 
 
 def test_stt_adapter_source_uses_no_bare_nats_connect() -> None:

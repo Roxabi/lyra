@@ -33,11 +33,10 @@ class SttAdapterStandalone(NatsAdapterBase):
             "stt_adapter: STTService ready (model=%s)", self._base_stt_cfg.model_size
         )
 
-    async def handle(self, msg) -> None:
-        data: dict = {}
+    async def handle(self, msg, payload: dict) -> None:
+        data: dict = payload
         response: dict
         try:
-            data = json.loads(msg.data)
             request_id = data.get("request_id", "unknown")
             audio_b64 = data["audio_b64"]
             audio_bytes = base64.b64decode(audio_b64)
@@ -84,11 +83,7 @@ class SttAdapterStandalone(NatsAdapterBase):
                 "error": "transcription_failed",
             }
 
-        if msg.reply and self._nc:
-            await self._nc.publish(
-                msg.reply,
-                json.dumps(response, ensure_ascii=False).encode("utf-8"),
-            )
+        await self.reply(msg, json.dumps(response, ensure_ascii=False).encode("utf-8"))
 
 
 async def _bootstrap_stt_adapter_standalone(  # noqa: PLR0915 — startup wiring

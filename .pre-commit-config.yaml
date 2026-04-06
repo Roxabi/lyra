@@ -16,9 +16,9 @@ repos:
         entry: tools/check_file_length.sh
         language: system
         pass_filenames: false
-      - id: gitleaks
-        name: gitleaks secret scan
-        entry: gitleaks detect --source . --no-git
+      - id: trufflehog
+        name: trufflehog secret scan
+        entry: 'bash -c "[ -f .git ] && echo trufflehog-skip-worktree || trufflehog git file://. --only-verified --fail"'
         language: system
         pass_filenames: false
         stages: [pre-push]

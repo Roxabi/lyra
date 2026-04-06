@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Generate nkey seeds for NATS authentication
 #
-# Creates 3 user nkey seeds: hub, llm-worker, monitor
-# Seeds: /etc/nats/nkeys/{hub,llm-worker,monitor}.seed  (mode 0600, root:root)
+# Creates 5 user nkey seeds: hub, llm-worker, monitor, tts-adapter, stt-adapter
+# Seeds: /etc/nats/nkeys/{hub,llm-worker,monitor}.seed (0600 root:root), {tts-adapter,stt-adapter}.seed (0640 root:LYRA_USER)
 # Auth config: /etc/nats/nkeys/auth.conf  (included by /etc/nats/nats.conf)
 #
 # Usage: sudo ./deploy/nats/gen-nkeys.sh
@@ -21,6 +21,7 @@ warn()  { echo -e "${YELLOW}[!]${NC} $1" >&2; }
 error() { echo -e "${RED}[x]${NC} $1" >&2; exit 1; }
 
 SHOW_ONLY=false
+LYRA_USER="${SUDO_USER:-mickael}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --show) SHOW_ONLY=true; shift ;;
@@ -92,8 +93,9 @@ NK_BIN=$(ensure_nk)
 # ── create directories ─────────────────────────────────────────────────────
 
 mkdir -p "${NKEYS_DIR}"
-chmod 700 "${NKEYS_DIR}"
 chown root:root "${NKEYS_DIR}"
+chmod 0750 "${NKEYS_DIR}"
+chgrp "${LYRA_USER}" "${NKEYS_DIR}"
 
 # ── generate nkey pairs ────────────────────────────────────────────────────
 
@@ -121,10 +123,10 @@ WORKER_PUB=$(generate_nkey "llm-worker")
 MONITOR_PUB=$(generate_nkey "monitor")
 TTS_PUB=$(generate_nkey "tts-adapter")
 STT_PUB=$(generate_nkey "stt-adapter")
+chgrp "${LYRA_USER}" "${NKEYS_DIR}/tts-adapter.seed"
 chmod 0640 "${NKEYS_DIR}/tts-adapter.seed"
-chgrp mickael "${NKEYS_DIR}/tts-adapter.seed"
+chgrp "${LYRA_USER}" "${NKEYS_DIR}/stt-adapter.seed"
 chmod 0640 "${NKEYS_DIR}/stt-adapter.seed"
-chgrp mickael "${NKEYS_DIR}/stt-adapter.seed"
 
 # ── write auth.conf ────────────────────────────────────────────────────────
 

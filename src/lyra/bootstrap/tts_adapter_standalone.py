@@ -11,18 +11,16 @@ import base64
 import json
 import logging
 import os
-import signal
 import sys
 from dataclasses import dataclass
 
-import nats
-
+from lyra.nats import NatsAdapterBase
+from lyra.nats.queue_groups import TTS_WORKERS
 from lyra.tts import SynthesisResult, TTSService, load_tts_config
 
 log = logging.getLogger(__name__)
 
 SUBJECT = "lyra.voice.tts.request"
-QUEUE_GROUP = "tts-workers"
 
 # Fields the hub serializes from AgentTTSConfig into the NATS request.
 _AGENT_TTS_FIELDS = (
@@ -55,29 +53,16 @@ class _NatsTtsConfig:
     languages: list[str] | None = None
 
 
-async def _bootstrap_tts_adapter_standalone(
-    raw_config: dict,
-    *,
-    _stop: asyncio.Event | None = None,
-) -> None:
-    """Bootstrap a standalone TTS adapter process connected to NATS.
+class TtsAdapterStandalone(NatsAdapterBase):
+    def __init__(self, raw_config: dict) -> None:
+        super().__init__(SUBJECT, TTS_WORKERS, "TtsRequest", 1)
+        tts_cfg = load_tts_config()
+        self._tts_service = TTSService(tts_cfg)
+        log.info(
+            "tts_adapter: TTSService ready (engine=%s)", tts_cfg.engine or "default"
+        )
 
-    Args:
-        raw_config: Parsed config dict (lyra config.toml content).
-        _stop: Optional event for graceful shutdown (tests inject this).
-    """
-    nats_url = os.environ.get("NATS_URL")
-    if not nats_url:
-        sys.exit("NATS_URL required for standalone TTS adapter")
-
-    nc = await nats.connect(nats_url)
-    log.info("tts_adapter: connected to NATS at %s", nats_url)
-
-    tts_cfg = load_tts_config()
-    tts_service = TTSService(tts_cfg)
-    log.info("tts_adapter: TTSService ready (engine=%s)", tts_cfg.engine or "default")
-
-    async def handler(msg) -> None:  # nats.aio.msg.Msg
+    async def handle(self, msg) -> None:
         data: dict = {}
         response: dict
         try:
@@ -99,7 +84,7 @@ async def _bootstrap_tts_adapter_standalone(
                 if data.get(key) is not None:
                     synth_kwargs[key] = data[key]
 
-            result: SynthesisResult = await tts_service.synthesize(
+            result: SynthesisResult = await self._tts_service.synthesize(
                 text,
                 agent_tts=agent_tts,  # type: ignore[arg-type]  # duck-typed stand-in
                 **synth_kwargs,
@@ -125,24 +110,26 @@ async def _bootstrap_tts_adapter_standalone(
                 "error": "synthesis_failed",
             }
 
-        if msg.reply:
-            await nc.publish(
+        if msg.reply and self._nc:
+            await self._nc.publish(
                 msg.reply,
                 json.dumps(response, ensure_ascii=False).encode("utf-8"),
             )
 
-    sub = await nc.subscribe(SUBJECT, queue=QUEUE_GROUP, cb=handler)
-    log.info("tts_adapter: subscribed to %s (queue=%s)", SUBJECT, QUEUE_GROUP)
 
-    stop = _stop if _stop is not None else asyncio.Event()
-    if _stop is None:
-        loop = asyncio.get_running_loop()
-        for sig in (signal.SIGTERM, signal.SIGINT):
-            loop.add_signal_handler(sig, stop.set)
+async def _bootstrap_tts_adapter_standalone(
+    raw_config: dict,
+    *,
+    _stop: asyncio.Event | None = None,
+) -> None:
+    """Bootstrap a standalone TTS adapter process connected to NATS.
 
-    await stop.wait()
-    log.info("tts_adapter: shutdown signal received")
-
-    await sub.unsubscribe()
-    await nc.close()
-    log.info("tts_adapter: stopped")
+    Args:
+        raw_config: Parsed config dict (lyra config.toml content).
+        _stop: Optional event for graceful shutdown (tests inject this).
+    """
+    nats_url = os.environ.get("NATS_URL")
+    if not nats_url:
+        sys.exit("NATS_URL required for standalone TTS adapter")
+    log.info("tts_adapter: connecting to NATS at %s", nats_url)
+    await TtsAdapterStandalone(raw_config).run(nats_url, _stop)

@@ -11,6 +11,12 @@ from lyra.core.message import Platform
 #: Hub-side inbound text message subscription (``NatsBus``).
 HUB_INBOUND = "hub-inbound"
 
+#: Queue group for TTS worker processes consuming synthesis requests.
+TTS_WORKERS = "tts-workers"
+
+#: Queue group for STT worker processes consuming transcription requests.
+STT_WORKERS = "stt-workers"
+
 
 def adapter_outbound(platform: Platform, bot_id: str) -> str:
     """Return the NATS queue group for an adapter's outbound subscription.

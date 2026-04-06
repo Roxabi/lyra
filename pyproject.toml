@@ -59,6 +59,7 @@ override-dependencies = [
     "ml-dtypes>=0.5",
     "onnx>=1.20",
     "pynacl>=1.6.2",  # CVE-2025-69277 — discord.py 2.7.1 pins <1.6 but 1.6.x is API-compatible (discord.py master confirmed)
+    "aiohttp>=3.13.4",  # CVE-2026-34520 + 9 others fixed in 3.13.4 (transitive via aiogram); drop-in, no API changes
 ]
 
 [tool.uv.extra-build-dependencies]

@@ -74,6 +74,26 @@ class TestWalCheckpointOnClose:
         finally:
             await store.close()
 
+    async def test_checkpoint_suppresses_programming_error(
+        self, tmp_path: Path
+    ) -> None:
+        """_checkpoint() must not propagate sqlite3.ProgrammingError."""
+
+        class _ClosedCM:
+            async def __aenter__(self) -> None:
+                raise sqlite3.ProgrammingError("Cannot operate on a closed database")
+
+            async def __aexit__(self, *_: object) -> None:
+                pass
+
+        store = _SimpleStore(tmp_path / "test.db")
+        await store.connect()
+        try:
+            with patch.object(store._db, "execute", return_value=_ClosedCM()):
+                await store._checkpoint()  # must not raise
+        finally:
+            await store.close()
+
     async def test_checkpoint_task_cancelled_on_close(self, tmp_path: Path) -> None:
         store = _SimpleStore(tmp_path / "test.db")
         await store.connect()

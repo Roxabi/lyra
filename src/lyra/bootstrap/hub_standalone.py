@@ -485,6 +485,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
             if active_ids:
                 await hub.notify_shutdown_inflight(active_ids)
             await cli_pool.stop()
+        await hub.shutdown()
 
     # Close NATS connection after stores context exits
     try:

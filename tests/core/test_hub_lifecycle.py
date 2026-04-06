@@ -211,10 +211,16 @@ class TestHubEvictFlushTask:
         assert len(hub._memory_tasks) >= 1
 
     @pytest.mark.asyncio
-    async def test_shutdown_has_shutdown_method(self) -> None:
-        """Hub must expose a shutdown() coroutine method (S4)."""
+    async def test_shutdown_closes_injected_stores(self) -> None:
+        """hub.shutdown() must close turn_store and message_index when injected."""
         hub = Hub()
-        assert hasattr(hub, "shutdown")  # FAILS until shutdown() is added
+        mock_turn = AsyncMock()
+        mock_index = AsyncMock()
+        hub.set_turn_store(mock_turn)
+        hub.set_message_index(mock_index)
+        await hub.shutdown()
+        mock_turn.close.assert_awaited_once()
+        mock_index.close.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------

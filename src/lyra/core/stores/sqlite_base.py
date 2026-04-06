@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import sqlite3
 from pathlib import Path
 
 import aiosqlite
@@ -22,11 +24,29 @@ class SqliteStore:
             # any extra setup (cache warming, etc.)
 
     ``_open_db`` is idempotent — calling it when already connected is a no-op.
+
+    WAL management
+    --------------
+    SQLite WAL mode is enabled on every connection.  Without periodic
+    checkpointing the WAL file grows unbounded when long-lived readers prevent
+    SQLite's automatic checkpoint from running.
+
+    This class handles checkpointing in two ways:
+
+    * **On close** — ``close()`` runs ``PRAGMA wal_checkpoint(TRUNCATE)`` before
+      closing the connection so the WAL is flushed on every clean shutdown.
+    * **Periodic** — a background ``asyncio.Task`` runs the same pragma every
+      ``_wal_checkpoint_interval`` seconds (default 30 min) while the store is
+      open.  This keeps the WAL bounded during long-running processes.
     """
+
+    #: Seconds between periodic WAL checkpoints.  Override in subclass to tune.
+    _wal_checkpoint_interval: int = 1800
 
     def __init__(self, db_path: str | Path) -> None:
         self._db_path = str(db_path)
         self._db: aiosqlite.Connection | None = None
+        self._checkpoint_task: asyncio.Task[None] | None = None
 
     def _require_db(self) -> aiosqlite.Connection:
         """Return the open connection or raise RuntimeError."""
@@ -47,9 +67,56 @@ class SqliteStore:
         for stmt in ddl or []:
             await self._db.execute(stmt)
         await self._db.commit()
+        self._checkpoint_task = asyncio.get_event_loop().create_task(
+            self._run_periodic_checkpoint(),
+            name=f"wal-checkpoint:{self._db_path}",
+        )
+
+    async def _checkpoint(self) -> None:
+        """Run ``PRAGMA wal_checkpoint(TRUNCATE)`` and log the result.
+
+        Best-effort — logs and returns silently on ``OperationalError`` (e.g.
+        active transaction on the connection, or concurrent readers blocking
+        the truncation).  The WAL will be checkpointed on the next opportunity.
+        """
+        db = self._db
+        if db is None:
+            return
+        try:
+            async with db.execute("PRAGMA wal_checkpoint(TRUNCATE)") as cur:
+                row = await cur.fetchone()
+        except sqlite3.OperationalError as exc:
+            log.debug("WAL checkpoint skipped (db=%s): %s", self._db_path, exc)
+            return
+        if row is not None:
+            busy, log_pages, checkpointed = row
+            log.debug(
+                "WAL checkpoint: db=%s busy=%s log=%s checkpointed=%s",
+                self._db_path,
+                busy,
+                log_pages,
+                checkpointed,
+            )
+
+    async def _run_periodic_checkpoint(self) -> None:
+        """Background task: checkpoint WAL every ``_wal_checkpoint_interval`` s."""
+        try:
+            while True:
+                await asyncio.sleep(self._wal_checkpoint_interval)
+                await self._checkpoint()
+        except asyncio.CancelledError:
+            pass
 
     async def close(self) -> None:
-        """Close the database connection."""
+        """Checkpoint WAL and close the database connection."""
+        if self._checkpoint_task is not None:
+            self._checkpoint_task.cancel()
+            try:
+                await self._checkpoint_task
+            except asyncio.CancelledError:
+                pass
+            self._checkpoint_task = None
         if self._db is not None:
+            await self._checkpoint()
             await self._db.close()
             self._db = None

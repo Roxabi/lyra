@@ -41,7 +41,8 @@
     "sentencepiece",
     "PyMuPDF",
     "pyphen",
-    "angelique"
+    "angelique",
+    "pytest-timeout"
   ],
   "overrides": {}
 }

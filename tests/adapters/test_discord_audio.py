@@ -85,6 +85,7 @@ def test_normalize_audio_attachment_fields() -> None:
     assert result.audio.audio_bytes == b"bytes"
     assert result.audio.duration_ms is None
     assert result.audio.file_id is None
+    assert result.audio.waveform_b64 is None
 
 
 def test_normalize_audio_channel_scope_id() -> None:
@@ -184,6 +185,33 @@ async def test_on_message_audio_download_failure_returns_cleanly() -> None:
 
     inbound_bus.put.assert_not_called()
     msg.reply.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_on_message_audio_invalid_magic_bytes_sends_reply() -> None:
+    """on_message() rejects audio whose magic bytes don't match any known format."""
+    adapter = DiscordAdapter(
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
+    )
+
+    attachment_obj = SimpleNamespace(
+        content_type="audio/ogg",
+        url="https://cdn.example/audio.ogg",
+        size=1024,
+        read=AsyncMock(return_value=b"INVALID_NOT_AUDIO"),
+    )
+    msg = _make_discord_msg(attachments=[attachment_obj])
+    msg.author.bot = False
+    msg.guild = None  # DM so auth gate passes
+
+    await adapter.on_message(msg)
+
+    # Should NOT enqueue — invalid format rejected before push
+    # The adapter sends a reply about the invalid format
+    msg.reply.assert_called_once()
 
 
 @pytest.mark.asyncio

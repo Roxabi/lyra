@@ -87,6 +87,15 @@ def test_normalize_raises() -> None:
         proxy.normalize({})
 
 
+def test_normalize_audio_raises() -> None:
+    """normalize_audio() raises NotImplementedError — proxy does not handle inbound."""
+    proxy = NatsChannelProxy(nc=_make_nc(), platform=Platform.TELEGRAM, bot_id="main")
+    with pytest.raises(
+        NotImplementedError, match="does not normalize audio messages"
+    ):
+        proxy.normalize_audio({}, b"bytes", "audio/ogg", trust_level=TrustLevel.TRUSTED)
+
+
 # ---------------------------------------------------------------------------
 # send()
 # ---------------------------------------------------------------------------

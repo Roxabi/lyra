@@ -22,6 +22,7 @@ from lyra.core.message import (
     Platform,
 )
 from lyra.core.render_events import RenderEvent
+from lyra.core.trust import TrustLevel
 from lyra.nats._serialize import serialize
 from lyra.nats.render_event_codec import NatsRenderEventCodec
 
@@ -71,7 +72,7 @@ class NatsChannelProxy:
         audio_bytes: bytes,
         mime_type: str,
         *,
-        trust_level: Any,
+        trust_level: TrustLevel,
     ) -> InboundMessage:
         raise NotImplementedError(
             "NatsChannelProxy does not normalize audio messages"

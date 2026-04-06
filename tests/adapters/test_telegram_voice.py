@@ -224,6 +224,7 @@ def test_normalize_audio_voice_fields() -> None:
     assert result.user_id == "tg:user:7"
     assert result.platform == "telegram"
     assert result.bot_id == "main"
+    assert result.trust == "user"
     assert isinstance(result.audio, AudioPayload)
     assert result.audio.mime_type == "audio/ogg"
     assert result.audio.duration_ms == 3000
@@ -247,6 +248,7 @@ def test_normalize_audio_audio_file_fields() -> None:
     )
     assert isinstance(result, InboundMessage)
     assert result.modality == "voice"
+    assert result.trust == "user"
     assert isinstance(result.audio, AudioPayload)
     assert result.audio.mime_type == "audio/mpeg"
     assert result.audio.duration_ms == 5000

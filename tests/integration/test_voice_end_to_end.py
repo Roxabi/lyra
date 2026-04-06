@@ -213,3 +213,60 @@ class TestSlice2VoiceMessageReachesSTTMiddleware:
         hub.dispatch_response.assert_called_once()
         _reply_msg, response = hub.dispatch_response.call_args[0]
         assert _FIXED_TRANSCRIPT in response.content
+
+    @pytest.mark.asyncio()
+    async def test_voice_message_stt_unavailable_drops_cleanly(self) -> None:
+        """SttMiddleware drops voice message cleanly when hub._stt is None."""
+        from lyra.core.hub.middleware import PipelineContext
+        from lyra.core.hub.middleware_stt import SttMiddleware
+
+        hub = _make_hub_mock(stt=None)  # STT not configured
+        voice_msg = _make_voice_message()
+        ctx = PipelineContext(hub=hub)
+
+        next_called: list[bool] = []
+
+        async def _capture_next(msg: InboundMessage, _ctx: PipelineContext) -> Any:
+            next_called.append(True)
+            from lyra.core.hub.message_pipeline import _DROP
+            return _DROP
+
+        # Must not raise even though stt is None
+        with patch("lyra.stt.is_whisper_noise", return_value=False):
+            await SttMiddleware()(voice_msg, ctx, _capture_next)
+
+        # Pipeline was dropped — next was not called with a populated message
+        # (SttMiddleware drops when stt is None, so next is never reached)
+        assert len(next_called) == 0
+
+    @pytest.mark.asyncio()
+    async def test_voice_message_stt_timeout_drops_cleanly(self) -> None:
+        """SttMiddleware drops voice message cleanly when STT times out."""
+        import asyncio
+
+        from lyra.core.hub.middleware import PipelineContext
+        from lyra.core.hub.middleware_stt import SttMiddleware
+
+        class _TimeoutSTT:
+            timeout_ms: int = 30000
+
+            async def transcribe(self, path: Any) -> None:
+                raise asyncio.TimeoutError
+
+        hub = _make_hub_mock(stt=_TimeoutSTT())
+        voice_msg = _make_voice_message()
+        ctx = PipelineContext(hub=hub)
+
+        next_called: list[bool] = []
+
+        async def _capture_next(msg: InboundMessage, _ctx: PipelineContext) -> Any:
+            next_called.append(True)
+            from lyra.core.hub.message_pipeline import _DROP
+            return _DROP
+
+        # Must not raise on timeout
+        with patch("lyra.stt.is_whisper_noise", return_value=False):
+            await SttMiddleware()(voice_msg, ctx, _capture_next)
+
+        # Pipeline was dropped — no text populated, no crash
+        assert len(next_called) == 0

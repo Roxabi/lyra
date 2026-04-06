@@ -214,7 +214,10 @@ class NatsBus(Generic[T]):
 
     def inject(self, item: T) -> None:
         """Public injection API for compat shims (bypasses NATS deserialize)."""
-        self._staging.put_nowait(item)
+        try:
+            self._staging.put_nowait(item)
+        except asyncio.QueueFull:
+            log.warning("inject: staging queue full — item dropped")
 
     def registered_platforms(self) -> frozenset[Platform]:
         """Return the set of currently registered platforms."""

@@ -37,9 +37,16 @@ from pathlib import Path
 # Value is a short description of the architectural role.
 EXPECTED_CALL_SITES: dict[str, str] = {
     # NatsBus._make_handler() sanitizes each inbound message as it arrives from
-    # the NATS wire.  This is the single authoritative sanitization point for
-    # all hub-inbound paths that flow through NATS.
+    # the NATS wire.  This is the primary sanitization point for all hub-inbound
+    # paths that flow through NatsBus.
     "src/lyra/nats/nats_bus.py": "NatsBus._make_handler — wire-boundary sanitization",
+    # InboundAudioLegacyHandler._convert_legacy() sanitizes legacy InboundAudio
+    # payloads arriving via a raw NATS subscription (not NatsBus).  This is a
+    # second legitimate wire boundary — the compat shim bypasses NatsBus entirely,
+    # so it MUST sanitize before calling Bus.inject().  Added in #534 Slice 1.
+    "src/lyra/nats/compat/inbound_audio_legacy.py": (
+        "InboundAudioLegacyHandler._convert_legacy — legacy wire-boundary sanitization"
+    ),
 }
 
 # ---------------------------------------------------------------------------
@@ -109,13 +116,13 @@ class TestSanitizeSingleEntryPoint:
             f"  Update EXPECTED_CALL_SITES to reflect the new architecture."
         )
 
-    def test_compat_shim_does_not_sanitize(self) -> None:
-        """InboundAudioLegacyHandler must NOT call sanitize_platform_meta.
+    def test_compat_shim_sanitizes_at_wire_boundary(self) -> None:
+        """InboundAudioLegacyHandler MUST call sanitize_platform_meta.
 
-        The compat shim injects InboundMessage via bus.inject().  Sanitization
-        happens when the NatsBus handler picks up the message from the NATS wire
-        (for NATS-originated messages) or is not needed (for LocalBus messages).
-        The shim must not double-sanitize.
+        The compat shim uses a raw NATS subscription (not NatsBus), so the
+        normal NatsBus._make_handler() sanitization path is bypassed.  The
+        shim MUST sanitize before calling Bus.inject() to prevent #525
+        regression on the legacy subject tree.
         """
         repo_root = Path(__file__).resolve().parent.parent.parent
         compat_shim = (
@@ -123,19 +130,20 @@ class TestSanitizeSingleEntryPoint:
         )
         assert compat_shim.exists(), f"Compat shim not found: {compat_shim}"
         content = compat_shim.read_text(encoding="utf-8")
-        assert _CALL_PATTERN.search(content) is None, (
-            "InboundAudioLegacyHandler calls sanitize_platform_meta() — "
-            "this would cause double-sanitization. "
-            "The shim must NOT sanitize; sanitization belongs in NatsBus._make_handler."
+        assert _CALL_PATTERN.search(content) is not None, (
+            "InboundAudioLegacyHandler does NOT call sanitize_platform_meta() — "
+            "this is a #525 regression: legacy audio payloads bypass NatsBus and "
+            "must be sanitized in the compat shim before Bus.inject()."
         )
 
-    def test_total_inbound_call_count_is_exactly_one(self) -> None:
-        """Structural cross-check: exactly 1 call across all inbound source files."""
+    def test_total_inbound_call_count_matches_expected(self) -> None:
+        """Structural cross-check: call count matches expected inventory size."""
         repo_root = Path(__file__).resolve().parent.parent.parent
         call_sites = _find_call_sites(repo_root)
         total = sum(len(lines) for lines in call_sites.values())
-        assert total == 1, (
-            f"Expected exactly 1 sanitize_platform_meta() call in inbound source "
-            f"paths, found {total}.\n"
+        expected = len(EXPECTED_CALL_SITES)
+        assert total == expected, (
+            f"Expected {expected} sanitize_platform_meta() call(s) in inbound "
+            f"source paths, found {total}.\n"
             f"  Call sites: {dict(call_sites)}"
         )

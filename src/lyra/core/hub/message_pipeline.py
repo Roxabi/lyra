@@ -2,14 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
 import dataclasses
 import enum
 import logging
-import os
-import tempfile
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
 from ..agent import AgentBase
@@ -33,33 +29,6 @@ _command_parser = CommandParser()
 # Called with (stage, event, **payload) at key pipeline decision points.
 # The hook must be a plain synchronous callable — it is never awaited.
 TraceHook = Callable[..., None]
-
-# Maximum transcript length accepted from STT output.
-# Transcripts exceeding this limit are rejected with stt_invalid.
-# Mirrors the _MAX_TRANSCRIPT constant in audio_pipeline.py.
-MAX_TRANSCRIPT_LEN = 2000
-
-# T15 — STT stage outcome counters.
-# No Prometheus/metrics module exists in the project yet.
-# TODO(Slice 2): replace with proper observability counters (#534).
-_STT_STAGE_OUTCOMES: dict[str, int] = {
-    "success": 0,
-    "unsupported": 0,
-    "unavailable": 0,
-    "noise": 0,
-    "invalid": 0,
-    "failed": 0,
-}
-
-_MIME_TO_EXT: dict[str, str] = {
-    "audio/ogg": ".ogg",
-    "audio/mpeg": ".mp3",
-    "audio/mp4": ".m4a",
-    "audio/wav": ".wav",
-    "audio/webm": ".webm",
-    "audio/flac": ".flac",
-    "audio/opus": ".opus",
-}
 
 
 class Action(enum.Enum):
@@ -167,11 +136,6 @@ class MessagePipeline:
             self._trace("inbound", "rate_limited", action=result.action.value)
             return result
 
-        msg, result = await self._run_stt_stage(msg)
-        if result is not None:
-            self._trace("inbound", "stt", action=result.action.value)
-            return result
-
         binding = self._resolve_binding(msg, key)
         if binding is None:
             self._trace("pool", "no_binding", action=Action.DROP.value)
@@ -214,184 +178,6 @@ class MessagePipeline:
             return await self._dispatch_command(msg, router, pool, key)
 
         return await self._submit_to_pool(msg, pool, key)
-
-    # ------------------------------------------------------------------
-    # T12 — STT reply envelope helper
-    # ------------------------------------------------------------------
-
-    def _build_stt_reply(
-        self, msg: InboundMessage, *, reply: bool = True
-    ) -> InboundMessage:
-        """Construct synthetic reply envelope for STT error dispatch.
-
-        Mirrors the behavior of AudioPipeline._dispatch_audio_reply:
-        copies platform/routing fields from the source voice message, blanks
-        text fields, strips the audio payload, and optionally removes
-        message_id from platform_meta when the reply is informational (echo)
-        rather than a direct reply to the voice message.
-        """
-        meta = dict(msg.platform_meta)
-        if not reply:
-            meta.pop("message_id", None)
-        return dataclasses.replace(
-            msg, text="", text_raw="", audio=None, platform_meta=meta
-        )
-
-    # ------------------------------------------------------------------
-    # T13 — STT pipeline stage
-    # ------------------------------------------------------------------
-
-    async def _run_stt_stage(  # noqa: C901, PLR0915
-        self, msg: InboundMessage
-    ) -> tuple[InboundMessage, PipelineResult | None]:
-        """STT stage — transcribe voice messages inline in the pipeline.
-
-        Returns (msg, None) to continue the pipeline (text mode or successful
-        transcription). Returns (msg, PipelineResult) to stop the pipeline
-        (STT unsupported/unavailable/failed/noise/invalid, or timeout).
-        """
-        # 1. Modality skip — text messages pass through untouched.
-        if msg.modality != "voice":
-            return msg, None
-
-        # 2. Re-entrance guard — voice message already has text (e.g. re-queued).
-        if msg.text != "":
-            return msg, None
-
-        # Narrow _msg_manager for the rest of the stage (always set in Hub.__init__).
-        assert self._hub._msg_manager is not None
-
-        # 3. STT not configured → inform user and drop.
-        if self._hub._stt is None:
-            _unsupported_content = self._hub._msg_manager.get("stt_unsupported")
-            await self._hub.dispatch_response(
-                self._build_stt_reply(msg, reply=False),
-                Response(content=_unsupported_content),
-            )
-            _STT_STAGE_OUTCOMES["unsupported"] += 1
-            return msg, _DROP
-
-        # 4. Transcription block.
-        timeout_s = getattr(self._hub._stt, "timeout_ms", 30000) / 1000.0
-
-        # Write audio bytes to a temp file (blocking I/O via to_thread).
-        assert msg.audio is not None  # guaranteed: modality == "voice"
-        _suffix = _MIME_TO_EXT.get(msg.audio.mime_type, ".ogg")
-
-        def _write_temp(data: bytes, suffix: str) -> str:
-            fd, path = tempfile.mkstemp(suffix=suffix)
-            try:
-                os.write(fd, data)
-            except BaseException:
-                os.close(fd)
-                Path(path).unlink(missing_ok=True)
-                raise
-            os.close(fd)
-            return path
-
-        tmp_path_str = await asyncio.to_thread(
-            _write_temp, msg.audio.audio_bytes, _suffix
-        )
-        tmp_path = Path(tmp_path_str)
-
-        try:
-            result = await asyncio.wait_for(
-                self._hub._stt.transcribe(tmp_path),
-                timeout=timeout_s,
-            )
-        except asyncio.TimeoutError:
-            tmp_path.unlink(missing_ok=True)
-            log.warning("STT transcription timed out for msg id=%s", msg.id)
-            _failed_content = self._hub._msg_manager.get("stt_failed")
-            await self._hub.dispatch_response(
-                self._build_stt_reply(msg, reply=True),
-                Response(content=_failed_content),
-            )
-            _STT_STAGE_OUTCOMES["failed"] += 1
-            return msg, _DROP
-        except Exception as _exc:
-            from lyra.stt import STTUnavailableError
-
-            tmp_path.unlink(missing_ok=True)
-            if isinstance(_exc, STTUnavailableError):
-                log.warning(
-                    "STT adapter unavailable for msg id=%s: %s", msg.id, _exc
-                )
-                _unavail_content = self._hub._msg_manager.get("stt_unavailable")
-                await self._hub.dispatch_response(
-                    self._build_stt_reply(msg, reply=True),
-                    Response(content=_unavail_content),
-                )
-                _STT_STAGE_OUTCOMES["unavailable"] += 1
-                return msg, _DROP
-            log.exception("STT transcription failed for msg id=%s", msg.id)
-            _failed_content = self._hub._msg_manager.get("stt_failed")
-            await self._hub.dispatch_response(
-                self._build_stt_reply(msg, reply=True),
-                Response(content=_failed_content),
-            )
-            _STT_STAGE_OUTCOMES["failed"] += 1
-            return msg, _DROP
-        else:
-            tmp_path.unlink(missing_ok=True)
-
-        # 5. Post-transcription guards.
-        from lyra.stt import is_whisper_noise
-
-        transcript = result.text.strip()
-
-        if is_whisper_noise(transcript):
-            log.info("STT noise for msg id=%s — replied with stt_noise", msg.id)
-            _noise_content = self._hub._msg_manager.get("stt_noise")
-            await self._hub.dispatch_response(
-                self._build_stt_reply(msg, reply=True),
-                Response(content=_noise_content),
-            )
-            _STT_STAGE_OUTCOMES["noise"] += 1
-            return msg, _DROP
-
-        if transcript.startswith("/"):
-            log.warning(
-                "msg id=%s: transcript starts with '/' — slash-command injection guard",
-                msg.id,
-            )
-            _invalid_content = self._hub._msg_manager.get("stt_invalid")
-            await self._hub.dispatch_response(
-                self._build_stt_reply(msg, reply=True),
-                Response(content=_invalid_content),
-            )
-            _STT_STAGE_OUTCOMES["invalid"] += 1
-            return msg, _DROP
-
-        if len(transcript) > MAX_TRANSCRIPT_LEN:
-            log.warning(
-                "msg id=%s: transcript length %d exceeds cap %d — stt_invalid",
-                msg.id,
-                len(transcript),
-                MAX_TRANSCRIPT_LEN,
-            )
-            _invalid_content = self._hub._msg_manager.get("stt_invalid")
-            await self._hub.dispatch_response(
-                self._build_stt_reply(msg, reply=True),
-                Response(content=_invalid_content),
-            )
-            _STT_STAGE_OUTCOMES["invalid"] += 1
-            return msg, _DROP
-
-        # 6. Success — echo transcript and continue pipeline.
-        await self._hub.dispatch_response(
-            self._build_stt_reply(msg, reply=False),
-            Response(content=f"\U0001f3a4 [voice]: {transcript}"),
-        )
-        updated = dataclasses.replace(
-            msg,
-            text=transcript,
-            text_raw=f"\U0001f3a4 [voice]: {transcript}",
-            language=result.language,
-            audio=None,
-        )
-        _STT_STAGE_OUTCOMES["success"] += 1
-        return updated, None
 
     def _validate_platform(
         self,

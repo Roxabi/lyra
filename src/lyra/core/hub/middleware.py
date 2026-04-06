@@ -175,6 +175,7 @@ def build_default_pipeline(
         TrustGuardMiddleware,
         ValidatePlatformMiddleware,
     )
+    from .middleware_stt import SttMiddleware
     from .middleware_submit import SubmitToPoolMiddleware
 
     return MiddlewarePipeline(
@@ -184,6 +185,7 @@ def build_default_pipeline(
             ResolveTrustMiddleware(),
             TrustGuardMiddleware(),
             RateLimitMiddleware(),
+            SttMiddleware(),
             ResolveBindingMiddleware(),
             CreatePoolMiddleware(),
             CommandMiddleware(),

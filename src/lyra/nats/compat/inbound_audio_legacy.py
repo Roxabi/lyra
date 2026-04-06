@@ -20,6 +20,7 @@ from lyra.core.message import (
     InboundAudio,
     InboundMessage,
 )
+from lyra.nats._sanitize import sanitize_platform_meta
 from lyra.nats._serialize import deserialize_dict
 from lyra.nats._version_check import check_schema_version
 
@@ -209,7 +210,7 @@ class InboundAudioLegacyHandler:
             trust_level=legacy.trust_level,
             trust=legacy.trust,
             timestamp=legacy.timestamp,
-            platform_meta=legacy.platform_meta,
+            platform_meta=sanitize_platform_meta(legacy.platform_meta),
             routing=legacy.routing,
             modality="voice",
             audio=audio_payload,

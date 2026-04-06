@@ -1,4 +1,9 @@
-"""Tests for InboundAudioBus: per-platform audio queues."""
+"""Tests for InboundAudioBus: per-platform audio queues.
+
+DEPRECATED: this file covers the Slice 2 deletion target of issue #534.
+Slice 1 keeps InboundAudioBus alive for adapter backward compatibility; Slice 2
+removes both the class and this file.
+"""
 
 from __future__ import annotations
 

@@ -33,8 +33,13 @@ _OUTBOUND_LISTENER_IMPLS: tuple[type[OutboundListener], ...] = (NatsOutboundList
 
 
 def _make_audio() -> InboundAudio:
-    """Minimal InboundAudio fixture for exercising cache_inbound's union type."""
-    return InboundAudio(
+    """Minimal InboundAudio fixture for exercising cache_inbound's union type.
+
+    InboundAudio retained: cache_inbound accepts InboundMessage | InboundAudio
+    (union type).  This test specifically exercises the InboundAudio branch of
+    that union — a Slice 2 deletion target (issue #534).
+    """
+    return InboundAudio(  # InboundAudio retained: tests Slice-2 deletion target
         id="audio-1",
         platform="telegram",
         bot_id="main",

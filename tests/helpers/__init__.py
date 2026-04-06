@@ -1,7 +1,7 @@
-"""Shared test helpers (issue #363).
+"""Shared test helpers package.
 
-Utilities reused across multiple test modules.  Keep this module free of
-pytest fixtures — plain functions only so it can be imported anywhere.
+Re-exports plain utility functions from individual modules. Kept free of
+pytest fixtures — plain functions only so they can be imported anywhere.
 """
 
 from __future__ import annotations
@@ -30,3 +30,8 @@ def reload_processors() -> None:
     importlib.reload(lyra.core.processors.summarize)
     importlib.reload(lyra.core.processors.vault_add)
     importlib.reload(lyra.core.processors)
+
+
+from tests.helpers.messages import make_text_message, make_voice_message  # noqa: E402
+
+__all__ = ["reload_processors", "make_text_message", "make_voice_message"]

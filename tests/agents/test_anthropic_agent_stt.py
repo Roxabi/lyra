@@ -238,27 +238,6 @@ class TestAnthropicAgentAudioBranch:
         with pytest.raises(RuntimeError, match="transcription failed"):
             await process(agent, msg, pool)
 
-    async def test_audio_no_stt(self) -> None:
-        """AUDIO with stt=None: unsupported reply returned."""
-        # Arrange
-        from lyra.agents.anthropic_agent import AnthropicAgent
-
-        provider = make_mock_provider()
-        agent = AnthropicAgent(make_config(), provider, stt=None)
-
-        with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
-            tmp_path = f.name
-
-        msg = make_audio_message(tmp_path)
-        pool = make_pool()
-
-        # Act
-        response = await process(agent, msg, pool)
-
-        # Assert
-        assert "not supported" in response.content.lower()
-        provider.complete.assert_not_called()
-
     async def test_audio_tmp_file_deleted_on_success(self) -> None:
         """Temp file is unlinked after a successful transcription + LLM call."""
         # Arrange
@@ -300,27 +279,6 @@ class TestAnthropicAgentAudioBranch:
         # Act — exception propagates but file must still be deleted
         with pytest.raises(RuntimeError):
             await process(agent, msg, pool)
-
-        # Assert
-        assert not Path(tmp_path).exists()
-
-    async def test_audio_tmp_file_deleted_no_stt(self) -> None:
-        """Temp file is unlinked even when stt=None (unsupported path)."""
-        # Arrange
-        from lyra.agents.anthropic_agent import AnthropicAgent
-
-        provider = make_mock_provider()
-        agent = AnthropicAgent(make_config(), provider, stt=None)
-
-        with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
-            tmp_path = f.name
-
-        assert Path(tmp_path).exists()
-        msg = make_audio_message(tmp_path)
-        pool = make_pool()
-
-        # Act
-        await process(agent, msg, pool)
 
         # Assert
         assert not Path(tmp_path).exists()

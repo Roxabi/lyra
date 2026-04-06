@@ -124,22 +124,11 @@ class NatsBus(Generic[T]):
     def register(  # noqa: ARG002
         self, platform: Platform, maxsize: int = 100, bot_id: str | None = None
     ) -> None:
-        """Record *(platform, bot_id)* for subscription setup.
-
-        ``maxsize`` is Protocol-compat only (unused). ``bot_id`` defaults to
-        the constructor's ``bot_id`` when omitted.
-
-        Raises:
-            RuntimeError: If called after ``start()``.
-        """
+        """Record *(platform, bot_id)* for subscription setup (idempotent)."""
         if self._started:
-            raise RuntimeError(
-                f"Cannot register platform {platform!r} after start()."
-            )
+            raise RuntimeError(f"Cannot register {platform!r} after start().")
         resolved_bid = bot_id or self._bot_id
         validate_nats_token(resolved_bid, kind="bot_id")
-        if (platform, resolved_bid) in self._registrations:
-            return  # Already registered — idempotent
         self._registrations.add((platform, resolved_bid))
 
     # ------------------------------------------------------------------
@@ -222,6 +211,13 @@ class NatsBus(Generic[T]):
     def staging_qsize(self) -> int:
         """Return the number of items currently waiting in the staging queue."""
         return self._staging.qsize()
+
+    def inject(self, item: T) -> None:
+        """Public injection API for compat shims (bypasses NATS deserialize)."""
+        try:
+            self._staging.put_nowait(item)
+        except asyncio.QueueFull:
+            log.warning("inject: staging queue full — item dropped")
 
     def registered_platforms(self) -> frozenset[Platform]:
         """Return the set of currently registered platforms."""

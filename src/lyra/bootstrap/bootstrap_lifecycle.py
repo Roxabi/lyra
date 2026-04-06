@@ -17,6 +17,7 @@ from lyra.bootstrap.lifecycle_helpers import (
 from lyra.core.cli_pool import CliPool
 from lyra.core.hub import Hub
 from lyra.core.stores.pairing import PairingManager
+from lyra.nats.compat import InboundAudioLegacyHandler
 from lyra.nats.nats_channel_proxy import NatsChannelProxy
 
 log = logging.getLogger(__name__)
@@ -32,10 +33,12 @@ async def run_lifecycle(  # noqa: PLR0913, C901 — lifecycle orchestration
     cli_pool: CliPool | None,
     _stop: asyncio.Event | None,
     proxies: list[NatsChannelProxy] | None = None,
+    legacy_audio_handler: InboundAudioLegacyHandler | None = None,
 ) -> None:
     """Start all buses/dispatchers/adapters, wait for stop, then tear down."""
     await hub.inbound_bus.start()
-    await hub.inbound_audio_bus.start()
+    if legacy_audio_handler is not None:
+        await legacy_audio_handler.start()
     for d in tg_dispatchers:
         await d.start()
     for d in dc_dispatchers:
@@ -56,7 +59,6 @@ async def run_lifecycle(  # noqa: PLR0913, C901 — lifecycle orchestration
 
     tasks = [
         asyncio.create_task(hub.run(), name="hub"),
-        asyncio.create_task(hub._audio_pipeline.run(), name="hub-audio"),
         asyncio.create_task(health_server.serve(), name="health"),
     ]
 
@@ -97,7 +99,7 @@ async def run_lifecycle(  # noqa: PLR0913, C901 — lifecycle orchestration
     for task in tasks:
         task.cancel()
     await asyncio.gather(*tasks, return_exceptions=True)
-    await teardown_buses(hub.inbound_bus, hub.inbound_audio_bus)
+    await teardown_buses(hub.inbound_bus)
     await teardown_dispatchers(tg_dispatchers + dc_dispatchers)
     # proxies is only populated in three-process hub_standalone mode; unified mode
     # runs adapters in-process (platform SDKs) and does not use NatsChannelProxy.

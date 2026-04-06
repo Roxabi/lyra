@@ -90,16 +90,10 @@ class Hub(HubOutboundMixin):
         max_merged_chars: int = MAX_MERGED_CHARS,
         event_bus: "PipelineEventBus | None" = None,
         inbound_bus: "Bus[InboundMessage] | None" = None,
-        inbound_audio_bus: "Bus[InboundAudio] | None" = None,
     ) -> None:
         self._platform_queue_maxsize = platform_queue_maxsize
         self.inbound_bus: Bus[InboundMessage] = inbound_bus or LocalBus(
             name="inbound",
-            staging_maxsize=staging_maxsize,
-            queue_depth_threshold=queue_depth_threshold,
-        )
-        self.inbound_audio_bus: Bus[InboundAudio] = inbound_audio_bus or LocalBus(
-            name="inbound-audio",
             staging_maxsize=staging_maxsize,
             queue_depth_threshold=queue_depth_threshold,
         )
@@ -182,9 +176,6 @@ class Hub(HubOutboundMixin):
     ) -> None:
         self.adapter_registry[(platform, bot_id)] = adapter
         self.inbound_bus.register(
-            platform, maxsize=self._platform_queue_maxsize, bot_id=bot_id
-        )
-        self.inbound_audio_bus.register(
             platform, maxsize=self._platform_queue_maxsize, bot_id=bot_id
         )
 

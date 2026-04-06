@@ -250,6 +250,8 @@ def _make_inbound_message() -> InboundMessage:
 
 
 def _make_inbound_audio() -> InboundAudio:
+    # InboundAudio retained: tests the serialize/deserialize roundtrip for the
+    # legacy envelope — Slice-2 deletion target (issue #534).
     return InboundAudio(
         id="audio-legacy",
         platform="telegram",

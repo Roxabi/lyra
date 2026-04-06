@@ -203,19 +203,12 @@ class SimpleAgent(AgentBase):
         # Handle audio messages — attachments with type="audio"
         audio_attachment = next((a for a in msg.attachments if a.type == "audio"), None)
         if audio_attachment is not None:
+            # Post-#534 Slice 1: STT-None case is filtered at the pipeline stage
+            # (MessagePipeline._run_stt_stage) before agents are invoked. By the
+            # time we reach this branch, self._stt is guaranteed non-None.
+            assert self._stt is not None
             tmp_path = Path(str(audio_attachment.url_or_path_or_bytes))
             try:
-                if self._stt is None:
-                    return Response(
-                        content=(
-                            self._msg_manager.get("stt_unsupported")
-                            if self._msg_manager
-                            else (
-                                "Voice messages are not supported"
-                                " — STT is not configured."
-                            )
-                        )
-                    )
                 stt_result = await self._stt.transcribe(tmp_path)
             except Exception:
                 log.exception("STT transcription failed in SimpleAgent")

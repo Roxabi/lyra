@@ -758,7 +758,12 @@ def make_audio(
     trust_level: TrustLevel = TrustLevel.TRUSTED,
     user_id: str = "alice",
 ) -> InboundAudio:
-    """Build a minimal InboundAudio for audio pipeline tests."""
+    """Build a minimal InboundAudio for audio pipeline tests.
+
+    InboundAudio retained: feeds inbound_audio_bus.put() which still expects
+    InboundAudio in Slice 1.  Slice 2 (issue #534) deletes the AudioPipeline
+    consumer loop and this helper along with it.
+    """
     from datetime import datetime, timezone
 
     return InboundAudio(

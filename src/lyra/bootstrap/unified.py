@@ -38,10 +38,11 @@ from lyra.core.agent_loader import agent_row_to_config
 from lyra.core.cli_pool import CliPool
 from lyra.core.hub import Hub
 from lyra.core.hub.event_bus import PipelineEventBus
-from lyra.core.message import InboundAudio, InboundMessage
+from lyra.core.message import InboundMessage
 from lyra.core.stores.pairing import PairingManager, set_pairing_manager
+from lyra.nats.compat import InboundAudioLegacyHandler
 from lyra.nats.nats_bus import NatsBus
-from lyra.nats.queue_groups import HUB_INBOUND, HUB_INBOUND_AUDIO
+from lyra.nats.queue_groups import HUB_INBOUND
 
 log = logging.getLogger(__name__)
 
@@ -63,12 +64,9 @@ async def _bootstrap_unified(  # noqa: C901, PLR0915
             staging_maxsize=inbound_bus_cfg.staging_maxsize,
             queue_group=HUB_INBOUND,
         )
-        inbound_audio_bus: NatsBus[InboundAudio] = NatsBus(
-            nc=nc,
-            bot_id="hub",
-            item_type=InboundAudio,
-            subject_prefix="lyra.inbound.audio",
-            queue_group=HUB_INBOUND_AUDIO,
+        # Compat shim for legacy lyra.inbound.audio.* (Slice 1 only, #534).
+        legacy_audio_handler = InboundAudioLegacyHandler(
+            inbound_bus=inbound_bus, nats_client=nc,
         )
 
         vault_dir = Path(
@@ -211,7 +209,6 @@ async def _bootstrap_unified(  # noqa: C901, PLR0915
                 max_merged_chars=debouncer_cfg.max_merged_chars,
                 event_bus=event_bus,
                 inbound_bus=inbound_bus,
-                inbound_audio_bus=inbound_audio_bus,
             )
             hub.set_turn_store(stores.turn)
             hub.set_message_index(stores.message_index)
@@ -264,6 +261,7 @@ async def _bootstrap_unified(  # noqa: C901, PLR0915
                 stores.cred,
                 circuit_registry,
                 msg_manager,
+                nats_client=nc,
             )
             dc_adapters, dc_dispatchers = await wire_discord_adapters(
                 hub,
@@ -274,6 +272,7 @@ async def _bootstrap_unified(  # noqa: C901, PLR0915
                 msg_manager,
                 agent_store=stores.agent,
                 vault_dir=str(vault_dir),
+                nats_client=nc,
             )
 
             await run_lifecycle(
@@ -285,6 +284,7 @@ async def _bootstrap_unified(  # noqa: C901, PLR0915
                 pm,
                 cli_pool,
                 _stop,
+                legacy_audio_handler=legacy_audio_handler,
             )
 
     finally:

@@ -6,6 +6,7 @@ import logging
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 from lyra.adapters.discord import DiscordAdapter
 from lyra.adapters.telegram import TelegramAdapter
@@ -18,7 +19,7 @@ from lyra.config import (
 from lyra.core.authenticator import Authenticator
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.hub import Hub, OutboundDispatcher, RoutingKey
-from lyra.core.message import Platform
+from lyra.core.message import InboundAudio, Platform
 from lyra.core.messages import MessageManager
 from lyra.core.stores.agent_store import AgentStore
 from lyra.core.stores.auth_store import AuthStore
@@ -26,6 +27,8 @@ from lyra.core.stores.credential_store import CredentialStore
 from lyra.core.stores.identity_alias_store import IdentityAliasStore
 from lyra.core.stores.thread_store import ThreadStore
 from lyra.errors import MissingCredentialsError
+from lyra.nats.nats_bus import NatsBus
+from lyra.nats.queue_groups import HUB_INBOUND_AUDIO
 
 # Default vault dir for discord.db (#417 / S4)
 _DEFAULT_VAULT_DIR = os.path.expanduser("~/.lyra")
@@ -40,6 +43,7 @@ async def wire_telegram_adapters(  # noqa: PLR0913 — wiring requires all deps
     cred_store: CredentialStore,
     circuit_registry: CircuitRegistry,
     msg_manager: MessageManager,
+    nats_client: Any = None,
 ) -> tuple[list[TelegramAdapter], list[OutboundDispatcher]]:
     """Wire each Telegram bot: adapter + dispatcher + hub bindings.
 
@@ -62,11 +66,19 @@ async def wire_telegram_adapters(  # noqa: PLR0913 — wiring requires all deps
             raise MissingCredentialsError("telegram", bot_cfg.bot_id)
         tg_token, tg_webhook_secret = tg_creds
 
+        # Slice 1: adapter publishes legacy lyra.inbound.audio.* (removed Slice 2 #534).
+        tg_audio_bus: NatsBus[InboundAudio] = NatsBus(
+            nc=nats_client,
+            bot_id=bot_cfg.bot_id,
+            item_type=InboundAudio,
+            subject_prefix="lyra.inbound.audio",
+            queue_group=HUB_INBOUND_AUDIO,
+        )
         adapter = TelegramAdapter(
             bot_id=bot_cfg.bot_id,
             token=tg_token,
             inbound_bus=hub.inbound_bus,
-            inbound_audio_bus=hub.inbound_audio_bus,
+            inbound_audio_bus=tg_audio_bus,
             webhook_secret=tg_webhook_secret or "",
             circuit_registry=circuit_registry,
             msg_manager=msg_manager,
@@ -114,6 +126,7 @@ async def wire_discord_adapters(  # noqa: PLR0913, C901 — wiring requires all 
     msg_manager: MessageManager,
     agent_store: AgentStore | None = None,
     vault_dir: str | None = None,
+    nats_client: Any = None,
 ) -> tuple[
     list[tuple[DiscordAdapter, DiscordBotConfig, str]],
     list[OutboundDispatcher],
@@ -171,10 +184,18 @@ async def wire_discord_adapters(  # noqa: PLR0913, C901 — wiring requires all 
 
                 watch_channels = _parse_channel_ids("watch_channels")
 
+            # Slice 1: adapter still publishes on legacy lyra.inbound.audio.* subject.
+            dc_audio_bus: NatsBus[InboundAudio] = NatsBus(
+                nc=nats_client,
+                bot_id=bot_cfg.bot_id,
+                item_type=InboundAudio,
+                subject_prefix="lyra.inbound.audio",
+                queue_group=HUB_INBOUND_AUDIO,
+            )
             adapter = DiscordAdapter(
                 bot_id=bot_cfg.bot_id,
                 inbound_bus=hub.inbound_bus,
-                inbound_audio_bus=hub.inbound_audio_bus,
+                inbound_audio_bus=dc_audio_bus,
                 circuit_registry=circuit_registry,
                 msg_manager=msg_manager,
                 auto_thread=bot_cfg.auto_thread,

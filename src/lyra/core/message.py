@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Literal
 
+from lyra.core.audio_payload import AudioPayload
 from lyra.core.trust import TrustLevel
 
 if TYPE_CHECKING:
@@ -103,6 +104,9 @@ class InboundMessage:
     # Set to True by processors that have already enriched text with trusted context.
     # Agents use this flag to decide whether to wrap plain text in <user_message> tags.
     processor_enriched: bool = False
+    # Audio payload — populated when modality == "voice" (#534).
+    # Stripped to None by the STT pipeline stage after successful transcription.
+    audio: AudioPayload | None = None
 
 
 @dataclass(frozen=True)

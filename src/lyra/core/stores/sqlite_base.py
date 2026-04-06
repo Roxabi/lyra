@@ -75,9 +75,10 @@ class SqliteStore:
     async def _checkpoint(self) -> None:
         """Run ``PRAGMA wal_checkpoint(TRUNCATE)`` and log the result.
 
-        Best-effort — logs and returns silently on ``OperationalError`` (e.g.
-        active transaction on the connection, or concurrent readers blocking
-        the truncation).  The WAL will be checkpointed on the next opportunity.
+        Best-effort — logs and returns silently on ``OperationalError`` or
+        ``ProgrammingError`` (e.g. active transaction, concurrent readers, or
+        connection closed during shutdown).  The WAL will be checkpointed on
+        the next opportunity.
         """
         db = self._db
         if db is None:

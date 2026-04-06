@@ -85,7 +85,7 @@ class SqliteStore:
         try:
             async with db.execute("PRAGMA wal_checkpoint(TRUNCATE)") as cur:
                 row = await cur.fetchone()
-        except sqlite3.OperationalError as exc:
+        except (sqlite3.OperationalError, sqlite3.ProgrammingError) as exc:
             log.debug("WAL checkpoint skipped (db=%s): %s", self._db_path, exc)
             return
         if row is not None:

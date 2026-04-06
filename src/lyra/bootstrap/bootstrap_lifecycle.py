@@ -112,4 +112,5 @@ async def run_lifecycle(  # noqa: PLR0913, C901 — lifecycle orchestration
         if active_ids:
             await hub.notify_shutdown_inflight(active_ids)
         await cli_pool.stop()
+    await hub.shutdown()
     log.info("Lyra stopped.")

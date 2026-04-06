@@ -86,11 +86,17 @@ class SttAdapterStandalone(NatsAdapterBase):
         await self.reply(msg, json.dumps(response, ensure_ascii=False).encode("utf-8"))
 
 
-async def _bootstrap_stt_adapter_standalone(  # noqa: PLR0915 — startup wiring
+async def _bootstrap_stt_adapter_standalone(
     raw_config: dict,
     *,
     _stop: asyncio.Event | None = None,
 ) -> None:
+    """Bootstrap a standalone STT adapter process connected to NATS.
+
+    Args:
+        raw_config: Parsed config dict (lyra config.toml content).
+        _stop: Optional event for graceful shutdown (tests inject this).
+    """
     nats_url = os.environ.get("NATS_URL")
     if not nats_url:
         sys.exit("NATS_URL required for standalone STT adapter")

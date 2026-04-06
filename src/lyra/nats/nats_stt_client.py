@@ -16,6 +16,24 @@ from lyra.stt import STTUnavailableError, TranscriptionResult
 
 log = logging.getLogger(__name__)
 
+_STT_TIMEOUT_DEFAULT = 15.0
+
+
+def _parse_stt_timeout(timeout: float | None) -> float:
+    """Resolve STT timeout: explicit arg > LYRA_STT_TIMEOUT env var > 15s default."""
+    if timeout is not None:
+        return timeout
+    raw = os.environ.get("LYRA_STT_TIMEOUT", str(_STT_TIMEOUT_DEFAULT))
+    try:
+        return float(raw)
+    except ValueError:
+        log.warning(
+            "LYRA_STT_TIMEOUT=%r is not a valid float; using %.0fs",
+            raw,
+            _STT_TIMEOUT_DEFAULT,
+        )
+        return _STT_TIMEOUT_DEFAULT
+
 
 class NatsSttClient:
     SUBJECT = "lyra.voice.stt.request"
@@ -31,8 +49,7 @@ class NatsSttClient:
         language_fallback: str | None = None,
     ) -> None:
         self._nc = nc
-        env_val = os.environ.get("LYRA_STT_TIMEOUT", "15")
-        self._timeout = timeout if timeout is not None else float(env_val)
+        self._timeout = _parse_stt_timeout(timeout)
         self._model = model
         self._detection_threshold = language_detection_threshold
         self._detection_segments = language_detection_segments

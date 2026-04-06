@@ -571,7 +571,8 @@ class TestRun:
         # We need to control the stop event so run() exits cleanly.
         # Capture the event that run() creates internally by intercepting
         # add_signal_handler — on the second call, set the event so run() exits.
-        captured_setters: list[object] = []
+        from typing import Any
+        captured_setters: list[Any] = []
 
         mock_loop = MagicMock()
 
@@ -601,8 +602,9 @@ class TestRun:
 
         # Assert — add_signal_handler called twice: once for SIGTERM, once for SIGINT
         assert mock_loop.add_signal_handler.call_count == 2
-        calls = mock_loop.add_signal_handler.call_args_list
-        registered_sigs = {args[0] for args, _ in calls}
+        registered_sigs = {
+            c.args[0] for c in mock_loop.add_signal_handler.call_args_list
+        }
         assert signal.SIGTERM in registered_sigs
         assert signal.SIGINT in registered_sigs
 

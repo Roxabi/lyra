@@ -25,4 +25,10 @@ from .nats_bus import NatsBus
 from .nats_channel_proxy import NatsChannelProxy
 from .render_event_codec import NatsRenderEventCodec
 
-__all__ = ["NatsAdapterBase", "NatsBus", "NatsChannelProxy", "NatsRenderEventCodec", "nats_connect"]
+__all__ = [
+    "NatsAdapterBase",
+    "NatsBus",
+    "NatsChannelProxy",
+    "NatsRenderEventCodec",
+    "nats_connect",
+]

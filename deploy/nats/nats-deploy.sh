@@ -9,7 +9,7 @@
 #   1. Force-installs deploy/nats/nats.conf → /etc/nats/nats.conf
 #      (replaces any existing file, including the old nats-local.conf content)
 #   2. Runs gen-nkeys.sh to generate /etc/nats/nkeys/auth.conf if not present
-#   3. Reloads/restarts nats.service to apply the new config
+#   3. Restarts nats.service to apply the new config (NATS does not support live reload)
 #
 # Safe to re-run — gen-nkeys.sh is idempotent (skips if auth.conf exists).
 # To rotate keys: delete /etc/nats/nkeys/ then re-run.
@@ -24,7 +24,7 @@ section() { echo -e "\n${GREEN}=== $1 ===${NC}"; }
 
 [ "$(id -u)" -eq 0 ] || error "Must be run as root (sudo ./deploy/nats/nats-deploy.sh)"
 
-LYRA_DIR=$(cd "$(dirname "$0")/../.." && pwd)
+LYRA_DIR=$(cd "$(dirname "$(readlink -f "$0")")/../.." && pwd)
 NATS_CONF_SRC="${LYRA_DIR}/deploy/nats/nats.conf"
 NATS_CONF_DST="/etc/nats/nats.conf"
 NKEYS_AUTH="/etc/nats/nkeys/auth.conf"
@@ -64,25 +64,30 @@ else
   bash "${LYRA_DIR}/deploy/nats/gen-nkeys.sh"
 fi
 
+# Gate: abort if auth.conf is still missing — nats.conf includes it; NATS won't start without it
+[ -f "${NKEYS_AUTH}" ] || error "Key generation failed — auth.conf missing, aborting before service restart"
+
 # ── 3. Restart NATS ────────────────────────────────────────────────────────
+#
+# NATS does not support live config reload via SIGHUP (SIGHUP triggers graceful shutdown,
+# not a config re-read). Always do a full restart to apply the new config.
 
 section "NATS service"
 
-if ! systemctl is-active --quiet nats.service; then
+if systemctl is-active --quiet nats.service; then
+  systemctl restart nats.service
+  info "nats.service restarted."
+else
   warn "nats.service is not running — starting..."
   systemctl start nats.service
   info "nats.service started."
-else
-  # Reload first (SIGHUP for config-only changes); fall back to restart if needed
-  if systemctl reload nats.service 2>/dev/null; then
-    info "nats.service reloaded (SIGHUP)."
-  else
-    systemctl restart nats.service
-    info "nats.service restarted."
-  fi
 fi
 
-sleep 1
+# Wait for NATS to accept connections (port 4222, max 5s)
+for i in $(seq 10); do
+  nc -z 127.0.0.1 4222 2>/dev/null && break
+  sleep 0.5
+done
 systemctl is-active --quiet nats.service \
   && info "nats.service is running." \
   || error "nats.service failed to start — check: journalctl -u nats.service -n 50"
@@ -92,13 +97,14 @@ systemctl is-active --quiet nats.service \
 section "Verification"
 
 if command -v nats &>/dev/null; then
-  # Unauthenticated connection should now be REJECTED
-  if nats pub --server nats://127.0.0.1:4222 test.ping "" 2>&1 | grep -qiE "authoriz|permission|auth"; then
+  # Unauthenticated connection should now be REJECTED.
+  # Assert both: non-zero exit AND an auth error in the output.
+  rc=0
+  output=$(nats pub --server nats://127.0.0.1:4222 test.ping "" 2>&1) || rc=$?
+  if [ "$rc" -ne 0 ] && echo "$output" | grep -qiE "authoriz|permission|auth"; then
     info "Unauthenticated connections are rejected. nkey enforcement is ACTIVE."
   else
-    warn "Could not confirm rejection of unauthenticated connections."
-    warn "Run manually: nats pub --server nats://127.0.0.1:4222 test.ping ''"
-    warn "Expected: Authorization Violation"
+    error "nkey enforcement NOT confirmed — unauthenticated publish did not return an auth error (rc=$rc). Check: journalctl -u nats.service -n 20"
   fi
 else
   warn "nats CLI not installed — skipping connectivity check."

@@ -146,9 +146,10 @@ remote:
 nats-install:
 	@bash deploy/nats/install.sh
 
-nats-deploy: _check-deploy-env
+nats-deploy:
+	$(require_machine1)
 	@echo "Deploying NATS nkey enforcement to $(DEPLOY_HOST)..."
-	@ssh $(DEPLOY_HOST) "cd $(DEPLOY_DIR) && sudo bash deploy/nats/nats-deploy.sh"
+	@ssh $(DEPLOY_HOST) "cd $(DEPLOY_DIR) && sudo ./deploy/nats/nats-deploy.sh"
 
 test:
 	uv run pytest -v

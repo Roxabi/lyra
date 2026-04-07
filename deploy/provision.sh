@@ -289,6 +289,6 @@ else
   echo ""
   echo "  Recommended — NATS setup for multi-machine production (embedded nats-server covers dev/single-machine use):"
   echo ""
-  echo "     cd ~/projects/lyra && make nats-install"
+  echo "     cd ~/projects/lyra && make nats-setup"
   echo ""
 fi

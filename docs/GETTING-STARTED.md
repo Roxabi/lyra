@@ -261,28 +261,24 @@ Follow the prompts to authenticate. Lyra uses Claude Code as its LLM backend —
 
 For **single-machine development**, no NATS setup is required. `lyra start` auto-starts an embedded nats-server when `NATS_URL` is not set in `.env`.
 
-For **multi-machine production** (hub and adapters on separate machines), install and configure a standalone NATS server:
+For **multi-machine production** (hub and adapters as separate processes — the default on Machine 1):
 
 ```bash
 cd ~/projects/lyra
 
-# Install NATS binary, system user, systemd unit + firewall rule (needs sudo)
-make nats-install
+# One command — installs binary, system user, nats.conf, TLS certs, nkeys, starts service, verifies auth
+make nats-setup
 
-# Single-machine: install the simple localhost config (no TLS, no auth)
-sudo install -m 644 deploy/nats/nats-local.conf /etc/nats/nats.conf
-
-# Start + verify
-sudo systemctl start nats.service
-sudo systemctl status nats.service
-
-# Add NATS_URL to lyra's .env (tells lyra hub and lyra adapter to use this server)
+# Then add to lyra's .env:
 echo "NATS_URL=nats://127.0.0.1:4222" >> ~/projects/lyra/.env
+echo "NATS_NKEY_SEED_PATH=/etc/nats/nkeys/hub.seed" >> ~/projects/lyra/.env
 ```
 
-> **Multi-machine (Hub on Machine 2):** Use `deploy/nats/nats.conf` instead (TLS + nkeys).
-> Generate credentials with `sudo deploy/nats/gen-certs.sh` and `sudo deploy/nats/gen-nkeys.sh`,
-> then add nkey auth to `.env`. Use `lyra hub` and `lyra adapter` as separate processes instead of `lyra start`.
+`make nats-setup` is idempotent — safe to re-run after upgrades or re-provisioning. It always
+re-applies nkey permissions, so permission drift (e.g. from re-provisioning) is self-correcting.
+
+> **Key rotation:** `sudo rm -rf /etc/nats/nkeys && make nats-setup`
+> **Manual permission fix only:** `sudo deploy/nats/gen-nkeys.sh --fix-perms`
 
 ---
 

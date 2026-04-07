@@ -6,6 +6,7 @@
 # Auth config: /etc/nats/nkeys/auth.conf  (included by /etc/nats/nats.conf)
 #
 # Usage: sudo ./deploy/nats/gen-nkeys.sh
+#        sudo ./deploy/nats/gen-nkeys.sh --fix-perms   # re-apply permissions without regenerating
 #
 # Idempotent — skips if auth.conf already exists. Delete /etc/nats/nkeys/ to regenerate.
 # To print existing public keys without regenerating: --show
@@ -21,10 +22,12 @@ warn()  { echo -e "${YELLOW}[!]${NC} $1" >&2; }
 error() { echo -e "${RED}[x]${NC} $1" >&2; exit 1; }
 
 SHOW_ONLY=false
+FIX_PERMS=false
 LYRA_USER="${SUDO_USER:-mickael}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --show) SHOW_ONLY=true; shift ;;
+    --fix-perms) FIX_PERMS=true; shift ;;
     *) error "Unknown option: $1" ;;
   esac
 done
@@ -39,8 +42,36 @@ if [ "${SHOW_ONLY}" = true ]; then
   exit 0
 fi
 
+# ── fix-perms mode: re-apply permissions without regenerating ──────────────
+apply_permissions() {
+  chown root:root "${NKEYS_DIR}"
+  chmod 0750 "${NKEYS_DIR}"
+  chgrp "${LYRA_USER}" "${NKEYS_DIR}"
+  for seed in hub llm-worker monitor; do
+    [ -f "${NKEYS_DIR}/${seed}.seed" ] && chmod 0600 "${NKEYS_DIR}/${seed}.seed"
+  done
+  for seed in tts-adapter stt-adapter; do
+    if [ -f "${NKEYS_DIR}/${seed}.seed" ]; then
+      chgrp "${LYRA_USER}" "${NKEYS_DIR}/${seed}.seed"
+      chmod 0640 "${NKEYS_DIR}/${seed}.seed"
+    fi
+  done
+  if [ -f "${NKEYS_DIR}/auth.conf" ]; then
+    chmod 0640 "${NKEYS_DIR}/auth.conf"
+    chown root:nats "${NKEYS_DIR}/auth.conf"
+  fi
+  info "Permissions applied for LYRA_USER=${LYRA_USER}"
+}
+
+if [ "${FIX_PERMS}" = true ]; then
+  [ -d "${NKEYS_DIR}" ] || error "${NKEYS_DIR} does not exist — run without --fix-perms first"
+  apply_permissions
+  exit 0
+fi
+
 if [ -f "${NKEYS_DIR}/auth.conf" ]; then
   warn "auth.conf already exists — skipping. Delete ${NKEYS_DIR}/ to regenerate."
+  warn "To re-apply permissions only: sudo ./deploy/nats/gen-nkeys.sh --fix-perms"
   exit 0
 fi
 
@@ -93,9 +124,7 @@ NK_BIN=$(ensure_nk)
 # ── create directories ─────────────────────────────────────────────────────
 
 mkdir -p "${NKEYS_DIR}"
-chown root:root "${NKEYS_DIR}"
-chmod 0750 "${NKEYS_DIR}"
-chgrp "${LYRA_USER}" "${NKEYS_DIR}"
+apply_permissions
 
 # ── generate nkey pairs ────────────────────────────────────────────────────
 

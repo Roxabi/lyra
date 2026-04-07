@@ -91,8 +91,24 @@ fi
 
 if [ -f "$HOME/projects/lyra/deploy/supervisor/supervisord.pid" ] && kill -0 "$(cat "$HOME/projects/lyra/deploy/supervisor/supervisord.pid")" 2>/dev/null; then
     if [ "$LYRA_UPDATED" = true ]; then
-        log "Restarting Lyra (hub + adapters)..."
+        log "Restarting Lyra (hub first, then adapters)..."
         "$SCTL" restart lyra_hub 2>&1 | tee -a "$LOG_FILE"
+        log "Waiting for lyra_hub to reach RUNNING..."
+        HUB_READY=false
+        for i in $(seq 1 12); do
+            sleep 3
+            HUB_STATE=$("$SCTL" status lyra_hub 2>&1 | grep -oE 'RUNNING|STARTING|FATAL|STOPPED|EXITED|BACKOFF' | head -1 || true)
+            if [ "$HUB_STATE" = "RUNNING" ]; then
+                log "lyra_hub is RUNNING — starting adapters"
+                HUB_READY=true
+                break
+            fi
+            log "lyra_hub state: ${HUB_STATE:-unknown} (attempt $i/12)"
+        done
+        if [ "$HUB_READY" = false ]; then
+            log "ERROR: lyra_hub did not reach RUNNING after 36s — aborting adapter restart"
+            exit 1
+        fi
         "$SCTL" restart lyra_telegram lyra_discord 2>&1 | tee -a "$LOG_FILE"
     fi
 

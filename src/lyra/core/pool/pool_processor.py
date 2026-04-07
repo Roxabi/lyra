@@ -46,6 +46,12 @@ class PoolProcessor:
                     break
                 buffer = await pool._debouncer.collect(pool._inbox)
 
+                # Fire any pending reply-to session resume before processing
+                if pool._pending_session_id is not None:
+                    _pending = pool._pending_session_id
+                    pool._pending_session_id = None
+                    await pool.resume_session(_pending)
+
                 agent = pool._ctx.get_agent(pool.agent_name)
                 if agent is None:
                     log.error(

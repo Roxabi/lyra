@@ -144,8 +144,9 @@ class SubmitToPoolMiddleware:
             session_id = await hub._message_index.resolve(pool_id, str(msg.reply_to_id))
             if session_id is not None:
                 if not pool.is_idle:
+                    pool._pending_session_id = session_id  # was: log + skip
                     log.info(
-                        "reply-to-resume: pool %r busy — skipping resume of session %r",
+                        "reply-to-resume: pool %r busy — queued session %r",
                         pool_id,
                         session_id,
                     )

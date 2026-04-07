@@ -84,6 +84,11 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
             finally:
                 await cred_store.close()
 
+            from lyra.core.stores.turn_store import TurnStore as TurnStore
+
+            tg_turn_store = TurnStore(db_path=vault_dir / "turns.db")
+            await tg_turn_store.connect()
+
             wired: list[tuple] = []  # (TelegramAdapter, Bus)
 
             for bot_cfg in tg_multi_cfg.bots:
@@ -103,6 +108,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
                     token=token,
                     inbound_bus=inbound_bus,
                     webhook_secret=webhook_secret or "",
+                    turn_store=tg_turn_store,
                 )
                 await adapter.resolve_identity()
 
@@ -145,6 +151,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
                 for a, ibus in wired:
                     await a.close()
                     await ibus.stop()
+                await tg_turn_store.close()
 
         elif platform == "discord":
             from lyra.adapters.discord import DiscordAdapter
@@ -209,6 +216,11 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
             dc_thread_store = ThreadStore(db_path=vault_dir / "discord.db")
             await dc_thread_store.connect()
 
+            from lyra.core.stores.turn_store import TurnStore
+
+            dc_turn_store = TurnStore(db_path=vault_dir / "turns.db")
+            await dc_turn_store.connect()
+
             wired_dc: list[tuple] = []  # (DiscordAdapter, str, Bus)
 
             for bot_cfg in dc_multi_cfg.bots:
@@ -230,6 +242,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
                     thread_hot_hours=bot_cfg.thread_hot_hours,
                     thread_store=dc_thread_store,
                     watch_channels=dc_bot_watch_channels.get(bot_id, frozenset()),
+                    turn_store=dc_turn_store,
                 )
 
                 listener_dc = NatsOutboundListener(
@@ -270,6 +283,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
             finally:
                 for _, _, ibus in wired_dc:
                     await ibus.stop()
+                await dc_turn_store.close()
 
         else:
             sys.exit(f"Unknown platform: {platform!r}")

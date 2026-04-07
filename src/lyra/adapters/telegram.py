@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from lyra.adapters._shared_streaming import PlatformCallbacks
     from lyra.adapters.outbound_listener import OutboundListener
     from lyra.core.bus import Bus
+    from lyra.core.stores.turn_store import TurnStore
 
 from lyra.adapters import telegram_audio  # noqa: I001
 from lyra.adapters._base_outbound import OutboundAdapterBase
@@ -98,6 +99,7 @@ class TelegramAdapter(OutboundAdapterBase):
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
         auth: Authenticator = _DENY_ALL,
+        turn_store: "TurnStore | None" = None,
     ) -> None:
         super().__init__()  # no-op today, future-proofs cooperative chain
         if auth is not _DENY_ALL:
@@ -122,6 +124,7 @@ class TelegramAdapter(OutboundAdapterBase):
         self._msg_manager = msg_manager
         self._auth: Authenticator = auth
         self._guard_chain: GuardChain = GuardChain([BlockedGuard()])
+        self._turn_store: "TurnStore | None" = turn_store
         _raw_tmp = os.environ.get("LYRA_AUDIO_TMP") or None
         if _raw_tmp is not None:
             _tmp_path = Path(_raw_tmp)

@@ -195,6 +195,33 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
     _meta_updates: dict[str, Any] = {}
     if _stored_session_id is not None:
         _meta_updates["thread_session_id"] = _stored_session_id
+
+    # DM session wiring: inject prior session_id + persist callback for DMs.
+    _dm_session_id: str | None = None
+    if _is_dm and adapter._turn_store is not None:
+        from lyra.core.hub.hub_protocol import RoutingKey
+        from lyra.core.message import Platform
+        _pool_id = RoutingKey(
+            Platform.DISCORD, adapter._bot_id, f"channel:{message.channel.id}"
+        ).to_pool_id()
+        try:
+            _dm_session_id = await adapter._turn_store.get_last_session(_pool_id)
+        except Exception:
+            log.exception(  # noqa: TRY401
+                "TurnStore.get_last_session failed for DM pool_id=%s", _pool_id
+            )
+    if _dm_session_id is not None:
+        _meta_updates["thread_session_id"] = _dm_session_id
+    if _is_dm and adapter._turn_store is not None:
+        _dm_ts = adapter._turn_store
+
+        async def _dm_session_update_fn(
+            _msg: InboundMessage, session_id: str, pool_id: str
+        ) -> None:
+            await _dm_ts.start_session(session_id, pool_id)
+
+        _meta_updates["_session_update_fn"] = _dm_session_update_fn
+
     _has_thread_id = hub_msg.platform_meta.get("thread_id") is not None
     if _has_thread_id and adapter._thread_store is not None:
         _ts = adapter._thread_store

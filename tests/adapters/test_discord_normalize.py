@@ -43,7 +43,7 @@ def test_normalize_builds_correct_discord_context() -> None:
 
     assert isinstance(msg, InboundMessage)
     assert msg.platform == "discord"
-    assert msg.scope_id == "channel:333:user:dc:user:42"
+    assert msg.scope_id == "channel:333"  # guild channels share one pool (#592)
     assert msg.platform_meta["guild_id"] == 111
     assert msg.platform_meta["channel_id"] == 333
     assert msg.platform_meta["message_id"] == 555
@@ -381,7 +381,7 @@ def test_normalize_guild_channel_user_scoped_scope_id() -> None:
     msg = adapter.normalize(discord_msg)
 
     assert isinstance(msg, InboundMessage)
-    assert msg.scope_id == "channel:333:user:dc:user:42"
+    assert msg.scope_id == "channel:333"  # guild channels share one pool (#592)
     assert msg.user_id == "dc:user:42"
 
 
@@ -441,8 +441,11 @@ def test_normalize_thread_scope_id_unchanged() -> None:
     assert msg.scope_id == "thread:888"
 
 
-def test_two_users_same_guild_channel_get_distinct_pool_ids() -> None:
-    """Two users in the same guild channel → distinct scope_ids → distinct pool_ids."""
+def test_two_users_same_guild_channel_share_pool_id() -> None:
+    """Two users in the same guild channel → same scope_id → same pool_id (#592).
+
+    Guild channels are no longer user-scoped: all users in a channel share one pool.
+    """
     from lyra.adapters.discord import DiscordAdapter
     from lyra.core.hub.hub_protocol import RoutingKey
     from lyra.core.message import Platform
@@ -471,8 +474,8 @@ def test_two_users_same_guild_channel_get_distinct_pool_ids() -> None:
     msg_alice = adapter.normalize(_make_guild_msg(1, "Alice"))
     msg_bob = adapter.normalize(_make_guild_msg(2, "Bob"))
 
-    assert msg_alice.scope_id != msg_bob.scope_id
+    assert msg_alice.scope_id == msg_bob.scope_id
 
     key_alice = RoutingKey(Platform.DISCORD, "main", msg_alice.scope_id)
     key_bob = RoutingKey(Platform.DISCORD, "main", msg_bob.scope_id)
-    assert key_alice.to_pool_id() != key_bob.to_pool_id()
+    assert key_alice.to_pool_id() == key_bob.to_pool_id()

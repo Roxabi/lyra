@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
@@ -68,6 +69,35 @@ async def handle_message(adapter: TelegramAdapter, msg: Any) -> None:
     # In private chats, always respond.
     if hub_msg.platform_meta.get("is_group") and not hub_msg.is_mention:
         return
+
+    # Session wiring: inject prior session_id + persist callback.
+    _meta_updates: dict[str, Any] = {}
+    if adapter._turn_store is not None:
+        from lyra.core.hub.hub_protocol import RoutingKey
+        from lyra.core.message import Platform
+        _pool_id = RoutingKey(
+            Platform.TELEGRAM, adapter._bot_id, hub_msg.scope_id
+        ).to_pool_id()
+        try:
+            _last_sid = await adapter._turn_store.get_last_session(_pool_id)
+        except Exception:
+            log.exception("TurnStore.get_last_session failed for pool_id=%s", _pool_id)
+            _last_sid = None
+        if _last_sid is not None:
+            _meta_updates["thread_session_id"] = _last_sid
+        _ts = adapter._turn_store
+
+        async def _tg_session_update_fn(
+            msg: InboundMessage, session_id: str, pool_id: str
+        ) -> None:
+            await _ts.start_session(session_id, pool_id)
+
+        _meta_updates["_session_update_fn"] = _tg_session_update_fn
+    if _meta_updates:
+        hub_msg = dataclasses.replace(
+            hub_msg,
+            platform_meta={**hub_msg.platform_meta, **_meta_updates},
+        )
 
     log.info(
         "message_received",

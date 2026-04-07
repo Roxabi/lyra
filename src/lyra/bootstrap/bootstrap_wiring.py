@@ -71,6 +71,7 @@ async def wire_telegram_adapters(  # noqa: PLR0913 — wiring requires all deps
             webhook_secret=tg_webhook_secret or "",
             circuit_registry=circuit_registry,
             msg_manager=msg_manager,
+            turn_store=hub._turn_store,
         )
         await adapter.resolve_identity()
         # C3: Hub is the trust authority — register authenticator here, not on adapter.
@@ -182,6 +183,7 @@ async def wire_discord_adapters(  # noqa: PLR0913, C901 — wiring requires all 
                 thread_hot_hours=bot_cfg.thread_hot_hours,
                 thread_store=thread_store,
                 watch_channels=watch_channels,
+                turn_store=hub._turn_store,
             )
             # Wire identity resolver for slash command trust (voice commands).
             adapter._resolve_identity_fn = hub.resolve_identity

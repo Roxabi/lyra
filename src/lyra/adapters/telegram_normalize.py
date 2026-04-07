@@ -13,7 +13,6 @@ from lyra.core.message import (
     Platform,
     RoutingContext,
 )
-from lyra.core.scope import user_scoped
 from lyra.core.trust import TrustLevel
 
 if TYPE_CHECKING:
@@ -96,7 +95,7 @@ def _make_scope_id(
         base = f"chat:{chat_id}:topic:{topic_id}"
     else:
         base = f"chat:{chat_id}"
-    return user_scoped(base, user_id) if is_group else base
+    return base
 
 
 def _build_routing(  # noqa: PLR0913 — groups related metadata fields

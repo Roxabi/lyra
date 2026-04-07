@@ -245,7 +245,7 @@ def test_normalize_captures_topic_and_message_id_for_forum() -> None:
     assert msg.platform_meta["topic_id"] == 99
     assert msg.platform_meta["message_id"] == 777
     assert msg.platform_meta["is_group"] is True
-    assert msg.scope_id == "chat:456:topic:99:user:tg:user:42"
+    assert msg.scope_id == "chat:456:topic:99"  # groups/topics share pool (#592)
 
 
 def test_normalize_empty_text() -> None:
@@ -361,12 +361,12 @@ def test_normalize_group_chat_user_scoped_scope_id() -> None:
 
     msg = adapter.normalize(aiogram_msg)
 
-    assert msg.scope_id == "chat:456:user:tg:user:42"
+    assert msg.scope_id == "chat:456"  # groups share pool (#592)
     assert msg.user_id == "tg:user:42"
 
 
-def test_normalize_group_chat_no_mention_still_user_scoped() -> None:
-    """Group chat without @mention → scope_id still includes user_id suffix."""
+def test_normalize_group_chat_no_mention_shared_scope() -> None:
+    """Group chat without @mention → scope_id is shared (no user suffix, #592)."""
     from lyra.adapters.telegram import TelegramAdapter
 
     adapter = TelegramAdapter(
@@ -388,12 +388,12 @@ def test_normalize_group_chat_no_mention_still_user_scoped() -> None:
 
     msg = adapter.normalize(aiogram_msg)
 
-    assert msg.scope_id == "chat:456:user:tg:user:42"
+    assert msg.scope_id == "chat:456"  # groups share pool (#592)
     assert msg.is_mention is False
 
 
-def test_normalize_forum_topic_user_scoped_scope_id() -> None:
-    """Forum topic in supergroup → scope_id includes topic AND user_id suffix."""
+def test_normalize_forum_topic_shared_scope_id() -> None:
+    """Forum topic in supergroup → scope_id is shared (no user suffix, #592)."""
     from lyra.adapters.telegram import TelegramAdapter
 
     adapter = TelegramAdapter(
@@ -417,7 +417,7 @@ def test_normalize_forum_topic_user_scoped_scope_id() -> None:
 
     msg = adapter.normalize(aiogram_msg)
 
-    assert msg.scope_id == "chat:456:topic:7:user:tg:user:42"
+    assert msg.scope_id == "chat:456:topic:7"  # topics share pool (#592)
 
 
 def test_normalize_private_chat_scope_id_unchanged() -> None:
@@ -446,8 +446,8 @@ def test_normalize_private_chat_scope_id_unchanged() -> None:
     assert msg.scope_id == "chat:123"
 
 
-def test_two_users_same_group_get_distinct_pool_ids() -> None:
-    """Two users in the same group → distinct scope_ids → distinct pool_ids."""
+def test_two_users_same_group_share_pool_id() -> None:
+    """Two users in the same group → same scope_id → same pool_id (#592)."""
     from lyra.adapters.telegram import TelegramAdapter
     from lyra.core.hub.hub_protocol import RoutingKey
     from lyra.core.message import Platform
@@ -475,8 +475,8 @@ def test_two_users_same_group_get_distinct_pool_ids() -> None:
     msg_alice = adapter.normalize(_make_group_msg(1, "Alice"))
     msg_bob = adapter.normalize(_make_group_msg(2, "Bob"))
 
-    assert msg_alice.scope_id != msg_bob.scope_id
+    assert msg_alice.scope_id == msg_bob.scope_id
 
     key_alice = RoutingKey(Platform.TELEGRAM, "main", msg_alice.scope_id)
     key_bob = RoutingKey(Platform.TELEGRAM, "main", msg_bob.scope_id)
-    assert key_alice.to_pool_id() != key_bob.to_pool_id()
+    assert key_alice.to_pool_id() == key_bob.to_pool_id()

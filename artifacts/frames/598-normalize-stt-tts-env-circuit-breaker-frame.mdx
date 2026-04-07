@@ -1,0 +1,44 @@
+---
+title: "feat(voice): normalize STT/TTS env vars + circuit breaker"
+issue: 598
+status: approved
+tier: F-lite
+date: 2026-04-07
+---
+
+## Problem
+
+The voice stack has two connected problems discovered during a production incident where `lyra_stt` and `lyra_tts` adapter processes were not running.
+
+**Inconsistent env vars:** STT is enabled by the presence of `STT_MODEL_SIZE` (which also selects the Whisper model), while TTS uses a separate `TTS_ENGINE` for engine selection plus `LYRA_VOICE_RESPONSES=1` as an independent on/off switch. TTS is also silently gated on STT being enabled in `voice_overlay.py` (`if stt_client is None → return None`), making it impossible to run TTS without STT.
+
+**No circuit breaker:** When `lyra_tts` or `lyra_stt` is down, the hub attempts a NATS request-reply on every single message, receives `NoRespondersError` immediately, logs an error, and falls back to text — then repeats this on the next message. This produces unbounded log spam and pointless NATS round-trips with no backoff. Observed: hundreds of identical `TTS adapter unreachable` error lines for a single conversation.
+
+## Who
+
+- **Primary:** Mickael (operator) — deals with log spam and silent voice degradation
+- **Secondary:** Hub runtime — wasted NATS calls on every message when adapters are down
+
+## Constraints
+
+- `STT_MODEL_SIZE` and `TTS_ENGINE` are already referenced in voicecli layer (`load_stt_config`, `load_tts_config`) — rename must be backward-compatible or coordinated
+- Circuit breaker must be in-process (no external state) — simple time-based open/half-open
+- Startup probe is best-effort (NATS `NoRespondersError` is not a hard boot failure)
+- Makefile `.env` parsing must be POSIX-safe (no bash-isms)
+
+## Out of Scope
+
+- Persistent circuit breaker state across restarts
+- Dynamic reload of env vars without restart
+- TTS/STT health endpoint or metrics
+- Changes to voicecli internals or the STT/TTS service protocol
+
+## Complexity
+
+**Tier: F-lite** — Clear scope, single domain (voice stack), ~8 files, no architectural unknowns. Rename + add circuit breaker class + probe.
+
+Signals:
+- Single domain: voice stack (`nats_stt_client`, `nats_tts_client`, `voice_overlay`, `stt/__init__`, `tts/__init__`, `Makefile`, 2 supervisor confs)
+- No new architecture — circuit breaker is a standard pattern, fits in existing client classes
+- No cross-domain dependencies
+- Clear acceptance criteria

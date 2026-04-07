@@ -50,7 +50,15 @@ class PoolProcessor:
                 if pool._pending_session_id is not None:
                     _pending = pool._pending_session_id
                     pool._pending_session_id = None
-                    await pool.resume_session(_pending)
+                    try:
+                        await pool.resume_session(_pending)
+                    except Exception:
+                        log.exception(
+                            "[pool:%s] pending session resume failed for %r"
+                            " — continuing",
+                            pool.pool_id,
+                            _pending,
+                        )
 
                 agent = pool._ctx.get_agent(pool.agent_name)
                 if agent is None:

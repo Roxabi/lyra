@@ -1,8 +1,4 @@
-"""Integration test — reply-to while pool busy sets _pending_session_id.
-
-RED phase: Pool does NOT have _pending_session_id yet (T4 pending).
-Accessing pool._pending_session_id will raise AttributeError.
-"""
+"""Integration test — reply-to while pool busy sets _pending_session_id."""
 
 from __future__ import annotations
 
@@ -99,16 +95,13 @@ class _FakeHub:
 
 
 async def test_pending_session_id_set_when_pool_busy() -> None:
-    """When pool is busy and reply-to arrives, _pending_session_id is set.
-
-    RED: Pool has no _pending_session_id attribute — AttributeError will fire.
-    """
+    """When pool is busy and reply-to arrives, _pending_session_id is set."""
     from lyra.core.hub.middleware_submit import SubmitToPoolMiddleware
 
     pool = _make_pool("telegram:main:chat:42")
 
     # Make pool appear busy
-    pool._current_task = asyncio.get_event_loop().create_task(asyncio.sleep(100))
+    pool._current_task = asyncio.create_task(asyncio.sleep(100))
 
     try:
         message_index = _FakeMessageIndex({"msg-old": "session-abc"})
@@ -128,8 +121,7 @@ async def test_pending_session_id_set_when_pool_busy() -> None:
         ctx = MagicMock(hub=fake_hub)
         await middleware._resolve_context(msg, pool, pool.pool_id, ctx)
 
-        # RED: _pending_session_id does not exist on Pool today
-        assert pool._pending_session_id == "session-abc", (  # type: ignore[attr-defined]
+        assert pool._pending_session_id == "session-abc", (
             "pool._pending_session_id must be set when pool busy and reply-to resolves"
         )
     finally:
@@ -141,29 +133,21 @@ async def test_pending_session_id_set_when_pool_busy() -> None:
 
 
 async def test_pending_session_id_not_set_when_pool_idle() -> None:
-    """When pool is idle, reply-to should attempt resume directly (not queue).
-
-    RED: no _pending_session_id attribute — AttributeError.
-    """
+    """When pool is idle, reply-to should attempt resume directly (not queue)."""
     pool = _make_pool("telegram:main:chat:42")
 
     # Pool is idle by default (no current task)
     assert pool.is_idle
 
-    # RED: _pending_session_id does not exist on Pool today
-    assert pool._pending_session_id is None, (  # type: ignore[attr-defined]
+    assert pool._pending_session_id is None, (
         "idle pool must start with _pending_session_id=None"
     )
 
 
 async def test_pending_session_id_none_when_no_reply_to() -> None:
-    """Without reply_to_id, _pending_session_id should remain None.
-
-    RED: attribute does not exist → AttributeError.
-    """
+    """Without reply_to_id, _pending_session_id should remain None."""
     pool = _make_pool("telegram:main:chat:42")
 
-    # RED: attribute does not exist
-    assert pool._pending_session_id is None, (  # type: ignore[attr-defined]
+    assert pool._pending_session_id is None, (
         "_pending_session_id must be None when no reply-to was received"
     )

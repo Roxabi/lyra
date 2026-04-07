@@ -1,7 +1,4 @@
 """Integration test — Discord DM handler injects thread_session_id into inbound message.
-
-RED phase: DiscordAdapter.__init__ does not accept turn_store param yet (T8 pending).
-Constructing DiscordAdapter(turn_store=...) will raise TypeError.
 """
 
 from __future__ import annotations
@@ -68,10 +65,7 @@ def _make_dm_message(channel_id: int = 555, user_id: int = 42) -> SimpleNamespac
 
 
 async def test_discord_dm_injects_thread_session_id() -> None:
-    """DiscordAdapter with turn_store injects thread_session_id for DMs.
-
-    RED: DiscordAdapter.__init__ does not accept turn_store — TypeError.
-    """
+    """DiscordAdapter with turn_store injects thread_session_id for DMs."""
     from lyra.adapters.discord import DiscordAdapter
     from lyra.adapters.discord_inbound import handle_message as discord_handle_message
 
@@ -80,7 +74,6 @@ async def test_discord_dm_injects_thread_session_id() -> None:
     mock_bus.put = AsyncMock()
     fake_turn_store = _FakeTurnStore("prior-session-id")
 
-    # RED: turn_store param does not exist on DiscordAdapter yet
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=mock_bus,
@@ -114,14 +107,8 @@ async def test_discord_dm_injects_thread_session_id() -> None:
 async def test_discord_dm_no_turn_store_does_not_inject() -> None:
     """Without turn_store, thread_session_id should not be present in platform_meta.
 
-    This test verifies backward compatibility — adapters without turn_store should
-    still work and simply not inject thread_session_id.
-
-    RED: turn_store param does not exist — TypeError if passed (tested in other test).
-    This test only constructs without turn_store, so it should pass once the
-    constructor is updated. For now it also fails because handle_message currently
-    does not inject thread_session_id at all, so testing the absence is trivially
-    true but does not distinguish from the feature not existing.
+    Verifies backward compatibility — adapters without turn_store still work and
+    simply do not inject thread_session_id.
     """
     from lyra.adapters.discord import DiscordAdapter
     from lyra.adapters.discord_inbound import handle_message as discord_handle_message
@@ -144,17 +131,14 @@ async def test_discord_dm_no_turn_store_does_not_inject() -> None:
     await discord_handle_message(adapter, fake_dm)
 
     if mock_bus.put_nowait.called:
-        posted = mock_bus.put_nowait.call_args[0][0]
+        posted = mock_bus.put_nowait.call_args[0][1]
         assert "thread_session_id" not in posted.platform_meta, (
             "thread_session_id must not appear in platform_meta without a turn_store"
         )
 
 
 async def test_discord_dm_turn_store_attribute_stored() -> None:
-    """DiscordAdapter must expose _turn_store after construction.
-
-    RED: constructor does not accept turn_store → TypeError.
-    """
+    """DiscordAdapter must expose _turn_store after construction."""
     from lyra.adapters.discord import DiscordAdapter
 
     mock_bus = MagicMock()

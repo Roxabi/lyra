@@ -1,8 +1,4 @@
-"""Integration test — /clear rotates Pool session UUID and notifies TurnStore.
-
-RED phase: Pool.reset_session() does NOT rotate UUID yet (T2 pending).
-The assertion `before_sid != after_sid` will fail until T2 is implemented.
-"""
+"""Integration test — /clear rotates Pool session UUID and notifies TurnStore."""
 
 from __future__ import annotations
 
@@ -64,11 +60,7 @@ class _FakeTurnStore:
 
 
 async def test_reset_session_rotates_uuid() -> None:
-    """pool.reset_session() must produce a new session_id (UUID rotation).
-
-    RED: currently reset_session() only calls observer.reset_session_persisted()
-    and the optional _session_reset_fn — it does NOT rotate the UUID.
-    """
+    """pool.reset_session() must produce a new session_id (UUID rotation)."""
     pool = _make_pool("telegram:main:chat:42")
 
     before_sid = pool.session_id
@@ -77,17 +69,13 @@ async def test_reset_session_rotates_uuid() -> None:
 
     after_sid = pool.session_id
 
-    # RED: this assertion will fail until T2 adds UUID rotation
     assert before_sid != after_sid, (
         "reset_session() must rotate session_id — UUID was not changed"
     )
 
 
 async def test_reset_session_calls_end_session_on_turn_store() -> None:
-    """pool.reset_session() must call TurnStore.end_session(before_sid).
-
-    RED: no end_session call is made today.
-    """
+    """pool.reset_session() must call TurnStore.end_session(before_sid)."""
     pool = _make_pool("telegram:main:chat:42")
     fake_store = _FakeTurnStore()
     pool._observer._turn_store = fake_store  # type: ignore[assignment]
@@ -96,24 +84,19 @@ async def test_reset_session_calls_end_session_on_turn_store() -> None:
 
     await pool.reset_session()
 
-    # RED: end_session is never called in the current implementation
     assert before_sid in fake_store.ended, (
         f"end_session({before_sid!r}) was not called on TurnStore"
     )
 
 
 async def test_reset_session_calls_start_session_on_turn_store() -> None:
-    """pool.reset_session() must call TurnStore.start_session(new_sid, pool_id).
-
-    RED: no start_session call is made today.
-    """
+    """pool.reset_session() must call TurnStore.start_session(new_sid, pool_id)."""
     pool = _make_pool("telegram:main:chat:42")
     fake_store = _FakeTurnStore()
     pool._observer._turn_store = fake_store  # type: ignore[assignment]
 
     await pool.reset_session()
 
-    # RED: start_session is never called in the current implementation
     assert len(fake_store.started) >= 1, (
         "start_session() was not called on TurnStore after reset_session()"
     )
@@ -123,10 +106,7 @@ async def test_reset_session_calls_start_session_on_turn_store() -> None:
 
 
 async def test_reset_session_end_before_start() -> None:
-    """end_session must be called with the OLD id before start_session is called.
-
-    RED: neither call exists today.
-    """
+    """end_session must be called with the OLD id before start_session is called."""
     pool = _make_pool("telegram:main:chat:42")
     call_order: list[str] = []
 

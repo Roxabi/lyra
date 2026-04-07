@@ -125,7 +125,6 @@ class Pool:
         self._processor = PoolProcessor(self)
 
     # Backward-compat shims — delegate to observer so callers keep working.
-
     @property
     def _turn_store(self) -> TurnStore | None:
         return self._observer._turn_store
@@ -221,12 +220,9 @@ class Pool:
             self._current_task.cancel()
 
     async def resume_session(self, session_id: str) -> bool:
-        """Resume a specific Claude session (CLI backend).
-
-        Returns True if the resume was accepted, False if skipped (pruned file,
-        invalid id, SDK pool, or misconfigured agent).
-        Resets _session_persisted only when resume is accepted so the resumed
-        session_id is re-persisted on the next turn (#341).
+        """Resume a specific Claude session (CLI backend). Returns True if accepted.
+        Resets _session_persisted only when accepted so the resumed session_id is
+        re-persisted on the next turn (#341).
         """
         if self._session_resume_fn is not None:
             accepted = await self._session_resume_fn(session_id)
@@ -253,9 +249,12 @@ class Pool:
         await self._observer.end_session_async(old_sid)
         self.session_id = str(uuid.uuid4())
         if self._observer._turn_store is not None:
-            await self._observer._turn_store.start_session(
-                self.session_id, self.pool_id
-            )
+            try:
+                await self._observer._turn_store.start_session(
+                    self.session_id, self.pool_id
+                )
+            except Exception:
+                log.exception("[pool:%s] start_session failed", self.pool_id)
         self._observer.reset_session_persisted()
         if self._session_reset_fn is not None:
             await self._session_reset_fn()

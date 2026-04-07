@@ -212,7 +212,9 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
             )
     if _dm_session_id is not None:
         _meta_updates["thread_session_id"] = _dm_session_id
+    _has_thread_id = hub_msg.platform_meta.get("thread_id") is not None
     if _is_dm and adapter._turn_store is not None:
+        # DM path takes priority over thread-session persistence
         _dm_ts = adapter._turn_store
 
         async def _dm_session_update_fn(
@@ -221,9 +223,7 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
             await _dm_ts.start_session(session_id, pool_id)
 
         _meta_updates["_session_update_fn"] = _dm_session_update_fn
-
-    _has_thread_id = hub_msg.platform_meta.get("thread_id") is not None
-    if _has_thread_id and adapter._thread_store is not None:
+    elif _has_thread_id and adapter._thread_store is not None:
         _ts = adapter._thread_store
         _bid, _cache = adapter._bot_id, adapter._thread_sessions
 

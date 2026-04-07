@@ -1,7 +1,4 @@
 """Integration test — Telegram adapter injects thread_session_id into inbound message.
-
-RED phase: TelegramAdapter.__init__ does not accept turn_store param yet (T12 pending).
-Constructing TelegramAdapter(turn_store=...) will raise TypeError.
 """
 
 from __future__ import annotations
@@ -85,7 +82,6 @@ def _make_telegram_adapter(fake_turn_store=None, mock_bus=None):
         auth=_ALLOW_ALL,
     )
     if fake_turn_store is not None:
-        # RED: this param does not exist yet — TypeError
         kwargs["turn_store"] = fake_turn_store
 
     return TelegramAdapter(**kwargs), mock_bus  # type: ignore[arg-type]
@@ -97,10 +93,7 @@ def _make_telegram_adapter(fake_turn_store=None, mock_bus=None):
 
 
 async def test_telegram_private_injects_thread_session_id() -> None:
-    """TelegramAdapter with turn_store injects thread_session_id for private chats.
-
-    RED: TelegramAdapter.__init__ does not accept turn_store — TypeError.
-    """
+    """TelegramAdapter with turn_store injects thread_session_id for private chats."""
     from lyra.adapters.telegram_inbound import handle_message as telegram_handle_message
 
     mock_bus = MagicMock()
@@ -110,7 +103,6 @@ async def test_telegram_private_injects_thread_session_id() -> None:
 
     fake_turn_store = _FakeTurnStore("prior-session-id")
 
-    # RED: TypeError — turn_store param does not exist
     adapter, mock_bus = _make_telegram_adapter(
         fake_turn_store=fake_turn_store, mock_bus=mock_bus
     )
@@ -158,7 +150,7 @@ async def test_telegram_no_turn_store_no_injection() -> None:
     mock_bus.put_nowait = MagicMock()
     mock_bus.put = AsyncMock()
 
-    # No turn_store — should construct fine (no RED here for this specific test)
+    # No turn_store — backward compatibility: should construct fine
     from lyra.adapters.telegram import TelegramAdapter
 
     adapter = TelegramAdapter(
@@ -178,23 +170,19 @@ async def test_telegram_no_turn_store_no_injection() -> None:
     await telegram_handle_message(adapter, fake_msg)
 
     if mock_bus.put_nowait.called:
-        posted = mock_bus.put_nowait.call_args[0][0]
+        posted = mock_bus.put_nowait.call_args[0][1]
         assert "thread_session_id" not in posted.platform_meta, (
             "thread_session_id must not appear in platform_meta without turn_store"
         )
 
 
 async def test_telegram_turn_store_attribute_stored() -> None:
-    """TelegramAdapter must expose _turn_store after construction.
-
-    RED: constructor does not accept turn_store → TypeError.
-    """
+    """TelegramAdapter must expose _turn_store after construction."""
     from lyra.adapters.telegram import TelegramAdapter
 
     mock_bus = MagicMock()
     fake_turn_store = _FakeTurnStore("session-xyz")
 
-    # RED: TypeError — turn_store not accepted
     adapter = TelegramAdapter(
         bot_id="main",
         token="test-token-secret",

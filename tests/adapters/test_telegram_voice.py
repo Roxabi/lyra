@@ -269,8 +269,8 @@ def test_normalize_audio_private_chat_scope_id() -> None:
     assert result.scope_id == "chat:42"
 
 
-def test_normalize_audio_group_chat_user_scoped_scope_id() -> None:
-    """Group chat (no topic) → scope_id includes user suffix (#356)."""
+def test_normalize_audio_group_chat_shared_scope_id() -> None:
+    """Group chat (no topic) → scope_id shared (no user suffix, #592)."""
     from lyra.core.message import InboundMessage
     from lyra.core.trust import TrustLevel
 
@@ -280,11 +280,11 @@ def test_normalize_audio_group_chat_user_scoped_scope_id() -> None:
         msg, b"x", "audio/ogg", trust_level=TrustLevel.TRUSTED
     )
     assert isinstance(result, InboundMessage)
-    assert result.scope_id == "chat:42:user:tg:user:7"
+    assert result.scope_id == "chat:42"  # groups share pool (#592)
 
 
 def test_normalize_audio_topic_chat_scope_id() -> None:
-    """Topic chat → scope_id includes topic AND user suffix (#356)."""
+    """Topic chat → scope_id includes topic (no user suffix, #592)."""
     from lyra.core.message import InboundMessage
     from lyra.core.trust import TrustLevel
 
@@ -294,7 +294,7 @@ def test_normalize_audio_topic_chat_scope_id() -> None:
         msg, b"x", "audio/ogg", trust_level=TrustLevel.TRUSTED
     )
     assert isinstance(result, InboundMessage)
-    assert result.scope_id == "chat:42:topic:7:user:tg:user:99"
+    assert result.scope_id == "chat:42:topic:7"  # topics share pool (#592)
 
 
 # ---------------------------------------------------------------------------

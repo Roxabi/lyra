@@ -93,7 +93,7 @@ class TestTelegramNormalizeRouting:
 
         msg = adapter.normalize(raw)
         assert msg.routing is not None
-        assert msg.routing.scope_id == "chat:123:topic:456:user:tg:user:42"
+        assert msg.routing.scope_id == "chat:123:topic:456"  # topics share pool (#592)
         assert msg.routing.thread_id == "456"
 
     def test_routing_platform_meta_is_copy(self) -> None:
@@ -164,7 +164,7 @@ class TestDiscordNormalizeRouting:
         assert msg.routing is not None
         assert msg.routing.platform == "discord"
         assert msg.routing.bot_id == "main"
-        assert msg.routing.scope_id == "channel:789:user:dc:user:42"
+        assert msg.routing.scope_id == "channel:789"  # guild channels share pool (#592)
         assert msg.routing.thread_id is None
         assert msg.routing.reply_to_message_id == "999"
 

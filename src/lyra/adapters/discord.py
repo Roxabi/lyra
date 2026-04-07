@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from lyra.adapters._shared_streaming import PlatformCallbacks
     from lyra.adapters.outbound_listener import OutboundListener
     from lyra.core.bus import Bus
+    from lyra.core.stores.turn_store import TurnStore
 
 from lyra.adapters import discord_audio  # noqa: I001
 from lyra.adapters import discord_audio_outbound
@@ -83,6 +84,7 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         auth: Authenticator = _DENY_ALL,
         thread_store: ThreadStore | None = None,
         watch_channels: frozenset[int] = frozenset(),
+        turn_store: "TurnStore | None" = None,
     ) -> None:
         if intents is None:
             intents = discord.Intents.default()
@@ -115,6 +117,7 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         self._mention_re: re.Pattern[str] | None = None  # compiled on on_ready
         self._owned_threads: set[int] = set()  # populated from ThreadStore on on_ready
         self._thread_store: ThreadStore | None = thread_store
+        self._turn_store: "TurnStore | None" = turn_store
         self._watch_channels: frozenset[int] = watch_channels
         self._thread_sessions: dict[str, tuple[str, str]] = {}
         self._vsm: VoiceSessionManager = VoiceSessionManager()

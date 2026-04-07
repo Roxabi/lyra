@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from nats.aio.client import Client as NATS
 
+from lyra.nats.circuit_breaker import NatsCircuitBreaker
 from lyra.tts import SynthesisResult, TtsUnavailableError
 
 if TYPE_CHECKING:
@@ -36,6 +37,33 @@ class NatsTtsClient:
     def __init__(self, nc: NATS, *, timeout: float = 30.0) -> None:
         self._nc = nc
         self._timeout = timeout
+        self._cb = NatsCircuitBreaker()
+
+    async def _send(self, payload: bytes, payload_kb: float) -> dict:
+        """Send payload to TTS subject and return parsed response dict."""
+        try:
+            reply = await self._nc.request(self.SUBJECT, payload, timeout=self._timeout)
+            data = json.loads(reply.data)
+        except TimeoutError as exc:
+            log.warning("TTS adapter timeout after %.0fs", self._timeout)
+            self._cb.record_failure()
+            raise TtsUnavailableError("TTS adapter timeout") from exc
+        except Exception as exc:
+            if "max_payload" in str(exc).lower() or "MaxPayload" in type(exc).__name__:
+                log.error(
+                    "TTS payload too large (%.0f KB)"
+                    " — check NATS max_payload",
+                    payload_kb,
+                )
+                self._cb.record_failure()
+                raise TtsUnavailableError("TTS request payload too large") from exc
+            log.warning("TTS adapter unreachable: %s: %s", type(exc).__name__, exc)
+            self._cb.record_failure()
+            raise TtsUnavailableError("TTS adapter unreachable") from exc
+        if not data.get("ok"):
+            self._cb.record_failure()
+            raise TtsUnavailableError("TTS synthesis failed")
+        return data
 
     async def synthesize(
         self,
@@ -46,6 +74,10 @@ class NatsTtsClient:
         voice: str | None = None,
         fallback_language: str | None = None,
     ) -> SynthesisResult:
+        if self._cb.is_open():
+            raise TtsUnavailableError(
+                "TTS circuit open — adapter temporarily unavailable"
+            )
         request: dict = {
             "request_id": str(uuid4()),
             "text": text,
@@ -65,26 +97,9 @@ class NatsTtsClient:
             if voice is None and getattr(agent_tts, "voice", None) is not None:
                 request["voice"] = agent_tts.voice
         payload = json.dumps(request, ensure_ascii=False).encode("utf-8")
-        payload_kb = len(payload) / 1024
-        try:
-            reply = await self._nc.request(self.SUBJECT, payload, timeout=self._timeout)
-            data = json.loads(reply.data)
-        except TimeoutError as exc:
-            log.warning("TTS adapter timeout after %.0fs", self._timeout)
-            raise TtsUnavailableError("TTS adapter timeout") from exc
-        except Exception as exc:
-            if "max_payload" in str(exc).lower() or "MaxPayload" in type(exc).__name__:
-                log.error(
-                    "TTS payload too large (%.0f KB)"
-                    " — check NATS max_payload",
-                    payload_kb,
-                )
-                raise TtsUnavailableError("TTS request payload too large") from exc
-            log.warning("TTS adapter unreachable: %s: %s", type(exc).__name__, exc)
-            raise TtsUnavailableError("TTS adapter unreachable") from exc
-        if not data.get("ok"):
-            raise TtsUnavailableError("TTS synthesis failed")
+        data = await self._send(payload, len(payload) / 1024)
         audio_bytes = base64.b64decode(data["audio_b64"])
+        self._cb.record_success()
         return SynthesisResult(
             audio_bytes=audio_bytes,
             mime_type=data.get("mime_type", "audio/ogg"),

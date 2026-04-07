@@ -150,6 +150,7 @@ class SubmitToPoolMiddleware:
                         pool_id,
                         session_id,
                     )
+                    return ResumeStatus.SKIPPED
                 else:
                     log.info(
                         "reply-to-resume: resuming session %r for pool %r",

@@ -121,7 +121,7 @@ async def test_pending_session_id_set_when_pool_busy() -> None:
         ctx = MagicMock(hub=fake_hub)
         await middleware._resolve_context(msg, pool, pool.pool_id, ctx)
 
-        assert pool._pending_session_id == "session-abc", (
+        assert pool._pending_session_id == "session-abc", (  # type: ignore[attr-defined]
             "pool._pending_session_id must be set when pool busy and reply-to resolves"
         )
     finally:
@@ -139,7 +139,7 @@ async def test_pending_session_id_not_set_when_pool_idle() -> None:
     # Pool is idle by default (no current task)
     assert pool.is_idle
 
-    assert pool._pending_session_id is None, (
+    assert pool._pending_session_id is None, (  # type: ignore[attr-defined]
         "idle pool must start with _pending_session_id=None"
     )
 
@@ -148,6 +148,39 @@ async def test_pending_session_id_none_when_no_reply_to() -> None:
     """Without reply_to_id, _pending_session_id should remain None."""
     pool = _make_pool("telegram:main:chat:42")
 
-    assert pool._pending_session_id is None, (
+    assert pool._pending_session_id is None, (  # type: ignore[attr-defined]
         "_pending_session_id must be None when no reply-to was received"
     )
+
+
+async def test_process_loop_fires_pending_session_id() -> None:
+    """process_loop must consume _pending_session_id and call resume_session."""
+    pool = _make_pool("telegram:main:chat:42")
+
+    # Disable debounce so collect() returns immediately without a 300 ms wait
+    pool.debounce_ms = 0
+
+    # Wire a resume callback
+    resume_fn = AsyncMock(return_value=True)
+    pool._session_resume_fn = resume_fn
+
+    # Set a pending session before the loop runs
+    pool._pending_session_id = "target-session-id"  # type: ignore[attr-defined]
+
+    # Make get_agent() raise so process_loop exits quickly after the resume step
+    pool._ctx.get_agent = MagicMock(side_effect=RuntimeError("stop here"))
+
+    msg = _make_msg(
+        id="msg-1",
+        platform="telegram",
+        bot_id="main",
+        scope_id="chat:42",
+    )
+
+    # Submit triggers process_loop via asyncio.create_task
+    pool.submit(msg)
+
+    # Give the event loop enough time to run through the resume step
+    await asyncio.sleep(0.1)
+
+    resume_fn.assert_awaited_once_with("target-session-id")

@@ -1,5 +1,5 @@
 @.claude/stack.yml
-@.claude/dev-core.md
+@~/.claude/shared/global-patterns.md
 
 # CLAUDE.md — Instructions for Claude Code
 
@@ -12,7 +12,7 @@ See `docs/ARCHITECTURE.md` for full context.
 
 - **Project:** Lyra
 - **Before work:** Use `/dev #N` as the single entry point — it determines tier (S / F-lite / F-full) and drives the full lifecycle
-- **Decisions:** → see global patterns (@.claude/dev-core.md)
+- **Decisions:** → see global patterns (@~/.claude/shared/global-patterns.md)
 - **Never** commit without asking, push without request, or use `--force`/`--hard`/`--amend`
 - **Always** use appropriate skill even without slash command
 
@@ -97,26 +97,3 @@ The unified single-process mode (`lyra start` → `_bootstrap_unified`) runs hub
 
 <!-- Add project-specific gotchas here -->
 
-## Verification Summary
-
-_Fact-checked 2026-04-04 against `src/lyra/`, `docs/`, and git history._
-
-| # | Claim | Result |
-|---|-------|--------|
-| 1 | Key docs exist (`ARCHITECTURE.md`, `CONFIGURATION.md`, `ROADMAP.md`, `GETTING-STARTED.md`) | ✅ Confirmed |
-| 2 | `artifacts/` (analyses, explorations, frames, plans, specs) | ✅ Confirmed |
-| 3 | `provision.sh` location | ✅ Fixed → `deploy/provision.sh` — now lives in the lyra repo |
-| 4 | "TOML files in `src/lyra/agents/`" as the only location | ❌ Fixed → Two locations: `~/.lyra/agents/` (user-level, higher precedence) and `src/lyra/agents/` (system defaults) |
-| 5 | `workspaces` "each key becomes a `/<key>` slash command" | ❌ Fixed → command is `/workspace <key>`, not `/<key>` (verified in `workspace_commands.py`) |
-| 6 | `~/.lyra/auth.db` as agent store | ✅ Confirmed (`cli_agent.py:31`) |
-| 7 | `lyra agent init/list/show/edit/validate/assign/delete` commands | ✅ All confirmed in `cli_agent_crud.py` |
-| 8 | `lyra agent delete` refuses if bot assigned | ✅ Confirmed (`agent_store.py:315`) |
-| 9 | `cwd` in `config.toml [defaults]` | ✅ Confirmed (`config.toml:3-4`) |
-| 10 | `lyra agent unassign` command (missing) | ➕ Added — exists in `cli_agent_crud.py` |
-| 11 | `lyra agent create <name>` command (missing) | ➕ Added — documented in `docs/COMMANDS.md` |
-| 12 | `lyra agent create` writes to DB | ❌ Fixed → currently writes TOML, not DB (TODO #268). README + COMMANDS.md corrected |
-| 13 | COMMANDS.md agent subcommand list | ❌ Fixed → was missing 9 subcommands (init, show, edit, assign, unassign, delete, patch, refine) |
-| 14 | `LYRA_VAULT_DIR` env var undocumented | ➕ Added to DEPLOYMENT.md env section |
-| 15 | Makefile uses `hub.mk` include pattern | ➕ Added to README Operations section |
-| 16 | Hub startup Telegram notification | ➕ Noted in README structure section (`hub_standalone.py`) |
-| 17 | DEPLOYMENT.md smart restart: voiceCLI triggers full restart | ❌ Fixed → clarified that voiceCLI change restarts all 5 services |

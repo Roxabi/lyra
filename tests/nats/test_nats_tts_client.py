@@ -50,6 +50,20 @@ class TestCircuitBreaker:
         assert client._cb._failures == 1
 
     @pytest.mark.asyncio
+    async def test_failure_records_on_max_payload(self) -> None:
+        # Arrange
+        mock_nc = AsyncMock()
+        mock_nc.request = AsyncMock(
+            side_effect=Exception("NATS: max_payload exceeded")
+        )
+        client = NatsTtsClient(nc=mock_nc)
+        # Act
+        with pytest.raises(TtsUnavailableError, match="payload too large"):
+            await client.synthesize("hello")
+        # Assert
+        assert client._cb._failures == 1
+
+    @pytest.mark.asyncio
     async def test_success_clears_failures(self) -> None:
         # Arrange — pre-inject 2 failures
         mock_nc = AsyncMock()

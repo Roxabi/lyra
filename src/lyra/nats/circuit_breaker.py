@@ -24,12 +24,19 @@ class NatsCircuitBreaker:
         self._failures = 0
         self._open_until: float = 0.0
         self._lock = threading.Lock()
+        self._half_open_probe: bool = False
 
     def is_open(self) -> bool:
         """Return True if the circuit is open (calls should be blocked)."""
         with self._lock:
-            if self._open_until and time.monotonic() < self._open_until:
+            if not self._open_until:
+                return False
+            if time.monotonic() < self._open_until:
                 return True
+            # Timer expired — half-open: allow exactly one probe
+            if self._half_open_probe:
+                return True
+            self._half_open_probe = True
             return False
 
     def record_success(self) -> None:
@@ -37,6 +44,7 @@ class NatsCircuitBreaker:
         with self._lock:
             self._failures = 0
             self._open_until = 0.0
+            self._half_open_probe = False
 
     def record_failure(self) -> None:
         """Increment failure count; open the circuit once threshold is reached."""
@@ -44,3 +52,4 @@ class NatsCircuitBreaker:
             self._failures += 1
             if self._failures >= self.failure_threshold:
                 self._open_until = time.monotonic() + self.recovery_timeout
+                self._half_open_probe = False

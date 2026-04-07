@@ -47,9 +47,9 @@ class SynthesisResult:
 
 
 class TTSConfig(BaseModel):
-    engine: str | None = None  # TTS_ENGINE env var
-    voice: str | None = None  # TTS_VOICE env var
-    language: str | None = None  # TTS_LANGUAGE env var
+    engine: str | None = None  # LYRA_TTS_ENGINE env var
+    voice: str | None = None  # LYRA_TTS_VOICE env var
+    language: str | None = None  # LYRA_TTS_LANGUAGE env var
 
 
 def _deprecated(old_var: str, new_var: str) -> str | None:
@@ -71,8 +71,16 @@ def load_tts_config() -> TTSConfig:
             or _deprecated("TTS_ENGINE", "LYRA_TTS_ENGINE")
             or None
         ),
-        voice=os.environ.get("TTS_VOICE") or None,
-        language=os.environ.get("TTS_LANGUAGE") or None,
+        voice=(
+            os.environ.get("LYRA_TTS_VOICE")
+            or _deprecated("TTS_VOICE", "LYRA_TTS_VOICE")
+            or None
+        ),
+        language=(
+            os.environ.get("LYRA_TTS_LANGUAGE")
+            or _deprecated("TTS_LANGUAGE", "LYRA_TTS_LANGUAGE")
+            or None
+        ),
     )
 
 

@@ -30,6 +30,11 @@ def _deprecated_env(old_var: str, new_var: str) -> str | None:
 def init_nats_stt(nc: "NATS") -> "NatsSttClient | None":
     """Initialise NATS STT client if LYRA_STT_ENABLED=1."""
     if os.environ.get("LYRA_STT_ENABLED", "0") != "1":
+        if os.environ.get("STT_MODEL_SIZE") and not os.environ.get("LYRA_STT_ENABLED"):
+            log.warning(
+                "STT_MODEL_SIZE is set but LYRA_STT_ENABLED=1 is absent"
+                " — STT is disabled; add LYRA_STT_ENABLED=1 to enable"
+            )
         return None
     from lyra.nats.nats_stt_client import NatsSttClient
 
@@ -74,10 +79,15 @@ async def probe_voice_services(
         if client is None:
             continue
         try:
-            await nc.request(subject, b"", timeout=1.0)
+            await nc.request(subject, b'{"ping":true}', timeout=1.0)
         except (NoRespondersError, TimeoutError):
             log.warning(
                 "%s adapter not reachable at boot — will retry per-request", name
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning(
+                "%s probe failed unexpectedly: %s: %s",
+                name,
+                type(exc).__name__,
+                exc,
+            )

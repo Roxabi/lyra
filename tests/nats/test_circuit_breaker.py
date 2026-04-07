@@ -82,6 +82,7 @@ class TestNatsCircuitBreaker:
         cb.record_failure()
         # Assert — circuit re-opens (_failures is still ≥ threshold)
         assert cb._open_until > open_until_before
+        assert cb.is_open() is True
 
     def test_custom_threshold(self) -> None:
         # Arrange
@@ -124,3 +125,21 @@ class TestNatsCircuitBreaker:
         # Assert — no crashes, failure count is consistent
         assert errors == []
         assert cb._failures <= 100  # may have opened + not incremented further
+
+    def test_record_success_resets_full_threshold(self) -> None:
+        # Arrange
+        cb = NatsCircuitBreaker(failure_threshold=3)
+        cb.record_failure()
+        cb.record_failure()
+        cb.record_failure()
+        assert cb.is_open() is True
+        # Act
+        cb.record_success()
+        assert cb.is_open() is False
+        # threshold-1 failures → still closed
+        cb.record_failure()
+        cb.record_failure()
+        assert cb.is_open() is False
+        # one more → re-opens
+        cb.record_failure()
+        assert cb.is_open() is True

@@ -78,6 +78,24 @@ lyra agent delete <name>  # refuses if bot still assigned
 - Commits: Conventional Commits (`feat:`, `fix:`, `chore:`, etc.)
 - Issues: via `dev-core` workflow (`/dev #N`)
 
+## CLAUDE.md hygiene (hard rule)
+
+**When you add, remove, or rename a file/package, update the relevant CLAUDE.md immediately.**
+
+CLAUDE.md locations (one per package, single level — no nested sub-CLAUDE.md):
+- `CLAUDE.md` — project root (this file)
+- `src/lyra/core/CLAUDE.md` — hub, stores, pool, commands infra + all flat modules
+- `src/lyra/adapters/CLAUDE.md` — Telegram, Discord, CLI, NATS adapters
+- `src/lyra/agents/CLAUDE.md` — agent implementations
+- `src/lyra/commands/CLAUDE.md` — plugin commands
+- `src/lyra/llm/CLAUDE.md` — LLM drivers and providers
+
+Rules:
+- New file added → add it to the file table in the appropriate CLAUDE.md
+- File deleted → remove its entry
+- File moved → update source and destination CLAUDE.md
+- New package/subdir under `src/lyra/` → add to the nearest CLAUDE.md (do NOT create a new nested CLAUDE.md)
+
 ## Production entry points (NATS three-process mode)
 
 Lyra runs as three separate supervisor processes on Machine 1:

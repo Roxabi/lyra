@@ -117,7 +117,7 @@ if [ -f "$HOME/projects/lyra/deploy/supervisor/supervisord.pid" ] && kill -0 "$(
             i=$(( i + 1 ))
         done
         if [ "$HUB_READY" = false ]; then
-            log "ERROR: lyra_hub did not reach RUNNING after 36s — stopping adapters and aborting"
+            log "ERROR: lyra_hub did not reach RUNNING after 60s — stopping adapters and aborting"
             "$SCTL" stop lyra_telegram lyra_discord 2>&1 | tee -a "$LOG_FILE"
             exit 1
         fi
@@ -139,7 +139,8 @@ fi
 
 log "Verifying services..."
 HEALTHY=false
-for i in $(seq 1 12); do
+i=1
+while [ "$i" -le 12 ]; do
     sleep 5
     FAILED=$("$SCTL" status 2>&1 | grep -c "FATAL\|BACKOFF" || true)
     if [ "$FAILED" -eq 0 ]; then
@@ -147,6 +148,7 @@ for i in $(seq 1 12); do
         break
     fi
     log "Waiting for services... (attempt $i/12)"
+    i=$(( i + 1 ))
 done
 
 if [ "$HEALTHY" = false ]; then

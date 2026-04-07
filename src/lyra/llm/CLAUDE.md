@@ -24,21 +24,15 @@ the Protocol base until all drivers implement it.
 `LlmResult` fields: `result` (text), `session_id`, `error`, `retryable`, `warning`,
 `user_message`. Check `result.ok` before using `result.result`.
 
-## Driver pattern
+## Drivers
 
-Each driver is a concrete class in `drivers/` that implements `LlmProvider`:
+Two concrete drivers in `drivers/`:
 
-| Driver | File | Backend | Streaming |
-|--------|------|---------|-----------|
-| `AnthropicSdkDriver` | `drivers/sdk.py` | Anthropic Messages API (HTTP) | `capabilities["streaming"] = False` — buffers full response |
-| `ClaudeCliDriver` | `drivers/cli.py` | `CliPool` (Claude Code subprocess) | `capabilities["streaming"] = True` — native NDJSON stream |
+| Driver | Backend | `capabilities["streaming"]` | `capabilities["auth"]` |
+|--------|---------|---------------------------|----------------------|
+| `AnthropicSdkDriver` | Anthropic Messages API (HTTP) | `False` — buffers full response | `"api_key"` |
+| `ClaudeCliDriver` | Claude Code subprocess (`CliPool`) | `True` — native NDJSON stream | `"oauth_only"` |
 
-`capabilities["streaming"]` tells the caller whether the driver produces real-time
-chunks (`True`) or a single buffered result (`False`).
-
-`capabilities["auth"]` describes how the driver authenticates:
-- `"api_key"` — requires `ANTHROPIC_API_KEY` env var
-- `"oauth_only"` — uses Claude Code's built-in OAuth (no API key needed)
 
 ## Decorator stack
 

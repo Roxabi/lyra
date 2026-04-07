@@ -11,23 +11,8 @@ discovered and loaded dynamically.
 
 ## Plugin structure
 
-Each plugin lives in its own subdirectory:
-
-```
-commands/
-  echo/
-    plugin.toml    # manifest: name, description, version, commands[]
-    handlers.py    # async handler functions
-  search/
-    plugin.toml
-    handlers.py
-  pairing/
-    plugin.toml
-    handlers.py
-  svc/
-    plugin.toml
-    handlers.py
-```
+Each plugin is a subdirectory with a `plugin.toml` manifest and a `handlers.py` module.
+Current plugins: `add_vault`, `echo`, `identity`, `pairing`, `search`, `svc`.
 
 ## plugin.toml manifest format
 

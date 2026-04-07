@@ -64,7 +64,7 @@ class TestAdapterReloadHubState:
         assert hub.adapter_registry[(Platform.TELEGRAM, "main")] is new_adapter
         assert hub.adapter_registry[(Platform.TELEGRAM, "main")] is not old_adapter
 
-    async def test_register_adapter_after_bus_start_does_not_raise(self) -> None:
+    async def test_register_adapter_after_bus_start_raises_runtime_error(self) -> None:
         hub = _make_hub()
         await hub.inbound_bus.start()
         try:

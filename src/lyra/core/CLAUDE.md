@@ -1,132 +1,89 @@
-# src/lyra/core/ — Hub, Pool, and Pipeline
+# src/lyra/core/ — Hub, Pool, Pipeline, and Persistence
 
-## Purpose
-
-The `core/` package is the brain of Lyra. It owns the message routing pipeline,
-conversation pool lifecycle, agent dispatch, command routing, memory, and all
-shared protocols. Everything else in the project depends on `core/`.
-
-## Key architecture: hub-and-spoke
+## Architecture: hub-and-spoke
 
 ```
-Inbound (platform) → Bus[T] (LocalBus) → MessagePipeline → Pool → Agent → LlmProvider
+Inbound (platform) → Bus[T] (LocalBus) → Middleware pipeline → Pool → Agent → LlmProvider
                                                         ↓
 Outbound (platform) ←──────────────── OutboundDispatcher ←──────────────────
 ```
 
-- `Hub` (`hub/hub.py`) is the singleton coordinator. It owns one `PoolManager`, one
-  `LocalBus` (typed as `Bus[T]`), one `OutboundDispatcher` per registered adapter, and the agent registry.
-- `Pool` (`pool/pool.py`) is one-per-conversation-scope. It serialises turns, debounces
-  rapid messages, and holds the SDK history deque. A Pool never knows which platform
-  it came from — routing is done by `PoolManager` before the Pool is touched.
-- `MessagePipeline` (`hub/message_pipeline.py`) is the fail-fast guard chain called
-  inside `Hub.run()`. It produces a `PipelineResult` with an `Action` enum.
+- `Hub` is the singleton coordinator — owns `PoolManager`, `LocalBus`, one `OutboundDispatcher` per adapter, and the agent registry.
+- `Pool` is one-per-conversation-scope — serialises turns, debounces rapid messages, holds SDK history. Never knows which platform it came from.
+- The active inbound pipeline is the composable middleware stack (`hub/middleware.py`, #431), which replaced the legacy monolithic `MessagePipeline`.
 
-## Layout
+## Subdirectory layout
 
-`core/` is split into 4 subdirectories plus flat modules:
+| Subdir | Purpose |
+|--------|---------|
+| `hub/` | Message routing, outbound dispatch, pool lifecycle orchestration |
+| `stores/` | All durable SQLite stores + shared base class |
+| `pool/` | Pool primitives — lifecycle, per-message processing, session observation |
+| `commands/` | Internal command routing infra (NOT plugin commands) |
 
-| Subdir | Modules | Purpose |
-|--------|---------|---------|
-| `stores/` | 12 | SQLite persistence — all durable stores, shared base, pairing state |
-| `hub/` | 8 | Message routing, outbound dispatch, pool lifecycle orchestration |
-| `pool/` | 3 | Pool primitives — lifecycle, per-message processing, session observation |
-| `commands/` | 4 | Internal command routing infra (NOT plugin commands) |
+## Non-obvious placement decisions
 
-Each subdir also contains an `__init__.py` with re-exports.
+**`pool_manager.py` and `message_pipeline.py` are in `hub/`** — both import `Hub` at runtime; placing them in `pool/` would create a circular import.
 
-Each subdir has its own `CLAUDE.md`. See them for file-level details and gotchas.
+**`builtin_commands.py` and `workspace_commands.py` are flat in `core/`** — not in `commands/`. The `commands/` subdir is routing infra only; built-in handlers live at the `core/` level.
 
-### Flat modules (remain in core/)
+**`commands/` vs `src/lyra/commands/`** — `core/commands/` is the router/loader/registry plumbing. User-facing plugin commands (echo, search, pairing…) live in the top-level `src/lyra/commands/`.
 
-These modules did not move into subdirs:
+**`pairing_config.py`** is a sibling dataclass with no DB logic — it is not a store.
 
-- **Agent**: `agent.py`, `agent_builder.py`, `agent_commands.py`, `agent_config.py`,
-  `agent_db_loader.py`, `agent_loader.py`, `agent_models.py`, `agent_refiner.py`,
-  `agent_schema.py`, `agent_seeder.py`
-- **Memory**: `memory.py`, `memory_freshness.py`, `memory_schema.py`, `memory_types.py`,
-  `memory_upserts.py`
-- **Message types**: `message.py`, `messages.py`, `render_events.py`
-- **Guards / trust**: `circuit_breaker.py`, `guard.py`, `identity.py`, `trust.py`
-- **Auth / persona**: `auth.py`, `authenticator.py`, `persona.py`
-- **Runtime / infra**: `debouncer.py`, `events.py`, `inbound_bus.py`,
-  `tts_dispatch.py`, `processor_registry.py`,
-  `runtime_config.py`, `session_lifecycle.py`, `stream_processor.py`,
-  `tool_display_config.py`, `workspace_commands.py`, `builtin_commands.py`,
-  `cli_pool.py`, `cli_pool_worker.py`, `cli_protocol.py`
+**`json_agent_store.py`** is the DB-free test stub for `AgentStore`. Use via `make_agent_store(use_json=True)`.
+
 ## Key protocols
 
 ### ChannelAdapter (`hub/hub_protocol.py`)
-Every platform adapter (Telegram, Discord) must implement this structural Protocol.
-Key methods: `normalize()`, `send()`, `send_streaming()`, `render_audio()`,
-`render_attachment()`. The hub trusts `InboundMessage.user_id` as authenticated
-identity — adapters are responsible for platform-level verification before constructing
-the message.
-
-Never derive `user_id` or `scope_id` from unverified inbound data.
-
-### Guard / GuardChain (`guard.py`)
-A `Guard` is a `Protocol` with one method: `check(identity) -> Rejection | None`.
-Guards are composable via `GuardChain` (sequential, short-circuit on first rejection).
-`BlockedGuard` is the built-in implementation that rejects `TrustLevel.BLOCKED` users.
-Add new guards without subclassing — just implement `check()`.
+Structural protocol every platform adapter must implement. The hub trusts `InboundMessage.user_id` as authenticated identity — adapters must verify platform-level auth before constructing the message.
 
 ### PoolContext (`pool/pool.py`)
-Narrow interface that `Pool` requires from its owner (Hub). Decouples Pool from
-the full Hub for testing. Implements `get_agent()`, `dispatch_response()`,
-`dispatch_streaming()`, and circuit breaker hooks.
+Narrow interface `Pool` requires from its owner. Test seam: inject a mock to unit-test `Pool` without pulling in `Hub`.
 
 ### RoutingKey (`hub/hub_protocol.py`)
-`NamedTuple` of `(platform, bot_id, scope_id)`. Always call `.to_pool_id()` to
-get the canonical string — never construct the pool ID inline (ADR-001 §4).
+`NamedTuple(platform, bot_id, scope_id)`. Always call `.to_pool_id()` — never build pool ID strings manually (ADR-001 §4).
+
+### Guard / GuardChain (`guard.py`)
+`Guard` protocol has one method: `check(identity) -> Rejection | None`. Compose via `GuardChain`. Never raise from `check()` — return a `Rejection`.
 
 ## Store pattern
 
-Stateful resources follow the async store pattern:
-- `__init__` initialises data structures only (no I/O)
-- `connect()` opens the DB, runs migrations, warms caches
-- `close()` / `stop()` tears down cleanly
+All stores follow the async store pattern:
+- `__init__` — data structures only, no I/O
+- `connect()` — open DB, run migrations, warm cache
+- `close()` — teardown
 
-Stores provide **sync reads from cache** and **async writes** to SQLite.
-The cache is updated atomically with the write so the event loop never blocks on
-a read. See `stores/agent_store.py`, `stores/auth_store.py`, `stores/thread_store.py`.
+Reads are synchronous (from cache). Writes are async (SQLite). Cache updated atomically with write — event loop never blocks on a read.
 
 ## Import patterns
 
 ```python
-# Top-level re-exports (preferred for Hub, Pool, core types)
+# Top-level re-exports
 from lyra.core import Hub, Pool, MessagePipeline, RoutingKey
 
 # Subpackage re-exports
-from lyra.core.hub import Hub, MessagePipeline
+from lyra.core.hub import Hub, MessagePipeline, OutboundDispatcher
 from lyra.core.pool import Pool, PoolProcessor
-from lyra.core.stores import AgentStore, AuthStore, SqliteStore
+from lyra.core.stores import AgentStore, AuthStore, SqliteStore, AgentStoreProtocol
 from lyra.core.commands import CommandRouter, CommandLoader
 
-# Direct module imports (when you need something not re-exported)
-from lyra.core.hub.hub_protocol import ChannelAdapter
-from lyra.core.stores.agent_store import AgentRow
+# Direct imports (when not re-exported)
+from lyra.core.hub.hub_protocol import ChannelAdapter, RoutingKey, Binding
+from lyra.core.hub.pool_manager import PoolManager
+from lyra.core.stores.agent_store import AgentRow, AgentRuntimeStateRow
+from lyra.core.stores.agent_store_protocol import make_agent_store
+from lyra.core.stores.identity_alias_store import IdentityAliasStore
+from lyra.core.stores.pairing import PairingStore
 ```
 
-## Conventions
-
-- Every public module has a module-level docstring explaining its single responsibility.
-- Async stores: `connect()` before first use, `close()` on shutdown. Never call
-  async methods before `connect()`.
-- `PoolContext` is the test seam — inject a mock to unit-test Pool without Hub.
-- `MessagePipeline` stages return `PipelineResult | None`. Returning `None`
-  means "continue to next stage"; returning a `PipelineResult` stops the pipeline.
-- Pool IDs are always produced by `RoutingKey.to_pool_id()` — never build them
-  with string formatting.
+Never import from old flat-core paths — always import from the subpackage directly.
 
 ## What NOT to do
 
-- Do NOT add business logic to `Hub`. Hub orchestrates; logic belongs in Pipeline,
-  Pool, or Agent.
-- Do NOT make `Pool` depend on `Hub` directly — use `PoolContext` instead.
-- Do NOT call store async methods from synchronous code or before `connect()`.
+- Do NOT add business logic to `Hub` — logic belongs in Middleware, Pool, or Agent.
+- Do NOT make `Pool` depend on `Hub` directly — use `PoolContext`.
+- Do NOT call store async methods before `connect()` or from synchronous code.
 - Do NOT add platform-specific code to `core/` — that belongs in `adapters/`.
-- Do NOT construct `pool_id` strings manually. Use `RoutingKey.to_pool_id()`.
-- Do NOT raise exceptions from `Guard.check()` — return a `Rejection` instead.
-- Do NOT import from old flat-core paths — always import from the subpackage directly
-  (e.g. `from lyra.core.stores.agent_store import AgentStore`, not `lyra.core.agent_store`).
+- Do NOT construct pool ID strings manually — use `RoutingKey.to_pool_id()`.
+- Do NOT create nested CLAUDE.md files inside subdirs — this file covers all of `core/`.

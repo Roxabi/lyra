@@ -259,7 +259,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
 
         # STT / TTS via NATS clients (hub talks to voicecli adapters over NATS)
         stt_service = init_nats_stt(nc)
-        tts_service = init_nats_tts(nc, stt_service)
+        tts_service = init_nats_tts(nc)
 
         cli_pool_cfg = _load_cli_pool_config(raw_config)
         hub_cfg = _load_hub_config(raw_config)

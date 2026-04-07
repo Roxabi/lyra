@@ -12,6 +12,7 @@ from uuid import uuid4
 
 from nats.aio.client import Client as NATS
 
+from lyra.nats.circuit_breaker import NatsCircuitBreaker
 from lyra.stt import STTUnavailableError, TranscriptionResult
 
 log = logging.getLogger(__name__)
@@ -70,8 +71,13 @@ class NatsSttClient:
         self._detection_threshold = language_detection_threshold
         self._detection_segments = language_detection_segments
         self._detection_fallback = language_fallback
+        self._cb = NatsCircuitBreaker()
 
     async def transcribe(self, path: Path | str) -> TranscriptionResult:
+        if self._cb.is_open():
+            raise STTUnavailableError(
+                "STT circuit open — adapter temporarily unavailable"
+            )
         resolved = Path(path).resolve()
         audio_bytes = await asyncio.to_thread(resolved.read_bytes)
         mime = _mime_from_suffix(resolved.suffix)
@@ -91,6 +97,7 @@ class NatsSttClient:
             data = json.loads(reply.data)
         except TimeoutError as exc:
             log.warning("STT adapter timeout after %.0fs", self._timeout)
+            self._cb.record_failure()
             raise STTUnavailableError("STT adapter timeout") from exc
         except Exception as exc:
             if "max_payload" in str(exc).lower() or "MaxPayload" in type(exc).__name__:
@@ -98,16 +105,21 @@ class NatsSttClient:
                     "STT payload too large (%.0f KB) — check NATS max_payload",
                     payload_kb,
                 )
+                self._cb.record_failure()
                 raise STTUnavailableError("STT request payload too large") from exc
             log.warning("STT adapter unreachable: %s: %s", type(exc).__name__, exc)
+            self._cb.record_failure()
             raise STTUnavailableError("STT adapter unreachable") from exc
         if not data.get("ok"):
+            self._cb.record_failure()
             raise STTUnavailableError("STT transcription failed")
-        return TranscriptionResult(
+        result = TranscriptionResult(
             text=data["text"],
             language=data.get("language", "unknown"),
             duration_seconds=data.get("duration_seconds", 0.0),
         )
+        self._cb.record_success()
+        return result
 
 
 def _mime_from_suffix(suffix: str) -> str:

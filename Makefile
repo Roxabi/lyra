@@ -27,6 +27,12 @@ endef
 # ── Supervisor services ──────────────────────────────────────────────────────
 
 LYRA_PROGRAMS := lyra_hub lyra_telegram lyra_discord
+ifneq ($(shell grep -s '^LYRA_STT_ENABLED=1' .env),)
+  LYRA_PROGRAMS += lyra_stt
+endif
+ifneq ($(shell grep -s '^LYRA_TTS_ENABLED=1' .env),)
+  LYRA_PROGRAMS += lyra_tts
+endif
 
 lyra:
 ifndef _IS_LYRA_SUBCMD

@@ -74,7 +74,7 @@ Goal: take the best of each. Lightweight like NullClaw, feature-rich like OpenCl
 
 **STT Whisper VRAM** (via voicecli library, faster-whisper under the hood, float16 on CUDA):
 
-| Model (`STT_MODEL_SIZE`) | VRAM | Notes |
+| Model (`LYRA_STT_MODEL`) | VRAM | Notes |
 |--------------------------|------|-------|
 | `tiny` | ~0.2GB | Fastest, low accuracy |
 | `small` | ~0.5GB | Good balance |
@@ -84,7 +84,8 @@ Goal: take the best of each. Lightweight like NullClaw, feature-rich like OpenCl
 
 Default (`large-v3-turbo`) adds ~3GB → total **~8.5GB / 10GB** with 1.5GB headroom.
 
-**STT env vars**: `STT_MODEL_SIZE` (default: `large-v3-turbo`), `STT_DEVICE` (default: `auto`), `STT_COMPUTE_TYPE` (default: `auto`).
+**STT env vars**: `LYRA_STT_ENABLED` (default: `false`) · `LYRA_STT_MODEL` (default: `large-v3-turbo`, formerly `STT_MODEL_SIZE`) · `STT_DEVICE` (default: `auto`) · `STT_COMPUTE_TYPE` (default: `auto`).
+**TTS env vars**: `LYRA_TTS_ENABLED` (default: `false`) · `LYRA_TTS_ENGINE` (default: `qwen`, formerly `TTS_ENGINE`). TTS is independent of STT — each can be enabled separately.
 **Personal vocab**: loaded automatically from `~/.voicecli/voicecli.vocab` (shared with voicecli dictate daemon).
 
 ### Machine 2 — AI Server
@@ -666,6 +667,7 @@ client = AsyncOpenAI(
 - **Message normalization** (#139 ✅) — Full bus envelope: InboundMessage, OutboundMessage, InboundAudio, OutboundAudioChunk, OutboundAttachment. Per-adapter render functions.
 - **Runtime agent config** (#135 ✅) — Live tuning via `!config` command, no restart needed.
 - **Voice STT** (#80 ✅) — STTService delegates to voicecli library (faster-whisper + personal vocab from `~/.voicecli/voicecli.vocab`), InboundAudioBus, audio consumer loop in Hub.
+- **Normalized STT/TTS env vars + circuit breaker** (#598 ✅) — `LYRA_STT_MODEL` replaces `STT_MODEL_SIZE` (deprecated fallback kept for one cycle); `LYRA_TTS_ENGINE` replaces `TTS_ENGINE` (same fallback). `LYRA_STT_ENABLED` / `LYRA_TTS_ENABLED` (default `false`) gate each service independently — TTS no longer requires STT. `LYRA_VOICE_RESPONSES` removed (superseded by `LYRA_TTS_ENABLED`). `NatsCircuitBreaker` (`src/lyra/nats/circuit_breaker.py`) applied to both `NatsSttClient` and `NatsTtsClient`: 3 failures → open for 60 s, prevents log spam when adapters are down. `probe_voice_services()` in `voice_overlay.py` warns at boot if STT/TTS adapters are unreachable.
 - **Typing indicator redesign** (#229 ✅) — `TelegramAdapter` and `DiscordAdapter` start typing at message receipt (`_on_message`); long-running requests keep the indicator alive via a background task. Typing is cancelled **after** the last chunk is confirmed sent — in `send()` after the send loop, and in `send_streaming()` after the final edit — ensuring the indicator stays active until the message is visible.
 - **Outbound send reliability** — `OutboundDispatcher` retries transient send failures (network errors, 5xx, rate-limit 429) up to 3 times with exponential backoff (1 s / 2 s / 4 s). After all retries are exhausted, the user receives a plaintext error notification (`"⚠️ I encountered an error sending my response. Please try again."`). When the platform circuit breaker is open, the user is notified once per 60 s per scope (`"⚠️ I'm temporarily unavailable. Please try again in a moment."`). Non-retryable errors (4xx client errors) fail immediately.
 - **Intermediate turns** (`show_intermediate` ✅) — `on_intermediate` callback threaded through LlmProvider decorators into `CliPool._read_until_result`. When `show_intermediate = true` in agent TOML, each intermediate CLI turn is dispatched to the user as a `⏳`-prefixed message.

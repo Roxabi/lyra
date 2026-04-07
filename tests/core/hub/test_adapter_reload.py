@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from lyra.core.hub.hub_protocol import RoutingKey
 from lyra.core.message import Platform
-from tests.core.conftest import _make_hub, _MockAdapter
+from tests.core.conftest import MockAdapter, _make_hub
 
 
 class TestAdapterReloadHubState:
@@ -18,7 +18,7 @@ class TestAdapterReloadHubState:
         # _make_hub pre-registers "lyra" agent + telegram adapter + binding
         assert "lyra" in hub.agent_registry
 
-        new_adapter = _MockAdapter()
+        new_adapter = MockAdapter()
         hub.register_adapter(Platform.TELEGRAM, "main", new_adapter)
 
         assert "lyra" in hub.agent_registry
@@ -28,17 +28,17 @@ class TestAdapterReloadHubState:
         key = RoutingKey(Platform.TELEGRAM, "main", "*")
         assert key in hub.bindings
 
-        new_adapter = _MockAdapter()
+        new_adapter = MockAdapter()
         hub.register_adapter(Platform.TELEGRAM, "main", new_adapter)
 
         assert key in hub.bindings
 
     def test_second_adapter_unaffected_by_telegram_reload(self) -> None:
         hub = _make_hub()
-        discord_adapter = _MockAdapter()
+        discord_adapter = MockAdapter()
         hub.register_adapter(Platform.DISCORD, "main", discord_adapter)
 
-        new_telegram_adapter = _MockAdapter()
+        new_telegram_adapter = MockAdapter()
         hub.register_adapter(Platform.TELEGRAM, "main", new_telegram_adapter)
 
         assert hub.adapter_registry[(Platform.DISCORD, "main")] is discord_adapter
@@ -49,7 +49,7 @@ class TestAdapterReloadHubState:
         hub.get_or_create_pool(pool_id, "lyra")
         assert pool_id in hub.pools
 
-        new_adapter = _MockAdapter()
+        new_adapter = MockAdapter()
         hub.register_adapter(Platform.TELEGRAM, "main", new_adapter)
 
         assert pool_id in hub.pools
@@ -58,7 +58,7 @@ class TestAdapterReloadHubState:
         hub = _make_hub()
         old_adapter = hub.adapter_registry[(Platform.TELEGRAM, "main")]
 
-        new_adapter = _MockAdapter()
+        new_adapter = MockAdapter()
         hub.register_adapter(Platform.TELEGRAM, "main", new_adapter)
 
         assert hub.adapter_registry[(Platform.TELEGRAM, "main")] is new_adapter
@@ -73,7 +73,7 @@ class TestAdapterReloadHubState:
             # the _feeders guard fires before the idempotency check.
             # register_adapter() propagates this error, so callers must call
             # register_adapter() before start().
-            new_adapter = _MockAdapter()
+            new_adapter = MockAdapter()
             try:
                 hub.register_adapter(Platform.TELEGRAM, "main", new_adapter)
                 raise AssertionError(

@@ -22,7 +22,7 @@ define require_machine1
 	@[ -n "$(DEPLOY_DIR)" ] || { echo "Error: DEPLOY_DIR not set in .env"; exit 1; }
 endef
 
-.PHONY: lyra telegram discord lyra-stt lyra-tts monitor register deploy remote nats-install test lint typecheck format
+.PHONY: lyra telegram discord lyra-stt lyra-tts monitor register deploy remote nats-install nats-deploy test lint typecheck format
 
 # ── Supervisor services ──────────────────────────────────────────────────────
 
@@ -145,6 +145,11 @@ remote:
 
 nats-install:
 	@bash deploy/nats/install.sh
+
+nats-deploy:
+	$(require_machine1)
+	@echo "Deploying NATS nkey enforcement to $(DEPLOY_HOST)..."
+	@ssh $(DEPLOY_HOST) "cd $(DEPLOY_DIR) && sudo ./deploy/nats/nats-deploy.sh"
 
 test:
 	uv run pytest -v

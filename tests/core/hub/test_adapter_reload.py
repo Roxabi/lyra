@@ -1,4 +1,4 @@
-"""Integration tests: adapter reload preserves Hub state.
+"""Hub unit tests: adapter reload preserves Hub state.
 
 Verifies that re-registering an adapter (simulating a reload) does not
 disturb agent_registry, bindings, pools, or other adapter registrations
@@ -12,7 +12,7 @@ from lyra.core.message import Platform
 from tests.core.conftest import _make_hub, _MockAdapter
 
 
-class TestAdapterReloadPreservesHubState:
+class TestAdapterReloadHubState:
     def test_agent_registry_intact_after_adapter_reload(self) -> None:
         hub = _make_hub()
         # _make_hub pre-registers "lyra" agent + telegram adapter + binding
@@ -63,3 +63,23 @@ class TestAdapterReloadPreservesHubState:
 
         assert hub.adapter_registry[(Platform.TELEGRAM, "main")] is new_adapter
         assert hub.adapter_registry[(Platform.TELEGRAM, "main")] is not old_adapter
+
+    async def test_register_adapter_after_bus_start_does_not_raise(self) -> None:
+        hub = _make_hub()
+        await hub.inbound_bus.start()
+        try:
+            # LocalBus.register() raises RuntimeError if called after start()
+            # regardless of whether the platform was already registered —
+            # the _feeders guard fires before the idempotency check.
+            # register_adapter() propagates this error, so callers must call
+            # register_adapter() before start().
+            new_adapter = _MockAdapter()
+            try:
+                hub.register_adapter(Platform.TELEGRAM, "main", new_adapter)
+                raise AssertionError(
+                    "Expected RuntimeError from register_adapter() after bus start"
+                )
+            except RuntimeError as exc:
+                assert "feeders are already running" in str(exc)
+        finally:
+            await hub.inbound_bus.stop()

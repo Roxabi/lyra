@@ -1,10 +1,10 @@
-FROM python:3.12-slim AS builder
+FROM python:3.12.10-slim AS builder
 
 # Install system deps (git needed for GitHub-sourced Python deps)
 RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
 
 # Install uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+COPY --from=ghcr.io/astral-sh/uv:0.11.4 /uv /uvx /usr/local/bin/
 
 WORKDIR /app
 
@@ -12,12 +12,10 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-extra voice
 
-# Copy source and reinstall in editable mode so the lyra CLI is available
 COPY src/ src/
-RUN uv sync --frozen --no-dev --no-extra voice
 
 # ── Runtime stage ────────────────────────────────────────────────────────────
-FROM python:3.12-slim AS runtime
+FROM python:3.12.10-slim AS runtime
 
 RUN useradd -m lyra
 

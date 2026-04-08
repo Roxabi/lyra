@@ -1,0 +1,52 @@
+services:
+  nats:
+    image: nats:2.10-alpine
+    command: ["-js", "-m", "8222", "-c", "/etc/nats/nats.conf"]
+    volumes:
+      - ./nats/nats.conf:/etc/nats/nats.conf:ro
+    ports:
+      - "4222:4222"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8222/healthz | grep -q ok"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+  stt-stub:
+    build:
+      context: ./stubs
+      dockerfile: Dockerfile.stub
+    command: ["python", "stt_stub.py"]
+    environment:
+      NATS_URL: nats://nats:4222
+      STT_STUB_WORKER_ID: ${STT_STUB_WORKER_ID:-stt-tower-01}
+      STT_STUB_VRAM_USED_MB: ${STT_STUB_VRAM_USED_MB:-2400}
+      STT_STUB_VRAM_TOTAL_MB: ${STT_STUB_VRAM_TOTAL_MB:-16384}
+      STT_STUB_TRANSCRIPT: ${STT_STUB_TRANSCRIPT:-hello from stub}
+    depends_on:
+      nats:
+        condition: service_healthy
+    restart: unless-stopped
+
+  tts-stub:
+    build:
+      context: ./stubs
+      dockerfile: Dockerfile.stub
+    command: ["python", "tts_stub.py"]
+    environment:
+      NATS_URL: nats://nats:4222
+      TTS_STUB_WORKER_ID: ${TTS_STUB_WORKER_ID:-tts-tower-01}
+      TTS_STUB_VRAM_USED_MB: ${TTS_STUB_VRAM_USED_MB:-4800}
+      TTS_STUB_VRAM_TOTAL_MB: ${TTS_STUB_VRAM_TOTAL_MB:-16384}
+    depends_on:
+      nats:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Optional second STT worker for load-aware routing tests (#603)
+  # stt-stub-heavy:
+  #   extends:
+  #     service: stt-stub
+  #   environment:
+  #     STT_STUB_WORKER_ID: stt-tuwer-01
+  #     STT_STUB_VRAM_USED_MB: "12000"   # high load — should not be preferred

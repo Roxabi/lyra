@@ -75,6 +75,7 @@ class NatsTtsClient:
             "chunked": True,
         }
         if agent_tts is not None:
+            # voice/language use caller-override semantics (see below); excluded here
             for field in _TTS_CONFIG_FIELDS:
                 val = getattr(agent_tts, field, None)
                 if val is not None:

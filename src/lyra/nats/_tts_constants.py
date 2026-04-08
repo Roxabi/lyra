@@ -27,7 +27,18 @@ _TTS_CONFIG_FIELDS: tuple[str, ...] = (
 
 # Adapter side — deserialised by TtsAdapterStandalone.handle()
 _AGENT_TTS_FIELDS: tuple[str, ...] = (
-    "engine", "voice", "language", "accent", "personality", "speed",
-    "emotion", "exaggeration", "cfg_weight", "segment_gap", "crossfade",
-    "chunk_size", "default_language", "languages",
+    "engine",
+    "voice",
+    "language",
+    "accent",
+    "personality",
+    "speed",
+    "emotion",
+    "exaggeration",
+    "cfg_weight",
+    "segment_gap",
+    "crossfade",
+    "chunk_size",
+    "default_language",
+    "languages",
 )

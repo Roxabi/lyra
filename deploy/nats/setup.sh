@@ -132,7 +132,7 @@ if [ -f "${NKEYS_AUTH}" ]; then
 else
   sudo "${LYRA_DIR}/deploy/nats/gen-nkeys.sh"
 fi
-[ -f "${NKEYS_AUTH}" ] || error "Key generation failed — auth.conf missing"
+sudo test -f "${NKEYS_AUTH}" || error "Key generation failed — auth.conf missing"
 
 # ── 8. Start / restart ───────────────────────────────────────────────────
 

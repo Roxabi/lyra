@@ -116,7 +116,7 @@ register:
 
 # ── Supervisor config reload ──────────────────────────────────────────────────
 
-SCTL := $(SUPERVISORCTL)
+SCTL := $(or $(SUPERVISORCTL),$(CURDIR)/deploy/supervisor/supervisorctl.sh)
 
 # Local supervisorctl dispatch — mirrors svc.sh but uses SCTL directly.
 # Avoids routing through the hub's supervisorctl.sh (wrong socket on prod).

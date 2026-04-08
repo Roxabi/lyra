@@ -21,6 +21,7 @@ from lyra.core.message import (
     SCHEMA_VERSION_OUTBOUND_MESSAGE,
     InboundMessage,
     OutboundAttachment,
+    OutboundAudio,
     OutboundMessage,
     Platform,
 )
@@ -117,6 +118,8 @@ class NatsOutboundListener:
             self._handle_stream_error(data)
         elif msg_type == "attachment":
             await self._handle_attachment(data)
+        elif msg_type == "audio":
+            await self._handle_audio(data)
         elif "stream_id" in data and "seq" in data:
             await self._handle_chunk(data)
         else:
@@ -160,6 +163,23 @@ class NatsOutboundListener:
         await self._adapter.render_attachment(
             attachment, original_msg
         )
+        self._cache.pop(stream_id)
+
+    async def _handle_audio(self, data: dict) -> None:
+        resolved = self._cache.resolve(data, "audio")
+        if resolved is None:
+            return
+        stream_id, original_msg = resolved
+        audio_data = data.get("audio")
+        if audio_data is None:
+            log.warning("NatsOutboundListener: missing 'audio' key in envelope")
+            return
+        try:
+            audio = _deserialize_dict(audio_data, OutboundAudio)
+        except Exception:
+            log.warning("NatsOutboundListener: failed to deserialize audio")
+            return
+        await self._adapter.render_audio(audio, original_msg)
         self._cache.pop(stream_id)
 
     def _handle_stream_start(self, data: dict) -> None:

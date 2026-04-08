@@ -171,12 +171,12 @@ class SttMiddleware:
         # 6. Success — echo transcript and continue pipeline.
         await hub.dispatch_response(
             _build_stt_reply(msg, reply=False),
-            Response(content=f"\U0001f3a4 [voice]: {transcript}"),
+            Response(content=f"\U0001f3a4 {transcript}"),
         )
         updated = dataclasses.replace(
             msg,
             text=transcript,
-            text_raw=f"\U0001f3a4 [voice]: {transcript}",
+            text_raw=f"\U0001f3a4 {transcript}",
             language=result.language,
             audio=None,
         )

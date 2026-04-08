@@ -193,6 +193,13 @@ class SubmitToPoolMiddleware:
                     thread_session_id,
                 )
                 return ResumeStatus.SKIPPED
+            if thread_session_id == pool.session_id:
+                log.debug(
+                    "thread-session-resume: pool %r already on session %r — skipping",
+                    pool_id,
+                    thread_session_id,
+                )
+                return ResumeStatus.SKIPPED
             log.info(
                 "thread-session-resume: resuming %r for pool %r",
                 thread_session_id,

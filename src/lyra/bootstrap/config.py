@@ -149,20 +149,27 @@ _ADMIN_ID_PATTERN = re.compile(r"^(tg|dc):user:\d+$")
 def _load_raw_config(config_path: str | None = None) -> dict[str, Any]:
     """Open and parse config.toml once; return the raw dict.
 
-    Resolution order: $LYRA_CONFIG env var → 'config.toml' in cwd → empty dict.
+    Resolution: explicit arg → $LYRA_CONFIG → $LYRA_VAULT_DIR/config.toml
+    → cwd/config.toml → empty dict.
     """
-    raw: dict[str, Any] = {}
     env_path = os.environ.get("LYRA_CONFIG")
-    path = config_path or env_path or "config.toml"
-    if env_path and not config_path:
-        path = _validate_config_path(env_path)
-    try:
-        with open(path, "rb") as f:
-            raw = tomllib.load(f)
-        log.info("Loaded config from %s", path)
-    except FileNotFoundError:
-        log.info("No config file at %s — using defaults", path)
-    return raw
+    if config_path:
+        candidates = [config_path]
+    elif env_path:
+        candidates = [_validate_config_path(env_path)]
+    else:
+        vault_dir = Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra")))
+        candidates = [str(vault_dir / "config.toml"), "config.toml"]
+    for path in candidates:
+        try:
+            with open(path, "rb") as f:
+                raw = tomllib.load(f)
+            log.info("Loaded config from %s", path)
+            return raw
+        except FileNotFoundError:
+            continue
+    log.info("No config.toml found (tried: %s) — using defaults", ", ".join(candidates))
+    return {}
 
 
 def _build_agent_overrides(raw: dict[str, Any], name: str) -> AgentOverrideConfig:
@@ -186,11 +193,7 @@ def _build_agent_overrides(raw: dict[str, Any], name: str) -> AgentOverrideConfi
 def _load_circuit_config(
     raw: dict[str, Any],
 ) -> tuple[CircuitRegistry, frozenset[str]]:
-    """Load [circuit_breaker.*] and [admin] sections from raw config dict.
-
-    Returns (CircuitRegistry with 4 named CBs, frozenset of admin user_ids).
-    Missing sections → all defaults.
-    """
+    """Load [circuit_breaker.*] and [admin] sections. Missing sections → defaults."""
     cb_section: dict[str, Any] = raw.get("circuit_breaker", {})
     registry = CircuitRegistry()
     for name in _CB_SERVICES:
@@ -221,17 +224,7 @@ def _load_pairing_config(raw: dict[str, Any]) -> PairingConfig:
 
 
 def _load_tool_display_config(raw: dict[str, Any]) -> ToolDisplayConfig:
-    """Load [tool_display] section from raw config dict. Missing section → all defaults.
-
-    Keys (all optional)
-    -------------------
-    names_threshold : int  — edits before switching to count mode per file (default: 3)
-    group_threshold : int  — files before switching to grouped display (default: 3)
-    bash_max_len    : int  — max chars per bash command shown (default: 60)
-    throttle_ms     : int  — min ms between ToolSummaryRenderEvent emits (default: 2000)
-
-    [tool_display.show]   — per-tool visibility overrides (merged with defaults)
-    """
+    """Load [tool_display] section. Missing section → all defaults."""
     section: dict[str, Any] = raw.get("tool_display", {})
     return ToolDisplayConfig.model_validate(section)
 
@@ -279,8 +272,7 @@ def _load_event_bus_config(raw: dict[str, Any]) -> EventBusConfig:
 def _load_messages(language: str = "en") -> MessageManager:
     """Load MessageManager.
 
-    Resolution order:
-      LYRA_MESSAGES_CONFIG env var → messages.toml in cwd → bundled config.
+    Resolution: $LYRA_MESSAGES_CONFIG → cwd/messages.toml → bundled config.
     """
     bundled = Path(__file__).resolve().parent.parent / "config" / "messages.toml"
     env_messages = os.environ.get("LYRA_MESSAGES_CONFIG")

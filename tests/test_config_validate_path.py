@@ -1,4 +1,4 @@
-"""Tests for lyra.bootstrap.config._validate_config_path."""
+"""Tests for lyra.bootstrap.config._validate_config_path and _load_raw_config."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from lyra.bootstrap.config import _validate_config_path
+from lyra.bootstrap.config import _load_raw_config, _validate_config_path
 
 
 class TestValidateConfigPath:
@@ -60,3 +60,89 @@ class TestValidateConfigPath:
         result = _validate_config_path("config.toml")
 
         assert result == str(config_file.resolve())
+
+
+# ---------------------------------------------------------------------------
+# TestLoadRawConfig — resolution order
+# ---------------------------------------------------------------------------
+
+
+def _write_toml(path: Path, data: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(data)
+
+
+class TestLoadRawConfig:
+    def test_explicit_path_wins(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Explicit config_path argument takes precedence over all env vars."""
+        explicit = tmp_path / "explicit.toml"
+        _write_toml(explicit, '[test]\nkey = "explicit"')
+        vault = tmp_path / "vault"
+        _write_toml(vault / "config.toml", '[test]\nkey = "vault"')
+        monkeypatch.setenv("LYRA_VAULT_DIR", str(vault))
+
+        result = _load_raw_config(str(explicit))
+
+        assert result["test"]["key"] == "explicit"
+
+    def test_lyra_config_env_wins_over_vault(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """$LYRA_CONFIG takes precedence over $LYRA_VAULT_DIR/config.toml."""
+        env_cfg = tmp_path / "env.toml"
+        _write_toml(env_cfg, '[test]\nkey = "env"')
+        vault = tmp_path / "vault"
+        _write_toml(vault / "config.toml", '[test]\nkey = "vault"')
+        monkeypatch.setenv("LYRA_CONFIG", str(env_cfg))
+        monkeypatch.setenv("LYRA_VAULT_DIR", str(vault))
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+        result = _load_raw_config()
+
+        assert result["test"]["key"] == "env"
+
+    def test_vault_dir_config_found(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """$LYRA_VAULT_DIR/config.toml loaded when no explicit path or $LYRA_CONFIG."""
+        vault = tmp_path / ".lyra"
+        _write_toml(vault / "config.toml", '[test]\nkey = "vault"')
+        monkeypatch.setenv("LYRA_VAULT_DIR", str(vault))
+        monkeypatch.delenv("LYRA_CONFIG", raising=False)
+        monkeypatch.chdir(tmp_path)  # no config.toml in cwd
+
+        result = _load_raw_config()
+
+        assert result["test"]["key"] == "vault"
+
+    def test_cwd_fallback_when_vault_absent(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Falls back to cwd/config.toml when $LYRA_VAULT_DIR/config.toml is absent."""
+        vault = tmp_path / ".lyra"
+        vault.mkdir()  # exists but no config.toml inside
+        cwd_cfg = tmp_path / "config.toml"
+        _write_toml(cwd_cfg, '[test]\nkey = "cwd"')
+        monkeypatch.setenv("LYRA_VAULT_DIR", str(vault))
+        monkeypatch.delenv("LYRA_CONFIG", raising=False)
+        monkeypatch.chdir(tmp_path)
+
+        result = _load_raw_config()
+
+        assert result["test"]["key"] == "cwd"
+
+    def test_empty_dict_when_no_config_found(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Returns empty dict when no config file exists anywhere."""
+        vault = tmp_path / ".lyra"
+        vault.mkdir()
+        monkeypatch.setenv("LYRA_VAULT_DIR", str(vault))
+        monkeypatch.delenv("LYRA_CONFIG", raising=False)
+        monkeypatch.chdir(tmp_path)
+
+        result = _load_raw_config()
+
+        assert result == {}

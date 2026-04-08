@@ -172,6 +172,8 @@ NK_BIN=$(ensure_nk)
 # ── create directories ─────────────────────────────────────────────────────
 apply_permissions   # creates SEEDS_DIR with correct ownership before writing seeds
 mkdir -p "${AUTH_DIR}"
+chown root:nats "${AUTH_DIR}"
+chmod 750 "${AUTH_DIR}"
 
 # ── generate nkey pairs ────────────────────────────────────────────────────
 

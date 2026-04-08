@@ -177,6 +177,10 @@ async def test_process_loop_fires_pending_session_id() -> None:
         scope_id="chat:42",
     )
 
+    # Wire an on_resume callback
+    on_resume_fn = AsyncMock()
+    pool._on_resume_fn = on_resume_fn
+
     # Submit triggers process_loop via asyncio.create_task
     pool.submit(msg)
 
@@ -184,3 +188,33 @@ async def test_process_loop_fires_pending_session_id() -> None:
     await asyncio.sleep(0.1)
 
     resume_fn.assert_awaited_once_with("target-session-id")
+    on_resume_fn.assert_awaited_once_with("target-session-id")
+
+
+async def test_process_loop_does_not_call_on_resume_fn_when_resume_rejected() -> None:
+    """process_loop must NOT call _on_resume_fn when resume_session returns False."""
+    pool = _make_pool("telegram:main:chat:42")
+
+    pool.debounce_ms = 0
+
+    resume_fn = AsyncMock(return_value=False)
+    on_resume_fn = AsyncMock()
+    pool._session_resume_fn = resume_fn
+    pool._on_resume_fn = on_resume_fn
+
+    pool._pending_session_id = "target-session-id"  # type: ignore[attr-defined]
+
+    pool._ctx.get_agent = MagicMock(side_effect=RuntimeError("stop here"))
+
+    msg = _make_msg(
+        id="msg-1",
+        platform="telegram",
+        bot_id="main",
+        scope_id="chat:42",
+    )
+
+    pool.submit(msg)
+
+    await asyncio.sleep(0.1)
+
+    on_resume_fn.assert_not_awaited()

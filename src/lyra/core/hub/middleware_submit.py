@@ -182,6 +182,9 @@ class SubmitToPoolMiddleware:
         )
         accepted = await pool.resume_session(session_id)
         if accepted and hub._turn_store is not None:
+            # Direct call (not via pool._on_resume_fn) — _on_resume_fn only fires
+            # for deferred (busy-pool) resumes in pool_processor. Paths are
+            # mutually exclusive; #396 tracks moving this into Pool.resume_session.
             await hub._turn_store.increment_resume_count(session_id)
         return ResumeStatus.RESUMED
 
@@ -241,6 +244,7 @@ class SubmitToPoolMiddleware:
         )
         accepted = await pool.resume_session(thread_session_id)
         if accepted:
+            # Direct call — see Path 1 comment; #396 tracks structural fix.
             await hub._turn_store.increment_resume_count(thread_session_id)
             return ResumeStatus.RESUMED, True
         log.info(
@@ -297,6 +301,7 @@ class SubmitToPoolMiddleware:
         )
         accepted = await pool.resume_session(last_sid)
         if accepted:
+            # Direct call — see Path 1 comment; #396 tracks structural fix.
             await hub._turn_store.increment_resume_count(last_sid)
         return ResumeStatus.RESUMED
 

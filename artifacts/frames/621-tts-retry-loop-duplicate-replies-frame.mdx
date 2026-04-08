@@ -1,0 +1,59 @@
+---
+title: "bug(hub): TTS retry infinite loop causes duplicate replies attached to old messages"
+issue: 621
+status: approved
+tier: F-lite
+date: 2026-04-08
+---
+
+## Problem
+
+When TTS synthesis fails, `synthesize_and_dispatch_audio` in `tts_dispatch.py` enters an
+infinite retry loop — re-dispatching the same `TtsUnavailableError` fallback notification
+for the same `msg.id` indefinitely. The hub publishes the NATS outbound envelope hundreds
+of times per uptime period. The adapter receives each copy, finds no matching `stream_id`
+in its cache (already popped after the first send), and falls back to the embedded
+`original_msg` — firing the same Telegram notification over and over, all `reply_to` the
+original voice message (msg N-1).
+
+The user sees the "Voice output is temporarily unavailable" message appear repeatedly
+**after** subsequent conversation turns, appearing attached to old messages — the classic
+reply-to off-by-1 symptom. This is a production incident confirmed in `lyra_hub_error.log`
+with the same two msg IDs repeating ×hundreds until manual restart.
+
+A secondary issue compounds the bug: streaming NATS envelopes (`stream_start`) do not
+embed `original_msg`, so on adapter restart or TTL expiry (120 s) the response is silently
+dropped with no fallback path.
+
+## Who
+
+- **Primary:** Any user who triggers a voice response when the TTS adapter is unavailable —
+  receives a flood of stale fallback notifications across multiple conversation turns.
+- **Secondary:** Developer on-call — hub must be manually restarted to stop the loop, causing
+  full conversation context loss.
+
+## Constraints
+
+- Single domain: `src/lyra/core/` (hub only — `tts_dispatch.py`, `hub_outbound.py`).
+- No new architecture — existing dispatch and NATS contracts must be preserved.
+- Fix must not break the normal TTS happy path (audio dispatch → stream chunks → adapter plays).
+
+## Out of Scope
+
+- Fix 2 (embed `original_msg` in `stream_start`) — owned by #622, different files.
+- Fix 3: NATS keep-alive / ping-interval tuning — infra concern, separate investigation.
+- Reply-to calculation changes — off-by-1 is a symptom of the loop, not a bug in
+  `telegram_outbound.py`.
+- `InboundCache` TTL tuning — #622.
+
+## Complexity
+
+**Tier: F-lite** — Single domain, root cause fully diagnosed, fix is a guard clause or
+removal of a redundant `dispatch_response` call. ≤2 files, minimal blast radius.
+
+Signals observed:
+- ≤2 files in `core/` only
+- Root cause fully diagnosed with exact line numbers
+- Fix is a guard clause / removal of one redundant call
+- No new abstractions or cross-domain coordination
+- `size:F-lite` label on issue

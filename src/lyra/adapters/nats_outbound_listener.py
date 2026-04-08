@@ -201,11 +201,11 @@ class NatsOutboundListener:
             self._stream_outbound[stream_id] = _deserialize_dict(
                 outbound_data, OutboundMessage
             )
+            raw_orig = data.get("original_msg")
+            if raw_orig is not None:
+                self._stream_original_msgs[stream_id] = raw_orig
         except Exception:
             log.warning("NatsOutboundListener: failed to deserialize stream outbound")
-        raw_orig = data.get("original_msg")
-        if raw_orig is not None:
-            self._stream_original_msgs[stream_id] = raw_orig
 
     def _handle_stream_error(self, data: dict) -> None:
         """Dispatch to the stream_error handler in _nats_outbound_stream."""
@@ -255,6 +255,12 @@ class NatsOutboundListener:
                 except Exception:
                     log.warning(
                         "NatsOutboundListener: bad embedded original_msg"
+                        " for stream_id=%r", stream_id,
+                    )
+                else:
+                    log.debug(
+                        "NatsOutboundListener: cache miss, recovered"
+                        " original_msg from embedded payload"
                         " for stream_id=%r", stream_id,
                     )
         if original_msg is None:

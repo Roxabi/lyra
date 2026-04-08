@@ -796,6 +796,9 @@ async def test_stream_cache_miss_with_embedded_original_msg_delivers() -> None:
     msg = _make_tg_msg("msg-cache-miss-embed")
     # Do NOT call cache_inbound — simulate cache miss / TTL eviction
 
+    # Confirm cache truly has no entry before dispatch
+    assert msg.id not in listener._cache
+
     serialized_orig = json.loads(serialize(msg).decode("utf-8"))
 
     stream_start = {
@@ -817,11 +820,54 @@ async def test_stream_cache_miss_with_embedded_original_msg_delivers() -> None:
 
     # Act — await the drain task
     task = listener._stream_tasks.get(msg.id)
-    if task:
-        await task
+    assert task is not None, "drain task was not created"
+    await task
 
     # Assert — message was delivered via embedded fallback
     adapter.send_streaming.assert_called_once()
+    assert listener._stream_original_msgs == {}  # proves fallback dict was consumed
+
+
+@pytest.mark.asyncio
+async def test_stream_cache_miss_bad_embedded_original_msg_warns_and_drains(
+    caplog,
+) -> None:
+    """SC-7b: cache miss + malformed embedded original_msg -> warn + drain."""
+    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+
+    nc = AsyncMock()
+    adapter = AsyncMock()
+    adapter.send_streaming = AsyncMock()
+    listener = NatsOutboundListener(nc, Platform.TELEGRAM, "main", adapter)
+
+    stream_id = "msg-bad-embed"
+    # Malformed: id=None fails InboundMessage deserialization
+    listener._stream_original_msgs[stream_id] = {"id": None, "platform": "telegram"}
+
+    done_chunk = {
+        "stream_id": stream_id,
+        "seq": 0,
+        "event_type": "text",
+        "payload": {"text": "hi", "is_final": True},
+        "done": True,
+    }
+
+    _logger = "lyra.adapters.nats_outbound_listener"
+    with caplog.at_level(logging.WARNING, logger=_logger):
+        await listener._handle(_make_nats_msg(done_chunk))
+        task = listener._stream_tasks.get(stream_id)
+        assert task is not None, "drain task was not created"
+        await task
+
+    adapter.send_streaming.assert_not_called()
+    assert any(
+        "bad embedded" in r.message and r.levelno == logging.WARNING
+        for r in caplog.records
+    )
+    assert any(
+        "drained" in r.message and r.levelno == logging.WARNING
+        for r in caplog.records
+    )
 
 
 @pytest.mark.asyncio
@@ -859,8 +905,8 @@ async def test_stream_cache_hit_does_not_use_stream_original_msgs() -> None:
 
     # Act
     task = listener._stream_tasks.get(msg.id)
-    if task:
-        await task
+    assert task is not None, "drain task was not created"
+    await task
 
     # Assert — delivered via cache (not fallback)
     adapter.send_streaming.assert_called_once()
@@ -899,7 +945,10 @@ async def test_stream_both_missing_warns_and_drains(caplog) -> None:
 
     # Assert — send_streaming never called; warning fired
     adapter.send_streaming.assert_not_called()
-    assert "drained" in caplog.text
+    assert any(
+        "drained" in r.message and r.levelno == logging.WARNING
+        for r in caplog.records
+    )
 
 
 @pytest.mark.asyncio

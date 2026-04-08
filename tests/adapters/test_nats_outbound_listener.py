@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
@@ -9,6 +10,7 @@ import pytest
 
 from lyra.core.message import InboundMessage, Platform
 from lyra.core.trust import TrustLevel
+from lyra.nats._serialize import serialize
 
 
 def _make_tg_msg(msg_id: str = "msg-1") -> InboundMessage:
@@ -773,3 +775,202 @@ async def test_version_mismatch_counter_flows_from_listener() -> None:
     assert len(yielded) == 1
     assert isinstance(yielded[0], TextRenderEvent)
     assert yielded[0].text == "good"  # type: ignore[union-attr]
+
+
+# ---------------------------------------------------------------------------
+# #622: streaming cache miss — embedded original_msg fallback
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_stream_cache_miss_with_embedded_original_msg_delivers() -> None:
+    """SC-7: cache miss + embedded original_msg -> send_streaming called."""
+    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+
+    # Arrange
+    nc = AsyncMock()
+    adapter = AsyncMock()
+    adapter.send_streaming = AsyncMock()
+    listener = NatsOutboundListener(nc, Platform.TELEGRAM, "main", adapter)
+
+    msg = _make_tg_msg("msg-cache-miss-embed")
+    # Do NOT call cache_inbound — simulate cache miss / TTL eviction
+
+    # Confirm cache truly has no entry before dispatch
+    assert msg.id not in listener._cache
+
+    serialized_orig = json.loads(serialize(msg).decode("utf-8"))
+
+    stream_start = {
+        "type": "stream_start",
+        "stream_id": msg.id,
+        "outbound": {"content": [], "buttons": [], "metadata": {}},
+        "original_msg": serialized_orig,
+    }
+    await listener._handle(_make_nats_msg(stream_start))
+
+    done_chunk = {
+        "stream_id": msg.id,
+        "seq": 0,
+        "event_type": "text",
+        "payload": {"text": "hi", "is_final": True},
+        "done": True,
+    }
+    await listener._handle(_make_nats_msg(done_chunk))
+
+    # Act — await the drain task
+    task = listener._stream_tasks.get(msg.id)
+    assert task is not None, "drain task was not created"
+    await task
+
+    # Assert — message was delivered via embedded fallback
+    adapter.send_streaming.assert_called_once()
+    assert listener._stream_original_msgs == {}  # proves fallback dict was consumed
+
+
+@pytest.mark.asyncio
+async def test_stream_cache_miss_bad_embedded_original_msg_warns_and_drains(
+    caplog,
+) -> None:
+    """SC-7b: cache miss + malformed embedded original_msg -> warn + drain."""
+    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+
+    nc = AsyncMock()
+    adapter = AsyncMock()
+    adapter.send_streaming = AsyncMock()
+    listener = NatsOutboundListener(nc, Platform.TELEGRAM, "main", adapter)
+
+    stream_id = "msg-bad-embed"
+    # Malformed: id=None fails InboundMessage deserialization
+    listener._stream_original_msgs[stream_id] = {"id": None, "platform": "telegram"}
+
+    done_chunk = {
+        "stream_id": stream_id,
+        "seq": 0,
+        "event_type": "text",
+        "payload": {"text": "hi", "is_final": True},
+        "done": True,
+    }
+
+    _logger = "lyra.adapters.nats_outbound_listener"
+    with caplog.at_level(logging.WARNING, logger=_logger):
+        await listener._handle(_make_nats_msg(done_chunk))
+        task = listener._stream_tasks.get(stream_id)
+        assert task is not None, "drain task was not created"
+        await task
+
+    adapter.send_streaming.assert_not_called()
+    assert any(
+        "bad embedded" in r.message and r.levelno == logging.WARNING
+        for r in caplog.records
+    )
+    assert any(
+        "drained" in r.message and r.levelno == logging.WARNING
+        for r in caplog.records
+    )
+
+
+@pytest.mark.asyncio
+async def test_stream_cache_hit_does_not_use_stream_original_msgs() -> None:
+    """SC-8: cache hit -> _stream_original_msgs unused and cleaned up after drain."""
+    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+
+    # Arrange
+    nc = AsyncMock()
+    adapter = AsyncMock()
+    adapter.send_streaming = AsyncMock()
+    listener = NatsOutboundListener(nc, Platform.TELEGRAM, "main", adapter)
+
+    msg = _make_tg_msg("msg-cache-hit-orig")
+    listener.cache_inbound(msg)  # normal cache path
+
+    serialized_orig = json.loads(serialize(msg).decode("utf-8"))
+
+    stream_start = {
+        "type": "stream_start",
+        "stream_id": msg.id,
+        "outbound": {"content": [], "buttons": [], "metadata": {}},
+        "original_msg": serialized_orig,
+    }
+    await listener._handle(_make_nats_msg(stream_start))
+
+    done_chunk = {
+        "stream_id": msg.id,
+        "seq": 0,
+        "event_type": "text",
+        "payload": {"text": "hi", "is_final": True},
+        "done": True,
+    }
+    await listener._handle(_make_nats_msg(done_chunk))
+
+    # Act
+    task = listener._stream_tasks.get(msg.id)
+    assert task is not None, "drain task was not created"
+    await task
+
+    # Assert — delivered via cache (not fallback)
+    adapter.send_streaming.assert_called_once()
+    # _stream_original_msgs cleaned up in finally block
+    assert listener._stream_original_msgs == {}
+
+
+@pytest.mark.asyncio
+async def test_stream_both_missing_warns_and_drains(caplog) -> None:
+    """SC-9: no cache entry and no _stream_original_msgs -> warn + drain."""
+    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+
+    # Arrange — no cache_inbound, no stream_start (so _stream_original_msgs is empty)
+    nc = AsyncMock()
+    adapter = AsyncMock()
+    adapter.send_streaming = AsyncMock()
+    listener = NatsOutboundListener(nc, Platform.TELEGRAM, "main", adapter)
+
+    stream_id = "msg-both-missing"
+
+    done_chunk = {
+        "stream_id": stream_id,
+        "seq": 0,
+        "event_type": "text",
+        "payload": {"text": "hi", "is_final": True},
+        "done": True,
+    }
+
+    _logger = "lyra.adapters.nats_outbound_listener"
+    with caplog.at_level(logging.WARNING, logger=_logger):
+        await listener._handle(_make_nats_msg(done_chunk))
+
+        task = listener._stream_tasks.get(stream_id)
+        assert task is not None
+        await task
+
+    # Assert — send_streaming never called; warning fired
+    adapter.send_streaming.assert_not_called()
+    assert any(
+        "drained" in r.message and r.levelno == logging.WARNING
+        for r in caplog.records
+    )
+
+
+@pytest.mark.asyncio
+async def test_stop_clears_stream_original_msgs() -> None:
+    """SC-11: stop() clears _stream_original_msgs dict."""
+    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+
+    # Arrange
+    mock_sub = AsyncMock()
+    nc = AsyncMock()
+    nc.subscribe = AsyncMock(return_value=mock_sub)
+
+    adapter = MagicMock()
+    listener = NatsOutboundListener(nc, Platform.TELEGRAM, "main", adapter)
+
+    # Manually populate _stream_original_msgs
+    listener._stream_original_msgs["test-id"] = {"some": "data"}
+
+    await listener.start()
+
+    # Act
+    await listener.stop()
+
+    # Assert
+    assert listener._stream_original_msgs == {}

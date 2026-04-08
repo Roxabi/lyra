@@ -18,7 +18,8 @@ from lyra.nats._serialize import deserialize_dict
 log = logging.getLogger(__name__)
 
 MAX_SIZE = 500
-TTL_SECONDS = 120
+# 10 min — covers LLM response latency + NATS reconnect window; see #622
+TTL_SECONDS = 600
 REAPER_INTERVAL_SECONDS = 30
 
 

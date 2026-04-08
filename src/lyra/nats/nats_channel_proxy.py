@@ -114,6 +114,7 @@ class NatsChannelProxy:
                 "type": "stream_start",
                 "stream_id": original_msg.id,
                 "outbound": json.loads(serialize(outbound).decode("utf-8")),
+                "original_msg": json.loads(serialize(original_msg).decode("utf-8")),
             }
             await self._nc.publish(
                 subject,

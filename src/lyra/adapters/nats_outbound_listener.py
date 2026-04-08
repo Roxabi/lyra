@@ -61,6 +61,7 @@ class NatsOutboundListener:
         self._stream_queues: dict[str, asyncio.Queue[dict]] = {}
         self._stream_tasks: dict[str, asyncio.Task[None]] = {}
         self._stream_outbound: dict[str, OutboundMessage] = {}
+        self._stream_original_msgs: dict[str, dict] = {}
         self._sub: Any = None  # nats.aio.subscription.Subscription | None
         self._reaper_task: asyncio.Task[None] | None = None
         self._terminated_streams: set[str] = set()
@@ -102,6 +103,8 @@ class NatsOutboundListener:
             task.cancel()
         self._stream_tasks.clear()
         self._stream_queues.clear()
+        self._stream_original_msgs.clear()
+        self._stream_outbound.clear()
 
     async def _handle(self, msg: Msg) -> None:
         try:
@@ -198,6 +201,9 @@ class NatsOutboundListener:
             self._stream_outbound[stream_id] = _deserialize_dict(
                 outbound_data, OutboundMessage
             )
+            raw_orig = data.get("original_msg")  # bounded by _MAX_STREAMS guard above
+            if raw_orig is not None:
+                self._stream_original_msgs[stream_id] = raw_orig
         except Exception:
             log.warning("NatsOutboundListener: failed to deserialize stream outbound")
 
@@ -242,6 +248,22 @@ class NatsOutboundListener:
         """Drain a stream queue and call adapter.send_streaming()."""
         original_msg = self._cache.get(stream_id)
         if original_msg is None:
+            raw = self._stream_original_msgs.pop(stream_id, None)
+            if raw is not None:
+                try:
+                    original_msg = _deserialize_dict(raw, InboundMessage)
+                except Exception:
+                    log.warning(
+                        "NatsOutboundListener: bad embedded original_msg"
+                        " for stream_id=%r", stream_id,
+                    )
+                else:
+                    log.debug(
+                        "NatsOutboundListener: cache miss, recovered"
+                        " original_msg from embedded payload"
+                        " for stream_id=%r", stream_id,
+                    )
+        if original_msg is None:
             drained = 0
             while not q.empty():
                 await q.get()
@@ -275,3 +297,4 @@ class NatsOutboundListener:
             self._stream_tasks.pop(stream_id, None)
             self._stream_queues.pop(stream_id, None)
             self._terminated_streams.discard(stream_id)
+            self._stream_original_msgs.pop(stream_id, None)

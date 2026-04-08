@@ -137,7 +137,13 @@ import sys, json; print(json.load(sys.stdin).get('tag_name','v0.4.6').lstrip('v'
   curl -fsSL "${url}" -o "${tmpdir}/nk.zip" \
     || error "Failed to download nk v${version} from ${url}"
 
-  unzip -q "${tmpdir}/nk.zip" -d "${tmpdir}"
+  if command -v unzip &>/dev/null; then
+    unzip -q "${tmpdir}/nk.zip" -d "${tmpdir}"
+  else
+    python3 -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" \
+      "${tmpdir}/nk.zip" "${tmpdir}" \
+      || error "Failed to extract nk.zip (no unzip and python3 extraction failed)"
+  fi
 
   # Binary may be at root or inside a subdirectory
   local nk_bin

@@ -58,7 +58,7 @@ def _build_stt_reply(
     if not reply:
         meta.pop("message_id", None)
     return dataclasses.replace(
-        msg, text="", text_raw="", audio=None, platform_meta=meta,
+        msg, text="", text_raw="", audio=None, modality="text", platform_meta=meta,
     )
 
 

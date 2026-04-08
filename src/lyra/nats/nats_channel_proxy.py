@@ -41,8 +41,8 @@ class NatsChannelProxy:
 
     Implements the ChannelAdapter Protocol from hub_protocol.py.
     Inbound normalization is not supported — raises NotImplementedError.
-    Audio-over-NATS (C5) is not yet implemented — audio methods log a warning
-    and drain iterators without publishing.
+    render_audio() publishes audio bytes as a NATS "audio" envelope.
+    render_audio_stream() and render_voice_stream() are not yet implemented (C5).
     """
 
     def __init__(self, nc: NATS, platform: Platform, bot_id: str) -> None:
@@ -211,11 +211,16 @@ class NatsChannelProxy:
     # ------------------------------------------------------------------
 
     async def render_audio(self, msg: OutboundAudio, inbound: InboundMessage) -> None:
-        """Audio-over-NATS not implemented (C5) — drops audio silently."""
-        log.warning(
-            "audio-over-NATS not implemented (C5) — dropping audio for msg %s",
-            inbound.id,
-        )
+        """Publish an outbound audio voice note to NATS."""
+        subject = f"lyra.outbound.{self._platform.value}.{self._bot_id}"
+        envelope = {
+            "type": "audio",
+            "stream_id": inbound.id,
+            "audio": json.loads(serialize(msg).decode("utf-8")),
+            "original_msg": json.loads(serialize(inbound).decode("utf-8")),
+        }
+        payload = json.dumps(envelope, ensure_ascii=False).encode("utf-8")
+        await self._nc.publish(subject, payload)
 
     async def render_audio_stream(
         self,
@@ -224,7 +229,7 @@ class NatsChannelProxy:
     ) -> None:
         """Audio streaming not implemented (C5) — drains iterator."""
         log.warning(
-            "audio-over-NATS not implemented (C5) — dropping audio stream for msg %s",
+            "audio-stream-over-NATS not implemented (C5) — dropping for msg %s",
             inbound.id,
         )
         async for _ in chunks:
@@ -237,7 +242,7 @@ class NatsChannelProxy:
     ) -> None:
         """Voice streaming not implemented (C5) — drains iterator."""
         log.warning(
-            "audio-over-NATS not implemented (C5) — dropping voice stream for msg %s",
+            "voice-stream-over-NATS not implemented (C5) — dropping for msg %s",
             inbound.id,
         )
         async for _ in chunks:

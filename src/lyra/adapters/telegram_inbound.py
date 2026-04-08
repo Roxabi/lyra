@@ -196,6 +196,9 @@ async def handle_voice_message(adapter: TelegramAdapter, msg: Any) -> None:
         trust_level=TrustLevel.PUBLIC,
     )
 
+    if adapter._outbound_listener is not None:
+        adapter._outbound_listener.cache_inbound(hub_audio)
+
     adapter._start_typing(chat_id)
     try:
 

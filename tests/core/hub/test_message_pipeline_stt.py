@@ -364,7 +364,7 @@ class TestSttMiddleware:
         assert returned_msg.text == transcript
 
         # text_raw carries the emoji prefix
-        assert returned_msg.text_raw == f"\U0001f3a4 [voice]: {transcript}"
+        assert returned_msg.text_raw == f"\U0001f3a4 {transcript}"
 
         # Audio stripped after successful transcription
         assert returned_msg.audio is None

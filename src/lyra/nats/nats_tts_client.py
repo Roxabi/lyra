@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import time
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -18,6 +19,9 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+_HB_SUBJECT = "lyra.voice.tts.heartbeat"
+_HB_TTL = 15.0
+
 
 class NatsTtsClient:
     SUBJECT = "lyra.voice.tts.request"
@@ -26,6 +30,33 @@ class NatsTtsClient:
         self._nc = nc
         self._timeout = timeout
         self._cb = NatsCircuitBreaker()
+        self._worker_freshness: dict[str, float] = {}
+        self._hb_sub = None  # set by start
+
+    async def start(self) -> None:
+        """Subscribe to heartbeat subject. Called once after nc is connected."""
+        if self._hb_sub is None:
+            self._hb_sub = await self._nc.subscribe(
+                _HB_SUBJECT, cb=self._on_heartbeat
+            )
+
+    async def _on_heartbeat(self, msg) -> None:
+        try:
+            data = json.loads(msg.data)
+            worker_id = data.get("worker_id")
+            if not worker_id:
+                log.warning("tts_client: heartbeat missing worker_id, ignoring")
+                return
+            self._worker_freshness[worker_id] = time.monotonic()
+        except Exception:
+            log.debug("tts_client: heartbeat parse error", exc_info=True)
+
+    def _any_worker_alive(self) -> bool:
+        now = time.monotonic()
+        self._worker_freshness = {
+            k: v for k, v in self._worker_freshness.items() if now - v <= _HB_TTL * 2
+        }
+        return any(now - ts <= _HB_TTL for ts in self._worker_freshness.values())
 
     async def _send(self, payload: bytes, payload_kb: float) -> dict:
         """Send payload to TTS subject and return parsed response dict."""
@@ -62,6 +93,10 @@ class NatsTtsClient:
         voice: str | None = None,
         fallback_language: str | None = None,
     ) -> SynthesisResult:
+        if not self._any_worker_alive():
+            raise TtsUnavailableError(
+                "TTS: no live worker (heartbeat stale >15s)"
+            )
         if self._cb.is_open():
             raise TtsUnavailableError(
                 "TTS circuit open — adapter temporarily unavailable"

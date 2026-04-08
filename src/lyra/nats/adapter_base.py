@@ -7,9 +7,12 @@ drain/close shutdown, and a ``health()`` introspection method.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
+import os
 import signal
+import socket
 import time
 from abc import ABC, abstractmethod
 
@@ -27,6 +30,7 @@ class NatsAdapterBase(ABC):
     def __init__(  # noqa: PLR0913
         self, subject, queue_group, envelope_name, schema_version,
         timeout=30.0, drain_timeout=30.0,
+        *, heartbeat_subject: str | None = None, heartbeat_interval: float = 5.0,
     ):
         validate_nats_token(subject, kind="subject")
         validate_nats_token(queue_group, kind="queue_group")
@@ -39,12 +43,18 @@ class NatsAdapterBase(ABC):
         self._nc: NATS | None = None
         self._drop_count: dict[str, int] = {}
         self._started_at: float | None = None
+        self._heartbeat_subject = heartbeat_subject
+        self._heartbeat_interval = heartbeat_interval
+        self._worker_id = f"{queue_group}-{socket.gethostname()}-{os.getpid()}"
+        self._heartbeat_task: asyncio.Task | None = None
 
     async def run(self, nats_url: str, stop: asyncio.Event | None = None) -> None:
         nc = await nats_connect(nats_url)
         self._nc = nc
         await self._wait_ready()
         await nc.subscribe(self.subject, queue=self.queue_group, cb=self._dispatch)
+        if self._heartbeat_subject:
+            self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
         if stop is None:
             stop = asyncio.Event()
             loop = asyncio.get_running_loop()
@@ -80,7 +90,40 @@ class NatsAdapterBase(ABC):
             counter=self._drop_count,
         )
 
+    def heartbeat_payload(self) -> dict:
+        """Base heartbeat payload. Subclasses override to add service fields."""
+        uptime = time.monotonic() - self._started_at if self._started_at else 0.0
+        return {
+            "worker_id": self._worker_id,
+            "service": self.queue_group,
+            "host": socket.gethostname(),
+            "subject": self.subject,
+            "queue_group": self.queue_group,
+            "connected": self._nc.is_connected if self._nc else False,
+            "uptime_s": uptime,
+            "ts": time.time(),
+        }
+
+    async def _heartbeat_loop(self) -> None:
+        while self._nc and not self._nc.is_closed:
+            if not self._nc.is_connected:
+                await asyncio.sleep(1.0)
+                continue
+            try:
+                payload = self.heartbeat_payload()
+                await self._nc.publish(
+                    self._heartbeat_subject,  # type: ignore[arg-type]
+                    json.dumps(payload).encode(),
+                )
+            except Exception:
+                log.warning("adapter_base: heartbeat publish failed", exc_info=True)
+            await asyncio.sleep(self._heartbeat_interval)
+
     async def _shutdown(self) -> None:
+        if self._heartbeat_task is not None:
+            self._heartbeat_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._heartbeat_task
         if self._nc:
             await asyncio.wait_for(self._nc.drain(), timeout=self.drain_timeout)
             await self._nc.close()

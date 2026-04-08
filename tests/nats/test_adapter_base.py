@@ -14,6 +14,7 @@ Covers:
 from __future__ import annotations
 
 import asyncio
+import json
 import signal
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -732,3 +733,371 @@ class TestDispatch:
 
         # Assert
         adapter.handle.assert_awaited_once_with(msg, raw_payload)
+
+
+# ---------------------------------------------------------------------------
+# TestHeartbeatConstruction
+# ---------------------------------------------------------------------------
+
+
+class TestHeartbeatConstruction:
+    """Heartbeat kwargs are stored; _worker_id is formatted correctly."""
+
+    def _make_adapter(self, **kwargs) -> _ConcreteAdapter:
+        return _ConcreteAdapter(
+            subject="lyra.inbound.telegram.main",
+            queue_group="telegram_workers",
+            envelope_name="InboundMessage",
+            schema_version=1,
+            **kwargs,
+        )
+
+    def test_heartbeat_subject_stored(self) -> None:
+        """heartbeat_subject kwarg is stored on the adapter."""
+        # Arrange / Act
+        adapter = self._make_adapter(heartbeat_subject="lyra.voice.stt.heartbeat")
+
+        # Assert
+        assert adapter._heartbeat_subject == "lyra.voice.stt.heartbeat"
+
+    def test_heartbeat_interval_stored(self) -> None:
+        """heartbeat_interval kwarg is stored (default 5.0)."""
+        # Arrange / Act
+        adapter_default = self._make_adapter()
+        adapter_custom = self._make_adapter(heartbeat_interval=10.0)
+
+        # Assert
+        assert adapter_default._heartbeat_interval == 5.0
+        assert adapter_custom._heartbeat_interval == 10.0
+
+    def test_worker_id_format(self) -> None:
+        """_worker_id is formatted as '{queue_group}-{hostname}-{pid}'."""
+        import os
+        import socket
+
+        # Arrange / Act
+        adapter = self._make_adapter()
+
+        # Assert
+        expected = f"telegram_workers-{socket.gethostname()}-{os.getpid()}"
+        assert adapter._worker_id == expected
+
+    def test_no_heartbeat_subject_stores_none(self) -> None:
+        """heartbeat_subject=None (default) stores None, no task attr."""
+        # Arrange / Act
+        adapter = self._make_adapter()
+
+        # Assert
+        assert adapter._heartbeat_subject is None
+        assert adapter._heartbeat_task is None
+
+    def test_existing_callers_unaffected(self) -> None:
+        """NatsAdapterBase subclass with no heartbeat kwargs still works."""
+        # Arrange / Act — no heartbeat kwargs, must not raise
+        adapter = _ConcreteAdapter(
+            subject="lyra.inbound.telegram.main",
+            queue_group="telegram_workers",
+            envelope_name="InboundMessage",
+            schema_version=1,
+        )
+
+        # Assert — basic fields are still intact
+        assert adapter.subject == "lyra.inbound.telegram.main"
+        assert adapter._heartbeat_subject is None
+
+
+# ---------------------------------------------------------------------------
+# TestHeartbeatLoop
+# ---------------------------------------------------------------------------
+
+
+class TestHeartbeatLoop:
+    """_heartbeat_loop publishes, handles errors, and exits on disconnected state."""
+
+    def _make_adapter(self, **kwargs) -> _ConcreteAdapter:
+        return _ConcreteAdapter(
+            subject="lyra.inbound.telegram.main",
+            queue_group="telegram_workers",
+            envelope_name="InboundMessage",
+            schema_version=1,
+            heartbeat_subject="lyra.voice.stt.heartbeat",
+            **kwargs,
+        )
+
+    @pytest.mark.asyncio
+    async def test_publishes_payload_at_interval(self) -> None:
+        """_heartbeat_loop publishes heartbeat_payload() JSON to heartbeat_subject."""
+        # Arrange
+        adapter = self._make_adapter(heartbeat_interval=0.01)
+        mock_nc = AsyncMock()
+        mock_nc.is_connected = True
+        mock_nc.is_closed = False
+        adapter._nc = mock_nc
+        adapter._started_at = time.monotonic()
+
+        publish_calls: list[tuple] = []
+
+        async def _fake_publish(subject: str, data: bytes) -> None:
+            publish_calls.append((subject, data))
+            # Close after first publish to stop the loop
+            mock_nc.is_closed = True
+
+        mock_nc.publish = AsyncMock(side_effect=_fake_publish)
+
+        # Act
+        await adapter._heartbeat_loop()
+
+        # Assert
+        assert len(publish_calls) == 1
+        subject, data = publish_calls[0]
+        assert subject == "lyra.voice.stt.heartbeat"
+        payload = json.loads(data)
+        assert "worker_id" in payload
+        assert "service" in payload
+        assert "ts" in payload
+
+    @pytest.mark.asyncio
+    async def test_publish_error_logs_warning_and_continues(self) -> None:
+        """Publish error logs a warning and loop continues (no crash)."""
+        # Arrange
+        adapter = self._make_adapter(heartbeat_interval=0.01)
+        mock_nc = AsyncMock()
+        mock_nc.is_connected = True
+        mock_nc.is_closed = False
+        adapter._nc = mock_nc
+        adapter._started_at = time.monotonic()
+
+        call_count = 0
+
+        async def _failing_publish(subject: str, data: bytes) -> None:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise RuntimeError("publish failed")
+            # Close after second call so loop exits
+            mock_nc.is_closed = True
+
+        mock_nc.publish = AsyncMock(side_effect=_failing_publish)
+
+        # Act — must not raise despite publish error on first call
+        with patch("lyra.nats.adapter_base.log") as mock_log:
+            await adapter._heartbeat_loop()
+
+        # Assert — warning logged, loop continued to second call
+        mock_log.warning.assert_called()
+        assert call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_loop_exits_when_nc_none(self) -> None:
+        """_heartbeat_loop exits immediately when _nc is None."""
+        # Arrange
+        adapter = self._make_adapter()
+        adapter._nc = None  # no connection
+
+        # Act — must return immediately without error
+        await adapter._heartbeat_loop()
+
+        # Assert — we just check it returned (no infinite loop / no error)
+
+    @pytest.mark.asyncio
+    async def test_loop_exits_when_nc_closed(self) -> None:
+        """_heartbeat_loop exits when _nc.is_closed is True."""
+        # Arrange
+        adapter = self._make_adapter()
+        mock_nc = AsyncMock()
+        mock_nc.is_connected = False
+        mock_nc.is_closed = True  # closed connection terminates the loop
+        adapter._nc = mock_nc
+
+        # Act — must return immediately without publishing
+        await adapter._heartbeat_loop()
+
+        # Assert
+        mock_nc.publish.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_loop_sleeps_on_disconnect_then_resumes(self) -> None:
+        """Loop skips publish while disconnected; resumes when reconnected."""
+        # Arrange
+        adapter = self._make_adapter(heartbeat_interval=0.01)
+        mock_nc = AsyncMock()
+        mock_nc.is_connected = False  # start disconnected
+        mock_nc.is_closed = False
+        adapter._nc = mock_nc
+        adapter._started_at = time.monotonic()
+
+        publish_calls: list = []
+
+        async def _fake_publish(subject: str, data: bytes) -> None:
+            publish_calls.append(subject)
+            mock_nc.is_closed = True  # close after first publish to stop the loop
+
+        mock_nc.publish = AsyncMock(side_effect=_fake_publish)
+
+        async def _reconnect_after_sleep() -> None:
+            await asyncio.sleep(0.05)
+            mock_nc.is_connected = True
+
+        # Act — reconnect happens after one sleep cycle
+        await asyncio.gather(adapter._heartbeat_loop(), _reconnect_after_sleep())
+
+        # Assert — loop published once after reconnect, not while disconnected
+        assert len(publish_calls) == 1
+
+
+# ---------------------------------------------------------------------------
+# TestHeartbeatShutdown
+# ---------------------------------------------------------------------------
+
+
+class TestHeartbeatShutdown:
+    """_shutdown() properly cancels the heartbeat task before draining."""
+
+    def _make_adapter(self, **kwargs) -> _ConcreteAdapter:
+        return _ConcreteAdapter(
+            subject="lyra.inbound.telegram.main",
+            queue_group="telegram_workers",
+            envelope_name="InboundMessage",
+            schema_version=1,
+            heartbeat_subject="lyra.voice.stt.heartbeat",
+            **kwargs,
+        )
+
+    @pytest.mark.asyncio
+    async def test_heartbeat_task_cancelled_before_drain(self) -> None:
+        """_shutdown() cancels _heartbeat_task before calling nc.drain()."""
+        # Arrange
+        adapter = self._make_adapter()
+        mock_nc = AsyncMock()
+        drain_called_after_cancel = []
+
+        async def _tracking_drain() -> None:
+            drain_called_after_cancel.append(task_cancelled)
+
+        mock_nc.drain = AsyncMock(side_effect=_tracking_drain)
+        mock_nc.close = AsyncMock()
+        adapter._nc = mock_nc
+
+        # Create a real task that sleeps forever (will be cancelled by _shutdown)
+        async def _forever() -> None:
+            await asyncio.sleep(9999)
+
+        task = asyncio.create_task(_forever())
+        adapter._heartbeat_task = task
+
+        task_cancelled = False
+
+        # Patch task.cancel to track cancellation order
+        original_cancel = task.cancel
+
+        def _tracking_cancel(*args, **kwargs):
+            nonlocal task_cancelled
+            task_cancelled = True
+            return original_cancel(*args, **kwargs)
+
+        task.cancel = _tracking_cancel  # type: ignore[method-assign]
+
+        # Act
+        await adapter._shutdown()
+
+        # Assert — drain was called after task was cancelled
+        assert drain_called_after_cancel == [True]
+
+    @pytest.mark.asyncio
+    async def test_no_crash_when_no_heartbeat_task(self) -> None:
+        """_shutdown() works normally when no heartbeat task was created."""
+        # Arrange
+        adapter = _ConcreteAdapter(
+            subject="lyra.inbound.telegram.main",
+            queue_group="telegram_workers",
+            envelope_name="InboundMessage",
+            schema_version=1,
+        )
+        mock_nc = AsyncMock()
+        adapter._nc = mock_nc
+
+        # Act / Assert — no error raised
+        await adapter._shutdown()
+        mock_nc.drain.assert_awaited_once()
+        mock_nc.close.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# TestHeartbeatRun
+# ---------------------------------------------------------------------------
+
+
+class TestHeartbeatRun:
+    """run() creates / skips the heartbeat task based on heartbeat_subject."""
+
+    def _make_adapter(self, **kwargs) -> _ConcreteAdapter:
+        return _ConcreteAdapter(
+            subject="lyra.inbound.telegram.main",
+            queue_group="telegram_workers",
+            envelope_name="InboundMessage",
+            schema_version=1,
+            **kwargs,
+        )
+
+    @pytest.mark.asyncio
+    async def test_heartbeat_task_created_when_subject_set(self) -> None:
+        """run() creates _heartbeat_task when heartbeat_subject is set."""
+        # Arrange
+        adapter = self._make_adapter(heartbeat_subject="lyra.voice.stt.heartbeat")
+        stop = asyncio.Event()
+
+        mock_nc = AsyncMock()
+        mock_nc.is_connected = True
+        mock_nc.subscribe = AsyncMock()
+        mock_nc.drain = AsyncMock()
+        mock_nc.close = AsyncMock()
+
+        # Set stop immediately after heartbeat task would be created
+        async def _set_stop_soon() -> None:
+            await asyncio.sleep(0.01)
+            stop.set()
+
+        with (
+            patch(
+                "lyra.nats.adapter_base.nats_connect",
+                new=AsyncMock(return_value=mock_nc),
+            ),
+            patch(
+                "lyra.nats.adapter_base.wait_for_hub",
+                new=AsyncMock(return_value=True),
+            ),
+        ):
+            asyncio.create_task(_set_stop_soon())
+            await adapter.run("nats://localhost:4222", stop=stop)
+
+        # Assert
+        assert adapter._heartbeat_task is not None
+
+    @pytest.mark.asyncio
+    async def test_no_heartbeat_task_when_subject_none(self) -> None:
+        """run() does NOT create _heartbeat_task when heartbeat_subject is None."""
+        # Arrange
+        adapter = self._make_adapter()  # no heartbeat_subject
+        stop = asyncio.Event()
+        stop.set()
+
+        mock_nc = AsyncMock()
+        mock_nc.is_connected = True
+        mock_nc.subscribe = AsyncMock()
+        mock_nc.drain = AsyncMock()
+        mock_nc.close = AsyncMock()
+
+        with (
+            patch(
+                "lyra.nats.adapter_base.nats_connect",
+                new=AsyncMock(return_value=mock_nc),
+            ),
+            patch(
+                "lyra.nats.adapter_base.wait_for_hub",
+                new=AsyncMock(return_value=True),
+            ),
+        ):
+            await adapter.run("nats://localhost:4222", stop=stop)
+
+        # Assert
+        assert adapter._heartbeat_task is None

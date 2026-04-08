@@ -1,0 +1,8 @@
+[Unit]
+Description=Lyra nkeys bind mount (read-only, 0600 files)
+
+[Volume]
+Device=%h/.lyra/nkeys
+Type=bind
+Options=bind,ro
+Label=app=lyra

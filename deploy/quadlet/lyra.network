@@ -1,0 +1,6 @@
+[Unit]
+Description=Lyra container bridge network
+
+[Network]
+Driver=bridge
+Label=app=lyra

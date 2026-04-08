@@ -1,0 +1,8 @@
+[Unit]
+Description=Lyra config bind mount (config.toml, read-only)
+
+[Volume]
+Device=%h/.lyra/config.toml
+Type=bind
+Options=bind,ro
+Label=app=lyra

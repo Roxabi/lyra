@@ -2,6 +2,16 @@ SUPERVISOR_HUB ?= $(HOME)/projects
 HUB_SERVICES   := lyra telegram discord lyra-stt lyra-tts
 -include $(SUPERVISOR_HUB)/hub.mk
 
+# Fallback SVC_CMD parsing — used when hub.mk is not present (e.g. prod).
+ifndef SVC_CMD
+ifneq (,$(filter $(HUB_SERVICES),$(firstword $(MAKECMDGOALS))))
+  SVC_CMD := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
+  ifneq (,$(SVC_CMD))
+    $(eval $(SVC_CMD):;@:)
+  endif
+endif
+endif
+
 # Sub-command parsing for multi-word targets (remote, monitor, deploy).
 # These are NOT in HUB_SERVICES because their sub-commands can collide
 # with real target names (e.g. `make remote telegram reload`).

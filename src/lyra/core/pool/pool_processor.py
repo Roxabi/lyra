@@ -51,7 +51,7 @@ class PoolProcessor:
                     _pending = pool._pending_session_id
                     pool._pending_session_id = None
                     try:
-                        await pool.resume_session(_pending)
+                        _resume_accepted = await pool.resume_session(_pending)
                     except Exception:
                         log.exception(
                             "[pool:%s] pending session resume failed for %r"
@@ -59,6 +59,23 @@ class PoolProcessor:
                             pool.pool_id,
                             _pending,
                         )
+                        _resume_accepted = False
+                    if not _resume_accepted:
+                        log.info(
+                            "[pool:%s] pending session resume rejected for %r",
+                            pool.pool_id,
+                            _pending,
+                        )
+                    elif pool._on_resume_fn is not None:
+                        try:
+                            await pool._on_resume_fn(_pending)
+                        except Exception:
+                            log.exception(
+                                "[pool:%s] pending resume count increment"
+                                " failed for %r",
+                                pool.pool_id,
+                                _pending,
+                            )
 
                 agent = pool._ctx.get_agent(pool.agent_name)
                 if agent is None:

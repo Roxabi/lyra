@@ -36,32 +36,27 @@ endif
 
 lyra:
 ifndef _IS_LYRA_SUBCMD
-	$(ensure_hub)
-	@for p in $(LYRA_PROGRAMS); do $(HUB_SVC) $$p $(SVC_CMD); done
+	$(call lyra_svc,$(LYRA_PROGRAMS))
 endif
 
 telegram:
 ifndef _IS_LYRA_SUBCMD
-	$(ensure_hub)
-	@$(HUB_SVC) lyra_telegram $(SVC_CMD)
+	$(call lyra_svc,lyra_telegram)
 endif
 
 discord:
 ifndef _IS_LYRA_SUBCMD
-	$(ensure_hub)
-	@$(HUB_SVC) lyra_discord $(SVC_CMD)
+	$(call lyra_svc,lyra_discord)
 endif
 
 lyra-stt:
 ifndef _IS_LYRA_SUBCMD
-	$(ensure_hub)
-	@$(HUB_SVC) lyra_stt $(SVC_CMD)
+	$(call lyra_svc,lyra_stt)
 endif
 
 lyra-tts:
 ifndef _IS_LYRA_SUBCMD
-	$(ensure_hub)
-	@$(HUB_SVC) lyra_tts $(SVC_CMD)
+	$(call lyra_svc,lyra_tts)
 endif
 
 # ── Monitor (systemd timer, not supervisor) ──────────────────────────────────
@@ -112,6 +107,20 @@ register:
 # ── Supervisor config reload ──────────────────────────────────────────────────
 
 SCTL := $(HOME)/projects/lyra/deploy/supervisor/supervisorctl.sh
+
+# Local supervisorctl dispatch — mirrors svc.sh but uses SCTL directly.
+# Avoids routing through the hub's supervisorctl.sh (wrong socket on prod).
+define lyra_svc
+	@case "$(SVC_CMD)" in \
+		reload)         $(SCTL) restart $(1) ;; \
+		start)          $(SCTL) start   $(1) ;; \
+		stop)           $(SCTL) stop    $(1) ;; \
+		logs)           $(SCTL) tail -f $(1) ;; \
+		errlogs|errors) $(SCTL) tail -f $(1) stderr ;; \
+		status|"")      $(SCTL) status  $(1) ;; \
+		*) echo "Unknown action: $(SVC_CMD)"; exit 1 ;; \
+	esac
+endef
 
 update:
 	@$(SCTL) reread && $(SCTL) update

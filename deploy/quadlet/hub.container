@@ -1,0 +1,22 @@
+[Unit]
+Description=Lyra Hub
+After=lyra-nats.service
+
+[Container]
+Image=localhost/lyra:latest
+ContainerName=lyra-hub
+Network=lyra.network
+EnvironmentFile=%h/projects/lyra/.env
+# Override NATS_URL to use container network — takes precedence over .env.
+# Update .env directly when supervisord NATS is retired (cutover step).
+Environment=NATS_URL=nats://lyra-nats:4222
+Volume=lyra-data.volume:/root/.lyra:z
+Volume=%h/projects/lyra/config.toml:/app/config.toml:ro,z
+Exec=lyra hub
+
+[Service]
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

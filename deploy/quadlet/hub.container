@@ -1,7 +1,7 @@
 [Unit]
 Description=Lyra Hub
-After=lyra-nats.service
-Requires=lyra-nats.service
+After=nats.service
+Requires=nats.service
 
 [Container]
 Image=localhost/lyra:latest
@@ -13,8 +13,9 @@ EnvironmentFile=%h/projects/lyra/.env.hub
 # are excluded — hub does not need them. See deploy/quadlet/.env.hub.example.
 # NATS_URL is overridden inline below; cutover = update .env.hub directly.
 Environment=NATS_URL=nats://lyra-nats:4222
+Volume=lyra-nkey-hub.volume:/run/secrets/hub.seed:ro,z
+Environment=NATS_NKEY_SEED_PATH=/run/secrets/hub.seed
 Volume=lyra-data.volume:/home/lyra/.lyra:z
-Environment=LYRA_VAULT_DIR=/home/lyra/.lyra
 Volume=%h/projects/lyra/config.toml:/app/config.toml:ro,z
 Exec=lyra hub
 

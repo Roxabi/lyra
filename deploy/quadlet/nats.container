@@ -9,9 +9,8 @@ Network=lyra.network
 # Host 4223 → container 4222: runs alongside supervisord NATS (4222) during
 # parallel testing. Switch to 4222:4222 once supervisord NATS is retired.
 PublishPort=127.0.0.1:4223:4222
-PublishPort=127.0.0.1:8223:8222
 Volume=%h/projects/lyra/deploy/nats/nats-container.conf:/etc/nats/nats.conf:ro,z
-Volume=%h/.lyra/nkeys/auth.conf:/etc/nats/nkeys/auth.conf:ro,z
+Volume=/etc/nats/nkeys/auth.conf:/etc/nats/nkeys/auth.conf:ro,z
 Exec=nats-server -js -c /etc/nats/nats.conf
 
 [Service]

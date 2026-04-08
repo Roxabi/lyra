@@ -3,4 +3,6 @@ Description=Lyra container bridge network
 
 [Network]
 Driver=bridge
+# Internal=true: container-to-container traffic only; no outbound internet routing.
+Internal=true
 Label=app=lyra

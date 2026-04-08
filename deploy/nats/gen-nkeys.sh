@@ -1,19 +1,25 @@
 #!/usr/bin/env bash
 # Generate nkey seeds for NATS authentication
 #
+# Seeds (private keys) → ~/.lyra/nkeys/     owned by LYRA_USER, 0600 — no system access needed
+# auth.conf (public keys) → /etc/nats/nkeys/ owned by root:nats,  0640 — read by nats-server
+#
 # Creates 5 user nkey seeds: hub, llm-worker, monitor, tts-adapter, stt-adapter
-# Seeds: /etc/nats/nkeys/{hub,llm-worker,monitor}.seed (0600 root:root), {tts-adapter,stt-adapter}.seed (0640 root:LYRA_USER)
-# Auth config: /etc/nats/nkeys/auth.conf  (included by /etc/nats/nats.conf)
 #
 # Usage: sudo ./deploy/nats/gen-nkeys.sh
 #        sudo ./deploy/nats/gen-nkeys.sh --fix-perms   # re-apply permissions without regenerating
+#        sudo ./deploy/nats/gen-nkeys.sh --show        # print existing public keys
 #
-# Idempotent — skips if auth.conf already exists. Delete /etc/nats/nkeys/ to regenerate.
-# To print existing public keys without regenerating: --show
+# Idempotent — skips if auth.conf already exists. Delete auth.conf + seeds dir to regenerate.
+# Override seeds location: SEEDS_DIR=/custom/path sudo ./gen-nkeys.sh
 
 set -euo pipefail
 
-NKEYS_DIR="/etc/nats/nkeys"
+LYRA_USER="${SUDO_USER:-$(id -un)}"
+LYRA_HOME=$(getent passwd "$LYRA_USER" | cut -d: -f6)
+SEEDS_DIR="${SEEDS_DIR:-${LYRA_HOME}/.lyra/nkeys}"
+AUTH_DIR="/etc/nats/nkeys"
+AUTH_CONF="${AUTH_DIR}/auth.conf"
 NK_BIN=""
 
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
@@ -23,7 +29,6 @@ error() { echo -e "${RED}[x]${NC} $1" >&2; exit 1; }
 
 SHOW_ONLY=false
 FIX_PERMS=false
-LYRA_USER="${SUDO_USER:-mickael}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --show) SHOW_ONLY=true; shift ;;
@@ -36,41 +41,49 @@ done
 
 # ── show mode ──────────────────────────────────────────────────────────────
 if [ "${SHOW_ONLY}" = true ]; then
-  [ -f "${NKEYS_DIR}/auth.conf" ] || error "auth.conf not found — run without --show first"
-  echo "Current nkey public keys:"
-  grep -E 'nkey:|name:' "${NKEYS_DIR}/auth.conf"
+  [ -f "${AUTH_CONF}" ] || error "auth.conf not found at ${AUTH_CONF} — run without --show first"
+  echo "Public keys (${AUTH_CONF}):"
+  grep -E 'nkey:|name:' "${AUTH_CONF}"
+  echo ""
+  echo "Seed files (${SEEDS_DIR}):"
+  if [ -d "${SEEDS_DIR}" ]; then
+    ls -la "${SEEDS_DIR}/"*.seed 2>/dev/null || echo "  (no .seed files found)"
+  else
+    echo "  (directory not found)"
+  fi
   exit 0
 fi
 
-# ── fix-perms mode: re-apply permissions without regenerating ──────────────
+# ── apply permissions ──────────────────────────────────────────────────────
 apply_permissions() {
-  chown root:root "${NKEYS_DIR}"
-  chmod 0750 "${NKEYS_DIR}"
-  chgrp "${LYRA_USER}" "${NKEYS_DIR}"
-  for seed in hub llm-worker monitor; do
-    [ -f "${NKEYS_DIR}/${seed}.seed" ] && chmod 0600 "${NKEYS_DIR}/${seed}.seed"
-  done
-  for seed in tts-adapter stt-adapter; do
-    if [ -f "${NKEYS_DIR}/${seed}.seed" ]; then
-      chgrp "${LYRA_USER}" "${NKEYS_DIR}/${seed}.seed"
-      chmod 0640 "${NKEYS_DIR}/${seed}.seed"
+  # Seeds — user-space, owned by LYRA_USER
+  mkdir -p "${SEEDS_DIR}"
+  chown "${LYRA_USER}:${LYRA_USER}" "${SEEDS_DIR}"
+  chmod 0700 "${SEEDS_DIR}"
+  for seed in hub llm-worker monitor tts-adapter stt-adapter; do
+    if [ -f "${SEEDS_DIR}/${seed}.seed" ]; then
+      chown "${LYRA_USER}:${LYRA_USER}" "${SEEDS_DIR}/${seed}.seed"
+      chmod 0600 "${SEEDS_DIR}/${seed}.seed"
     fi
   done
-  if [ -f "${NKEYS_DIR}/auth.conf" ]; then
-    chmod 0640 "${NKEYS_DIR}/auth.conf"
-    chown root:nats "${NKEYS_DIR}/auth.conf"
+  # auth.conf — system, readable by nats-server (nats user)
+  if [ -f "${AUTH_CONF}" ]; then
+    chown root:nats "${AUTH_CONF}"
+    chmod 0640 "${AUTH_CONF}"
   fi
-  info "Permissions applied for LYRA_USER=${LYRA_USER}"
+  info "Permissions applied for LYRA_USER=${LYRA_USER}, SEEDS_DIR=${SEEDS_DIR}"
 }
 
+# ── fix-perms mode ─────────────────────────────────────────────────────────
 if [ "${FIX_PERMS}" = true ]; then
-  [ -d "${NKEYS_DIR}" ] || error "${NKEYS_DIR} does not exist — run without --fix-perms first"
+  [ -d "${SEEDS_DIR}" ] || error "${SEEDS_DIR} does not exist — run without --fix-perms first"
   apply_permissions
   exit 0
 fi
 
-if [ -f "${NKEYS_DIR}/auth.conf" ]; then
-  warn "auth.conf already exists — skipping. Delete ${NKEYS_DIR}/ to regenerate."
+# ── idempotency check ──────────────────────────────────────────────────────
+if [ -f "${AUTH_CONF}" ]; then
+  warn "auth.conf already exists — skipping. Remove ${AUTH_CONF} + ${SEEDS_DIR}/ to regenerate."
   warn "To re-apply permissions only: sudo ./deploy/nats/gen-nkeys.sh --fix-perms"
   exit 0
 fi
@@ -106,14 +119,13 @@ ensure_nk() {
   unzip -q "${tmpdir}/nk.zip" -d "${tmpdir}"
   chmod +x "${tmpdir}/nk"
 
-  # Verify SHA-256 — fetch checksum from release (same pattern as install.sh for nats-server)
+  # Verify SHA-256
   local sha_url="https://github.com/nats-io/nkeys/releases/download/v${version}/SHA256SUMS"
   curl -fsSL "${sha_url}" -o "${tmpdir}/SHA256SUMS" \
     || error "Failed to download SHA256SUMS for nk v${version}"
   (cd "${tmpdir}" && grep -F "nk-v${version}-linux-${arch}.zip" SHA256SUMS | sha256sum --check) \
     || error "SHA-256 mismatch for nk v${version} — binary may be tampered"
 
-  # Install to /usr/local/bin for this session and future use
   cp "${tmpdir}/nk" /usr/local/bin/nk
   info "nk v${version} installed to /usr/local/bin/nk"
   echo "/usr/local/bin/nk"
@@ -122,65 +134,62 @@ ensure_nk() {
 NK_BIN=$(ensure_nk)
 
 # ── create directories ─────────────────────────────────────────────────────
-
-mkdir -p "${NKEYS_DIR}"
-apply_permissions
+apply_permissions   # creates SEEDS_DIR with correct ownership before writing seeds
+mkdir -p "${AUTH_DIR}"
 
 # ── generate nkey pairs ────────────────────────────────────────────────────
 
 generate_nkey() {
   local name="$1"
-  local seed_file="${NKEYS_DIR}/${name}.seed"
+  local seed_file="${SEEDS_DIR}/${name}.seed"
   local tmp_seed
   tmp_seed=$(mktemp)
   trap 'rm -f "${tmp_seed}"' RETURN
 
-  # Generate seed and save to temp file, then extract public key
   "${NK_BIN}" -gen user > "${tmp_seed}"
   local pubkey
   pubkey=$("${NK_BIN}" -inkey "${tmp_seed}" -pubout) \
     || error "Failed to derive public key for ${name} — is the nk binary valid?"
 
-  # Move seed to final location with tight permissions
-  install -m 0600 -o root -g root "${tmp_seed}" "${seed_file}"
+  install -m 0600 -o "${LYRA_USER}" -g "${LYRA_USER}" "${tmp_seed}" "${seed_file}"
   echo "${pubkey}"
 }
 
-info "Generating nkey pairs..."
+info "Generating nkey pairs in ${SEEDS_DIR}/ ..."
 HUB_PUB=$(generate_nkey "hub")
 WORKER_PUB=$(generate_nkey "llm-worker")
 MONITOR_PUB=$(generate_nkey "monitor")
 TTS_PUB=$(generate_nkey "tts-adapter")
 STT_PUB=$(generate_nkey "stt-adapter")
-chgrp "${LYRA_USER}" "${NKEYS_DIR}/tts-adapter.seed"
-chmod 0640 "${NKEYS_DIR}/tts-adapter.seed"
-chgrp "${LYRA_USER}" "${NKEYS_DIR}/stt-adapter.seed"
-chmod 0640 "${NKEYS_DIR}/stt-adapter.seed"
 
-# ── write auth.conf ────────────────────────────────────────────────────────
+# ── write auth.conf (public keys only — safe for /etc/) ───────────────────
 
-cat > "${NKEYS_DIR}/auth.conf" << EOF
+cat > "${AUTH_CONF}" << EOF
 # NATS nkey authorization — generated by gen-nkeys.sh
 # Included by /etc/nats/nats.conf
 # DO NOT edit manually — regenerate with: sudo ./deploy/nats/gen-nkeys.sh
+# Seeds (private keys) live in: ${SEEDS_DIR}/
 
 authorization {
   users: [
-    { nkey: "${HUB_PUB}",    name: "hub" }
-    { nkey: "${WORKER_PUB}", name: "llm-worker" }
+    { nkey: "${HUB_PUB}",     name: "hub" }
+    { nkey: "${WORKER_PUB}",  name: "llm-worker" }
     { nkey: "${MONITOR_PUB}", name: "monitor" }
-    { nkey: "${TTS_PUB}", name: "tts-adapter" }
-    { nkey: "${STT_PUB}", name: "stt-adapter" }
+    { nkey: "${TTS_PUB}",     name: "tts-adapter" }
+    { nkey: "${STT_PUB}",     name: "stt-adapter" }
   ]
 }
 EOF
-chmod 640 "${NKEYS_DIR}/auth.conf"
-chown root:nats "${NKEYS_DIR}/auth.conf"
+chown root:nats "${AUTH_CONF}"
+chmod 0640 "${AUTH_CONF}"
 
-info "nkeys generated at ${NKEYS_DIR}/"
-info "  hub.seed          — Lyra hub process         NATS_NKEY_SEED_PATH=/etc/nats/nkeys/hub.seed"
-info "  llm-worker.seed   — Machine 2 LLM worker     NATS_NKEY_SEED_PATH=/etc/nats/nkeys/llm-worker.seed"
-info "  monitor.seed      — lyra-monitor health check NATS_NKEY_SEED_PATH=/etc/nats/nkeys/monitor.seed"
-info "  tts-adapter.seed  — lyra_tts adapter process  NATS_NKEY_SEED_PATH=/etc/nats/nkeys/tts-adapter.seed"
-info "  stt-adapter.seed  — lyra_stt adapter process  NATS_NKEY_SEED_PATH=/etc/nats/nkeys/stt-adapter.seed"
-warn "Set NATS_NKEY_SEED_PATH in each service's supervisor conf.d to the seed path above."
+info "Done."
+info "  Seeds:     ${SEEDS_DIR}/"
+info "  auth.conf: ${AUTH_CONF}"
+info ""
+info "  hub.seed          NATS_NKEY_SEED_PATH=${SEEDS_DIR}/hub.seed"
+info "  llm-worker.seed   NATS_NKEY_SEED_PATH=${SEEDS_DIR}/llm-worker.seed"
+info "  monitor.seed      NATS_NKEY_SEED_PATH=${SEEDS_DIR}/monitor.seed"
+info "  tts-adapter.seed  NATS_NKEY_SEED_PATH=${SEEDS_DIR}/tts-adapter.seed"
+info "  stt-adapter.seed  NATS_NKEY_SEED_PATH=${SEEDS_DIR}/stt-adapter.seed"
+warn "Supervisor confs already reference ~/.lyra/nkeys/ — no changes needed."

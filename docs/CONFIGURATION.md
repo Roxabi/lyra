@@ -294,6 +294,19 @@ disk_check_path         = "/"                            # filesystem path to ch
 service_name            = "lyra_telegram"                # supervisor service name to inspect
 ```
 
+### Voice (optional)
+
+Enable when running `lyra_stt` / `lyra_tts` supervisor programs:
+
+```bash
+LYRA_STT_ENABLED=1              # activate NATS STT adapter (default: off)
+LYRA_STT_MODEL=large-v3-turbo   # faster-whisper model size
+LYRA_TTS_ENABLED=1              # activate NATS TTS adapter (default: off)
+# LYRA_TTS_ENGINE set per-adapter in deploy/supervisor/conf.d/lyra_tts.conf
+```
+
+The hub reads `LYRA_STT_ENABLED`/`LYRA_TTS_ENABLED` at startup to probe voice services via NATS. Deprecated `STT_MODEL_SIZE` and `TTS_ENGINE` still work for one cycle with a warning.
+
 ### Required `.env` variables
 
 ```bash

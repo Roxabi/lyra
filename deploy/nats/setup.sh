@@ -15,7 +15,7 @@
 #   9. Verify nkey enforcement is active
 #
 # Safe to re-run after upgrades, re-provisioning, or permission drift.
-# To rotate keys: sudo rm -rf /etc/nats/nkeys && make nats-setup
+# To rotate keys: sudo rm -f /etc/nats/nkeys/auth.conf && rm -rf ~/.lyra/nkeys && make nats-setup
 
 set -euo pipefail
 
@@ -69,11 +69,6 @@ fi
 sudo mkdir -p /etc/nats/certs
 sudo chown root:nats /etc/nats /etc/nats/certs
 sudo chmod 750 /etc/nats /etc/nats/certs
-# nkeys dir: only create if missing — gen-nkeys.sh owns its permissions
-if [ ! -d /etc/nats/nkeys ]; then
-  sudo mkdir -p /etc/nats/nkeys
-  info "/etc/nats/nkeys created."
-fi
 
 # ── 3. nats.conf ─────────────────────────────────────────────────────────
 

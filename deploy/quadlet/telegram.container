@@ -1,0 +1,20 @@
+[Unit]
+Description=Lyra Telegram adapter
+After=lyra-hub.service
+
+[Container]
+Image=localhost/lyra:latest
+ContainerName=lyra-telegram
+Network=lyra.network
+EnvironmentFile=%h/projects/lyra/.env
+Environment=NATS_URL=nats://lyra-nats:4222
+Volume=lyra-data.volume:/home/lyra/.lyra:ro,z
+Volume=lyra-config.volume:/app/config.toml:ro,z
+Exec=lyra adapter telegram
+
+[Service]
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

@@ -11,8 +11,8 @@ Network=lyra.network
 PublishPort=127.0.0.1:4223:4222
 PublishPort=127.0.0.1:8223:8222
 Volume=%h/projects/lyra/deploy/nats/nats-container.conf:/etc/nats/nats.conf:ro,z
-Volume=%h/.lyra/nkeys:/etc/nats/nkeys:ro,z
-Exec=-js -c /etc/nats/nats.conf
+Volume=%h/.lyra/nkeys/auth.conf:/etc/nats/nkeys/auth.conf:ro,z
+Exec=nats-server -js -c /etc/nats/nats.conf
 
 [Service]
 Restart=always

@@ -7,9 +7,11 @@ Requires=lyra-nats.service
 Image=localhost/lyra:latest
 ContainerName=lyra-hub
 Network=lyra.network
-EnvironmentFile=%h/projects/lyra/.env
-# Override NATS_URL to use container network — takes precedence over .env.
-# Update .env directly when supervisord NATS is retired (cutover step).
+EnvironmentFile=%h/projects/lyra/.env.hub
+# .env.hub contains only hub-scoped vars (ANTHROPIC_API_KEY, LYRA_HEALTH_SECRET,
+# LYRA_LOG_DIR, ROXABI_VAULT_DIR). Adapter tokens (Telegram, Discord, TTS/STT)
+# are excluded — hub does not need them. See deploy/quadlet/.env.hub.example.
+# NATS_URL is overridden inline below; cutover = update .env.hub directly.
 Environment=NATS_URL=nats://lyra-nats:4222
 Volume=lyra-data.volume:/home/lyra/.lyra:z
 Environment=LYRA_VAULT_DIR=/home/lyra/.lyra

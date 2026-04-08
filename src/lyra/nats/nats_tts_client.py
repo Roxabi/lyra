@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from nats.aio.client import Client as NATS
 
+from lyra.nats._tts_constants import _TTS_CONFIG_FIELDS
 from lyra.nats.circuit_breaker import NatsCircuitBreaker
 from lyra.tts import SynthesisResult, TtsUnavailableError
 
@@ -16,19 +17,6 @@ if TYPE_CHECKING:
     from lyra.core.agent_config import AgentTTSConfig
 
 log = logging.getLogger(__name__)
-
-_TTS_CONFIG_FIELDS = (
-    "engine",
-    "accent",
-    "personality",
-    "speed",
-    "emotion",
-    "exaggeration",
-    "cfg_weight",
-    "segment_gap",
-    "crossfade",
-    "chunk_size",
-)
 
 
 class NatsTtsClient:
@@ -87,6 +75,7 @@ class NatsTtsClient:
             "chunked": True,
         }
         if agent_tts is not None:
+            # voice/language use caller-override semantics (see below); excluded here
             for field in _TTS_CONFIG_FIELDS:
                 val = getattr(agent_tts, field, None)
                 if val is not None:

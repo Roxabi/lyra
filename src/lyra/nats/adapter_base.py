@@ -105,7 +105,10 @@ class NatsAdapterBase(ABC):
         }
 
     async def _heartbeat_loop(self) -> None:
-        while self._nc and self._nc.is_connected:
+        while self._nc and not self._nc.is_closed:
+            if not self._nc.is_connected:
+                await asyncio.sleep(1.0)
+                continue
             try:
                 payload = self.heartbeat_payload()
                 await self._nc.publish(

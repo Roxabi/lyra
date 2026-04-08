@@ -38,32 +38,24 @@ class SttAdapterStandalone(NatsAdapterBase):
             "stt_adapter: STTService ready (model=%s)", self._base_stt_cfg.model_size
         )
 
-    def _get_vram_used(self) -> int:
+    def _get_vram_info(self) -> tuple[int, int]:
+        """Return (used_mb, total_mb). Both 0 if pynvml is unavailable."""
         try:
             import pynvml  # noqa: PLC0415  # type: ignore[import-untyped]
             pynvml.nvmlInit()
             handle = pynvml.nvmlDeviceGetHandleByIndex(0)
             info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-            return int(info.used // (1024 * 1024))
+            return int(info.used // (1024 * 1024)), int(info.total // (1024 * 1024))
         except Exception:
-            return 0
-
-    def _get_vram_total(self) -> int:
-        try:
-            import pynvml  # noqa: PLC0415  # type: ignore[import-untyped]
-            pynvml.nvmlInit()
-            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-            info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-            return int(info.total // (1024 * 1024))
-        except Exception:
-            return 0
+            return 0, 0
 
     def heartbeat_payload(self) -> dict:
         base = super().heartbeat_payload()
+        vram_used, vram_total = self._get_vram_info()
         base.update({
             "model_loaded": self._base_stt_cfg.model_size,
-            "vram_used_mb": self._get_vram_used(),
-            "vram_total_mb": self._get_vram_total(),
+            "vram_used_mb": vram_used,
+            "vram_total_mb": vram_total,
             "active_requests": self._active_count,
         })
         return base

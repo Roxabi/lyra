@@ -172,10 +172,10 @@ async def _bootstrap_unified(  # noqa: C901, PLR0915
 
             stt_service = init_nats_stt(nc)
             if stt_service is not None:
-                await stt_service._setup_heartbeat_subscription()
+                await stt_service.start()
             tts_service = init_nats_tts(nc)
             if tts_service is not None:
-                await tts_service._setup_heartbeat_subscription()
+                await tts_service.start()
             cli_pool_cfg = _load_cli_pool_config(raw_config)
             hub_cfg = _load_hub_config(raw_config)
             pool_cfg = _load_pool_config(raw_config)

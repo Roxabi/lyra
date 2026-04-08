@@ -31,9 +31,9 @@ class NatsTtsClient:
         self._timeout = timeout
         self._cb = NatsCircuitBreaker()
         self._worker_freshness: dict[str, float] = {}
-        self._hb_sub = None  # set by _setup_heartbeat_subscription
+        self._hb_sub = None  # set by start
 
-    async def _setup_heartbeat_subscription(self) -> None:
+    async def start(self) -> None:
         """Subscribe to heartbeat subject. Called once after nc is connected."""
         if self._hb_sub is None:
             self._hb_sub = await self._nc.subscribe(
@@ -49,6 +49,9 @@ class NatsTtsClient:
 
     def _any_worker_alive(self) -> bool:
         now = time.monotonic()
+        self._worker_freshness = {
+            k: v for k, v in self._worker_freshness.items() if now - v <= _HB_TTL * 2
+        }
         return any(now - ts <= _HB_TTL for ts in self._worker_freshness.values())
 
     async def _send(self, payload: bytes, payload_kb: float) -> dict:

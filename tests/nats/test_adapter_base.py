@@ -831,6 +831,7 @@ class TestHeartbeatLoop:
         adapter = self._make_adapter(heartbeat_interval=0.01)
         mock_nc = AsyncMock()
         mock_nc.is_connected = True
+        mock_nc.is_closed = False
         adapter._nc = mock_nc
         adapter._started_at = time.monotonic()
 
@@ -838,8 +839,8 @@ class TestHeartbeatLoop:
 
         async def _fake_publish(subject: str, data: bytes) -> None:
             publish_calls.append((subject, data))
-            # Disconnect after first publish to stop the loop
-            mock_nc.is_connected = False
+            # Close after first publish to stop the loop
+            mock_nc.is_closed = True
 
         mock_nc.publish = AsyncMock(side_effect=_fake_publish)
 
@@ -862,6 +863,7 @@ class TestHeartbeatLoop:
         adapter = self._make_adapter(heartbeat_interval=0.01)
         mock_nc = AsyncMock()
         mock_nc.is_connected = True
+        mock_nc.is_closed = False
         adapter._nc = mock_nc
         adapter._started_at = time.monotonic()
 
@@ -872,8 +874,8 @@ class TestHeartbeatLoop:
             call_count += 1
             if call_count == 1:
                 raise RuntimeError("publish failed")
-            # Disconnect after second call so loop exits
-            mock_nc.is_connected = False
+            # Close after second call so loop exits
+            mock_nc.is_closed = True
 
         mock_nc.publish = AsyncMock(side_effect=_failing_publish)
 
@@ -898,12 +900,13 @@ class TestHeartbeatLoop:
         # Assert — we just check it returned (no infinite loop / no error)
 
     @pytest.mark.asyncio
-    async def test_loop_exits_when_nc_disconnected(self) -> None:
-        """_heartbeat_loop exits when _nc.is_connected is False."""
+    async def test_loop_exits_when_nc_closed(self) -> None:
+        """_heartbeat_loop exits when _nc.is_closed is True."""
         # Arrange
         adapter = self._make_adapter()
         mock_nc = AsyncMock()
-        mock_nc.is_connected = False  # already disconnected
+        mock_nc.is_connected = False
+        mock_nc.is_closed = True  # closed connection terminates the loop
         adapter._nc = mock_nc
 
         # Act — must return immediately without publishing

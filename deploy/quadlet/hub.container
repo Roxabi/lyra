@@ -2,6 +2,8 @@
 Description=Lyra Hub
 After=nats.service
 Requires=nats.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Container]
 Image=localhost/lyra:latest
@@ -16,11 +18,13 @@ Environment=NATS_URL=nats://lyra-nats:4222
 Volume=lyra-nkey-hub.volume:/run/secrets/hub.seed:ro,z
 Environment=NATS_NKEY_SEED_PATH=/run/secrets/hub.seed
 Volume=lyra-data.volume:/home/lyra/.lyra:z
-Volume=%h/projects/lyra/config.toml:/app/config.toml:ro,z
+Volume=lyra-config.volume:/app/config.toml:ro,z
+# Health endpoint — probed by lyra-monitor via host loopback (localhost:8443).
+PublishPort=127.0.0.1:8443:8443
 Exec=lyra hub
 
 [Service]
-Restart=always
+Restart=on-failure
 RestartSec=5
 
 [Install]

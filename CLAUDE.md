@@ -26,7 +26,7 @@ See `docs/ARCHITECTURE.md` for full context.
 | `docs/GETTING-STARTED.md` | Machine 1 setup guide |
 | `artifacts/` | Frames, specs, plans, analyses, explorations (dev-core) |
 | `deploy/provision.sh` | Machine 1 post-install provisioning script |
-| `deploy/quadlet/` | Podman Quadlet units (`.container`, `.volume`, `.network`) — systemd-integrated containers |
+| `deploy/quadlet/` | Podman Quadlet units (`.container`, `.volume`, `.network`) — systemd-integrated containers; `lyra-nats-auth.volume` for NATS public auth.conf |
 | `deploy/nats/nats-container.conf` | NATS config for container deployment (no TLS, 0.0.0.0 bind) |
 
 ## Local infrastructure

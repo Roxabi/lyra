@@ -51,7 +51,9 @@ from lyra.nats.readiness import start_readiness_responder
 
 log = logging.getLogger(__name__)
 
-_LOCKFILE = Path.home() / ".lyra" / "hub.lock"
+_LOCKFILE = (
+    Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))) / "hub.lock"
+)
 
 
 def _release_lockfile() -> None:

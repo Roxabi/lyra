@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import json as _json
+import os
 from pathlib import Path
 
 import typer
@@ -13,7 +14,9 @@ from lyra.cli_agent import _AGENTS_DIR_OPT, _connect_store, _list_from_dir, agen
 from lyra.core.agent_config import _VALID_BACKENDS
 
 # Agent TOML directories for seeding
-_USER_AGENTS_DIR = Path.home() / ".lyra" / "agents"
+_USER_AGENTS_DIR = (
+    Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))) / "agents"
+)
 _SYSTEM_AGENTS_DIR = Path(__file__).resolve().parent / "agents"
 
 

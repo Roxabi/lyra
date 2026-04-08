@@ -295,7 +295,9 @@ class TTSService:
         """
         from voicecli import generate_async
 
-        tts_tmp = Path.home() / ".lyra" / "tmp"
+        tts_tmp = (
+            Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))) / "tmp"
+        )
         tts_tmp.mkdir(parents=True, exist_ok=True)
         tmp_fd, tmp_str = tempfile.mkstemp(suffix=".wav", dir=tts_tmp)
         os.close(tmp_fd)

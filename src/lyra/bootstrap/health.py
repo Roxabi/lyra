@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hmac
 import logging
+import os
 import time
 from pathlib import Path
 
@@ -16,7 +17,8 @@ log = logging.getLogger(__name__)
 
 def _read_secret(name: str) -> str:
     """Read a secret from ~/.lyra/secrets/{name}. Returns '' if missing."""
-    path = Path.home() / ".lyra" / "secrets" / name
+    vault_dir = Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra")))
+    path = vault_dir / "secrets" / name
     try:
         return path.read_text().strip()
     except FileNotFoundError:

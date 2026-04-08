@@ -58,7 +58,8 @@ def _setup_logging(log_config: LoggingConfig | None = None) -> None:
     if log_config is None:
         log_config = LoggingConfig()
 
-    log_dir = Path.home() / ".local" / "state" / "lyra" / "logs"
+    _default_log = str(Path.home() / ".local" / "state" / "lyra" / "logs")
+    log_dir = Path(os.environ.get("LYRA_LOG_DIR", _default_log))
     log_dir.mkdir(parents=True, exist_ok=True)
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")

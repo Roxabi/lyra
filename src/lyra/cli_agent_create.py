@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 from typing import Optional
@@ -12,7 +13,9 @@ import typer
 
 from lyra.cli_agent import _AGENTS_DIR_OPT, _parse_tools, agent_app
 
-_USER_AGENTS_DIR = Path.home() / ".lyra" / "agents"
+_USER_AGENTS_DIR = (
+    Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))) / "agents"
+)
 _SYSTEM_AGENTS_DIR = Path(__file__).resolve().parent / "agents"
 AGENTS_DIR = _SYSTEM_AGENTS_DIR
 

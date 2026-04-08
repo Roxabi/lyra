@@ -89,7 +89,7 @@ SYSTEMD_USER_DIR := $(HOME)/.config/systemd/user
 
 register:
 	@echo "Registering lyra with supervisor hub..."
-	@$(HUB_GEN_MK) lyra "$(abspath .)" lyra telegram discord monitor deploy remote update nats-deploy
+	@$(HUB_GEN_MK) lyra "$(abspath .)" lyra telegram discord monitor deploy remote update nats-setup nats-deploy
 	$(call hub-link-conf,lyra_hub,supervisor/conf.d/lyra_hub.conf)
 	$(call hub-link-conf,lyra_telegram,supervisor/conf.d/lyra_telegram.conf)
 	$(call hub-link-conf,lyra_discord,supervisor/conf.d/lyra_discord.conf)

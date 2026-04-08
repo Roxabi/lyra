@@ -34,6 +34,7 @@ _AGENTS_DIR = Path(__file__).resolve().parent
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable
 
+    from lyra.core.cli_pool import CliPool
     from lyra.core.render_events import RenderEvent
     from lyra.core.stores.agent_store import AgentStore
     from lyra.stt import STTProtocol
@@ -63,6 +64,7 @@ class SimpleAgent(AgentBase):
         self,
         config: Agent,
         provider: LlmProvider,
+        cli_pool: CliPool | None = None,
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
         stt: "STTProtocol | None" = None,
@@ -82,6 +84,7 @@ class SimpleAgent(AgentBase):
         self._runtime_config_holder = RuntimeConfigHolder(rc)
         self._runtime_config_path = resolved_agents_dir / "lyra_runtime.toml"
         self._provider = provider
+        self._cli_pool = cli_pool
         super().__init__(
             config,
             agents_dir=agents_dir,
@@ -98,9 +101,8 @@ class SimpleAgent(AgentBase):
 
     async def reset_backend(self, pool_id: str) -> None:
         """Kill the backend process so the next turn gets a fresh one."""
-        reset_fn = getattr(self._provider, "reset", None)
-        if reset_fn is not None:
-            await reset_fn(pool_id)
+        if self._cli_pool is not None:
+            await self._cli_pool.reset(pool_id)
 
     def _build_router_kwargs(self) -> dict[str, object]:
         return {
@@ -148,33 +150,31 @@ class SimpleAgent(AgentBase):
         )
 
     def _maybe_register_reset(self, pool: Pool) -> None:
-        """Register a session reset callback on the pool the first time we process.
-
-        /clear calls pool.reset_session(), which delegates here → CliPool.reset().
-        """
-        if pool._session_reset_fn is None:
-            reset_fn = getattr(self._provider, "reset", None)
-            if reset_fn is not None:
+        """Register session reset/switch callbacks on the pool."""
+        _cli_pool = self._cli_pool  # narrow once; stable capture for lambdas
+        if _cli_pool is not None:
+            if pool._session_reset_fn is None:
                 _pool_id = pool.pool_id
-                pool._session_reset_fn = lambda: reset_fn(_pool_id)
-
-        switch_fn = getattr(self._provider, "switch_cwd", None)
-        if switch_fn is not None and pool._switch_workspace_fn is None:
-            _pool_id = pool.pool_id
-            pool._switch_workspace_fn = lambda cwd: switch_fn(_pool_id, cwd)
+                pool._session_reset_fn = lambda: _cli_pool.reset(_pool_id)
+            if pool._switch_workspace_fn is None:
+                _pool_id = pool.pool_id
+                pool._switch_workspace_fn = (
+                    lambda cwd: _cli_pool.switch_cwd(_pool_id, cwd)
+                )
 
     def _maybe_register_resume(self, pool: Pool) -> None:
-        """Register session resume callback on the pool the first time we process.
+        """Register session resume callback on the pool.
 
         Hub calls pool.resume_session(session_id) → delegates here →
         CliPool.resume_and_reset(). Follows the same lazy-wiring pattern as
         _maybe_register_reset.
         """
-        if pool._session_resume_fn is None:
-            resume_fn = getattr(self._provider, "resume_and_reset", None)
-            if resume_fn is not None:
-                _pool_id = pool.pool_id
-                pool._session_resume_fn = lambda sid: resume_fn(_pool_id, sid)
+        _cli_pool = self._cli_pool  # narrow once; stable capture for lambda
+        if _cli_pool is not None and pool._session_resume_fn is None:
+            _pool_id = pool.pool_id
+            pool._session_resume_fn = (
+                lambda sid: _cli_pool.resume_and_reset(_pool_id, sid)
+            )
 
     def configure_pool(self, pool: Pool) -> None:
         """Wire provider callbacks onto *pool* before first message is processed.
@@ -244,9 +244,8 @@ class SimpleAgent(AgentBase):
         model_cfg = self.config.llm_config
 
         # Link Lyra session → CLI session so reply-to-resume works.
-        _link = getattr(self._provider, "link_lyra_session", None)
-        if _link is not None:
-            _link(pool.pool_id, pool.session_id)
+        if self._cli_pool is not None:
+            self._cli_pool.link_lyra_session(pool.pool_id, pool.session_id)
 
         log.debug(
             "[agent:%s][pool:%s] processing message (%d chars)",

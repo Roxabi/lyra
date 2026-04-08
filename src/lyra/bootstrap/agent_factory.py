@@ -197,6 +197,7 @@ def _create_agent(  # noqa: PLR0913 — factory with optional overrides for each
         return SimpleAgent(
             config,
             provider,
+            cli_pool=cli_pool,
             circuit_registry=circuit_registry,
             msg_manager=msg_manager,
             stt=stt,

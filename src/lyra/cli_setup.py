@@ -137,7 +137,7 @@ async def _register_all(config_path: str) -> None:
 
     lyra_dir = Path.home() / ".lyra"
     keyring = LyraKeyring.load_or_create(lyra_dir / "keyring.key")
-    cred_store = CredentialStore(lyra_dir / "auth.db", keyring)
+    cred_store = CredentialStore(lyra_dir / "config.db", keyring)
     await cred_store.connect()
 
     commands_dir = Path(__file__).parent / "commands"

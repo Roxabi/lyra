@@ -64,9 +64,11 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
                 sys.exit("No telegram bots configured")
 
             # Gather credentials then close the store immediately — don't hold
-            # auth.db open during long-lived polling (causes Hub DB lock).
+            # config.db open during long-lived polling (causes Hub DB lock).
             keyring = LyraKeyring.load_or_create(vault_dir / "keyring.key")
-            cred_store = CredentialStore(db_path=vault_dir / "auth.db", keyring=keyring)
+            cred_store = CredentialStore(
+                db_path=vault_dir / "config.db", keyring=keyring
+            )
             await cred_store.connect()
             tg_creds: dict[str, tuple[str, str | None]] = {}
             try:
@@ -165,7 +167,9 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
 
             # Gather credentials then close the store immediately.
             keyring = LyraKeyring.load_or_create(vault_dir / "keyring.key")
-            cred_store = CredentialStore(db_path=vault_dir / "auth.db", keyring=keyring)
+            cred_store = CredentialStore(
+                db_path=vault_dir / "config.db", keyring=keyring
+            )
             await cred_store.connect()
             dc_creds: dict[str, str] = {}
             try:

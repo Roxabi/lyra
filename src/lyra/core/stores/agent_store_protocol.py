@@ -87,7 +87,7 @@ def make_agent_store(
                           ``~/.lyra/agents_test.json``
 
     Any other value (or unset)  →  :class:`~lyra.core.agent_store.AgentStore`
-                                    Path: *db_path* or ``~/.lyra/auth.db``
+                                    Path: *db_path* or ``~/.lyra/config.db``
 
     Note: the returned store is not yet connected — callers must ``await
     store.connect()`` before use.
@@ -107,5 +107,5 @@ def make_agent_store(
     _vault = Path(
         os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))
     ).resolve()
-    resolved = db_path or (_vault / "auth.db")
+    resolved = db_path or (_vault / "config.db")
     return AgentStore(db_path=resolved)

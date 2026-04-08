@@ -32,12 +32,12 @@ streaming via `ClaudeCliDriver` and handles STT transcription and TTS synthesis.
 ## TOML → DB seeding flow
 
 TOML files are **seed sources only**. The runtime reads agent config from SQLite
-(`~/.lyra/auth.db`), not from TOML directly.
+(`~/.lyra/config.db`), not from TOML directly.
 
 ```
 ~/.lyra/agents/<name>.toml   ←  user overrides (gitignored, machine-specific)
          ↓  lyra agent init [--force]
-~/.lyra/auth.db              ←  runtime source of truth
+~/.lyra/config.db            ←  runtime source of truth
 ```
 
 After editing any TOML file, run `lyra agent init --force` and restart the daemon.

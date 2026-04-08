@@ -14,21 +14,21 @@ from ..message import (
     Platform,
 )
 from ..pool import Pool
-from .message_pipeline import (
-    _DROP,
-    _SESSION_FALLTHROUGH_MSG,
+from .middleware import Next, PipelineContext
+from .pipeline_events import MessageDropped, PoolSubmitted
+from .pipeline_types import (
+    DROP,
+    SESSION_FALLTHROUGH_MSG,
     Action,
     PipelineResult,
     ResumeStatus,
 )
-from .middleware import Next, PipelineContext
-from .pipeline_events import MessageDropped, PoolSubmitted
 
 log = logging.getLogger(__name__)
 
 
 class SubmitToPoolMiddleware:
-    """Stage 6 (terminal): validate adapter, circuit breaker, submit."""
+    """Stage 9 (index 9, terminal): validate adapter, circuit breaker, submit."""
 
     async def __call__(
         self,
@@ -65,7 +65,7 @@ class SubmitToPoolMiddleware:
                     reason="no_adapter",
                 )
             )
-            return _DROP
+            return DROP
 
         if await ctx.hub.circuit_breaker_drop(msg):
             ctx.trace("outbound", "circuit_open", action=Action.DROP.value)
@@ -76,7 +76,7 @@ class SubmitToPoolMiddleware:
                     reason="circuit_open",
                 )
             )
-            return _DROP
+            return DROP
 
         pool = ctx.pool
         # Register session persistence callback once.
@@ -279,6 +279,6 @@ class SubmitToPoolMiddleware:
             msg.platform,
             adapter,
             msg,
-            _SESSION_FALLTHROUGH_MSG,
+            SESSION_FALLTHROUGH_MSG,
             circuit=circuit,
         )

@@ -23,7 +23,7 @@ Outbound (platform) ←──────────────── Outbound
 
 ## Non-obvious placement decisions
 
-**`pool_manager.py` and `message_pipeline.py` are in `hub/`** — both import `Hub` at runtime; placing them in `pool/` would create a circular import.
+**`pool_manager.py` and `pipeline_types.py` are in `hub/`** — both import `Hub` at runtime; placing them in `pool/` would create a circular import. `message_pipeline.py` is a backward-compatibility shim that re-exports from `pipeline_types.py`.
 
 **`builtin_commands.py` and `workspace_commands.py` are flat in `core/`** — not in `commands/`. The `commands/` subdir is routing infra only; built-in handlers live at the `core/` level.
 

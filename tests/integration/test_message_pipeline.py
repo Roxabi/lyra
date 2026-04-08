@@ -20,9 +20,11 @@ Trace format::
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 
@@ -33,6 +35,7 @@ from tests.core.conftest import (
     _make_hub,
     _MockAdapter,
     make_inbound_message,
+    push_to_hub,
 )
 
 # ---------------------------------------------------------------------------
@@ -252,3 +255,42 @@ class TestMessagePipelineTraces:
         assert data["test"] == test_name
         assert isinstance(data["steps"], list)
         assert len(data["steps"]) >= 3  # received, agent_selected, message_submitted
+
+
+# ---------------------------------------------------------------------------
+# hub.run() delegates to the pipeline
+# ---------------------------------------------------------------------------
+
+
+class TestHubRunDelegatesToPipeline:
+    """hub.run() receives a message from the bus and submits it to the pool."""
+
+    async def test_hub_run_delegates_to_pipeline(self) -> None:
+        """hub.run() should submit the message to the pool via the pipeline."""
+        hub = _make_hub()
+        msg = make_inbound_message()
+
+        # Push message before run() so it is waiting in the bus.
+        await push_to_hub(hub, msg)
+
+        # Resolve which pool will be created for this message's routing key
+        # by resolving the binding, then spy on pool.submit before run().
+        binding = hub.resolve_binding(msg)
+        assert binding is not None, "binding must exist for the test message"
+        pool = hub.get_or_create_pool(binding.pool_id, binding.agent_name)
+
+        submitted_messages: list = []
+        original_submit = pool.submit
+
+        def _spy_submit(m):
+            submitted_messages.append(m)
+            return original_submit(m)
+
+        with patch.object(pool, "submit", side_effect=_spy_submit):
+            try:
+                await asyncio.wait_for(hub.run(), timeout=0.3)
+            except asyncio.TimeoutError:
+                pass  # expected — run() loops forever
+
+        assert len(submitted_messages) == 1
+        assert submitted_messages[0].id == msg.id

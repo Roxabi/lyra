@@ -1,8 +1,7 @@
 """Concrete middleware stages for the inbound message pipeline (#431).
 
-Each class is one stage of the pipeline, independently testable with a
-mock ``next()`` callback. Stages 1–5 (guards + command dispatch) live here;
-stage 6 (pool submit + session resume) lives in ``middleware_submit.py``.
+Stages 0–8 (trace, guards, pool creation, command dispatch); stage 9
+(pool submit + session resume) lives in ``middleware_submit.py``.
 """
 
 from __future__ import annotations
@@ -20,13 +19,13 @@ from ..message import (
 )
 from ..trace import TraceContext
 from ..trust import TrustLevel
-from .message_pipeline import (
-    _DROP,
+from .middleware import Next, PipelineContext
+from .pipeline_events import CommandDispatched, MessageDropped
+from .pipeline_types import (
+    DROP,
     Action,
     PipelineResult,
 )
-from .middleware import Next, PipelineContext
-from .pipeline_events import CommandDispatched, MessageDropped
 
 log = logging.getLogger(__name__)
 
@@ -73,14 +72,13 @@ class ValidatePlatformMiddleware:
                     msg_id=msg.id, stage=type(self).__name__, reason="unknown_platform"
                 )
             )
-            return _DROP
+            return DROP
         return await next(msg, ctx)
 
 
 class ResolveTrustMiddleware:
     """Stage 2: resolve trust level from Hub authenticator (C3).
 
-    Overwrites adapter-supplied trust_level=PUBLIC with authoritative trust.
     Must precede TrustGuardMiddleware.
     """
 
@@ -111,7 +109,7 @@ class TrustGuardMiddleware:
                     msg_id=msg.id, stage=type(self).__name__, reason="trust_blocked"
                 )
             )
-            return _DROP
+            return DROP
         return await next(msg, ctx)
 
 
@@ -137,12 +135,12 @@ class RateLimitMiddleware:
                     msg_id=msg.id, stage=type(self).__name__, reason="rate_limited"
                 )
             )
-            return _DROP
+            return DROP
         return await next(msg, ctx)
 
 
 class ResolveBindingMiddleware:
-    """Stage 5: resolve binding + look up agent. Sets ctx.binding, ctx.agent."""
+    """Stage 6: resolve binding + look up agent. Sets ctx.binding, ctx.agent."""
 
     async def __call__(
         self,
@@ -164,7 +162,7 @@ class ResolveBindingMiddleware:
                     msg_id=msg.id, stage=type(self).__name__, reason="no_binding"
                 )
             )
-            return _DROP
+            return DROP
         ctx.binding = binding
 
         agent = ctx.hub.agent_registry.get(binding.agent_name)
@@ -185,14 +183,14 @@ class ResolveBindingMiddleware:
                     msg_id=msg.id, stage=type(self).__name__, reason="no_agent"
                 )
             )
-            return _DROP
+            return DROP
         ctx.agent = agent
 
         return await next(msg, ctx)
 
 
 class CreatePoolMiddleware:
-    """Stage 6: get or create the pool. Sets ctx.pool, ctx.router."""
+    """Stage 7: get or create the pool. Sets ctx.pool, ctx.router."""
 
     async def __call__(
         self,
@@ -216,19 +214,21 @@ class CreatePoolMiddleware:
         )
         ctx.pool = pool
         pool_id_token = TraceContext.set_pool_id(ctx.binding.pool_id)
-        ctx.trace(
-            "pool",
-            "agent_selected",
+        ctx.trace("pool", "agent_selected",
             agent=ctx.binding.agent_name,
-            pool_id=ctx.binding.pool_id,
-        )
+            pool_id=ctx.binding.pool_id)
 
         ctx.router = getattr(ctx.agent, "command_router", None)
 
         # Wire provider callbacks once at pool creation.
         _agent = ctx.hub.agent_registry.get(pool.agent_name)
-        if _agent is not None and hasattr(_agent, "configure_pool"):
+        if (
+            _agent is not None
+            and hasattr(_agent, "configure_pool")
+            and not getattr(pool, "_configured", False)
+        ):
             _agent.configure_pool(pool)
+            pool._configured = True  # type: ignore[attr-defined]
 
         if pool._on_resume_fn is None and ctx.hub._turn_store is not None:  # #597
             pool._on_resume_fn = ctx.hub._turn_store.increment_resume_count
@@ -247,7 +247,7 @@ class CreatePoolMiddleware:
 
 
 class CommandMiddleware:
-    """Stage 7: detect and dispatch commands."""
+    """Stage 8: detect and dispatch commands."""
 
     async def __call__(
         self,

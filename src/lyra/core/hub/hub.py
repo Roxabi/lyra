@@ -386,6 +386,9 @@ class Hub(HubOutboundMixin):
             pool = self.pools.get(pool_id)
             if pool is None or pool._last_msg is None:
                 return
+            if pool.is_idle:
+                # Subprocess alive but not processing — no in-flight turn to warn about.
+                return
             msg = pool._last_msg
             platform_str = str(msg.platform)
             try:

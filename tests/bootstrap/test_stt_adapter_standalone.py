@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import inspect
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -115,3 +116,88 @@ def test_mime_to_ext_still_accessible() -> None:
     assert _mime_to_ext("audio/unknown") == ".ogg", (
         "_mime_to_ext with unknown MIME must fall back to '.ogg'"
     )
+
+
+class TestSttHeartbeatPayload:
+    """Behavioural tests for SttAdapterStandalone heartbeat opt-in (T9/T11)."""
+
+    def _make_adapter(self):
+        """Build SttAdapterStandalone with mocked STTService."""
+        from lyra.bootstrap.stt_adapter_standalone import SttAdapterStandalone
+        from lyra.stt import STTConfig
+
+        mock_cfg = STTConfig(model_size="large-v3-turbo")
+        mock_stt_service = MagicMock()
+
+        with (
+            patch(
+                "lyra.bootstrap.stt_adapter_standalone.load_stt_config",
+                return_value=mock_cfg,
+            ),
+            patch(
+                "lyra.bootstrap.stt_adapter_standalone.STTService",
+                return_value=mock_stt_service,
+            ),
+        ):
+            adapter = SttAdapterStandalone(raw_config={})
+
+        return adapter
+
+    def test_heartbeat_subject_is_stt_subject(self) -> None:
+        """SttAdapterStandalone passes heartbeat_subject='lyra.voice.stt.heartbeat'."""
+        adapter = self._make_adapter()
+        assert adapter._heartbeat_subject == "lyra.voice.stt.heartbeat", (
+            f"Expected heartbeat_subject='lyra.voice.stt.heartbeat', "
+            f"got {adapter._heartbeat_subject!r}"
+        )
+
+    def test_heartbeat_payload_includes_model_loaded(self) -> None:
+        """heartbeat_payload() includes 'model_loaded' key matching the model size."""
+        adapter = self._make_adapter()
+        payload = adapter.heartbeat_payload()
+        assert "model_loaded" in payload, (
+            "heartbeat_payload() must include 'model_loaded'"
+        )
+        assert payload["model_loaded"] == "large-v3-turbo", (
+            f"Expected model_loaded='large-v3-turbo', got {payload['model_loaded']!r}"
+        )
+
+    def test_heartbeat_payload_includes_vram_fields(self) -> None:
+        """heartbeat_payload() includes 'vram_used_mb' and 'vram_total_mb' as int."""
+        adapter = self._make_adapter()
+        payload = adapter.heartbeat_payload()
+        assert "vram_used_mb" in payload, (
+            "heartbeat_payload() must include 'vram_used_mb'"
+        )
+        assert "vram_total_mb" in payload, (
+            "heartbeat_payload() must include 'vram_total_mb'"
+        )
+        assert isinstance(payload["vram_used_mb"], int), (
+            f"vram_used_mb must be int, got {type(payload['vram_used_mb'])}"
+        )
+        assert isinstance(payload["vram_total_mb"], int), (
+            f"vram_total_mb must be int, got {type(payload['vram_total_mb'])}"
+        )
+
+    def test_heartbeat_payload_includes_active_requests(self) -> None:
+        """heartbeat_payload() includes 'active_requests' as int."""
+        adapter = self._make_adapter()
+        payload = adapter.heartbeat_payload()
+        assert "active_requests" in payload, (
+            "heartbeat_payload() must include 'active_requests'"
+        )
+        assert isinstance(payload["active_requests"], int), (
+            f"active_requests must be int, got {type(payload['active_requests'])}"
+        )
+        assert payload["active_requests"] == 0, (
+            f"active_requests must start at 0, got {payload['active_requests']}"
+        )
+
+    def test_heartbeat_payload_includes_base_fields(self) -> None:
+        """heartbeat_payload() includes base fields: worker_id, service, ts, etc."""
+        adapter = self._make_adapter()
+        payload = adapter.heartbeat_payload()
+        for field in ("worker_id", "service", "ts", "host", "subject", "queue_group"):
+            assert field in payload, (
+                f"heartbeat_payload() must include base field '{field}'"
+            )

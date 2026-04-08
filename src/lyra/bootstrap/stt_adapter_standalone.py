@@ -26,64 +26,105 @@ SUBJECT = "lyra.voice.stt.request"
 
 class SttAdapterStandalone(NatsAdapterBase):
     def __init__(self, raw_config: dict) -> None:
-        super().__init__(SUBJECT, STT_WORKERS, "SttRequest", 1)
+        super().__init__(
+            SUBJECT, STT_WORKERS, "SttRequest", 1,
+            heartbeat_subject="lyra.voice.stt.heartbeat",
+            heartbeat_interval=5.0,
+        )
+        self._active_count: int = 0
         self._base_stt_cfg = load_stt_config()
         self._stt_service = STTService(self._base_stt_cfg)
         log.info(
             "stt_adapter: STTService ready (model=%s)", self._base_stt_cfg.model_size
         )
 
+    def _get_vram_used(self) -> int:
+        try:
+            import pynvml  # noqa: PLC0415  # type: ignore[import-untyped]
+            pynvml.nvmlInit()
+            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+            info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+            return int(info.used // (1024 * 1024))
+        except Exception:
+            return 0
+
+    def _get_vram_total(self) -> int:
+        try:
+            import pynvml  # noqa: PLC0415  # type: ignore[import-untyped]
+            pynvml.nvmlInit()
+            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+            info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+            return int(info.total // (1024 * 1024))
+        except Exception:
+            return 0
+
+    def heartbeat_payload(self) -> dict:
+        base = super().heartbeat_payload()
+        base.update({
+            "model_loaded": self._base_stt_cfg.model_size,
+            "vram_used_mb": self._get_vram_used(),
+            "vram_total_mb": self._get_vram_total(),
+            "active_requests": self._active_count,
+        })
+        return base
+
     async def handle(self, msg, payload: dict) -> None:
         data: dict = payload
         response: dict
+        self._active_count += 1
         try:
-            request_id = data.get("request_id", "unknown")
-            audio_b64 = data["audio_b64"]
-            audio_bytes = base64.b64decode(audio_b64)
-            mime_type = data.get("mime_type", "audio/ogg")
-
-            svc = self._stt_service
-            overrides: dict = {}
-            for key in (
-                "language_detection_threshold",
-                "language_detection_segments",
-                "language_fallback",
-            ):
-                if data.get(key) is not None:
-                    overrides[key] = data[key]
-            if overrides:
-                cfg = self._base_stt_cfg.model_copy(update=overrides)
-                svc = STTService(cfg)
-
-            suffix = _mime_to_ext(mime_type)
-            fd, tmp_path_str = tempfile.mkstemp(suffix=suffix)
             try:
-                os.write(fd, audio_bytes)
-                os.close(fd)
-                tmp_path = Path(tmp_path_str)
-                result: TranscriptionResult = await svc.transcribe(tmp_path)
+                request_id = data.get("request_id", "unknown")
+                audio_b64 = data["audio_b64"]
+                audio_bytes = base64.b64decode(audio_b64)
+                mime_type = data.get("mime_type", "audio/ogg")
+
+                svc = self._stt_service
+                overrides: dict = {}
+                for key in (
+                    "language_detection_threshold",
+                    "language_detection_segments",
+                    "language_fallback",
+                ):
+                    if data.get(key) is not None:
+                        overrides[key] = data[key]
+                if overrides:
+                    cfg = self._base_stt_cfg.model_copy(update=overrides)
+                    svc = STTService(cfg)
+
+                suffix = _mime_to_ext(mime_type)
+                fd, tmp_path_str = tempfile.mkstemp(suffix=suffix)
+                try:
+                    os.write(fd, audio_bytes)
+                    os.close(fd)
+                    tmp_path = Path(tmp_path_str)
+                    result: TranscriptionResult = await svc.transcribe(tmp_path)
+                    response = {
+                        "request_id": request_id,
+                        "ok": True,
+                        "text": result.text,
+                        "language": result.language,
+                        "duration_seconds": result.duration_seconds,
+                    }
+                finally:
+                    Path(tmp_path_str).unlink(missing_ok=True)
+
+            except Exception:
+                log.exception(
+                    "stt_adapter: transcription failed (request_id=%s)",
+                    data.get("request_id", "?"),
+                )
                 response = {
-                    "request_id": request_id,
-                    "ok": True,
-                    "text": result.text,
-                    "language": result.language,
-                    "duration_seconds": result.duration_seconds,
+                    "request_id": data.get("request_id", "unknown"),
+                    "ok": False,
+                    "error": "transcription_failed",
                 }
-            finally:
-                Path(tmp_path_str).unlink(missing_ok=True)
 
-        except Exception:
-            log.exception(
-                "stt_adapter: transcription failed (request_id=%s)",
-                data.get("request_id", "?"),
+            await self.reply(
+                msg, json.dumps(response, ensure_ascii=False).encode("utf-8")
             )
-            response = {
-                "request_id": data.get("request_id", "unknown"),
-                "ok": False,
-                "error": "transcription_failed",
-            }
-
-        await self.reply(msg, json.dumps(response, ensure_ascii=False).encode("utf-8"))
+        finally:
+            self._active_count -= 1
 
 
 async def _bootstrap_stt_adapter_standalone(

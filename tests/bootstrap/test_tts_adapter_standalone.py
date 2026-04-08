@@ -93,3 +93,58 @@ def test_tts_adapter_standalone_class_exists() -> None:
     assert issubclass(TtsAdapterStandalone, NatsAdapterBase), (
         "TtsAdapterStandalone must subclass NatsAdapterBase"
     )
+
+
+class TestTtsHeartbeatPayload:
+    def _make_adapter(self):
+        """Build TtsAdapterStandalone with mocked TTSService to avoid loading engine."""
+        from unittest.mock import MagicMock, patch
+
+        from lyra.tts import TTSConfig
+
+        mock_tts_service = MagicMock()
+        mock_tts_service.engine_name = "chatterbox"
+
+        with (
+            patch(
+                "lyra.bootstrap.tts_adapter_standalone.load_tts_config",
+                return_value=TTSConfig(engine="chatterbox"),
+            ),
+            patch(
+                "lyra.bootstrap.tts_adapter_standalone.TTSService",
+                return_value=mock_tts_service,
+            ),
+        ):
+            from lyra.bootstrap.tts_adapter_standalone import TtsAdapterStandalone
+            adapter = TtsAdapterStandalone({})
+
+        return adapter
+
+    def test_heartbeat_subject_is_tts_subject(self):
+        adapter = self._make_adapter()
+        assert adapter._heartbeat_subject == "lyra.voice.tts.heartbeat"
+
+    def test_heartbeat_payload_includes_model_loaded(self):
+        adapter = self._make_adapter()
+        payload = adapter.heartbeat_payload()
+        assert "model_loaded" in payload
+
+    def test_heartbeat_payload_includes_vram_fields(self):
+        adapter = self._make_adapter()
+        payload = adapter.heartbeat_payload()
+        assert "vram_used_mb" in payload
+        assert "vram_total_mb" in payload
+        assert isinstance(payload["vram_used_mb"], int)
+        assert isinstance(payload["vram_total_mb"], int)
+
+    def test_heartbeat_payload_includes_active_requests(self):
+        adapter = self._make_adapter()
+        payload = adapter.heartbeat_payload()
+        assert "active_requests" in payload
+        assert payload["active_requests"] == 0
+
+    def test_heartbeat_payload_includes_base_fields(self):
+        adapter = self._make_adapter()
+        payload = adapter.heartbeat_payload()
+        for field in ("worker_id", "service", "host", "subject", "queue_group", "ts"):
+            assert field in payload, f"Missing base field: {field}"

@@ -7,6 +7,7 @@ import base64
 import json
 import logging
 import os
+import time
 from pathlib import Path
 from uuid import uuid4
 
@@ -25,6 +26,9 @@ log = logging.getLogger(__name__)
 _STT_TIMEOUT_DEFAULT = 15.0
 _STT_TIMEOUT_MIN = 1.0
 _STT_TIMEOUT_MAX = 300.0
+
+_HB_SUBJECT = "lyra.voice.stt.heartbeat"
+_HB_TTL = 15.0
 
 
 def _parse_stt_timeout(timeout: float | None) -> float:
@@ -77,8 +81,32 @@ class NatsSttClient:
         self._detection_segments = language_detection_segments
         self._detection_fallback = language_fallback
         self._cb = NatsCircuitBreaker()
+        self._worker_freshness: dict[str, float] = {}
+        self._hb_sub = None  # set by _setup_heartbeat_subscription
+
+    async def _setup_heartbeat_subscription(self) -> None:
+        """Subscribe to heartbeat subject. Called once after nc is connected."""
+        if self._hb_sub is None:
+            self._hb_sub = await self._nc.subscribe(
+                _HB_SUBJECT, cb=self._on_heartbeat
+            )
+
+    async def _on_heartbeat(self, msg) -> None:
+        try:
+            data = json.loads(msg.data)
+            self._worker_freshness[data["worker_id"]] = time.monotonic()
+        except Exception:
+            pass
+
+    def _any_worker_alive(self) -> bool:
+        now = time.monotonic()
+        return any(now - ts <= _HB_TTL for ts in self._worker_freshness.values())
 
     async def transcribe(self, path: Path | str) -> TranscriptionResult:
+        if not self._any_worker_alive():
+            raise STTUnavailableError(
+                "STT: no live worker (heartbeat stale >15s)"
+            )
         if self._cb.is_open():
             raise STTUnavailableError(
                 "STT circuit open — adapter temporarily unavailable"

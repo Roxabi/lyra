@@ -82,12 +82,18 @@ class TestTimeoutResolution:
         assert client._timeout == 15.0
 
 
+def _inject_fresh_worker(client: NatsSttClient) -> None:
+    """Seed _worker_freshness with a fresh timestamp so freshness gate passes."""
+    client._worker_freshness["test-worker"] = time.monotonic()
+
+
 class TestCircuitBreaker:
     @pytest.mark.asyncio
     async def test_cb_open_blocks_call(self, tmp_path: Path) -> None:
         # Arrange — circuit manually forced open
         mock_nc = AsyncMock()
         client = NatsSttClient(nc=mock_nc)
+        _inject_fresh_worker(client)
         client._cb._open_until = time.monotonic() + 100.0
         wav_file = tmp_path / "test.wav"
         wav_file.write_bytes(b"")
@@ -102,6 +108,7 @@ class TestCircuitBreaker:
         mock_nc = AsyncMock()
         mock_nc.request = AsyncMock(side_effect=TimeoutError())
         client = NatsSttClient(nc=mock_nc)
+        _inject_fresh_worker(client)
         wav_file = tmp_path / "test.wav"
         wav_file.write_bytes(b"\x00" * 64)
         # Act
@@ -116,6 +123,7 @@ class TestCircuitBreaker:
         mock_nc = AsyncMock()
         mock_nc.request = AsyncMock(side_effect=Exception("NATS error"))
         client = NatsSttClient(nc=mock_nc)
+        _inject_fresh_worker(client)
         wav_file = tmp_path / "test.wav"
         wav_file.write_bytes(b"\x00" * 64)
         # Act
@@ -132,6 +140,7 @@ class TestCircuitBreaker:
             side_effect=Exception("NATS: max_payload exceeded")
         )
         client = NatsSttClient(nc=mock_nc)
+        _inject_fresh_worker(client)
         wav_file = tmp_path / "test.wav"
         wav_file.write_bytes(b"\x00" * 64)
         # Act
@@ -154,6 +163,7 @@ class TestCircuitBreaker:
         fake_reply.data = success_payload
         mock_nc.request = AsyncMock(return_value=fake_reply)
         client = NatsSttClient(nc=mock_nc)
+        _inject_fresh_worker(client)
         client._cb._failures = 2
         wav_file = tmp_path / "test.wav"
         wav_file.write_bytes(b"\x00" * 64)
@@ -162,6 +172,105 @@ class TestCircuitBreaker:
         # Assert
         assert result.text == "hello"
         assert client._cb._failures == 0
+
+
+class TestSttClientFreshness:
+    """Tests for freshness tracking gate in NatsSttClient."""
+
+    @pytest.mark.asyncio
+    async def test_no_workers_ever_raises_unavailable(self, tmp_path: Path) -> None:
+        """transcribe() raises STTUnavailableError when _worker_freshness is empty."""
+        mock_nc = AsyncMock()
+        client = NatsSttClient(nc=mock_nc)
+        wav_file = tmp_path / "test.wav"
+        wav_file.write_bytes(b"\x00" * 64)
+        with pytest.raises(STTUnavailableError, match="no live worker"):
+            await client.transcribe(wav_file)
+        mock_nc.request.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_stale_worker_raises_unavailable(self, tmp_path: Path) -> None:
+        """transcribe() raises STTUnavailableError when last heartbeat was >15s ago."""
+        mock_nc = AsyncMock()
+        client = NatsSttClient(nc=mock_nc)
+        client._worker_freshness["worker-1"] = time.monotonic() - 20.0
+        wav_file = tmp_path / "test.wav"
+        wav_file.write_bytes(b"\x00" * 64)
+        with pytest.raises(STTUnavailableError, match="no live worker"):
+            await client.transcribe(wav_file)
+        mock_nc.request.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_fresh_worker_proceeds_to_request(self, tmp_path: Path) -> None:
+        """transcribe() proceeds past freshness gate when a worker is fresh (<15s)."""
+        mock_nc = AsyncMock()
+        success_payload = json.dumps({
+            "ok": True,
+            "text": "hello world",
+            "language": "en",
+            "duration_seconds": 1.0,
+        }).encode()
+        fake_reply = MagicMock()
+        fake_reply.data = success_payload
+        mock_nc.request = AsyncMock(return_value=fake_reply)
+        client = NatsSttClient(nc=mock_nc)
+        client._worker_freshness["worker-1"] = time.monotonic() - 5.0
+        wav_file = tmp_path / "test.wav"
+        wav_file.write_bytes(b"\x00" * 64)
+        result = await client.transcribe(wav_file)
+        assert result.text == "hello world"
+        mock_nc.request.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_freshness_gate_before_circuit_breaker(self, tmp_path: Path) -> None:
+        """STTUnavailableError from freshness gate does NOT trip circuit breaker."""
+        mock_nc = AsyncMock()
+        client = NatsSttClient(nc=mock_nc)
+        # _worker_freshness is empty — freshness gate fires first
+        wav_file = tmp_path / "test.wav"
+        wav_file.write_bytes(b"\x00" * 64)
+        with pytest.raises(STTUnavailableError, match="no live worker"):
+            await client.transcribe(wav_file)
+        assert client._cb._failures == 0
+
+    @pytest.mark.asyncio
+    async def test_heartbeat_resumes_reenables_worker(self, tmp_path: Path) -> None:
+        """After stale, a new heartbeat re-enables the worker immediately."""
+        mock_nc = AsyncMock()
+        success_payload = json.dumps({
+            "ok": True,
+            "text": "resumed",
+            "language": "en",
+            "duration_seconds": 1.0,
+        }).encode()
+        fake_reply = MagicMock()
+        fake_reply.data = success_payload
+        mock_nc.request = AsyncMock(return_value=fake_reply)
+        client = NatsSttClient(nc=mock_nc)
+        # First: stale
+        client._worker_freshness["worker-1"] = time.monotonic() - 20.0
+        wav_file = tmp_path / "test.wav"
+        wav_file.write_bytes(b"\x00" * 64)
+        with pytest.raises(STTUnavailableError, match="no live worker"):
+            await client.transcribe(wav_file)
+        # Simulate fresh heartbeat arrives
+        client._worker_freshness["worker-1"] = time.monotonic()
+        result = await client.transcribe(wav_file)
+        assert result.text == "resumed"
+
+    def test_any_worker_alive_true_within_ttl(self) -> None:
+        """_any_worker_alive() returns True when a worker has a recent timestamp."""
+        mock_nc = MagicMock()
+        client = NatsSttClient(nc=mock_nc)
+        client._worker_freshness["worker-1"] = time.monotonic() - 5.0
+        assert client._any_worker_alive() is True
+
+    def test_any_worker_alive_false_when_stale(self) -> None:
+        """_any_worker_alive() returns False when all workers are >15s stale."""
+        mock_nc = MagicMock()
+        client = NatsSttClient(nc=mock_nc)
+        client._worker_freshness["worker-1"] = time.monotonic() - 20.0
+        assert client._any_worker_alive() is False
 
 
 class TestTranscribeResponseParsing:
@@ -181,6 +290,7 @@ class TestTranscribeResponseParsing:
         fake_reply.data = error_payload
         mock_nc.request = AsyncMock(return_value=fake_reply)
         client = NatsSttClient(nc=mock_nc)
+        _inject_fresh_worker(client)
         wav_file = tmp_path / "test.wav"
         wav_file.write_bytes(b"\x00" * 64)
         # Act / Assert
@@ -202,6 +312,7 @@ class TestTranscribeResponseParsing:
         fake_reply.data = noise_payload
         mock_nc.request = AsyncMock(return_value=fake_reply)
         client = NatsSttClient(nc=mock_nc)
+        _inject_fresh_worker(client)
         wav_file = tmp_path / "test.wav"
         wav_file.write_bytes(b"\x00" * 64)
         # Act / Assert

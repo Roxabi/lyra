@@ -1,0 +1,20 @@
+[Unit]
+Description=Lyra NATS server
+
+[Container]
+Image=nats:2.10.29-alpine
+ContainerName=lyra-nats
+Network=lyra.network
+# Host 4223 → container 4222: runs alongside supervisord NATS (4222) during
+# parallel testing. Switch to 4222:4222 once supervisord NATS is retired.
+PublishPort=127.0.0.1:4223:4222
+Volume=%h/projects/lyra/deploy/nats/nats-container.conf:/etc/nats/nats.conf:ro,z
+Volume=lyra-nats-auth.volume:/etc/nats/nkeys/auth.conf:ro,z
+Exec=nats-server -js -c /etc/nats/nats.conf
+
+[Service]
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

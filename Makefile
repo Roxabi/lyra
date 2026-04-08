@@ -126,6 +126,9 @@ quadlet-install:  ## install Quadlet units to ~/.config/containers/systemd/ + re
 	@cp deploy/quadlet/lyra-nkey-monitor.volume    "$(QUADLET_DIR)/lyra-nkey-monitor.volume"
 	@cp deploy/quadlet/lyra-nkey-tts-adapter.volume "$(QUADLET_DIR)/lyra-nkey-tts-adapter.volume"
 	@cp deploy/quadlet/lyra-nkey-stt-adapter.volume "$(QUADLET_DIR)/lyra-nkey-stt-adapter.volume"
+	@cp deploy/quadlet/lyra-nats-auth.volume       "$(QUADLET_DIR)/lyra-nats-auth.volume"
+	@cp deploy/quadlet/nats.container              "$(QUADLET_DIR)/nats.container"
+	@cp deploy/quadlet/hub.container               "$(QUADLET_DIR)/hub.container"
 	@systemctl --user daemon-reload
 	@echo "Quadlet units installed."
 

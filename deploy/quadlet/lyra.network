@@ -3,4 +3,7 @@ Description=Lyra container bridge network
 
 [Network]
 Driver=bridge
+# No Internal=true — the hub needs outbound internet (Anthropic API, Telegram).
+# Isolation is achieved via: nkey auth (NATS rejects unauthenticated clients) +
+# PublishPort=127.0.0.1:4223:4222 (NATS port is localhost-only, no LAN exposure).
 Label=app=lyra

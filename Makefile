@@ -117,10 +117,15 @@ register:
 
 quadlet-install:  ## install Quadlet units to ~/.config/containers/systemd/ + reload
 	@mkdir -p "$(QUADLET_DIR)"
-	@cp deploy/quadlet/lyra.network        "$(QUADLET_DIR)/lyra.network"
-	@cp deploy/quadlet/lyra-data.volume    "$(QUADLET_DIR)/lyra-data.volume"
-	@cp deploy/quadlet/lyra-config.volume  "$(QUADLET_DIR)/lyra-config.volume"
-	@cp deploy/quadlet/lyra-nkeys.volume   "$(QUADLET_DIR)/lyra-nkeys.volume"
+	@rm -f "$(QUADLET_DIR)"/lyra*.{network,volume,container}
+	@cp deploy/quadlet/lyra.network                "$(QUADLET_DIR)/lyra.network"
+	@cp deploy/quadlet/lyra-data.volume            "$(QUADLET_DIR)/lyra-data.volume"
+	@cp deploy/quadlet/lyra-config.volume          "$(QUADLET_DIR)/lyra-config.volume"
+	@cp deploy/quadlet/lyra-nkey-hub.volume        "$(QUADLET_DIR)/lyra-nkey-hub.volume"
+	@cp deploy/quadlet/lyra-nkey-llm-worker.volume "$(QUADLET_DIR)/lyra-nkey-llm-worker.volume"
+	@cp deploy/quadlet/lyra-nkey-monitor.volume    "$(QUADLET_DIR)/lyra-nkey-monitor.volume"
+	@cp deploy/quadlet/lyra-nkey-tts-adapter.volume "$(QUADLET_DIR)/lyra-nkey-tts-adapter.volume"
+	@cp deploy/quadlet/lyra-nkey-stt-adapter.volume "$(QUADLET_DIR)/lyra-nkey-stt-adapter.volume"
 	@systemctl --user daemon-reload
 	@echo "Quadlet units installed."
 

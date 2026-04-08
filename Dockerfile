@@ -27,5 +27,5 @@ ENV PATH="/app/.venv/bin:$PATH"
 
 USER lyra
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
   CMD lyra config validate || exit 1

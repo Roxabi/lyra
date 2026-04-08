@@ -28,6 +28,20 @@ sleep 2
 echo "✓ supervisord started"
 
 if [ "${1:-}" = "--all" ]; then
+    # Wait for NATS if .env has a NATS_URL (production three-process mode)
+    ENV_FILE="$(dirname "$SUPERVISOR_DIR")/.env"
+    if [ -f "$ENV_FILE" ] && grep -q "^NATS_URL=" "$ENV_FILE"; then
+        echo "Waiting for NATS on 127.0.0.1:4222..."
+        for _ in $(seq 30); do
+            nc -z 127.0.0.1 4222 2>/dev/null && break
+            sleep 1
+        done
+        if nc -z 127.0.0.1 4222 2>/dev/null; then
+            echo "✓ NATS is ready"
+        else
+            echo "⚠ NATS not available after 30s — starting programs anyway"
+        fi
+    fi
     echo "Starting all programs..."
     "$SCRIPT_DIR/supervisorctl.sh" start all
 fi

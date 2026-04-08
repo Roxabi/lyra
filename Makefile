@@ -117,10 +117,19 @@ register:
 # ── Supervisor config reload ──────────────────────────────────────────────────
 
 SCTL := $(or $(SUPERVISORCTL),$(CURDIR)/deploy/supervisor/supervisorctl.sh)
+LYRA_START := $(CURDIR)/deploy/supervisor/start.sh
+
+# Ensure supervisord is running (for standalone prod use without hub.mk).
+define ensure_lyra_supervisor
+	@if ! $(SCTL) status >/dev/null 2>&1; then \
+		echo "supervisord not running, starting..."; \
+		$(LYRA_START) > /dev/null; \
+	fi
+endef
 
 # Local supervisorctl dispatch — mirrors svc.sh but uses SCTL directly.
-# Avoids routing through the hub's supervisorctl.sh (wrong socket on prod).
 define lyra_svc
+	$(ensure_lyra_supervisor)
 	@case "$(SVC_CMD)" in \
 		reload)         $(SCTL) restart $(1) ;; \
 		start)          $(SCTL) start   $(1) ;; \

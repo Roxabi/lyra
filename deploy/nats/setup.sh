@@ -93,15 +93,16 @@ else
   info "nats.service already installed."
 fi
 
+# Clean up stale drop-in (user units can't depend on system units)
 DROPIN_DIR="$HOME/.config/systemd/user/lyra.service.d"
 DROPIN="${DROPIN_DIR}/after-nats.conf"
-if [ ! -f "${DROPIN}" ]; then
-  mkdir -p "${DROPIN_DIR}"
-  printf '[Unit]\nAfter=nats.service\n' > "${DROPIN}"
+if [ -f "${DROPIN}" ]; then
+  rm -f "${DROPIN}"
+  rmdir "${DROPIN_DIR}" 2>/dev/null || true
   systemctl --user daemon-reload 2>/dev/null || true
-  info "lyra.service drop-in installed (After=nats.service)."
+  info "Removed stale lyra.service drop-in (After=nats.service)."
 else
-  info "lyra.service drop-in already installed."
+  info "No stale drop-in to clean."
 fi
 
 # ── 5. Firewall ───────────────────────────────────────────────────────────

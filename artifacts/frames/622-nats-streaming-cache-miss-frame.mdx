@@ -1,0 +1,48 @@
+---
+title: "bug(nats): streaming responses silently dropped on NATS disconnect or InboundCache TTL expiry"
+issue: 622
+status: approved
+tier: F-lite
+date: 2026-04-08
+---
+
+## Problem
+
+Streaming LLM responses are silently dropped when the `InboundCache` on the adapter side no longer holds the `stream_id → InboundMessage` mapping. The user receives no reply at all — no error, no fallback message.
+
+Two distinct failure modes produce this outcome:
+
+**Mode A — TTL eviction:** The hub takes longer than 120 s to respond (slow LLM + TTS turn). The InboundCache reaper evicts the entry before chunks arrive. `cache.touch()` is a no-op because it is gated on `stream_id in self._cache` — it never refreshes an already-evicted entry. Chunks arrive, hit `_drain_stream`, find `original_msg is None`, drain the queue silently, log a warning, and return without sending anything to Telegram.
+
+**Mode B — Adapter restart / NATS reconnect:** The Telegram adapter process restarts (e.g. NATS disconnect triggers a `CancelledError` in uvicorn lifespan). A fresh `InboundCache()` is created with no prior state. The hub — which did not restart — delivers chunks for pre-restart `stream_id`s. Same cache-miss path, same silent drop.
+
+The `send`-type path is unaffected because it embeds `original_msg` in the envelope and `resolve()` has a fallback to reconstruct from it. The `stream_start` envelope carries no `original_msg`, so there is no equivalent recovery path for streaming.
+
+## Who
+
+- **Primary:** Any user sending a message to Lyra that triggers an LLM response — especially slow turns (>120 s) or sessions that span a NATS reconnect.
+- **Secondary:** Operators monitoring production logs (`lyra_telegram_error.log`) who see repeated `drained N chunk(s) for unknown stream_id` warnings with no corresponding Telegram delivery.
+
+## Constraints
+
+- Fix scope is Fix 1 + Fix 2 per the issue proposal. Fix 3 (hub→adapter keepalive subject) is explicitly deferred to the NATS hardening phase.
+- Fix 2 must mirror the existing `send` pattern (`nats_channel_proxy.py:send()` + `_inbound_cache.py:resolve()`), which is already proven and stable.
+- No new architectural patterns introduced — additive change only.
+- Files touched: `src/lyra/adapters/_inbound_cache.py`, `src/lyra/nats/nats_channel_proxy.py`, `src/lyra/adapters/nats_outbound_listener.py`.
+
+## Out of Scope
+
+- Fix 3: hub→adapter keepalive subject on `lyra.turn.keepalive` — deferred to #623 or NATS hardening phase.
+- TTS/STT heartbeat (#602/#603) — separate direction (worker → hub), orthogonal.
+- #621 (TTS retry infinite loop) — same log session, separate bug.
+- Changing the streaming protocol or envelope schema beyond adding `original_msg` to `stream_start`.
+
+## Complexity
+
+**Tier: F-lite** — Clear scope, single domain (NATS adapters), 3 files, no new architecture. Fix 1 is a one-liner; Fix 2 mirrors an already-proven pattern from the `send` path.
+
+Signals observed:
+- ≤3 files changed, all in the NATS adapter layer
+- No new architectural patterns — additive only
+- Issue label `size:F-lite` confirmed
+- Priority: high (production silent data loss)

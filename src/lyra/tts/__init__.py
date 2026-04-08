@@ -295,6 +295,9 @@ class TTSService:
         """
         from voicecli import generate_async
 
+        # voicecli rejects newlines — collapse to spaces before synthesis.
+        text = " ".join(text.splitlines())
+
         tts_tmp = (
             Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))).resolve()
             / "tmp"

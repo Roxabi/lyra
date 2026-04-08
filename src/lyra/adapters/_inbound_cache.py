@@ -18,7 +18,7 @@ from lyra.nats._serialize import deserialize_dict
 log = logging.getLogger(__name__)
 
 MAX_SIZE = 500
-TTL_SECONDS = 120
+TTL_SECONDS = 600
 REAPER_INTERVAL_SECONDS = 30
 
 

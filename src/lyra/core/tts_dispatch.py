@@ -14,6 +14,7 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
+from ..tts import TtsUnavailableError
 from .message import (
     InboundMessage,
     OutboundAudio,
@@ -136,6 +137,9 @@ class AudioPipeline:
         ``agent_tts`` carries the per-agent TTS config (engine, voice, etc.).
         ``fallback_language`` is the agent-level language default (#343).
         Errors are logged and swallowed — audio failure must not crash the hub.
+        Callers always dispatch text before invoking this method; the error
+        handler therefore logs and returns only — never calls dispatch_response —
+        to avoid the reentrancy loop documented in #621.
         """
         assert self._hub._tts is not None  # caller guarantees this
         try:
@@ -204,8 +208,6 @@ class AudioPipeline:
                 msg.id,
             )
         except Exception as _tts_exc:
-            from ..tts import TtsUnavailableError
-
             # Text response was already dispatched by the caller before TTS was
             # attempted — the user has the content.  Do not call dispatch_response
             # here: doing so creates a reentrancy path that causes an infinite

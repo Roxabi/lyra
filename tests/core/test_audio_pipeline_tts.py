@@ -20,7 +20,7 @@ from lyra.core.message import InboundMessage, Platform, Response
 from lyra.core.pool import Pool
 from lyra.core.render_events import RenderEvent
 from lyra.core.trust import TrustLevel
-from tests.core.conftest import FakeSTT
+from tests.core.conftest import FakeSTT, MockAdapter
 
 if TYPE_CHECKING:
     from lyra.stt import STTService
@@ -318,14 +318,19 @@ class TestTtsUnavailableFallback:
     """
 
     @pytest.mark.asyncio
-    async def test_tts_unavailable_no_dispatch_response(self) -> None:
-        """TtsUnavailableError → log only, dispatch_response NOT called.
+    async def test_tts_unavailable_no_dispatch_response(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """TtsUnavailableError → log.warning only, dispatch_response NOT called.
 
         Text was already sent by the caller. Sending a secondary notification
         creates the infinite retry loop (#621). Fix: log and return.
         """
+        import logging
+
         from lyra.tts import TtsUnavailableError
 
+        # Arrange
         mock_tts = MagicMock()
         mock_tts.synthesize = AsyncMock(side_effect=TtsUnavailableError("adapter down"))
 
@@ -348,20 +353,32 @@ class TestTtsUnavailableFallback:
             modality="voice",
         )
 
-        await hub._audio_pipeline.synthesize_and_dispatch_audio(msg, "Hello from Lyra")
+        # Act
+        with caplog.at_level(logging.WARNING, logger="lyra.core.tts_dispatch"):
+            await hub._audio_pipeline.synthesize_and_dispatch_audio(
+                msg, "Hello from Lyra"
+            )
 
-        # Audio must NOT be dispatched (synthesis failed)
+        # Assert
         hub.dispatch_audio.assert_not_awaited()
         # dispatch_response must NOT be called (#621 — text already sent before TTS)
         hub.dispatch_response.assert_not_awaited()
+        # Log warning must be emitted (sole observable side effect of the error path)
+        assert "msg-fallback-1" in caplog.text
+        assert caplog.records[0].levelno == logging.WARNING
 
     @pytest.mark.asyncio
-    async def test_tts_generic_exception_no_dispatch_response(self) -> None:
-        """Generic TTS exception → log only, dispatch_response NOT called.
+    async def test_tts_generic_exception_no_dispatch_response(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Generic TTS exception → log.exception only, dispatch_response NOT called.
 
         Same contract as TtsUnavailableError: text was already delivered,
         no secondary dispatch should occur regardless of exception type.
         """
+        import logging
+
+        # Arrange
         mock_tts = MagicMock()
         mock_tts.synthesize = AsyncMock(side_effect=RuntimeError("synthesis crash"))
 
@@ -384,7 +401,73 @@ class TestTtsUnavailableFallback:
             modality="voice",
         )
 
-        await hub._audio_pipeline.synthesize_and_dispatch_audio(msg, "Hello from Lyra")
+        # Act
+        with caplog.at_level(logging.ERROR, logger="lyra.core.tts_dispatch"):
+            await hub._audio_pipeline.synthesize_and_dispatch_audio(
+                msg, "Hello from Lyra"
+            )
 
+        # Assert
         hub.dispatch_audio.assert_not_awaited()
+        hub.dispatch_response.assert_not_awaited()
+        # log.exception must be emitted (ERROR level with traceback)
+        assert "msg-fallback-2" in caplog.text
+        assert caplog.records[0].levelno == logging.ERROR
+
+
+# ---------------------------------------------------------------------------
+# dispatch_streaming TTS fallback — no dispatch_response on TTS failure (#621)
+# ---------------------------------------------------------------------------
+
+
+class TestDispatchStreamingTTSFallback:
+    """TTS failure during dispatch_streaming must not call dispatch_response.
+
+    dispatch_streaming fires synthesize_and_dispatch_audio as a background
+    task (_deferred_tts) after the stream completes.  If TTS fails there, the
+    same contract applies: log and return only — no secondary dispatch_response.
+    """
+
+    @pytest.mark.asyncio
+    async def test_streaming_tts_failure_no_dispatch_response(self) -> None:
+        """Voice dispatch_streaming: TTS failure → dispatch_response NOT called."""
+        from datetime import datetime, timezone
+
+        from lyra.core.render_events import TextRenderEvent
+        from lyra.tts import TtsUnavailableError
+
+        # Arrange
+        mock_tts = MagicMock()
+        mock_tts.synthesize = AsyncMock(side_effect=TtsUnavailableError("down"))
+
+        hub = Hub(tts=mock_tts)
+        hub.dispatch_response = AsyncMock()
+
+        adapter = MockAdapter()
+        hub.adapter_registry[(Platform.TELEGRAM, "main")] = adapter  # type: ignore[assignment]
+
+        msg = InboundMessage(
+            id="msg-streaming-1",
+            platform="telegram",
+            bot_id="main",
+            scope_id="chat:99",
+            user_id="alice",
+            user_name="Alice",
+            is_mention=False,
+            text="hello",
+            text_raw="hello",
+            timestamp=datetime.now(timezone.utc),
+            trust_level=TrustLevel.TRUSTED,
+            modality="voice",
+        )
+
+        async def _fake_chunks() -> AsyncIterator[RenderEvent]:
+            yield TextRenderEvent(text="Hello from Lyra", is_final=True)
+
+        # Act
+        await hub.dispatch_streaming(msg, _fake_chunks())
+        # Allow background TTS task to complete
+        await asyncio.sleep(0.05)
+
+        # Assert
         hub.dispatch_response.assert_not_awaited()

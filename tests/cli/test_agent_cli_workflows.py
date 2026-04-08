@@ -84,7 +84,7 @@ class TestAgentEditCommand:
         """edit with all-blank inputs exits 0 and prints 'No changes'."""
         # Arrange
         monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
-        _seed_agent(tmp_path / "auth.db", name="edit-nochange")
+        _seed_agent(tmp_path / "config.db", name="edit-nochange")
 
         # Act -- send 8 blank lines (editable fields) + "N" for TTS init prompt
         blank_inputs = "\n".join([""] * 7 + ["N"]) + "\n"
@@ -100,7 +100,7 @@ class TestAgentEditCommand:
         """edit with a non-blank model input persists the new value in DB."""
         # Arrange
         monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
-        db_path = tmp_path / "auth.db"
+        db_path = tmp_path / "config.db"
         _seed_agent(db_path, name="edit-update", model="claude-sonnet-4-6")
 
         # Act -- fields: backend, model, max_turns, persona_json,
@@ -140,7 +140,7 @@ class TestAgentDeleteHappyPath:
         """delete an existing agent exits 0 and removes it from DB."""
         # Arrange
         monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
-        db_path = tmp_path / "auth.db"
+        db_path = tmp_path / "config.db"
         _seed_agent(db_path, name="to-delete")
 
         # Act
@@ -174,7 +174,7 @@ class TestAgentAssignHappyPath:
         """assign an existing agent exits 0 and prints 'Assigned'."""
         # Arrange
         monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
-        _seed_agent(tmp_path / "auth.db", name="assign-me")
+        _seed_agent(tmp_path / "config.db", name="assign-me")
 
         # Act
         result = runner.invoke(
@@ -202,7 +202,7 @@ class TestAgentValidateDBPath:
         # Arrange
         monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
         _seed_agent(
-            tmp_path / "auth.db",
+            tmp_path / "config.db",
             name="valid-agent",
             backend="anthropic-sdk",
             model="claude-sonnet-4-6",
@@ -222,7 +222,7 @@ class TestAgentValidateDBPath:
         # Arrange
         monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
         _seed_agent(
-            tmp_path / "auth.db",
+            tmp_path / "config.db",
             name="mismatch-agent",
             backend="claude-cli",
             model="claude-sonnet-4-6",
@@ -250,7 +250,7 @@ class TestAgentEditTTS:
         """T1: edit with pre-existing voice_json updates voice field in DB."""
         # Arrange
         monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
-        db_path = tmp_path / "auth.db"
+        db_path = tmp_path / "config.db"
         _seed_agent(
             db_path,
             name="tts-update",
@@ -290,7 +290,7 @@ class TestAgentEditTTS:
         """T2: edit with no voice_json, answer 'y' to init, provide engine value."""
         # Arrange
         monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
-        db_path = tmp_path / "auth.db"
+        db_path = tmp_path / "config.db"
         _seed_agent(db_path, name="tts-init")
 
         # Act -- 8 blank scalars, "y" for TTS init, engine="qwen", rest blank
@@ -323,7 +323,7 @@ class TestAgentEditTTS:
         """T3: exaggeration and cfg_weight inputs are stored as floats, not strings."""
         # Arrange
         monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
-        db_path = tmp_path / "auth.db"
+        db_path = tmp_path / "config.db"
         _seed_agent(db_path, name="tts-float")
 
         # Act -- 8 blank scalars, "y" for TTS init, blank engine/voice/language/accent/
@@ -358,7 +358,7 @@ class TestAgentEditTTS:
         """T8: invalid float input for exaggeration is skipped, field unchanged."""
         # Arrange
         monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
-        db_path = tmp_path / "auth.db"
+        db_path = tmp_path / "config.db"
         _seed_agent(
             db_path,
             name="tts-badfloat",

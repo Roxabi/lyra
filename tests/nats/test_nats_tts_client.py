@@ -139,6 +139,29 @@ class TestCircuitBreaker:
         assert client._cb._failures == 0
 
 
+class TestTtsClientStart:
+    """Tests for NatsTtsClient.start() lifecycle."""
+
+    @pytest.mark.asyncio
+    async def test_start_subscribes_to_heartbeat_subject(self) -> None:
+        """start() subscribes to the TTS heartbeat subject."""
+        mock_nc = AsyncMock()
+        client = NatsTtsClient(nc=mock_nc)
+        await client.start()
+        mock_nc.subscribe.assert_awaited_once()
+        call_args = mock_nc.subscribe.call_args
+        assert call_args[0][0] == "lyra.voice.tts.heartbeat"
+
+    @pytest.mark.asyncio
+    async def test_start_is_idempotent(self) -> None:
+        """start() called twice only subscribes once."""
+        mock_nc = AsyncMock()
+        client = NatsTtsClient(nc=mock_nc)
+        await client.start()
+        await client.start()
+        assert mock_nc.subscribe.await_count == 1
+
+
 class TestTtsClientFreshness:
     """Tests for freshness tracking gate in NatsTtsClient."""
 

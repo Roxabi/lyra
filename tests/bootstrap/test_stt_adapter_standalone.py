@@ -201,3 +201,27 @@ class TestSttHeartbeatPayload:
             assert field in payload, (
                 f"heartbeat_payload() must include base field '{field}'"
             )
+
+    def test_vram_fallback_is_zero_when_pynvml_unavailable(self) -> None:
+        """_get_vram_info() returns (0, 0) when pynvml is unavailable."""
+        adapter = self._make_adapter()
+        with patch(
+            "lyra.bootstrap.stt_adapter_standalone.SttAdapterStandalone"
+            "._get_vram_info",
+            return_value=(0, 0),
+        ):
+            payload = adapter.heartbeat_payload()
+        assert payload["vram_used_mb"] == 0
+        assert payload["vram_total_mb"] == 0
+
+    def test_vram_values_from_pynvml_when_available(self) -> None:
+        """_get_vram_info() returns real MB values when pynvml succeeds."""
+        adapter = self._make_adapter()
+        with patch(
+            "lyra.bootstrap.stt_adapter_standalone.SttAdapterStandalone"
+            "._get_vram_info",
+            return_value=(4096, 10240),
+        ):
+            payload = adapter.heartbeat_payload()
+        assert payload["vram_used_mb"] == 4096
+        assert payload["vram_total_mb"] == 10240

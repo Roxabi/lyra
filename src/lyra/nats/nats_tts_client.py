@@ -43,7 +43,11 @@ class NatsTtsClient:
     async def _on_heartbeat(self, msg) -> None:
         try:
             data = json.loads(msg.data)
-            self._worker_freshness[data["worker_id"]] = time.monotonic()
+            worker_id = data.get("worker_id")
+            if not worker_id:
+                log.warning("tts_client: heartbeat missing worker_id, ignoring")
+                return
+            self._worker_freshness[worker_id] = time.monotonic()
         except Exception:
             log.debug("tts_client: heartbeat parse error", exc_info=True)
 

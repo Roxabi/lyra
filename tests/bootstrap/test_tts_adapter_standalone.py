@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import inspect
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -148,3 +149,27 @@ class TestTtsHeartbeatPayload:
         payload = adapter.heartbeat_payload()
         for field in ("worker_id", "service", "host", "subject", "queue_group", "ts"):
             assert field in payload, f"Missing base field: {field}"
+
+    def test_vram_fallback_is_zero_when_pynvml_unavailable(self) -> None:
+        """_get_vram_info() returns (0, 0) when pynvml is unavailable."""
+        adapter = self._make_adapter()
+        with patch(
+            "lyra.bootstrap.tts_adapter_standalone.TtsAdapterStandalone"
+            "._get_vram_info",
+            return_value=(0, 0),
+        ):
+            payload = adapter.heartbeat_payload()
+        assert payload["vram_used_mb"] == 0
+        assert payload["vram_total_mb"] == 0
+
+    def test_vram_values_from_pynvml_when_available(self) -> None:
+        """_get_vram_info() returns real MB values when pynvml succeeds."""
+        adapter = self._make_adapter()
+        with patch(
+            "lyra.bootstrap.tts_adapter_standalone.TtsAdapterStandalone"
+            "._get_vram_info",
+            return_value=(4096, 10240),
+        ):
+            payload = adapter.heartbeat_payload()
+        assert payload["vram_used_mb"] == 4096
+        assert payload["vram_total_mb"] == 10240

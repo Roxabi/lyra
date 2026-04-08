@@ -5,19 +5,18 @@ import logging
 import time
 import uuid
 from collections import deque
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..agent import AgentBase
     from ..memory import SessionSnapshot
     from ..stores.turn_store import TurnStore
 
 from ..debouncer import DEFAULT_DEBOUNCE_MS, MessageDebouncer
-from ..message import InboundMessage, OutboundMessage, Response
-from ..render_events import RenderEvent
+from ..message import InboundMessage, OutboundMessage
+from .pool_context import PoolContext as PoolContext
 from .pool_observer import PoolObserver
 from .pool_processor import PoolProcessor
 
@@ -26,40 +25,9 @@ log = logging.getLogger(__name__)
 TURN_TIMEOUT_DEFAULT: float | None = None  # CliPool handles liveness
 
 
-@runtime_checkable
-class PoolContext(Protocol):
-    """Narrow interface that Pool needs from its owner (typically Hub).
-
-    Decouples Pool from the full Hub, enabling isolated testing and
-    reducing coupling (ADR-017, issue #204).
-    """
-
-    def get_agent(self, name: str) -> AgentBase | None: ...
-
-    def get_message(self, key: str) -> str | None: ...
-
-    async def dispatch_response(
-        self, msg: InboundMessage, response: Response | OutboundMessage
-    ) -> None: ...
-
-    async def dispatch_streaming(
-        self,
-        msg: InboundMessage,
-        chunks: AsyncIterator[RenderEvent],
-        outbound: OutboundMessage | None = None,
-    ) -> None: ...
-
-    def record_circuit_success(self) -> None: ...
-
-    def record_circuit_failure(self, exc: BaseException) -> None: ...
-
-
 class Pool:
     """One pool per conversation scope. Holds history and a per-session asyncio.Task."""
 
-    _session_reset_fn: Callable[[], Awaitable[None]] | None
-    _session_resume_fn: Callable[[str], Awaitable[bool]] | None
-    _switch_workspace_fn: Callable[[Path], Awaitable[None]] | None
     def __init__(  # noqa: PLR0913
         self,
         pool_id: str,
@@ -237,6 +205,15 @@ class Pool:
             accepted = False
         if accepted:
             self._observer.reset_session_persisted()
+            if self._on_resume_fn is not None:
+                try:
+                    await self._on_resume_fn(session_id)
+                except Exception:
+                    log.exception(
+                        "[pool:%s] resume count increment failed for %r",
+                        self.pool_id,
+                        session_id,
+                    )
         return accepted
 
     def _msg(self, key: str, fallback: str) -> str:

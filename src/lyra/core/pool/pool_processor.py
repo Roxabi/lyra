@@ -66,16 +66,6 @@ class PoolProcessor:
                             pool.pool_id,
                             _pending,
                         )
-                    elif pool._on_resume_fn is not None:
-                        try:
-                            await pool._on_resume_fn(_pending)
-                        except Exception:
-                            log.exception(
-                                "[pool:%s] pending resume count increment"
-                                " failed for %r",
-                                pool.pool_id,
-                                _pending,
-                            )
 
                 agent = pool._ctx.get_agent(pool.agent_name)
                 if agent is None:

@@ -22,7 +22,7 @@ define require_machine1
 	@[ -n "$(DEPLOY_DIR)" ] || { echo "Error: DEPLOY_DIR not set in .env"; exit 1; }
 endef
 
-.PHONY: lyra telegram discord lyra-stt lyra-tts monitor register deploy remote nats-setup nats-install nats-deploy test lint typecheck format
+.PHONY: lyra telegram discord lyra-stt lyra-tts monitor register deploy remote update nats-setup nats-install nats-deploy test lint typecheck format
 
 # ── Supervisor services ──────────────────────────────────────────────────────
 
@@ -109,6 +109,11 @@ register:
 	@echo "  Monitor:    run 'make monitor enable' to start the health check timer."
 	@echo "  Secrets:    ensure TELEGRAM_TOKEN, ANTHROPIC_API_KEY, TELEGRAM_ADMIN_CHAT_ID are in .env"
 
+# ── Supervisor config reload ──────────────────────────────────────────────────
+
+update:
+	$(hub_reread)
+
 # ── Deploy + remote ──────────────────────────────────────────────────────────
 
 deploy:
@@ -133,7 +138,7 @@ remote:
 	  discord)  PROGS="lyra_discord" ;; \
 	  stt)      PROGS="lyra_stt" ;; \
 	  tts)      PROGS="lyra_tts" ;; \
-	  reload|start|stop|status|logs|errors|"") \
+	  reload|start|stop|status|update|logs|errors|"") \
 	    ACTION="$$SVC"; PROGS="lyra_hub lyra_telegram lyra_discord" ;; \
 	  *) echo "Unknown service: $$SVC"; exit 1 ;; \
 	esac; \
@@ -142,6 +147,7 @@ remote:
 	  start)   ssh $(DEPLOY_HOST) "$$SCTL start $$PROGS" ;; \
 	  stop)    ssh $(DEPLOY_HOST) "$$SCTL stop $$PROGS" ;; \
 	  status)  ssh $(DEPLOY_HOST) "$$SCTL status $$PROGS" ;; \
+	  update)  ssh $(DEPLOY_HOST) "$$SCTL reread && $$SCTL update" ;; \
 	  logs)    FIRST=$${PROGS%% *}; ssh $(DEPLOY_HOST) "$$SCTL tail -f $$FIRST" ;; \
 	  errors)  FIRST=$${PROGS%% *}; ssh $(DEPLOY_HOST) "$$SCTL tail -f $$FIRST stderr" ;; \
 	  *) echo "Unknown action: $$ACTION"; exit 1 ;; \
@@ -154,10 +160,12 @@ nats-setup:
 
 nats-install: nats-setup  ## deprecated alias
 
-nats-deploy:              ## deprecated alias — runs setup.sh on prod via SSH
+nats-deploy:              ## run NATS setup on prod, then reload supervisor conf
 	$(require_machine1)
 	@echo "Running NATS setup on $(DEPLOY_HOST)..."
 	@ssh $(DEPLOY_HOST) "cd $(DEPLOY_DIR) && bash deploy/nats/setup.sh"
+	@echo "Reloading supervisor config on $(DEPLOY_HOST)..."
+	@ssh $(DEPLOY_HOST) "$(REMOTE_SCTL) reread && $(REMOTE_SCTL) update"
 
 test:
 	uv run pytest -v

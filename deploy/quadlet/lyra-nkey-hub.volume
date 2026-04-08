@@ -1,0 +1,9 @@
+[Unit]
+Description=Lyra hub nkey seed (read-only, 0600)
+ConditionPathExists=%h/.lyra/nkeys/hub.seed
+
+[Volume]
+Device=%h/.lyra/nkeys/hub.seed
+Type=bind
+Options=bind,ro
+Label=app=lyra

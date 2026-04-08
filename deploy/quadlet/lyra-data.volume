@@ -1,0 +1,5 @@
+[Unit]
+Description=Lyra data volume (auth.db, keyring, agents)
+
+[Volume]
+Label=app=lyra

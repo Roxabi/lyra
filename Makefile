@@ -32,7 +32,7 @@ define require_machine1
 	@[ -n "$(DEPLOY_DIR)" ] || { echo "Error: DEPLOY_DIR not set in .env"; exit 1; }
 endef
 
-.PHONY: lyra telegram discord lyra-stt lyra-tts monitor register deploy remote update nats-setup nats-install nats-deploy test lint typecheck format
+.PHONY: lyra telegram discord lyra-stt lyra-tts monitor register quadlet-install deploy remote update nats-setup nats-install nats-deploy test test-integration lint typecheck format
 
 # ── Supervisor services ──────────────────────────────────────────────────────
 
@@ -86,6 +86,7 @@ monitor:
 # ── Registration ─────────────────────────────────────────────────────────────
 
 SYSTEMD_USER_DIR := $(HOME)/.config/systemd/user
+QUADLET_DIR      := $(HOME)/.config/containers/systemd
 
 register:
 	@echo "Registering lyra with supervisor hub..."
@@ -113,6 +114,20 @@ register:
 	@echo "  Supervisor: lyra.service is running. Use 'make lyra status' or 'systemctl --user status lyra'."
 	@echo "  Monitor:    run 'make monitor enable' to start the health check timer."
 	@echo "  Secrets:    ensure TELEGRAM_TOKEN, ANTHROPIC_API_KEY, TELEGRAM_ADMIN_CHAT_ID are in .env"
+
+quadlet-install:  ## install Quadlet units to ~/.config/containers/systemd/ + reload
+	@mkdir -p "$(QUADLET_DIR)"
+	@rm -f "$(QUADLET_DIR)"/lyra*.{network,volume,container}
+	@cp deploy/quadlet/lyra.network                "$(QUADLET_DIR)/lyra.network"
+	@cp deploy/quadlet/lyra-data.volume            "$(QUADLET_DIR)/lyra-data.volume"
+	@cp deploy/quadlet/lyra-config.volume          "$(QUADLET_DIR)/lyra-config.volume"
+	@cp deploy/quadlet/lyra-nkey-hub.volume        "$(QUADLET_DIR)/lyra-nkey-hub.volume"
+	@cp deploy/quadlet/lyra-nkey-llm-worker.volume "$(QUADLET_DIR)/lyra-nkey-llm-worker.volume"
+	@cp deploy/quadlet/lyra-nkey-monitor.volume    "$(QUADLET_DIR)/lyra-nkey-monitor.volume"
+	@cp deploy/quadlet/lyra-nkey-tts-adapter.volume "$(QUADLET_DIR)/lyra-nkey-tts-adapter.volume"
+	@cp deploy/quadlet/lyra-nkey-stt-adapter.volume "$(QUADLET_DIR)/lyra-nkey-stt-adapter.volume"
+	@systemctl --user daemon-reload
+	@echo "Quadlet units installed."
 
 # ── Supervisor config reload ──────────────────────────────────────────────────
 
@@ -199,6 +214,15 @@ nats-deploy:              ## run NATS setup on prod, then reload supervisor conf
 
 test:
 	uv run pytest -v
+
+test-integration:
+	@echo "Starting integration environment..."
+	docker compose -f docker/docker-compose.test.yml up -d --wait --wait-timeout 30
+	@echo "Running integration tests..."
+	NATS_URL=nats://localhost:4222 uv run pytest tests/ -v -m nats_integration 2>&1; \
+	EXIT=$$?; \
+	docker compose -f docker/docker-compose.test.yml down -v; \
+	exit $$EXIT
 
 lint:
 	uv run ruff check .

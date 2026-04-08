@@ -169,5 +169,22 @@ else
 fi
 
 section "Done"
+
+# ── 10. Wire hub seed into .env ───────────────────────────────────────────
+LYRA_USER="${SUDO_USER:-$(id -un)}"
+LYRA_HOME=$(getent passwd "$LYRA_USER" | cut -d: -f6)
+ENV_FILE="${LYRA_DIR}/.env"
+HUB_SEED="${LYRA_HOME}/.lyra/nkeys/hub.seed"
+if [ -f "${ENV_FILE}" ]; then
+  if grep -q "^NATS_NKEY_SEED_PATH=" "${ENV_FILE}"; then
+    info ".env already has NATS_NKEY_SEED_PATH — not overwriting."
+  else
+    echo "NATS_NKEY_SEED_PATH=${HUB_SEED}" >> "${ENV_FILE}"
+    info "NATS_NKEY_SEED_PATH=${HUB_SEED} added to .env."
+  fi
+else
+  warn ".env not found at ${ENV_FILE} — skipping. Add manually: NATS_NKEY_SEED_PATH=${HUB_SEED}"
+fi
+
 info "NATS setup complete."
 sudo "${LYRA_DIR}/deploy/nats/gen-nkeys.sh" --show

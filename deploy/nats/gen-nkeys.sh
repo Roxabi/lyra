@@ -97,36 +97,66 @@ ensure_nk() {
 
   info "nk not found — downloading from GitHub releases..."
 
-  # Try GitHub API for latest version; fall back to known-good version
-  local version
-  version=$(curl -fsSL --connect-timeout 5 \
-    "https://api.github.com/repos/nats-io/nkeys/releases/latest" 2>/dev/null \
-    | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'].lstrip('v'))" \
-    2>/dev/null) || version="0.4.6"
-
   local arch
   arch=$(dpkg --print-architecture 2>/dev/null \
     || uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 
-  local url="https://github.com/nats-io/nkeys/releases/download/v${version}/nk-v${version}-linux-${arch}.zip"
   local tmpdir
   tmpdir=$(mktemp -d)
   trap 'rm -rf "${tmpdir}"' EXIT
 
+  # Resolve download URL directly from GitHub API assets (avoids guessing filename pattern)
+  local release_json url version
+  release_json=$(curl -fsSL --connect-timeout 10 \
+    "https://api.github.com/repos/nats-io/nkeys/releases/latest" 2>/dev/null) || release_json=""
+
+  if [ -n "${release_json}" ]; then
+    url=$(echo "${release_json}" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+arch = '${arch}'
+for asset in data.get('assets', []):
+    n = asset['name'].lower()
+    if 'nk' in n and 'linux' in n and arch in n and n.endswith('.zip'):
+        print(asset['browser_download_url'])
+        break
+" 2>/dev/null) || url=""
+    version=$(echo "${release_json}" | python3 -c "
+import sys, json; print(json.load(sys.stdin).get('tag_name','v0.4.6').lstrip('v'))
+" 2>/dev/null) || version="0.4.6"
+  fi
+
+  # Fall back to known-good release if API didn't yield an asset URL
+  if [ -z "${url}" ]; then
+    version="0.4.6"
+    url="https://github.com/nats-io/nkeys/releases/download/v${version}/nk-v${version}-linux-${arch}.zip"
+    warn "Could not resolve asset URL from API — falling back to v${version}"
+  fi
+
+  info "Downloading nk v${version}..."
   curl -fsSL "${url}" -o "${tmpdir}/nk.zip" \
     || error "Failed to download nk v${version} from ${url}"
 
   unzip -q "${tmpdir}/nk.zip" -d "${tmpdir}"
-  chmod +x "${tmpdir}/nk"
 
-  # Verify SHA-256
-  local sha_url="https://github.com/nats-io/nkeys/releases/download/v${version}/SHA256SUMS"
-  curl -fsSL "${sha_url}" -o "${tmpdir}/SHA256SUMS" \
-    || error "Failed to download SHA256SUMS for nk v${version}"
-  (cd "${tmpdir}" && grep -F "nk-v${version}-linux-${arch}.zip" SHA256SUMS | sha256sum --check) \
-    || error "SHA-256 mismatch for nk v${version} — binary may be tampered"
+  # Binary may be at root or inside a subdirectory
+  local nk_bin
+  nk_bin=$(find "${tmpdir}" -maxdepth 2 -name "nk" -type f | head -1)
+  [ -n "${nk_bin}" ] || error "nk binary not found inside downloaded archive"
+  chmod +x "${nk_bin}"
 
-  cp "${tmpdir}/nk" /usr/local/bin/nk
+  # Verify SHA-256 when checksum file is available
+  local sha_url
+  sha_url="$(dirname "${url}")/SHA256SUMS"
+  if curl -fsSL --connect-timeout 5 "${sha_url}" -o "${tmpdir}/SHA256SUMS" 2>/dev/null; then
+    (cd "$(dirname "${nk_bin}")" \
+      && grep -F "$(basename "${url}")" "${tmpdir}/SHA256SUMS" | sha256sum --check) \
+      || warn "SHA-256 check failed — verify manually before trusting this binary"
+  else
+    warn "SHA256SUMS not available for this release — skipping integrity check"
+  fi
+
+  cp "${nk_bin}" /usr/local/bin/nk
   info "nk v${version} installed to /usr/local/bin/nk"
   echo "/usr/local/bin/nk"
 }

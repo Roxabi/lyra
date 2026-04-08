@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 from unittest.mock import AsyncMock, MagicMock
 
 if TYPE_CHECKING:
+    from lyra.core.cli_pool import CliPool
     from lyra.llm.base import LlmProvider
 
 from lyra.agents.simple_agent import SimpleAgent
@@ -381,3 +383,224 @@ class TestSimpleAgentStreaming:
         # Assert — agent.config.system_prompt used
         args = provider.stream.call_args[0]
         assert args[3] == "You are Lyra."
+
+
+# ---------------------------------------------------------------------------
+# Helpers for CLI lifecycle tests
+# ---------------------------------------------------------------------------
+
+
+def make_agent_with_cli_pool(provider: object, cli_pool: object) -> SimpleAgent:
+    """Return a SimpleAgent wired with an explicit cli_pool (T7)."""
+    config = Agent(
+        name="lyra",
+        system_prompt="You are Lyra.",
+        memory_namespace="lyra",
+        llm_config=ModelConfig(),
+    )
+    return SimpleAgent(
+        config, cast("LlmProvider", provider), cli_pool=cast("CliPool", cli_pool)
+    )
+
+
+# ---------------------------------------------------------------------------
+# TestSimpleAgentCliLifecycle
+# ---------------------------------------------------------------------------
+
+
+class TestSimpleAgentCliLifecycle:
+    """Regression tests for issue #620: all four CLI lifecycle ops route through
+    self._cli_pool, not through getattr(self._provider, ...).
+
+    Tests T8–T13 will be RED until the backend fix lands.
+    """
+
+    # ------------------------------------------------------------------
+    # T8 — CB-wrapped reset: pool.reset_session() calls cli_pool.reset
+    # ------------------------------------------------------------------
+
+    async def test_t8_reset_routes_through_cli_pool(self) -> None:
+        """T8: pool.reset_session() → cli_pool.reset(pool_id), not provider.reset."""
+        # Arrange — provider has NO reset method
+        provider = MagicMock(spec=["complete", "stream", "is_alive"])
+        cli_pool = MagicMock()
+        cli_pool.reset = AsyncMock()
+
+        agent = make_agent_with_cli_pool(provider, cli_pool)
+        pool = make_pool()
+        agent.configure_pool(pool)
+
+        # Act
+        await pool.reset_session()
+
+        # Assert — cli_pool.reset called with pool_id, not provider.reset
+        cli_pool.reset.assert_called_once_with(pool.pool_id)
+
+    # ------------------------------------------------------------------
+    # T9a — CB-wrapped switch_cwd: workspace switch → cli_pool.switch_cwd
+    # ------------------------------------------------------------------
+
+    async def test_t9a_switch_cwd_routes_through_cli_pool(self) -> None:
+        """T9a: _switch_workspace_fn routes to cli_pool.switch_cwd."""
+        # Arrange — provider has NO switch_cwd method
+        provider = MagicMock(spec=["complete", "stream", "is_alive"])
+        cli_pool = MagicMock()
+        cli_pool.switch_cwd = AsyncMock()
+
+        agent = make_agent_with_cli_pool(provider, cli_pool)
+        pool = make_pool()
+        agent.configure_pool(pool)
+
+        # Assert — _switch_workspace_fn was registered
+        assert pool._switch_workspace_fn is not None
+
+        # Act — invoke the registered callback directly
+        await pool._switch_workspace_fn(Path("/new/cwd"))
+
+        # Assert — cli_pool.switch_cwd called with pool_id and cwd
+        cli_pool.switch_cwd.assert_called_once_with(pool.pool_id, Path("/new/cwd"))
+
+    # ------------------------------------------------------------------
+    # T9b — CB-wrapped resume_and_reset: resume fn → cli_pool.resume_and_reset
+    # ------------------------------------------------------------------
+
+    async def test_t9b_resume_and_reset_routes_through_cli_pool(self) -> None:
+        """T9b: _session_resume_fn routes to cli_pool.resume_and_reset."""
+        # Arrange — provider has NO resume_and_reset method
+        provider = MagicMock(spec=["complete", "stream", "is_alive"])
+        cli_pool = MagicMock()
+        cli_pool.resume_and_reset = AsyncMock(return_value=True)
+
+        agent = make_agent_with_cli_pool(provider, cli_pool)
+        pool = make_pool()
+        agent.configure_pool(pool)
+
+        # Assert — _session_resume_fn was registered (fix: route through cli_pool)
+        assert pool._session_resume_fn is not None
+
+        # Act
+        await pool._session_resume_fn("sess-1")
+
+        # Assert — cli_pool.resume_and_reset called with pool_id and session id
+        cli_pool.resume_and_reset.assert_called_once_with(pool.pool_id, "sess-1")
+
+    # ------------------------------------------------------------------
+    # T10 — CB-wrapped link_lyra_session: process() → cli_pool.link_lyra_session
+    # ------------------------------------------------------------------
+
+    async def test_t10_link_lyra_session_routes_through_cli_pool(self) -> None:
+        """T10: process() calls cli_pool.link_lyra_session(pool_id, session_id)."""
+        # Arrange — provider has NO link_lyra_session but can complete
+        provider = MagicMock(spec=["complete", "stream", "is_alive"])
+        provider.complete = AsyncMock(
+            return_value=LlmResult(result="hi", session_id="s1")
+        )
+        provider.is_alive = MagicMock(return_value=True)
+
+        cli_pool = MagicMock()
+        cli_pool.link_lyra_session = MagicMock()
+
+        agent = make_agent_with_cli_pool(provider, cli_pool)
+        pool = make_pool()
+        agent.configure_pool(pool)
+
+        # Act
+        await agent.process(make_inbound_message("hi"), pool)
+
+        # Assert — link_lyra_session called via cli_pool, not provider
+        cli_pool.link_lyra_session.assert_called_once_with(
+            pool.pool_id, pool.session_id
+        )
+
+    # ------------------------------------------------------------------
+    # T11 — bare driver: all four ops still route through cli_pool
+    # ------------------------------------------------------------------
+
+    async def test_t11_bare_driver_all_four_ops_route_through_cli_pool(self) -> None:
+        """T11: even when provider has all four methods, fix routes through cli_pool."""
+        # Arrange — provider has ALL four methods
+        provider = MagicMock()
+        provider.reset = AsyncMock()
+        provider.switch_cwd = AsyncMock()
+        provider.resume_and_reset = AsyncMock(return_value=True)
+        provider.link_lyra_session = MagicMock()
+        provider.complete = AsyncMock(
+            return_value=LlmResult(result="ok", session_id="s1")
+        )
+        provider.is_alive = MagicMock(return_value=True)
+
+        cli_pool = MagicMock()
+        cli_pool.reset = AsyncMock()
+        cli_pool.switch_cwd = AsyncMock()
+        cli_pool.resume_and_reset = AsyncMock(return_value=True)
+        cli_pool.link_lyra_session = MagicMock()
+
+        agent = make_agent_with_cli_pool(provider, cli_pool)
+        pool = make_pool()
+        agent.configure_pool(pool)
+
+        # Act — trigger each operation
+        await pool.reset_session()
+        if pool._switch_workspace_fn is not None:
+            await pool._switch_workspace_fn(Path("/some/cwd"))
+        if pool._session_resume_fn is not None:
+            await pool._session_resume_fn("sess-42")
+        await agent.process(make_inbound_message("hi"), pool)
+
+        # Assert — all four went through cli_pool
+        cli_pool.reset.assert_called_once_with(pool.pool_id)
+        cli_pool.switch_cwd.assert_called_once_with(pool.pool_id, Path("/some/cwd"))
+        cli_pool.resume_and_reset.assert_called_once_with(pool.pool_id, "sess-42")
+        cli_pool.link_lyra_session.assert_called()
+
+    # ------------------------------------------------------------------
+    # T12 — idempotency: configure_pool twice → callbacks registered once
+    # ------------------------------------------------------------------
+
+    async def test_t12_configure_pool_idempotent(self) -> None:
+        """T12: calling configure_pool twice does not double-register callbacks."""
+        # Arrange
+        provider = MagicMock(spec=["complete", "stream", "is_alive"])
+        cli_pool = MagicMock()
+        cli_pool.reset = AsyncMock()
+
+        agent = make_agent_with_cli_pool(provider, cli_pool)
+        pool = make_pool()
+
+        # Act — configure twice
+        agent.configure_pool(pool)
+        fn_after_first = pool._session_reset_fn
+        agent.configure_pool(pool)
+        fn_after_second = pool._session_reset_fn
+
+        # Assert — same fn object registered (guard: if _session_reset_fn is None)
+        assert fn_after_first is not None
+        assert fn_after_second is fn_after_first
+
+        # Calling reset_session must invoke cli_pool.reset exactly once
+        await pool.reset_session()
+        cli_pool.reset.assert_called_once_with(pool.pool_id)
+
+    # ------------------------------------------------------------------
+    # T13 — cli_pool=None: no errors, reset fn stays None
+    # ------------------------------------------------------------------
+
+    async def test_t13_no_cli_pool_no_errors(self) -> None:
+        """T13: cli_pool=None → no AttributeError, _session_reset_fn stays None."""
+        # Arrange — standard agent without cli_pool
+        provider = MagicMock()
+        provider.complete = AsyncMock(
+            return_value=LlmResult(result="ok", session_id="s1")
+        )
+        provider.is_alive = MagicMock(return_value=True)
+
+        agent = make_agent(provider)
+        pool = make_pool()
+
+        # Act — configure_pool and process must not raise
+        agent.configure_pool(pool)
+        response = await agent.process(make_inbound_message("hi"), pool)
+
+        # Assert — reset fn not registered, response returned cleanly
+        assert pool._session_reset_fn is None
+        assert isinstance(response, Response)

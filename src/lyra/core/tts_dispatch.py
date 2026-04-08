@@ -10,15 +10,14 @@ Slice 1 and replaced by ``MessagePipeline._run_stt_stage``.
 
 from __future__ import annotations
 
-import dataclasses
 import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
+from ..tts import TtsUnavailableError
 from .message import (
     InboundMessage,
     OutboundAudio,
-    Response,
 )
 
 if TYPE_CHECKING:
@@ -138,6 +137,9 @@ class AudioPipeline:
         ``agent_tts`` carries the per-agent TTS config (engine, voice, etc.).
         ``fallback_language`` is the agent-level language default (#343).
         Errors are logged and swallowed — audio failure must not crash the hub.
+        Callers always dispatch text before invoking this method; the error
+        handler therefore logs and returns only — never calls dispatch_response —
+        to avoid the reentrancy loop documented in #621.
         """
         assert self._hub._tts is not None  # caller guarantees this
         try:
@@ -206,17 +208,10 @@ class AudioPipeline:
                 msg.id,
             )
         except Exception as _tts_exc:
-            from ..tts import TtsUnavailableError
-
             # Text response was already dispatched by the caller before TTS was
-            # attempted — only send a brief notification so the user knows voice
-            # output failed.  Override modality to "text" to avoid an infinite
-            # loop if dispatch_response itself triggers TTS.
-            _notif = (
-                self._hub.get_message("tts_unavailable")
-                or "Voice output is temporarily unavailable."
-            )
-            _notify_msg = dataclasses.replace(msg, modality="text")
+            # attempted — the user has the content.  Do not call dispatch_response
+            # here: doing so creates a reentrancy path that causes an infinite
+            # retry loop in production (#621).  Log and return.
             if isinstance(_tts_exc, TtsUnavailableError):
                 log.warning(
                     "TTS adapter unavailable for msg id=%s",
@@ -227,4 +222,3 @@ class AudioPipeline:
                     "TTS synthesis failed (msg id=%s)",
                     msg.id,
                 )
-            await self._hub.dispatch_response(_notify_msg, Response(content=_notif))

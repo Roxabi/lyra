@@ -1,9 +1,10 @@
-"""NATS connection helper with optional nkey authentication."""
+"""NATS connection helper with optional nkey authentication and TLS."""
 
 from __future__ import annotations
 
 import logging
 import os
+import ssl
 import sys
 from pathlib import Path
 from typing import Any
@@ -41,7 +42,22 @@ def _read_nkey_seed() -> str | None:
     return seed
 
 
-_RESERVED_AUTH_KEYS = frozenset({"nkeys_seed_str", "token", "user", "password", "tls"})
+_RESERVED_KEYS = frozenset({"nkeys_seed_str", "token", "user", "password", "tls"})
+
+
+def _build_tls_context() -> ssl.SSLContext | None:
+    """Build a TLS context from NATS_CA_CERT env var.
+
+    Returns None if env var is unset (plain TCP / dev mode).
+    """
+    ca_path_str = os.environ.get("NATS_CA_CERT")
+    if not ca_path_str:
+        return None
+    ca_path = Path(ca_path_str)
+    if not ca_path.is_file():
+        sys.exit(f"NATS_CA_CERT={ca_path_str!r} is not a file")
+    ctx = ssl.create_default_context(cafile=str(ca_path))
+    return ctx
 
 
 def scrub_nats_url(url: str) -> str:
@@ -81,10 +97,10 @@ async def nats_connect(url: str, **extra: Any) -> NATS:
     Auth-related keys (``nkeys_seed_str``, ``token``, ``user``, ``password``,
     ``tls``) are rejected — authentication is owned exclusively by this helper.
     """
-    bad = _RESERVED_AUTH_KEYS & extra.keys()
+    bad = _RESERVED_KEYS & extra.keys()
     if bad:
         raise ValueError(
-            f"nats_connect: auth keys must not be passed via **extra: {bad}"
+            f"nats_connect: reserved keys must not be passed via **extra: {bad}"
         )
     kwargs: dict[str, Any] = {
         "error_cb": _default_error_cb,
@@ -95,7 +111,12 @@ async def nats_connect(url: str, **extra: Any) -> NATS:
     seed = _read_nkey_seed()
     if seed:
         kwargs["nkeys_seed_str"] = seed
+    tls_ctx = _build_tls_context()
+    if tls_ctx:
+        kwargs["tls"] = tls_ctx
     nc = await nats.connect(url, **kwargs)
     if seed:
         log.info("NATS nkey auth enabled (seed from NATS_NKEY_SEED_PATH)")
+    if tls_ctx:
+        log.info("NATS TLS enabled (CA from NATS_CA_CERT)")
     return nc

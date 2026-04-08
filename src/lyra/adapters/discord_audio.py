@@ -224,8 +224,6 @@ async def handle_audio(  # noqa: C901 — audio gate mirrors text gate with inde
         await message.reply(text)
 
     adapter._start_typing(message.channel.id)
-    if adapter._outbound_listener is not None:
-        adapter._outbound_listener.cache_inbound(hub_audio)
     await push_to_hub_guarded(
         inbound_bus=adapter._inbound_bus,
         platform=Platform.DISCORD,
@@ -234,4 +232,5 @@ async def handle_audio(  # noqa: C901 — audio gate mirrors text gate with inde
         on_drop=lambda: adapter._cancel_typing(message.channel.id),
         send_backpressure=_send_bp,
         get_msg=adapter._msg,
+        outbound_listener=adapter._outbound_listener,
     )

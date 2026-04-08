@@ -277,9 +277,6 @@ async def _push_to_hub(
         if source_message is not None:
             await source_message.reply(text)
 
-    if adapter._outbound_listener is not None:
-        adapter._outbound_listener.cache_inbound(hub_msg)
-
     await push_to_hub_guarded(
         inbound_bus=adapter._inbound_bus,
         platform=Platform.DISCORD,
@@ -288,4 +285,5 @@ async def _push_to_hub(
         on_drop=on_drop,
         send_backpressure=_send_bp,
         get_msg=adapter._msg,
+        outbound_listener=adapter._outbound_listener,
     )

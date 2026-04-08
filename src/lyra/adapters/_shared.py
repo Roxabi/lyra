@@ -36,6 +36,7 @@ from lyra.core.message import (
 from lyra.core.render_events import TextRenderEvent
 
 if TYPE_CHECKING:
+    from lyra.adapters.outbound_listener import OutboundListener
     from lyra.core.bus import Bus
     from lyra.core.messages import MessageManager
     from lyra.core.render_events import ToolSummaryRenderEvent
@@ -76,13 +77,22 @@ async def push_to_hub_guarded(  # noqa: PLR0913 — each arg is a distinct guard
     on_drop: Callable[[], None] | None,
     send_backpressure: Callable[[str], Awaitable[None]],
     get_msg: Callable[[str, str], str],
+    outbound_listener: "OutboundListener | None" = None,
 ) -> None:
     """Put *msg* on the inbound bus with circuit-open and backpressure guards.
 
     *on_drop* is called before early return in both circuit-open and QueueFull
     cases. *send_backpressure* sends the backpressure ack to the user.
     Always returns normally.
+
+    *outbound_listener* — when provided, ``cache_inbound(msg)`` is called
+    before enqueuing so that outbound NATS correlation can resolve the original
+    message by stream_id.  Must be called here (not by the caller) to guarantee
+    the cache is populated before the hub can dispatch a response.
     """
+    if outbound_listener is not None:
+        outbound_listener.cache_inbound(msg)
+
     if circuit_registry is not None:
         cb = circuit_registry.get("hub")
         if cb is not None and cb.is_open():

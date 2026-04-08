@@ -43,9 +43,6 @@ async def _push_to_hub(
             return
         await adapter.bot.send_message(chat_id, text)
 
-    if adapter._outbound_listener is not None:
-        adapter._outbound_listener.cache_inbound(hub_msg)
-
     await push_to_hub_guarded(
         inbound_bus=adapter._inbound_bus,
         platform=Platform.TELEGRAM,
@@ -54,6 +51,7 @@ async def _push_to_hub(
         on_drop=on_drop,
         send_backpressure=_send_bp,
         get_msg=adapter._msg,
+        outbound_listener=adapter._outbound_listener,
     )
 
 
@@ -196,9 +194,6 @@ async def handle_voice_message(adapter: TelegramAdapter, msg: Any) -> None:
         trust_level=TrustLevel.PUBLIC,
     )
 
-    if adapter._outbound_listener is not None:
-        adapter._outbound_listener.cache_inbound(hub_audio)
-
     adapter._start_typing(chat_id)
     try:
 
@@ -215,6 +210,7 @@ async def handle_voice_message(adapter: TelegramAdapter, msg: Any) -> None:
             on_drop=None,
             send_backpressure=_send_bp,
             get_msg=adapter._msg,
+            outbound_listener=adapter._outbound_listener,
         )
     finally:
         adapter._cancel_typing(chat_id)

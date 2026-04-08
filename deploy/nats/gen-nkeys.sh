@@ -210,11 +210,11 @@ cat > "${AUTH_CONF}" << EOF
 
 authorization {
   users: [
-    { nkey: "${HUB_PUB}",     name: "hub" }
-    { nkey: "${WORKER_PUB}",  name: "llm-worker" }
-    { nkey: "${MONITOR_PUB}", name: "monitor" }
-    { nkey: "${TTS_PUB}",     name: "tts-adapter" }
-    { nkey: "${STT_PUB}",     name: "stt-adapter" }
+    { nkey: "${HUB_PUB}" }          # hub
+    { nkey: "${WORKER_PUB}" }       # llm-worker
+    { nkey: "${MONITOR_PUB}" }      # monitor
+    { nkey: "${TTS_PUB}" }          # tts-adapter
+    { nkey: "${STT_PUB}" }          # stt-adapter
   ]
 }
 EOF

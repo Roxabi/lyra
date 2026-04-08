@@ -915,6 +915,35 @@ class TestHeartbeatLoop:
         # Assert
         mock_nc.publish.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_loop_sleeps_on_disconnect_then_resumes(self) -> None:
+        """Loop skips publish while disconnected; resumes when reconnected."""
+        # Arrange
+        adapter = self._make_adapter(heartbeat_interval=0.01)
+        mock_nc = AsyncMock()
+        mock_nc.is_connected = False  # start disconnected
+        mock_nc.is_closed = False
+        adapter._nc = mock_nc
+        adapter._started_at = time.monotonic()
+
+        publish_calls: list = []
+
+        async def _fake_publish(subject: str, data: bytes) -> None:
+            publish_calls.append(subject)
+            mock_nc.is_closed = True  # close after first publish to stop the loop
+
+        mock_nc.publish = AsyncMock(side_effect=_fake_publish)
+
+        async def _reconnect_after_sleep() -> None:
+            await asyncio.sleep(0.05)
+            mock_nc.is_connected = True
+
+        # Act — reconnect happens after one sleep cycle
+        await asyncio.gather(adapter._heartbeat_loop(), _reconnect_after_sleep())
+
+        # Assert — loop published once after reconnect, not while disconnected
+        assert len(publish_calls) == 1
+
 
 # ---------------------------------------------------------------------------
 # TestHeartbeatShutdown

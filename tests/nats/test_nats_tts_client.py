@@ -222,3 +222,21 @@ class TestTtsClientFreshness:
         client = NatsTtsClient(nc=mock_nc)
         client._worker_freshness["worker-1"] = time.monotonic() - 20.0
         assert client._any_worker_alive() is False
+
+    def test_any_worker_alive_true_with_mixed_freshness(self) -> None:
+        """_any_worker_alive() returns True when at least one worker is fresh."""
+        mock_nc = MagicMock()
+        client = NatsTtsClient(nc=mock_nc)
+        client._worker_freshness["stale-worker"] = time.monotonic() - 20.0
+        client._worker_freshness["fresh-worker"] = time.monotonic() - 5.0
+        assert client._any_worker_alive() is True
+
+    def test_stale_entries_pruned_in_any_worker_alive(self) -> None:
+        """_any_worker_alive() evicts entries older than TTL*2."""
+        mock_nc = MagicMock()
+        client = NatsTtsClient(nc=mock_nc)
+        client._worker_freshness["ancient"] = time.monotonic() - 35.0  # > 15*2
+        client._worker_freshness["fresh"] = time.monotonic() - 5.0
+        client._any_worker_alive()
+        assert "ancient" not in client._worker_freshness
+        assert "fresh" in client._worker_freshness

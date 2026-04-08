@@ -96,7 +96,7 @@ class NatsSttClient:
             data = json.loads(msg.data)
             self._worker_freshness[data["worker_id"]] = time.monotonic()
         except Exception:
-            pass
+            log.debug("stt_client: heartbeat parse error", exc_info=True)
 
     def _any_worker_alive(self) -> bool:
         now = time.monotonic()

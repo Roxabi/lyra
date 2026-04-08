@@ -1,0 +1,47 @@
+---
+title: "feat(nats): SDK heartbeat in NatsAdapterBase + voice adapter opt-in"
+issue: 602
+status: approved
+tier: F-lite
+date: 2026-04-08
+---
+
+## Problem
+
+When a NATS adapter (STT, TTS) crashes, the Hub only discovers the failure on the next `nc.request()` timeout — a reactive, latency-heavy signal. During the window between crash and timeout, in-flight requests silently queue against a dead worker and eventually surface as user-visible errors.
+
+The fix is proactive: adapters broadcast periodic heartbeats so the Hub can track worker liveness independently of request traffic. A worker silent for >15s (3 missed beats at 5s interval) is marked unavailable; requests are held or dropped rather than sent to a dead queue group. When the worker restarts and heartbeats resume, it is re-enabled immediately.
+
+The heartbeat mechanism belongs in `NatsAdapterBase` (the SDK layer), not duplicated per adapter. Docker stubs (`stt_stub.py`, `tts_stub.py`) already prove the pattern — this issue lifts it into the production SDK and wires up the voice adapters.
+
+## Who
+
+- **Primary:** Lyra Hub process — consumes heartbeats via `NatsSttClient` / `NatsTtsClient` to gate request dispatch
+- **Secondary:** STT and TTS adapters — opt in by passing `heartbeat_subject` to `super().__init__()`; any future adapter (LLM #452) can opt in the same way
+
+## Constraints
+
+- Backward compat: `heartbeat_subject=None` (default) → no task created, no overhead — existing adapters unaffected
+- NATS publish only (fire-and-forget, no reply-to) — not a request/reply pattern
+- 5s heartbeat interval, 15s TTL (3 missed beats = dead)
+- Worker ID auto-generated as `{queue_group}-{hostname}-{pid}` — stable per process, unique across restarts
+- Voice adapters extend base payload with GPU fields (`vram_used_mb`, `vram_total_mb`, `model_loaded`, `active_requests`)
+- Hub clients subscribe once on startup, maintain per-worker freshness dict keyed by `worker_id`
+
+## Out of Scope
+
+- LLM adapter heartbeat (`#452`) — will inherit SDK once this lands; not part of this issue
+- Load-aware routing (`#603`) — consumes heartbeat payloads but is a separate feature
+- NATS health probe (`#449`) — separate surface, separate issue
+- Heartbeat replay / persistence — in-memory freshness only
+- Circuit breaker changes — existing `NatsCircuitBreaker` logic unchanged
+
+## Complexity
+
+**Tier: F-lite** — Single backend domain (NATS SDK), clear scope, no new architecture. Changes are additive: two optional constructor params + one background task in the base class, two adapter opt-ins, two client subscriptions. All unknowns answered by the existing stub pattern.
+
+Signals observed:
+- `size:F-lite` label on issue
+- All files known upfront (6 files: adapter_base, stt_standalone, tts_standalone, nats_stt_client, nats_tts_client + tests)
+- Reference implementation already proven in `docker/stubs/`
+- No cross-domain changes, no new infra

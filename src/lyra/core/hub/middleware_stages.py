@@ -230,6 +230,8 @@ class CreatePoolMiddleware:
         if _agent is not None and hasattr(_agent, "configure_pool"):
             _agent.configure_pool(pool)
 
+        if pool._on_resume_fn is None and ctx.hub._turn_store is not None:
+            pool._on_resume_fn = ctx.hub._turn_store.increment_resume_count
         # Parse command context and rewrite bare URLs (#99).
         cmd_ctx = _command_parser.parse(msg.text)
         if cmd_ctx is not None:

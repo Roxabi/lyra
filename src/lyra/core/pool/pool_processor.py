@@ -51,7 +51,9 @@ class PoolProcessor:
                     _pending = pool._pending_session_id
                     pool._pending_session_id = None
                     try:
-                        await pool.resume_session(_pending)
+                        _resume_accepted = await pool.resume_session(_pending)
+                        if _resume_accepted and pool._on_resume_fn is not None:
+                            await pool._on_resume_fn(_pending)
                     except Exception:
                         log.exception(
                             "[pool:%s] pending session resume failed for %r"

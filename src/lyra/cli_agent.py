@@ -29,7 +29,7 @@ _AGENTS_DIR_OPT: Optional[Path] = typer.Option(
 
 def _get_db_path() -> Path:
     return (
-        Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))) / "auth.db"
+        Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))) / "config.db"
     )
 
 

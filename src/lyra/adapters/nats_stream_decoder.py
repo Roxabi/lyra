@@ -124,7 +124,7 @@ def handle_stream_error(listener: Any, data: dict) -> None:
     # mirrors `_handle_send`'s unknown-stream_id handling and bounds the
     # blast radius of forged stream_error envelopes.
     known = (
-        stream_id in listener._cache
+        stream_id in listener._cache  # InboundCache.__contains__
         or stream_id in listener._stream_outbound
         or stream_id in listener._stream_tasks
     )
@@ -140,8 +140,7 @@ def handle_stream_error(listener: Any, data: dict) -> None:
     # already cleaned up. Record tombstone first so any late chunks that
     # beat the cache pop are rejected.
     remember_terminated(listener, stream_id)
-    listener._cache.pop(stream_id, None)
-    listener._cache_ts.pop(stream_id, None)
+    listener._cache.pop(stream_id)
     listener._stream_outbound.pop(stream_id, None)
     # Symmetry with _drain_stream's finally block — ensure no stale entries.
     listener._stream_tasks.pop(stream_id, None)

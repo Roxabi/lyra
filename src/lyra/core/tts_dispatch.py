@@ -10,6 +10,7 @@ Slice 1 and replaced by ``MessagePipeline._run_stt_stage``.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING
@@ -212,7 +213,13 @@ class AudioPipeline:
                     "TTS adapter unavailable — sending text fallback for msg id=%s",
                     msg.id,
                 )
-                await self._hub.dispatch_response(msg, Response(content=text))
+                # Override modality to "text" so dispatch_response does NOT
+                # re-trigger TTS synthesis — that would cause an infinite loop
+                # when the TTS adapter is persistently unavailable.
+                text_msg = dataclasses.replace(msg, modality="text")
+                await self._hub.dispatch_response(
+                    text_msg, Response(content=text)
+                )
             else:
                 log.exception(
                     "TTS synthesis failed — audio not sent (msg id=%s)",

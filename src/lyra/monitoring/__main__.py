@@ -27,7 +27,7 @@ def _setup_monitor_logging() -> None:
     fmt = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 
     _default_log = str(Path.home() / ".local" / "state" / "lyra" / "logs")
-    log_dir = Path(os.environ.get("LYRA_LOG_DIR", _default_log))
+    log_dir = Path(os.environ.get("LYRA_LOG_DIR", _default_log)).resolve()
     log_dir.mkdir(parents=True, exist_ok=True)
 
     log_file = log_dir / "monitor.log"

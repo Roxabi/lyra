@@ -16,8 +16,10 @@ log = logging.getLogger(__name__)
 
 
 def _read_secret(name: str) -> str:
-    """Read a secret from ~/.lyra/secrets/{name}. Returns '' if missing."""
-    vault_dir = Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra")))
+    """Read a secret from $LYRA_VAULT_DIR/secrets/{name}. Returns '' if missing."""
+    vault_dir = Path(
+        os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))
+    ).resolve()
     path = vault_dir / "secrets" / name
     try:
         return path.read_text().strip()

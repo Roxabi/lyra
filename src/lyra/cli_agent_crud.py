@@ -13,10 +13,14 @@ import typer
 from lyra.cli_agent import _AGENTS_DIR_OPT, _connect_store, _list_from_dir, agent_app
 from lyra.core.agent_config import _VALID_BACKENDS
 
+
 # Agent TOML directories for seeding
-_USER_AGENTS_DIR = (
-    Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))) / "agents"
-)
+def _user_agents_dir() -> Path:
+    """Resolve user agents dir from LYRA_VAULT_DIR at call time."""
+    return (
+        Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))).resolve()
+        / "agents"
+    )
 _SYSTEM_AGENTS_DIR = Path(__file__).resolve().parent / "agents"
 
 
@@ -30,7 +34,9 @@ def init_agents(
     async def _run() -> None:
         store = await _connect_store()
         try:
-            sd = [agents_dir] if agents_dir else [_USER_AGENTS_DIR, _SYSTEM_AGENTS_DIR]
+            sd = (
+                [agents_dir] if agents_dir else [_user_agents_dir(), _SYSTEM_AGENTS_DIR]
+            )
             imported = skipped = errors = 0
             for d in sd:
                 if not d.exists():

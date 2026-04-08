@@ -51,17 +51,21 @@ from lyra.nats.readiness import start_readiness_responder
 
 log = logging.getLogger(__name__)
 
-_LOCKFILE = (
-    Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))) / "hub.lock"
-)
+def _lockfile() -> Path:
+    """Resolve the hub lockfile path from LYRA_VAULT_DIR at call time."""
+    return (
+        Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))).resolve()
+        / "hub.lock"
+    )
 
 
 def _release_lockfile() -> None:
     """Remove the Hub lockfile if it exists."""
+    lf = _lockfile()
     try:
-        _LOCKFILE.unlink(missing_ok=True)
+        lf.unlink(missing_ok=True)
     except OSError as exc:
-        log.warning("Could not remove lockfile %s: %s", _LOCKFILE, exc)
+        log.warning("Could not remove lockfile %s: %s", lf, exc)
 
 
 def _acquire_lockfile() -> None:
@@ -71,15 +75,16 @@ def _acquire_lockfile() -> None:
     log an error and exit — another Hub process is running.
     Registers an atexit handler to clean up the lockfile on normal exit.
     """
-    if _LOCKFILE.exists():
+    lf = _lockfile()
+    if lf.exists():
         try:
-            pid_str = _LOCKFILE.read_text().strip()
+            pid_str = lf.read_text().strip()
             pid = int(pid_str)
             try:
                 os.kill(pid, 0)  # signal 0 = existence check only
                 sys.exit(
                     f"Hub is already running (PID {pid}). "
-                    f"Remove {_LOCKFILE} if the process is stale."
+                    f"Remove {lf} if the process is stale."
                 )
             except ProcessLookupError:
                 # PID no longer alive — stale lockfile, safe to overwrite
@@ -90,13 +95,13 @@ def _acquire_lockfile() -> None:
                 # PID exists but we can't signal it — treat as alive
                 sys.exit(
                     f"Hub is already running (PID {pid}, permission denied). "
-                    f"Remove {_LOCKFILE} if the process is stale."
+                    f"Remove {lf} if the process is stale."
                 )
         except (ValueError, OSError) as exc:
-            log.warning("Could not read lockfile %s (%s) — overwriting", _LOCKFILE, exc)
+            log.warning("Could not read lockfile %s (%s) — overwriting", lf, exc)
 
-    _LOCKFILE.parent.mkdir(parents=True, exist_ok=True)
-    _LOCKFILE.write_text(str(os.getpid()))
+    lf.parent.mkdir(parents=True, exist_ok=True)
+    lf.write_text(str(os.getpid()))
     atexit.register(_release_lockfile)
 
 
@@ -167,7 +172,9 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
         staging_maxsize=inbound_bus_cfg.staging_maxsize,
         queue_group=HUB_INBOUND,
     )
-    vault_dir = Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra")))
+    vault_dir = Path(
+        os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))
+    ).resolve()
     vault_dir.mkdir(parents=True, exist_ok=True)
 
     async with open_stores(vault_dir) as stores:

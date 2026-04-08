@@ -201,7 +201,7 @@ class NatsOutboundListener:
             self._stream_outbound[stream_id] = _deserialize_dict(
                 outbound_data, OutboundMessage
             )
-            raw_orig = data.get("original_msg")
+            raw_orig = data.get("original_msg")  # bounded by _MAX_STREAMS guard above
             if raw_orig is not None:
                 self._stream_original_msgs[stream_id] = raw_orig
         except Exception:

@@ -940,8 +940,8 @@ async def test_stream_both_missing_warns_and_drains(caplog) -> None:
         await listener._handle(_make_nats_msg(done_chunk))
 
         task = listener._stream_tasks.get(stream_id)
-        if task:
-            await task
+        assert task is not None
+        await task
 
     # Assert — send_streaming never called; warning fired
     adapter.send_streaming.assert_not_called()

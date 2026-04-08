@@ -345,19 +345,23 @@ async def test_render_attachment_publishes_to_outbound_subject() -> None:
 
 
 @pytest.mark.asyncio
-async def test_render_audio_logs_warning(caplog: pytest.LogCaptureFixture) -> None:
-    """render_audio() logs a warning and does not publish to NATS."""
+async def test_render_audio_publishes_to_nats() -> None:
+    """render_audio() publishes a type=audio envelope to NATS."""
     nc = _make_nc()
     proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
     inbound = _make_inbound("msg-audio")
     audio = OutboundAudio(audio_bytes=b"\x00\x01", mime_type="audio/ogg")
 
-    with caplog.at_level(logging.WARNING, logger="lyra.nats.nats_channel_proxy"):
-        await proxy.render_audio(audio, inbound)
+    await proxy.render_audio(audio, inbound)
 
-    nc.publish.assert_not_awaited()
-    assert any("audio-over-NATS" in r.message for r in caplog.records)
-    assert any("msg-audio" in r.message for r in caplog.records)
+    nc.publish.assert_awaited_once()
+    subject, payload = nc.publish.await_args.args
+    assert subject == "lyra.outbound.telegram.main"
+    data = json.loads(payload)
+    assert data["type"] == "audio"
+    assert data["stream_id"] == "msg-audio"
+    assert "audio" in data
+    assert "original_msg" in data
 
 
 # ---------------------------------------------------------------------------
@@ -392,7 +396,7 @@ async def test_render_audio_stream_drains_and_logs(
 
     nc.publish.assert_not_awaited()
     assert consumed == [0, 1, 2]
-    assert any("audio-over-NATS" in r.message for r in caplog.records)
+    assert any("audio-stream-over-NATS" in r.message for r in caplog.records)
 
 
 # ---------------------------------------------------------------------------
@@ -425,7 +429,7 @@ async def test_render_voice_stream_drains_and_logs(
 
     nc.publish.assert_not_awaited()
     assert consumed == [0, 1]
-    assert any("audio-over-NATS" in r.message for r in caplog.records)
+    assert any("voice-stream-over-NATS" in r.message for r in caplog.records)
 
 
 # ---------------------------------------------------------------------------

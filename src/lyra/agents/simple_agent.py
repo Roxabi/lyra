@@ -101,9 +101,8 @@ class SimpleAgent(AgentBase):
 
     async def reset_backend(self, pool_id: str) -> None:
         """Kill the backend process so the next turn gets a fresh one."""
-        reset_fn = getattr(self._provider, "reset", None)
-        if reset_fn is not None:
-            await reset_fn(pool_id)
+        if self._cli_pool is not None:
+            await self._cli_pool.reset(pool_id)
 
     def _build_router_kwargs(self) -> dict[str, object]:
         return {

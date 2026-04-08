@@ -460,6 +460,20 @@ class TestSimpleAgentCliLifecycle:
         # Assert — cli_pool.switch_cwd called with pool_id and cwd
         cli_pool.switch_cwd.assert_called_once_with(pool.pool_id, Path("/new/cwd"))
 
+    async def test_t9a_integration_switch_workspace_full_chain(self) -> None:
+        """T9a-integration: pool.switch_workspace() routes to cli_pool.switch_cwd."""
+        provider = MagicMock(spec=["complete", "stream", "is_alive"])
+        cli_pool = MagicMock()
+        cli_pool.switch_cwd = AsyncMock()
+
+        agent = make_agent_with_cli_pool(provider, cli_pool)
+        pool = make_pool()
+        agent.configure_pool(pool)
+
+        await pool.switch_workspace(Path("/new/cwd"))
+
+        cli_pool.switch_cwd.assert_called_once_with(pool.pool_id, Path("/new/cwd"))
+
     # ------------------------------------------------------------------
     # T9b — CB-wrapped resume_and_reset: resume fn → cli_pool.resume_and_reset
     # ------------------------------------------------------------------
@@ -551,7 +565,9 @@ class TestSimpleAgentCliLifecycle:
         cli_pool.reset.assert_called_once_with(pool.pool_id)
         cli_pool.switch_cwd.assert_called_once_with(pool.pool_id, Path("/some/cwd"))
         cli_pool.resume_and_reset.assert_called_once_with(pool.pool_id, "sess-42")
-        cli_pool.link_lyra_session.assert_called()
+        cli_pool.link_lyra_session.assert_called_once_with(
+            pool.pool_id, pool.session_id
+        )
 
     # ------------------------------------------------------------------
     # T12 — idempotency: configure_pool twice → callbacks registered once

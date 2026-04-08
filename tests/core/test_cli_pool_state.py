@@ -145,13 +145,18 @@ class TestCliPoolResumeAndReset:
         _CLI_SESS = "abcdef01-2345-6789-abcd-ef0123456789"
         _LYRA_SESS = "11111111-2222-3333-4444-555555555555"
 
-        # Pre-populate the persistent CLI session store (simulates a prior
-        # successful interaction that persisted the real CLI session ID).
-        pool._cli_sessions["by_pool"]["pool:tg:chat:1"] = _CLI_SESS
-        pool._cli_sessions["by_session"][_LYRA_SESS] = _CLI_SESS
+        # Wire a mock TurnStore — simulates a prior interaction that persisted
+        # the real CLI session ID in pool_sessions.
+        from unittest.mock import AsyncMock
+
+        from lyra.core.stores.turn_store import TurnStore
+
+        mock_store = AsyncMock(spec=TurnStore)
+        mock_store.get_cli_session = AsyncMock(return_value=_CLI_SESS)
+        pool.set_turn_store(mock_store)
 
         # Act — pipeline passes the Lyra session; resume_and_reset looks up
-        # the CLI session from the persistent store.
+        # the CLI session from TurnStore.
         await pool.resume_and_reset("pool:tg:chat:1", _LYRA_SESS)
 
         # Assert — CLI session stored for next spawn AND process killed

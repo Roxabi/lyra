@@ -7,12 +7,14 @@ Sends messages via stdin NDJSON, reads responses via stdout NDJSON.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import time
 from collections.abc import Awaitable, Callable, Coroutine
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .stores.turn_store import TurnStore
 
 from .agent_config import ModelConfig
 from .cli_pool_worker import (
@@ -66,7 +68,6 @@ class CliPool(CliPoolWorkerMixin):
         stdin_drain_timeout: float = 10.0,
         max_idle_retries: int = 3,
         intermediate_timeout: float = 5.0,
-        session_store_dir: Path | None = None,
     ) -> None:
         self._idle_ttl = idle_ttl
         self._default_timeout = default_timeout
@@ -84,27 +85,17 @@ class CliPool(CliPoolWorkerMixin):
         self._cwd_overrides: dict[str, Path] = {}
         self._resume_session_ids: dict[str, str] = {}
         self._last_sweep_at: float | None = None
-        # Persistent CLI session store — survives daemon restarts so --resume
-        # uses the correct CLI session, not Lyra's internal session UUID.
-        # Structure: {"by_pool": {pool_id: cli_sid}, "by_session": {lyra_sid: cli_sid}}
-        self._cli_sessions_path = (
-            session_store_dir or Path.home() / ".lyra"
-        ) / "cli_sessions.json"
-        self._cli_sessions: dict[str, dict[str, str]] = self._load_cli_sessions()
+        # TurnStore — wired after construction via set_turn_store().
+        # Stores CLI session IDs in pool_sessions so --resume survives restarts.
+        self._turn_store: TurnStore | None = None
         # In-memory mapping of pool_id → current Lyra session UUID.
         # Updated by link_lyra_session() before each send, so the
         # _on_session_update callback can record {lyra_sid → cli_sid}.
         self._lyra_sessions: dict[str, str] = {}
 
-    def _load_cli_sessions(self) -> dict[str, dict[str, str]]:
-        try:
-            data = json.loads(self._cli_sessions_path.read_text())
-        except (FileNotFoundError, json.JSONDecodeError, OSError):
-            return {"by_pool": {}, "by_session": {}}
-        # Migrate from old flat format (pool_id → cli_sid).
-        if "by_pool" not in data:
-            return {"by_pool": data, "by_session": {}}
-        return data
+    def set_turn_store(self, store: TurnStore) -> None:
+        """Wire the TurnStore for CLI session persistence across restarts."""
+        self._turn_store = store
 
     def link_lyra_session(self, pool_id: str, lyra_session_id: str) -> None:
         """Associate the current Lyra session UUID with *pool_id*.
@@ -115,18 +106,17 @@ class CliPool(CliPoolWorkerMixin):
         self._lyra_sessions[pool_id] = lyra_session_id
 
     def _persist_cli_session(self, pool_id: str, cli_session_id: str) -> None:
-        """Persist pool_id → CLI session_id (and lyra_sid → CLI) to disk."""
+        """Persist CLI session ID to TurnStore for --resume after daemon restart."""
         if not cli_session_id or not _SESSION_ID_RE.match(cli_session_id):
             return
-        self._cli_sessions["by_pool"][pool_id] = cli_session_id
         lyra_sid = self._lyra_sessions.get(pool_id)
-        if lyra_sid:
-            self._cli_sessions["by_session"][lyra_sid] = cli_session_id
-        try:
-            self._cli_sessions_path.parent.mkdir(parents=True, exist_ok=True)
-            self._cli_sessions_path.write_text(json.dumps(self._cli_sessions, indent=2))
-        except OSError:
-            log.warning("[pool:%s] failed to persist CLI session to disk", pool_id)
+        if lyra_sid and self._turn_store is not None:
+            try:
+                asyncio.get_running_loop().create_task(
+                    self._turn_store.set_cli_session(lyra_sid, cli_session_id)
+                )
+            except RuntimeError:
+                pass  # no running loop — test context without TurnStore
 
     async def start(self) -> None:
         """Start the idle reaper background task."""
@@ -378,18 +368,20 @@ class CliPool(CliPoolWorkerMixin):
         """Kill process; next _spawn() uses --resume <cli_session_id> (one-shot).
 
         *session_id* is the Lyra-internal UUID from the turn store.  This method
-        looks up the real Claude CLI session ID from the persistent store
-        (``~/.lyra/cli_sessions.json``) and uses *that* for ``--resume``.
+        looks up the real Claude CLI session ID from TurnStore (pool_sessions table)
+        and uses *that* for ``--resume``.
 
         Returns True if the resume was accepted, False if skipped (no persisted
         CLI session, invalid id, or process already on that session).
         """
-        # Translate Lyra session → CLI session from the persistent store.
-        # Try exact Lyra-session mapping first (reply-to-resume), then
-        # fall back to latest CLI session for the pool (last-active-resume).
-        cli_sid = self._cli_sessions.get("by_session", {}).get(
-            session_id
-        ) or self._cli_sessions.get("by_pool", {}).get(pool_id)
+        # Translate Lyra session → CLI session from TurnStore.
+        # Try exact session lookup first (reply-to-resume), then fall back to
+        # the most recent active session for the pool (last-active-resume).
+        cli_sid: str | None = None
+        if self._turn_store is not None:
+            cli_sid = await self._turn_store.get_cli_session(session_id)
+            if not cli_sid:
+                cli_sid = await self._turn_store.get_cli_session_by_pool(pool_id)
         if cli_sid is None:
             log.info(
                 "[pool:%s] resume_and_reset: no persisted CLI session"

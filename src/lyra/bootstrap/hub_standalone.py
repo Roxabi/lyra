@@ -309,6 +309,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
                     intermediate_timeout=cli_pool_cfg.intermediate_timeout,
                 )
                 await cli_pool.start()
+                cli_pool.set_turn_store(stores.turn)
                 break
         hub.cli_pool = cli_pool
 

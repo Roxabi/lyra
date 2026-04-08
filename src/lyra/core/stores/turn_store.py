@@ -114,7 +114,7 @@ class TurnStore(SqliteStore):
     """
 
     async def connect(self) -> None:
-        """Open the database connection and apply the v3 schema migration."""
+        """Open the database connection and apply the v4 schema migration."""
         await self._open_db()
         db = self._require_db()
         await db.execute("PRAGMA foreign_keys=ON")
@@ -125,6 +125,14 @@ class TurnStore(SqliteStore):
         await db.execute(_CREATE_POOL_SESSIONS)
         await db.execute(_CREATE_IDX_POOL_SESSIONS)
         await db.commit()
+        # v4 migration: add cli_session_id to pool_sessions (idempotent)
+        async with db.execute("PRAGMA table_info(pool_sessions)") as cur:
+            cols = {row[1] for row in await cur.fetchall()}
+        if "cli_session_id" not in cols:
+            await db.execute(
+                "ALTER TABLE pool_sessions ADD COLUMN cli_session_id TEXT"
+            )
+            await db.commit()
         # Gate backfill: skip if pool_sessions already has rows
         async with db.execute("SELECT 1 FROM pool_sessions LIMIT 1") as cur:
             if await cur.fetchone() is None:
@@ -257,6 +265,69 @@ class TurnStore(SqliteStore):
         except Exception:
             log.exception(
                 "TurnStore.get_session_pool_id failed (session=%s)", session_id
+            )
+            return None
+
+    async def set_cli_session(self, session_id: str, cli_session_id: str) -> None:
+        """Store the CLI session ID for a Lyra session (for --resume after restart)."""
+        db = self._db_or_raise()
+        try:
+            await db.execute(
+                "UPDATE pool_sessions SET cli_session_id = ? WHERE session_id = ?",
+                (cli_session_id, session_id),
+            )
+            await db.commit()
+        except Exception:
+            log.exception(
+                "TurnStore.set_cli_session failed (session=%s)", session_id
+            )
+
+    async def get_cli_session(self, session_id: str) -> str | None:
+        """Return the CLI session ID for a Lyra session, or None."""
+        db = self._db_or_raise()
+        try:
+            async with db.execute(
+                "SELECT cli_session_id FROM pool_sessions WHERE session_id = ?",
+                (session_id,),
+            ) as cur:
+                row = await cur.fetchone()
+                return row[0] if row else None
+        except Exception:
+            log.exception(
+                "TurnStore.get_cli_session failed (session=%s)", session_id
+            )
+            return None
+
+    async def get_cli_session_by_pool(self, pool_id: str) -> str | None:
+        """Return CLI session ID for the most recent active session of pool_id.
+
+        Queries non-ended sessions first; falls back to most recent overall.
+        Used by resume_and_reset() when an exact Lyra session lookup misses.
+        """
+        db = self._db_or_raise()
+        try:
+            # Prefer a session that hasn't been explicitly ended (/clear)
+            async with db.execute(
+                "SELECT cli_session_id FROM pool_sessions"
+                " WHERE pool_id = ? AND ended_at IS NULL"
+                " ORDER BY last_active_at DESC LIMIT 1",
+                (pool_id,),
+            ) as cur:
+                row = await cur.fetchone()
+            if row and row[0]:
+                return row[0]
+            # Fallback: most recent session regardless of ended_at
+            async with db.execute(
+                "SELECT cli_session_id FROM pool_sessions"
+                " WHERE pool_id = ?"
+                " ORDER BY last_active_at DESC LIMIT 1",
+                (pool_id,),
+            ) as cur:
+                row = await cur.fetchone()
+            return row[0] if row else None
+        except Exception:
+            log.exception(
+                "TurnStore.get_cli_session_by_pool failed (pool=%s)", pool_id
             )
             return None
 

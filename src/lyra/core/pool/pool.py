@@ -81,7 +81,7 @@ class Pool:
         self._safe_dispatch_timeout: float = safe_dispatch_timeout
         self._session_reset_fn: Callable[[], Awaitable[None]] | None = None
         self._session_resume_fn: Callable[[str], Awaitable[bool]] | None = None
-        self._on_resume_fn: Callable[[str], Awaitable[None]] | None = None
+        self._on_resume_fn: Callable[[str], Awaitable[None]] | None = None  # set once
         self._switch_workspace_fn: Callable[[Path], Awaitable[None]] | None = None
         self._ctx = ctx
         # Ceiling clamp: use ceiling as default, clamp agent override to ceiling

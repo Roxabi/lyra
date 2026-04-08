@@ -134,8 +134,13 @@ class SttMiddleware:
             _STT_STAGE_OUTCOMES["failed"] += 1
             return _DROP
         except Exception as exc:
-            from lyra.stt import STTUnavailableError
+            from lyra.stt import STTNoiseError, STTUnavailableError
 
+            if isinstance(exc, STTNoiseError):
+                log.info("STT noise for msg id=%s: %s", msg.id, exc)
+                await self._dispatch_error(hub, msg, "stt_noise")
+                _STT_STAGE_OUTCOMES["noise"] += 1
+                return _DROP
             if isinstance(exc, STTUnavailableError):
                 log.warning("STT unavailable for msg id=%s: %s", msg.id, exc)
                 await self._dispatch_error(hub, msg, "stt_unavailable")
@@ -148,16 +153,8 @@ class SttMiddleware:
         finally:
             tmp_path.unlink(missing_ok=True)
 
-        # 5. Post-transcription guards.
-        from lyra.stt import is_whisper_noise
-
+        # 5. Post-transcription guards (noise filtering is owned by the STT adapter).
         transcript = result.text.strip()
-
-        if is_whisper_noise(transcript):
-            log.info("STT noise for msg id=%s", msg.id)
-            await self._dispatch_error(hub, msg, "stt_noise")
-            _STT_STAGE_OUTCOMES["noise"] += 1
-            return _DROP
 
         if transcript.startswith("/"):
             log.warning("msg id=%s: slash-command injection guard", msg.id)

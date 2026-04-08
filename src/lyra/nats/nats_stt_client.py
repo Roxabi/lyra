@@ -13,7 +13,12 @@ from uuid import uuid4
 from nats.aio.client import Client as NATS
 
 from lyra.nats.circuit_breaker import NatsCircuitBreaker
-from lyra.stt import STTUnavailableError, TranscriptionResult
+from lyra.stt import (
+    STTNoiseError,
+    STTUnavailableError,
+    TranscriptionResult,
+    is_whisper_noise,
+)
 
 log = logging.getLogger(__name__)
 
@@ -119,6 +124,13 @@ class NatsSttClient:
             duration_seconds=data.get("duration_seconds", 0.0),
         )
         self._cb.record_success()
+        if is_whisper_noise(result.text):
+            log.info(
+                "STT noise result via NATS: text=%r lang=%s",
+                result.text,
+                result.language,
+            )
+            raise STTNoiseError(f"Noise transcript: {result.text!r}")
         return result
 
 

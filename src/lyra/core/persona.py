@@ -15,6 +15,15 @@ from pathlib import Path
 
 _MAX_PROMPT_BYTES = 64 * 1024  # 64 KB
 
+# Appended to every composed system prompt — infrastructure protocol, not persona.
+_VOICE_TRANSCRIPT_INSTRUCTION = (
+    "## Voice messages\n"
+    "When the user's input is wrapped in <voice_transcript>…</voice_transcript>,"
+    " the transcript has already been shown to the user as a confirmation."
+    " Respond directly to the content — do not quote, repeat, or acknowledge"
+    " the transcript itself."
+)
+
 _VAULT_DIR = Path(
     os.environ.get("ROXABI_VAULT_DIR", str(Path.home() / ".roxabi-vault"))
 )
@@ -172,6 +181,7 @@ def compose_system_prompt(persona: PersonaConfig) -> str:  # noqa: C901 — many
         instruction_lines = "\n".join(f"- {i}" for i in e.instructions)
         parts.append(f"Guidelines:\n{instruction_lines}")
 
+    parts.append(_VOICE_TRANSCRIPT_INSTRUCTION)
     composed = "\n\n".join(parts)
 
     encoded = composed.encode()
@@ -254,6 +264,7 @@ def compose_system_prompt_from_json(persona_dict: dict) -> str:  # noqa: C901
         instruction_lines = "\n".join(f"- {i}" for i in instructions)
         parts.append(f"Guidelines:\n{instruction_lines}")
 
+    parts.append(_VOICE_TRANSCRIPT_INSTRUCTION)
     composed = "\n\n".join(parts)
 
     encoded = composed.encode()

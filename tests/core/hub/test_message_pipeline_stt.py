@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -60,12 +60,14 @@ class SlowSTT:
 
 
 class NoisySTT:
-    """STT that returns a transcript detected as whisper noise."""
+    """STT that raises STTNoiseError (noise detection owned by the adapter)."""
 
     timeout_ms: int = 30000
 
     async def transcribe(self, path: Any) -> FakeTranscription:
-        return FakeTranscription(text="")
+        from lyra.stt import STTNoiseError
+
+        raise STTNoiseError("Noise transcript: ''")
 
 
 class UnavailableSTT:
@@ -220,8 +222,7 @@ class TestSttMiddleware:
         next_fn = AsyncMock(return_value=_SENTINEL_RESULT)
 
         # Act
-        with patch("lyra.stt.is_whisper_noise", return_value=True):
-            result = await SttMiddleware()(msg, ctx, next_fn)
+        result = await SttMiddleware()(msg, ctx, next_fn)
 
         # Assert
         assert result == _DROP
@@ -245,8 +246,7 @@ class TestSttMiddleware:
         next_fn = AsyncMock(return_value=_SENTINEL_RESULT)
 
         # Act
-        with patch("lyra.stt.is_whisper_noise", return_value=False):
-            result = await SttMiddleware()(msg, ctx, next_fn)
+        result = await SttMiddleware()(msg, ctx, next_fn)
 
         # Assert
         assert result == _DROP
@@ -271,8 +271,7 @@ class TestSttMiddleware:
         next_fn = AsyncMock(return_value=_SENTINEL_RESULT)
 
         # Act
-        with patch("lyra.stt.is_whisper_noise", return_value=False):
-            result = await SttMiddleware()(msg, ctx, next_fn)
+        result = await SttMiddleware()(msg, ctx, next_fn)
 
         # Assert — transcript over cap triggers stt_invalid
         assert result == _DROP
@@ -354,8 +353,7 @@ class TestSttMiddleware:
             return _SENTINEL_RESULT
 
         # Act
-        with patch("lyra.stt.is_whisper_noise", return_value=False):
-            result = await SttMiddleware()(msg, ctx, _capture_next)
+        result = await SttMiddleware()(msg, ctx, _capture_next)
 
         # Assert — pipeline continues (next called, sentinel returned)
         assert result is _SENTINEL_RESULT

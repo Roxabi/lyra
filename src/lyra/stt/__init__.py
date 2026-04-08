@@ -24,6 +24,14 @@ class STTUnavailableError(Exception):
     """Raised when the STT NATS adapter is unreachable (timeout or connection error)."""
 
 
+class STTNoiseError(Exception):
+    """Raised when the transcription result is empty, too short, or a noise token.
+
+    The STT adapter is the owner of noise detection — middleware and agents catch
+    this to dispatch the stt_noise template without re-implementing the logic.
+    """
+
+
 WHISPER_NOISE_TOKENS = {"[music]", "[applause]", "[laughter]", "[silence]", "[noise]"}
 _ALLOWED_AUDIO_EXTENSIONS = {".ogg", ".mp3", ".wav", ".m4a", ".webm", ".flac", ".opus"}
 
@@ -98,31 +106,11 @@ class STTService:
 
     def _transcribe_sync(self, path: str) -> TranscriptionResult:
         try:
-            from voicecli.config import (
-                load_vocab,
-                vocab_to_prompt,
-            )
+            from voicecli.config import load_vocab, vocab_to_prompt
             from voicecli.stt_daemon import SOCKET_PATH
-            from voicecli.transcribe import (
-                transcribe as _transcribe,
-            )
+            from voicecli.transcribe import transcribe as _transcribe
 
-            daemon_up = SOCKET_PATH.exists()
-            if daemon_up and not self._daemon_active:
-                from voicecli.transcribe import unload_model  # type: ignore[import-untyped]  # noqa: I001
-
-                unload_model()
-                self._daemon_active = True
-                log.info(
-                    "STT daemon detected — unloaded local model,"
-                    " deferring to daemon",
-                )
-            elif not daemon_up and self._daemon_active:
-                self._daemon_active = False
-                log.warning(
-                    "STT daemon socket gone — falling back to in-process model",
-                )
-
+            self._sync_daemon_state(SOCKET_PATH)
             initial_prompt = vocab_to_prompt(load_vocab())
             kwargs: dict = dict(model=self._model, initial_prompt=initial_prompt)
             if self._detection_threshold is not None:
@@ -137,8 +125,7 @@ class STTService:
                 if self._daemon_active:
                     self._daemon_active = False
                     log.warning(
-                        "STT daemon connection failed — retrying"
-                        " with in-process model",
+                        "STT daemon connection failed — retrying with in-process model",
                     )
                     vc_result = _transcribe(Path(path), **kwargs)
                 else:
@@ -154,14 +141,32 @@ class STTService:
                 language=vc_result.language or "unknown",
                 duration_seconds=duration,
             )
+            if is_whisper_noise(result.text):
+                log.info(
+                    "STT noise result: path=%s lang=%s text=%r",
+                    path, result.language, result.text,
+                )
+                raise STTNoiseError(f"Noise transcript: {result.text!r}")
             log.info(
                 "Transcription complete: path=%s lang=%s dur=%.2fs text_len=%d",
-                path,
-                result.language,
-                result.duration_seconds,
-                len(result.text),
+                path, result.language, result.duration_seconds, len(result.text),
             )
             return result
+        except STTNoiseError:
+            raise
         except Exception:
             log.exception("Transcription failed: path=%s model=%s", path, self._model)
             raise
+
+    def _sync_daemon_state(self, socket_path: Path) -> None:  # noqa: ANN001
+        """Update _daemon_active flag and unload/reload local model as needed."""
+        daemon_up = socket_path.exists()
+        if daemon_up and not self._daemon_active:
+            from voicecli.transcribe import unload_model  # type: ignore[import-untyped]  # noqa: I001
+
+            unload_model()
+            self._daemon_active = True
+            log.info("STT daemon detected — unloaded local model, deferring to daemon")
+        elif not daemon_up and self._daemon_active:
+            self._daemon_active = False
+            log.warning("STT daemon socket gone — falling back to in-process model")

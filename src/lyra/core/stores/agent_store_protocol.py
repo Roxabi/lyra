@@ -96,14 +96,16 @@ def make_agent_store(
         from .json_agent_store import JsonAgentStore
 
         store_path_env = os.environ.get("LYRA_AGENT_STORE_PATH")
-        path = (
-            Path(store_path_env)
-            if store_path_env
-            else Path.home() / ".lyra" / "agents_test.json"
-        )
+        _vault = Path(
+            os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))
+        ).resolve()
+        path = Path(store_path_env) if store_path_env else _vault / "agents_test.json"
         return JsonAgentStore(path=path)
 
     from .agent_store import AgentStore
 
-    resolved = db_path or (Path.home() / ".lyra" / "auth.db")
+    _vault = Path(
+        os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))
+    ).resolve()
+    resolved = db_path or (_vault / "auth.db")
     return AgentStore(db_path=resolved)

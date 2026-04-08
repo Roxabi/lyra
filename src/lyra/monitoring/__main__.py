@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -25,7 +26,8 @@ def _setup_monitor_logging() -> None:
     """Configure logging to ~/.local/state/lyra/logs/monitor.log."""
     fmt = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 
-    log_dir = Path.home() / ".local" / "state" / "lyra" / "logs"
+    _default_log = str(Path.home() / ".local" / "state" / "lyra" / "logs")
+    log_dir = Path(os.environ.get("LYRA_LOG_DIR", _default_log)).resolve()
     log_dir.mkdir(parents=True, exist_ok=True)
 
     log_file = log_dir / "monitor.log"

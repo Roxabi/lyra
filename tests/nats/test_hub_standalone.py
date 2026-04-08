@@ -13,7 +13,6 @@ from pathlib import Path
 import pytest
 from nats.aio.client import Client as NATS
 
-import lyra.bootstrap.hub_standalone as _hub_standalone_mod
 from lyra.bootstrap.hub_standalone import _acquire_lockfile, _release_lockfile
 from tests.nats.conftest import requires_nats_server
 
@@ -51,9 +50,9 @@ class TestLockfileLifecycle:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """_acquire_lockfile writes PID; _release_lockfile removes the file."""
-        # Arrange — redirect _LOCKFILE to a temp path
-        lockfile = tmp_path / "hub.lock"
-        monkeypatch.setattr(_hub_standalone_mod, "_LOCKFILE", lockfile)
+        # Arrange — point LYRA_VAULT_DIR at tmp_path so _lockfile() resolves there
+        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        lockfile = tmp_path.resolve() / "hub.lock"
 
         # Act — acquire
         _acquire_lockfile()
@@ -75,9 +74,9 @@ class TestLockfileLifecycle:
     ) -> None:
         """_acquire_lockfile exits when the lockfile holds a live PID."""
         # Arrange — write our own PID (we are alive)
-        lockfile = tmp_path / "hub.lock"
+        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        lockfile = tmp_path.resolve() / "hub.lock"
         lockfile.write_text(str(os.getpid()))
-        monkeypatch.setattr(_hub_standalone_mod, "_LOCKFILE", lockfile)
 
         # Act / Assert — should sys.exit because PID is alive
         with pytest.raises(SystemExit) as exc_info:
@@ -93,10 +92,10 @@ class TestLockfileLifecycle:
     ) -> None:
         """_acquire_lockfile overwrites a lockfile holding a dead PID."""
         # Arrange — write an impossibly high PID (guaranteed dead on Linux)
-        lockfile = tmp_path / "hub.lock"
+        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        lockfile = tmp_path.resolve() / "hub.lock"
         dead_pid = 99999999
         lockfile.write_text(str(dead_pid))
-        monkeypatch.setattr(_hub_standalone_mod, "_LOCKFILE", lockfile)
 
         # Act — should NOT raise; stale lockfile is safe to overwrite
         _acquire_lockfile()

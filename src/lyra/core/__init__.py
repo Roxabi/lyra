@@ -4,7 +4,6 @@ from .hub import (
     Action,
     ChannelAdapter,
     Hub,
-    MessagePipeline,
     PipelineResult,
     RoutingKey,
 )
@@ -43,7 +42,6 @@ __all__ = [
     "ContentPart",
     "FileEditSummary",
     "Hub",
-    "MessagePipeline",
     "InboundMessage",
     "LocalBus",
     "MediaPart",

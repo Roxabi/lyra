@@ -60,10 +60,10 @@ Reads are synchronous (from cache). Writes are async (SQLite). Cache updated ato
 
 ```python
 # Top-level re-exports
-from lyra.core import Hub, Pool, MessagePipeline, RoutingKey
+from lyra.core import Hub, Pool, RoutingKey
 
 # Subpackage re-exports
-from lyra.core.hub import Hub, MessagePipeline, OutboundDispatcher
+from lyra.core.hub import Hub, MiddlewarePipeline, OutboundDispatcher
 from lyra.core.pool import Pool, PoolProcessor
 from lyra.core.stores import AgentStore, AuthStore, SqliteStore, AgentStoreProtocol
 from lyra.core.commands import CommandRouter, CommandLoader

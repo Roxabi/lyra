@@ -5,9 +5,6 @@ from .message_pipeline import (
     Action as Action,
 )
 from .message_pipeline import (
-    MessagePipeline as MessagePipeline,
-)
-from .message_pipeline import (
     PipelineResult as PipelineResult,
 )
 from .middleware import (
@@ -28,7 +25,6 @@ __all__ = [
     "Action",
     "ChannelAdapter",
     "Hub",
-    "MessagePipeline",
     "MiddlewarePipeline",
     "OutboundDispatcher",
     "PipelineMiddleware",

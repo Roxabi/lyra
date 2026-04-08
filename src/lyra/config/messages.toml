@@ -9,6 +9,7 @@ stt_noise         = "I couldn't make out your voice message, please try again."
 stt_unsupported   = "Voice messages are not supported — STT is not configured."
 stt_unavailable   = "Voice messages are temporarily unavailable. Please try again later or send a text message."
 stt_failed        = "Sorry, I couldn't transcribe your voice message."
+tts_unavailable   = "Voice output is temporarily unavailable."
 
 [adapters.telegram.en]
 backpressure_ack    = "Processing your request\u2026"
@@ -33,6 +34,7 @@ stt_noise         = "Je n'ai pas pu comprendre ton message vocal, réessaie."
 stt_unsupported   = "Les messages vocaux ne sont pas pris en charge — STT non configuré."
 stt_unavailable   = "Les messages vocaux sont temporairement indisponibles. Réessaie plus tard ou envoie un message texte."
 stt_failed        = "Désolé, je n'ai pas pu transcrire ton message vocal."
+tts_unavailable   = "La synthèse vocale est temporairement indisponible."
 
 [adapters.telegram.fr]
 backpressure_ack    = "Traitement de ta requête\u2026"

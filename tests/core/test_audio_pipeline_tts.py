@@ -305,20 +305,20 @@ class TestDispatchResponseAgentTTSE2E:
 
 
 # ---------------------------------------------------------------------------
-# TTS unavailable fallback — dispatch_response with text (#575)
+# TTS unavailable fallback — dispatch_response with notification (#575)
 # ---------------------------------------------------------------------------
 
 
 class TestTtsUnavailableFallback:
-    """When TtsUnavailableError is raised, text is dispatched instead of audio."""
+    """When TTS fails, a tts_unavailable notification is dispatched."""
 
     @pytest.mark.asyncio
-    async def test_tts_unavailable_sends_text_fallback(self) -> None:
-        """synthesize_and_dispatch_audio: TtsUnavailableError → dispatch_response(text).
+    async def test_tts_unavailable_sends_notification(self) -> None:
+        """synthesize_and_dispatch_audio: TtsUnavailableError → notification.
 
-        The fallback must dispatch the original text as a text response
-        (not silence, not an error message) with modality='text' to prevent
-        re-triggering TTS.
+        The text response was already sent by the caller before TTS was
+        attempted, so only a brief notification is sent.  Modality is
+        overridden to 'text' to prevent re-triggering TTS.
         """
         from lyra.tts import TtsUnavailableError
 
@@ -349,7 +349,7 @@ class TestTtsUnavailableFallback:
         # Audio must NOT be dispatched
         hub.dispatch_audio.assert_not_awaited()
 
-        # Text fallback MUST be dispatched
+        # Notification MUST be dispatched
         hub.dispatch_response.assert_awaited_once()
         call_args = hub.dispatch_response.call_args
         dispatched_msg = call_args.args[0]
@@ -360,5 +360,5 @@ class TestTtsUnavailableFallback:
         assert dispatched_msg.platform == msg.platform
         assert dispatched_msg.scope_id == msg.scope_id
         assert dispatched_msg.bot_id == msg.bot_id
-        # content is the original synthesis text, not an error string
-        assert dispatched_response.content == "Hello from Lyra"
+        # notification text (no msg_manager configured → English fallback)
+        assert "unavailable" in dispatched_response.content.lower()

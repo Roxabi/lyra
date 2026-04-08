@@ -208,20 +208,23 @@ class AudioPipeline:
         except Exception as _tts_exc:
             from ..tts import TtsUnavailableError
 
+            # Text response was already dispatched by the caller before TTS was
+            # attempted — only send a brief notification so the user knows voice
+            # output failed.  Override modality to "text" to avoid an infinite
+            # loop if dispatch_response itself triggers TTS.
+            _notif = (
+                self._hub.get_message("tts_unavailable")
+                or "Voice output is temporarily unavailable."
+            )
+            _notify_msg = dataclasses.replace(msg, modality="text")
             if isinstance(_tts_exc, TtsUnavailableError):
                 log.warning(
-                    "TTS adapter unavailable — sending text fallback for msg id=%s",
+                    "TTS adapter unavailable for msg id=%s",
                     msg.id,
-                )
-                # Override modality to "text" so dispatch_response does NOT
-                # re-trigger TTS synthesis — that would cause an infinite loop
-                # when the TTS adapter is persistently unavailable.
-                text_msg = dataclasses.replace(msg, modality="text")
-                await self._hub.dispatch_response(
-                    text_msg, Response(content=text)
                 )
             else:
                 log.exception(
-                    "TTS synthesis failed — audio not sent (msg id=%s)",
+                    "TTS synthesis failed (msg id=%s)",
                     msg.id,
                 )
+            await self._hub.dispatch_response(_notify_msg, Response(content=_notif))

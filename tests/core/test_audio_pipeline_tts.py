@@ -356,5 +356,9 @@ class TestTtsUnavailableFallback:
         dispatched_response = call_args.args[1]
         # modality overridden to 'text' to break the TTS re-entry loop
         assert dispatched_msg.modality == "text"
+        # routing identity must be preserved (dataclasses.replace, not a fresh message)
+        assert dispatched_msg.platform == msg.platform
+        assert dispatched_msg.scope_id == msg.scope_id
+        assert dispatched_msg.bot_id == msg.bot_id
         # content is the original synthesis text, not an error string
         assert dispatched_response.content == "Hello from Lyra"

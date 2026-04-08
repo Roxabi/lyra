@@ -141,6 +141,38 @@ class TestCircuitBreaker:
         assert client._cb._failures == 1
 
     @pytest.mark.asyncio
+    async def test_success_clears_failures(self, tmp_path: Path) -> None:
+        # Arrange — pre-inject 2 failures
+        mock_nc = AsyncMock()
+        success_payload = json.dumps({
+            "ok": True,
+            "text": "hello",
+            "language": "en",
+            "duration_seconds": 1.0,
+        }).encode()
+        fake_reply = MagicMock()
+        fake_reply.data = success_payload
+        mock_nc.request = AsyncMock(return_value=fake_reply)
+        client = NatsSttClient(nc=mock_nc)
+        client._cb._failures = 2
+        wav_file = tmp_path / "test.wav"
+        wav_file.write_bytes(b"\x00" * 64)
+        # Act
+        result = await client.transcribe(wav_file)
+        # Assert
+        assert result.text == "hello"
+        assert client._cb._failures == 0
+
+
+class TestTranscribeResponseParsing:
+    """Tests for NATS response parsing in NatsSttClient.transcribe().
+
+    Distinct from TestCircuitBreaker — these tests verify how the client
+    interprets specific response payloads (ok=false, noise tokens), not
+    circuit-breaker state transitions.
+    """
+
+    @pytest.mark.asyncio
     async def test_ok_false_raises_unavailable(self, tmp_path: Path) -> None:
         # Arrange
         mock_nc = AsyncMock()
@@ -175,26 +207,5 @@ class TestCircuitBreaker:
         # Act / Assert
         with pytest.raises(STTNoiseError):
             await client.transcribe(wav_file)
-
-    @pytest.mark.asyncio
-    async def test_success_clears_failures(self, tmp_path: Path) -> None:
-        # Arrange — pre-inject 2 failures
-        mock_nc = AsyncMock()
-        success_payload = json.dumps({
-            "ok": True,
-            "text": "hello",
-            "language": "en",
-            "duration_seconds": 1.0,
-        }).encode()
-        fake_reply = MagicMock()
-        fake_reply.data = success_payload
-        mock_nc.request = AsyncMock(return_value=fake_reply)
-        client = NatsSttClient(nc=mock_nc)
-        client._cb._failures = 2
-        wav_file = tmp_path / "test.wav"
-        wav_file.write_bytes(b"\x00" * 64)
-        # Act
-        result = await client.transcribe(wav_file)
-        # Assert
-        assert result.text == "hello"
+        # Noise is NOT a CB failure — record_success() runs before the noise check
         assert client._cb._failures == 0

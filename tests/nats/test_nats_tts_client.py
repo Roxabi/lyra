@@ -9,7 +9,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.nats.nats_tts_client import NatsTtsClient
+from lyra.core.agent_config import AgentTTSConfig
+from lyra.nats.nats_tts_client import _TTS_CONFIG_FIELDS, NatsTtsClient
 from lyra.tts import TtsUnavailableError
 
 
@@ -91,19 +92,7 @@ class TestCircuitBreaker:
         mock_nc.request = AsyncMock(return_value=fake_reply)
         client = NatsTtsClient(nc=mock_nc)
 
-        agent_tts = MagicMock()
-        agent_tts.engine = "chatterbox"
-        agent_tts.speed = 1.2
-        agent_tts.accent = None
-        agent_tts.personality = None
-        agent_tts.emotion = None
-        agent_tts.exaggeration = None
-        agent_tts.cfg_weight = None
-        agent_tts.segment_gap = None
-        agent_tts.crossfade = None
-        agent_tts.chunk_size = None
-        agent_tts.language = None
-        agent_tts.voice = None
+        agent_tts = AgentTTSConfig(engine="chatterbox", speed="1.2")
         # Act
         await client.synthesize("hello", agent_tts=agent_tts)
         # Assert — the payload passed to nc.request contains the agent fields
@@ -112,8 +101,10 @@ class TestCircuitBreaker:
         payload_bytes = call_args.args[1]
         request_dict = json.loads(payload_bytes)
         assert request_dict["engine"] == "chatterbox"
-        assert request_dict["speed"] == 1.2
-        assert "accent" not in request_dict  # None values not included
+        assert request_dict["speed"] == "1.2"
+        # All unset fields (None) must be absent from the NATS payload
+        none_fields = [f for f in _TTS_CONFIG_FIELDS if f not in ("engine", "speed")]
+        assert all(f not in request_dict for f in none_fields)
 
     @pytest.mark.asyncio
     async def test_success_clears_failures(self) -> None:

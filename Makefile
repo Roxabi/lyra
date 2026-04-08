@@ -111,8 +111,10 @@ register:
 
 # ── Supervisor config reload ──────────────────────────────────────────────────
 
+SCTL := $(HOME)/projects/lyra/deploy/supervisor/supervisorctl.sh
+
 update:
-	$(hub_reread)
+	@$(SCTL) reread && $(SCTL) update
 
 # ── Deploy + remote ──────────────────────────────────────────────────────────
 

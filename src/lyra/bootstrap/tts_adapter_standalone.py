@@ -15,19 +15,13 @@ import sys
 from dataclasses import dataclass
 
 from lyra.nats import NatsAdapterBase
+from lyra.nats._tts_constants import _AGENT_TTS_FIELDS
 from lyra.nats.queue_groups import TTS_WORKERS
 from lyra.tts import SynthesisResult, TTSService, load_tts_config
 
 log = logging.getLogger(__name__)
 
 SUBJECT = "lyra.voice.tts.request"
-
-# Fields the hub serializes from AgentTTSConfig into the NATS request.
-_AGENT_TTS_FIELDS = (
-    "engine", "voice", "language", "accent", "personality", "speed",
-    "emotion", "exaggeration", "cfg_weight", "segment_gap", "crossfade",
-    "chunk_size", "default_language", "languages",
-)
 
 
 @dataclass

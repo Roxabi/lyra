@@ -1,6 +1,7 @@
 [Unit]
 Description=Lyra Hub
 After=lyra-nats.service
+Requires=lyra-nats.service
 
 [Container]
 Image=localhost/lyra:latest
@@ -10,7 +11,8 @@ EnvironmentFile=%h/projects/lyra/.env
 # Override NATS_URL to use container network — takes precedence over .env.
 # Update .env directly when supervisord NATS is retired (cutover step).
 Environment=NATS_URL=nats://lyra-nats:4222
-Volume=lyra-data.volume:/root/.lyra:z
+Volume=lyra-data.volume:/home/lyra/.lyra:z
+Environment=LYRA_VAULT_DIR=/home/lyra/.lyra
 Volume=%h/projects/lyra/config.toml:/app/config.toml:ro,z
 Exec=lyra hub
 

@@ -38,8 +38,8 @@ fi
 getent group nats >/dev/null 2>&1 || groupadd --system nats
 
 mkdir -p "${CERT_DIR}"
-chmod 750 "${CERT_DIR}"
-chown root:nats "${CERT_DIR}"
+chmod 755 "${CERT_DIR}"
+chown root:root "${CERT_DIR}"
 
 info "Generating CA private key (ECDSA P-384)..."
 openssl ecparam -name secp384r1 -genkey -noout -out "${CERT_DIR}/ca.key"
@@ -57,7 +57,7 @@ chmod 644 "${CERT_DIR}/ca.crt"
 info "Generating server private key (ECDSA P-384)..."
 openssl ecparam -name secp384r1 -genkey -noout -out "${CERT_DIR}/server.key"
 chmod 640 "${CERT_DIR}/server.key"
-chown root:nats "${CERT_DIR}/server.key"
+chown root:nats "${CERT_DIR}/server.key"  # nats user reads this via group
 
 info "Creating server certificate (SAN: ${SAN})..."
 EXT_FILE=$(mktemp)

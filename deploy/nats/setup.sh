@@ -67,8 +67,8 @@ else
   info "nats system user created."
 fi
 sudo mkdir -p /etc/nats/certs
-sudo chown root:nats /etc/nats /etc/nats/certs
-sudo chmod 750 /etc/nats /etc/nats/certs
+sudo chown root:root /etc/nats /etc/nats/certs
+sudo chmod 755 /etc/nats /etc/nats/certs
 
 # ── 3. nats.conf ─────────────────────────────────────────────────────────
 
@@ -145,7 +145,7 @@ else
   info "nats.service started."
 fi
 
-for _ in $(seq 10); do
+for _ in $(seq 20); do
   nc -z 127.0.0.1 4222 2>/dev/null && break
   sleep 0.5
 done
@@ -170,20 +170,39 @@ fi
 
 section "Done"
 
-# ── 10. Wire hub seed into .env ───────────────────────────────────────────
+# ── 10. Wire NATS env vars into .env ─────────────────────────────────────
 LYRA_USER="${SUDO_USER:-$(id -un)}"
 LYRA_HOME=$(getent passwd "$LYRA_USER" | cut -d: -f6)
 ENV_FILE="${LYRA_DIR}/.env"
 HUB_SEED="${LYRA_HOME}/.lyra/nkeys/hub.seed"
+NATS_CA="/etc/nats/certs/ca.crt"
 if [ -f "${ENV_FILE}" ]; then
+  # NATS_URL — use tls:// scheme for TLS-enabled server
+  if grep -q "^NATS_URL=" "${ENV_FILE}"; then
+    info ".env already has NATS_URL — not overwriting."
+  else
+    echo "NATS_URL=tls://127.0.0.1:4222" >> "${ENV_FILE}"
+    info "NATS_URL=tls://127.0.0.1:4222 added to .env."
+  fi
+  # NATS_NKEY_SEED_PATH — nkey authentication
   if grep -q "^NATS_NKEY_SEED_PATH=" "${ENV_FILE}"; then
     info ".env already has NATS_NKEY_SEED_PATH — not overwriting."
   else
     echo "NATS_NKEY_SEED_PATH=${HUB_SEED}" >> "${ENV_FILE}"
     info "NATS_NKEY_SEED_PATH=${HUB_SEED} added to .env."
   fi
+  # NATS_CA_CERT — CA certificate for TLS verification
+  if grep -q "^NATS_CA_CERT=" "${ENV_FILE}"; then
+    info ".env already has NATS_CA_CERT — not overwriting."
+  else
+    echo "NATS_CA_CERT=${NATS_CA}" >> "${ENV_FILE}"
+    info "NATS_CA_CERT=${NATS_CA} added to .env."
+  fi
 else
-  warn ".env not found at ${ENV_FILE} — skipping. Add manually: NATS_NKEY_SEED_PATH=${HUB_SEED}"
+  warn ".env not found at ${ENV_FILE} — add manually:"
+  warn "  NATS_URL=tls://127.0.0.1:4222"
+  warn "  NATS_NKEY_SEED_PATH=${HUB_SEED}"
+  warn "  NATS_CA_CERT=${NATS_CA}"
 fi
 
 info "NATS setup complete."

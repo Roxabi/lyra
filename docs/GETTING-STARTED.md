@@ -240,7 +240,8 @@ lyra bot add --platform discord --bot-id lyra
 This encrypts and stores the tokens in `~/.lyra/config.db`.
 
 > **Note:** `.env` is mostly for non-secret config. Key entries:
-> - `NATS_URL=nats://127.0.0.1:4222` — set this for multi-machine production (`lyra hub` + `lyra adapter`). Omit it for single-machine dev — `lyra start` auto-starts an embedded nats-server.
+> - `NATS_URL=tls://127.0.0.1:4222` — set this for production (`lyra hub` + `lyra adapter`). Omit it for single-machine dev — `lyra start` auto-starts an embedded nats-server.
+> - `NATS_NKEY_SEED_PATH`, `NATS_CA_CERT` — nkey auth and TLS (set by `make nats-setup`)
 > - `TELEGRAM_TOKEN`, `TELEGRAM_ADMIN_CHAT_ID` — monitoring cron reads these directly from `.env`
 > - `LYRA_STT_ENABLED=1`, `LYRA_TTS_ENABLED=1` — enable NATS STT/TTS adapters; `LYRA_STT_MODEL=large-v3-turbo` — STT model size
 >
@@ -269,14 +270,15 @@ cd ~/projects/lyra
 
 # One command — installs binary, system user, nats.conf, TLS certs, nkeys, starts service, verifies auth
 make nats-setup
-
-# Then add to lyra's .env:
-echo "NATS_URL=nats://127.0.0.1:4222" >> ~/projects/lyra/.env
-echo "NATS_NKEY_SEED_PATH=~/.lyra/nkeys/hub.seed" >> ~/projects/lyra/.env
 ```
 
-`make nats-setup` is idempotent — safe to re-run after upgrades or re-provisioning. It always
-re-applies nkey permissions, so permission drift (e.g. from re-provisioning) is self-correcting.
+`make nats-setup` is idempotent — safe to re-run after upgrades or re-provisioning. It wires three env vars into `.env` automatically:
+
+| Variable | Value | Purpose |
+|----------|-------|---------|
+| `NATS_URL` | `tls://127.0.0.1:4222` | TLS connection to local NATS |
+| `NATS_NKEY_SEED_PATH` | `~/.lyra/nkeys/hub.seed` | nkey authentication |
+| `NATS_CA_CERT` | `/etc/nats/certs/ca.crt` | CA cert for TLS verification |
 
 > **Key rotation:** `sudo rm -f /etc/nats/nkeys/auth.conf && rm -rf ~/.lyra/nkeys && make nats-setup`
 > **Manual permission fix only:** `sudo deploy/nats/gen-nkeys.sh --fix-perms`

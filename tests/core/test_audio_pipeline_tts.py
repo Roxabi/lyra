@@ -302,3 +302,59 @@ class TestDispatchResponseAgentTTSE2E:
         mock_tts.synthesize.assert_awaited()
         call_kwargs = mock_tts.synthesize.call_args
         assert call_kwargs.kwargs.get("agent_tts") is agent_tts
+
+
+# ---------------------------------------------------------------------------
+# TTS unavailable fallback — dispatch_response with text (#575)
+# ---------------------------------------------------------------------------
+
+
+class TestTtsUnavailableFallback:
+    """When TtsUnavailableError is raised, text is dispatched instead of audio."""
+
+    @pytest.mark.asyncio
+    async def test_tts_unavailable_sends_text_fallback(self) -> None:
+        """synthesize_and_dispatch_audio: TtsUnavailableError → dispatch_response(text).
+
+        The fallback must dispatch the original text as a text response
+        (not silence, not an error message) with modality='text' to prevent
+        re-triggering TTS.
+        """
+        from lyra.tts import TtsUnavailableError
+
+        mock_tts = MagicMock()
+        mock_tts.synthesize = AsyncMock(side_effect=TtsUnavailableError("adapter down"))
+
+        hub = Hub(tts=mock_tts)
+        hub.dispatch_audio = AsyncMock()
+        hub.dispatch_response = AsyncMock()
+
+        msg = InboundMessage(
+            id="msg-fallback-1",
+            platform="telegram",
+            bot_id="main",
+            scope_id="chat:99",
+            user_id="alice",
+            user_name="Alice",
+            is_mention=False,
+            text="hello",
+            text_raw="hello",
+            timestamp=datetime.now(timezone.utc),
+            trust_level=TrustLevel.TRUSTED,
+            modality="voice",
+        )
+
+        await hub._audio_pipeline.synthesize_and_dispatch_audio(msg, "Hello from Lyra")
+
+        # Audio must NOT be dispatched
+        hub.dispatch_audio.assert_not_awaited()
+
+        # Text fallback MUST be dispatched
+        hub.dispatch_response.assert_awaited_once()
+        call_args = hub.dispatch_response.call_args
+        dispatched_msg = call_args.args[0]
+        dispatched_response = call_args.args[1]
+        # modality overridden to 'text' to break the TTS re-entry loop
+        assert dispatched_msg.modality == "text"
+        # content is the original synthesis text, not an error string
+        assert dispatched_response.content == "Hello from Lyra"

@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.nats.nats_stt_client import NatsSttClient
-from lyra.stt import STTUnavailableError
+from lyra.stt import STTNoiseError, STTUnavailableError
 
 
 @pytest.fixture()
@@ -123,6 +123,58 @@ class TestCircuitBreaker:
             await client.transcribe(wav_file)
         # Assert
         assert client._cb._failures == 1
+
+    @pytest.mark.asyncio
+    async def test_failure_records_on_max_payload(self, tmp_path: Path) -> None:
+        # Arrange
+        mock_nc = AsyncMock()
+        mock_nc.request = AsyncMock(
+            side_effect=Exception("NATS: max_payload exceeded")
+        )
+        client = NatsSttClient(nc=mock_nc)
+        wav_file = tmp_path / "test.wav"
+        wav_file.write_bytes(b"\x00" * 64)
+        # Act
+        with pytest.raises(STTUnavailableError, match="payload too large"):
+            await client.transcribe(wav_file)
+        # Assert
+        assert client._cb._failures == 1
+
+    @pytest.mark.asyncio
+    async def test_ok_false_raises_unavailable(self, tmp_path: Path) -> None:
+        # Arrange
+        mock_nc = AsyncMock()
+        error_payload = json.dumps({"ok": False}).encode()
+        fake_reply = MagicMock()
+        fake_reply.data = error_payload
+        mock_nc.request = AsyncMock(return_value=fake_reply)
+        client = NatsSttClient(nc=mock_nc)
+        wav_file = tmp_path / "test.wav"
+        wav_file.write_bytes(b"\x00" * 64)
+        # Act / Assert
+        with pytest.raises(STTUnavailableError, match="transcription failed"):
+            await client.transcribe(wav_file)
+        assert client._cb._failures == 1
+
+    @pytest.mark.asyncio
+    async def test_noise_transcript_raises_noise_error(self, tmp_path: Path) -> None:
+        # Arrange — Whisper returns a known noise token
+        mock_nc = AsyncMock()
+        noise_payload = json.dumps({
+            "ok": True,
+            "text": "[music]",
+            "language": "en",
+            "duration_seconds": 0.5,
+        }).encode()
+        fake_reply = MagicMock()
+        fake_reply.data = noise_payload
+        mock_nc.request = AsyncMock(return_value=fake_reply)
+        client = NatsSttClient(nc=mock_nc)
+        wav_file = tmp_path / "test.wav"
+        wav_file.write_bytes(b"\x00" * 64)
+        # Act / Assert
+        with pytest.raises(STTNoiseError):
+            await client.transcribe(wav_file)
 
     @pytest.mark.asyncio
     async def test_success_clears_failures(self, tmp_path: Path) -> None:
